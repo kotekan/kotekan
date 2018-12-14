@@ -6,9 +6,6 @@ include_directories (${KOTEKAN_SOURCE_DIR}/include)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/gpu)
 
-add_library ( kotekan_gpu
-              gpuDeviceInterface.cpp
-              gpuEventContainer.cpp
-              gpuProcess.cpp
-              gpuCommand.cpp
-              )
+include ( gpu.cmake )
+
+add_library ( kotekan_gpu KOTEKAN_GPU_SOURCES )

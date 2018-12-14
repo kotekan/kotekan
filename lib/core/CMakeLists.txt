@@ -3,23 +3,7 @@ project( kotekan_core )
 
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
-set (KOTEKAN_CORE_SOURCES
-              basebandReadoutManager.cpp
-              basebandApiManager.cpp
-              buffer.c
-              bufferContainer.cpp
-              bufferFactory.cpp
-              Config.cpp
-              configUpdater.cpp
-              errors.c
-              kotekanLogging.cpp
-              KotekanProcess.cpp
-              metadata.c
-              metadataFactory.cpp
-              processFactory.cpp
-              prometheusMetrics.cpp
-              restServer.cpp
-       )
+include ( core.cmake )
 
 add_library ( kotekan_core
               ${KOTEKAN_CORE_SOURCES})

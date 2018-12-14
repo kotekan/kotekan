@@ -23,5 +23,5 @@ endif()
 
 
 add_library ( kotekan_hcc
-              hccGPUThread.cpp
+              KOTEKAN_HCC_SOURCES
               )
