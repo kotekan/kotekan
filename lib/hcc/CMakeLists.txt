@@ -26,5 +26,4 @@ set ( KOTEKAN_HCC_SOURCES
     )
 
 add_library ( kotekan_hcc
-              KOTEKAN_HCC_SOURCES
-             )
+              ${KOTEKAN_HCC_SOURCES} )

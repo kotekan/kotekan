@@ -13,4 +13,4 @@ set ( KOTEKAN_GPU_SOURCES
       gpuCommand.cpp
     )
 
-add_library ( kotekan_gpu KOTEKAN_GPU_SOURCES )
+add_library ( kotekan_gpu ${KOTEKAN_GPU_SOURCES} )

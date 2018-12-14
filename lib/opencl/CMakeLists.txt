@@ -39,7 +39,7 @@ set ( KOTEKAN_OPENCL_SOURCES
       #clRfiOutput.cpp
     )
 
-add_library ( kotekan_opencl KOTEKAN_OPENCL_SOURCES )
+add_library ( kotekan_opencl ${KOTEKAN_OPENCL_SOURCES} )
 
 add_custom_target(kernel_copy
     COMMAND ${CMAKE_COMMAND} -E copy_directory
