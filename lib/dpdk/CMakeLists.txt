@@ -1,6 +1,10 @@
 project(kotekan_libs)
 
-include ( dpdk.cmake )
+set (KOTEKAN_DPDK_SOURCES
+        dpdkCore.cpp
+        zeroSamples.cpp
+        invalidateVDIFframes.cpp
+    )
 
 add_library (kotekan_dpdk ${KOTEKAN_DPDK_SOURCES})
 

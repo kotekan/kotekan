@@ -21,7 +21,10 @@ endif()
 
 #/// end AMD hcc options
 
+set ( KOTEKAN_HCC_SOURCES
+      hccGPUThread.cpp
+    )
 
 add_library ( kotekan_hcc
               KOTEKAN_HCC_SOURCES
-              )
+             )

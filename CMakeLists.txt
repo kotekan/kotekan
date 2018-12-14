@@ -267,67 +267,16 @@ else()
     set(DO_CLANG_FORMAT "${CLANG_FORMAT_PATH}" "-i -style=file")
 endif()
 
-# Helper function to make absolute from relative paths.
-function(prepend var prefix)
-    set(listVar "")
-
-    foreach(f ${ARGN})
-        list(APPEND listVar "${prefix}/${f}")
-    endforeach()
-
-    set(${var} "${listVar}" PARENT_SCOPE)
-endfunction()
-
 if(CLANG_FORMAT_PATH)
-    # Gather absolute path to all .cpp files.
-    include(${KOTEKAN_SOURCE_DIR}/kotekan/kotekan.cmake)
-    include(${KOTEKAN_SOURCE_DIR}/lib/core/core.cmake)
-    include(${KOTEKAN_SOURCE_DIR}/lib/dpdk/dpdk.cmake)
-    include(${KOTEKAN_SOURCE_DIR}/lib/hcc/hcc.cmake)
-    include(${KOTEKAN_SOURCE_DIR}/lib/hsa/hsa.cmake)
-    include(${KOTEKAN_SOURCE_DIR}/lib/metadata/metadata.cmake)
-    include(${KOTEKAN_SOURCE_DIR}/lib/opencl/opencl.cmake)
-    include(${KOTEKAN_SOURCE_DIR}/lib/gpu/gpu.cmake)
-    include(${KOTEKAN_SOURCE_DIR}/lib/processes/processes.cmake)
-    include(${KOTEKAN_SOURCE_DIR}/lib/testing/testing.cmake)
-    include(${KOTEKAN_SOURCE_DIR}/lib/utils/utils.cmake)
-    include(${KOTEKAN_SOURCE_DIR}/tests/boost/boost_tests.cmake)
+     # Find all .cpp and .hpp files.
+    file(GLOB_RECURSE KOTEKAN_ALL_CPP_FILES *.cpp)
+    file(GLOB_RECURSE KOTEKAN_ALL_HPP_FILES *.hpp)
 
-    prepend(SOURCE_EXE "kotekan" ${SOURCE_EXE})
-    prepend(KOTEKAN_CORE_SOURCES "lib/core" ${KOTEKAN_CORE_SOURCES})
-    prepend(KOTEKAN_DPDK_SOURCES "lib/dpdk" ${KOTEKAN_DPDK_SOURCES})
-    prepend(KOTEKAN_HCC_SOURCES "lib/hcc" ${KOTEKAN_HCC_SOURCES})
-    prepend(KOTEKAN_HSA_SOURCES "lib/hsa" ${KOTEKAN_HSA_SOURCES})
-    prepend(KOTEKAN_METADATA_SOURCES "lib/metadata" ${KOTEKAN_METADATA_SOURCES})
-    prepend(KOTEKAN_OPENCL_SOURCES "lib/opencl" ${KOTEKAN_OPENCL_SOURCES})
-    prepend(KOTEKAN_GPU_SOURCES "lib/gpu" ${KOTEKAN_GPU_SOURCES})
-    prepend(KOTEKAN_PROCESS_LIB_SOURCES "lib/processes"
-            ${KOTEKAN_PROCESS_LIB_SOURCES})
-    prepend(KOTEKAN_TESTING_SOURCES "lib/testing" ${KOTEKAN_TESTING_SOURCES})
-    prepend(KOTEKAN_UTIL_SOURCES "lib/utils" ${KOTEKAN_UTIL_SOURCES})
-    prepend(KOTEKAN_BOOST_TEST_SOURCES "tests/boost"
-            ${KOTEKAN_BOOST_TEST_SOURCES})
-    prepend(KOTEKAN_BROKER_TEST_SOURCES "tests/boost"
-            ${KOTEKAN_BROKER_TEST_SOURCES})
-
-    prepend(FILES_TO_FORMAT ${CMAKE_CURRENT_SOURCE_DIR}
-          ${SOURCE_EXE}
-          ${KOTEKAN_CORE_SOURCES}
-          ${KOTEKAN_DPDK_SOURCES}
-          ${KOTEKAN_HCC_SOURCES}
-          ${KOTEKAN_HSA_SOURCES}
-          ${KOTEKAN_METADATA_SOURCES}
-          ${KOTEKAN_OPENCL_SOURCES}
-          ${KOTEKAN_GPU_SOURCES}
-          ${KOTEKAN_PROCESS_LIB_SOURCES}
-          ${KOTEKAN_TESTING_SOURCES}
-          ${KOTEKAN_UTIL_SOURCES}
-          ${KOTEKAN_BOOST_TEST_SOURCES}
-          ${KOTEKAN_BROKER_TEST_SOURCES}
-    )
-
+    # Use .clang-format file to auto format.
     add_custom_target(
         clang-format
-        COMMAND ${CLANG_FORMAT_PATH} -style=file -i ${FILES_TO_FORMAT}
-    )
+        COMMAND ${CLANG_FORMAT_PATH} -style=file -i
+                ${KOTEKAN_ALL_CPP_FILES}
+                ${KOTEKAN_ALL_HPP_FILES}
+        )
 endif()
