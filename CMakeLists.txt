@@ -267,16 +267,37 @@ else()
     set(DO_CLANG_FORMAT "${CLANG_FORMAT_PATH}" "-i -style=file")
 endif()
 
+function ( exclude_files_containing var exclude_string )
+    set(listVar "")
+    foreach ( FILE ${ARGN} )
+        string ( FIND ${FILE} ${exclude_string} EXCLUDE_STRING_FOUND )
+        if ( ${EXCLUDE_STRING_FOUND} EQUAL -1 )
+            list ( APPEND listVar ${FILE} )
+        endif ()
+    endforeach( FILE )
+    set(${var} "${listVar}" PARENT_SCOPE)
+endfunction()
+
 if(CLANG_FORMAT_PATH)
      # Find all .cpp and .hpp files.
-    file(GLOB_RECURSE KOTEKAN_ALL_CPP_FILES *.cpp)
-    file(GLOB_RECURSE KOTEKAN_ALL_HPP_FILES *.hpp)
+    file( GLOB_RECURSE KOTEKAN_ALL_CPP_FILES *.cpp )
+    file( GLOB_RECURSE KOTEKAN_ALL_HPP_FILES *.hpp )
+
+    list ( APPEND FILES_TO_FORMAT ${KOTEKAN_ALL_CPP_FILES} )
+    list ( APPEND FILES_TO_FORMAT ${KOTEKAN_ALL_HPP_FILES} )
+
+    # Exclude all code we don't want auto-formatted (external libs).
+    set ( EXCLUDE_DIR "include" )
+    exclude_files_containing ( FILES_TO_FORMAT
+                               ${EXCLUDE_DIR}
+                               ${FILES_TO_FORMAT} )
+    set ( EXCLUDE_DIR "build" )
+    exclude_files_containing ( FILES_TO_FORMAT
+                               ${EXCLUDE_DIR}
+                               ${FILES_TO_FORMAT} )
 
     # Use .clang-format file to auto format.
     add_custom_target(
         clang-format
-        COMMAND ${CLANG_FORMAT_PATH} -style=file -i
-                ${KOTEKAN_ALL_CPP_FILES}
-                ${KOTEKAN_ALL_HPP_FILES}
-        )
+        COMMAND ${CLANG_FORMAT_PATH} -style=file -i ${FILES_TO_FORMAT} )
 endif()
