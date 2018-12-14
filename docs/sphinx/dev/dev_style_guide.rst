@@ -38,7 +38,9 @@ and named in *CamelCase* to match the process class they contain.
 folder within **lib/**, for storage of kernel handling objects and the kernels
 themselves.
 
-* Support scripts and components can be placed in the **script/** folder.
+* Support scripts can be placed in the **script/** directory.
+
+* Python components should be placed in the **python/** directory.
 
 * Configuration (``yaml``) files should go in the **config/** folder.
 

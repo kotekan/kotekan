@@ -1,6 +1,11 @@
 C++ Code Guidelines
 ---------------------
 
+For everything design related, you should follow the `C++ Core Guidelines
+<http://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines>`_. Additionally
+to that, the following rules mostly describe the code formatting used in this
+project.
+
 Naming
 ^^^^^^^^^^
 - Type names in kotekan should be nouns, use *CamelCase* formatting and begin
@@ -11,20 +16,22 @@ Naming
 
 Variables
 ^^^^^^^^^^
-Variables in the code should use underscore naming, e.g.
-``my_favourite_variable``.
+- Variables in the code should use underscore naming, e.g.
+  ``my_favourite_variable``.
 
-Explicit typing should be used wherever possible, e.g. always use ``uint32_t``
-rather than ``uint``.
+- Explicit typing should be used wherever possible, e.g. always use ``uint32_t``
+  rather than ``uint``.
 
-Private member variables should start with an underscore, e.g.
-``_my_private_variable``.
+- Variables that derive from config values start with an underscore, e.g.
+  ``_my_config_variable``.
 
 Namespaces
 ^^^^^^^^^^
-Avoid `using namespace X;`. Instead specify where you are using classes or
-functions from a namespace, e.g. `std::vector<std::string> my variable;`.
-Never do `using namespace std;`.
+- Never do ``using namespace X;`` in header files
+
+- Also never do ``using namespace std;``.
+
+- Use ``std::begin`` and ``std::end`` instead of ``.begin()`` and ``.end()``.
 
 Header files
 ^^^^^^^^^^^^^
@@ -60,9 +67,9 @@ at the end of the file.
 ^^^^^^^^^^^^^^^
 The list of #includes should be in the order:
 
- - Header file implementing the interface of this `.cpp` file.
- - kotekan project headers
+ - Header file implementing the interface of this `.cpp` file (if applicable).
  - Local/Private Headers
+ - kotekan project headers
  - System #includes
 
 Each category should be sorted lexicographically by the full path.
@@ -88,8 +95,8 @@ The small details
 
   .. code-block:: c++
 
-      int a = abc *     // My comment
-              def;      // is quite long.
+      int a = abc       // My comment
+              * def;    // is quite long.
       bool aaaaa = bbbbbbbbbbbbbbbbbbbb
                    && ccccccccccccccccccccc;
 
@@ -167,3 +174,7 @@ Automatic code formatting
 If you have `clang-format <https://clang.llvm.org/docs/ClangFormat.html>`_,
 you can get free auto-formatting of that messy code you just wrote with
 `make clang-format`.
+
+So it doesn't happen again, you should check if there is `clang-format`
+integration for your favourite editor and point it at kotekan's `.clang-format
+file <https://github.com/kotekan/kotekan/blob/master/.clang-format>`_.

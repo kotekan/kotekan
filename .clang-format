@@ -31,10 +31,11 @@ BraceWrapping:
   BeforeCatch:     false
   BeforeElse:      false
   IndentBraces:    false
-BreakBeforeBinaryOperators: None
+BreakBeforeBinaryOperators: All
 BreakBeforeTernaryOperators: true
 BreakConstructorInitializers: AfterColon
-ColumnLimit:     80
+ColumnLimit:     100
+CommentPragmas: '^@param|@config|@metric:'
 ConstructorInitializerAllOnOneLineOrOnePerLine: true
 ConstructorInitializerIndentWidth: 4
 ContinuationIndentWidth: 4
@@ -43,12 +44,12 @@ DerivePointerAlignment: false
 DisableFormat:   false
 ExperimentalAutoDetectBinPacking: false
 IncludeCategories:
-  - Regex:           '^"(llvm|llvm-c|clang|clang-c)/'
-    Priority:        2
-  - Regex:           '^(<|"(fmt|gsl-lite|json)/)'
-    Priority:        3
-  - Regex:           '.*'
+  - Regex:           '^<.*'
     Priority:        1
+  - Regex:           '^(<|"(fmt|gsl-lite|json).*)'
+    Priority:        2
+  - Regex:           '.*'
+    Priority:        3
 IncludeBlocks: Regroup
 IndentCaseLabels: false
 IndentWidth:     4
@@ -72,7 +73,7 @@ ReflowComments:  true
 SortIncludes:    true
 SpaceAfterCStyleCast: false
 SpaceBeforeAssignmentOperators: true
-SpaceBeforeCpp11BracedList: true
+SpaceBeforeCpp11BracedList: false
 SpaceBeforeCtorInitializerColon: true
 SpaceBeforeInheritanceColon: true
 SpaceBeforeParens: ControlStatements
