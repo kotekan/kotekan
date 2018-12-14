@@ -75,4 +75,20 @@ private:
     dset_id_t ds_id;
 };
 
+class redundantStack : public KotekanProcess {
+
+public:
+
+    redundantStack(Config &config,
+                   const string& unique_name,
+                   bufferContainer &buffer_container);
+
+    void main_thread();
+
+private:
+
+    bool setup();
+
+};
+
 #endif

@@ -219,6 +219,7 @@ int64_t mapMaker::resolve_time(time_ctype t){
                           map.at(fid).at(p).begin() + (latest+1)*num_pix, 0.);
                 std::fill(wgt_map.at(fid).at(p).begin() + latest*num_pix,
                           wgt_map.at(fid).at(p).begin() + (latest+1)*num_pix, 0.);
+            }
         }
         times[latest] = t;
         times_map.at(t.fpga_count) = latest;
@@ -234,4 +235,15 @@ int64_t mapMaker::resolve_time(time_ctype t){
         return -1;
     }
     return res->second;
+}
+
+bool redundantStack::setup() {
+    // loop over products, get pair of ChimeFeed and add to stack map
+    // order isn't really important
+
+    // set up new dataset ID with stackState
+}
+
+void redundantStack::main_thread() {
+    // loop over products and add to appropriate stack
 }
