@@ -35,7 +35,7 @@ BreakBeforeBinaryOperators: NonAssignment
 BreakBeforeTernaryOperators: true
 BreakConstructorInitializers: AfterColon
 ColumnLimit:     100
-CommentPragmas: '^@param|@config|@metric|@warning:'
+#CommentPragmas: '^@param|@config|@metric|@warning:'
 ConstructorInitializerAllOnOneLineOrOnePerLine: true
 ConstructorInitializerIndentWidth: 4
 ContinuationIndentWidth: 4
