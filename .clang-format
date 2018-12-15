@@ -72,6 +72,7 @@ PointerAlignment: Left
 ReflowComments:  true
 SortIncludes:    true
 SpaceAfterCStyleCast: false
+SpaceAfterTemplateKeyword: false
 SpaceBeforeAssignmentOperators: true
 SpaceBeforeCpp11BracedList: false
 SpaceBeforeCtorInitializerColon: true
