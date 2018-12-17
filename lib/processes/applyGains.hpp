@@ -91,10 +91,10 @@ private:
     /// The gains and when to start applying them in a FIFO (len set by config)
     updateQueue<gainUpdate> gains_fifo;
 
-    /// Output buffer with gains applied
-    Buffer * out_buf;
     /// Input buffer to read from
     Buffer * in_buf;
+    /// Output buffer with gains applied
+    Buffer * out_buf;
 
     /// Mutex to protect access to gains
     // N.B. `shared_mutex` is only available in C++17
@@ -111,7 +111,7 @@ private:
 
 	/// Entrancepoint for n threads. Each thread takes frames with a
 	/// different frame_id from the buffer and applies gains.
-    void apply_thread(int thread_id);
+    void apply_thread();
 
     ///Vector to hold the thread handles
     std::vector<std::thread> thread_handles;
@@ -119,6 +119,14 @@ private:
     /// Number of parallel threads accessing the same buffers (default 1)
     uint32_t num_threads;
 
+    /// Input frame ID, shared by apply threads.
+    frameID frame_id_in;
+
+    /// Output frame ID, shared by apply threads.
+    frameID frame_id_out;
+
+    /// Mutex protecting shared frame IDs.
+    std::mutex m_frame_ids;
 };
 
 
