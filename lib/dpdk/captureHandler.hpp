@@ -11,6 +11,7 @@
 #include "fpga_header_functions.h"
 #include "prometheusMetrics.hpp"
 #include "json.hpp"
+#include "packet_copy.h"
 
 /**
  * @brief A simple handler to capture uniformly sized packets into a kotekan buffer

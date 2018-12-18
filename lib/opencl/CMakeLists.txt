@@ -12,6 +12,7 @@ include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl/kernels)
 include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
 
 set ( KOTEKAN_OPENCL_SOURCES
+      clCommand.cpp
       clDeviceInterface.cpp
       clEventContainer.cpp
       clProcess.cpp

@@ -1,6 +1,9 @@
 #ifndef TEST_UTILS_HPP
 #define TEST_UTILS_HPP
 
+#include "visUtil.hpp"
+
+
 struct CompareCTypes {
     void check_equal(const vector<input_ctype>& a, const vector<input_ctype>& b)
     {
