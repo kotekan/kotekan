@@ -32,11 +32,11 @@ File Organization
 ------------------
 
 * ``kotekanProcess`` files should be placed in the **lib/processes/** folder,
-and named in *CamelCase* to match the process class they contain.
+  and named in *CamelCase* to match the process class they contain.
 
 * Accelerator interfaces (such as e.g. OpenCL or CUDA) should create their own
-folder within **lib/**, for storage of kernel handling objects and the kernels
-themselves.
+  folder within **lib/**, for storage of kernel handling objects and the kernels
+  themselves.
 
 * Support scripts can be placed in the **script/** directory.
 

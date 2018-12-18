@@ -178,3 +178,10 @@ you can get free auto-formatting of that messy code you just wrote with
 So it doesn't happen again, you should check if there is `clang-format`
 integration for your favourite editor and point it at kotekan's `.clang-format
 file <https://github.com/kotekan/kotekan/blob/master/.clang-format>`_.
+
+
+Disabling Code Formatting
+ ^^^^^^^^^^^^^^^^^^^^^^^^^^
+If you write a piece of code that you want to be excluded from auto-formatting,
+you can prepend ``// clang-format off`` or ``/* clang-format off */`` and append
+``// clang-format on`` or ``/* clang-format on */``.
