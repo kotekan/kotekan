@@ -159,14 +159,15 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_send_json, TestContext ) {
     request["array"] = {1,2,3};
     request["flag"] = true;
 
-    restServer::instance().start("127.0.0.1");
     TestContext::init(std::bind(&TestContext::callback, this,
                           std::placeholders::_1,
                           std::placeholders::_2));
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    restServer::instance().start("127.0.0.1");
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
     std::function<void(restReply)> fun = TestContext::rq_callback;
-    ret = restClient::instance().make_request("test_restclient", fun,
+    ret = restClient::instance().make_request("/test_restclient", fun,
                                               request);
     BOOST_CHECK(ret == true);
 
@@ -176,24 +177,24 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_send_json, TestContext ) {
     json bad_request;
     bad_request["bla"] = 0;
     std::function<void(restReply)> fun_fail = TestContext::rq_callback_fail;
-    ret = restClient::instance().make_request("test_restclient", fun_fail,
+    ret = restClient::instance().make_request("/test_restclient", fun_fail,
                                               bad_request);
     BOOST_CHECK(ret == true);
 
     bad_request["array"] = 0;
-    ret = restClient::instance().make_request("test_restclient", fun_fail,
+    ret = restClient::instance().make_request("/test_restclient", fun_fail,
                                               bad_request);
     BOOST_CHECK(ret == true);
 
 
     /* Test with bad URL */
 
-    ret = restClient::instance().make_request("doesntexist", fun_fail,
+    ret = restClient::instance().make_request("/doesntexist", fun_fail,
                                               request);
     BOOST_CHECK(ret == true);
 
 
-    ret = restClient::instance().make_request("test_restclient", fun_fail,
+    ret = restClient::instance().make_request("/test_restclient", fun_fail,
                                               request, "localhost", 1);
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     BOOST_CHECK_MESSAGE(error == false,
@@ -225,7 +226,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_text_reply, TestContext ) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     std::function<void(restReply)> fun_test = TestContext::rq_callback_thisisatest;
-    ret = restClient::instance().make_request("test_restclient_json", fun_test,
+    ret = restClient::instance().make_request("/test_restclient_json", fun_test,
                                               request);
     BOOST_CHECK(ret == true);
 
@@ -237,7 +238,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_text_reply, TestContext ) {
 
     INFO("sending bad json to callback_test");
     std::function<void(restReply)> fun_json = TestContext::rq_callback_json;
-    ret = restClient::instance().make_request("test_restclient_json", fun_json,
+    ret = restClient::instance().make_request("/test_restclient_json", fun_json,
                                               bad_request);
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     BOOST_CHECK_MESSAGE(error == false,
@@ -268,7 +269,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_text_reply_blocking, TestContext ) {
                                 "/test_restclient_json");
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    reply = restClient::instance().make_request_blocking("test_restclient_json",
+    reply = restClient::instance().make_request_blocking("/test_restclient_json",
                                                          request);
     BOOST_CHECK(reply.first == true);
     BOOST_CHECK(reply.second == "this is a test");
@@ -279,7 +280,7 @@ BOOST_FIXTURE_TEST_CASE( _test_restclient_text_reply_blocking, TestContext ) {
     bad_request["flag"] = false;
     bad_request["array"] = {4,5,6};
 
-    reply = restClient::instance().make_request_blocking("test_restclient_json",
+    reply = restClient::instance().make_request_blocking("/test_restclient_json",
                                                          bad_request);
     BOOST_CHECK(reply.first == true);
     json js = json::parse(reply.second);
