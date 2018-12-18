@@ -2,6 +2,7 @@
 #define TEST_UTILS_HPP
 
 #include "visUtil.hpp"
+#include <boost/test/included/unit_test.hpp>
 
 
 struct CompareCTypes {
