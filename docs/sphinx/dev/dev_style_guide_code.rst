@@ -100,40 +100,6 @@ The small details
       bool aaaaa = bbbbbbbbbbbbbbbbbbbb
                    && ccccccccccccccccccccc;
 
-- The parameters in a function definition or declaration as well as the
-  arguments in a function call should either be all in one line or in one line
-  each and horizontally aligned, e.g.:
-
-  .. code-block:: c++
-
-      int a = f(b, c, d, e);
-      int f(int b, int c, int d, int e);
-      int f(int b, int c, int d, int e) {}
-
-  .. code-block:: c++
-
-      int a = f(
-          bbb, ccc, ddd, eee);
-      int f(
-          int bbb, int ccc, int ddd, int edd);
-      int f(
-          int bbb, int ccc, int ddd, int eee) {}
-
-  .. code-block:: c++
-
-      int a = f(bbbbbb,
-                cccccc,
-                dddddd,
-                eeeeee);
-      int f(int bbbbbb,
-            int cccccc,
-            int dddddd,
-            int eeeeee);
-      int f(int bbbbbb,
-            int cccccc,
-            int dddddd,
-            int eeeeee) {}
-
 - Don't add a newline before an opening curly bracket, e.g.:
 
   .. code-block:: c++
