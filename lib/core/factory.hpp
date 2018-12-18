@@ -53,6 +53,7 @@
 #include "errors.h"
 #include "fmt.hpp"
 
+// clang-format off
 
 /**
  * @brief Create a Factory for the specified type.
@@ -265,5 +266,7 @@ private:
  **/
 #define REGISTER_RTTI_TYPE_WITH_FACTORY(type, subtype) \
     REGISTER_NAMED_TYPE_WITH_FACTORY(type, subtype, typeid(subtype).name())
+
+// clang-format on
 
 #endif
