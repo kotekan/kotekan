@@ -45,11 +45,11 @@ DisableFormat:   false
 ExperimentalAutoDetectBinPacking: false
 IncludeCategories:
   - Regex:           '^<.*'
-    Priority:        1
+    Priority:        3
   - Regex:           '^(<|"(fmt|gsl-lite|json).*)'
     Priority:        2
   - Regex:           '.*'
-    Priority:        3
+    Priority:        1
 IncludeBlocks: Regroup
 IndentCaseLabels: true
 IndentWidth:     4
