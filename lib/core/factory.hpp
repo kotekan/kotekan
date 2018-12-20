@@ -41,18 +41,20 @@
 #ifndef _FACTORY_HPP
 #define _FACTORY_HPP
 
-#include <iostream>
-#include <map>
-#include <string>
-#include <memory>
-#include <functional>
-#include <cxxabi.h>
-#include <typeinfo>
-#include <typeindex>
-
 #include "errors.h"
+
 #include "fmt.hpp"
 
+#include <cxxabi.h>
+#include <functional>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <string>
+#include <typeindex>
+#include <typeinfo>
+
+// clang-format off
 
 /**
  * @brief Create a Factory for the specified type.
@@ -265,5 +267,7 @@ private:
  **/
 #define REGISTER_RTTI_TYPE_WITH_FACTORY(type, subtype) \
     REGISTER_NAMED_TYPE_WITH_FACTORY(type, subtype, typeid(subtype).name())
+
+// clang-format on
 
 #endif

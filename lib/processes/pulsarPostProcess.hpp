@@ -8,6 +8,7 @@
 #define PULSAR_POST_PROCESS
 
 #include "KotekanProcess.hpp"
+
 #include <vector>
 
 using std::vector;
@@ -19,13 +20,13 @@ using std::vector;
  *
  * This engine gathers CHIME/Pulsar data from the 4 GPU streams in each CHIME node,
  * which are stored in the output buffer.
- * There are two accepted configurations: 
- * -- packet with 625 time samples: each packet consists of 4 freq, 2 pol, 
- *    and one beam (4f-625t-2p-1b), where freq is the fastest varying index. 
+ * There are two accepted configurations:
+ * -- packet with 625 time samples: each packet consists of 4 freq, 2 pol,
+ *    and one beam (4f-625t-2p-1b), where freq is the fastest varying index.
  *    All 4 freq are assumed to be observing the same 10 pulsars.
- * -- packet with 3125 time samples: each packet consists of 1 freq, 2 pol, 
- *    and one beam (1f-3125t-2p-1b), where freq is the fastest varying index. 
- *    A padding of 6-B is required, making the 3125-format not strictly VDIF, hence undesirable. 
+ * -- packet with 3125 time samples: each packet consists of 1 freq, 2 pol,
+ *    and one beam (1f-3125t-2p-1b), where freq is the fastest varying index.
+ *    A padding of 6-B is required, making the 3125-format not strictly VDIF, hence undesirable.
  * In both cases, the header contains 32-B.
  * Prior to packing, the real and imag part of the (float) input values are scaled and
  * offset to 4-bit unsigned ints (i.e., 0-15) independently.
@@ -53,7 +54,8 @@ using std::vector;
  * @conf   samples_per_data_set Int. No. of baseband samples corresponding to each buffer.
  * @conf   num_pulsar           Int. No. of total pulsar beams (should be 10).
  * @conf   num_pol              Int. No. of polarization (should be 2).
- * @conf   timesamples_per_pulsar_packet    Int. Number of times that will go into each packet. (should be 3125 or 625)
+ * @conf   timesamples_per_pulsar_packet    Int. Number of times that will go into each packet.
+ * (should be 3125 or 625)
  *
  * @author Cherry Ng
  *
@@ -62,9 +64,8 @@ using std::vector;
 class pulsarPostProcess : public KotekanProcess {
 public:
     /// Constructor.
-    pulsarPostProcess(Config& config_,
-                  const string& unique_name,
-                  bufferContainer &buffer_container);
+    pulsarPostProcess(Config& config_, const string& unique_name,
+                      bufferContainer& buffer_container);
     /// Destructor
     virtual ~pulsarPostProcess();
     /// Primary loop to wait for buffers, dig through data,
@@ -72,15 +73,12 @@ public:
     void main_thread() override;
 
 private:
-    void fill_headers(unsigned char * out_buf,
-                struct VDIFHeader * vdif_header,
-                const uint64_t fpga_seq_num,
-                struct timespec * time_now,
-                struct psrCoord * psr_coord,
-                uint16_t * freq_ids);
+    void fill_headers(unsigned char* out_buf, struct VDIFHeader* vdif_header,
+                      const uint64_t fpga_seq_num, struct timespec* time_now,
+                      struct psrCoord* psr_coord, uint16_t* freq_ids);
 
-    struct Buffer **in_buf;
-    struct Buffer *pulsar_buf;
+    struct Buffer** in_buf;
+    struct Buffer* pulsar_buf;
 
     /// Config variables
     uint32_t _num_gpus;

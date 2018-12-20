@@ -7,12 +7,13 @@
 #ifndef NETWORK_INPUT_POWER_STREAM_H
 #define NETWORK_INPUT_POWER_STREAM_H
 
-#include "powerStreamUtil.hpp"
-#include <sys/socket.h>
 #include "Config.hpp"
-#include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
+#include "powerStreamUtil.hpp"
+
 #include <atomic>
+#include <sys/socket.h>
 
 
 /**
@@ -46,36 +47,35 @@
  */
 class networkInputPowerStream : public KotekanProcess {
 public:
-    ///Constructor.
-    networkInputPowerStream(Config& config,
-                           const string& unique_name,
-                           bufferContainer &buffer_container);
-    ///Destructor.
+    /// Constructor.
+    networkInputPowerStream(Config& config, const string& unique_name,
+                            bufferContainer& buffer_container);
+    /// Destructor.
     virtual ~networkInputPowerStream();
 
     /// Primary loop, which waits on input frames, integrates, and dumps to output.
     void main_thread() override;
 
 private:
-    ///Simple function to receive data of @c length bytes.
-    void receive_packet(void *buffer, int length, int socket_fd);
+    /// Simple function to receive data of @c length bytes.
+    void receive_packet(void* buffer, int length, int socket_fd);
 
-    ///Output kotekanBuffer.
-    struct Buffer *out_buf;
+    /// Output kotekanBuffer.
+    struct Buffer* out_buf;
 
-    ///Port of the listening receiver.
+    /// Port of the listening receiver.
     uint32_t port;
-    ///IP of the listening receiver.
+    /// IP of the listening receiver.
     string server_ip;
-    ///Protocol to use: TCP or UDP. (Only TCP works now)
+    /// Protocol to use: TCP or UDP. (Only TCP works now)
     string protocol;
 
 
-    ///Number of frequencies in the buffer
+    /// Number of frequencies in the buffer
     int freqs;
-    ///Number of times in the buffer
+    /// Number of times in the buffer
     int times;
-    ///Number of elems in the buffer
+    /// Number of elems in the buffer
     int elems;
 };
 

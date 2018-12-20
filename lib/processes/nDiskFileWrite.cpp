@@ -1,25 +1,26 @@
-#include <stdio.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <string.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <functional>
-#include <thread>
-#include <sys/stat.h>
 #include "nDiskFileWrite.hpp"
+
 #include "buffer.h"
+#include "chimeMetadata.h"
 #include "errors.h"
 #include "util.h"
-#include "chimeMetadata.h"
+
+#include <errno.h>
+#include <fcntl.h>
+#include <functional>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <thread>
+#include <unistd.h>
 
 REGISTER_KOTEKAN_PROCESS(nDiskFileWrite);
 
 nDiskFileWrite::nDiskFileWrite(Config& config, const string& unique_name,
-                                bufferContainer &buffer_containter) :
-        KotekanProcess(config, unique_name, buffer_containter,
-                       std::bind(&nDiskFileWrite::main_thread, this))
-{
+                               bufferContainer& buffer_containter) :
+    KotekanProcess(config, unique_name, buffer_containter,
+                   std::bind(&nDiskFileWrite::main_thread, this)) {
     buf = get_buffer("in_buf");
     register_consumer(buf, unique_name.c_str());
 
@@ -28,38 +29,36 @@ nDiskFileWrite::nDiskFileWrite(Config& config, const string& unique_name,
     num_disks = config.get<uint32_t>(unique_name, "num_disks");
     disk_set = config.get<std::string>(unique_name, "disk_set");
     write_to_disk = config.get<bool>(unique_name, "write_to_disk");
-    instrument_name = config.get_default<std::string>(
-            unique_name, "instrument_name", "no_name_set");
-    write_metadata_and_gains = config.get_default<bool>(
-            unique_name, "write_metadata_and_gains", true);
+    instrument_name =
+        config.get_default<std::string>(unique_name, "instrument_name", "no_name_set");
+    write_metadata_and_gains =
+        config.get_default<bool>(unique_name, "write_metadata_and_gains", true);
 }
 
-nDiskFileWrite::~nDiskFileWrite() {
-}
+nDiskFileWrite::~nDiskFileWrite() {}
 
-void nDiskFileWrite::save_meta_data(char *timestr) {
+void nDiskFileWrite::save_meta_data(char* timestr) {
 
     for (uint32_t i = 0; i < num_disks; ++i) {
 
         char file_name[200];
-        snprintf(file_name, sizeof(file_name), "%s/%s/%d/%s/settings.txt",
-                        disk_base.c_str(), disk_set.c_str(), i, dataset_name.c_str());
+        snprintf(file_name, sizeof(file_name), "%s/%s/%d/%s/settings.txt", disk_base.c_str(),
+                 disk_set.c_str(), i, dataset_name.c_str());
 
-        FILE * info_file = fopen(file_name, "w");
+        FILE* info_file = fopen(file_name, "w");
 
-        if(!info_file) {
+        if (!info_file) {
             ERROR("Error creating info file: %s\n", file_name);
             exit(-1);
         }
 
         const int data_format_version = 3;
-        int num_freq = config.get<int>(unique_name,"num_freq");
-        int num_elements = config.get<int>(unique_name,"num_elements");
-        int samples_per_file = config.get<int>(unique_name,
-                                               "samples_per_data_set");
+        int num_freq = config.get<int>(unique_name, "num_freq");
+        int num_elements = config.get<int>(unique_name, "num_elements");
+        int samples_per_file = config.get<int>(unique_name, "samples_per_data_set");
         const int vdif_header_len = 32;
         const int bit_depth = 4;
-        string note = config.get<std::string>(unique_name,"note");
+        string note = config.get<std::string>(unique_name, "note");
 
         fprintf(info_file, "format_version_number=%02d\n", data_format_version);
         fprintf(info_file, "num_freq=%d\n", num_freq);
@@ -67,16 +66,18 @@ void nDiskFileWrite::save_meta_data(char *timestr) {
         fprintf(info_file, "num_frames=%d\n", 1); // Always one for this VDIF
         fprintf(info_file, "num_timesamples=%d\n", samples_per_file);
         fprintf(info_file, "header_len=%d\n", vdif_header_len); // VDIF
-        fprintf(info_file, "packet_len=%d\n", vdif_header_len + num_freq); // 1056 for VDIF with 1024 freq
+        fprintf(info_file, "packet_len=%d\n",
+                vdif_header_len + num_freq); // 1056 for VDIF with 1024 freq
         fprintf(info_file, "offset=%d\n", 0);
         fprintf(info_file, "data_bits=%d\n", bit_depth);
         fprintf(info_file, "stride=%d\n", 1);
         fprintf(info_file, "stream_id=n/a\n");
         fprintf(info_file, "note=\"%s\"\n", note.c_str());
-        fprintf(info_file, "start_time=%s\n", timestr);//dataset_name.c_str());
+        fprintf(info_file, "start_time=%s\n", timestr); // dataset_name.c_str());
         fprintf(info_file, "num_disks=%d\n", num_disks);
         fprintf(info_file, "disk_set=%s\n", disk_set.c_str());
-        fprintf(info_file, "# Warning: The start time is when the program starts it, the time recorded in the packets is more accurate\n");
+        fprintf(info_file, "# Warning: The start time is when the program starts it, the time "
+                           "recorded in the packets is more accurate\n");
 
         fclose(info_file);
 
@@ -102,17 +103,16 @@ void nDiskFileWrite::main_thread() {
         make_raw_dirs(disk_base.c_str(), disk_set.c_str(), dataset_name.c_str(), num_disks);
     }
 
-    if (write_to_disk && write_metadata_and_gains){
+    if (write_to_disk && write_metadata_and_gains) {
 
         // Copy gain files
         std::vector<std::string> gain_files =
-                config.get<std::vector<std::string>>(unique_name, "gain_files");
+            config.get<std::vector<std::string>>(unique_name, "gain_files");
         for (uint32_t i = 0; i < num_disks; ++i) {
             for (uint32_t j = 0; j < gain_files.size(); ++j) {
                 unsigned int last_slash_pos = gain_files[j].find_last_of("/\\");
-                std::string dest = disk_base + "/" + disk_set + "/" + std::to_string(i) + "/" +
-                        dataset_name + "/" +
-                        gain_files[j].substr(last_slash_pos+1);
+                std::string dest = disk_base + "/" + disk_set + "/" + std::to_string(i) + "/"
+                                   + dataset_name + "/" + gain_files[j].substr(last_slash_pos + 1);
                 // Copy the gain file
                 if (cp(dest.c_str(), gain_files[j].c_str()) != 0) {
                     ERROR("Could not copy %s to %s\n", gain_files[j].c_str(), dest.c_str());
@@ -122,7 +122,7 @@ void nDiskFileWrite::main_thread() {
                 }
             }
         }
-        //save settings
+        // save settings
         save_meta_data(data_time);
     }
 
@@ -134,8 +134,7 @@ void nDiskFileWrite::main_thread() {
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
         INFO("Setting thread affinity");
-        for (auto &i : config.get<std::vector<int>>(unique_name,
-                                                    "cpu_affinity"))
+        for (auto& i : config.get<std::vector<int>>(unique_name, "cpu_affinity"))
             CPU_SET(i, &cpuset);
 
         pthread_setaffinity_np(file_thread_handles[i].native_handle(), sizeof(cpu_set_t), &cpuset);
@@ -152,15 +151,16 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
     int fd;
     size_t file_num = disk_id;
     int frame_id = disk_id;
-    uint8_t * frame = NULL;
+    uint8_t* frame = NULL;
 
-    while(!stop_thread) {
+    while (!stop_thread) {
 
         // This call is blocking.
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL) break;
+        if (frame == NULL)
+            break;
 
-        //INFO("Got buffer id: %d, disk id %d", frame_id, disk_id);
+        // INFO("Got buffer id: %d, disk id %d", frame_id, disk_id);
 
         // Check if the producer has finished, and we should exit.
         if (frame_id == -1) {
@@ -170,12 +170,8 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
         const int file_name_len = 100;
         char file_name[file_name_len];
 
-        snprintf(file_name, file_name_len, "%s/%s/%d/%s/%010zu.vdif",
-                disk_base.c_str(),
-                disk_set.c_str(),
-                disk_id,
-                dataset_name.c_str(),
-                file_num);
+        snprintf(file_name, file_name_len, "%s/%s/%d/%s/%010zu.vdif", disk_base.c_str(),
+                 disk_set.c_str(), disk_id, dataset_name.c_str(), file_num);
 
         // Open the file to write
         if (write_to_disk) {
@@ -194,23 +190,25 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
                 ERROR("Failed to write buffer to disk!!!  Abort, Panic, etc.");
                 exit(-1);
             } else {
-                 //INFO("Data writen to file!");
+                // INFO("Data writen to file!");
             }
 
             if (close(fd) == -1) {
                 ERROR("Cannot close file %s", file_name);
             }
 
-            INFO("Data file write done for %s, lost_packets %d", file_name, get_lost_timesamples(buf, frame_id));
+            INFO("Data file write done for %s, lost_packets %d", file_name,
+                 get_lost_timesamples(buf, frame_id));
         } else {
-            //usleep(0.070 * 1e6);
-            INFO("Disk id %d, Lost Packets %d, buffer id %d", disk_id, get_lost_timesamples(buf, frame_id), frame_id);
+            // usleep(0.070 * 1e6);
+            INFO("Disk id %d, Lost Packets %d, buffer id %d", disk_id,
+                 get_lost_timesamples(buf, frame_id), frame_id);
         }
 
         // TODO make release_info_object work for nConsumers.
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
 
-        frame_id = ( frame_id + num_disks ) % buf->num_frames;
+        frame_id = (frame_id + num_disks) % buf->num_frames;
         file_num += num_disks;
     }
 }

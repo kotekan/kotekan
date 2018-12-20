@@ -11,34 +11,36 @@ include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl/kernels)
 include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
 
-add_library ( kotekan_opencl
-              clDeviceInterface.cpp
-              clEventContainer.cpp
-              clCommand.cpp
-              clProcess.cpp
+set ( KOTEKAN_OPENCL_SOURCES
+      clCommand.cpp
+      clDeviceInterface.cpp
+      clEventContainer.cpp
+      clProcess.cpp
 
 # Copy-in & general-purpose:
-              clInputData.cpp
+      clInputData.cpp
 
 # CHIME N2 Kernels & copy-out:
-              clOutputDataZero.cpp
-              clPresumZero.cpp
-              clPresumKernel.cpp
-              clPreseedKernel.cpp
-              clCorrelatorKernel.cpp
-              clOutputData.cpp
-              clKVCorr.cpp
+      clOutputDataZero.cpp
+      clPresumZero.cpp
+      clPresumKernel.cpp
+      clPreseedKernel.cpp
+      clCorrelatorKernel.cpp
+      clOutputData.cpp
+      clKVCorr.cpp
 
 # CHIME/Pulsar Kernels & copy-out:
-              clBeamformPhaseData.cpp
-              clBeamformKernel.cpp
-              clOutputBeamformResult.cpp
+      clBeamformPhaseData.cpp
+      clBeamformKernel.cpp
+      clOutputBeamformResult.cpp
 
 #RFI Kernels
-              #clRfiTimeSum.cpp
-              #clRfiInputSum.cpp
-              #clRfiOutput.cpp
-              )
+      #clRfiTimeSum.cpp
+      #clRfiInputSum.cpp
+      #clRfiOutput.cpp
+    )
+
+add_library ( kotekan_opencl ${KOTEKAN_OPENCL_SOURCES} )
 
 add_custom_target(kernel_copy
     COMMAND ${CMAKE_COMMAND} -E copy_directory

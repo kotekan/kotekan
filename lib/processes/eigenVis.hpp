@@ -6,10 +6,10 @@
 #ifndef EIGENVIS_HPP
 #define EIGENVIS_HPP
 
-#include "buffer.h"
 #include "KotekanProcess.hpp"
-#include "visUtil.hpp"
+#include "buffer.h"
 #include "datasetManager.hpp"
+#include "visUtil.hpp"
 
 /**
  * @class eigenVis
@@ -56,17 +56,15 @@
 class eigenVis : public KotekanProcess {
 
 public:
-    eigenVis(Config& config,
-             const string& unique_name,
-             bufferContainer &buffer_container);
+    eigenVis(Config& config, const string& unique_name, bufferContainer& buffer_container);
     virtual ~eigenVis() = default;
     void main_thread() override;
-private:
 
+private:
     dset_id_t change_dataset_state(dset_id_t input_dset_id);
 
-    Buffer *input_buffer;
-    Buffer *output_buffer;
+    Buffer* input_buffer;
+    Buffer* output_buffer;
 
     uint32_t num_eigenvectors;
     uint32_t num_diagonals_filled;
@@ -78,7 +76,6 @@ private:
 
     state_id_t ev_state_id;
     dset_id_t input_dset_id = 0;
-
 };
 
 #endif

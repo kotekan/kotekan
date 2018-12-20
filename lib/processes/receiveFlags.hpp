@@ -6,8 +6,9 @@
 #ifndef RECEIVEFLAGS_H
 #define RECEIVEFLAGS_H
 
-#include "updateQueue.hpp"
 #include "KotekanProcess.hpp"
+#include "updateQueue.hpp"
+
 #include <mutex>
 
 /**
@@ -49,16 +50,15 @@
  */
 class receiveFlags : public KotekanProcess {
 public:
-
     /// Constructor
-    receiveFlags(Config &config, const string& unique_name,
-            bufferContainer &buffer_container);
+    receiveFlags(Config& config, const string& unique_name, bufferContainer& buffer_container);
 
     /// Main loop, saves flags in the frames
     void main_thread() override;
 
     /// This will be called by configUpdater
-    bool flags_callback(nlohmann::json &json);
+    bool flags_callback(nlohmann::json& json);
+
 private:
     // this is faster than std::queue/deque
     /// The bad_input chan_id's and when to start applying them in a FIFO
@@ -66,16 +66,16 @@ private:
     updateQueue<std::vector<float>> flags;
 
     /// Input buffer
-    Buffer * buf_in;
+    Buffer* buf_in;
 
     /// Output buffer
-    Buffer * buf_out;
+    Buffer* buf_out;
 
     /// To make sure flags are not modified and saved at the same time
     std::mutex flags_lock;
 
     /// Timestamp of the current frame
-    timespec ts_frame = {0,0};
+    timespec ts_frame = {0, 0};
 
     /// Number of updates received too late
     size_t num_late_updates;
@@ -89,4 +89,3 @@ private:
 };
 
 #endif /* RECEIVEFLAGS_H */
-

@@ -1,5 +1,7 @@
 #include "gpuEventContainer.hpp"
+
 #include "errors.h"
+
 #include <unistd.h>
 
 
@@ -12,8 +14,7 @@ gpuEventContainer::gpuEventContainer(const gpuEventContainer& obj) {
     (void)obj;
 }
 
-gpuEventContainer::~gpuEventContainer() {
-}
+gpuEventContainer::~gpuEventContainer() {}
 
 void gpuEventContainer::reset() {
     {
@@ -24,12 +25,12 @@ void gpuEventContainer::reset() {
     cond_var.notify_all();
 }
 
-void *gpuEventContainer::get_signal(void){
+void* gpuEventContainer::get_signal(void) {
     std::lock_guard<std::mutex> lock(mux);
     return get();
 }
 
-void gpuEventContainer::set_signal(void *sig){
+void gpuEventContainer::set_signal(void* sig) {
     {
         std::lock_guard<std::mutex> lock(mux);
         set(sig);
