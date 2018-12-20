@@ -17,6 +17,8 @@
 #define n_elem 2048
 #define n_blk 2080//(n_elem/32)*(n_elem/32+1)/2
 
+// clang-format off
+
 hccGPUThread::hccGPUThread(Config& config_, Buffer& in_buf_, Buffer& out_buf_, uint32_t gpu_id_) :
     KotekanProcess(config_, std::bind(&hccGPUThread::main_thread, this)),
     in_buf(in_buf_), out_buf(out_buf_), gpu_id(gpu_id_) {
@@ -329,6 +331,6 @@ void hccGPUThread::main_thread() {
 hccGPUThread::~hccGPUThread() {
 }
 
+// clang-format on
+
 #endif
-
-

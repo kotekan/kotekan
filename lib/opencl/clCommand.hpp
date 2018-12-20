@@ -50,9 +50,9 @@ public:
     /// Destructor that frees memory for the kernel and name.
     virtual ~clCommand();
 
-    /** The build function creates the event to return as the post event in an event chaining sequence.
-     * If a kernel is part of the clCommand object definition the resources to run it are allocated on
-     * the gpu here.
+    /** The build function creates the event to return as the post event in an event chaining
+     * sequence. If a kernel is part of the clCommand object definition the resources to run it are
+     * allocated on the gpu here.
     **/
     virtual void build();
 
