@@ -131,6 +131,18 @@ inline void set_gps_time(struct Buffer * buf, int ID, struct timespec time) {
     chime_metadata->gps_time = time;
 }
 
+/**
+ * @brief Zeros the number of lost samples for the given frame metadata
+ *
+ * @param buf The buffer with the frame to metadata to zero
+ * @param ID The frame ID
+ */
+inline void zero_lost_samples(struct Buffer * buf, int ID) {
+    struct chimeMetadata * chime_metadata =
+     (struct chimeMetadata *) buf->metadata[ID]->metadata;
+    chime_metadata->lost_timesamples = 0;
+}
+
 #ifdef __cplusplus
 }
 #endif

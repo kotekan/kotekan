@@ -1,13 +1,16 @@
 #define BOOST_TEST_MODULE "test_dataset_broker_consumer"
 
-#include <boost/test/included/unit_test.hpp>
-#include <string>
 #include <inttypes.h>
-#include "json.hpp"
-#include "visUtil.hpp"
 #include "restClient.hpp"
-#include "visCompression.hpp"
 #include "test_utils.hpp"
+#include "visCompression.hpp"
+#include "visUtil.hpp"
+
+#include "json.hpp"
+
+#include <boost/test/included/unit_test.hpp>
+#include <iostream>
+#include <string>
 
 // the code to test:
 #include "datasetManager.hpp"
@@ -23,7 +26,7 @@ using json = nlohmann::json;
 
 using namespace std::string_literals;
 
-BOOST_FIXTURE_TEST_CASE( _ask_broker_for_ancestors, CompareCTypes ) {
+BOOST_FIXTURE_TEST_CASE(_ask_broker_for_ancestors, CompareCTypes) {
     __log_level = 4;
     __enable_syslog = 0;
 
@@ -37,13 +40,9 @@ BOOST_FIXTURE_TEST_CASE( _ask_broker_for_ancestors, CompareCTypes ) {
     datasetManager& dm = datasetManager::instance(conf);
 
     // generate datasets:
-    std::vector<input_ctype> inputs = {input_ctype(1, "1"),
-                                       input_ctype(3, "3")};
-    std::vector<prod_ctype> prods = {{1, 1},
-                                     {2, 2},
-                                     {3, 3}};
-    std::vector<std::pair<uint32_t, freq_ctype>> freqs = {{1, {1.1, 1}},
-                                                          {3, {3, 3}}};
+    std::vector<input_ctype> inputs = {input_ctype(1, "1"), input_ctype(3, "3")};
+    std::vector<prod_ctype> prods = {{1, 1}, {2, 2}, {3, 3}};
+    std::vector<std::pair<uint32_t, freq_ctype>> freqs = {{1, {1.1, 1}}, {3, {3, 3}}};
 
     INFO("%s", dm.summary().c_str());
 
@@ -79,7 +78,7 @@ BOOST_FIXTURE_TEST_CASE( _ask_broker_for_ancestors, CompareCTypes ) {
     usleep(500000);
 }
 
-BOOST_AUTO_TEST_CASE( _dataset_manager_second_root_update ) {
+BOOST_AUTO_TEST_CASE(_dataset_manager_second_root_update) {
     __log_level = 5;
     __enable_syslog = 0;
 
@@ -98,9 +97,8 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_second_root_update ) {
     std::vector<std::pair<uint32_t, freq_ctype>> freqs = {{4, {1.1, 1}}};
 
     std::pair<state_id_t, const inputState*> input_state =
-            dm.add_state(std::make_unique<inputState>
-                         (inputs, std::make_unique<prodState>(prods,
-                          std::make_unique<freqState>(freqs))));
+        dm.add_state(std::make_unique<inputState>(
+            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
 
     dm.add_dataset(SECOND_ROOT, input_state.first);
 
@@ -108,7 +106,7 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_second_root_update ) {
     usleep(1000000);
 }
 
-BOOST_FIXTURE_TEST_CASE( _ask_broker_for_second_root, CompareCTypes ) {
+BOOST_FIXTURE_TEST_CASE(_ask_broker_for_second_root, CompareCTypes) {
     __log_level = 4;
     __enable_syslog = 0;
 
@@ -122,13 +120,9 @@ BOOST_FIXTURE_TEST_CASE( _ask_broker_for_second_root, CompareCTypes ) {
     datasetManager& dm = datasetManager::instance(conf);
 
     // generate datasets:
-    std::vector<input_ctype> inputs = {input_ctype(1, "4"),
-                                       input_ctype(3, "3")};
-    std::vector<prod_ctype> prods = {{4, 1},
-                                     {2, 2},
-                                     {3, 3}};
-    std::vector<std::pair<uint32_t, freq_ctype>> freqs = {{4, {1.1, 1}},
-                                                          {3, {3, 3}}};
+    std::vector<input_ctype> inputs = {input_ctype(1, "4"), input_ctype(3, "3")};
+    std::vector<prod_ctype> prods = {{4, 1}, {2, 2}, {3, 3}};
+    std::vector<std::pair<uint32_t, freq_ctype>> freqs = {{4, {1.1, 1}}, {3, {3, 3}}};
 
     INFO("%s", dm.summary().c_str());
 
@@ -163,7 +157,7 @@ BOOST_FIXTURE_TEST_CASE( _ask_broker_for_second_root, CompareCTypes ) {
     usleep(500000);
 }
 
-BOOST_FIXTURE_TEST_CASE( _ask_broker_for_second_root_update, CompareCTypes ) {
+BOOST_FIXTURE_TEST_CASE(_ask_broker_for_second_root_update, CompareCTypes) {
     __log_level = 4;
     __enable_syslog = 0;
 

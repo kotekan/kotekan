@@ -9,7 +9,9 @@
 #define INVALIDATE_VDIF_FRAMES_HPP
 
 #include "KotekanProcess.hpp"
+
 #include "json.hpp"
+
 #include <vector>
 
 /**
@@ -33,10 +35,9 @@
  */
 class invalidateVDIFframes : public KotekanProcess {
 public:
-
     /// Standard constructor
     invalidateVDIFframes(Config& config, const string& unique_name,
-                         bufferContainer &buffer_container);
+                         bufferContainer& buffer_container);
 
     /// Destructor
     ~invalidateVDIFframes();
@@ -45,12 +46,11 @@ public:
     void main_thread() override;
 
 private:
-
     /// The buffer with the network data
-    struct Buffer * out_buf;
+    struct Buffer* out_buf;
 
     /// The buffer with the array of flags indicating lost data.
-    struct Buffer * lost_samples_buf;
+    struct Buffer* lost_samples_buf;
 
     /// Current ID for out_buf
     int32_t out_buf_frame_id = 0;
@@ -63,7 +63,7 @@ private:
     const uint32_t num_elements = 2;
 
     /// The size of each VDIF frame
-    const uint32_t vdif_frame_size = 1056;  // 32 header + 1024 data
+    const uint32_t vdif_frame_size = 1056; // 32 header + 1024 data
 };
 
 #endif /* ZERO_SAMPLES_HPP */

@@ -1,40 +1,39 @@
 #include "visRawReader.hpp"
 
-#include <errno.h>
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <algorithm>
-#include <atomic>
-#include <cstdint>
-#include <cstring>
-#include <exception>
-#include <functional>
-#include <iostream>
-#include <fstream>
-#include <memory>
-#include <regex>
-#include <stdexcept>
-
-#include "gsl-lite.hpp"
-#include "json.hpp"
-
 #include "datasetState.hpp"
 #include "errors.h"
-#include "fmt.hpp"
 #include "metadata.h"
 #include "processFactory.hpp"
 #include "version.h"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
 
+#include "fmt.hpp"
+#include "gsl-lite.hpp"
+#include "json.hpp"
+
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
+#include <cstring>
+#include <errno.h>
+#include <exception>
+#include <fcntl.h>
+#include <fstream>
+#include <functional>
+#include <iostream>
+#include <memory>
+#include <regex>
+#include <stdexcept>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 
 REGISTER_KOTEKAN_PROCESS(visRawReader);
 
-visRawReader::visRawReader(Config &config,
-                           const string& unique_name,
-                           bufferContainer &buffer_container) :
+visRawReader::visRawReader(Config& config, const string& unique_name,
+                           bufferContainer& buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&visRawReader::main_thread, this)) {
 
@@ -45,17 +44,17 @@ visRawReader::visRawReader(Config &config,
     if (chunked) {
         chunk_size = config.get<std::vector<int>>(unique_name, "chunk_size");
         if (chunk_size.size() != 3)
-            throw std::invalid_argument("Chunk size needs exactly three " \
-                    "elements (has " +
-                    std::to_string(chunk_size.size()) + ").");
+            throw std::invalid_argument("Chunk size needs exactly three "
+                                        "elements (has "
+                                        + std::to_string(chunk_size.size()) + ").");
         chunk_t = chunk_size[2];
         chunk_f = chunk_size[0];
         if (chunk_size[0] < 1 || chunk_size[1] < 1 || chunk_size[2] < 1)
-            throw std::invalid_argument("visRawReader: config: Chunk size " \
-                    "needs to be greater or equal to (1,1,1) (is ("
-                    + std::to_string(chunk_size[0]) + ","
-                    + std::to_string(chunk_size[1]) + ","
-                    + std::to_string(chunk_size[2]) + ")).");
+            throw std::invalid_argument("visRawReader: config: Chunk size "
+                                        "needs to be greater or equal to (1,1,1) (is ("
+                                        + std::to_string(chunk_size[0]) + ","
+                                        + std::to_string(chunk_size[1]) + ","
+                                        + std::to_string(chunk_size[2]) + ")).");
     }
 
     // Get the list of buffers that this process shoud connect to
@@ -67,17 +66,19 @@ visRawReader::visRawReader(Config &config,
     INFO("Reading metadata file: %s", md_filename.c_str());
     struct stat st;
     if (stat(md_filename.c_str(), &st) == -1)
-        throw std::ios_base::failure("visRawReader: Error reading from " \
-                "metadata file: " + md_filename);
+        throw std::ios_base::failure("visRawReader: Error reading from "
+                                     "metadata file: "
+                                     + md_filename);
     size_t filesize = st.st_size;
     std::vector<uint8_t> packed_json(filesize);
 
     std::ifstream metadata_file(md_filename, std::ios::binary);
     if (metadata_file) // only read if no error
-        metadata_file.read((char *)&packed_json[0], filesize);
+        metadata_file.read((char*)&packed_json[0], filesize);
     if (!metadata_file) // check if open and read successful
-        throw std::ios_base::failure("visRawReader: Error reading from " \
-                "metadata file: " + md_filename);
+        throw std::ios_base::failure("visRawReader: Error reading from "
+                                     "metadata file: "
+                                     + md_filename);
     json _t = json::from_msgpack(packed_json);
     metadata_file.close();
 
@@ -90,8 +91,7 @@ visRawReader::visRawReader(Config &config,
     _ev = _t["index_map"]["ev"].get<std::vector<uint32_t>>();
     if (_t.at("index_map").find("stack") != _t.at("index_map").end()) {
         _stack = _t.at("index_map").at("stack").get<std::vector<stack_ctype>>();
-        _rstack = _t.at("reverse_map").at("stack"
-                                          ).get<std::vector<rstack_ctype>>();
+        _rstack = _t.at("reverse_map").at("stack").get<std::vector<rstack_ctype>>();
         _num_stack = _t.at("structure").at("num_stack").get<uint32_t>();
     }
 
@@ -105,12 +105,10 @@ visRawReader::visRawReader(Config &config,
 
     // check git version tag
     // TODO: enforce that they match if build type == "release"?
-    if (_metadata.at("git_version_tag").get<std::string>()
-                != std::string(get_git_commit_hash()))
-        INFO("Git version tags don't match: dataset in file %s has tag %s, " \
+    if (_metadata.at("git_version_tag").get<std::string>() != std::string(get_git_commit_hash()))
+        INFO("Git version tags don't match: dataset in file %s has tag %s, "
              "while the local git version tag is %s",
-             filename.c_str(),
-             _metadata.at("git_version_tag").get<std::string>().c_str(),
+             filename.c_str(), _metadata.at("git_version_tag").get<std::string>().c_str(),
              get_git_commit_hash());
 
     // Extract the structure
@@ -126,41 +124,36 @@ visRawReader::visRawReader(Config &config,
         chunk_t = std::min(chunk_t, ntime);
 
         // Number of elements in a chunked row
-        row_size = (chunk_f * chunk_t) * (nfreq / chunk_f)
-                 + (nfreq % chunk_f) * chunk_t;
+        row_size = (chunk_f * chunk_t) * (nfreq / chunk_f) + (nfreq % chunk_f) * chunk_t;
     }
 
     // Check metadata is the correct size
-    if(sizeof(visMetadata) != metadata_size) {
-        std::string msg = fmt::format("Metadata in file {} is larger " \
-                "({} bytes) than visMetadata ({} bytes).",
-            filename, metadata_size, sizeof(visMetadata)
-        );
+    if (sizeof(visMetadata) != metadata_size) {
+        std::string msg = fmt::format("Metadata in file {} is larger "
+                                      "({} bytes) than visMetadata ({} bytes).",
+                                      filename, metadata_size, sizeof(visMetadata));
         throw std::runtime_error(msg);
     }
 
     // Check that buffer is large enough
-    if((unsigned int)(out_buf->frame_size) < data_size
-            || out_buf->frame_size < 0) {
-        std::string msg = fmt::format(
-            "Data in file {} is larger ({} bytes) than buffer size ({} bytes).",
-            filename, data_size, out_buf->frame_size
-        );
+    if ((unsigned int)(out_buf->frame_size) < data_size || out_buf->frame_size < 0) {
+        std::string msg =
+            fmt::format("Data in file {} is larger ({} bytes) than buffer size ({} bytes).",
+                        filename, data_size, out_buf->frame_size);
         throw std::runtime_error(msg);
     }
 
     // Open up the data file and mmap it
     INFO("Opening data file: %s", (filename + ".data").c_str());
-    if((fd = open((filename + ".data").c_str(), O_RDONLY)) == -1) {
-        throw std::runtime_error(fmt::format("Failed to open file {}: {}.",
-                                       filename + ".data", strerror(errno)));
+    if ((fd = open((filename + ".data").c_str(), O_RDONLY)) == -1) {
+        throw std::runtime_error(
+            fmt::format("Failed to open file {}: {}.", filename + ".data", strerror(errno)));
     }
-    mapped_file = (uint8_t *)mmap(NULL, ntime * nfreq * file_frame_size,
-                                  PROT_READ, MAP_SHARED, fd, 0);
+    mapped_file =
+        (uint8_t*)mmap(NULL, ntime * nfreq * file_frame_size, PROT_READ, MAP_SHARED, fd, 0);
     if (mapped_file == MAP_FAILED)
-        throw std::runtime_error(fmt::format(
-                    "Failed to map file {} to memory: {}.", filename + ".data",
-                    strerror(errno)));
+        throw std::runtime_error(fmt::format("Failed to map file {} to memory: {}.",
+                                             filename + ".data", strerror(errno)));
 
     // tell the dataset manager and get a dataset ID for the data coming from
     // this file
@@ -168,9 +161,9 @@ visRawReader::visRawReader(Config &config,
 }
 
 visRawReader::~visRawReader() {
-    if(munmap(mapped_file, ntime * nfreq * file_frame_size) == -1) {
-        std::runtime_error(fmt::format("Failed to unmap file {}: {}.",
-                                       filename + ".data", strerror(errno)));
+    if (munmap(mapped_file, ntime * nfreq * file_frame_size) == -1) {
+        std::runtime_error(
+            fmt::format("Failed to unmap file {}: {}.", filename + ".data", strerror(errno)));
     }
 
     close(fd);
@@ -183,19 +176,17 @@ void visRawReader::change_dataset_state() {
     state_uptr sstate = nullptr;
     if (!_stack.empty())
         sstate = std::make_unique<stackState>(_num_stack, std::move(_rstack));
-    state_uptr istate = std::make_unique<inputState>(_inputs,
-                                                     std::move(sstate));
-    state_uptr evstate = std::make_unique<eigenvalueState>(_ev,
-                                                           std::move(istate));
+    state_uptr istate = std::make_unique<inputState>(_inputs, std::move(sstate));
+    state_uptr evstate = std::make_unique<eigenvalueState>(_ev, std::move(istate));
     state_uptr fstate = std::make_unique<freqState>(_freqs, std::move(evstate));
     state_uptr pstate = std::make_unique<prodState>(_prods, std::move(fstate));
     state_uptr tstate = std::make_unique<timeState>(_times, std::move(pstate));
 
-    state_id_t mstate_id = dm.add_state(std::make_unique<metadataState>(
-                                        _metadata.at("weight_type"),
-                                        _metadata.at("instrument_name"),
-                                        _metadata.at("git_version_tag"),
-                                        std::move(tstate))).first;
+    state_id_t mstate_id =
+        dm.add_state(std::make_unique<metadataState>(
+                         _metadata.at("weight_type"), _metadata.at("instrument_name"),
+                         _metadata.at("git_version_tag"), std::move(tstate)))
+            .first;
 
     // register it as root dataset
     _dataset_id = dm.add_dataset(mstate_id);
@@ -210,7 +201,7 @@ void visRawReader::read_ahead(int ind) {
 }
 
 int visRawReader::position_map(int ind) {
-    if(chunked) {
+    if (chunked) {
         // chunked row index
         int ri = ind / row_size;
         // Special case at edges of time*freq array
@@ -221,10 +212,8 @@ int visRawReader::position_map(int ind) {
         int f_width = std::min(nfreq - ci * chunk_f, chunk_f);
         // time and frequency indices
         // time is fastest varying
-        int fi = ci * chunk_f + ((ind % row_size) %
-                 (t_width * f_width)) / t_width;
-        int ti = ri * chunk_t + ((ind % row_size) %
-                 (t_width * f_width)) % t_width;
+        int fi = ci * chunk_f + ((ind % row_size) % (t_width * f_width)) / t_width;
+        int ti = ri * chunk_t + ((ind % row_size) % (t_width * f_width)) % t_width;
 
         return ti * nfreq + fi;
     } else {
@@ -235,27 +224,26 @@ int visRawReader::position_map(int ind) {
 void visRawReader::main_thread() {
 
     size_t frame_id = 0;
-    uint8_t * frame;
+    uint8_t* frame;
 
     size_t ind = 0, read_ind = 0, file_ind;
 
     size_t nframe = nfreq * ntime;
 
     // Initial readahead for frames
-    for(read_ind = 0; read_ind < readahead_blocks; read_ind++) {
+    for (read_ind = 0; read_ind < readahead_blocks; read_ind++) {
         read_ahead(read_ind);
     }
 
     while (!stop_thread && ind < nframe) {
 
         // Wait for an empty frame in the output buffer
-        if((frame = wait_for_empty_frame(out_buf, unique_name.c_str(),
-                                         frame_id)) == nullptr) {
+        if ((frame = wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id)) == nullptr) {
             break;
         }
 
         // Issue the read ahead request
-        if(read_ind < (ntime * nfreq)) {
+        if (read_ind < (ntime * nfreq)) {
             read_ahead(read_ind);
         }
 
@@ -268,43 +256,36 @@ void visRawReader::main_thread() {
         // Check first byte indicating empty frame
         if (*(mapped_file + file_ind * file_frame_size) != 0) {
             // Copy the metadata from the file
-            std::memcpy(out_buf->metadata[frame_id]->metadata, mapped_file
-                    + file_ind * file_frame_size + 1, metadata_size);
+            std::memcpy(out_buf->metadata[frame_id]->metadata,
+                        mapped_file + file_ind * file_frame_size + 1, metadata_size);
 
             // Copy the data from the file
-            std::memcpy(frame, mapped_file + file_ind * file_frame_size
-                    + metadata_size + 1, data_size);
+            std::memcpy(frame, mapped_file + file_ind * file_frame_size + metadata_size + 1,
+                        data_size);
         } else {
             // Set metadata if file contained an empty frame
-			((visMetadata *)(out_buf->metadata[frame_id]->metadata))->num_prod
-                = _prods.size();
-			((visMetadata *)(out_buf->metadata[frame_id]->metadata))->num_ev
-                = _ev.size();
-			((visMetadata *)(out_buf->metadata[frame_id]->metadata))->
-                num_elements = _inputs.size();
+            ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->num_prod = _prods.size();
+            ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->num_ev = _ev.size();
+            ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->num_elements = _inputs.size();
             // Fill data with zeros
             size_t num_vis = _stack.size() > 0 ? _stack.size() : _prods.size();
-            auto visFrame = visFrameView(out_buf, frame_id, _inputs.size(),
-                    num_vis, _ev.size());
-            std::memset(visFrame.vis.data(), 0, sizeof(cfloat) * visFrame.num_prod);
-            std::memset(visFrame.weight.data(), 0, sizeof(float) * visFrame.num_prod);
-            std::memset(visFrame.eval.data(), 0, sizeof(float) * visFrame.num_ev);
-            std::memset(visFrame.evec.data(), 0, sizeof(cfloat) * visFrame.num_ev
-                    * visFrame.num_elements);
-            std::memset(visFrame.gain.data(), 0, sizeof(cfloat) * visFrame.num_elements);
-            std::memset(visFrame.flags.data(), 0, sizeof(float) * visFrame.num_elements);
-            visFrame.freq_id = 0;
-            visFrame.erms = 0;
-			DEBUG("visRawReader: Reading empty frame: %d", frame_id);
+            auto frame = visFrameView(out_buf, frame_id, _inputs.size(), num_vis, _ev.size());
+            std::fill(frame.vis.begin(), frame.vis.end(), 0.0);
+            std::fill(frame.weight.begin(), frame.weight.end(), 0.0);
+            std::fill(frame.eval.begin(), frame.eval.end(), 0.0);
+            std::fill(frame.evec.begin(), frame.evec.end(), 0.0);
+            std::fill(frame.gain.begin(), frame.gain.end(), 0.0);
+            std::fill(frame.flags.begin(), frame.flags.end(), 0.0);
+            frame.freq_id = 0;
+            frame.erms = 0;
+            DEBUG("visRawReader: Reading empty frame: %d", frame_id);
         }
 
         // Set the dataset ID
-       ((visMetadata *)(out_buf->metadata[frame_id]->metadata))->dataset_id
-                = _dataset_id;
+        ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id = _dataset_id;
 
         // Try and clear out the cached data as we don't need it again
-        if (madvise(mapped_file + file_ind * file_frame_size, file_frame_size,
-                    MADV_DONTNEED) == -1)
+        if (madvise(mapped_file + file_ind * file_frame_size, file_frame_size, MADV_DONTNEED) == -1)
             DEBUG("madvise failed: %s", strerror(errno));
 
         // Release the frame and advance all the counters

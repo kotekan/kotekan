@@ -9,7 +9,9 @@
 
 #include "dpdkCore.hpp"
 #include "fpga_header_functions.h"
+#include "packet_copy.h"
 #include "prometheusMetrics.hpp"
+
 #include "json.hpp"
 
 /**
@@ -35,22 +37,21 @@
 class captureHandler : public dpdkRXhandler {
 public:
     /// Default constructor
-    captureHandler(Config &config, const std::string &unique_name,
-                    bufferContainer &buffer_container, int port);
+    captureHandler(Config& config, const std::string& unique_name,
+                   bufferContainer& buffer_container, int port);
 
     /// Processes the incoming packets
-    int handle_packet(struct rte_mbuf *mbuf);
+    int handle_packet(struct rte_mbuf* mbuf);
 
     /// Update stats, not used by this handler yet.
-    virtual void update_stats() {};
+    virtual void update_stats(){};
 
 protected:
-
     /// The output buffer
-    struct Buffer * out_buf;
+    struct Buffer* out_buf;
 
     /// The current frame
-    uint8_t * out_frame;
+    uint8_t* out_frame;
 
     /// The ID of the current frame
     int32_t out_frame_id = 0;
@@ -63,11 +64,10 @@ protected:
 
     /// Flag to setup variables for the first run
     bool first_run = true;
-
 };
 
-inline captureHandler::captureHandler(Config &config, const std::string &unique_name,
-                       bufferContainer &buffer_container, int port) :
+inline captureHandler::captureHandler(Config& config, const std::string& unique_name,
+                                      bufferContainer& buffer_container, int port) :
     dpdkRXhandler(config, unique_name, buffer_container, port) {
 
     out_buf = buffer_container.get_buffer(config.get<std::string>(unique_name, "out_buf"));
@@ -83,18 +83,20 @@ inline captureHandler::captureHandler(Config &config, const std::string &unique_
         throw std::runtime_error("The buffer frame size must be a multiple of the packet size");
     }
 
-    // TODO this seems overly restrictive, but removing this requires a generallized `copy_block` function
+    // TODO this seems overly restrictive, but removing this requires a generallized `copy_block`
+    // function
     if ((packet_size % 32) != 0) {
         throw std::runtime_error("The packet_size must be a multiple of 32 bytes");
     }
 }
 
-inline int captureHandler::handle_packet(struct rte_mbuf *mbuf) {
+inline int captureHandler::handle_packet(struct rte_mbuf* mbuf) {
 
     // Get the first frame.
     if (first_run) {
         out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
-        if (out_frame == nullptr) return -1;
+        if (out_frame == nullptr)
+            return -1;
         first_run = false;
     }
 
@@ -104,15 +106,15 @@ inline int captureHandler::handle_packet(struct rte_mbuf *mbuf) {
     }
 
     if (unlikely(packet_size != mbuf->pkt_len)) {
-        WARN("Port: %d; Got packet with size %d, but expected size was %d",
-             port, mbuf->pkt_len, packet_size);
+        WARN("Port: %d; Got packet with size %d, but expected size was %d", port, mbuf->pkt_len,
+             packet_size);
         return 0;
     }
 
     // Copy the packet.
     assert((packet_location + 1) * packet_size <= (uint32_t)out_buf->frame_size);
     int offset = 0;
-    copy_block(&mbuf, &out_frame[packet_location * packet_size], packet_size, (int *)&offset);
+    copy_block(&mbuf, &out_frame[packet_location * packet_size], packet_size, (int*)&offset);
 
     packet_location++;
 
@@ -121,7 +123,8 @@ inline int captureHandler::handle_packet(struct rte_mbuf *mbuf) {
         out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
 
         out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
-        if (out_frame == nullptr) return -1;
+        if (out_frame == nullptr)
+            return -1;
 
         packet_location = 0;
     }

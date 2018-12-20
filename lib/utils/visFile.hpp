@@ -7,16 +7,17 @@
 #ifndef VIS_FILE_HPP
 #define VIS_FILE_HPP
 
-#include <iostream>
+#include "datasetManager.hpp"
+#include "errors.h"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
+
+#include "fmt.hpp"
+
 #include <cstdint>
+#include <iostream>
 #include <map>
 #include <memory>
-
-#include "visBuffer.hpp"
-#include "datasetManager.hpp"
-#include "visUtil.hpp"
-#include "errors.h"
-#include "fmt.hpp"
 
 /** @brief A base class for files holding correlator data.
  *
@@ -30,7 +31,6 @@
 class visFile {
 
 public:
-
     virtual ~visFile() = default;
 
     /** @brief Create the file.
@@ -42,11 +42,8 @@ public:
      *  @param args Arguments forwarded to create_file.
      **/
     template<typename... CreateArgs>
-    static std::shared_ptr<visFile> create(
-        const std::string& type,
-        const std::string& name,
-        CreateArgs&&... args
-    );
+    static std::shared_ptr<visFile> create(const std::string& type, const std::string& name,
+                                           CreateArgs&&... args);
 
     /**
      * @brief Extend the file to a new time sample.
@@ -65,7 +62,7 @@ public:
      *
      * @param time_ind Sample to cleanup.
      **/
-    void deactivate_time(uint32_t time_ind) {
+    virtual void deactivate_time(uint32_t time_ind) {
         (void)time_ind;
         DEBUG("visFile::deactivate_time: called but not implemented.");
     };
@@ -77,8 +74,7 @@ public:
      * @param freq_ind Frequency index to write into.
      * @param frame Frame to write out.
      **/
-    virtual void write_sample(uint32_t time_ind, uint32_t freq_ind,
-                              const visFrameView& frame) = 0;
+    virtual void write_sample(uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame) = 0;
 
     /**
      * @brief Return the current number of current time samples.
@@ -91,12 +87,11 @@ public:
      * @brief Register a compatible visFile type.
      * @param type Name of type.
      **/
-    template <typename T>
+    template<typename T>
     static inline int register_file_type(const std::string type);
 
 
 protected:
-
     /** @brief Create the file.
      *
      * This variant uses the datasetManager to look up properties of the
@@ -105,46 +100,35 @@ protected:
      *  @param name     Name of the file to write
      *  @param metadata Textual metadata to write into the file.
      *  @param dataset  ID of dataset we are writing.
-     *  @param num_ev   Number of eigenvectors to write (0 turns off the
-     *                  datasets entirely).
      *  @param max_time Maximum number of times to write into the file.
      **/
     // TODO: decide if the num_ev can be eliminated.
-    virtual void create_file(
-        const std::string& name,
-        const std::map<std::string, std::string>& metadata,
-        dset_id_t dataset, size_t num_ev, size_t max_time) = 0;
+    virtual void create_file(const std::string& name,
+                             const std::map<std::string, std::string>& metadata, dset_id_t dataset,
+                             size_t max_time) = 0;
 
     // Private constructor to discourage creation of subclasses outside of the
     // create routine
-    visFile() {};
+    visFile(){};
 
     // Save the size for when we are outside of HDF5 space
     size_t nfreq, nprod, ninput, nev, ntime = 0;
 
 private:
-
-    static std::map<std::string, std::function<visFile*()>>&
-        _registered_types();
-
+    static std::map<std::string, std::function<visFile*()>>& _registered_types();
 };
 
 
 // Abstract factory VisFile creator.
 // Forwards on an argument pack. Actual arguments defined on visFile::create_file
 template<typename... CreateArgs>
-inline std::shared_ptr<visFile> visFile::create(
-    const std::string& type,
-    const std::string& name,
-    CreateArgs&&... args
-) {
+inline std::shared_ptr<visFile> visFile::create(const std::string& type, const std::string& name,
+                                                CreateArgs&&... args) {
 
     auto& _type_list = _registered_types();
 
-    if(_type_list.find(type) == _type_list.end()) {
-        throw std::runtime_error(
-            fmt::format("Cannot create visFile of unknown type {}", type)
-        );
+    if (_type_list.find(type) == _type_list.end()) {
+        throw std::runtime_error(fmt::format("Cannot create visFile of unknown type {}", type));
     }
 
     // Lookup the registered file and create an instance
@@ -177,7 +161,6 @@ inline int visFile::register_file_type(const std::string key) {
 class visFileBundle {
 
 public:
-
     /**
      * Initialise the file bundle
      * @param root_path Directory to write into.
@@ -192,10 +175,8 @@ public:
     template<typename... InitArgs>
     visFileBundle(const std::string& type, const std::string& root_path,
                   const std::string& instrument_name,
-                  const std::map<std::string, std::string>& metadata,
-                  int freq_chunk,
-                  size_t rollover, size_t window_size,
-                  InitArgs... args);
+                  const std::map<std::string, std::string>& metadata, int freq_chunk,
+                  size_t rollover, size_t window_size, InitArgs... args);
 
     /**
      * Write a new time sample into this set of files
@@ -206,17 +187,23 @@ public:
     template<typename... WriteArgs>
     bool add_sample(time_ctype new_time, WriteArgs&&... args);
 
-    virtual ~visFileBundle() = default;
+    virtual ~visFileBundle();
+
+    /**
+     * @brief Get the time of the last update.
+     *
+     * @return  The time of the last update.
+     **/
+    time_ctype last_update() const;
 
 protected:
-
     // Add a file if we need to
     virtual void add_file(time_ctype first_time);
 
     // Find/create the slot for data at this time to go into
     bool resolve_sample(time_ctype new_time);
 
-    std::map<uint64_t, std::tuple<std::shared_ptr<visFile>, uint32_t>> vis_file_map;
+    std::map<time_ctype, std::pair<std::shared_ptr<visFile>, uint32_t>> vis_file_map;
     // Thin function to actually create the file
     std::function<std::shared_ptr<visFile>(std::string, std::string, std::string)> mk_file;
 
@@ -233,7 +220,6 @@ protected:
 
     // Flag to force moving to a new file
     bool change_file = false;
-
 };
 
 /**
@@ -250,7 +236,6 @@ protected:
 class visCalFileBundle : public visFileBundle {
 
 public:
-
     /**
      * Initialise the file bundle
      * @param root_path Directory to write into.
@@ -263,13 +248,10 @@ public:
      * @warning The directory will not be created if it doesn't exist.
      **/
     template<typename... Args>
-    visCalFileBundle(Args... args) :
-        visFileBundle(args...) {};
-
-    /**
-     * Close all files and clear the map.
-     **/
-    void clear_file_map();
+    visCalFileBundle(Args&&... args) : visFileBundle(std::forward<Args>(args)...) {
+        // Override the rollover setting for the calibration bundles
+        rollover = 0;
+    }
 
     /**
      * Set the file name to write to.
@@ -283,34 +265,29 @@ public:
     void swap_file(std::string new_fname, std::string new_aname);
 
 protected:
-
     // Override parent method to use a set file name
     void add_file(time_ctype first_time) override;
 
     std::string acq_name, file_name;
-
 };
 
 
 template<typename... InitArgs>
-inline visFileBundle::visFileBundle(
-    const std::string& type, const std::string& root_path,
-    const std::string& instrument_name,
-    const std::map<std::string, std::string>& metadata,
-    int freq_chunk, size_t rollover, size_t window_size, InitArgs... args
-) :
+inline visFileBundle::visFileBundle(const std::string& type, const std::string& root_path,
+                                    const std::string& instrument_name,
+                                    const std::map<std::string, std::string>& metadata,
+                                    int freq_chunk, size_t rollover, size_t window_size,
+                                    InitArgs... args) :
     root_path(root_path),
     instrument_name(instrument_name),
     freq_chunk(freq_chunk),
     rollover(rollover),
-    window_size(window_size)
-{
+    window_size(window_size) {
 
     // Make a lambda function that creates a file. This is a little convoluted,
     // but is the easiest way of passing on the variadic arguments to the
     // constructor into the file creation.
-    mk_file = [type, metadata, args...](std::string file_name,
-                                        std::string acq_name,
+    mk_file = [type, metadata, args...](std::string file_name, std::string acq_name,
                                         std::string root_path) {
         // Add the acq name to the metadata
         auto metadata_acq = metadata;
@@ -325,11 +302,11 @@ inline visFileBundle::visFileBundle(
 template<typename... WriteArgs>
 inline bool visFileBundle::add_sample(time_ctype new_time, WriteArgs&&... args) {
 
-    if(resolve_sample(new_time)) {
+    if (resolve_sample(new_time)) {
         std::shared_ptr<visFile> file;
         uint32_t ind;
         // We can now safely add the sample into the file
-        std::tie(file, ind) = vis_file_map[new_time.fpga_count];
+        std::tie(file, ind) = vis_file_map[new_time];
         file->write_sample(ind, std::forward<WriteArgs>(args)...);
 
         return false;
@@ -338,8 +315,8 @@ inline bool visFileBundle::add_sample(time_ctype new_time, WriteArgs&&... args) 
     }
 }
 
-//template<typename... InitArgs>
-//inline visCalFileBundle::visCalFileBundle(const std::string& type,
+// template<typename... InitArgs>
+// inline visCalFileBundle::visCalFileBundle(const std::string& type,
 //                                   const std::string& root_path,
 //                                   const std::string& instrument_name,
 //                                   const std::map<std::string, std::string>& metadata,
@@ -356,22 +333,22 @@ inline bool visFileBundle::add_sample(time_ctype new_time, WriteArgs&&... args) 
  **/
 std::string create_lockfile(std::string filename);
 
-#define REGISTER_VIS_FILE(key, T) int _register_ ## T = visFile::register_file_type<T>(key)
+#define REGISTER_VIS_FILE(key, T) int _register_##T = visFile::register_file_type<T>(key)
 
 
 // Implementation of TEMP_FAILURE_RETRY for file writing which is missing on MacOS
-#if defined( __APPLE__ )
+#if defined(__APPLE__)
 // Taken from
 // https://android.googlesource.com/platform/system/core/+/master/base/include/android-base/macros.h
 #ifndef TEMP_FAILURE_RETRY
-#define TEMP_FAILURE_RETRY(exp)            \
-  ({                                       \
-    decltype(exp) _rc;                     \
-    do {                                   \
-      _rc = (exp);                         \
-    } while (_rc == -1 && errno == EINTR); \
-    _rc;                                   \
-  })
+#define TEMP_FAILURE_RETRY(exp)                                                                    \
+    ({                                                                                             \
+        decltype(exp) _rc;                                                                         \
+        do {                                                                                       \
+            _rc = (exp);                                                                           \
+        } while (_rc == -1 && errno == EINTR);                                                     \
+        _rc;                                                                                       \
+    })
 #endif
 #endif
 

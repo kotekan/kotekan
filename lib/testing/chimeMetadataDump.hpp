@@ -6,10 +6,11 @@
 #ifndef CHIME_METADATA_DUMP_HPP
 #define CHIME_METADATA_DUMP_HPP
 
-#include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
 #include "errors.h"
 #include "util.h"
+
 #include <unistd.h>
 
 /**
@@ -30,19 +31,18 @@
 
 class chimeMetadataDump : public KotekanProcess {
 public:
-    ///Constructor.
-    chimeMetadataDump(Config &config,
-                  const string& unique_name,
-                  bufferContainer &buffer_container);
+    /// Constructor.
+    chimeMetadataDump(Config& config, const string& unique_name, bufferContainer& buffer_container);
 
-    ///Destructor.
+    /// Destructor.
     ~chimeMetadataDump();
 
     /// Primary loop, which waits on input frames, prints the metadata.
     void main_thread() override;
+
 private:
-    ///Input kotekanBuffer.
-    struct Buffer *in_buf;
+    /// Input kotekanBuffer.
+    struct Buffer* in_buf;
 };
 
 #endif

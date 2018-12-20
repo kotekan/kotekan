@@ -41,16 +41,20 @@
 #ifndef _FACTORY_HPP
 #define _FACTORY_HPP
 
-#include <iostream>
-#include <map>
-#include <string>
-#include <memory>
-#include <functional>
-#include <cxxabi.h>
-
 #include "errors.h"
+
 #include "fmt.hpp"
 
+#include <cxxabi.h>
+#include <functional>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <string>
+#include <typeindex>
+#include <typeinfo>
+
+// clang-format off
 
 /**
  * @brief Create a Factory for the specified type.
@@ -83,7 +87,7 @@ public:
             throw std::runtime_error("Could not find subtype name within Factory");
         }
         DEBUG(fmt::format("FACTORY({}): Creating {} instance.", typelabel(), type).c_str());
-        return r[type](std::forward<Args>(args)...);
+        return r.at(type)(std::forward<Args>(args)...);
     }
 
     /**
@@ -121,11 +125,14 @@ public:
     template<typename U>
     static int register_type(const std::string& type)
     {
-        auto& r = type_registry();
         DEBUG(fmt::format("FACTORY({}): Registering {}.", typelabel(), type).c_str());
-        r[type] = [](Args&&... args) -> T* {
+        // Register the creation function
+        type_registry()[type] = [](Args&&... args) -> T* {
             return new U(std::forward<Args>(args)...);
         };
+
+        // Register the reverse lookup
+        label_registry()[std::type_index(typeid(U))] = type;
         return 0;
     }
 
@@ -141,12 +148,32 @@ public:
         return (type_registry().count(type) > 0);
     }
 
+    /**
+     * Get the type label corresponding to the object.
+     *
+     * @param  ptr  Pointer to an instance of the base type.
+     *
+     * @return      The string label the type was registered as.
+     **/
+    static std::string label(const T& obj)
+    {
+        return label_registry().at(std::type_index(typeid(obj)));
+    }
+
 private:
 
     // Return a reference to the type registry.
     static auto& type_registry()
     {
         static std::map<std::string, std::function<T*(Args...)>> _register;
+        return _register;
+    }
+
+    // Return a reference to the label registry. This allows us to look up the
+    // label from a type.
+    static auto& label_registry()
+    {
+        static std::map<std::type_index, std::string> _register;
         return _register;
     }
 
@@ -240,5 +267,7 @@ private:
  **/
 #define REGISTER_RTTI_TYPE_WITH_FACTORY(type, subtype) \
     REGISTER_NAMED_TYPE_WITH_FACTORY(type, subtype, typeid(subtype).name())
+
+// clang-format on
 
 #endif

@@ -28,7 +28,7 @@ num_local_freq: 1
 num_data_sets: 1
 samples_per_data_set: 49152
 buffer_depth: 12
-baseband_buffer_depth: 296  # 118 GB, 37s buffer
+baseband_buffer_depth: 282 # 282 = ~34 seconds after accounting for active frames
 vbuffer_depth: 32
 num_links: 4
 timesamples_per_packet: 2
@@ -51,6 +51,11 @@ num_ev: 4
 # This option now does very little. You probably want to look at
 # visAccumulate:integration_time
 num_gpu_frames: 128
+# Sets the number of sub frames for shorter than ~120ms N2 output
+# Please note this requires changing the number of commands in the
+# GPU section, and the accumulate value for `samples_per_data_set`
+num_sub_frames: 4
+
 
 #FRB global options
 downsample_time: 3
@@ -98,7 +103,7 @@ waterfall_request_delay: 60
 rfi_masking:
   toggle:
     kotekan_update_endpoint: "json"
-    rfi_zeroing: True
+    rfi_zeroing: False
 
 
 # Pool
@@ -121,7 +126,9 @@ network_buffers:
     kotekan_buffer: standard
 
 gpu_n2_buffers:
-  num_frames: buffer_depth
+  # We need a longer output buffer depth because the
+  # output now comes in chunks of 4 at once.
+  num_frames: buffer_depth * 2
   frame_size: 4 * num_data_sets * num_local_freq * ((num_elements * num_elements) + (num_elements * block_size))
   metadata_pool: main_pool
   gpu_n2_output_buffer_0:
@@ -317,23 +324,15 @@ zero_samples:
     zero_0:
         kotekan_process: zeroSamples
         out_buf: network_buffer_0
-#        out_lost_sample_buffers:
-#            - lost_samples_buffer_0
     zero_1:
         kotekan_process: zeroSamples
         out_buf: network_buffer_1
-#        out_lost_sample_buffers:
-#            - lost_samples_buffer_1
     zero_2:
         kotekan_process: zeroSamples
         out_buf: network_buffer_2
-#        out_lost_sample_buffers:
-#            - lost_samples_buffer_2
     zero_3:
         kotekan_process: zeroSamples
         out_buf: network_buffer_3
-#        out_lost_sample_buffers:
-#            - lost_samples_buffer_3
 
 baseband:
     max_dump_samples: 400000
@@ -371,16 +370,31 @@ monitor_2:
       - beamform_pulsar_output_buffer_1
       - beamform_pulsar_output_buffer_2
       - beamform_pulsar_output_buffer_3
+      - lost_samples_buffer
     timeout: 10
     fill_threshold: 0.80
 
 gpu:
   kernel_path: "/var/lib/kotekan/hsa_kernels/"
-  commands:
+  commands: &command_list
   # Copy in queue
   - name: hsaInputData
   - name: hsaPresumZero
+    sub_frame_index: 0
+  - name: hsaPresumZero
+    sub_frame_index: 1
+  - name: hsaPresumZero
+    sub_frame_index: 2
+  - name: hsaPresumZero
+    sub_frame_index: 3
   - name: hsaOutputDataZero
+    sub_frame_index: 0
+  - name: hsaOutputDataZero
+    sub_frame_index: 1
+  - name: hsaOutputDataZero
+    sub_frame_index: 2
+  - name: hsaOutputDataZero
+    sub_frame_index: 3
   - name: hsaPulsarUpdatePhase
   # Barrier between copy in and kernels
   - name: hsaBarrier
@@ -395,20 +409,42 @@ gpu:
   - name: hsaRfiInputSum
   - name: hsaRfiZeroData
   - name: hsaPresumKernel
+    sub_frame_index: 0
+  - name: hsaPresumKernel
+    sub_frame_index: 1
+  - name: hsaPresumKernel
+    sub_frame_index: 2
+  - name: hsaPresumKernel
+    sub_frame_index: 3
   - name: hsaCorrelatorKernel
+    sub_frame_index: 0
+  - name: hsaCorrelatorKernel
+    sub_frame_index: 1
+  - name: hsaCorrelatorKernel
+    sub_frame_index: 2
+  - name: hsaCorrelatorKernel
+    sub_frame_index: 3
   #Copy out queue
   - name: hsaRfiBadInputOutput
-  - name: hsaRfiMaskOutput
   - name: hsaRfiOutput
   - name: hsaBeamformPulsarOutput
   - name: hsaBeamformOutputData
   - name: hsaOutputData
+    sub_frame_index: 0
+  - name: hsaOutputData
+    sub_frame_index: 1
+  - name: hsaOutputData
+    sub_frame_index: 2
+  - name: hsaOutputData
+    sub_frame_index: 3
+  - name: hsaRfiMaskOutput
   enable_delay: true
   cpu_affinity: [2, 3, 8, 9]
   delay_max_fraction: 2.0
   block_size: 32
   buffer_depth: 4
-  n_intg: 24576
+  # How many sub frames to devide the N2 products into.
+  n_intg: 24576 / num_sub_frames
   frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
     kotekan_process: hsaProcess
@@ -422,8 +458,10 @@ gpu:
     northmost_beam: 60.0
     bad_inputs: []
     updatable_rfi_zeroing: /rfi_masking/toggle
+    commands: *command_list
     in_buffers:
       network_buf: network_buffer_0
+      lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_0
       beamform_output_buf: gpu_beamform_output_buffer_0
@@ -443,8 +481,10 @@ gpu:
     northmost_beam: 60.0
     bad_inputs: []
     updatable_rfi_zeroing: /rfi_masking/toggle
+    commands: *command_list
     in_buffers:
       network_buf: network_buffer_1
+      lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_1
       beamform_output_buf: gpu_beamform_output_buffer_1
@@ -464,8 +504,10 @@ gpu:
     northmost_beam: 60.0
     bad_inputs: []
     updatable_rfi_zeroing: /rfi_masking/toggle
+    commands: *command_list
     in_buffers:
       network_buf: network_buffer_2
+      lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_2
       beamform_output_buf: gpu_beamform_output_buffer_2
@@ -485,8 +527,10 @@ gpu:
     northmost_beam: 60.0
     bad_inputs: []
     updatable_rfi_zeroing: /rfi_masking/toggle
+    commands: *command_list
     in_buffers:
       network_buf: network_buffer_3
+      lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_3
       beamform_output_buf: gpu_beamform_output_buffer_3
@@ -894,6 +938,9 @@ valve:
 
 vis_accumulate:
   integration_time: 5.0  # Integrate to roughly 5s cadence
+  # This (12288) is for num_sub_frames = 4, there is currently a config bug that
+  # prevents referencing the higher level samples_per_data_set and dividing it
+  samples_per_data_set: 12288
   acc0:
     kotekan_process: visAccumulate
     in_buf: valve_buffer_0
@@ -984,6 +1031,7 @@ eigcalc:
      960,  971, 1020, 1023, 1058, 1166, 1225, 1285, 1314, 1380,
     1521, 1543, 1738, 1794, 1982, 1984, 1987, 2032, 2034
   ]
+  log_level: warn
   eig0:
     kotekan_process: eigenVis
     in_buf: visbuf_10s_0
@@ -1040,6 +1088,8 @@ vis_debug:
 # Transmit all the data to the receiver node
 buffer_send:
   server_ip: 10.1.50.12
+  reconnect_time: 20
+  log_level: warn
   n2:
     kotekan_process: bufferSend
     buf: visbuf_10s_merge
@@ -1055,7 +1105,7 @@ buffer_send:
 
 buffer_status:
   kotekan_process: bufferStatus
-  time_delay: 20000000
+  time_delay: 30000000
 
 
 rfi_broadcast:
@@ -1355,8 +1405,8 @@ input_reorder:
   - [  38,  218, FCC000210]
   - [  39,  219, FCC000211]
   - [  32,  220, FCC000212]
-  - [  33,  221, FCC000213]
-  - [  34,  222, FCC000214]
+  - [  34,  221, FCC000214]
+  - [  33,  222, FCC000213]
   - [  35,  223, FCC000215]
   - [  76,  224, FCC000400]
   - [  77,  225, FCC000401]
@@ -1518,10 +1568,10 @@ input_reorder:
   - [ 509,  381, FCC011501]
   - [ 510,  382, FCC011502]
   - [ 511,  383, FCC011503]
-  - [ 284,  384, FCC010100]
-  - [ 285,  385, FCC010101]
-  - [ 286,  386, FCC010102]
-  - [ 287,  387, FCC010103]
+  - [ 287,  384, FCC010103]
+  - [ 286,  385, FCC010102]
+  - [ 285,  386, FCC010101]
+  - [ 284,  387, FCC010100]
   - [ 280,  388, FCC010104]
   - [ 281,  389, FCC010105]
   - [ 282,  390, FCC010106]
@@ -1558,10 +1608,10 @@ input_reorder:
   - [ 345,  421, FCC010505]
   - [ 346,  422, FCC010506]
   - [ 347,  423, FCC010507]
-  - [ 340,  424, FCC010508]
-  - [ 341,  425, FCC010509]
-  - [ 342,  426, FCC010510]
-  - [ 343,  427, FCC010511]
+  - [ 343,  424, FCC010511]
+  - [ 342,  425, FCC010510]
+  - [ 341,  426, FCC010509]
+  - [ 340,  427, FCC010508]
   - [ 336,  428, FCC010512]
   - [ 337,  429, FCC010513]
   - [ 338,  430, FCC010514]
@@ -1686,8 +1736,8 @@ input_reorder:
   - [ 549,  549, FCC020209]
   - [ 550,  550, FCC020210]
   - [ 551,  551, FCC020211]
-  - [ 552,  552, FCC020204]
-  - [ 553,  553, FCC020205]
+  - [ 553,  552, FCC020205]
+  - [ 552,  553, FCC020204]
   - [ 554,  554, FCC020206]
   - [ 555,  555, FCC020207]
   - [ 556,  556, FCC020200]
@@ -1778,14 +1828,14 @@ input_reorder:
   - [1005,  641, FCC031401]
   - [1006,  642, FCC031402]
   - [1007,  643, FCC031403]
-  - [1000,  644, FCC031404]
-  - [1001,  645, FCC031405]
-  - [1002,  646, FCC031406]
-  - [1003,  647, FCC031407]
+  - [1003,  644, FCC031407]
+  - [1002,  645, FCC031406]
+  - [1001,  646, FCC031405]
+  - [1000,  647, FCC031404]
   - [ 996,  648, FCC031408]
   - [ 997,  649, FCC031409]
-  - [ 998,  650, FCC031410]
-  - [ 999,  651, FCC031411]
+  - [ 934,  650, FCC031010]
+  - [ 935,  651, FCC031011]
   - [ 992,  652, FCC031412]
   - [ 993,  653, FCC031413]
   - [ 994,  654, FCC031414]
@@ -1806,18 +1856,18 @@ input_reorder:
   - [ 961,  669, FCC031213]
   - [ 962,  670, FCC031214]
   - [ 963,  671, FCC031215]
-  - [ 940,  672, FCC031000]
-  - [ 941,  673, FCC031001]
-  - [ 942,  674, FCC031002]
-  - [ 943,  675, FCC031003]
+  - [ 943,  672, FCC031003]
+  - [ 942,  673, FCC031002]
+  - [ 941,  674, FCC031001]
+  - [ 940,  675, FCC031000]
   - [ 936,  676, FCC031004]
   - [ 937,  677, FCC031005]
   - [ 938,  678, FCC031006]
   - [ 939,  679, FCC031007]
   - [ 932,  680, FCC031008]
   - [ 933,  681, FCC031009]
-  - [ 934,  682, FCC031010]
-  - [ 935,  683, FCC031011]
+  - [ 998,  682, FCC031410]
+  - [ 999,  683, FCC031411]
   - [ 928,  684, FCC031012]
   - [ 929,  685, FCC031013]
   - [ 930,  686, FCC031014]
@@ -2040,8 +2090,8 @@ input_reorder:
   - [1019,  903, FCC031507]
   - [1012,  904, FCC031508]
   - [1013,  905, FCC031509]
-  - [1014,  906, FCC031510]
-  - [1015,  907, FCC031511]
+  - [1015,  906, FCC031511]
+  - [1014,  907, FCC031510]
   - [1008,  908, FCC031512]
   - [1009,  909, FCC031513]
   - [1010,  910, FCC031514]
@@ -2268,8 +2318,8 @@ input_reorder:
   - [1223, 1131, FCC041211]
   - [1216, 1132, FCC041212]
   - [1217, 1133, FCC041213]
-  - [1218, 1134, FCC041214]
-  - [1219, 1135, FCC041215]
+  - [1219, 1134, FCC041215]
+  - [1218, 1135, FCC041214]
   - [1260, 1136, FCC041400]
   - [1261, 1137, FCC041401]
   - [1262, 1138, FCC041402]
@@ -3044,8 +3094,8 @@ input_reorder:
   - [1811, 1907, FCC070115]
   - [1812, 1908, FCC070108]
   - [1813, 1909, FCC070109]
-  - [1814, 1910, FCC070110]
-  - [1815, 1911, FCC070111]
+  - [1815, 1910, FCC070111]
+  - [1814, 1911, FCC070110]
   - [1816, 1912, FCC070104]
   - [1817, 1913, FCC070105]
   - [1818, 1914, FCC070106]
@@ -3084,8 +3134,8 @@ input_reorder:
   - [1755, 1947, FCC061307]
   - [1756, 1948, FCC061300]
   - [1757, 1949, FCC061301]
-  - [1758, 1950, FCC061302]
-  - [1759, 1951, FCC061303]
+  - [1759, 1950, FCC061303]
+  - [1758, 1951, FCC061302]
   - [1712, 1952, FCC061112]
   - [1713, 1953, FCC061113]
   - [1714, 1954, FCC061114]

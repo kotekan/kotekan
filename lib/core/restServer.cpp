@@ -1,20 +1,21 @@
 #include "restServer.hpp"
+
 #include "errors.h"
 
 #include <pthread.h>
 #include <sched.h>
-#include <string>
 #include <signal.h>
+#include <string>
 #ifdef MAC_OSX
-	#include "osxBindCPU.hpp"
+#include "osxBindCPU.hpp"
 #endif
 
 using json = nlohmann::json;
+using std::map;
 using std::string;
 using std::vector;
-using std::map;
 
-restServer &restServer::instance() {
+restServer& restServer::instance() {
     static restServer server_instance;
     return server_instance;
 }
@@ -28,7 +29,7 @@ restServer::~restServer() {
     main_thread.join();
 }
 
-void restServer::start(const std::string &bind_address, u_short port) {
+void restServer::start(const std::string& bind_address, u_short port) {
 
     this->bind_address = bind_address;
     this->port = port;
@@ -41,25 +42,24 @@ void restServer::start(const std::string &bind_address, u_short port) {
 
     // Framework level tracking of endpoints.
     using namespace std::placeholders;
-    register_get_callback("/endpoints",
-        std::bind(&restServer::endpoint_list_callback, this, _1));
+    register_get_callback("/endpoints", std::bind(&restServer::endpoint_list_callback, this, _1));
 }
 
-void restServer::handle_request(struct evhttp_request * request, void * cb_data) {
+void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
 
-    restServer *server = (restServer *)(cb_data);
+    restServer* server = (restServer*)(cb_data);
 
     string url = string(evhttp_request_get_uri(request));
 
     DEBUG2("restServer: Got request with url %s", url.c_str());
 
     {
-	// TODO This function should be locked against changes to the callback
-	// maps form other threads.  However there are a number of callbacks (start, stop, etc)
-	// which add or remove callbacks from the maps. So a more fine-grained
-	// locking system is needed here.  
-        //std::shared_lock<std::shared_timed_mutex> lock(server->callback_map_lock);
-        map<string, string> &aliases = server->get_aliases();
+        // TODO This function should be locked against changes to the callback
+        // maps form other threads.  However there are a number of callbacks (start, stop, etc)
+        // which add or remove callbacks from the maps. So a more fine-grained
+        // locking system is needed here.
+        // std::shared_lock<std::shared_timed_mutex> lock(server->callback_map_lock);
+        map<string, string>& aliases = server->get_aliases();
         if (aliases.find(url) != aliases.end()) {
             url = aliases[url];
         }
@@ -100,7 +100,8 @@ void restServer::handle_request(struct evhttp_request * request, void * cb_data)
     conn.send_error("Bad Request", HTTP_RESPONSE::BAD_REQUEST);
 }
 
-void restServer::register_get_callback(string endpoint, std::function<void(connectionInstance&) > callback) {
+void restServer::register_get_callback(string endpoint,
+                                       std::function<void(connectionInstance&)> callback) {
     if (endpoint.substr(0, 1) != "/") {
         endpoint = "/" + endpoint;
     }
@@ -108,14 +109,16 @@ void restServer::register_get_callback(string endpoint, std::function<void(conne
     {
         std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
         if (get_callbacks.count(endpoint)) {
-            WARN("restServer: Call back %s already exists, overriding old call back!!", endpoint.c_str());
+            WARN("restServer: Call back %s already exists, overriding old call back!!",
+                 endpoint.c_str());
         }
         get_callbacks[endpoint] = callback;
     }
     INFO("restServer: Adding REST endpoint: %s", endpoint.c_str());
 }
 
-void restServer::register_post_callback(string endpoint, std::function<void(connectionInstance&, json&) > callback) {
+void restServer::register_post_callback(string endpoint,
+                                        std::function<void(connectionInstance&, json&)> callback) {
     if (endpoint.substr(0, 1) != "/") {
         endpoint = "/" + endpoint;
     }
@@ -123,7 +126,8 @@ void restServer::register_post_callback(string endpoint, std::function<void(conn
     {
         std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
         if (json_callbacks.count(endpoint)) {
-            WARN("restServer: Call back %s already exists, overriding old call back!!", endpoint.c_str());
+            WARN("restServer: Call back %s already exists, overriding old call back!!",
+                 endpoint.c_str());
         }
         json_callbacks[endpoint] = callback;
     }
@@ -163,8 +167,8 @@ void restServer::add_alias(string alias, string target) {
     }
 
     std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
-    if (json_callbacks.find(alias) != json_callbacks.end() ||
-        get_callbacks.find(alias) != get_callbacks.end()) {
+    if (json_callbacks.find(alias) != json_callbacks.end()
+        || get_callbacks.find(alias) != get_callbacks.end()) {
         WARN("restServer: The endpoint %s already exists, cannot add an alias with that name");
         return;
     }
@@ -183,7 +187,7 @@ void restServer::remove_alias(string alias) {
     }
 }
 
-void restServer::add_aliases_from_config(Config &config) {
+void restServer::add_aliases_from_config(Config& config) {
     if (!config.exists("/rest_server", "aliases"))
         return;
     json config_aliases = config.get_value("/rest_server", "aliases");
@@ -198,11 +202,11 @@ void restServer::remove_all_aliases() {
     aliases.clear();
 }
 
-map<string, string> &restServer::get_aliases() {
+map<string, string>& restServer::get_aliases() {
     return aliases;
 }
 
-string restServer::get_http_message(struct evhttp_request * request) {
+string restServer::get_http_message(struct evhttp_request* request) {
 
     string str_data;
 
@@ -216,14 +220,15 @@ string restServer::get_http_message(struct evhttp_request * request) {
     // Reserve space to avoid causing mallocs when appending data.
     str_data.reserve(datalen);
 
-     // peek into the input buffer
+    // peek into the input buffer
     // (treating it as char's and putting it into a string)
     struct evbuffer_iovec* vec_out;
     size_t written = 0;
     // determine how many chunks we need.
     int n_vec = evbuffer_peek(input_buffer, datalen, NULL, NULL, 0);
     if (n_vec < 0) {
-        WARN("restClient: Failure in evbuffer_peek(), assuming no message and returning an empty string");
+        WARN("restClient: Failure in evbuffer_peek(), assuming no message and returning an empty "
+             "string");
         return "";
     }
 
@@ -242,10 +247,10 @@ string restServer::get_http_message(struct evhttp_request * request) {
     return str_data;
 }
 
-int restServer::handle_json(struct evhttp_request * request, json &json_parse) {
+int restServer::handle_json(struct evhttp_request* request, json& json_parse) {
 
-    struct evbuffer * ev_buf = evhttp_request_get_input_buffer(request);
-    if(ev_buf == nullptr) {
+    struct evbuffer* ev_buf = evhttp_request_get_input_buffer(request);
+    if (ev_buf == nullptr) {
         ERROR("restServer: Cannot get the libevent buffer for the request");
         return -1;
     }
@@ -261,30 +266,34 @@ int restServer::handle_json(struct evhttp_request * request, json &json_parse) {
 
     try {
         json_parse = json::parse(message);
-    } catch (std::exception ex) {
-        string error_message = string("Error Message: JSON failed to parse, error: ") + string(ex.what());
-        ERROR("restServer: Failed to pase JSON from request, the error is '%s', and the HTTP message was: %s", ex.what(), message.c_str());
-        evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::BAD_REQUEST), error_message.c_str());
+    } catch (const std::exception& ex) {
+        string error_message =
+            string("Error Message: JSON failed to parse, error: ") + string(ex.what());
+        ERROR("restServer: Failed to pase JSON from request, the error is '%s', and the HTTP "
+              "message was: %s",
+              ex.what(), message.c_str());
+        evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::BAD_REQUEST),
+                          error_message.c_str());
         return -1;
     }
     return 0;
 }
 
-void restServer::endpoint_list_callback(connectionInstance &conn) {
+void restServer::endpoint_list_callback(connectionInstance& conn) {
     json reply;
 
     vector<string> get_callback_names;
-    for (auto &endpoint : get_callbacks) {
+    for (auto& endpoint : get_callbacks) {
         get_callback_names.push_back(endpoint.first);
     }
 
     vector<string> post_json_callback_names;
-    for (auto &endpoint : json_callbacks) {
+    for (auto& endpoint : json_callbacks) {
         post_json_callback_names.push_back(endpoint.first);
     }
 
     json aliases_names;
-    for (auto &item : aliases) {
+    for (auto& item : aliases) {
         aliases_names[item.first] = item.second;
     }
 
@@ -295,13 +304,13 @@ void restServer::endpoint_list_callback(connectionInstance &conn) {
     conn.send_json_reply(reply);
 }
 
-void restServer::timer(evutil_socket_t fd, short event, void *arg) {
+void restServer::timer(evutil_socket_t fd, short event, void* arg) {
 
     // Unused parameters, required by libevent. Suppress warning.
     (void)fd;
     (void)event;
 
-    restServer * rest_server = (restServer *)arg;
+    restServer* rest_server = (restServer*)arg;
     if (rest_server->stop_thread) {
         event_base_loopbreak(rest_server->event_base);
     }
@@ -316,7 +325,7 @@ void restServer::http_server_thread() {
     }
 
     // Create the base event for handling requests
-	event_base = event_base_new();
+    event_base = event_base_new();
     if (event_base == nullptr) {
         ERROR("restServer: Failed to create libevent base");
         // Use exit() not raise() since this happens early in startup before
@@ -326,7 +335,7 @@ void restServer::http_server_thread() {
     }
 
     // Create the server
-	ev_server = evhttp_new (event_base);
+    ev_server = evhttp_new(event_base);
     if (ev_server == nullptr) {
         ERROR("restServer: Failed to create libevent base");
         exit(1);
@@ -334,10 +343,10 @@ void restServer::http_server_thread() {
     }
 
     // Currently allow only GET and POST requests
-	evhttp_set_allowed_methods (ev_server, EVHTTP_REQ_GET | EVHTTP_REQ_POST);
+    evhttp_set_allowed_methods(ev_server, EVHTTP_REQ_GET | EVHTTP_REQ_POST);
 
     // Just setup one handler and implement the URL parsing internally
-    evhttp_set_gencb(ev_server, handle_request, (void *)this);
+    evhttp_set_gencb(ev_server, handle_request, (void*)this);
 
     // Bind to the IP and port
     if (evhttp_bind_socket(ev_server, bind_address.c_str(), port) != 0) {
@@ -349,7 +358,7 @@ void restServer::http_server_thread() {
     INFO("restServer: started server on address:port %s:%d", bind_address.c_str(), port);
 
     // Create a timer to check for the exit condition
-    struct event *timer_event;
+    struct event* timer_event;
     timer_event = event_new(event_base, -1, EV_PERSIST, &restServer::timer, this);
     struct timeval interval;
     interval.tv_sec = 0;
@@ -359,13 +368,12 @@ void restServer::http_server_thread() {
     // run event loop
     event_base_dispatch(event_base);
 
-    evhttp_free (ev_server);
-    event_base_free (event_base);
+    evhttp_free(ev_server);
+    event_base_free(event_base);
 }
 
-void restServer::set_server_affinity(Config &config) {
-    vector<int32_t> cpu_affinity = config.get<std::vector<int32_t>>(
-        "/rest_server", "cpu_affinity");
+void restServer::set_server_affinity(Config& config) {
+    vector<int32_t> cpu_affinity = config.get<std::vector<int32_t>>("/rest_server", "cpu_affinity");
 
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
@@ -374,7 +382,7 @@ void restServer::set_server_affinity(Config &config) {
     pthread_setaffinity_np(main_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
 }
 
-string restServer::get_http_responce_code_text(const HTTP_RESPONSE &status) {
+string restServer::get_http_responce_code_text(const HTTP_RESPONSE& status) {
     switch (status) {
         case HTTP_RESPONSE::OK:
             return "OK";
@@ -393,17 +401,15 @@ string restServer::get_http_responce_code_text(const HTTP_RESPONSE &status) {
 
 // *** Connection Instance functions ***
 
-connectionInstance::connectionInstance(struct evhttp_request * request) :
-    request(request) {
+connectionInstance::connectionInstance(struct evhttp_request* request) : request(request) {
     event_buffer = evbuffer_new();
     if (event_buffer == nullptr) {
         throw std::runtime_error("Failed to create evbuffer");
     }
-
 }
 
 connectionInstance::~connectionInstance() {
-    evbuffer_free (event_buffer);
+    evbuffer_free(event_buffer);
 }
 
 string connectionInstance::get_uri() {
@@ -414,66 +420,68 @@ string connectionInstance::get_body() {
     return restServer::get_http_message(request);
 }
 
-void connectionInstance::send_empty_reply(const HTTP_RESPONSE &status) {
+void connectionInstance::send_empty_reply(const HTTP_RESPONSE& status) {
     evhttp_send_reply(request, static_cast<int>(status),
                       restServer::get_http_responce_code_text(status).c_str(), event_buffer);
 }
 
-void connectionInstance::send_text_reply(const string &reply_message) {
+void connectionInstance::send_text_reply(const string& reply_message) {
 
-    if (evhttp_add_header (evhttp_request_get_output_headers (request),
-			"Content-Type", "text/plain") != 0) {
+    if (evhttp_add_header(evhttp_request_get_output_headers(request), "Content-Type", "text/plain")
+        != 0) {
         throw std::runtime_error("Failed to add header to reply");
     }
 
-    if (evbuffer_add(event_buffer, (void *)reply_message.c_str(), reply_message.size()) != 0) {
+    if (evbuffer_add(event_buffer, (void*)reply_message.c_str(), reply_message.size()) != 0) {
         throw std::runtime_error("Failed to add reply message");
     }
 
     evhttp_send_reply(request, static_cast<int>(HTTP_RESPONSE::OK), "OK", event_buffer);
 }
 
-void connectionInstance::send_binary_reply(uint8_t * data, int len) {
+void connectionInstance::send_binary_reply(uint8_t* data, int len) {
     assert(data != nullptr);
     assert(len > 0);
 
-    if (evhttp_add_header (evhttp_request_get_output_headers (request),
-			"Content-Type", "Application/octet-stream") != 0) {
+    if (evhttp_add_header(evhttp_request_get_output_headers(request), "Content-Type",
+                          "Application/octet-stream")
+        != 0) {
         throw std::runtime_error("Failed to add header to reply");
     }
 
-    if (evbuffer_add(event_buffer, (void *)data, len) != 0) {
+    if (evbuffer_add(event_buffer, (void*)data, len) != 0) {
         throw std::runtime_error("Failed to add data to reply message");
     }
 
     evhttp_send_reply(request, static_cast<int>(HTTP_RESPONSE::OK), "OK", event_buffer);
 }
 
-void connectionInstance::send_error(const string& message, const HTTP_RESPONSE &status) {
-    if (evhttp_add_header (evhttp_request_get_output_headers (request),
-                           "Content-Type", "Application/JSON") != 0) {
+void connectionInstance::send_error(const string& message, const HTTP_RESPONSE& status) {
+    if (evhttp_add_header(evhttp_request_get_output_headers(request), "Content-Type",
+                          "Application/JSON")
+        != 0) {
         throw std::runtime_error("Failed to add header to reply");
     }
 
-    string reply = json{ {"message", message}, {"code", status} }.dump();
-    if (evbuffer_add(event_buffer, (void *)reply.c_str(), reply.size()) != 0) {
+    string reply = json{{"message", message}, {"code", status}}.dump();
+    if (evbuffer_add(event_buffer, (void*)reply.c_str(), reply.size()) != 0) {
         throw std::runtime_error("Failed to add reply message");
     }
 
     evhttp_send_reply(request, static_cast<int>(status),
-                      restServer::get_http_responce_code_text(status).c_str(),
-                      event_buffer);
+                      restServer::get_http_responce_code_text(status).c_str(), event_buffer);
 }
 
-void connectionInstance::send_json_reply(const json &json_reply) {
+void connectionInstance::send_json_reply(const json& json_reply) {
     string json_string = json_reply.dump(0);
 
-    if (evhttp_add_header (evhttp_request_get_output_headers (request),
-			"Content-Type", "Application/JSON") != 0) {
+    if (evhttp_add_header(evhttp_request_get_output_headers(request), "Content-Type",
+                          "Application/JSON")
+        != 0) {
         throw std::runtime_error("Failed to add header to reply");
     }
 
-    if (evbuffer_add(event_buffer, (void *)json_string.c_str(), json_string.size()) != 0) {
+    if (evbuffer_add(event_buffer, (void*)json_string.c_str(), json_string.size()) != 0) {
         throw std::runtime_error("Failed to add JSON string to reply message");
     }
 

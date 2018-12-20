@@ -1,18 +1,5 @@
 #include "freqSubset.hpp"
 
-#include <cxxabi.h>
-#include <signal.h>
-#include <algorithm>
-#include <atomic>
-#include <cstdint>
-#include <exception>
-#include <functional>
-#include <map>
-#include <memory>
-#include <regex>
-#include <stdexcept>
-#include <utility>
-
 #include "datasetManager.hpp"
 #include "datasetState.hpp"
 #include "errors.h"
@@ -21,18 +8,30 @@
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
 
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
+#include <cxxabi.h>
+#include <exception>
+#include <functional>
+#include <inttypes.h>
+#include <map>
+#include <memory>
+#include <regex>
+#include <signal.h>
+#include <stdexcept>
+#include <utility>
+
 REGISTER_KOTEKAN_PROCESS(freqSubset);
 
 
-freqSubset::freqSubset(Config& config,
-                       const string& unique_name,
-                       bufferContainer &buffer_container) :
+freqSubset::freqSubset(Config& config, const string& unique_name,
+                       bufferContainer& buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&freqSubset::main_thread, this)) {
 
     // Get list of frequencies to subset from config
-    _subset_list = config.get<std::vector<uint32_t>>(unique_name,
-                                                     "subset_list");
+    _subset_list = config.get<std::vector<uint32_t>>(unique_name, "subset_list");
 
     // Setup the input buffer
     in_buf = get_buffer("in_buf");
@@ -48,20 +47,20 @@ dset_id_t freqSubset::change_dataset_state(dset_id_t input_dset_id,
     auto& dm = datasetManager::instance();
 
     // create new frequency dataset state
-    const freqState* freq_state_ptr =
-            dm.dataset_state<freqState>(input_dset_id);
+    const freqState* freq_state_ptr = dm.dataset_state<freqState>(input_dset_id);
     if (freq_state_ptr == nullptr) {
-        ERROR("Set to not use dataset_broker and couldn't find " \
-              "freqState ancestor of dataset %zu. Make sure there is a process"\
-              " upstream in the config, that adds a freqState.\nExiting...",
+        ERROR("Set to not use dataset_broker and couldn't find "
+              "freqState ancestor of dataset 0x%" PRIx64 ". Make sure there "
+              "is a process upstream in the config, that adds a freqState.\n"
+              "Exiting...",
               input_dset_id);
         raise(SIGINT);
     }
 
     // put the input_freqs in a map and then pick the ones that are in the
     // subset list out of the map again into the output_freqs
-    const std::vector<std::pair<uint32_t, freq_ctype>>&
-            vec_input_freqs(freq_state_ptr->get_freqs());
+    const std::vector<std::pair<uint32_t, freq_ctype>>& vec_input_freqs(
+        freq_state_ptr->get_freqs());
     std::map<uint32_t, freq_ctype> input_freqs;
 
     for (auto const& i : vec_input_freqs) {
@@ -72,8 +71,7 @@ dset_id_t freqSubset::change_dataset_state(dset_id_t input_dset_id,
     for (uint32_t i = 0; i < subset_list.size(); i++)
         if (input_freqs.find(subset_list.at(i)) != input_freqs.end())
             output_freqs.push_back(std::pair<uint32_t, freq_ctype>(
-                                       subset_list.at(i),
-                                       input_freqs.at(subset_list.at(i))));
+                subset_list.at(i), input_freqs.at(subset_list.at(i))));
 
     state_uptr fstate = std::make_unique<freqState>(output_freqs);
     state_id_t freq_state_id = dm.add_state(std::move(fstate)).first;
@@ -89,19 +87,17 @@ void freqSubset::main_thread() {
     dset_id_t input_dset_id;
 
     // Wait for a frame in the input buffer in order to get the dataset ID
-    if(wait_for_full_frame(in_buf, unique_name.c_str(),
-                           input_frame_id) == nullptr) {
+    if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
         return;
     }
     input_dset_id = visFrameView(in_buf, input_frame_id).dataset_id;
-    _output_dset_id = std::async(&freqSubset::change_dataset_state, this,
-                                 input_dset_id, std::ref(_subset_list));
+    _output_dset_id =
+        std::async(&freqSubset::change_dataset_state, this, input_dset_id, std::ref(_subset_list));
 
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
-        if(wait_for_full_frame(in_buf, unique_name.c_str(),
-                               input_frame_id) == nullptr) {
+        if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
             break;
         }
 
@@ -111,8 +107,7 @@ void freqSubset::main_thread() {
         // check if the input dataset has changed
         if (input_dset_id != input_frame.dataset_id) {
             input_dset_id = input_frame.dataset_id;
-            _output_dset_id = std::async(&freqSubset::change_dataset_state,
-                                         this, input_dset_id,
+            _output_dset_id = std::async(&freqSubset::change_dataset_state, this, input_dset_id,
                                          std::ref(_subset_list));
         }
 
@@ -121,20 +116,17 @@ void freqSubset::main_thread() {
 
         // If this frame is part of subset
         // TODO: Apparently std::set can be used to speed up this search
-        if (std::find(_subset_list.begin(), _subset_list.end(), freq) !=
-            _subset_list.end()) {
+        if (std::find(_subset_list.begin(), _subset_list.end(), freq) != _subset_list.end()) {
 
             // Wait for the output buffer to be empty of data
-            if(wait_for_empty_frame(out_buf, unique_name.c_str(),
-                                    output_frame_id) == nullptr) {
+            if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
                 break;
             }
 
             allocate_new_metadata_object(out_buf, output_frame_id);
 
             // Copy frame and create view
-            auto output_frame = visFrameView(out_buf, output_frame_id,
-                                             input_frame);
+            auto output_frame = visFrameView(out_buf, output_frame_id, input_frame);
 
             // set the dataset ID in the outgoing frame
             if (_output_dset_id.valid())
@@ -149,8 +141,7 @@ void freqSubset::main_thread() {
             output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
         }
         // Mark the input buffer and move on
-        mark_frame_empty(in_buf, unique_name.c_str(),
-                                                input_frame_id);
+        mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
         // Advance the current input frame id
         input_frame_id = (input_frame_id + 1) % in_buf->num_frames;
     }

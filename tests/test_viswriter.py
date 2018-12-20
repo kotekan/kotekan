@@ -33,7 +33,6 @@ def written_data_base(outdir, process_extra=None, root_extra=None):
 
     process_params = {
         'node_mode': False,
-        'write_ev': False
     }
 
     if process_extra is not None:
@@ -56,24 +55,11 @@ def written_data_base(outdir, process_extra=None, root_extra=None):
 
 
 @pytest.fixture(scope="module")
-def written_data(request, tmpdir_factory):
-
-    tmpdir = tmpdir_factory.mktemp("writer")
-
-    fhlist = written_data_base(str(tmpdir), process_extra={'write_ev': False})
-
-    yield fhlist
-
-    for fh in fhlist:
-        fh.close()
-
-
-@pytest.fixture(scope="module")
 def written_data_ev(request, tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("writer_ev")
 
-    fhlist = written_data_base(str(tmpdir), process_extra={'write_ev': True})
+    fhlist = written_data_base(str(tmpdir))
 
     yield fhlist
 
@@ -94,11 +80,11 @@ def written_data_dm(request, tmpdir_factory):
         fh.close()
 
 
-def test_vis(written_data):
+def test_vis(written_data_ev):
 
     nt = writer_params['total_frames']
 
-    for fh in written_data:
+    for fh in written_data_ev:
         vis = fh['vis'][:nt]
 
         # Check the diagonals are correct
@@ -119,11 +105,11 @@ def test_vis(written_data):
         assert (vfreq == freq[np.newaxis, :]).all()
 
 
-def test_metadata(written_data):
+def test_metadata(written_data_ev):
 
     nt = writer_params['total_frames']
 
-    for fh in written_data:
+    for fh in written_data_ev:
 
         # Check the number of samples has been written correctly
         assert fh.attrs['num_time'] == nt
@@ -144,14 +130,6 @@ def test_metadata(written_data):
         ia, ib = np.triu_indices(writer_params['num_elements'])
         assert (fh['index_map/prod']['input_a'] == ia).all()
         assert (fh['index_map/prod']['input_b'] == ib).all()
-
-
-def test_no_eigenvectors(written_data):
-
-    for fh in written_data:
-        assert 'eval' not in fh
-        assert 'evec' not in fh
-        assert 'erms' not in fh
 
 
 def test_eigenvectors(written_data_ev):
@@ -181,11 +159,11 @@ def test_eigenvectors(written_data_ev):
         assert (erms == 1.0).all()
 
 
-def test_unwritten(written_data):
+def test_unwritten(written_data_ev):
 
     nt = writer_params['total_frames']
 
-    for fh in written_data:
+    for fh in written_data_ev:
 
         assert (fh['vis'][nt:] == 0.0).all()
         assert (fh['flags/vis_weight'][nt:] == 0.0).all()

@@ -71,7 +71,7 @@ gpu_input_buffers:
   frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
   metadata_pool: main_pool
   gpu_input_buffer_0:
-    kotekan_buffer: hsa
+    kotekan_buffer: standard
     gpu_id: 0
 
 pulsar_output_buffers:
@@ -79,7 +79,7 @@ pulsar_output_buffers:
     frame_size: _samples_per_data_set * _num_beams * _num_pol * sizeof_float *2
     metadata_pool: main_pool
     beamform_pulsar_output_buffer_0:
-      kotekan_buffer: hsa
+      kotekan_buffer: standard
       gpu_id: 0
 
 cpu_output_buffers:
@@ -107,7 +107,7 @@ gen_data:
 #    buf: gpu_input_buffer_0
 
 gpu:
-  kernel_path: "/var/lib/kotekan/hsa_kernels/"
+  kernel_path: "../lib/hsa/kernels/"
   commands:
   - name: hsaInputData
   - name: hsaPulsarUpdatePhase

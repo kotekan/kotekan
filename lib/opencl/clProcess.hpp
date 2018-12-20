@@ -2,25 +2,24 @@
 #define CL_PROCESS_H
 
 #define HI_NIBBLE(b) (((b) >> 4) & 0x0F)
-#define LO_NIBBLE(b) ((b) & 0x0F)
+#define LO_NIBBLE(b) ((b)&0x0F)
 
-#include "gpuProcess.hpp"
+#include "clCommand.hpp"
 #include "clDeviceInterface.hpp"
 #include "clEventContainer.hpp"
-#include "clCommand.hpp"
+#include "gpuProcess.hpp"
 
 class clProcess final : public gpuProcess {
 public:
-    clProcess(Config& config,
-        const string& unique_name,
-        bufferContainer &buffer_container);
+    clProcess(Config& config, const string& unique_name, bufferContainer& buffer_container);
     virtual ~clProcess();
 
-    gpuCommand *create_command(json cmd) override;
-    gpuEventContainer *create_signal() override;
+    gpuCommand* create_command(const std::string& cmd_name,
+                               const std::string& unique_name) override;
+    gpuEventContainer* create_signal() override;
     void queue_commands(int gpu_frame_id) override;
 
-    clDeviceInterface *device;
+    clDeviceInterface* device;
 };
 
-#endif //CL_PROCESS_H
+#endif // CL_PROCESS_H

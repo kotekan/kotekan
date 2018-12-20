@@ -6,33 +6,37 @@
 #ifndef RFI_BROADCAST_H
 #define RFI_BROADCAST_H
 
-#include "powerStreamUtil.hpp"
-#include <sys/socket.h>
 #include "Config.hpp"
-#include "buffer.h"
 #include "KotekanProcess.hpp"
-#include "restServer.hpp"
+#include "buffer.h"
 #include "chimeMetadata.h"
+#include "powerStreamUtil.hpp"
+#include "restServer.hpp"
 #include "rfi_functions.h"
+
+#include <sys/socket.h>
 
 /*
  * @class rfiBadInputFinder
- * @brief Consumer ``KotekanProcess`` which consumes a buffer filled with averaged, individual input spectral 
- * kurtosis estimates.
+ * @brief Consumer ``KotekanProcess`` which consumes a buffer filled with averaged, individual input
+ * spectral kurtosis estimates.
  *
- * This process reads RFI data from a kotekan buffer before packaging it into UDP packets and sending them 
- * to a user defined IP address. Each packet is fitted with a header which can be read by the server to ensure 
- * that the config parameters of the packet match the server config. This process simply reads the spectral kurtosis 
- * estimates, finds outlier inputs based on the statistics of the estimates, assigns each input a pass or fail for 
- * each frame, counts the number of fails for each input, packages the results into a packet (header + data), 
- * and sends the packets to a user defined IP address via UDP.
+ * This process reads RFI data from a kotekan buffer before packaging it into UDP packets and
+ * sending them to a user defined IP address. Each packet is fitted with a header which can be read
+ * by the server to ensure that the config parameters of the packet match the server config. This
+ * process simply reads the spectral kurtosis estimates, finds outlier inputs based on the
+ * statistics of the estimates, assigns each input a pass or fail for each frame, counts the number
+ * of fails for each input, packages the results into a packet (header + data), and sends the
+ * packets to a user defined IP address via UDP.
  *
- * UDP packets are packaged in blocks (header + data) where the data is of size num_elements*num_local_freq. 
- * The data is the number of statistically un-favourable frames seen from each input in the given time interval. 
- * See lib/utils/rfi_functions.h for information regarding packet header.
+ * UDP packets are packaged in blocks (header + data) where the data is of size
+ * num_elements*num_local_freq. The data is the number of statistically un-favourable frames seen
+ * from each input in the given time interval. See lib/utils/rfi_functions.h for information
+ * regarding packet header.
  *
  * @par Buffers
- * @buffer rfi_in        The kotekan buffer containing spectral kurtosis estimates to be read by the process.
+ * @buffer rfi_in        The kotekan buffer containing spectral kurtosis estimates to be read by the
+ * process.
  * 	@buffer_format   Array of @c floats
  * 	@buffer_metadata chimeMetadata
  *
@@ -46,35 +50,35 @@
  * @conf   num_local_freq       Int (default 1024). Number of total freq.
  * @conf   samples_per_data_set Int . Number of time samples in a data set.
  * @conf   sk_step              Int (default 256). Length of time integration in SK estimate.
- * @conf   frames_per_packet    Int (default 1). The Number of frames to average over before sending a packet
+ * @conf   frames_per_packet    Int (default 1). The Number of frames to average over before sending
+ * a packet
  * @conf   dest_port            Int, The port number for the stream destination (Example: 41214)
- * @conf   dest_server_ip       String, The IP address of the stream destination (Example: 192.168.52.35
+ * @conf   dest_server_ip       String, The IP address of the stream destination (Example:
+ * 192.168.52.35
  * @conf   dest_protocol        String, Currently only supports 'UDP'
  *
  * @author Jacob Taylor
  */
 class rfiBadInputFinder : public KotekanProcess {
 public:
-    //Constructor
-    rfiBadInputFinder(Config& config,
-                       const string& unique_name,
-                       bufferContainer& buffer_container);
-    //Deconstructor, cleans up / does nothing
+    // Constructor
+    rfiBadInputFinder(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    // Deconstructor, cleans up / does nothing
     virtual ~rfiBadInputFinder();
-    //Primary loop, reads buffer and sends out UDP stream
+    // Primary loop, reads buffer and sends out UDP stream
     void main_thread() override;
-    //Callback function called by rest server
+    // Callback function called by rest server
     void rest_callback(connectionInstance& conn, json& json_request);
 
 private:
-    ///Private functions
-    //Functon to compute median of an array
+    /// Private functions
+    // Functon to compute median of an array
     float median(float array[], uint32_t num);
-    //Functon to compute standard deviation of an array, not including wild outliers
+    // Functon to compute standard deviation of an array, not including wild outliers
     float deviation(float array[], uint32_t num, float outliercut);
     /// Kotekan buffer containing kurtosis estimates
-    struct Buffer *rfi_buf;
-    //General Config Parameters
+    struct Buffer* rfi_buf;
+    // General Config Parameters
     /// Number of elements (2048 for CHIME or 256 for Pathfinder)
     uint32_t _num_elements;
     /// Number of frequencies per GPU (1 for CHIME or 8 for Pathfinder)
@@ -83,14 +87,14 @@ private:
     uint32_t _num_total_freq;
     /// Number of time samples per frame (Usually 32768 or 49152)
     uint32_t _samples_per_data_set;
-    //RFI config parameters
+    // RFI config parameters
     /// The kurtosis step (How many timesteps per kurtosis estimate)
-    uint32_t  _sk_step;
+    uint32_t _sk_step;
     /// Flag for element summation in kurtosis estimation process
     bool _rfi_combined;
     /// Number of frames to average per UDP packet
     uint32_t _frames_per_packet;
-    //Process specific config parameters
+    // Process specific config parameters
     /*
     The number of standard deviations required for a frame to be considered an 'outlier'.
     This is not the threshold used to determine faulty inputs. It sets the statistical

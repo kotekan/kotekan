@@ -5,18 +5,18 @@
 #ifndef GATE_SPEC_HPP
 #define GATE_SPEC_HPP
 
+#include "buffer.h"
+#include "factory.hpp"
+#include "pulsarTiming.hpp"
+#include "visUtil.hpp"
+
+#include "json.hpp"
+
 #include <cstdint>
 #include <fstream>
 #include <functional>
 #include <memory>
 #include <time.h>
-
-#include "json.hpp"
-
-#include "factory.hpp"
-#include "buffer.h"
-#include "visUtil.hpp"
-#include "pulsarTiming.hpp"
 
 
 /**
@@ -31,7 +31,6 @@
  **/
 class gateSpec {
 public:
-
     /**
      * @brief Create a new gateSpec
      *
@@ -48,8 +47,7 @@ public:
      *
      * @returns      A pointer to the gateSpec instance.
      **/
-    static std::unique_ptr<gateSpec> create(const std::string& type,
-                                            const::std::string& name);
+    static std::unique_ptr<gateSpec> create(const std::string& type, const ::std::string& name);
 
 
     /**
@@ -59,7 +57,7 @@ public:
      *
      * @return       Did the config apply successfully.
      **/
-    virtual bool update_spec(nlohmann::json &json) = 0;
+    virtual bool update_spec(nlohmann::json& json) = 0;
 
     /**
      * @brief Get a function/closure to calculate the weights for a subsample.
@@ -78,19 +76,46 @@ public:
      *
      * @return True if gating for this spec is enabled.
      **/
-    const bool& enabled() const { return _enabled; }
+    const bool& enabled() const {
+        return _enabled;
+    }
 
     /**
      * @brief Get the name of the gated dataset.
      *
      * @return Name of the gated dataset.
      **/
-    const std::string& name() const { return _name; }
+    const std::string& name() const {
+        return _name;
+    }
+
+    /**
+     * @brief Get the name of the gating type.
+     *
+     * @return Name of the gating type.
+     **/
+    const std::string& type() const {
+        return _type;
+    }
+
+    /**
+     * @brief Get a description of the spec for the dataset manager.
+     *
+     * Should be re-implemented by subclasses, and include information beyond
+     * the type of the gating (the type is captured separately).
+     *
+     * @return  Serialized config.
+     **/
+    virtual json to_dm_json() const {
+        return {};
+    }
 
 protected:
-
     // Name of the gated dataset in the config
     const std::string _name;
+
+    // Type of the gated dataset in the config
+    const std::string _type;
 
     // Is the dataset enabled?
     bool _enabled = false;
@@ -120,16 +145,15 @@ CREATE_FACTORY(gateSpec, const std::string&);
 class pulsarSpec : public gateSpec {
 
 public:
-
     /**
      * @brief Create a pulsar spec.
      **/
-    pulsarSpec(const std::string& name) : gateSpec(name) {};
+    pulsarSpec(const std::string& name) : gateSpec(name){};
 
     /**
      * @brief Update the gating from a json message.
      **/
-    bool update_spec(nlohmann::json &json) override;
+    bool update_spec(nlohmann::json& json) override;
 
     /**
      * @brief Return a closure te calculate the weigths.
@@ -138,15 +162,22 @@ public:
      **/
     std::function<float(timespec, timespec, float)> weight_function(timespec t) const override;
 
+    /**
+     * @brief Return JSON config for the dM
+     *
+     * @return  JSON config.
+     **/
+    json to_dm_json() const override;
+
 private:
     // Config parameters for pulsar gating
     std::string _pulsar_name;
-    float _dm;           // in pc / cm^3
-    double _rot_freq;    // in Hz
-    float _pulse_width;  // in s
-    float _seg;  // length of polyco segments in s
-    std::vector<double> _tmid;  // in MJD
-    std::vector<double> _phase_ref;  // in number of rotations
+    float _dm;                      // in pc / cm^3
+    double _rot_freq;               // in Hz
+    float _pulse_width;             // in s
+    float _seg;                     // length of polyco segments in s
+    std::vector<double> _tmid;      // in MJD
+    std::vector<double> _phase_ref; // in number of rotations
     SegmentedPolyco _polycos;
 };
 
@@ -159,7 +190,6 @@ private:
  **/
 class uniformSpec : public gateSpec {
 public:
-
     /**
      * @brief Create a uniform weighted dataset.
      **/
@@ -168,7 +198,7 @@ public:
     /**
      * @brief Update from json config. Has no effect.
      **/
-    bool update_spec(nlohmann::json &json) override;
+    bool update_spec(nlohmann::json& json) override;
 
     /**
      * @brief Return the weight calculation function.

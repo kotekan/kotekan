@@ -7,12 +7,13 @@
 #ifndef INTEGRATE_POWER_STREAM_H
 #define INTEGRATE_POWER_STREAM_H
 
-#include "powerStreamUtil.hpp"
-#include <sys/socket.h>
 #include "Config.hpp"
-#include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
+#include "powerStreamUtil.hpp"
+
 #include <atomic>
+#include <sys/socket.h>
 
 /**
  * @class integratePowerStream
@@ -41,9 +42,8 @@
 class integratePowerStream : public KotekanProcess {
 public:
     /// Constructor.
-    integratePowerStream(Config& config,
-                           const string& unique_name,
-                           bufferContainer &buffer_container);
+    integratePowerStream(Config& config, const string& unique_name,
+                         bufferContainer& buffer_container);
 
     /// Destructor.
     virtual ~integratePowerStream();
@@ -52,22 +52,22 @@ public:
     void main_thread() override;
 
 private:
-	void tcpConnect();
+    void tcpConnect();
 
     /// Kotekan buffer which this process consumes from.
     /// Data should be packed with IntensityPacketHeader's.
-    struct Buffer *in_buf;
+    struct Buffer* in_buf;
     /// Kotekan buffer which this process produces into.
-    struct Buffer *out_buf;
+    struct Buffer* out_buf;
 
-    ///Number of frequencies in the buffer
+    /// Number of frequencies in the buffer
     int freqs;
-    ///Number of times in the buffer
+    /// Number of times in the buffer
     int times;
-    ///Number of elems in the buffer
+    /// Number of elems in the buffer
     int elems;
 
-    //options
+    // options
     /// Number of timesteps to sum for each output value.
     int integration_length;
 };

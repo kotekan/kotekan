@@ -49,7 +49,7 @@ extern "C" {
 #define MAX_PROCESS_NAME_LEN 128
 
 /// The maximum number of consumers that can register on a buffer
-#define MAX_CONSUMERS 10
+#define MAX_CONSUMERS 15
 /// The maximum number of producers that can register on a buffer
 #define MAX_PRODUCERS 10
 
@@ -500,6 +500,21 @@ struct metadataContainer * get_metadata_container(struct Buffer * buf, int frame
  * @param[in] to_frame_id The frame ID in the @c to_buf to copy the metadata into
  */
 void pass_metadata(struct Buffer * from_buf, int from_frame_id,
+                    struct Buffer * to_buf, int to_frame_id);
+
+
+/**
+ * @brief Makes a fully deep copy of the metadata from one object to another
+ *
+ * Unlike pass_metadata this doesn't remove the metadata from the @c from_buf
+ * and requires that the @c to_buf has a metadata object to be copied into.
+ *
+ * @param[in] from_buf The buffer to copy the metadata from
+ * @param[in] from_frame_id The frame ID to copy the metadata from
+ * @param[in] to_buf The buffer to copy the metadata into
+ * @param[in] to_frame_id The frame ID in the @c to_buf to copy the metadata into
+ */
+void copy_metadata(struct Buffer * from_buf, int from_frame_id,
                     struct Buffer * to_buf, int to_frame_id);
 
 /**

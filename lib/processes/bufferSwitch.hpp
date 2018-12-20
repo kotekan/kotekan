@@ -1,12 +1,12 @@
 #ifndef BUFFER_SWITCH_HPP
 #define BUFFER_SWITCH_HPP
 
-#include <vector>
-#include <string>
-#include <map>
-
 #include "buffer.h"
 #include "bufferMerge.hpp"
+
+#include <map>
+#include <string>
+#include <vector>
 
 /**
  * @brief Selects buffers based on the values in an updatable config endpoint.
@@ -38,11 +38,8 @@
  */
 class bufferSwitch : public bufferMerge {
 public:
-
     /// Constructor
-    bufferSwitch(Config& config,
-                const string& unique_name,
-                bufferContainer &buffer_container);
+    bufferSwitch(Config& config, const string& unique_name, bufferContainer& buffer_container);
 
     /// Destructor
     ~bufferSwitch() = default;
@@ -58,14 +55,13 @@ public:
      *
      * @return true if the internal name is set to true in @c enabled_buffers_lock
      */
-    virtual bool select_frame(const std::string &internal_name,
-                              Buffer * in_buf, uint32_t frame_id) override;
+    virtual bool select_frame(const std::string& internal_name, Buffer* in_buf,
+                              uint32_t frame_id) override;
 
     /// Called by the configUpdater to change which buffers are selected.
-    bool enabled_buffers_callback(nlohmann::json &json);
+    bool enabled_buffers_callback(nlohmann::json& json);
 
 private:
-
     /// Map of internal names with a true/false value for if we include frames from it
     std::map<std::string, bool> enabled_buffers;
 

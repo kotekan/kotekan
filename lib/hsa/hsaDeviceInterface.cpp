@@ -1,11 +1,12 @@
 #include "hsaDeviceInterface.hpp"
-#include "errors.h"
-#include "math.h"
-#include <errno.h>
 
+#include "errors.h"
 #include "hsa/hsa.h"
-#include "hsa/hsa_ext_finalize.h"
 #include "hsa/hsa_ext_amd.h"
+#include "hsa/hsa_ext_finalize.h"
+#include "math.h"
+
+#include <errno.h>
 
 void error_callback(hsa_status_t status, hsa_queue_t* queue, void* data) {
     // Unused parameter, suppress warning.
@@ -13,7 +14,8 @@ void error_callback(hsa_status_t status, hsa_queue_t* queue, void* data) {
 
     const char* message;
     hsa_status_string(status, &message);
-    INFO("ERROR *********** ERROR at queue %" PRIu64 ": %s ************* ERROR\n", queue->id, message);
+    INFO("ERROR *********** ERROR at queue %" PRIu64 ": %s ************* ERROR\n", queue->id,
+         message);
 }
 
 hsaDeviceInterface::hsaDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_buffer_depth_) :
@@ -28,16 +30,15 @@ hsaDeviceInterface::hsaDeviceInterface(Config& config_, int32_t gpu_id_, int gpu
 
     // Get the CPU agent
     hsa_status = hsa_iterate_agents(get_cpu_agent, &cpu_agent);
-    if(hsa_status == HSA_STATUS_INFO_BREAK)
+    if (hsa_status == HSA_STATUS_INFO_BREAK)
         hsa_status = HSA_STATUS_SUCCESS;
     assert(hsa_status == HSA_STATUS_SUCCESS);
     // Get the CPU memory region.
-    hsa_amd_agent_iterate_memory_pools(cpu_agent,
-            get_device_memory_region, &host_region);
+    hsa_amd_agent_iterate_memory_pools(cpu_agent, get_device_memory_region, &host_region);
 
     // Get GPU agent
     hsa_status = hsa_iterate_agents(get_gpu_agent, &gpu_config);
-    if(hsa_status == HSA_STATUS_INFO_BREAK)
+    if (hsa_status == HSA_STATUS_INFO_BREAK)
         hsa_status = HSA_STATUS_SUCCESS;
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
@@ -48,7 +49,7 @@ hsaDeviceInterface::hsaDeviceInterface(Config& config_, int32_t gpu_id_, int gpu
     hsa_status = hsa_agent_get_info(gpu_agent, HSA_AGENT_INFO_NODE, &num);
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
-    INFO("Initializing HSA GPU type %s at index %i.", agent_name, num-1);
+    INFO("Initializing HSA GPU type %s at index %i.", agent_name, num - 1);
 
     global_region.handle = (uint64_t)-1;
     hsa_amd_agent_iterate_memory_pools(gpu_agent, get_device_memory_region, &global_region);
@@ -56,7 +57,7 @@ hsaDeviceInterface::hsaDeviceInterface(Config& config_, int32_t gpu_id_, int gpu
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
     // Find a memory region that supports kernel arguments
-    kernarg_region.handle=(uint64_t)-1;
+    kernarg_region.handle = (uint64_t)-1;
     hsa_agent_iterate_regions(gpu_agent, get_kernarg_memory_region, &kernarg_region);
     hsa_status = (kernarg_region.handle == (uint64_t)-1) ? HSA_STATUS_ERROR : HSA_STATUS_SUCCESS;
     assert(hsa_status == HSA_STATUS_SUCCESS);
@@ -66,7 +67,8 @@ hsaDeviceInterface::hsaDeviceInterface(Config& config_, int32_t gpu_id_, int gpu
     uint32_t queue_size = 0;
     hsa_status = hsa_agent_get_info(gpu_agent, HSA_AGENT_INFO_QUEUE_MAX_SIZE, &queue_size);
     assert(hsa_status == HSA_STATUS_SUCCESS);
-    hsa_status = hsa_queue_create(gpu_agent, queue_size, HSA_QUEUE_TYPE_MULTI, error_callback, NULL, UINT32_MAX, UINT32_MAX, &queue);
+    hsa_status = hsa_queue_create(gpu_agent, queue_size, HSA_QUEUE_TYPE_MULTI, error_callback, NULL,
+                                  UINT32_MAX, UINT32_MAX, &queue);
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
     hsa_status = hsa_amd_profiling_set_profiler_enabled(queue, 1);
@@ -79,54 +81,53 @@ hsaDeviceInterface::~hsaDeviceInterface() {
     assert(HSA_STATUS_SUCCESS == hsa_queue_destroy(queue));
 }
 
-void * hsaDeviceInterface::alloc_gpu_memory(int len) {
-    void *ptr;
+void* hsaDeviceInterface::alloc_gpu_memory(int len) {
+    void* ptr;
     assert(HSA_STATUS_SUCCESS == hsa_amd_memory_pool_allocate(global_region, len, 0, &ptr));
     return ptr;
 }
 
-void hsaDeviceInterface::free_gpu_memory(void *ptr) {
+void hsaDeviceInterface::free_gpu_memory(void* ptr) {
     assert(HSA_STATUS_SUCCESS == hsa_amd_memory_pool_free(ptr));
-
 }
 
 
 hsa_signal_t hsaDeviceInterface::async_copy_host_to_gpu(void* dst, void* src, int len,
-        hsa_signal_t precede_signal, hsa_signal_t copy_signal) {
+                                                        hsa_signal_t precede_signal,
+                                                        hsa_signal_t copy_signal) {
     hsa_status_t hsa_status;
     int num_precede_signals = 0;
 
     if (precede_signal.handle != 0)
         num_precede_signals = 1;
 
-//    hsa_signal_store_release(copy_signal, 1);
-    while (0 < hsa_signal_cas_release(copy_signal, 0, 1));
+    //    hsa_signal_store_release(copy_signal, 1);
+    while (0 < hsa_signal_cas_release(copy_signal, 0, 1))
+        ;
 
     hsa_status = hsa_amd_agents_allow_access(1, &gpu_agent, NULL, src);
     assert(hsa_status == HSA_STATUS_SUCCESS);
-    //hsa_status = hsa_amd_agents_allow_access(1, &cpu_agent, NULL, dst);
-    //assert(hsa_status == HSA_STATUS_SUCCESS);
+    // hsa_status = hsa_amd_agents_allow_access(1, &cpu_agent, NULL, dst);
+    // assert(hsa_status == HSA_STATUS_SUCCESS);
 
     if (num_precede_signals > 0) {
-        hsa_status = hsa_amd_memory_async_copy(dst, gpu_agent,
-                                               src, cpu_agent,
-                                               len, num_precede_signals,
-                                               &precede_signal, copy_signal);
+        hsa_status = hsa_amd_memory_async_copy(dst, gpu_agent, src, cpu_agent, len,
+                                               num_precede_signals, &precede_signal, copy_signal);
     } else {
-        hsa_status = hsa_amd_memory_async_copy(dst, gpu_agent,
-                                               src, cpu_agent,
-                                               len, 0,
-                                               NULL, copy_signal);
+        hsa_status =
+            hsa_amd_memory_async_copy(dst, gpu_agent, src, cpu_agent, len, 0, NULL, copy_signal);
     }
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
-    DEBUG("ASync host->gpu[%d] copy %p -> %p, len %d, precede_signal: %lu, post_signal: %lu", gpu_id, src, dst, len, precede_signal.handle, copy_signal.handle);
+    DEBUG("ASync host->gpu[%d] copy %p -> %p, len %d, precede_signal: %lu, post_signal: %lu",
+          gpu_id, src, dst, len, precede_signal.handle, copy_signal.handle);
 
     return copy_signal;
 }
 
 hsa_signal_t hsaDeviceInterface::async_copy_gpu_to_host(void* dst, void* src, int len,
-        hsa_signal_t precede_signal, hsa_signal_t copy_signal) {
+                                                        hsa_signal_t precede_signal,
+                                                        hsa_signal_t copy_signal) {
 
     hsa_status_t hsa_status;
     int num_precede_signals = 0;
@@ -134,33 +135,31 @@ hsa_signal_t hsaDeviceInterface::async_copy_gpu_to_host(void* dst, void* src, in
     if (precede_signal.handle != 0)
         num_precede_signals = 1;
 
-//    hsa_signal_store_release(copy_signal, 1);
-    while (0 < hsa_signal_cas_release(copy_signal, 0, 1));
+    //    hsa_signal_store_release(copy_signal, 1);
+    while (0 < hsa_signal_cas_release(copy_signal, 0, 1))
+        ;
 
-    //hsa_status = hsa_amd_agents_allow_access(1, &cpu_agent, NULL, src);
-    //assert(hsa_status == HSA_STATUS_SUCCESS);
+    // hsa_status = hsa_amd_agents_allow_access(1, &cpu_agent, NULL, src);
+    // assert(hsa_status == HSA_STATUS_SUCCESS);
     hsa_status = hsa_amd_agents_allow_access(1, &gpu_agent, NULL, dst);
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
     if (num_precede_signals > 0) {
-        hsa_status = hsa_amd_memory_async_copy(dst, cpu_agent,
-                                               src, gpu_agent,
-                                               len, num_precede_signals,
-                                               &precede_signal, copy_signal);
+        hsa_status = hsa_amd_memory_async_copy(dst, cpu_agent, src, gpu_agent, len,
+                                               num_precede_signals, &precede_signal, copy_signal);
     } else {
-        hsa_status = hsa_amd_memory_async_copy(dst, cpu_agent,
-                                               src, gpu_agent,
-                                               len, 0,
-                                               NULL, copy_signal);
+        hsa_status =
+            hsa_amd_memory_async_copy(dst, cpu_agent, src, gpu_agent, len, 0, NULL, copy_signal);
     }
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
-    DEBUG("ASync gpu[%d]->host copy %p -> %p, len: %d, precede_signal %lu, post_signal %lu", gpu_id, src, dst, len, precede_signal.handle, copy_signal.handle);
+    DEBUG("ASync gpu[%d]->host copy %p -> %p, len: %d, precede_signal %lu, post_signal %lu", gpu_id,
+          src, dst, len, precede_signal.handle, copy_signal.handle);
 
     return copy_signal;
 }
 
-void hsaDeviceInterface::sync_copy_host_to_gpu(void *dst, void *src, int length) {
+void hsaDeviceInterface::sync_copy_host_to_gpu(void* dst, void* src, int length) {
     hsa_signal_t sig;
     hsa_status_t hsa_status;
 
@@ -171,21 +170,20 @@ void hsaDeviceInterface::sync_copy_host_to_gpu(void *dst, void *src, int length)
 
     hsa_status = hsa_amd_agents_allow_access(1, &gpu_agent, NULL, src);
     assert(hsa_status == HSA_STATUS_SUCCESS);
-    //hsa_status = hsa_amd_agents_allow_access(1, &cpu_agent, NULL, dst);
-    //assert(hsa_status == HSA_STATUS_SUCCESS);
+    // hsa_status = hsa_amd_agents_allow_access(1, &cpu_agent, NULL, dst);
+    // assert(hsa_status == HSA_STATUS_SUCCESS);
 
-    hsa_status = hsa_amd_memory_async_copy(dst, gpu_agent,
-                                           src, cpu_agent,
-                                           length, 0, NULL, sig);
+    hsa_status = hsa_amd_memory_async_copy(dst, gpu_agent, src, cpu_agent, length, 0, NULL, sig);
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
-    while (hsa_signal_wait_acquire(sig, HSA_SIGNAL_CONDITION_LT, 1,
-                                   UINT64_MAX, HSA_WAIT_STATE_ACTIVE));
+    while (
+        hsa_signal_wait_acquire(sig, HSA_SIGNAL_CONDITION_LT, 1, UINT64_MAX, HSA_WAIT_STATE_ACTIVE))
+        ;
     hsa_status = hsa_signal_destroy(sig);
     assert(hsa_status == HSA_STATUS_SUCCESS);
 }
 
-void hsaDeviceInterface::sync_copy_gpu_to_host(void *dst, void *src, int length) {
+void hsaDeviceInterface::sync_copy_gpu_to_host(void* dst, void* src, int length) {
     hsa_signal_t sig;
     hsa_status_t hsa_status;
 
@@ -194,18 +192,17 @@ void hsaDeviceInterface::sync_copy_gpu_to_host(void *dst, void *src, int length)
     hsa_status = hsa_signal_create(1, 0, NULL, &sig);
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
-    //hsa_status = hsa_amd_agents_allow_access(1, &cpu_agent, NULL, src);
-    //assert(hsa_status == HSA_STATUS_SUCCESS);
+    // hsa_status = hsa_amd_agents_allow_access(1, &cpu_agent, NULL, src);
+    // assert(hsa_status == HSA_STATUS_SUCCESS);
     hsa_status = hsa_amd_agents_allow_access(1, &gpu_agent, NULL, dst);
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
-    hsa_status = hsa_amd_memory_async_copy(dst, cpu_agent,
-                                           src, gpu_agent,
-                                           length, 0, NULL, sig);
+    hsa_status = hsa_amd_memory_async_copy(dst, cpu_agent, src, gpu_agent, length, 0, NULL, sig);
     assert(hsa_status == HSA_STATUS_SUCCESS);
 
-    while (hsa_signal_wait_acquire(sig, HSA_SIGNAL_CONDITION_LT, 1,
-                                   UINT64_MAX, HSA_WAIT_STATE_ACTIVE));
+    while (
+        hsa_signal_wait_acquire(sig, HSA_SIGNAL_CONDITION_LT, 1, UINT64_MAX, HSA_WAIT_STATE_ACTIVE))
+        ;
     hsa_status = hsa_signal_destroy(sig);
     assert(hsa_status == HSA_STATUS_SUCCESS);
 }
@@ -235,15 +232,13 @@ hsa_status_t hsaDeviceInterface::get_gpu_agent(hsa_agent_t agent, void* data) {
     hsa_status_t status;
     int num;
 
-    gpu_config_t *gpu_config = (gpu_config_t*)data;
+    gpu_config_t* gpu_config = (gpu_config_t*)data;
 
     status = hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &device_type);
     assert(status == HSA_STATUS_SUCCESS);
     status = hsa_agent_get_info(agent, HSA_AGENT_INFO_NODE, &num);
     assert(status == HSA_STATUS_SUCCESS);
-    if ((HSA_DEVICE_TYPE_GPU == device_type) &&
-        (gpu_config->gpu_id == (num-1)))
-    {
+    if ((HSA_DEVICE_TYPE_GPU == device_type) && (gpu_config->gpu_id == (num - 1))) {
         uint32_t features = 0;
         hsa_agent_get_info(agent, HSA_AGENT_INFO_FEATURE, &features);
         if (features & HSA_AGENT_FEATURE_KERNEL_DISPATCH) {
@@ -268,7 +263,7 @@ hsa_status_t hsaDeviceInterface::get_kernarg_memory_region(hsa_region_t region, 
     hsa_region_global_flag_t flags;
     hsa_region_get_info(region, HSA_REGION_INFO_GLOBAL_FLAGS, &flags);
     if (flags & HSA_REGION_GLOBAL_FLAG_KERNARG) {
-        hsa_region_t* ret = (hsa_region_t*) data;
+        hsa_region_t* ret = (hsa_region_t*)data;
         *ret = region;
         return HSA_STATUS_INFO_BREAK;
     }
@@ -276,7 +271,8 @@ hsa_status_t hsaDeviceInterface::get_kernarg_memory_region(hsa_region_t region, 
     return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t hsaDeviceInterface::get_device_memory_region(hsa_amd_memory_pool_t region, void* data) {
+hsa_status_t hsaDeviceInterface::get_device_memory_region(hsa_amd_memory_pool_t region,
+                                                          void* data) {
     hsa_amd_segment_t segment;
     hsa_amd_memory_pool_get_info(region, HSA_AMD_MEMORY_POOL_INFO_SEGMENT, &segment);
     if (HSA_AMD_SEGMENT_GLOBAL != segment) {
@@ -285,11 +281,10 @@ hsa_status_t hsaDeviceInterface::get_device_memory_region(hsa_amd_memory_pool_t 
 
     hsa_amd_memory_pool_global_flag_t flags;
     hsa_amd_memory_pool_get_info(region, HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS, &flags);
-    if ((flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_FINE_GRAINED) ||
-        (flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED))
-    {
-        //INFO("Found device region, flags=%x", flags);
-        hsa_amd_memory_pool_t* ret = (hsa_amd_memory_pool_t*) data;
+    if ((flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_FINE_GRAINED)
+        || (flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED)) {
+        // INFO("Found device region, flags=%x", flags);
+        hsa_amd_memory_pool_t* ret = (hsa_amd_memory_pool_t*)data;
         *ret = region;
         return HSA_STATUS_INFO_BREAK;
     }
