@@ -661,14 +661,14 @@ public:
 };
 
 /**
- * @brief A state to describe any applied gating.
+ * @brief A state to describe pulsar gating.
  *
  * @author Richard Shaw, Rick Nitsche
  **/
 class pulsarGatingState : public gatingState {
 public:
     /**
-     * @brief Construct a gating state
+     * @brief Construct a pulsar gating state
      *
      * @param data  The metadata as serialized by to_json():
      *              name: string
@@ -680,7 +680,7 @@ public:
     }
 
     /**
-     * @brief Construct a gating state
+     * @brief Construct a pulsar gating state
      *
      * @param  name   The name of the pulsar.
      * @param  inner  Inner state.
@@ -705,6 +705,55 @@ private:
     }
 
     std::string _name;
+};
+
+/**
+ * @brief A state to describe noise source gating.
+ *
+ * At the moment just for proof of concept. Complete this states data or remove it.
+ *
+ * @author Richard Shaw, Rick Nitsche
+ **/
+class noiseSourceGatingState : public gatingState {
+public:
+    /**
+     * @brief Construct a noise source gating state
+     *
+     * @param data  The metadata as serialized by to_json():
+     *              name: string
+     * @param inner Inner state.
+     **/
+    noiseSourceGatingState(json & data, state_uptr inner) :
+        gatingState(move(inner)) {
+        _foo = data.at("foo").get<std::string>();
+    }
+
+    /**
+     * @brief Construct a noise source gating state
+     *
+     * @param  foo    TODO: replace.
+     * @param  inner  Inner state.
+     **/
+    noiseSourceGatingState(const std::string foo, state_uptr inner=nullptr) :
+        gatingState(move(inner)), _foo(foo) {}
+
+    /**
+     * @brief Get foo.
+     * @return The foo.
+     */
+    const std::string& get_foo() const {
+        return _foo;
+    }
+
+private:
+    /// Serialize the data of this state in a json object
+    json data_to_json() const override {
+        json j;
+        j["foo"] = _foo;
+        return j;
+    }
+
+    std::string _foo;
 };
 
 #endif // DATASETSTATE_HPP

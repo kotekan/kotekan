@@ -229,8 +229,16 @@ BOOST_FIXTURE_TEST_CASE( _ask_broker_for_pulsar_gating_update, CompareCTypes ) {
 
     std::string name = "test_pulsar";
 
+    // Reqest any gatingState of the dataset and then check of which type it is.
     auto i = dm.dataset_state<gatingState>(GATING_DS);
+
+    // This should give us a nullptr.
+    auto n = dynamic_cast<const noiseSourceGatingState*>(i);
+    BOOST_CHECK_EQUAL(n, static_cast<decltype(n)>(nullptr));
+
+    // But this should work!
     auto p = dynamic_cast<const pulsarGatingState*>(i);
+    BOOST_CHECK_NE(p, static_cast<decltype(p)>(nullptr));
     BOOST_CHECK_EQUAL(p->get_name(), name);
 
     auto p2 = dm.dataset_state<pulsarGatingState>(GATING_DS);
