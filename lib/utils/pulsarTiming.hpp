@@ -2,8 +2,9 @@
 #ifndef PULSAR_TIMING_HPP
 #define PULSAR_TIMING_HPP
 
-#include <vector>
 #include "time.h"
+
+#include <vector>
 
 
 /**
@@ -57,7 +58,6 @@ private:
     double phase_ref;
     double rot_freq;
     std::vector<float> coeff;
-
 };
 
 /**
@@ -104,12 +104,11 @@ public:
 private:
     std::vector<Polyco> polycos;
     std::vector<std::pair<double, double>> segments;
-
 };
 
 inline double ts2mjd(timespec t) {
     // number of days between UNIX epoch and MJD epoch is 40587
-    return ((double) t.tv_sec/ 86400.) + ((double) t.tv_nsec/ 86400 / 1e9) + 40587;
+    return ((double)t.tv_sec / 86400.) + ((double)t.tv_nsec / 86400 / 1e9) + 40587;
 };
 
 #endif

@@ -10,8 +10,8 @@
 #include "dpdkCore.hpp"
 #include "fpga_header_functions.h"
 #include "prometheusMetrics.hpp"
+
 #include "json.hpp"
-#include <mutex>
 
 #include <mutex>
 
@@ -27,9 +27,8 @@
  *                                   (in number of FPGA samples) but must be a multiple of that.
  * @config   sample_size       Int.  Default 2048. Size of a time samples (unlikely to change)
  * @config   fpga_packet_size  Int.  Default 4928. Full size of the FPGA packet, including Ethernet,
- *                                                IP, UDP, and FPGA frame headers, FPGA data payload,
- *                                                FPGA footer flags, and any padding
- *                                                (but not the Ethernet CRC).
+ *                                                IP, UDP, and FPGA frame headers, FPGA data
+ * payload, FPGA footer flags, and any padding (but not the Ethernet CRC).
  * @config   samples_per_packet Int. Default 2.   The number of time samples per FPGA packet
  *
  * @par Metrics
@@ -59,17 +58,16 @@
 class iceBoardHandler : public dpdkRXhandler {
 public:
     /// Default constructor
-    iceBoardHandler(Config &config, const std::string &unique_name,
-                    bufferContainer &buffer_container, int port);
+    iceBoardHandler(Config& config, const std::string& unique_name,
+                    bufferContainer& buffer_container, int port);
 
     /// Same abstract function as in @c dpdkRXhandler
-    virtual int handle_packet(struct rte_mbuf *mbuf) = 0;
+    virtual int handle_packet(struct rte_mbuf* mbuf) = 0;
 
     /// Update common stats, this should be called by subclasses implementing this function as well
     virtual void update_stats();
 
 protected:
-
     /**
      * @brief Aligns the first packet.
      *
@@ -81,21 +79,23 @@ protected:
      * @return True if the packet is within 100 of the alignment edge,
      *         False otherwise.
      */
-    bool align_first_packet(struct rte_mbuf *mbuf) {
+    bool align_first_packet(struct rte_mbuf* mbuf) {
         uint64_t seq = iceBoardHandler::get_mbuf_seq_num(mbuf);
         stream_id_t stream_id = extract_stream_id(iceBoardHandler::get_mbuf_stream_id(mbuf));
 
         // We allow for the fact we might miss the first packet by upto 100 FPGA frames,
         // if this happens then the missing frames at the start of the buffer frame are filled
         // in as lost packets.
-        if ( (seq % alignment) <= 100) {
+        if ((seq % alignment) <= 100) {
 
             last_seq = seq - seq % alignment;
             cur_seq = seq;
             port_stream_id = stream_id;
 
-            INFO("Port %d; Got StreamID: crate: %d, slot: %d, link: %d, unused: %d, start seq num: %" PRIu64 " current seq num: %" PRIu64 "",
-                port, stream_id.crate_id, stream_id.slot_id, stream_id.link_id, stream_id.unused, last_seq, seq);
+            INFO("Port %d; Got StreamID: crate: %d, slot: %d, link: %d, unused: %d, start seq num: "
+                 "%" PRIu64 " current seq num: %" PRIu64 "",
+                 port, stream_id.crate_id, stream_id.slot_id, stream_id.link_id, stream_id.unused,
+                 last_seq, seq);
 
             if (!check_cross_handler_alignment(last_seq)) {
                 ERROR("DPDK failed to align packets between handlers, closing kotekan!");
@@ -117,9 +117,10 @@ protected:
      * @param cur_mbuf The rte_mbuf containing the packet
      * @return uint64_t The FPGA seq number
      */
-    inline uint64_t get_mbuf_seq_num(struct rte_mbuf * cur_mbuf) {
-        return (uint64_t)(*(uint32_t *)(rte_pktmbuf_mtod(cur_mbuf, char *) + 54)) +
-               (((uint64_t) (0xFFFF & (*(uint32_t *)(rte_pktmbuf_mtod(cur_mbuf, char *) + 50)))) << 32);
+    inline uint64_t get_mbuf_seq_num(struct rte_mbuf* cur_mbuf) {
+        return (uint64_t)(*(uint32_t*)(rte_pktmbuf_mtod(cur_mbuf, char*) + 54))
+               + (((uint64_t)(0xFFFF & (*(uint32_t*)(rte_pktmbuf_mtod(cur_mbuf, char*) + 50))))
+                  << 32);
     }
 
     /**
@@ -128,8 +129,8 @@ protected:
      * @param cur_mbuf The rte_mbuf containing the packet
      * @return uint16_t The encoded streamID
      */
-    inline uint16_t get_mbuf_stream_id(struct rte_mbuf * cur_mbuf) {
-        return *(uint16_t *)(rte_pktmbuf_mtod(cur_mbuf, char *) + 44);
+    inline uint16_t get_mbuf_stream_id(struct rte_mbuf* cur_mbuf) {
+        return *(uint16_t*)(rte_pktmbuf_mtod(cur_mbuf, char*) + 44);
     }
 
     /**
@@ -144,7 +145,7 @@ protected:
      * @param cur_mbuf The rte_mbuf containing the packet
      * @return True if the packet doesn't have errors and false otherwise.
      */
-    inline bool check_packet(struct rte_mbuf * cur_mbuf) {
+    inline bool check_packet(struct rte_mbuf* cur_mbuf) {
         if (unlikely((cur_mbuf->ol_flags | PKT_RX_IP_CKSUM_BAD) == 1)) {
             WARN("dpdk: Got bad packet checksum on port %d", port);
             rx_ip_cksum_errors_total += 1;
@@ -152,8 +153,8 @@ protected:
             return false;
         }
         if (unlikely(fpga_packet_size != cur_mbuf->pkt_len)) {
-            ERROR("Got packet with incorrect length: %d, expected %d",
-                  cur_mbuf->pkt_len, fpga_packet_size);
+            ERROR("Got packet with incorrect length: %d, expected %d", cur_mbuf->pkt_len,
+                  fpga_packet_size);
 
             // Getting a packet with the wrong length is almost always
             // a configuration/FPGA problem that needs to be addressed.
@@ -183,7 +184,9 @@ protected:
      */
     inline bool check_order(int64_t diff) {
         if (unlikely(diff < 0)) {
-            WARN("Port: %d; Diff %" PRId64 " less than zero, duplicate, bad, or out-of-order packet; last %" PRIu64 "; cur: %" PRIu64 "",
+            WARN("Port: %d; Diff %" PRId64
+                 " less than zero, duplicate, bad, or out-of-order packet; last %" PRIu64
+                 "; cur: %" PRIu64 "",
                  port, diff, last_seq, cur_seq);
             rx_out_of_order_errors_total += 1;
             rx_errors_total += 1;
@@ -205,7 +208,8 @@ protected:
      */
     inline bool check_for_reset(int64_t diff) {
         if (unlikely(diff < -1000)) {
-            ERROR("The FPGAs likely reset, kotekan stopping... (FPGA seq number was less than 1000 of highest number seen.)");
+            ERROR("The FPGAs likely reset, kotekan stopping... (FPGA seq number was less than 1000 "
+                  "of highest number seen.)");
             raise(SIGINT);
             return false;
         }
@@ -220,7 +224,8 @@ protected:
      * @return int64_t The difference between the current FPGA seq number and the last one seen
      */
     inline int64_t get_packet_diff() {
-        // Since the seq number is actually an unsigned 48-bit numdber, this cast will always be safe.
+        // Since the seq number is actually an unsigned 48-bit numdber, this cast will always be
+        // safe.
         return (int64_t)cur_seq - (int64_t)last_seq;
     }
 
@@ -254,8 +259,8 @@ protected:
         }
 
         // This case deals with the first handler setting it's seq number.
-        if (seq_num != alignment_first_seq &&
-            alignment_first_seq == std::numeric_limits<uint64_t>::max()) {
+        if (seq_num != alignment_first_seq
+            && alignment_first_seq == std::numeric_limits<uint64_t>::max()) {
             DEBUG("Port %d: Got first alignemnt value of %" PRIu64 "", port, seq_num);
             alignment_first_seq = seq_num;
             return true;
@@ -264,8 +269,8 @@ protected:
         // This case deals with each addational handler checking if it has the same
         // first seq number.
         if (seq_num != alignment_first_seq) {
-            ERROR("Port %d: Got alignemnt value of %" PRIu64 ", but expected %" PRIu64 "",
-                  port, seq_num, alignment_first_seq);
+            ERROR("Port %d: Got alignemnt value of %" PRIu64 ", but expected %" PRIu64 "", port,
+                  seq_num, alignment_first_seq);
             return false;
         }
 
@@ -321,22 +326,17 @@ protected:
 
     /// The number of frequences in the output stream
     int32_t num_local_freq;
-
 };
 
-inline iceBoardHandler::iceBoardHandler(Config &config, const std::string &unique_name,
-                       bufferContainer &buffer_container, int port) :
+inline iceBoardHandler::iceBoardHandler(Config& config, const std::string& unique_name,
+                                        bufferContainer& buffer_container, int port) :
     dpdkRXhandler(config, unique_name, buffer_container, port) {
 
-    sample_size = config.get_default<uint32_t>(
-                unique_name, "sample_size", 2048);
-    fpga_packet_size = config.get_default<uint32_t>(
-                unique_name, "fpga_packet_size", 4928);
-    samples_per_packet = config.get_default<uint32_t>(
-                unique_name, "samples_per_packet", 2);
+    sample_size = config.get_default<uint32_t>(unique_name, "sample_size", 2048);
+    fpga_packet_size = config.get_default<uint32_t>(unique_name, "fpga_packet_size", 4928);
+    samples_per_packet = config.get_default<uint32_t>(unique_name, "samples_per_packet", 2);
 
-    num_local_freq = config.get_default<int32_t>(
-                unique_name, "num_local_freq", 1);
+    num_local_freq = config.get_default<int32_t>(unique_name, "num_local_freq", 1);
     alignment = config.get<uint64_t>(unique_name, "alignment");
 
     check_cross_handler_alignment(std::numeric_limits<uint64_t>::max());
@@ -346,8 +346,8 @@ json iceBoardHandler::get_json_port_info() {
     json info;
 
     info["fpga_stream_id"] = {{"crate", port_stream_id.crate_id},
-                            {"slot", port_stream_id.slot_id},
-                            {"link", port_stream_id.link_id}};
+                              {"slot", port_stream_id.slot_id},
+                              {"link", port_stream_id.link_id}};
     info["lost_packets"] = rx_lost_samples_total / samples_per_packet;
     info["lost_samples"] = rx_lost_samples_total;
 
@@ -400,50 +400,29 @@ json iceBoardHandler::get_json_port_info() {
 }
 
 inline void iceBoardHandler::update_stats() {
-    prometheusMetrics &metrics = prometheusMetrics::instance();
+    prometheusMetrics& metrics = prometheusMetrics::instance();
 
     std::string tags = "port=\"" + std::to_string(port) + "\"";
 
-    metrics.add_process_metric("kotekan_dpdk_rx_packets_total",
-                                unique_name,
-                                rx_packets_total,
-                                tags);
-    metrics.add_process_metric("kotekan_dpdk_rx_samples_total",
-                                unique_name,
-                                rx_packets_total * samples_per_packet,
-                                tags);
+    metrics.add_process_metric("kotekan_dpdk_rx_packets_total", unique_name, rx_packets_total,
+                               tags);
+    metrics.add_process_metric("kotekan_dpdk_rx_samples_total", unique_name,
+                               rx_packets_total * samples_per_packet, tags);
 
-    metrics.add_process_metric("kotekan_dpdk_rx_lost_packets_total",
-                                unique_name,
-                                (int)(rx_lost_samples_total / samples_per_packet),
-                                tags);
-    metrics.add_process_metric("kotekan_dpdk_lost_samples_total",
-                                unique_name,
-                                rx_lost_samples_total,
-                                tags);
+    metrics.add_process_metric("kotekan_dpdk_rx_lost_packets_total", unique_name,
+                               (int)(rx_lost_samples_total / samples_per_packet), tags);
+    metrics.add_process_metric("kotekan_dpdk_lost_samples_total", unique_name,
+                               rx_lost_samples_total, tags);
 
-    metrics.add_process_metric("kotekan_dpdk_rx_bytes_total",
-                                unique_name,
-                                rx_bytes_total,
-                                tags);
-    metrics.add_process_metric("kotekan_dpdk_rx_errors_total",
-                                unique_name,
-                                rx_errors_total,
-                                tags);
+    metrics.add_process_metric("kotekan_dpdk_rx_bytes_total", unique_name, rx_bytes_total, tags);
+    metrics.add_process_metric("kotekan_dpdk_rx_errors_total", unique_name, rx_errors_total, tags);
 
-    metrics.add_process_metric("kotekan_dpdk_rx_ip_cksum_errors_total",
-                                unique_name,
-                                rx_ip_cksum_errors_total,
-                                tags);
-    metrics.add_process_metric("kotekan_dpdk_rx_packet_len_errors_total",
-                                unique_name,
-                                rx_packet_len_errors_total,
-                                tags);
-    metrics.add_process_metric("kotekan_dpdk_rx_out_of_order_errors_total",
-                                unique_name,
-                                rx_out_of_order_errors_total,
-                                tags);
+    metrics.add_process_metric("kotekan_dpdk_rx_ip_cksum_errors_total", unique_name,
+                               rx_ip_cksum_errors_total, tags);
+    metrics.add_process_metric("kotekan_dpdk_rx_packet_len_errors_total", unique_name,
+                               rx_packet_len_errors_total, tags);
+    metrics.add_process_metric("kotekan_dpdk_rx_out_of_order_errors_total", unique_name,
+                               rx_out_of_order_errors_total, tags);
 }
 
 #endif
-

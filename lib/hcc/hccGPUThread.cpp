@@ -1,21 +1,22 @@
 #include "hccGPUThread.hpp"
+
 #include "errors.h"
 #include "util.h"
 
-#include <cstdio>
-#include <vector>
-#include <random>
 #include <algorithm>
+#include <cstdio>
 #include <ctime>
+#include <random>
+#include <vector>
 
 #ifdef WITH_HCC
 #include <hcc/hc.hpp>
 
-#define n_timesteps 65536//256*1024
+#define n_timesteps 65536 // 256*1024
 #define n_integrate 32768
-#define n_presum 1024//16384
+#define n_presum 1024 // 16384
 #define n_elem 2048
-#define n_blk 2080//(n_elem/32)*(n_elem/32+1)/2
+#define n_blk 2080 //(n_elem/32)*(n_elem/32+1)/2
 
 // clang-format off
 

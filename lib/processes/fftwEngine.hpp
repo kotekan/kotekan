@@ -6,15 +6,14 @@
 
 #ifndef FFTW_ENGINE_HPP
 #define FFTW_ENGINE_HPP
-#include <unistd.h>
-
 #include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "errors.h"
 #include "util.h"
-#include <fftw3.h>
 
+#include <fftw3.h>
 #include <string>
+#include <unistd.h>
 using std::string;
 
 /**
@@ -50,8 +49,7 @@ using std::string;
 class fftwEngine : public KotekanProcess {
 public:
     /// Constructor, also initializes FFTW and values from config yaml.
-    fftwEngine(Config& config, const string& unique_name,
-                         bufferContainer &buffer_container);
+    fftwEngine(Config& config, const string& unique_name, bufferContainer& buffer_container);
     /// Destructor, frees local allocs and exits FFTW.
     virtual ~fftwEngine();
     /// Primary loop, which waits on input frames, FFTs, and dumps to output.
@@ -60,20 +58,20 @@ public:
 private:
     /// Kotekan buffer which this process consumes from.
     /// Data should be packed as int16_t values, [r,i] in each 32b value.
-    struct Buffer *in_buf;
+    struct Buffer* in_buf;
     /// Kotekan buffer which this process produces into.
-    struct Buffer *out_buf;
+    struct Buffer* out_buf;
 
     /// Frame index for the input buffer.
     int frame_in;
     /// Frame index for the output buffer.
     int frame_out;
 
-    //options
+    // options
     /// FFTW buffer for staging the input samples.
-    fftwf_complex *samples;
+    fftwf_complex* samples;
     /// FFTW buffer which returns the FFT'd results.
-    fftwf_complex *spectrum;
+    fftwf_complex* spectrum;
     /// FFTW object containing information about the transform
     fftwf_plan fft_plan;
     /// Length of the FFT to run

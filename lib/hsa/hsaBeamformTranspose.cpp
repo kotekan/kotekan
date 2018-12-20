@@ -2,32 +2,29 @@
 
 REGISTER_HSA_COMMAND(hsaBeamformTranspose);
 
-hsaBeamformTranspose::hsaBeamformTranspose(Config& config, const string &unique_name,
-                                bufferContainer& host_buffers, hsaDeviceInterface& device) :
+hsaBeamformTranspose::hsaBeamformTranspose(Config& config, const string& unique_name,
+                                           bufferContainer& host_buffers,
+                                           hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "transpose", "transpose.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
-    _samples_per_data_set = config.get<int32_t>(
-                unique_name, "samples_per_data_set");
+    _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
 
-    beamform_frame_len  = _num_elements * _samples_per_data_set * 2 * sizeof(float);
-    output_frame_len = _num_elements * (_samples_per_data_set+32) * 2 * sizeof(float);
+    beamform_frame_len = _num_elements * _samples_per_data_set * 2 * sizeof(float);
+    output_frame_len = _num_elements * (_samples_per_data_set + 32) * 2 * sizeof(float);
 }
 
-hsaBeamformTranspose::~hsaBeamformTranspose() {
+hsaBeamformTranspose::~hsaBeamformTranspose() {}
 
-}
-
-hsa_signal_t hsaBeamformTranspose::execute(int gpu_frame_id,
-                                           hsa_signal_t precede_signal) {
+hsa_signal_t hsaBeamformTranspose::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
     // Unused parameter, suppress warning
     (void)precede_signal;
 
-    struct __attribute__ ((aligned(16))) args_t {
-        void *beamform_buffer;
-        void *output_buffer;
+    struct __attribute__((aligned(16))) args_t {
+        void* beamform_buffer;
+        void* output_buffer;
     } args;
     memset(&args, 0, sizeof(args));
     args.beamform_buffer = device.get_gpu_memory("beamform_output", beamform_frame_len);
@@ -40,7 +37,7 @@ hsa_signal_t hsaBeamformTranspose::execute(int gpu_frame_id,
     params.workgroup_size_x = 32;
     params.workgroup_size_y = 8;
     params.grid_size_x = _num_elements;
-    params.grid_size_y = _samples_per_data_set/4;
+    params.grid_size_y = _samples_per_data_set / 4;
     params.num_dims = 2;
 
     params.private_segment_size = 0;
@@ -50,4 +47,3 @@ hsa_signal_t hsaBeamformTranspose::execute(int gpu_frame_id,
 
     return signals[gpu_frame_id];
 }
-

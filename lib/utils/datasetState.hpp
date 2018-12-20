@@ -1,24 +1,24 @@
 #ifndef DATASETSTATE_HPP
 #define DATASETSTATE_HPP
 
+#include "Config.hpp"
+#include "errors.h"
+#include "gateSpec.hpp"
+#include "visUtil.hpp"
+
+#include "json.hpp"
+
 #include <cstdint>
 #include <exception>
 #include <functional>
 #include <iosfwd>
 #include <map>
-#include <set>
 #include <memory>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
-
-#include "json.hpp"
-
-#include "Config.hpp"
-#include "errors.h"
-#include "visUtil.hpp"
-#include "gateSpec.hpp"
 
 // This type is used a lot so let's use an alias
 using json = nlohmann::json;
@@ -41,17 +41,15 @@ using state_uptr = std::unique_ptr<datasetState>;
  **/
 class datasetState {
 public:
-
     /**
      * @brief Create a datasetState
      *
      * @param inner An internal state that this one wraps. Think of this
      *              like function composition.
      **/
-    datasetState(state_uptr inner=nullptr) :
-        _inner_state(move(inner)) {};
+    datasetState(state_uptr inner = nullptr) : _inner_state(move(inner)){};
 
-    virtual ~datasetState() {};
+    virtual ~datasetState(){};
 
     /**
      * @brief Create a dataset state from a full json serialisation.
@@ -108,7 +106,6 @@ public:
     std::set<std::string> types() const;
 
 private:
-
     /**
      * @brief Create a datasetState subclass from a json serialisation.
      *
@@ -117,22 +114,19 @@ private:
      * @param inner Inner state to compose with.
      * @returns The created datasetState.
      **/
-    static state_uptr _create(std::string name, json & data,
-                              state_uptr inner=nullptr);
+    static state_uptr _create(std::string name, json& data, state_uptr inner = nullptr);
 
     // Reference to the internal state
     state_uptr _inner_state = nullptr;
 
     // List of registered subclass creating functions
-    static std::map<string, std::function<state_uptr(json&, state_uptr)>>&
-        _registered_types();
+    static std::map<string, std::function<state_uptr(json&, state_uptr)>>& _registered_types();
 
     // Add as friend so it can walk the inner state
     friend datasetManager;
 };
 
-#define REGISTER_DATASET_STATE(T) int _register_ ## T = \
-    datasetState::_register_state_type<T>()
+#define REGISTER_DATASET_STATE(T) int _register_##T = datasetState::_register_state_type<T>()
 
 
 // Printing for datasetState
@@ -152,13 +146,12 @@ public:
      *              freqState::to_json().
      * @param inner An inner state or a nullptr.
      */
-    freqState(json & data, state_uptr inner) :
-        datasetState(move(inner)) {
+    freqState(json& data, state_uptr inner) : datasetState(move(inner)) {
         try {
             _freqs = data.get<std::vector<std::pair<uint32_t, freq_ctype>>>();
         } catch (std::exception& e) {
-             throw std::runtime_error("freqState: Failure parsing json data ("
-                                      + data.dump() + "): " + e.what());
+            throw std::runtime_error("freqState: Failure parsing json data (" + data.dump()
+                                     + "): " + e.what());
         }
     };
 
@@ -168,10 +161,9 @@ public:
      *              {frequency ID, frequency index map}.
      * @param inner An inner state (optional).
      */
-    freqState(std::vector<std::pair<uint32_t, freq_ctype>> freqs,
-              state_uptr inner=nullptr) :
+    freqState(std::vector<std::pair<uint32_t, freq_ctype>> freqs, state_uptr inner = nullptr) :
         datasetState(move(inner)),
-        _freqs(freqs) {};
+        _freqs(freqs){};
 
     /**
      * @brief Get frequency information (read only).
@@ -208,13 +200,12 @@ public:
      *              inputState::to_json().
      * @param inner An inner state or a nullptr.
      */
-    inputState(json & data, state_uptr inner) :
-        datasetState(move(inner)) {
+    inputState(json& data, state_uptr inner) : datasetState(move(inner)) {
         try {
             _inputs = data.get<std::vector<input_ctype>>();
         } catch (std::exception& e) {
-             throw std::runtime_error("inputState: Failure parsing json data ("
-                                      + data.dump() + "): " + e.what());
+            throw std::runtime_error("inputState: Failure parsing json data (" + data.dump()
+                                     + "): " + e.what());
         }
     };
 
@@ -224,9 +215,9 @@ public:
      *               input index maps.
      * @param inner  An inner state (optional).
      */
-    inputState(std::vector<input_ctype> inputs, state_uptr inner=nullptr) :
+    inputState(std::vector<input_ctype> inputs, state_uptr inner = nullptr) :
         datasetState(move(inner)),
-        _inputs(inputs) {};
+        _inputs(inputs){};
 
     /**
      * @brief Get input information (read only).
@@ -262,13 +253,12 @@ public:
      *              prodState::to_json().
      * @param inner An inner state or a nullptr.
      */
-    prodState(json & data, state_uptr inner) :
-        datasetState(move(inner)) {
+    prodState(json& data, state_uptr inner) : datasetState(move(inner)) {
         try {
             _prods = data.get<std::vector<prod_ctype>>();
         } catch (std::exception& e) {
-             throw std::runtime_error("prodState: Failure parsing json data ("
-                                      + data.dump() + "): " + e.what());
+            throw std::runtime_error("prodState: Failure parsing json data (" + data.dump()
+                                     + "): " + e.what());
         }
     };
 
@@ -278,9 +268,9 @@ public:
      *              product index maps.
      * @param inner An inner state (optional).
      */
-    prodState(std::vector<prod_ctype> prods, state_uptr inner=nullptr) :
+    prodState(std::vector<prod_ctype> prods, state_uptr inner = nullptr) :
         datasetState(move(inner)),
-        _prods(prods) {};
+        _prods(prods){};
 
     /**
      * @brief Get product information (read only).
@@ -316,13 +306,12 @@ public:
      *              timeState::to_json().
      * @param inner An inner state or a nullptr.
      */
-    timeState(json & data, state_uptr inner) :
-        datasetState(move(inner)) {
+    timeState(json& data, state_uptr inner) : datasetState(move(inner)) {
         try {
             _times = data.get<std::vector<time_ctype>>();
         } catch (std::exception& e) {
-             throw std::runtime_error("timeState: Failure parsing json data ("
-                                      + data.dump() + "): " + e.what());
+            throw std::runtime_error("timeState: Failure parsing json data (" + data.dump()
+                                     + "): " + e.what());
         }
     };
 
@@ -332,9 +321,9 @@ public:
      *              time index maps.
      * @param inner An inner state (optional).
      */
-    timeState(std::vector<time_ctype> times, state_uptr inner=nullptr) :
+    timeState(std::vector<time_ctype> times, state_uptr inner = nullptr) :
         datasetState(move(inner)),
-        _times(times) {};
+        _times(times){};
 
     /**
      * @brief Get time information (read only).
@@ -369,14 +358,13 @@ public:
      *              eigenvalueState::to_json().
      * @param inner An inner state or a nullptr.
      */
-    eigenvalueState(json & data, state_uptr inner) :
-        datasetState(move(inner)) {
+    eigenvalueState(json& data, state_uptr inner) : datasetState(move(inner)) {
         try {
             _ev = data.get<std::vector<uint32_t>>();
         } catch (std::exception& e) {
-             throw std::runtime_error("eigenvectorState: Failure parsing json "\
-                                      "data (" + data.dump() + "): "
-                                      + e.what());
+            throw std::runtime_error("eigenvectorState: Failure parsing json "
+                                     "data ("
+                                     + data.dump() + "): " + e.what());
         }
     };
 
@@ -385,9 +373,9 @@ public:
      * @param ev The eigenvalues.
      * @param inner An inner state (optional).
      */
-    eigenvalueState(std::vector<uint32_t> ev, state_uptr inner=nullptr) :
+    eigenvalueState(std::vector<uint32_t> ev, state_uptr inner = nullptr) :
         datasetState(move(inner)),
-        _ev(ev) {};
+        _ev(ev){};
 
     /**
      * @brief Constructor
@@ -395,10 +383,9 @@ public:
      *               running from 0 to num_ev - 1
      * @param inner An inner state (optional).
      */
-    eigenvalueState(size_t num_ev, state_uptr inner=nullptr) :
+    eigenvalueState(size_t num_ev, state_uptr inner = nullptr) :
         datasetState(move(inner)),
-        _ev(num_ev)
-    {
+        _ev(num_ev) {
         std::iota(_ev.begin(), _ev.end(), 0);
     }
 
@@ -432,8 +419,8 @@ private:
 };
 
 
-std::vector<stack_ctype> invert_stack(
-    uint32_t num_stack, const std::vector<rstack_ctype>& stack_map);
+std::vector<stack_ctype> invert_stack(uint32_t num_stack,
+                                      const std::vector<rstack_ctype>& stack_map);
 
 
 /**
@@ -449,15 +436,13 @@ public:
      *              stackState::to_json().
      * @param inner An inner state or a nullptr.
      */
-    stackState(json& data, state_uptr inner) :
-        datasetState(move(inner))
-    {
+    stackState(json& data, state_uptr inner) : datasetState(move(inner)) {
         try {
             _rstack_map = data["rstack"].get<std::vector<rstack_ctype>>();
             _num_stack = data["num_stack"].get<uint32_t>();
         } catch (std::exception& e) {
-             throw std::runtime_error("stackState: Failure parsing json data: "
-                                      + std::string(e.what()));
+            throw std::runtime_error("stackState: Failure parsing json data: "
+                                     + std::string(e.what()));
         }
     };
 
@@ -468,7 +453,7 @@ public:
      * @param inner  An inner state (optional).
      */
     stackState(uint32_t num_stack, std::vector<rstack_ctype>&& rstack_map,
-               state_uptr inner=nullptr) :
+               state_uptr inner = nullptr) :
         datasetState(std::move(inner)),
         _num_stack(num_stack),
         _rstack_map(rstack_map) {}
@@ -501,19 +486,16 @@ public:
      *
      * @returns The stack map.
      **/
-    std::vector<stack_ctype> get_stack_map() const
-    {
+    std::vector<stack_ctype> get_stack_map() const {
         return invert_stack(_num_stack, _rstack_map);
     }
 
     /// Serialize the data of this state in a json object
-    json data_to_json() const override
-    {
-        return {{"rstack", _rstack_map }, {"num_stack", _num_stack}};
+    json data_to_json() const override {
+        return {{"rstack", _rstack_map}, {"num_stack", _num_stack}};
     }
 
 private:
-
     /// Total number of stacks
     uint32_t _num_stack;
 
@@ -540,16 +522,15 @@ public:
      *
      * @param inner An inner state or a nullptr.
      */
-    metadataState(json & data, state_uptr inner) :
-        datasetState(move(inner)) {
+    metadataState(json& data, state_uptr inner) : datasetState(move(inner)) {
         try {
             _weight_type = data.at("weight_type").get<std::string>();
             _instrument_name = data.at("instrument_name").get<std::string>();
             _git_version_tag = data.at("git_version_tag").get<std::string>();
         } catch (std::exception& e) {
-             throw std::runtime_error("metadataState: Failure parsing json " \
-                                      "data (" + data.dump() + "): "
-                                      + e.what());
+            throw std::runtime_error("metadataState: Failure parsing json "
+                                     "data ("
+                                     + data.dump() + "): " + e.what());
         }
     }
 
@@ -560,10 +541,12 @@ public:
      * @param git_version_tag   The git version tag attribute.
      * @param inner             An inner state (optional).
      */
-    metadataState(std::string weight_type, std::string instrument_name,
-                  std::string git_version_tag, state_uptr inner=nullptr) :
-        datasetState(move(inner)), _weight_type(weight_type),
-        _instrument_name(instrument_name), _git_version_tag(git_version_tag) {}
+    metadataState(std::string weight_type, std::string instrument_name, std::string git_version_tag,
+                  state_uptr inner = nullptr) :
+        datasetState(move(inner)),
+        _weight_type(weight_type),
+        _instrument_name(instrument_name),
+        _git_version_tag(git_version_tag) {}
 
     /**
      * @brief Get the weight type (read only).
@@ -615,7 +598,6 @@ private:
  **/
 class gatingState : public datasetState {
 public:
-
     /**
      * @brief Construct a gating state
      *
@@ -623,12 +605,10 @@ public:
      * @param  data   Arbitrary type specific data to describe what's happening.
      * @param  inner  Inner state.
      **/
-    gatingState(const gateSpec& spec, state_uptr inner=nullptr) :
+    gatingState(const gateSpec& spec, state_uptr inner = nullptr) :
         datasetState(std::move(inner)),
         gating_type(FACTORY(gateSpec)::label(spec)),
-        gating_data(spec.to_dm_json())
-    {
-    }
+        gating_data(spec.to_dm_json()) {}
 
     /**
      * @brief Construct a gating state
@@ -639,9 +619,7 @@ public:
     gatingState(json& data, state_uptr inner) :
         datasetState(std::move(inner)),
         gating_type(data["type"].get<std::string>()),
-        gating_data(data["data"])
-    {
-    }
+        gating_data(data["data"]) {}
 
 
     /**
@@ -650,10 +628,7 @@ public:
      * @return  JSON serialisation.
      **/
     json data_to_json() const override {
-        return {
-            {"type", gating_type},
-            {"data", gating_data}
-        };
+        return {{"type", gating_type}, {"data", gating_data}};
     }
 
     /// Type of gating
@@ -664,4 +639,3 @@ public:
 };
 
 #endif // DATASETSTATE_HPP
-

@@ -8,8 +8,8 @@
 
 #include "Config.hpp"
 #include "KotekanProcess.hpp"
-#include "bufferContainer.hpp"
 #include "buffer.h"
+#include "bufferContainer.hpp"
 #include "datasetManager.hpp"
 #include "visUtil.hpp"
 
@@ -52,23 +52,19 @@
 class visTransform : public KotekanProcess {
 
 public:
-
     // Default constructor
-    visTransform(Config &config,
-                 const std::string& unique_name,
-                 bufferContainer &buffer_container);
+    visTransform(Config& config, const std::string& unique_name, bufferContainer& buffer_container);
 
     // Main loop for the process
     void main_thread() override;
 
 private:
-
     // Parameters saved from the config files
     size_t num_elements, num_eigenvectors, block_size;
 
     // Vector of the buffers we are using and their current frame ids.
     std::vector<std::pair<Buffer*, unsigned int>> in_bufs;
-    Buffer * out_buf;
+    Buffer* out_buf;
 
     // The mapping from buffer element order to output file element ordering
     std::vector<uint32_t> input_remap;
@@ -85,7 +81,6 @@ private:
     std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
     std::vector<input_ctype> _inputs;
     std::vector<prod_ctype> _prods;
-
 };
 
 #endif // VISTRANSFORM_H

@@ -3,18 +3,16 @@
 
 #include "hsaCommand.hpp"
 
-class hsaSubframeCommand: public hsaCommand
-{
+class hsaSubframeCommand : public hsaCommand {
 public:
     /**
      * @brief pass through constructor which added the subframe
      *        values from the config and possibly other common
      *        variables.
      */
-    hsaSubframeCommand(Config &config, const string &unique_name,
-               bufferContainer &host_buffers, hsaDeviceInterface &device,
-               const string &default_kernel_command="",
-               const string &default_kernel_file_name="");
+    hsaSubframeCommand(Config& config, const string& unique_name, bufferContainer& host_buffers,
+                       hsaDeviceInterface& device, const string& default_kernel_command = "",
+                       const string& default_kernel_file_name = "");
     virtual ~hsaSubframeCommand() = default;
 
 protected:
@@ -24,4 +22,3 @@ protected:
 };
 
 #endif // GPU_HSA_CORRELATOR_SUBFRAME_COMMAND_H
-

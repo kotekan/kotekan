@@ -7,23 +7,22 @@
 #ifndef VIS_FILE_H5_HPP
 #define VIS_FILE_H5_HPP
 
-#include <stddef.h>
-#include <sys/types.h>
-#include <cstdint>
-#include <iostream>
-#include <map>
-#include <memory>
-#include <string>
-#include <vector>
-
-#include <highfive/H5DataSet.hpp>
-#include <highfive/H5File.hpp>
-
 #include "Config.hpp"
 #include "datasetManager.hpp"
 #include "visBuffer.hpp"
 #include "visFile.hpp"
 #include "visUtil.hpp"
+
+#include <cstdint>
+#include <highfive/H5DataSet.hpp>
+#include <highfive/H5File.hpp>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <stddef.h>
+#include <string>
+#include <sys/types.h>
+#include <vector>
 
 /** @brief A CHIME correlator file.
  *
@@ -35,7 +34,6 @@
 class visFileH5 : public visFile {
 
 public:
-
     ~visFileH5();
 
     /**
@@ -53,8 +51,7 @@ public:
      * @param freq_ind Frequency index to write into.
      * @param frame Frame to write out.
      **/
-    void write_sample(uint32_t time_ind, uint32_t freq_ind,
-                      const visFrameView& frame) override;
+    void write_sample(uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame) override;
 
     /**
      * @brief Return the current number of current time samples.
@@ -65,18 +62,15 @@ public:
 
 
 protected:
-
     // Implement the create file method
-    void create_file(const std::string& name,
-                     const std::map<std::string, std::string>& metadata,
+    void create_file(const std::string& name, const std::map<std::string, std::string>& metadata,
                      dset_id_t dataset, size_t max_time) override;
 
     // Create the time axis (separated for overloading)
     virtual void create_time_axis(size_t num_time);
 
     // Helper to create datasets
-    virtual void create_dataset(const std::string& name,
-                                const std::vector<std::string>& axes,
+    virtual void create_dataset(const std::string& name, const std::vector<std::string>& axes,
                                 HighFive::DataType type);
 
     // Helper function to create an axis
@@ -84,10 +78,8 @@ protected:
     void create_axis(std::string name, const std::vector<T>& axis);
 
     // Create the index maps from the frequencies and the inputs
-    void create_axes(const std::vector<freq_ctype>& freqs,
-                     const std::vector<input_ctype>& inputs,
-                     const std::vector<prod_ctype>& prods,
-                     size_t num_ev, size_t num_time);
+    void create_axes(const std::vector<freq_ctype>& freqs, const std::vector<input_ctype>& inputs,
+                     const std::vector<prod_ctype>& prods, size_t num_ev, size_t num_time);
 
     // Create the main visibility holding datasets
     void create_datasets();
@@ -103,7 +95,6 @@ protected:
     std::unique_ptr<HighFive::File> file;
 
     std::string lock_filename;
-
 };
 
 
@@ -125,7 +116,6 @@ protected:
 class visFileH5Fast : public visFileH5 {
 
 public:
-
     // Write out the number of times as we are destroyed.
     ~visFileH5Fast();
 
@@ -144,8 +134,7 @@ public:
      * @param freq_ind Frequency index to write into.
      * @param frame Frame to write out.
      **/
-    void write_sample(uint32_t time_ind, uint32_t freq_ind,
-                      const visFrameView& frame) override;
+    void write_sample(uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame) override;
 
     size_t num_time() override;
 
@@ -160,19 +149,16 @@ public:
     void deactivate_time(uint32_t time_ind) override;
 
 protected:
-
     // Reimplement the create file method
-    void create_file(const std::string& name,
-                     const std::map<std::string, std::string>& metadata,
+    void create_file(const std::string& name, const std::map<std::string, std::string>& metadata,
                      dset_id_t dataset, size_t max_time) override;
 
     // Create the time axis (separated for overloading)
     void create_time_axis(size_t num_time) override;
 
-     // Helper to create datasets
-    void create_dataset(const std::string& name,
-                                const std::vector<std::string>& axes,
-                                HighFive::DataType type) override;
+    // Helper to create datasets
+    void create_dataset(const std::string& name, const std::vector<std::string>& axes,
+                        HighFive::DataType type) override;
 
     // Calculate offsets into the file for each dataset, and open it
     void setup_raw();
@@ -186,8 +172,7 @@ protected:
      * @param vec       The data to write out.
      **/
     template<typename T>
-    bool write_raw(off_t dset_base, int ind, size_t n,
-                   const std::vector<T>& vec);
+    bool write_raw(off_t dset_base, int ind, size_t n, const std::vector<T>& vec);
 
     /**
      * @brief  Helper routine for writing data into the file
@@ -198,8 +183,7 @@ protected:
      * @param data       The data to write out.
      **/
     template<typename T>
-    bool write_raw(off_t dset_base, int ind, size_t n,
-                   const T * data);
+    bool write_raw(off_t dset_base, int ind, size_t n, const T* data);
 
     /**
      * @brief Start an async flush to disk
@@ -226,20 +210,25 @@ protected:
     int fd;
 
     // Store offsets into the file for writing
-    off_t vis_offset, weight_offset, gcoeff_offset, gexp_offset,
-          eval_offset, evec_offset, erms_offset, time_offset;
+    off_t vis_offset, weight_offset, gcoeff_offset, gexp_offset, eval_offset, evec_offset,
+        erms_offset, time_offset;
 };
 
 
 // These templated functions are needed in order to tell HighFive how the
 // various structs are converted into HDF5 datatypes
 namespace HighFive {
-template <> DataType create_datatype<freq_ctype>();
-template <> DataType create_datatype<time_ctype>();
-template <> DataType create_datatype<input_ctype>();
-template <> DataType create_datatype<prod_ctype>();
-template <> DataType create_datatype<cfloat>();
-};
+template<>
+DataType create_datatype<freq_ctype>();
+template<>
+DataType create_datatype<time_ctype>();
+template<>
+DataType create_datatype<input_ctype>();
+template<>
+DataType create_datatype<prod_ctype>();
+template<>
+DataType create_datatype<cfloat>();
+}; // namespace HighFive
 
 
 #endif

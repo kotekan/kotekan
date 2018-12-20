@@ -41,17 +41,18 @@
 #ifndef _FACTORY_HPP
 #define _FACTORY_HPP
 
+#include "errors.h"
+
+#include "fmt.hpp"
+
+#include <cxxabi.h>
+#include <functional>
 #include <iostream>
 #include <map>
-#include <string>
 #include <memory>
-#include <functional>
-#include <cxxabi.h>
-#include <typeinfo>
+#include <string>
 #include <typeindex>
-
-#include "errors.h"
-#include "fmt.hpp"
+#include <typeinfo>
 
 // clang-format off
 

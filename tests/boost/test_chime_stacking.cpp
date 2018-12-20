@@ -1,27 +1,24 @@
 #define BOOST_TEST_MODULE "test_chime_stacking"
 
-#include <stdexcept>
 #include <boost/test/included/unit_test.hpp>
+#include <stdexcept>
 
 // the code to test:
 #include "visCompression.hpp"
 #include "visUtil.hpp"
 
 // Teach boost to understand how to print the stack types...
-std::ostream& operator<<(std::ostream& os, rstack_ctype const& pr)
-{
+std::ostream& operator<<(std::ostream& os, rstack_ctype const& pr) {
     os << "<" << pr.stack << "," << pr.conjugate << ">";
     return os;
 }
 
-std::ostream& operator<<(std::ostream& os, stack_ctype const& pr)
-{
+std::ostream& operator<<(std::ostream& os, stack_ctype const& pr) {
     os << "<" << pr.prod << "," << pr.conjugate << ">";
     return os;
 }
 
-BOOST_AUTO_TEST_CASE( _chimeFeed )
-{
+BOOST_AUTO_TEST_CASE(_chimeFeed) {
     // Pick a few input value and compare to them decode by hand
     chimeFeed f1 = chimeFeed::from_input(input_ctype(10, ""));
     BOOST_CHECK_EQUAL(f1.cylinder, CYL_A);
@@ -33,27 +30,24 @@ BOOST_AUTO_TEST_CASE( _chimeFeed )
     BOOST_CHECK_EQUAL(f1.polarisation, POL_X);
     BOOST_CHECK_EQUAL(f1.feed_location, 81);
 
-    BOOST_CHECK_THROW(chimeFeed::from_input(input_ctype(2049, "")),
-                      std::invalid_argument);
+    BOOST_CHECK_THROW(chimeFeed::from_input(input_ctype(2049, "")), std::invalid_argument);
 }
 
 
-BOOST_AUTO_TEST_CASE( chimeStacking )
-{
+BOOST_AUTO_TEST_CASE(chimeStacking) {
     // Set up some inputs and products.
     // Here we do three feeds in a line in a single cylinder and same pol
-    std::vector<input_ctype> inputs = { {0, ""}, {1, ""}, {2, ""}};
+    std::vector<input_ctype> inputs = {{0, ""}, {1, ""}, {2, ""}};
     std::vector<prod_ctype> prods = {{0, 0}, {0, 1}, {0, 2}, {1, 1}, {1, 2}, {2, 2}};
     // Hand calculated answer
     uint32_t nstack = 3;
-    std::vector<rstack_ctype> stack_map =
-        {{0, false}, {1, false}, {2, false},
-         {0, false}, {1, false}, {0, false}};
+    std::vector<rstack_ctype> stack_map = {{0, false}, {1, false}, {2, false},
+                                           {0, false}, {1, false}, {0, false}};
 
     auto stack = stack_chime_in_cyl(inputs, prods);
     BOOST_CHECK_EQUAL(stack.first, nstack);
-    BOOST_CHECK_EQUAL_COLLECTIONS(stack.second.begin(), stack.second.end(),
-                                  stack_map.begin(), stack_map.end());
+    BOOST_CHECK_EQUAL_COLLECTIONS(stack.second.begin(), stack.second.end(), stack_map.begin(),
+                                  stack_map.end());
 
     // Here we do two feeds in a line but with both pols
     inputs = {{0, ""}, {1, ""}, {256, ""}, {257, ""}};
@@ -64,8 +58,8 @@ BOOST_AUTO_TEST_CASE( chimeStacking )
 
     stack = stack_chime_in_cyl(inputs, prods);
     BOOST_CHECK_EQUAL(stack.first, nstack);
-    BOOST_CHECK_EQUAL_COLLECTIONS(stack.second.begin(), stack.second.end(),
-                                  stack_map.begin(), stack_map.end());
+    BOOST_CHECK_EQUAL_COLLECTIONS(stack.second.begin(), stack.second.end(), stack_map.begin(),
+                                  stack_map.end());
 
     // ... try across cylinders
     inputs = {{1, ""}, {2, ""}, {512, ""}, {514, ""}, {515, ""}};
@@ -76,8 +70,8 @@ BOOST_AUTO_TEST_CASE( chimeStacking )
 
     stack = stack_chime_in_cyl(inputs, prods);
     BOOST_CHECK_EQUAL(stack.first, nstack);
-    BOOST_CHECK_EQUAL_COLLECTIONS(stack.second.begin(), stack.second.end(),
-                                  stack_map.begin(), stack_map.end());
+    BOOST_CHECK_EQUAL_COLLECTIONS(stack.second.begin(), stack.second.end(), stack_map.begin(),
+                                  stack_map.end());
 
     // .. check that the ordering is correct (i.e. pol is slowest)
     inputs = {{0, ""}, {1, ""}, {770, ""}, {771, ""}};
@@ -88,16 +82,16 @@ BOOST_AUTO_TEST_CASE( chimeStacking )
 
     stack = stack_chime_in_cyl(inputs, prods);
     BOOST_CHECK_EQUAL(stack.first, nstack);
-    BOOST_CHECK_EQUAL_COLLECTIONS(stack.second.begin(), stack.second.end(),
-                                  stack_map.begin(), stack_map.end());
+    BOOST_CHECK_EQUAL_COLLECTIONS(stack.second.begin(), stack.second.end(), stack_map.begin(),
+                                  stack_map.end());
 
 
     // Try a full CHIME example where we'll test the total number and a few obvious indices
     inputs.clear();
     prods.clear();
-    for(uint16_t i = 0; i < 2048; i++) {
+    for (uint16_t i = 0; i < 2048; i++) {
         inputs.emplace_back(i, "");
-        for(uint16_t j = i; j < 2048; j++) {
+        for (uint16_t j = i; j < 2048; j++) {
             prods.push_back({i, j});
         }
     }
@@ -126,11 +120,8 @@ BOOST_AUTO_TEST_CASE( chimeStacking )
     std::vector<uint32_t> stack_ind2(stack.first);
     std::iota(stack_ind1.begin(), stack_ind1.end(), 0);
     std::transform(stack_ind1.begin(), stack_ind1.end(), stack_ind2.begin(),
-                   [&](uint32_t ind) -> uint32_t {
-                       return stack.second[istack[ind].prod].stack;
-                   });
+                   [&](uint32_t ind) -> uint32_t { return stack.second[istack[ind].prod].stack; });
 
-    BOOST_CHECK_EQUAL_COLLECTIONS(stack_ind1.begin(), stack_ind1.end(),
-                                  stack_ind2.begin(), stack_ind2.end());
-
+    BOOST_CHECK_EQUAL_COLLECTIONS(stack_ind1.begin(), stack_ind1.end(), stack_ind2.begin(),
+                                  stack_ind2.end());
 }
