@@ -6,14 +6,13 @@
 
 #ifndef SIMPLE_AUTOCORR_HPP
 #define SIMPLE_AUTOCORR_HPP
-#include <unistd.h>
-
 #include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "errors.h"
 #include "util.h"
 
 #include <string>
+#include <unistd.h>
 using std::string;
 
 /**
@@ -46,8 +45,7 @@ using std::string;
 class simpleAutocorr : public KotekanProcess {
 public:
     /// Constructor, also initializes FFTW and values from config yaml.
-    simpleAutocorr(Config& config, const string& unique_name,
-                         bufferContainer &buffer_container);
+    simpleAutocorr(Config& config, const string& unique_name, bufferContainer& buffer_container);
 
     /// Destructor, frees local allocs and exits FFTW.
     virtual ~simpleAutocorr();
@@ -58,22 +56,22 @@ public:
 private:
     /// Kotekan buffer which this process consumes from.
     /// Data should be packed as complex @c float pairs.
-    struct Buffer *buf_in;
+    struct Buffer* buf_in;
     /// Kotekan buffer which this process produces into.
-    struct Buffer *buf_out;
+    struct Buffer* buf_out;
 
     /// Frame index for the input buffer.
     int frame_in;
     /// Frame index for the output buffer.
     int frame_out;
 
-    //options
+    // options
     /// Length of the spectrum being autocorrelated.
     int spectrum_length;
     /// Number of samples to integrate per output.
     int integration_length;
     /// Buffer for accumulating and staging the output.
-    float *spectrum_out;
+    float* spectrum_out;
 };
 
 

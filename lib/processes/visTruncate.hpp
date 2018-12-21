@@ -3,8 +3,9 @@
 
 #include "KotekanProcess.hpp"
 #include "buffer.h"
-#include <xmmintrin.h>
+
 #include <immintrin.h>
+#include <xmmintrin.h>
 
 /**
  * @class visTruncate
@@ -28,14 +29,15 @@
  *
  * @conf   err_sq_lim               Limit for the error of visibility truncation.
  * @conf   weight_fixed_precision   Fixed precision for weight truncation.
- * @conf   data_fixed_precision     Fixed precision for eigenvector and visibility truncation (if weights are zero).
+ * @conf   data_fixed_precision     Fixed precision for eigenvector and visibility truncation (if
+ * weights are zero).
  *
  * @author Tristan Pinsonneault-Marotte, Rick Nitsche
  */
 class visTruncate : public KotekanProcess {
 public:
     /// Constructor; loads parameters from config
-    visTruncate(Config &config, const string& unique_name, bufferContainer &buffer_container);
+    visTruncate(Config& config, const string& unique_name, bufferContainer& buffer_container);
     ~visTruncate() = default;
 
     /// Main loop over buffer frames
@@ -43,8 +45,8 @@ public:
 
 private:
     // Buffers
-    Buffer * in_buf;
-    Buffer * out_buf;
+    Buffer* in_buf;
+    Buffer* out_buf;
 
     // Truncation parameters
     float err_sq_lim;

@@ -1,9 +1,9 @@
 #ifndef CONFIGUPDATER_H
 #define CONFIGUPDATER_H
 
-#include "restServer.hpp"
-#include "KotekanProcess.hpp"
 #include "Config.hpp"
+#include "KotekanProcess.hpp"
+#include "restServer.hpp"
 
 /**
  * @brief Kotekan core component that creates endpoints defined in the config
@@ -75,110 +75,107 @@
  * has to apply save threading principles.
  */
 
-class configUpdater
-{
-    public:
-        /**
-        * @brief Get the global configUpdater.
-        *
-        * @returns A reference to the global configUpdater instance.
-        **/
-       static configUpdater& instance();
+class configUpdater {
+public:
+    /**
+     * @brief Get the global configUpdater.
+     *
+     * @returns A reference to the global configUpdater instance.
+     **/
+    static configUpdater& instance();
 
-       // Remove the implicit copy/assignments to prevent copying
-       configUpdater(const configUpdater&) = delete;
-       void operator=(const configUpdater&) = delete;
+    // Remove the implicit copy/assignments to prevent copying
+    configUpdater(const configUpdater&) = delete;
+    void operator=(const configUpdater&) = delete;
 
-       /**
-        * @brief Set and apply the static config to configUpdater
-        * @param config         The config.
-        */
-       void apply_config(Config& config);
+    /**
+     * @brief Set and apply the static config to configUpdater
+     * @param config         The config.
+     */
+    void apply_config(Config& config);
 
-       /**
-        * @brief Reset the configUpdater
-        *
-        * Removes all REST endpoints and clears all memory of subscribers and
-        * endpoints. This should be called **before destruction of the
-        * subscribers**, to prevent the callbacks being called afterwards.
-        */
-       void reset();
+    /**
+     * @brief Reset the configUpdater
+     *
+     * Removes all REST endpoints and clears all memory of subscribers and
+     * endpoints. This should be called **before destruction of the
+     * subscribers**, to prevent the callbacks being called afterwards.
+     */
+    void reset();
 
-       /**
-        * @brief Subscribe to the updatable blocks of a KotekanProcess.
-        *
-        * The callback function has to return True on success and False
-        * otherwise.
-        * The block of the calling process in the configuration file should have
-        * a key named "updatable_block" that defines the full path to the
-        * updatable block.
-        *
-        * @param subscriber Reference to the subscribing process.
-        * @param callback   Callback function for attribute updates.
-        */
-       void subscribe(const KotekanProcess* subscriber,
-                      std::function<bool(json &)> callback);
+    /**
+     * @brief Subscribe to the updatable blocks of a KotekanProcess.
+     *
+     * The callback function has to return True on success and False
+     * otherwise.
+     * The block of the calling process in the configuration file should have
+     * a key named "updatable_block" that defines the full path to the
+     * updatable block.
+     *
+     * @param subscriber Reference to the subscribing process.
+     * @param callback   Callback function for attribute updates.
+     */
+    void subscribe(const KotekanProcess* subscriber, std::function<bool(json&)> callback);
 
-       /**
-        * @brief Subscribe to all updatable blocks of a KotekanProcess.
-        *
-        * The callback functions have to return True on success and False
-        * otherwise.
-        * The block of the calling process in the configuration file should have
-        * an object named "updatable_block" with values that define the full
-        * path to an updatable block, each. The names in the callbacks map refer
-        * to the names of these values.
-        *
-        * @param subscriber Reference to the subscribing process.
-        * @param callbacks  Map of value names and callback functions.
-        */
-       void subscribe(const KotekanProcess* subscriber,
-                   std::map<std::string,std::function<bool(json &)>> callbacks);
+    /**
+     * @brief Subscribe to all updatable blocks of a KotekanProcess.
+     *
+     * The callback functions have to return True on success and False
+     * otherwise.
+     * The block of the calling process in the configuration file should have
+     * an object named "updatable_block" with values that define the full
+     * path to an updatable block, each. The names in the callbacks map refer
+     * to the names of these values.
+     *
+     * @param subscriber Reference to the subscribing process.
+     * @param callbacks  Map of value names and callback functions.
+     */
+    void subscribe(const KotekanProcess* subscriber,
+                   std::map<std::string, std::function<bool(json&)>> callbacks);
 
-       /**
-        * @brief Subscribe to an updatable block.
-        *
-        * This function does not enforce the config structure and should
-        * only be used in special cases (Like when called from somewhere else
-        * than a KotekanProcess).
-        * The callback function has to return True on success and False
-        * otherwise.
-        *
-        * @param name       Name of the dynamic attribute.
-        * @param callback   Callback function for attribute updates.
-        */
-       void subscribe(const string& name, std::function<bool(json &)> callback);
+    /**
+     * @brief Subscribe to an updatable block.
+     *
+     * This function does not enforce the config structure and should
+     * only be used in special cases (Like when called from somewhere else
+     * than a KotekanProcess).
+     * The callback function has to return True on success and False
+     * otherwise.
+     *
+     * @param name       Name of the dynamic attribute.
+     * @param callback   Callback function for attribute updates.
+     */
+    void subscribe(const string& name, std::function<bool(json&)> callback);
 
-       /// This should be called by restServer
-       void rest_callback(connectionInstance &con,
-                                         nlohmann::json &json);
+    /// This should be called by restServer
+    void rest_callback(connectionInstance& con, nlohmann::json& json);
 
-    private:
-        /// Constructor, we don't want anyone to call this
-        configUpdater() : _config(nullptr) { }
+private:
+    /// Constructor, we don't want anyone to call this
+    configUpdater() : _config(nullptr) {}
 
-        /// Creates a new endpoint with a given name
-        void create_endpoint(const string& name);
+    /// Creates a new endpoint with a given name
+    void create_endpoint(const string& name);
 
-        /// Parses the config tree and calls create_endpoint when it encounters
-        /// kotekan_update_endpoint in a block
-        void parse_tree(json& config_tree, const string& path);
+    /// Parses the config tree and calls create_endpoint when it encounters
+    /// kotekan_update_endpoint in a block
+    void parse_tree(json& config_tree, const string& path);
 
-        /// unique names of endpoints that the configUpdater controlls
-        vector<string> _endpoints;
+    /// unique names of endpoints that the configUpdater controlls
+    vector<string> _endpoints;
 
-        /// mmap of all subscriber callback functions for the registered dynamic
-        /// attributes
-        std::multimap<std::string, std::function<bool(json &)>> _callbacks;
+    /// mmap of all subscriber callback functions for the registered dynamic
+    /// attributes
+    std::multimap<std::string, std::function<bool(json&)>> _callbacks;
 
-        /// Initial values found in config yaml file
-        std::map<std::string, nlohmann::json> _init_values;
+    /// Initial values found in config yaml file
+    std::map<std::string, nlohmann::json> _init_values;
 
-        /// Names of the variables found in each updatable config block
-        std::map<std::string, std::vector<std::string>> _keys;
+    /// Names of the variables found in each updatable config block
+    std::map<std::string, std::vector<std::string>> _keys;
 
-        /// Reference to the Config instance in order to pass updates to it
-        Config *_config;
+    /// Reference to the Config instance in order to pass updates to it
+    Config* _config;
 };
 
 #endif // CONFIGUPDATER_H

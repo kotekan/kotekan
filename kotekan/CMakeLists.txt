@@ -4,7 +4,6 @@ PROJECT (kotekan)
 
 SET(SOURCE_EXE kotekan.cpp kotekanMode.cpp)
 
-
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/core)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/version)

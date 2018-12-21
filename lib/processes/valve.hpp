@@ -6,12 +6,12 @@
 #ifndef VALVE_HPP
 #define VALVE_HPP
 
-#include <string>
-
 #include "Config.hpp"
 #include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
+
+#include <string>
 
 
 /**
@@ -42,20 +42,17 @@ class Valve : public KotekanProcess {
 
 public:
     /// Constructor.
-    Valve(Config &config,
-          const std::string& unique_name,
-          bufferContainer &buffer_container);
+    Valve(Config& config, const std::string& unique_name, bufferContainer& buffer_container);
 
     /// Primary loop.
     void main_thread() override;
 
 private:
     /// Copy a frame from the input buffer to the output buffer.
-    static void copy_frame(Buffer* buf_src, int frame_id_src,
-                           Buffer* buf_dest, int frame_id_dest);
+    static void copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, int frame_id_dest);
 
     /// Input buffer
-    Buffer * _buf_in;
+    Buffer* _buf_in;
 
     /// Output buffer to receive baseline subset visibilities
     Buffer* _buf_out;

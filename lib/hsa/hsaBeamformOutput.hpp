@@ -13,13 +13,13 @@
  * @class hsaBeamformOutput
  * @brief hsaCommand for copying FRB output gpu to host (for run with N2).
  *
- * This is an hsaCommand that async copy FRB output buffer from GPU 
- * to CPU. It marks the FRB output buffer to be full when done so that 
- * it can be reused. This code also passes metadata along. The finalize_frame 
- * function has been hacked by not marking network_buffer empty, for 
- * concurrent run with N2, because the equivalent output code from the N2 
+ * This is an hsaCommand that async copy FRB output buffer from GPU
+ * to CPU. It marks the FRB output buffer to be full when done so that
+ * it can be reused. This code also passes metadata along. The finalize_frame
+ * function has been hacked by not marking network_buffer empty, for
+ * concurrent run with N2, because the equivalent output code from the N2
  * side is already marking network buffer empty.
- * 
+ *
  * @par GPU Memory
  * @gpu_mem  bf_output       Output from the FRB pipeline, size 1024x128x16
  *     @gpu_mem_type         staging
@@ -32,12 +32,11 @@
  *
  */
 
-class hsaBeamformOutputData: public hsaCommand
-{
+class hsaBeamformOutputData : public hsaCommand {
 public:
     /// Constructor
-    hsaBeamformOutputData(Config &config, const string &unique_name,
-                  bufferContainer &host_buffers, hsaDeviceInterface &device);
+    hsaBeamformOutputData(Config& config, const string& unique_name, bufferContainer& host_buffers,
+                          hsaDeviceInterface& device);
 
     /// Destructor
     virtual ~hsaBeamformOutputData();
@@ -46,18 +45,17 @@ public:
     int wait_on_precondition(int gpu_frame_id) override;
 
     /// Async copy output form gpu to host
-    hsa_signal_t execute(int gpu_frame_id,
-                         hsa_signal_t precede_signal) override;
+    hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
     /// Marks output full when done and passes metadata
     void finalize_frame(int frame_id) override;
 
 private:
     /// The very first input data from dpdk
-    Buffer * network_buffer;
+    Buffer* network_buffer;
     /// Output buffer from the FRB pipeline
-    Buffer * output_buffer;
- 
+    Buffer* output_buffer;
+
     /// ID for network_buffer
     int32_t network_buffer_id;
     /// ID for output_buffer

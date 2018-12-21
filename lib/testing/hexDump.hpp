@@ -1,10 +1,11 @@
 #ifndef HEX_DUMP_H
 #define HEX_DUMP_H
 
-#include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
 #include "errors.h"
 #include "util.h"
+
 #include <unistd.h>
 
 /*
@@ -17,13 +18,12 @@
 
 class hexDump : public KotekanProcess {
 public:
-    hexDump(Config &config,
-                  const string& unique_name,
-                  bufferContainer &buffer_container);
+    hexDump(Config& config, const string& unique_name, bufferContainer& buffer_container);
     ~hexDump();
     void main_thread() override;
+
 private:
-    struct Buffer *buf;
+    struct Buffer* buf;
     int32_t len;
     int32_t offset;
 };

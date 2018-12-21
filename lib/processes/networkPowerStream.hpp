@@ -7,12 +7,13 @@
 #ifndef NETWORK_POWER_STREAM_H
 #define NETWORK_POWER_STREAM_H
 
-#include "powerStreamUtil.hpp"
-#include <sys/socket.h>
 #include "Config.hpp"
-#include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
+#include "powerStreamUtil.hpp"
+
 #include <atomic>
+#include <sys/socket.h>
 
 /**
  * @class networkPowerStream
@@ -47,64 +48,63 @@
  */
 class networkPowerStream : public KotekanProcess {
 public:
-    ///Constructor.
-    networkPowerStream(Config& config,
-                       const string& unique_name,
+    /// Constructor.
+    networkPowerStream(Config& config, const string& unique_name,
                        bufferContainer& buffer_container);
 
-    ///Destructor.
+    /// Destructor.
     virtual ~networkPowerStream();
 
     /// Primary loop, which waits on input frames, integrates, and dumps to output.
     void main_thread() override;
 
 private:
-    ///Function to attempt to establish a TCP link with the receiver.
-	void tcpConnect();
+    /// Function to attempt to establish a TCP link with the receiver.
+    void tcpConnect();
 
-    ///Input kotekanBuffer.
-    struct Buffer *in_buf;
+    /// Input kotekanBuffer.
+    struct Buffer* in_buf;
 
-    ///Port of the listening receiver.
+    /// Port of the listening receiver.
     uint32_t dest_port;
-    ///IP of the listening receiver.
+    /// IP of the listening receiver.
     string dest_server_ip;
-    ///Protocol to use: TCP or UDP. (Only TCP works now)
+    /// Protocol to use: TCP or UDP. (Only TCP works now)
     string dest_protocol;
 
-    //Socket handle for link
+    // Socket handle for link
     int socket_fd;
-    //Flag showing whether the link is up
-    bool tcp_connected=false;
-    //Flag showing whether we're trying to make the link
-    bool tcp_connecting=false;
-    //Thread off to the side that establishes the connection for us
-	std::thread connect_thread;
-    //Lock to prevent race conditions with the connection thread.
+    // Flag showing whether the link is up
+    bool tcp_connected = false;
+    // Flag showing whether we're trying to make the link
+    bool tcp_connecting = false;
+    // Thread off to the side that establishes the connection for us
+    std::thread connect_thread;
+    // Lock to prevent race conditions with the connection thread.
     std::atomic_flag socket_lock;
 
-    ///Number of frequencies in the buffer
+    /// Number of frequencies in the buffer
     int freqs;
-    ///Number of times in the buffer
+    /// Number of times in the buffer
     int times;
-    ///Number of elems in the buffer
+    /// Number of elems in the buffer
     int elems;
 
-    ///Frequency of the center of the band. Temporary until we have better metadata.
+    /// Frequency of the center of the band. Temporary until we have better metadata.
     float freq0;
-    ///Bandwidth of the data stream. Temporary until we have better metadata.
+    /// Bandwidth of the data stream. Temporary until we have better metadata.
     float sample_bw;
 
-    ///Index of active frame in input buffer.
-    uint frame_idx=0;
+    /// Index of active frame in input buffer.
+    uint frame_idx = 0;
 
-    ///Sequence number of the transmit handshake.
-    uint64_t handshake_idx=-1;
-    ///Timestamp of the transmit handshake.
-    double   handshake_utc=-1;
+    /// Sequence number of the transmit handshake.
+    uint64_t handshake_idx = -1;
+    /// Timestamp of the transmit handshake.
+    double handshake_utc = -1;
 
-    ///Header used for establishing the communication link.
-	IntensityHeader header;
+    /// Header used for establishing the communication link.
+    IntensityHeader header;
 };
 
 #endif

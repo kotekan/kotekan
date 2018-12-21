@@ -1,8 +1,8 @@
 #ifndef GPU_BEAMFORM_PULSAR_SIMULATE_HPP
 #define GPU_BEAMFORM_PULSAR_SIMULATE_HPP
 
-#include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
 #include "chimeMetadata.h"
 
 /**
@@ -10,8 +10,8 @@
  * @brief CPU version of pulsar beamformer for verification
  *
  * Read hsaPulsarUpdatePhase and hsaBeamformPulsar to find out what
- * the pulsar beamformer does. This is basically the same, except 
- * without capability to dynamically update gain paths and RA/Dec 
+ * the pulsar beamformer does. This is basically the same, except
+ * without capability to dynamically update gain paths and RA/Dec
  * (no endpoints).
  *
  * @author Cherry Ng
@@ -20,28 +20,27 @@
 
 class gpuBeamformPulsarSimulate : public KotekanProcess {
 public:
-    ///Constructor
-    gpuBeamformPulsarSimulate(Config& config,
-        const string& unique_name,
-        bufferContainer &buffer_container);
+    /// Constructor
+    gpuBeamformPulsarSimulate(Config& config, const string& unique_name,
+                              bufferContainer& buffer_container);
     /// Destructor
     ~gpuBeamformPulsarSimulate();
-    ///Main loop, read gains, calculate new phase, brute-force beamform
+    /// Main loop, read gains, calculate new phase, brute-force beamform
     void main_thread() override;
 
 private:
     /// Input
-    struct Buffer *input_buf;
+    struct Buffer* input_buf;
     /// Input length
     int input_len;
     /// An intermediate array of unpacked data
-    double * input_unpacked;
+    double* input_unpacked;
     /// Output in CPU
-    float * cpu_output;
-    /// Output 
-    struct Buffer *output_buf;
+    float* cpu_output;
+    /// Output
+    struct Buffer* output_buf;
     /// Output length
-    int output_len; 
+    int output_len;
 
     /// Config options:
     /// number of elements = 2048
@@ -54,23 +53,23 @@ private:
     int32_t _num_pol;
     /// Array of reordering index, length 512
     vector<int32_t> _reorder_map;
-    ///Array of reordering index in c
-    int * reorder_map_c;
+    /// Array of reordering index in c
+    int* reorder_map_c;
     /// N-S feed separation in m
     float _feed_sep_NS;
     /// E-W feed separation in m
     int32_t _feed_sep_EW;
-  
+
     /// gain stuff:
     /// Array of gain paths
     vector<string> _gain_dir;
     /// Defualt gain if invalid gain paths
     vector<float> default_gains;
     /// Array of gain values
-    float * cpu_gain;
-  
+    float* cpu_gain;
+
     /// Buffer for accessing metadata
-    Buffer * metadata_buf;
+    Buffer* metadata_buf;
     /// Metadata buffer ID
     int32_t metadata_buffer_id;
     /// Metadata buffer precondition ID
@@ -85,24 +84,26 @@ private:
     uint second_last;
     /// Time now in second
     struct timespec time_now_gps;
-  
+
     /// 10 pulsar RA, DEC and scaling factor
-    struct psrCoord psr_coord;  //active coordinates to be passed to metatdata
+    struct psrCoord psr_coord; // active coordinates to be passed to metatdata
     vector<float> _source_ra;
     vector<float> _source_dec;
 
     /// Array of phase for beamforming
-    double * phase;
+    double* phase;
     /// Flag to trigger phase update, either because of endpt message or every second
     bool update_phase;
-  
+
     /// Brute-force beamform by multiplying each element with a phase shift
-    void cpu_beamform_pulsar(double *input, double *phase, float *output, int nsamp, int nelem, int npsr, int npol);
+    void cpu_beamform_pulsar(double* input, double* phase, float* output, int nsamp, int nelem,
+                             int npsr, int npol);
     /// Reorder data from correlator order to cylinder order
-    void reorder(unsigned char *data, int *map);
-    /// Figure our LST at this frame and the Alt-Az of the 10 sources, then calculate phase delays at each input
-    void calculate_phase(struct psrCoord psr_coord, timespec time_now, float freq_now, float *gain, double *output);
-  
+    void reorder(unsigned char* data, int* map);
+    /// Figure our LST at this frame and the Alt-Az of the 10 sources, then calculate phase delays
+    /// at each input
+    void calculate_phase(struct psrCoord psr_coord, timespec time_now, float freq_now, float* gain,
+                         double* output);
 };
 
 #endif

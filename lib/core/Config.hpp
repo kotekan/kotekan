@@ -6,17 +6,18 @@
 #ifndef CONFIG_HPP
 #define CONFIG_HPP
 
-#include <string>
-#include <list>
-#include <regex>
-#include <vector>
-#include <exception>
-#include <cxxabi.h>
-#include <type_traits>
-#include <complex>
+#include "errors.h"
 
 #include "json.hpp"
-#include "errors.h"
+
+#include <complex>
+#include <cxxabi.h>
+#include <exception>
+#include <list>
+#include <regex>
+#include <string>
+#include <type_traits>
+#include <vector>
 
 // Name space includes.
 using json = nlohmann::json;
@@ -50,38 +51,34 @@ public:
      * @param name      Name of the value.
      * @return  The requested value.
      */
-    template <class T,
-          typename std::enable_if<std::is_arithmetic<T>::value,
-          T>::type* = nullptr>
+    template<class T, typename std::enable_if<std::is_arithmetic<T>::value, T>::type* = nullptr>
     T get(const string& base_path, const string& name) {
         json json_value = get_value(base_path, name);
         T value;
         try {
             // If the expected type is a number and the value
             // isn't already a number then try using the configEval parser
-            if (std::is_arithmetic<T>::value &&
-                    !std::is_same<bool, T>::value &&
-                    !json_value.is_number()) {
+            if (std::is_arithmetic<T>::value && !std::is_same<bool, T>::value
+                && !json_value.is_number()) {
 
                 std::string expression = json_value.get<std::string>();
                 try {
                     Config::configEval<T> eval(*this, base_path, name);
                     value = eval.compute_result();
-                } catch (std::exception const & ex) {
+                } catch (std::exception const& ex) {
                     throw std::runtime_error("Failed to evaluate: '" + json_value.get<std::string>()
-                                         + "' with message: '" + ex.what() + "' for name " + name +
-                                         " in path " + base_path);
+                                             + "' with message: '" + ex.what() + "' for name "
+                                             + name + " in path " + base_path);
                 }
             } else {
                 value = json_value.get<T>();
             }
-        } catch (std::exception const & ex) {
+        } catch (std::exception const& ex) {
             int status;
-            throw std::runtime_error(
-                        "The value " + name + " in path " + base_path
-                        + " is not of type '" +
-                        abi::__cxa_demangle(typeid(T).name(), NULL, NULL, &status)
-                        + "' or doesn't exist");
+            throw std::runtime_error("The value " + name + " in path " + base_path
+                                     + " is not of type '"
+                                     + abi::__cxa_demangle(typeid(T).name(), NULL, NULL, &status)
+                                     + "' or doesn't exist");
         }
 
         return value;
@@ -93,21 +90,18 @@ public:
      * @param name      Name of the value.
      * @return  The requested value.
      */
-    template <class T,
-            typename std::enable_if<!std::is_arithmetic<T>::value,
-            T>::type* = nullptr>
+    template<class T, typename std::enable_if<!std::is_arithmetic<T>::value, T>::type* = nullptr>
     T get(const string& base_path, const string& name) {
         json json_value = get_value(base_path, name);
         T value;
         try {
             value = json_value.get<T>();
-        } catch (std::exception const & ex) {
+        } catch (std::exception const& ex) {
             int status;
-            throw std::runtime_error(
-                        "The value " + name + " in path " + base_path
-                        + " is not of type '" +
-                        abi::__cxa_demangle(typeid(T).name(), NULL, NULL, &status)
-                        + "' or doesn't exist");
+            throw std::runtime_error("The value " + name + " in path " + base_path
+                                     + " is not of type '"
+                                     + abi::__cxa_demangle(typeid(T).name(), NULL, NULL, &status)
+                                     + "' or doesn't exist");
         }
 
         return value;
@@ -140,7 +134,7 @@ public:
      *
      * @param file_name The file containing the JSON config.
      */
-    void parse_file(const string &file_name);
+    void parse_file(const string& file_name);
 
     /**
      * @brief Updates the config with a new JSON string
@@ -150,7 +144,7 @@ public:
     void update_config(json updates);
 
     // This function should be moved, it doesn't really belong here...
-    int32_t num_links_per_gpu(const int32_t &gpu_id);
+    int32_t num_links_per_gpu(const int32_t& gpu_id);
 
     /**
      * @brief Finds the value with key "name" starts looking at the
@@ -165,7 +159,7 @@ public:
      *
      * @return              The value that was found.
      **/
-    json get_value(const string &base_pointer, const string &name);
+    json get_value(const string& base_pointer, const string& name);
 
     /**
      * @brief Finds all values with key "name". Searches the whole config tree.
@@ -199,8 +193,8 @@ public:
      * @param name The name of the value
      * @param value The value to assign to the json pointer formed by base_path/name
      */
-    template <typename T>
-    void update_value(const string &base_path, const string &name, const T &value);
+    template<typename T>
+    void update_value(const string& base_path, const string& name, const T& value);
 
 #ifdef WITH_SSL
     /**
@@ -221,14 +215,14 @@ public:
      * @warn This shouldn't be called outside of the core framework
      * @return A reference to the full JSON
      */
-    json &get_full_config_json();
+    json& get_full_config_json();
 
     /**
      * @brief Dumps the config to INFO in JSON format.
      */
     void dump_config();
-private:
 
+private:
     /// Internal json object
     json _json;
 
@@ -240,7 +234,7 @@ private:
      * @param results   Vector found values are added to.
      **/
     void get_value_recursive(const json& j, const std::string& name,
-                        std::vector<json>& results) const;
+                             std::vector<json>& results) const;
 
     /**
      * @brief Helper class, gets an arithmetic expression from the config.
@@ -254,26 +248,25 @@ private:
      *
      * @author Andre Renard
      */
-    template <class Type>
+    template<class Type>
     class configEval {
 
     public:
-        configEval(Config &_config, const std::string &base_path,
-                const std::string &name);
+        configEval(Config& _config, const std::string& base_path, const std::string& name);
 
         ~configEval();
 
         Type compute_result();
 
     private:
-        Config &config;
+        Config& config;
         std::string unique_name;
 
         bool isNumber();
         bool isVar();
 
         void next();
-        void expect(const std::string &symbol);
+        void expect(const std::string& symbol);
         Type factor();
         Type term();
         Type exp();
@@ -281,72 +274,65 @@ private:
         std::list<std::string> tokens;
         std::string current_token = "";
     };
-
 };
 
-template <typename T>
-void Config::update_value(const string &base_path, const string &name,
-                          const T &value) {
+template<typename T>
+void Config::update_value(const string& base_path, const string& name, const T& value) {
     string update_path = base_path + "/" + name;
     json::json_pointer path(update_path);
 
     try {
         _json.at(path) = value;
-    } catch (std::exception const & ex) {
-        throw std::runtime_error("Failed to update config value at: "
-                                 + update_path + " message: " + ex.what());
+    } catch (std::exception const& ex) {
+        throw std::runtime_error("Failed to update config value at: " + update_path
+                                 + " message: " + ex.what());
     }
 }
 
 template<typename T>
-T Config::get_default(const string& base_path, const string& name,
-                         T default_value) {
+T Config::get_default(const string& base_path, const string& name, T default_value) {
     try {
         T value = get<T>(base_path, name);
         return value;
-    } catch (std::runtime_error const & ex) {
+    } catch (std::runtime_error const& ex) {
         return default_value;
     }
 }
 
-template <class Type>
-Config::configEval<Type>::configEval(Config &_config,
-                             const std::string &base_path,
-                             const std::string &name)
-                             : config(_config), unique_name(base_path) {
+template<class Type>
+Config::configEval<Type>::configEval(Config& _config, const std::string& base_path,
+                                     const std::string& name) :
+    config(_config),
+    unique_name(base_path) {
 
     json value = config.get_value(base_path, name);
 
     if (!(value.is_string() || value.is_number())) {
         throw std::runtime_error("The value " + name + " in path " + base_path
-                                 + " isn't a number or string to eval or " \
-                                 "does not exist.");
+                                 + " isn't a number or string to eval or "
+                                   "does not exist.");
     }
-    const std::string &expression = value.get<std::string>();
+    const std::string& expression = value.get<std::string>();
 
-    static const std::regex re(
-        R"(([0-9]*\.?[0-9]+|\+|\*|\-|\/|\)|\(|[a-zA-Z][a-zA-Z0-9_]+))",
-        std::regex::ECMAScript);
+    static const std::regex re(R"(([0-9]*\.?[0-9]+|\+|\*|\-|\/|\)|\(|[a-zA-Z][a-zA-Z0-9_]+))",
+                               std::regex::ECMAScript);
 
-    tokens = {
-        std::sregex_token_iterator(expression.begin(), expression.end(), re, 1),
-        std::sregex_token_iterator()
-    };
+    tokens = {std::sregex_token_iterator(expression.begin(), expression.end(), re, 1),
+              std::sregex_token_iterator()};
 
     if (!tokens.empty())
         current_token = tokens.front();
 }
 
-template <class Type>
-Config::configEval<Type>::~configEval() {
-}
+template<class Type>
+Config::configEval<Type>::~configEval() {}
 
-template <class Type>
+template<class Type>
 Type Config::configEval<Type>::compute_result() {
     return exp();
 }
 
-template <class Type>
+template<class Type>
 void Config::configEval<Type>::next() {
     tokens.pop_front();
     if (!tokens.empty()) {
@@ -356,32 +342,31 @@ void Config::configEval<Type>::next() {
     }
 }
 
-template <class Type>
+template<class Type>
 bool Config::configEval<Type>::isNumber() {
-    std::regex re( R"([0-9]*\.?[0-9]+)", std::regex::ECMAScript);
+    std::regex re(R"([0-9]*\.?[0-9]+)", std::regex::ECMAScript);
     std::cmatch m;
-    return std::regex_match (tokens.front().c_str(), m, re);
+    return std::regex_match(tokens.front().c_str(), m, re);
 }
 
-template <class Type>
+template<class Type>
 bool Config::configEval<Type>::isVar() {
     std::regex re(R"([a-zA-Z][a-zA-Z0-9_]+)", std::regex::ECMAScript);
     std::cmatch m;
-    return std::regex_match (tokens.front().c_str(), m, re);
+    return std::regex_match(tokens.front().c_str(), m, re);
 }
 
-template <class Type>
+template<class Type>
 void Config::configEval<Type>::expect(const std::string& symbol) {
     if (current_token == symbol) {
         next();
     } else {
-        ERROR("Expected symbol %s, got %s",
-                symbol.c_str(), tokens.front().c_str());
+        ERROR("Expected symbol %s, got %s", symbol.c_str(), tokens.front().c_str());
         throw std::runtime_error("Unexpected symbol");
     }
 }
 
-template <class Type>
+template<class Type>
 Type Config::configEval<Type>::exp() {
     Type ret = 0;
     if (current_token == "+" || current_token == "-") {
@@ -407,7 +392,7 @@ Type Config::configEval<Type>::exp() {
     return ret;
 }
 
-template <class Type>
+template<class Type>
 Type Config::configEval<Type>::term() {
     Type ret = factor();
     while (current_token == "*" || current_token == "/") {
@@ -424,7 +409,7 @@ Type Config::configEval<Type>::term() {
     return ret;
 }
 
-template <class Type>
+template<class Type>
 Type Config::configEval<Type>::factor() {
     Type ret;
 
@@ -448,34 +433,22 @@ Type Config::configEval<Type>::factor() {
 // Tell the compiler that all those are instantiated in Config.cpp,
 // so that they are not built inline everywhere they are used
 // (would add >60MB to the binary).
-extern template float Config::get(const string& base_path,
-                                  const string& name);
+extern template float Config::get(const string& base_path, const string& name);
 extern template double Config::get(const string& base_path, const string& name);
-extern template uint32_t Config::get(const string& base_path,
-                                     const string& name);
-extern template uint64_t Config::get(const string& base_path,
-                                     const string& name);
-extern template int32_t Config::get(const string& base_path,
-                                    const string& name);
-extern template int16_t Config::get(const string& base_path,
-                                    const string& name);
-extern template uint16_t Config::get(const string& base_path,
-                                     const string& name);
-extern template bool Config::get(const string& base_path,
-                                 const string& name);
-extern template std::string Config::get(const string& base_path,
-                                        const string& name);
-extern template std::vector<int32_t> Config::get(const string& base_path,
-                                                 const string& name);
-extern template std::vector<uint32_t> Config::get(const string& base_path,
-                                                  const string& name);
-extern template std::vector<float> Config::get(const string& base_path,
-                                               const string& name);
-extern template std::vector<std::string> Config::get(const string& base_path,
-                                                     const string& name);
+extern template uint32_t Config::get(const string& base_path, const string& name);
+extern template uint64_t Config::get(const string& base_path, const string& name);
+extern template int32_t Config::get(const string& base_path, const string& name);
+extern template int16_t Config::get(const string& base_path, const string& name);
+extern template uint16_t Config::get(const string& base_path, const string& name);
+extern template bool Config::get(const string& base_path, const string& name);
+extern template std::string Config::get(const string& base_path, const string& name);
+extern template std::vector<int32_t> Config::get(const string& base_path, const string& name);
+extern template std::vector<uint32_t> Config::get(const string& base_path, const string& name);
+extern template std::vector<float> Config::get(const string& base_path, const string& name);
+extern template std::vector<std::string> Config::get(const string& base_path, const string& name);
 extern template std::vector<nlohmann::json> Config::get(const string& base_path,
                                                         const string& name);
-extern template std::vector<std::complex<float>> Config::get(
-        const string& base_path, const string& name);
+extern template std::vector<std::complex<float>> Config::get(const string& base_path,
+                                                             const string& name);
 
 #endif /* CONFIG_HPP */

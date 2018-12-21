@@ -2,25 +2,25 @@
 #define GPU_EVENT_CONTAINER_H
 
 #include <condition_variable>
-#include <mutex>
-#include <thread>
-#include <signal.h>
-#include <experimental/any>
 #include <errors.h>
+#include <experimental/any>
+#include <mutex>
+#include <signal.h>
+#include <thread>
 
 class gpuEventContainer {
 
 public:
     gpuEventContainer();
-    gpuEventContainer( const gpuEventContainer &obj);
+    gpuEventContainer(const gpuEventContainer& obj);
     virtual ~gpuEventContainer();
 
     // Clear the variables to default state
     void reset();
 
     // Set the signal and notify anyone waiting on them.
-    void set_signal(void *sig);
-    void *get_signal(void);
+    void set_signal(void* sig);
+    void* get_signal(void);
 
     // Wait for the signal to become ready to sleep on then
     // wait for the hsa signal itself to reach zero
@@ -37,8 +37,8 @@ public:
     // want to exit while there are packets in the GPU queues.
     void stop();
 
-    virtual void set(void *sig) = 0;
-    virtual void *get() = 0;
+    virtual void set(void* sig) = 0;
+    virtual void* get() = 0;
     virtual void unset() = 0;
     virtual void wait() = 0;
 
@@ -50,4 +50,4 @@ private:
     bool stopping;
 };
 
-#endif //GPU_EVENT_CONTAINER_H
+#endif // GPU_EVENT_CONTAINER_H
