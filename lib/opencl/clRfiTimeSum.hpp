@@ -6,18 +6,21 @@
 #ifndef CL_RFI_TIME_SUM_HPP
 #define CL_RFI_TIME_SUM_HPP
 
+#include "device_interface.h"
+#include "gpu_command.h"
+#include "restServer.hpp"
+
 #include <mutex>
 #include <vector>
-#include "gpu_command.h"
-#include "device_interface.h"
-#include "restServer.hpp"
 
 /*
  * @class clRfiTimeSum
- * @brief ``gpu_command`` which read the input data and integrates square power values for further processing.
+ * @brief ``gpu_command`` which read the input data and integrates square power values for further
+ * processing.
  *
- * This gpu command executes the rfi_chime_timsum_private.cl kernel. The kernel reads input data, computes power
- * and square power values. The kernel integrates those values and outputs a normalized sum of square power values.
+ * This gpu command executes the rfi_chime_timsum_private.cl kernel. The kernel reads input data,
+ * computes power and square power values. The kernel integrates those values and outputs a
+ * normalized sum of square power values.
  *
  * @requires_kernel    rfi_chime_timesum_private.cl
  *
@@ -51,22 +54,23 @@
  *
  * @author Jacob Taylor
  */
-class clRfiTimeSum: public gpu_command
-{
+class clRfiTimeSum : public gpu_command {
 public:
-    //Constructor
-    clRfiTimeSum(const char* param_gpuKernel, const char* param_name, Config &config, const string &unique_name);
-    //Destructor
+    // Constructor
+    clRfiTimeSum(const char* param_gpuKernel, const char* param_name, Config& config,
+                 const string& unique_name);
+    // Destructor
     ~clRfiTimeSum();
-    //Builds the program/kernel
-    virtual void build(device_interface &param_Device) override;
-    //Executes the kernel
-    virtual cl_event execute(int param_bufferID, device_interface &param_Device, cl_event param_PrecedeEvent) override;
-    //Rest Server Callback
+    // Builds the program/kernel
+    virtual void build(device_interface& param_Device) override;
+    // Executes the kernel
+    virtual cl_event execute(int param_bufferID, device_interface& param_Device,
+                             cl_event param_PrecedeEvent) override;
+    // Rest Server Callback
     void rest_callback(connectionInstance& conn, json& json_request);
 
 private:
-    //RFI parameters
+    // RFI parameters
     /// The kurtosis step (How many timesteps per kurtosis estimate)
     uint32_t _sk_step;
     /// A vector holding all of the bad inputs
@@ -80,7 +84,7 @@ private:
     /// Flag for rebuilding input mask after rest server callback
     bool rebuildInputMask;
     /// The input mask array
-    uint8_t * Input_Mask;
+    uint8_t* Input_Mask;
     /// String to hold endpoint name
     string endpoint;
 };

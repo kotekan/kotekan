@@ -6,23 +6,24 @@
 #ifndef FREQ_SPLIT_HPP
 #define FREQ_SPLIT_HPP
 
-#include <stdint.h>
-#include <array>
-#include <future>
-#include <string>
-#include <utility>
-#include <vector>
-
 #include "Config.hpp"
 #include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
 
+#include <array>
+#include <future>
+#include <stdint.h>
+#include <string>
+#include <utility>
+#include <vector>
+
 
 /**
  * @class freqSplit
- * @brief Separate a visBuffer stream into two by selecting frequencies in the upper and lower half of the band.
+ * @brief Separate a visBuffer stream into two by selecting frequencies in the upper and lower half
+ * of the band.
  *
  * This task takes data coming out of a visBuffer stream and separates it into
  * two streams. It selects which frames to copy to which buffer by assigning
@@ -48,11 +49,8 @@
 class freqSplit : public KotekanProcess {
 
 public:
-
     // Default constructor
-    freqSplit(Config &config,
-              const string& unique_name,
-              bufferContainer &buffer_container);
+    freqSplit(Config& config, const string& unique_name, bufferContainer& buffer_container);
 
     // Main loop for the process
     void main_thread() override;
@@ -63,7 +61,7 @@ private:
 
     // Vector of the buffers we are using and their current frame ids.
     std::vector<std::pair<Buffer*, unsigned int>> out_bufs;
-    Buffer * in_buf;
+    Buffer* in_buf;
 
     std::future<std::array<dset_id_t, 2>> _output_dset_id;
 

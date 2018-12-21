@@ -5,12 +5,11 @@
 
 class SampleProcess : public KotekanProcess {
 public:
-    SampleProcess(Config &config, const string& unique_name, bufferContainer &buffer_container);
+    SampleProcess(Config& config, const string& unique_name, bufferContainer& buffer_container);
     virtual ~SampleProcess();
     void main_thread() override;
-private:
 
+private:
 };
 
 #endif /* SAMPLEPROCESS_H */
-

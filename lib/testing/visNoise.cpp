@@ -1,14 +1,12 @@
 #include "visNoise.hpp"
-#include "visBuffer.hpp"
+
 #include "errors.h"
+#include "visBuffer.hpp"
 
 REGISTER_KOTEKAN_PROCESS(visNoise);
 
-visNoise::visNoise(Config &config,
-                   const string& unique_name,
-                   bufferContainer &buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&visNoise::main_thread, this)) {
+visNoise::visNoise(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+    KotekanProcess(config, unique_name, buffer_container, std::bind(&visNoise::main_thread, this)) {
 
     // Setup the buffers
     buf_in = get_buffer("in_buf");
@@ -17,14 +15,13 @@ visNoise::visNoise(Config &config,
     register_producer(buf_out, unique_name.c_str());
 
     _num_elements = config.get<size_t>(unique_name, "num_elements");
-    _num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
+    _num_eigenvectors = config.get<size_t>(unique_name, "num_ev");
 
-    _standard_deviation = config.get_default<float>(
-                unique_name, "standard_deviation", 1.0);
+    _standard_deviation = config.get_default<float>(unique_name, "standard_deviation", 1.0);
     if (_standard_deviation < 0) {
-        throw std::invalid_argument("visNoise: standard deviation has to be " \
-                                    "positive (is " +
-                                    std::to_string(_standard_deviation) + ").");
+        throw std::invalid_argument("visNoise: standard deviation has to be "
+                                    "positive (is "
+                                    + std::to_string(_standard_deviation) + ").");
     }
 
     if (config.get_default<bool>(unique_name, "random", false)) {
@@ -33,8 +30,7 @@ visNoise::visNoise(Config &config,
         INFO("visNoise: random seed used for init of noise generation.");
     }
 
-    INFO("visNoise: producing gaussian noise with standard deviation %f.",
-         _standard_deviation);
+    INFO("visNoise: producing gaussian noise with standard deviation %f.", _standard_deviation);
 }
 
 void visNoise::main_thread() {
@@ -49,26 +45,22 @@ void visNoise::main_thread() {
 
     while (!stop_thread) {
         // Wait for data in the input buffer
-        if((wait_for_full_frame(buf_in, unique_name.c_str(),
-                                frame_id_in)) == nullptr) {
+        if ((wait_for_full_frame(buf_in, unique_name.c_str(), frame_id_in)) == nullptr) {
             break;
         }
 
         // Wait for space in the output buffer
-        if(wait_for_empty_frame(buf_out, unique_name.c_str(),
-                                frame_id_out) == nullptr) {
+        if (wait_for_empty_frame(buf_out, unique_name.c_str(), frame_id_out) == nullptr) {
             break;
         }
         // Copy frame into output buffer
-        auto frame = visFrameView::copy_frame(buf_in, frame_id_in,
-                                                  buf_out, frame_id_out);
+        auto frame = visFrameView::copy_frame(buf_in, frame_id_in, buf_out, frame_id_out);
 
         // Add noise to visibilities
         int ind = 0;
-        for(uint32_t i = 0; i < _num_elements; i++) {
-            for(uint32_t j = i; j < _num_elements; j++) {
-                frame.vis[ind] += std::complex<float>{gauss_vis(gen),
-                                                      gauss_vis(gen)};
+        for (uint32_t i = 0; i < _num_elements; i++) {
+            for (uint32_t j = i; j < _num_elements; j++) {
+                frame.vis[ind] += std::complex<float>{gauss_vis(gen), gauss_vis(gen)};
                 ind++;
             }
         }
@@ -84,8 +76,8 @@ void visNoise::main_thread() {
 
         // generate vaguely realistic weights
         ind = 0;
-        for(uint32_t i = 0; i < _num_elements; i++) {
-            for(uint32_t j = i; j < _num_elements; j++) {
+        for (uint32_t i = 0; i < _num_elements; i++) {
+            for (uint32_t j = i; j < _num_elements; j++) {
                 frame.weight[ind] /= pow(gauss_weight(gen), 2);
                 ind++;
             }
@@ -99,4 +91,3 @@ void visNoise::main_thread() {
         frame_id_in = (frame_id_in + 1) % buf_in->num_frames;
     }
 }
-

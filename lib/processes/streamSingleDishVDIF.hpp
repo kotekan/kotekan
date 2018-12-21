@@ -8,8 +8,8 @@
 #define STREAM_SINGLE_DISH_VDIF_H
 
 #include "Config.hpp"
-#include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
 
 /**
  * @class streamSingleDishVDIF
@@ -34,29 +34,27 @@
  */
 class streamSingleDishVDIF : public KotekanProcess {
 public:
-    ///Constructor
-    streamSingleDishVDIF(Config& config,
-                       const string& unique_name,
-                       bufferContainer& buffer_container);
-    ///Destructor
+    /// Constructor
+    streamSingleDishVDIF(Config& config, const string& unique_name,
+                         bufferContainer& buffer_container);
+    /// Destructor
     virtual ~streamSingleDishVDIF();
 
-    ///Main loop, just waits for frames and fires 'em off.
+    /// Main loop, just waits for frames and fires 'em off.
     void main_thread() override;
 
 private:
     /// Kotekan buffer which this process consumes from.
     /// Data should be packed into VDIF frames, see e.g. @c vdif_function.h.
-    struct Buffer *in_buf;
+    struct Buffer* in_buf;
 
-    ///Port of the listening receiver.
+    /// Port of the listening receiver.
     uint32_t dest_port;
-    ///IP of the listening receiver.
+    /// IP of the listening receiver.
     string dest_ip;
 
-    ///Number of frequencies in the buffer
+    /// Number of frequencies in the buffer
     int num_freq;
-
 };
 
 #endif

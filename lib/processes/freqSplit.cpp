@@ -1,18 +1,5 @@
 #include "freqSplit.hpp"
 
-#include <cxxabi.h>
-#include <signal.h>
-#include <stddef.h>
-#include <atomic>
-#include <cstdint>
-#include <exception>
-#include <functional>
-#include <memory>
-#include <regex>
-#include <stdexcept>
-#include <tuple>
-#include <inttypes.h>
-
 #include "datasetManager.hpp"
 #include "datasetState.hpp"
 #include "errors.h"
@@ -21,13 +8,24 @@
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
 
+#include <atomic>
+#include <cstdint>
+#include <cxxabi.h>
+#include <exception>
+#include <functional>
+#include <inttypes.h>
+#include <memory>
+#include <regex>
+#include <signal.h>
+#include <stddef.h>
+#include <stdexcept>
+#include <tuple>
+
 
 REGISTER_KOTEKAN_PROCESS(freqSplit);
 
 
-freqSplit::freqSplit(Config& config,
-                     const string& unique_name,
-                     bufferContainer &buffer_container) :
+freqSplit::freqSplit(Config& config, const string& unique_name, bufferContainer& buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&freqSplit::main_thread, this)) {
 
@@ -40,35 +38,31 @@ freqSplit::freqSplit(Config& config,
     register_consumer(in_buf, unique_name.c_str());
 
     // Fetch the output buffers, register them, and store them in our buffer vector
-    for(auto name : output_buffer_names) {
+    for (auto name : output_buffer_names) {
         auto buf = buffer_container.get_buffer(name);
         register_producer(buf, unique_name.c_str());
         out_bufs.push_back({buf, 0});
     }
 
-    _split_freq = config.get_default<double>(
-                unique_name, "split_freq", 512);
+    _split_freq = config.get_default<double>(unique_name, "split_freq", 512);
 }
 
-std::array<dset_id_t, 2>
-freqSplit::change_dataset_state(dset_id_t input_dset_id) {
+std::array<dset_id_t, 2> freqSplit::change_dataset_state(dset_id_t input_dset_id) {
     auto& dm = datasetManager::instance();
 
     // create new frequency dataset state
-    const freqState* freq_state_ptr =
-            dm.dataset_state<freqState>(input_dset_id);
+    const freqState* freq_state_ptr = dm.dataset_state<freqState>(input_dset_id);
     if (freq_state_ptr == nullptr) {
-        ERROR("Set to not use dataset_broker and couldn't find " \
-              "freqState ancestor of dataset 0x%" PRIx64 ". Make sure there " \
-              "is a process upstream in the config, that adds a freqState.\n" \
-              "Exiting...", input_dset_id);
+        ERROR("Set to not use dataset_broker and couldn't find "
+              "freqState ancestor of dataset 0x%" PRIx64 ". Make sure there "
+              "is a process upstream in the config, that adds a freqState.\n"
+              "Exiting...",
+              input_dset_id);
         raise(SIGINT);
     }
 
-    const std::vector<std::pair<uint32_t, freq_ctype>>& input_freqs =
-            freq_state_ptr->get_freqs();
-    std::vector<std::pair<uint32_t, freq_ctype>> output_freqs_lower,
-            output_freqs_higher;
+    const std::vector<std::pair<uint32_t, freq_ctype>>& input_freqs = freq_state_ptr->get_freqs();
+    std::vector<std::pair<uint32_t, freq_ctype>> output_freqs_lower, output_freqs_higher;
 
     for (size_t i = 0; i < input_freqs.size(); i++) {
         if (input_freqs.at(i).first < _split_freq)
@@ -81,13 +75,11 @@ freqSplit::change_dataset_state(dset_id_t input_dset_id) {
     state_uptr fstate_higher = std::make_unique<freqState>(output_freqs_higher);
 
     // add states (async)
-    state_id_t freq_state_id_lower =
-            dm.add_state(std::move(fstate_lower)).first;
-    state_id_t freq_state_id_higher =
-            dm.add_state(std::move(fstate_higher)).first;
+    state_id_t freq_state_id_lower = dm.add_state(std::move(fstate_lower)).first;
+    state_id_t freq_state_id_higher = dm.add_state(std::move(fstate_higher)).first;
 
     return {{dm.add_dataset(input_dset_id, freq_state_id_lower),
-                dm.add_dataset(input_dset_id, freq_state_id_higher)}};
+             dm.add_dataset(input_dset_id, freq_state_id_higher)}};
 }
 
 void freqSplit::main_thread() {
@@ -102,19 +94,16 @@ void freqSplit::main_thread() {
     std::array<dset_id_t, 2> output_dset_id = {{0, 0}};
 
     // Wait for a frame in the input buffer in order to get the dataset ID
-    if(wait_for_full_frame(in_buf, unique_name.c_str(),
-                           input_frame_id) == nullptr) {
+    if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
         return;
     }
     input_dset_id = visFrameView(in_buf, input_frame_id).dataset_id;
-    _output_dset_id = std::async(&freqSplit::change_dataset_state, this,
-                                 input_dset_id);
+    _output_dset_id = std::async(&freqSplit::change_dataset_state, this, input_dset_id);
 
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
-        if(wait_for_full_frame(in_buf, unique_name.c_str(),
-                               input_frame_id) == nullptr) {
+        if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
             break;
         }
 
@@ -124,15 +113,14 @@ void freqSplit::main_thread() {
         // check if the input dataset has changed
         if (input_dset_id != input_frame.dataset_id) {
             input_dset_id = input_frame.dataset_id;
-            _output_dset_id = std::async(&freqSplit::change_dataset_state, this,
-                                         input_dset_id);
+            _output_dset_id = std::async(&freqSplit::change_dataset_state, this, input_dset_id);
         }
 
         // frequency index of this frame
         freq = input_frame.freq_id;
 
         // Choose output buffer for this frequency:
-        if(freq < _split_freq) {
+        if (freq < _split_freq) {
             buf_ind = 0;
         } else {
             buf_ind = 1;
@@ -144,8 +132,7 @@ void freqSplit::main_thread() {
         INFO("Buffer %i has frame_id=%i", buf_ind, frame_id);
 
         // Wait for the output buffer to be empty of data
-        if(wait_for_empty_frame(buf, unique_name.c_str(),
-                                frame_id) == nullptr) {
+        if (wait_for_empty_frame(buf, unique_name.c_str(), frame_id) == nullptr) {
             break;
         }
 
@@ -169,5 +156,4 @@ void freqSplit::main_thread() {
         std::get<1>(buffer_pair) = (frame_id + 1) % buf->num_frames;
         input_frame_id = (input_frame_id + 1) % in_buf->num_frames;
     }
-
 }

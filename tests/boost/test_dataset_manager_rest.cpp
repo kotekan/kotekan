@@ -1,14 +1,16 @@
 
 #define BOOST_TEST_MODULE "test_datasetManager_REST"
 
-#include <boost/test/included/unit_test.hpp>
-#include <string>
-#include <iostream>
-#include "fmt.hpp"
-#include "json.hpp"
-#include "visUtil.hpp"
 #include "restClient.hpp"
 #include "restServer.hpp"
+#include "visUtil.hpp"
+
+#include "fmt.hpp"
+#include "json.hpp"
+
+#include <boost/test/included/unit_test.hpp>
+#include <iostream>
+#include <string>
 
 // the code to test:
 #include "datasetManager.hpp"
@@ -24,17 +26,14 @@ struct TestContext {
     void init() {
         _dset_id_count = 0;
         restServer::instance().register_post_callback(
-                    "/register-state", std::bind(&TestContext::register_state,
-                                                 this, std::placeholders::_1,
-                                                 std::placeholders::_2));
+            "/register-state", std::bind(&TestContext::register_state, this, std::placeholders::_1,
+                                         std::placeholders::_2));
         restServer::instance().register_post_callback(
-                    "/send-state", std::bind(&TestContext::send_state,
-                                                 this, std::placeholders::_1,
-                                                 std::placeholders::_2));
+            "/send-state", std::bind(&TestContext::send_state, this, std::placeholders::_1,
+                                     std::placeholders::_2));
         restServer::instance().register_post_callback(
-                    "/register-dataset", std::bind(
-                        &TestContext::register_dataset, this,
-                        std::placeholders::_1, std::placeholders::_2));
+            "/register-dataset", std::bind(&TestContext::register_dataset, this,
+                                           std::placeholders::_1, std::placeholders::_2));
         usleep(1000);
     }
 
@@ -44,9 +43,10 @@ struct TestContext {
         try {
             js.at("hash");
         } catch (std::exception& e) {
-            std::string error = fmt::format(
-                "Failure parsing register state message from datasetManager: " \
-                "{}\n{}.", js.dump(), e.what());
+            std::string error =
+                fmt::format("Failure parsing register state message from datasetManager: "
+                            "{}\n{}.",
+                            js.dump(), e.what());
             reply["result"] = error;
             con.send_json_reply(reply);
             BOOST_CHECK_MESSAGE(false, error);
@@ -69,9 +69,9 @@ struct TestContext {
             js.at("state").at("type");
             js.at("state").at("data");
         } catch (std::exception& e) {
-            std::string error = fmt::format(
-                        "Failure parsing send-state message from " \
-                        "datasetManager: {}\n{}.", js.dump(), e.what());
+            std::string error = fmt::format("Failure parsing send-state message from "
+                                            "datasetManager: {}\n{}.",
+                                            js.dump(), e.what());
             reply["result"] = error;
             con.send_json_reply(reply);
             BOOST_CHECK_MESSAGE(false, error);
@@ -80,20 +80,14 @@ struct TestContext {
         BOOST_CHECK(js.at("hash").is_number());
 
         // check the received state
-        std::vector<input_ctype> inputs = {input_ctype(1, "1"),
-                                           input_ctype(2, "2"),
+        std::vector<input_ctype> inputs = {input_ctype(1, "1"), input_ctype(2, "2"),
                                            input_ctype(3, "3")};
-        std::vector<prod_ctype> prods = {{1, 1},
-                                         {2, 2},
-                                         {3, 3}};
-        std::vector<std::pair<uint32_t, freq_ctype>> freqs = {{1, {1.1, 1}},
-                                                              {2, {2, 2.2}},
-                                                              {3, {3, 3}}};
+        std::vector<prod_ctype> prods = {{1, 1}, {2, 2}, {3, 3}};
+        std::vector<std::pair<uint32_t, freq_ctype>> freqs = {
+            {1, {1.1, 1}}, {2, {2, 2.2}}, {3, {3, 3}}};
 
         state_uptr same_state = std::make_unique<inputState>(
-                    inputs,
-                    std::make_unique<prodState>
-                    (prods, std::make_unique<freqState>(freqs)));
+            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs)));
         state_uptr received_state = datasetState::from_json(js.at("state"));
 
         BOOST_CHECK(same_state->to_json() == received_state->to_json());
@@ -112,12 +106,12 @@ struct TestContext {
             js_ds = js.at("ds");
             js_ds.at("is_root");
             js_ds.at("state");
-            if(!js_ds.at("is_root"))
+            if (!js_ds.at("is_root"))
                 js_ds.at("base_dset");
         } catch (std::exception& e) {
-            std::string error = fmt::format(
-                        "Failure parsing register-dataset message from " \
-                        "datasetManager: {}\n{}.", js.dump(), e.what());
+            std::string error = fmt::format("Failure parsing register-dataset message from "
+                                            "datasetManager: {}\n{}.",
+                                            js.dump(), e.what());
             reply["result"] = error;
             con.send_json_reply(reply);
             BOOST_CHECK_MESSAGE(false, error);
@@ -140,7 +134,7 @@ struct TestContext {
     }
 };
 
-BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
+BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, TestContext) {
     __log_level = 4;
     __enable_syslog = 0;
 
@@ -158,40 +152,32 @@ BOOST_FIXTURE_TEST_CASE( _dataset_manager_general, TestContext ) {
     datasetManager& dm = datasetManager::instance(conf);
 
     // generate datasets:
-    std::vector<input_ctype> inputs = {input_ctype(1, "1"),
-                                       input_ctype(2, "2"),
+    std::vector<input_ctype> inputs = {input_ctype(1, "1"), input_ctype(2, "2"),
                                        input_ctype(3, "3")};
-    std::vector<prod_ctype> prods = {{1, 1},
-                                     {2, 2},
-                                     {3, 3}};
-    std::vector<std::pair<uint32_t, freq_ctype>> freqs = {{1, {1.1, 1}},
-                                                          {2, {2, 2.2}},
-                                                          {3, {3, 3}}};
+    std::vector<prod_ctype> prods = {{1, 1}, {2, 2}, {3, 3}};
+    std::vector<std::pair<uint32_t, freq_ctype>> freqs = {
+        {1, {1.1, 1}}, {2, {2, 2.2}}, {3, {3, 3}}};
 
     std::pair<state_id_t, const inputState*> input_state =
-            dm.add_state(std::make_unique<inputState>
-                         (inputs, std::make_unique<prodState>(prods,
-                          std::make_unique<freqState>(freqs))));
+        dm.add_state(std::make_unique<inputState>(
+            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
 
     dset_id_t init_ds_id = dm.add_dataset(input_state.first);
 
     // register first state again
-    std::pair<state_id_t, const inputState*>input_state3 =
-            dm.add_state(std::make_unique<inputState>(inputs,
-                              std::make_unique<prodState>(prods,
-                              std::make_unique<freqState>(freqs))));
+    std::pair<state_id_t, const inputState*> input_state3 =
+        dm.add_state(std::make_unique<inputState>(
+            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
     // register new dataset with the twin state
     dm.add_dataset(init_ds_id, input_state3.first);
 
     std::cout << dm.summary() << std::endl;
 
     for (auto s : dm.states())
-        std::cout << s.first << " - " << s.second->data_to_json().dump()
-                  << std::endl;
+        std::cout << s.first << " - " << s.second->data_to_json().dump() << std::endl;
 
     for (auto s : dm.datasets())
-        std::cout << s.second.state() << " - " << s.second.base_dset() <<
-                     std::endl;
+        std::cout << s.second.state() << " - " << s.second.base_dset() << std::endl;
 
     usleep(500000);
 }

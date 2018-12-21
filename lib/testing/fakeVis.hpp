@@ -7,13 +7,6 @@
 #ifndef FAKE_VIS
 #define FAKE_VIS
 
-#include <stddef.h>
-#include <stdint.h>
-#include <functional>
-#include <map>
-#include <string>
-#include <vector>
-
 #include "Config.hpp"
 #include "KotekanProcess.hpp"
 #include "buffer.h"
@@ -21,6 +14,13 @@
 #include "datasetManager.hpp"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
+
+#include <functional>
+#include <map>
+#include <stddef.h>
+#include <stdint.h>
+#include <string>
+#include <vector>
 
 
 /**
@@ -72,9 +72,7 @@ class fakeVis : public KotekanProcess {
 
 public:
     /// Constructor. Loads config options.
-    fakeVis(Config &config,
-            const string& unique_name,
-            bufferContainer &buffer_container);
+    fakeVis(Config& config, const string& unique_name, bufferContainer& buffer_container);
 
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
     void main_thread() override;
@@ -149,7 +147,7 @@ private:
     std::vector<cfloat> test_pattern_value;
 
     /// Output buffer
-    Buffer * out_buf;
+    Buffer* out_buf;
 
     /// List of frequencies for this buffer
     std::vector<uint32_t> freq;
@@ -201,17 +199,14 @@ class replaceVis : public KotekanProcess {
 
 public:
     /// Constructor. Loads config options.
-    replaceVis(Config& config,
-               const string& unique_name,
-               bufferContainer& buffer_container);
+    replaceVis(Config& config, const string& unique_name, bufferContainer& buffer_container);
 
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
     void main_thread() override;
 
 private:
     /// Buffers
-    Buffer * in_buf;
-    Buffer * out_buf;
-
+    Buffer* in_buf;
+    Buffer* out_buf;
 };
 #endif

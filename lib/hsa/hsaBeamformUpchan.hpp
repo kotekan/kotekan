@@ -14,13 +14,13 @@
  * @brief hsaCommand to upchannelize and downsample FRB data
  *
  * This is an hsaCommand that launches the kernel (upchannelize_flip) for
- * upchannelizing and downsampling FRB data. First, 128 time samples 
- * is traded for 128 upchannelized freq channels via FFT. The freq axis is 
- * "flipped" (or more accurately, rolled) so that the higher power is in 
- * the middle of the bandpass. Then, every 8 freqs and 3 time samples are 
- * averaged in order to downsample to fit the output bandwidth. The 2 
- * polarizations are summed to produce a final output in float of 
- * 1024 beams x 128 times x 16 freq. 
+ * upchannelizing and downsampling FRB data. First, 128 time samples
+ * is traded for 128 upchannelized freq channels via FFT. The freq axis is
+ * "flipped" (or more accurately, rolled) so that the higher power is in
+ * the middle of the bandpass. Then, every 8 freqs and 3 time samples are
+ * averaged in order to downsample to fit the output bandwidth. The 2
+ * polarizations are summed to produce a final output in float of
+ * 1024 beams x 128 times x 16 freq.
  *
  * @requires_kernel    upchannelize_flip.hasco
  *
@@ -33,7 +33,7 @@
  *     @gpu_mem_type            staging
  *     @gpu_mem_format          Array of @c float
  *     @gpu_mem_metadata        chimeMetadata
- * 
+ *
  * @conf   num_elements         Int (default 2048). Number of elements
  * @conf   samples_per_data_set Int (default 49152). Number of time samples in a data set
  * @conf   downsample_time      Int (default 3). Downsample factor in time
@@ -41,24 +41,22 @@
  * @conf   num_frb_total_beams  Int (default 1024). Number of total FRB formed beams
  *
  * @todo   Check that the 16 freq axis has the correct orientation
- * 
+ *
  * @author Cherry Ng
  *
  */
 
-class hsaBeamformUpchan: public hsaCommand
-{
+class hsaBeamformUpchan : public hsaCommand {
 public:
     /// Constructor, also initializes internal variables from config
-    hsaBeamformUpchan(Config &config,const string &unique_name,
-                      bufferContainer &host_buffers,hsaDeviceInterface &device);
+    hsaBeamformUpchan(Config& config, const string& unique_name, bufferContainer& host_buffers,
+                      hsaDeviceInterface& device);
 
     /// Destructor
     virtual ~hsaBeamformUpchan();
 
     /// Allocate kernel argument buffer, set kernel dimensions, enqueue kernel
-    hsa_signal_t execute(int gpu_frame_id,
-                         hsa_signal_t precede_signal) override;
+    hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
 private:
     /// Input length, (nsamp+32) x num_elem x 2

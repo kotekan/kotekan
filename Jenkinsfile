@@ -58,6 +58,15 @@ pipeline {
                   make'''
           }
         }
+        stage('Check code formatting') {
+          steps {
+            sh '''mkdir build-check-format
+                  cd build-check-format/
+                  cmake ..
+                  make clang-format
+                  git diff --exit-code'''
+          }
+        }
       }
     }
     stage('Unit Tests') {
