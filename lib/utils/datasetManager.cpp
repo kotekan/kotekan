@@ -90,12 +90,10 @@ datasetManager::datasetManager() :
     _stop_request_threads(false),
     _n_request_threads(0),
     _config_applied(false),
-    _rest_client(restClient::instance())
-{
+    _rest_client(restClient::instance()) {
     restServer::instance().register_get_callback(
-                DS_FORCE_UPDATE_ENDPOINT_NAME,
-                std::bind(&datasetManager::force_update_callback, this,
-                          std::placeholders::_1));
+        DS_FORCE_UPDATE_ENDPOINT_NAME,
+        std::bind(&datasetManager::force_update_callback, this, std::placeholders::_1));
 }
 
 datasetManager& datasetManager::private_instance() {
@@ -589,7 +587,7 @@ void datasetManager::force_update_callback(connectionInstance& conn) {
     INFO("Received request for forced update.");
 
     if (!_use_broker) {
-        conn.send_error("This datasetManager instance is not configured to use"\
+        conn.send_error("This datasetManager instance is not configured to use"
                         " the dataset_broker. Unable to force an update.",
                         HTTP_RESPONSE::BAD_REQUEST);
         return;
@@ -598,7 +596,7 @@ void datasetManager::force_update_callback(connectionInstance& conn) {
     // Register all states.
     {
         std::lock_guard<std::mutex> slock(_lock_states);
-        for(auto s = _states.begin(); s != _states.end(); s++) {
+        for (auto s = _states.begin(); s != _states.end(); s++) {
             register_state(s->first);
         }
     }

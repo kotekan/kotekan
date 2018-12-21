@@ -590,7 +590,8 @@ inline const T* datasetManager::get_closest_ancestor(dset_id_t dset) {
             } catch (std::out_of_range& e) {
                 // we don't have the base dataset
                 DEBUG2("datasetManager: found a dead reference when looking for "
-                       "locally known ancestor: %s", e.what());
+                       "locally known ancestor: %s",
+                       e.what());
                 return nullptr;
             }
         }
@@ -608,7 +609,8 @@ inline const T* datasetManager::get_closest_ancestor(dset_id_t dset) {
             }
         } catch (std::out_of_range& e) {
             DEBUG("datasetManager: requested state 0x%" PRIx64 " not known "
-                  "locally.", ancestor);
+                  "locally.",
+                  ancestor);
         }
         if (_use_broker) {
             // Request the state from the broker.

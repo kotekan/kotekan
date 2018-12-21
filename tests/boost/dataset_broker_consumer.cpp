@@ -192,12 +192,10 @@ BOOST_FIXTURE_TEST_CASE(_ask_broker_for_second_root_update, CompareCTypes) {
         std::cout << s.first << " - " << s.second->data_to_json().dump() << std::endl;
 
     for (auto s : dm.datasets())
-        std::cout << s.second.state() << " - " << s.second.base_dset() <<
-                     std::endl;
+        std::cout << s.second.state() << " - " << s.second.base_dset() << std::endl;
 
     // Force the dM to register everything again.
-    restReply reply = restClient::instance().make_request_blocking(
-                "/dataset-manager/force-update");
+    restReply reply = restClient::instance().make_request_blocking("/dataset-manager/force-update");
     BOOST_CHECK(reply.first == true);
     BOOST_CHECK(reply.second == "");
 

@@ -42,8 +42,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
         {1, {1.1, 1}}, {2, {2, 2.2}}, {3, {3, 3}}};
 
     // Force the dM to update while it knows of nothing yet.
-    restReply reply = restClient::instance().make_request_blocking(
-                "/dataset-manager/force-update");
+    restReply reply = restClient::instance().make_request_blocking("/dataset-manager/force-update");
     BOOST_CHECK(reply.first == true);
     BOOST_CHECK(reply.second == "");
 

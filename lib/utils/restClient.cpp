@@ -201,7 +201,8 @@ void restClient::cleanup(
     delete pair;
 }
 
-bool restClient::make_request(const std::string& path, std::function<void(restReply)> request_done_cb,
+bool restClient::make_request(const std::string& path,
+                              std::function<void(restReply)> request_done_cb,
                               const nlohmann::json& data, const std::string& host,
                               const unsigned short port, const int retries, const int timeout) {
     struct evhttp_connection* evcon = nullptr;
