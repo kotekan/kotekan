@@ -5,8 +5,8 @@
 #include "prometheusMetrics.hpp"
 #include "visBuffer.hpp"
 
-#include <exception>
 #include <chrono>
+#include <exception>
 
 using namespace std::placeholders;
 
@@ -103,7 +103,7 @@ void receiveFlags::main_thread() {
     size_t num_late_frames = 0;
 
     num_late_updates = 0;
-    std::chrono::duration<double, std::ratio<1,1>> ts_late(0);
+    std::chrono::duration<double, std::ratio<1, 1>> ts_late(0);
 
     std::pair<timespec, const std::vector<float>*> update;
 
@@ -132,18 +132,14 @@ void receiveFlags::main_thread() {
                   frame_id_in, ts_to_double(ts_frame));
         }
         ts_late = difference(update.first, ts_frame);
-        if (ts_late < std::chrono::seconds::zero())
-        {
+        if (ts_late < std::chrono::seconds::zero()) {
             // This frame is too old,we don't have flags for it
             // --> Use the last update we have
             num_late_frames++;
-            WARN("receiveFlags: Flags for frame %d with timestamp %f are" \
-                  "not in memory. Applying oldest flags found (%f)." \
+            WARN("receiveFlags: Flags for frame %d with timestamp %f are"
+                 "not in memory. Applying oldest flags found (%f)."
                  " Time difference: %fs. Total number of late frames: %d.",
-                 frame_id_in,
-                 ts_to_double(ts_frame),
-                 ts_to_double(update.first),
-                 ts_late.count(),
+                 frame_id_in, ts_to_double(ts_frame), ts_to_double(update.first), ts_late.count(),
                  num_late_frames);
         }
         // actually copy the new flags and apply them from now
@@ -151,9 +147,8 @@ void receiveFlags::main_thread() {
         flags_lock.unlock();
 
         // Report how old the flags being applied to the current data are.
-        prometheusMetrics::instance().add_process_metric(
-            "kotekan_receiveflags_update_age_seconds",
-            unique_name, ts_late.count());
+        prometheusMetrics::instance().add_process_metric("kotekan_receiveflags_update_age_seconds",
+                                                         unique_name, ts_late.count());
 
         // Report number of frames received late
         prometheusMetrics::instance().add_process_metric("kotekan_receiveflags_late_frame_count",

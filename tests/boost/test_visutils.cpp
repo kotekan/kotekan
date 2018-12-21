@@ -7,15 +7,13 @@
 
 #include <chrono>
 
-BOOST_AUTO_TEST_CASE( _divmod_pos )
-{
-    std::pair<int, int> answer = {1,0};
-    std::pair<int, int> res = divmod_pos(1,1);
+BOOST_AUTO_TEST_CASE(_divmod_pos) {
+    std::pair<int, int> answer = {1, 0};
+    std::pair<int, int> res = divmod_pos(1, 1);
     BOOST_CHECK(res == answer);
 }
 
-BOOST_AUTO_TEST_CASE( _ts_to_double )
-{
+BOOST_AUTO_TEST_CASE(_ts_to_double) {
     timespec a = {10, 5};
     timespec b = {15, 2};
 
@@ -24,7 +22,7 @@ BOOST_AUTO_TEST_CASE( _ts_to_double )
     BOOST_CHECK(ts_to_double(b) == 15.000000002);
 }
 
-BOOST_AUTO_TEST_CASE( _timespec_addition ) {
+BOOST_AUTO_TEST_CASE(_timespec_addition) {
     __log_level = 5;
     __enable_syslog = 0;
 
@@ -42,7 +40,7 @@ BOOST_AUTO_TEST_CASE( _timespec_addition ) {
     BOOST_CHECK(a + d == expected);
 }
 
-BOOST_AUTO_TEST_CASE( _timespec_subtraction ) {
+BOOST_AUTO_TEST_CASE(_timespec_subtraction) {
     __log_level = 5;
     __enable_syslog = 0;
     // positive durations
@@ -53,8 +51,9 @@ BOOST_AUTO_TEST_CASE( _timespec_subtraction ) {
 
     start = {0, 10};
     res = difference(start, end);
-    BOOST_CHECK(res == std::chrono::seconds(10) + std::chrono::nanoseconds(5)
-                - std::chrono::nanoseconds(10));
+    BOOST_CHECK(res
+                == std::chrono::seconds(10) + std::chrono::nanoseconds(5)
+                       - std::chrono::nanoseconds(10));
 
     start = {10, 5};
     res = difference(start, end);

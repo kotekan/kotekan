@@ -249,8 +249,7 @@ inline double ts_to_double(const timespec& ts) {
  * @return        Time as timespec.
  **/
 inline timespec double_to_ts(double dtime) {
-    return {(int64_t)dtime,
-            (int64_t)(fmod(dtime, 1.0) * NS_PER_SECOND)};
+    return {(int64_t)dtime, (int64_t)(fmod(dtime, 1.0) * NS_PER_SECOND)};
 }
 
 /**
@@ -298,8 +297,7 @@ inline timespec add_nsec(const timespec& t, const long nsec) {
  * @param  b  Time as timespec.
  * @return    a - b as timespec.
  **/
-inline timespec operator-(const timespec & a, const timespec & b)
-{
+inline timespec operator-(const timespec& a, const timespec& b) {
     auto dm = divmod_pos(a.tv_nsec - b.tv_nsec, NS_PER_SECOND);
     return {a.tv_sec - b.tv_sec + dm.first, dm.second};
 }
@@ -314,14 +312,12 @@ inline timespec operator-(const timespec & a, const timespec & b)
  * @param  b  Time as timespec.
  * @return    a - b as a duration.
  **/
-inline std::chrono::nanoseconds
-difference(const timespec & start, const timespec & end)
-{
+inline std::chrono::nanoseconds difference(const timespec& start, const timespec& end) {
     using seconds = std::chrono::seconds;
     using nanoseconds = std::chrono::nanoseconds;
 
-    nanoseconds result = seconds(end.tv_sec) - seconds(start.tv_sec)
-                    + nanoseconds(end.tv_nsec) - nanoseconds(start.tv_nsec);
+    nanoseconds result = seconds(end.tv_sec) - seconds(start.tv_sec) + nanoseconds(end.tv_nsec)
+                         - nanoseconds(start.tv_nsec);
     return result;
 }
 
