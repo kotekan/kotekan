@@ -1,20 +1,22 @@
 #include "kotekanMode.hpp"
+
 #include "buffer.h"
-#include "processFactory.hpp"
-#include "metadataFactory.hpp"
 #include "bufferFactory.hpp"
-#include "restServer.hpp"
 #include "configUpdater.hpp"
-#include "json.hpp"
 #include "datasetManager.hpp"
+#include "metadataFactory.hpp"
+#include "processFactory.hpp"
+#include "restServer.hpp"
+
+#include "json.hpp"
 
 kotekanMode::kotekanMode(Config& config_) : config(config_) {
-    restServer::instance().register_get_callback("/config", [&] (connectionInstance &conn) {
+    restServer::instance().register_get_callback("/config", [&](connectionInstance& conn) {
         conn.send_json_reply(config.get_full_config_json());
     });
 
 #ifdef WITH_SSL
-    restServer::instance().register_get_callback("/config_md5sum", [&] (connectionInstance &conn) {
+    restServer::instance().register_get_callback("/config_md5sum", [&](connectionInstance& conn) {
         nlohmann::json reply;
         reply["md5sum"] = config.get_md5sum();
         conn.send_json_reply(reply);
@@ -30,20 +32,20 @@ kotekanMode::~kotekanMode() {
     restServer::instance().remove_get_callback("/config");
     restServer::instance().remove_all_aliases();
 
-    for (auto const &process : processes) {
+    for (auto const& process : processes) {
         if (process.second != nullptr) {
             delete process.second;
         }
     }
 
-    for (auto const &buf: buffers) {
+    for (auto const& buf : buffers) {
         if (buf.second != nullptr) {
             delete_buffer(buf.second);
             free(buf.second);
         }
     }
 
-    for (auto const &metadata_pool : metadata_pools) {
+    for (auto const& metadata_pool : metadata_pools) {
         if (metadata_pool.second != nullptr) {
             delete_metadata_pool(metadata_pool.second);
             free(metadata_pool.second);
@@ -58,7 +60,7 @@ void kotekanMode::initalize_processes() {
     metadata_pools = metadata_factory.build_pools();
 
     // Create Config Updater
-    configUpdater &config_updater = configUpdater::instance();
+    configUpdater& config_updater = configUpdater::instance();
     config_updater.apply_config(config);
 
     // Create Buffers
@@ -79,14 +81,14 @@ void kotekanMode::initalize_processes() {
 }
 
 void kotekanMode::join() {
-    for (auto const &process : processes) {
+    for (auto const& process : processes) {
         INFO("Joining kotekan_process: %s...", process.first.c_str());
         process.second->join();
     }
 }
 
 void kotekanMode::start_processes() {
-    for (auto const &process : processes) {
+    for (auto const& process : processes) {
         INFO("Starting kotekan_process: %s...", process.first.c_str());
         process.second->start();
     }
@@ -94,12 +96,12 @@ void kotekanMode::start_processes() {
 
 void kotekanMode::stop_processes() {
     // First set the shutdown variable on all processes
-    for (auto const &process : processes)
+    for (auto const& process : processes)
         process.second->stop();
 
-    // Then send shutdown signal to buffers which 
+    // Then send shutdown signal to buffers which
     // should wake up processes which are blocked.
-    for (auto const &buf : buffers) {
+    for (auto const& buf : buffers) {
         INFO("Sending shutdown signal to buffer: %s", buf.first.c_str());
         send_shutdown_signal(buf.second);
     }

@@ -1,28 +1,29 @@
 #include "gpuDeviceInterface.hpp"
+
 #include "math.h"
+
 #include <errno.h>
 
 gpuDeviceInterface::gpuDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_buffer_depth_) :
-    config(config_), gpu_id(gpu_id_), gpu_buffer_depth(gpu_buffer_depth_) {
+    config(config_),
+    gpu_id(gpu_id_),
+    gpu_buffer_depth(gpu_buffer_depth_) {}
 
-}
+gpuDeviceInterface::~gpuDeviceInterface() {}
 
-gpuDeviceInterface::~gpuDeviceInterface(){
-}
-
-void gpuDeviceInterface::cleanup_memory(){
-    for (auto it = gpu_memory.begin(); it != gpu_memory.end(); it++){
-        for (void* mem : it->second.gpu_pointers){
+void gpuDeviceInterface::cleanup_memory() {
+    for (auto it = gpu_memory.begin(); it != gpu_memory.end(); it++) {
+        for (void* mem : it->second.gpu_pointers) {
             free_gpu_memory(mem);
         }
     }
 }
 
-void *gpuDeviceInterface::get_gpu_memory(const string& name, const uint32_t len) {
+void* gpuDeviceInterface::get_gpu_memory(const string& name, const uint32_t len) {
 
     // Check if the memory isn't yet allocated
     if (gpu_memory.count(name) == 0) {
-        void *ptr = alloc_gpu_memory(len);
+        void* ptr = alloc_gpu_memory(len);
         INFO("Allocating GPU[%d] memory: %s, len: %d, ptr: %p", gpu_id, name.c_str(), len, ptr);
         gpu_memory[name].len = len;
         gpu_memory[name].gpu_pointers.push_back(ptr);
@@ -35,11 +36,12 @@ void *gpuDeviceInterface::get_gpu_memory(const string& name, const uint32_t len)
     return gpu_memory[name].gpu_pointers[0];
 }
 
-void *gpuDeviceInterface::get_gpu_memory_array(const string& name, const uint32_t index, const uint32_t len) {
+void* gpuDeviceInterface::get_gpu_memory_array(const string& name, const uint32_t index,
+                                               const uint32_t len) {
     // Check if the memory isn't yet allocated
     if (gpu_memory.count(name) == 0) {
         for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {
-            void *ptr = alloc_gpu_memory(len);
+            void* ptr = alloc_gpu_memory(len);
             INFO("Allocating GPU[%d] memory: %s, len: %d, ptr: %p", gpu_id, name.c_str(), len, ptr);
             gpu_memory[name].len = len;
             gpu_memory[name].gpu_pointers.push_back(ptr);

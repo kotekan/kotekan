@@ -3,9 +3,9 @@ project( kotekan_metadata )
 
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
-set (KOTEKAN_METADATA_SOURCES
-              chimeMetadata.c
-       )
+set ( KOTEKAN_METADATA_SOURCES
+      chimeMetadata.c
+    )
 
 # There are no symbols in this entire library,
 # the following lines prevent warnings on MacOS.

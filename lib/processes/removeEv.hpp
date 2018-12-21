@@ -6,10 +6,10 @@
 #ifndef REMOVE_EV_HPP
 #define REMOVE_EV_HPP
 
-#include "buffer.h"
 #include "KotekanProcess.hpp"
-#include "visUtil.hpp"
+#include "buffer.h"
 #include "datasetManager.hpp"
+#include "visUtil.hpp"
 
 /**
  * @class removeEv
@@ -28,14 +28,11 @@
 class removeEv : public KotekanProcess {
 
 public:
-    removeEv(Config& config,
-             const string& unique_name,
-             bufferContainer &buffer_container);
+    removeEv(Config& config, const string& unique_name, bufferContainer& buffer_container);
 
     void main_thread() override;
 
 private:
-
     dset_id_t change_dataset_state(dset_id_t input_dset_id);
 
     Buffer* in_buf;
@@ -43,7 +40,6 @@ private:
 
     state_id_t ev_state_id;
     dset_id_t input_dset_id = 0;
-
 };
 
 #endif

@@ -1,8 +1,8 @@
 #ifndef TEST_DATA_GEN_H
 #define TEST_DATA_GEN_H
 
-#include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
 #include "restServer.hpp"
 
 // Type: one of "random", "const"
@@ -43,14 +43,14 @@
  */
 class testDataGen : public KotekanProcess {
 public:
-    testDataGen(Config& config, const string& unique_name,
-                bufferContainer &buffer_container);
+    testDataGen(Config& config, const string& unique_name, bufferContainer& buffer_container);
     ~testDataGen();
     void main_thread() override;
+
 private:
     void rest_callback(connectionInstance& conn, nlohmann::json& request);
     bool can_i_go(int frame_id_abs);
-    struct Buffer *buf;
+    struct Buffer* buf;
     std::string type;
     std::string endpoint;
     int value;

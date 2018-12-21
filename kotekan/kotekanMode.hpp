@@ -13,7 +13,7 @@ using std::string;
 
 class kotekanMode {
 public:
-    kotekanMode(Config &config);
+    kotekanMode(Config& config);
     virtual ~kotekanMode();
 
     // Allocate memory for the processes and get the configuration.
@@ -29,13 +29,12 @@ public:
     void join();
 
 private:
-
-    Config &config;
+    Config& config;
     bufferContainer buffer_container;
 
-    map<string, KotekanProcess *> processes;
-    map<string, struct metadataPool *> metadata_pools;
-    map<string, struct Buffer *> buffers;
+    map<string, KotekanProcess*> processes;
+    map<string, struct metadataPool*> metadata_pools;
+    map<string, struct Buffer*> buffers;
 };
 
 

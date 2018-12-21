@@ -8,12 +8,12 @@
 
 #include "Config.hpp"
 #include "KotekanProcess.hpp"
-#include "visUtil.hpp"
-#include "bufferContainer.hpp"
 #include "buffer.h"
+#include "bufferContainer.hpp"
+#include "visUtil.hpp"
 
-#include <stddef.h>
 #include <fstream>
+#include <stddef.h>
 #include <string>
 #include <vector>
 
@@ -71,9 +71,8 @@
 class visTestPattern : public KotekanProcess {
 
 public:
-    visTestPattern(Config &config,
-             const std::string& unique_name,
-             bufferContainer &buffer_container);
+    visTestPattern(Config& config, const std::string& unique_name,
+                   bufferContainer& buffer_container);
 
     void main_thread() override;
 

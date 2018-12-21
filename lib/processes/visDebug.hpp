@@ -8,8 +8,8 @@
 
 #include "Config.hpp"
 #include "KotekanProcess.hpp"
-#include "bufferContainer.hpp"
 #include "buffer.h"
+#include "bufferContainer.hpp"
 
 #include <cstdint>
 #include <map>
@@ -37,14 +37,12 @@
 class visDebug : public KotekanProcess {
 
 public:
-    visDebug(Config &config,
-             const std::string& unique_name,
-             bufferContainer &buffer_container);
+    visDebug(Config& config, const std::string& unique_name, bufferContainer& buffer_container);
 
     void main_thread() override;
 
 private:
-    Buffer * in_buf;
+    Buffer* in_buf;
 
     // A (freq_id, dataset_id) pair
     using fd_pair = typename std::pair<uint32_t, uint64_t>;

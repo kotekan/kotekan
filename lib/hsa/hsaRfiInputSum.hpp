@@ -8,6 +8,7 @@
 
 #include "hsaCommand.hpp"
 #include "restServer.hpp"
+
 #include <mutex>
 
 /*
@@ -53,19 +54,18 @@
  *
  * @author Jacob Taylor
  */
-class hsaRfiInputSum: public hsaCommand
-{
+class hsaRfiInputSum : public hsaCommand {
 public:
     /// Constructor, initializes internal variables.
-    hsaRfiInputSum(Config &config, const string &unique_name,
-               bufferContainer &host_buffers, hsaDeviceInterface &device);
+    hsaRfiInputSum(Config& config, const string& unique_name, bufferContainer& host_buffers,
+                   hsaDeviceInterface& device);
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiInputSum();
     /// Rest server callback
     void rest_callback(connectionInstance& conn, json& json_request);
     /// Executes rfi_chime_inputsum.hsaco kernel. Allocates kernel variables.
-    hsa_signal_t execute(int gpu_frame_id,
-                         hsa_signal_t precede_signal) override;
+    hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
+
 private:
     /// Length of the input frame, should be sizeof_float x n_elem x n_freq x nsamp / sk_step
     uint32_t input_frame_len;
@@ -78,7 +78,7 @@ private:
     /// Length of lost sample correction frame
     uint32_t correction_frame_len;
     /// Array to hold the input mask (which inputs are currently functioning)
-    uint8_t *input_mask;
+    uint8_t* input_mask;
     /// Number of elements (2048 for CHIME or 256 for Pathfinder)
     uint32_t _num_elements;
     /// Number of frequencies per GPU (1 for CHIME or 8 for Pathfinder)

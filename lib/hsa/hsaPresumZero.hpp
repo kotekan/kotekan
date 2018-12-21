@@ -3,23 +3,19 @@
 
 #include "hsaSubframeCommand.hpp"
 
-class hsaPresumZero: public hsaSubframeCommand
-{
+class hsaPresumZero : public hsaSubframeCommand {
 public:
-
-    hsaPresumZero(Config &config, const string &unique_name,
-                  bufferContainer &host_buffers, hsaDeviceInterface &device);
+    hsaPresumZero(Config& config, const string& unique_name, bufferContainer& host_buffers,
+                  hsaDeviceInterface& device);
 
     virtual ~hsaPresumZero();
 
-    hsa_signal_t execute(int gpu_frame_id,
-                         hsa_signal_t precede_signal) override;
+    hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
 private:
-
     int32_t presum_len;
 
-    void * presum_zeros;
+    void* presum_zeros;
 
     // TODO maybe factor these into a CHIME command object class?
     int32_t _num_local_freq;

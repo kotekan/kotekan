@@ -9,6 +9,8 @@
 #ifndef BASEBAND_READOUT_MANAGER_HPP
 #define BASEBAND_READOUT_MANAGER_HPP
 
+#include "json.hpp"
+
 #include <condition_variable>
 #include <deque>
 #include <forward_list>
@@ -16,8 +18,6 @@
 #include <mutex>
 #include <string>
 #include <vector>
-
-#include "json.hpp"
 
 /**
  * @class basebandRequest
@@ -67,9 +67,9 @@ struct basebandDumpStatus {
 
 
 /**
-* @class basebandReadoutManager
-* @brief Class for managing readout state
-*/
+ * @class basebandReadoutManager
+ * @brief Class for managing readout state
+ */
 class basebandReadoutManager {
 public:
     using requestStatusMutex = std::pair<basebandDumpStatus&, std::mutex&>;
@@ -143,7 +143,7 @@ private:
      * safe as long as the readout manager is guaranteed to outlive them, which
      * it will be as the manager is itself owned by the
      * `basebandApiManager`, and is created in the main process.
-    */
+     */
     std::forward_list<basebandDumpStatus> requests;
 
     /**

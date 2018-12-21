@@ -1,18 +1,20 @@
+#include "KotekanProcess.hpp"
+
+#include "errors.h"
+#include "util.h"
+
+#include <cstdlib>
+#include <future>
 #include <pthread.h>
 #include <sched.h>
 #include <syslog.h>
 #include <thread>
-#include <future>
-#include <cstdlib>
 
-#include "KotekanProcess.hpp"
-#include "errors.h"
-#include "util.h"
-
-KotekanProcess::KotekanProcess(Config &config, const string& unique_name,
-                bufferContainer &buffer_container_,
-                std::function<void(const KotekanProcess&)> main_thread_ref) :
-    stop_thread(false), config(config),
+KotekanProcess::KotekanProcess(Config& config, const string& unique_name,
+                               bufferContainer& buffer_container_,
+                               std::function<void(const KotekanProcess&)> main_thread_ref) :
+    stop_thread(false),
+    config(config),
     unique_name(unique_name),
     this_thread(),
     buffer_container(buffer_container_),
@@ -26,8 +28,7 @@ KotekanProcess::KotekanProcess(Config &config, const string& unique_name,
     set_log_prefix(unique_name);
 
     // Set the timeout for this process thread to exit
-    join_timeout = config.get_default<uint32_t>(unique_name, "join_timeout",
-                                                60);
+    join_timeout = config.get_default<uint32_t>(unique_name, "join_timeout", 60);
 }
 
 struct Buffer* KotekanProcess::get_buffer(const std::string& name) {
@@ -37,12 +38,11 @@ struct Buffer* KotekanProcess::get_buffer(const std::string& name) {
     return buffer_container.get_buffer(buf_name);
 }
 
-std::vector<struct Buffer *> KotekanProcess::get_buffer_array(const std::string & name) {
-    std::vector<struct Buffer *> bufs;
+std::vector<struct Buffer*> KotekanProcess::get_buffer_array(const std::string& name) {
+    std::vector<struct Buffer*> bufs;
 
-    std::vector<std::string> buf_names = config.get<std::vector<std::string>>(
-        unique_name, name);
-    for (auto &buf_name : buf_names) {
+    std::vector<std::string> buf_names = config.get<std::vector<std::string>>(unique_name, name);
+    for (auto& buf_name : buf_names) {
         bufs.push_back(buffer_container.get_buffer(buf_name));
     }
 
@@ -54,7 +54,7 @@ void KotekanProcess::apply_cpu_affinity() {
     std::lock_guard<std::mutex> lock(cpu_affinity_lock);
 
     // Don't set the thread affinity if the thread hasn't been created yet.
-    if(!this_thread.joinable())
+    if (!this_thread.joinable())
         return;
 
 // TODO Enable this for MACOS Systems as well.
@@ -64,7 +64,7 @@ void KotekanProcess::apply_cpu_affinity() {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     INFO("Setting thread affinity");
-    for (auto &i : cpu_affinity)
+    for (auto& i : cpu_affinity)
         CPU_SET(i, &cpuset);
 
     // Set affinity
@@ -80,7 +80,7 @@ void KotekanProcess::apply_cpu_affinity() {
 #endif
 }
 
-void KotekanProcess::set_cpu_affinity(const std::vector<int> &cpu_affinity_) {
+void KotekanProcess::set_cpu_affinity(const std::vector<int>& cpu_affinity_) {
     {
         std::lock_guard<std::mutex> lock(cpu_affinity_lock);
         cpu_affinity = cpu_affinity_;
@@ -94,8 +94,7 @@ void KotekanProcess::start() {
     apply_cpu_affinity();
 }
 
-std::string KotekanProcess::get_unique_name() const
-{
+std::string KotekanProcess::get_unique_name() const {
     return unique_name;
 }
 
@@ -104,10 +103,13 @@ void KotekanProcess::join() {
         // This has the effect of creating a new thread for each thread join,
         // this isn't exactly optimal, but give we are shutting down anyway it should be fine.
         auto thread_joiner = std::async(std::launch::async, &std::thread::join, &this_thread);
-        if (thread_joiner.wait_for(std::chrono::seconds(join_timeout)) == std::future_status::timeout) {
-            ERROR("*** EXIT_FAILURE *** The process %s failed to exit (join thread timeout) after %d seconds.",
+        if (thread_joiner.wait_for(std::chrono::seconds(join_timeout))
+            == std::future_status::timeout) {
+            ERROR("*** EXIT_FAILURE *** The process %s failed to exit (join thread timeout) after "
+                  "%d seconds.",
                   unique_name.c_str(), join_timeout);
-            ERROR("If the process needs more time to exit, please set the config value `join_timeout` for that korekan_process");
+            ERROR("If the process needs more time to exit, please set the config value "
+                  "`join_timeout` for that korekan_process");
             std::abort();
         }
     }
@@ -124,4 +126,3 @@ KotekanProcess::~KotekanProcess() {
     if (this_thread.joinable())
         this_thread.join();
 }
-

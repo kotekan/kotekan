@@ -9,30 +9,29 @@
 #ifndef BUFFER_RECV_H
 #define BUFFER_RECV_H
 
-#include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
 #include "bufferSend.hpp"
 #include "errors.h"
 #include "util.h"
-#include <unistd.h>
-#include <string>
-#include <atomic>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <queue>
-#include <functional>
 
-#include <stdio.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <string.h>
 #include <arpa/inet.h>
-
-#include <event2/event.h>
+#include <atomic>
+#include <condition_variable>
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
+#include <event2/event.h>
 #include <event2/thread.h>
+#include <functional>
+#include <mutex>
+#include <netinet/in.h>
+#include <queue>
+#include <stdio.h>
+#include <string.h>
+#include <string>
+#include <sys/socket.h>
+#include <thread>
+#include <unistd.h>
 
 // Forward declare
 class connInstance;
@@ -75,11 +74,8 @@ class connInstance;
  */
 class bufferRecv : public KotekanProcess {
 public:
-
     /// Constructor
-    bufferRecv(Config &config,
-                  const string& unique_name,
-                  bufferContainer &buffer_container);
+    bufferRecv(Config& config, const string& unique_name, bufferContainer& buffer_container);
     ~bufferRecv();
     void main_thread() override;
 
@@ -104,9 +100,8 @@ public:
     bool get_worker_stop_thread();
 
 private:
-
     /// The output buffer
-    struct Buffer *buf;
+    struct Buffer* buf;
 
     /// The port to listen for new connections on
     uint32_t listen_port;
@@ -120,8 +115,8 @@ private:
     /// A lock on the current frame, since many systems may ask for the next frame
     std::mutex next_frame_lock;
 
-    static void read_callback(evutil_socket_t fd, short what, void *arg);
-    static void accept_connection(evutil_socket_t listener, short event, void *arg);
+    static void read_callback(evutil_socket_t fd, short what, void* arg);
+    static void accept_connection(evutil_socket_t listener, short event, void* arg);
 
     /**
      * @brief Internal timer call back to check for thread exit condition
@@ -130,7 +125,7 @@ private:
      * @param event Not used
      * @param arg The bufferRecv object (just `this`, but this is a static function)
      */
-    static void timer(evutil_socket_t fd, short event, void *arg);
+    static void timer(evutil_socket_t fd, short event, void* arg);
 
     /**
      * @brief Callback for processing new connections.
@@ -142,11 +137,11 @@ private:
      * @param event The event type
      * @param arg Values needed to setup the new connection in an @c acceptArgs struct
      */
-    void internal_accept_connection(evutil_socket_t listener, short event, void *arg);
+    void internal_accept_connection(evutil_socket_t listener, short event, void* arg);
 
     /// The base event for libevent, run in the main_thread.
     /// This might be increased to more than one if there are performance issues.
-    struct event_base *base;
+    struct event_base* base;
 
     /// The number of frames dropped
     size_t dropped_frame_count = 0;
@@ -163,7 +158,7 @@ private:
     std::vector<std::thread> thread_pool;
 
     /// Queue of functions to be called by the worker threads
-    std::deque<connInstance *> work_queue;
+    std::deque<connInstance*> work_queue;
 
     /// Lock for the work queue
     std::mutex work_queue_lock;
@@ -178,29 +173,26 @@ private:
      * @brief The worker thread for handing read callbacks.
      */
     void worker_thread();
-
 };
 
 /**
  * @brief List of valid states for a connection to be in.
  */
-enum class connState {
-    header, metadata, frame, finished
-};
+enum class connState { header, metadata, frame, finished };
 
 /**
  * @brief Args passed to the accept new connection call back function
  */
 struct acceptArgs {
     /// The libevent base to use.
-    struct event_base *base;
+    struct event_base* base;
 
     /// The output buffer to attach to
-    struct Buffer *buf;
+    struct Buffer* buf;
 
     /// The main buffer recv object needs to be called to manage
     /// the frame ID to use (corrdinate between workers)
-    bufferRecv * buffer_recv;
+    bufferRecv* buffer_recv;
 
     /// Just copy the unique_name of the process
     string unique_name;
@@ -221,12 +213,8 @@ struct acceptArgs {
 class connInstance : public kotekanLogging {
 public:
     /// Constructor
-    connInstance(const string& producer_name,
-                 struct Buffer *buf,
-                 bufferRecv * buffer_recv,
-                 const string &client_ip,
-                 int port,
-                 struct timeval read_timeout);
+    connInstance(const string& producer_name, struct Buffer* buf, bufferRecv* buffer_recv,
+                 const string& client_ip, int port, struct timeval read_timeout);
 
     /// Destructor
     ~connInstance();
@@ -264,10 +252,10 @@ public:
     string producer_name;
 
     /// The kotekan buffer to transfer data into
-    struct Buffer *buf;
+    struct Buffer* buf;
 
     /// Pointer to the parient kotekan_process which owns this instance
-    bufferRecv * buffer_recv;
+    bufferRecv* buffer_recv;
 
     /// The client IP address for this instance
     string client_ip;
@@ -279,7 +267,7 @@ public:
     struct timeval read_timeout;
 
     /// The libevent event which gets triggered on a read
-    struct event * event_read;
+    struct event* event_read;
 
     /// The socket assoicated with this instance
     evutil_socket_t fd;
@@ -294,10 +282,10 @@ public:
     struct bufferFrameHeader buf_frame_header;
 
     /// Pointer to the local memory space which matching the size of the incoming frame.
-    uint8_t * frame_space;
+    uint8_t* frame_space;
 
     /// Pointer to local memory for storing the metadata of the incoming frame.
-    uint8_t * metadata_space;
+    uint8_t* metadata_space;
 
     /// Lock to make sure only one instance of this jobs call backs is run at any one time.
     std::mutex instance_lock;
@@ -323,7 +311,7 @@ public:
      * @param err_num
      * @param bytes_read
      */
-    inline void handle_error(const std::string &msg, int err_num, ssize_t bytes_read) {
+    inline void handle_error(const std::string& msg, int err_num, ssize_t bytes_read) {
         // Resource temporarily unavailable, no need to close connection
         // The two error codes cover MacOS and Linux
         if ((err_num == 35 || err_num == 11) && bytes_read != 0) {
@@ -344,7 +332,7 @@ public:
 
         // All other errors close the connection
         ERROR("Error with operation '%s' for client %s, error code %d (%s).  Closing connection.",
-                msg.c_str(), client_ip.c_str(), err_num, strerror(err_num));
+              msg.c_str(), client_ip.c_str(), err_num, strerror(err_num));
         decrement_ref_count();
         close_instance();
     }

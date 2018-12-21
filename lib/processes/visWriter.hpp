@@ -7,17 +7,6 @@
 #ifndef VIS_WRITER_HPP
 #define VIS_WRITER_HPP
 
-#include <errno.h>
-#include <stdio.h>
-#include <cstdint>
-#include <future>
-#include <map>
-#include <memory>
-#include <mutex>
-#include <stdexcept>
-#include <string>
-#include <utility>
-
 #include "Config.hpp"
 #include "KotekanProcess.hpp"
 #include "buffer.h"
@@ -26,6 +15,17 @@
 #include "restServer.hpp"
 #include "visFile.hpp"
 #include "visUtil.hpp"
+
+#include <cstdint>
+#include <errno.h>
+#include <future>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <stdexcept>
+#include <stdio.h>
+#include <string>
+#include <utility>
 
 
 /**
@@ -79,20 +79,17 @@
  */
 class visWriter : public KotekanProcess {
 public:
-    visWriter(Config &config,
-              const string& unique_name,
-              bufferContainer &buffer_container);
+    visWriter(Config& config, const string& unique_name, bufferContainer& buffer_container);
 
     void main_thread() override;
 
     /// Why was a frame dropped?
     enum class droppedType {
-        late,  // Data arrived too late
-        bad_dataset  // Dataset ID issues
+        late,       // Data arrived too late
+        bad_dataset // Dataset ID issues
     };
 
 protected:
-
     /// Setup the acquisition
     virtual void init_acq(dset_id_t ds_id);
 
@@ -122,8 +119,7 @@ protected:
      * @param  freq_id  Freq ID of frame.
      * @param  reason   Reason frame was dropped.
      **/
-    void report_dropped_frame(dset_id_t ds_id, uint32_t freq_id,
-                              droppedType reason);
+    void report_dropped_frame(dset_id_t ds_id, uint32_t freq_id, droppedType reason);
 
     // Parameters saved from the config files
     std::string root_path;
@@ -136,7 +132,7 @@ protected:
     double acq_timeout;
 
     /// Input buffer to read from
-    Buffer * in_buf;
+    Buffer* in_buf;
 
     /// Mutex for updating file_bundle (used in for visCalWriter)
     std::mutex write_mutex;
@@ -153,8 +149,7 @@ protected:
         std::unique_ptr<visFileBundle> file_bundle;
 
         /// Dropped frame counts per freq ID
-        std::map<std::pair<uint32_t, droppedType>, uint64_t>
-            dropped_frame_count;
+        std::map<std::pair<uint32_t, droppedType>, uint64_t> dropped_frame_count;
 
         /// Frequency IDs that we are expecting
         std::map<uint32_t, uint32_t> freq_id_map;
@@ -170,10 +165,8 @@ protected:
     static std::map<droppedType, std::string> dropped_type_map;
 
 private:
-
     /// Number of products to write and freqency map
-    std::future<std::pair<size_t, std::map<uint32_t, uint32_t>>>
-    future_metadata;
+    std::future<std::pair<size_t, std::map<uint32_t, uint32_t>>> future_metadata;
 
     /// Keep track of the average write time
     movingAverage write_time;
@@ -238,10 +231,7 @@ private:
  **/
 class visCalWriter : public visWriter {
 public:
-
-    visCalWriter(Config &config,
-            const string& unique_name,
-            bufferContainer &buffer_container);
+    visCalWriter(Config& config, const string& unique_name, bufferContainer& buffer_container);
 
     ~visCalWriter();
 
@@ -249,19 +239,17 @@ public:
     void rest_callback(connectionInstance& conn);
 
 protected:
-
     // Override function to make visCalFileBundle and set its file name
     void init_acq(dset_id_t ds_id) override;
 
     // Disable closing old acqs
-    void close_old_acqs() override {};
+    void close_old_acqs() override{};
 
     visCalFileBundle* file_cal_bundle;
 
     std::string acq_name, fname_live, fname_frozen;
 
     std::string endpoint;
-
 };
 
 
