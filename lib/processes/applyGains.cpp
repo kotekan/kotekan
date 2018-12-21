@@ -253,9 +253,9 @@ void applyGains::apply_thread() {
                 } else {
                     gain = gainpair_new.second->gain.at(freq);
                     if (tpast < 0) {
-                        WARN("No gains update is as old as the currently processed " \
-                             "frame. Using oldest gains available."\
-                             "Time difference is: %f seconds.", tpast);
+                        WARN("No gains update is as old as the currently processed frame. "
+                             "Using oldest gains available. Time difference is: %f seconds.",
+                             tpast);
                         num_late_frames++;
                     }
                 }

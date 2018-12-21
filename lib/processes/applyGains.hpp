@@ -89,7 +89,7 @@ private:
     updateQueue<gainUpdate> gains_fifo;
 
     /// Input buffer to read from
-    Buffer * in_buf;
+    Buffer* in_buf;
     /// Output buffer with gains applied
     Buffer* out_buf;
 
