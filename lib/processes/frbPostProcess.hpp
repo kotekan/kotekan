@@ -8,17 +8,19 @@
 #define FRB_POST_PROCESS
 
 #include "KotekanProcess.hpp"
-#include "frb_functions.h"
-#include "fpga_header_functions.h"
 #include "chimeMetadata.h"
+#include "fpga_header_functions.h"
+#include "frb_functions.h"
+
 #include <emmintrin.h>
+#include <immintrin.h>
 
 using std::vector;
 
 /**
  * @class frbPostProcess
  * @brief Post-processing engine for data coming out of the CHIME/FRB kernel stack.
- * 
+ *
  * This engine gathers CHIME/FRB data from the 4 GPU streams in each CHIME node,
  * packing it into CHIME/FRB L0-L1 packets, which are stored in the output buffer.
  * Prior to packing, the (float) input values are scaled and offset to 8-bit
@@ -53,13 +55,14 @@ using std::vector;
  * @conf   factor_upchan              Int. Total upchannelization in the FRB kernels.
  * @conf   factor_upchan_out          Int. Upchannelization that exits the FRB kernels,
  *                                        also number of freqs that will go into each output packet
- * @conf   num_beams_per_frb_packet   Int. Number of FRB beam in each output stream. (?) Should be 4?
+ * @conf   num_beams_per_frb_packet   Int. Number of FRB beam in each output stream. (?) Should be
+ * 4?
  * @conf   timesamples_per_frb_packet Int. Number of times that will go into each packet.
  * @conf   incoherent_beam            Bool (default=false). Form the incoherent beam or not.
  *                                        If true, will stuff incoherent beam in position 0.
  * @conf   incoherent_truncate        Float (default=1e10). To deal with inputs / times /freqs with
- *                                        anomalously high values, this limits values used prior to summing
- *                                        into the incoherent beam.
+ *                                        anomalously high values, this limits values used prior to
+ * summing into the incoherent beam.
  *
  * @author Keith Vanderlinde
  *
@@ -67,9 +70,7 @@ using std::vector;
 class frbPostProcess : public KotekanProcess {
 public:
     /// Constructor.
-    frbPostProcess(Config& config_,
-                  const string& unique_name,
-                  bufferContainer &buffer_container);
+    frbPostProcess(Config& config_, const string& unique_name, bufferContainer& buffer_container);
 
     /// Destructor
     virtual ~frbPostProcess();
@@ -79,19 +80,19 @@ public:
     void main_thread() override;
 
 private:
-    void write_header(unsigned char * dest);
+    void write_header(unsigned char* dest);
 
-    struct Buffer **in_buf;
-    struct Buffer *frb_buf;
+    struct Buffer** in_buf;
+    struct Buffer* frb_buf;
 
     struct FRBHeader frb_header;
-    float *ib;
+    float* ib;
 
-    //Dynamic header
-    uint16_t * frb_header_beam_ids;
-    uint16_t * frb_header_coarse_freq_ids;
-    float * frb_header_scale;
-    float * frb_header_offset;
+    // Dynamic header
+    uint16_t* frb_header_beam_ids;
+    uint16_t* frb_header_coarse_freq_ids;
+    float* frb_header_scale;
+    float* frb_header_offset;
 
     // Config variables
     int32_t _num_gpus;
@@ -110,7 +111,6 @@ private:
     int32_t udp_packet_size;
     int32_t udp_header_size;
     int16_t fpga_counts_per_sample;
-
 };
 
 #endif

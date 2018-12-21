@@ -6,18 +6,20 @@
 #ifndef CL_RFI_INPUT_SUM_HPP
 #define CL_RFI_INPUT_SUM_HPP
 
-#include <mutex>
-#include "gpu_command.h"
 #include "device_interface.h"
+#include "gpu_command.h"
 #include "restServer.hpp"
+
+#include <mutex>
 
 /*
  * @class clRfiInputSum
- * @brief ``gpu_command`` which integrates the output of clRfiTimeSum across inputs and computs kurtosis estimates.
+ * @brief ``gpu_command`` which integrates the output of clRfiTimeSum across inputs and computs
+ * kurtosis estimates.
  *
- * This gpu command executes the rfi_chime_inputsum.cl or rfi_chime_inputsum_private.cl depending on which is quickest.
- * The kernel reads the output of clRfiTimeSum and integrates it across inputs. Then a kurtosis estimate is computed
- * and placed in the output buffer.
+ * This gpu command executes the rfi_chime_inputsum.cl or rfi_chime_inputsum_private.cl depending on
+ * which is quickest. The kernel reads the output of clRfiTimeSum and integrates it across inputs.
+ * Then a kurtosis estimate is computed and placed in the output buffer.
  *
  * @requires_kernel    rfi_chime_inputsum_private.cl
  *
@@ -47,18 +49,19 @@
  *
  * @author Jacob Taylor
  */
-class clRfiInputSum: public gpu_command
-{
+class clRfiInputSum : public gpu_command {
 public:
-    //Constructor
-    clRfiInputSum(const char* param_gpuKernel, const char* param_name, Config &config, const string &unique_name);
-    //Destructor
+    // Constructor
+    clRfiInputSum(const char* param_gpuKernel, const char* param_name, Config& config,
+                  const string& unique_name);
+    // Destructor
     ~clRfiInputSum();
-    //Builds the program/kernel
-    virtual void build(device_interface &param_Device) override;
-    //Executes the kernel
-    virtual cl_event execute(int param_bufferID, device_interface &param_Device, cl_event param_PrecedeEvent) override;
-    //Rest Server Callback
+    // Builds the program/kernel
+    virtual void build(device_interface& param_Device) override;
+    // Executes the kernel
+    virtual cl_event execute(int param_bufferID, device_interface& param_Device,
+                             cl_event param_PrecedeEvent) override;
+    // Rest Server Callback
     void rest_callback(connectionInstance& conn, json& json_request);
 
 private:

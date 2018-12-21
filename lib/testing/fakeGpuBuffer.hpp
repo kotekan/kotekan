@@ -6,9 +6,9 @@
 #ifndef FAKE_GPU_BUFFER_HPP
 #define FAKE_GPU_BUFFER_HPP
 
+#include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "chimeMetadata.h"
-#include "KotekanProcess.hpp"
 #include "pulsarTiming.hpp"
 
 
@@ -60,10 +60,7 @@
  */
 class fakeGpuBuffer : public KotekanProcess {
 public:
-
-    fakeGpuBuffer(Config& config,
-                const string& unique_name,
-                bufferContainer &buffer_container);
+    fakeGpuBuffer(Config& config, const string& unique_name, bufferContainer& buffer_container);
     ~fakeGpuBuffer();
     void main_thread() override;
 
@@ -77,8 +74,7 @@ public:
      * @param frame_num Number of the frame to fill.
      * @param metadata  Metadata of the frame.
      */
-    void fill_mode_block(int32_t* data, int frame_num,
-                         chimeMetadata* metadata);
+    void fill_mode_block(int32_t* data, int frame_num, chimeMetadata* metadata);
 
     /**
      * @brief Fill with a pattern for testing lost packet renormalisation.
@@ -91,8 +87,7 @@ public:
      * @param frame_num Number of the frame to fill.
      * @param metadata  Metadata of the frame.
      */
-    void fill_mode_lostsamples(int32_t* data, int frame_num,
-                               chimeMetadata* metadata);
+    void fill_mode_lostsamples(int32_t* data, int frame_num, chimeMetadata* metadata);
 
     /**
      * @brief Fill with a pattern for debugging the accumulation.
@@ -107,8 +102,7 @@ public:
      * @param frame_num Number of the frame to fill.
      * @param metadata  Metadata of the frame.
      */
-    void fill_mode_accumulate(int32_t* data, int frame_num,
-                              chimeMetadata* metadata);
+    void fill_mode_accumulate(int32_t* data, int frame_num, chimeMetadata* metadata);
 
     /**
      * @brief Fill with a pattern with Gaussian noise with radiometer variance.
@@ -119,8 +113,7 @@ public:
      * @param frame_num Number of the frame to fill.
      * @param metadata  Metadata of the frame.
      */
-    void fill_mode_gaussian(int32_t* data, int frame_num,
-                            chimeMetadata* metadata);
+    void fill_mode_gaussian(int32_t* data, int frame_num, chimeMetadata* metadata);
 
     /**
      * @brief Fill with pulsar pulses.
@@ -132,10 +125,9 @@ public:
      * @param frame_num Number of the frame to fill.
      * @param metadata  Metadata of the frame.
      */
-    void fill_mode_pulsar(int32_t* data, int frame_num,
-                          chimeMetadata* metadata);
-private:
+    void fill_mode_pulsar(int32_t* data, int frame_num, chimeMetadata* metadata);
 
+private:
     Buffer* out_buf;
 
     // Parameters read from the config
@@ -149,20 +141,19 @@ private:
     int32_t num_frames;
     std::vector<float> coeff;
     float dm;
-    float pulse_width;  // in s
-    float rot_freq; // in Hz
-    Polyco * polyco;
+    float pulse_width; // in s
+    float rot_freq;    // in Hz
+    Polyco* polyco;
     bool gaussian_bgnd;
 
     // Function pointer for fill modes
-    typedef void(fakeGpuBuffer::*fill_func)(int32_t *, int, chimeMetadata *);
+    typedef void (fakeGpuBuffer::*fill_func)(int32_t*, int, chimeMetadata*);
 
     // A map to look up the modes by name at run time
     std::map<std::string, fill_func> fill_map;
 
     // The fill function to actually use
     fill_func fill;
-
 };
 
 #endif

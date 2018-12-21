@@ -6,8 +6,8 @@
 #ifndef TIME_DOWNSAMP_HPP
 #define TIME_DOWNSAMP_HPP
 
-#include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
 
 /**
  * @class timeDownsample
@@ -42,17 +42,13 @@
 class timeDownsample : public KotekanProcess {
 
 public:
-
     /// Default constructor, loads config params.
-    timeDownsample(Config &config,
-                   const string& unique_name,
-                   bufferContainer &buffer_container);
+    timeDownsample(Config& config, const string& unique_name, bufferContainer& buffer_container);
 
     /// Main loop for the process
-    void main_thread();
+    void main_thread() override;
 
 private:
-
     // Frame parameters
     size_t num_elements, num_eigenvectors;
     size_t nprod;
@@ -61,9 +57,8 @@ private:
     int nsamp;
 
     // Buffers
-    Buffer * in_buf;
-    Buffer * out_buf;
-
+    Buffer* in_buf;
+    Buffer* out_buf;
 };
 
 #endif

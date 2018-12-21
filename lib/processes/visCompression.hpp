@@ -6,16 +6,25 @@
 #ifndef VIS_COMPRESSION_HPP
 #define VIS_COMPRESSION_HPP
 
-#include <cstdint>
-#include <vector>
-#include <tuple>
-
-#include "json.hpp"
-
-#include "buffer.h"
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
-#include "visUtil.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
 #include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "prometheusMetrics.hpp"
+#include "visUtil.hpp"
+
+#include <atomic>
+#include <cstdint>
+#include <functional>
+#include <iosfwd>
+#include <map>
+#include <string>
+#include <sys/types.h>
+#include <thread>
+#include <utility>
+#include <vector>
 
 // This type is used a lot so let's use an alias
 using json = nlohmann::json;
@@ -38,40 +47,37 @@ using json = nlohmann::json;
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf stack_type      String. Type of stacking to apply to the data. Look at
- *                       documentation of stack_X functions for details.
- * @conf exclude_inputs  List of ints. Extra inputs to exclude from stack.
+ * @conf stack_type             String. Type of stacking to apply to the data.
+ *                              Look at documentation of stack_X functions for
+ *                              details.
+ * @conf exclude_inputs         List of ints. Extra inputs to exclude from
+ *                              stack.
  *
  * @par Metrics
  * @metric kotekan_baselinecompression_residuals
  *      The variance of the residuals.
  * @metric kotekan_baselinecompression_time_seconds
  *      The time elapsed to process one frame.
- * @metric kotekan_dataset_manager_dropped_frame_count
- *      The number of frames dropped while attempting to write.
  *
  * @author Richard Shaw
  */
 class baselineCompression : public KotekanProcess {
 
 public:
-
     // Default constructor
-    baselineCompression(Config &config,
-                        const string& unique_name,
-                        bufferContainer &buffer_container);
+    baselineCompression(Config& config, const string& unique_name,
+                        bufferContainer& buffer_container);
 
     // Main loop for the process: Creates n threads that do the compression.
     void main_thread() override;
 
 private:
-
-	/// Entrancepoint for n threads. Each thread takes frames with a
-	/// different frame_id from the buffer and compresses them.
+    /// Entrancepoint for n threads. Each thread takes frames with a
+    /// different frame_id from the buffer and compresses them.
     void compress_thread(int thread_id);
 
     /// Tracks input dataset ID and gets output dataset IDs from manager
-    void change_dataset_state(dset_id_t ds_id);
+    dset_id_t change_dataset_state(dset_id_t input_ds_id);
 
     /// Vector to hold the thread handles
     std::vector<std::thread> thread_handles;
@@ -84,11 +90,8 @@ private:
     // vector of (stack_output_index, conjugate) pairs. In this conjugate
     // describes whether the input must be complex conjugated prior to stacking.
     // Inputs are the usual input map and product map.
-    using stack_def_fn = std::function<
-        std::pair<uint32_t, std::vector<rstack_ctype>>(
-            const std::vector<input_ctype>&, const std::vector<prod_ctype>&
-        )
-    >;
+    using stack_def_fn = std::function<std::pair<uint32_t, std::vector<rstack_ctype>>(
+        const std::vector<input_ctype>&, const std::vector<prod_ctype>&)>;
 
     /// Map from the name of a stack to its definiting function.
     std::map<std::string, stack_def_fn> stack_type_defs;
@@ -103,13 +106,9 @@ private:
     Buffer* in_buf;
     Buffer* out_buf;
 
-    // dataset states and IDs
-    dset_id_t output_dset_id;
+    // dataset states
     const prodState* prod_state_ptr;
     const stackState* stack_state_ptr;
-
-    // Number of errors when dealing with datasetManager
-    std::atomic<uint32_t> err_count;
 };
 
 
@@ -124,10 +123,8 @@ private:
  *
  * @returns Stack definition.
  **/
-std::pair<uint32_t, std::vector<rstack_ctype>> stack_diagonal(
-    const std::vector<input_ctype>& inputs,
-    const std::vector<prod_ctype>& prods
-);
+std::pair<uint32_t, std::vector<rstack_ctype>>
+stack_diagonal(const std::vector<input_ctype>& inputs, const std::vector<prod_ctype>& prods);
 
 /**
  * @brief Stack redundant baselines between cylinder pairs for CHIME.
@@ -144,10 +141,8 @@ std::pair<uint32_t, std::vector<rstack_ctype>> stack_diagonal(
  *
  * @returns Stack definition.
  **/
-std::pair<uint32_t, std::vector<rstack_ctype>> stack_chime_in_cyl(
-    const std::vector<input_ctype>& inputs,
-    const std::vector<prod_ctype>& prods
-);
+std::pair<uint32_t, std::vector<rstack_ctype>>
+stack_chime_in_cyl(const std::vector<input_ctype>& inputs, const std::vector<prod_ctype>& prods);
 
 /**
  * @brief Take an a rstack map and generate a stack->prod mapping.
@@ -157,8 +152,8 @@ std::pair<uint32_t, std::vector<rstack_ctype>> stack_chime_in_cyl(
  *
  * @returns The stack->prod mapping.
  **/
-std::vector<stack_ctype> invert_stack(
-    uint32_t num_stack, const std::vector<rstack_ctype>& stack_map);
+std::vector<stack_ctype> invert_stack(uint32_t num_stack,
+                                      const std::vector<rstack_ctype>& stack_map);
 
 
 #define CYL_A 0
@@ -197,7 +192,7 @@ struct chimeFeed {
 /**
  * @brief Implement an output operator to help debugging.
  **/
-std::ostream & operator<<(std::ostream &os, const chimeFeed& f);
+std::ostream& operator<<(std::ostream& os, const chimeFeed& f);
 
 
 #endif

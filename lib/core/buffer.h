@@ -49,7 +49,7 @@ extern "C" {
 #define MAX_PROCESS_NAME_LEN 128
 
 /// The maximum number of consumers that can register on a buffer
-#define MAX_CONSUMERS 10
+#define MAX_CONSUMERS 15
 /// The maximum number of producers that can register on a buffer
 #define MAX_PRODUCERS 10
 
@@ -307,18 +307,18 @@ uint8_t * wait_for_full_frame(struct Buffer* buf, const char * consumer_name, co
 
 /**
  * @brief Wait for a full frame on the given buffer up to timeout.
- * 
+ *
  * This function will timeout after `wait` seconds.
- * 
+ *
  * @param[in] buf Buffer to wait on.
  * @param[in] name Name of the process.
  * @param[in] ID Frame ID to wait at.
  * @param[in] timeout Exit after this we exceed this *absolute* time.
- * 
+ *
  * @return Return status:
  *   - `0`: Success! We have a new frame.
  *   - `1`: Failure! We timed out waiting.
- *   - `-1`: Failure! We received the thread exit signal. 
+ *   - `-1`: Failure! We received the thread exit signal.
  **/
 int wait_for_full_frame_timeout(struct Buffer* buf, const char * name,
                                 const int ID, const struct timespec timeout);
@@ -341,6 +341,22 @@ int is_frame_empty(struct Buffer * buf, const int frame_id);
  * @returns The number of currently full frames in the buffer
  */
 int get_num_full_frames(struct Buffer * buf);
+
+/**
+ * @brief Get the number of consumers on this buffer
+ *
+ * @param buf The buffer
+ * @return int The number of consumers on the buffer
+ */
+int get_num_consumers(struct Buffer * buf);
+
+/**
+ * @brief Get the number of producers for this buffer
+ *
+ * @param buf The buffer
+ * @return int The number of producers on this buffer
+ */
+int get_num_producers(struct Buffer * buf);
 
 /**
  * @brief Returns the last time a frame was marked as full
@@ -484,6 +500,21 @@ struct metadataContainer * get_metadata_container(struct Buffer * buf, int frame
  * @param[in] to_frame_id The frame ID in the @c to_buf to copy the metadata into
  */
 void pass_metadata(struct Buffer * from_buf, int from_frame_id,
+                    struct Buffer * to_buf, int to_frame_id);
+
+
+/**
+ * @brief Makes a fully deep copy of the metadata from one object to another
+ *
+ * Unlike pass_metadata this doesn't remove the metadata from the @c from_buf
+ * and requires that the @c to_buf has a metadata object to be copied into.
+ *
+ * @param[in] from_buf The buffer to copy the metadata from
+ * @param[in] from_frame_id The frame ID to copy the metadata from
+ * @param[in] to_buf The buffer to copy the metadata into
+ * @param[in] to_frame_id The frame ID in the @c to_buf to copy the metadata into
+ */
+void copy_metadata(struct Buffer * from_buf, int from_frame_id,
                     struct Buffer * to_buf, int to_frame_id);
 
 /**

@@ -6,8 +6,8 @@
 #ifndef VDIF_RFI_H
 #define VDIF_RFI_H
 
-#include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
 #include "vdif_functions.h"
 
 /*
@@ -20,11 +20,13 @@
  * power estimates. Once the desired integration length is over, the process does one of two things
  * (as specified by the user):
  *
- * 1) The process combines the sums across the element axis and kurtosis values are calculated on the new sum
+ * 1) The process combines the sums across the element axis and kurtosis values are calculated on
+ *the new sum
  *
  * 2) The process computes kurtosis values for each frequency-element pair
  *
- * There are advantages to both options, however the first is currently heavily favoured by other processes.
+ * There are advantages to both options, however the first is currently heavily favoured by other
+ *processes.
  *
  * @par Buffers
  * @buffer vdif_in The kotekan buffer which conatins input VDIF data
@@ -41,32 +43,30 @@
  */
 class rfiVDIF : public KotekanProcess {
 public:
-    //Constructor, initializes class, sets up config
-    rfiVDIF(Config &config,
-                   const string& unique_name,
-                   bufferContainer &buffer_containter);
-    //Deconstructor, cleans up, does nothing
+    // Constructor, initializes class, sets up config
+    rfiVDIF(Config& config, const string& unique_name, bufferContainer& buffer_containter);
+    // Deconstructor, cleans up, does nothing
     ~rfiVDIF();
 
-    //Main thread: reads vdif_in buffer, computes kurtosis values, fills rfi_out buffer
+    // Main thread: reads vdif_in buffer, computes kurtosis values, fills rfi_out buffer
     void main_thread() override;
 
 private:
-    //Kotekan Buffer for VDIF input
-    struct Buffer *buf_in;
-    //Kotekan Buffer for kurtosis output
-    struct Buffer *buf_out;
-    //General config Paramaters
-    //Number of elements in the input data
+    // Kotekan Buffer for VDIF input
+    struct Buffer* buf_in;
+    // Kotekan Buffer for kurtosis output
+    struct Buffer* buf_out;
+    // General config Paramaters
+    // Number of elements in the input data
     uint32_t _num_elements;
-    //Number of total frequencies in the input data
+    // Number of total frequencies in the input data
     uint32_t _num_local_freq;
-    //Number of timesteps in a frame of input data
+    // Number of timesteps in a frame of input data
     uint32_t _samples_per_data_set;
-    //RFI config parameters
-    //Flag for whether or not to combine inputs in kurtosis estimates
+    // RFI config parameters
+    // Flag for whether or not to combine inputs in kurtosis estimates
     bool _rfi_combined;
-    //Number of timesteps per kurtosis value
+    // Number of timesteps per kurtosis value
     uint32_t _sk_step;
 };
 

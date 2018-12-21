@@ -7,27 +7,26 @@
 #ifndef BASEBAND_READOUT_H
 #define BASEBAND_READOUT_H
 
-#include <string>
-#include <mutex>
-#include <queue>
-#include <tuple>
-#include <condition_variable>
+#include "KotekanProcess.hpp"
+#include "basebandReadoutManager.hpp"
+#include "buffer.h"
+#include "chimeMetadata.h"
+#include "gpsTime.h"
+#include "visUtil.hpp"
 
 #include "gsl-lite.hpp"
 
-#include <highfive/H5File.hpp>
+#include <condition_variable>
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5DataSpace.hpp>
-
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "KotekanProcess.hpp"
-#include "gpsTime.h"
-#include "basebandReadoutManager.hpp"
-#include "visUtil.hpp"
+#include <highfive/H5File.hpp>
+#include <mutex>
+#include <queue>
+#include <string>
+#include <tuple>
 
 
-#define TARGET_CHUNK_SIZE 1024 * 1024
+constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
 
 
 /**
@@ -44,15 +43,9 @@ struct basebandDumpData {
     /// Default constructor used to indicate error
     basebandDumpData();
     /// Initialize the container with all parameters but does not fill in the data.
-    basebandDumpData(
-            uint64_t event_id_,
-            uint32_t freq_id_,
-            uint32_t num_elements_,
-            int64_t data_start_fpga_,
-            int64_t data_length_fpga_,
-            timespec data_start_ctime_,
-            uint8_t * data_ref
-            );
+    basebandDumpData(uint64_t event_id_, uint32_t freq_id_, uint32_t num_elements_,
+                     int64_t data_start_fpga_, uint64_t data_length_fpga_,
+                     timespec data_start_ctime_, uint8_t* data_ref);
 
     //@{
     /// Metadata.
@@ -98,10 +91,10 @@ struct basebandDumpData {
  */
 class basebandReadout : public KotekanProcess {
 public:
-    basebandReadout(Config& config, const string& unique_name,
-                    bufferContainer &buffer_container);
+    basebandReadout(Config& config, const string& unique_name, bufferContainer& buffer_container);
     virtual ~basebandReadout();
     void main_thread() override;
+
 private:
     // settings from the config file
     std::string _base_dir;
@@ -112,17 +105,15 @@ private:
     double _write_throttle;
     std::vector<input_ctype> _inputs;
 
-    struct Buffer * buf;
+    struct Buffer* buf;
     int next_frame, oldest_frame;
     std::vector<std::mutex> frame_locks;
 
     std::mutex manager_lock;
 
-    void listen_thread(const uint32_t freq_id,
-                       basebandReadoutManager& readout_manager);
+    void listen_thread(const uint32_t freq_id, basebandReadoutManager& readout_manager);
     void write_thread(basebandReadoutManager& readout_manager);
-    void write_dump(basebandDumpData data,
-                    basebandDumpStatus& dump_status,
+    void write_dump(basebandDumpData data, basebandDumpStatus& dump_status,
                     std::mutex& request_mtx);
     int add_replace_frame(int frame_id);
     void lock_range(int start_frame, int end_frame);
@@ -138,11 +129,8 @@ private:
      * @return A fully initialized `basebandDumpData` if the call succeeded, or
      * an empty one if the frame data was not availabe for the time requested
      */
-    basebandDumpData get_data(
-            uint64_t event_id,
-            int64_t trigger_start_fpga,
-            int64_t trigger_length_fpga
-            );
+    basebandDumpData get_data(uint64_t event_id, int64_t trigger_start_fpga,
+                              int64_t trigger_length_fpga);
 
     /// baseband data array
     const std::unique_ptr<uint8_t[]> baseband_data;

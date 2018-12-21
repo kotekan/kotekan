@@ -1,14 +1,14 @@
 #include "timeDownsample.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+
 #include "chimeMetadata.h"
 #include "errors.h"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
 
 REGISTER_KOTEKAN_PROCESS(timeDownsample);
 
-timeDownsample::timeDownsample(Config &config,
-                               const string& unique_name,
-                               bufferContainer &buffer_container) :
+timeDownsample::timeDownsample(Config& config, const string& unique_name,
+                               bufferContainer& buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&timeDownsample::main_thread, this)) {
 
@@ -22,24 +22,22 @@ timeDownsample::timeDownsample(Config &config,
     nsamp = config.get_default<int>(unique_name, "num_samples", 2);
 
     nprod = num_elements * (num_elements + 1) / 2;
-
 }
 
 void timeDownsample::main_thread() {
 
     unsigned int frame_id = 0;
-    unsigned int nframes = 0;  // the number of frames accumulated so far
-    unsigned int wdw_pos = 0;  // the current position within the accumulation window
-    uint64_t wdw_end = 0;  // the end of the accumulation window in FPGA counts
-    unsigned int wdw_len = 0;  // the length of the accumulation window
+    unsigned int nframes = 0; // the number of frames accumulated so far
+    unsigned int wdw_pos = 0; // the current position within the accumulation window
+    uint64_t wdw_end = 0;     // the end of the accumulation window in FPGA counts
+    unsigned int wdw_len = 0; // the length of the accumulation window
     uint64_t fpga_seq_start = 0;
     unsigned int output_frame_id = 0;
-    int32_t freq_id = -1;  // needs to be set by first frame
+    int32_t freq_id = -1; // needs to be set by first frame
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
-        if((wait_for_full_frame(in_buf, unique_name.c_str(),
-                                        frame_id)) == nullptr) {
+        if ((wait_for_full_frame(in_buf, unique_name.c_str(), frame_id)) == nullptr) {
             break;
         }
 
@@ -62,7 +60,7 @@ void timeDownsample::main_thread() {
             // Set the parameters of the accumulation window
             wdw_len = nsamp * frame.fpga_seq_length;
             wdw_end = fpga_seq_start + wdw_len;
-        } else if (frame.freq_id != (unsigned) freq_id) {
+        } else if (frame.freq_id != (unsigned)freq_id) {
             throw std::runtime_error("Cannot downsample stream with more than one frequency.");
         }
 
@@ -76,14 +74,13 @@ void timeDownsample::main_thread() {
             mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
             frame_id = (frame_id + 1) % in_buf->num_frames;
             continue;
-        } else if (nframes == 0) {  // Start accumulating frames
+        } else if (nframes == 0) { // Start accumulating frames
 
             // Update window
             wdw_end = fpga_seq_start + wdw_len;
 
             // Wait for an empty frame
-            if(wait_for_empty_frame(out_buf, unique_name.c_str(),
-                                    output_frame_id) == nullptr) {
+            if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
                 break;
             }
 
@@ -138,7 +135,7 @@ void timeDownsample::main_thread() {
             for (size_t i = 0; i < nprod; i++) {
                 output_frame.vis[i] /= nframes;
                 // extra factor of nsamp for sample variance
-                output_frame.weight[i] = nframes*nframes / output_frame.weight[i];
+                output_frame.weight[i] = nframes * nframes / output_frame.weight[i];
             }
             for (uint32_t i = 0; i < num_eigenvectors; i++) {
                 output_frame.eval[i] /= nframes;
@@ -156,4 +153,3 @@ void timeDownsample::main_thread() {
         }
     }
 }
-

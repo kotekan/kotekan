@@ -2,27 +2,26 @@
 
 REGISTER_HSA_COMMAND(hsaBeamformReorder);
 
-hsaBeamformReorder::hsaBeamformReorder(Config& config,const string &unique_name,
-                            bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("reorder", "reorder.hsaco", config, unique_name, host_buffers, device) {
-    command_type = CommandType::KERNEL;
+hsaBeamformReorder::hsaBeamformReorder(Config& config, const string& unique_name,
+                                       bufferContainer& host_buffers, hsaDeviceInterface& device) :
+    hsaCommand(config, unique_name, host_buffers, device, "reorder", "reorder.hsaco") {
+    command_type = gpuCommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
-    _samples_per_data_set = config.get<int32_t>(
-                unique_name, "samples_per_data_set");
+    _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     _reorder_map = config.get<std::vector<int32_t>>(unique_name, "reorder_map");
     _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
 
-    input_frame_len  = _num_elements * _num_local_freq * _samples_per_data_set ;
-    output_frame_len = _num_elements * _num_local_freq * _samples_per_data_set ;
+    input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
+    output_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
 
     // Create a C style array for backwards compatibility.
     map_len = 512 * sizeof(int);
-    _reorder_map_c = (int *)hsa_host_malloc(map_len);
-    for (uint i=0;i<512;++i){
+    _reorder_map_c = (int*)hsa_host_malloc(map_len);
+    for (uint i = 0; i < 512; ++i) {
         _reorder_map_c[i] = _reorder_map[i];
     }
-    void * device_map = device.get_gpu_memory("reorder_map", map_len);
+    void* device_map = device.get_gpu_memory("reorder_map", map_len);
     device.sync_copy_host_to_gpu(device_map, (void*)_reorder_map_c, map_len);
 }
 
@@ -30,16 +29,15 @@ hsaBeamformReorder::~hsaBeamformReorder() {
     hsa_host_free(_reorder_map_c);
 }
 
-hsa_signal_t hsaBeamformReorder::execute(int gpu_frame_id,
-                                         hsa_signal_t precede_signal) {
+hsa_signal_t hsaBeamformReorder::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
     // Unused parameter, suppress warning
     (void)precede_signal;
 
-    struct __attribute__ ((aligned(16))) args_t {
-        void *input_buffer;
-        void *map_buffer;
-        void *output_buffer;
+    struct __attribute__((aligned(16))) args_t {
+        void* input_buffer;
+        void* map_buffer;
+        void* output_buffer;
     } args;
     memset(&args, 0, sizeof(args));
     args.input_buffer = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
@@ -63,4 +61,3 @@ hsa_signal_t hsaBeamformReorder::execute(int gpu_frame_id,
 
     return signals[gpu_frame_id];
 }
-

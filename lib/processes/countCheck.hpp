@@ -7,20 +7,21 @@
 #ifndef COUNT_CHECK_HPP
 #define COUNT_CHECK_HPP
 
-#include <unistd.h>
-#include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
+
+#include <unistd.h>
 
 
 /**
  * @class countCheck
  * @brief Processe that checks for acquisition re-start.
  *
- * This task finds the unix time at the start of the acquisition from 
- * the FPGA counts and the current unix time, assuming 390625 FPGA 
- * counts per second. 
+ * This task finds the unix time at the start of the acquisition from
+ * the FPGA counts and the current unix time, assuming 390625 FPGA
+ * counts per second.
  * It stores this value and checks each frame to look for changes.
- * If the initial time changes by more than 'start_time_tolerance' (default=3) 
+ * If the initial time changes by more than 'start_time_tolerance' (default=3)
  * seconds, the process raises SIGINT.
  *
  * @par Buffers
@@ -28,27 +29,24 @@
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf  start_time_tolerance  int. Tolerance for the start time error in 
+ * @conf  start_time_tolerance  int. Tolerance for the start time error in
  *                                   seconds. Default is 3.
- * 
+ *
  * @author Mateus A Fandino
  */
 class countCheck : public KotekanProcess {
 
 public:
-
     // Default constructor
-    countCheck(Config &config,
-              const string& unique_name,
-              bufferContainer &buffer_container);
+    countCheck(Config& config, const string& unique_name, bufferContainer& buffer_container);
 
     // Main loop for the process
-    void main_thread();
+    void main_thread() override;
 
 private:
     // Store the unix time at start of correlation:
     int64_t start_time;
-    Buffer * in_buf;
+    Buffer* in_buf;
     // Tolerance for start time variability
     int start_time_tolerance;
 };

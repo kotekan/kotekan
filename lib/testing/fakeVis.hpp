@@ -7,15 +7,21 @@
 #ifndef FAKE_VIS
 #define FAKE_VIS
 
-#include <unistd.h>
-#include <string>
-#include "buffer.h"
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
-#include "errors.h"
-#include "util.h"
-#include "visUtil.hpp"
-#include "visBuffer.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
 #include "datasetManager.hpp"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
+
+#include <functional>
+#include <map>
+#include <stddef.h>
+#include <stdint.h>
+#include <string>
+#include <vector>
+
 
 /**
  * @brief Generate fake visibility data into a ``visBuffer``.
@@ -52,11 +58,9 @@
  *                          mode 'test_pattern_freq'.
  * @conf  freq_values       Array of CFloat. Values for the frequency IDs in
  *                          mode 'test_pattern_freq'.
- * @conf  use_dataset_manager   Bool. If this is `True`, the dataset manager
- *                              is used (default False).
- * @conf  dataset_id        Int. Use a fixed dataset ID. If not set,
- *                          `use_dataset_manager` is `True`, the dataset
- *                          manager will create the dataset ID.
+ * @conf  dataset_id        Int. Use a fixed dataset ID and don't register
+ *                          states. If not set, the dataset manager will create
+ *                          the dataset ID.
  *
  * @todo  It might be useful eventually to produce realistic looking mock
  *        visibilities.
@@ -68,12 +72,10 @@ class fakeVis : public KotekanProcess {
 
 public:
     /// Constructor. Loads config options.
-    fakeVis(Config &config,
-            const string& unique_name,
-            bufferContainer &buffer_container);
+    fakeVis(Config& config, const string& unique_name, bufferContainer& buffer_container);
 
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
-    void main_thread();
+    void main_thread() override;
 
     /**
      * @brief Default fill pattern.
@@ -145,7 +147,7 @@ private:
     std::vector<cfloat> test_pattern_value;
 
     /// Output buffer
-    Buffer * out_buf;
+    Buffer* out_buf;
 
     /// List of frequencies for this buffer
     std::vector<uint32_t> freq;
@@ -158,8 +160,6 @@ private:
 
     // Test mode that sets all weights to zero
     bool zero_weight;
-
-    bool use_dataset_manager;
 
     bool wait;
     int32_t num_frames;
@@ -199,17 +199,14 @@ class replaceVis : public KotekanProcess {
 
 public:
     /// Constructor. Loads config options.
-    replaceVis(Config& config,
-               const string& unique_name,
-               bufferContainer& buffer_container);
+    replaceVis(Config& config, const string& unique_name, bufferContainer& buffer_container);
 
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
-    void main_thread();
+    void main_thread() override;
 
 private:
     /// Buffers
-    Buffer * in_buf;
-    Buffer * out_buf;
-
+    Buffer* in_buf;
+    Buffer* out_buf;
 };
 #endif

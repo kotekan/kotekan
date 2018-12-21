@@ -2,8 +2,8 @@ import pytest
 import numpy as np
 import time
 
-import kotekan_runner
-import visbuffer
+from kotekan import runner
+from kotekan import visbuffer
 
 root_params = {
     'log_level': 'DEBUG',
@@ -45,10 +45,10 @@ def kotekan_output(tmpdir_factory):
             frame_list[-1].metadata.fpga_seq = 0
 
         # ReadVisBuffer receives a list of frames and writes them down to disk.
-        read_buffer = kotekan_runner.ReadVisBuffer(str(tmpdir), frame_list)
+        read_buffer = runner.ReadVisBuffer(str(tmpdir), frame_list)
         read_buffer.write()
 
-        test = kotekan_runner.KotekanProcessTester(
+        test = runner.KotekanProcessTester(
             'countCheck', count_params,
             read_buffer,
             None,  # buffers_out is None

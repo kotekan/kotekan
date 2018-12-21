@@ -42,13 +42,14 @@ else ()
 endif ()
 
 if (${USE_HSA})
-  find_package( HSA )
+  find_package( HSA REQUIRED )
   set(USE_HSA ${HSA_FOUND})
   find_library( hsa-runtime64 /opt/rocm/hsa/lib/ )
 endif ()
 
 if (${USE_OPENCL})
-  find_package( OpenCL )
+  set( ENV{AMDAPPSDKROOT} /opt/rocm/opencl)
+  find_package( OpenCL REQUIRED )
   set(USE_OPENCL ${OPENCL_FOUND})
 endif ()
 
@@ -75,8 +76,8 @@ endif()
 
 #Libevent is required now
 find_package(LibEvent REQUIRED )
-include_directories(${EVENT_INCLUDE_DIR}/../)
-link_directories(${EVENT_LIBRARY_DIR})
+include_directories(${LIBEVENT_INCLUDE_DIR}/../)
+link_libraries(${LIBEVENT_LIBRARIES})
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   add_definitions(-DMAC_OSX)
@@ -162,9 +163,6 @@ find_package(Threads REQUIRED)
 
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
-# Required for some SSE/AVX intrinsics
-add_definitions(-D__STDC_LIMIT_MACROS)
-
 # Note that -lrt here is needed on some versions of CentOS
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
        set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrt " )
@@ -186,6 +184,14 @@ if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrt " )
 endif ()
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
+
+# Warning about missing override is called differently in clang and gcc
+# TODO: enable once we are using a release version of HighFive
+#if (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
+#    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -Winconsistent-missing-override")
+#else()
+#    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -Wsuggest-override")
+#endif()
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb -O2")
 
@@ -222,7 +228,7 @@ endif()
 # Improve debugging by turning off all optimisations.
 if (${SUPERDEBUG})
     MESSAGE("Superdebugging enabled!!")
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer ")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer")
 endif()
 
@@ -236,7 +242,6 @@ endif()
 
 add_subdirectory(lib)
 add_subdirectory(kotekan)
-add_subdirectory(tools)
 add_subdirectory(scripts)
 add_subdirectory(include)
 
@@ -247,4 +252,52 @@ if (${BOOST_TESTS})
     add_subdirectory(${BOOST_TESTS_DIR})
 else()
     MESSAGE("BOOST_TESTS disabled")
+endif()
+
+# Enforce code formatting rules with clang-format.
+find_program(
+    CLANG_FORMAT_PATH
+    NAMES "clang-format"
+    DOC "Path to clang-format executable"
+    )
+if(NOT CLANG_FORMAT_PATH)
+    message(STATUS "clang-format not found.")
+else()
+    message(STATUS "clang-format found: ${CLANG_FORMAT_PATH}")
+    set(DO_CLANG_FORMAT "${CLANG_FORMAT_PATH}" "-i -style=file")
+endif()
+
+function ( exclude_files_containing var exclude_string )
+    set(listVar "")
+    foreach ( FILE ${ARGN} )
+        string ( FIND ${FILE} ${exclude_string} EXCLUDE_STRING_FOUND )
+        if ( ${EXCLUDE_STRING_FOUND} EQUAL -1 )
+            list ( APPEND listVar ${FILE} )
+        endif ()
+    endforeach( FILE )
+    set(${var} "${listVar}" PARENT_SCOPE)
+endfunction()
+
+if(CLANG_FORMAT_PATH)
+     # Find all .cpp and .hpp files.
+    file( GLOB_RECURSE KOTEKAN_ALL_CPP_FILES *.cpp )
+    file( GLOB_RECURSE KOTEKAN_ALL_HPP_FILES *.hpp )
+
+    list ( APPEND FILES_TO_FORMAT ${KOTEKAN_ALL_CPP_FILES} )
+    list ( APPEND FILES_TO_FORMAT ${KOTEKAN_ALL_HPP_FILES} )
+
+    # Exclude all code we don't want auto-formatted (external libs).
+    set ( EXCLUDE_DIR "include" )
+    exclude_files_containing ( FILES_TO_FORMAT
+                               ${EXCLUDE_DIR}
+                               ${FILES_TO_FORMAT} )
+    set ( EXCLUDE_DIR "build" )
+    exclude_files_containing ( FILES_TO_FORMAT
+                               ${EXCLUDE_DIR}
+                               ${FILES_TO_FORMAT} )
+
+    # Use .clang-format file to auto format.
+    add_custom_target(
+        clang-format
+        COMMAND ${CLANG_FORMAT_PATH} -style=file -i ${FILES_TO_FORMAT} )
 endif()

@@ -1,18 +1,18 @@
 #include "bufferSend.hpp"
-#include "util.h"
+
 #include "chimeMetadata.h"
 #include "prometheusMetrics.hpp"
+#include "util.h"
 
 // Only Linux supports MSG_NOSIGNAL
 #ifndef __linux__
-    #define MSG_NOSIGNAL 0
+#define MSG_NOSIGNAL 0
 #endif
 
 REGISTER_KOTEKAN_PROCESS(bufferSend);
 
-bufferSend::bufferSend(Config& config,
-                        const string& unique_name,
-                        bufferContainer &buffer_container) :
+bufferSend::bufferSend(Config& config, const string& unique_name,
+                       bufferContainer& buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&bufferSend::main_thread, this)) {
 
@@ -21,13 +21,10 @@ bufferSend::bufferSend(Config& config,
 
     connected = false;
     server_ip = config.get<std::string>(unique_name, "server_ip");
-    server_port = config.get_default<uint32_t>(unique_name, "server_port",
-                                               11024);
+    server_port = config.get_default<uint32_t>(unique_name, "server_port", 11024);
 
-    send_timeout = config.get_default<uint32_t>(unique_name, "send_timeout",
-                                                20);
-    reconnect_time = config.get_default<uint32_t>(unique_name, "reconnect_time",
-                                                  5);
+    send_timeout = config.get_default<uint32_t>(unique_name, "send_timeout", 20);
+    reconnect_time = config.get_default<uint32_t>(unique_name, "reconnect_time", 5);
 
     dropped_frame_count = 0;
 
@@ -39,28 +36,29 @@ bufferSend::bufferSend(Config& config,
     socket_fd = -1;
 }
 
-bufferSend::~bufferSend() {
-}
+bufferSend::~bufferSend() {}
 
 void bufferSend::main_thread() {
 
     int frame_id = 0;
-    prometheusMetrics &metrics = prometheusMetrics::instance();
+    prometheusMetrics& metrics = prometheusMetrics::instance();
 
     std::thread connect_thread = std::thread(&bufferSend::connect_to_server, std::ref(*this));
 
     while (!stop_thread) {
 
-        uint8_t * frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL) break;
+        uint8_t* frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        if (frame == NULL)
+            break;
 
         uint32_t num_full_frames = get_num_full_frames(buf);
 
-        if (num_full_frames > (((uint32_t)buf->num_frames + 1)/2)) {
+        if (num_full_frames > (((uint32_t)buf->num_frames + 1) / 2)) {
             // If the number of full frames is high, then we drop some frames,
             // because we likely aren't sending fast enough to up with the data rate.
-            WARN("Number of full frames in buffer %s is %d (total frames: %d), dropping frame_id %d",
-                    buf->buffer_name, num_full_frames, buf->num_frames, frame_id);
+            WARN(
+                "Number of full frames in buffer %s is %d (total frames: %d), dropping frame_id %d",
+                buf->buffer_name, num_full_frames, buf->num_frames, frame_id);
             dropped_frame_count++;
         } else if (connected) {
             // Send header
@@ -72,13 +70,13 @@ void bufferSend::main_thread() {
             header.frame_size = buf->frame_size;
             header.metadata_size = buf->metadata[frame_id]->metadata_size;
 
-            DEBUG2("frame_size: %d, metadata_size: %d",
-                    header.frame_size, header.metadata_size);
+            DEBUG2("frame_size: %d, metadata_size: %d", header.frame_size, header.metadata_size);
 
             // Recover from partial sends
             DEBUG2("Sending header");
-            while ((n = send(socket_fd, &((uint8_t*)&header)[n_sent],
-                                header_len - n_sent, MSG_NOSIGNAL)) > 0) {
+            while ((n = send(socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent,
+                             MSG_NOSIGNAL))
+                   > 0) {
                 n_sent += n;
             }
             // Handle errors
@@ -93,14 +91,14 @@ void bufferSend::main_thread() {
             // Send metadata
             DEBUG2("Sending metadata");
             n_sent = 0;
-            while ((n = send(socket_fd,
-                                &((uint8_t*)buf->metadata[frame_id]->metadata)[n_sent],
-                                header.metadata_size - n_sent, MSG_NOSIGNAL)) > 0) {
+            while ((n = send(socket_fd, &((uint8_t*)buf->metadata[frame_id]->metadata)[n_sent],
+                             header.metadata_size - n_sent, MSG_NOSIGNAL))
+                   > 0) {
                 n_sent += n;
             }
             if (n < 0) {
-                ERROR("Error %s, failed to metadata to %s:%d", strerror(errno),
-                      server_ip.c_str(), server_port);
+                ERROR("Error %s, failed to metadata to %s:%d", strerror(errno), server_ip.c_str(),
+                      server_port);
                 close_connection();
                 continue;
             }
@@ -109,28 +107,29 @@ void bufferSend::main_thread() {
             // Send buffer frame.
             DEBUG2("Sending frame with %d bytes", header.frame_size);
             n_sent = 0;
-            while ((n = send(socket_fd, &frame[n_sent],
-                                (int32_t)header.frame_size - n_sent, MSG_NOSIGNAL)) > 0) {
+            while ((n = send(socket_fd, &frame[n_sent], (int32_t)header.frame_size - n_sent,
+                             MSG_NOSIGNAL))
+                   > 0) {
                 n_sent += n;
-                //DEBUG("Total sent: %d", n_sent);
+                // DEBUG("Total sent: %d", n_sent);
             }
             if (n < 0) {
-                ERROR("Error %s, failed to frame data to %s:%d", strerror(errno),
-                      server_ip.c_str(), server_port);
+                ERROR("Error %s, failed to frame data to %s:%d", strerror(errno), server_ip.c_str(),
+                      server_port);
                 close_connection();
                 continue;
             }
             DEBUG2("Sent frame: %d", n_sent);
-            INFO("Sent frame: %s[%d] to %s:%d", buf->buffer_name, frame_id, server_ip.c_str(), server_port);
+            INFO("Sent frame: %s[%d] to %s:%d", buf->buffer_name, frame_id, server_ip.c_str(),
+                 server_port);
 
         } else {
-            WARN("Dropping frame %s[%d], because connection to %s:%d is down.",
-                  buf->buffer_name, frame_id, server_ip.c_str(), server_port);
+            WARN("Dropping frame %s[%d], because connection to %s:%d is down.", buf->buffer_name,
+                 frame_id, server_ip.c_str(), server_port);
         }
 
         // Publish current dropped frame count.
-        metrics.add_process_metric("kotekan_buffer_send_dropped_frame_count",
-                                   unique_name,
+        metrics.add_process_metric("kotekan_buffer_send_dropped_frame_count", unique_name,
                                    dropped_frame_count);
 
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
@@ -165,9 +164,9 @@ void bufferSend::connect_to_server() {
             throw std::runtime_error("Could not create socket");
         }
 
-        if (connect(socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
-            ERROR("Could not connect to server %s:%d, error: %s(%d), waiting %d seconds to retry...",
-                  server_ip.c_str(), server_port, strerror(errno), errno, reconnect_time);
+        if (connect(socket_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
+            WARN("Could not connect to server %s:%d, error: %s(%d), waiting %d seconds to retry...",
+                 server_ip.c_str(), server_port, strerror(errno), errno, reconnect_time);
             close(socket_fd);
             // TODO Add a kotekanProcess level "breakable sleep" so this doesn't
             // lock up the shutdown process for upto reconnect_time seconds.
@@ -179,8 +178,7 @@ void bufferSend::connect_to_server() {
         // This is used for MacOS, since linux doesn't have SO_NOSIGPIPE
 #ifdef SO_NOSIGPIPE
         int set = 1;
-        if (setsockopt(socket_fd, SOL_SOCKET, SO_NOSIGPIPE,
-                       (void *)&set, sizeof(int)) < 0) {
+        if (setsockopt(socket_fd, SOL_SOCKET, SO_NOSIGPIPE, (void*)&set, sizeof(int)) < 0) {
             ERROR("bufferSend: setsockopt() NOSIGPIPE ");
         }
 #endif
@@ -190,19 +188,19 @@ void bufferSend::connect_to_server() {
         tv_timeout.tv_sec = send_timeout;
         tv_timeout.tv_usec = 0;
 
-        if (setsockopt(socket_fd, SOL_SOCKET, SO_SNDTIMEO,
-                       (void *)&tv_timeout, sizeof(tv_timeout)) < 0) {
+        if (setsockopt(socket_fd, SOL_SOCKET, SO_SNDTIMEO, (void*)&tv_timeout, sizeof(tv_timeout))
+            < 0) {
             ERROR("bufferSend: setsockopt() timeout failed.");
         }
 
-        INFO("Connected to server %s:%d for sending buffer %s",
-                server_ip.c_str(), server_port, buf->buffer_name);
+        INFO("Connected to server %s:%d for sending buffer %s", server_ip.c_str(), server_port,
+             buf->buffer_name);
         {
             std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
             connected = true;
         }
 
         std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
-        connection_state_cv.wait(connection_lock, [&](){return !connected || stop_thread;});
+        connection_state_cv.wait(connection_lock, [&]() { return !connected || stop_thread; });
     }
 }

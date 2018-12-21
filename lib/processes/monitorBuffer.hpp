@@ -8,10 +8,10 @@
 #ifndef MONITOR_BUFFER_H
 #define MONITOR_BUFFER_H
 
-#include <vector>
-
 #include "KotekanProcess.hpp"
 #include "bufferContainer.hpp"
+
+#include <vector>
 
 /**
  * @class monitorBuffer
@@ -34,14 +34,13 @@
 class monitorBuffer : public KotekanProcess {
 public:
     /// Common constructor
-    monitorBuffer(Config& config, const string& unique_name,
-                         bufferContainer &buffer_container);
+    monitorBuffer(Config& config, const string& unique_name, bufferContainer& buffer_container);
 
     /// Destructor
     virtual ~monitorBuffer();
 
     /// Watches the list of buffers for timeouts
-    void main_thread();
+    void main_thread() override;
 
 private:
     /// Internal list of buffers to check
@@ -53,7 +52,6 @@ private:
     /// The maximum fraction of full buffers before the system exits
     /// If set above 1 then this check is disabled
     float fill_threshold;
-
 };
 
 #endif

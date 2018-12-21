@@ -7,23 +7,33 @@
 #ifndef VISBUFFER_HPP
 #define VISBUFFER_HPP
 
-#include <time.h>
-#include <sys/time.h>
-#include <tuple>
-#include <complex>
+#include "buffer.h"
+#include "chimeMetadata.h"
+#include "visUtil.hpp"
 
 #include "gsl-lite.hpp"
 
-#include "visUtil.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
+#include <complex>
+#include <set>
+#include <sys/time.h>
+#include <time.h>
+#include <tuple>
+
+
+/**
+ * @brief The fields within the visBuffer.
+ *
+ * Use this enum to refer to the fields.
+ **/
+enum class visField { vis, weight, flags, eval, evec, erms, gain };
+
 
 /**
  * @struct visMetadata
  * @brief Metadata for the visibility style buffers
  *
  * @author Richard Shaw
- */
+ **/
 struct visMetadata {
 
     /// The FPGA sequence number of the integration frame
@@ -46,7 +56,6 @@ struct visMetadata {
     uint32_t num_prod;
     /// Number of eigenvectors and values calculated
     uint32_t num_ev;
-
 };
 
 
@@ -68,11 +77,10 @@ struct visMetadata {
  *       references.
  *
  * @author Richard Shaw
- */
+ **/
 class visFrameView {
 
 public:
-
     /**
      * @brief Create view without modifying layout.
      *
@@ -81,7 +89,7 @@ public:
      * @param buf      The buffer the frame is in.
      * @param frame_id The id of the frame to read.
      */
-    visFrameView(Buffer * buf, int frame_id);
+    visFrameView(Buffer* buf, int frame_id);
 
     /**
      * @brief Create view and set structure metadata.
@@ -95,9 +103,8 @@ public:
      * @param num_ev           Number of eigenvectors to hold.
      *
      * @warning The metadata object must already have been allocated.
-     */
-    visFrameView(Buffer * buf, int frame_id, uint32_t num_elements,
-                 uint32_t num_ev);
+     **/
+    visFrameView(Buffer* buf, int frame_id, uint32_t num_elements, uint32_t num_ev);
 
     /**
      * @brief Create view and set structure metadata.
@@ -112,9 +119,9 @@ public:
      * @param num_ev           Number of eigenvectors to hold.
      *
      * @warning The metadata object must already have been allocated.
-     */
-    visFrameView(Buffer * buf, int frame_id, uint32_t num_elements,
-                 uint32_t num_prod, uint32_t num_ev);
+     **/
+    visFrameView(Buffer* buf, int frame_id, uint32_t num_elements, uint32_t num_prod,
+                 uint32_t num_ev);
 
     /**
      * @brief Copy frame to a new buffer and create view of copied frame
@@ -126,8 +133,8 @@ public:
      * @param frame_to_copy    An instance of visFrameView corresponding to the frame to be copied.
      *
      * @warning The metadata object must already have been allocated.
-     */
-    visFrameView(Buffer * buf, int frame_id, visFrameView frame_to_copy);
+     **/
+    visFrameView(Buffer* buf, int frame_id, visFrameView frame_to_copy);
 
     /**
      * @brief Copy a whole frame from a buffer and create a view of it.
@@ -147,9 +154,9 @@ public:
      *
      * @returns A visFrameView of the copied frame.
      *
-     */
-    static visFrameView copy_frame(Buffer* buf_src, int frame_id_src,
-                                   Buffer* buf_dest, int frame_id_dest);
+     **/
+    static visFrameView copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
+                                   int frame_id_dest);
 
     /**
      * @brief Get the layout of the buffer from the structural parameters.
@@ -158,13 +165,12 @@ public:
      * @param num_prod         Number of products.
      * @param num_ev           Number of eigenvectors.
      *
-     * @returns A map from member name to start and end in bytes. The start
+     * @returns A mnonvis_bufferap from member name to start and end in bytes. The start
      *          (i.e. 0) and end (i.e. total size) of the buffer is contained in
      *          `_struct`.
-     */
-    static struct_layout calculate_buffer_layout(uint32_t num_elements,
-                                                 uint32_t num_prod,
-                                                 uint32_t num_ev);
+     **/
+    static struct_layout<visField> calculate_buffer_layout(uint32_t num_elements, uint32_t num_prod,
+                                                           uint32_t num_ev);
 
     /**
      * @brief Return a summary of the visibility buffer contents.
@@ -178,21 +184,28 @@ public:
      *
      * Transfers all the non-structural metadata from the source frame.
      *
-     * @param frame_to_copy Frame to copy metadata from.
+     * @param  frame_to_copy  Frame to copy metadata from.
      *
      **/
-    void copy_nonconst_metadata(visFrameView frame_to_copy);
+    void copy_metadata(visFrameView frame_to_copy);
 
     /**
-     * @brief Copy the non-visibility parts of the buffer.
+     * @brief Copy over the data, skipping specified members.
      *
-     * Transfers all the datasets except the visibilities and their weights.
+     * This routine copys member by member and the structural parameters of the
+     * buffer only need to match for the members actually being copied. If they
+     * don't match an exception is thrown.
      *
-     * @param frame_to_copy Frame to copy metadata from.
+     * @note To copy the whole frame it is more efficient to use the copying
+     * constructor.
+     *
+     * @param  frame_to_copy  Frame to copy metadata from.
+     * @param  skip_members   Specify a set of data members to *not* copy.
      *
      **/
-    void copy_nonvis_buffer(visFrameView frame_to_copy);
+    void copy_data(visFrameView frame_to_copy, const std::set<visField>& skip_members);
 
+    // TODO: CHIME specific
     /**
      * @brief Fill the visMetadata from a chimeMetadata struct.
      *
@@ -203,39 +216,41 @@ public:
      *
      * @param chime_metadata Metadata to fill from.
      *
-     */
-     void fill_chime_metadata(const chimeMetadata * chime_metadata);
+     **/
+    void fill_chime_metadata(const chimeMetadata* chime_metadata);
 
     /**
      * @brief Read only access to the metadata.
      * @returns The metadata.
      **/
-    const visMetadata * metadata() const { return _metadata; }
+    const visMetadata* metadata() const {
+        return _metadata;
+    }
 
     /**
      * @brief Read only access to the frame data.
      * @returns The data.
      **/
-    const uint8_t * data() const { return _frame; }
+    const uint8_t* data() const {
+        return _frame;
+    }
 
 private:
-
     // References to the buffer and metadata we are viewing
-    Buffer * const buffer;
+    Buffer* const buffer;
     const int id;
-    visMetadata * const _metadata;
+    visMetadata* const _metadata;
 
     // Pointer to frame data. In theory this is redundant as it can be derived
     // from buffer and id, but it's nice for brevity
-    uint8_t * const _frame;
+    uint8_t* const _frame;
 
     // The calculated layout of the buffer
-    struct_layout buffer_layout;
+    struct_layout<visField> buffer_layout;
 
-// NOTE: these need to be defined in a final public block to ensure that they
-// are initialised after the above members.
+    // NOTE: these need to be defined in a final public block to ensure that they
+    // are initialised after the above members.
 public:
-
     /// The number of elements in the data (read only).
     const uint32_t& num_elements;
     /// The number of products in the data (read only).
@@ -269,9 +284,7 @@ public:
     float& erms;
     /// View of the applied gains
     const gsl::span<cfloat> gain;
-
 };
-
 
 
 #endif

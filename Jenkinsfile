@@ -53,9 +53,18 @@ pipeline {
             sh '''export PATH=${PATH}:/var/lib/jenkins/.local/bin/
                   mkdir build-docs
                   cd build-docs/
-                  cmake -DCOMPILE_DOCS=ON ..
+                  cmake -DCOMPILE_DOCS=ON -DPLANTUML_PATH=/opt/plantuml/ ..
                   cd docs/
                   make'''
+          }
+        }
+        stage('Check code formatting') {
+          steps {
+            sh '''mkdir build-check-format
+                  cd build-check-format/
+                  cmake ..
+                  make clang-format
+                  git diff --exit-code'''
           }
         }
       }
@@ -63,7 +72,7 @@ pipeline {
     stage('Unit Tests') {
       steps {
         sh '''cd tests/
-              pytest -s -vvv'''
+              PYTHONPATH=../python/ pytest -s -vvv'''
       }
     }
   }

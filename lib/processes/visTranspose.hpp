@@ -1,9 +1,21 @@
 #ifndef VISTRANSPOSE
 #define VISTRANSPOSE
 
+#include "Config.hpp"
 #include "KotekanProcess.hpp"
 #include "buffer.h"
+#include "bufferContainer.hpp"
+#include "datasetManager.hpp"
 #include "visFileArchive.hpp"
+#include "visUtil.hpp"
+
+#include "json.hpp"
+
+#include <memory>
+#include <stddef.h>
+#include <stdint.h>
+#include <string>
+#include <vector>
 
 using json = nlohmann::json;
 
@@ -29,15 +41,10 @@ using json = nlohmann::json;
  *         @buffer_format visBuffer.
  *         @buffer_metadata visMetadata
  *
- * @conf   chunk_size           Array of [int, int, int]. Chunk size of the data (freq, prod, time).
- * @conf   outfile              String. Path to the (data-meta-pair of) files to write to (e.g. "/path/to/0000_000", without .h5).
- * @conf   use_dataset_manager  Bool. If set to `true`, the metadata will be
- *                              fetched from the datasetManager, otherwise
- *                              infile has to be set and the metadata will be
- *                              read from there.
- * @conf   infile               String. Path to the data files to read (e.g.
- *                              "/path/to/0000_000", without .data/meta).
- *                              Only needed if use_dataset_manager is `False`.
+ * @conf   chunk_size           Array of [int, int, int]. Chunk size of the data
+ *                              (freq, prod, time).
+ * @conf   outfile              String. Path to the (data-meta-pair of) files to
+ *                              write to (e.g. "/path/to/0000_000", without .h5).
  *
  * @par Metrics
  * @metric kotekan_vistranspose_data_transposed_bytes
@@ -48,31 +55,29 @@ using json = nlohmann::json;
 class visTranspose : public KotekanProcess {
 public:
     /// Constructor; loads parameters from config
-    visTranspose(Config &config, const string& unique_name, bufferContainer &buffer_container);
+    visTranspose(Config& config, const string& unique_name, bufferContainer& buffer_container);
     ~visTranspose() = default;
 
     /// Main loop over buffer frames
     void main_thread() override;
 
 private:
-    /// Wait for the first frames dataset ID, request dataset states from the
-    /// datasetManager and prepare all metadata that is not already set in the
-    /// constructor.
-    void gather_metadata();
+    /// Request dataset states from the datasetManager and prepare all metadata
+    /// that is not already set in the constructor.
+    bool get_dataset_state(dset_id_t ds_id);
 
     // Buffers
-    Buffer * in_buf;
+    Buffer* in_buf;
 
     // HDF5 chunk size
     std::vector<int> chunk;
-    //size of time dimension of chunk
+    // size of time dimension of chunk
     size_t chunk_t;
-    //size of frequency dimension of chunk
+    // size of frequency dimension of chunk
     size_t chunk_f;
 
     // Config values
     std::string filename;
-    bool _use_dataset_manager;
 
     // Datasets to be stored until ready to write
     std::vector<time_ctype> time;
@@ -134,7 +139,9 @@ private:
 
 template<typename T>
 inline void strided_copy(T* in, T* out, size_t offset, size_t stride, size_t n_val) {
-    #pragma omp parallel for
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
     for (size_t i = 0; i < n_val; i++) {
         out[offset + i * stride] = in[i];
     }

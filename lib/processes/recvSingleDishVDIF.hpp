@@ -7,12 +7,13 @@
 #ifndef RECV_SINGLE_DISH_VDIF_H
 #define RECV_SINGLE_DISH_VDIF_H
 
-#include "buffer.h"
 #include "KotekanProcess.hpp"
+#include "buffer.h"
+
+#include <cstdio>
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <cstdio>
 
 /**
  * @class recvSingleDishVDIF
@@ -37,24 +38,24 @@
  */
 class recvSingleDishVDIF : public KotekanProcess {
 public:
-    ///Constructor
+    /// Constructor
     recvSingleDishVDIF(Config& config, const string& unique_name,
-                bufferContainer &buffer_container);
-    ///Destructor
+                       bufferContainer& buffer_container);
+    /// Destructor
     virtual ~recvSingleDishVDIF();
 
-    ///Main loop, just waits for network data and stuffs info a frame.
+    /// Main loop, just waits for network data and stuffs info a frame.
     void main_thread() override;
 
 private:
-    struct Buffer *out_buf;
+    struct Buffer* out_buf;
 
-    ///Port of the listening receiver.
+    /// Port of the listening receiver.
     uint32_t orig_port;
-    ///IP of the listening receiver.
+    /// IP of the listening receiver.
     string orig_ip;
 
-    ///Number of frequencies in the buffer
+    /// Number of frequencies in the buffer
     int num_freq;
 };
 

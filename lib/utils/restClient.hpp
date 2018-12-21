@@ -5,15 +5,21 @@
 #ifndef RESTCLIENT_HPP
 #define RESTCLIENT_HPP
 
-#include "json.hpp"
+#include "Config.hpp"
 #include "restServer.hpp"
 
-#include <event.h>
-#include <thread>
+#include "json.hpp"
+
 #include <atomic>
 #include <condition_variable>
+#include <event2/util.h>
+#include <functional>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <utility>
 
-using restReply = std::pair<bool, std::string&>;
+using restReply = std::pair<bool, std::string>;
 
 
 /**
@@ -27,13 +33,12 @@ using restReply = std::pair<bool, std::string&>;
  */
 class restClient {
 public:
-
     /**
      * @brief Returns an instance of the rest client.
      *
      * @return Returns the rest client instance.
      */
-    static restClient &instance();
+    static restClient& instance();
 
     /**
      * @brief Send GET or POST with json data to an endpoint.
@@ -55,12 +60,35 @@ public:
      * (of 50 seconds) is set (default: -1).
      * @return          `true` if successfull, otherwise `false`.
      */
-    bool make_request(std::string path,
-                      std::function<void(restReply)> request_done_cb,
-                      const nlohmann::json& data = {},
-                      const std::string& host = "127.0.0.1",
-                      const unsigned short port = PORT_REST_SERVER,
-                      const int retries = 0, const int timeout = -1);
+    bool make_request(std::string path, std::function<void(restReply)> request_done_cb,
+                      const nlohmann::json& data = {}, const std::string& host = "127.0.0.1",
+                      const unsigned short port = PORT_REST_SERVER, const int retries = 0,
+                      const int timeout = -1);
+
+    /**
+     * @brief Send GET or POST with json data to an endpoint. Blocking.
+     *
+     * To send a GET message, pass an empty JSON object (`{}`) as the parameter
+     * `data`. To send a POST message, pass JSON data. This blocks until a reply
+     * is received or there was an error.
+     *
+     * @param path      Path to the endpoint
+     *                  (e.g. "/endpoint_name")
+     * @param data      JSON request (`{}` to send a GET request,
+     *                  default: `{}`).
+     * @param host      Host (default: "127.0.0.1", Prefer numerical, because
+     *                  the DNS lookup is blocking).
+     * @param port      Port (default: PORT_REST_SERVER).
+     * @param retries   Max. retries to send message (default: 0).
+     * @param timeout   Timeout in seconds. If -1 is passed, the default value
+     * (of 50 seconds) is set (default: -1).
+     *
+     * @return          restReply object.
+     */
+    restReply make_request_blocking(std::string path, const nlohmann::json& data = {},
+                                    const std::string& host = "127.0.0.1",
+                                    const unsigned short port = PORT_REST_SERVER,
+                                    const int retries = 0, const int timeout = -1);
 
 private:
     /// Private constuctor
@@ -70,7 +98,7 @@ private:
     virtual ~restClient();
 
     /// @brief Internal timer call back to check for thread exit condition
-    static void timer(evutil_socket_t fd, short event, void *arg);
+    static void timer(evutil_socket_t fd, short event, void* arg);
 
     /// Do not allow copy or assignment
     restClient(restClient const&);
@@ -79,12 +107,11 @@ private:
     /// Internal thread function which runs the event loop.
     void event_thread();
 
-    /// callback function for http request
-    static void http_request_done(struct evhttp_request *req, void *arg);
+    /// callback function for http requests
+    static void http_request_done(struct evhttp_request* req, void* arg);
 
     /// cleanup function that deletes evcon and the argument pair
-    static void cleanup(std::pair<std::function<void(restReply)>,
-                                         struct evhttp_connection*>* pair);
+    static void cleanup(std::pair<std::function<void(restReply)>, struct evhttp_connection*>* pair);
 
     /// Main event thread handle
     std::thread _main_thread;
@@ -106,4 +133,3 @@ private:
 };
 
 #endif // RESTCLIENT_HPP
-

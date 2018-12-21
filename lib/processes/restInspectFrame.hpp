@@ -3,6 +3,7 @@
 
 #include "KotekanProcess.hpp"
 #include "restServer.hpp"
+
 #include <mutex>
 #include <string>
 
@@ -43,16 +44,14 @@
  */
 class restInspectFrame : public KotekanProcess {
 public:
-
     /// Constructor
-    restInspectFrame(Config& config, const string& unique_name,
-                   bufferContainer &buffer_container);
+    restInspectFrame(Config& config, const string& unique_name, bufferContainer& buffer_container);
 
     /// Destructor
     virtual ~restInspectFrame();
 
     /// Gets the latest frame from @c in_buf and copies it to @c frame_copy
-    void main_thread();
+    void main_thread() override;
 
     /**
      * @brief Retruns the binary data in @c frame_copy to the REST client
@@ -65,23 +64,22 @@ public:
     void rest_callback(connectionInstance& conn);
 
 private:
-
     /// The buffer to allow inspections on.
-    struct Buffer *in_buf;
+    struct Buffer* in_buf;
 
     /// The name (from the config) of the buffer we are inspecting
     std::string in_buf_config_name;
 
     /// The part of the frame to hold off to side for
     /// the REST call back.
-    uint8_t *frame_copy;
+    uint8_t* frame_copy;
 
     /// Locks changes to @c frame_copy
     std::mutex frame_copy_lock;
-    
+
     /// The REST server endpoint name
     std::string endpoint;
-    
+
     /// Has the REST server end point been registered?
     bool registered;
 

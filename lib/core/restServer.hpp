@@ -2,16 +2,18 @@
 #define REST_SERVER_HPP
 
 #include "Config.hpp"
+
 #include "json.hpp"
-#include <evhttp.h>
+
+#include <atomic>
 #include <event2/event.h>
 #include <event2/http.h>
 #include <event2/thread.h>
-#include <thread>
+#include <evhttp.h>
 #include <functional>
 #include <map>
-#include <atomic>
 #include <shared_mutex>
+#include <thread>
 
 enum class HTTP_RESPONSE {
     OK = 200,
@@ -22,7 +24,6 @@ enum class HTTP_RESPONSE {
 };
 
 #define PORT_REST_SERVER 12048
-
 
 /**
  * @brief Contains details of a request (POST or GET), and provides
@@ -37,7 +38,7 @@ enum class HTTP_RESPONSE {
  */
 class connectionInstance {
 public:
-    connectionInstance(struct evhttp_request * request);
+    connectionInstance(struct evhttp_request* request);
     ~connectionInstance();
 
     /**
@@ -47,14 +48,14 @@ public:
      * @param message The message to include in the HTTP header
      * @param status_code The HTTP error code.
      */
-    void send_error(const std::string &message, const HTTP_RESPONSE &status);
+    void send_error(const std::string& message, const HTTP_RESPONSE& status);
 
     /**
      * @brief Sends a json reply to the client
      *
      * @param json_reply The json object to send to the client.
      */
-    void send_json_reply(const nlohmann::json &json_reply);
+    void send_json_reply(const nlohmann::json& json_reply);
 
     /**
      * @brief Sends a binary reply to the client
@@ -62,21 +63,21 @@ public:
      * @param data Pointer to the data to send
      * @param len The size of the data in bytes to send
      */
-    void send_binary_reply(uint8_t * data, int len);
+    void send_binary_reply(uint8_t* data, int len);
 
     /**
      * @brief Sents an empty reply with the given status code
      *
      * @param status_code The HTTP status code to return
      */
-    void send_empty_reply(const HTTP_RESPONSE &status);
+    void send_empty_reply(const HTTP_RESPONSE& status);
 
     /**
      * Sends an HTTP response with "content-type" header set to "text/plain"
      *
      * @param[in] reply The body of the reply
      */
-    void send_text_reply(const std::string &reply);
+    void send_text_reply(const std::string& reply);
 
     /**
      * @brief Returns the message body.
@@ -94,10 +95,10 @@ public:
 
 private:
     /// The request details
-    struct evhttp_request * request;
+    struct evhttp_request* request;
 
     /// The buffer with the reply contents
-    struct evbuffer *event_buffer;
+    struct evbuffer* event_buffer;
 };
 
 /**
@@ -110,10 +111,6 @@ private:
  *
  * See the docs for examples of using this class.
  *
- * @TODO Provide a way to change the default bind address and port via command line.
- *       It cannot be done via the normal config, since the server starts before getting
- *       getting a config file.
- *
  * @author Andre Renard
  */
 class restServer {
@@ -124,7 +121,15 @@ public:
      *
      * @return Returns the rest server instance.
      */
-    static restServer &instance();
+    static restServer& instance();
+
+    /**
+     * @brief Start the rest server, should only be called once by the framework
+     *
+     * @param bind_address The address to bind too.  Default: 0.0.0.0
+     * @param port The port to bind.  Default: PORT_REST_SERVER
+     */
+    void start(const std::string& bind_address = "0.0.0.0", u_short port = PORT_REST_SERVER);
 
     /**
      * @brief Set the server thread CPU affinity
@@ -133,7 +138,7 @@ public:
      *
      * @param config The config file currently being used.
      */
-    void set_server_affinity(Config &config);
+    void set_server_affinity(Config& config);
 
     /**
      * Registers a GET style callback for a specified HTTP endpoint.
@@ -145,7 +150,7 @@ public:
      * callback value.
      */
     void register_get_callback(std::string endpoint,
-                               std::function<void(connectionInstance &)> callback);
+                               std::function<void(connectionInstance&)> callback);
 
     /**
      * Registers a POST callback for a specified HTTP endpoint.
@@ -160,7 +165,7 @@ public:
      * callback value.
      */
     void register_post_callback(std::string endpoint,
-                        std::function<void(connectionInstance &, nlohmann::json &)> callback);
+                                std::function<void(connectionInstance&, nlohmann::json&)> callback);
 
     /**
      * @brief Removes the GET endpoint referenced by @c endpoint
@@ -204,7 +209,7 @@ public:
      *
      * @param config The config file to use
      */
-    void add_aliases_from_config(Config &config);
+    void add_aliases_from_config(Config& config);
 
     /**
      * @brief Removes all aliases
@@ -234,7 +239,7 @@ private:
      * @param event Not used
      * @param arg The bufferRecv object (just `this`, but this is a static function)
      */
-    static void timer(evutil_socket_t fd, short event, void *arg);
+    static void timer(evutil_socket_t fd, short event, void* arg);
 
     /**
      * @brief Internal callback function for the evhttp server.
@@ -242,14 +247,14 @@ private:
      * @param evhttp_request The request object
      * @param cb_data Expects a pointer to the REST server object
      */
-    static void handle_request(struct evhttp_request * request, void * cb_data);
+    static void handle_request(struct evhttp_request* request, void* cb_data);
 
     /**
      * @brief Callback which returns list of endpoints to caller.
      *
      * @param conn The connection to return endpoints too.
      */
-    void endpoint_list_callback(connectionInstance &conn);
+    void endpoint_list_callback(connectionInstance& conn);
 
     /**
      * @brief Trys to parse the JSON in a POST message
@@ -263,7 +268,7 @@ private:
      * @param json_parse Reference to the JSON object to fill.
      * @return int 0 if the message contains valid JSON, and -1 if not.
      */
-    int handle_json(struct evhttp_request * request, nlohmann::json &json_parse);
+    int handle_json(struct evhttp_request* request, nlohmann::json& json_parse);
 
     /**
      * @brief Returns the http message as a string, or an empty string
@@ -271,7 +276,7 @@ private:
      * @param request The libevent http request object
      * @return string The http message if it exists, or an empty string
      */
-    static string get_http_message(struct evhttp_request * request);
+    static string get_http_message(struct evhttp_request* request);
 
     /**
      * @brief Generates a string message to match one of the response codes
@@ -280,20 +285,20 @@ private:
      * @param status The responce code enum
      * @return string The string message matching that code
      */
-    static string get_http_responce_code_text(const HTTP_RESPONSE &status);
+    static string get_http_responce_code_text(const HTTP_RESPONSE& status);
 
     /**
      * @brief Returns the aliases map
      *
      * @return Alias map
      */
-    std::map<std::string, std::string> &get_aliases();
+    std::map<std::string, std::string>& get_aliases();
 
     /// Map of GET callbacks
-    std::map<std::string, std::function<void(connectionInstance &)>> get_callbacks;
+    std::map<std::string, std::function<void(connectionInstance&)>> get_callbacks;
 
     /// Map of JSON POST callbacks
-    std::map<std::string, std::function<void(connectionInstance &, json &)>> json_callbacks;
+    std::map<std::string, std::function<void(connectionInstance&, json&)>> json_callbacks;
 
     /// Alias map
     std::map<std::string, std::string> aliases;
@@ -302,16 +307,16 @@ private:
     std::shared_timed_mutex callback_map_lock;
 
     /// The libevent base
-	struct event_base *event_base = nullptr;
+    struct event_base* event_base = nullptr;
 
     /// The libevent HTTP server object
-    struct evhttp *ev_server = nullptr;
+    struct evhttp* ev_server = nullptr;
 
-    /// The port to use, for now this is constant 12048
-    u_short port = PORT_REST_SERVER;
+    /// The port to use
+    u_short port;
 
     /// Bind address
-    std::string bind_address = "0.0.0.0";
+    std::string bind_address;
 
     /// Main server thread handle
     std::thread main_thread;

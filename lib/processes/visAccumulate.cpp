@@ -1,22 +1,37 @@
 #include "visAccumulate.hpp"
+
+#include "chimeMetadata.h"
+#include "configUpdater.hpp"
+#include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "errors.h"
+#include "factory.hpp"
+#include "metadata.h"
+#include "processFactory.hpp"
+#include "prometheusMetrics.hpp"
+#include "version.h"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "fmt.hpp"
-#include "datasetManager.hpp"
-#include "configUpdater.hpp"
-#include "version.h"
 
-#include <time.h>
-#include <iomanip>
-#include <iostream>
-#include <vector>
+#include "fmt.hpp"
+#include "gsl-lite.hpp"
+#include "json.hpp"
+
 #include <algorithm>
-#include <stdexcept>
-#include <mutex>
+#include <atomic>
+#include <complex>
 #include <csignal>
+#include <cstring>
+#include <exception>
+#include <fstream>
+#include <iterator>
+#include <mutex>
+#include <numeric>
+#include <regex>
+#include <stdexcept>
+#include <time.h>
+#include <tuple>
+#include <vector>
 
 
 using namespace std::placeholders;
@@ -25,21 +40,16 @@ REGISTER_KOTEKAN_PROCESS(visAccumulate);
 
 
 visAccumulate::visAccumulate(Config& config, const string& unique_name,
-                             bufferContainer &buffer_container) :
+                             bufferContainer& buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&visAccumulate::main_thread, this))
-{
+                   std::bind(&visAccumulate::main_thread, this)) {
 
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");
-    num_freq_in_frame = config.get_default<size_t>(
-        unique_name, "num_freq_in_frame", 1);
+    num_freq_in_frame = config.get_default<size_t>(unique_name, "num_freq_in_frame", 1);
     block_size = config.get<size_t>(unique_name, "block_size");
-    num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
-    samples_per_data_set = config.get<size_t>(
-        unique_name, "samples_per_data_set");
-    low_sample_fraction = config.get_default<float>(
-        unique_name, "low_sample_fraction", 0.01);
+    samples_per_data_set = config.get<size_t>(unique_name, "samples_per_data_set");
+    low_sample_fraction = config.get_default<float>(unique_name, "low_sample_fraction", 0.01);
 
     // Get the indices for reordering
     auto input_reorder = parse_reorder_default(config, unique_name);
@@ -49,7 +59,7 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
 
     // If the integration time was set then calculate the number of GPU frames
     // we need to integrate for.
-    if(int_time >= 0.0) {
+    if (int_time >= 0.0) {
         // TODO: don't hard code the sample time length
         // TODO: CHIME specific
         float frame_length = samples_per_data_set * 2.56e-6;
@@ -57,8 +67,8 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
         // Calculate nearest *even* number of frames
         num_gpu_frames = 2 * ((int)(int_time / frame_length) / 2);
 
-        INFO("Integrating for %i gpu frames (=%.2f s  ~%.2f s)",
-             num_gpu_frames, frame_length * num_gpu_frames, int_time);
+        INFO("Integrating for %i gpu frames (=%.2f s  ~%.2f s)", num_gpu_frames,
+             frame_length * num_gpu_frames, int_time);
     } else {
         num_gpu_frames = config.get<size_t>(unique_name, "num_gpu_frames");
         INFO("Integrating for %i gpu frames.", num_gpu_frames);
@@ -70,8 +80,8 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     // Get everything we need for registering dataset states
 
     // --> get metadata
-    _instrument_name = config.get_default<std::string>(
-                unique_name, "instrument_name", "chime");
+    std::string instrument_name =
+        config.get_default<std::string>(unique_name, "instrument_name", "chime");
 
     std::vector<uint32_t> freq_ids;
 
@@ -80,51 +90,35 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     // TODO: CHIME specific
     if (config.exists(unique_name, "freq_ids")) {
         freq_ids = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
-    }
-    else {
+    } else {
         freq_ids.resize(1024);
         std::iota(std::begin(freq_ids), std::end(freq_ids), 0);
     }
 
     // Create the frequency specification
     // TODO: CHIME specific
-    std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(_freqs),
-                   [] (uint32_t id) -> std::pair<uint32_t, freq_ctype> {
+    std::vector<std::pair<uint32_t, freq_ctype>> freqs;
+    std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(freqs),
+                   [](uint32_t id) -> std::pair<uint32_t, freq_ctype> {
                        return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
                    });
 
     // The input specification from the config
-    _inputs = std::get<1>(input_reorder);
+    std::vector<input_ctype> inputs = std::get<1>(input_reorder);
 
-    size_t num_elements = _inputs.size();
+    size_t num_elements = inputs.size();
 
     // Create the product specification
-    _prods.reserve(num_elements * (num_elements+1) / 2);
-    for(uint16_t i = 0; i < num_elements; i++) {
-        for(uint16_t j = i; j < num_elements; j++) {
-            _prods.push_back({i, j});
+    std::vector<prod_ctype> prods;
+    prods.reserve(num_elements * (num_elements + 1) / 2);
+    for (uint16_t i = 0; i < num_elements; i++) {
+        for (uint16_t j = i; j < num_elements; j++) {
+            prods.push_back({i, j});
         }
     }
 
     // get dataset ID for out frames
-    uint32_t err_count = 0;
-    while (true) {
-        try {
-            _ds_id_out = change_dataset_state();
-        } catch (std::runtime_error& e) {
-            WARN("Failure in datasetManager: %s",
-                 e.what());
-            prometheusMetrics::instance().add_process_metric(
-                "kotekan_dataset_manager_dropped_frame_count",
-                unique_name, ++err_count);
-            // wait a second
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-            WARN("Retrying...");
-
-            continue;
-        }
-        break;
-    }
+    base_dataset_id = base_dataset_state(instrument_name, freqs, inputs, prods);
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -133,21 +127,18 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     register_producer(out_buf, unique_name.c_str());
 
     // Create the state for the main visibility accumulation
-    gated_datasets.emplace_back(
-        out_buf, gateSpec::create("uniform", "vis"), num_prod_gpu
-    );
+    gated_datasets.emplace_back(out_buf, gateSpec::create("uniform", "vis"), num_prod_gpu);
+    gated_datasets.at(0).output_dataset_id = base_dataset_id;
 
 
     // Get and validate any gating config
-    nlohmann::json gating_conf = config.get_default<nlohmann::json>(
-        unique_name, "gating", {});
+    nlohmann::json gating_conf = config.get_default<nlohmann::json>(unique_name, "gating", {});
     if (!gating_conf.empty() && !gating_conf.is_object()) {
-        ERROR("Gating config must be a dictionary: %s",
-              gating_conf.dump().c_str());
+        ERROR("Gating config must be a dictionary: %s", gating_conf.dump().c_str());
         std::raise(SIGINT);
     }
 
-    if(!gating_conf.empty() && num_freq_in_frame > 1) {
+    if (!gating_conf.empty() && num_freq_in_frame > 1) {
         ERROR("Cannot use gating with multifrequency GPU buffers"
               "[num_freq_in_frame=%i; gating config=%s].",
               num_freq_in_frame, gating_conf.dump().c_str());
@@ -165,10 +156,9 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
         // Validate and fetch the gating mode
         try {
             if (!it.value().at("mode").is_string()) {
-                throw std::invalid_argument(
-                    "Config for gated dataset " + name +
-                    " did not have a valid mode argument: " + it.value().dump()
-                );
+                throw std::invalid_argument("Config for gated dataset " + name
+                                            + " did not have a valid mode argument: "
+                                            + it.value().dump());
             }
         } catch (std::exception& e) {
             ERROR("Failure reading 'mode' from config: %s", e.what());
@@ -177,21 +167,19 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
         std::string mode = it.value().at("mode");
 
         if (!FACTORY(gateSpec)::exists(mode)) {
-            ERROR("Requested gating mode %s for dataset %s is not a known.",
-                  name.c_str(), mode.c_str());
+            ERROR("Requested gating mode %s for dataset %s is not a known.", name.c_str(),
+                  mode.c_str());
             std::raise(SIGINT);
         }
 
-        INFO("Creating gated dataset %s of type %s",
-             name.c_str(), mode.c_str());
+        INFO("Creating gated dataset %s of type %s", name.c_str(), mode.c_str());
 
         // Validate and fetch the output buffer name
         try {
             if (!it.value().at("buf").is_string()) {
-                throw std::invalid_argument(
-                    "Config for gated dataset " + name +
-                    " did not have a valid buf argument: " + it.value().dump()
-                );
+                throw std::invalid_argument("Config for gated dataset " + name
+                                            + " did not have a valid buf argument: "
+                                            + it.value().dump());
             }
         } catch (std::exception& e) {
             ERROR("Failure reading 'buf' from config: %s", e.what());
@@ -204,44 +192,58 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
         register_producer(buf, unique_name.c_str());
 
         // Create the gated dataset and register the update callback
-        gated_datasets.emplace_back(
-            buf, gateSpec::create(mode, name), num_prod_gpu
-        );
-        callbacks[name] = std::bind(&gateSpec::update_spec,
-                                    gated_datasets.back().spec.get(), _1);
+        gated_datasets.emplace_back(buf, gateSpec::create(mode, name), num_prod_gpu);
+
+        auto& state = gated_datasets.back();
+        callbacks[name] = [&state](nlohmann::json& json) -> bool {
+            bool success = state.spec->update_spec(json);
+            if (success) {
+                std::lock_guard<std::mutex> lock(state.state_mtx);
+                state.changed = true;
+            }
+            return success;
+        };
     }
 
     configUpdater::instance().subscribe(this, callbacks);
-
 }
 
-visAccumulate::~visAccumulate() {}
 
-dset_id_t visAccumulate::change_dataset_state() {
-
+dset_id_t visAccumulate::base_dataset_state(std::string& instrument_name,
+                                            std::vector<std::pair<uint32_t, freq_ctype>>& freqs,
+                                            std::vector<input_ctype>& inputs,
+                                            std::vector<prod_ctype>& prods) {
     // weight calculation is hardcoded, so is the weight type name
     const std::string weight_type = "inverse_var";
     const std::string git_tag = get_git_commit_hash();
 
     // create all the states
-    state_uptr freq_state = std::make_unique<freqState>(_freqs);
-    state_uptr input_state = std::make_unique<inputState>(
-        _inputs, std::move(freq_state));
-    state_uptr prod_state = std::make_unique<prodState>(
-        _prods, std::move(input_state));
-    //empty stackState
-    state_uptr stack_state =
-            std::make_unique<stackState>(std::move(prod_state));
-    state_uptr mstate = std::make_unique<metadataState>(weight_type,
-                                                        _instrument_name,
-                                                        git_tag,
-                                                        std::move(stack_state));
+    state_uptr freq_state = std::make_unique<freqState>(freqs);
+    state_uptr input_state = std::make_unique<inputState>(inputs, std::move(freq_state));
+    state_uptr prod_state = std::make_unique<prodState>(prods, std::move(input_state));
+    state_uptr ev_state = std::make_unique<eigenvalueState>(0, std::move(prod_state));
+    state_uptr mstate =
+        std::make_unique<metadataState>(weight_type, instrument_name, git_tag, std::move(ev_state));
 
     // register them with the datasetManager
     datasetManager& dm = datasetManager::instance();
     state_id_t mstate_id = dm.add_state(std::move(mstate)).first;
-    //register root dataset
-    return dm.add_dataset(dataset(mstate_id, 0, true));
+
+    // register root dataset
+    return dm.add_dataset(mstate_id);
+}
+
+
+dset_id_t visAccumulate::gate_dataset_state(const gateSpec& spec) {
+    // create the state
+    state_uptr gate_state = std::make_unique<gatingState>(spec);
+
+    // register with the datasetManager
+    datasetManager& dm = datasetManager::instance();
+    state_id_t gstate_id = dm.add_state(std::move(gate_state)).first;
+
+    // register gated dataset
+    return dm.add_dataset(base_dataset_id, gstate_id);
 }
 
 
@@ -257,8 +259,7 @@ void visAccumulate::main_thread() {
     uint32_t total_samples = 0;
 
     // We will skip data that has fewer than this number of samples in it.
-    uint32_t low_sample_cut = low_sample_fraction *
-        num_gpu_frames * samples_per_data_set;
+    uint32_t low_sample_cut = low_sample_fraction * num_gpu_frames * samples_per_data_set;
     size_t skipped_frame_total = 0;
 
     // Temporary arrays for storing intermediates
@@ -270,12 +271,17 @@ void visAccumulate::main_thread() {
     while (!stop_thread) {
 
         // Fetch a new frame and get its sequence id
-        uint8_t* in_frame = wait_for_full_frame(in_buf, unique_name.c_str(),
-                                                in_frame_id);
-        if(in_frame == nullptr) break;
+        uint8_t* in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
+        if (in_frame == nullptr)
+            break;
 
-        int32_t* input = (int32_t *)in_frame;
+        int32_t* input = (int32_t*)in_frame;
         uint32_t frame_count = get_fpga_seq_num(in_buf, in_frame_id) / samples_per_data_set;
+
+        // Start and end times of this frame
+        // TODO: CHIME specific
+        timespec t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
+        timespec t_e = add_nsec(t_s, samples_per_data_set * 2560L); // Frame length CHIME specific
 
         // If we have wrapped around we need to write out any frames that have
         // been filled in previous iterations. In here we need to reorder the
@@ -288,14 +294,13 @@ void visAccumulate::main_thread() {
             // Iterate over *only* the gated datasets (remember that element
             // zero is the vis), and remove the bias and copy in the variance
             for (size_t i = 1; i < enabled_gated_datasets.size(); i++) {
-                combine_gated(enabled_gated_datasets.at(i),
-                              enabled_gated_datasets.at(0));
+                combine_gated(enabled_gated_datasets.at(i), enabled_gated_datasets.at(0));
             }
 
             for (internalState& dset : enabled_gated_datasets) {
                 // Loop over the frequencies in the frame and unpack the accumulates
                 // into the output frame...
-                for(uint32_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
+                for (uint32_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
 
                     // Skip the frame if we too much had been flagged out.
                     if (total_samples < low_sample_cut) {
@@ -305,13 +310,10 @@ void visAccumulate::main_thread() {
 
                         // Update prometheus metrics
                         auto frame = visFrameView(dset.buf, dset.frame_id);
-                        std::string labels = fmt::format(
-                            "freq_id=\"{}\"", frame.freq_id
-                        );
+                        std::string labels = fmt::format("freq_id=\"{}\"", frame.freq_id);
                         prometheusMetrics::instance().add_process_metric(
-                            "kotekan_visaccumulate_skipped_frame_total",
-                            unique_name, skipped_frame_total, labels
-                        );
+                            "kotekan_visaccumulate_skipped_frame_total", unique_name,
+                            skipped_frame_total, labels);
                         continue;
                     }
 
@@ -333,7 +335,7 @@ void visAccumulate::main_thread() {
             // Reset gated streams and find which ones are enabled for this period
             enabled_gated_datasets.clear();
             for (auto& state : gated_datasets) {
-                if (reset_state(state)) {
+                if (reset_state(state, t_s)) {
                     enabled_gated_datasets.push_back(state);
                 }
             }
@@ -344,10 +346,9 @@ void visAccumulate::main_thread() {
                 // Copy the frame ID so we don't change the actual state
                 frameID frame_id = dset.frame_id;
 
-                for(uint32_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
+                for (uint32_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
 
-                    if (wait_for_empty_frame(out_buf, unique_name.c_str(),
-                                             frame_id) == nullptr) {
+                    if (wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id) == nullptr) {
                         break;
                     }
                     frame_id++;
@@ -364,16 +365,12 @@ void visAccumulate::main_thread() {
 
             // Now the main accumulation work starts...
 
-            // TODO: CHIME specific
-            timespec t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
-            timespec t_e = add_nsec(t_s, samples_per_data_set * 2560L); // Frame length CHIME specific
             internalState& state = enabled_gated_datasets[0];
-            auto frame = visFrameView(state.buf, state.frame_id,
-                                      num_elements, num_eigenvectors);
+            auto frame = visFrameView(state.buf, state.frame_id);
             float freq_in_MHz = 800.0 - 400.0 * frame.freq_id / 1024.0;
 
-            long samples_in_frame = samples_per_data_set -
-                get_lost_timesamples(in_buf, in_frame_id);
+            long samples_in_frame =
+                samples_per_data_set - get_lost_timesamples(in_buf, in_frame_id);
 
             // Accumulate the weighted data into each dataset. At the moment this
             // doesn't really work if there are multiple frequencies in the same buffer..
@@ -382,25 +379,24 @@ void visAccumulate::main_thread() {
                 float w = dset.calculate_weight(t_s, t_e, freq_in_MHz);
 
                 // Don't bother to accumulate if weight is zero
-                if (w == 0) break;
+                if (w == 0)
+                    break;
 
                 // TODO: implement generalised non uniform weighting, I'm primarily
                 // not doing this because I don't want to burn cycles doing the
                 // multiplications
                 // Perform primary accumulation (assume that the weight is one)
-                for (size_t i = 0; i < num_prod_gpu; i++) {
-                    cfloat t = {(float)input[2*i+1], (float)input[2*i]};
-                    dset.vis1[i] += t;
+                for (size_t i = 0; i < 2 * num_prod_gpu; i++) {
+                    dset.vis1[i] += input[i];
                 }
 
                 // Accumulate the weights
                 dset.sample_weight_total += samples_in_frame;
-
             }
 
             // We are calculating the weights by differencing even and odd samples.
             // Every even sample we save the set of visibilities...
-            if(frame_count % 2 == 0) {
+            if (frame_count % 2 == 0) {
                 std::memcpy(vis_even.data(), input, 8 * num_prod_gpu);
             }
             // ... every odd sample we accumulate the squared differences into the weight dataset
@@ -409,10 +405,10 @@ void visAccumulate::main_thread() {
             // TODO: we might need to account for packet loss in here too, but it
             // would require some awkward rescalings
             else {
-                internalState& d0 = enabled_gated_datasets.at(0);  // Save into the main vis dataset
-                for(size_t i = 0; i < num_prod_gpu; i++) {
+                internalState& d0 = enabled_gated_datasets.at(0); // Save into the main vis dataset
+                for (size_t i = 0; i < num_prod_gpu; i++) {
                     // NOTE: avoid using the slow std::complex routines in here
-                    float di = input[2 * i    ] - vis_even[2 * i    ];
+                    float di = input[2 * i] - vis_even[2 * i];
                     float dr = input[2 * i + 1] - vis_even[2 * i + 1];
                     d0.vis2[i] += (dr * dr + di * di);
                 }
@@ -420,7 +416,7 @@ void visAccumulate::main_thread() {
 
             // Accumulate the total number of samples, accounting for lost ones
             total_samples += samples_per_data_set - get_lost_timesamples(in_buf, in_frame_id);
-	}
+        }
 
         // Move the input buffer on one step
         mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id++);
@@ -430,25 +426,22 @@ void visAccumulate::main_thread() {
 }
 
 
-void visAccumulate::initialise_output(visAccumulate::internalState& state,
-                                      int in_frame_id, int freq_ind)
-{
+void visAccumulate::initialise_output(visAccumulate::internalState& state, int in_frame_id,
+                                      int freq_ind) {
 
     allocate_new_metadata_object(state.buf, state.frame_id + freq_ind);
-    auto frame = visFrameView(state.buf, state.frame_id + freq_ind,
-                              num_elements, num_eigenvectors);
+    auto frame = visFrameView(state.buf, state.frame_id + freq_ind, num_elements, 0);
 
     // Copy over the metadata
     // TODO: CHIME
-    frame.fill_chime_metadata(
-        (const chimeMetadata *)in_buf->metadata[in_frame_id]->metadata);
+    frame.fill_chime_metadata((const chimeMetadata*)in_buf->metadata[in_frame_id]->metadata);
 
     // TODO: set frequency id in some sensible generic manner
     frame.freq_id += freq_ind;
 
     // Set dataset ID produced by the dM
     // TODO: this should be different for different gated streams
-    frame.dataset_id = _ds_id_out;
+    frame.dataset_id = state.output_dataset_id;
 
     // Set the length of time this frame will cover
     frame.fpga_seq_length = samples_per_data_set * num_gpu_frames;
@@ -463,21 +456,19 @@ void visAccumulate::initialise_output(visAccumulate::internalState& state,
 
 
 void visAccumulate::combine_gated(visAccumulate::internalState& gate,
-                                  visAccumulate::internalState& vis)
-{
+                                  visAccumulate::internalState& vis) {
     // NOTE: getting all of these scaling right is a pain. At the moment they
     // assume that within an `on` period the weights applied are one.
 
     // Subtract out the bias from the gated data
     float scl = gate.sample_weight_total / vis.sample_weight_total;
-    for (size_t i = 0; i < num_prod_gpu; i++) {
-        gate.vis1[i] -= scl * vis.vis1[i];
+    for (size_t i = 0; i < 2 * num_prod_gpu; i++) {
+        gate.vis1[i] -= (int32_t)(scl * vis.vis1[i]);
     }
 
     // TODO: very strong assumption that the weights are one (when on) baked in
     // here.
-    gate.sample_weight_total = vis.sample_weight_total -
-        gate.sample_weight_total;
+    gate.sample_weight_total = vis.sample_weight_total - gate.sample_weight_total;
 
     // Copy in the proto weight data
     for (size_t i = 0; i < num_prod_gpu; i++) {
@@ -486,9 +477,8 @@ void visAccumulate::combine_gated(visAccumulate::internalState& gate,
 }
 
 
-void visAccumulate::finalise_output(visAccumulate::internalState& state,
-                                    int freq_ind, uint32_t total_samples)
-{
+void visAccumulate::finalise_output(visAccumulate::internalState& state, int freq_ind,
+                                    uint32_t total_samples) {
     // Determine the weighting factors (if weight is zero we should just
     // multiply the visibilities by zero so as not to generate Infs)
     float w = state.sample_weight_total;
@@ -498,27 +488,26 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
 
     // Copy the visibilities into place
     map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
-        [&](int32_t pi, int32_t bi, bool conj) {
-            cfloat t = !conj ? state.vis1[bi] : std::conj(state.vis1[bi]);
-            output_frame.vis[pi] = iw * t;
-        }
-    );
+                     [&](int32_t pi, int32_t bi, bool conj) {
+                         cfloat t = {(float)state.vis1[2 * bi + 1], (float)state.vis1[2 * bi]};
+                         t = !conj ? t : std::conj(t);
+                         output_frame.vis[pi] = iw * t;
+                     });
 
     // Unpack and invert the weights
     map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
-        [&](int32_t pi, int32_t bi, bool conj) {
-            (void)conj;
-            float t = state.vis2[bi];
-            output_frame.weight[pi] = w * w / t;
-        }
-    );
+                     [&](int32_t pi, int32_t bi, bool conj) {
+                         (void)conj;
+                         float t = state.vis2[bi];
+                         output_frame.weight[pi] = w * w / t;
+                     });
 
     // Set the actual amount of time we accumulated for
     output_frame.fpga_seq_total = total_samples;
 }
 
 
-bool visAccumulate::reset_state(visAccumulate::internalState& state) {
+bool visAccumulate::reset_state(visAccumulate::internalState& state, timespec t) {
 
     // Reset the internal counters
     state.sample_weight_total = 0;
@@ -526,15 +515,25 @@ bool visAccumulate::reset_state(visAccumulate::internalState& state) {
 
     // Acquire the lock so we don't get confused by any changes made via the
     // REST callback
-    std::lock_guard<std::mutex> lock(state.state_mtx);
+    {
+        std::lock_guard<std::mutex> lock(state.state_mtx);
 
-    if (!state.spec->enabled()) {
-        state.calculate_weight = nullptr;
-        return false;
+        // Update the weight function in case an update arrives mid integration
+        // This is done every cycle to allow the calculation to change with time
+        // (without any external update), e.g. in SegmentedPolyco's.
+        if (!state.spec->enabled()) {
+            state.calculate_weight = nullptr;
+            return false;
+        }
+        state.calculate_weight = state.spec->weight_function(t);
+
+
+        // Update dataset ID if an external change occurred
+        if (state.changed) {
+            state.output_dataset_id = gate_dataset_state(*state.spec.get());
+            state.changed = false;
+        }
     }
-
-    // Save out the weight function in case an update arrives mid integration
-    state.calculate_weight = state.spec->weight_function();
 
     // Zero out accumulation arrays
     std::fill(state.vis1.begin(), state.vis1.end(), 0.0);
@@ -544,13 +543,11 @@ bool visAccumulate::reset_state(visAccumulate::internalState& state) {
 }
 
 
-visAccumulate::internalState::internalState(
-    Buffer* out_buf, std::unique_ptr<gateSpec> gate_spec, size_t nprod) :
+visAccumulate::internalState::internalState(Buffer* out_buf, std::unique_ptr<gateSpec> gate_spec,
+                                            size_t nprod) :
     buf(out_buf),
     frame_id(buf),
     spec(std::move(gate_spec)),
-    vis1(nprod),
-    vis2(nprod)
-{
-
-}
+    changed(true),
+    vis1(2 * nprod),
+    vis2(nprod) {}

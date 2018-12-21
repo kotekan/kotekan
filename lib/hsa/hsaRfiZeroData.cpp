@@ -1,37 +1,39 @@
 #include "hsaRfiZeroData.hpp"
-#include "hsaBase.h"
-#include <math.h>
-#include <unistd.h>
-#include <mutex>
+
 #include "configUpdater.hpp"
+#include "hsaBase.h"
+
+#include <math.h>
+#include <mutex>
+#include <unistd.h>
 
 REGISTER_HSA_COMMAND(hsaRfiZeroData);
 
-hsaRfiZeroData::hsaRfiZeroData(Config& config,const string &unique_name,
-                         bufferContainer& host_buffers,
-                         hsaDeviceInterface& device):
-    hsaCommand("rfi_chime_zero", "rfi_chime_zero.hsaco", config, unique_name, host_buffers, device){
-    command_type = CommandType::KERNEL;
-    //Retrieve parameters from kotekan config
+hsaRfiZeroData::hsaRfiZeroData(Config& config, const string& unique_name,
+                               bufferContainer& host_buffers, hsaDeviceInterface& device) :
+    hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_zero",
+               "rfi_chime_zero.hsaco") {
+    command_type = gpuCommandType::KERNEL;
+    // Retrieve parameters from kotekan config
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
     _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
-    //RFI Config Parameters
+    // RFI Config Parameters
     _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
-    //Compute Buffer lengths
-    input_frame_len = sizeof(uint8_t)*_num_elements*_num_local_freq*_samples_per_data_set;
-    mask_len = sizeof(uint8_t)*_num_local_freq*_samples_per_data_set/_sk_step;
+    // Compute Buffer lengths
+    input_frame_len = sizeof(uint8_t) * _num_elements * _num_local_freq * _samples_per_data_set;
+    mask_len = sizeof(uint8_t) * _num_local_freq * _samples_per_data_set / _sk_step;
     using namespace std::placeholders;
-    configUpdater::instance().subscribe(config.get<std::string>(unique_name,"updatable_rfi_zeroing"),
-                                         std::bind(&hsaRfiZeroData::update_rfi_zero_flag, this, _1));
+    configUpdater::instance().subscribe(
+        config.get<std::string>(unique_name, "updatable_rfi_zeroing"),
+        std::bind(&hsaRfiZeroData::update_rfi_zero_flag, this, _1));
     network_buf = host_buffers.get_buffer("network_buf");
     network_buffer_id = 0;
 }
 
-hsaRfiZeroData::~hsaRfiZeroData() {
-}
+hsaRfiZeroData::~hsaRfiZeroData() {}
 
-bool hsaRfiZeroData::update_rfi_zero_flag(nlohmann::json &json) {
+bool hsaRfiZeroData::update_rfi_zero_flag(nlohmann::json& json) {
     std::lock_guard<std::mutex> lock(rest_callback_mutex);
     try {
         _rfi_zeroing = json.at("rfi_zeroing");
@@ -39,7 +41,7 @@ bool hsaRfiZeroData::update_rfi_zero_flag(nlohmann::json &json) {
         WARN("Failed to set RFI zeroing flag %s", e.what());
         return false;
     }
-    INFO("Changing RFI zero flag to %d",_rfi_zeroing);
+    INFO("Changing RFI zero flag to %d", _rfi_zeroing);
     return true;
 }
 
@@ -50,16 +52,16 @@ hsa_signal_t hsaRfiZeroData::execute(int gpu_frame_id, hsa_signal_t precede_sign
     (void)precede_signal;
 
     std::lock_guard<std::mutex> lock(rest_callback_mutex);
-    //Structure for gpu arguments
-    struct __attribute__ ((aligned(16))) args_t {
-        void *input;
-        void *mask;
+    // Structure for gpu arguments
+    struct __attribute__((aligned(16))) args_t {
+        void* input;
+        void* mask;
         uint32_t sk_step;
         uint32_t rfi_zero_flag;
     } args;
-    //Initialize arguments
+    // Initialize arguments
     memset(&args, 0, sizeof(args));
-    //Set argumnets to correct values
+    // Set argumnets to correct values
     args.input = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
     args.mask = device.get_gpu_memory_array("rfi_mask_output", gpu_frame_id, mask_len);
     args.sk_step = _sk_step;
@@ -71,18 +73,18 @@ hsa_signal_t hsaRfiZeroData::execute(int gpu_frame_id, hsa_signal_t precede_sign
     params.workgroup_size_x = 64;
     params.workgroup_size_y = 1;
     params.workgroup_size_z = 1;
-    params.grid_size_x = _num_elements/4;
-    params.grid_size_y = _samples_per_data_set/_sk_step;
+    params.grid_size_x = _num_elements / 4;
+    params.grid_size_y = _samples_per_data_set / _sk_step;
     params.grid_size_z = 1;
     params.num_dims = 2;
     // Should this be zero?
     params.private_segment_size = 0;
     params.group_segment_size = 0;
 
-    //Execute kernel
+    // Execute kernel
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
-    set_rfi_zeroed(network_buf,network_buffer_id, (uint32_t)_rfi_zeroing);
+    set_rfi_zeroed(network_buf, network_buffer_id, (uint32_t)_rfi_zeroing);
     network_buffer_id = (network_buffer_id + 1) % network_buf->num_frames;
-    //return signal
+    // return signal
     return signals[gpu_frame_id];
 }

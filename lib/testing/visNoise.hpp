@@ -1,41 +1,37 @@
 /*****************************************
 @file
-@brief Processe that adds noise to the
+@brief Process that adds noise to the
        visibility data.
 - visNoise : public KotekanProcess
 *****************************************/
-#ifndef VISNOISE_H
-#define VISNOISE_H
-
-#include <random>
+#ifndef VISNOISE_HPP
+#define VISNOISE_HPP
 
 #include "KotekanProcess.hpp"
 
+#include <random>
+
 /**
-* @brief Adds gaussian noise.
-*
-* Add normally distributed random noise to real and imaginary parts.
-* The same distribution is used to set the weights. Note that the seed for the
-* generator is not random.
-* @conf  standard_deviation           The std dev of the noise distribution.
-* @conf  num_ev                       Number of eigenvectors in the data.
-* @conf  num_elements                 Number of elements in the data.
-* @conf  random                       If false, the noise generation will not be
-*                                     initialized with a random seed.
-**/
+ * @brief Adds gaussian noise.
+ *
+ * Add normally distributed random noise to real and imaginary parts.
+ * The same distribution is used to set the weights. Note that the seed for the
+ * generator is not random.
+ * @conf  standard_deviation           The std dev of the noise distribution.
+ * @conf  num_ev                       Number of eigenvectors in the data.
+ * @conf  num_elements                 Number of elements in the data.
+ * @conf  random                       If false, the noise generation will not be
+ *                                     initialized with a random seed.
+ **/
 class visNoise : public KotekanProcess {
 public:
-
     // Default constructor
-    visNoise(Config &config,
-             const string& unique_name,
-             bufferContainer &buffer_container);
+    visNoise(Config& config, const string& unique_name, bufferContainer& buffer_container);
 
     // Main loop for the process
     void main_thread() override;
 
 private:
-
     // random number generation
     std::default_random_engine gen;
 
@@ -49,5 +45,4 @@ private:
     Buffer* buf_in;
 };
 
-#endif /* VISNOISE_H */
-
+#endif /* VISNOISE_HPP */
