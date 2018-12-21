@@ -91,6 +91,7 @@ datasetManager::datasetManager() :
     _n_request_threads(0),
     _config_applied(false),
     _rest_client(restClient::instance()) {
+
     restServer::instance().register_get_callback(
         DS_FORCE_UPDATE_ENDPOINT_NAME,
         std::bind(&datasetManager::force_update_callback, this, std::placeholders::_1));

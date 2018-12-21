@@ -322,13 +322,7 @@ public:
 
 private:
     /// Constructor
-    datasetManager() :
-        _conn_error_count(0),
-        _timestamp_update(json(0)),
-        _stop_request_threads(false),
-        _n_request_threads(0),
-        _config_applied(false),
-        _rest_client(restClient::instance()) {}
+    datasetManager();
 
     /// Generate a private static instance so that the overloaded instance()
     /// members can use the same static variable
