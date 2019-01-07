@@ -244,6 +244,7 @@ add_subdirectory(lib)
 add_subdirectory(kotekan)
 add_subdirectory(scripts)
 add_subdirectory(include)
+add_subdirectory(config)
 
 # Testing with boost
 if (${BOOST_TESTS})
