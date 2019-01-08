@@ -80,8 +80,8 @@ void visFileRaw::create_file(const std::string& name,
 
     const gatingState* gstate = gstate_fut.get();
     if (gstate) {
-        file_metadata["gating_type"] = gstate->gating_type;
-        file_metadata["gating_data"] = gstate->gating_data;
+        file_metadata["gating_type"] = "pulsar";
+        file_metadata["gating_data"] = gstate->data_to_json();
     }
 
     // Calculate the file structure

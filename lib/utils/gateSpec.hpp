@@ -36,7 +36,7 @@ public:
      *
      * @param  name  Name of the gated dataset.
      **/
-    gateSpec(const std::string& name);
+    gateSpec(const std::string& type, const std::string& name);
     virtual ~gateSpec() = 0;
 
     /**
@@ -98,23 +98,12 @@ public:
         return _type;
     }
 
-    /**
-     * @brief Get a description of the spec for the dataset manager.
-     *
-     * Should be re-implemented by subclasses, and include information beyond
-     * the type of the gating (the type is captured separately).
-     *
-     * @return  Serialized config.
-     **/
-    virtual json to_dm_json() const {
-        return {};
-    }
-
 protected:
     // Name of the gated dataset in the config
     const std::string _name;
 
     // Type of the gated dataset in the config
+    // TODO: remove this completely. rawWriter can get this with an enum on the typeid hash or better as factory label
     const std::string _type;
 
     // Is the dataset enabled?
@@ -148,7 +137,7 @@ public:
     /**
      * @brief Create a pulsar spec.
      **/
-    pulsarSpec(const std::string& name) : gateSpec(name){};
+    pulsarSpec(const std::string& name);
 
     /**
      * @brief Update the gating from a json message.
@@ -161,13 +150,6 @@ public:
      * @param    timespec  The start time of this frame.
      **/
     std::function<float(timespec, timespec, float)> weight_function(timespec t) const override;
-
-    /**
-     * @brief Return JSON config for the dM
-     *
-     * @return  JSON config.
-     **/
-    json to_dm_json() const override;
 
 private:
     // Config parameters for pulsar gating

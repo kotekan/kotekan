@@ -96,6 +96,7 @@ void visTruncate::main_thread() {
                 err_r = err_all[i];
                 err_i = err_r;
             }
+
             // truncate vis using weights
             tr_vis = {bit_truncate_float(output_frame.vis[i].real(), err_r),
                       bit_truncate_float(output_frame.vis[i].imag(), err_i)};

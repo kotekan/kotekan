@@ -1,6 +1,7 @@
 #define BOOST_TEST_MODULE "test_dataset_broker_producer"
 
 #include <inttypes.h>
+#include "gateSpec.hpp"
 #include "restClient.hpp"
 #include "visCompression.hpp"
 #include "visUtil.hpp"
@@ -13,6 +14,7 @@
 
 // the code to test:
 #include "datasetManager.hpp"
+#include "gateSpec.hpp"
 
 using json = nlohmann::json;
 
@@ -52,22 +54,26 @@ BOOST_AUTO_TEST_CASE( _dataset_manager_general ) {
     dset_id_t ds_id2 = dm.add_dataset(init_ds_id, input_state2.first);
 
     // register a pulsarGatingState to test polymorphic dM
+    pulsarSpec pspec = pulsarSpec("test_pulsar");
+    auto pspec2 = gateSpec::create("pulsar", "test_pulsar");
+    INFO("TEST: Created pulsar spec: name: %s type: %s", pspec2->name().c_str(), pspec2->type().c_str());
+
     std::pair<state_id_t, const pulsarGatingState*>pstate =
-            dm.add_state(std::make_unique<pulsarGatingState>("test_pulsar"));
+            dm.add_state(std::make_unique<pulsarGatingState>(pspec));
     dset_id_t ds_id3 = dm.add_dataset(ds_id2, pstate.first);
 
-    INFO("Registered dataset 0x%" PRIx64 " (%zu) with pulsar gating state.",
+    INFO("TEST: Registered dataset 0x%" PRIx64 " (%zu) with pulsar gating state.",
          ds_id3, ds_id3);
 
     for (auto s : dm.states())
-        INFO("0x%" PRIx64 " - %s",
+        INFO("TEST: 0x%" PRIx64 " - %s",
              s.first, s.second->data_to_json().dump().c_str());
 
     for (auto s : dm.datasets())
-        INFO("0x%" PRIx64 " - 0x%" PRIx64 , s.second.state(),
+        INFO("TEST: 0x%" PRIx64 " - 0x%" PRIx64 , s.second.state(),
                      s.second.base_dset());
 
-    usleep(2000000);
+    usleep(3000000);
 }
 
 

@@ -314,4 +314,4 @@ def test_pulsar(pulsar_data):
 
 def test_pulsar_metadata(pulsar_data):
     assert pulsar_data.file_metadata['gating_type'] == 'pulsar'
-    assert pulsar_data.file_metadata['gating_data']['pulsar_name'] == 'fakepsr'
+    assert pulsar_data.file_metadata['gating_data']['name'] == 'fakepsr'

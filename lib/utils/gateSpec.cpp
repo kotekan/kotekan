@@ -5,16 +5,16 @@ REGISTER_GATESPEC(pulsarSpec, "pulsar");
 REGISTER_GATESPEC(uniformSpec, "uniform");
 
 
-gateSpec::gateSpec(const std::string& name) : _name(name) {}
+gateSpec::gateSpec(const std::string& type, const std::string& name) : _name(name), _type(type) {}
 
 
 std::unique_ptr<gateSpec> gateSpec::create(const std::string& type, const std::string& name) {
     return FACTORY(gateSpec)::create_unique(type, name);
 }
 
-
 gateSpec::~gateSpec() {}
 
+pulsarSpec::pulsarSpec(const std::string& name) : gateSpec("pulsar", name) {}
 
 bool pulsarSpec::update_spec(nlohmann::json& json) {
 
@@ -87,12 +87,7 @@ std::function<float(timespec, timespec, float)> pulsarSpec::weight_function(time
 }
 
 
-json pulsarSpec::to_dm_json() const {
-    return {{"pulsar_name", _pulsar_name}};
-}
-
-
-uniformSpec::uniformSpec(const std::string& name) : gateSpec(name) {
+uniformSpec::uniformSpec(const std::string& name) : gateSpec("uniform", name) {
     _enabled = true;
 }
 

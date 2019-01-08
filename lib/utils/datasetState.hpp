@@ -29,6 +29,7 @@ class datasetManager;
 
 using state_uptr = std::unique_ptr<datasetState>;
 
+
 /**
  * @brief A base class for representing state changes done to datasets.
  *
@@ -653,18 +654,22 @@ private:
 /**
  * @brief A base state for all types of gating.
  *
- * TODO: make sure the base state can't be instanciated?
- *
  * @author Rick Nitsche
  */
 class gatingState : public datasetState {
 public:
     /**
-     * @brief Constructor
+     * @brief Construct from a gating spec.
+     * @param spec              A gating spec.
      * @param inner             An inner state (optional).
      */
     gatingState(state_uptr inner=nullptr) :
         datasetState(move(inner)) {}
+
+    gatingState(const gateSpec& spec, state_uptr inner=nullptr) :
+        datasetState(move(inner)) {(void)spec;}
+
+    json data_to_json() const override = 0;
 };
 
 /**
@@ -677,90 +682,31 @@ public:
     /**
      * @brief Construct a pulsar gating state
      *
-     * @param data  The metadata as serialized by to_json():
-     *              name: string
+     * @param data  The metadata as serialized by to_json().
      * @param inner Inner state.
      **/
-    pulsarGatingState(json & data, state_uptr inner) :
-        gatingState(move(inner)) {
-        _name = data.at("name").get<std::string>();
-    }
+    pulsarGatingState(const json& data, state_uptr inner) :
+        gatingState(move(inner)),
+    name(data.at("name").get<std::string>()){}
 
     /**
-     * @brief Construct a pulsar gating state
+     * @brief Construct a pulsar gating state from a pulsarSpec
      *
-     * @param  name   The name of the pulsar.
+     * @param  spec   A pulsarSpec that describes the gating.
      * @param  inner  Inner state.
      **/
-    pulsarGatingState(const std::string name, state_uptr inner=nullptr) :
-        gatingState(move(inner)), _name(name) {}
+    pulsarGatingState(const gateSpec& spec, state_uptr inner=nullptr) :
+        gatingState(move(inner)), name(spec.name()) {}
 
-    /**
-     * @brief Get the name of the pulsar.
-     * @return The name of the pulsar.
-     */
-    const std::string& get_name() const {
-        return _name;
-    }
-
-private:
     /// Serialize the data of this state in a json object
     json data_to_json() const override {
         json j;
-        j["name"] = _name;
+        j["name"] = name;
         return j;
-    }
-
-    std::string _name;
-};
-
-/**
- * @brief A state to describe noise source gating.
- *
- * At the moment just for proof of concept. Complete this states data or remove it.
- *
- * @author Richard Shaw, Rick Nitsche
- **/
-class noiseSourceGatingState : public gatingState {
-public:
-    /**
-     * @brief Construct a noise source gating state
-     *
-     * @param data  The metadata as serialized by to_json():
-     *              name: string
-     * @param inner Inner state.
-     **/
-    noiseSourceGatingState(json & data, state_uptr inner) :
-        gatingState(move(inner)) {
-        _foo = data.at("foo").get<std::string>();
-    }
-
-    /**
-     * @brief Construct a noise source gating state
-     *
-     * @param  foo    TODO: replace.
-     * @param  inner  Inner state.
-     **/
-    noiseSourceGatingState(const std::string foo, state_uptr inner=nullptr) :
-        gatingState(move(inner)), _foo(foo) {}
-
-    /**
-     * @brief Get foo.
-     * @return The foo.
-     */
-    const std::string& get_foo() const {
-        return _foo;
     }
 
 private:
-    /// Serialize the data of this state in a json object
-    json data_to_json() const override {
-        json j;
-        j["foo"] = _foo;
-        return j;
-    }
-
-    std::string _foo;
+    std::string name;
 };
 
 #endif // DATASETSTATE_HPP

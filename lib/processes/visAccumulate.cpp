@@ -236,7 +236,7 @@ dset_id_t visAccumulate::base_dataset_state(std::string& instrument_name,
 
 dset_id_t visAccumulate::gate_dataset_state(const gateSpec& spec) {
     // create the state
-    state_uptr gate_state = std::make_unique<gatingState>(spec);
+    state_uptr gate_state = std::make_unique<pulsarGatingState>(spec);
 
     // register with the datasetManager
     datasetManager& dm = datasetManager::instance();

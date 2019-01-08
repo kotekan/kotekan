@@ -245,10 +245,11 @@ BOOST_FIXTURE_TEST_CASE( _gating_state, CompareCTypes ) {
 
     // pulsarGatingState
     std::string name = "casA";
+    pulsarSpec spec("test_pulsar");
     std::pair<state_id_t, const pulsarGatingState*> pstate =
-            dm.add_state(std::make_unique<pulsarGatingState>(name));
+            dm.add_state(std::make_unique<pulsarGatingState>(spec));
     BOOST_CHECK_EQUAL(pstate.second->to_json().dump(),
-                      std::make_unique<pulsarGatingState>(name)->to_json().dump());
+                      std::make_unique<pulsarGatingState>(spec)->to_json().dump());
 
     dset_id_t ds = dm.add_dataset(pstate.first);
     BOOST_CHECK_EQUAL(dm.dataset_state<gatingState>(ds)->to_json().dump(),
