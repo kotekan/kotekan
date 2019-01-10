@@ -1,7 +1,7 @@
 /*
  * @file rfiBadInputFinder.hpp
  * @brief Clssifies broken inputs using statistics of SK values from individual inputs.
- *  - rfiBadInputFinder : public KotekanProcess
+ *  - rfiBadInputFinder : public kotekan::KotekanProcess
  */
 #ifndef RFI_BROADCAST_H
 #define RFI_BROADCAST_H
@@ -18,8 +18,8 @@
 
 /*
  * @class rfiBadInputFinder
- * @brief Consumer ``KotekanProcess`` which consumes a buffer filled with averaged, individual input
- * spectral kurtosis estimates.
+ * @brief Consumer ``kotekan::KotekanProcess`` which consumes a buffer filled with averaged,
+ * individual input spectral kurtosis estimates.
  *
  * This process reads RFI data from a kotekan buffer before packaging it into UDP packets and
  * sending them to a user defined IP address. Each packet is fitted with a header which can be read
@@ -59,16 +59,17 @@
  *
  * @author Jacob Taylor
  */
-class rfiBadInputFinder : public KotekanProcess {
+class rfiBadInputFinder : public kotekan::KotekanProcess {
 public:
     // Constructor
-    rfiBadInputFinder(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    rfiBadInputFinder(kotekan::Config& config, const string& unique_name,
+                      kotekan::bufferContainer& buffer_container);
     // Deconstructor, cleans up / does nothing
     virtual ~rfiBadInputFinder();
     // Primary loop, reads buffer and sends out UDP stream
     void main_thread() override;
     // Callback function called by rest server
-    void rest_callback(connectionInstance& conn, json& json_request);
+    void rest_callback(kotekan::connectionInstance& conn, json& json_request);
 
 private:
     /// Private functions

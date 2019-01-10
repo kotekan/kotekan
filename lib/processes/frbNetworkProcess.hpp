@@ -1,7 +1,7 @@
 /**
  * @file frbNetworkprocess.hpp
  * @brief Network transmission process for FRB obs
- *  - frbNetworkProcess : public KotekanProcess
+ *  - frbNetworkProcess : public kotekan::KotekanProcess
  */
 
 #ifndef FRBNETWORKPROCESS_HPP
@@ -50,16 +50,17 @@
  */
 
 
-class frbNetworkProcess : public KotekanProcess {
+class frbNetworkProcess : public kotekan::KotekanProcess {
 public:
     /// Constructor, also initializes internal variables from config.
-    frbNetworkProcess(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    frbNetworkProcess(kotekan::Config& config, const string& unique_name,
+                      kotekan::bufferContainer& buffer_container);
 
     /// Destructor , cleaning local allocations
     virtual ~frbNetworkProcess();
 
     /// Callback to update the beam offset
-    void update_offset_callback(connectionInstance& conn, json& json_request);
+    void update_offset_callback(kotekan::connectionInstance& conn, json& json_request);
 
     /// main thread
     void main_thread() override;
@@ -98,7 +99,7 @@ private:
     // samples per packet
     int samples_per_packet;
 
-    // Beam Configuration Mode
+    // Beam kotekan::Configuration Mode
     bool column_mode;
 
     /// array of local file descriptors

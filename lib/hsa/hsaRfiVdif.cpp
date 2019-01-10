@@ -14,6 +14,9 @@ Notes:
 
 #include "hsaRfiVdif.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_HSA_COMMAND(hsaRfiVdif);
 
 hsaRfiVdif::hsaRfiVdif(Config& config, const string& unique_name, bufferContainer& host_buffers,

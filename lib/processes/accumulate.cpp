@@ -4,6 +4,10 @@
 #include "errors.h"
 #include "fpga_header_functions.h"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(accumulate);
 
 accumulate::accumulate(Config& config, const string& unique_name,

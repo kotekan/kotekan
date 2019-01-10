@@ -4,6 +4,9 @@
 
 #include <random>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_HSA_COMMAND(hsaInputLostSamples);
 
 hsaInputLostSamples::hsaInputLostSamples(Config& config, const string& unique_name,

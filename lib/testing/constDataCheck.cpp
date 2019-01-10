@@ -2,10 +2,10 @@
 
 REGISTER_KOTEKAN_PROCESS(constDataCheck);
 
-constDataCheck::constDataCheck(Config& config, const string& unique_name,
-                               bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&constDataCheck::main_thread, this)) {
+constDataCheck::constDataCheck(kotekan::Config& config, const string& unique_name,
+                               kotekan::bufferContainer& buffer_container) :
+    kotekan::KotekanProcess(config, unique_name, buffer_container,
+                            std::bind(&constDataCheck::main_thread, this)) {
 
     buf = get_buffer("in_buf");
     register_consumer(buf, unique_name.c_str());

@@ -4,9 +4,10 @@
 #include "KotekanProcess.hpp"
 #include "buffer.h"
 
-class gpuSimulate : public KotekanProcess {
+class gpuSimulate : public kotekan::KotekanProcess {
 public:
-    gpuSimulate(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    gpuSimulate(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& buffer_container);
     ~gpuSimulate();
     void main_thread() override;
 

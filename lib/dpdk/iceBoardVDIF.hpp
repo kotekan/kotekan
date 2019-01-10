@@ -51,8 +51,8 @@
 class iceBoardVDIF : public iceBoardHandler {
 
 public:
-    iceBoardVDIF(Config& config, const std::string& unique_name, bufferContainer& buffer_container,
-                 int port);
+    iceBoardVDIF(kotekan::Config& config, const std::string& unique_name,
+                 kotekan::bufferContainer& buffer_container, int port);
 
     virtual int handle_packet(struct rte_mbuf* mbuf);
 
@@ -124,10 +124,11 @@ iceBoardVDIF::iceBoardVDIF(Config& config, const std::string& unique_name,
     }
 
     std::string endpoint_name = unique_name + "/port_data";
-    restServer::instance().register_get_callback(endpoint_name, [&](connectionInstance& conn) {
-        json info = get_json_port_info();
-        conn.send_json_reply(info);
-    });
+    kotekan::restServer::instance().register_get_callback(endpoint_name,
+                                                          [&](kotekan::connectionInstance& conn) {
+                                                              json info = get_json_port_info();
+                                                              conn.send_json_reply(info);
+                                                          });
 }
 
 int iceBoardVDIF::handle_packet(struct rte_mbuf* mbuf) {

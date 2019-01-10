@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Network transmission process for Pulsar obs
- *  - pulsarNetworkProcess : public KotekanProcess
+ *  - pulsarNetworkProcess : public kotekan::KotekanProcess
  */
 
 #ifndef PULSARNETWORKPROCESS_HPP
@@ -47,11 +47,11 @@
  *
  **/
 
-class pulsarNetworkProcess : public KotekanProcess {
+class pulsarNetworkProcess : public kotekan::KotekanProcess {
 public:
     /// Constructor, also initializes internal variables from config.
-    pulsarNetworkProcess(Config& config, const string& unique_name,
-                         bufferContainer& buffer_container);
+    pulsarNetworkProcess(kotekan::Config& config, const string& unique_name,
+                         kotekan::bufferContainer& buffer_container);
 
 
     /// Destructor , cleaning local allocations

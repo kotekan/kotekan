@@ -20,6 +20,8 @@
 #include <memory>
 
 
+namespace kotekan {
+
 /// Implicit conversion for constructing `nlohmann::json` from a `basebandDumpStatus`
 void to_json(json& j, const basebandDumpStatus& s);
 
@@ -232,5 +234,7 @@ private:
     /// Map of registered readout processes, indexed by `freq_id`
     basebandReadoutRegistry readout_registry;
 };
+
+} // namespace kotekan
 
 #endif /* BASEBAND_API_MANAGER_HPP */

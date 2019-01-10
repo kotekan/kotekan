@@ -5,8 +5,8 @@
 
 class clInputData : public clCommand {
 public:
-    clInputData(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                clDeviceInterface& device);
+    clInputData(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
     ~clInputData();
     int wait_on_precondition(int gpu_frame_id) override;
     cl_event execute(int gpu_frame_id, cl_event pre_event) override;

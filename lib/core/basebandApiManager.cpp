@@ -7,6 +7,8 @@
 #include <sstream>
 
 
+namespace kotekan {
+
 basebandReadoutManager& basebandApiManager::basebandReadoutRegistry::
 operator[](const uint32_t& key) {
     std::lock_guard<std::mutex> lock(map_lock);
@@ -181,3 +183,5 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
 basebandReadoutManager& basebandApiManager::register_readout_process(const uint32_t freq_id) {
     return readout_registry[freq_id];
 }
+
+} // namespace kotekan

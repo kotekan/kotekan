@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Process to receive VDIF data from a UDP stream.
- *  - recvSingleDishVDIF : public KotekanProcess
+ *  - recvSingleDishVDIF : public kotekan::KotekanProcess
  */
 
 #ifndef RECV_SINGLE_DISH_VDIF_H
@@ -36,11 +36,11 @@
  * @author Andre Renard
  *
  */
-class recvSingleDishVDIF : public KotekanProcess {
+class recvSingleDishVDIF : public kotekan::KotekanProcess {
 public:
     /// Constructor
-    recvSingleDishVDIF(Config& config, const string& unique_name,
-                       bufferContainer& buffer_container);
+    recvSingleDishVDIF(kotekan::Config& config, const string& unique_name,
+                       kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~recvSingleDishVDIF();
 

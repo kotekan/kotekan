@@ -6,6 +6,13 @@
 #include <iostream>
 #include <sys/time.h>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
+using kotekan::connectionInstance;
+using kotekan::restServer;
+
 using namespace std;
 
 // TODO Remove the GPU_ID from this constructor

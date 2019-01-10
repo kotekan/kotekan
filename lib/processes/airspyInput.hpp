@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Contains airspy producer for kotekan.
- *  - airspyInput : public KotekanProcess
+ *  - airspyInput : public kotekan::KotekanProcess
  */
 
 #ifndef AIRSPY_INPUT_HPP
@@ -23,7 +23,8 @@ using std::string;
 
 /**
  * @class airspyInput
- * @brief Producer ``KotekanProcess`` which streams radio data from an AirSpy SDR device into a
+ * @brief Producer ``kotekan::KotekanProcess`` which streams radio data from an AirSpy SDR device
+ * into a
  * ``Buffer``.
  *
  * This is a simple producer which initializes an AirSpy dongle (https://airspy.com)
@@ -59,10 +60,11 @@ using std::string;
  * @author Keith Vanderlinde
  *
  */
-class airspyInput : public KotekanProcess {
+class airspyInput : public kotekan::KotekanProcess {
 public:
     /// Constructor, also initializes internal variables from config.
-    airspyInput(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    airspyInput(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& buffer_container);
 
     /// Destructor, cleans up local allocs.
     virtual ~airspyInput();

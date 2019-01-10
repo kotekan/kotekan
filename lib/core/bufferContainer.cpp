@@ -1,5 +1,7 @@
 #include "bufferContainer.hpp"
 
+namespace kotekan {
+
 bufferContainer::bufferContainer() {}
 
 bufferContainer::~bufferContainer() {}
@@ -27,3 +29,5 @@ map<string, Buffer*>& bufferContainer::get_buffer_map() {
 void bufferContainer::set_buffer_map(map<string, Buffer*>& buffer_map) {
     buffers = buffer_map;
 }
+
+} // namespace kotekan

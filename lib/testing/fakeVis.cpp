@@ -32,6 +32,10 @@
 
 using namespace std::placeholders;
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 
 REGISTER_KOTEKAN_PROCESS(fakeVis);
 REGISTER_KOTEKAN_PROCESS(replaceVis);

@@ -9,6 +9,8 @@
 #include <iostream>
 #include <signal.h>
 
+namespace kotekan {
+
 configUpdater& configUpdater::instance() {
     static configUpdater dm;
 
@@ -245,3 +247,5 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
 
     con.send_empty_reply(HTTP_RESPONSE::OK);
 }
+
+} // namespace kotekan

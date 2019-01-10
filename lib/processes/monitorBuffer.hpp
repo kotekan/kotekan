@@ -2,7 +2,7 @@
  * @file
  * @brief Process to watch a buffer or buffers and exit the system if it doesn't
  *        get new data within a set timeout
- *  - monitorBuffer : public KotekanProcess
+ *  - monitorBuffer : public kotekan::KotekanProcess
  */
 
 #ifndef MONITOR_BUFFER_H
@@ -31,10 +31,11 @@
  * @conf fill_threshold  Float, default 2.0 (disabled)  The ratio of full to total frames,
  *                       which if exceeded with trigger an exit.
  */
-class monitorBuffer : public KotekanProcess {
+class monitorBuffer : public kotekan::KotekanProcess {
 public:
     /// Common constructor
-    monitorBuffer(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    monitorBuffer(kotekan::Config& config, const string& unique_name,
+                  kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     virtual ~monitorBuffer();

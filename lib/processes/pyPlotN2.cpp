@@ -10,6 +10,14 @@
 
 using json = nlohmann::json;
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
+using kotekan::connectionInstance;
+using kotekan::HTTP_RESPONSE;
+using kotekan::restServer;
+
 REGISTER_KOTEKAN_PROCESS(pyPlotN2);
 
 pyPlotN2::pyPlotN2(Config& config, const string& unique_name, bufferContainer& buffer_container) :

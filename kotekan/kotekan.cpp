@@ -51,6 +51,7 @@ extern "C" {
 #endif
 
 using json = nlohmann::json;
+using namespace kotekan;
 
 kotekanMode* kotekan_mode = nullptr;
 bool running = false;

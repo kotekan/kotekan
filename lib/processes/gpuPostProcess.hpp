@@ -13,13 +13,14 @@ using std::vector;
 #define MAX_GATE_DESCRIPTION_LEN 127
 #define HDF5_NAME_LEN 65
 
-class gpuPostProcess : public KotekanProcess {
+class gpuPostProcess : public kotekan::KotekanProcess {
 public:
-    gpuPostProcess(Config& config_, const string& unique_name, bufferContainer& buffer_container);
+    gpuPostProcess(kotekan::Config& config_, const string& unique_name,
+                   kotekan::bufferContainer& buffer_container);
     virtual ~gpuPostProcess();
     void main_thread() override;
 
-    void vis_endpoint(connectionInstance& conn, json& json_request);
+    void vis_endpoint(kotekan::connectionInstance& conn, json& json_request);
 
 private:
     struct Buffer** in_buf;

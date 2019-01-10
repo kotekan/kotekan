@@ -5,9 +5,10 @@
 #include "buffer.h"
 #include "fpga_header_functions.h"
 
-class hccGPUThread : public KotekanProcess {
+class hccGPUThread : public kotekan::KotekanProcess {
 public:
-    hccGPUThread(Config& config, struct Buffer& in_buf, struct Buffer& out_buf, uint32_t gpu_id);
+    hccGPUThread(kotekan::Config& config, struct Buffer& in_buf, struct Buffer& out_buf,
+                 uint32_t gpu_id);
     virtual ~hccGPUThread();
     void main_thread() override;
 

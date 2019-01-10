@@ -20,6 +20,10 @@
 #define inst_long -119.6175
 #define inst_lat 49.3203
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(gpuBeamformPulsarSimulate);
 
 gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config, const string& unique_name,

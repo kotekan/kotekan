@@ -1,5 +1,8 @@
 #include "hsaBeamformPulsarOutput.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_HSA_COMMAND(hsaBeamformPulsarOutput);
 
 hsaBeamformPulsarOutput::hsaBeamformPulsarOutput(Config& config, const string& unique_name,

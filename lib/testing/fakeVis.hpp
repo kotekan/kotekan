@@ -68,11 +68,12 @@
  * @author  Tristan Pinsonneault-Marotte
  *
  */
-class fakeVis : public KotekanProcess {
+class fakeVis : public kotekan::KotekanProcess {
 
 public:
     /// Constructor. Loads config options.
-    fakeVis(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    fakeVis(kotekan::Config& config, const string& unique_name,
+            kotekan::bufferContainer& buffer_container);
 
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
     void main_thread() override;
@@ -195,11 +196,12 @@ private:
  * @author Richard Shaw
  *
  */
-class replaceVis : public KotekanProcess {
+class replaceVis : public kotekan::KotekanProcess {
 
 public:
     /// Constructor. Loads config options.
-    replaceVis(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    replaceVis(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& buffer_container);
 
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
     void main_thread() override;

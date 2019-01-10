@@ -14,6 +14,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(integratePowerStream);
 
 integratePowerStream::integratePowerStream(Config& config, const string& unique_name,

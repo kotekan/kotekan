@@ -9,9 +9,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-class rawFileRead : public KotekanProcess {
+class rawFileRead : public kotekan::KotekanProcess {
 public:
-    rawFileRead(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    rawFileRead(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& buffer_container);
     virtual ~rawFileRead();
     void main_thread() override;
 

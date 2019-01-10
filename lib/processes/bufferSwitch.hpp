@@ -39,7 +39,8 @@
 class bufferSwitch : public bufferMerge {
 public:
     /// Constructor
-    bufferSwitch(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    bufferSwitch(kotekan::Config& config, const string& unique_name,
+                 kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     ~bufferSwitch() = default;

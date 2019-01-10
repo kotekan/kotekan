@@ -4,6 +4,9 @@
 #include "metadata.h"
 #include "visBuffer.hpp"
 
+
+namespace kotekan {
+
 bufferFactory::bufferFactory(Config& _config, map<string, struct metadataPool*>& _metadataPools) :
     config(_config),
     metadataPools(_metadataPools) {}
@@ -86,3 +89,5 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
     // No metadata found
     throw std::runtime_error("No buffer type named: " + name);
 }
+
+} // namespace kotekan

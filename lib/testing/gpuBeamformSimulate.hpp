@@ -23,11 +23,11 @@
  * @author Cherry Ng
  **/
 
-class gpuBeamformSimulate : public KotekanProcess {
+class gpuBeamformSimulate : public kotekan::KotekanProcess {
 public:
     /// Constructor
-    gpuBeamformSimulate(Config& config, const string& unique_name,
-                        bufferContainer& buffer_container);
+    gpuBeamformSimulate(kotekan::Config& config, const string& unique_name,
+                        kotekan::bufferContainer& buffer_container);
     ~gpuBeamformSimulate();
     void main_thread() override;
 

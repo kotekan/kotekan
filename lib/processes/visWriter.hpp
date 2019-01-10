@@ -1,8 +1,8 @@
 /*****************************************
 @file
 @brief Processes for writing visibility data.
-- visWriter : public KotekanProcess
-- visCalWriter : public KotekanProcess
+- visWriter : public kotekan::KotekanProcess
+- visCalWriter : public kotekan::KotekanProcess
 *****************************************/
 #ifndef VIS_WRITER_HPP
 #define VIS_WRITER_HPP
@@ -77,9 +77,10 @@
  *
  * @author Richard Shaw
  */
-class visWriter : public KotekanProcess {
+class visWriter : public kotekan::KotekanProcess {
 public:
-    visWriter(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    visWriter(kotekan::Config& config, const string& unique_name,
+              kotekan::bufferContainer& buffer_container);
 
     void main_thread() override;
 
@@ -231,12 +232,13 @@ private:
  **/
 class visCalWriter : public visWriter {
 public:
-    visCalWriter(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    visCalWriter(kotekan::Config& config, const string& unique_name,
+                 kotekan::bufferContainer& buffer_container);
 
     ~visCalWriter();
 
     /// REST endpoint to request swapping buffer files
-    void rest_callback(connectionInstance& conn);
+    void rest_callback(kotekan::connectionInstance& conn);
 
 protected:
     // Override function to make visCalFileBundle and set its file name

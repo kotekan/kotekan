@@ -12,6 +12,13 @@
 #include "gpsTime.h"
 #include "visUtil.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
+using kotekan::connectionInstance;
+using kotekan::HTTP_RESPONSE;
+using kotekan::restServer;
 
 REGISTER_KOTEKAN_PROCESS(testDataGen);
 

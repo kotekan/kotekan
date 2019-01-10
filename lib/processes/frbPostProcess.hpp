@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Packetizer for data destined for CHIME/FRB L1.
- *  - frbPostProcess : public KotekanProcess
+ *  - frbPostProcess : public kotekan::KotekanProcess
  */
 
 #ifndef FRB_POST_PROCESS
@@ -67,10 +67,11 @@ using std::vector;
  * @author Keith Vanderlinde
  *
  */
-class frbPostProcess : public KotekanProcess {
+class frbPostProcess : public kotekan::KotekanProcess {
 public:
     /// Constructor.
-    frbPostProcess(Config& config_, const string& unique_name, bufferContainer& buffer_container);
+    frbPostProcess(kotekan::Config& config_, const string& unique_name,
+                   kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     virtual ~frbPostProcess();
@@ -94,7 +95,7 @@ private:
     float* frb_header_scale;
     float* frb_header_offset;
 
-    // Config variables
+    // kotekan::Config variables
     int32_t _num_gpus;
     int32_t _samples_per_data_set;
     int32_t _downsample_time;

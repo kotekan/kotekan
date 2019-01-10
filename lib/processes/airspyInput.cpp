@@ -1,5 +1,9 @@
 #include "airspyInput.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(airspyInput);
 
 airspyInput::airspyInput(Config& config, const string& unique_name,

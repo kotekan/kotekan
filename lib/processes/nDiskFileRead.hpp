@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief A process to read VDIF files from multiple drives.
- *  - nDiskFileRead : public KotekanProcess
+ *  - nDiskFileRead : public kotekan::KotekanProcess
  */
 
 #ifndef N_DISK_FILE_READ_H
@@ -13,7 +13,8 @@
 
 /**
  * @class nDiskFileRead
- * @brief Producer ``KotekanProcess`` which reads VDIF data from multiple drives into a ``Buffer``
+ * @brief Producer ``kotekan::KotekanProcess`` which reads VDIF data from multiple drives into a
+ * ``Buffer``
  *
  * This is a producer which initiates n threads to read from n disks. Each disk must contain data in
  * the same folders as specified in the kotekan config file. Within each folder the data files must
@@ -39,7 +40,7 @@
  *
  * Worked Example with n = 3:
  *
- * Config Parameters:
+ * kotekan::Config Parameters:
  *
  * - num_disk: 3
  * - disk_base: /drives/
@@ -69,10 +70,11 @@
  *
  * @author Jacob Taylor
  */
-class nDiskFileRead : public KotekanProcess {
+class nDiskFileRead : public kotekan::KotekanProcess {
 public:
     /// Constructor
-    nDiskFileRead(Config& config, const string& unique_name, bufferContainer& buffer_containter);
+    nDiskFileRead(kotekan::Config& config, const string& unique_name,
+                  kotekan::bufferContainer& buffer_containter);
 
     /// Destructor, currently does nothing
     ~nDiskFileRead() override{};

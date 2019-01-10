@@ -5,8 +5,8 @@
 
 class clOutputData : public clCommand {
 public:
-    clOutputData(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                 clDeviceInterface& device);
+    clOutputData(kotekan::Config& config, const string& unique_name,
+                 kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
     ~clOutputData();
     int wait_on_precondition(int gpu_frame_id) override;
     virtual cl_event execute(int buf_frame_id, cl_event pre_event) override;

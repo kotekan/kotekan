@@ -42,10 +42,11 @@
  * @author Keith Vanderlinde
  *
  */
-class testDataGenQuad : public KotekanProcess {
+class testDataGenQuad : public kotekan::KotekanProcess {
 public:
     /// Constructor, also initializes internal variables from config.
-    testDataGenQuad(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    testDataGenQuad(kotekan::Config& config, const string& unique_name,
+                    kotekan::bufferContainer& buffer_container);
 
     /// Destructor, cleans up local allocs.
     ~testDataGenQuad();

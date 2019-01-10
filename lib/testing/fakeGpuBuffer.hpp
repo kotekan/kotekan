@@ -58,9 +58,10 @@
  *          id.
  * @author Richard Shaw
  */
-class fakeGpuBuffer : public KotekanProcess {
+class fakeGpuBuffer : public kotekan::KotekanProcess {
 public:
-    fakeGpuBuffer(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    fakeGpuBuffer(kotekan::Config& config, const string& unique_name,
+                  kotekan::bufferContainer& buffer_container);
     ~fakeGpuBuffer();
     void main_thread() override;
 

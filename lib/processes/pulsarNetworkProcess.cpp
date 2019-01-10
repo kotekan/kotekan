@@ -27,6 +27,10 @@ using std::string;
 #include "tx_utils.hpp"
 #include "util.h"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(pulsarNetworkProcess);
 
 pulsarNetworkProcess::pulsarNetworkProcess(Config& config_, const string& unique_name,

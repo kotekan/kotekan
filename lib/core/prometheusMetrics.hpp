@@ -14,6 +14,8 @@ using nlohmann::json;
 using std::map;
 using std::string;
 
+namespace kotekan {
+
 /**
  * @class prometheusMetrics
  * @brief Class for exporting system metrics to a prometheus server
@@ -160,5 +162,7 @@ private:
     /// Metric updating lock
     std::mutex metrics_lock;
 };
+
+} // namespace kotekan
 
 #endif /* PROMETHEUS_METRICS_HPP */

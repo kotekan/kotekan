@@ -5,8 +5,8 @@
 
 class hsaInputData : public hsaCommand {
 public:
-    hsaInputData(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                 hsaDeviceInterface& device);
+    hsaInputData(kotekan::Config& config, const string& unique_name,
+                 kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaInputData();
 

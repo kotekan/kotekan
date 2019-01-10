@@ -11,6 +11,8 @@
 using std::map;
 using std::string;
 
+namespace kotekan {
+
 class kotekanMode {
 public:
     kotekanMode(Config& config);
@@ -37,5 +39,6 @@ private:
     map<string, struct Buffer*> buffers;
 };
 
+} // namespace kotekan
 
 #endif /* CHIME_HPP */

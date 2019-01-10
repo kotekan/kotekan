@@ -14,6 +14,11 @@
 #include <time.h>
 #include <unistd.h>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+using kotekan::prometheusMetrics;
+
 REGISTER_KOTEKAN_PROCESS(bufferStatus);
 
 bufferStatus::bufferStatus(Config& config, const string& unique_name,

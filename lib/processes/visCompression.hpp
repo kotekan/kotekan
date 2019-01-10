@@ -61,12 +61,12 @@ using json = nlohmann::json;
  *
  * @author Richard Shaw
  */
-class baselineCompression : public KotekanProcess {
+class baselineCompression : public kotekan::KotekanProcess {
 
 public:
     // Default constructor
-    baselineCompression(Config& config, const string& unique_name,
-                        bufferContainer& buffer_container);
+    baselineCompression(kotekan::Config& config, const string& unique_name,
+                        kotekan::bufferContainer& buffer_container);
 
     // Main loop for the process: Creates n threads that do the compression.
     void main_thread() override;

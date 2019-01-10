@@ -9,9 +9,10 @@
 #include "buffer.h"
 #include "errors.h"
 
-class networkOutputSim : public KotekanProcess {
+class networkOutputSim : public kotekan::KotekanProcess {
 public:
-    networkOutputSim(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    networkOutputSim(kotekan::Config& config, const string& unique_name,
+                     kotekan::bufferContainer& buffer_container);
     virtual ~networkOutputSim();
     void main_thread() override;
 

@@ -3,6 +3,8 @@
 #include "errors.h"
 #include "metadata.h"
 
+namespace kotekan {
+
 prometheusMetrics::prometheusMetrics() {}
 
 prometheusMetrics& prometheusMetrics::instance() {
@@ -70,3 +72,5 @@ uint64_t prometheusMetrics::get_time_in_milliseconds() {
 
     return (uint64_t)(tv.tv_sec) * 1000 + (uint64_t)(tv.tv_usec) / 1000;
 }
+
+} // namespace kotekan

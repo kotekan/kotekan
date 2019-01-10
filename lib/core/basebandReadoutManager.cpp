@@ -1,6 +1,8 @@
 #include "basebandReadoutManager.hpp"
 
 
+namespace kotekan {
+
 void basebandReadoutManager::add(basebandRequest req) {
     std::unique_lock<std::mutex> lock(requests_mtx);
 
@@ -80,3 +82,5 @@ std::unique_ptr<basebandDumpStatus> basebandReadoutManager::find(uint64_t event_
 
     return nullptr;
 }
+
+} // namespace kotekan

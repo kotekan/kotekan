@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Process for merging GPU buffers into a visBuffer stream.
-- visTransform : public KotekanProcess
+- visTransform : public kotekan::KotekanProcess
 *****************************************/
 #ifndef VISTRANSFORM_H
 #define VISTRANSFORM_H
@@ -49,11 +49,12 @@
  *
  * @author Richard Shaw
  */
-class visTransform : public KotekanProcess {
+class visTransform : public kotekan::KotekanProcess {
 
 public:
     // Default constructor
-    visTransform(Config& config, const std::string& unique_name, bufferContainer& buffer_container);
+    visTransform(kotekan::Config& config, const std::string& unique_name,
+                 kotekan::bufferContainer& buffer_container);
 
     // Main loop for the process
     void main_thread() override;

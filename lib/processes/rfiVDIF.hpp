@@ -1,7 +1,7 @@
 /*
  * @file rfiVDIF.hpp
  * @brief Contains a general VDIF kurtosis estimator kotekan process.
- * - rfiVDIF : public KotekanProcess
+ * - rfiVDIF : public kotekan::KotekanProcess
  */
 #ifndef VDIF_RFI_H
 #define VDIF_RFI_H
@@ -12,7 +12,7 @@
 
 /*
  * @class rfiVDIF
- * @brief Producer and consumer ``KotekanProcess`` which consumes input VDIF data and
+ * @brief Producer and consumer ``kotekan::KotekanProcess`` which consumes input VDIF data and
  * computes spectral kurtosis estimates.
  *
  * This process is a spectral kurtosis estimator that works on any general kotekan buffer containing
@@ -41,10 +41,11 @@
  *
  * @author Jacob Taylor
  */
-class rfiVDIF : public KotekanProcess {
+class rfiVDIF : public kotekan::KotekanProcess {
 public:
     // Constructor, initializes class, sets up config
-    rfiVDIF(Config& config, const string& unique_name, bufferContainer& buffer_containter);
+    rfiVDIF(kotekan::Config& config, const string& unique_name,
+            kotekan::bufferContainer& buffer_containter);
     // Deconstructor, cleans up, does nothing
     ~rfiVDIF();
 

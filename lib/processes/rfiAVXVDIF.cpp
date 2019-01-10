@@ -37,6 +37,10 @@
 #define PACKET_LEN (_num_local_freq + VDIF_HEADER_LEN)
 #define VDIF_HEADER_LEN sizeof(VDIFHeader)
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(rfiAVXVDIF);
 
 rfiAVXVDIF::rfiAVXVDIF(Config& config, const string& unique_name,

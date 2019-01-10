@@ -8,6 +8,10 @@
 
 using nlohmann::json;
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(bufferMerge);
 
 bufferMerge::bufferMerge(Config& config, const string& unique_name,

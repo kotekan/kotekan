@@ -23,6 +23,8 @@ using json = nlohmann::json;
 using std::map;
 using std::string;
 
+namespace kotekan {
+
 class KotekanProcess;
 
 class kotekanProcessMaker {
@@ -79,7 +81,9 @@ public:
         return new T(config, unique_name, host_buffers);
     }
 };
-#define REGISTER_KOTEKAN_PROCESS(T) static kotekanProcessMakerTemplate<T> maker##T(#T);
 
+} // namespace kotekan
+
+#define REGISTER_KOTEKAN_PROCESS(T) static ::kotekan::kotekanProcessMakerTemplate<T> maker##T(#T);
 
 #endif /* PROCESS_FACTORY_HPP */

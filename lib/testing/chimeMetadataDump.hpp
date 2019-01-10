@@ -29,10 +29,11 @@
  *
  */
 
-class chimeMetadataDump : public KotekanProcess {
+class chimeMetadataDump : public kotekan::KotekanProcess {
 public:
     /// Constructor.
-    chimeMetadataDump(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    chimeMetadataDump(kotekan::Config& config, const string& unique_name,
+                      kotekan::bufferContainer& buffer_container);
 
     /// Destructor.
     ~chimeMetadataDump();

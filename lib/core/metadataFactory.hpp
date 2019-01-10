@@ -14,6 +14,8 @@ using json = nlohmann::json;
 using std::map;
 using std::string;
 
+namespace kotekan {
+
 class metadataFactory {
 
 public:
@@ -30,5 +32,7 @@ private:
 
     Config& config;
 };
+
+} // namespace kotekan
 
 #endif /* METADATA_FACTORY_HPP */

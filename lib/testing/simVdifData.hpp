@@ -5,9 +5,10 @@
 #include "buffer.h"
 #include "vdif_functions.h"
 
-class simVdifData : public KotekanProcess {
+class simVdifData : public kotekan::KotekanProcess {
 public:
-    simVdifData(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    simVdifData(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& buffer_container);
     ~simVdifData();
     void main_thread() override;
 

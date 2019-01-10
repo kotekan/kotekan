@@ -1,5 +1,8 @@
 #include "clOutputBeamformResult.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_CL_COMMAND(clOutputBeamformResult);
 
 clOutputBeamformResult::clOutputBeamformResult(Config& config, const string& unique_name,

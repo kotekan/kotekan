@@ -33,6 +33,10 @@ using std::string;
 #include "util.h"
 #include "vdif_functions.h"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(pulsarSimProcess);
 pulsarSimProcess::pulsarSimProcess(Config& config_, const string& unique_name,
                                    bufferContainer& buffer_container) :

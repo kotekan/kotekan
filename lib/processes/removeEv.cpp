@@ -6,6 +6,10 @@
 #include "visUtil.hpp"
 
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(removeEv);
 
 removeEv::removeEv(Config& config, const string& unique_name, bufferContainer& buffer_container) :

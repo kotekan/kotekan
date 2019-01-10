@@ -7,6 +7,8 @@
 
 #include "json.hpp"
 
+using kotekan::Config;
+
 using json = nlohmann::json;
 
 BOOST_AUTO_TEST_CASE(_get_value_recursive) {

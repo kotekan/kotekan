@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Process for subsetting visibility data by frequency.
-- freqSubset : public KotekanProcess
+- freqSubset : public kotekan::KotekanProcess
 *****************************************/
 #ifndef FREQ_SUBSET_HPP
 #define FREQ_SUBSET_HPP
@@ -38,11 +38,12 @@
  *
  * @author Mateus Fandino
  */
-class freqSubset : public KotekanProcess {
+class freqSubset : public kotekan::KotekanProcess {
 
 public:
     /// Default constructor
-    freqSubset(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    freqSubset(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& buffer_container);
 
     /// Main loop for the process
     void main_thread() override;

@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief A simple process to take an intensity stream and sum down.
- *  - integratePowerStream : public KotekanProcess
+ *  - integratePowerStream : public kotekan::KotekanProcess
  */
 
 #ifndef INTEGRATE_POWER_STREAM_H
@@ -39,11 +39,11 @@
  * @author Keith Vanderlinde
  *
  */
-class integratePowerStream : public KotekanProcess {
+class integratePowerStream : public kotekan::KotekanProcess {
 public:
     /// Constructor.
-    integratePowerStream(Config& config, const string& unique_name,
-                         bufferContainer& buffer_container);
+    integratePowerStream(kotekan::Config& config, const string& unique_name,
+                         kotekan::bufferContainer& buffer_container);
 
     /// Destructor.
     virtual ~integratePowerStream();

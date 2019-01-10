@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief A simple autocorrelator (sum-sq) process.
- *  - simpleAutocorr : public KotekanProcess
+ *  - simpleAutocorr : public kotekan::KotekanProcess
  */
 
 #ifndef SIMPLE_AUTOCORR_HPP
@@ -42,10 +42,11 @@ using std::string;
  * @author Keith Vanderlinde
  *
  */
-class simpleAutocorr : public KotekanProcess {
+class simpleAutocorr : public kotekan::KotekanProcess {
 public:
     /// Constructor, also initializes FFTW and values from config yaml.
-    simpleAutocorr(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    simpleAutocorr(kotekan::Config& config, const string& unique_name,
+                   kotekan::bufferContainer& buffer_container);
 
     /// Destructor, frees local allocs and exits FFTW.
     virtual ~simpleAutocorr();

@@ -3,6 +3,10 @@
 #include "errors.h"
 #include "util.h"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(recvSingleDishVDIF);
 
 recvSingleDishVDIF::recvSingleDishVDIF(Config& config, const string& unique_name,

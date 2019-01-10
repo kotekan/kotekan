@@ -15,6 +15,11 @@
 
 #include <mutex>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+using kotekan::prometheusMetrics;
+
 /**
  * @brief Abstract class which contains things which are common to processing
  *        packets from the McGill ICE FPGA boards.

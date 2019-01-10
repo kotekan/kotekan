@@ -7,9 +7,10 @@
 
 using string = std::string;
 
-class chrxUplink : public KotekanProcess {
+class chrxUplink : public kotekan::KotekanProcess {
 public:
-    chrxUplink(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    chrxUplink(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& buffer_container);
     virtual ~chrxUplink();
     void main_thread() override;
 

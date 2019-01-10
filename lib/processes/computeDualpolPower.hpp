@@ -5,10 +5,10 @@
 #include "buffer.h"
 #include "errors.h"
 
-class computeDualpolPower : public KotekanProcess {
+class computeDualpolPower : public kotekan::KotekanProcess {
 public:
-    computeDualpolPower(Config& config, const string& unique_name,
-                        bufferContainer& buffer_container);
+    computeDualpolPower(kotekan::Config& config, const string& unique_name,
+                        kotekan::bufferContainer& buffer_container);
     ~computeDualpolPower();
     void main_thread() override;
 

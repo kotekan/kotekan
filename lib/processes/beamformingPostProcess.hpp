@@ -10,10 +10,10 @@
 
 using std::vector;
 
-class beamformingPostProcess : public KotekanProcess {
+class beamformingPostProcess : public kotekan::KotekanProcess {
 public:
-    beamformingPostProcess(Config& config, const string& unique_name,
-                           bufferContainer& buffer_container);
+    beamformingPostProcess(kotekan::Config& config, const string& unique_name,
+                           kotekan::bufferContainer& buffer_container);
     virtual ~beamformingPostProcess();
     void main_thread() override;
 

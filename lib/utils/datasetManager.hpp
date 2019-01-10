@@ -220,7 +220,7 @@ public:
      *
      * @returns A reference to the global datasetManager instance.
      */
-    static datasetManager& instance(Config& config);
+    static datasetManager& instance(kotekan::Config& config);
 
     // Remove the implicit copy/assignments to prevent copying
     datasetManager(const datasetManager&) = delete;
@@ -642,8 +642,8 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
         WARN("datasetManager: Failure requesting state from "
              "broker: %s",
              reply.second.c_str());
-        prometheusMetrics::instance().add_process_metric("kotekan_datasetbroker_error_count",
-                                                         DS_UNIQUE_NAME, ++_conn_error_count);
+        kotekan::prometheusMetrics::instance().add_process_metric(
+            "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
         return nullptr;
     }
 
@@ -700,8 +700,8 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
         WARN("datasetManager: failure parsing reply received from broker "
              "after requesting state (reply: %s): %s",
              reply.second.c_str(), e.what());
-        prometheusMetrics::instance().add_process_metric("kotekan_datasetbroker_error_count",
-                                                         DS_UNIQUE_NAME, ++_conn_error_count);
+        kotekan::prometheusMetrics::instance().add_process_metric(
+            "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
         return nullptr;
     }
 }

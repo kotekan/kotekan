@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief An FFTW-based F-engine process.
- *  - fftwEngine : public KotekanProcess
+ *  - fftwEngine : public kotekan::KotekanProcess
  */
 
 #ifndef FFTW_ENGINE_HPP
@@ -46,10 +46,11 @@ using std::string;
  * @author Keith Vanderlinde
  *
  */
-class fftwEngine : public KotekanProcess {
+class fftwEngine : public kotekan::KotekanProcess {
 public:
     /// Constructor, also initializes FFTW and values from config yaml.
-    fftwEngine(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    fftwEngine(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& buffer_container);
     /// Destructor, frees local allocs and exits FFTW.
     virtual ~fftwEngine();
     /// Primary loop, which waits on input frames, FFTs, and dumps to output.

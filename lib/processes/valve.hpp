@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Drops frames when its output buffer is full.
-- Valve : public KotekanProcess
+- Valve : public kotekan::KotekanProcess
 *****************************************/
 #ifndef VALVE_HPP
 #define VALVE_HPP
@@ -16,7 +16,7 @@
 
 /**
  * @class Valve
- * @brief ``KotekanProcess`` that drops incoming frames when its output buffer
+ * @brief ``kotekan::KotekanProcess`` that drops incoming frames when its output buffer
  * is full.
  *
  * This can have quite a small input buffer, since it drops frame from here, if
@@ -38,11 +38,12 @@
  * @author  Rick Nitsche
  *
  */
-class Valve : public KotekanProcess {
+class Valve : public kotekan::KotekanProcess {
 
 public:
     /// Constructor.
-    Valve(Config& config, const std::string& unique_name, bufferContainer& buffer_container);
+    Valve(kotekan::Config& config, const std::string& unique_name,
+          kotekan::bufferContainer& buffer_container);
 
     /// Primary loop.
     void main_thread() override;

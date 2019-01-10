@@ -42,8 +42,9 @@ public:
      * @param device  The instance of the clDeviceInterface class that abstracts the interfacing
      *                      layer between the software and hardware.
      **/
-    clCommand(Config& config, const string& unique_name, bufferContainer& host_buffers,
-              clDeviceInterface& device, const string& default_kernel_command = "",
+    clCommand(kotekan::Config& config, const string& unique_name,
+              kotekan::bufferContainer& host_buffers, clDeviceInterface& device,
+              const string& default_kernel_command = "",
               const string& default_kernel_file_name = "");
     /// Destructor that frees memory for the kernel and name.
     virtual ~clCommand();
@@ -88,7 +89,7 @@ protected:
 
 // Create a factory for clCommands
 CREATE_FACTORY(clCommand, // const string &, const string &,
-               Config&, const string&, bufferContainer&, clDeviceInterface&);
+               kotekan::Config&, const string&, kotekan::bufferContainer&, clDeviceInterface&);
 #define REGISTER_CL_COMMAND(newCommand)                                                            \
     REGISTER_NAMED_TYPE_WITH_FACTORY(clCommand, newCommand, #newCommand)
 

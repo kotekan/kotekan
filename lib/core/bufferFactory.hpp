@@ -15,6 +15,8 @@ using json = nlohmann::json;
 using std::map;
 using std::string;
 
+namespace kotekan {
+
 class bufferFactory {
 
 public:
@@ -32,5 +34,7 @@ private:
     Config& config;
     map<string, struct metadataPool*>& metadataPools;
 };
+
+} // namespace kotekan
 
 #endif /* BUFFER_FACTORY_HPP */

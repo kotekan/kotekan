@@ -22,6 +22,14 @@
 #include <unistd.h>
 
 
+using kotekan::basebandApiManager;
+using kotekan::basebandDumpStatus;
+using kotekan::basebandReadoutManager;
+using kotekan::basebandRequest;
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(basebandReadout);
 
 

@@ -10,6 +10,8 @@
 #include <syslog.h>
 #include <thread>
 
+namespace kotekan {
+
 KotekanProcess::KotekanProcess(Config& config, const string& unique_name,
                                bufferContainer& buffer_container_,
                                std::function<void(const KotekanProcess&)> main_thread_ref) :
@@ -126,3 +128,5 @@ KotekanProcess::~KotekanProcess() {
     if (this_thread.joinable())
         this_thread.join();
 }
+
+} // namespace kotekan

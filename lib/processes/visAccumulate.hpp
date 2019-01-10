@@ -2,7 +2,7 @@
 /*****************************************
 @file
 @brief Accumulation and gating of visibility data.
-- visAccumulate : public KotekanProcess
+- visAccumulate : public kotekan::KotekanProcess
 *****************************************/
 #ifndef VIS_ACCUMULATE_HPP
 #define VIS_ACCUMULATE_HPP
@@ -74,9 +74,10 @@
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte
  */
-class visAccumulate : public KotekanProcess {
+class visAccumulate : public kotekan::KotekanProcess {
 public:
-    visAccumulate(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    visAccumulate(kotekan::Config& config, const string& unique_name,
+                  kotekan::bufferContainer& buffer_container);
     ~visAccumulate() = default;
     void main_thread() override;
 

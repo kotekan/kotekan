@@ -11,6 +11,10 @@ inline bool file_exists(char* name) {
     return (stat(name, &buf) == 0);
 }
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(rawFileRead);
 
 rawFileRead::rawFileRead(Config& config, const string& unique_name,

@@ -24,6 +24,8 @@ using json = nlohmann::json;
 using std::string;
 using std::vector;
 
+namespace kotekan {
+
 /**
  * @class Config
  * @brief Access the running config.
@@ -450,5 +452,7 @@ extern template std::vector<nlohmann::json> Config::get(const string& base_path,
                                                         const string& name);
 extern template std::vector<std::complex<float>> Config::get(const string& base_path,
                                                              const string& name);
+
+} // namespace kotekan
 
 #endif /* CONFIG_HPP */

@@ -24,6 +24,10 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(networkOutputSim);
 
 networkOutputSim::networkOutputSim(Config& config_, const string& unique_name,

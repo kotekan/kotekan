@@ -87,8 +87,8 @@ class hsaBeamformKernel : public hsaCommand {
 public:
     /// Constructor, also initializes internal variables from config, allocates host_map, host_coeff
     /// and host_gain, get metadata buffer and register endpoint for gain path.
-    hsaBeamformKernel(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                      hsaDeviceInterface& device);
+    hsaBeamformKernel(kotekan::Config& config, const string& unique_name,
+                      kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor, cleans up local allocs.
     virtual ~hsaBeamformKernel();
@@ -103,9 +103,9 @@ public:
     /// Endpoint for providing new directory path for gain updates
     bool update_gains_callback(nlohmann::json& json);
     /// Endpoint for setting N-S beam extent
-    void update_NS_beam_callback(connectionInstance& conn, json& json_request);
+    void update_NS_beam_callback(kotekan::connectionInstance& conn, json& json_request);
     /// Endpoint for setting E-W beam sky angle
-    void update_EW_beam_callback(connectionInstance& conn, json& json_request);
+    void update_EW_beam_callback(kotekan::connectionInstance& conn, json& json_request);
 
 
 private:

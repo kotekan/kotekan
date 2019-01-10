@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Processes for splitting visibility data by frequency.
-- freqSplit : public KotekanProcess
+- freqSplit : public kotekan::KotekanProcess
 *****************************************/
 #ifndef FREQ_SPLIT_HPP
 #define FREQ_SPLIT_HPP
@@ -46,11 +46,12 @@
  * @todo Generalise to arbitary frequency splits.
  * @author Mateus Fandino
  */
-class freqSplit : public KotekanProcess {
+class freqSplit : public kotekan::KotekanProcess {
 
 public:
     // Default constructor
-    freqSplit(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    freqSplit(kotekan::Config& config, const string& unique_name,
+              kotekan::bufferContainer& buffer_container);
 
     // Main loop for the process
     void main_thread() override;

@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Process to take an intensity stream and stream to a remote client.
- *  - networkPowerStream : public KotekanProcess
+ *  - networkPowerStream : public kotekan::KotekanProcess
  */
 
 #ifndef NETWORK_POWER_STREAM_H
@@ -46,11 +46,11 @@
  * @author Keith Vanderlinde
  *
  */
-class networkPowerStream : public KotekanProcess {
+class networkPowerStream : public kotekan::KotekanProcess {
 public:
     /// Constructor.
-    networkPowerStream(Config& config, const string& unique_name,
-                       bufferContainer& buffer_container);
+    networkPowerStream(kotekan::Config& config, const string& unique_name,
+                       kotekan::bufferContainer& buffer_container);
 
     /// Destructor.
     virtual ~networkPowerStream();

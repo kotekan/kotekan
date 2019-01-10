@@ -13,6 +13,11 @@
 #include <lapacke.h>
 #include <time.h>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+using kotekan::prometheusMetrics;
+
 REGISTER_KOTEKAN_PROCESS(eigenVis);
 
 eigenVis::eigenVis(Config& config, const string& unique_name, bufferContainer& buffer_container) :

@@ -1,7 +1,7 @@
 /*
  * @file rfiBroadcast.hpp
  * @brief Contains RFI data broadcaster for SK estimates in kotekan.
- *  - rfiBroadcast : public KotekanProcess
+ *  - rfiBroadcast : public kotekan::KotekanProcess
  */
 #ifndef RFI_BROADCAST_H
 #define RFI_BROADCAST_H
@@ -20,7 +20,7 @@
 
 /*
  * @class rfiBroadcast
- * @brief Consumer ``KotekanProcess`` which consumes a buffer filled with spectral kurtosis
+ * @brief Consumer ``kotekan::KotekanProcess`` which consumes a buffer filled with spectral kurtosis
  * estimates.
  *
  * This process reads RFI data from a kotekan buffer before packaging it into UDP packets and
@@ -58,18 +58,19 @@
  *
  * @author Jacob Taylor
  */
-class rfiBroadcast : public KotekanProcess {
+class rfiBroadcast : public kotekan::KotekanProcess {
 public:
     // Constructor
-    rfiBroadcast(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    rfiBroadcast(kotekan::Config& config, const string& unique_name,
+                 kotekan::bufferContainer& buffer_container);
     // Deconstructor, cleans up / does nothing
     virtual ~rfiBroadcast();
     // Primary loop, reads buffer and sends out UDP stream
     void main_thread() override;
     // Callback function called by rest server
-    void rest_callback(connectionInstance& conn, json& json_request);
+    void rest_callback(kotekan::connectionInstance& conn, json& json_request);
     // Callback function called by rest server
-    void rest_zero(connectionInstance& conn);
+    void rest_zero(kotekan::connectionInstance& conn);
 
 private:
     /// Kotekan buffer containing kurtosis estimates

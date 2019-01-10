@@ -1,5 +1,9 @@
 #include "simpleAutocorr.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(simpleAutocorr);
 
 simpleAutocorr::simpleAutocorr(Config& config, const string& unique_name,

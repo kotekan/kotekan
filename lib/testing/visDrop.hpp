@@ -25,10 +25,11 @@
  * @conf  freq           Vector of Uint32. Frequency IDs of frames that should be
  *                       dropped. By default none.
  **/
-class visDrop : public KotekanProcess {
+class visDrop : public kotekan::KotekanProcess {
 public:
     // Default constructor
-    visDrop(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    visDrop(kotekan::Config& config, const string& unique_name,
+            kotekan::bufferContainer& buffer_container);
 
     // Main loop for the process
     void main_thread() override;

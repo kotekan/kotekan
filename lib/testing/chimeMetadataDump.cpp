@@ -9,8 +9,8 @@
 
 REGISTER_KOTEKAN_PROCESS(chimeMetadataDump);
 
-chimeMetadataDump::chimeMetadataDump(Config& config, const string& unique_name,
-                                     bufferContainer& buffer_container) :
+chimeMetadataDump::chimeMetadataDump(kotekan::Config& config, const string& unique_name,
+                                     kotekan::bufferContainer& buffer_container) :
     KotekanProcess(config, unique_name, buffer_container,
                    std::bind(&chimeMetadataDump::main_thread, this)) {
 

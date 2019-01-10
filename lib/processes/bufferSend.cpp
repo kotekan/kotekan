@@ -9,6 +9,11 @@
 #define MSG_NOSIGNAL 0
 #endif
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+using kotekan::prometheusMetrics;
+
 REGISTER_KOTEKAN_PROCESS(bufferSend);
 
 bufferSend::bufferSend(Config& config, const string& unique_name,

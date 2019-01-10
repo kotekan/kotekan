@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace kotekan {
+
 /**
  * @class basebandRequest
  * @brief Helper structure to capture a baseband dump request.
@@ -182,5 +184,7 @@ private:
      */
     iterator tail = requests.before_begin();
 };
+
+} // namespace kotekan
 
 #endif /* BASEBAND_READOUT_MANAGER_HPP */

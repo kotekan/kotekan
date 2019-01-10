@@ -5,9 +5,10 @@
 #include "KotekanProcess.hpp"
 #include "buffer.h"
 
-class vdifStream : public KotekanProcess {
+class vdifStream : public kotekan::KotekanProcess {
 public:
-    vdifStream(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    vdifStream(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& buffer_container);
     virtual ~vdifStream();
     void main_thread() override;
 

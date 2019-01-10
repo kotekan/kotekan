@@ -6,6 +6,10 @@
 
 #include <immintrin.h>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(frbPostProcess);
 
 frbPostProcess::frbPostProcess(Config& config_, const string& unique_name,

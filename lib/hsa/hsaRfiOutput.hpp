@@ -30,8 +30,8 @@
 class hsaRfiOutput : public hsaCommand {
 public:
     /// Constructor
-    hsaRfiOutput(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                 hsaDeviceInterface& device);
+    hsaRfiOutput(kotekan::Config& config, const string& unique_name,
+                 kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor
     virtual ~hsaRfiOutput();
     /// Wait for output buffer to be empty, keep track of _rfi_output_buf_precondition_id

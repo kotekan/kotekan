@@ -17,6 +17,8 @@
 #include <immintrin.h>
 #endif
 
+namespace kotekan {
+
 class KotekanProcess : public kotekanLogging {
 public:
     KotekanProcess(Config& config, const string& unique_name, bufferContainer& buffer_container,
@@ -86,6 +88,8 @@ private:
     /// joined after the exit signal has been given before exiting ungracefully.
     uint32_t join_timeout;
 };
+
+} // namespace kotekan
 
 /// Helper defined to reduce the boiler plate needed to crate the
 /// standarized constructor in sub classes

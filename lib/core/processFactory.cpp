@@ -2,6 +2,8 @@
 
 #include "errors.h"
 
+namespace kotekan {
+
 processFactory::processFactory(Config& config, bufferContainer& buffer_container) :
     config(config),
     buffer_container(buffer_container) {
@@ -91,3 +93,5 @@ void processFactoryRegistry::kotekan_reg(const std::string& key, kotekanProcessM
     }
     _kotekan_processes[key] = proc;
 }
+
+} // namespace kotekan

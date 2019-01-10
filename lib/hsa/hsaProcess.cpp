@@ -10,6 +10,9 @@
 #include <memory>
 #include <sys/time.h>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_KOTEKAN_PROCESS(hsaProcess);
 
 hsaProcess::hsaProcess(Config& config, const string& unique_name,

@@ -15,6 +15,8 @@
 #include <shared_mutex>
 #include <thread>
 
+namespace kotekan {
+
 enum class HTTP_RESPONSE {
     OK = 200,
     BAD_REQUEST = 400,
@@ -327,5 +329,7 @@ private:
     /// Allow connectionInstance to use internal helper functions
     friend class connectionInstance;
 };
+
+} // namespace kotekan
 
 #endif /* REST_SERVER_HPP */

@@ -6,9 +6,10 @@
 
 // Type: one of "random", "const"
 // Value: the value of the constant
-class testDataGenFloat : public KotekanProcess {
+class testDataGenFloat : public kotekan::KotekanProcess {
 public:
-    testDataGenFloat(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    testDataGenFloat(kotekan::Config& config, const string& unique_name,
+                     kotekan::bufferContainer& buffer_container);
     ~testDataGenFloat();
     void main_thread() override;
 

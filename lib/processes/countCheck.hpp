@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Processe for checking that FPGA counts are not older than 1h.
-- countCheck : public KotekanProcess
+- countCheck : public kotekan::KotekanProcess
 
 *****************************************/
 #ifndef COUNT_CHECK_HPP
@@ -34,11 +34,12 @@
  *
  * @author Mateus A Fandino
  */
-class countCheck : public KotekanProcess {
+class countCheck : public kotekan::KotekanProcess {
 
 public:
     // Default constructor
-    countCheck(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    countCheck(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& buffer_container);
 
     // Main loop for the process
     void main_thread() override;

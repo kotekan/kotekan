@@ -10,6 +10,9 @@
 #define D2R 0.01745329252 // pi/180
 #define TAU 6.28318530718 // 2*pi
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_CL_COMMAND(clBeamformPhaseData);
 
 clBeamformPhaseData::clBeamformPhaseData(Config& config, const string& unique_name,

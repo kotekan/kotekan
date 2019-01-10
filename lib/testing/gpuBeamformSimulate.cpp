@@ -19,6 +19,10 @@
 #define feed_sep 0.3048
 #define light 3.e8
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(gpuBeamformSimulate);
 
 gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const string& unique_name,

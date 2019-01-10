@@ -11,6 +11,10 @@
 
 using std::string;
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(rfiVDIF);
 
 rfiVDIF::rfiVDIF(Config& config, const string& unique_name, bufferContainer& buffer_containter) :

@@ -8,6 +8,10 @@
 #include <csignal>
 
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(countCheck);
 
 

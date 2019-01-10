@@ -10,9 +10,10 @@
 #include <unistd.h>
 
 template<typename A_Type>
-class testDataCheck : public KotekanProcess {
+class testDataCheck : public kotekan::KotekanProcess {
 public:
-    testDataCheck(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    testDataCheck(kotekan::Config& config, const string& unique_name,
+                  kotekan::bufferContainer& buffer_container);
     ~testDataCheck();
     void main_thread() override;
 
@@ -22,10 +23,10 @@ private:
 };
 
 template<typename A_Type>
-testDataCheck<A_Type>::testDataCheck(Config& config, const string& unique_name,
-                                     bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&testDataCheck::main_thread, this)) {
+testDataCheck<A_Type>::testDataCheck(kotekan::Config& config, const string& unique_name,
+                                     kotekan::bufferContainer& buffer_container) :
+    kotekan::KotekanProcess(config, unique_name, buffer_container,
+                            std::bind(&testDataCheck::main_thread, this)) {
     first_buf = get_buffer("first_buf");
     register_consumer(first_buf, unique_name.c_str());
     second_buf = get_buffer("second_buf");

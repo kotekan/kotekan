@@ -44,8 +44,8 @@
 class iceBoardShuffle : public iceBoardHandler {
 public:
     /// Default constructor
-    iceBoardShuffle(Config& config, const std::string& unique_name,
-                    bufferContainer& buffer_container, int port);
+    iceBoardShuffle(kotekan::Config& config, const std::string& unique_name,
+                    kotekan::bufferContainer& buffer_container, int port);
 
     /**
      * @brief The packet processor, called each time there is a new packet
@@ -167,8 +167,8 @@ protected:
     uint64_t rx_shuffle_flags_set = 0;
 };
 
-iceBoardShuffle::iceBoardShuffle(Config& config, const std::string& unique_name,
-                                 bufferContainer& buffer_container, int port) :
+iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& unique_name,
+                                 kotekan::bufferContainer& buffer_container, int port) :
     iceBoardHandler(config, unique_name, buffer_container, port) {
 
     DEBUG("iceBoardHandler: %s", unique_name.c_str());
@@ -190,31 +190,32 @@ iceBoardShuffle::iceBoardShuffle(Config& config, const std::string& unique_name,
     zero_frames(lost_samples_buf);
 
     std::string endpoint_name = unique_name + "/port_data";
-    restServer::instance().register_get_callback(endpoint_name, [&](connectionInstance& conn) {
-        json info = get_json_port_info();
+    kotekan::restServer::instance().register_get_callback(
+        endpoint_name, [&](kotekan::connectionInstance& conn) {
+            json info = get_json_port_info();
 
-        vector<uint64_t> second_stage_errors;
-        second_stage_errors.assign(fpga_second_stage_shuffle_errors,
-                                   fpga_second_stage_shuffle_errors + 16);
-        info["fpga_second_stage_shuffle_errors"] = second_stage_errors;
-        info["fpga_second_stage_crc_errors"] = fpga_second_stage_crc_errors;
-        info["fpga_second_stage_missing_short_errors"] = fpga_second_stage_missing_short_errors;
-        info["fpga_second_stage_long_errors"] = fpga_second_stage_long_errors;
-        info["fpga_second_stage_fifo_overflow_errors"] = fpga_second_stage_fifo_overflow_errors;
+            vector<uint64_t> second_stage_errors;
+            second_stage_errors.assign(fpga_second_stage_shuffle_errors,
+                                       fpga_second_stage_shuffle_errors + 16);
+            info["fpga_second_stage_shuffle_errors"] = second_stage_errors;
+            info["fpga_second_stage_crc_errors"] = fpga_second_stage_crc_errors;
+            info["fpga_second_stage_missing_short_errors"] = fpga_second_stage_missing_short_errors;
+            info["fpga_second_stage_long_errors"] = fpga_second_stage_long_errors;
+            info["fpga_second_stage_fifo_overflow_errors"] = fpga_second_stage_fifo_overflow_errors;
 
-        vector<uint64_t> third_stage_errors;
-        third_stage_errors.assign(fpga_third_stage_shuffle_errors,
-                                  fpga_third_stage_shuffle_errors + 8);
-        info["fpga_thrid_stage_shuffle_errors"] = third_stage_errors;
-        info["fpga_third_stage_crc_errors"] = fpga_third_stage_crc_errors;
-        info["fpga_third_stage_missing_short_errors"] = fpga_third_stage_missing_short_errors;
-        info["fpga_third_stage_long_errors"] = fpga_third_stage_long_errors;
-        info["fpga_third_stage_fifo_overflow_errors"] = fpga_third_stage_fifo_overflow_errors;
+            vector<uint64_t> third_stage_errors;
+            third_stage_errors.assign(fpga_third_stage_shuffle_errors,
+                                      fpga_third_stage_shuffle_errors + 8);
+            info["fpga_thrid_stage_shuffle_errors"] = third_stage_errors;
+            info["fpga_third_stage_crc_errors"] = fpga_third_stage_crc_errors;
+            info["fpga_third_stage_missing_short_errors"] = fpga_third_stage_missing_short_errors;
+            info["fpga_third_stage_long_errors"] = fpga_third_stage_long_errors;
+            info["fpga_third_stage_fifo_overflow_errors"] = fpga_third_stage_fifo_overflow_errors;
 
-        info["shuffle_flags_set"] = rx_shuffle_flags_set;
+            info["shuffle_flags_set"] = rx_shuffle_flags_set;
 
-        conn.send_json_reply(info);
-    });
+            conn.send_json_reply(info);
+        });
 }
 
 inline int iceBoardShuffle::handle_packet(struct rte_mbuf* mbuf) {
@@ -470,7 +471,7 @@ inline bool iceBoardShuffle::check_fpga_shuffle_flags(struct rte_mbuf* mbuf) {
 void iceBoardShuffle::update_stats() {
     iceBoardHandler::update_stats();
 
-    prometheusMetrics& metrics = prometheusMetrics::instance();
+    kotekan::prometheusMetrics& metrics = kotekan::prometheusMetrics::instance();
 
     std::string tags = "port=\"" + std::to_string(port) + "\"";
 

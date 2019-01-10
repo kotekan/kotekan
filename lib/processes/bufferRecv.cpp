@@ -23,6 +23,12 @@ using std::queue;
 using std::thread;
 using std::vector;
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::connectionInstance;
+using kotekan::KotekanProcess;
+using kotekan::prometheusMetrics;
+
 REGISTER_KOTEKAN_PROCESS(bufferRecv);
 
 bufferRecv::bufferRecv(Config& config, const string& unique_name,

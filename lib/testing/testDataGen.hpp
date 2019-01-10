@@ -41,14 +41,15 @@
  *
  * @author Andre Renard, Kiyoshi Masui
  */
-class testDataGen : public KotekanProcess {
+class testDataGen : public kotekan::KotekanProcess {
 public:
-    testDataGen(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    testDataGen(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& buffer_container);
     ~testDataGen();
     void main_thread() override;
 
 private:
-    void rest_callback(connectionInstance& conn, nlohmann::json& request);
+    void rest_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     bool can_i_go(int frame_id_abs);
     struct Buffer* buf;
     std::string type;

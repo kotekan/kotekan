@@ -18,6 +18,9 @@
 #define n_elem 2048
 #define n_blk 2080 //(n_elem/32)*(n_elem/32+1)/2
 
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 // clang-format off
 
 hccGPUThread::hccGPUThread(Config& config_, Buffer& in_buf_, Buffer& out_buf_, uint32_t gpu_id_) :

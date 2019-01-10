@@ -20,6 +20,15 @@
 #include <time.h>
 #include <unistd.h>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+using kotekan::prometheusMetrics;
+
+using kotekan::connectionInstance;
+using kotekan::HTTP_RESPONSE;
+using kotekan::restServer;
+
 REGISTER_KOTEKAN_PROCESS(rfiBroadcast);
 
 rfiBroadcast::rfiBroadcast(Config& config, const string& unique_name,

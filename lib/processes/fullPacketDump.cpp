@@ -13,6 +13,14 @@
 
 #define MAX_NUM_PACKETS 100
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
+using kotekan::connectionInstance;
+using kotekan::HTTP_RESPONSE;
+using kotekan::restServer;
+
 REGISTER_KOTEKAN_PROCESS(fullPacketDump);
 
 fullPacketDump::fullPacketDump(Config& config, const string& unique_name,

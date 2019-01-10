@@ -1,5 +1,7 @@
 #include "clRfiOutput.hpp"
 
+using kotekan::Config;
+
 clRfiOutput::clRfiOutput(const char* param_name, Config& param_config, const string& unique_name) :
     gpu_command(param_name, param_config, unique_name) {}
 

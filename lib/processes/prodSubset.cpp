@@ -26,6 +26,10 @@
 #include <utility>
 
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(prodSubset);
 
 prodSubset::prodSubset(Config& config, const string& unique_name,

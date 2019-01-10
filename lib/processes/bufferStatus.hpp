@@ -30,9 +30,10 @@
  *
  * @author Jacob Taylor, Andre Renard
  */
-class bufferStatus : public KotekanProcess {
+class bufferStatus : public kotekan::KotekanProcess {
 public:
-    bufferStatus(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    bufferStatus(kotekan::Config& config, const string& unique_name,
+                 kotekan::bufferContainer& buffer_container);
     virtual ~bufferStatus();
     void main_thread() override;
 

@@ -10,6 +10,8 @@
 
 #include "json.hpp"
 
+namespace kotekan {
+
 kotekanMode::kotekanMode(Config& config_) : config(config_) {
     restServer::instance().register_get_callback("/config", [&](connectionInstance& conn) {
         conn.send_json_reply(config.get_full_config_json());
@@ -106,3 +108,5 @@ void kotekanMode::stop_processes() {
         send_shutdown_signal(buf.second);
     }
 }
+
+} // namespace kotekan

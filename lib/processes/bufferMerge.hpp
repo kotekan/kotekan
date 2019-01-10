@@ -46,10 +46,11 @@
  *
  * @author Andre Renard
  */
-class bufferMerge : public KotekanProcess {
+class bufferMerge : public kotekan::KotekanProcess {
 public:
     /// Constructor
-    bufferMerge(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    bufferMerge(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     ~bufferMerge() = default;

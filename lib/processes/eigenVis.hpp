@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Processes for eigen-factoring the visibilities
-- eigenVis : public KotekanProcess
+- eigenVis : public kotekan::KotekanProcess
 *****************************************/
 #ifndef EIGENVIS_HPP
 #define EIGENVIS_HPP
@@ -53,10 +53,11 @@
  *
  * @author Kiyoshi Masui
  */
-class eigenVis : public KotekanProcess {
+class eigenVis : public kotekan::KotekanProcess {
 
 public:
-    eigenVis(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    eigenVis(kotekan::Config& config, const string& unique_name,
+             kotekan::bufferContainer& buffer_container);
     virtual ~eigenVis() = default;
     void main_thread() override;
 

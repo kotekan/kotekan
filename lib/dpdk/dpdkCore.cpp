@@ -18,6 +18,10 @@ using std::vector;
 #include "iceBoardVDIF.hpp"
 
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(dpdkCore);
 
 static bool __eal_initalized = false;

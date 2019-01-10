@@ -5,6 +5,10 @@
 
 #include <vector>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(invalidateVDIFframes);
 
 invalidateVDIFframes::invalidateVDIFframes(Config& config, const string& unique_name,

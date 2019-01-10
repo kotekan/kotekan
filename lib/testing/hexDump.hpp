@@ -16,9 +16,10 @@
  * "imag": Expected imaginary value (int)
  */
 
-class hexDump : public KotekanProcess {
+class hexDump : public kotekan::KotekanProcess {
 public:
-    hexDump(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    hexDump(kotekan::Config& config, const string& unique_name,
+            kotekan::bufferContainer& buffer_container);
     ~hexDump();
     void main_thread() override;
 

@@ -5,6 +5,8 @@
 #include "KotekanProcess.hpp"
 #include "restServer.hpp"
 
+namespace kotekan {
+
 /**
  * @brief Kotekan core component that creates endpoints defined in the config
  * that processes can subscribe to to receive updates.
@@ -177,5 +179,7 @@ private:
     /// Reference to the Config instance in order to pass updates to it
     Config* _config;
 };
+
+} // namespace kotekan
 
 #endif // CONFIGUPDATER_H

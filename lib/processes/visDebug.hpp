@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Process for debugging visibility buffers.
-- visDebug : public KotekanProcess
+- visDebug : public kotekan::KotekanProcess
 *****************************************/
 #ifndef VISDEBUG_HPP
 #define VISDEBUG_HPP
@@ -34,10 +34,11 @@
  *
  * @author Richard Shaw
  */
-class visDebug : public KotekanProcess {
+class visDebug : public kotekan::KotekanProcess {
 
 public:
-    visDebug(Config& config, const std::string& unique_name, bufferContainer& buffer_container);
+    visDebug(kotekan::Config& config, const std::string& unique_name,
+             kotekan::bufferContainer& buffer_container);
 
     void main_thread() override;
 

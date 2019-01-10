@@ -3,6 +3,10 @@
 #include "errors.h"
 #include "visBuffer.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(visNoise);
 
 visNoise::visNoise(Config& config, const string& unique_name, bufferContainer& buffer_container) :

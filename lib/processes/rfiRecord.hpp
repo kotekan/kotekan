@@ -1,7 +1,7 @@
 /**
  * @file rfiRecorder.hpp
  * @brief Contains RFI data recorder for SK estimates in kotekan.
- *  - rfiRecord : public KotekanProcess
+ *  - rfiRecord : public kotekan::KotekanProcess
  */
 
 #ifndef RFI_RECORD_H
@@ -18,8 +18,8 @@
 
 /*
  * @class rfiRecord
- * @brief Consumer ``KotekanProcess`` which consumes and record a buffer filled with spectral
- * kurtosis estimates.
+ * @brief Consumer ``kotekan::KotekanProcess`` which consumes and record a buffer filled with
+ * spectral kurtosis estimates.
  *
  * This process reads spectral kurtosis estimate from the GPU/CPU and records them to file. The
  * process will create sub driectories for each stream and data acquisition session. The process
@@ -52,16 +52,17 @@
  *
  * @author Jacob Taylor
  */
-class rfiRecord : public KotekanProcess {
+class rfiRecord : public kotekan::KotekanProcess {
 public:
     // Constructor
-    rfiRecord(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    rfiRecord(kotekan::Config& config, const string& unique_name,
+              kotekan::bufferContainer& buffer_container);
     // Deconstructor, cleans up / does nothing
     virtual ~rfiRecord();
     // Primary loop, reads buffer and sends out UDP stream
     void main_thread() override;
     // Callback function called by rest server
-    void rest_callback(connectionInstance& conn, json& json_request);
+    void rest_callback(kotekan::connectionInstance& conn, json& json_request);
 
 private:
     /*

@@ -5,6 +5,9 @@
 #include "metadata.h"
 #include "visBuffer.hpp"
 
+
+namespace kotekan {
+
 metadataFactory::metadataFactory(Config& config) : config(config) {}
 
 metadataFactory::~metadataFactory() {}
@@ -64,3 +67,5 @@ struct metadataPool* metadataFactory::new_pool(const string& pool_type, const st
     // No metadata found
     throw std::runtime_error("No metadata object named: " + pool_type);
 }
+
+} // namespace kotekan

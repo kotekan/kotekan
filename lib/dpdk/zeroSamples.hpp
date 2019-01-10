@@ -41,10 +41,11 @@
  *
  * @author Andre Renard
  */
-class zeroSamples : public KotekanProcess {
+class zeroSamples : public kotekan::KotekanProcess {
 public:
     /// Standard constructor
-    zeroSamples(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    zeroSamples(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     ~zeroSamples();

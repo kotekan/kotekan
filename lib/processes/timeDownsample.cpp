@@ -5,6 +5,10 @@
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(timeDownsample);
 
 timeDownsample::timeDownsample(Config& config, const string& unique_name,

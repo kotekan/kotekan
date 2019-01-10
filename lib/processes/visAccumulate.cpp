@@ -36,6 +36,12 @@
 
 using namespace std::placeholders;
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::configUpdater;
+using kotekan::KotekanProcess;
+using kotekan::prometheusMetrics;
+
 REGISTER_KOTEKAN_PROCESS(visAccumulate);
 
 

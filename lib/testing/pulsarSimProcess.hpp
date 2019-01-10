@@ -41,10 +41,11 @@ using std::vector;
  *
  **/
 
-class pulsarSimProcess : public KotekanProcess {
+class pulsarSimProcess : public kotekan::KotekanProcess {
 public:
     /// constructor
-    pulsarSimProcess(Config& config_, const string& unique_name, bufferContainer& buffer_container);
+    pulsarSimProcess(kotekan::Config& config_, const string& unique_name,
+                     kotekan::bufferContainer& buffer_container);
 
     /// distructor
     virtual ~pulsarSimProcess();

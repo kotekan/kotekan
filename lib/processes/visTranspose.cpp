@@ -28,6 +28,11 @@
 #include <unistd.h>
 #include <utility>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+using kotekan::prometheusMetrics;
+
 REGISTER_KOTEKAN_PROCESS(visTranspose);
 
 visTranspose::visTranspose(Config& config, const string& unique_name,

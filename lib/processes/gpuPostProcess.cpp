@@ -22,6 +22,14 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
+using kotekan::connectionInstance;
+using kotekan::HTTP_RESPONSE;
+using kotekan::restServer;
+
 REGISTER_KOTEKAN_PROCESS(gpuPostProcess);
 
 gpuPostProcess::gpuPostProcess(Config& config_, const string& unique_name,

@@ -43,8 +43,8 @@
 class iceBoardStandard : public iceBoardHandler {
 
 public:
-    iceBoardStandard(Config& config, const std::string& unique_name,
-                     bufferContainer& buffer_container, int port);
+    iceBoardStandard(kotekan::Config& config, const std::string& unique_name,
+                     kotekan::bufferContainer& buffer_container, int port);
 
     virtual int handle_packet(rte_mbuf* mbuf);
 
@@ -74,8 +74,8 @@ protected:
     int lost_samples_frame_id = 0;
 };
 
-iceBoardStandard::iceBoardStandard(Config& config, const std::string& unique_name,
-                                   bufferContainer& buffer_container, int port) :
+iceBoardStandard::iceBoardStandard(kotekan::Config& config, const std::string& unique_name,
+                                   kotekan::bufferContainer& buffer_container, int port) :
     iceBoardHandler(config, unique_name, buffer_container, port) {
 
     DEBUG("iceBoardStandard: %s", unique_name.c_str());
@@ -92,11 +92,12 @@ iceBoardStandard::iceBoardStandard(Config& config, const std::string& unique_nam
     // TODO Some parts of this function are common to the various ICEboard
     // handlers, and could likely be factored out.
     std::string endpoint_name = unique_name + "/port_data";
-    restServer::instance().register_get_callback(endpoint_name, [&](connectionInstance& conn) {
-        json info = get_json_port_info();
+    kotekan::restServer::instance().register_get_callback(endpoint_name,
+                                                          [&](kotekan::connectionInstance& conn) {
+                                                              json info = get_json_port_info();
 
-        conn.send_json_reply(info);
-    });
+                                                              conn.send_json_reply(info);
+                                                          });
 }
 
 inline int iceBoardStandard::handle_packet(struct rte_mbuf* mbuf) {

@@ -42,10 +42,11 @@
  *
  * @author Andre Renard
  */
-class restInspectFrame : public KotekanProcess {
+class restInspectFrame : public kotekan::KotekanProcess {
 public:
     /// Constructor
-    restInspectFrame(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    restInspectFrame(kotekan::Config& config, const string& unique_name,
+                     kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     virtual ~restInspectFrame();
@@ -61,7 +62,7 @@ public:
      *
      * @param conn The HTTP connection object
      */
-    void rest_callback(connectionInstance& conn);
+    void rest_callback(kotekan::connectionInstance& conn);
 
 private:
     /// The buffer to allow inspections on.

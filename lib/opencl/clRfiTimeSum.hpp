@@ -57,7 +57,7 @@
 class clRfiTimeSum : public gpu_command {
 public:
     // Constructor
-    clRfiTimeSum(const char* param_gpuKernel, const char* param_name, Config& config,
+    clRfiTimeSum(const char* param_gpuKernel, const char* param_name, kotekan::Config& config,
                  const string& unique_name);
     // Destructor
     ~clRfiTimeSum();
@@ -67,7 +67,7 @@ public:
     virtual cl_event execute(int param_bufferID, device_interface& param_Device,
                              cl_event param_PrecedeEvent) override;
     // Rest Server Callback
-    void rest_callback(connectionInstance& conn, json& json_request);
+    void rest_callback(kotekan::connectionInstance& conn, json& json_request);
 
 private:
     // RFI parameters

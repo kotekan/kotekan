@@ -1,5 +1,12 @@
 #include "restInspectFrame.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
+using kotekan::connectionInstance;
+using kotekan::restServer;
+
 REGISTER_KOTEKAN_PROCESS(restInspectFrame);
 
 restInspectFrame::restInspectFrame(Config& config, const string& unique_name,

@@ -53,7 +53,7 @@
  *
  * @author Mateus Fandino
  */
-class applyGains : public KotekanProcess {
+class applyGains : public kotekan::KotekanProcess {
 
 public:
     struct gainUpdate {
@@ -62,7 +62,8 @@ public:
     };
 
     /// Default constructor
-    applyGains(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    applyGains(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& buffer_container);
 
     /// Main loop for the process
     void main_thread() override;

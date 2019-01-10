@@ -4,6 +4,10 @@
 #include "truncate.hpp"
 #include "visBuffer.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(visTruncate);
 
 visTruncate::visTruncate(Config& config, const string& unique_name,

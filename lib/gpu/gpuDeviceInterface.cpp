@@ -4,6 +4,8 @@
 
 #include <errno.h>
 
+using kotekan::Config;
+
 gpuDeviceInterface::gpuDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_buffer_depth_) :
     config(config_),
     gpu_id(gpu_id_),

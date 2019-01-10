@@ -2,6 +2,10 @@
 
 #include "errors.h"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(SampleProcess);
 
 SampleProcess::SampleProcess(Config& config, const string& unique_name,

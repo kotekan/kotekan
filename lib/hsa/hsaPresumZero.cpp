@@ -1,5 +1,8 @@
 #include "hsaPresumZero.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_HSA_COMMAND(hsaPresumZero);
 
 hsaPresumZero::hsaPresumZero(Config& config, const string& unique_name,

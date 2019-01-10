@@ -18,11 +18,11 @@
  *
  */
 
-class gpuBeamformPulsarSimulate : public KotekanProcess {
+class gpuBeamformPulsarSimulate : public kotekan::KotekanProcess {
 public:
     /// Constructor
-    gpuBeamformPulsarSimulate(Config& config, const string& unique_name,
-                              bufferContainer& buffer_container);
+    gpuBeamformPulsarSimulate(kotekan::Config& config, const string& unique_name,
+                              kotekan::bufferContainer& buffer_container);
     /// Destructor
     ~gpuBeamformPulsarSimulate();
     /// Main loop, read gains, calculate new phase, brute-force beamform

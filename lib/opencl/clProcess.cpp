@@ -6,6 +6,9 @@
 #include <iostream>
 #include <sys/time.h>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 using namespace std;
 
 REGISTER_KOTEKAN_PROCESS(clProcess);

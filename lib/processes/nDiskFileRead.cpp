@@ -10,6 +10,10 @@
 
 using std::string;
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::KotekanProcess;
+
 REGISTER_KOTEKAN_PROCESS(nDiskFileRead);
 
 nDiskFileRead::nDiskFileRead(Config& config, const string& unique_name,

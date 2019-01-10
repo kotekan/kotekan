@@ -23,10 +23,11 @@
  * @conf  random                       If false, the noise generation will not be
  *                                     initialized with a random seed.
  **/
-class visNoise : public KotekanProcess {
+class visNoise : public kotekan::KotekanProcess {
 public:
     // Default constructor
-    visNoise(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    visNoise(kotekan::Config& config, const string& unique_name,
+             kotekan::bufferContainer& buffer_container);
 
     // Main loop for the process
     void main_thread() override;

@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Object for sending buffer frames to another kotekan instance
- * - bufferSend : public KotekanProcess
+ * - bufferSend : public kotekan::KotekanProcess
  */
 #ifndef BUFFER_SEND_H
 #define BUFFER_SEND_H
@@ -67,10 +67,11 @@ struct bufferFrameHeader {
  *
  * @author Andre Renard
  */
-class bufferSend : public KotekanProcess {
+class bufferSend : public kotekan::KotekanProcess {
 public:
     /// Standard constructor
-    bufferSend(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    bufferSend(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     ~bufferSend();
