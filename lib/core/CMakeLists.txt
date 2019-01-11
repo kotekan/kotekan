@@ -13,6 +13,7 @@ set (KOTEKAN_CORE_SOURCES
               configUpdater.cpp
               errors.c
               kotekanLogging.cpp
+              kotekanMode.cpp
               KotekanProcess.cpp
               metadata.c
               metadataFactory.cpp
