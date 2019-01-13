@@ -7,7 +7,7 @@
 
 using string = std::string;
 
-class chrxUplink : public kotekan::KotekanProcess {
+class chrxUplink : public kotekan::Stage {
 public:
     chrxUplink(kotekan::Config& config, const string& unique_name,
                kotekan::bufferContainer& buffer_container);

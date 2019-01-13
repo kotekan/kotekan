@@ -41,7 +41,7 @@
  *
  * @author Andre Renard
  */
-class zeroSamples : public kotekan::KotekanProcess {
+class zeroSamples : public kotekan::Stage {
 public:
     /// Standard constructor
     zeroSamples(kotekan::Config& config, const string& unique_name,

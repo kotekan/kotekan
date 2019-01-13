@@ -23,7 +23,7 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
@@ -32,8 +32,7 @@ using kotekan::restServer;
 REGISTER_KOTEKAN_PROCESS(rfiRecord);
 
 rfiRecord::rfiRecord(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&rfiRecord::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&rfiRecord::main_thread, this)) {
     // Get buffer from framework
     rfi_buf = get_buffer("rfi_in");
     // Register process as consumer

@@ -7,11 +7,10 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
 
 REGISTER_KOTEKAN_PROCESS(monitorBuffer);
 
-PROCESS_CONSTRUCTOR(monitorBuffer) {
+STAGE_CONSTRUCTOR(monitorBuffer) {
 
     // Note we do not register as a producer or consumer here.
     buffers = get_buffer_array("bufs");

@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Process to take an intensity stream and stream to a remote client.
- *  - networkPowerStream : public kotekan::KotekanProcess
+ *  - networkPowerStream : public kotekan::Stage
  */
 
 #ifndef NETWORK_POWER_STREAM_H
@@ -46,7 +46,7 @@
  * @author Keith Vanderlinde
  *
  */
-class networkPowerStream : public kotekan::KotekanProcess {
+class networkPowerStream : public kotekan::Stage {
 public:
     /// Constructor.
     networkPowerStream(kotekan::Config& config, const string& unique_name,

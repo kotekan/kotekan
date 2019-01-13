@@ -12,16 +12,15 @@ using namespace std::placeholders;
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::configUpdater;
-using kotekan::KotekanProcess;
 using kotekan::prometheusMetrics;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(receiveFlags);
 
 
 receiveFlags::receiveFlags(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&receiveFlags::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&receiveFlags::main_thread, this)) {
     // Setup the buffers
     buf_in = get_buffer("in_buf");
     buf_out = get_buffer("out_buf");

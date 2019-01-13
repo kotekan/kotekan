@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Contains a 4-buffer data generation producer for kotekan.
- *  - testDataGenQuad : public KotekanProcess
+ *  - testDataGenQuad : public Stage
  */
 
 #ifndef TEST_DATA_GEN_QUAD_H
@@ -42,7 +42,7 @@
  * @author Keith Vanderlinde
  *
  */
-class testDataGenQuad : public kotekan::KotekanProcess {
+class testDataGenQuad : public kotekan::Stage {
 public:
     /// Constructor, also initializes internal variables from config.
     testDataGenQuad(kotekan::Config& config, const string& unique_name,

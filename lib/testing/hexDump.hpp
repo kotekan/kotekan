@@ -16,7 +16,7 @@
  * "imag": Expected imaginary value (int)
  */
 
-class hexDump : public kotekan::KotekanProcess {
+class hexDump : public kotekan::Stage {
 public:
     hexDump(kotekan::Config& config, const string& unique_name,
             kotekan::bufferContainer& buffer_container);

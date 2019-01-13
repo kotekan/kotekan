@@ -34,7 +34,7 @@ private:
     Config& config;
     bufferContainer buffer_container;
 
-    map<string, KotekanProcess*> processes;
+    map<string, Stage*> processes;
     map<string, struct metadataPool*> metadata_pools;
     map<string, struct Buffer*> buffers;
 };

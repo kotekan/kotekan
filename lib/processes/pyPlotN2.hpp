@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief A process to read VDIF files from multiple drives.
- *  - pyPlotN2 : public kotekan::KotekanProcess
+ *  - pyPlotN2 : public kotekan::Stage
  */
 
 #ifndef PY_PLOT_N2_H
@@ -22,7 +22,7 @@
 
 /**
  * @class pyPlotN2
- * @brief Consumer ``kotekan::KotekanProcess`` to produce PDF plots of correlation matrices.
+ * @brief Consumer ``kotekan::Stage`` to produce PDF plots of correlation matrices.
  *
  * This process does nothing until it receives a REST request from an outside user.
  * Upon receipt, it spawns a companion python script (``pyPlotN2.py``),
@@ -48,7 +48,7 @@
  *
  * @author Keith Vanderlinde
  */
-class pyPlotN2 : public kotekan::KotekanProcess {
+class pyPlotN2 : public kotekan::Stage {
 public:
     /// Constructor
     pyPlotN2(kotekan::Config& config, const string& unique_name,

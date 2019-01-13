@@ -34,7 +34,7 @@ using namespace std::placeholders;
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 
 REGISTER_KOTEKAN_PROCESS(fakeVis);
@@ -42,7 +42,7 @@ REGISTER_KOTEKAN_PROCESS(replaceVis);
 
 
 fakeVis::fakeVis(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container, std::bind(&fakeVis::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&fakeVis::main_thread, this)) {
 
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");
@@ -407,8 +407,7 @@ void fakeVis::fill_non_vis(visFrameView& frame) {
 
 replaceVis::replaceVis(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&replaceVis::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&replaceVis::main_thread, this)) {
 
     // Setup the input buffer
     in_buf = get_buffer("in_buf");

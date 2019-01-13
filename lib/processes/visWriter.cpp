@@ -30,8 +30,8 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
 using kotekan::prometheusMetrics;
+using kotekan::Stage;
 
 using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
@@ -47,8 +47,7 @@ std::map<visWriter::droppedType, std::string> visWriter::dropped_type_map = {
 
 
 visWriter::visWriter(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&visWriter::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&visWriter::main_thread, this)) {
 
     // Fetch any simple configuration
     root_path = config.get_default<std::string>(unique_name, "root_path", ".");

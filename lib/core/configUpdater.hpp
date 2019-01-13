@@ -106,7 +106,7 @@ public:
     void reset();
 
     /**
-     * @brief Subscribe to the updatable blocks of a KotekanProcess.
+     * @brief Subscribe to the updatable blocks of a Kotekan Stage.
      *
      * The callback function has to return True on success and False
      * otherwise.
@@ -117,10 +117,10 @@ public:
      * @param subscriber Reference to the subscribing process.
      * @param callback   Callback function for attribute updates.
      */
-    void subscribe(const KotekanProcess* subscriber, std::function<bool(json&)> callback);
+    void subscribe(const Stage* subscriber, std::function<bool(json&)> callback);
 
     /**
-     * @brief Subscribe to all updatable blocks of a KotekanProcess.
+     * @brief Subscribe to all updatable blocks of a Kotekan Stage.
      *
      * The callback functions have to return True on success and False
      * otherwise.
@@ -132,7 +132,7 @@ public:
      * @param subscriber Reference to the subscribing process.
      * @param callbacks  Map of value names and callback functions.
      */
-    void subscribe(const KotekanProcess* subscriber,
+    void subscribe(const Stage* subscriber,
                    std::map<std::string, std::function<bool(json&)>> callbacks);
 
     /**
@@ -140,7 +140,7 @@ public:
      *
      * This function does not enforce the config structure and should
      * only be used in special cases (Like when called from somewhere else
-     * than a KotekanProcess).
+     * than a Kotekan Stage).
      * The callback function has to return True on success and False
      * otherwise.
      *

@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Process for debugging visibility buffers.
-- visDebug : public kotekan::KotekanProcess
+- visDebug : public kotekan::Stage
 *****************************************/
 #ifndef VISDEBUG_HPP
 #define VISDEBUG_HPP
@@ -34,7 +34,7 @@
  *
  * @author Richard Shaw
  */
-class visDebug : public kotekan::KotekanProcess {
+class visDebug : public kotekan::Stage {
 
 public:
     visDebug(kotekan::Config& config, const std::string& unique_name,

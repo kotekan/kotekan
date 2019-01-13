@@ -28,14 +28,13 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(visTransform);
 
 visTransform::visTransform(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&visTransform::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&visTransform::main_thread, this)) {
 
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");

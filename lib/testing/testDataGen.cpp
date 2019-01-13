@@ -14,7 +14,7 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
@@ -25,8 +25,7 @@ REGISTER_KOTEKAN_PROCESS(testDataGen);
 
 testDataGen::testDataGen(Config& config, const string& unique_name,
                          bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&testDataGen::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&testDataGen::main_thread, this)) {
 
     buf = get_buffer("network_out_buf");
     register_producer(buf, unique_name.c_str());

@@ -12,14 +12,13 @@ using std::string;
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(nDiskFileRead);
 
 nDiskFileRead::nDiskFileRead(Config& config, const string& unique_name,
                              bufferContainer& buffer_containter) :
-    KotekanProcess(config, unique_name, buffer_containter,
-                   std::bind(&nDiskFileRead::main_thread, this)) {
+    Stage(config, unique_name, buffer_containter, std::bind(&nDiskFileRead::main_thread, this)) {
     // Get variables from config
     buf = get_buffer("out_buf"); // Buffer
 

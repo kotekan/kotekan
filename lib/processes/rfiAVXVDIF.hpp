@@ -1,7 +1,7 @@
 /*
  * @file rfiAVXVDIF.hpp
  * @brief Contains RFI spectral kurtosis estimator using AVX2 intrinsics
- *  - rfiAVXVDIF : public kotekan::KotekanProcess
+ *  - rfiAVXVDIF : public kotekan::Stage
  */
 #ifndef RFI_AVX_VDIF_HPP
 #define RFI_AVX_VDIF_HPP
@@ -12,7 +12,7 @@
 
 /*
  * @class rfiAVXVDIF
- * @brief Consumer ``kotekan::KotekanProcess`` which consumer a buffer filled with VDIF data and
+ * @brief Consumer ``kotekan::Stage`` which consumer a buffer filled with VDIF data and
  * produces a buffer filled with spectral kurtosis estimates.
  *
  * This process read input VDIF data and computes spectral kurtosis estimates at a variable time
@@ -39,7 +39,7 @@
  *
  * @author Jacob Taylor
  */
-class rfiAVXVDIF : public kotekan::KotekanProcess {
+class rfiAVXVDIF : public kotekan::Stage {
 public:
     // Constructor, resgister producer/consumer and apply config
     rfiAVXVDIF(kotekan::Config& config, const string& unique_name,

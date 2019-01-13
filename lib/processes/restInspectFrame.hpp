@@ -42,7 +42,7 @@
  *
  * @author Andre Renard
  */
-class restInspectFrame : public kotekan::KotekanProcess {
+class restInspectFrame : public kotekan::Stage {
 public:
     /// Constructor
     restInspectFrame(kotekan::Config& config, const string& unique_name,

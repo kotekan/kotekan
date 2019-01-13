@@ -52,7 +52,7 @@ using json = nlohmann::json;
  *
  * @author Tristan Pinsonneault-Marotte, Rick Nitsche
  */
-class visTranspose : public kotekan::KotekanProcess {
+class visTranspose : public kotekan::Stage {
 public:
     /// Constructor; loads parameters from config
     visTranspose(kotekan::Config& config, const string& unique_name,

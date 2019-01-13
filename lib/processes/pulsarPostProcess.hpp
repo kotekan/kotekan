@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Packetizer for data destined for CHIME/Pulsar.
- *  - pulsarPostProcess : public kotekan::KotekanProcess
+ *  - pulsarPostProcess : public kotekan::Stage
  */
 
 #ifndef PULSAR_POST_PROCESS
@@ -61,7 +61,7 @@ using std::vector;
  *
  */
 
-class pulsarPostProcess : public kotekan::KotekanProcess {
+class pulsarPostProcess : public kotekan::Stage {
 public:
     /// Constructor.
     pulsarPostProcess(kotekan::Config& config_, const string& unique_name,

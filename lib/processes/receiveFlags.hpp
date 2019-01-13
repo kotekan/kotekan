@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Receive and set flags for the visibility data.
-- receiveFlags : public kotekan::KotekanProcess
+- receiveFlags : public kotekan::Stage
 *****************************************/
 #ifndef RECEIVEFLAGS_H
 #define RECEIVEFLAGS_H
@@ -48,7 +48,7 @@
  *
  * @author Rick Nitsche
  */
-class receiveFlags : public kotekan::KotekanProcess {
+class receiveFlags : public kotekan::Stage {
 public:
     /// Constructor
     receiveFlags(kotekan::Config& config, const string& unique_name,

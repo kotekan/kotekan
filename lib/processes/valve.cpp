@@ -16,13 +16,13 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
 using kotekan::prometheusMetrics;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(Valve);
 
 Valve::Valve(Config& config, const std::string& unique_name, bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container, std::bind(&Valve::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&Valve::main_thread, this)) {
 
     _dropped_total = 0;
 

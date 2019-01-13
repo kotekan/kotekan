@@ -9,14 +9,13 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(testDataGenQuad);
 
 testDataGenQuad::testDataGenQuad(Config& config, const string& unique_name,
                                  bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&testDataGenQuad::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&testDataGenQuad::main_thread, this)) {
 
     buf[0] = get_buffer("out_buf0");
     buf[1] = get_buffer("out_buf1");

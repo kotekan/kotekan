@@ -1,7 +1,7 @@
 /**
  * @file frbNetworkprocess.hpp
  * @brief Network transmission process for FRB obs
- *  - frbNetworkProcess : public kotekan::KotekanProcess
+ *  - frbNetworkProcess : public kotekan::Stage
  */
 
 #ifndef FRBNETWORKPROCESS_HPP
@@ -50,7 +50,7 @@
  */
 
 
-class frbNetworkProcess : public kotekan::KotekanProcess {
+class frbNetworkProcess : public kotekan::Stage {
 public:
     /// Constructor, also initializes internal variables from config.
     frbNetworkProcess(kotekan::Config& config, const string& unique_name,

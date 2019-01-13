@@ -24,7 +24,7 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
@@ -34,8 +34,7 @@ REGISTER_KOTEKAN_PROCESS(gpuPostProcess);
 
 gpuPostProcess::gpuPostProcess(Config& config_, const string& unique_name,
                                bufferContainer& buffer_container) :
-    KotekanProcess(config_, unique_name, buffer_container,
-                   std::bind(&gpuPostProcess::main_thread, this)) {
+    Stage(config_, unique_name, buffer_container, std::bind(&gpuPostProcess::main_thread, this)) {
 
     out_buf = get_buffer("chrx_out_buf");
     gate_buf = get_buffer("gate_out_buf");

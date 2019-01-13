@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Process that drops frames.
-- visDrop : public KotekanProcess
+- visDrop : public Stage
 *****************************************/
 #ifndef VISDROP_HPP
 #define VISDROP_HPP
@@ -25,7 +25,7 @@
  * @conf  freq           Vector of Uint32. Frequency IDs of frames that should be
  *                       dropped. By default none.
  **/
-class visDrop : public kotekan::KotekanProcess {
+class visDrop : public kotekan::Stage {
 public:
     // Default constructor
     visDrop(kotekan::Config& config, const string& unique_name,

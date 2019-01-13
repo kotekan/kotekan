@@ -5,7 +5,7 @@
 #include "buffer.h"
 #include "errors.h"
 
-class computeDualpolPower : public kotekan::KotekanProcess {
+class computeDualpolPower : public kotekan::Stage {
 public:
     computeDualpolPower(kotekan::Config& config, const string& unique_name,
                         kotekan::bufferContainer& buffer_container);

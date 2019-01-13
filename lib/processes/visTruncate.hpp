@@ -34,7 +34,7 @@
  *
  * @author Tristan Pinsonneault-Marotte, Rick Nitsche
  */
-class visTruncate : public kotekan::KotekanProcess {
+class visTruncate : public kotekan::Stage {
 public:
     /// Constructor; loads parameters from config
     visTruncate(kotekan::Config& config, const string& unique_name,

@@ -25,12 +25,12 @@ using std::string;
 
 namespace kotekan {
 
-class KotekanProcess;
+class Stage;
 
 class kotekanProcessMaker {
 public:
-    virtual KotekanProcess* create(Config& config, const string& unique_name,
-                                   bufferContainer& host_buffers) const = 0;
+    virtual Stage* create(Config& config, const string& unique_name,
+                          bufferContainer& host_buffers) const = 0;
 };
 
 class processFactory {
@@ -41,19 +41,18 @@ public:
     ~processFactory();
 
     // Creates all the processes listed in the config file, and returns them
-    // as a vector of KotekanProcess pointers.
+    // as a vector of Stage pointers.
     // This should only be called once.
-    map<string, KotekanProcess*> build_processes();
+    map<string, Stage*> build_processes();
 
 private:
-    void build_from_tree(map<string, KotekanProcess*>& processes, json& config_tree,
-                         const string& path);
+    void build_from_tree(map<string, Stage*>& processes, json& config_tree, const string& path);
 
     Config& config;
     bufferContainer& buffer_container;
 
-    KotekanProcess* create(const string& name, Config& config, const string& unique_name,
-                           bufferContainer& host_buffers) const;
+    Stage* create(const string& name, Config& config, const string& unique_name,
+                  bufferContainer& host_buffers) const;
 };
 
 class processFactoryRegistry {
@@ -76,8 +75,8 @@ public:
     kotekanProcessMakerTemplate(const std::string& key) {
         processFactoryRegistry::kotekan_register_process(key, this);
     }
-    virtual KotekanProcess* create(Config& config, const string& unique_name,
-                                   bufferContainer& host_buffers) const override {
+    virtual Stage* create(Config& config, const string& unique_name,
+                          bufferContainer& host_buffers) const override {
         return new T(config, unique_name, host_buffers);
     }
 };

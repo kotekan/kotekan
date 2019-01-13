@@ -15,7 +15,7 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
@@ -25,8 +25,7 @@ REGISTER_KOTEKAN_PROCESS(fullPacketDump);
 
 fullPacketDump::fullPacketDump(Config& config, const string& unique_name,
                                bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&fullPacketDump::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&fullPacketDump::main_thread, this)) {
 
     link_id = config.get<int>(unique_name, "link_id");
     buf = get_buffer("network_in_buf");

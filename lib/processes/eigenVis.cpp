@@ -15,13 +15,13 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
 using kotekan::prometheusMetrics;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(eigenVis);
 
 eigenVis::eigenVis(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container, std::bind(&eigenVis::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&eigenVis::main_thread, this)) {
 
     input_buffer = get_buffer("in_buf");
     register_consumer(input_buffer, unique_name.c_str());

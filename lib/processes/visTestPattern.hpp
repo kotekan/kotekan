@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Process for comparing against an expected test pattern in the visBuffers.
-- visTestPattern : public kotekan::KotekanProcess
+- visTestPattern : public kotekan::Stage
 *****************************************/
 #ifndef VISTESTPATTERN_HPP
 #define VISTESTPATTERN_HPP
@@ -68,7 +68,7 @@
  *
  * @author Rick Nitsche
  */
-class visTestPattern : public kotekan::KotekanProcess {
+class visTestPattern : public kotekan::Stage {
 
 public:
     visTestPattern(kotekan::Config& config, const std::string& unique_name,

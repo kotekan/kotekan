@@ -1,7 +1,7 @@
 /**
  * @file pulsarSimProcess.hpp
  * @brief Packet simulator for pulsar transmission testing
- *  - pulsarSimProcess : public KotekanProcess
+ *  - pulsarSimProcess : public Stage
  */
 
 #ifndef PULSAR_SIM_PROCESS
@@ -41,7 +41,7 @@ using std::vector;
  *
  **/
 
-class pulsarSimProcess : public kotekan::KotekanProcess {
+class pulsarSimProcess : public kotekan::Stage {
 public:
     /// constructor
     pulsarSimProcess(kotekan::Config& config_, const string& unique_name,

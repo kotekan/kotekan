@@ -16,15 +16,14 @@ using namespace HighFive;
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(eigenWriter);
 
 
 eigenWriter::eigenWriter(Config& config, const string& unique_name,
                          bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&eigenWriter::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&eigenWriter::main_thread, this)) {
 
     // Get parameters from config
     num_ev = config.get<size_t>(unique_name, "num_ev");

@@ -10,14 +10,13 @@ using nlohmann::json;
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(bufferMerge);
 
 bufferMerge::bufferMerge(Config& config, const string& unique_name,
                          bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&bufferMerge::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&bufferMerge::main_thread, this)) {
 
     _timeout = config.get_default<double>(unique_name, "timeout", -1.0);
 

@@ -2,14 +2,13 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(simpleAutocorr);
 
 simpleAutocorr::simpleAutocorr(Config& config, const string& unique_name,
                                bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&simpleAutocorr::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&simpleAutocorr::main_thread, this)) {
 
     buf_in = get_buffer("in_buf");
     register_consumer(buf_in, unique_name.c_str());

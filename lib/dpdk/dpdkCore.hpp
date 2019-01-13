@@ -155,7 +155,7 @@ protected:
  *
  * @author Andre Renard
  */
-class dpdkCore : public kotekan::KotekanProcess {
+class dpdkCore : public kotekan::Stage {
 public:
     dpdkCore(kotekan::Config& config, const string& unique_name,
              kotekan::bufferContainer& buffer_container);

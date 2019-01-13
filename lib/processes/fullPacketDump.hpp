@@ -7,7 +7,7 @@
 #include <mutex>
 #include <string>
 
-class fullPacketDump : public kotekan::KotekanProcess {
+class fullPacketDump : public kotekan::Stage {
 public:
     fullPacketDump(kotekan::Config& config, const string& unique_name,
                    kotekan::bufferContainer& buffer_container);

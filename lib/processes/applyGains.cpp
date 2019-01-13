@@ -22,16 +22,15 @@ using namespace std::placeholders;
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::configUpdater;
-using kotekan::KotekanProcess;
 using kotekan::prometheusMetrics;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(applyGains);
 
 
 applyGains::applyGains(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&applyGains::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&applyGains::main_thread, this)) {
 
     // Setup the input buffer
     in_buf = get_buffer("in_buf");

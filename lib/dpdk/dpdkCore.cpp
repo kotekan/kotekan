@@ -20,14 +20,14 @@ using std::vector;
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(dpdkCore);
 
 static bool __eal_initalized = false;
 
 dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container, std::bind(&dpdkCore::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&dpdkCore::main_thread, this)) {
 
     uint32_t num_mbufs = config.get_default<uint32_t>(unique_name, "num_mbufs", 1024);
     const uint32_t mbuf_cache_size =

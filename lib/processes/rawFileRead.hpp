@@ -9,7 +9,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-class rawFileRead : public kotekan::KotekanProcess {
+class rawFileRead : public kotekan::Stage {
 public:
     rawFileRead(kotekan::Config& config, const string& unique_name,
                 kotekan::bufferContainer& buffer_container);

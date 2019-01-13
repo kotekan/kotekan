@@ -24,14 +24,13 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(freqSplit);
 
 
 freqSplit::freqSplit(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&freqSplit::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&freqSplit::main_thread, this)) {
 
     // Get the list of buffers that this process shoud connect to
     std::vector<std::string> output_buffer_names =

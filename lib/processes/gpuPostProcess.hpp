@@ -13,7 +13,7 @@ using std::vector;
 #define MAX_GATE_DESCRIPTION_LEN 127
 #define HDF5_NAME_LEN 65
 
-class gpuPostProcess : public kotekan::KotekanProcess {
+class gpuPostProcess : public kotekan::Stage {
 public:
     gpuPostProcess(kotekan::Config& config_, const string& unique_name,
                    kotekan::bufferContainer& buffer_container);

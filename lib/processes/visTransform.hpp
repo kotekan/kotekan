@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Process for merging GPU buffers into a visBuffer stream.
-- visTransform : public kotekan::KotekanProcess
+- visTransform : public kotekan::Stage
 *****************************************/
 #ifndef VISTRANSFORM_H
 #define VISTRANSFORM_H
@@ -49,7 +49,7 @@
  *
  * @author Richard Shaw
  */
-class visTransform : public kotekan::KotekanProcess {
+class visTransform : public kotekan::Stage {
 
 public:
     // Default constructor

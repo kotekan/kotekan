@@ -33,7 +33,7 @@ using std::string;
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
@@ -43,8 +43,8 @@ REGISTER_KOTEKAN_PROCESS(frbNetworkProcess);
 
 frbNetworkProcess::frbNetworkProcess(Config& config_, const string& unique_name,
                                      bufferContainer& buffer_container) :
-    KotekanProcess(config_, unique_name, buffer_container,
-                   std::bind(&frbNetworkProcess::main_thread, this)) {
+    Stage(config_, unique_name, buffer_container,
+          std::bind(&frbNetworkProcess::main_thread, this)) {
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 

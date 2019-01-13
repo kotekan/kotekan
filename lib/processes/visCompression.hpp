@@ -61,7 +61,7 @@ using json = nlohmann::json;
  *
  * @author Richard Shaw
  */
-class baselineCompression : public kotekan::KotekanProcess {
+class baselineCompression : public kotekan::Stage {
 
 public:
     // Default constructor

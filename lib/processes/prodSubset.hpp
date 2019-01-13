@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Extract a subset of products from a visBuffer.
-- prodSubset : public kotekan::KotekanProcess
+- prodSubset : public kotekan::Stage
 *****************************************/
 #ifndef PROD_SUB_HPP
 #define PROD_SUB_HPP
@@ -23,7 +23,7 @@
 
 /**
  * @class prodSubset
- * @brief ``kotekan::KotekanProcess`` that extracts a subset of the products.
+ * @brief ``kotekan::Stage`` that extracts a subset of the products.
  *
  * This task consumes a full set of visibilities from a ``visBuffer`` and
  * passes on a subset of products to an output ``visBuffer``. The subset
@@ -70,7 +70,7 @@
  * @author  Tristan Pinsonneault-Marotte and Mateus Fandino
  *
  */
-class prodSubset : public kotekan::KotekanProcess {
+class prodSubset : public kotekan::Stage {
 
 public:
     /// Constructor. Loads config options. Defines subset of products.

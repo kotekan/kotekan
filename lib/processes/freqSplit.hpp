@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Processes for splitting visibility data by frequency.
-- freqSplit : public kotekan::KotekanProcess
+- freqSplit : public kotekan::Stage
 *****************************************/
 #ifndef FREQ_SPLIT_HPP
 #define FREQ_SPLIT_HPP
@@ -46,7 +46,7 @@
  * @todo Generalise to arbitary frequency splits.
  * @author Mateus Fandino
  */
-class freqSplit : public kotekan::KotekanProcess {
+class freqSplit : public kotekan::Stage {
 
 public:
     // Default constructor

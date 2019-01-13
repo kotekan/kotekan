@@ -30,7 +30,7 @@
  *
  * @author Jacob Taylor, Andre Renard
  */
-class bufferStatus : public kotekan::KotekanProcess {
+class bufferStatus : public kotekan::Stage {
 public:
     bufferStatus(kotekan::Config& config, const string& unique_name,
                  kotekan::bufferContainer& buffer_container);

@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Displays CHIME metadata for a given buffer.
- *  - chimeMetadataDump : public KotekanProcess
+ *  - chimeMetadataDump : public Stage
  */
 #ifndef CHIME_METADATA_DUMP_HPP
 #define CHIME_METADATA_DUMP_HPP
@@ -29,7 +29,7 @@
  *
  */
 
-class chimeMetadataDump : public kotekan::KotekanProcess {
+class chimeMetadataDump : public kotekan::Stage {
 public:
     /// Constructor.
     chimeMetadataDump(kotekan::Config& config, const string& unique_name,

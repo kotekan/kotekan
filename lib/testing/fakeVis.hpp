@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Generate fake visBuffer data.
-- fakeVis : public KotekanProcess
+- fakeVis : public Stage
 *****************************************/
 
 #ifndef FAKE_VIS
@@ -68,7 +68,7 @@
  * @author  Tristan Pinsonneault-Marotte
  *
  */
-class fakeVis : public kotekan::KotekanProcess {
+class fakeVis : public kotekan::Stage {
 
 public:
     /// Constructor. Loads config options.
@@ -196,7 +196,7 @@ private:
  * @author Richard Shaw
  *
  */
-class replaceVis : public kotekan::KotekanProcess {
+class replaceVis : public kotekan::Stage {
 
 public:
     /// Constructor. Loads config options.

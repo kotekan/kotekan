@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Packetizer for data destined for CHIME/FRB L1.
- *  - frbPostProcess : public kotekan::KotekanProcess
+ *  - frbPostProcess : public kotekan::Stage
  */
 
 #ifndef FRB_POST_PROCESS
@@ -67,7 +67,7 @@ using std::vector;
  * @author Keith Vanderlinde
  *
  */
-class frbPostProcess : public kotekan::KotekanProcess {
+class frbPostProcess : public kotekan::Stage {
 public:
     /// Constructor.
     frbPostProcess(kotekan::Config& config_, const string& unique_name,

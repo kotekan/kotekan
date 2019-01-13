@@ -39,14 +39,13 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(rfiAVXVDIF);
 
 rfiAVXVDIF::rfiAVXVDIF(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&rfiAVXVDIF::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&rfiAVXVDIF::main_thread, this)) {
     // Retrieve buffers
     buf_in = get_buffer("vdif_in");
     buf_out = get_buffer("rfi_out");

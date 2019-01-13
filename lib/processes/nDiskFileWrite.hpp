@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief A process to read VDIF files from multiple drives.
- *  - nDiskFileWrite : public kotekan::KotekanProcess
+ *  - nDiskFileWrite : public kotekan::Stage
  */
 
 #ifndef N_DISK_FILE_WRITE_H
@@ -18,7 +18,7 @@ using std::string;
 
 /**
  * @class nDiskFileWrite
- * @brief Consumer ``kotekan::KotekanProcess`` which writes VDIF-formatted input  data on multiple
+ * @brief Consumer ``kotekan::Stage`` which writes VDIF-formatted input  data on multiple
  * drives.
  *
  * This is a consumer which initiates n threads to write to ``n`` disks. Each drive will receive
@@ -75,7 +75,7 @@ using std::string;
  *
  * @author Andre Renard
  */
-class nDiskFileWrite : public kotekan::KotekanProcess {
+class nDiskFileWrite : public kotekan::Stage {
 public:
     /// Constructor
     nDiskFileWrite(kotekan::Config& config, const string& unique_name,

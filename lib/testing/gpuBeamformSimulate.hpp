@@ -23,7 +23,7 @@
  * @author Cherry Ng
  **/
 
-class gpuBeamformSimulate : public kotekan::KotekanProcess {
+class gpuBeamformSimulate : public kotekan::Stage {
 public:
     /// Constructor
     gpuBeamformSimulate(kotekan::Config& config, const string& unique_name,

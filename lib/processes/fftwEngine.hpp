@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief An FFTW-based F-engine process.
- *  - fftwEngine : public kotekan::KotekanProcess
+ *  - fftwEngine : public kotekan::Stage
  */
 
 #ifndef FFTW_ENGINE_HPP
@@ -46,7 +46,7 @@ using std::string;
  * @author Keith Vanderlinde
  *
  */
-class fftwEngine : public kotekan::KotekanProcess {
+class fftwEngine : public kotekan::Stage {
 public:
     /// Constructor, also initializes FFTW and values from config yaml.
     fftwEngine(kotekan::Config& config, const string& unique_name,

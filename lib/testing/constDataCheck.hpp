@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Contains a consumer to verify that buffers match a constant value.
- *  - constDataCheck : public KotekanProcess
+ *  - constDataCheck : public Stage
  */
 
 #ifndef CONST_DATA_CHECK_H
@@ -32,7 +32,7 @@
  * @author Andre Renard
  *
  */
-class constDataCheck : public kotekan::KotekanProcess {
+class constDataCheck : public kotekan::Stage {
 public:
     /// Constructor, also initializes internal variables from config.
     constDataCheck(kotekan::Config& config, const string& unique_name,

@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Reduce cadence of a single-frequency.
-- timeDownsample : public kotekan::KotekanProcess
+- timeDownsample : public kotekan::Stage
 *****************************************/
 #ifndef TIME_DOWNSAMP_HPP
 #define TIME_DOWNSAMP_HPP
@@ -39,7 +39,7 @@
  * @author  Tristan Pinsonneault-Marotte
  *
  */
-class timeDownsample : public kotekan::KotekanProcess {
+class timeDownsample : public kotekan::Stage {
 
 public:
     /// Default constructor, loads config params.

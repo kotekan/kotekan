@@ -18,8 +18,8 @@ processFactory::processFactory(Config& config, bufferContainer& buffer_container
 
 processFactory::~processFactory() {}
 
-map<string, KotekanProcess*> processFactory::build_processes() {
-    map<string, KotekanProcess*> processes;
+map<string, Stage*> processFactory::build_processes() {
+    map<string, Stage*> processes;
 
     // Start parsing tree, put the processes in the "processes" vector
     build_from_tree(processes, config.get_full_config_json(), "");
@@ -27,7 +27,7 @@ map<string, KotekanProcess*> processFactory::build_processes() {
     return processes;
 }
 
-void processFactory::build_from_tree(map<string, KotekanProcess*>& processes, json& config_tree,
+void processFactory::build_from_tree(map<string, Stage*>& processes, json& config_tree,
                                      const string& path) {
 
     for (json::iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
@@ -55,13 +55,12 @@ void processFactory::build_from_tree(map<string, KotekanProcess*>& processes, js
     }
 }
 
-KotekanProcess* processFactory::create(const string& name, Config& config,
-                                       const string& unique_name,
-                                       bufferContainer& host_buffers) const {
+Stage* processFactory::create(const string& name, Config& config, const string& unique_name,
+                              bufferContainer& host_buffers) const {
     auto known_processes = processFactoryRegistry::get_registered_processes();
     auto i = known_processes.find(name);
     if (i == known_processes.end()) {
-        ERROR("Unrecognized KotekanProcess! (%s)", name.c_str());
+        ERROR("Unrecognized Stage! (%s)", name.c_str());
         throw std::runtime_error("Tried to instantiate a process we don't know about!");
     }
     kotekanProcessMaker* maker = i->second;
@@ -88,7 +87,7 @@ processFactoryRegistry::processFactoryRegistry() {}
 
 void processFactoryRegistry::kotekan_reg(const std::string& key, kotekanProcessMaker* proc) {
     if (_kotekan_processes.find(key) != _kotekan_processes.end()) {
-        ERROR("Multiple KotekanProcess-es registered as '%s'!", key.c_str());
+        ERROR("Multiple Kotekan Stage-s registered as '%s'!", key.c_str());
         throw std::runtime_error("A kotekanProcess was registered twice!");
     }
     _kotekan_processes[key] = proc;

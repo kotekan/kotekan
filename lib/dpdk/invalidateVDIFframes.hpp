@@ -2,7 +2,7 @@
  * @file invalidateVDIFframes.hpp
  * @brief Process which sets the invalid bit of VDIF frames based on the contents
  *        of the lost samples buffer.
- * - invalidateVDIFframes : public kotekan::KotekanProcess
+ * - invalidateVDIFframes : public kotekan::Stage
  */
 
 #ifndef INVALIDATE_VDIF_FRAMES_HPP
@@ -33,7 +33,7 @@
  *
  * @author Andre Renard
  */
-class invalidateVDIFframes : public kotekan::KotekanProcess {
+class invalidateVDIFframes : public kotekan::Stage {
 public:
     /// Standard constructor
     invalidateVDIFframes(kotekan::Config& config, const string& unique_name,

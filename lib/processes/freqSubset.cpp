@@ -24,15 +24,14 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(freqSubset);
 
 
 freqSubset::freqSubset(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&freqSubset::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&freqSubset::main_thread, this)) {
 
     // Get list of frequencies to subset from config
     _subset_list = config.get<std::vector<uint32_t>>(unique_name, "subset_list");

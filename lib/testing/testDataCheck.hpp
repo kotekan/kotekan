@@ -10,7 +10,7 @@
 #include <unistd.h>
 
 template<typename A_Type>
-class testDataCheck : public kotekan::KotekanProcess {
+class testDataCheck : public kotekan::Stage {
 public:
     testDataCheck(kotekan::Config& config, const string& unique_name,
                   kotekan::bufferContainer& buffer_container);
@@ -25,8 +25,8 @@ private:
 template<typename A_Type>
 testDataCheck<A_Type>::testDataCheck(kotekan::Config& config, const string& unique_name,
                                      kotekan::bufferContainer& buffer_container) :
-    kotekan::KotekanProcess(config, unique_name, buffer_container,
-                            std::bind(&testDataCheck::main_thread, this)) {
+    kotekan::Stage(config, unique_name, buffer_container,
+                   std::bind(&testDataCheck::main_thread, this)) {
     first_buf = get_buffer("first_buf");
     register_consumer(first_buf, unique_name.c_str());
     second_buf = get_buffer("second_buf");

@@ -10,7 +10,7 @@
 
 using std::vector;
 
-class beamformingPostProcess : public kotekan::KotekanProcess {
+class beamformingPostProcess : public kotekan::Stage {
 public:
     beamformingPostProcess(kotekan::Config& config, const string& unique_name,
                            kotekan::bufferContainer& buffer_container);

@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Object for receiving buffer frames from another kotekan instance
- * - bufferRecv : public kotekan::KotekanProcess
+ * - bufferRecv : public kotekan::Stage
  * - connState
  * - acceptArgs
  * - connInstance : public kotekanLogging
@@ -72,7 +72,7 @@ class connInstance;
  *
  * @author Andre Renard
  */
-class bufferRecv : public kotekan::KotekanProcess {
+class bufferRecv : public kotekan::Stage {
 public:
     /// Constructor
     bufferRecv(kotekan::Config& config, const string& unique_name,

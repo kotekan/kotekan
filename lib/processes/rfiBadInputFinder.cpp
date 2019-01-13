@@ -21,7 +21,7 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
@@ -31,8 +31,7 @@ REGISTER_KOTEKAN_PROCESS(rfiBadInputFinder);
 
 rfiBadInputFinder::rfiBadInputFinder(Config& config, const string& unique_name,
                                      bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&rfiBadInputFinder::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&rfiBadInputFinder::main_thread, this)) {
     // Get buffer from framework
     rfi_buf = get_buffer("rfi_in");
     // Register process as consumer

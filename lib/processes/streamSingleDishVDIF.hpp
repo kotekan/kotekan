@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Process to transmit VDIF data as a UDP stream.
- *  - streamSingleDishVDIF : public kotekan::KotekanProcess
+ *  - streamSingleDishVDIF : public kotekan::Stage
  */
 
 #ifndef STREAM_SINGLE_DISH_VDIF_H
@@ -32,7 +32,7 @@
  * @author Andre Renard
  *
  */
-class streamSingleDishVDIF : public kotekan::KotekanProcess {
+class streamSingleDishVDIF : public kotekan::Stage {
 public:
     /// Constructor
     streamSingleDishVDIF(kotekan::Config& config, const string& unique_name,

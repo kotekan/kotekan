@@ -3,7 +3,7 @@
 
 #include "KotekanProcess.hpp"
 
-class SampleProcess : public kotekan::KotekanProcess {
+class SampleProcess : public kotekan::Stage {
 public:
     SampleProcess(kotekan::Config& config, const string& unique_name,
                   kotekan::bufferContainer& buffer_container);

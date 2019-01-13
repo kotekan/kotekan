@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Process for subsetting visibility data by frequency.
-- freqSubset : public kotekan::KotekanProcess
+- freqSubset : public kotekan::Stage
 *****************************************/
 #ifndef FREQ_SUBSET_HPP
 #define FREQ_SUBSET_HPP
@@ -38,7 +38,7 @@
  *
  * @author Mateus Fandino
  */
-class freqSubset : public kotekan::KotekanProcess {
+class freqSubset : public kotekan::Stage {
 
 public:
     /// Default constructor

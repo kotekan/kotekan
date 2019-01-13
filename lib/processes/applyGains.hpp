@@ -53,7 +53,7 @@
  *
  * @author Mateus Fandino
  */
-class applyGains : public kotekan::KotekanProcess {
+class applyGains : public kotekan::Stage {
 
 public:
     struct gainUpdate {

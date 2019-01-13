@@ -18,14 +18,14 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(streamSingleDishVDIF);
 
 streamSingleDishVDIF::streamSingleDishVDIF(Config& config, const string& unique_name,
                                            bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&streamSingleDishVDIF::main_thread, this)) {
+    Stage(config, unique_name, buffer_container,
+          std::bind(&streamSingleDishVDIF::main_thread, this)) {
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 

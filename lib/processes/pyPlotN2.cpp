@@ -12,7 +12,7 @@ using json = nlohmann::json;
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
@@ -21,7 +21,7 @@ using kotekan::restServer;
 REGISTER_KOTEKAN_PROCESS(pyPlotN2);
 
 pyPlotN2::pyPlotN2(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container, std::bind(&pyPlotN2::main_thread, this))
+    Stage(config, unique_name, buffer_container, std::bind(&pyPlotN2::main_thread, this))
 
 {
     buf = get_buffer("in_buf");

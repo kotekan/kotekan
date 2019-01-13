@@ -5,7 +5,7 @@
 #include "buffer.h"
 #include "vdif_functions.h"
 
-class simVdifData : public kotekan::KotekanProcess {
+class simVdifData : public kotekan::Stage {
 public:
     simVdifData(kotekan::Config& config, const string& unique_name,
                 kotekan::bufferContainer& buffer_container);

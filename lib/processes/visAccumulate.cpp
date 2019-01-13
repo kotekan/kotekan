@@ -39,16 +39,15 @@ using namespace std::placeholders;
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::configUpdater;
-using kotekan::KotekanProcess;
 using kotekan::prometheusMetrics;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(visAccumulate);
 
 
 visAccumulate::visAccumulate(Config& config, const string& unique_name,
                              bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&visAccumulate::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&visAccumulate::main_thread, this)) {
 
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");

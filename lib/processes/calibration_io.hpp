@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Write out eigenvectors to file.
-- eigenWriter : public kotekan::KotekanProcess
+- eigenWriter : public kotekan::Stage
 - eigenFile
 *****************************************/
 
@@ -93,7 +93,7 @@ private:
 
 /**
  * @class eigenWriter
- * @brief Consumer ``kotekan::KotekanProcess`` that extracts eigenvectors etc from a ``visBuffer``
+ * @brief Consumer ``kotekan::Stage`` that extracts eigenvectors etc from a ``visBuffer``
  *        and writes them to disk in a rolling HDF5 file.
  *
  * This process reads the eigenvectors, eigenvalues, and RMS values carried in an input
@@ -115,7 +115,7 @@ private:
  * @author  Tristan Pinsonneault-Marotte
  *
  */
-class eigenWriter : public kotekan::KotekanProcess {
+class eigenWriter : public kotekan::Stage {
 
 public:
     /// Constructor. Loads config options. Creates output file.

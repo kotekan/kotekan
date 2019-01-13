@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Remove the eigenvalues/vectors from a buffer
-- removeEv : public kotekan::KotekanProcess
+- removeEv : public kotekan::Stage
 *****************************************/
 #ifndef REMOVE_EV_HPP
 #define REMOVE_EV_HPP
@@ -25,7 +25,7 @@
  *
  * @author Richard Shaw
  */
-class removeEv : public kotekan::KotekanProcess {
+class removeEv : public kotekan::Stage {
 
 public:
     removeEv(kotekan::Config& config, const string& unique_name,

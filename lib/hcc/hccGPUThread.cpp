@@ -19,12 +19,12 @@
 #define n_blk 2080 //(n_elem/32)*(n_elem/32+1)/2
 
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 // clang-format off
 
 hccGPUThread::hccGPUThread(Config& config_, Buffer& in_buf_, Buffer& out_buf_, uint32_t gpu_id_) :
-    KotekanProcess(config_, std::bind(&hccGPUThread::main_thread, this)),
+    Stage(config_, std::bind(&hccGPUThread::main_thread, this)),
     in_buf(in_buf_), out_buf(out_buf_), gpu_id(gpu_id_) {
 
 }
@@ -322,7 +322,7 @@ void hccGPUThread::main_thread() {
 #else  // For building on systems without HCC.
 
 hccGPUThread::hccGPUThread(Config& config_, Buffer& in_buf_, Buffer& out_buf_, uint32_t gpu_id_):
-    KotekanProcess(config_, std::bind(&hccGPUThread::main_thread, this)),
+    Stage(config_, std::bind(&hccGPUThread::main_thread, this)),
     in_buf(in_buf_), out_buf(out_buf_), gpu_id(gpu_id_) {
 
     ERROR("HCC wasn't built.");

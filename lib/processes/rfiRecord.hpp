@@ -1,7 +1,7 @@
 /**
  * @file rfiRecorder.hpp
  * @brief Contains RFI data recorder for SK estimates in kotekan.
- *  - rfiRecord : public kotekan::KotekanProcess
+ *  - rfiRecord : public kotekan::Stage
  */
 
 #ifndef RFI_RECORD_H
@@ -18,7 +18,7 @@
 
 /*
  * @class rfiRecord
- * @brief Consumer ``kotekan::KotekanProcess`` which consumes and record a buffer filled with
+ * @brief Consumer ``kotekan::Stage`` which consumes and record a buffer filled with
  * spectral kurtosis estimates.
  *
  * This process reads spectral kurtosis estimate from the GPU/CPU and records them to file. The
@@ -52,7 +52,7 @@
  *
  * @author Jacob Taylor
  */
-class rfiRecord : public kotekan::KotekanProcess {
+class rfiRecord : public kotekan::Stage {
 public:
     // Constructor
     rfiRecord(kotekan::Config& config, const string& unique_name,

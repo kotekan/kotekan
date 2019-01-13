@@ -1,8 +1,8 @@
 /*****************************************
 @file
 @brief Processes for writing visibility data.
-- visWriter : public kotekan::KotekanProcess
-- visCalWriter : public kotekan::KotekanProcess
+- visWriter : public kotekan::Stage
+- visCalWriter : public kotekan::Stage
 *****************************************/
 #ifndef VIS_WRITER_HPP
 #define VIS_WRITER_HPP
@@ -77,7 +77,7 @@
  *
  * @author Richard Shaw
  */
-class visWriter : public kotekan::KotekanProcess {
+class visWriter : public kotekan::Stage {
 public:
     visWriter(kotekan::Config& config, const string& unique_name,
               kotekan::bufferContainer& buffer_container);

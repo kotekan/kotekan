@@ -19,18 +19,18 @@
 
 namespace kotekan {
 
-class KotekanProcess : public kotekanLogging {
+class Stage : public kotekanLogging {
 public:
-    KotekanProcess(Config& config, const string& unique_name, bufferContainer& buffer_container,
-                   std::function<void(const KotekanProcess&)> main_thread_ref);
-    virtual ~KotekanProcess();
+    Stage(Config& config, const string& unique_name, bufferContainer& buffer_container,
+          std::function<void(const Stage&)> main_thread_ref);
+    virtual ~Stage();
     virtual void start();
     virtual void main_thread();
 
     std::string get_unique_name() const;
 
     /**
-     * @brief Attempts to join the process's @c main_thread with a tineout
+     * @brief Attempts to join the stage's @c main_thread with a tineout
      *
      * Should only be called after a call to @c stop()
      *
@@ -75,7 +75,7 @@ protected:
     bufferContainer& buffer_container;
 
 private:
-    std::function<void(const KotekanProcess&)> main_thread_fn;
+    std::function<void(const Stage&)> main_thread_fn;
 
     // List of CPU cores that the main thread is allowed to run on.
     // CPU core numbers are zero based.
@@ -84,7 +84,7 @@ private:
     // Lock for changing or using the cpu_affinity variable.
     std::mutex cpu_affinity_lock;
 
-    /// The number of seconds to wait for a kotekan process thread to be
+    /// The number of seconds to wait for a kotekan stage thread to be
     /// joined after the exit signal has been given before exiting ungracefully.
     uint32_t join_timeout;
 };
@@ -93,8 +93,8 @@ private:
 
 /// Helper defined to reduce the boiler plate needed to crate the
 /// standarized constructor in sub classes
-#define PROCESS_CONSTRUCTOR(T)                                                                     \
+#define STAGE_CONSTRUCTOR(T)                                                                       \
     T::T(Config& config, const string& unique_name, bufferContainer& buffer_container) :           \
-        KotekanProcess(config, unique_name, buffer_container, std::bind(&T::main_thread, this))
+        Stage(config, unique_name, buffer_container, std::bind(&T::main_thread, this))
 
 #endif /* KOTEKANPROCESS_H */

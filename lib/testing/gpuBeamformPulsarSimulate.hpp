@@ -18,7 +18,7 @@
  *
  */
 
-class gpuBeamformPulsarSimulate : public kotekan::KotekanProcess {
+class gpuBeamformPulsarSimulate : public kotekan::Stage {
 public:
     /// Constructor
     gpuBeamformPulsarSimulate(kotekan::Config& config, const string& unique_name,

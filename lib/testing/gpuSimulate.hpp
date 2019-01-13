@@ -4,7 +4,7 @@
 #include "KotekanProcess.hpp"
 #include "buffer.h"
 
-class gpuSimulate : public kotekan::KotekanProcess {
+class gpuSimulate : public kotekan::Stage {
 public:
     gpuSimulate(kotekan::Config& config, const string& unique_name,
                 kotekan::bufferContainer& buffer_container);

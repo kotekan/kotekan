@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Generate fake data in gpu buffer format.
-- fakeGpuBuffer : public KotekanProcess
+- fakeGpuBuffer : public Stage
 *****************************************/
 #ifndef FAKE_GPU_BUFFER_HPP
 #define FAKE_GPU_BUFFER_HPP
@@ -58,7 +58,7 @@
  *          id.
  * @author Richard Shaw
  */
-class fakeGpuBuffer : public kotekan::KotekanProcess {
+class fakeGpuBuffer : public kotekan::Stage {
 public:
     fakeGpuBuffer(kotekan::Config& config, const string& unique_name,
                   kotekan::bufferContainer& buffer_container);

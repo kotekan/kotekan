@@ -35,13 +35,12 @@ using std::string;
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(pulsarSimProcess);
 pulsarSimProcess::pulsarSimProcess(Config& config_, const string& unique_name,
                                    bufferContainer& buffer_container) :
-    KotekanProcess(config_, unique_name, buffer_container,
-                   std::bind(&pulsarSimProcess::main_thread, this)) {
+    Stage(config_, unique_name, buffer_container, std::bind(&pulsarSimProcess::main_thread, this)) {
 
     // Apply config.
     _num_gpus = config.get<int32_t>(unique_name, "num_gpus");

@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Processes for eigen-factoring the visibilities
-- eigenVis : public kotekan::KotekanProcess
+- eigenVis : public kotekan::Stage
 *****************************************/
 #ifndef EIGENVIS_HPP
 #define EIGENVIS_HPP
@@ -53,7 +53,7 @@
  *
  * @author Kiyoshi Masui
  */
-class eigenVis : public kotekan::KotekanProcess {
+class eigenVis : public kotekan::Stage {
 
 public:
     eigenVis(kotekan::Config& config, const string& unique_name,

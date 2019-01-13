@@ -87,8 +87,7 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path) {
     }
 }
 
-void configUpdater::subscribe(const KotekanProcess* subscriber,
-                              std::function<bool(json&)> callback) {
+void configUpdater::subscribe(const Stage* subscriber, std::function<bool(json&)> callback) {
     if (!_config->exists(subscriber->get_unique_name(), "updatable_config"))
         throw std::runtime_error("configUpdater: key 'updatable_config' was "
                                  "not found in '"
@@ -97,7 +96,7 @@ void configUpdater::subscribe(const KotekanProcess* subscriber,
               callback);
 }
 
-void configUpdater::subscribe(const KotekanProcess* subscriber,
+void configUpdater::subscribe(const Stage* subscriber,
                               std::map<std::string, std::function<bool(json&)>> callbacks) {
     for (auto callback : callbacks) {
         if (!_config->exists(subscriber->get_unique_name() + "/updatable_config", callback.first))

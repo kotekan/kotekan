@@ -15,14 +15,14 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
 using kotekan::prometheusMetrics;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(visDebug);
 
 
 visDebug::visDebug(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container, std::bind(&visDebug::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&visDebug::main_thread, this)) {
 
     // Setup the input vector
     in_buf = get_buffer("in_buf");

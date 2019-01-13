@@ -2,7 +2,7 @@
 @file
 @brief Process that adds noise to the
        visibility data.
-- visNoise : public KotekanProcess
+- visNoise : public Stage
 *****************************************/
 #ifndef VISNOISE_HPP
 #define VISNOISE_HPP
@@ -23,7 +23,7 @@
  * @conf  random                       If false, the noise generation will not be
  *                                     initialized with a random seed.
  **/
-class visNoise : public kotekan::KotekanProcess {
+class visNoise : public kotekan::Stage {
 public:
     // Default constructor
     visNoise(kotekan::Config& config, const string& unique_name,

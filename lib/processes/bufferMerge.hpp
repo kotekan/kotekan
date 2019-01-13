@@ -46,7 +46,7 @@
  *
  * @author Andre Renard
  */
-class bufferMerge : public kotekan::KotekanProcess {
+class bufferMerge : public kotekan::Stage {
 public:
     /// Constructor
     bufferMerge(kotekan::Config& config, const string& unique_name,

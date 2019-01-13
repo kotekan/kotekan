@@ -9,7 +9,7 @@
 #include "buffer.h"
 #include "errors.h"
 
-class networkOutputSim : public kotekan::KotekanProcess {
+class networkOutputSim : public kotekan::Stage {
 public:
     networkOutputSim(kotekan::Config& config, const string& unique_name,
                      kotekan::bufferContainer& buffer_container);

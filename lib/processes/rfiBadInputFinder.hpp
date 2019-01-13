@@ -1,7 +1,7 @@
 /*
  * @file rfiBadInputFinder.hpp
  * @brief Clssifies broken inputs using statistics of SK values from individual inputs.
- *  - rfiBadInputFinder : public kotekan::KotekanProcess
+ *  - rfiBadInputFinder : public kotekan::Stage
  */
 #ifndef RFI_BROADCAST_H
 #define RFI_BROADCAST_H
@@ -18,7 +18,7 @@
 
 /*
  * @class rfiBadInputFinder
- * @brief Consumer ``kotekan::KotekanProcess`` which consumes a buffer filled with averaged,
+ * @brief Consumer ``kotekan::Stage`` which consumes a buffer filled with averaged,
  * individual input spectral kurtosis estimates.
  *
  * This process reads RFI data from a kotekan buffer before packaging it into UDP packets and
@@ -59,7 +59,7 @@
  *
  * @author Jacob Taylor
  */
-class rfiBadInputFinder : public kotekan::KotekanProcess {
+class rfiBadInputFinder : public kotekan::Stage {
 public:
     // Constructor
     rfiBadInputFinder(kotekan::Config& config, const string& unique_name,

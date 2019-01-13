@@ -11,8 +11,7 @@ REGISTER_KOTEKAN_PROCESS(chimeMetadataDump);
 
 chimeMetadataDump::chimeMetadataDump(kotekan::Config& config, const string& unique_name,
                                      kotekan::bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&chimeMetadataDump::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&chimeMetadataDump::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());

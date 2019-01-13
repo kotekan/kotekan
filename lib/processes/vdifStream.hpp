@@ -5,7 +5,7 @@
 #include "KotekanProcess.hpp"
 #include "buffer.h"
 
-class vdifStream : public kotekan::KotekanProcess {
+class vdifStream : public kotekan::Stage {
 public:
     vdifStream(kotekan::Config& config, const string& unique_name,
                kotekan::bufferContainer& buffer_container);

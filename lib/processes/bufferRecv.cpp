@@ -26,15 +26,14 @@ using std::vector;
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::connectionInstance;
-using kotekan::KotekanProcess;
 using kotekan::prometheusMetrics;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(bufferRecv);
 
 bufferRecv::bufferRecv(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&bufferRecv::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&bufferRecv::main_thread, this)) {
 
     listen_port = config.get_default<uint32_t>(unique_name, "listen_port", 11024);
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);

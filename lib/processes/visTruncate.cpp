@@ -6,14 +6,13 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(visTruncate);
 
 visTruncate::visTruncate(Config& config, const string& unique_name,
                          bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&visTruncate::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&visTruncate::main_thread, this)) {
 
     // Fetch the buffers, register
     in_buf = get_buffer("in_buf");

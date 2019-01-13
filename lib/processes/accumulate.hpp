@@ -4,7 +4,7 @@
 #include "KotekanProcess.hpp"
 #include "buffer.h"
 
-class accumulate : public kotekan::KotekanProcess {
+class accumulate : public kotekan::Stage {
 public:
     accumulate(kotekan::Config& config, const string& unique_name,
                kotekan::bufferContainer& buffer_container);

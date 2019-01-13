@@ -21,14 +21,14 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(gpuBeamformSimulate);
 
 gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const string& unique_name,
                                          bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&gpuBeamformSimulate::main_thread, this)) {
+    Stage(config, unique_name, buffer_container,
+          std::bind(&gpuBeamformSimulate::main_thread, this)) {
 
     // Apply config.
     _num_elements = config.get<int32_t>(unique_name, "num_elements");

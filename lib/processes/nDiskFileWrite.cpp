@@ -17,14 +17,13 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(nDiskFileWrite);
 
 nDiskFileWrite::nDiskFileWrite(Config& config, const string& unique_name,
                                bufferContainer& buffer_containter) :
-    KotekanProcess(config, unique_name, buffer_containter,
-                   std::bind(&nDiskFileWrite::main_thread, this)) {
+    Stage(config, unique_name, buffer_containter, std::bind(&nDiskFileWrite::main_thread, this)) {
     buf = get_buffer("in_buf");
     register_consumer(buf, unique_name.c_str());
 

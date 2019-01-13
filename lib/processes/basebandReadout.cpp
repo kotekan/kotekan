@@ -28,15 +28,14 @@ using kotekan::basebandReadoutManager;
 using kotekan::basebandRequest;
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::KotekanProcess;
+using kotekan::Stage;
 
 REGISTER_KOTEKAN_PROCESS(basebandReadout);
 
 
 basebandReadout::basebandReadout(Config& config, const string& unique_name,
                                  bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&basebandReadout::main_thread, this)),
+    Stage(config, unique_name, buffer_container, std::bind(&basebandReadout::main_thread, this)),
     _base_dir(config.get_default<std::string>(unique_name, "base_dir", "./")),
     _num_frames_buffer(config.get<int>(unique_name, "num_frames_buffer")),
     _num_elements(config.get<int>(unique_name, "num_elements")),

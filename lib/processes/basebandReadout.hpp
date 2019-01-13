@@ -2,7 +2,7 @@
 @file
 @brief Processes for triggered baseband recording
 - basebandDumpData
-- basebandReadout : public kotekan::KotekanProcess
+- basebandReadout : public kotekan::Stage
 *****************************************/
 #ifndef BASEBAND_READOUT_H
 #define BASEBAND_READOUT_H
@@ -89,7 +89,7 @@ struct basebandDumpData {
  *
  * @author Kiyoshi Masui, Davor Cubranic
  */
-class basebandReadout : public kotekan::KotekanProcess {
+class basebandReadout : public kotekan::Stage {
 public:
     basebandReadout(kotekan::Config& config, const string& unique_name,
                     kotekan::bufferContainer& buffer_container);

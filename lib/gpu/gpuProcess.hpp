@@ -12,7 +12,7 @@
 
 #include "json.hpp"
 
-class gpuProcess : public kotekan::KotekanProcess {
+class gpuProcess : public kotekan::Stage {
 public:
     gpuProcess(kotekan::Config& config, const string& unique_name,
                kotekan::bufferContainer& buffer_container);

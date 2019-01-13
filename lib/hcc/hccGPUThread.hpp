@@ -5,7 +5,7 @@
 #include "buffer.h"
 #include "fpga_header_functions.h"
 
-class hccGPUThread : public kotekan::KotekanProcess {
+class hccGPUThread : public kotekan::Stage {
 public:
     hccGPUThread(kotekan::Config& config, struct Buffer& in_buf, struct Buffer& out_buf,
                  uint32_t gpu_id);

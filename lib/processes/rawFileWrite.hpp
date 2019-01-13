@@ -25,7 +25,7 @@
  *
  * @author Andre Renard
  **/
-class rawFileWrite : public kotekan::KotekanProcess {
+class rawFileWrite : public kotekan::Stage {
 public:
     rawFileWrite(kotekan::Config& config, const string& unique_name,
                  kotekan::bufferContainer& buffer_container);
