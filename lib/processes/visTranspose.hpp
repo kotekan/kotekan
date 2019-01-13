@@ -2,10 +2,10 @@
 #define VISTRANSPOSE
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
+#include "stage.hpp"
 #include "visFileArchive.hpp"
 #include "visUtil.hpp"
 

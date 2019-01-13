@@ -7,8 +7,8 @@
 #ifndef RECV_SINGLE_DISH_VDIF_H
 #define RECV_SINGLE_DISH_VDIF_H
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
+#include "stage.hpp"
 
 #include <cstdio>
 #include <string>

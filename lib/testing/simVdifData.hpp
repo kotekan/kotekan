@@ -1,8 +1,8 @@
 #ifndef SIM_VDIF_DATA_H
 #define SIM_VDIF_DATA_H
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
+#include "stage.hpp"
 #include "vdif_functions.h"
 
 class simVdifData : public kotekan::Stage {

@@ -8,11 +8,11 @@
 #define VIS_WRITER_HPP
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
 #include "restServer.hpp"
+#include "stage.hpp"
 #include "visFile.hpp"
 #include "visUtil.hpp"
 

@@ -9,10 +9,10 @@
 #ifndef BUFFER_RECV_H
 #define BUFFER_RECV_H
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "bufferSend.hpp"
 #include "errors.h"
+#include "stage.hpp"
 #include "util.h"
 
 #include <arpa/inet.h>

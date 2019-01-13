@@ -7,10 +7,10 @@
 #define FREQ_SUBSET_HPP
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
+#include "stage.hpp"
 
 #include <future>
 #include <stdint.h>

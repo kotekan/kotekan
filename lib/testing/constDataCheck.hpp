@@ -7,9 +7,9 @@
 #ifndef CONST_DATA_CHECK_H
 #define CONST_DATA_CHECK_H
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "errors.h"
+#include "stage.hpp"
 #include "util.h"
 
 #include <unistd.h>

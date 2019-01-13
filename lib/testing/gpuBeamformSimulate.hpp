@@ -6,8 +6,8 @@
 #ifndef GPU_BEAMFORM_SIMULATE_HPP
 #define GPU_BEAMFORM_SIMULATE_HPP
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
+#include "stage.hpp"
 
 /**
  * @class gpuBeamformSimulate

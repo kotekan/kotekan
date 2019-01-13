@@ -7,7 +7,7 @@
 #ifndef VISNOISE_HPP
 #define VISNOISE_HPP
 
-#include "KotekanProcess.hpp"
+#include "stage.hpp"
 
 #include <random>
 

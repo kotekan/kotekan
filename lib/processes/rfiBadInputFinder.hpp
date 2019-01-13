@@ -7,12 +7,12 @@
 #define RFI_BROADCAST_H
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "chimeMetadata.h"
 #include "powerStreamUtil.hpp"
 #include "restServer.hpp"
 #include "rfi_functions.h"
+#include "stage.hpp"
 
 #include <sys/socket.h>
 

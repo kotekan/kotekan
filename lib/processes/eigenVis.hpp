@@ -6,9 +6,9 @@
 #ifndef EIGENVIS_HPP
 #define EIGENVIS_HPP
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "datasetManager.hpp"
+#include "stage.hpp"
 #include "visUtil.hpp"
 
 /**

@@ -2,8 +2,8 @@
 #define CONFIGUPDATER_H
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
 #include "restServer.hpp"
+#include "stage.hpp"
 
 namespace kotekan {
 

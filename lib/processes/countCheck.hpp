@@ -7,8 +7,8 @@
 #ifndef COUNT_CHECK_HPP
 #define COUNT_CHECK_HPP
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
+#include "stage.hpp"
 
 #include <unistd.h>
 

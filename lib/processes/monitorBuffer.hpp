@@ -8,8 +8,8 @@
 #ifndef MONITOR_BUFFER_H
 #define MONITOR_BUFFER_H
 
-#include "KotekanProcess.hpp"
 #include "bufferContainer.hpp"
+#include "stage.hpp"
 
 #include <vector>
 

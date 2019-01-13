@@ -7,7 +7,7 @@
 #ifndef PULSAR_SIM_PROCESS
 #define PULSAR_SIM_PROCESS
 
-#include "KotekanProcess.hpp"
+#include "stage.hpp"
 
 #include <vector>
 

@@ -7,11 +7,11 @@
 #define _VIS_RAW_READER_HPP
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
 #include "prometheusMetrics.hpp"
+#include "stage.hpp"
 #include "visUtil.hpp"
 
 #include <stddef.h>

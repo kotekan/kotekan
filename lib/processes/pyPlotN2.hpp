@@ -7,13 +7,13 @@
 #ifndef PY_PLOT_N2_H
 #define PY_PLOT_N2_H
 
-#include "KotekanProcess.hpp"
 #include "accumulate.hpp"
 #include "buffer.h"
 #include "chimeMetadata.h"
 #include "errors.h"
 #include "fpga_header_functions.h"
 #include "restServer.hpp"
+#include "stage.hpp"
 
 #include <cstdio>
 #include <string>

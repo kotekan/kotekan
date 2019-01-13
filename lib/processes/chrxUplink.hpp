@@ -1,7 +1,7 @@
 #ifndef ACQ_UPLINK_H
 #define ACQ_UPLINK_H
 
-#include "KotekanProcess.hpp"
+#include "stage.hpp"
 
 #include <string>
 

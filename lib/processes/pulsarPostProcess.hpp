@@ -7,7 +7,7 @@
 #ifndef PULSAR_POST_PROCESS
 #define PULSAR_POST_PROCESS
 
-#include "KotekanProcess.hpp"
+#include "stage.hpp"
 
 #include <vector>
 

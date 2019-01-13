@@ -1,8 +1,8 @@
 #ifndef VISTRUNCATE
 #define VISTRUNCATE
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
+#include "stage.hpp"
 
 #include <immintrin.h>
 #include <xmmintrin.h>

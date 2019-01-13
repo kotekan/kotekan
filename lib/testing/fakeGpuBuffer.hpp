@@ -6,10 +6,10 @@
 #ifndef FAKE_GPU_BUFFER_HPP
 #define FAKE_GPU_BUFFER_HPP
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "chimeMetadata.h"
 #include "pulsarTiming.hpp"
+#include "stage.hpp"
 
 
 /**

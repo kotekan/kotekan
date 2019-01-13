@@ -2,8 +2,8 @@
 #define VDIF_STREAM
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
 #include "buffer.h"
+#include "stage.hpp"
 
 class vdifStream : public kotekan::Stage {
 public:

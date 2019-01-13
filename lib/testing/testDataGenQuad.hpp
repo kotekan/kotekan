@@ -7,8 +7,8 @@
 #ifndef TEST_DATA_GEN_QUAD_H
 #define TEST_DATA_GEN_QUAD_H
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
+#include "stage.hpp"
 
 
 /**

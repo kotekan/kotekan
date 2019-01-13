@@ -7,9 +7,9 @@
 #define VISTESTPATTERN_HPP
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
+#include "stage.hpp"
 #include "visUtil.hpp"
 
 #include <fstream>

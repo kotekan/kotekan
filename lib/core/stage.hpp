@@ -1,5 +1,5 @@
-#ifndef KOTEKANPROCESS_H
-#define KOTEKANPROCESS_H
+#ifndef KOTEKAN_STAGE_H
+#define KOTEKAN_STAGE_H
 
 #include "Config.hpp"
 #include "bufferContainer.hpp"
@@ -97,4 +97,4 @@ private:
     T::T(Config& config, const string& unique_name, bufferContainer& buffer_container) :           \
         Stage(config, unique_name, buffer_container, std::bind(&T::main_thread, this))
 
-#endif /* KOTEKANPROCESS_H */
+#endif /* KOTEKAN_STAGE_H */

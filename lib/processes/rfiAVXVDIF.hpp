@@ -6,9 +6,9 @@
 #ifndef RFI_AVX_VDIF_HPP
 #define RFI_AVX_VDIF_HPP
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "errors.h"
+#include "stage.hpp"
 
 /*
  * @class rfiAVXVDIF

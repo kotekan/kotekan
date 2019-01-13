@@ -6,7 +6,7 @@
 #ifndef RECEIVEFLAGS_H
 #define RECEIVEFLAGS_H
 
-#include "KotekanProcess.hpp"
+#include "stage.hpp"
 #include "updateQueue.hpp"
 
 #include <mutex>

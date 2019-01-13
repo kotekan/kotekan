@@ -8,9 +8,9 @@
 #ifndef CAL_PROC
 #define CAL_PROC
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "errors.h"
+#include "stage.hpp"
 #include "util.h"
 #include "visUtil.hpp"
 

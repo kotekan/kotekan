@@ -1,7 +1,7 @@
 #include "hsaProcess.hpp"
 
-#include "KotekanProcess.hpp"
 #include "fpga_header_functions.h"
+#include "stage.hpp"
 #include "unistd.h"
 #include "util.h"
 #include "vdif_functions.h"

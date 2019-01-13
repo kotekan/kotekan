@@ -1,9 +1,9 @@
 #ifndef HEX_DUMP_H
 #define HEX_DUMP_H
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "errors.h"
+#include "stage.hpp"
 #include "util.h"
 
 #include <unistd.h>

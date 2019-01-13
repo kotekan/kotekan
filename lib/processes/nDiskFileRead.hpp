@@ -7,8 +7,8 @@
 #ifndef N_DISK_FILE_READ_H
 #define N_DISK_FILE_READ_H
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
+#include "stage.hpp"
 #include "vdif_functions.h"
 
 /**

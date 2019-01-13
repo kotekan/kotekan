@@ -1,9 +1,9 @@
 #ifndef TEST_DATA_CHECK_H
 #define TEST_DATA_CHECK_H
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "errors.h"
+#include "stage.hpp"
 #include "util.h"
 
 #include <type_traits>

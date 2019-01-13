@@ -30,7 +30,6 @@ extern "C" {
 }
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
 #include "basebandApiManager.hpp"
 #include "buffer.h"
 #include "errors.h"
@@ -40,6 +39,7 @@ extern "C" {
 #include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
 #include "restServer.hpp"
+#include "stage.hpp"
 #include "util.h"
 #include "version.h"
 #include "visUtil.hpp"

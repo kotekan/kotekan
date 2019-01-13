@@ -1,4 +1,4 @@
-#include "KotekanProcess.hpp"
+#include "stage.hpp"
 
 #include "errors.h"
 #include "util.h"

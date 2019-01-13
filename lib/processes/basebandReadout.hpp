@@ -7,11 +7,11 @@
 #ifndef BASEBAND_READOUT_H
 #define BASEBAND_READOUT_H
 
-#include "KotekanProcess.hpp"
 #include "basebandReadoutManager.hpp"
 #include "buffer.h"
 #include "chimeMetadata.h"
 #include "gpsTime.h"
+#include "stage.hpp"
 #include "visUtil.hpp"
 
 #include "gsl-lite.hpp"

@@ -35,8 +35,8 @@ extern "C" {
 #include <rte_ring.h>
 }
 
-#include "KotekanProcess.hpp"
 #include "kotekanLogging.hpp"
+#include "stage.hpp"
 
 #include <emmintrin.h>
 #include <string>

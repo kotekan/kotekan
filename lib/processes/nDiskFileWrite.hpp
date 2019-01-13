@@ -7,8 +7,8 @@
 #ifndef N_DISK_FILE_WRITE_H
 #define N_DISK_FILE_WRITE_H
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
+#include "stage.hpp"
 
 #include <string>
 #include <thread>

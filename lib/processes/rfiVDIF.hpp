@@ -6,8 +6,8 @@
 #ifndef VDIF_RFI_H
 #define VDIF_RFI_H
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
+#include "stage.hpp"
 #include "vdif_functions.h"
 
 /*

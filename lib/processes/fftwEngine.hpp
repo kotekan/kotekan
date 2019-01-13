@@ -6,9 +6,9 @@
 
 #ifndef FFTW_ENGINE_HPP
 #define FFTW_ENGINE_HPP
-#include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "errors.h"
+#include "stage.hpp"
 #include "util.h"
 
 #include <fftw3.h>

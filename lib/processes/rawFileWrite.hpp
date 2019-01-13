@@ -1,8 +1,8 @@
 #ifndef RAW_FILE_WRITE_H
 #define RAW_FILE_WRITE_H
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
+#include "stage.hpp"
 
 #include <string>
 

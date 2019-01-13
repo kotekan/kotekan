@@ -1,8 +1,8 @@
 #ifndef FULL_PACKET_DUMP_HPP
 #define FULL_PACKET_DUMP_HPP
 
-#include "KotekanProcess.hpp"
 #include "restServer.hpp"
+#include "stage.hpp"
 
 #include <mutex>
 #include <string>

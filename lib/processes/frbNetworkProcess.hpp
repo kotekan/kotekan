@@ -7,9 +7,9 @@
 #ifndef FRBNETWORKPROCESS_HPP
 #define FRBNETWORKPROCESS_HPP
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "restServer.hpp"
+#include "stage.hpp"
 
 #include <string>
 

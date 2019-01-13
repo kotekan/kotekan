@@ -6,8 +6,8 @@
 #ifndef TIME_DOWNSAMP_HPP
 #define TIME_DOWNSAMP_HPP
 
-#include "KotekanProcess.hpp"
 #include "buffer.h"
+#include "stage.hpp"
 
 /**
  * @class timeDownsample

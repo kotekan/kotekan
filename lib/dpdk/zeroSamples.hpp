@@ -1,7 +1,7 @@
 #ifndef ZERO_SAMPLES_HPP
 #define ZERO_SAMPLES_HPP
 
-#include "KotekanProcess.hpp"
+#include "stage.hpp"
 
 #include "json.hpp"
 
