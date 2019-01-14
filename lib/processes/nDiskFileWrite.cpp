@@ -19,7 +19,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(nDiskFileWrite);
+REGISTER_KOTEKAN_STAGE(nDiskFileWrite);
 
 nDiskFileWrite::nDiskFileWrite(Config& config, const string& unique_name,
                                bufferContainer& buffer_containter) :

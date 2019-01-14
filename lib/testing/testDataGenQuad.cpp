@@ -11,7 +11,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(testDataGenQuad);
+REGISTER_KOTEKAN_STAGE(testDataGenQuad);
 
 testDataGenQuad::testDataGenQuad(Config& config, const string& unique_name,
                                  bufferContainer& buffer_container) :

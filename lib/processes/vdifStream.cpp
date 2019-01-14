@@ -18,7 +18,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(vdifStream);
+REGISTER_KOTEKAN_STAGE(vdifStream);
 
 vdifStream::vdifStream(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :

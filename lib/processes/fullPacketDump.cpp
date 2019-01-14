@@ -21,7 +21,7 @@ using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
 using kotekan::restServer;
 
-REGISTER_KOTEKAN_PROCESS(fullPacketDump);
+REGISTER_KOTEKAN_STAGE(fullPacketDump);
 
 fullPacketDump::fullPacketDump(Config& config, const string& unique_name,
                                bufferContainer& buffer_container) :

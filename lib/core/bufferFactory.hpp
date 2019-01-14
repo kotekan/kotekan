@@ -20,7 +20,7 @@ namespace kotekan {
 class bufferFactory {
 
 public:
-    // One processFactory should be created for each set of config and buffer_container
+    // One StageFactory should be created for each set of config and buffer_container
     bufferFactory(Config& config, map<string, struct metadataPool*>& metadataPools);
     ~bufferFactory();
 

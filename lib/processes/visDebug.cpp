@@ -3,8 +3,8 @@
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "errors.h"
-#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
+#include "stage_factory.hpp"
 #include "visBuffer.hpp"
 
 #include "fmt.hpp"
@@ -18,7 +18,7 @@ using kotekan::Config;
 using kotekan::prometheusMetrics;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(visDebug);
+REGISTER_KOTEKAN_STAGE(visDebug);
 
 
 visDebug::visDebug(Config& config, const string& unique_name, bufferContainer& buffer_container) :

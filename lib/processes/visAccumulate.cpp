@@ -7,8 +7,8 @@
 #include "errors.h"
 #include "factory.hpp"
 #include "metadata.h"
-#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
+#include "stage_factory.hpp"
 #include "version.h"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
@@ -42,7 +42,7 @@ using kotekan::configUpdater;
 using kotekan::prometheusMetrics;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(visAccumulate);
+REGISTER_KOTEKAN_STAGE(visAccumulate);
 
 
 visAccumulate::visAccumulate(Config& config, const string& unique_name,

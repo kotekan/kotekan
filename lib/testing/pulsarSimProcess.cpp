@@ -37,7 +37,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(pulsarSimProcess);
+REGISTER_KOTEKAN_STAGE(pulsarSimProcess);
 pulsarSimProcess::pulsarSimProcess(Config& config_, const string& unique_name,
                                    bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&pulsarSimProcess::main_thread, this)) {

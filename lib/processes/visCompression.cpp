@@ -2,8 +2,8 @@
 
 #include "datasetManager.hpp"
 #include "errors.h"
-#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
+#include "stage_factory.hpp"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
 
@@ -37,7 +37,7 @@ using kotekan::Config;
 using kotekan::prometheusMetrics;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(baselineCompression);
+REGISTER_KOTEKAN_STAGE(baselineCompression);
 
 
 baselineCompression::baselineCompression(Config& config, const string& unique_name,

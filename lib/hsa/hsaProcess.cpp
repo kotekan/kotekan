@@ -13,7 +13,7 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 
-REGISTER_KOTEKAN_PROCESS(hsaProcess);
+REGISTER_KOTEKAN_STAGE(hsaProcess);
 
 hsaProcess::hsaProcess(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :

@@ -4,7 +4,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(fftwEngine);
+REGISTER_KOTEKAN_STAGE(fftwEngine);
 
 fftwEngine::fftwEngine(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :

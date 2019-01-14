@@ -6,7 +6,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(hexDump);
+REGISTER_KOTEKAN_STAGE(hexDump);
 
 hexDump::hexDump(Config& config, const string& unique_name, bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&hexDump::main_thread, this)) {

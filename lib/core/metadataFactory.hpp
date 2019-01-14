@@ -19,7 +19,7 @@ namespace kotekan {
 class metadataFactory {
 
 public:
-    // One processFactory should be created for each set of config and buffer_container
+    // One StageFactory should be created for each set of config and buffer_container
     metadataFactory(Config& config);
     ~metadataFactory();
 

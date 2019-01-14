@@ -21,7 +21,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(beamformingPostProcess);
+REGISTER_KOTEKAN_STAGE(beamformingPostProcess);
 
 beamformingPostProcess::beamformingPostProcess(Config& config, const string& unique_name,
                                                bufferContainer& buffer_container) :

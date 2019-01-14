@@ -25,7 +25,7 @@ using kotekan::configUpdater;
 using kotekan::prometheusMetrics;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(applyGains);
+REGISTER_KOTEKAN_STAGE(applyGains);
 
 
 applyGains::applyGains(Config& config, const string& unique_name,

@@ -9,7 +9,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(zeroSamples);
+REGISTER_KOTEKAN_STAGE(zeroSamples);
 
 zeroSamples::zeroSamples(Config& config, const string& unique_name,
                          bufferContainer& buffer_container) :

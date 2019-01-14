@@ -16,10 +16,10 @@ set (KOTEKAN_CORE_SOURCES
               kotekanMode.cpp
               metadata.c
               metadataFactory.cpp
-              processFactory.cpp
               prometheusMetrics.cpp
               restServer.cpp
               stage.cpp
+              stage_factory.cpp
        )
 
 add_library ( kotekan_core

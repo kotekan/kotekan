@@ -28,7 +28,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(networkOutputSim);
+REGISTER_KOTEKAN_STAGE(networkOutputSim);
 
 networkOutputSim::networkOutputSim(Config& config_, const string& unique_name,
                                    bufferContainer& buffer_container) :

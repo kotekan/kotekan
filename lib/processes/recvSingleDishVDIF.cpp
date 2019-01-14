@@ -7,7 +7,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(recvSingleDishVDIF);
+REGISTER_KOTEKAN_STAGE(recvSingleDishVDIF);
 
 recvSingleDishVDIF::recvSingleDishVDIF(Config& config, const string& unique_name,
                                        bufferContainer& buffer_container) :

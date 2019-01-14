@@ -19,7 +19,7 @@ using kotekan::Config;
 using kotekan::prometheusMetrics;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(bufferStatus);
+REGISTER_KOTEKAN_STAGE(bufferStatus);
 
 bufferStatus::bufferStatus(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :

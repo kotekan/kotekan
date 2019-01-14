@@ -14,7 +14,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(nDiskFileRead);
+REGISTER_KOTEKAN_STAGE(nDiskFileRead);
 
 nDiskFileRead::nDiskFileRead(Config& config, const string& unique_name,
                              bufferContainer& buffer_containter) :

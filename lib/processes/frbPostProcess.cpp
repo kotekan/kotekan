@@ -10,7 +10,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(frbPostProcess);
+REGISTER_KOTEKAN_STAGE(frbPostProcess);
 
 frbPostProcess::frbPostProcess(Config& config_, const string& unique_name,
                                bufferContainer& buffer_container) :

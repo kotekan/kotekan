@@ -6,7 +6,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(gpuSimulate);
+REGISTER_KOTEKAN_STAGE(gpuSimulate);
 
 gpuSimulate::gpuSimulate(Config& config, const string& unique_name,
                          bufferContainer& buffer_container) :

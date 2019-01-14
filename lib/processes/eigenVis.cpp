@@ -18,7 +18,7 @@ using kotekan::Config;
 using kotekan::prometheusMetrics;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(eigenVis);
+REGISTER_KOTEKAN_STAGE(eigenVis);
 
 eigenVis::eigenVis(Config& config, const string& unique_name, bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&eigenVis::main_thread, this)) {

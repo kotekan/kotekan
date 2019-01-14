@@ -30,7 +30,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(basebandReadout);
+REGISTER_KOTEKAN_STAGE(basebandReadout);
 
 
 basebandReadout::basebandReadout(Config& config, const string& unique_name,

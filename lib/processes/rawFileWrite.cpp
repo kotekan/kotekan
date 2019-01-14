@@ -18,7 +18,7 @@ using kotekan::Config;
 using kotekan::prometheusMetrics;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(rawFileWrite);
+REGISTER_KOTEKAN_STAGE(rawFileWrite);
 
 rawFileWrite::rawFileWrite(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :

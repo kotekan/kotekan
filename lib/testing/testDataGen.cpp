@@ -20,7 +20,7 @@ using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
 using kotekan::restServer;
 
-REGISTER_KOTEKAN_PROCESS(testDataGen);
+REGISTER_KOTEKAN_STAGE(testDataGen);
 
 
 testDataGen::testDataGen(Config& config, const string& unique_name,

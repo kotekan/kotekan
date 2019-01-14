@@ -18,7 +18,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(eigenWriter);
+REGISTER_KOTEKAN_STAGE(eigenWriter);
 
 
 eigenWriter::eigenWriter(Config& config, const string& unique_name,

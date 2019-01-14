@@ -29,7 +29,7 @@ using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
 using kotekan::restServer;
 
-REGISTER_KOTEKAN_PROCESS(rfiRecord);
+REGISTER_KOTEKAN_STAGE(rfiRecord);
 
 rfiRecord::rfiRecord(Config& config, const string& unique_name, bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&rfiRecord::main_thread, this)) {

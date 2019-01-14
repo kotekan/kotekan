@@ -27,7 +27,7 @@ using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
 using kotekan::restServer;
 
-REGISTER_KOTEKAN_PROCESS(rfiBadInputFinder);
+REGISTER_KOTEKAN_STAGE(rfiBadInputFinder);
 
 rfiBadInputFinder::rfiBadInputFinder(Config& config, const string& unique_name,
                                      bufferContainer& buffer_container) :

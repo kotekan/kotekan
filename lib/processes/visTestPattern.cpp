@@ -3,7 +3,7 @@
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "errors.h"
-#include "processFactory.hpp"
+#include "stage_factory.hpp"
 #include "visBuffer.hpp"
 
 #include "gsl-lite.hpp"
@@ -25,7 +25,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(visTestPattern);
+REGISTER_KOTEKAN_STAGE(visTestPattern);
 
 
 visTestPattern::visTestPattern(Config& config, const std::string& unique_name,

@@ -30,7 +30,7 @@ using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
 using kotekan::restServer;
 
-REGISTER_KOTEKAN_PROCESS(gpuPostProcess);
+REGISTER_KOTEKAN_STAGE(gpuPostProcess);
 
 gpuPostProcess::gpuPostProcess(Config& config_, const string& unique_name,
                                bufferContainer& buffer_container) :

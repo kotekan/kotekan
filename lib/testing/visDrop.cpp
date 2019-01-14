@@ -1,7 +1,7 @@
 #include "visDrop.hpp"
 
 #include "errors.h"
-#include "processFactory.hpp"
+#include "stage_factory.hpp"
 #include "visBuffer.hpp"
 
 #include <algorithm>
@@ -15,7 +15,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(visDrop);
+REGISTER_KOTEKAN_STAGE(visDrop);
 
 visDrop::visDrop(Config& config, const string& unique_name, bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&visDrop::main_thread, this)) {

@@ -5,8 +5,8 @@
 #include "configUpdater.hpp"
 #include "datasetManager.hpp"
 #include "metadataFactory.hpp"
-#include "processFactory.hpp"
 #include "restServer.hpp"
+#include "stage_factory.hpp"
 
 #include "json.hpp"
 
@@ -74,9 +74,9 @@ void kotekanMode::initalize_processes() {
     if (config.exists("/", "dataset_manager"))
         datasetManager::instance(config);
 
-    // Create Processes
-    processFactory process_factory(config, buffer_container);
-    processes = process_factory.build_processes();
+    // Create Stages
+    StageFactory stage_factory(config, buffer_container);
+    processes = stage_factory.build_stages();
 
     // Update REST server
     restServer::instance().set_server_affinity(config);

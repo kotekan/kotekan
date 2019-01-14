@@ -19,7 +19,7 @@ using kotekan::Config;
 using kotekan::prometheusMetrics;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(Valve);
+REGISTER_KOTEKAN_STAGE(Valve);
 
 Valve::Valve(Config& config, const std::string& unique_name, bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&Valve::main_thread, this)) {

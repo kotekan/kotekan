@@ -36,10 +36,10 @@ extern "C" {
 #include "fpga_header_functions.h"
 #include "gpsTime.h"
 #include "kotekanMode.hpp"
-#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
 #include "restServer.hpp"
 #include "stage.hpp"
+#include "stage_factory.hpp"
 #include "util.h"
 #include "version.h"
 #include "visUtil.hpp"
@@ -87,8 +87,8 @@ void print_version() {
     printf("CMake build settings: \n%s\n", get_cmake_build_options());
 
     printf("Available kotekan processes:\n");
-    std::map<std::string, kotekanProcessMaker*> known_processes =
-        processFactoryRegistry::get_registered_processes();
+    std::map<std::string, StageMaker*> known_processes =
+        StageFactoryRegistry::get_registered_stages();
     for (auto& process_maker : known_processes) {
         if (process_maker.first != known_processes.rbegin()->first) {
             printf("%s, ", process_maker.first.c_str());
@@ -106,8 +106,8 @@ json get_json_version_into() {
     version_json["git_commit_hash"] = get_git_commit_hash();
     version_json["cmake_build_settings"] = get_cmake_build_options();
     vector<string> available_processes;
-    std::map<std::string, kotekanProcessMaker*> known_processes =
-        processFactoryRegistry::get_registered_processes();
+    std::map<std::string, StageMaker*> known_processes =
+        StageFactoryRegistry::get_registered_stages();
     for (auto& process_maker : known_processes)
         available_processes.push_back(process_maker.first);
     version_json["available_processes"] = available_processes;

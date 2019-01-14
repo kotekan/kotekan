@@ -3,8 +3,8 @@
 #include "datasetManager.hpp"
 #include "datasetState.hpp"
 #include "errors.h"
-#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
+#include "stage_factory.hpp"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
 
@@ -26,7 +26,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(freqSubset);
+REGISTER_KOTEKAN_STAGE(freqSubset);
 
 
 freqSubset::freqSubset(Config& config, const string& unique_name,

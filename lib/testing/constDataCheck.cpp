@@ -1,6 +1,6 @@
 #include "constDataCheck.hpp"
 
-REGISTER_KOTEKAN_PROCESS(constDataCheck);
+REGISTER_KOTEKAN_STAGE(constDataCheck);
 
 constDataCheck::constDataCheck(kotekan::Config& config, const string& unique_name,
                                kotekan::bufferContainer& buffer_container) :

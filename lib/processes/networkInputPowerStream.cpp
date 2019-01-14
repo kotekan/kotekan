@@ -18,7 +18,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(networkInputPowerStream);
+REGISTER_KOTEKAN_STAGE(networkInputPowerStream);
 
 networkInputPowerStream::networkInputPowerStream(Config& config, const string& unique_name,
                                                  bufferContainer& buffer_container) :

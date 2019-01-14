@@ -29,7 +29,7 @@ using kotekan::connectionInstance;
 using kotekan::prometheusMetrics;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(bufferRecv);
+REGISTER_KOTEKAN_STAGE(bufferRecv);
 
 bufferRecv::bufferRecv(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :

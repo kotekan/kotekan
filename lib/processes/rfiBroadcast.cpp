@@ -29,7 +29,7 @@ using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
 using kotekan::restServer;
 
-REGISTER_KOTEKAN_PROCESS(rfiBroadcast);
+REGISTER_KOTEKAN_STAGE(rfiBroadcast);
 
 rfiBroadcast::rfiBroadcast(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :

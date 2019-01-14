@@ -15,7 +15,7 @@ using kotekan::configUpdater;
 using kotekan::prometheusMetrics;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(receiveFlags);
+REGISTER_KOTEKAN_STAGE(receiveFlags);
 
 
 receiveFlags::receiveFlags(Config& config, const string& unique_name,

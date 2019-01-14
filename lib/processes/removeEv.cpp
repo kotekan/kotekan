@@ -10,7 +10,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(removeEv);
+REGISTER_KOTEKAN_STAGE(removeEv);
 
 removeEv::removeEv(Config& config, const string& unique_name, bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&removeEv::main_thread, this)) {

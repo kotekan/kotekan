@@ -23,7 +23,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(gpuBeamformSimulate);
+REGISTER_KOTEKAN_STAGE(gpuBeamformSimulate);
 
 gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const string& unique_name,
                                          bufferContainer& buffer_container) :

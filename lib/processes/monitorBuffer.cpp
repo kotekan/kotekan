@@ -8,7 +8,7 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 
-REGISTER_KOTEKAN_PROCESS(monitorBuffer);
+REGISTER_KOTEKAN_STAGE(monitorBuffer);
 
 STAGE_CONSTRUCTOR(monitorBuffer) {
 

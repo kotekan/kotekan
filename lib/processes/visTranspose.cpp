@@ -3,8 +3,8 @@
 #include "datasetManager.hpp"
 #include "datasetState.hpp"
 #include "errors.h"
-#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
+#include "stage_factory.hpp"
 #include "version.h"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
@@ -33,7 +33,7 @@ using kotekan::Config;
 using kotekan::prometheusMetrics;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(visTranspose);
+REGISTER_KOTEKAN_STAGE(visTranspose);
 
 visTranspose::visTranspose(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :

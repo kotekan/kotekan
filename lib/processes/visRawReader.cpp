@@ -3,7 +3,7 @@
 #include "datasetState.hpp"
 #include "errors.h"
 #include "metadata.h"
-#include "processFactory.hpp"
+#include "stage_factory.hpp"
 #include "version.h"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
@@ -34,7 +34,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(visRawReader);
+REGISTER_KOTEKAN_STAGE(visRawReader);
 
 visRawReader::visRawReader(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :

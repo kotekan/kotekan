@@ -16,7 +16,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(fakeGpuBuffer);
+REGISTER_KOTEKAN_STAGE(fakeGpuBuffer);
 
 fakeGpuBuffer::fakeGpuBuffer(Config& config, const string& unique_name,
                              bufferContainer& buffer_container) :

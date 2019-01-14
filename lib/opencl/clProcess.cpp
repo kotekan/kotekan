@@ -11,7 +11,7 @@ using kotekan::Config;
 
 using namespace std;
 
-REGISTER_KOTEKAN_PROCESS(clProcess);
+REGISTER_KOTEKAN_STAGE(clProcess);
 
 // TODO Remove the GPU_ID from this constructor
 clProcess::clProcess(Config& config_, const string& unique_name,

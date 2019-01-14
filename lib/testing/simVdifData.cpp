@@ -10,7 +10,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(simVdifData);
+REGISTER_KOTEKAN_STAGE(simVdifData);
 
 simVdifData::simVdifData(Config& config, const string& unique_name,
                          bufferContainer& buffer_container) :

@@ -18,7 +18,7 @@ using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
 using kotekan::restServer;
 
-REGISTER_KOTEKAN_PROCESS(pyPlotN2);
+REGISTER_KOTEKAN_STAGE(pyPlotN2);
 
 pyPlotN2::pyPlotN2(Config& config, const string& unique_name, bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&pyPlotN2::main_thread, this))

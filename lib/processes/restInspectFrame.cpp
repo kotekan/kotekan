@@ -7,7 +7,7 @@ using kotekan::Stage;
 using kotekan::connectionInstance;
 using kotekan::restServer;
 
-REGISTER_KOTEKAN_PROCESS(restInspectFrame);
+REGISTER_KOTEKAN_STAGE(restInspectFrame);
 
 restInspectFrame::restInspectFrame(Config& config, const string& unique_name,
                                    bufferContainer& buffer_container) :

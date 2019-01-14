@@ -12,7 +12,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(countCheck);
+REGISTER_KOTEKAN_STAGE(countCheck);
 
 
 countCheck::countCheck(Config& config, const string& unique_name,

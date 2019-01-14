@@ -22,7 +22,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(dpdkCore);
+REGISTER_KOTEKAN_STAGE(dpdkCore);
 
 static bool __eal_initalized = false;
 

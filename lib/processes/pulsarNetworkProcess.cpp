@@ -31,7 +31,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(pulsarNetworkProcess);
+REGISTER_KOTEKAN_STAGE(pulsarNetworkProcess);
 
 pulsarNetworkProcess::pulsarNetworkProcess(Config& config_, const string& unique_name,
                                            bufferContainer& buffer_container) :

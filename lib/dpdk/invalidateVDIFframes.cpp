@@ -9,7 +9,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(invalidateVDIFframes);
+REGISTER_KOTEKAN_STAGE(invalidateVDIFframes);
 
 invalidateVDIFframes::invalidateVDIFframes(Config& config, const string& unique_name,
                                            bufferContainer& buffer_container) :

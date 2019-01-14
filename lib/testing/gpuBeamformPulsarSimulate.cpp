@@ -24,7 +24,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(gpuBeamformPulsarSimulate);
+REGISTER_KOTEKAN_STAGE(gpuBeamformPulsarSimulate);
 
 gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config, const string& unique_name,
                                                      bufferContainer& buffer_container) :

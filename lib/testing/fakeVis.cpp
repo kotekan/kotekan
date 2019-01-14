@@ -3,7 +3,7 @@
 #include "datasetManager.hpp"
 #include "datasetState.hpp"
 #include "errors.h"
-#include "processFactory.hpp"
+#include "stage_factory.hpp"
 #include "version.h"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
@@ -37,8 +37,8 @@ using kotekan::Config;
 using kotekan::Stage;
 
 
-REGISTER_KOTEKAN_PROCESS(fakeVis);
-REGISTER_KOTEKAN_PROCESS(replaceVis);
+REGISTER_KOTEKAN_STAGE(fakeVis);
+REGISTER_KOTEKAN_STAGE(replaceVis);
 
 
 fakeVis::fakeVis(Config& config, const string& unique_name, bufferContainer& buffer_container) :

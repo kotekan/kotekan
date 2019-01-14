@@ -28,7 +28,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(pulsarPostProcess);
+REGISTER_KOTEKAN_STAGE(pulsarPostProcess);
 
 pulsarPostProcess::pulsarPostProcess(Config& config_, const string& unique_name,
                                      bufferContainer& buffer_container) :

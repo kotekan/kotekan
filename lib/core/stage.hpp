@@ -4,7 +4,7 @@
 #include "Config.hpp"
 #include "bufferContainer.hpp"
 #include "kotekanLogging.hpp"
-#include "processFactory.hpp"
+#include "stage_factory.hpp"
 
 #include <atomic>
 #include <functional>
