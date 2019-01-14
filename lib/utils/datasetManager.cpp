@@ -261,7 +261,7 @@ void datasetManager::request_thread(const json&& request, const std::string&& en
             // Parsing errors are reported by the parsing function.
         } else {
             // Complain and retry...
-            kotekan::prometheusMetrics::instance().add_process_metric(
+            kotekan::prometheusMetrics::instance().add_stage_metric(
                 "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
             WARN("datasetManager: Failure in connection to broker: %s:"
                  "%d/%s. Make sure the broker is "
@@ -291,7 +291,7 @@ bool datasetManager::register_state_parser(std::string& reply) {
         WARN("datasetManager: failure parsing reply received from broker "
              "after registering dataset state (reply: %s): %s",
              reply.c_str(), e.what());
-        kotekan::prometheusMetrics::instance().add_process_metric(
+        kotekan::prometheusMetrics::instance().add_stage_metric(
             "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
         return false;
     }
@@ -335,7 +335,7 @@ bool datasetManager::register_state_parser(std::string& reply) {
         WARN("datasetManager: failure registering dataset state with "
              "broker: %s",
              e.what());
-        kotekan::prometheusMetrics::instance().add_process_metric(
+        kotekan::prometheusMetrics::instance().add_stage_metric(
             "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
         return false;
     }
@@ -354,7 +354,7 @@ bool datasetManager::send_state_parser(std::string& reply) {
         WARN("datasetManager: failure parsing reply received from broker "
              "after sending dataset state (reply: %s): %s",
              reply.c_str(), e.what());
-        kotekan::prometheusMetrics::instance().add_process_metric(
+        kotekan::prometheusMetrics::instance().add_stage_metric(
             "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
         return false;
     }
@@ -391,7 +391,7 @@ bool datasetManager::register_dataset_parser(std::string& reply) {
         WARN("datasetManager: failure parsing reply received from broker "
              "after registering dataset (reply: %s): %s",
              reply.c_str(), e.what());
-        kotekan::prometheusMetrics::instance().add_process_metric(
+        kotekan::prometheusMetrics::instance().add_stage_metric(
             "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
         return false;
     }
@@ -515,7 +515,7 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
         WARN("datasetManager: Failure requesting update on datasets from "
              "broker: %s",
              reply.second.c_str());
-        kotekan::prometheusMetrics::instance().add_process_metric(
+        kotekan::prometheusMetrics::instance().add_stage_metric(
             "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
         return false;
     }
@@ -548,7 +548,7 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
                      " exception was thrown when parsing dataset %s with ID "
                      "%s: %s",
                      ds.value().dump().c_str(), ds.key().c_str(), e.what());
-                kotekan::prometheusMetrics::instance().add_process_metric(
+                kotekan::prometheusMetrics::instance().add_stage_metric(
                     "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
                 return false;
             }
@@ -558,7 +558,7 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
         WARN("datasetManager: failure parsing reply received from broker "
              "after requesting dataset update (reply: %s): %s",
              reply.second.c_str(), e.what());
-        kotekan::prometheusMetrics::instance().add_process_metric(
+        kotekan::prometheusMetrics::instance().add_stage_metric(
             "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
         return false;
     }

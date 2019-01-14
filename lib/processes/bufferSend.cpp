@@ -133,8 +133,8 @@ void bufferSend::main_thread() {
         }
 
         // Publish current dropped frame count.
-        metrics.add_process_metric("kotekan_buffer_send_dropped_frame_count", unique_name,
-                                   dropped_frame_count);
+        metrics.add_stage_metric("kotekan_buffer_send_dropped_frame_count", unique_name,
+                                 dropped_frame_count);
 
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
         frame_id = (frame_id + 1) % buf->num_frames;

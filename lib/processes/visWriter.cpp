@@ -154,8 +154,8 @@ void visWriter::main_thread() {
 
             // Update average write time in prometheus
             write_time.add_sample(elapsed);
-            prometheusMetrics::instance().add_process_metric("kotekan_viswriter_write_time_seconds",
-                                                             unique_name, write_time.average());
+            prometheusMetrics::instance().add_stage_metric("kotekan_viswriter_write_time_seconds",
+                                                           unique_name, write_time.average());
         }
 
         // Mark the buffer and move on
@@ -177,9 +177,9 @@ void visWriter::report_dropped_frame(dset_id_t ds_id, uint32_t freq_id, droppedT
     acq.dropped_frame_count[key] += 1;
     std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\",reason=\"{}\"", freq_id,
                                      ds_id, dropped_type_map.at(reason));
-    prometheusMetrics::instance().add_process_metric("kotekan_viswriter_dropped_frame_total",
-                                                     unique_name, acq.dropped_frame_count.at(key),
-                                                     labels);
+    prometheusMetrics::instance().add_stage_metric("kotekan_viswriter_dropped_frame_total",
+                                                   unique_name, acq.dropped_frame_count.at(key),
+                                                   labels);
 }
 
 void visWriter::close_old_acqs() {

@@ -205,8 +205,8 @@ void rfiBroadcast::main_thread() {
             stream_id_t current_stream_id = extract_stream_id(StreamIDs[0]);
             uint32_t current_freq_bin = bin_number_chime(&current_stream_id);
             std::string tags = "freq_bin=\"" + std::to_string(current_freq_bin) + "\"";
-            metrics.add_process_metric("kotekan_rfi_broadcast_mask_percent", unique_name,
-                                       perc_zeroed.average(), tags);
+            metrics.add_stage_metric("kotekan_rfi_broadcast_mask_percent", unique_name,
+                                     perc_zeroed.average(), tags);
 
 #ifdef DEBUGGING
             // Reset Timer (can't time previous loop due to wait for frame blocking call)

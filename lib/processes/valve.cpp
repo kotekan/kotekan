@@ -53,8 +53,8 @@ void Valve::main_thread() {
             mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
         } else {
             WARN("Output buffer full. Dropping incoming frame %d.", frame_id_in);
-            prometheusMetrics::instance().add_process_metric("kotekan_valve_dropped_frames_total",
-                                                             unique_name, ++_dropped_total);
+            prometheusMetrics::instance().add_stage_metric("kotekan_valve_dropped_frames_total",
+                                                           unique_name, ++_dropped_total);
         }
         mark_frame_empty(_buf_in, unique_name.c_str(), frame_id_in++);
     }

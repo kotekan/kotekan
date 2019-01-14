@@ -642,7 +642,7 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
         WARN("datasetManager: Failure requesting state from "
              "broker: %s",
              reply.second.c_str());
-        kotekan::prometheusMetrics::instance().add_process_metric(
+        kotekan::prometheusMetrics::instance().add_stage_metric(
             "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
         return nullptr;
     }
@@ -700,7 +700,7 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
         WARN("datasetManager: failure parsing reply received from broker "
              "after requesting state (reply: %s): %s",
              reply.second.c_str(), e.what());
-        kotekan::prometheusMetrics::instance().add_process_metric(
+        kotekan::prometheusMetrics::instance().add_stage_metric(
             "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
         return nullptr;
     }

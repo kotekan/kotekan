@@ -408,25 +408,24 @@ inline void iceBoardHandler::update_stats() {
 
     std::string tags = "port=\"" + std::to_string(port) + "\"";
 
-    metrics.add_process_metric("kotekan_dpdk_rx_packets_total", unique_name, rx_packets_total,
-                               tags);
-    metrics.add_process_metric("kotekan_dpdk_rx_samples_total", unique_name,
-                               rx_packets_total * samples_per_packet, tags);
+    metrics.add_stage_metric("kotekan_dpdk_rx_packets_total", unique_name, rx_packets_total, tags);
+    metrics.add_stage_metric("kotekan_dpdk_rx_samples_total", unique_name,
+                             rx_packets_total * samples_per_packet, tags);
 
-    metrics.add_process_metric("kotekan_dpdk_rx_lost_packets_total", unique_name,
-                               (int)(rx_lost_samples_total / samples_per_packet), tags);
-    metrics.add_process_metric("kotekan_dpdk_lost_samples_total", unique_name,
-                               rx_lost_samples_total, tags);
+    metrics.add_stage_metric("kotekan_dpdk_rx_lost_packets_total", unique_name,
+                             (int)(rx_lost_samples_total / samples_per_packet), tags);
+    metrics.add_stage_metric("kotekan_dpdk_lost_samples_total", unique_name, rx_lost_samples_total,
+                             tags);
 
-    metrics.add_process_metric("kotekan_dpdk_rx_bytes_total", unique_name, rx_bytes_total, tags);
-    metrics.add_process_metric("kotekan_dpdk_rx_errors_total", unique_name, rx_errors_total, tags);
+    metrics.add_stage_metric("kotekan_dpdk_rx_bytes_total", unique_name, rx_bytes_total, tags);
+    metrics.add_stage_metric("kotekan_dpdk_rx_errors_total", unique_name, rx_errors_total, tags);
 
-    metrics.add_process_metric("kotekan_dpdk_rx_ip_cksum_errors_total", unique_name,
-                               rx_ip_cksum_errors_total, tags);
-    metrics.add_process_metric("kotekan_dpdk_rx_packet_len_errors_total", unique_name,
-                               rx_packet_len_errors_total, tags);
-    metrics.add_process_metric("kotekan_dpdk_rx_out_of_order_errors_total", unique_name,
-                               rx_out_of_order_errors_total, tags);
+    metrics.add_stage_metric("kotekan_dpdk_rx_ip_cksum_errors_total", unique_name,
+                             rx_ip_cksum_errors_total, tags);
+    metrics.add_stage_metric("kotekan_dpdk_rx_packet_len_errors_total", unique_name,
+                             rx_packet_len_errors_total, tags);
+    metrics.add_stage_metric("kotekan_dpdk_rx_out_of_order_errors_total", unique_name,
+                             rx_out_of_order_errors_total, tags);
 }
 
 #endif

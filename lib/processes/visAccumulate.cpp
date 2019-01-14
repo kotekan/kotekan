@@ -316,7 +316,7 @@ void visAccumulate::main_thread() {
                         // Update prometheus metrics
                         auto frame = visFrameView(dset.buf, dset.frame_id);
                         std::string labels = fmt::format("freq_id=\"{}\"", frame.freq_id);
-                        prometheusMetrics::instance().add_process_metric(
+                        prometheusMetrics::instance().add_stage_metric(
                             "kotekan_visaccumulate_skipped_frame_total", unique_name,
                             skipped_frame_total, labels);
                         continue;

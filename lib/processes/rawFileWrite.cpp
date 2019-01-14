@@ -101,8 +101,8 @@ void rawFileWrite::main_thread() {
         }
 
         double elapsed = current_time() - st;
-        prometheusMetrics::instance().add_process_metric("kotekan_rawfilewrite_write_time_seconds",
-                                                         unique_name, elapsed);
+        prometheusMetrics::instance().add_stage_metric("kotekan_rawfilewrite_write_time_seconds",
+                                                       unique_name, elapsed);
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
 
         frame_id = (frame_id + 1) % buf->num_frames;

@@ -415,7 +415,7 @@ int main(int argc, char** argv) {
         // Update running state
         {
             std::lock_guard<std::mutex> lock(kotekan_state_lock);
-            metrics.add_process_metric("kotekan_running", "main", running);
+            metrics.add_stage_metric("kotekan_running", "main", running);
         }
 
         if (sig_value == SIGINT) {

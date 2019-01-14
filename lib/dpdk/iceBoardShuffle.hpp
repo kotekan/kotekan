@@ -476,34 +476,34 @@ void iceBoardShuffle::update_stats() {
     std::string tags = "port=\"" + std::to_string(port) + "\"";
 
     for (int i = 0; i < 8; ++i) {
-        metrics.add_process_metric("kotekan_dpdk_shuffle_fpga_third_stage_shuffle_errors_total",
-                                   unique_name, fpga_third_stage_shuffle_errors[i],
-                                   tags + ",fpga_lane=\"" + std::to_string(i) + "\"");
+        metrics.add_stage_metric("kotekan_dpdk_shuffle_fpga_third_stage_shuffle_errors_total",
+                                 unique_name, fpga_third_stage_shuffle_errors[i],
+                                 tags + ",fpga_lane=\"" + std::to_string(i) + "\"");
     }
 
-    metrics.add_process_metric("kotekan_dpdk_shuffle_fpga_third_stage_crc_errors_total",
-                               unique_name, fpga_third_stage_crc_errors, tags);
-    metrics.add_process_metric("kotekan_dpdk_shuffle_fpga_third_stage_missing_short_errors_total",
-                               unique_name, fpga_third_stage_missing_short_errors, tags);
-    metrics.add_process_metric("kotekan_dpdk_shuffle_fpga_third_stage_long_errors_total",
-                               unique_name, fpga_third_stage_long_errors, tags);
-    metrics.add_process_metric("kotekan_dpdk_shuffle_fpga_third_stage_fifo_overflow_errors_total",
-                               unique_name, fpga_third_stage_fifo_overflow_errors, tags);
+    metrics.add_stage_metric("kotekan_dpdk_shuffle_fpga_third_stage_crc_errors_total", unique_name,
+                             fpga_third_stage_crc_errors, tags);
+    metrics.add_stage_metric("kotekan_dpdk_shuffle_fpga_third_stage_missing_short_errors_total",
+                             unique_name, fpga_third_stage_missing_short_errors, tags);
+    metrics.add_stage_metric("kotekan_dpdk_shuffle_fpga_third_stage_long_errors_total", unique_name,
+                             fpga_third_stage_long_errors, tags);
+    metrics.add_stage_metric("kotekan_dpdk_shuffle_fpga_third_stage_fifo_overflow_errors_total",
+                             unique_name, fpga_third_stage_fifo_overflow_errors, tags);
 
     for (int i = 0; i < 16; ++i) {
-        metrics.add_process_metric("kotekan_dpdk_shuffle_fpga_second_stage_shuffle_errors_total",
-                                   unique_name, fpga_second_stage_shuffle_errors[i],
-                                   tags + ",fpga_lane=\"" + std::to_string(i) + "\"");
+        metrics.add_stage_metric("kotekan_dpdk_shuffle_fpga_second_stage_shuffle_errors_total",
+                                 unique_name, fpga_second_stage_shuffle_errors[i],
+                                 tags + ",fpga_lane=\"" + std::to_string(i) + "\"");
     }
 
-    metrics.add_process_metric("kotekan_dpdk_shuffle_fpga_second_stage_crc_errors_total",
-                               unique_name, fpga_second_stage_crc_errors, tags);
-    metrics.add_process_metric("kotekan_dpdk_shuffle_fpga_second_stage_missing_short_errors_total",
-                               unique_name, fpga_second_stage_missing_short_errors, tags);
-    metrics.add_process_metric("kotekan_dpdk_shuffle_fpga_second_stage_long_errors_total",
-                               unique_name, fpga_second_stage_long_errors, tags);
-    metrics.add_process_metric("kotekan_dpdk_shuffle_fpga_second_stage_fifo_overflow_errors_total",
-                               unique_name, fpga_second_stage_fifo_overflow_errors, tags);
+    metrics.add_stage_metric("kotekan_dpdk_shuffle_fpga_second_stage_crc_errors_total", unique_name,
+                             fpga_second_stage_crc_errors, tags);
+    metrics.add_stage_metric("kotekan_dpdk_shuffle_fpga_second_stage_missing_short_errors_total",
+                             unique_name, fpga_second_stage_missing_short_errors, tags);
+    metrics.add_stage_metric("kotekan_dpdk_shuffle_fpga_second_stage_long_errors_total",
+                             unique_name, fpga_second_stage_long_errors, tags);
+    metrics.add_stage_metric("kotekan_dpdk_shuffle_fpga_second_stage_fifo_overflow_errors_total",
+                             unique_name, fpga_second_stage_fifo_overflow_errors, tags);
 }
 
 #endif
