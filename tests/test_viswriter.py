@@ -17,7 +17,7 @@ writer_params = {
 }
 
 
-def written_data_base(outdir, process_extra=None, root_extra=None):
+def written_data_base(outdir, stage_extra=None, root_extra=None):
 
     fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=writer_params['freq'],
@@ -31,15 +31,15 @@ def written_data_base(outdir, process_extra=None, root_extra=None):
     if root_extra is not None:
         root_params.update(root_extra)
 
-    process_params = {
+    stage_params = {
         'node_mode': False,
     }
 
-    if process_extra is not None:
-        process_params.update(process_extra)
+    if stage_extra is not None:
+        stage_params.update(stage_extra)
 
     test = runner.KotekanStageTester(
-        'visWriter', process_params,
+        'visWriter', stage_params,
         fakevis_buffer,
         None,
         root_params

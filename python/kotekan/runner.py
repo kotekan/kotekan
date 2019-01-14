@@ -24,8 +24,8 @@ class KotekanRunner(object):
     buffers : dict
         Dictionary containing all the buffers and their configuration (as
         dicts). Config is as it is in the config files.
-    processs : dict
-        Dictionary with all the process definitions.
+    stages : dict
+        Dictionary with all the stage definitions.
     config : dict
         Global configuration at the root level.
     rest_commands : list
@@ -34,11 +34,11 @@ class KotekanRunner(object):
         Shows kotekan stdout and stderr before exit.
     """
 
-    def __init__(self, buffers=None, processes=None, config=None,
+    def __init__(self, buffers=None, stages=None, config=None,
                  rest_commands=None, debug=False):
 
         self._buffers = buffers if buffers is not None else {}
-        self._processes = processes if processes is not None else {}
+        self._stages = stages if stages is not None else {}
         self._config = config if config is not None else {}
         self._rest_commands = (rest_commands if rest_commands is not None
                                else [])
@@ -60,7 +60,7 @@ class KotekanRunner(object):
 
         # At somepoint maybe do more specialised parsing and validation here
         config_dict.update(self._buffers)
-        config_dict.update(self._processes)
+        config_dict.update(self._stages)
 
         # Set the working directory for the run
         build_dir = os.path.normpath(os.path.join(os.path.dirname(__file__),
@@ -157,7 +157,7 @@ class FakeNetworkBuffer(InputBuffer):
     Parameters
     ----------
     **kwargs : dict
-        Parameters fed straight into the process config. `type` must be
+        Parameters fed straight into the stage config. `type` must be
         supplied, as well as `value` for types other than "random".
     """
     _buf_ind = 0
@@ -165,10 +165,10 @@ class FakeNetworkBuffer(InputBuffer):
     def __init__(self, **kwargs):
 
         self.name = 'fakenetwork_buf%i' % self._buf_ind
-        if "process_name" in kwargs:
-            process_name = kwargs['process_name']
+        if "stage_name" in kwargs:
+            stage_name = kwargs['stage_name']
         else:
-            process_name = 'fakenetwork%i' % self._buf_ind
+            stage_name = 'fakenetwork%i' % self._buf_ind
         self.__class__._buf_ind += 1
 
         self.buffer_block = {
@@ -181,13 +181,13 @@ class FakeNetworkBuffer(InputBuffer):
             }
         }
 
-        process_config = {
+        stage_config = {
             'kotekan_process': 'testDataGen',
             'network_out_buf': self.name,
         }
-        process_config.update(kwargs)
+        stage_config.update(kwargs)
 
-        self.process_block = {process_name: process_config}
+        self.stage_block = {stage_name: stage_config}
 
 
 class FakeGPUBuffer(InputBuffer):
@@ -196,7 +196,7 @@ class FakeGPUBuffer(InputBuffer):
     Parameters
     ----------
     **kwargs : dict
-        Parameters fed straight into the process config. `pattern` must be
+        Parameters fed straight into the stage config. `pattern` must be
         supplied.
     """
     _buf_ind = 0
@@ -204,7 +204,7 @@ class FakeGPUBuffer(InputBuffer):
     def __init__(self, **kwargs):
 
         self.name = 'fakegpu_buf%i' % self._buf_ind
-        process_name = 'fakegpu%i' % self._buf_ind
+        stage_name = 'fakegpu%i' % self._buf_ind
         self.__class__._buf_ind += 1
 
         self.buffer_block = {
@@ -218,16 +218,16 @@ class FakeGPUBuffer(InputBuffer):
             }
         }
 
-        process_config = {
+        stage_config = {
             'kotekan_process': 'fakeGpuBuffer',
             'out_buf': self.name,
             'freq': 0,
             'pre_accumulate': True,
             'wait': False
         }
-        process_config.update(kwargs)
+        stage_config.update(kwargs)
 
-        self.process_block = {process_name: process_config}
+        self.stage_block = {stage_name: stage_config}
 
 
 class FakeVisBuffer(InputBuffer):
@@ -236,14 +236,14 @@ class FakeVisBuffer(InputBuffer):
     Parameters
     ----------
     **kwargs : dict
-        Parameters fed straight into the process config.
+        Parameters fed straight into the stage config.
     """
     _buf_ind = 0
 
     def __init__(self, **kwargs):
 
         self.name = 'fakevis_buf%i' % self._buf_ind
-        process_name = 'fakevis%i' % self._buf_ind
+        stage_name = 'fakevis%i' % self._buf_ind
         self.__class__._buf_ind += 1
 
         self.buffer_block = {
@@ -254,15 +254,15 @@ class FakeVisBuffer(InputBuffer):
             }
         }
 
-        process_config = {
+        stage_config = {
             'kotekan_process': 'fakeVis',
             'out_buf': self.name,
             'freq_ids': [0],
             'wait': False
         }
-        process_config.update(kwargs)
+        stage_config.update(kwargs)
 
-        self.process_block = {process_name: process_config}
+        self.stage_block = {stage_name: stage_config}
 
 
 class VisWriterBuffer(OutputBuffer):
@@ -285,7 +285,7 @@ class VisWriterBuffer(OutputBuffer):
     def __init__(self, output_dir, file_type, in_buf=None, extra_config=None):
 
         self.name = 'viswriter_buf%i' % self._buf_ind
-        process_name = 'write%i' % self._buf_ind
+        stage_name = 'write%i' % self._buf_ind
         self.__class__._buf_ind += 1
 
         self.output_dir = output_dir
@@ -303,7 +303,7 @@ class VisWriterBuffer(OutputBuffer):
             buf_name = in_buf
             self.buffer_block = {}
 
-        process_config = {
+        stage_config = {
             'kotekan_process': 'visWriter',
             'in_buf': buf_name,
             'file_name': self.name,
@@ -312,9 +312,9 @@ class VisWriterBuffer(OutputBuffer):
             'node_mode': False,
         }
         if extra_config is not None:
-            process_config.update(extra_config);
+            stage_config.update(extra_config);
 
-        self.process_block = {process_name: process_config}
+        self.stage_block = {stage_name: stage_config}
 
     def load(self):
         """Load the output data from the buffer.
@@ -345,7 +345,7 @@ class ReadVisBuffer(InputBuffer):
     def __init__(self, input_dir, buffer_list):
 
         self.name = 'rawfileread_buf'
-        process_name = 'rawfileread%i' % self._buf_ind
+        stage_name = 'rawfileread%i' % self._buf_ind
         self.__class__._buf_ind += 1
 
         self.input_dir = input_dir
@@ -359,7 +359,7 @@ class ReadVisBuffer(InputBuffer):
             }
         }
 
-        process_config = {
+        stage_config = {
             'kotekan_process': 'rawFileRead',
             'buf': self.name,
             'base_dir': input_dir,
@@ -368,7 +368,7 @@ class ReadVisBuffer(InputBuffer):
             'end_interrupt': True
         }
 
-        self.process_block = {process_name: process_config}
+        self.stage_block = {stage_name: stage_config}
 
     def write(self):
         """Write a list of VisBuffer objects to disk.
@@ -393,7 +393,7 @@ class DumpVisBuffer(OutputBuffer):
     def __init__(self, output_dir):
 
         self.name = 'dumpvis_buf%i' % self._buf_ind
-        process_name = 'dump%i' % self._buf_ind
+        stage_name = 'dump%i' % self._buf_ind
         self.__class__._buf_ind += 1
 
         self.output_dir = output_dir
@@ -406,7 +406,7 @@ class DumpVisBuffer(OutputBuffer):
             }
         }
 
-        process_config = {
+        stage_config = {
             'kotekan_process': 'rawFileWrite',
             'in_buf': self.name,
             'file_name': self.name,
@@ -414,7 +414,7 @@ class DumpVisBuffer(OutputBuffer):
             'base_dir': output_dir
         }
 
-        self.process_block = {process_name: process_config}
+        self.stage_block = {stage_name: stage_config}
 
     def load(self):
         """Load the output data from the buffer.
@@ -435,7 +435,7 @@ class ReadRawBuffer(InputBuffer):
     def __init__(self, infile, chunk_size):
 
         self.name = "read_raw_buf{:d}".format(self._buf_ind)
-        process_name = "read_raw{:d}".format(self._buf_ind)
+        stage_name = "read_raw{:d}".format(self._buf_ind)
         self.__class__._buf_ind += 1
 
         self.buffer_block = {
@@ -446,7 +446,7 @@ class ReadRawBuffer(InputBuffer):
             }
         }
 
-        process_config = {
+        stage_config = {
             'kotekan_process': 'visRawReader',
             'infile': infile,
             'out_buf': self.name,
@@ -454,45 +454,45 @@ class ReadRawBuffer(InputBuffer):
             'readahead_blocks': 4
         }
 
-        self.process_block = {process_name: process_config}
+        self.stage_block = {stage_name: stage_config}
 
 
 class KotekanStageTester(KotekanRunner):
-    """Construct a test around a single Kotekan process.
+    """Construct a test around a single Kotekan stage.
 
-    This sets up a Kotekan run to test a specific process by connecting
+    This sets up a Kotekan run to test a specific stage by connecting
     `InputBuffer` generators to its inputs and `OutputBuffer` consumers to
     its outputs.
 
     Parameters
     ----------
-    process_type : string
-        Type of the process to start (this must be the name registered in
+    stage_type : string
+        Type of the stage to start (this must be the name registered in
         kotekan).
-    process_config : dict
-        Any configuration for the process.
+    stage_config : dict
+        Any configuration for the stage.
     buffers_in : `InputBuffer` or list of
-        Input buffers (and generator processes) to connect to the test process.
+        Input buffers (and generator stages) to connect to the test stage.
     buffers_out : `OutputBuffer` or list of
-        Output buffers (and consumers processes) to connect.
+        Output buffers (and consumers stages) to connect.
     global_config : dict
         Any global configuration to run with.
-    parallel_process_type : str
-        Name of the process to be run in parallel with the process under test (It will use the same in buffers).
-    parallel_process_config : dict
-        any configurations to the parallel process
+    parallel_stage_type : str
+        Name of the stage to be run in parallel with the stage under test (It will use the same in buffers).
+    parallel_stage_config : dict
+        any configurations to the parallel stage
     noise : string
         If it is not None, gaussian noise with SD=1 is added to the input,
         if it is "random" the random number generator will be initialized with
         a random seed.
     """
 
-    def __init__(self, process_type, process_config, buffers_in,
-                 buffers_out, global_config={}, parallel_process_type=None,
-                 parallel_process_config={}, rest_commands=None, noise=False):
+    def __init__(self, stage_type, stage_config, buffers_in,
+                 buffers_out, global_config={}, parallel_stage_type=None,
+                 parallel_stage_config={}, rest_commands=None, noise=False):
 
-        config = process_config.copy()
-        parallel_config = parallel_process_config.copy()
+        config = stage_config.copy()
+        parallel_config = parallel_stage_config.copy()
         noise_config = {}
 
         if noise:
@@ -534,25 +534,25 @@ class KotekanStageTester(KotekanRunner):
             config['out_buf'] = buffers_out.name
             buffers_out = [buffers_out]
 
-        config['kotekan_process'] = process_type
+        config['kotekan_process'] = stage_type
 
-        process_block = {(process_type + "_test"): config}
+        stage_block = {(stage_type + "_test"): config}
         buffer_block = {}
 
         for buf in itertools.chain(buffers_in, buffers_out):
-            process_block.update(buf.process_block)
+            stage_block.update(buf.stage_block)
             buffer_block.update(buf.buffer_block)
 
-        if parallel_process_type is not None:
-            parallel_config['kotekan_process'] = parallel_process_type
-            process_block.update(
-                {(parallel_process_type + "_test_parallel"): parallel_config})
+        if parallel_stage_type is not None:
+            parallel_config['kotekan_process'] = parallel_stage_type
+            stage_block.update(
+                {(parallel_stage_type + "_test_parallel"): parallel_config})
 
         if noise:
-            process_block.update(noise_block)
+            stage_block.update(noise_block)
             buffer_block.update(noise_buffer)
 
-        super(KotekanStageTester, self).__init__(buffer_block, process_block,
+        super(KotekanStageTester, self).__init__(buffer_block, stage_block,
                                                    global_config, rest_commands)
 
 

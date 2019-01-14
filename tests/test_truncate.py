@@ -44,8 +44,8 @@ def vis_data(tmpdir_factory):
         buffers_in = fakevis_buffer,
         buffers_out = out_dump_buffer,
         global_config = trunc_params,
-        parallel_process_type = 'rawFileWrite',
-        parallel_process_config = in_dump_config,
+        parallel_stage_type = 'rawFileWrite',
+        parallel_stage_config = in_dump_config,
         noise = True
     )
 
@@ -78,8 +78,8 @@ def vis_data_zero_weights(tmpdir_factory):
         buffers_in = fakevis_buffer,
         buffers_out = out_dump_buffer,
         global_config = trunc_params,
-        parallel_process_type = 'rawFileWrite',
-        parallel_process_config = in_dump_config,
+        parallel_stage_type = 'rawFileWrite',
+        parallel_stage_config = in_dump_config,
         noise = "random"
     )
 

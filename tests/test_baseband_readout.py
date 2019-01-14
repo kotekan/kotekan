@@ -63,7 +63,7 @@ def run_baseband(tdir_factory, params=None, rest_commands=None):
         p.update(params)
 
     fake_buffer = runner.FakeNetworkBuffer(
-            process_name=DATAGEN_PNAME,
+            stage_name=DATAGEN_PNAME,
             num_frames=p['total_frames'],
             type=p['type'],
             )

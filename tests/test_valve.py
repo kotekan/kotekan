@@ -45,7 +45,7 @@ def complete_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
     global_params.update(dump_buffer.buffer_block)
-    global_params.update(dump_buffer.process_block)
+    global_params.update(dump_buffer.stage_block)
     global_params['compress']['out_buf'] = dump_buffer.name
 
     valve_params = {
@@ -82,7 +82,7 @@ def incomplete_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
     global_params.update(dump_buffer.buffer_block)
-    global_params.update(dump_buffer.process_block)
+    global_params.update(dump_buffer.stage_block)
     global_params['compress']['out_buf'] = dump_buffer.name
 
 

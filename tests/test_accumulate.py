@@ -147,7 +147,7 @@ def pulsar_data(tmpdir_factory):
     dump_buffer_gated = runner.VisWriterBuffer(str(tmpdir), "raw")
     # Insert an extra buffer for gated stream
     dump_buffer.buffer_block.update(dump_buffer_gated.buffer_block)
-    dump_buffer.process_block.update(dump_buffer_gated.process_block)
+    dump_buffer.stage_block.update(dump_buffer_gated.stage_block)
 
     acc_par = pulsar_params.copy()
     acc_par.update({

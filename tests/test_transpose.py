@@ -58,7 +58,7 @@ def transpose(tmpdir_factory):
         }
     }
     fakevis_buffer.buffer_block.update(fsel_buf)
-    fakevis_buffer.process_block.update({"fakevis_fsel": {
+    fakevis_buffer.stage_block.update({"fakevis_fsel": {
             "kotekan_process": "visDrop",
             "in_buf": fakevis_buffer.name,
             "out_buf": fsel_buf_name,
@@ -85,8 +85,8 @@ def transpose(tmpdir_factory):
         fakevis_buffer,
         None,
         params,
-        parallel_process_type = 'visWriter',
-        parallel_process_config = dumph5_conf,
+        parallel_stage_type = 'visWriter',
+        parallel_stage_config = dumph5_conf,
         noise="random"
     )
 
@@ -191,7 +191,7 @@ def transpose_stack(tmpdir_factory):
         cadence=stack_params['cadence'],
         mode="chime",
     )
-    # Add stacking process
+    # Add stacking stage
     stack_buf_name = "fake_stacked"
     stack_buf = { stack_buf_name: {
             'kotekan_buffer': 'vis',
@@ -200,7 +200,7 @@ def transpose_stack(tmpdir_factory):
         }
     }
     fakevis_buffer.buffer_block.update(stack_buf)
-    fakevis_buffer.process_block.update({"fakevis_stack": {
+    fakevis_buffer.stage_block.update({"fakevis_stack": {
             "kotekan_process": "baselineCompression",
             "in_buf": fakevis_buffer.name,
             "out_buf": stack_buf_name,

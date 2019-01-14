@@ -82,8 +82,8 @@ def test_pattern_noise(tmpdir_factory):
         buffers_in = fakevis_buffer,
         buffers_out = dump_buffer,
         global_config = params,
-        parallel_process_type = 'rawFileWrite',
-        parallel_process_config = fakevis_dump_conf,
+        parallel_stage_type = 'rawFileWrite',
+        parallel_stage_config = fakevis_dump_conf,
         noise = True
     )
 
@@ -242,8 +242,8 @@ def test_pattern_noise_freq(tmpdir_factory):
         buffers_in = fakevis_buffer,
         buffers_out = dump_buffer,
         global_config = freq_params,
-        parallel_process_type = 'rawFileWrite',
-        parallel_process_config = fakevis_dump_conf,
+        parallel_stage_type = 'rawFileWrite',
+        parallel_stage_config = fakevis_dump_conf,
         noise = True
     )
 
