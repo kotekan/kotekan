@@ -155,7 +155,7 @@ public:
      * @throws  std::runtime_error  If the value was not found.
      *
      * @param base_pointer  Contains a JSON pointer which points to the
-     *                      process's location in the config tree. i.e.
+     *                      stage's location in the config tree. i.e.
      *                      /vdif_cap/disk_write
      * @param name          The name of the property i.e. num_frequencies
      *
@@ -167,7 +167,7 @@ public:
      * @brief Finds all values with key "name". Searches the whole config tree.
      *
      * @note This should only be used by internal (core framework) systems.
-     * Usage by normal processes risks unexpected side effects in the config
+     * Usage by normal stages risks unexpected side effects in the config
      * scoping logic.
      *
      * @param name  The name of the property i.e. num_frequencies
@@ -180,10 +180,10 @@ public:
      * @brief Updates a config value at an existing config option
      *
      * Only accepts updates to known config locations, and should only be used
-     * to update config within a processes' own @c unique_name path.
+     * to update config within a stages' own @c unique_name path.
      *
      * @todo This currently will not update inherited config options.
-     *       So any updatable config options must be given in the process block.
+     *       So any updatable config options must be given in the stage block.
      *       The way around this is likely to copy inherited, either on access or
      *       on update with this function.
      *
@@ -191,7 +191,7 @@ public:
      *       we should likely make this a bit more restrictive and/or require
      *       the update type matches the base value type already in the config.
      *
-     * @param base_path The unique name of the process, or "/" for the root process
+     * @param base_path The unique name of the stage, or "/" for the root stage
      * @param name The name of the value
      * @param value The value to assign to the json pointer formed by base_path/name
      */

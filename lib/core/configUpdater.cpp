@@ -82,7 +82,7 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path) {
         }
 
         // Recursive part.
-        // This is a section/scope not a process block.
+        // This is a section/scope not a stage block.
         parse_tree(it.value(), unique_name);
     }
 }
@@ -230,7 +230,7 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
 
         try {
             // this ignores the data type,
-            // should be checked in processes' callbacks
+            // should be checked in stages' callbacks
             _config->update_value(uri, it.key(), it.value());
         } catch (const std::exception& e) {
             std::string msg = fmt::format("configUpdater: Failed applying "

@@ -9,13 +9,13 @@ namespace kotekan {
 
 /**
  * @brief Kotekan core component that creates endpoints defined in the config
- * that processes can subscribe to to receive updates.
+ * that stages can subscribe to to receive updates.
  *
  * An endpoint will be created for every updatable config block defined in the
  * configuration file. updatable blocks can be anywhere in the configuration
  * tree, but may not be inside another updatable block. They need to contain a
  * key `kotekan_update_endpoint` with the value `"json"`. They also need to
- * contain initial values for all fields that subscribing processes will expect
+ * contain initial values for all fields that subscribing stages will expect
  * on an update.
  *
  * Example:
@@ -27,53 +27,53 @@ namespace kotekan {
  *         some_other_value: 1
  * ```
  *
- * In the config block of a process that wants to get updates of a specific
+ * In the config block of a stage that wants to get updates of a specific
  * updatable block, either a key "updatable_config" with the full path to the updatable
  * block as a value has to exist, or an object called "updatable_config" with
  * a list of all updatable config blocks.
  *
  * Example:
  * ```
- * my_process:
+ * my_stage:
  *     updatable_config: "/foo/bar"
  * ```
  * or
  * ```
- * my_process:
+ * my_stage:
  *     updatable_config:
  *         bar: "/foo/bar"
  *         fu: "/foo/fu"
  * ```
  *
- * Every process that subscribes to this update endpoint by calling
+ * Every stage that subscribes to this update endpoint by calling
  * ```
  * configUpdater config_updater = configUpdater::instance();
- * config_updater.subscribe(*this, std::bind(&my_process::my_callback, this, _1));
+ * config_updater.subscribe(*this, std::bind(&my_stage::my_callback, this, _1));
  * ```
  * or
  * ```
  * std::map<std::string, std::function<bool(json &)> callback_map(2);
  *
- * callbacks.insert ("bar", std::bind(&my_process::my_bar_callback, this, _1));
+ * callbacks.insert ("bar", std::bind(&my_stage::my_bar_callback, this, _1));
  *
- * callbacks.insert ("fu", std::bind(&my_process::my_fu_callback, this, _1));
+ * callbacks.insert ("fu", std::bind(&my_stage::my_fu_callback, this, _1));
  *
  * configUpdater::instance().subscribe(*this, callback_map);
  * ```
  * will receive an initial update on each callback function with the initial
  * values defined in the config file (in the first example
  * `{"some_value": 0, some_other_value: 1}`).
- * That's why the process must be ready to receive updates **before** it
+ * That's why the stage must be ready to receive updates **before** it
  * subscribes.
  *
  * All and only the variables defined in the updatable config block in the
- * config file are guaranteed to be in the json block passed to the processes
+ * config file are guaranteed to be in the json block passed to the stage
  * callback function.
- * It is up to the process, though, to check the data types, sizes and
+ * It is up to the stage, though, to check the data types, sizes and
  * the actual values in the callback function and return `false` if anything
  * is wrong.
  *
- * The process must be ready to receive updates **before** it subscribes and it
+ * The stage must be ready to receive updates **before** it subscribes and it
  * has to apply save threading principles.
  */
 
@@ -110,11 +110,11 @@ public:
      *
      * The callback function has to return True on success and False
      * otherwise.
-     * The block of the calling process in the configuration file should have
+     * The block of the calling stage in the configuration file should have
      * a key named "updatable_block" that defines the full path to the
      * updatable block.
      *
-     * @param subscriber Reference to the subscribing process.
+     * @param subscriber Reference to the subscribing stage.
      * @param callback   Callback function for attribute updates.
      */
     void subscribe(const Stage* subscriber, std::function<bool(json&)> callback);
@@ -124,12 +124,12 @@ public:
      *
      * The callback functions have to return True on success and False
      * otherwise.
-     * The block of the calling process in the configuration file should have
+     * The block of the calling stage in the configuration file should have
      * an object named "updatable_block" with values that define the full
      * path to an updatable block, each. The names in the callbacks map refer
      * to the names of these values.
      *
-     * @param subscriber Reference to the subscribing process.
+     * @param subscriber Reference to the subscribing stage.
      * @param callbacks  Map of value names and callback functions.
      */
     void subscribe(const Stage* subscriber,
