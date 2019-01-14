@@ -457,7 +457,7 @@ class ReadRawBuffer(InputBuffer):
         self.process_block = {process_name: process_config}
 
 
-class KotekanProcessTester(KotekanRunner):
+class KotekanStageTester(KotekanRunner):
     """Construct a test around a single Kotekan process.
 
     This sets up a Kotekan run to test a specific process by connecting
@@ -552,7 +552,7 @@ class KotekanProcessTester(KotekanRunner):
             process_block.update(noise_block)
             buffer_block.update(noise_buffer)
 
-        super(KotekanProcessTester, self).__init__(buffer_block, process_block,
+        super(KotekanStageTester, self).__init__(buffer_block, process_block,
                                                    global_config, rest_commands)
 
 

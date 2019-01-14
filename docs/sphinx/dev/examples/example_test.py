@@ -25,8 +25,8 @@ def data(tmpdir_factory):
     # DumpVisBuffer can be used to dump data for testing
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    # KotekanProcessTester is used to run kotekan with your config
-    test = runner.KotekanProcessTester(
+    # KotekanStageTester is used to run kotekan with your config
+    test = runner.KotekanStageTester(
         'processUnderTest', {},
         fakevis_buffer,
         dump_buffer,

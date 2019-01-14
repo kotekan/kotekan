@@ -38,7 +38,7 @@ def written_data_base(outdir, process_extra=None, root_extra=None):
     if process_extra is not None:
         process_params.update(process_extra)
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'visWriter', process_params,
         fakevis_buffer,
         None,

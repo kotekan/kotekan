@@ -53,7 +53,7 @@ def accumulate_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'visAccumulate', {'num_ev': 4},
         runner.FakeGPUBuffer(
             mode='accumulate',
@@ -76,7 +76,7 @@ def gaussian_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'visAccumulate', {'num_ev': 4},
         runner.FakeGPUBuffer(
             mode='gaussian',
@@ -99,7 +99,7 @@ def lostsamples_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'visAccumulate', {'num_ev': 4},
         runner.FakeGPUBuffer(
             mode='lostsamples',
@@ -122,7 +122,7 @@ def time_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'visAccumulate', {'num_ev': 4},
         runner.FakeGPUBuffer(
             mode='accumulate',
@@ -179,7 +179,7 @@ def pulsar_data(tmpdir_factory):
         }
     })
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'visAccumulate', acc_par,
         runner.FakeGPUBuffer(**pulsar_params),
         dump_buffer,

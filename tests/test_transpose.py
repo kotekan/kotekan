@@ -78,7 +78,7 @@ def transpose(tmpdir_factory):
     params = writer_params.copy()
     params['root_path'] = tmpdir
 
-    writer = runner.KotekanProcessTester(
+    writer = runner.KotekanStageTester(
         'visWriter',
         {'node_mode': False, 'write_ev': True,
         'file_type': 'raw'},
@@ -105,7 +105,7 @@ def transpose(tmpdir_factory):
     # Tranpose and write data
     raw_buf = runner.ReadRawBuffer(infile, writer_params['chunk_size'])
     outfile = tmpdir + "/transposed"
-    transposer = runner.KotekanProcessTester(
+    transposer = runner.KotekanStageTester(
         'visTranspose',
         {'outfile': outfile, 'infile': infile,
             'chunk_size': writer_params['chunk_size']},
@@ -212,7 +212,7 @@ def transpose_stack(tmpdir_factory):
     params = stack_params.copy()
     params['root_path'] = tmpdir
 
-    writer = runner.KotekanProcessTester(
+    writer = runner.KotekanStageTester(
         'visWriter',
         {
             'node_mode': False, 'write_ev': True,
@@ -233,7 +233,7 @@ def transpose_stack(tmpdir_factory):
     # Tranpose and write data
     raw_buf = runner.ReadRawBuffer(infile, stack_params['chunk_size'])
     outfile = tmpdir + "/transposed"
-    transposer = runner.KotekanProcessTester(
+    transposer = runner.KotekanStageTester(
         'visTranspose',
         {
             'outfile': outfile, 'infile': infile,

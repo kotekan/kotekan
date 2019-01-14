@@ -39,7 +39,7 @@ def vis_data(tmpdir_factory):
 
     out_dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'visTruncate', trunc_params,
         buffers_in = fakevis_buffer,
         buffers_out = out_dump_buffer,
@@ -73,7 +73,7 @@ def vis_data_zero_weights(tmpdir_factory):
 
     out_dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'visTruncate', trunc_params,
         buffers_in = fakevis_buffer,
         buffers_out = out_dump_buffer,

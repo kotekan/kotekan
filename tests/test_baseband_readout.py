@@ -68,7 +68,7 @@ def run_baseband(tdir_factory, params=None, rest_commands=None):
             type=p['type'],
             )
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'basebandReadout', {},
         fake_buffer,
         None,

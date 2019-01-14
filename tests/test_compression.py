@@ -67,7 +67,7 @@ def diagonal_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'baselineCompression', diag_process_params,
         fakevis_buffer,
         dump_buffer,
@@ -92,7 +92,7 @@ def chime_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'baselineCompression', chime_process_params,
         fakevis_buffer,
         dump_buffer,
