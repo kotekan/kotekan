@@ -180,7 +180,7 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
 }
 
 
-basebandReadoutManager& basebandApiManager::register_readout_process(const uint32_t freq_id) {
+basebandReadoutManager& basebandApiManager::register_readout_stage(const uint32_t freq_id) {
     return readout_registry[freq_id];
 }
 

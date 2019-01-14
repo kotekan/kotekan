@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief Manager for tracking baseband readout processes and handling REST API
+ * @brief Manager for tracking baseband readout stages and handling REST API
  *  - basebandApiManager
  */
 
@@ -34,7 +34,7 @@ void to_json(json& j, const basebandDumpStatus& s);
  * using the @c register_with_server() function.
  *
  * This class is a singleton, and can be accessed with @c instance(). The normal
- * use is for the @c basebandReadout process to call @get_next_request in a
+ * use is for the @c basebandReadout stage to call @get_next_request in a
  * loop, and when the result is non-null, use the returned @c basebandDumpStatus
  * to keep track of the data written so far. Once the writing of the data file
  * is completed, the ``state`` of the request should be set to ``DONE``.
@@ -153,12 +153,12 @@ public:
     void handle_request_callback(connectionInstance& conn, json& request);
 
     /**
-     * @brief Register a readout process for specified frequency
+     * @brief Register a readout stage for specified frequency
      *
      * @return a shared_ptr to the mutex used to guard access to the baseband
      * dump currently in progress.
      */
-    basebandReadoutManager& register_readout_process(const uint32_t freq_id);
+    basebandReadoutManager& register_readout_stage(const uint32_t freq_id);
 
 private:
     /// Constructor, not used directly
@@ -217,7 +217,7 @@ private:
 
     /**
      * @class basebandReadoutRegistry
-     * @brief encapsulation of a lock-protected map to registered readout processes
+     * @brief encapsulation of a lock-protected map to registered readout stage
      */
     class basebandReadoutRegistry {
     public:
@@ -231,7 +231,7 @@ private:
         std::map<uint32_t, basebandReadoutManager> readout_map;
     };
 
-    /// Map of registered readout processes, indexed by `freq_id`
+    /// Map of registered readout stages, indexed by `freq_id`
     basebandReadoutRegistry readout_registry;
 };
 
