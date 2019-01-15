@@ -1,5 +1,6 @@
 #include "ringmap.hpp"
 #include "visBuffer.hpp"
+#include "datasetManager.hpp"
 #include <complex>
 
 using namespace std::complex_literals;
@@ -24,8 +25,6 @@ mapMaker::mapMaker(Config &config,
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
-    freq_id = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
-
     if (config.exists(unique_name, "exclude_inputs")) {
         excl_input = config.get<std::vector<uint32_t>>(unique_name,
                                                     "exclude_inputs");
@@ -35,7 +34,7 @@ mapMaker::mapMaker(Config &config,
 
 void mapMaker::main_thread() {
 
-    if (!setup())
+    if (!setup(0))
         return;
 
     unsigned int input_frame_id = 0;
@@ -63,13 +62,16 @@ nlohmann::json mapMaker::rest_callback(connectionInstance& conn, nlohmann::json&
     // make sure to lock the map arrays
 }
 
-bool mapMaker::setup() {
+bool mapMaker::setup(uint frame_id) {
 
     // Wait for the input buffer to be filled with data
-    if(wait_for_full_frame(in_buf, unique_name.c_str(), 0) == nullptr)
+    if(wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr)
         return false;
 
-    // read products and frequencies from dataset manager
+    auto frame = visFrameView(in_buf, frame_id);
+    ds_id = frame.dataset_id;
+
+    change_dataset_state();
 
     num_pix = 512; // # unique NS baselines
     num_time = 24. * 360. / 10.; // TODO: can I get integration time from frame?
@@ -88,6 +90,50 @@ bool mapMaker::setup() {
         map[p].reserve(num_pix*num_time);
         wgt_map[p].reserve(num_pix*num_time);
     }
+}
+
+void mapMaker::change_dataset_state() {
+
+    auto& dm = datasetManager::instance();
+
+    // Get the frequency spec to determine the freq_ids expected at this Writer.
+    auto fstate = dm.dataset_state<freqState>(ds_id);
+    if (fstate == nullptr)
+        throw std::runtime_error("Could not find freqState for " \
+                                 "incoming dataset with ID "
+                                 + std::to_string(ds_id) + ".");
+
+    freq = fstate->get_freqs();
+
+    // Get the product spec and (if available) the stackState to determine the
+    // number of vis entries we are expecting
+    auto pstate = dm.dataset_state<prodState>(ds_id);
+    auto sstate = dm.dataset_state<stackState>(ds_id);
+    auto mstate = dm.dataset_state<metadataState>(ds_id);
+    if (pstate == nullptr || sstate == nullptr || mstate == nullptr)
+        throw std::runtime_error("Could not find all dataset states for " \
+                                 "incoming dataset with ID "
+                                 + std::to_string(ds_id) + ".\n" \
+                                 "One of them is a nullptr (0): prod "
+                                 + std::to_string(pstate != nullptr)
+                                 + ", stack "
+                                 + std::to_string(sstate != nullptr)
+                                 + ", metadata "
+                                 + std::to_string(mstate != nullptr));
+
+    // compare git commit hashes
+    // TODO: enforce and crash here if build type is Release?
+    //if (mstate->get_git_version_tag() != std::string(get_git_commit_hash())) {
+    //    INFO("Git version tags don't match: dataset %zu has tag %s, while "\
+    //         "the local git version tag is %s", ds_id,
+    //         mstate->get_git_version_tag().c_str(),
+    //         get_git_commit_hash());
+    //}
+
+    if (!sstate.is_stacked())
+        throw std::runtime_error("MapMaker requires visibilities stacked ")
+    num_stack = sstate->is_stacked() ?
+            sstate->get_num_stack() : pstate->get_prods().size();
 }
 
 void mapMaker::gen_matrices() {

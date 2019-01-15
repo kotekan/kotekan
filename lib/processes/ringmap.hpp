@@ -26,7 +26,9 @@ public:
 
 private:
 
-    bool setup();
+    bool setup(uint frame_id);
+
+    void change_dataset_state();
 
     void gen_matrices();
 
@@ -44,12 +46,27 @@ private:
     uint8_t num_pol;
     uint32_t num_stack;
 
+    dset_id_t ds_id;
     std::vector<uint32_t> excl_input;
-    std::vector<uint32_t> freq_id;
+    std::vector<std::pair<uint32_t, freq_ctype>> freq;
     std::vector<prod_ctype> prod;
+
+    // Map buffer file
+    void * map_file;
 
     // Buffer to read from
     Buffer* in_buf;
+};
+
+
+class redundantStack : public KotekanProcess {
+
+public:
+
+    redundantStack(Config &config,
+                   const string& unique_name,
+                   bufferContainer &buffer_container);
+
 };
 
 #endif
