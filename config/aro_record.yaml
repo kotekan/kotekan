@@ -57,12 +57,12 @@ power_buffer:
     frame_size: (samples_per_data_set/power_integration_length) * (num_freq + 1) * num_elements * sizeof_float
     metadata_pool: main_pool
 
-# Processes
+# Stages
 
 # The core mapping here is setup for a 6 core CPU with 12 threads (vcores)
 # and setup to use the first 4 real cores (8 vcores)
 dpdk:
-    kotekan_process: dpdkCore
+    kotekan_stage: dpdkCore
     # Format is index = lcore, value = cpu core
     lcore_cpu_map: [0,1,2,3,6,7,8,9]
     master_lcore_cpu: 2
@@ -94,12 +94,12 @@ dpdk:
     lost_samples_buf: lost_samples_buffer
 
 zero_samples:
-    kotekan_process: invalidateVDIFframes
+    kotekan_stage: invalidateVDIFframes
     out_buf: vdif_buffer
     lost_samples_buf: lost_samples_buffer
 
 raw_capture:
-   kotekan_process: nDiskFileWrite
+   kotekan_stage: nDiskFileWrite
 #################################
 # THIS IS THE PLACE TO EDIT!!!  #
 #################################
@@ -114,10 +114,10 @@ raw_capture:
    disk_set: E
    in_buf: vdif_buffer
 
-# These next two processes are used for live viewing of the data
+# These next two stages are used for live viewing of the data
 # they are not required for saving data.
 power_integration:
-   kotekan_process: computeDualpolPower
+   kotekan_stage: computeDualpolPower
    vdif_in_buf: vdif_buffer
    power_out_buf: power_buffer
 
@@ -126,17 +126,17 @@ power_stream:
    sample_bw: 200
    destination_protocol: TCP
    stream_1:
-      kotekan_process: networkPowerStream
+      kotekan_stage: networkPowerStream
       in_buf: power_buffer
       destination_port: 2054
       destination_ip: 127.0.0.1
    stream_2:
-      kotekan_process: networkPowerStream
+      kotekan_stage: networkPowerStream
       in_buf: power_buffer
       destination_port: 2055
       destination_ip: 127.0.0.1
    stream_boris:
-      kotekan_process: networkPowerStream
+      kotekan_stage: networkPowerStream
       in_buf: power_buffer
       destination_port: 2055
       destination_ip: 10.72.0.2

@@ -62,9 +62,9 @@ rfi_buffers:
     rfi_buffer_0:
         kotekan_buffer: standard
 
-#Processes
+#Stage
 file_read:
-    kotekan_process: nDiskFileRead
+    kotekan_stage: nDiskFileRead
     out_buf: vdif_buffer_0
     disk_base: /mnt/
     disk_set: D
@@ -72,17 +72,17 @@ file_read:
     starting_file_index: 0
 
 power_integration:
-   kotekan_process: computeDualpolPower
+   kotekan_stage: computeDualpolPower
    vdif_in_buf: vdif_buffer_0
    power_out_buf: power_buffer_0
 
 rfi_vdif:
-   kotekan_process: rfiAVXVDIF
+   kotekan_stage: rfiAVXVDIF
    vdif_in: vdif_buffer_0
    rfi_out: rfi_buffer_0   
 
 power_stream:
-   kotekan_process: networkPowerStream
+   kotekan_stage: networkPowerStream
    in_buf: power_buffer_0
    freq: 600
    sample_bw: 200
@@ -91,7 +91,7 @@ power_stream:
    destination_protocol: TCP
 
 rfi_broadcast:
-   kotekan_process: rfiBroadcast
+   kotekan_stage: rfiBroadcast
    rfi_in: rfi_buffer_0
    replay: true
    destination_port: 41215

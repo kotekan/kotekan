@@ -40,7 +40,7 @@ input_buf:
 sample_bw: 10. #MHz, must be float?
 freq: 1421.    #MHz
 airspy_input:
-  kotekan_process: airspyInput
+  kotekan_stage: airspyInput
   out_buf: input_buf
   gain_lna: 10 #0-14
   gain_mix: 10 #0-15
@@ -59,7 +59,7 @@ spectrum_output:
     frame_size: samples_per_data_set * sizeof_float # * 2 for complex / 2 for half-size
 
   fengine:
-    kotekan_process: fftwEngine
+    kotekan_stage: fftwEngine
     in_buf: input_buf
     out_buf: post_fengine_buf
 
@@ -70,12 +70,12 @@ spectrum_output:
     frame_size: ( spectrum_length + one ) * sizeof_float
 
   xengine:
-    kotekan_process: simpleAutocorr
+    kotekan_stage: simpleAutocorr
     in_buf: post_fengine_buf
     out_buf: post_corr_buf
 
   power_stream:
-    kotekan_process: networkPowerStream
+    kotekan_stage: networkPowerStream
     num_freq: 1024
     samples_per_data_set: 64
     destination_port: 23401

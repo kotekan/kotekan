@@ -43,7 +43,7 @@ To configure nDiskFileRead for rfi removal, example config:
 .. code-block:: YAML
 
     replay:
-      kotekan_process: nDiskFileRead
+      kotekan_stage: nDiskFileRead
       num_disks: 10
       disk_base: /mnt/
       disk_set: A
@@ -67,7 +67,7 @@ To configure computeDualpolPower for rfi removal, example config:
 .. code-block:: YAML
 
     power:
-      kotekan_process: computeDualpolPower
+      kotekan_stage: computeDualpolPower
       rfi_removal: True #(RFI ON/OFF)
       rfi_sensitivity: 3 #(The sensitivity of the kurtosis threshold, lower is more sensitive)
       rfi_backfill: False #(Dumb Backfill of zeroed data, not recommended for use unless you need a pretty picture)
