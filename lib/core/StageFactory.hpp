@@ -18,18 +18,13 @@
 #include <map>
 #include <string>
 
-// Name space includes.
-using json = nlohmann::json;
-using std::map;
-using std::string;
-
 namespace kotekan {
 
 class Stage;
 
 class StageMaker {
 public:
-    virtual Stage* create(Config& config, const string& unique_name,
+    virtual Stage* create(Config& config, const std::string& unique_name,
                           bufferContainer& host_buffers) const = 0;
 };
 
@@ -43,15 +38,16 @@ public:
     // Creates all the stages listed in the config file, and returns them
     // as a vector of Stage pointers.
     // This should only be called once.
-    map<string, Stage*> build_stages();
+    std::map<std::string, Stage*> build_stages();
 
 private:
-    void build_from_tree(map<string, Stage*>& stages, json& config_tree, const string& path);
+    void build_from_tree(std::map<std::string, Stage*>& stages, nlohmann::json& config_tree,
+                         const std::string& path);
 
     Config& config;
     bufferContainer& buffer_container;
 
-    Stage* create(const string& name, Config& config, const string& unique_name,
+    Stage* create(const std::string& name, Config& config, const std::string& unique_name,
                   bufferContainer& host_buffers) const;
 };
 
@@ -75,7 +71,7 @@ public:
     StageMakerTemplate(const std::string& key) {
         StageFactoryRegistry::kotekan_register_stage(key, this);
     }
-    virtual Stage* create(Config& config, const string& unique_name,
+    virtual Stage* create(Config& config, const std::string& unique_name,
                           bufferContainer& host_buffers) const override {
         return new T(config, unique_name, host_buffers);
     }

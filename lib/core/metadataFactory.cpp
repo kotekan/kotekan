@@ -5,6 +5,9 @@
 #include "metadata.h"
 #include "visBuffer.hpp"
 
+using json = nlohmann::json;
+using std::map;
+using std::string;
 
 namespace kotekan {
 

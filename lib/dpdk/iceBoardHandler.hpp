@@ -15,10 +15,6 @@
 
 #include <mutex>
 
-using kotekan::bufferContainer;
-using kotekan::Config;
-using kotekan::prometheusMetrics;
-
 /**
  * @brief Abstract class which contains things which are common to processing
  *        packets from the McGill ICE FPGA boards.
@@ -62,8 +58,8 @@ using kotekan::prometheusMetrics;
 class iceBoardHandler : public dpdkRXhandler {
 public:
     /// Default constructor
-    iceBoardHandler(Config& config, const std::string& unique_name,
-                    bufferContainer& buffer_container, int port);
+    iceBoardHandler(kotekan::Config& config, const std::string& unique_name,
+                    kotekan::bufferContainer& buffer_container, int port);
 
     /// Same abstract function as in @c dpdkRXhandler
     virtual int handle_packet(struct rte_mbuf* mbuf) = 0;
@@ -332,8 +328,8 @@ protected:
     int32_t num_local_freq;
 };
 
-inline iceBoardHandler::iceBoardHandler(Config& config, const std::string& unique_name,
-                                        bufferContainer& buffer_container, int port) :
+inline iceBoardHandler::iceBoardHandler(kotekan::Config& config, const std::string& unique_name,
+                                        kotekan::bufferContainer& buffer_container, int port) :
     dpdkRXhandler(config, unique_name, buffer_container, port) {
 
     sample_size = config.get_default<uint32_t>(unique_name, "sample_size", 2048);
@@ -404,7 +400,7 @@ json iceBoardHandler::get_json_port_info() {
 }
 
 inline void iceBoardHandler::update_stats() {
-    prometheusMetrics& metrics = prometheusMetrics::instance();
+    kotekan::prometheusMetrics& metrics = kotekan::prometheusMetrics::instance();
 
     std::string tags = "port=\"" + std::to_string(port) + "\"";
 

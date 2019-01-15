@@ -103,8 +103,8 @@ protected:
     const int64_t num_elements = 2; // This is also the number of threads.
 };
 
-iceBoardVDIF::iceBoardVDIF(Config& config, const std::string& unique_name,
-                           bufferContainer& buffer_container, int port) :
+iceBoardVDIF::iceBoardVDIF(kotekan::Config& config, const std::string& unique_name,
+                           kotekan::bufferContainer& buffer_container, int port) :
     iceBoardHandler(config, unique_name, buffer_container, port) {
 
     out_buf = buffer_container.get_buffer(config.get<std::string>(unique_name, "out_buf"));
