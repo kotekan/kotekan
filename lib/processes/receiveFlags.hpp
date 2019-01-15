@@ -15,7 +15,7 @@
  * @class receiveFlags
  * @brief Receives input flags and adds them to the output buffer.
  *
- * This process registeres as a subscriber to an updatable config block. The
+ * This stage registeres as a subscriber to an updatable config block. The
  * full name of the block should be defined in the value <updatable_block>
  *
  * @note If there are no other consumers on the input buffer it will be able to

@@ -16,7 +16,7 @@ bufferFactory::~bufferFactory() {}
 map<string, struct Buffer*> bufferFactory::build_buffers() {
     map<string, struct Buffer*> buffers;
 
-    // Start parsing tree, put the stages in the "pools" vector
+    // Start parsing tree, put the buffers in the "pools" vector
     build_from_tree(buffers, config.get_full_config_json(), "");
 
     return buffers;
@@ -31,7 +31,7 @@ void bufferFactory::build_from_tree(map<string, struct Buffer*>& buffers, json& 
             continue;
         }
 
-        // Check if this is a kotekan_process block, and if so create the stage.
+        // Check if this is a kotekan_buffer block, and if so create the buffer.
         string buffer_type = it.value().value("kotekan_buffer", "none");
         if (buffer_type != "none") {
             string name = it.key();
@@ -43,7 +43,7 @@ void bufferFactory::build_from_tree(map<string, struct Buffer*>& buffers, json& 
         }
 
         // Recursive part.
-        // This is a section/scope not a stage block.
+        // This is a section/scope not a buffer block.
         build_from_tree(buffers, it.value(), path + "/" + it.key());
     }
 }

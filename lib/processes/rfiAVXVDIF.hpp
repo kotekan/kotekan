@@ -15,7 +15,7 @@
  * @brief Consumer ``kotekan::Stage`` which consumer a buffer filled with VDIF data and
  * produces a buffer filled with spectral kurtosis estimates.
  *
- * This process read input VDIF data and computes spectral kurtosis estimates at a variable time
+ * This stage read input VDIF data and computes spectral kurtosis estimates at a variable time
  * cadence. The estimates are computed through AVX2 intrinsics. The data is read in sections of 64
  * 4-bit numbers before the power and square power are computed and stored. After a certain amount
  * of time, the integrated values are turned into a single spectral kurtosis estimate and added to

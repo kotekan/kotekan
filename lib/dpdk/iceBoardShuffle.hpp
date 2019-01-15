@@ -295,7 +295,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
         // We take the stream ID only from the first pair of crates,
         // to avoid overwriting it on different ports.
-        // This makes the stream ID unique for down stream processes.
+        // This makes the stream ID unique for down stream stages.
         if (port_stream_id.crate_id / 2 == 0) {
             stream_id_t tmp_stream_id = port_stream_id;
             // Set the unused flag to store the post shuffle freq bin number.
@@ -336,7 +336,7 @@ inline bool iceBoardShuffle::handle_lost_samples(int64_t lost_samples) {
             lost_sample_location = 0;
         }
 
-        // This sets the flag to zero this sample with the zeroSamples process.
+        // This sets the flag to zero this sample with the zeroSamples stage.
         // NOTE: I thought about using a bit field for this array, but doing so
         // opens up a huge number of problems getting the bit set atomically in
         // a way that's also efficent.  By using a byte array with values of either

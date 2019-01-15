@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief Process to watch a buffer or buffers and exit the system if it doesn't
+ * @brief Stage to watch a buffer or buffers and exit the system if it doesn't
  *        get new data within a set timeout
  *  - monitorBuffer : public kotekan::Stage
  */

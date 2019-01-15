@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief Process to receive VDIF data from a UDP stream.
+ * @brief Stage to receive VDIF data from a UDP stream.
  *  - recvSingleDishVDIF : public kotekan::Stage
  */
 
@@ -17,9 +17,9 @@
 
 /**
  * @class recvSingleDishVDIF
- * @brief Process to transmit VDIF data as a UDP stream.
+ * @brief Stage to transmit VDIF data as a UDP stream.
  *
- * This is a producer process which gathers VDIF-formatted data from a UDP stream and
+ * This is a producer stage which gathers VDIF-formatted data from a UDP stream and
  * packs it into a target buffer.
  *
  * @par Buffers

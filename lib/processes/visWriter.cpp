@@ -54,7 +54,7 @@ visWriter::visWriter(Config& config, const string& unique_name, bufferContainer&
     acq_timeout = config.get_default<double>(unique_name, "acq_timeout", 300);
     ignore_version = config.get_default<bool>(unique_name, "ignore_version", false);
 
-    // Get the list of buffers that this process shoud connect to
+    // Get the list of buffers that this stage shoud connect to
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
@@ -214,7 +214,7 @@ void visWriter::get_dataset_state(dset_id_t ds_id) {
 
     if (pstate == nullptr || mstate == nullptr || fstate == nullptr) {
         ERROR("Set to not use dataset_broker and couldn't find "
-              "ancestor of dataset 0x%" PRIx64 ". Make sure there is a process"
+              "ancestor of dataset 0x%" PRIx64 ". Make sure there is a stage"
               " upstream in the config, that the dataset states.\nExiting...",
               ds_id);
         ERROR("One of them is a nullptr (0): prodState %d, metadataState %d, "

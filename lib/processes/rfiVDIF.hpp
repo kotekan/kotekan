@@ -1,6 +1,6 @@
 /*
  * @file rfiVDIF.hpp
- * @brief Contains a general VDIF kurtosis estimator kotekan process.
+ * @brief Contains a general VDIF kurtosis estimator kotekan stage.
  * - rfiVDIF : public kotekan::Stage
  */
 #ifndef VDIF_RFI_H
@@ -15,18 +15,18 @@
  * @brief Producer and consumer ``kotekan::Stage`` which consumes input VDIF data and
  * computes spectral kurtosis estimates.
  *
- * This process is a spectral kurtosis estimator that works on any general kotekan buffer containing
- * VDIF data. This process move block by block through the VDIF data while computing and integrating
- * power estimates. Once the desired integration length is over, the process does one of two things
+ * This stage is a spectral kurtosis estimator that works on any general kotekan buffer containing
+ * VDIF data. This stage move block by block through the VDIF data while computing and integrating
+ * power estimates. Once the desired integration length is over, the stage does one of two things
  * (as specified by the user):
  *
- * 1) The process combines the sums across the element axis and kurtosis values are calculated on
+ * 1) The stage combines the sums across the element axis and kurtosis values are calculated on
  *the new sum
  *
- * 2) The process computes kurtosis values for each frequency-element pair
+ * 2) The stage computes kurtosis values for each frequency-element pair
  *
  * There are advantages to both options, however the first is currently heavily favoured by other
- *processes.
+ * stages.
  *
  * @par Buffers
  * @buffer vdif_in The kotekan buffer which conatins input VDIF data

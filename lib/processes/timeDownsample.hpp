@@ -14,7 +14,7 @@
  * @brief Average a set number of frames on a single-frequency stream to effectively
  *        reduce the cadence of the acquisition.
  *
- * This process accumulates and averages a specified number of incoming frames on a
+ * This stage accumulates and averages a specified number of incoming frames on a
  * single-frequency stream to reduce the cadence of the acquisition. Visibilities,
  * eigenvectors, eigenvalues, eigen-rms are averaged. Inverse weights are averaged
  * and divided by number of combined frames to track reduction in variance. Metadata
@@ -32,7 +32,7 @@
  * @conf  num_samples       Int. The number of time frames to average.
  *
  * @warning There is not mechanism in place to verify or enforce that frames being
- *          averaged are concurrent in time. Since this process is run for a single
+ *          averaged are concurrent in time. Since this stage is run for a single
  *          frequency stream, there is no guarantee that independent streams will have
  *          consistent timestamps.
  *
@@ -46,7 +46,7 @@ public:
     timeDownsample(kotekan::Config& config, const string& unique_name,
                    kotekan::bufferContainer& buffer_container);
 
-    /// Main loop for the process
+    /// Main loop for the stage
     void main_thread() override;
 
 private:

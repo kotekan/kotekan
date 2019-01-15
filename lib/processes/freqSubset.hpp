@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Process for subsetting visibility data by frequency.
+@brief Stage for subsetting visibility data by frequency.
 - freqSubset : public kotekan::Stage
 *****************************************/
 #ifndef FREQ_SUBSET_HPP
@@ -45,7 +45,7 @@ public:
     freqSubset(kotekan::Config& config, const string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
-    /// Main loop for the process
+    /// Main loop for the stage
     void main_thread() override;
 
 private:

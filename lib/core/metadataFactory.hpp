@@ -19,8 +19,8 @@ namespace kotekan {
 class metadataFactory {
 
 public:
-    // One StageFactory should be created for each set of config and buffer_container
-    metadataFactory(Config& config);
+    // One metadataFactory should be created for each set of config and buffer_container
+    metadataFactory(kotekan::Config& config);
     ~metadataFactory();
 
     map<string, struct metadataPool*> build_pools();

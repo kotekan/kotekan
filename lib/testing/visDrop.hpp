@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Process that drops frames.
+@brief Stage that drops frames.
 - visDrop : public Stage
 *****************************************/
 #ifndef VISDROP_HPP
@@ -31,7 +31,7 @@ public:
     visDrop(kotekan::Config& config, const string& unique_name,
             kotekan::bufferContainer& buffer_container);
 
-    // Main loop for the process
+    // Main loop for the stage
     void main_thread() override;
 
 private:

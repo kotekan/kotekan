@@ -40,8 +40,8 @@ class connInstance;
  * @brief Receives frames and metadata from other networked kotekan buffers,
  *        and puts them into a local kotekan buffer.
  *
- * This process takes frames from one more more sources and places them into the
- * @c buf for use by other local consumer processes. There is no guarantee regarding
+ * This stage takes frames from one more more sources and places them into the
+ * @c buf for use by other local consumer stages. There is no guarantee regarding
  * the order the frames will arrvive in.  However all frames will be valid, which is to
  * say they will contain the full set of data sent by the client, or they will not be
  * added to the output buffer.
@@ -195,7 +195,7 @@ struct acceptArgs {
     /// the frame ID to use (corrdinate between workers)
     bufferRecv* buffer_recv;
 
-    /// Just copy the unique_name of the process
+    /// Just copy the unique_name of the stage
     string unique_name;
 
     /// The log level to use.
@@ -249,13 +249,13 @@ public:
      */
     void close_instance();
 
-    /// The name of the parient kotekan_process
+    /// The name of the parient kotekan_stage
     string producer_name;
 
     /// The kotekan buffer to transfer data into
     struct Buffer* buf;
 
-    /// Pointer to the parient kotekan_process which owns this instance
+    /// Pointer to the parient kotekan_stage which owns this instance
     bufferRecv* buffer_recv;
 
     /// The client IP address for this instance

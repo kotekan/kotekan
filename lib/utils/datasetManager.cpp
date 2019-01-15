@@ -139,7 +139,7 @@ dset_id_t datasetManager::add_dataset(state_id_t state) {
     try {
         t = _states.at(state).get();
     } catch (std::exception& e) {
-        // This must be a bug in the calling process...
+        // This must be a bug in the calling stage...
         ERROR("datasetManager: Failure registering root dataset : state "
               "0x%" PRIx64 " not found: %s",
               state, e.what());
@@ -156,7 +156,7 @@ dset_id_t datasetManager::add_dataset(dset_id_t base_dset, state_id_t state) {
         std::lock_guard<std::mutex> slck(_lock_states);
         t = _states.at(state).get();
     } catch (std::exception& e) {
-        // This must be a bug in the calling process...
+        // This must be a bug in the calling stage...
         ERROR("datasetManager: Failure registering dataset : state "
               "0x%" PRIx64 " not found (base dataset ID: 0x%" PRIx64 "): %s",
               state, base_dset, e.what());

@@ -18,7 +18,7 @@
  * @class applyGains
  * @brief Receives gains and apply them to the output buffer.
  *
- * This process registers as a subscriber to an updatable config block. The
+ * This stage registers as a subscriber to an updatable config block. The
  * full name of the block should be defined in the value <updatable_block>
  *
  * @par Buffers
@@ -30,13 +30,12 @@
  *         @buffer_metadata visMetadata
  *
  * @conf   num_elements     Int.    The number of elements (i.e. inputs) in the
- * correlator data.
+ *                                  correlator data.
  * @conf   updatable_block  String. The full name of the updatable_block that
- * will provide new flagging values (e.g. "/dynamic_block/gains").
- * @conf   gains_dir        String. The path to the directory holding the gains
- * file.
- * @conf   tcombine         Double. Time (in seconds) over which to combine old
- * and new gains to prevent discontinuities. Default is 5 minutes.
+ *                                  will provide new flagging values (e.g. "/dynamic_block/gains").
+ * @conf   gains_dir        String. The path to the directory holding the gains file.
+ * @conf   tcombine         Double. Time (in seconds) over which to combine old and new gains to
+ *                                  prevent discontinuities. Default is 5 minutes.
  * @conf   num_kept_updates Int.    The number of gain updates stored in a FIFO.
  * @conf   num_threads      Int.    Number of threads to run. Default is 1.
  *
@@ -65,7 +64,7 @@ public:
     applyGains(kotekan::Config& config, const string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
-    /// Main loop for the process
+    /// Main loop for the stage
     void main_thread() override;
 
     /// Callback function to receive updates on timestamps from configUpdater

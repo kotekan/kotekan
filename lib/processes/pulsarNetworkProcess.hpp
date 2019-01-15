@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief Network transmission process for Pulsar obs
+ * @brief Network transmission stage for Pulsar obs
  *  - pulsarNetworkProcess : public kotekan::Stage
  */
 
@@ -17,10 +17,10 @@
 
 /**
  * @class pulsarNetworkProcess
- * @brief pulsarNetworkProcess Network transmission process for Pulsar obs
+ * @brief pulsarNetworkProcess Network transmission stage for Pulsar obs
  *
  *
- * This is an Kotekan process that collects packetized data from the pulsarPostProcess and
+ * This is an Kotekan stage that collects packetized data from the pulsarPostProcess and
  * transmits 10 beams from pulsarPostProcess to 10 links of pulsar backend.
  * pulsarNetworkProcess distributes the out going traffic to two VLANS (10.15 & 10.16 ) of single 1
  *Gig port. The total pulsar data rate is ~0.26 gbps. The node IP address is derived by parsing the

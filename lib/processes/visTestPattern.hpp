@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Process for comparing against an expected test pattern in the visBuffers.
+@brief Stage for comparing against an expected test pattern in the visBuffers.
 - visTestPattern : public kotekan::Stage
 *****************************************/
 #ifndef VISTESTPATTERN_HPP

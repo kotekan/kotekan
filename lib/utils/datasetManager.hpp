@@ -153,8 +153,8 @@ private:
  * reference to it.
  *
  * The datasetManager is used to manage the states of datasets that get passed
- * through kotekan processes.
- * A process in the kotekan pipeline may use the dataset ID found in an incoming
+ * through kotekan stages.
+ * A stage in the kotekan pipeline may use the dataset ID found in an incoming
  * frame to get a set of states from the datasetManager.
  *
  * To receive information about the inputs the datsets in the frames contain, it
@@ -164,12 +164,12 @@ private:
  * const std::vector<input_ctype>& inputs = input_state->get_inputs();
  * ```
  *
- * A process that changes the state of the dataset in the frames it processes
+ * A stage that changes the state of the dataset in the frames it processes
  * should inform the datasetManager by adding a new state and dataset.
- *  If a process is altering more than one type of dataset state, it can add
+ *  If a stage is altering more than one type of dataset state, it can add
  * `inner` states to the one it passes to the dataset manager.
  * The following adds an input state as well as a product state. The
- * process should then write `new_ds_id` to its outgoing frames.
+ * stage should then write `new_ds_id` to its outgoing frames.
  * ```
  * auto new_state = dm.add_state(std::make_unique<inputState>(
  *                              new_inputs, make_unique<prodState>(new_prods)));

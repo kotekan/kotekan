@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief A simple process to take an intensity stream and sum down.
+ * @brief A simple stage to take an intensity stream and sum down.
  *  - integratePowerStream : public kotekan::Stage
  */
 
@@ -17,7 +17,7 @@
 
 /**
  * @class integratePowerStream
- * @brief A simple process to take a @c radioPowerStream and sum down.
+ * @brief A simple stage to take a @c radioPowerStream and sum down.
  *
  * This is a simple signal processing block which takes power data from an input buffer,
  * integrates over time, and stuffs the results into an output buffer.
@@ -54,10 +54,10 @@ public:
 private:
     void tcpConnect();
 
-    /// Kotekan buffer which this process consumes from.
+    /// Kotekan buffer which this stage consumes from.
     /// Data should be packed with IntensityPacketHeader's.
     struct Buffer* in_buf;
-    /// Kotekan buffer which this process produces into.
+    /// Kotekan buffer which this stage produces into.
     struct Buffer* out_buf;
 
     /// Number of frequencies in the buffer

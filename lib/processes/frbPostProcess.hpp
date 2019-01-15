@@ -27,10 +27,10 @@ using std::vector;
  * unsigned ints (i.e., 0-255). The scaling is determined on a per-packet basis,
  * using AVX2 instructions to calculate and apply those parameters.
  *
- * The process can also optionally produce a sum-of-all-beams "incoherent" beam,
+ * This stage can also optionally produce a sum-of-all-beams "incoherent" beam,
  * which will be stored in the 0th beam position in output packets.
  *
- * This process depends on ``AVX2`` intrinsics.
+ * This stage depends on ``AVX2`` intrinsics.
  *
  * @par Buffers
  * @buffer in_buf_0 Kotekan buffer feeding data from GPU0.

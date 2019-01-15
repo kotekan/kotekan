@@ -14,7 +14,7 @@
  * An example config:
  *
  * buffer_switch:
- * kotekan_process: bufferSwitch
+ * kotekan_stage: bufferSwitch
  * in_bufs:
  *   - network_data_0: gpu_data_buffer_0
  *   - network_data_1: gpu_data_buffer_1

@@ -96,7 +96,7 @@ private:
  * @brief Consumer ``kotekan::Stage`` that extracts eigenvectors etc from a ``visBuffer``
  *        and writes them to disk in a rolling HDF5 file.
  *
- * This process reads the eigenvectors, eigenvalues, and RMS values carried in an input
+ * This stage reads the eigenvectors, eigenvalues, and RMS values carried in an input
  * visbility buffer and writes them to an ``eigenFile'' HDF5 file in single writer multiple
  * reader mode. This file has a specified length and rolls over when it fills up.
  *

@@ -23,7 +23,7 @@
  * packet in the output frame in a location determined by the seq number in the header.
  * This means the location in the output frame corresponds to an exact seq number and time.
  *
- * @note It is important that this handler is paired with an zeroSample process to zero out
+ * @note It is important that this handler is paired with a zeroSample stage to zero out
  *       memory which this handler did not fill because the packet was lost or invalide.
  *
  * @par REST Endpoints
@@ -95,7 +95,6 @@ iceBoardStandard::iceBoardStandard(kotekan::Config& config, const std::string& u
     kotekan::restServer::instance().register_get_callback(endpoint_name,
                                                           [&](kotekan::connectionInstance& conn) {
                                                               json info = get_json_port_info();
-
                                                               conn.send_json_reply(info);
                                                           });
 }

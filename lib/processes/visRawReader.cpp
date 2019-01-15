@@ -60,7 +60,7 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
                                         + std::to_string(chunk_size[2]) + ")).");
     }
 
-    // Get the list of buffers that this process shoud connect to
+    // Get the list of buffers that this stage should connect to
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 

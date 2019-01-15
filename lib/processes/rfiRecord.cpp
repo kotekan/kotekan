@@ -35,7 +35,7 @@ rfiRecord::rfiRecord(Config& config, const string& unique_name, bufferContainer&
     Stage(config, unique_name, buffer_container, std::bind(&rfiRecord::main_thread, this)) {
     // Get buffer from framework
     rfi_buf = get_buffer("rfi_in");
-    // Register process as consumer
+    // Register stage as consumer
     register_consumer(rfi_buf, unique_name.c_str());
 
     // General config parameters
@@ -46,7 +46,7 @@ rfiRecord::rfiRecord(Config& config, const string& unique_name, bufferContainer&
     // RFI config parameters
     _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
     _rfi_combined = config.get_default<bool>(unique_name, "rfi_combined", true);
-    // Process specific parameters
+    // Stage-specific parameters
     _total_links = config.get_default<uint32_t>(unique_name, "total_links", 1);
     _write_to = config.get<std::string>(unique_name, "write_to");
     _write_to_disk = config.get_default<bool>(unique_name, "write_to_disk", false);

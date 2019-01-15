@@ -106,7 +106,7 @@ private:
 /**
  * @brief Framework level REST server (singleton)
  *
- * Provides the system for any framwork process to register endpoints.
+ * Provides the system for any framwork stage to register endpoints.
  *
  * Currently this object uses the mongoose webserver internally to handle
  * the http requests.

@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Processes for triggered baseband recording
+@brief Stages for triggered baseband recording
 - basebandDumpData
 - basebandReadout : public kotekan::Stage
 *****************************************/

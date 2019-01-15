@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief Process to take an intensity stream and stream to a remote client.
+ * @brief Stage to take an intensity stream and stream to a remote client.
  *  - networkPowerStream : public kotekan::Stage
  */
 
@@ -17,12 +17,12 @@
 
 /**
  * @class networkPowerStream
- * @brief Process to take an intensity stream and stream to a remote client.
+ * @brief Stage to take an intensity stream and stream to a remote client.
  *
- * This is a consumer process which takes intensity data from a buffer and streams
+ * This is a consumer stage which takes intensity data from a buffer and streams
  * it via TCP (and some day UDP) to a remote client, primarily for visualization purposes.
  *
- * In TCP mode, the process should continually attempt to establish a TCP connection,
+ * In TCP mode, the stage should continually attempt to establish a TCP connection,
  * then transmit data once successful.
  *
  * @par Buffers

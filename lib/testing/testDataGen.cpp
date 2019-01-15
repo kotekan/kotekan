@@ -44,7 +44,7 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
     // fast as possible.
     wait = config.get_default<bool>(unique_name, "wait", true);
     // Whether to wait for is rest signal to start or generate next frame. Useful for testing
-    // processes that must interact rest commands. Valid modes are "start", "step", and "none".
+    // stages that must interact rest commands. Valid modes are "start", "step", and "none".
     rest_mode = config.get_default<std::string>(unique_name, "rest_mode", "none");
     assert(rest_mode == "none" || rest_mode == "start" || rest_mode == "step");
     step_to_frame = 0;

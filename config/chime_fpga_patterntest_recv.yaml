@@ -38,7 +38,7 @@ vis_buffer:
   vis_test_dump:
     kotekan_buffer: vis
 
-# test process
+# test stage
 pattern_test:
   kotekan_process: visTestPattern
   in_buf: visbuf_10s_all
@@ -53,7 +53,7 @@ test_writer:
   file_ext: 'dump'
   base_dir: '/data/patterntest/20181211/simple_test'
 
-# Kotekan processes
+# Kotekan stages
 buffer_recv:
   n2:
     kotekan_process: bufferRecv

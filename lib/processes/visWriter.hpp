@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Processes for writing visibility data.
+@brief Stages for writing visibility data.
 - visWriter : public kotekan::Stage
 - visCalWriter : public kotekan::Stage
 *****************************************/
@@ -32,14 +32,14 @@
  * @class visWriter
  * @brief Write the data out to an HDF5 file .
  *
- * This process gets writes out the data it receives with minimal processing.
+ * This stage writes out the data it receives with minimal processing.
  * Removing certain fields from the output must be done in a prior
  * transformation. See `removeEv` for instance.
  *
  * To obtain the metadata about the stream received usage of the datasetManager
  * is required.
  *
- * This process will check that git hash of the data source (obtained from the
+ * This stage will check that git hash of the data source (obtained from the
  * metadataState) matches the current version. Depending on the value of
  * `ignore_version` a mismatch will either generate a warning, or cause the
  * mismatched data to be dropped.
@@ -177,11 +177,11 @@ private:
  * @class visCalWriter
  * @brief Extension to visWriter for exporting calibration data.
  *
- * This process is based off visWriter, but is meant for generating a
+ * This stage is based off visWriter, but is meant for generating a
  * fixed-length ring-buffer-like file for storing the last samples of
  * the calibration data stream. To ensure consistent reads while the
- * process is continuously writing to a file, a REST endpoint is provided
- * that causes the process to stop writing and release the file for
+ * stage is continuously writing to a file, a REST endpoint is provided
+ * that causes the stage to stop writing and release the file for
  * reading. It will proceed with writing to a second file, until the
  * endpoint is called again and it moves back to the first file, and so on.
  *
@@ -190,7 +190,7 @@ private:
  *          a file, the released file will be partially empty.
  *
  * @par REST Endpoints
- * @endpoint /release_live_file/process name>    ``GET`` Stop writing
+ * @endpoint /release_live_file/stage name>    ``GET`` Stop writing
  *           and make a file available for reading. Responds with a path to
  *           the file.
  *

@@ -32,7 +32,7 @@
  *               front of the latest frame. Default the frame size of @c in_buf
  *               Note if set to zero, this will be set to frame size of @c in_buf
  *
- * @warning This process makes a copy of the data in each and every frame ( upto @c len ).
+ * @warning This stage makes a copy of the data in each and every frame ( upto @c len ).
  *          So it should not be used in places where this extra memory copy would be
  *          expensive for the system to deal with, and should only be enabled when it
  *          is needed for trouble shooting.

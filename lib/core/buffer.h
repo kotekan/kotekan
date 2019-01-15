@@ -394,7 +394,7 @@ void allocate_new_metadata_object(struct Buffer * buf, int frame_id);
  *          and so must be freeded by the system taking it.  Also the frame
  *          given will be used and freed by the buffer, so the providing system
  *          must not attempt to free it.
- * @warning This function should only be use by single producer stages.
+ * @warning This function should only be used by single producer stages.
  * @warning The extra frame provided to this function must be allocated with
  *          @c buffer_malloc() and the frame returned by this function must be
  *          freed with @c buffer_free()

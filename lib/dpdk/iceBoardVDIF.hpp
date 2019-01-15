@@ -25,7 +25,7 @@
  * The output data stream is standard VDIF see: https://vlbi.org/vdif/
  *
  * Note that when one more packets is lost the entire VDIF frame is marked as invalid. This requires
- * the use of the invalidateVDIFframes process to mark the VDIF frames as invalid.  Note once a
+ * the use of the invalidateVDIFframes stage to mark the VDIF frames as invalid.  Note once a
  * frame is marked as invalid there is no guarantee any data will be good, including the time stamp.
  * Only the frame lenght can be considered be correct.
  *

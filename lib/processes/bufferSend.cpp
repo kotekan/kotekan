@@ -172,7 +172,7 @@ void bufferSend::connect_to_server() {
             WARN("Could not connect to server %s:%d, error: %s(%d), waiting %d seconds to retry...",
                  server_ip.c_str(), server_port, strerror(errno), errno, reconnect_time);
             close(socket_fd);
-            // TODO Add a kotekanProcess level "breakable sleep" so this doesn't
+            // TODO Add a Stage level "breakable sleep" so this doesn't
             // lock up the shutdown process for upto reconnect_time seconds.
             sleep(reconnect_time);
             continue;

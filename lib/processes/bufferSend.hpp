@@ -39,7 +39,7 @@ struct bufferFrameHeader {
  * Will attempt to connect to a remote server (likely another kotekan instance)
  * and send frames and metadata as they arrive.
  *
- * If the remote server is down, or the connection breaks, this process will
+ * If the remote server is down, or the connection breaks, this stage will
  * drop incoming frames, and try to reconnect to the server after @c reconnect_time
  * seconds.
  *

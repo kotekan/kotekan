@@ -22,7 +22,7 @@ rfiVDIF::rfiVDIF(Config& config, const string& unique_name, bufferContainer& buf
     // Get relevant buffers
     buf_in = get_buffer("vdif_in");
     buf_out = get_buffer("rfi_out");
-    // Register process as consumer and producer
+    // Register stage as consumer and producer
     register_consumer(buf_in, unique_name.c_str());
     register_producer(buf_out, unique_name.c_str());
 

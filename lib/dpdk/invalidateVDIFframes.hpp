@@ -1,6 +1,6 @@
 /**
  * @file invalidateVDIFframes.hpp
- * @brief Process which sets the invalid bit of VDIF frames based on the contents
+ * @brief Stage which sets the invalid bit of VDIF frames based on the contents
  *        of the lost samples buffer.
  * - invalidateVDIFframes : public kotekan::Stage
  */

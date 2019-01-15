@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Processes for splitting visibility data by frequency.
+@brief Stage for splitting visibility data by frequency.
 - freqSplit : public kotekan::Stage
 *****************************************/
 #ifndef FREQ_SPLIT_HPP
@@ -53,7 +53,7 @@ public:
     freqSplit(kotekan::Config& config, const string& unique_name,
               kotekan::bufferContainer& buffer_container);
 
-    // Main loop for the process
+    // Main loop for the stage
     void main_thread() override;
 
 private:

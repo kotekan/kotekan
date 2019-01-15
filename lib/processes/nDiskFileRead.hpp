@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief A process to read VDIF files from multiple drives.
+ * @brief A stage to read VDIF files from multiple drives.
  *  - nDiskFileRead : public kotekan::Stage
  */
 
@@ -19,7 +19,7 @@
  * This is a producer which initiates n threads to read from n disks. Each disk must contain data in
  * the same folders as specified in the kotekan config file. Within each folder the data files must
  * be numbered incrementally across the disks. Since the file format is the most important aspect of
- * this process, a worked example for a set of 3 disks is shown below.
+ * this stage, a worked example for a set of 3 disks is shown below.
  *
  * @par Buffers
  * @buffer out_buf The kotkean buffer to hold the data read from the drives
@@ -94,7 +94,7 @@ public:
     void main_thread() override;
 
 private:
-    /// The kotekan buffer object the processes is producing for
+    /// The kotekan buffer object the stage is producing for
     struct Buffer* buf;
     /// Vector to hold the thread handles
     std::vector<std::thread> file_thread_handles;

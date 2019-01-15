@@ -26,8 +26,8 @@
 /**
  * @brief Generate fake visibility data into a ``visBuffer``.
  *
- * This process produces fake visibility data that can be used to feed
- * downstream kotekan processes for testing. It fills its buffer with frames in
+ * This stage produces fake visibility data that can be used to feed
+ * downstream kotekan stages for testing. It fills its buffer with frames in
  * the ``visFrameView`` format. Frames are generated for a set of frequencies
  * and a cadence specified in the config.
  *

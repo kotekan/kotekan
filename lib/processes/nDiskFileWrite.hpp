@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief A process to read VDIF files from multiple drives.
+ * @brief A stage to read VDIF files from multiple drives.
  *  - nDiskFileWrite : public kotekan::Stage
  */
 
@@ -88,7 +88,7 @@ public:
     void main_thread() override;
 
 private:
-    /// The kotekan buffer object the processes is consuming from
+    /// The kotekan buffer object the stage is consuming from
     struct Buffer* buf;
 
     /// Which disk in the array is currently being written to

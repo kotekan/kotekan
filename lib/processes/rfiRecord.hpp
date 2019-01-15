@@ -21,14 +21,14 @@
  * @brief Consumer ``kotekan::Stage`` which consumes and record a buffer filled with
  * spectral kurtosis estimates.
  *
- * This process reads spectral kurtosis estimate from the GPU/CPU and records them to file. The
- * process will create sub driectories for each stream and data acquisition session. The process
+ * This stage reads spectral kurtosis estimate from the GPU/CPU and records them to file. The
+ * stage will create sub driectories for each stream and data acquisition session. The stage
  * will record a new file every 1024 frames. An info file will be availiable in each directory
  * indicating all the dataset parameters.
  *
  * @par Buffers
  * @buffer rfi_in       The kotekan buffer containing spectral kurtosis estimates to be read by the
- * process.
+ * stage.
  *      @buffer_format  Array of @c floats
  *      @buffer_metadata chimeMetadata
  *
@@ -46,7 +46,7 @@
  * @conf   rfi_combined         Bool (default true). Whether or not the kurtosis measurements
  * include an input sum.
  * @conf   total_links          Int (default 1). Number of FPGA links per buffer.
- * @conf   write_to             String . Path to directory where the process will record data.
+ * @conf   write_to             String . Path to directory where the stage will record data.
  * @conf   write_to_dsk         Bool (default false). Whether or not the proccess will wirte to
  * disk.
  *
@@ -89,7 +89,7 @@ private:
     uint32_t _sk_step;
     /// Flag for element summation in kurtosis estimation process
     bool _rfi_combined;
-    // Process specific config parameters
+    // Stage-specific config parameters
     /// The total number of links processed by gpu
     uint32_t _total_links;
     /// The current file index
@@ -98,7 +98,7 @@ private:
     string _write_to;
     /// Holder for time-code directory name
     char time_dir[64];
-    /// Whether or not the process should write to the disk
+    /// Whether or not the stage should write to the disk
     bool _write_to_disk;
     /// A mutex to prevent the rest server callback from overwriting data currently in use
     std::mutex rest_callback_mutex;

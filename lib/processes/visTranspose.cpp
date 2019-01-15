@@ -186,7 +186,7 @@ void visTranspose::main_thread() {
 
     if (!future_ds_state.get()) {
         ERROR("Set to not use dataset_broker and couldn't find "
-              "ancestor of dataset 0x%" PRIx64 ". Make sure there is a process"
+              "ancestor of dataset 0x%" PRIx64 ". Make sure there is a stage"
               " upstream in the config, that adds the dataset states."
               "\nExiting...",
               ds_id);

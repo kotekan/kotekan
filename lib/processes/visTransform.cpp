@@ -41,7 +41,7 @@ visTransform::visTransform(Config& config, const std::string& unique_name,
     block_size = config.get<size_t>(unique_name, "block_size");
     num_eigenvectors = config.get<size_t>(unique_name, "num_ev");
 
-    // Get the list of buffers that this process shoud connect to
+    // Get the list of buffers that this stage shoud connect to
     std::vector<std::string> input_buffer_names =
         config.get<std::vector<std::string>>(unique_name, "in_bufs");
 

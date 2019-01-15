@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Process for debugging visibility buffers.
+@brief Stage for debugging visibility buffers.
 - visDebug : public kotekan::Stage
 *****************************************/
 #ifndef VISDEBUG_HPP

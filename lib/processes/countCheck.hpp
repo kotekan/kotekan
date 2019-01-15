@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Processe for checking that FPGA counts are not older than 1h.
+@brief Stage for checking that FPGA counts are not older than 1h.
 - countCheck : public kotekan::Stage
 
 *****************************************/
@@ -15,14 +15,14 @@
 
 /**
  * @class countCheck
- * @brief Processe that checks for acquisition re-start.
+ * @brief Stage that checks for acquisition re-start.
  *
- * This task finds the unix time at the start of the acquisition from
+ * This stage finds the unix time at the start of the acquisition from
  * the FPGA counts and the current unix time, assuming 390625 FPGA
  * counts per second.
  * It stores this value and checks each frame to look for changes.
  * If the initial time changes by more than 'start_time_tolerance' (default=3)
- * seconds, the process raises SIGINT.
+ * seconds, the stage raises SIGINT.
  *
  * @par Buffers
  * @buffer in_buf The buffer whose fpga count will be checked
@@ -41,7 +41,7 @@ public:
     countCheck(kotekan::Config& config, const string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
-    // Main loop for the process
+    // Main loop for the stage
     void main_thread() override;
 
 private:

@@ -31,7 +31,7 @@
  * @class visAccumulate
  * @brief Accumulate the high rate GPU output into integrated visBuffers.
  *
- * This process will accumulate the GPU output and calculate the within sample
+ * This stage will accumulate the GPU output and calculate the within sample
  * variance for weights.
  *
  * It tags the stream with a properly allocated dataset_id and adds associated

@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Process that adds noise to the
+@brief Stage that adds noise to the
        visibility data.
 - visNoise : public Stage
 *****************************************/
@@ -29,7 +29,7 @@ public:
     visNoise(kotekan::Config& config, const string& unique_name,
              kotekan::bufferContainer& buffer_container);
 
-    // Main loop for the process
+    // Main loop for the stage
     void main_thread() override;
 
 private:

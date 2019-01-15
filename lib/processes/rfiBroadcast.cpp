@@ -38,9 +38,9 @@ rfiBroadcast::rfiBroadcast(Config& config, const string& unique_name,
     rfi_buf = get_buffer("rfi_in");
     // Get buffer from framework
     rfi_mask_buf = get_buffer("rfi_mask");
-    // Register process as consumer
+    // Register stage as consumer
     register_consumer(rfi_buf, unique_name.c_str());
-    // Register process as consumer
+    // Register stage as consumer
     register_consumer(rfi_mask_buf, unique_name.c_str());
 
     // Intialize internal config
@@ -52,7 +52,7 @@ rfiBroadcast::rfiBroadcast(Config& config, const string& unique_name,
     _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
     _rfi_combined = config.get_default<bool>(unique_name, "rfi_combined", true);
     _frames_per_packet = config.get_default<uint32_t>(unique_name, "frames_per_packet", 1);
-    // Process specific paramters
+    // Stage-specific paramters
     total_links = config.get_default<uint32_t>(unique_name, "total_links", 1);
     dest_port = config.get<uint32_t>(unique_name, "destination_port");
     dest_server_ip = config.get<std::string>(unique_name, "destination_ip");

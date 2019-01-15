@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief An FFTW-based F-engine process.
+ * @brief An FFTW-based F-engine stage.
  *  - fftwEngine : public kotekan::Stage
  */
 
@@ -18,9 +18,9 @@ using std::string;
 
 /**
  * @class fftwEngine
- * @brief Kotekan Process to Fourier Transform an input stream.
+ * @brief Kotekan Stage to Fourier Transform an input stream.
  *
- * This is a simple signal processing block which takes (complex) data from an input buffer,
+ * This is a simple signal processing stage which takes (complex) data from an input buffer,
  * Fourier Transforms it with FFTW, and stuffs the results into an output buffer.
  * Both input and output buffers' frame lengths should be integer multiples of the FFT length,
  * though they need not be the same length as each other.
@@ -57,10 +57,10 @@ public:
     void main_thread() override;
 
 private:
-    /// Kotekan buffer which this process consumes from.
+    /// Kotekan buffer which this stage consumes from.
     /// Data should be packed as int16_t values, [r,i] in each 32b value.
     struct Buffer* in_buf;
-    /// Kotekan buffer which this process produces into.
+    /// Kotekan buffer which this stage produces into.
     struct Buffer* out_buf;
 
     /// Frame index for the input buffer.

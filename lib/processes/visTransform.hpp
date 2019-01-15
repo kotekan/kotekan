@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Process for merging GPU buffers into a visBuffer stream.
+@brief Stage for merging GPU buffers into a visBuffer stream.
 - visTransform : public kotekan::Stage
 *****************************************/
 #ifndef VISTRANSFORM_H
@@ -56,7 +56,7 @@ public:
     visTransform(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
 
-    // Main loop for the process
+    // Main loop for the stage
     void main_thread() override;
 
 private:

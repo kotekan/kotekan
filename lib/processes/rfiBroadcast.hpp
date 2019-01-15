@@ -23,16 +23,16 @@
  * @brief Consumer ``kotekan::Stage`` which consumes a buffer filled with spectral kurtosis
  * estimates.
  *
- * This process reads RFI data from a kotekan buffer before packaging it into UDP packets and
+ * This stage reads RFI data from a kotekan buffer before packaging it into UDP packets and
  * sending them to a user defined IP address. Each packet is fitted with a header which can be read
  * by the server to ensure that the config parameters of the packet match the server config. This
- * process simply reads the spectral kurtosis estimates, averages them for a single frame, averages
+ * stage simply reads the spectral kurtosis estimates, averages them for a single frame, averages
  * frames_per_packet frames toegther, packages the results into a packet (header + data), and sends
  * the packets to a user defined IP address via UDP.
  *
  * @par Buffers
  * @buffer rfi_in	The kotekan buffer containing spectral kurtosis estimates to be read by the
- * process.
+ * stage.
  * 	@buffer_format	Array of @c floats
  * 	@buffer_metadata chimeMetadata
  *
@@ -91,11 +91,11 @@ private:
     uint32_t _sk_step;
     /// Flag for element summation in kurtosis estimation process
     bool _rfi_combined;
-    /// Flag to tell process whether or not to use FPGA seq nums
+    /// Flag to tell stage whether or not to use FPGA seq nums
     bool replay;
     /// Number of frames to average per UDP packet
     uint32_t _frames_per_packet;
-    // Process specific config parameters
+    // Stage-specific config parameters
     /// The total number of links processed by gpu
     uint32_t total_links;
     /// The port for UDP stream to be sent to

@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Processes for compressing visibility data.
+@brief Stage for compressing visibility data.
 - baselineCompression
 *****************************************/
 #ifndef VIS_COMPRESSION_HPP
@@ -68,7 +68,7 @@ public:
     baselineCompression(kotekan::Config& config, const string& unique_name,
                         kotekan::bufferContainer& buffer_container);
 
-    // Main loop for the process: Creates n threads that do the compression.
+    // Main loop for the stage: Creates n threads that do the compression.
     void main_thread() override;
 
 private:

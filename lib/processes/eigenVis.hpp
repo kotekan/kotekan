@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Processes for eigen-factoring the visibilities
+@brief Stage for eigen-factoring the visibilities
 - eigenVis : public kotekan::Stage
 *****************************************/
 #ifndef EIGENVIS_HPP

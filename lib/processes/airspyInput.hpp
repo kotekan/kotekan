@@ -50,8 +50,8 @@ using std::string;
  * RF input.
  *
  * @warning Just realized that if things bog down and new 2 callbacks come while one is active,
- *          the order of the others will be undefined. This process may produce out-of-order
- * samples.
+ *          the order of the others will be undefined. This stage may produce out-of-order
+ *          samples.
  * @remark  Only operates in I/Q mode currently, and only with packed int16_t samples.
  *          No support for raw samples, etc.
  * @todo    Only handles one device currently -- add checks and index handling.
