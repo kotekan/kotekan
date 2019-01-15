@@ -27,7 +27,7 @@ REGISTER_HSA_COMMAND(hsaPulsarUpdatePhase);
 
 hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string &unique_name,
                            bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("", "", config, unique_name, host_buffers, device){
+    hsaCommand(config, unique_name, host_buffers, device, "", ""){
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
     _num_beams = config.get<int16_t>(unique_name, "num_beams");
@@ -110,6 +110,7 @@ bool hsaPulsarUpdatePhase::update_gains_callback(nlohmann::json &json) {
 
 int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id)
 {
+    (void)gpu_frame_id;
     uint8_t * frame = wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
     if (frame == NULL) return -1;
     metadata_buffer_precondition_id = (metadata_buffer_precondition_id + 1) % metadata_buf->num_frames;
@@ -160,8 +161,8 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec t
     }
 }
 
-hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, const uint64_t& fpga_seq,
-                                            hsa_signal_t precede_signal) {
+hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id,
+                                           hsa_signal_t precede_signal) {
     //Update phase every one second
     const uint64_t phase_update_period = 390625;
     uint64_t current_seq = get_fpga_seq_num(metadata_buf, metadata_buffer_id);

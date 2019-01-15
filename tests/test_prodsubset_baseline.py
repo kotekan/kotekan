@@ -2,8 +2,8 @@
 import pytest
 import numpy as np
 
-import kotekan_runner
-import visutil
+from kotekan import runner
+from kotekan import visutil
 
 subset_params = {
     'num_elements': 16,
@@ -26,18 +26,18 @@ def subset_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("subset")
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=subset_params['freq_ids'],
         num_frames=subset_params['total_frames'],
         use_dataset_manager=False
     )
 
-    write_buffer = kotekan_runner.VisWriterBuffer(
+    write_buffer = runner.VisWriterBuffer(
         str(tmpdir), "raw",
         subset_params['freq_ids'],
         extra_config={'use_dataset_manager': False})
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'prodSubset', vis_params,
         fakevis_buffer,
         write_buffer,
@@ -74,15 +74,13 @@ def test_subset(subset_data):
                             subset_params['max_ew_baseline'],
                             subset_params['max_ns_baseline']):
             vis.append(prod.input_a + 1j * prod.input_b)
+    vis = np.array(vis)
 
     evecs = (np.arange(subset_params['num_ev'])[:, None] + 1.0J *
              np.arange(subset_params['num_elements'])[None, :]).flatten()
 
-    for t in range(subset_params['total_frames']):
-        for f in range(len(subset_params['freq_ids'])):
-            frame = subset_data[t][f]
-            assert (frame.vis == np.array(vis)).all()
-            assert (frame.eval == np.arange(
-                    subset_params['num_ev'])).all()
-            assert (frame.evec == evecs).all()
-            assert (frame.erms == 1.)
+    assert (subset_data.data['vis'] == np.array(vis)).all()
+    assert (subset_data.data['eval'] == np.arange(
+            subset_params['num_ev'])).all()
+    assert (subset_data.data['evec'] == evecs).all()
+    assert (subset_data.data['erms'] == 1.0).all()

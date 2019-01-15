@@ -59,20 +59,21 @@ void restServer::handle_request(struct evhttp_request * request, void * cb_data)
         }
 
         if (request->type == EVHTTP_REQ_GET) {
+            connectionInstance conn(request);
             if (!server->get_callbacks.count(url)) {
                 DEBUG("restServer: GET Endpoint %s called, but not found", url.c_str());
-                evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::NOT_FOUND), "Not Found");
+                conn.send_error("Not Found", HTTP_RESPONSE::NOT_FOUND);
                 return;
             }
-            connectionInstance conn(request);
             server->get_callbacks[url](conn);
             return;
         }
 
         if (request->type == EVHTTP_REQ_POST) {
+            connectionInstance conn(request);
             if (!server->json_callbacks.count(url)) {
                 DEBUG("restServer: Endpoint %s called, but not found", url.c_str());
-                evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::NOT_FOUND), "Not Found");
+                conn.send_error("Not Found", HTTP_RESPONSE::NOT_FOUND);
                 return;
             }
 
@@ -82,14 +83,15 @@ void restServer::handle_request(struct evhttp_request * request, void * cb_data)
                 return;
             }
 
-            connectionInstance conn(request);
             server->json_callbacks[url](conn, json_request);
             return;
         }
     }
 
     DEBUG("restServer: Call back with method != POST|GET called!");
-    evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::BAD_REQUEST), "BAD_REQUEST");
+
+    connectionInstance conn(request);
+    conn.send_error("Bad Request", HTTP_RESPONSE::BAD_REQUEST);
 }
 
 void restServer::register_get_callback(string endpoint, std::function<void(connectionInstance&) > callback) {
@@ -288,6 +290,11 @@ void restServer::endpoint_list_callback(connectionInstance &conn) {
 }
 
 void restServer::timer(evutil_socket_t fd, short event, void *arg) {
+
+    // Unused parameters, required by libevent. Suppress warning.
+    (void)fd;
+    (void)event;
+
     restServer * rest_server = (restServer *)arg;
     if (rest_server->stop_thread) {
         event_base_loopbreak(rest_server->event_base);
@@ -437,8 +444,19 @@ void connectionInstance::send_binary_reply(uint8_t * data, int len) {
 }
 
 void connectionInstance::send_error(const string& message, const HTTP_RESPONSE &status) {
-    string error_message = "Error: " + message;
-    evhttp_send_error(request, static_cast<int>(status), error_message.c_str());
+    if (evhttp_add_header (evhttp_request_get_output_headers (request),
+                           "Content-Type", "Application/JSON") != 0) {
+        throw std::runtime_error("Failed to add header to reply");
+    }
+
+    string reply = json{ {"message", message}, {"code", status} }.dump();
+    if (evbuffer_add(event_buffer, (void *)reply.c_str(), reply.size()) != 0) {
+        throw std::runtime_error("Failed to add reply message");
+    }
+
+    evhttp_send_reply(request, static_cast<int>(status),
+                      restServer::get_http_responce_code_text(status).c_str(),
+                      event_buffer);
 }
 
 void connectionInstance::send_json_reply(const json &json_reply) {

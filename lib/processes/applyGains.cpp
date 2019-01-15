@@ -37,18 +37,7 @@ applyGains::applyGains(Config& config,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    apply_config(0);
-
-    // FIFO for gains and weights updates
-    gains_fifo = updateQueue<gainUpdate>(num_kept_updates);
-
-    // subscribe to gain timestamp updates
-    configUpdater::instance().subscribe(this,
-                std::bind(&applyGains::receive_update, this, _1));
-}
-
-void applyGains::apply_config(uint64_t fpga_seq) {
-
+    //Apply config.
     // Number of gain versions kept. Default is 5.
     num_kept_updates = config.get_default<uint64_t>(
                 unique_name, "num_kept_updates", 5);
@@ -69,14 +58,20 @@ void applyGains::apply_config(uint64_t fpga_seq) {
 
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     if (num_threads == 0)
-        throw std::invalid_argument("applyGains: apply_config: "
-                                    "num_threads has to be at least 1.");
+        throw std::invalid_argument(
+                "applyGains: num_threads has to be at least 1.");
     if (in_buf->num_frames % num_threads != 0 ||
         out_buf->num_frames % num_threads != 0)
-        throw std::invalid_argument("applyGains: apply_config: both "
-                                    "the size of the input and output buffer"
-                                    "have to be multiples of num_threads.");
+        throw std::invalid_argument("applyGains: both the size of the input " \
+                                    "and output buffer have to be multiples " \
+                                    "of num_threads.");
 
+    // FIFO for gains and weights updates
+    gains_fifo = updateQueue<gainUpdate>(num_kept_updates);
+
+    // subscribe to gain timestamp updates
+    configUpdater::instance().subscribe(this,
+                std::bind(&applyGains::receive_update, this, _1));
 }
 
 bool applyGains::fexists(const std::string& filename) {

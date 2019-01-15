@@ -30,9 +30,6 @@ rawFileWrite::rawFileWrite(Config& config,
 rawFileWrite::~rawFileWrite() {
 }
 
-void rawFileWrite::apply_config(uint64_t fpga_seq) {
-}
-
 void rawFileWrite::main_thread() {
 
     int fd;

@@ -48,15 +48,12 @@
  */
 class pyPlotN2 : public KotekanProcess {
 public:
-    ///Constructor, calls apply_config to intialize parameters
+    ///Constructor
     pyPlotN2(Config& config, const string& unique_name,
                  bufferContainer &buffer_container);
 
     ///Destructor, currently does nothing
     virtual ~pyPlotN2();
-
-    ///Applies the config parameters
-    void apply_config(uint64_t fpga_seq) override;
 
     ///Creates n safe instances of the file_read_thread thread
     void main_thread() override;

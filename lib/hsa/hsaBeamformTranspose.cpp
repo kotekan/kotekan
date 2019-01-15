@@ -4,7 +4,7 @@ REGISTER_HSA_COMMAND(hsaBeamformTranspose);
 
 hsaBeamformTranspose::hsaBeamformTranspose(Config& config, const string &unique_name,
                                 bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("transpose", "transpose.hsaco", config, unique_name, host_buffers, device) {
+    hsaCommand(config, unique_name, host_buffers, device, "transpose", "transpose.hsaco") {
     command_type = CommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
@@ -19,7 +19,12 @@ hsaBeamformTranspose::~hsaBeamformTranspose() {
 
 }
 
-hsa_signal_t hsaBeamformTranspose::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaBeamformTranspose::execute(int gpu_frame_id,
+                                           hsa_signal_t precede_signal) {
+
+    // Unused parameter, suppress warning
+    (void)precede_signal;
+
     struct __attribute__ ((aligned(16))) args_t {
         void *beamform_buffer;
         void *output_buffer;

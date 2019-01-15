@@ -4,8 +4,8 @@ import csv
 import math
 import random
 
-import visbuffer
-import kotekan_runner
+from kotekan import visbuffer
+from kotekan import runner
 
 
 params = {
@@ -26,15 +26,15 @@ def test_pattern(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("test_pattern")
     params['out_file'] = str(tmpdir) + '/report.csv'
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         num_frames=params['total_frames'],
         mode='test_pattern_simple'
     )
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(
+    dump_buffer = runner.DumpVisBuffer(
             str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'visTestPattern', {},
         fakevis_buffer,
         dump_buffer,
@@ -62,12 +62,12 @@ def test_pattern_noise(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("test_pattern_noise")
     params['out_file'] = str(tmpdir) + '/report.csv'
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         num_frames=params['total_frames'],
         mode='test_pattern_simple',
     )
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(
+    dump_buffer = runner.DumpVisBuffer(
             str(tmpdir))
 
     fakevis_dump_conf = params.copy()
@@ -75,7 +75,7 @@ def test_pattern_noise(tmpdir_factory):
     fakevis_dump_conf['file_ext'] = 'dump'
     fakevis_dump_conf['base_dir'] = str(tmpdir)
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'visTestPattern', {},
         buffers_in = fakevis_buffer,
         buffers_out = dump_buffer,
@@ -163,16 +163,16 @@ def test_pattern_no_noise_freq(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("test_pattern_freq_no_noise")
     freq_params['out_file'] = str(tmpdir) + '/report.csv'
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         num_frames=freq_params['total_frames'],
         mode='test_pattern_freq',
         freq_ids = freq_params['freq_ids']
     )
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(
+    dump_buffer = runner.DumpVisBuffer(
             str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'visTestPattern', {"num_freq": 30},
         buffers_in = fakevis_buffer,
         buffers_out = dump_buffer,
@@ -221,13 +221,13 @@ def test_pattern_noise_freq(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("test_pattern_freq_noise")
     freq_params['out_file'] = str(tmpdir) + '/report.csv'
 
-    fakevis_buffer = kotekan_runner.FakeVisBuffer(
+    fakevis_buffer = runner.FakeVisBuffer(
         num_frames=freq_params['total_frames'],
         mode='test_pattern_freq',
         freq_ids = freq_params['freq_ids']
     )
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(
+    dump_buffer = runner.DumpVisBuffer(
             str(tmpdir))
 
     fakevis_dump_conf = freq_params.copy()
@@ -235,7 +235,7 @@ def test_pattern_noise_freq(tmpdir_factory):
     fakevis_dump_conf['file_ext'] = 'dump'
     fakevis_dump_conf['base_dir'] = str(tmpdir)
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'visTestPattern', freq_params,
         buffers_in = fakevis_buffer,
         buffers_out = dump_buffer,

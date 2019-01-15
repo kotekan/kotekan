@@ -22,11 +22,11 @@
  * This needs to be subclassed to actualy do something with the packets, it
  * just provides a common set of functions that are needed for ICEBoard packets
  *
- * @config   alignment         Int. Align each output frame of data to this FPGA seq number edge.
- *                                  Note it could be larger than the output frame size
- *                                  (in number of FPGA samples) but must be a multiple of that.
- * @config   sample_size       Int. Default 2048. Size of a time samples (unlikely to change)
- * @config   fpga_packet_size  Int. Default 4928. Full size of the FPGA packet, including Ethernet,
+ * @config   alignment         UInt. Align each output frame of data to this FPGA seq number edge.
+ *                                   Note it could be larger than the output frame size
+ *                                   (in number of FPGA samples) but must be a multiple of that.
+ * @config   sample_size       Int.  Default 2048. Size of a time samples (unlikely to change)
+ * @config   fpga_packet_size  Int.  Default 4928. Full size of the FPGA packet, including Ethernet,
  *                                                IP, UDP, and FPGA frame headers, FPGA data payload,
  *                                                FPGA footer flags, and any padding
  *                                                (but not the Ethernet CRC).
@@ -88,7 +88,7 @@ protected:
         // We allow for the fact we might miss the first packet by upto 100 FPGA frames,
         // if this happens then the missing frames at the start of the buffer frame are filled
         // in as lost packets.
-        if ( ((seq % alignment) <= 100) && ((seq % alignment) >= 0 )) {
+        if ( (seq % alignment) <= 100) {
 
             last_seq = seq - seq % alignment;
             cur_seq = seq;

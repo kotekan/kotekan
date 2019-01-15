@@ -57,11 +57,6 @@ testDataGen::~testDataGen() {
     restServer::instance().remove_json_callback(endpoint);
 }
 
-
-void testDataGen::apply_config(uint64_t fpga_seq) {
-}
-
-
 bool testDataGen::can_i_go(int frame_id_abs) {
     if (rest_mode == "none") return true;
     if (step_to_frame > 0 && rest_mode == "start") return true;

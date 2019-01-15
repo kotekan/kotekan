@@ -36,10 +36,6 @@ prodSubset::prodSubset(Config &config,
     subset_num_prod = prod_ind.size();
 }
 
-void prodSubset::apply_config(uint64_t fpga_seq) {
-
-}
-
 dset_id_t prodSubset::change_dataset_state(dset_id_t ds_id,
                                            std::vector<prod_ctype>& prod_subset,
                                            std::vector<size_t>& prod_ind,

@@ -57,7 +57,7 @@ public:
     virtual ~hsaBeamformUpchan();
 
     /// Allocate kernel argument buffer, set kernel dimensions, enqueue kernel
-    hsa_signal_t execute(int gpu_frame_id, const uint64_t& fpga_seq,
+    hsa_signal_t execute(int gpu_frame_id,
                          hsa_signal_t precede_signal) override;
 
 private:

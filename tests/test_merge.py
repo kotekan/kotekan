@@ -2,7 +2,7 @@
 import pytest
 import numpy as np
 
-import kotekan_runner
+from kotekan import runner
 
 
 merge_params = {
@@ -22,15 +22,15 @@ def merge_data(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("merge")
 
     fakevis_buffers = [
-        kotekan_runner.FakeVisBuffer(
+        runner.FakeVisBuffer(
             freq_ids=[f],
             num_frames=merge_params['total_frames']
         ) for f in merge_params['freq']
     ]
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'visMerge', {},
         fakevis_buffers,
         dump_buffer,
@@ -49,23 +49,23 @@ def mergewait_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("mergewait")
 
-    fakevis_fast = kotekan_runner.FakeVisBuffer(
+    fakevis_fast = runner.FakeVisBuffer(
         freq_ids=[0],
         cadence=0.3,
         wait=True,
         num_frames=5
-    ) 
+    )
 
-    fakevis_slow = kotekan_runner.FakeVisBuffer(
+    fakevis_slow = runner.FakeVisBuffer(
         freq_ids=[1],
         cadence=5.0,
         wait=True,
         num_frames=10
-    ) 
+    )
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'visMerge', {},
         [fakevis_fast, fakevis_slow],
         dump_buffer,

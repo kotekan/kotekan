@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 
-import kotekan_runner
+from kotekan import runner
 
 downsamp_params = {
     'num_elements': 4,
@@ -17,11 +17,11 @@ def vis_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("vis_data")
 
-    dump_buffer = kotekan_runner.DumpVisBuffer(str(tmpdir))
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = kotekan_runner.KotekanProcessTester(
+    test = runner.KotekanProcessTester(
         'timeDownsample', downsamp_params,
-        kotekan_runner.FakeVisBuffer(
+        runner.FakeVisBuffer(
             num_frames=downsamp_params['total_frames'],
             mode=downsamp_params['fakevis_mode'],
             cadence=downsamp_params['cadence']
@@ -52,7 +52,7 @@ def test_structure(vis_data):
 
 def test_metadata(vis_data):
 
-    input_frame_length = int(800e6 / 2048 * downsamp_params['cadence']) 
+    input_frame_length = int(800e6 / 2048 * downsamp_params['cadence'])
     frame_length = input_frame_length * downsamp_params['num_samples']
 
     for frame in vis_data:

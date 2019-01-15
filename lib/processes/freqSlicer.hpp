@@ -46,10 +46,8 @@ public:
               const string& unique_name,
               bufferContainer &buffer_container);
 
-    void apply_config(uint64_t fpga_seq);
-
     // Main loop for the process
-    void main_thread();
+    void main_thread() override;
 
 private:
     /// adds states and datasets and gets new output dataset IDs from manager
@@ -100,10 +98,8 @@ public:
                const string& unique_name,
                bufferContainer &buffer_container);
 
-    void apply_config(uint64_t fpga_seq);
-
     /// Main loop for the process
-    void main_thread();
+    void main_thread() override;
 
 private:
     /// adds state and dataset and gets a new output dataset ID from manager

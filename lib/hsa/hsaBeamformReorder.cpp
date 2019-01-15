@@ -4,7 +4,7 @@ REGISTER_HSA_COMMAND(hsaBeamformReorder);
 
 hsaBeamformReorder::hsaBeamformReorder(Config& config,const string &unique_name,
                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand("reorder", "reorder.hsaco", config, unique_name, host_buffers, device) {
+    hsaCommand(config, unique_name, host_buffers, device, "reorder", "reorder.hsaco") {
     command_type = CommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
@@ -30,7 +30,12 @@ hsaBeamformReorder::~hsaBeamformReorder() {
     hsa_host_free(_reorder_map_c);
 }
 
-hsa_signal_t hsaBeamformReorder::execute(int gpu_frame_id, const uint64_t& fpga_seq, hsa_signal_t precede_signal) {
+hsa_signal_t hsaBeamformReorder::execute(int gpu_frame_id,
+                                         hsa_signal_t precede_signal) {
+
+    // Unused parameter, suppress warning
+    (void)precede_signal;
+
     struct __attribute__ ((aligned(16))) args_t {
         void *input_buffer;
         void *map_buffer;

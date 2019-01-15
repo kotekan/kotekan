@@ -109,10 +109,6 @@ visWriter::visWriter(Config& config,
     }
 }
 
-void visWriter::apply_config(uint64_t fpga_seq) {
-
-}
-
 void visWriter::main_thread() {
 
     unsigned int frame_id = 0;

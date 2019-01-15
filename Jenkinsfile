@@ -63,7 +63,7 @@ pipeline {
     stage('Unit Tests') {
       steps {
         sh '''cd tests/
-              pytest -s -vvv'''
+              PYTHONPATH=../python/ pytest -s -vvv'''
       }
     }
   }

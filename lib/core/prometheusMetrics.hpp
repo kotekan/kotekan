@@ -145,7 +145,7 @@ private:
         /**
          * @brief Returns the stored value as a string.
          */
-        string to_string() {
+        string to_string() override {
             return std::to_string(value);
         }
     };

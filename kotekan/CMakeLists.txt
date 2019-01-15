@@ -34,4 +34,3 @@ endif ()
 
 install(TARGETS kotekan DESTINATION /usr/local/bin COMPONENT binaries)
 
-add_definitions(/D__STDC_FORMAT_MACROS)

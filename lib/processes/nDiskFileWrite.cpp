@@ -22,13 +22,8 @@ nDiskFileWrite::nDiskFileWrite(Config& config, const string& unique_name,
 {
     buf = get_buffer("in_buf");
     register_consumer(buf, unique_name.c_str());
-    apply_config(0);
-}
 
-nDiskFileWrite::~nDiskFileWrite() {
-}
-
-void nDiskFileWrite::apply_config(uint64_t fpga_seq) {
+    // Apply config.
     disk_base = config.get<std::string>(unique_name, "disk_base");
     num_disks = config.get<uint32_t>(unique_name, "num_disks");
     disk_set = config.get<std::string>(unique_name, "disk_set");
@@ -37,6 +32,9 @@ void nDiskFileWrite::apply_config(uint64_t fpga_seq) {
             unique_name, "instrument_name", "no_name_set");
     write_metadata_and_gains = config.get_default<bool>(
             unique_name, "write_metadata_and_gains", true);
+}
+
+nDiskFileWrite::~nDiskFileWrite() {
 }
 
 void nDiskFileWrite::save_meta_data(char *timestr) {
@@ -152,7 +150,7 @@ void nDiskFileWrite::main_thread() {
 void nDiskFileWrite::file_write_thread(int disk_id) {
 
     int fd;
-    uint64_t file_num = disk_id;
+    size_t file_num = disk_id;
     int frame_id = disk_id;
     uint8_t * frame = NULL;
 
@@ -172,7 +170,7 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
         const int file_name_len = 100;
         char file_name[file_name_len];
 
-        snprintf(file_name, file_name_len, "%s/%s/%d/%s/%010lld.vdif",
+        snprintf(file_name, file_name_len, "%s/%s/%d/%s/%010zu.vdif",
                 disk_base.c_str(),
                 disk_set.c_str(),
                 disk_id,
