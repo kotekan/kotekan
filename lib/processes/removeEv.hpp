@@ -6,9 +6,9 @@
 #ifndef REMOVE_EV_HPP
 #define REMOVE_EV_HPP
 
+#include "Stage.hpp"
 #include "buffer.h"
 #include "datasetManager.hpp"
-#include "stage.hpp"
 #include "visUtil.hpp"
 
 /**

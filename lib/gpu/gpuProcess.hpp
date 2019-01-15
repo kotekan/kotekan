@@ -4,11 +4,11 @@
 #define HI_NIBBLE(b) (((b) >> 4) & 0x0F)
 #define LO_NIBBLE(b) ((b)&0x0F)
 
+#include "Stage.hpp"
 #include "gpuCommand.hpp"
 #include "gpuDeviceInterface.hpp"
 #include "gpuEventContainer.hpp"
 #include "restServer.hpp"
-#include "stage.hpp"
 
 #include "json.hpp"
 

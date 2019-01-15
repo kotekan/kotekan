@@ -1,8 +1,8 @@
 #ifndef GPU_SIMULATE_HPP
 #define GPU_SIMULATE_HPP
 
+#include "Stage.hpp"
 #include "buffer.h"
-#include "stage.hpp"
 
 class gpuSimulate : public kotekan::Stage {
 public:

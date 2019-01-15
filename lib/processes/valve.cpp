@@ -1,9 +1,9 @@
 #include "valve.hpp"
 
+#include "Stage.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "prometheusMetrics.hpp"
-#include "stage.hpp"
 #include "visUtil.hpp"
 
 #include "fmt.hpp"

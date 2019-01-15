@@ -1,4 +1,4 @@
-#include "stage_factory.hpp"
+#include "StageFactory.hpp"
 
 #include "errors.h"
 

@@ -1,7 +1,7 @@
 #include "visDrop.hpp"
 
+#include "StageFactory.hpp"
 #include "errors.h"
-#include "stage_factory.hpp"
 #include "visBuffer.hpp"
 
 #include <algorithm>

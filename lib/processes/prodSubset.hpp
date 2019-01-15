@@ -7,10 +7,10 @@
 #define PROD_SUB_HPP
 
 #include "Config.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
-#include "stage.hpp"
 #include "visUtil.hpp"
 
 #include <future>

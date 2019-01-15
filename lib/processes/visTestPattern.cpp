@@ -1,9 +1,9 @@
 #include "visTestPattern.hpp"
 
+#include "StageFactory.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "errors.h"
-#include "stage_factory.hpp"
 #include "visBuffer.hpp"
 
 #include "gsl-lite.hpp"

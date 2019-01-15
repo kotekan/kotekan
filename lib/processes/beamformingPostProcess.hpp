@@ -2,9 +2,9 @@
 #define BEAMFORMING_POST_PROCESS
 
 #include "Config.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "chimeMetadata.h"
-#include "stage.hpp"
 
 #include <vector>
 

@@ -8,7 +8,7 @@
 #ifndef INVALIDATE_VDIF_FRAMES_HPP
 #define INVALIDATE_VDIF_FRAMES_HPP
 
-#include "stage.hpp"
+#include "Stage.hpp"
 
 #include "json.hpp"
 

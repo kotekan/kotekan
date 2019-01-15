@@ -8,9 +8,9 @@
 #define PULSARNETWORKPROCESS_HPP
 
 
+#include "Stage.hpp"
 #include "buffer.h"
 #include "restServer.hpp"
-#include "stage.hpp"
 #include "tx_utils.hpp"
 
 #include <string>

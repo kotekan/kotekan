@@ -1,8 +1,8 @@
 #ifndef BUFFER_STATUS_H
 #define BUFFER_STATUS_H
 
+#include "Stage.hpp"
 #include "bufferContainer.hpp"
-#include "stage.hpp"
 
 /**
  * @class bufferStatus

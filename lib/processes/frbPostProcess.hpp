@@ -7,10 +7,10 @@
 #ifndef FRB_POST_PROCESS
 #define FRB_POST_PROCESS
 
+#include "Stage.hpp"
 #include "chimeMetadata.h"
 #include "fpga_header_functions.h"
 #include "frb_functions.h"
-#include "stage.hpp"
 
 #include <emmintrin.h>
 #include <immintrin.h>

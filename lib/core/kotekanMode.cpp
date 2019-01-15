@@ -1,12 +1,12 @@
 #include "kotekanMode.hpp"
 
+#include "StageFactory.hpp"
 #include "buffer.h"
 #include "bufferFactory.hpp"
 #include "configUpdater.hpp"
 #include "datasetManager.hpp"
 #include "metadataFactory.hpp"
 #include "restServer.hpp"
-#include "stage_factory.hpp"
 
 #include "json.hpp"
 

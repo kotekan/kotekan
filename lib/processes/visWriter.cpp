@@ -1,10 +1,10 @@
 #include "visWriter.hpp"
 
+#include "StageFactory.hpp"
 #include "datasetManager.hpp"
 #include "datasetState.hpp"
 #include "errors.h"
 #include "prometheusMetrics.hpp"
-#include "stage_factory.hpp"
 #include "version.h"
 #include "visBuffer.hpp"
 #include "visCompression.hpp"

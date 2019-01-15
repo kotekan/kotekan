@@ -1,8 +1,8 @@
 #include "configUpdater.hpp"
 
+#include "Stage.hpp"
 #include "errors.h"
 #include "restServer.hpp"
-#include "stage.hpp"
 
 #include "fmt.hpp"
 

@@ -1,5 +1,6 @@
 #include "applyGains.hpp"
 
+#include "Stage.hpp"
 #include "configUpdater.hpp"
 #include "errors.h"
 #include "prometheusMetrics.hpp"

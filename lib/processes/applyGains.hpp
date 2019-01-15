@@ -1,10 +1,10 @@
 #ifndef APPLY_GAINS_HPP
 #define APPLY_GAINS_HPP
 
+#include "Stage.hpp"
 #include "buffer.h"
 #include "errors.h"
 #include "fpga_header_functions.h"
-#include "stage.hpp"
 #include "updateQueue.hpp"
 #include "util.h"
 #include "visFile.hpp"

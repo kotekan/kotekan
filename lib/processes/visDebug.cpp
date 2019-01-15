@@ -1,10 +1,10 @@
 #include "visDebug.hpp"
 
+#include "StageFactory.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "errors.h"
 #include "prometheusMetrics.hpp"
-#include "stage_factory.hpp"
 #include "visBuffer.hpp"
 
 #include "fmt.hpp"

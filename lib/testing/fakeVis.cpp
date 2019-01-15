@@ -1,9 +1,9 @@
 #include "fakeVis.hpp"
 
+#include "StageFactory.hpp"
 #include "datasetManager.hpp"
 #include "datasetState.hpp"
 #include "errors.h"
-#include "stage_factory.hpp"
 #include "version.h"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"

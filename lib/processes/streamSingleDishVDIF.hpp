@@ -8,8 +8,8 @@
 #define STREAM_SINGLE_DISH_VDIF_H
 
 #include "Config.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
-#include "stage.hpp"
 
 /**
  * @class streamSingleDishVDIF

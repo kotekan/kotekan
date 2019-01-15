@@ -1,9 +1,9 @@
 #ifndef GPU_BEAMFORM_PULSAR_SIMULATE_HPP
 #define GPU_BEAMFORM_PULSAR_SIMULATE_HPP
 
+#include "Stage.hpp"
 #include "buffer.h"
 #include "chimeMetadata.h"
-#include "stage.hpp"
 
 /**
  * @class gpuBeamformPulsarSimulate

@@ -7,7 +7,7 @@
 #ifndef PULSAR_POST_PROCESS
 #define PULSAR_POST_PROCESS
 
-#include "stage.hpp"
+#include "Stage.hpp"
 
 #include <vector>
 

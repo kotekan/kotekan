@@ -1,4 +1,4 @@
-#include "stage.hpp"
+#include "Stage.hpp"
 
 #include "errors.h"
 #include "util.h"

@@ -6,9 +6,9 @@
 
 #ifndef SIMPLE_AUTOCORR_HPP
 #define SIMPLE_AUTOCORR_HPP
+#include "Stage.hpp"
 #include "buffer.h"
 #include "errors.h"
-#include "stage.hpp"
 #include "util.h"
 
 #include <string>

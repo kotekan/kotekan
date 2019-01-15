@@ -1,5 +1,6 @@
 #include "visAccumulate.hpp"
 
+#include "StageFactory.hpp"
 #include "chimeMetadata.h"
 #include "configUpdater.hpp"
 #include "datasetManager.hpp"
@@ -8,7 +9,6 @@
 #include "factory.hpp"
 #include "metadata.h"
 #include "prometheusMetrics.hpp"
-#include "stage_factory.hpp"
 #include "version.h"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"

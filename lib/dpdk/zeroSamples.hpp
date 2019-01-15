@@ -1,7 +1,7 @@
 #ifndef ZERO_SAMPLES_HPP
 #define ZERO_SAMPLES_HPP
 
-#include "stage.hpp"
+#include "Stage.hpp"
 
 #include "json.hpp"
 

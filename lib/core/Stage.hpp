@@ -2,9 +2,9 @@
 #define KOTEKAN_STAGE_H
 
 #include "Config.hpp"
+#include "StageFactory.hpp"
 #include "bufferContainer.hpp"
 #include "kotekanLogging.hpp"
-#include "stage_factory.hpp"
 
 #include <atomic>
 #include <functional>

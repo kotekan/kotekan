@@ -1,9 +1,9 @@
 #ifndef TEST_DATA_GEN_H
 #define TEST_DATA_GEN_H
 
+#include "Stage.hpp"
 #include "buffer.h"
 #include "restServer.hpp"
-#include "stage.hpp"
 
 // Type: one of "random", "const"
 // Value: the value of the constant

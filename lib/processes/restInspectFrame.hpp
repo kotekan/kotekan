@@ -1,8 +1,8 @@
 #ifndef REST_INSPECT_FRAME_HPP
 #define REST_INSPECT_FRAME_HPP
 
+#include "Stage.hpp"
 #include "restServer.hpp"
-#include "stage.hpp"
 
 #include <mutex>
 #include <string>

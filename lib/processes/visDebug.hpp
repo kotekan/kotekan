@@ -7,9 +7,9 @@
 #define VISDEBUG_HPP
 
 #include "Config.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
-#include "stage.hpp"
 
 #include <cstdint>
 #include <map>

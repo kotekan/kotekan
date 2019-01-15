@@ -7,7 +7,7 @@
 #ifndef VISNOISE_HPP
 #define VISNOISE_HPP
 
-#include "stage.hpp"
+#include "Stage.hpp"
 
 #include <random>
 

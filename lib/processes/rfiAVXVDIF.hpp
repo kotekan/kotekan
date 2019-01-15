@@ -6,9 +6,9 @@
 #ifndef RFI_AVX_VDIF_HPP
 #define RFI_AVX_VDIF_HPP
 
+#include "Stage.hpp"
 #include "buffer.h"
 #include "errors.h"
-#include "stage.hpp"
 
 /*
  * @class rfiAVXVDIF

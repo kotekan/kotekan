@@ -7,7 +7,7 @@
 #ifndef PULSAR_SIM_PROCESS
 #define PULSAR_SIM_PROCESS
 
-#include "stage.hpp"
+#include "Stage.hpp"
 
 #include <vector>
 

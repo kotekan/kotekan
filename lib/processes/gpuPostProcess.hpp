@@ -1,8 +1,8 @@
 #ifndef GPU_POST_PROCESS
 #define GPU_POST_PROCESS
 
+#include "Stage.hpp"
 #include "restServer.hpp"
-#include "stage.hpp"
 #include "util.h"
 
 #include <mutex>

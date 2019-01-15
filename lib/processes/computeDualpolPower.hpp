@@ -1,9 +1,9 @@
 #ifndef COMPUTE_DUALPOL_POWER
 #define COMPUTE_DUALPOL_POWER
 
+#include "Stage.hpp"
 #include "buffer.h"
 #include "errors.h"
-#include "stage.hpp"
 
 class computeDualpolPower : public kotekan::Stage {
 public:

@@ -2,9 +2,9 @@
 #define KOTEKAN_MODE_HPP
 
 #include "Config.hpp"
+#include "Stage.hpp"
 #include "metadata.h"
 #include "restServer.hpp"
-#include "stage.hpp"
 
 #include <map>
 

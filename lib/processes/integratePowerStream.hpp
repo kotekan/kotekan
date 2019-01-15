@@ -8,9 +8,9 @@
 #define INTEGRATE_POWER_STREAM_H
 
 #include "Config.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "powerStreamUtil.hpp"
-#include "stage.hpp"
 
 #include <atomic>
 #include <sys/socket.h>

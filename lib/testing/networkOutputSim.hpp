@@ -5,9 +5,9 @@
 #define SIM_FULL_RANGE 1
 #define SIM_SINE 2
 
+#include "Stage.hpp"
 #include "buffer.h"
 #include "errors.h"
-#include "stage.hpp"
 
 class networkOutputSim : public kotekan::Stage {
 public:

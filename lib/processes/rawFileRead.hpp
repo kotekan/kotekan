@@ -1,8 +1,8 @@
 #ifndef RAW_FILE_READ_H
 #define RAW_FILE_READ_H
 
+#include "Stage.hpp"
 #include "buffer.h"
-#include "stage.hpp"
 
 #include <cstdio>
 #include <string>

@@ -1,7 +1,7 @@
 #ifndef ACQ_UPLINK_H
 #define ACQ_UPLINK_H
 
-#include "stage.hpp"
+#include "Stage.hpp"
 
 #include <string>
 

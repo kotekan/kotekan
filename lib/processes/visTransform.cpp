@@ -1,12 +1,12 @@
 #include "visTransform.hpp"
 
+#include "StageFactory.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "chimeMetadata.h"
 #include "datasetState.hpp"
 #include "errors.h"
 #include "metadata.h"
-#include "stage_factory.hpp"
 #include "version.h"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"

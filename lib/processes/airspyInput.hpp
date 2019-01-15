@@ -7,9 +7,9 @@
 #ifndef AIRSPY_INPUT_HPP
 #define AIRSPY_INPUT_HPP
 
+#include "Stage.hpp"
 #include "buffer.h"
 #include "errors.h"
-#include "stage.hpp"
 #include "util.h"
 
 #include <libairspy/airspy.h>

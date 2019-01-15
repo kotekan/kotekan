@@ -1,8 +1,8 @@
 #ifndef BUFFER_MERGE_HPP
 #define BUFFER_MERGE_HPP
 
+#include "Stage.hpp"
 #include "buffer.h"
-#include "stage.hpp"
 #include "visUtil.hpp"
 
 #include <string>

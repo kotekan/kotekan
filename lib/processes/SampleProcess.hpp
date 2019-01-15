@@ -1,7 +1,7 @@
 #ifndef SAMPLEPROCESS_H
 #define SAMPLEPROCESS_H
 
-#include "stage.hpp"
+#include "Stage.hpp"
 
 class SampleProcess : public kotekan::Stage {
 public:

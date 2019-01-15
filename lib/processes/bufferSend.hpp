@@ -6,9 +6,9 @@
 #ifndef BUFFER_SEND_H
 #define BUFFER_SEND_H
 
+#include "Stage.hpp"
 #include "buffer.h"
 #include "errors.h"
-#include "stage.hpp"
 #include "util.h"
 
 #include <arpa/inet.h>

@@ -6,7 +6,7 @@
 #ifndef RECEIVEFLAGS_H
 #define RECEIVEFLAGS_H
 
-#include "stage.hpp"
+#include "Stage.hpp"
 #include "updateQueue.hpp"
 
 #include <mutex>
