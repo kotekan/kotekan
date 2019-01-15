@@ -2,5 +2,5 @@
 Buffers
 ************
 
-More detailed info about buffers, whatever a process writer could need to know...
+More detailed info about buffers, whatever a stage writer could need to know...
 

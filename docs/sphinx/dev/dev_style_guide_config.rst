@@ -9,12 +9,12 @@ If you need to reference the size of a datatype, use a C-like naming, e.g. ``siz
 
 Buffers
 +++++++++++
-``Buffers`` used by a ``KotekanProcess`` should be named ``in_buf`` or ``out_buf``,
+``Buffers`` used by a ``kotekan::Stage`` should be named ``in_buf`` or ``out_buf``,
 for input (being produced into) and output (being consumed from), respectively.
 
 When multiple ``Buffers`` of a similar type are needed,
 they should go into an array of buffers, similarly named.
 
-If multiple ``Buffers`` of different types are used by a single process,
+If multiple ``Buffers`` of different types are used by a single stage,
 a short identifier should be appended to their names,
 e.g. ``in_buf_voltages`` and ``in_buf_pointing``.
