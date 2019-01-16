@@ -110,7 +110,7 @@ void Stage::join() {
                   "%d seconds.",
                   unique_name.c_str(), join_timeout);
             ERROR("If the stage needs more time to exit, please set the config value "
-                  "`join_timeout` for that kotekan_process");
+                  "`join_timeout` for that kotekan_stage");
             std::abort();
         }
     }

@@ -182,7 +182,7 @@ class FakeNetworkBuffer(InputBuffer):
         }
 
         stage_config = {
-            'kotekan_process': 'testDataGen',
+            'kotekan_stage': 'testDataGen',
             'network_out_buf': self.name,
         }
         stage_config.update(kwargs)
@@ -219,7 +219,7 @@ class FakeGPUBuffer(InputBuffer):
         }
 
         stage_config = {
-            'kotekan_process': 'fakeGpuBuffer',
+            'kotekan_stage': 'fakeGpuBuffer',
             'out_buf': self.name,
             'freq': 0,
             'pre_accumulate': True,
@@ -255,7 +255,7 @@ class FakeVisBuffer(InputBuffer):
         }
 
         stage_config = {
-            'kotekan_process': 'fakeVis',
+            'kotekan_stage': 'fakeVis',
             'out_buf': self.name,
             'freq_ids': [0],
             'wait': False
@@ -304,7 +304,7 @@ class VisWriterBuffer(OutputBuffer):
             self.buffer_block = {}
 
         stage_config = {
-            'kotekan_process': 'visWriter',
+            'kotekan_stage': 'visWriter',
             'in_buf': buf_name,
             'file_name': self.name,
             'file_type': file_type,
@@ -360,7 +360,7 @@ class ReadVisBuffer(InputBuffer):
         }
 
         stage_config = {
-            'kotekan_process': 'rawFileRead',
+            'kotekan_stage': 'rawFileRead',
             'buf': self.name,
             'base_dir': input_dir,
             'file_ext': 'dump',
@@ -407,7 +407,7 @@ class DumpVisBuffer(OutputBuffer):
         }
 
         stage_config = {
-            'kotekan_process': 'rawFileWrite',
+            'kotekan_stage': 'rawFileWrite',
             'in_buf': self.name,
             'file_name': self.name,
             'file_ext': 'dump',
@@ -447,7 +447,7 @@ class ReadRawBuffer(InputBuffer):
         }
 
         stage_config = {
-            'kotekan_process': 'visRawReader',
+            'kotekan_stage': 'visRawReader',
             'infile': infile,
             'out_buf': self.name,
             'chunk_size': chunk_size,
@@ -501,7 +501,7 @@ class KotekanStageTester(KotekanRunner):
             else:
                 noise_config['in_buf'] = buffers_in.name
                 buffers_in = [buffers_in]
-            noise_config['kotekan_process'] = 'visNoise'
+            noise_config['kotekan_stage'] = 'visNoise'
             noise_config['out_buf'] = 'noise_buf'
             if noise == "random":
                 noise_config['random'] = True
@@ -534,7 +534,7 @@ class KotekanStageTester(KotekanRunner):
             config['out_buf'] = buffers_out.name
             buffers_out = [buffers_out]
 
-        config['kotekan_process'] = stage_type
+        config['kotekan_stage'] = stage_type
 
         stage_block = {(stage_type + "_test"): config}
         buffer_block = {}
@@ -544,7 +544,7 @@ class KotekanStageTester(KotekanRunner):
             buffer_block.update(buf.buffer_block)
 
         if parallel_stage_type is not None:
-            parallel_config['kotekan_process'] = parallel_stage_type
+            parallel_config['kotekan_stage'] = parallel_stage_type
             stage_block.update(
                 {(parallel_stage_type + "_test_parallel"): parallel_config})
 

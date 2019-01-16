@@ -21,7 +21,7 @@ global_params = {
         'use_dataset_broker': False
     },
     'compress': {
-        'kotekan_process': 'baselineCompression',
+        'kotekan_stage': 'baselineCompression',
         'in_buf': 'compress_buffer',
         'out_buf': 'CHANGE_ME',
         'stack_type': 'diagonal',

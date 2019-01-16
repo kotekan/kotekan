@@ -36,8 +36,8 @@ void StageFactory::build_from_tree(map<string, Stage*>& stages, json& config_tre
             continue;
         }
 
-        // Check if this is a kotekan_process block, and if so create the stage.
-        string stage_name = it.value().value("kotekan_process", "none");
+        // Check if this is a kotekan_stage block, and if so create the stage.
+        string stage_name = it.value().value("kotekan_stage", "none");
         if (stage_name != "none") {
             string unique_name = path + "/" + it.key();
             if (stages.count(unique_name) != 0) {

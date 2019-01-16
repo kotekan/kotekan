@@ -420,7 +420,7 @@ int main(int argc, char** argv) {
             INFO("Got SIGINT, shutting down kotekan...");
             std::lock_guard<std::mutex> lock(kotekan_state_lock);
             if (kotekan_mode != nullptr) {
-                INFO("Attempting to stop and join kotekan_processes...");
+                INFO("Attempting to stop and join kotekan_stages...");
                 kotekan_mode->stop_stages();
                 kotekan_mode->join();
                 delete kotekan_mode;

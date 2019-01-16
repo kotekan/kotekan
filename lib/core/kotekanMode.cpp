@@ -84,14 +84,14 @@ void kotekanMode::initalize_stages() {
 
 void kotekanMode::join() {
     for (auto const& stage : stages) {
-        INFO("Joining kotekan_process: %s...", stage.first.c_str());
+        INFO("Joining kotekan_stage: %s...", stage.first.c_str());
         stage.second->join();
     }
 }
 
 void kotekanMode::start_stages() {
     for (auto const& stage : stages) {
-        INFO("Starting kotekan_process: %s...", stage.first.c_str());
+        INFO("Starting kotekan_stage: %s...", stage.first.c_str());
         stage.second->start();
     }
 }

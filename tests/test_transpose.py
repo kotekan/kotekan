@@ -59,7 +59,7 @@ def transpose(tmpdir_factory):
     }
     fakevis_buffer.buffer_block.update(fsel_buf)
     fakevis_buffer.stage_block.update({"fakevis_fsel": {
-            "kotekan_process": "visDrop",
+            "kotekan_stage": "visDrop",
             "in_buf": fakevis_buffer.name,
             "out_buf": fsel_buf_name,
             "freq": [writer_params['freq'][-1]],
@@ -201,7 +201,7 @@ def transpose_stack(tmpdir_factory):
     }
     fakevis_buffer.buffer_block.update(stack_buf)
     fakevis_buffer.stage_block.update({"fakevis_stack": {
-            "kotekan_process": "baselineCompression",
+            "kotekan_stage": "baselineCompression",
             "in_buf": fakevis_buffer.name,
             "out_buf": stack_buf_name,
             "stack_type": "chime_in_cyl",
