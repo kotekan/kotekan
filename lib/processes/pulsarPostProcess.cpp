@@ -255,10 +255,15 @@ void pulsarPostProcess::main_thread() {
                             }
                             else throw std::runtime_error("Unknown timesamples per VDIF packet.");
 
-                            uint8_t real_part = int((in_buf_data[(i*_num_pulsar*_num_pol + psr*_num_pol + p)*2  ])/float(psr_coord[thread_id].scaling[psr]) +0.5)+8;
-                            uint8_t imag_part = int((in_buf_data[(i*_num_pulsar*_num_pol + psr*_num_pol + p)*2+1])/float(psr_coord[thread_id].scaling[psr]) +0.5)+8;
-                            if (real_part > 15) real_part = 15;
-                            if (imag_part > 15) imag_part = 15;
+                            float real_float = ((in_buf_data[(i*_num_pulsar*_num_pol + psr*_num_pol + p)*2  ])/float(psr_coord[thread_id].scaling[psr]) +0.5)+8;
+                            float imag_float = ((in_buf_data[(i*_num_pulsar*_num_pol + psr*_num_pol + p)*2+1])/float(psr_coord[thread_id].scaling[psr]) +0.5)+8;
+                            if (real_float > 15) real_float = 15.;
+                            if (imag_float > 15) imag_float = 15.;
+                            if (real_float < 0) real_float = 0.;
+                            if (imag_float < 0) imag_float = 0.;
+                            uint8_t real_part = int(real_float);
+                            uint8_t imag_part = int(imag_float);
+
                             out_buf[out_index] = ((real_part<<4) & 0xF0) + (imag_part & 0x0F);
                         } //end loop pol
                     } //end loop psr
