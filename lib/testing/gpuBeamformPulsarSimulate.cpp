@@ -106,6 +106,10 @@ void gpuBeamformPulsarSimulate::calculate_phase(struct psrCoord psr_coord, times
     timeinfo = localtime (&time_now.tv_sec);
     uint year = timeinfo->tm_year+1900;
     uint month = timeinfo->tm_mon+1;
+    if (month <3) {
+        month = month +12;
+        year = year -1;
+    }
     uint day = timeinfo->tm_mday;
     float JD = 2-int(year/100.)+int(int(year/100.)/4.)+int(365.25*year)+int(30.6001*(month+1))+day+1720994.5;
     double T= (JD-2451545.0)/36525.0;  //Works if time after year 2000, otherwise T is -ve and might break
