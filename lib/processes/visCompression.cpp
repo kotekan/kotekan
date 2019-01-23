@@ -41,8 +41,8 @@ baselineCompression::baselineCompression(Config& config, const string& unique_na
                    std::bind(&baselineCompression::main_thread, this)),
     in_buf(get_buffer("in_buf")),
     out_buf(get_buffer("out_buf")),
-    frame_id_in(frameID(in_buf)),
-    frame_id_out(frameID(out_buf)) {
+    frame_id_in(in_buf),
+    frame_id_out(out_buf) {
 
     register_consumer(in_buf, unique_name.c_str());
     register_producer(out_buf, unique_name.c_str());

@@ -28,8 +28,8 @@ applyGains::applyGains(Config& config, const string& unique_name,
                    std::bind(&applyGains::main_thread, this)),
     in_buf(get_buffer("in_buf")),
     out_buf(get_buffer("out_buf")),
-    frame_id_in(frameID(in_buf)),
-    frame_id_out(frameID(out_buf)) {
+    frame_id_in(in_buf),
+    frame_id_out(out_buf) {
 
     // Setup the input buffer
     register_consumer(in_buf, unique_name.c_str());
