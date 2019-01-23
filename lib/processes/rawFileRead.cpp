@@ -91,6 +91,8 @@ void rawFileRead::main_thread() {
             break;
         }
 
+        fclose(fp);
+
         INFO("rawFileRead: Read frame data from %s into %s[%i]", full_path, buf->buffer_name,
              frame_id);
         mark_frame_full(buf, unique_name.c_str(), frame_id);
