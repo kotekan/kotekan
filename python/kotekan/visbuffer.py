@@ -343,16 +343,12 @@ def freq_id_to_stream_id(f_id):
 class GpuBuffer(object):
     """Python representation of a GPU buffer dump.
 
-    Access the data through the `vis`, `weight`, `eval`, `evec` and `erms`
-    attributes which are all numpy arrays.
-
     Parameters
     ----------
-    buffer : bytearray
-        Memory to provide a view of.
-    skip : int, optional
-        Number of bytes to skip from the beginning of the buffer. Useful for
-        raw dumps when the metadata size is given in the first four bytes.
+    buffer : np.ndarray(dtype=np.uint32)
+        Visibility buffer as integers in blocked format.
+    metadata: ChimeMetadata
+        Associated metadata.
     """
 
     def __init__(self, buffer, metadata):
@@ -367,7 +363,6 @@ class GpuBuffer(object):
 
         with io.FileIO(filename, 'rb') as fh:
             # first 4 bytes are metadata size
-            msize = np.frombuffer(fh.read(4), np.uint32)[0]
             fh.seek(4)
             cm = ChimeMetadata()
             fh.readinto(cm)
