@@ -164,12 +164,12 @@ void from_json(const json& j, rstack_ctype& f);
 namespace std {
 template<class T>
 void to_json(json& j, const std::complex<T>& p) {
-    j = json{{"real", p.real()}, {"imag", p.imag()}};
+    j = json{p.real(), p.imag()};
 }
 
 template<class T>
 void from_json(const json& j, std::complex<T>& p) {
-    p = std::complex<T>{j.at("real").get<T>(), j.at("imag").get<T>()};
+    p = std::complex<T>{j.at(0).get<T>(), j.at(1).get<T>()};
 }
 } // namespace std
 

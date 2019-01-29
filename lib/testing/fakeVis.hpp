@@ -139,11 +139,19 @@ public:
      */
     void fill_mode_test_pattern_freq(visFrameView& frame);
 
+    /**
+     * @brief Fill with a input dependend test pattern, where the
+     * input values are defined in the config value 'input_values'.
+     *
+     * @param frame Frame to fill.
+     */
+    void fill_mode_test_pattern_inputs(visFrameView& frame);
+
 private:
     /// Parameters saved from the config files
     size_t num_elements, num_eigenvectors, block_size;
 
-    /// Config parameters for freq test pattern
+    /// Config parameters for freq or inputs test pattern
     std::vector<cfloat> test_pattern_value;
 
     /// Output buffer
