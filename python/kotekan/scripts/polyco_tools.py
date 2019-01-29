@@ -11,6 +11,8 @@ import tempfile
 from subprocess import check_call, CalledProcessError
 from shutil import rmtree
 import time
+import json
+import yaml
 
 
 class Timespec(object):
@@ -133,12 +135,14 @@ class PolycoFile(object):
         else:
             poly = [self.get_closest(start_t)]
 
-        return ("coeff: {}\n".format([ p.coeff for p in poly ]) +
-                "t_ref: {}\n".format([ p.tmid for p in poly ]) +
-                "phase_ref: {}\n".format([ p.phase_ref for p in poly ]) +
-                "rot_freq: {}\n".format(poly[0].f0) +
-                "dm: {}\n".format(poly[0].dm if self.dm is None else self.dm) +
-                "segment: {}".format(poly[0].seg * 60))
+        return {"coeff": [p.coeff for p in poly],
+                "t_ref": [p.tmid for p in poly],
+                "phase_ref": [p.phase_ref for p in poly],
+                "rot_freq": poly[0].f0,
+                "dm": poly[0].dm if self.dm is None else self.dm,
+                "segment": poly[0].seg * 60,
+                "pulsar_name": self.polyco_specs[0]['name'],
+                "enabled": True}
 
     @classmethod
     def generate(cls, start, end, parfile, dm=None, seg=300., ncoeff=12, max_ha=12.):
@@ -200,7 +204,12 @@ def mjd(unixtime):
               help="(generate-polyco) Number of polyco coefficients to generate.")
 @click.option("--max_ha", type=float, default=12.,
               help="(generate-polyco) Maximum hour angle for timing solution to span.")
-def polyco_config(fname, start_time, generate_polyco, end_time, dm, segment, ncoeff, max_ha):
+@click.option("--format", type=click.Choice(['yaml', 'json', 'dict']), default='json',
+              help="Config format to print out.")
+@click.option("--offset", type=float, default=0.,
+              help="Add an offset (s) to the polyco phase solution.")
+def polyco_config(fname, start_time, generate_polyco, end_time, dm, segment, ncoeff, max_ha,
+                  format, offset):
     if generate_polyco:
         if end_time is None:
             end = start_time + 1.
@@ -217,8 +226,13 @@ def polyco_config(fname, start_time, generate_polyco, end_time, dm, segment, nco
     if dm is not None:
         pfile.dm = dm
 
-    print("\nConfig block:\n")
-    print(pfile.config_block(start_time, end_time))
+    if offset != 0.:
+        for p in pfile.polycos:
+            p.phase_ref += offset * p.f0
+
+    print("\nConfig update:\n")
+    formatter = yaml.dump if format == "yaml" else json.dumps
+    print(formatter(pfile.config_block(start_time, end_time)))
 
 
 if __name__ == '__main__':
