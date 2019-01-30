@@ -231,7 +231,7 @@ def polyco_config(fname, start_time, generate_polyco, end_time, dm, segment, nco
             p.phase_ref += offset * p.f0
 
     print("\nConfig update:\n")
-    formatter = yaml.dump if format == "yaml" else json.dumps
+    formatter = yaml.dump if format == "yaml" else json.dumps if format == "json" else repr
     print(formatter(pfile.config_block(start_time, end_time)))
 
 
