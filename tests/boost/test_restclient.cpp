@@ -10,6 +10,10 @@
 #include <thread>
 #include <unistd.h>
 
+using kotekan::connectionInstance;
+using kotekan::HTTP_RESPONSE;
+using kotekan::restServer;
+
 using json = nlohmann::json;
 
 // BOOST_CHECK can't be used in threads...

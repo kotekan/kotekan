@@ -140,7 +140,7 @@ public:
      * @brief Copy a whole frame from a buffer and create a view of it.
      *
      * This will attempt to do a zero copy transfer of the frame for speed, and
-     * fall back on a full copy if any other processes consume from the input
+     * fall back on a full copy if any other stages consume from the input
      * buffer.
      *
      * @note This will allocate metadata for the destination.

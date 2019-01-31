@@ -95,14 +95,14 @@ gen_data:
   type: random
   value: 153
   test_data_gen_0:
-    kotekan_process: testDataGen
+    kotekan_stage: testDataGen
     network_out_buf: gpu_input_buffer_0
 
 #baseband:
 #  base_dir: /mnt/gong/cherry/CygA/July4/
 #  file_name: csDg7_bb
 #  read0:
-#    kotekan_process: rawFileRead
+#    kotekan_stage: rawFileRead
 #    file_ext: dat0
 #    buf: gpu_input_buffer_0
 
@@ -124,7 +124,7 @@ gpu:
   frame_arrival_period: samples_per_data_set / 390625
   log_profiling: false
   gpu_0:
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 0
     updatable_gain_psr: /pulsar_gain
     source_ra: [300.022454326,  299.772454326, 300.272454326 , 300.022454326, 300.022454326, 299.771454326 , 299.771454326 , 300.273454326,  300.273454326, 300.022454326]
@@ -138,7 +138,7 @@ gpu:
 
 cpu_simulate:
   cpu_data_sim_0:
-      kotekan_process: gpuBeamformPulsarSimulate
+      kotekan_stage: gpuBeamformPulsarSimulate
       source_ra: [300.022454326,  299.772454326, 300.272454326 , 300.022454326, 300.022454326, 299.771454326 , 299.771454326 , 300.273454326,  300.273454326, 300.022454326]
       source_dec: [40.7839418602, 40.7839418602, 40.7839418602, 41.0339418602, 40.5339418602, 40.5329418602 , 41.0349418602 , 40.5329418602 , 41.0349418602 , 40.7839418602]
       network_in_buf: gpu_input_buffer_0
@@ -146,7 +146,7 @@ cpu_simulate:
 
 check_data:
   bf_data_check_0:
-    kotekan_process: testDataCheckFloat
+    kotekan_stage: testDataCheckFloat
     first_buf : beamform_pulsar_output_buffer_0
     second_buf: cpu_output_buffer_0
 

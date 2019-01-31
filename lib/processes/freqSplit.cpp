@@ -1,9 +1,9 @@
 #include "freqSplit.hpp"
 
+#include "StageFactory.hpp"
 #include "datasetManager.hpp"
 #include "datasetState.hpp"
 #include "errors.h"
-#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
@@ -22,14 +22,17 @@
 #include <tuple>
 
 
-REGISTER_KOTEKAN_PROCESS(freqSplit);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(freqSplit);
 
 
 freqSplit::freqSplit(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&freqSplit::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&freqSplit::main_thread, this)) {
 
-    // Get the list of buffers that this process shoud connect to
+    // Get the list of buffers that this stage shoud connect to
     std::vector<std::string> output_buffer_names =
         config.get<std::vector<std::string>>(unique_name, "out_bufs");
 
@@ -55,7 +58,7 @@ std::array<dset_id_t, 2> freqSplit::change_dataset_state(dset_id_t input_dset_id
     if (freq_state_ptr == nullptr) {
         ERROR("Set to not use dataset_broker and couldn't find "
               "freqState ancestor of dataset 0x%" PRIx64 ". Make sure there "
-              "is a process upstream in the config, that adds a freqState.\n"
+              "is a stage upstream in the config, that adds a freqState.\n"
               "Exiting...",
               input_dset_id);
         raise(SIGINT);

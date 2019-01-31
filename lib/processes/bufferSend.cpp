@@ -9,12 +9,16 @@
 #define MSG_NOSIGNAL 0
 #endif
 
-REGISTER_KOTEKAN_PROCESS(bufferSend);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::prometheusMetrics;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(bufferSend);
 
 bufferSend::bufferSend(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&bufferSend::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&bufferSend::main_thread, this)) {
 
     buf = get_buffer("buf");
     register_consumer(buf, unique_name.c_str());
@@ -129,8 +133,8 @@ void bufferSend::main_thread() {
         }
 
         // Publish current dropped frame count.
-        metrics.add_process_metric("kotekan_buffer_send_dropped_frame_count", unique_name,
-                                   dropped_frame_count);
+        metrics.add_stage_metric("kotekan_buffer_send_dropped_frame_count", unique_name,
+                                 dropped_frame_count);
 
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
         frame_id = (frame_id + 1) % buf->num_frames;
@@ -168,7 +172,7 @@ void bufferSend::connect_to_server() {
             WARN("Could not connect to server %s:%d, error: %s(%d), waiting %d seconds to retry...",
                  server_ip.c_str(), server_port, strerror(errno), errno, reconnect_time);
             close(socket_fd);
-            // TODO Add a kotekanProcess level "breakable sleep" so this doesn't
+            // TODO Add a Stage level "breakable sleep" so this doesn't
             // lock up the shutdown process for upto reconnect_time seconds.
             sleep(reconnect_time);
             continue;

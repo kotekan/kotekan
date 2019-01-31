@@ -1,11 +1,14 @@
 #include "fftwEngine.hpp"
 
-REGISTER_KOTEKAN_PROCESS(fftwEngine);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(fftwEngine);
 
 fftwEngine::fftwEngine(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&fftwEngine::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&fftwEngine::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());

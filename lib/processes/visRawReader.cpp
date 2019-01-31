@@ -1,9 +1,9 @@
 #include "visRawReader.hpp"
 
+#include "StageFactory.hpp"
 #include "datasetState.hpp"
 #include "errors.h"
 #include "metadata.h"
-#include "processFactory.hpp"
 #include "version.h"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
@@ -30,12 +30,15 @@
 #include <unistd.h>
 
 
-REGISTER_KOTEKAN_PROCESS(visRawReader);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(visRawReader);
 
 visRawReader::visRawReader(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&visRawReader::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&visRawReader::main_thread, this)) {
 
     filename = config.get<std::string>(unique_name, "infile");
     readahead_blocks = config.get<size_t>(unique_name, "readahead_blocks");
@@ -57,7 +60,7 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
                                         + std::to_string(chunk_size[2]) + ")).");
     }
 
-    // Get the list of buffers that this process shoud connect to
+    // Get the list of buffers that this stage should connect to
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 

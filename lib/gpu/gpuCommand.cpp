@@ -2,6 +2,9 @@
 
 #include <iostream>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 using std::string;
 using std::to_string;
 

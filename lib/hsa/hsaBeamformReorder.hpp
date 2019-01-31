@@ -57,8 +57,8 @@ class hsaBeamformReorder : public hsaCommand {
 public:
     /// Constructor, also initializes internal variables from config and initializes the array of
     /// reordering index.
-    hsaBeamformReorder(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                       hsaDeviceInterface& device);
+    hsaBeamformReorder(kotekan::Config& config, const string& unique_name,
+                       kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor, cleans up local allocs.
     virtual ~hsaBeamformReorder();

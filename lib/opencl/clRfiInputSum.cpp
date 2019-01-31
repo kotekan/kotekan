@@ -5,6 +5,11 @@
 #include <mutex>
 #include <string.h>
 
+using kotekan::Config;
+using kotekan::connectionInstance;
+using kotekan::HTTP_RESPONSE;
+using kotekan::restServer;
+
 clRfiInputSum::clRfiInputSum(const char* param_gpuKernel, const char* param_name,
                              Config& param_config, const string& unique_name) :
     gpu_command(param_gpuKernel, param_name, param_config, unique_name) {}

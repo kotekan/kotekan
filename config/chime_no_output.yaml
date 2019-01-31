@@ -43,7 +43,7 @@ reorder_map: [32,33,34,35,40,41,42,43,48,49,50,51,56,57,58,59,96,97,98,99,104,10
 
 # Keeping and eye on status
 buffer_status:
-  kotekan_process: bufferStatus
+  kotekan_stage: bufferStatus
   time_delay: 1000000
 
   # Pool
@@ -111,7 +111,7 @@ file_output_buffers:
         kotekan_buffer: standard
 
 dpdk:
-    kotekan_process: dpdkCore
+    kotekan_stage: dpdkCore
     lcore_cpu_map: [0,1,6,7]
     master_lcore_cpu: 2
     num_ports: 4
@@ -121,32 +121,32 @@ inspect_input:
   # Frames are 2048 bytes, so 524288 = 256 frames
   len: 524288
   inspect_0:
-    kotekan_process: restInspectFrame
+    kotekan_stage: restInspectFrame
     in_buf: gpu_input_buffer_0
   inspect_1:
-    kotekan_process: restInspectFrame
+    kotekan_stage: restInspectFrame
     in_buf: gpu_input_buffer_1
   inspect_2:
-    kotekan_process: restInspectFrame
+    kotekan_stage: restInspectFrame
     in_buf: gpu_input_buffer_2
   inspect_3:
-    kotekan_process: restInspectFrame
+    kotekan_stage: restInspectFrame
     in_buf: gpu_input_buffer_3
 
 #gen_data:
 #  type: const
 #  value: 153
 #  test_data_gen_0:
-#    kotekan_process: testDataGen
+#    kotekan_stage: testDataGen
 #    network_out_buf: gpu_input_buffer_0
 #  test_data_gen_1:
-#    kotekan_process: testDataGen
+#    kotekan_stage: testDataGen
 #    network_out_buf: gpu_input_buffer_1
 #  test_data_gen_2:
-#    kotekan_process: testDataGen
+#    kotekan_stage: testDataGen
 #    network_out_buf: gpu_input_buffer_2
 #  test_data_gen_3:
-#    kotekan_process: testDataGen
+#    kotekan_stage: testDataGen
 #    network_out_buf: gpu_input_buffer_3
 
 gpu:
@@ -174,7 +174,7 @@ gpu:
   n_intg: 24576
   frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 0
     in_buffers:
       network_buf: gpu_input_buffer_0
@@ -182,7 +182,7 @@ gpu:
       output_buf: gpu_output_buffer_0
       beamform_output_buf: beamform_output_buffer_0
   gpu_1:
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 1
     in_buffers:
       network_buf: gpu_input_buffer_1
@@ -190,7 +190,7 @@ gpu:
       output_buf: gpu_output_buffer_1
       beamform_output_buf: beamform_output_buffer_1
   gpu_2:
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 2
     in_buffers:
       network_buf: gpu_input_buffer_2
@@ -198,7 +198,7 @@ gpu:
       output_buf: gpu_output_buffer_2
       beamform_output_buf: beamform_output_buffer_2
   gpu_3:
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 3
     in_buffers:
       network_buf: gpu_input_buffer_3
@@ -207,7 +207,7 @@ gpu:
       beamform_output_buf: beamform_output_buffer_3
 
 #postprocess:
-#  kotekan_process: frbPostProcess
+#  kotekan_stage: frbPostProcess
 #  network_input_buffer_0: beamform_output_buffer_0
 #  network_input_buffer_1: beamform_output_buffer_1
 #  network_input_buffer_2: beamform_output_buffer_2
@@ -218,33 +218,33 @@ gpu:
 #  real: 98304
 #  imag: 0
 #  const_data_check_0:
-#    kotekan_process: constDataCheck
+#    kotekan_stage: constDataCheck
 #    buf: gpu_output_buffer_0
 #  const_data_check_1:
-#    kotekan_process: constDataCheck
+#    kotekan_stage: constDataCheck
 #    buf: gpu_output_buffer_1
 #  const_data_check_2:
-#    kotekan_process: constDataCheck
+#    kotekan_stage: constDataCheck
 #    buf: gpu_output_buffer_2
 #  const_data_check_3:
-#    kotekan_process: constDataCheck
+#    kotekan_stage: constDataCheck
 #    buf: gpu_output_buffer_3
 
 accumulate:
     acc_0:
-        kotekan_process: accumulate
+        kotekan_stage: accumulate
         in_buf: gpu_output_buffer_0
         out_buf: file_output_buffer_0
     acc_1:
-        kotekan_process: accumulate
+        kotekan_stage: accumulate
         in_buf: gpu_output_buffer_1
         out_buf: file_output_buffer_1
     acc_2:
-        kotekan_process: accumulate
+        kotekan_stage: accumulate
         in_buf: gpu_output_buffer_2
         out_buf: file_output_buffer_2
     acc_3:
-        kotekan_process: accumulate
+        kotekan_stage: accumulate
         in_buf: gpu_output_buffer_3
         out_buf: file_output_buffer_3
 
@@ -253,33 +253,33 @@ inspect_output:
   # sets length to frame_size of file_output_buffer_0
   len: 0
   inspect_0:
-    kotekan_process: restInspectFrame
+    kotekan_stage: restInspectFrame
     in_buf: file_output_buffer_0
   inspect_1:
-    kotekan_process: restInspectFrame
+    kotekan_stage: restInspectFrame
     in_buf: file_output_buffer_1
   inspect_2:
-    kotekan_process: restInspectFrame
+    kotekan_stage: restInspectFrame
     in_buf: file_output_buffer_2
   inspect_3:
-    kotekan_process: restInspectFrame
+    kotekan_stage: restInspectFrame
     in_buf: file_output_buffer_3
 
 debug_plots:
     plot_0:
-        kotekan_process: pyPlotN2
+        kotekan_stage: pyPlotN2
         in_buf: gpu_output_buffer_0
         gpu_id: 0
     plot_1:
-        kotekan_process: pyPlotN2
+        kotekan_stage: pyPlotN2
         in_buf: gpu_output_buffer_1
         gpu_id: 1
     plot_2:
-        kotekan_process: pyPlotN2
+        kotekan_stage: pyPlotN2
         in_buf: gpu_output_buffer_2
         gpu_id: 2
     plot_3:
-        kotekan_process: pyPlotN2
+        kotekan_stage: pyPlotN2
         in_buf: gpu_output_buffer_3
         gpu_id: 3
 

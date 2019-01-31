@@ -2,6 +2,9 @@
 
 #include <exception>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 hsaSubframeCommand::hsaSubframeCommand(Config& config, const string& unique_name,
                                        bufferContainer& host_buffers, hsaDeviceInterface& device,
                                        const string& default_kernel_command,

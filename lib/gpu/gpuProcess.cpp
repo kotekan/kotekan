@@ -6,13 +6,19 @@
 #include <iostream>
 #include <sys/time.h>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+using kotekan::connectionInstance;
+using kotekan::restServer;
+
 using namespace std;
 
 // TODO Remove the GPU_ID from this constructor
 gpuProcess::gpuProcess(Config& config_, const string& unique_name,
                        bufferContainer& buffer_container) :
-    KotekanProcess(config_, unique_name, buffer_container,
-                   std::bind(&gpuProcess::main_thread, this)) {
+    Stage(config_, unique_name, buffer_container, std::bind(&gpuProcess::main_thread, this)) {
     log_profiling = config.get_default<bool>(unique_name, "log_profiling", false);
 
     _gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");

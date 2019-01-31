@@ -21,7 +21,7 @@ global_params = {
         'use_dataset_broker': False
     },
     'compress': {
-        'kotekan_process': 'baselineCompression',
+        'kotekan_stage': 'baselineCompression',
         'in_buf': 'compress_buffer',
         'out_buf': 'CHANGE_ME',
         'stack_type': 'diagonal',
@@ -45,14 +45,14 @@ def complete_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
     global_params.update(dump_buffer.buffer_block)
-    global_params.update(dump_buffer.process_block)
+    global_params.update(dump_buffer.stage_block)
     global_params['compress']['out_buf'] = dump_buffer.name
 
     valve_params = {
         'out_buf': 'compress_buffer'
     }
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'Valve', valve_params,
         fakevis_buffer,
         None,
@@ -82,7 +82,7 @@ def incomplete_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
     global_params.update(dump_buffer.buffer_block)
-    global_params.update(dump_buffer.process_block)
+    global_params.update(dump_buffer.stage_block)
     global_params['compress']['out_buf'] = dump_buffer.name
 
 
@@ -90,7 +90,7 @@ def incomplete_data(tmpdir_factory):
         'out_buf': 'compress_buffer'
     }
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'Valve', valve_params,
         fakevis_buffer,
         None,

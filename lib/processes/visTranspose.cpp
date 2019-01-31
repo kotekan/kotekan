@@ -1,9 +1,9 @@
 #include "visTranspose.hpp"
 
+#include "StageFactory.hpp"
 #include "datasetManager.hpp"
 #include "datasetState.hpp"
 #include "errors.h"
-#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
 #include "version.h"
 #include "visBuffer.hpp"
@@ -28,12 +28,16 @@
 #include <unistd.h>
 #include <utility>
 
-REGISTER_KOTEKAN_PROCESS(visTranspose);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::prometheusMetrics;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(visTranspose);
 
 visTranspose::visTranspose(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&visTranspose::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&visTranspose::main_thread, this)) {
 
     // Fetch the buffers, register
     in_buf = get_buffer("in_buf");
@@ -182,7 +186,7 @@ void visTranspose::main_thread() {
 
     if (!future_ds_state.get()) {
         ERROR("Set to not use dataset_broker and couldn't find "
-              "ancestor of dataset 0x%" PRIx64 ". Make sure there is a process"
+              "ancestor of dataset 0x%" PRIx64 ". Make sure there is a stage"
               " upstream in the config, that adds the dataset states."
               "\nExiting...",
               ds_id);
@@ -268,7 +272,7 @@ void visTranspose::main_thread() {
             // export prometheus metric
             if (frame_size == 0)
                 frame_size = frame.calculate_buffer_layout(num_input, num_prod, num_ev).first;
-            prometheusMetrics::instance().add_process_metric(
+            prometheusMetrics::instance().add_stage_metric(
                 "kotekan_vistranspose_data_transposed_bytes", unique_name,
                 frame_size * frames_so_far);
         }

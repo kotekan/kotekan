@@ -43,12 +43,12 @@ lost_samples_buffer:
     frame_size: samples_per_data_set
     metadata_pool: main_pool
 
-# Processes
+# Stages
 
 # The core mapping here is setup for a 6 core CPU with 12 threads (vcores)
 # and setup to use the first 4 real cores (8 vcores)
 dpdk:
-    kotekan_process: dpdkCore
+    kotekan_stage: dpdkCore
     # Format is index = lcore, value = cpu core
     lcore_cpu_map: [0]
     master_lcore_cpu: 1
@@ -74,13 +74,13 @@ dpdk:
         - dpdk_handler: none
 
 zero_samples:
-    kotekan_process: zeroSamples
+    kotekan_stage: zeroSamples
     out_buf: adc_buffer
     lost_samples_buf: lost_samples_buffer
     zero_value: 0
 
 raw_file_write:
-    kotekan_process: nDiskFileWrite
+    kotekan_stage: nDiskFileWrite
     in_buf: adc_buffer
     disk_base: /drives
     disk_set: E

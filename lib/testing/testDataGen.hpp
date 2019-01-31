@@ -1,7 +1,7 @@
 #ifndef TEST_DATA_GEN_H
 #define TEST_DATA_GEN_H
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "restServer.hpp"
 
@@ -41,14 +41,15 @@
  *
  * @author Andre Renard, Kiyoshi Masui
  */
-class testDataGen : public KotekanProcess {
+class testDataGen : public kotekan::Stage {
 public:
-    testDataGen(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    testDataGen(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& buffer_container);
     ~testDataGen();
     void main_thread() override;
 
 private:
-    void rest_callback(connectionInstance& conn, nlohmann::json& request);
+    void rest_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     bool can_i_go(int frame_id_abs);
     struct Buffer* buf;
     std::string type;

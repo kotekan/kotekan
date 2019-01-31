@@ -1,10 +1,10 @@
 #include "constDataCheck.hpp"
 
-REGISTER_KOTEKAN_PROCESS(constDataCheck);
+REGISTER_KOTEKAN_STAGE(constDataCheck);
 
-constDataCheck::constDataCheck(Config& config, const string& unique_name,
-                               bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
+constDataCheck::constDataCheck(kotekan::Config& config, const string& unique_name,
+                               kotekan::bufferContainer& buffer_container) :
+    kotekan::Stage(config, unique_name, buffer_container,
                    std::bind(&constDataCheck::main_thread, this)) {
 
     buf = get_buffer("in_buf");

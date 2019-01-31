@@ -1,6 +1,6 @@
 #include "configUpdater.hpp"
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "errors.h"
 #include "restServer.hpp"
 
@@ -8,6 +8,8 @@
 
 #include <iostream>
 #include <signal.h>
+
+namespace kotekan {
 
 configUpdater& configUpdater::instance() {
     static configUpdater dm;
@@ -80,13 +82,12 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path) {
         }
 
         // Recursive part.
-        // This is a section/scope not a process block.
+        // This is a section/scope not a stage block.
         parse_tree(it.value(), unique_name);
     }
 }
 
-void configUpdater::subscribe(const KotekanProcess* subscriber,
-                              std::function<bool(json&)> callback) {
+void configUpdater::subscribe(const Stage* subscriber, std::function<bool(json&)> callback) {
     if (!_config->exists(subscriber->get_unique_name(), "updatable_config"))
         throw std::runtime_error("configUpdater: key 'updatable_config' was "
                                  "not found in '"
@@ -95,7 +96,7 @@ void configUpdater::subscribe(const KotekanProcess* subscriber,
               callback);
 }
 
-void configUpdater::subscribe(const KotekanProcess* subscriber,
+void configUpdater::subscribe(const Stage* subscriber,
                               std::map<std::string, std::function<bool(json&)>> callbacks) {
     for (auto callback : callbacks) {
         if (!_config->exists(subscriber->get_unique_name() + "/updatable_config", callback.first))
@@ -229,7 +230,7 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
 
         try {
             // this ignores the data type,
-            // should be checked in processes' callbacks
+            // should be checked in stages' callbacks
             _config->update_value(uri, it.key(), it.value());
         } catch (const std::exception& e) {
             std::string msg = fmt::format("configUpdater: Failed applying "
@@ -245,3 +246,5 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
 
     con.send_empty_reply(HTTP_RESPONSE::OK);
 }
+
+} // namespace kotekan

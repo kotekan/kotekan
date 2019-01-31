@@ -10,27 +10,27 @@
 #include <map>
 #include <string>
 
-// Name space includes.
-using json = nlohmann::json;
-using std::map;
-using std::string;
+namespace kotekan {
 
 class bufferFactory {
 
 public:
-    // One processFactory should be created for each set of config and buffer_container
-    bufferFactory(Config& config, map<string, struct metadataPool*>& metadataPools);
+    // One bufferFactory should be created for each set of config and buffer_container
+    bufferFactory(Config& config, std::map<std::string, struct metadataPool*>& metadataPools);
     ~bufferFactory();
 
-    map<string, struct Buffer*> build_buffers();
+    std::map<std::string, struct Buffer*> build_buffers();
 
 private:
-    void build_from_tree(map<string, struct Buffer*>& buffers, json& config_tree,
-                         const string& path);
-    struct Buffer* new_buffer(const string& type_name, const string& name, const string& location);
+    void build_from_tree(std::map<std::string, struct Buffer*>& buffers,
+                         nlohmann::json& config_tree, const std::string& path);
+    struct Buffer* new_buffer(const std::string& type_name, const std::string& name,
+                              const std::string& location);
 
     Config& config;
-    map<string, struct metadataPool*>& metadataPools;
+    std::map<std::string, struct metadataPool*>& metadataPools;
 };
+
+} // namespace kotekan
 
 #endif /* BUFFER_FACTORY_HPP */

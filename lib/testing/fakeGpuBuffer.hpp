@@ -1,12 +1,12 @@
 /*****************************************
 @file
 @brief Generate fake data in gpu buffer format.
-- fakeGpuBuffer : public KotekanProcess
+- fakeGpuBuffer : public Stage
 *****************************************/
 #ifndef FAKE_GPU_BUFFER_HPP
 #define FAKE_GPU_BUFFER_HPP
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "chimeMetadata.h"
 #include "pulsarTiming.hpp"
@@ -58,9 +58,10 @@
  *          id.
  * @author Richard Shaw
  */
-class fakeGpuBuffer : public KotekanProcess {
+class fakeGpuBuffer : public kotekan::Stage {
 public:
-    fakeGpuBuffer(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    fakeGpuBuffer(kotekan::Config& config, const string& unique_name,
+                  kotekan::bufferContainer& buffer_container);
     ~fakeGpuBuffer();
     void main_thread() override;
 

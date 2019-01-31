@@ -2,7 +2,7 @@
 #define BEAMFORMING_POST_PROCESS
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "chimeMetadata.h"
 
@@ -10,10 +10,10 @@
 
 using std::vector;
 
-class beamformingPostProcess : public KotekanProcess {
+class beamformingPostProcess : public kotekan::Stage {
 public:
-    beamformingPostProcess(Config& config, const string& unique_name,
-                           bufferContainer& buffer_container);
+    beamformingPostProcess(kotekan::Config& config, const string& unique_name,
+                           kotekan::bufferContainer& buffer_container);
     virtual ~beamformingPostProcess();
     void main_thread() override;
 

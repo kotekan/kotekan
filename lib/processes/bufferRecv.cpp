@@ -23,12 +23,17 @@ using std::queue;
 using std::thread;
 using std::vector;
 
-REGISTER_KOTEKAN_PROCESS(bufferRecv);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::connectionInstance;
+using kotekan::prometheusMetrics;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(bufferRecv);
 
 bufferRecv::bufferRecv(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&bufferRecv::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&bufferRecv::main_thread, this)) {
 
     listen_port = config.get_default<uint32_t>(unique_name, "listen_port", 11024);
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
@@ -88,8 +93,8 @@ void bufferRecv::accept_connection(int listener, short event, void* arg) {
 void bufferRecv::increment_droped_frame_count() {
     std::lock_guard<mutex> lock(dropped_frame_count_mutex);
     dropped_frame_count++;
-    prometheusMetrics::instance().add_process_metric("kotekan_buffer_recv_dropped_frame_total",
-                                                     unique_name, dropped_frame_count);
+    prometheusMetrics::instance().add_stage_metric("kotekan_buffer_recv_dropped_frame_total",
+                                                   unique_name, dropped_frame_count);
 }
 
 void bufferRecv::internal_accept_connection(evutil_socket_t listener, short event, void* arg) {
@@ -444,7 +449,7 @@ void connInstance::internal_read_callback() {
                 // Save a prometheus metric of the elapsed time
                 double elapsed = current_time() - start_time;
                 std::string labels = fmt::format("source=\"{}:{}\"", client_ip, port);
-                prometheusMetrics::instance().add_process_metric(
+                prometheusMetrics::instance().add_stage_metric(
                     "kotekan_buffer_recv_transfer_time_seconds", producer_name, elapsed, labels);
 
                 DEBUG("Received data from client: %s:%d into frame: %s[%d]", client_ip.c_str(),

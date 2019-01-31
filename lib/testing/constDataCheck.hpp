@@ -1,13 +1,13 @@
 /**
  * @file
  * @brief Contains a consumer to verify that buffers match a constant value.
- *  - constDataCheck : public KotekanProcess
+ *  - constDataCheck : public Stage
  */
 
 #ifndef CONST_DATA_CHECK_H
 #define CONST_DATA_CHECK_H
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "errors.h"
 #include "util.h"
@@ -32,10 +32,11 @@
  * @author Andre Renard
  *
  */
-class constDataCheck : public KotekanProcess {
+class constDataCheck : public kotekan::Stage {
 public:
     /// Constructor, also initializes internal variables from config.
-    constDataCheck(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    constDataCheck(kotekan::Config& config, const string& unique_name,
+                   kotekan::bufferContainer& buffer_container);
 
     /// Destructor, cleans up local allocs.
     ~constDataCheck();

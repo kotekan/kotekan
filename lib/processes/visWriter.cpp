@@ -1,9 +1,9 @@
 #include "visWriter.hpp"
 
+#include "StageFactory.hpp"
 #include "datasetManager.hpp"
 #include "datasetState.hpp"
 #include "errors.h"
-#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
 #include "version.h"
 #include "visBuffer.hpp"
@@ -28,8 +28,17 @@
 #include <vector>
 
 
-REGISTER_KOTEKAN_PROCESS(visWriter);
-REGISTER_KOTEKAN_PROCESS(visCalWriter);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::prometheusMetrics;
+using kotekan::Stage;
+
+using kotekan::connectionInstance;
+using kotekan::HTTP_RESPONSE;
+using kotekan::restServer;
+
+REGISTER_KOTEKAN_STAGE(visWriter);
+REGISTER_KOTEKAN_STAGE(visCalWriter);
 
 
 // Define the string name of the bad frame types, required for the prometheus output
@@ -38,15 +47,14 @@ std::map<visWriter::droppedType, std::string> visWriter::dropped_type_map = {
 
 
 visWriter::visWriter(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&visWriter::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&visWriter::main_thread, this)) {
 
     // Fetch any simple configuration
     root_path = config.get_default<std::string>(unique_name, "root_path", ".");
     acq_timeout = config.get_default<double>(unique_name, "acq_timeout", 300);
     ignore_version = config.get_default<bool>(unique_name, "ignore_version", false);
 
-    // Get the list of buffers that this process shoud connect to
+    // Get the list of buffers that this stage shoud connect to
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
@@ -146,8 +154,8 @@ void visWriter::main_thread() {
 
             // Update average write time in prometheus
             write_time.add_sample(elapsed);
-            prometheusMetrics::instance().add_process_metric("kotekan_viswriter_write_time_seconds",
-                                                             unique_name, write_time.average());
+            prometheusMetrics::instance().add_stage_metric("kotekan_viswriter_write_time_seconds",
+                                                           unique_name, write_time.average());
         }
 
         // Mark the buffer and move on
@@ -169,9 +177,9 @@ void visWriter::report_dropped_frame(dset_id_t ds_id, uint32_t freq_id, droppedT
     acq.dropped_frame_count[key] += 1;
     std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\",reason=\"{}\"", freq_id,
                                      ds_id, dropped_type_map.at(reason));
-    prometheusMetrics::instance().add_process_metric("kotekan_viswriter_dropped_frame_total",
-                                                     unique_name, acq.dropped_frame_count.at(key),
-                                                     labels);
+    prometheusMetrics::instance().add_stage_metric("kotekan_viswriter_dropped_frame_total",
+                                                   unique_name, acq.dropped_frame_count.at(key),
+                                                   labels);
 }
 
 void visWriter::close_old_acqs() {
@@ -206,7 +214,7 @@ void visWriter::get_dataset_state(dset_id_t ds_id) {
 
     if (pstate == nullptr || mstate == nullptr || fstate == nullptr) {
         ERROR("Set to not use dataset_broker and couldn't find "
-              "ancestor of dataset 0x%" PRIx64 ". Make sure there is a process"
+              "ancestor of dataset 0x%" PRIx64 ". Make sure there is a stage"
               " upstream in the config, that the dataset states.\nExiting...",
               ds_id);
         ERROR("One of them is a nullptr (0): prodState %d, metadataState %d, "

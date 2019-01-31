@@ -47,16 +47,16 @@ or empty (indicating that all consumers have indicated completion).
     For efficiency, ``frames`` are not implicitly zeroed or reset after use:
     it is the responsibility of future producers to leave them in a desired state.
 
-``kotekanProcess`` Modules
+``kotekan::Stage`` Modules
 --------------------------
-The ``buffer`` objects are written to and read from by ``kotekanProcess``
+The ``buffer`` objects are written to and read from by ``kotekan::Stage``
 signal processing modules.
 These are intended to perform a variety of tasks,
 ranging from gathering data from a network stream or external device,
 to applying filters or other algorithmic manipulations to the data,
 to sending data to the network or storing them on a local filesystem.
 
-Each ``kotekanProcess`` registers its presence with every ``buffer`` it
+Each ``Stage`` registers its presence with every ``buffer`` it
 needs to interact with, explicitly declaring itself as either
 a producer (writing to available ``frames``),
 or consumer (reading from filled ``frames``).
@@ -68,7 +68,7 @@ Co-processors and Accelerators
 **Kotekan** has been designed with GPU co-processing in mind,
 but the model could easily be extended to service FPGA or other accelerators.
 To maximize efficiency, flexibility, and to pipeline away copy-to/-from latencies,
-accelerator kernels are managed within special ``kotekanProcess`` modules which handle
+accelerator kernels are managed within special ``Stage`` modules which handle
 the device.
 
 These modules are able to pre-fetch data into the accelerator's local memory,

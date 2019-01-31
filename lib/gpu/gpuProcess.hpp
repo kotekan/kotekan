@@ -4,7 +4,7 @@
 #define HI_NIBBLE(b) (((b) >> 4) & 0x0F)
 #define LO_NIBBLE(b) ((b)&0x0F)
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "gpuCommand.hpp"
 #include "gpuDeviceInterface.hpp"
 #include "gpuEventContainer.hpp"
@@ -12,12 +12,13 @@
 
 #include "json.hpp"
 
-class gpuProcess : public KotekanProcess {
+class gpuProcess : public kotekan::Stage {
 public:
-    gpuProcess(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    gpuProcess(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& buffer_container);
     virtual ~gpuProcess();
     void main_thread() override;
-    void profile_callback(connectionInstance& conn);
+    void profile_callback(kotekan::connectionInstance& conn);
 
 protected:
     virtual gpuCommand* create_command(const std::string& cmd_name,
@@ -28,7 +29,7 @@ protected:
     void init(void);
 
     vector<gpuEventContainer*> final_signals;
-    bufferContainer local_buffer_container;
+    kotekan::bufferContainer local_buffer_container;
 
     bool log_profiling;
     // The mean expected time between frames in seconds

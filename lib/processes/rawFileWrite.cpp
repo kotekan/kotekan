@@ -13,12 +13,16 @@
 #include <string.h>
 #include <unistd.h>
 
-REGISTER_KOTEKAN_PROCESS(rawFileWrite);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::prometheusMetrics;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(rawFileWrite);
 
 rawFileWrite::rawFileWrite(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&rawFileWrite::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&rawFileWrite::main_thread, this)) {
 
     buf = get_buffer("in_buf");
     register_consumer(buf, unique_name.c_str());
@@ -97,8 +101,8 @@ void rawFileWrite::main_thread() {
         }
 
         double elapsed = current_time() - st;
-        prometheusMetrics::instance().add_process_metric("kotekan_rawfilewrite_write_time_seconds",
-                                                         unique_name, elapsed);
+        prometheusMetrics::instance().add_stage_metric("kotekan_rawfilewrite_write_time_seconds",
+                                                       unique_name, elapsed);
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
 
         frame_id = (frame_id + 1) % buf->num_frames;

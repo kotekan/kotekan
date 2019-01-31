@@ -31,7 +31,7 @@ def written_data(tmpdir_factory):
     params = writer_params.copy()
     params['root_path'] = tmpdir
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'visWriter',
         {'node_mode': False, 'file_type': 'raw'},
         fakevis_buffer,

@@ -1,9 +1,9 @@
 #include "prodSubset.hpp"
 
+#include "StageFactory.hpp"
 #include "datasetManager.hpp"
 #include "datasetState.hpp"
 #include "errors.h"
-#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
@@ -26,12 +26,15 @@
 #include <utility>
 
 
-REGISTER_KOTEKAN_PROCESS(prodSubset);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(prodSubset);
 
 prodSubset::prodSubset(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&prodSubset::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&prodSubset::main_thread, this)) {
 
     // Get buffers
     in_buf = get_buffer("in_buf");
@@ -57,7 +60,7 @@ dset_id_t prodSubset::change_dataset_state(dset_id_t ds_id, std::vector<prod_cty
     if (prod_state_ptr == nullptr) {
         ERROR("Set to not use dataset_broker and couldn't find "
               "freqState ancestor of dataset 0x%" PRIx64 ". Make sure there "
-              "is a process upstream in the config, that adds a freqState.\n"
+              "is a stage upstream in the config, that adds a freqState.\n"
               "Exiting...",
               ds_id);
         raise(SIGINT);

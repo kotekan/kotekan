@@ -50,12 +50,12 @@ class hsaRfiBadInput : public hsaCommand {
 
 public:
     /// Constructor, initializes internal variables.
-    hsaRfiBadInput(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                   hsaDeviceInterface& device);
+    hsaRfiBadInput(kotekan::Config& config, const string& unique_name,
+                   kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiBadInput();
     /// Rest Server callback function
-    void rest_callback(connectionInstance& conn, json& json_request);
+    void rest_callback(kotekan::connectionInstance& conn, json& json_request);
     /// Executes rfi_bad_input.hsaco kernel. Allocates kernel variables.
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 

@@ -5,9 +5,12 @@
 #include <signal.h>
 #include <unistd.h>
 
-REGISTER_KOTEKAN_PROCESS(monitorBuffer);
+using kotekan::bufferContainer;
+using kotekan::Config;
 
-PROCESS_CONSTRUCTOR(monitorBuffer) {
+REGISTER_KOTEKAN_STAGE(monitorBuffer);
+
+STAGE_CONSTRUCTOR(monitorBuffer) {
 
     // Note we do not register as a producer or consumer here.
     buffers = get_buffer_array("bufs");

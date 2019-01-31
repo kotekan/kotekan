@@ -33,11 +33,14 @@ using std::string;
 #include "util.h"
 #include "vdif_functions.h"
 
-REGISTER_KOTEKAN_PROCESS(pulsarSimProcess);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(pulsarSimProcess);
 pulsarSimProcess::pulsarSimProcess(Config& config_, const string& unique_name,
                                    bufferContainer& buffer_container) :
-    KotekanProcess(config_, unique_name, buffer_container,
-                   std::bind(&pulsarSimProcess::main_thread, this)) {
+    Stage(config_, unique_name, buffer_container, std::bind(&pulsarSimProcess::main_thread, this)) {
 
     // Apply config.
     _num_gpus = config.get<int32_t>(unique_name, "num_gpus");

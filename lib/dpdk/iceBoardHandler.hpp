@@ -58,8 +58,8 @@
 class iceBoardHandler : public dpdkRXhandler {
 public:
     /// Default constructor
-    iceBoardHandler(Config& config, const std::string& unique_name,
-                    bufferContainer& buffer_container, int port);
+    iceBoardHandler(kotekan::Config& config, const std::string& unique_name,
+                    kotekan::bufferContainer& buffer_container, int port);
 
     /// Same abstract function as in @c dpdkRXhandler
     virtual int handle_packet(struct rte_mbuf* mbuf) = 0;
@@ -328,8 +328,8 @@ protected:
     int32_t num_local_freq;
 };
 
-inline iceBoardHandler::iceBoardHandler(Config& config, const std::string& unique_name,
-                                        bufferContainer& buffer_container, int port) :
+inline iceBoardHandler::iceBoardHandler(kotekan::Config& config, const std::string& unique_name,
+                                        kotekan::bufferContainer& buffer_container, int port) :
     dpdkRXhandler(config, unique_name, buffer_container, port) {
 
     sample_size = config.get_default<uint32_t>(unique_name, "sample_size", 2048);
@@ -400,29 +400,28 @@ json iceBoardHandler::get_json_port_info() {
 }
 
 inline void iceBoardHandler::update_stats() {
-    prometheusMetrics& metrics = prometheusMetrics::instance();
+    kotekan::prometheusMetrics& metrics = kotekan::prometheusMetrics::instance();
 
     std::string tags = "port=\"" + std::to_string(port) + "\"";
 
-    metrics.add_process_metric("kotekan_dpdk_rx_packets_total", unique_name, rx_packets_total,
-                               tags);
-    metrics.add_process_metric("kotekan_dpdk_rx_samples_total", unique_name,
-                               rx_packets_total * samples_per_packet, tags);
+    metrics.add_stage_metric("kotekan_dpdk_rx_packets_total", unique_name, rx_packets_total, tags);
+    metrics.add_stage_metric("kotekan_dpdk_rx_samples_total", unique_name,
+                             rx_packets_total * samples_per_packet, tags);
 
-    metrics.add_process_metric("kotekan_dpdk_rx_lost_packets_total", unique_name,
-                               (int)(rx_lost_samples_total / samples_per_packet), tags);
-    metrics.add_process_metric("kotekan_dpdk_lost_samples_total", unique_name,
-                               rx_lost_samples_total, tags);
+    metrics.add_stage_metric("kotekan_dpdk_rx_lost_packets_total", unique_name,
+                             (int)(rx_lost_samples_total / samples_per_packet), tags);
+    metrics.add_stage_metric("kotekan_dpdk_lost_samples_total", unique_name, rx_lost_samples_total,
+                             tags);
 
-    metrics.add_process_metric("kotekan_dpdk_rx_bytes_total", unique_name, rx_bytes_total, tags);
-    metrics.add_process_metric("kotekan_dpdk_rx_errors_total", unique_name, rx_errors_total, tags);
+    metrics.add_stage_metric("kotekan_dpdk_rx_bytes_total", unique_name, rx_bytes_total, tags);
+    metrics.add_stage_metric("kotekan_dpdk_rx_errors_total", unique_name, rx_errors_total, tags);
 
-    metrics.add_process_metric("kotekan_dpdk_rx_ip_cksum_errors_total", unique_name,
-                               rx_ip_cksum_errors_total, tags);
-    metrics.add_process_metric("kotekan_dpdk_rx_packet_len_errors_total", unique_name,
-                               rx_packet_len_errors_total, tags);
-    metrics.add_process_metric("kotekan_dpdk_rx_out_of_order_errors_total", unique_name,
-                               rx_out_of_order_errors_total, tags);
+    metrics.add_stage_metric("kotekan_dpdk_rx_ip_cksum_errors_total", unique_name,
+                             rx_ip_cksum_errors_total, tags);
+    metrics.add_stage_metric("kotekan_dpdk_rx_packet_len_errors_total", unique_name,
+                             rx_packet_len_errors_total, tags);
+    metrics.add_stage_metric("kotekan_dpdk_rx_out_of_order_errors_total", unique_name,
+                             rx_out_of_order_errors_total, tags);
 }
 
 #endif

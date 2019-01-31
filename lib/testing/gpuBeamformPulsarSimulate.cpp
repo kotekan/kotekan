@@ -20,12 +20,16 @@
 #define inst_long -119.6175
 #define inst_lat 49.3203
 
-REGISTER_KOTEKAN_PROCESS(gpuBeamformPulsarSimulate);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(gpuBeamformPulsarSimulate);
 
 gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config, const string& unique_name,
                                                      bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&gpuBeamformPulsarSimulate::main_thread, this)) {
+    Stage(config, unique_name, buffer_container,
+          std::bind(&gpuBeamformPulsarSimulate::main_thread, this)) {
 
     // Apply config.
     _num_elements = config.get<int32_t>(unique_name, "num_elements");

@@ -13,6 +13,8 @@
 // the code to test:
 #include "datasetManager.hpp"
 
+using kotekan::Config;
+
 using json = nlohmann::json;
 
 using namespace std::string_literals;
