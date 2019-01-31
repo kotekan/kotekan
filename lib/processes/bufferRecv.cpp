@@ -8,6 +8,7 @@
 
 #include "fmt.hpp"
 
+#include <cstring>
 #include <errno.h>
 #include <exception>
 #include <functional>
@@ -110,7 +111,7 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
     socklen_t slen = sizeof(ss);
     int fd = accept(listener, (struct sockaddr*)&ss, &slen);
     if (fd < 0) {
-        ERROR("Failed to accept connection.");
+        ERROR("Failed to accept connection, error %d (%s).", errno, std::strerror(errno));
         return;
     }
     if (fd > FD_SETSIZE) {

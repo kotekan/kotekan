@@ -4,6 +4,11 @@
 #include "prometheusMetrics.hpp"
 #include "util.h"
 
+#include "fmt.hpp"
+
+#include <cerrno>
+#include <cstring>
+
 // Only Linux supports MSG_NOSIGNAL
 #ifndef __linux__
 #define MSG_NOSIGNAL 0
@@ -164,8 +169,10 @@ void bufferSend::connect_to_server() {
 
         socket_fd = socket(AF_INET, SOCK_STREAM, 0);
         if (socket_fd == -1) {
-            ERROR("Could not create socket, errno: %d", errno);
-            throw std::runtime_error("Could not create socket");
+            std::string msg = fmt::format("Could not create socket, errno: {} ({}})", errno,
+                                          std::strerror(errno));
+            ERROR(msg.c_str());
+            throw std::runtime_error(msg);
         }
 
         if (connect(socket_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
