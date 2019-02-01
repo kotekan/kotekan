@@ -150,7 +150,8 @@ void visWriter::main_thread() {
                 std::lock_guard<std::mutex> lock(write_mutex);
                 late = acq.file_bundle->add_sample(t, freq_ind, frame);
             }
-            double elapsed = current_time() - start;
+            acq.last_update = current_time();
+            double elapsed = acq.last_update - start;
 
             DEBUG("Written frequency %i in %.5f s", frame.freq_id, elapsed);
 
@@ -203,8 +204,7 @@ void visWriter::close_old_acqs()
 {
     auto it = acqs.begin();
     while (it != acqs.end()) {
-        auto last_update = it->second.file_bundle->last_update();
-        double age = current_time() - last_update.ctime;
+        double age = current_time() - it->second.last_update;
 
         if (!it->second.bad_dataset && age > acq_timeout) {
             it = acqs.erase(it);
