@@ -29,7 +29,7 @@ struct gpu_mem_config_t {
 
 class hsaDeviceInterface : public gpuDeviceInterface {
 public:
-    hsaDeviceInterface(Config& config, int32_t gpu_id, int gpu_buffer_depth);
+    hsaDeviceInterface(kotekan::Config& config, int32_t gpu_id, int gpu_buffer_depth);
     virtual ~hsaDeviceInterface();
 
     // Note, if precede_signal is 0, then we don't wait on any signal.

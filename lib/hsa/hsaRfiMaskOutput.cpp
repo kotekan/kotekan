@@ -2,6 +2,9 @@
 
 #include "chimeMetadata.h"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_HSA_COMMAND(hsaRfiMaskOutput);
 
 hsaRfiMaskOutput::hsaRfiMaskOutput(Config& config, const string& unique_name,

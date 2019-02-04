@@ -153,8 +153,8 @@ private:
  * reference to it.
  *
  * The datasetManager is used to manage the states of datasets that get passed
- * through kotekan processes.
- * A process in the kotekan pipeline may use the dataset ID found in an incoming
+ * through kotekan stages.
+ * A stage in the kotekan pipeline may use the dataset ID found in an incoming
  * frame to get a set of states from the datasetManager.
  *
  * To receive information about the inputs the datsets in the frames contain, it
@@ -164,12 +164,12 @@ private:
  * const std::vector<input_ctype>& inputs = input_state->get_inputs();
  * ```
  *
- * A process that changes the state of the dataset in the frames it processes
+ * A stage that changes the state of the dataset in the frames it processes
  * should inform the datasetManager by adding a new state and dataset.
- *  If a process is altering more than one type of dataset state, it can add
+ *  If a stage is altering more than one type of dataset state, it can add
  * `inner` states to the one it passes to the dataset manager.
  * The following adds an input state as well as a product state. The
- * process should then write `new_ds_id` to its outgoing frames.
+ * stage should then write `new_ds_id` to its outgoing frames.
  * ```
  * auto new_state = dm.add_state(std::make_unique<inputState>(
  *                              new_inputs, make_unique<prodState>(new_prods)));
@@ -220,7 +220,7 @@ public:
      *
      * @returns A reference to the global datasetManager instance.
      */
-    static datasetManager& instance(Config& config);
+    static datasetManager& instance(kotekan::Config& config);
 
     // Remove the implicit copy/assignments to prevent copying
     datasetManager(const datasetManager&) = delete;
@@ -642,8 +642,8 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
         WARN("datasetManager: Failure requesting state from "
              "broker: %s",
              reply.second.c_str());
-        prometheusMetrics::instance().add_process_metric("kotekan_datasetbroker_error_count",
-                                                         DS_UNIQUE_NAME, ++_conn_error_count);
+        kotekan::prometheusMetrics::instance().add_stage_metric(
+            "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
         return nullptr;
     }
 
@@ -700,8 +700,8 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
         WARN("datasetManager: failure parsing reply received from broker "
              "after requesting state (reply: %s): %s",
              reply.second.c_str(), e.what());
-        prometheusMetrics::instance().add_process_metric("kotekan_datasetbroker_error_count",
-                                                         DS_UNIQUE_NAME, ++_conn_error_count);
+        kotekan::prometheusMetrics::instance().add_stage_metric(
+            "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
         return nullptr;
     }
 }

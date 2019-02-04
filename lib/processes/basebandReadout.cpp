@@ -22,13 +22,20 @@
 #include <unistd.h>
 
 
-REGISTER_KOTEKAN_PROCESS(basebandReadout);
+using kotekan::basebandApiManager;
+using kotekan::basebandDumpStatus;
+using kotekan::basebandReadoutManager;
+using kotekan::basebandRequest;
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(basebandReadout);
 
 
 basebandReadout::basebandReadout(Config& config, const string& unique_name,
                                  bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&basebandReadout::main_thread, this)),
+    Stage(config, unique_name, buffer_container, std::bind(&basebandReadout::main_thread, this)),
     _base_dir(config.get_default<std::string>(unique_name, "base_dir", "./")),
     _num_frames_buffer(config.get<int>(unique_name, "num_frames_buffer")),
     _num_elements(config.get<int>(unique_name, "num_elements")),
@@ -102,7 +109,7 @@ void basebandReadout::main_thread() {
             uint32_t freq_id = bin_number_chime(&stream_id);
             INFO("Starting request-listening thread for freq_id: %" PRIu32, freq_id);
             basebandReadoutManager& mgr =
-                basebandApiManager::instance().register_readout_process(freq_id);
+                basebandApiManager::instance().register_readout_stage(freq_id);
             lt = std::make_unique<std::thread>([&] { this->listen_thread(freq_id, mgr); });
 
             wt = std::make_unique<std::thread>([&] { this->write_thread(mgr); });

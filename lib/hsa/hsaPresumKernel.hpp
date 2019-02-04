@@ -5,8 +5,8 @@
 
 class hsaPresumKernel : public hsaSubframeCommand {
 public:
-    hsaPresumKernel(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                    hsaDeviceInterface& device);
+    hsaPresumKernel(kotekan::Config& config, const string& unique_name,
+                    kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaPresumKernel();
 

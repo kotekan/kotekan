@@ -6,12 +6,15 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-REGISTER_KOTEKAN_PROCESS(simVdifData);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(simVdifData);
 
 simVdifData::simVdifData(Config& config, const string& unique_name,
                          bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&simVdifData::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&simVdifData::main_thread, this)) {
     buf = get_buffer("network_out_buf");
     register_producer(buf, unique_name.c_str());
 }

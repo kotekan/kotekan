@@ -1,7 +1,7 @@
 #ifndef VISTRUNCATE
 #define VISTRUNCATE
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 
 #include <immintrin.h>
@@ -34,10 +34,11 @@
  *
  * @author Tristan Pinsonneault-Marotte, Rick Nitsche
  */
-class visTruncate : public KotekanProcess {
+class visTruncate : public kotekan::Stage {
 public:
     /// Constructor; loads parameters from config
-    visTruncate(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    visTruncate(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& buffer_container);
     ~visTruncate() = default;
 
     /// Main loop over buffer frames

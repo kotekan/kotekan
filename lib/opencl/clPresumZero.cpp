@@ -1,5 +1,8 @@
 #include "clPresumZero.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_CL_COMMAND(clPresumZero);
 
 clPresumZero::clPresumZero(Config& config, const string& unique_name, bufferContainer& host_buffers,

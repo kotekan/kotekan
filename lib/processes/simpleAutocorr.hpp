@@ -1,12 +1,12 @@
 /**
  * @file
- * @brief A simple autocorrelator (sum-sq) process.
- *  - simpleAutocorr : public KotekanProcess
+ * @brief A simple autocorrelator (sum-sq) stage.
+ *  - simpleAutocorr : public kotekan::Stage
  */
 
 #ifndef SIMPLE_AUTOCORR_HPP
 #define SIMPLE_AUTOCORR_HPP
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "errors.h"
 #include "util.h"
@@ -17,9 +17,9 @@ using std::string;
 
 /**
  * @class simpleAutocorr
- * @brief Kotekan Process to autocorrelate a single stream of values.
+ * @brief Kotekan stage to autocorrelate a single stream of values.
  *
- * This is a simple signal processing block which takes complex @c float2 data from an input buffer,
+ * This is a simple signal processing stage which takes complex @c float2 data from an input buffer,
  * calculates the modulus squared in each spectral bin, integrates over time,
  * then stuffs the results into an output buffer.
  * Both input and output buffers' frame lengths should be integer multiples of the spectrum length,
@@ -42,10 +42,11 @@ using std::string;
  * @author Keith Vanderlinde
  *
  */
-class simpleAutocorr : public KotekanProcess {
+class simpleAutocorr : public kotekan::Stage {
 public:
     /// Constructor, also initializes FFTW and values from config yaml.
-    simpleAutocorr(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    simpleAutocorr(kotekan::Config& config, const string& unique_name,
+                   kotekan::bufferContainer& buffer_container);
 
     /// Destructor, frees local allocs and exits FFTW.
     virtual ~simpleAutocorr();
@@ -54,10 +55,10 @@ public:
     void main_thread() override;
 
 private:
-    /// Kotekan buffer which this process consumes from.
+    /// Kotekan buffer which this stage consumes from.
     /// Data should be packed as complex @c float pairs.
     struct Buffer* buf_in;
-    /// Kotekan buffer which this process produces into.
+    /// Kotekan buffer which this stage produces into.
     struct Buffer* buf_out;
 
     /// Frame index for the input buffer.

@@ -1,13 +1,13 @@
 /**
  * @file pulsarSimProcess.hpp
  * @brief Packet simulator for pulsar transmission testing
- *  - pulsarSimProcess : public KotekanProcess
+ *  - pulsarSimProcess : public Stage
  */
 
 #ifndef PULSAR_SIM_PROCESS
 #define PULSAR_SIM_PROCESS
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 
 #include <vector>
 
@@ -18,9 +18,9 @@ using std::vector;
  * @brief pulsarSimProcess Simulates packets used for testing the transmission code
  *
  *
- * This is an Kotekan process that simulated the VDIF headers for the pulsar transmission code.
- *Presently this process simulates just the headers and this is enough for current level of testing
- * This process is coded to simulate packets for all the 10 beams
+ * This is a Kotekan stage that simulated the VDIF headers for the pulsar transmission code.
+ * Presently this stage simulates just the headers and this is enough for current level of testing
+ * This stage is coded to simulate packets for all the 10 beams
  * In oreder to map the packets conviently to the L0 nodes the frequency ids are derived from the
  *hostname. The node IP address is derived by parsing the hostname.
  *
@@ -41,10 +41,11 @@ using std::vector;
  *
  **/
 
-class pulsarSimProcess : public KotekanProcess {
+class pulsarSimProcess : public kotekan::Stage {
 public:
     /// constructor
-    pulsarSimProcess(Config& config_, const string& unique_name, bufferContainer& buffer_container);
+    pulsarSimProcess(kotekan::Config& config_, const string& unique_name,
+                     kotekan::bufferContainer& buffer_container);
 
     /// distructor
     virtual ~pulsarSimProcess();

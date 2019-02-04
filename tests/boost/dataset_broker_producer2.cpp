@@ -19,6 +19,8 @@
 #define DSET_ID 12068105840200711747UL
 #define SECOND_ROOT 1355729954233464875UL
 
+using kotekan::Config;
+
 using json = nlohmann::json;
 
 using namespace std::string_literals;

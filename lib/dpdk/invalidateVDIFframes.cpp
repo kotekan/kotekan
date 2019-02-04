@@ -5,12 +5,16 @@
 
 #include <vector>
 
-REGISTER_KOTEKAN_PROCESS(invalidateVDIFframes);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(invalidateVDIFframes);
 
 invalidateVDIFframes::invalidateVDIFframes(Config& config, const string& unique_name,
                                            bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&invalidateVDIFframes::main_thread, this)) {
+    Stage(config, unique_name, buffer_container,
+          std::bind(&invalidateVDIFframes::main_thread, this)) {
 
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());

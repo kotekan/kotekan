@@ -57,12 +57,12 @@
 class hsaRfiInputSum : public hsaCommand {
 public:
     /// Constructor, initializes internal variables.
-    hsaRfiInputSum(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                   hsaDeviceInterface& device);
+    hsaRfiInputSum(kotekan::Config& config, const string& unique_name,
+                   kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiInputSum();
     /// Rest server callback
-    void rest_callback(connectionInstance& conn, json& json_request);
+    void rest_callback(kotekan::connectionInstance& conn, json& json_request);
     /// Executes rfi_chime_inputsum.hsaco kernel. Allocates kernel variables.
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 

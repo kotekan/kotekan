@@ -1,13 +1,13 @@
 /**
  * @file
- * @brief A process to read VDIF files from multiple drives.
- *  - pyPlotN2 : public KotekanProcess
+ * @brief A stage to read VDIF files from multiple drives.
+ *  - pyPlotN2 : public kotekan::Stage
  */
 
 #ifndef PY_PLOT_N2_H
 #define PY_PLOT_N2_H
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "accumulate.hpp"
 #include "buffer.h"
 #include "chimeMetadata.h"
@@ -22,9 +22,9 @@
 
 /**
  * @class pyPlotN2
- * @brief Consumer ``KotekanProcess`` to produce PDF plots of correlation matrices.
+ * @brief Consumer ``kotekan::Stage`` to produce PDF plots of correlation matrices.
  *
- * This process does nothing until it receives a REST request from an outside user.
+ * This stage does nothing until it receives a REST request from an outside user.
  * Upon receipt, it spawns a companion python script (``pyPlotN2.py``),
  * and pipes a short configuration header to it, followed by the contents of the next available
  * buffer. The python script generates a pdf plot of the visibilitiy matrix, saving it to a
@@ -40,7 +40,7 @@
  *  @buffer_metadata none
  *
  * @conf gpu_id         Int, used to generate the REST endpoint,
- *                      needed in case of multiple streams in a single kotekan process.
+ *                      needed in case of multiple streams in a single kotekan stage.
  *
  * @todo    Make the location of the python plotting script more robust / permanent.
  * @todo    Move config parsing to the constructor.
@@ -48,10 +48,11 @@
  *
  * @author Keith Vanderlinde
  */
-class pyPlotN2 : public KotekanProcess {
+class pyPlotN2 : public kotekan::Stage {
 public:
     /// Constructor
-    pyPlotN2(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    pyPlotN2(kotekan::Config& config, const string& unique_name,
+             kotekan::bufferContainer& buffer_container);
 
     /// Destructor, currently does nothing
     virtual ~pyPlotN2();
@@ -69,12 +70,12 @@ public:
      * @warning        Nobody should ever call this directly, it's only meant to service the
      *                 RESTful callback.
      */
-    void request_plot_callback(connectionInstance& conn);
+    void request_plot_callback(kotekan::connectionInstance& conn);
 
 private:
     void make_plot(void);
 
-    /// The kotekan buffer object the processes is producing for
+    /// The kotekan buffer object the stage is producing for
     struct Buffer* buf;
     unsigned char* in_local;
     std::string endpoint;

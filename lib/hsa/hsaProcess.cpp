@@ -1,6 +1,6 @@
 #include "hsaProcess.hpp"
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "fpga_header_functions.h"
 #include "unistd.h"
 #include "util.h"
@@ -10,7 +10,10 @@
 #include <memory>
 #include <sys/time.h>
 
-REGISTER_KOTEKAN_PROCESS(hsaProcess);
+using kotekan::bufferContainer;
+using kotekan::Config;
+
+REGISTER_KOTEKAN_STAGE(hsaProcess);
 
 hsaProcess::hsaProcess(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :

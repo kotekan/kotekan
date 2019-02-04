@@ -1,13 +1,13 @@
 /*****************************************
 @file
-@brief Processes for compressing visibility data.
+@brief Stage for compressing visibility data.
 - baselineCompression
 *****************************************/
 #ifndef VIS_COMPRESSION_HPP
 #define VIS_COMPRESSION_HPP
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
@@ -61,14 +61,14 @@ using json = nlohmann::json;
  *
  * @author Richard Shaw
  */
-class baselineCompression : public KotekanProcess {
+class baselineCompression : public kotekan::Stage {
 
 public:
     // Default constructor
-    baselineCompression(Config& config, const string& unique_name,
-                        bufferContainer& buffer_container);
+    baselineCompression(kotekan::Config& config, const string& unique_name,
+                        kotekan::bufferContainer& buffer_container);
 
-    // Main loop for the process: Creates n threads that do the compression.
+    // Main loop for the stage: Creates n threads that do the compression.
     void main_thread() override;
 
 private:

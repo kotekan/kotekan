@@ -9,6 +9,8 @@
 using std::map;
 using std::string;
 
+namespace kotekan {
+
 class bufferContainer {
 
 public:
@@ -22,5 +24,7 @@ public:
 protected:
     map<string, Buffer*> buffers;
 };
+
+} // namespace kotekan
 
 #endif

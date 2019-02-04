@@ -20,6 +20,8 @@
 #define SECOND_ROOT 1355729954233464875UL
 #define SECOND_ROOT_UPDATE 13121011210482281245UL
 
+using kotekan::Config;
+
 using json = nlohmann::json;
 
 using namespace std::string_literals;

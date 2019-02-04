@@ -30,14 +30,14 @@ extern "C" {
 }
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
+#include "StageFactory.hpp"
 #include "basebandApiManager.hpp"
 #include "buffer.h"
 #include "errors.h"
 #include "fpga_header_functions.h"
 #include "gpsTime.h"
 #include "kotekanMode.hpp"
-#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
 #include "restServer.hpp"
 #include "util.h"
@@ -51,6 +51,7 @@ extern "C" {
 #endif
 
 using json = nlohmann::json;
+using namespace kotekan;
 
 // Embedded script for converting the YAML config to json
 const std::string yaml_to_json = R"(
@@ -137,14 +138,13 @@ void print_version() {
     printf("Git commit hash: %s\n\n", get_git_commit_hash());
     printf("CMake build settings: \n%s\n", get_cmake_build_options());
 
-    printf("Available kotekan processes:\n");
-    std::map<std::string, kotekanProcessMaker*> known_processes =
-        processFactoryRegistry::get_registered_processes();
-    for (auto& process_maker : known_processes) {
-        if (process_maker.first != known_processes.rbegin()->first) {
-            printf("%s, ", process_maker.first.c_str());
+    printf("Available kotekan stages:\n");
+    std::map<std::string, StageMaker*> known_stages = StageFactoryRegistry::get_registered_stages();
+    for (auto& stage_maker : known_stages) {
+        if (stage_maker.first != known_stages.rbegin()->first) {
+            printf("%s, ", stage_maker.first.c_str());
         } else {
-            printf("%s\n\n", process_maker.first.c_str());
+            printf("%s\n\n", stage_maker.first.c_str());
         }
     }
 }
@@ -156,12 +156,11 @@ json get_json_version_into() {
     version_json["branch"] = get_git_branch();
     version_json["git_commit_hash"] = get_git_commit_hash();
     version_json["cmake_build_settings"] = get_cmake_build_options();
-    vector<string> available_processes;
-    std::map<std::string, kotekanProcessMaker*> known_processes =
-        processFactoryRegistry::get_registered_processes();
-    for (auto& process_maker : known_processes)
-        available_processes.push_back(process_maker.first);
-    version_json["available_processes"] = available_processes;
+    vector<string> available_stages;
+    std::map<std::string, StageMaker*> known_stages = StageFactoryRegistry::get_registered_stages();
+    for (auto& stage_maker : known_stages)
+        available_stages.push_back(stage_maker.first);
+    version_json["available_stages"] = available_stages;
     return version_json;
 }
 
@@ -248,8 +247,8 @@ void start_new_kotekan_mode(Config& config, bool requires_gps_time) {
 
     kotekan_mode = new kotekanMode(config);
 
-    kotekan_mode->initalize_processes();
-    kotekan_mode->start_processes();
+    kotekan_mode->initalize_stages();
+    kotekan_mode->start_stages();
     running = true;
 }
 
@@ -422,7 +421,7 @@ int main(int argc, char** argv) {
             return;
         }
         assert(kotekan_mode != nullptr);
-        kotekan_mode->stop_processes();
+        kotekan_mode->stop_stages();
         // TODO should we have three states (running, shutting down, and stopped)?
         // This would prevent this function from blocking on join.
         kotekan_mode->join();
@@ -460,15 +459,15 @@ int main(int argc, char** argv) {
         // Update running state
         {
             std::lock_guard<std::mutex> lock(kotekan_state_lock);
-            metrics.add_process_metric("kotekan_running", "main", running);
+            metrics.add_stage_metric("kotekan_running", "main", running);
         }
 
         if (sig_value == SIGINT) {
             INFO("Got SIGINT, shutting down kotekan...");
             std::lock_guard<std::mutex> lock(kotekan_state_lock);
             if (kotekan_mode != nullptr) {
-                INFO("Attempting to stop and join kotekan_processes...");
-                kotekan_mode->stop_processes();
+                INFO("Attempting to stop and join kotekan_stages...");
+                kotekan_mode->stop_stages();
                 kotekan_mode->join();
                 delete kotekan_mode;
             }

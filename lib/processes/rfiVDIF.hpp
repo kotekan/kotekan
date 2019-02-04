@@ -1,32 +1,32 @@
 /*
  * @file rfiVDIF.hpp
- * @brief Contains a general VDIF kurtosis estimator kotekan process.
- * - rfiVDIF : public KotekanProcess
+ * @brief Contains a general VDIF kurtosis estimator kotekan stage.
+ * - rfiVDIF : public kotekan::Stage
  */
 #ifndef VDIF_RFI_H
 #define VDIF_RFI_H
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "vdif_functions.h"
 
 /*
  * @class rfiVDIF
- * @brief Producer and consumer ``KotekanProcess`` which consumes input VDIF data and
+ * @brief Producer and consumer ``kotekan::Stage`` which consumes input VDIF data and
  * computes spectral kurtosis estimates.
  *
- * This process is a spectral kurtosis estimator that works on any general kotekan buffer containing
- * VDIF data. This process move block by block through the VDIF data while computing and integrating
- * power estimates. Once the desired integration length is over, the process does one of two things
+ * This stage is a spectral kurtosis estimator that works on any general kotekan buffer containing
+ * VDIF data. This stage move block by block through the VDIF data while computing and integrating
+ * power estimates. Once the desired integration length is over, the stage does one of two things
  * (as specified by the user):
  *
- * 1) The process combines the sums across the element axis and kurtosis values are calculated on
+ * 1) The stage combines the sums across the element axis and kurtosis values are calculated on
  *the new sum
  *
- * 2) The process computes kurtosis values for each frequency-element pair
+ * 2) The stage computes kurtosis values for each frequency-element pair
  *
  * There are advantages to both options, however the first is currently heavily favoured by other
- *processes.
+ * stages.
  *
  * @par Buffers
  * @buffer vdif_in The kotekan buffer which conatins input VDIF data
@@ -41,10 +41,11 @@
  *
  * @author Jacob Taylor
  */
-class rfiVDIF : public KotekanProcess {
+class rfiVDIF : public kotekan::Stage {
 public:
     // Constructor, initializes class, sets up config
-    rfiVDIF(Config& config, const string& unique_name, bufferContainer& buffer_containter);
+    rfiVDIF(kotekan::Config& config, const string& unique_name,
+            kotekan::bufferContainer& buffer_containter);
     // Deconstructor, cleans up, does nothing
     ~rfiVDIF();
 

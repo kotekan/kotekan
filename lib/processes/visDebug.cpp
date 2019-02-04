@@ -1,9 +1,9 @@
 #include "visDebug.hpp"
 
+#include "StageFactory.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "errors.h"
-#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
 #include "visBuffer.hpp"
 
@@ -13,11 +13,16 @@
 #include <functional>
 #include <stdint.h>
 
-REGISTER_KOTEKAN_PROCESS(visDebug);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::prometheusMetrics;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(visDebug);
 
 
 visDebug::visDebug(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container, std::bind(&visDebug::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&visDebug::main_thread, this)) {
 
     // Setup the input vector
     in_buf = get_buffer("in_buf");
@@ -48,8 +53,8 @@ void visDebug::main_thread() {
         frame_counts[key]++; // Relies on the fact that insertion zero intialises
         std::string labels =
             fmt::format("freq_id=\"{}\",dataset_id=\"{}\"", frame.freq_id, frame.dataset_id);
-        prometheusMetrics::instance().add_process_metric("kotekan_visdebug_frame_total",
-                                                         unique_name, frame_counts[key], labels);
+        prometheusMetrics::instance().add_stage_metric("kotekan_visdebug_frame_total", unique_name,
+                                                       frame_counts[key], labels);
 
         // Mark the buffers and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);

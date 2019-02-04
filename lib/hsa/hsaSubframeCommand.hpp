@@ -10,8 +10,9 @@ public:
      *        values from the config and possibly other common
      *        variables.
      */
-    hsaSubframeCommand(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                       hsaDeviceInterface& device, const string& default_kernel_command = "",
+    hsaSubframeCommand(kotekan::Config& config, const string& unique_name,
+                       kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device,
+                       const string& default_kernel_command = "",
                        const string& default_kernel_file_name = "");
     virtual ~hsaSubframeCommand() = default;
 

@@ -1,9 +1,9 @@
 #include "visTestPattern.hpp"
 
+#include "StageFactory.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "errors.h"
-#include "processFactory.hpp"
 #include "visBuffer.hpp"
 
 #include "gsl-lite.hpp"
@@ -21,13 +21,16 @@
 #include <tuple>
 
 
-REGISTER_KOTEKAN_PROCESS(visTestPattern);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(visTestPattern);
 
 
 visTestPattern::visTestPattern(Config& config, const std::string& unique_name,
                                bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&visTestPattern::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&visTestPattern::main_thread, this)) {
 
     // Setup the buffers
     in_buf = get_buffer("in_buf");

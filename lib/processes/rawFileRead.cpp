@@ -11,12 +11,15 @@ inline bool file_exists(char* name) {
     return (stat(name, &buf) == 0);
 }
 
-REGISTER_KOTEKAN_PROCESS(rawFileRead);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(rawFileRead);
 
 rawFileRead::rawFileRead(Config& config, const string& unique_name,
                          bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&rawFileRead::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&rawFileRead::main_thread, this)) {
 
     buf = get_buffer("buf");
     register_producer(buf, unique_name.c_str());
@@ -90,6 +93,8 @@ void rawFileRead::main_thread() {
             ERROR("rawFileRead: Failed to read file %s!", full_path);
             break;
         }
+
+        fclose(fp);
 
         INFO("rawFileRead: Read frame data from %s into %s[%i]", full_path, buf->buffer_name,
              frame_id);

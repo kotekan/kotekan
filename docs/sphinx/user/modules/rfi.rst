@@ -8,7 +8,7 @@ and one specific to the CHIME correlator.
 CHIME
 --------------
 
-CHIME RFI removal is implemented as an HSA process. 
+CHIME RFI removal is implemented as an HSA stage. 
 
 To add RFI removal, add the following the the kotekan config under GPU->commands:
 
@@ -36,14 +36,14 @@ VDIF RFI removal is implemented in 3 different manners.
 
 1. During the read
 ^^^^^^^^^^^^^^^^^^^
-The Kotekan Process nDiskFileRead can be configured to do VDIF rfi detection/zeroing as it reads.
+The Kotekan Stage nDiskFileRead can be configured to do VDIF rfi detection/zeroing as it reads.
 
 To configure nDiskFileRead for rfi removal, example config:
 
 .. code-block:: YAML
 
     replay:
-      kotekan_process: nDiskFileRead
+      kotekan_stage: nDiskFileRead
       num_disks: 10
       disk_base: /mnt/
       disk_set: A
@@ -60,14 +60,14 @@ Relevant files:
 
 2. During the power integration
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-The Kotekan Process computeDualpolPower can be configured to do VDIF rfi detection/zeroing as it integrates.
+The Kotekan Stage computeDualpolPower can be configured to do VDIF rfi detection/zeroing as it integrates.
 
 To configure computeDualpolPower for rfi removal, example config:
 
 .. code-block:: YAML
 
     power:
-      kotekan_process: computeDualpolPower
+      kotekan_stage: computeDualpolPower
       rfi_removal: True #(RFI ON/OFF)
       rfi_sensitivity: 3 #(The sensitivity of the kurtosis threshold, lower is more sensitive)
       rfi_backfill: False #(Dumb Backfill of zeroed data, not recommended for use unless you need a pretty picture)
@@ -79,9 +79,9 @@ Relevant files:
 
 /ch_gpu/lib/processes/computeDualpolPower.cpp (.hpp)
 
-3. As a GPU process
+3. As a GPU stage
 ^^^^^^^^^^^^^^^^^^^
-VDIF RFI removal can be implemented as an HSA process. 
+VDIF RFI removal can be implemented as an HSA stage. 
 
 To add RFI removal, add the following the the kotekan config under GPU->commands:
 

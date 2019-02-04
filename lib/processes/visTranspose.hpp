@@ -2,7 +2,7 @@
 #define VISTRANSPOSE
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
@@ -29,8 +29,8 @@ using json = nlohmann::json;
  * and flattened out again to be written to a file. In other words,
  * the transposition makes time the fastest-varying for the data values,
  * where it was frequency before.
- * This process expects the data to be ordered like visRawReader does.
- * Other processes might not guarentee this same order.
+ * This stage expects the data to be ordered like visRawReader does.
+ * Other stages might not guarentee this same order.
  *
  * @warning Don't run this anywhere but on the transpose (gossec) node.
  * The OpenMP calls could cause issues on systems using kotekan pin
@@ -52,10 +52,11 @@ using json = nlohmann::json;
  *
  * @author Tristan Pinsonneault-Marotte, Rick Nitsche
  */
-class visTranspose : public KotekanProcess {
+class visTranspose : public kotekan::Stage {
 public:
     /// Constructor; loads parameters from config
-    visTranspose(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    visTranspose(kotekan::Config& config, const string& unique_name,
+                 kotekan::bufferContainer& buffer_container);
     ~visTranspose() = default;
 
     /// Main loop over buffer frames

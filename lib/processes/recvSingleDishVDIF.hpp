@@ -1,13 +1,13 @@
 /**
  * @file
- * @brief Process to receive VDIF data from a UDP stream.
- *  - recvSingleDishVDIF : public KotekanProcess
+ * @brief Stage to receive VDIF data from a UDP stream.
+ *  - recvSingleDishVDIF : public kotekan::Stage
  */
 
 #ifndef RECV_SINGLE_DISH_VDIF_H
 #define RECV_SINGLE_DISH_VDIF_H
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 
 #include <cstdio>
@@ -17,9 +17,9 @@
 
 /**
  * @class recvSingleDishVDIF
- * @brief Process to transmit VDIF data as a UDP stream.
+ * @brief Stage to transmit VDIF data as a UDP stream.
  *
- * This is a producer process which gathers VDIF-formatted data from a UDP stream and
+ * This is a producer stage which gathers VDIF-formatted data from a UDP stream and
  * packs it into a target buffer.
  *
  * @par Buffers
@@ -36,11 +36,11 @@
  * @author Andre Renard
  *
  */
-class recvSingleDishVDIF : public KotekanProcess {
+class recvSingleDishVDIF : public kotekan::Stage {
 public:
     /// Constructor
-    recvSingleDishVDIF(Config& config, const string& unique_name,
-                       bufferContainer& buffer_container);
+    recvSingleDishVDIF(kotekan::Config& config, const string& unique_name,
+                       kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~recvSingleDishVDIF();
 

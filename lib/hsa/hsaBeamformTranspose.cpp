@@ -1,5 +1,8 @@
 #include "hsaBeamformTranspose.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_HSA_COMMAND(hsaBeamformTranspose);
 
 hsaBeamformTranspose::hsaBeamformTranspose(Config& config, const string& unique_name,

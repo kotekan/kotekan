@@ -74,14 +74,14 @@ gen_data:
   type: random
   value: 153
   test_data_gen_0:
-    kotekan_process: testDataGen
+    kotekan_stage: testDataGen
     network_out_buf: network_buffer_0
 
 #baseband:
 #  base_dir: /mnt/gong/cherry/B0329/July10/ForVerification/
 #  file_name: csDg7_bb
 #  read0:
-#    kotekan_process: rawFileRead
+#    kotekan_stage: rawFileRead
 #    file_ext: dat0
 #    buf: network_buffer_0
 
@@ -90,7 +90,7 @@ cpu_simulate:
     gain_dir: "/root/FRB-GainFiles/eigen_CygA_8_12/"
     ew_spacing: [0.0, 0.1, 0.2, 0.3]
     northmost_beam: 90.0
-    kotekan_process: gpuBeamformSimulate
+    kotekan_stage: gpuBeamformSimulate
     network_in_buf: network_buffer_0
     beam_out_buf: cpu_output_buffer_0
 
@@ -113,7 +113,7 @@ gpu:
   n_intg: 24576
   frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 0
     gain_dir: "/root/FRB-GainFiles/eigen_CygA_8_12/"
     ew_spacing: [0.0, 0.1, 0.2, 0.3]
@@ -125,6 +125,6 @@ gpu:
 
 check_data:
   bf_data_check_0:
-    kotekan_process: testDataCheckFloat
+    kotekan_stage: testDataCheckFloat
     first_buf : gpu_beamform_output_buffer_0
     second_buf: cpu_output_buffer_0

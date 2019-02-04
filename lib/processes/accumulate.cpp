@@ -4,12 +4,15 @@
 #include "errors.h"
 #include "fpga_header_functions.h"
 
-REGISTER_KOTEKAN_PROCESS(accumulate);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(accumulate);
 
 accumulate::accumulate(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&accumulate::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&accumulate::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());

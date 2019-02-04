@@ -34,7 +34,7 @@ def subset_data(tmpdir_factory):
     write_buffer = runner.VisWriterBuffer(
         str(tmpdir), "raw")
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'prodSubset', vis_params,
         fakevis_buffer,
         write_buffer,

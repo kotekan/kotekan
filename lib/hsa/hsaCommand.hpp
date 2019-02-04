@@ -50,8 +50,9 @@ struct kernelParams {
 class hsaCommand : public gpuCommand {
 public:
     // Kernel file name is optional.
-    hsaCommand(Config& config, const string& unique_name, bufferContainer& host_buffers,
-               hsaDeviceInterface& device, const string& default_kernel_command = "",
+    hsaCommand(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device,
+               const string& default_kernel_command = "",
                const string& default_kernel_file_name = "");
     virtual ~hsaCommand();
 
@@ -103,7 +104,7 @@ protected:
 
 // Create a factory for hsaCommands
 CREATE_FACTORY(hsaCommand, // const string &, const string &,
-               Config&, const string&, bufferContainer&, hsaDeviceInterface&);
+               kotekan::Config&, const string&, kotekan::bufferContainer&, hsaDeviceInterface&);
 #define REGISTER_HSA_COMMAND(newCommand)                                                           \
     REGISTER_NAMED_TYPE_WITH_FACTORY(hsaCommand, newCommand, #newCommand)
 

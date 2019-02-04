@@ -1,11 +1,17 @@
 #include "restInspectFrame.hpp"
 
-REGISTER_KOTEKAN_PROCESS(restInspectFrame);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+using kotekan::connectionInstance;
+using kotekan::restServer;
+
+REGISTER_KOTEKAN_STAGE(restInspectFrame);
 
 restInspectFrame::restInspectFrame(Config& config, const string& unique_name,
                                    bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&restInspectFrame::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&restInspectFrame::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");
     in_buf_config_name = config.get<std::string>(unique_name, "in_buf");

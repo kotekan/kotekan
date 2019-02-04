@@ -5,6 +5,13 @@
 #include <math.h>
 #include <mutex>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
+using kotekan::connectionInstance;
+using kotekan::HTTP_RESPONSE;
+using kotekan::restServer;
+
 REGISTER_HSA_COMMAND(hsaRfiInputSum);
 
 hsaRfiInputSum::hsaRfiInputSum(Config& config, const string& unique_name,

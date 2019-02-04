@@ -5,13 +5,14 @@
 #define SIM_FULL_RANGE 1
 #define SIM_SINE 2
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "errors.h"
 
-class networkOutputSim : public KotekanProcess {
+class networkOutputSim : public kotekan::Stage {
 public:
-    networkOutputSim(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    networkOutputSim(kotekan::Config& config, const string& unique_name,
+                     kotekan::bufferContainer& buffer_container);
     virtual ~networkOutputSim();
     void main_thread() override;
 

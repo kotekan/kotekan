@@ -26,6 +26,14 @@
 #define inst_long -119.6175
 #define inst_lat 49.3203
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::configUpdater;
+
+using kotekan::connectionInstance;
+using kotekan::HTTP_RESPONSE;
+using kotekan::restServer;
+
 REGISTER_HSA_COMMAND(hsaPulsarUpdatePhase);
 
 hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_name,

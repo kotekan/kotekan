@@ -1,7 +1,7 @@
 #ifndef REST_INSPECT_FRAME_HPP
 #define REST_INSPECT_FRAME_HPP
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "restServer.hpp"
 
 #include <mutex>
@@ -32,7 +32,7 @@
  *               front of the latest frame. Default the frame size of @c in_buf
  *               Note if set to zero, this will be set to frame size of @c in_buf
  *
- * @warning This process makes a copy of the data in each and every frame ( upto @c len ).
+ * @warning This stage makes a copy of the data in each and every frame ( upto @c len ).
  *          So it should not be used in places where this extra memory copy would be
  *          expensive for the system to deal with, and should only be enabled when it
  *          is needed for trouble shooting.
@@ -42,10 +42,11 @@
  *
  * @author Andre Renard
  */
-class restInspectFrame : public KotekanProcess {
+class restInspectFrame : public kotekan::Stage {
 public:
     /// Constructor
-    restInspectFrame(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    restInspectFrame(kotekan::Config& config, const string& unique_name,
+                     kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     virtual ~restInspectFrame();
@@ -61,7 +62,7 @@ public:
      *
      * @param conn The HTTP connection object
      */
-    void rest_callback(connectionInstance& conn);
+    void rest_callback(kotekan::connectionInstance& conn);
 
 private:
     /// The buffer to allow inspections on.
