@@ -207,7 +207,7 @@ struct Buffer {
  * @returns A buffer object.
  */
 struct Buffer * create_buffer(int num_frames, int frame_size,
-                  struct metadataPool * pool, const char * buffer_name);
+                  struct metadataPool * pool, const char * buffer_name, int numa_node);
 
 /**
  * @brief Deletes a buffer object and frees all frame memory
@@ -431,7 +431,7 @@ void swap_frames(struct Buffer * from_buf, int from_frame_id,
  * @param len The size of the frame to allocate in bytes.
  * @return A pointer to the new memory, or @c NULL if allocation failed.
  */
-uint8_t * buffer_malloc(ssize_t len);
+uint8_t * buffer_malloc(ssize_t len, int numa_node);
 
 /**
  * @brief Deallocate a frame of memory with the required free method.

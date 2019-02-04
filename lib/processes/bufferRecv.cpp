@@ -282,7 +282,7 @@ connInstance::connInstance(const string& producer_name, Buffer* buf, bufferRecv*
     port(port),
     read_timeout(read_timeout) {
 
-    frame_space = buffer_malloc(buf->aligned_frame_size);
+    frame_space = buffer_malloc(buf->aligned_frame_size, 0);
     CHECK_MEM(frame_space);
 
     metadata_space = (uint8_t*)malloc(buf->metadata_pool->metadata_object_size);

@@ -195,7 +195,10 @@ private:
     void create_handlers(bufferContainer& buffer_container);
 
     /// The pool of DPDK mbufs
-    struct rte_mempool* mbuf_pool;
+    struct rte_mempool* mbuf_pool_0;
+
+    /// Hack pool for numa core 1
+    struct rte_mempool * mbuf_pool_1;
 
     /// Internal DPDK configuration struct
     struct rte_eth_conf port_conf;

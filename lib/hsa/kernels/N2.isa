@@ -2,16 +2,16 @@
 ; /opt/amd/llvm/bin/clang -x assembler -target amdgcn--amdhsa -mcpu=fiji -c -o test.o kern.isa
 ; /opt/amd/llvm/bin/clang -target amdgcn--amdhsa test.o -v -o test.hsaco
 
-.hsa_code_object_version 2,0
-.hsa_code_object_isa 8,0,3,"AMD","AMDGPU"
+;.hsa_code_object_version 2,0
+;.hsa_code_object_isa 8,0,3,"AMD","AMDGPU"
 
 .text
 .globl CHIME_X
 .p2align 8
-.amdgpu_hsa_kernel CHIME_X
+;.amdgpu_hsa_kernel CHIME_X
 
 CHIME_X:
-  .amd_kernel_code_t
+  ;.amd_kernel_code_t
 
     kernel_code_version_major = 1
     kernel_code_version_minor = 0
@@ -45,7 +45,7 @@ CHIME_X:
     compute_pgm_rsrc2_lds_size = 7;6
     workgroup_group_segment_byte_size = 3136;3072 ;use stride of 49 to avoid bank conflicts
 
- .end_amd_kernel_code_t
+ ;.end_amd_kernel_code_t
 
 
 ;s[0:1] contains input array

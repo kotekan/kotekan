@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <math.h>
+#include <numa.h>
 
 
 struct zero_frames_thread_args {
@@ -50,7 +51,7 @@ void private_reset_consumers(struct Buffer * buf, const int ID);
 
 
 struct Buffer* create_buffer(int num_frames, int len,
-                  struct metadataPool * pool, const char * buffer_name)
+                  struct metadataPool * pool, const char * buffer_name, int numa_node)
 {
 
     assert(num_frames > 0);
@@ -141,7 +142,7 @@ struct Buffer* create_buffer(int num_frames, int len,
 
     // Create the frames.
     for (int i = 0; i < num_frames; ++i) {
-        buf->frames[i] = buffer_malloc(buf->aligned_frame_size);
+        buf->frames[i] = buffer_malloc(buf->aligned_frame_size, numa_node);
         if (buf->frames[i] == NULL)
             return NULL;
     }
@@ -276,7 +277,10 @@ void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int 
                 cpu_set_t cpuset;
                 CPU_ZERO(&cpuset);
                 // TODO: Move this to the config file (when buffers.c updated to C++11)
-                CPU_SET(5, &cpuset);
+                CPU_SET(4, &cpuset);
+                CPU_SET(21, &cpuset);
+                CPU_SET(12, &cpuset);
+                CPU_SET(28, &cpuset);
 
                 CHECK_ERROR( pthread_create(&zero_t, NULL, &private_zero_frames, (void *)zero_args) );
                 CHECK_ERROR( pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &cpuset) );
@@ -718,7 +722,7 @@ void swap_frames(struct Buffer * from_buf, int from_frame_id,
 
 }
 
-uint8_t * buffer_malloc(ssize_t len) {
+uint8_t * buffer_malloc(ssize_t len, int numa_node) {
 
     uint8_t * frame = NULL;
 
@@ -730,8 +734,11 @@ uint8_t * buffer_malloc(ssize_t len) {
     }
 
 #else
+
+    frame = (uint8_t *) numa_alloc_onnode(len, numa_node);
+    assert(frame != NULL);
     // Create a page alligned block of memory for the buffer
-    int err = 0;
+    /*int err = 0;
     err = posix_memalign((void **) &(frame), PAGESIZE_MEM, len);
     CHECK_MEM(frame);
     if ( err != 0 ) {
@@ -746,7 +753,7 @@ uint8_t * buffer_malloc(ssize_t len) {
         ERROR("Error locking memory: %d - check ulimit -a to check memlock limits", errno);
         free(frame);
         return NULL;
-    }
+    }*/
 #endif
 
     // Zero the new frame

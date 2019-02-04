@@ -67,11 +67,16 @@ endif()
 if (${USE_LAPACK})
   if (DEFINED OPENBLAS_PATH)
     if (NOT EXISTS ${OPENBLAS_PATH})
-      MESSAGE( "OPENBLAS_PATH: \"${OPENBLAS_PATH}\" does not exsist" )
+      MESSAGE( "OPENBLAS_PATH: \"${OPENBLAS_PATH}\" does not exist" )
     endif()
     set(ENV{CMAKE_PREFIX_PATH} ${OPENBLAS_PATH})
+    # When using LAPACK because of the nonstandard build we need
+    # we cannot strip the RPATH on install.  This option disables that.
+    # set(CMAKE_SKIP_BUILD_RPATH ON)
+    # link_directories(${OPENBLAS_PATH})
   endif()
   find_package( OpenBLAS REQUIRED )
+  link_libraries(${OpenBLAS_LIBRARIES})
 endif()
 
 #Libevent is required now

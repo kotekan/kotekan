@@ -63,7 +63,8 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
         INFO("Creating standard buffer named %s, with %d frames, frame_size of %d, and metadata "
              "pool %s",
              name.c_str(), num_frames, frame_size, metadataPool_name.c_str());
-        return create_buffer(num_frames, frame_size, pool, name.c_str());
+        int32_t numa_node = config.get_default<int32_t>(location, "numa_node", 0);
+        return create_buffer(num_frames, frame_size, pool, name.c_str(), numa_node);
     }
 
     if (type_name == "vis") {
@@ -80,7 +81,7 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
 
         INFO("Creating visBuffer named %s with %d frames, frame size of %d and metadata pool %s",
              name.c_str(), num_frames, frame_size, metadataPool_name.c_str());
-        return create_buffer(num_frames, frame_size, pool, name.c_str());
+        return create_buffer(num_frames, frame_size, pool, name.c_str(), 0);
     }
 
     // No metadata found

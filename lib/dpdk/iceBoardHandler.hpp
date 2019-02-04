@@ -159,7 +159,7 @@ protected:
             // Getting a packet with the wrong length is almost always
             // a configuration/FPGA problem that needs to be addressed.
             // So for now we just exit kotekan with an error message.
-            raise(SIGINT);
+            //raise(SIGINT);
 
             rx_packet_len_errors_total += 1;
             rx_errors_total += 1;

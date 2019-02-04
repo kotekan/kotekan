@@ -1,4 +1,4 @@
-#include "configUpdater.hpp"
+7#include "configUpdater.hpp"
 
 #include "KotekanProcess.hpp"
 #include "errors.h"
