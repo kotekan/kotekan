@@ -10,7 +10,11 @@
 using nlohmann::json;
 using namespace std::placeholders;
 
-REGISTER_KOTEKAN_PROCESS(bufferSwitch);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::configUpdater;
+
+REGISTER_KOTEKAN_STAGE(bufferSwitch);
 
 bufferSwitch::bufferSwitch(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :

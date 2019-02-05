@@ -4,7 +4,7 @@
 Configuring OpenBLAS
 =======================
 
-Optional and only required for some kotekan processes. Only from-source builds are supported, not the
+Optional and only required for some kotekan stages. Only from-source builds are supported, not the
 version that is distributed with Debian/Ubuntu.
 
 Obtain the source from the OpenBLAS homepage or via:

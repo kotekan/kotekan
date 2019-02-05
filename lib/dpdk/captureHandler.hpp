@@ -37,8 +37,8 @@
 class captureHandler : public dpdkRXhandler {
 public:
     /// Default constructor
-    captureHandler(Config& config, const std::string& unique_name,
-                   bufferContainer& buffer_container, int port);
+    captureHandler(kotekan::Config& config, const std::string& unique_name,
+                   kotekan::bufferContainer& buffer_container, int port);
 
     /// Processes the incoming packets
     int handle_packet(struct rte_mbuf* mbuf);
@@ -66,8 +66,8 @@ protected:
     bool first_run = true;
 };
 
-inline captureHandler::captureHandler(Config& config, const std::string& unique_name,
-                                      bufferContainer& buffer_container, int port) :
+inline captureHandler::captureHandler(kotekan::Config& config, const std::string& unique_name,
+                                      kotekan::bufferContainer& buffer_container, int port) :
     dpdkRXhandler(config, unique_name, buffer_container, port) {
 
     out_buf = buffer_container.get_buffer(config.get<std::string>(unique_name, "out_buf"));

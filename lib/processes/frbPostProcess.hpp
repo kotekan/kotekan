@@ -1,13 +1,13 @@
 /**
  * @file
  * @brief Packetizer for data destined for CHIME/FRB L1.
- *  - frbPostProcess : public KotekanProcess
+ *  - frbPostProcess : public kotekan::Stage
  */
 
 #ifndef FRB_POST_PROCESS
 #define FRB_POST_PROCESS
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "chimeMetadata.h"
 #include "fpga_header_functions.h"
 #include "frb_functions.h"
@@ -27,10 +27,10 @@ using std::vector;
  * unsigned ints (i.e., 0-255). The scaling is determined on a per-packet basis,
  * using AVX2 instructions to calculate and apply those parameters.
  *
- * The process can also optionally produce a sum-of-all-beams "incoherent" beam,
+ * This stage can also optionally produce a sum-of-all-beams "incoherent" beam,
  * which will be stored in the 0th beam position in output packets.
  *
- * This process depends on ``AVX2`` intrinsics.
+ * This stage depends on ``AVX2`` intrinsics.
  *
  * @par Buffers
  * @buffer in_buf_0 Kotekan buffer feeding data from GPU0.
@@ -67,10 +67,11 @@ using std::vector;
  * @author Keith Vanderlinde
  *
  */
-class frbPostProcess : public KotekanProcess {
+class frbPostProcess : public kotekan::Stage {
 public:
     /// Constructor.
-    frbPostProcess(Config& config_, const string& unique_name, bufferContainer& buffer_container);
+    frbPostProcess(kotekan::Config& config_, const string& unique_name,
+                   kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     virtual ~frbPostProcess();
@@ -94,7 +95,7 @@ private:
     float* frb_header_scale;
     float* frb_header_offset;
 
-    // Config variables
+    // kotekan::Config variables
     int32_t _num_gpus;
     int32_t _samples_per_data_set;
     int32_t _downsample_time;

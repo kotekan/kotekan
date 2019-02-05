@@ -1,6 +1,6 @@
 #include "valve.hpp"
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "prometheusMetrics.hpp"
@@ -14,10 +14,15 @@
 #include <string>
 
 
-REGISTER_KOTEKAN_PROCESS(Valve);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::prometheusMetrics;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(Valve);
 
 Valve::Valve(Config& config, const std::string& unique_name, bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container, std::bind(&Valve::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&Valve::main_thread, this)) {
 
     _dropped_total = 0;
 
@@ -48,8 +53,8 @@ void Valve::main_thread() {
             mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
         } else {
             WARN("Output buffer full. Dropping incoming frame %d.", frame_id_in);
-            prometheusMetrics::instance().add_process_metric("kotekan_valve_dropped_frames_total",
-                                                             unique_name, ++_dropped_total);
+            prometheusMetrics::instance().add_stage_metric("kotekan_valve_dropped_frames_total",
+                                                           unique_name, ++_dropped_total);
         }
         mark_frame_empty(_buf_in, unique_name.c_str(), frame_id_in++);
     }

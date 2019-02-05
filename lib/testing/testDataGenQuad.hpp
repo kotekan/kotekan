@@ -1,13 +1,13 @@
 /**
  * @file
  * @brief Contains a 4-buffer data generation producer for kotekan.
- *  - testDataGenQuad : public KotekanProcess
+ *  - testDataGenQuad : public Stage
  */
 
 #ifndef TEST_DATA_GEN_QUAD_H
 #define TEST_DATA_GEN_QUAD_H
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 
 
@@ -42,10 +42,11 @@
  * @author Keith Vanderlinde
  *
  */
-class testDataGenQuad : public KotekanProcess {
+class testDataGenQuad : public kotekan::Stage {
 public:
     /// Constructor, also initializes internal variables from config.
-    testDataGenQuad(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    testDataGenQuad(kotekan::Config& config, const string& unique_name,
+                    kotekan::bufferContainer& buffer_container);
 
     /// Destructor, cleans up local allocs.
     ~testDataGenQuad();

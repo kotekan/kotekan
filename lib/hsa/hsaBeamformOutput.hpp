@@ -35,8 +35,8 @@
 class hsaBeamformOutputData : public hsaCommand {
 public:
     /// Constructor
-    hsaBeamformOutputData(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                          hsaDeviceInterface& device);
+    hsaBeamformOutputData(kotekan::Config& config, const string& unique_name,
+                          kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor
     virtual ~hsaBeamformOutputData();

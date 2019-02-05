@@ -1,5 +1,8 @@
 #include "hsaCorrelatorKernel.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_HSA_COMMAND(hsaCorrelatorKernel);
 
 hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const string& unique_name,

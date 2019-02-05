@@ -1,5 +1,6 @@
 #include "visAccumulate.hpp"
 
+#include "StageFactory.hpp"
 #include "chimeMetadata.h"
 #include "configUpdater.hpp"
 #include "datasetManager.hpp"
@@ -7,7 +8,6 @@
 #include "errors.h"
 #include "factory.hpp"
 #include "metadata.h"
-#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
 #include "version.h"
 #include "visBuffer.hpp"
@@ -36,13 +36,18 @@
 
 using namespace std::placeholders;
 
-REGISTER_KOTEKAN_PROCESS(visAccumulate);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::configUpdater;
+using kotekan::prometheusMetrics;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(visAccumulate);
 
 
 visAccumulate::visAccumulate(Config& config, const string& unique_name,
                              bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&visAccumulate::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&visAccumulate::main_thread, this)) {
 
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");
@@ -311,7 +316,7 @@ void visAccumulate::main_thread() {
                         // Update prometheus metrics
                         auto frame = visFrameView(dset.buf, dset.frame_id);
                         std::string labels = fmt::format("freq_id=\"{}\"", frame.freq_id);
-                        prometheusMetrics::instance().add_process_metric(
+                        prometheusMetrics::instance().add_stage_metric(
                             "kotekan_visaccumulate_skipped_frame_total", unique_name,
                             skipped_frame_total, labels);
                         continue;

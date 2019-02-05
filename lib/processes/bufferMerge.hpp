@@ -1,7 +1,7 @@
 #ifndef BUFFER_MERGE_HPP
 #define BUFFER_MERGE_HPP
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "visUtil.hpp"
 
@@ -15,7 +15,7 @@
  * Merges the frames in order in a round-robin pattern. This means
  * the frame arrival rate must be the same for all input buffers.
  *
- * If this process is the only comsumer of the input buffers then
+ * If this stage is the only comsumer of the input buffers then
  * the operation is zero-copy, it just swaps the frames.  However
  * if there is more than one comsumer on the input buffer then it
  * does a full memcpy of the frame.
@@ -46,10 +46,11 @@
  *
  * @author Andre Renard
  */
-class bufferMerge : public KotekanProcess {
+class bufferMerge : public kotekan::Stage {
 public:
     /// Constructor
-    bufferMerge(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    bufferMerge(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     ~bufferMerge() = default;

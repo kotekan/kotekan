@@ -1,16 +1,18 @@
 /*****************************************
 @file
-@brief Process for comparing against an expected test pattern in the visBuffers. CHIME specific.
-- visTestPattern : public KotekanProcess
+@brief Stage for comparing against an expected test pattern in the visBuffers.
+       CHIME specific.
+- visTestPattern : public kotekan::Stage
 *****************************************/
 #ifndef VISTESTPATTERN_HPP
 #define VISTESTPATTERN_HPP
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
+#include "restServer.hpp"
 #include "visUtil.hpp"
 
 #include "json.hpp"
@@ -29,9 +31,9 @@ using json = nlohmann::json;
  * @class visTestPattern
  * @brief Checks if the visibility data matches a given expected pattern (CHIME specific).
  *
- * This process is just dropping incoming frames until it receives an update on what data to expect.
+ * This stage is just dropping incoming frames until it receives an update on what data to expect.
  * An update would be sent to the endpoint `/run-test`.  *
- * This process will run the test for the given number of frames, then reply on the request to its
+ * This stage will run the test for the given number of frames, then reply on the request to its
  * endpoint to signal that the test is done. In case there was an error during the test, it replies
  * with the HTTP error code `REQUEST_FAILED`.
  * Afterwards it will stay idle until the next test is started.
@@ -55,7 +57,7 @@ using json = nlohmann::json;
  *                                  test on that pattern. Required json values:
  *              name            String. Name of the test.
  *              num_frames      Int. Number of frames to check for the given test pattern. If this
- *                              is `0`, this process will stay idle until a new update is received.
+ *                              is `0`, this stage will stay idle until a new update is received.
  *              test_pattern    Dictionary of String -> (List of uint8). Mapping of correlator
  *                              input serial number to a list of values for each frequency bin.
  *                              For example: `{'FCCXXYYZZ': [2048 list of uint8], ...}`, where the
@@ -78,16 +80,16 @@ using json = nlohmann::json;
  *
  * @author Rick Nitsche
  */
-class visTestPattern : public KotekanProcess {
+class visTestPattern : public kotekan::Stage {
 
 public:
-    visTestPattern(Config& config, const std::string& unique_name,
-                   bufferContainer& buffer_container);
+    visTestPattern(kotekan::Config& config, const std::string& unique_name,
+                   kotekan::bufferContainer& buffer_container);
 
     void main_thread() override;
 
     /// Callback function to receive updates from configUpdater.
-    void receive_update(connectionInstance& conn, json& data);
+    void receive_update(kotekan::connectionInstance& conn, json& data);
 
 private:
     /// Gets the frequency, input and product information from the datasetManager.
@@ -104,7 +106,7 @@ private:
                                    uint64_t fpga_count, timespec time, uint32_t freq_id);
 
     /// Print a warning with the given message and send it as a reply.
-    void reply_failure(connectionInstance& conn, std::string& msg);
+    void reply_failure(kotekan::connectionInstance& conn, std::string& msg);
 
     Buffer* in_buf;
     Buffer* out_buf;

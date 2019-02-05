@@ -6,6 +6,9 @@
 #include <mutex>
 #include <unistd.h>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_HSA_COMMAND(hsaRfiTimeSum);
 
 hsaRfiTimeSum::hsaRfiTimeSum(Config& config, const string& unique_name,

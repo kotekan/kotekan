@@ -1,11 +1,11 @@
 #include "visTestPattern.hpp"
 
+#include "StageFactory.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
 #include "datasetState.hpp"
 #include "errors.h"
-#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
 #include "restServer.hpp"
 #include "visBuffer.hpp"
@@ -29,13 +29,18 @@
 #include <tuple>
 
 
-REGISTER_KOTEKAN_PROCESS(visTestPattern);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::HTTP_RESPONSE;
+using kotekan::prometheusMetrics;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(visTestPattern);
 
 
 visTestPattern::visTestPattern(Config& config, const std::string& unique_name,
                                bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&visTestPattern::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&visTestPattern::main_thread, this)) {
 
     // Setup the buffers
     in_buf = get_buffer("in_buf");
@@ -63,7 +68,7 @@ visTestPattern::visTestPattern(Config& config, const std::string& unique_name,
     expected_data_ready = false;
 
     // Subscribe to the dynamic config update: used to start a test for a number of frames.
-    restServer::instance().register_post_callback(
+    kotekan::restServer::instance().register_post_callback(
         endpoint_name, std::bind(&visTestPattern::receive_update, this, std::placeholders::_1,
                                  std::placeholders::_2));
 }
@@ -277,12 +282,12 @@ void visTestPattern::main_thread() {
     }
 }
 
-void visTestPattern::reply_failure(connectionInstance& conn, std::string& msg) {
+void visTestPattern::reply_failure(kotekan::connectionInstance& conn, std::string& msg) {
     WARN(msg.c_str());
     conn.send_error(error_msg, HTTP_RESPONSE::REQUEST_FAILED);
 }
 
-void visTestPattern::receive_update(connectionInstance& conn, json& data) {
+void visTestPattern::receive_update(kotekan::connectionInstance& conn, json& data) {
     std::unique_lock<std::mutex> thread_lck(mtx_update);
     no_update = false;
 
@@ -440,13 +445,13 @@ void visTestPattern::export_prometheus_metrics(size_t num_bad, float avg_err, fl
                                                uint32_t freq_id) {
     prometheusMetrics& prometheus = prometheusMetrics::instance();
     std::string labels = fmt::format("name=\"{}\",freq_id=\"{}\"", test_name, freq_id);
-    prometheus.add_process_metric("kotekan_vistestpattern_bad_values_total", unique_name, num_bad,
-                                  labels);
-    prometheus.add_process_metric("kotekan_vistestpattern_avg_error", unique_name, avg_err, labels);
-    prometheus.add_process_metric("kotekan_vistestpattern_min_error", unique_name, min_err, labels);
-    prometheus.add_process_metric("kotekan_vistestpattern_max_error", unique_name, max_err, labels);
-    prometheus.add_process_metric("kotekan_vistestpattern_fpga_sequence_number", unique_name,
-                                  fpga_count, labels);
-    prometheus.add_process_metric("kotekan_vistestpattern_ctime_seconds", unique_name,
-                                  ts_to_double(time), labels);
+    prometheus.add_stage_metric("kotekan_vistestpattern_bad_values_total", unique_name, num_bad,
+                                labels);
+    prometheus.add_stage_metric("kotekan_vistestpattern_avg_error", unique_name, avg_err, labels);
+    prometheus.add_stage_metric("kotekan_vistestpattern_min_error", unique_name, min_err, labels);
+    prometheus.add_stage_metric("kotekan_vistestpattern_max_error", unique_name, max_err, labels);
+    prometheus.add_stage_metric("kotekan_vistestpattern_fpga_sequence_number", unique_name,
+                                fpga_count, labels);
+    prometheus.add_stage_metric("kotekan_vistestpattern_ctime_seconds", unique_name,
+                                ts_to_double(time), labels);
 }

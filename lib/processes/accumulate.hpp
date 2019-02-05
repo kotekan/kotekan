@@ -1,12 +1,13 @@
 #ifndef ACCUMULATE_HPP
 #define ACCUMULATE_HPP
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 
-class accumulate : public KotekanProcess {
+class accumulate : public kotekan::Stage {
 public:
-    accumulate(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    accumulate(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& buffer_container);
     ~accumulate();
     void main_thread() override;
 

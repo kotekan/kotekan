@@ -1,5 +1,8 @@
 #include "hsaBeamformOutput.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_HSA_COMMAND(hsaBeamformOutputData);
 
 hsaBeamformOutputData::hsaBeamformOutputData(Config& config, const string& unique_name,

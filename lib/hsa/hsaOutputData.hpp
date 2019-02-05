@@ -7,8 +7,8 @@
 
 class hsaOutputData : public hsaSubframeCommand {
 public:
-    hsaOutputData(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                  hsaDeviceInterface& device);
+    hsaOutputData(kotekan::Config& config, const string& unique_name,
+                  kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaOutputData();
 

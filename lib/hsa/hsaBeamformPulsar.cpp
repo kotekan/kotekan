@@ -1,5 +1,8 @@
 #include "hsaBeamformPulsar.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_HSA_COMMAND(hsaBeamformPulsar);
 
 hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const string& unique_name,

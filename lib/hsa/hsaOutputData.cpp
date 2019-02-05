@@ -3,6 +3,9 @@
 #include "gpsTime.h"
 #include "visUtil.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_HSA_COMMAND(hsaOutputData);
 
 hsaOutputData::hsaOutputData(Config& config, const string& unique_name,

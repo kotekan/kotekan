@@ -34,7 +34,7 @@ params = {
     'log_level': "debug2",
 }
 
-PROCESS_NAME = "testpattern_process"
+STAGE_NAME = "testpattern_stage"
 
 def command_test_pattern(name, num_frames, test_pattern):
     return ('post', ENDPOINT_NAME, {'num_frames': num_frames,
@@ -46,7 +46,7 @@ def run_test(write_dir,rest_commands = None, params=params, noise = False, name=
     params['write_dir'] = write_dir
 
     fakevis_buffer = runner.FakeVisBuffer(
-        process_name=PROCESS_NAME,
+        stage_name=STAGE_NAME,
         num_frames=params['total_frames'],
         mode=params['mode'],
         freq_ids=params['freq_ids'],
@@ -61,18 +61,18 @@ def run_test(write_dir,rest_commands = None, params=params, noise = False, name=
         fakevis_dump_conf['file_ext'] = 'dump'
         fakevis_dump_conf['base_dir'] = write_dir
 
-        test = runner.KotekanProcessTester(
+        test = runner.KotekanStageTester(
             'visTestPattern', params,
             buffers_in = fakevis_buffer,
             buffers_out = dump_buffer,
             global_config = params,
-            parallel_process_type = 'rawFileWrite',
-            parallel_process_config = fakevis_dump_conf,
+            parallel_stage_type = 'rawFileWrite',
+            parallel_stage_config = fakevis_dump_conf,
             noise = True,
             rest_commands=rest_commands,
         )
     else:
-        test = runner.KotekanProcessTester(
+        test = runner.KotekanStageTester(
             'visTestPattern', params,
             fakevis_buffer,
             dump_buffer,

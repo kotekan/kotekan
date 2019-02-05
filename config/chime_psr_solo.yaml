@@ -80,7 +80,7 @@ pulsar_output_buffers:
         kotekan_buffer: standard
 
 dpdk:
-  kotekan_process: dpdkWrapper
+  kotekan_stage: dpdkWrapper
   mode: shuffle4
   num_lcores: 4
   link_map: [0,1,2,3]
@@ -110,7 +110,7 @@ gpu:
     source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
     source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 0
     in_buffers:
       network_buf: gpu_input_buffer_0
@@ -121,7 +121,7 @@ gpu:
     source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
     source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 1
     in_buffers:
       network_buf: gpu_input_buffer_1
@@ -132,7 +132,7 @@ gpu:
     source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
     source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 2
     in_buffers:
       network_buf: gpu_input_buffer_2
@@ -143,7 +143,7 @@ gpu:
     source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
     source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 3
     in_buffers:
       network_buf: gpu_input_buffer_3
@@ -163,7 +163,7 @@ pulsar:
   postprocess:
     log_level: info
     cpu_affinity: [11]
-    kotekan_process: pulsarPostProcess
+    kotekan_stage: pulsarPostProcess
     network_input_buffer_0: beamform_pulsar_output_buffer_0
     network_input_buffer_1: beamform_pulsar_output_buffer_1
     network_input_buffer_2: beamform_pulsar_output_buffer_2

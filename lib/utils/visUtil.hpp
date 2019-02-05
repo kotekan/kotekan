@@ -387,7 +387,7 @@ void map_vis_triangle(const std::vector<uint32_t>& inputmap, size_t block, size_
  *                  vector of the input labels for the index map.
  */
 std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
-parse_reorder_default(Config& config, const std::string base_path);
+parse_reorder_default(kotekan::Config& config, const std::string base_path);
 
 /**
  * @brief Return the next aligned location for a given type size

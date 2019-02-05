@@ -3,7 +3,7 @@
 # pathfinder_rfi_fury.yaml
 #
 # A config which contains all availiable 
-# rfi pipeline processes for PF (fury nodes)
+# rfi pipeline stages for PF (fury nodes)
 #
 # Author: Jacob Taylor
 #
@@ -89,7 +89,7 @@ beamform_output_buffers:
         num_frames: buffer_depth * num_links_fury
 
 dpdk:
-  kotekan_process: dpdkWrapper
+  kotekan_stage: dpdkWrapper
   mode: no_shuffle
   num_lcores: 4
   udp_packet_size: 4800
@@ -100,7 +100,7 @@ dpdk:
 #  type: const
 #  value: 153
 #  test_data_gen_0:
-#    kotekan_process: testDataGen
+#    kotekan_stage: testDataGen
 #    network_out_buf: gpu_fury_input_buffer_0
 
 gpu:
@@ -143,7 +143,7 @@ gpu:
   fixed_time: 1441828309
   product_remap: [92,  93,  94,  95,  88,  89,  90,  91,  84,  85,  86,  87,  80,  81,  82,  83,  28,  29,  30,  31,  24,  25,  26,  27,  20,  21,  22,  23,  16,  17,  18,  19,  76,  77,  78,  79,  72,  73,  74,  75,  68,  69,  70,  71,  64,  65,  66,  67,  12,  13,  14,  15,  8,  9,  10,  11,  4,  5,  6,  7,  0,  1,  2,  3,  220,  221,  222,  223,  216,  217,  218,  219,  212,  213,  214,  215,  208,  209,  210,  211,  156,  157,  158,  159,  152,  153,  154,  155,  148,  149,  150,  151,  144,  145,  146,  147,  204,  205,  206,  207,  200,  201,  202,  203,  196,  197,  198,  199,  192,  193,  194,  195,  140,  141,  142,  143,  136,  137,  138,  139,  132,  133,  134,  135,  128,  129,  130,  131,  252,  253,  254,  255,  248,  249,  250,  251,  244,  245,  246,  247,  240,  241,  242,  243,  188,  189,  190,  191,  184,  185,  186,  187,  180,  181,  182,  183,  176,  177,  178,  179,  236,  237,  238,  239,  232,  233,  234,  235,  228,  229,  230,  231,  224,  225,  226,  227,  172,  173,  174,  175,  168,  169,  170,  171,  164,  165,  166,  167,  160,  161,  162,  163,  124,  125,  126,  127,  120,  121,  122,  123,  116,  117,  118,  119,  112,  113,  114,  115,  60,  61,  62,  63,  56,  57,  58,  59,  52,  53,  54,  55,  48,  49,  50,  51,  108,  109,  110,  111,  104,  105,  106,  107,  100,  101,  102,  103,  96,  97,  98,  99,  44,  45,  46,  47,  40,  41,  42,  43,  36,  37,  38,  39,  32,  33,  34,  35]
   gpu_0:
-    kotekan_process: clProcess
+    kotekan_stage: clProcess
     gpu_id: 0
     network_buffer: gpu_fury_input_buffer_0
     output_buffer: gpu_output_buffer_0
@@ -151,7 +151,7 @@ gpu:
     rfi_out_buf: gpu_rfi_output_buffer_0
 
 rfiBroadcast:
-  kotekan_process: rfiBroadcast
+  kotekan_stage: rfiBroadcast
   rfi_in: gpu_rfi_output_buffer_0
   total_links: 8
   destination_port: 41215
@@ -163,7 +163,7 @@ rfi_record:
   total_links: 8
   write_to: /mnt/glock/RFI
   write_to_disk: false
-  kotekan_process: rfiRecord
+  kotekan_stage: rfiRecord
   rfi_in: gpu_rfi_output_buffer_0
 
 #RFI Live-view Paramters

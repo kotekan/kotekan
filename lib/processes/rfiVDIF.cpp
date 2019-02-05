@@ -11,14 +11,18 @@
 
 using std::string;
 
-REGISTER_KOTEKAN_PROCESS(rfiVDIF);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(rfiVDIF);
 
 rfiVDIF::rfiVDIF(Config& config, const string& unique_name, bufferContainer& buffer_containter) :
-    KotekanProcess(config, unique_name, buffer_containter, std::bind(&rfiVDIF::main_thread, this)) {
+    Stage(config, unique_name, buffer_containter, std::bind(&rfiVDIF::main_thread, this)) {
     // Get relevant buffers
     buf_in = get_buffer("vdif_in");
     buf_out = get_buffer("rfi_out");
-    // Register process as consumer and producer
+    // Register stage as consumer and producer
     register_consumer(buf_in, unique_name.c_str());
     register_producer(buf_out, unique_name.c_str());
 

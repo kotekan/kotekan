@@ -2,6 +2,9 @@
 
 #include "math.h"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_CL_COMMAND(clPresumKernel);
 
 clPresumKernel::clPresumKernel(Config& config, const string& unique_name,

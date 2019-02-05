@@ -37,11 +37,11 @@ pulsar_output_buffer:
     kotekan_buffer: standard
 
 simprocess:
-  kotekan_process: pulsarSimProcess
+  kotekan_stage: pulsarSimProcess
   pulsar_out_buf: pulsar_output_buffer
 
 networkProcess:
-  kotekan_process: pulsarNetworkProcess
+  kotekan_stage: pulsarNetworkProcess
   pulsar_out_buf: pulsar_output_buffer
   udp_pulsar_port_number: 1414
   number_of_nodes: 256

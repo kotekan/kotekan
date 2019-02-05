@@ -42,7 +42,7 @@ To get things started, let's try running a simple dummy kotekan which generates 
 
 You'll want to create a YAML file containing the relevant config.
 
-We'll make use of two processes, ``generateRandomData`` and ``simpleAutocorr``.
+We'll make use of two stages, ``generateRandomData`` and ``simpleAutocorr``.
 
 .. todo::
    write these, and make them into a tutorial
