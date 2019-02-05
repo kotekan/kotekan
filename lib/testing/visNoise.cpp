@@ -3,10 +3,14 @@
 #include "errors.h"
 #include "visBuffer.hpp"
 
-REGISTER_KOTEKAN_PROCESS(visNoise);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(visNoise);
 
 visNoise::visNoise(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container, std::bind(&visNoise::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&visNoise::main_thread, this)) {
 
     // Setup the buffers
     buf_in = get_buffer("in_buf");

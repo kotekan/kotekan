@@ -34,7 +34,7 @@ def run_eigenvis(tdir_factory, params=None):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'eigenVis', {},
         fakevis_buffer,
         dump_buffer,

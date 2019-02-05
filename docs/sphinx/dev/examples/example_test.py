@@ -6,7 +6,7 @@ params = {
     'num_elements': 7,
     'num_ev': 0,
     'total_frames': 128,
-    'variable_my_process_needs': -1
+    'variable_my_stage_needs': -1
 }
 
 # this runs kotekan and yields the data you want to inspect
@@ -25,9 +25,9 @@ def data(tmpdir_factory):
     # DumpVisBuffer can be used to dump data for testing
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    # KotekanProcessTester is used to run kotekan with your config
-    test = runner.KotekanProcessTester(
-        'processUnderTest', {},
+    # KotekanStageTester is used to run kotekan with your config
+    test = runner.KotekanStageTester(
+        'stageUnderTest', {},
         fakevis_buffer,
         dump_buffer,
         params
@@ -35,7 +35,7 @@ def data(tmpdir_factory):
 
 test.run()
 
-# here the data that the process under test put out is passed on to test the process
+# here the data that the stage under test put out is passed on to test the stage
 yield dump_buffer.load()
 
 # this is the actual test (give a name to it)

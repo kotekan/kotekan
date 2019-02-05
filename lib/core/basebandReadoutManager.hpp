@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace kotekan {
+
 /**
  * @class basebandRequest
  * @brief Helper structure to capture a baseband dump request.
@@ -142,7 +144,7 @@ private:
      * updated in-place. Worker threads having a pointer into the elements is
      * safe as long as the readout manager is guaranteed to outlive them, which
      * it will be as the manager is itself owned by the
-     * `basebandApiManager`, and is created in the main process.
+     * `basebandApiManager`, and is created in the main thread.
      */
     std::forward_list<basebandDumpStatus> requests;
 
@@ -169,7 +171,7 @@ private:
 
     /**
      * Pointer the element in `requests` whose data are in the process of being
-     * written (by the write thread of the readoutProcess).
+     * written (by the write thread of the readout stage).
      */
     iterator current = requests.before_begin();
     /// Lock to hold while accessing or updating the `current` element.
@@ -182,5 +184,7 @@ private:
      */
     iterator tail = requests.before_begin();
 };
+
+} // namespace kotekan
 
 #endif /* BASEBAND_READOUT_MANAGER_HPP */

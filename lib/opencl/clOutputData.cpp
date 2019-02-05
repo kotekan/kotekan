@@ -1,5 +1,8 @@
 #include "clOutputData.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_CL_COMMAND(clOutputData);
 
 clOutputData::clOutputData(Config& config, const string& unique_name, bufferContainer& host_buffers,

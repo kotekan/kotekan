@@ -3,3 +3,5 @@ msgpack
 click
 h5py
 future
+requests
+pyyaml

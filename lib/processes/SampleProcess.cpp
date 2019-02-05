@@ -2,12 +2,15 @@
 
 #include "errors.h"
 
-REGISTER_KOTEKAN_PROCESS(SampleProcess);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(SampleProcess);
 
 SampleProcess::SampleProcess(Config& config, const string& unique_name,
                              bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&SampleProcess::main_thread, this)) {}
+    Stage(config, unique_name, buffer_container, std::bind(&SampleProcess::main_thread, this)) {}
 
 SampleProcess::~SampleProcess() {}
 

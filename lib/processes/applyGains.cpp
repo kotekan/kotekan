@@ -1,5 +1,6 @@
 #include "applyGains.hpp"
 
+#include "Stage.hpp"
 #include "configUpdater.hpp"
 #include "errors.h"
 #include "prometheusMetrics.hpp"
@@ -19,13 +20,18 @@ using namespace HighFive;
 using namespace std::placeholders;
 
 
-REGISTER_KOTEKAN_PROCESS(applyGains);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::configUpdater;
+using kotekan::prometheusMetrics;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(applyGains);
 
 
 applyGains::applyGains(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&applyGains::main_thread, this)),
+    Stage(config, unique_name, buffer_container, std::bind(&applyGains::main_thread, this)),
     in_buf(get_buffer("in_buf")),
     out_buf(get_buffer("out_buf")),
     frame_id_in(in_buf),
@@ -323,16 +329,16 @@ void applyGains::apply_thread() {
         }
 
         // Report how old the gains being applied to the current data are.
-        prometheusMetrics::instance().add_process_metric("kotekan_applygains_update_age_seconds",
-                                                         unique_name, tpast);
+        prometheusMetrics::instance().add_stage_metric("kotekan_applygains_update_age_seconds",
+                                                       unique_name, tpast);
 
         // Report number of updates received too late
-        prometheusMetrics::instance().add_process_metric("kotekan_applygains_late_update_count",
-                                                         unique_name, num_late_updates.load());
+        prometheusMetrics::instance().add_stage_metric("kotekan_applygains_late_update_count",
+                                                       unique_name, num_late_updates.load());
 
         // Report number of frames received late
-        prometheusMetrics::instance().add_process_metric("kotekan_applygains_late_frame_count",
-                                                         unique_name, num_late_frames.load());
+        prometheusMetrics::instance().add_stage_metric("kotekan_applygains_late_frame_count",
+                                                       unique_name, num_late_frames.load());
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);

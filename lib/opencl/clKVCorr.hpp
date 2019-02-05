@@ -6,8 +6,8 @@
 
 class clKVCorr : public clCommand {
 public:
-    clKVCorr(Config& config, const string& unique_name, bufferContainer& host_buffers,
-             clDeviceInterface& device);
+    clKVCorr(kotekan::Config& config, const string& unique_name,
+             kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
     ~clKVCorr();
     virtual void build() override;
     virtual cl_event execute(int gpu_frame_id, cl_event pre_event) override;

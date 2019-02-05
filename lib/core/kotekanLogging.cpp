@@ -3,6 +3,8 @@
 #include <stdexcept>
 #include <strings.h>
 
+namespace kotekan {
+
 kotekanLogging::kotekanLogging() {
     __log_level = 3;
     __log_prefix = "";
@@ -65,3 +67,5 @@ void kotekanLogging::set_log_level(const string& s_log_level) {
 
     set_log_level(log_level);
 }
+
+} // namespace kotekan

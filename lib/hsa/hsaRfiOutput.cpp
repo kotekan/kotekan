@@ -1,5 +1,8 @@
 #include "hsaRfiOutput.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_HSA_COMMAND(hsaRfiOutput);
 
 hsaRfiOutput::hsaRfiOutput(Config& config, const string& unique_name, bufferContainer& host_buffers,

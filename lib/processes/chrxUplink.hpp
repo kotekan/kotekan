@@ -1,15 +1,16 @@
 #ifndef ACQ_UPLINK_H
 #define ACQ_UPLINK_H
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 
 #include <string>
 
 using string = std::string;
 
-class chrxUplink : public KotekanProcess {
+class chrxUplink : public kotekan::Stage {
 public:
-    chrxUplink(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    chrxUplink(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& buffer_container);
     virtual ~chrxUplink();
     void main_thread() override;
 

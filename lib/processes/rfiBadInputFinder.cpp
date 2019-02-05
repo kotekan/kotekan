@@ -19,15 +19,22 @@
 #include <time.h>
 #include <unistd.h>
 
-REGISTER_KOTEKAN_PROCESS(rfiBadInputFinder);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+using kotekan::connectionInstance;
+using kotekan::HTTP_RESPONSE;
+using kotekan::restServer;
+
+REGISTER_KOTEKAN_STAGE(rfiBadInputFinder);
 
 rfiBadInputFinder::rfiBadInputFinder(Config& config, const string& unique_name,
                                      bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&rfiBadInputFinder::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&rfiBadInputFinder::main_thread, this)) {
     // Get buffer from framework
     rfi_buf = get_buffer("rfi_in");
-    // Register process as consumer
+    // Register stage as consumer
     register_consumer(rfi_buf, unique_name.c_str());
 
     // Intialize internal config
@@ -39,7 +46,7 @@ rfiBadInputFinder::rfiBadInputFinder(Config& config, const string& unique_name,
     _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
     _rfi_combined = config.get_default<bool>(unique_name, "rfi_combined", true);
     _frames_per_packet = config.get_default<uint32_t>(unique_name, "bi_frames_per_packet", 10);
-    // Process specific paramters
+    // Stage-specific paramters
     dest_port = config.get<uint32_t>(unique_name, "destination_port");
     dest_server_ip = config.get<std::string>(unique_name, "destination_ip");
     dest_protocol = config.get_default<std::string>(unique_name, "destination_protocol", "UDP");

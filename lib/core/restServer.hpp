@@ -15,6 +15,8 @@
 #include <shared_mutex>
 #include <thread>
 
+namespace kotekan {
+
 enum class HTTP_RESPONSE {
     OK = 200,
     BAD_REQUEST = 400,
@@ -104,7 +106,7 @@ private:
 /**
  * @brief Framework level REST server (singleton)
  *
- * Provides the system for any framwork process to register endpoints.
+ * Provides the system for any framwork stage to register endpoints.
  *
  * Currently this object uses the mongoose webserver internally to handle
  * the http requests.
@@ -327,5 +329,7 @@ private:
     /// Allow connectionInstance to use internal helper functions
     friend class connectionInstance;
 };
+
+} // namespace kotekan
 
 #endif /* REST_SERVER_HPP */

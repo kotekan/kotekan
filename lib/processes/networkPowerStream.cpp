@@ -14,12 +14,16 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-REGISTER_KOTEKAN_PROCESS(networkPowerStream);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(networkPowerStream);
 
 networkPowerStream::networkPowerStream(Config& config, const string& unique_name,
                                        bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&networkPowerStream::main_thread, this)) {
+    Stage(config, unique_name, buffer_container,
+          std::bind(&networkPowerStream::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());

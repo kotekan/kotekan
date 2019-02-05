@@ -14,12 +14,15 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-REGISTER_KOTEKAN_PROCESS(vdifStream);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(vdifStream);
 
 vdifStream::vdifStream(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&vdifStream::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&vdifStream::main_thread, this)) {
 
     buf = get_buffer("vdif_in_buf");
     register_consumer(buf, unique_name.c_str());

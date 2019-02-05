@@ -1,12 +1,12 @@
 #include "visTransform.hpp"
 
+#include "StageFactory.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "chimeMetadata.h"
 #include "datasetState.hpp"
 #include "errors.h"
 #include "metadata.h"
-#include "processFactory.hpp"
 #include "version.h"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
@@ -26,19 +26,22 @@
 #include <tuple>
 
 
-REGISTER_KOTEKAN_PROCESS(visTransform);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(visTransform);
 
 visTransform::visTransform(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&visTransform::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&visTransform::main_thread, this)) {
 
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");
     block_size = config.get<size_t>(unique_name, "block_size");
     num_eigenvectors = config.get<size_t>(unique_name, "num_ev");
 
-    // Get the list of buffers that this process shoud connect to
+    // Get the list of buffers that this stage shoud connect to
     std::vector<std::string> input_buffer_names =
         config.get<std::vector<std::string>>(unique_name, "in_bufs");
 

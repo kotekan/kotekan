@@ -41,7 +41,7 @@ enum class gpuCommandType { COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET };
  *
  * @author Keith Vanderlinde
  */
-class gpuCommand : public kotekanLogging {
+class gpuCommand : public kotekan::kotekanLogging {
 public:
     /**
      * @brief Constructor, needs to be initialized by any derived classes.
@@ -54,8 +54,9 @@ public:
      * @param default_file_name      (optional) external file (e.g. CL) used
      *.                              by a command
      */
-    gpuCommand(Config& config, const string& unique_name, bufferContainer& host_buffers,
-               gpuDeviceInterface& device, const string& default_kernel_command = "",
+    gpuCommand(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& host_buffers, gpuDeviceInterface& device,
+               const string& default_kernel_command = "",
                const string& default_kernel_file_name = "");
     /// Destructor that frees memory for the kernel and name.
     virtual ~gpuCommand();
@@ -96,11 +97,11 @@ protected:
     /// File reference for the openCL file (.cl) where the kernel is written.
     string kernel_file_name;
     /// reference to the config file for the current run
-    Config& config;
+    kotekan::Config& config;
 
     /// Name to use with consumer and producer assignment for buffers defined in yaml files.
     string unique_name;
-    bufferContainer host_buffers;
+    kotekan::bufferContainer host_buffers;
 
     /// Reference to a derived device interface.
     gpuDeviceInterface& dev;

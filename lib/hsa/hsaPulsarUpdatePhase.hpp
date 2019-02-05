@@ -62,8 +62,8 @@ class hsaPulsarUpdatePhase : public hsaCommand {
 public:
     /// Constructor, also initializes internal variables from config, allocates host_gain,
     /// host_phase_0, host_pahse_1, and set up 2 endpoints
-    hsaPulsarUpdatePhase(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                         hsaDeviceInterface& device);
+    hsaPulsarUpdatePhase(kotekan::Config& config, const string& unique_name,
+                         kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor, cleans up local allocs.
     virtual ~hsaPulsarUpdatePhase();
@@ -85,7 +85,7 @@ public:
     void finalize_frame(int frame_id);
 
     /// Endpoint for providing new pulsar target (RA, Dec, sacling factor, beam_id)
-    void pulsar_grab_callback(connectionInstance& conn, json& json_request);
+    void pulsar_grab_callback(kotekan::connectionInstance& conn, json& json_request);
 
 private:
     /// Length of arrray of phases, should be 2048 x 10 x 2 for complex

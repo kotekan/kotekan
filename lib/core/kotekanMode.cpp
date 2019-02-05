@@ -1,14 +1,16 @@
 #include "kotekanMode.hpp"
 
+#include "StageFactory.hpp"
 #include "buffer.h"
 #include "bufferFactory.hpp"
 #include "configUpdater.hpp"
 #include "datasetManager.hpp"
 #include "metadataFactory.hpp"
-#include "processFactory.hpp"
 #include "restServer.hpp"
 
 #include "json.hpp"
+
+namespace kotekan {
 
 kotekanMode::kotekanMode(Config& config_) : config(config_) {
     restServer::instance().register_get_callback("/config", [&](connectionInstance& conn) {
@@ -32,9 +34,9 @@ kotekanMode::~kotekanMode() {
     restServer::instance().remove_get_callback("/config");
     restServer::instance().remove_all_aliases();
 
-    for (auto const& process : processes) {
-        if (process.second != nullptr) {
-            delete process.second;
+    for (auto const& stage : stages) {
+        if (stage.second != nullptr) {
+            delete stage.second;
         }
     }
 
@@ -53,7 +55,7 @@ kotekanMode::~kotekanMode() {
     }
 }
 
-void kotekanMode::initalize_processes() {
+void kotekanMode::initalize_stages() {
 
     // Create Metadata Pool
     metadataFactory metadata_factory(config);
@@ -72,37 +74,39 @@ void kotekanMode::initalize_processes() {
     if (config.exists("/", "dataset_manager"))
         datasetManager::instance(config);
 
-    // Create Processes
-    processFactory process_factory(config, buffer_container);
-    processes = process_factory.build_processes();
+    // Create Stages
+    StageFactory stage_factory(config, buffer_container);
+    stages = stage_factory.build_stages();
 
     // Update REST server
     restServer::instance().set_server_affinity(config);
 }
 
 void kotekanMode::join() {
-    for (auto const& process : processes) {
-        INFO("Joining kotekan_process: %s...", process.first.c_str());
-        process.second->join();
+    for (auto const& stage : stages) {
+        INFO("Joining kotekan_stage: %s...", stage.first.c_str());
+        stage.second->join();
     }
 }
 
-void kotekanMode::start_processes() {
-    for (auto const& process : processes) {
-        INFO("Starting kotekan_process: %s...", process.first.c_str());
-        process.second->start();
+void kotekanMode::start_stages() {
+    for (auto const& stage : stages) {
+        INFO("Starting kotekan_stage: %s...", stage.first.c_str());
+        stage.second->start();
     }
 }
 
-void kotekanMode::stop_processes() {
-    // First set the shutdown variable on all processes
-    for (auto const& process : processes)
-        process.second->stop();
+void kotekanMode::stop_stages() {
+    // First set the shutdown variable on all stages
+    for (auto const& stage : stages)
+        stage.second->stop();
 
     // Then send shutdown signal to buffers which
-    // should wake up processes which are blocked.
+    // should wake up stages which are blocked.
     for (auto const& buf : buffers) {
         INFO("Sending shutdown signal to buffer: %s", buf.first.c_str());
         send_shutdown_signal(buf.second);
     }
 }
+
+} // namespace kotekan

@@ -9,7 +9,7 @@ project.
 Naming
 ^^^^^^^^^^
 - Type names in kotekan should be nouns, use *CamelCase* formatting and begin
-  with a capital letter, e.g. ``MyFavouriteProcess``. This includes classes,
+  with a capital letter, e.g. ``MyFavouriteStage``. This includes classes,
   enums, structs and typedefs.
 - With the exception of class constructors & destructors, function names should
   use underscore notation and begin with a lower case letter, e.g. ``my_func``.

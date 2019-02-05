@@ -1,14 +1,14 @@
 #ifndef COMPUTE_DUALPOL_POWER
 #define COMPUTE_DUALPOL_POWER
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "errors.h"
 
-class computeDualpolPower : public KotekanProcess {
+class computeDualpolPower : public kotekan::Stage {
 public:
-    computeDualpolPower(Config& config, const string& unique_name,
-                        bufferContainer& buffer_container);
+    computeDualpolPower(kotekan::Config& config, const string& unique_name,
+                        kotekan::bufferContainer& buffer_container);
     ~computeDualpolPower();
     void main_thread() override;
 

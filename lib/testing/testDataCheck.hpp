@@ -1,7 +1,7 @@
 #ifndef TEST_DATA_CHECK_H
 #define TEST_DATA_CHECK_H
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "errors.h"
 #include "util.h"
@@ -10,9 +10,10 @@
 #include <unistd.h>
 
 template<typename A_Type>
-class testDataCheck : public KotekanProcess {
+class testDataCheck : public kotekan::Stage {
 public:
-    testDataCheck(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    testDataCheck(kotekan::Config& config, const string& unique_name,
+                  kotekan::bufferContainer& buffer_container);
     ~testDataCheck();
     void main_thread() override;
 
@@ -22,9 +23,9 @@ private:
 };
 
 template<typename A_Type>
-testDataCheck<A_Type>::testDataCheck(Config& config, const string& unique_name,
-                                     bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
+testDataCheck<A_Type>::testDataCheck(kotekan::Config& config, const string& unique_name,
+                                     kotekan::bufferContainer& buffer_container) :
+    kotekan::Stage(config, unique_name, buffer_container,
                    std::bind(&testDataCheck::main_thread, this)) {
     first_buf = get_buffer("first_buf");
     register_consumer(first_buf, unique_name.c_str());

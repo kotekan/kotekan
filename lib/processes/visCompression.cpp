@@ -1,8 +1,8 @@
 #include "visCompression.hpp"
 
+#include "StageFactory.hpp"
 #include "datasetManager.hpp"
 #include "errors.h"
-#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
@@ -32,13 +32,18 @@
 
 using namespace std::placeholders;
 
-REGISTER_KOTEKAN_PROCESS(baselineCompression);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::prometheusMetrics;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(baselineCompression);
 
 
 baselineCompression::baselineCompression(Config& config, const string& unique_name,
                                          bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&baselineCompression::main_thread, this)),
+    Stage(config, unique_name, buffer_container,
+          std::bind(&baselineCompression::main_thread, this)),
     in_buf(get_buffer("in_buf")),
     out_buf(get_buffer("out_buf")),
     frame_id_in(in_buf),
@@ -109,7 +114,7 @@ dset_id_t baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
     if (input_state_ptr == nullptr || prod_state_ptr == nullptr) {
         ERROR("Set to not use dataset_broker and couldn't find "
               "freqState ancestor of dataset 0x%" PRIx64 ". Make sure there "
-              "is a process upstream in the config, that adds a freqState.\n"
+              "is a stage upstream in the config, that adds a freqState.\n"
               "Exiting...",
               input_ds_id);
         raise(SIGINT);
@@ -279,10 +284,10 @@ void baselineCompression::compress_thread() {
         double elapsed = current_time() - start_time;
         std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\"", output_frame.freq_id,
                                          output_frame.dataset_id);
-        prometheusMetrics::instance().add_process_metric("kotekan_baselinecompression_residuals",
-                                                         unique_name, residual, labels);
-        prometheusMetrics::instance().add_process_metric("kotekan_baselinecompression_time_seconds",
-                                                         unique_name, elapsed);
+        prometheusMetrics::instance().add_stage_metric("kotekan_baselinecompression_residuals",
+                                                       unique_name, residual, labels);
+        prometheusMetrics::instance().add_stage_metric("kotekan_baselinecompression_time_seconds",
+                                                       unique_name, elapsed);
 
         DEBUG("Compression time %.4f", elapsed);
     }

@@ -48,8 +48,8 @@ class hsaRfiTimeSum : public hsaCommand {
 
 public:
     /// Constructor, initializes internal variables.
-    hsaRfiTimeSum(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                  hsaDeviceInterface& device);
+    hsaRfiTimeSum(kotekan::Config& config, const string& unique_name,
+                  kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiTimeSum();
     /// Executes rfi_chime_inputsum.hsaco kernel. Allocates kernel variables, initalizes input mask

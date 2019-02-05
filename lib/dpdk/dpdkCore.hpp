@@ -35,7 +35,7 @@ extern "C" {
 #include <rte_ring.h>
 }
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "kotekanLogging.hpp"
 
 #include <emmintrin.h>
@@ -48,7 +48,7 @@ extern "C" {
  *
  * @author Andre Renard
  */
-class dpdkRXhandler : public kotekanLogging {
+class dpdkRXhandler : public kotekan::kotekanLogging {
 public:
     /**
      * @brief Default constructor for the handler.
@@ -61,8 +61,8 @@ public:
      * @param buffer_container The container with all the named buffers
      * @param port The NIC port which this hander is attached to
      */
-    dpdkRXhandler(Config& config, const std::string& unique_name, bufferContainer& buffer_container,
-                  int port) :
+    dpdkRXhandler(kotekan::Config& config, const std::string& unique_name,
+                  kotekan::bufferContainer& buffer_container, int port) :
         config(config),
         unique_name(unique_name),
         buffer_container(buffer_container),
@@ -97,13 +97,13 @@ public:
 
 protected:
     /// The system config
-    Config& config;
+    kotekan::Config& config;
 
     /// The unique name of this handler
     std::string unique_name;
 
     /// The container of buffers
-    bufferContainer& buffer_container;
+    kotekan::bufferContainer& buffer_container;
 
     /// The NIC port which this handler is attached to.
     uint32_t port;
@@ -155,9 +155,10 @@ protected:
  *
  * @author Andre Renard
  */
-class dpdkCore : public KotekanProcess {
+class dpdkCore : public kotekan::Stage {
 public:
-    dpdkCore(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    dpdkCore(kotekan::Config& config, const string& unique_name,
+             kotekan::bufferContainer& buffer_container);
     ~dpdkCore();
 
     void main_thread() override;
@@ -192,7 +193,7 @@ private:
      *
      * @param buffer_container The buffer contain to pass onto the handlers.
      */
-    void create_handlers(bufferContainer& buffer_container);
+    void create_handlers(kotekan::bufferContainer& buffer_container);
 
     /// The pool of DPDK mbufs
     struct rte_mempool* mbuf_pool;

@@ -43,7 +43,7 @@ network_input_buffers:
 
 cpu_affinity: [2,3,8,9]
 dpdk:
-    kotekan_process: dpdkCore
+    kotekan_stage: dpdkCore
     # Format is index = lcore, value = cpu core
     lcore_cpu_map: [0,1,6,7]
     master_lcore_cpu: 2
@@ -67,7 +67,7 @@ dpdk:
           out_buf: network_input_buffer_3
 
 hexDump:
-    kotekan_process: hexDump
+    kotekan_stage: hexDump
     # Change this buffer to print packets on different ports
     buf: network_input_buffer_0
     len: 4928
@@ -76,16 +76,16 @@ inspect_block:
     # 0 means dump the full frame on callback, otherwise dump the first `len` bytes 
     len: 0
     inspect_0:
-        kotekan_process: restInspectFrame
+        kotekan_stage: restInspectFrame
         in_buf: network_input_buffer_0
     inspect_1:
-        kotekan_process: restInspectFrame
+        kotekan_stage: restInspectFrame
         in_buf: network_input_buffer_1
         len: 0
     inspect_2:
-        kotekan_process: restInspectFrame
+        kotekan_stage: restInspectFrame
         in_buf: network_input_buffer_2
         len: 0
     inspect_3:
-        kotekan_process: restInspectFrame
+        kotekan_stage: restInspectFrame
         in_buf: network_input_buffer_3

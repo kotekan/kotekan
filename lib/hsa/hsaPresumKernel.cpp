@@ -1,5 +1,8 @@
 #include "hsaPresumKernel.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_HSA_COMMAND(hsaPresumKernel);
 
 hsaPresumKernel::hsaPresumKernel(Config& config, const string& unique_name,

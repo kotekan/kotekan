@@ -21,10 +21,10 @@ struct gpuMemoryBlock {
  *
  * @author Keith Vanderlinde
  */
-class gpuDeviceInterface : public kotekanLogging {
+class gpuDeviceInterface : public kotekan::kotekanLogging {
 public:
     /// Constructor
-    gpuDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_buffer_depth_);
+    gpuDeviceInterface(kotekan::Config& config_, int32_t gpu_id_, int gpu_buffer_depth_);
     /// Destructor
     virtual ~gpuDeviceInterface();
 
@@ -66,7 +66,7 @@ protected:
     virtual void free_gpu_memory(void*) = 0;
 
     // Extra data
-    Config& config;
+    kotekan::Config& config;
 
     // Config variables
     int gpu_id;

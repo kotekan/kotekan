@@ -8,13 +8,16 @@
 #include <csignal>
 
 
-REGISTER_KOTEKAN_PROCESS(countCheck);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(countCheck);
 
 
 countCheck::countCheck(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&countCheck::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&countCheck::main_thread, this)) {
 
     // Setup the input buffer
     in_buf = get_buffer("in_buf");
