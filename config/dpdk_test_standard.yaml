@@ -69,7 +69,7 @@ gpu_input_buffers:
         numa_node: 0
     gpu_input_buffer_15:
         kotekan_buffer: standard
-        numa_node: 1
+        numa_node: 0
     gpu_input_buffer_16:
         kotekan_buffer: standard
         numa_node: 1
