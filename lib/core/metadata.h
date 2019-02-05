@@ -133,7 +133,7 @@ void unlock_metadata(struct metadataContainer * container);
  * @brief A memory pool for preallocated metadata containers.
  *
  * The idea behind metadata containers is to be able to pass metadata down
- * a pipeline chain between buffers and processes without copying any of the values
+ * a pipeline chain between buffers and stages without copying any of the values
  * at each step, or allocating and deallocating memory.
  *
  * This pool is what holds the metadata containers when they aren't in use

@@ -1,13 +1,13 @@
 /**
  * @file
  * @brief Packetizer for data destined for CHIME/Pulsar.
- *  - pulsarPostProcess : public KotekanProcess
+ *  - pulsarPostProcess : public kotekan::Stage
  */
 
 #ifndef PULSAR_POST_PROCESS
 #define PULSAR_POST_PROCESS
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 
 #include <vector>
 
@@ -61,11 +61,11 @@ using std::vector;
  *
  */
 
-class pulsarPostProcess : public KotekanProcess {
+class pulsarPostProcess : public kotekan::Stage {
 public:
     /// Constructor.
-    pulsarPostProcess(Config& config_, const string& unique_name,
-                      bufferContainer& buffer_container);
+    pulsarPostProcess(kotekan::Config& config_, const string& unique_name,
+                      kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~pulsarPostProcess();
     /// Primary loop to wait for buffers, dig through data,

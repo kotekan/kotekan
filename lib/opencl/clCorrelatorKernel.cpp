@@ -3,6 +3,9 @@
 #include <string>
 using std::string;
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_CL_COMMAND(clCorrelatorKernel);
 
 clCorrelatorKernel::clCorrelatorKernel(Config& config, const string& unique_name,

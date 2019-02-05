@@ -1,13 +1,13 @@
 /**
  * @file frbNetworkprocess.hpp
- * @brief Network transmission process for FRB obs
- *  - frbNetworkProcess : public KotekanProcess
+ * @brief Network transmission stage for FRB obs
+ *  - frbNetworkProcess : public kotekan::Stage
  */
 
 #ifndef FRBNETWORKPROCESS_HPP
 #define FRBNETWORKPROCESS_HPP
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "restServer.hpp"
 
@@ -15,10 +15,10 @@
 
 /**
  * @class frbNetworkProcess
- * @brief frbNetworkProcess Network transmission process for FRB obs
+ * @brief frbNetworkProcess Network transmission stage for FRB obs
  *
  *
- * This is an Kotekan process that read packetized data from frbPostProcess and transmits 1024 beams
+ * This is an Kotekan stage that read packetized data from frbPostProcess and transmits 1024 beams
  * to 256 links of frb backend. frbNetworkProcess distributes the out going traffic to four VLANS
  * (10.6 10.7 10.8 10.9) on single 1 Gig port. The frb total data rate is ~0.55 gbps. The node IP
  * address is derived by parsing the hostname.
@@ -50,16 +50,17 @@
  */
 
 
-class frbNetworkProcess : public KotekanProcess {
+class frbNetworkProcess : public kotekan::Stage {
 public:
     /// Constructor, also initializes internal variables from config.
-    frbNetworkProcess(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    frbNetworkProcess(kotekan::Config& config, const string& unique_name,
+                      kotekan::bufferContainer& buffer_container);
 
     /// Destructor , cleaning local allocations
     virtual ~frbNetworkProcess();
 
     /// Callback to update the beam offset
-    void update_offset_callback(connectionInstance& conn, json& json_request);
+    void update_offset_callback(kotekan::connectionInstance& conn, json& json_request);
 
     /// main thread
     void main_thread() override;
@@ -98,7 +99,7 @@ private:
     // samples per packet
     int samples_per_packet;
 
-    // Beam Configuration Mode
+    // Beam kotekan::Configuration Mode
     bool column_mode;
 
     /// array of local file descriptors

@@ -40,7 +40,7 @@ def vis_data(tmpdir_factory):
     dump_buffer_h = runner.DumpVisBuffer(
             str(tmpdir_h))
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'freqSplit', {},
         fakevis_buffer,
         [dump_buffer_l, dump_buffer_h],
@@ -68,7 +68,7 @@ def write_data(tmpdir_factory):
             str(tmpdir_l), 'raw')
     write_buffer_h = runner.VisWriterBuffer(
             str(tmpdir_h), 'raw')
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'freqSplit', {},
         fakevis_buffer,
         [write_buffer_l, write_buffer_h],

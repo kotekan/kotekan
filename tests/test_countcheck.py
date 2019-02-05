@@ -48,7 +48,7 @@ def kotekan_output(tmpdir_factory):
         read_buffer = runner.ReadVisBuffer(str(tmpdir), frame_list)
         read_buffer.write()
 
-        test = runner.KotekanProcessTester(
+        test = runner.KotekanStageTester(
             'countCheck', count_params,
             read_buffer,
             None,  # buffers_out is None

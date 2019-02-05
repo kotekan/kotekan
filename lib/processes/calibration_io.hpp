@@ -1,14 +1,14 @@
 /*****************************************
 @file
 @brief Write out eigenvectors to file.
-- eigenWriter : public KotekanProcess
+- eigenWriter : public kotekan::Stage
 - eigenFile
 *****************************************/
 
 #ifndef CAL_PROC
 #define CAL_PROC
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "errors.h"
 #include "util.h"
@@ -93,10 +93,10 @@ private:
 
 /**
  * @class eigenWriter
- * @brief Consumer ``KotekanProcess`` that extracts eigenvectors etc from a ``visBuffer``
+ * @brief Consumer ``kotekan::Stage`` that extracts eigenvectors etc from a ``visBuffer``
  *        and writes them to disk in a rolling HDF5 file.
  *
- * This process reads the eigenvectors, eigenvalues, and RMS values carried in an input
+ * This stage reads the eigenvectors, eigenvalues, and RMS values carried in an input
  * visbility buffer and writes them to an ``eigenFile'' HDF5 file in single writer multiple
  * reader mode. This file has a specified length and rolls over when it fills up.
  *
@@ -115,11 +115,12 @@ private:
  * @author  Tristan Pinsonneault-Marotte
  *
  */
-class eigenWriter : public KotekanProcess {
+class eigenWriter : public kotekan::Stage {
 
 public:
     /// Constructor. Loads config options. Creates output file.
-    eigenWriter(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    eigenWriter(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& buffer_container);
 
     /// Destructor. Flushes file contents to disk.
     ~eigenWriter();

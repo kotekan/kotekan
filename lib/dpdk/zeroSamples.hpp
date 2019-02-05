@@ -1,7 +1,7 @@
 #ifndef ZERO_SAMPLES_HPP
 #define ZERO_SAMPLES_HPP
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 
 #include "json.hpp"
 
@@ -41,10 +41,11 @@
  *
  * @author Andre Renard
  */
-class zeroSamples : public KotekanProcess {
+class zeroSamples : public kotekan::Stage {
 public:
     /// Standard constructor
-    zeroSamples(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    zeroSamples(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     ~zeroSamples();

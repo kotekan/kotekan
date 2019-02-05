@@ -1,14 +1,14 @@
 /**
  * @file
- * @brief Process to receive an intensity stream from a remote client.
- *  - networkInputPowerStream : public KotekanProcess
+ * @brief Stage to receive an intensity stream from a remote client.
+ *  - networkInputPowerStream : public kotekan::Stage
  */
 
 #ifndef NETWORK_INPUT_POWER_STREAM_H
 #define NETWORK_INPUT_POWER_STREAM_H
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "powerStreamUtil.hpp"
 
@@ -18,12 +18,12 @@
 
 /**
  * @class networkInputPowerStream
- * @brief Process to take an intensity stream and stream to a remote client.
+ * @brief Stage to take an intensity stream and stream to a remote client.
  *
- * This is a consumer process which takes intensity data from a buffer and streams
+ * This is a consumer stage which takes intensity data from a buffer and streams
  * it via TCP (and some day UDP) to a remote client, primarily for visualization purposes.
  *
- * In TCP mode, the process should continually attempt to establish a TCP connection,
+ * In TCP mode, the stage should continually attempt to establish a TCP connection,
  * then transmit data once successful.
  *
  * @par Buffers
@@ -45,11 +45,11 @@
  * @author Keith Vanderlinde
  *
  */
-class networkInputPowerStream : public KotekanProcess {
+class networkInputPowerStream : public kotekan::Stage {
 public:
     /// Constructor.
-    networkInputPowerStream(Config& config, const string& unique_name,
-                            bufferContainer& buffer_container);
+    networkInputPowerStream(kotekan::Config& config, const string& unique_name,
+                            kotekan::bufferContainer& buffer_container);
     /// Destructor.
     virtual ~networkInputPowerStream();
 

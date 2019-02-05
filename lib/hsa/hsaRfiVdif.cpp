@@ -8,11 +8,14 @@ Details:
     -Constructor: Applies config and sets up the Mean array
     -execute: Sets up kernel arguments, specifies HSA parameters, queues rfi kernel
 Notes:
-    This process was designed to run on VDIF data.
+    This stage was designed to run on VDIF data.
 
 **********************************************************************************/
 
 #include "hsaRfiVdif.hpp"
+
+using kotekan::bufferContainer;
+using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaRfiVdif);
 

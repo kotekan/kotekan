@@ -2,13 +2,13 @@
 /*****************************************
 @file
 @brief Accumulation and gating of visibility data.
-- visAccumulate : public KotekanProcess
+- visAccumulate : public kotekan::Stage
 *****************************************/
 #ifndef VIS_ACCUMULATE_HPP
 #define VIS_ACCUMULATE_HPP
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
@@ -31,7 +31,7 @@
  * @class visAccumulate
  * @brief Accumulate the high rate GPU output into integrated visBuffers.
  *
- * This process will accumulate the GPU output and calculate the within sample
+ * This stage will accumulate the GPU output and calculate the within sample
  * variance for weights.
  *
  * It tags the stream with a properly allocated dataset_id and adds associated
@@ -74,9 +74,10 @@
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte
  */
-class visAccumulate : public KotekanProcess {
+class visAccumulate : public kotekan::Stage {
 public:
-    visAccumulate(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    visAccumulate(kotekan::Config& config, const string& unique_name,
+                  kotekan::bufferContainer& buffer_container);
     ~visAccumulate() = default;
     void main_thread() override;
 

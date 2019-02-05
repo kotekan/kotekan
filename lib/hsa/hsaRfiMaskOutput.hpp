@@ -30,8 +30,8 @@
 class hsaRfiMaskOutput : public hsaSubframeCommand {
 public:
     /// Constructor
-    hsaRfiMaskOutput(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                     hsaDeviceInterface& device);
+    hsaRfiMaskOutput(kotekan::Config& config, const string& unique_name,
+                     kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor
     virtual ~hsaRfiMaskOutput();
     /// Wait for output buffer to be empty, keep track of _rfi_mask_output_buf_precondition_id

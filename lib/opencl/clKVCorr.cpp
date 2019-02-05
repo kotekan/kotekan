@@ -5,6 +5,9 @@ using std::string;
 
 #define small_array (_num_elements < 32)
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_CL_COMMAND(clKVCorr);
 
 clKVCorr::clKVCorr(Config& config, const string& unique_name, bufferContainer& host_buffers,

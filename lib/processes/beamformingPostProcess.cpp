@@ -17,12 +17,16 @@ using std::string;
 #include "util.h"
 #include "vdif_functions.h"
 
-REGISTER_KOTEKAN_PROCESS(beamformingPostProcess);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(beamformingPostProcess);
 
 beamformingPostProcess::beamformingPostProcess(Config& config, const string& unique_name,
                                                bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&beamformingPostProcess::main_thread, this)) {
+    Stage(config, unique_name, buffer_container,
+          std::bind(&beamformingPostProcess::main_thread, this)) {
     _num_fpga_links = config.get<uint32_t>(unique_name, "num_links");
     //_num_gpus = config.get_int("/gpu", "num_gpus");
     _num_gpus = config.get<uint32_t>(unique_name, "num_gpus");

@@ -27,12 +27,16 @@ using std::string;
 #include "tx_utils.hpp"
 #include "util.h"
 
-REGISTER_KOTEKAN_PROCESS(pulsarNetworkProcess);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(pulsarNetworkProcess);
 
 pulsarNetworkProcess::pulsarNetworkProcess(Config& config_, const string& unique_name,
                                            bufferContainer& buffer_container) :
-    KotekanProcess(config_, unique_name, buffer_container,
-                   std::bind(&pulsarNetworkProcess::main_thread, this)) {
+    Stage(config_, unique_name, buffer_container,
+          std::bind(&pulsarNetworkProcess::main_thread, this)) {
     in_buf = get_buffer("pulsar_out_buf");
     register_consumer(in_buf, unique_name.c_str());
 

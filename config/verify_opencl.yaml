@@ -67,7 +67,7 @@ beamform_output_buffers:
 gen_data:
   type: random #const
   value: 153
-  kotekan_process: testDataGen
+  kotekan_stage: testDataGen
   network_out_buf: gpu_input_buffer
 
 #data_format: dot4b
@@ -89,7 +89,7 @@ gpu:
   - name: clKVCorr
   - name: clOutputData
   gpu_0:
-    kotekan_process: clProcess
+    kotekan_stage: clProcess
     gpu_id: 1
     in_buffers:
       network_buf: gpu_input_buffer
@@ -97,13 +97,13 @@ gpu:
       output_buf: gpu_output_buffer
 
 cpu:
-  kotekan_process: gpuSimulate
+  kotekan_stage: gpuSimulate
   log_level: debug
   network_in_buf: gpu_input_buffer
   corr_out_buf: cpu_output_buffer
 
 check_data:
-  kotekan_process: testDataCheckInt
+  kotekan_stage: testDataCheckInt
   first_buf: gpu_output_buffer
   second_buf: cpu_output_buffer
 
@@ -111,5 +111,5 @@ check_data:
 #  imag: [0]
 #  real: [98304] #[4816896] #98 * samples_per_dataset
 #  const_data_check:
-#    kotekan_process: constDataCheck
+#    kotekan_stage: constDataCheck
 #    in_buf: gpu_output_buffer

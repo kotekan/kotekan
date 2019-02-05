@@ -1,19 +1,20 @@
 #ifndef FULL_PACKET_DUMP_HPP
 #define FULL_PACKET_DUMP_HPP
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "restServer.hpp"
 
 #include <mutex>
 #include <string>
 
-class fullPacketDump : public KotekanProcess {
+class fullPacketDump : public kotekan::Stage {
 public:
-    fullPacketDump(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    fullPacketDump(kotekan::Config& config, const string& unique_name,
+                   kotekan::bufferContainer& buffer_container);
     virtual ~fullPacketDump();
     void main_thread() override;
 
-    void packet_grab_callback(connectionInstance& conn, json& json_request);
+    void packet_grab_callback(kotekan::connectionInstance& conn, json& json_request);
 
 private:
     struct Buffer* buf;

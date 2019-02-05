@@ -6,7 +6,10 @@
 #include <stdarg.h>
 #include <string>
 #include <syslog.h>
+
 using std::string;
+
+namespace kotekan {
 
 enum class logLevel { OFF = 0, ERROR = 1, WARN = 2, INFO = 3, DEBUG = 4, DEBUG2 = 5 };
 
@@ -24,5 +27,7 @@ protected:
     int __log_level;
     string __log_prefix;
 };
+
+} // namespace kotekan
 
 #endif /* KOTEKAN_LOGGING_H */

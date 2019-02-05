@@ -1,13 +1,13 @@
 /*****************************************
 @file
-@brief Process that adds noise to the
+@brief Stage that adds noise to the
        visibility data.
-- visNoise : public KotekanProcess
+- visNoise : public Stage
 *****************************************/
 #ifndef VISNOISE_HPP
 #define VISNOISE_HPP
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 
 #include <random>
 
@@ -23,12 +23,13 @@
  * @conf  random                       If false, the noise generation will not be
  *                                     initialized with a random seed.
  **/
-class visNoise : public KotekanProcess {
+class visNoise : public kotekan::Stage {
 public:
     // Default constructor
-    visNoise(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    visNoise(kotekan::Config& config, const string& unique_name,
+             kotekan::bufferContainer& buffer_container);
 
-    // Main loop for the process
+    // Main loop for the stage
     void main_thread() override;
 
 private:

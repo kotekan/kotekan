@@ -20,19 +20,27 @@
 #include <time.h>
 #include <unistd.h>
 
-REGISTER_KOTEKAN_PROCESS(rfiBroadcast);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::prometheusMetrics;
+using kotekan::Stage;
+
+using kotekan::connectionInstance;
+using kotekan::HTTP_RESPONSE;
+using kotekan::restServer;
+
+REGISTER_KOTEKAN_STAGE(rfiBroadcast);
 
 rfiBroadcast::rfiBroadcast(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&rfiBroadcast::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&rfiBroadcast::main_thread, this)) {
     // Get buffer from framework
     rfi_buf = get_buffer("rfi_in");
     // Get buffer from framework
     rfi_mask_buf = get_buffer("rfi_mask");
-    // Register process as consumer
+    // Register stage as consumer
     register_consumer(rfi_buf, unique_name.c_str());
-    // Register process as consumer
+    // Register stage as consumer
     register_consumer(rfi_mask_buf, unique_name.c_str());
 
     // Intialize internal config
@@ -44,7 +52,7 @@ rfiBroadcast::rfiBroadcast(Config& config, const string& unique_name,
     _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
     _rfi_combined = config.get_default<bool>(unique_name, "rfi_combined", true);
     _frames_per_packet = config.get_default<uint32_t>(unique_name, "frames_per_packet", 1);
-    // Process specific paramters
+    // Stage-specific paramters
     total_links = config.get_default<uint32_t>(unique_name, "total_links", 1);
     dest_port = config.get<uint32_t>(unique_name, "destination_port");
     dest_server_ip = config.get<std::string>(unique_name, "destination_ip");
@@ -197,8 +205,8 @@ void rfiBroadcast::main_thread() {
             stream_id_t current_stream_id = extract_stream_id(StreamIDs[0]);
             uint32_t current_freq_bin = bin_number_chime(&current_stream_id);
             std::string tags = "freq_bin=\"" + std::to_string(current_freq_bin) + "\"";
-            metrics.add_process_metric("kotekan_rfi_broadcast_mask_percent", unique_name,
-                                       perc_zeroed.average(), tags);
+            metrics.add_stage_metric("kotekan_rfi_broadcast_mask_percent", unique_name,
+                                     perc_zeroed.average(), tags);
 
 #ifdef DEBUGGING
             // Reset Timer (can't time previous loop due to wait for frame blocking call)

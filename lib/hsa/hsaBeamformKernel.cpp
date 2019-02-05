@@ -4,6 +4,14 @@
 
 #include <signal.h>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::configUpdater;
+
+using kotekan::connectionInstance;
+using kotekan::HTTP_RESPONSE;
+using kotekan::restServer;
+
 REGISTER_HSA_COMMAND(hsaBeamformKernel);
 
 // clang-format off

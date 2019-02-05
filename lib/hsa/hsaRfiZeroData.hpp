@@ -42,8 +42,8 @@ class hsaRfiZeroData : public hsaCommand {
 
 public:
     /// Constructor, initializes internal variables.
-    hsaRfiZeroData(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                   hsaDeviceInterface& device);
+    hsaRfiZeroData(kotekan::Config& config, const string& unique_name,
+                   kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiZeroData();
 

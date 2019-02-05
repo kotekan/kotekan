@@ -1,5 +1,8 @@
 #include "clPreseedKernel.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_CL_COMMAND(clPreseedKernel);
 
 clPreseedKernel::clPreseedKernel(Config& config, const string& unique_name,

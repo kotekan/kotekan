@@ -4,6 +4,12 @@
 #include "metadata.h"
 #include "visBuffer.hpp"
 
+using json = nlohmann::json;
+using std::map;
+using std::string;
+
+namespace kotekan {
+
 bufferFactory::bufferFactory(Config& _config, map<string, struct metadataPool*>& _metadataPools) :
     config(_config),
     metadataPools(_metadataPools) {}
@@ -13,7 +19,7 @@ bufferFactory::~bufferFactory() {}
 map<string, struct Buffer*> bufferFactory::build_buffers() {
     map<string, struct Buffer*> buffers;
 
-    // Start parsing tree, put the processes in the "pools" vector
+    // Start parsing tree, put the buffers in the "pools" vector
     build_from_tree(buffers, config.get_full_config_json(), "");
 
     return buffers;
@@ -28,7 +34,7 @@ void bufferFactory::build_from_tree(map<string, struct Buffer*>& buffers, json& 
             continue;
         }
 
-        // Check if this is a kotekan_process block, and if so create the process.
+        // Check if this is a kotekan_buffer block, and if so create the buffer.
         string buffer_type = it.value().value("kotekan_buffer", "none");
         if (buffer_type != "none") {
             string name = it.key();
@@ -40,7 +46,7 @@ void bufferFactory::build_from_tree(map<string, struct Buffer*>& buffers, json& 
         }
 
         // Recursive part.
-        // This is a section/scope not a process block.
+        // This is a section/scope not a buffer block.
         build_from_tree(buffers, it.value(), path + "/" + it.key());
     }
 }
@@ -87,3 +93,5 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
     // No metadata found
     throw std::runtime_error("No buffer type named: " + name);
 }
+
+} // namespace kotekan

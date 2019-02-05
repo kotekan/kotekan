@@ -4,12 +4,16 @@
 #include "nt_memset.h"
 
 #include <vector>
-REGISTER_KOTEKAN_PROCESS(zeroSamples);
+
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(zeroSamples);
 
 zeroSamples::zeroSamples(Config& config, const string& unique_name,
                          bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&zeroSamples::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&zeroSamples::main_thread, this)) {
 
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());

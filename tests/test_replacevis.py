@@ -31,7 +31,7 @@ def replace_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'replaceVis', {},
         fakevis_buffer,
         dump_buffer,

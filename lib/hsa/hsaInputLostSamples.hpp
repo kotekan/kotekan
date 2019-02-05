@@ -29,8 +29,8 @@
 class hsaInputLostSamples : public hsaCommand {
 public:
     /// Constructor, applies config, initializes variables
-    hsaInputLostSamples(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                        hsaDeviceInterface& device);
+    hsaInputLostSamples(kotekan::Config& config, const string& unique_name,
+                        kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     // Destructor, cleans up local allocs
     virtual ~hsaInputLostSamples();
     /// Wait for full metadata frame and keep track of precondition_id

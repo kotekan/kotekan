@@ -9,13 +9,18 @@
 
 using namespace std::placeholders;
 
-REGISTER_KOTEKAN_PROCESS(receiveFlags);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::configUpdater;
+using kotekan::prometheusMetrics;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(receiveFlags);
 
 
 receiveFlags::receiveFlags(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&receiveFlags::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&receiveFlags::main_thread, this)) {
     // Setup the buffers
     buf_in = get_buffer("in_buf");
     buf_out = get_buffer("out_buf");
@@ -148,16 +153,16 @@ void receiveFlags::main_thread() {
         flags_lock.unlock();
 
         // Report how old the flags being applied to the current data are.
-        prometheusMetrics::instance().add_process_metric("kotekan_receiveflags_update_age_seconds",
-                                                         unique_name, -ts_to_double(ts_late));
+        prometheusMetrics::instance().add_stage_metric("kotekan_receiveflags_update_age_seconds",
+                                                       unique_name, -ts_to_double(ts_late));
 
         // Report number of frames received late
-        prometheusMetrics::instance().add_process_metric("kotekan_receiveflags_late_frame_count",
-                                                         unique_name, num_late_frames);
+        prometheusMetrics::instance().add_stage_metric("kotekan_receiveflags_late_frame_count",
+                                                       unique_name, num_late_frames);
 
         // Report number of updates received too late
-        prometheusMetrics::instance().add_process_metric("kotekan_receiveflags_late_update_count",
-                                                         unique_name, num_late_updates);
+        prometheusMetrics::instance().add_stage_metric("kotekan_receiveflags_late_update_count",
+                                                       unique_name, num_late_updates);
 
         // Mark output frame full and input frame empty
         mark_frame_full(buf_out, unique_name.c_str(), frame_id_out);

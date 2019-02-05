@@ -1,9 +1,9 @@
 #include "freqSubset.hpp"
 
+#include "StageFactory.hpp"
 #include "datasetManager.hpp"
 #include "datasetState.hpp"
 #include "errors.h"
-#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
@@ -22,13 +22,16 @@
 #include <stdexcept>
 #include <utility>
 
-REGISTER_KOTEKAN_PROCESS(freqSubset);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(freqSubset);
 
 
 freqSubset::freqSubset(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&freqSubset::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&freqSubset::main_thread, this)) {
 
     // Get list of frequencies to subset from config
     _subset_list = config.get<std::vector<uint32_t>>(unique_name, "subset_list");
@@ -51,7 +54,7 @@ dset_id_t freqSubset::change_dataset_state(dset_id_t input_dset_id,
     if (freq_state_ptr == nullptr) {
         ERROR("Set to not use dataset_broker and couldn't find "
               "freqState ancestor of dataset 0x%" PRIx64 ". Make sure there "
-              "is a process upstream in the config, that adds a freqState.\n"
+              "is a stage upstream in the config, that adds a freqState.\n"
               "Exiting...",
               input_dset_id);
         raise(SIGINT);

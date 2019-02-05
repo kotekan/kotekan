@@ -1,4 +1,4 @@
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 
 #include "errors.h"
 #include "util.h"
@@ -10,9 +10,10 @@
 #include <syslog.h>
 #include <thread>
 
-KotekanProcess::KotekanProcess(Config& config, const string& unique_name,
-                               bufferContainer& buffer_container_,
-                               std::function<void(const KotekanProcess&)> main_thread_ref) :
+namespace kotekan {
+
+Stage::Stage(Config& config, const string& unique_name, bufferContainer& buffer_container_,
+             std::function<void(const Stage&)> main_thread_ref) :
     stop_thread(false),
     config(config),
     unique_name(unique_name),
@@ -27,18 +28,18 @@ KotekanProcess::KotekanProcess(Config& config, const string& unique_name,
     set_log_level(s_log_level);
     set_log_prefix(unique_name);
 
-    // Set the timeout for this process thread to exit
+    // Set the timeout for this stage thread to exit
     join_timeout = config.get_default<uint32_t>(unique_name, "join_timeout", 60);
 }
 
-struct Buffer* KotekanProcess::get_buffer(const std::string& name) {
-    // NOTE: Maybe require that the buffer be given in the process, not
-    // just somewhere in the path to the process.
+struct Buffer* Stage::get_buffer(const std::string& name) {
+    // NOTE: Maybe require that the buffer be given in the stage, not
+    // just somewhere in the path to the stage.
     string buf_name = config.get<std::string>(unique_name, name);
     return buffer_container.get_buffer(buf_name);
 }
 
-std::vector<struct Buffer*> KotekanProcess::get_buffer_array(const std::string& name) {
+std::vector<struct Buffer*> Stage::get_buffer_array(const std::string& name) {
     std::vector<struct Buffer*> bufs;
 
     std::vector<std::string> buf_names = config.get<std::vector<std::string>>(unique_name, name);
@@ -49,7 +50,7 @@ std::vector<struct Buffer*> KotekanProcess::get_buffer_array(const std::string& 
     return bufs;
 }
 
-void KotekanProcess::apply_cpu_affinity() {
+void Stage::apply_cpu_affinity() {
 
     std::lock_guard<std::mutex> lock(cpu_affinity_lock);
 
@@ -80,7 +81,7 @@ void KotekanProcess::apply_cpu_affinity() {
 #endif
 }
 
-void KotekanProcess::set_cpu_affinity(const std::vector<int>& cpu_affinity_) {
+void Stage::set_cpu_affinity(const std::vector<int>& cpu_affinity_) {
     {
         std::lock_guard<std::mutex> lock(cpu_affinity_lock);
         cpu_affinity = cpu_affinity_;
@@ -88,41 +89,43 @@ void KotekanProcess::set_cpu_affinity(const std::vector<int>& cpu_affinity_) {
     apply_cpu_affinity();
 }
 
-void KotekanProcess::start() {
+void Stage::start() {
     this_thread = std::thread(main_thread_fn, std::ref(*this));
 
     apply_cpu_affinity();
 }
 
-std::string KotekanProcess::get_unique_name() const {
+std::string Stage::get_unique_name() const {
     return unique_name;
 }
 
-void KotekanProcess::join() {
+void Stage::join() {
     if (this_thread.joinable()) {
         // This has the effect of creating a new thread for each thread join,
         // this isn't exactly optimal, but give we are shutting down anyway it should be fine.
         auto thread_joiner = std::async(std::launch::async, &std::thread::join, &this_thread);
         if (thread_joiner.wait_for(std::chrono::seconds(join_timeout))
             == std::future_status::timeout) {
-            ERROR("*** EXIT_FAILURE *** The process %s failed to exit (join thread timeout) after "
+            ERROR("*** EXIT_FAILURE *** The stage %s failed to exit (join thread timeout) after "
                   "%d seconds.",
                   unique_name.c_str(), join_timeout);
-            ERROR("If the process needs more time to exit, please set the config value "
-                  "`join_timeout` for that korekan_process");
+            ERROR("If the stage needs more time to exit, please set the config value "
+                  "`join_timeout` for that kotekan_stage");
             std::abort();
         }
     }
 }
 
-void KotekanProcess::stop() {
+void Stage::stop() {
     stop_thread = true;
 }
 
-void KotekanProcess::main_thread() {}
+void Stage::main_thread() {}
 
-KotekanProcess::~KotekanProcess() {
+Stage::~Stage() {
     stop_thread = true;
     if (this_thread.joinable())
         this_thread.join();
 }
+
+} // namespace kotekan

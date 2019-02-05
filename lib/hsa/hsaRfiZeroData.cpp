@@ -7,6 +7,10 @@
 #include <mutex>
 #include <unistd.h>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::configUpdater;
+
 REGISTER_HSA_COMMAND(hsaRfiZeroData);
 
 hsaRfiZeroData::hsaRfiZeroData(Config& config, const string& unique_name,

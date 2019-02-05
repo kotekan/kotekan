@@ -1,13 +1,13 @@
 /*****************************************
 @file
-@brief Processes for triggered baseband recording
+@brief Stages for triggered baseband recording
 - basebandDumpData
-- basebandReadout : public KotekanProcess
+- basebandReadout : public kotekan::Stage
 *****************************************/
 #ifndef BASEBAND_READOUT_H
 #define BASEBAND_READOUT_H
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "basebandReadoutManager.hpp"
 #include "buffer.h"
 #include "chimeMetadata.h"
@@ -89,9 +89,10 @@ struct basebandDumpData {
  *
  * @author Kiyoshi Masui, Davor Cubranic
  */
-class basebandReadout : public KotekanProcess {
+class basebandReadout : public kotekan::Stage {
 public:
-    basebandReadout(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    basebandReadout(kotekan::Config& config, const string& unique_name,
+                    kotekan::bufferContainer& buffer_container);
     virtual ~basebandReadout();
     void main_thread() override;
 
@@ -111,9 +112,9 @@ private:
 
     std::mutex manager_lock;
 
-    void listen_thread(const uint32_t freq_id, basebandReadoutManager& readout_manager);
-    void write_thread(basebandReadoutManager& readout_manager);
-    void write_dump(basebandDumpData data, basebandDumpStatus& dump_status,
+    void listen_thread(const uint32_t freq_id, kotekan::basebandReadoutManager& readout_manager);
+    void write_thread(kotekan::basebandReadoutManager& readout_manager);
+    void write_dump(basebandDumpData data, kotekan::basebandDumpStatus& dump_status,
                     std::mutex& request_mtx);
     int add_replace_frame(int frame_id);
     void lock_range(int start_frame, int end_frame);

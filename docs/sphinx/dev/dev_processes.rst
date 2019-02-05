@@ -1,18 +1,18 @@
 ************
-Processes
+Stages
 ************
 
-More detailed info about processes, how they should be structured, and what should go where.
+More detailed info about stages, how they should be structured, and what should go where.
 
 
 Minimal Definition
 -------------------
-A minimalist process is defined in SampleProcess.cpp and reproduced below. This should be considered a minimal process.
+A minimalist stage is defined in SampleStage.cpp and reproduced below. This should be considered a minimal stage.
 
-.. literalinclude:: ../../../lib/processes/SampleProcess.cpp
+.. literalinclude:: ../../../lib/processes/SampleStage.cpp
     :language: c++
     :linenos:
 
 Using breathe to parse the autodoc,
 
-.. doxygenclass:: SampleProcess
+.. doxygenclass:: SampleStage

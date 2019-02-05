@@ -1,8 +1,8 @@
 /**
  * @file
- * @brief The core kotekan buffer object for data transfer between processes
+ * @brief The core kotekan buffer object for data transfer between stages
  *  - buffer
- *  - ProcessInfo
+ *  - StageInfo
  *  - create_buffer
  *  - delete_buffer
  *  - zero_frames
@@ -45,8 +45,8 @@ extern "C" {
 /// The system page size, this might become more dynamic someday
 #define PAGESIZE_MEM 4096
 
-/// The max length of a process (consumer or producer) name.
-#define MAX_PROCESS_NAME_LEN 128
+/// The max length of a stage (consumer or producer) name.
+#define MAX_STAGE_NAME_LEN 128
 
 /// The maximum number of consumers that can register on a buffer
 #define MAX_CONSUMERS 15
@@ -54,26 +54,26 @@ extern "C" {
 #define MAX_PRODUCERS 10
 
 /**
- * @struct ProcessInfo
+ * @struct StageInfo
  * @brief Internal structure for tracking consumer and producer names.
  */
-struct ProcessInfo {
-    /// Set to 1 if the process is active
+struct StageInfo {
+    /// Set to 1 if the stage is active
     int in_use;
 
-    /// The name of the process (consumer or producer)
-    char name[MAX_PROCESS_NAME_LEN];
+    /// The name of the stage (consumer or producer)
+    char name[MAX_STAGE_NAME_LEN];
 };
 
 /**
  * @struct Buffer
  * @brief Kotekan's core multi-producer, multi-consumer ring buffer with metadata
  *
- * This class is the central method for passing data between kotekan processes
+ * This class is the central method for passing data between kotekan stages
  * in a pipeline.
  *
  * It provides a fixed size RING buffer which can have multiple producers and
- * consumers attached to it.   The idea is that individual processes do not need
+ * consumers attached to it.   The idea is that individual stages do not need
  * to worry about how to manage data transfer between them, it is taken care of by
  * this class.  All the public functions here are thread safe, and if used correctly
  * tested to be deadlock free.
@@ -163,10 +163,10 @@ struct Buffer {
     int ** consumers_done;
 
     /// The list of consumer names registered to this buffer
-    struct ProcessInfo consumers[MAX_CONSUMERS];
+    struct StageInfo consumers[MAX_CONSUMERS];
 
     /// The list of producer names registered to this buffer
-    struct ProcessInfo producers[MAX_PRODUCERS];
+    struct StageInfo producers[MAX_PRODUCERS];
 
     /// Flag set to indicate if the frames should be zeroed between uses
     int zero_frames;
@@ -274,7 +274,7 @@ void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int 
  * This blocking function will return only when the frame_id request is marked
  * as empty internally, or the function @c send_shutdown_signal() is called, which
  * causes the function to return a @c NULL pointer.
- * Generally a process should exit and cleanup if NULL is returned.
+ * Generally a stage should exit and cleanup if NULL is returned.
  *
  * @param[in] buf The buffer object
  * @param[in] producer_name The name of the registered producer requesting the frame_id
@@ -292,7 +292,7 @@ uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, c
  * This blocking function will return only when the frame_id request is marked
  * as full internally, or the function @c send_shutdown_signal() is called, which
  * causes the function to return a @c NULL pointer.
- * Generally a process should exit and cleanup if NULL is returned.
+ * Generally a stage should exit and cleanup if NULL is returned.
  *
  * @param[in] buf The buffer object
  * @param[in] consumer_name The name of the registered producer requesting the frame_id
@@ -311,7 +311,7 @@ uint8_t * wait_for_full_frame(struct Buffer* buf, const char * consumer_name, co
  * This function will timeout after `wait` seconds.
  *
  * @param[in] buf Buffer to wait on.
- * @param[in] name Name of the process.
+ * @param[in] name Name of the stage.
  * @param[in] ID Frame ID to wait at.
  * @param[in] timeout Exit after this we exceed this *absolute* time.
  *
@@ -394,7 +394,7 @@ void allocate_new_metadata_object(struct Buffer * buf, int frame_id);
  *          and so must be freeded by the system taking it.  Also the frame
  *          given will be used and freed by the buffer, so the providing system
  *          must not attempt to free it.
- * @warning This function should only be use by single producer processes.
+ * @warning This function should only be used by single producer stages.
  * @warning The extra frame provided to this function must be allocated with
  *          @c buffer_malloc() and the frame returned by this function must be
  *          freed with @c buffer_free()
@@ -489,7 +489,7 @@ struct metadataContainer * get_metadata_container(struct Buffer * buf, int frame
  *
  * Note it doesn't actually copy the metadata, instead it just copies the pointer
  * and uses reference counting to track which buffers (and frames) have registered
- * access to this metadata object.  The process releases the metadata implicitly
+ * access to this metadata object.  The stage releases the metadata implicitly
  * when the @c mark_frame_empty() function is called, which decrements
  * the reference counter. Once it reaches zero, the the metadata is returned to the
  * pool.
@@ -520,7 +520,7 @@ void copy_metadata(struct Buffer * from_buf, int from_frame_id,
 /**
  * @brief Tells the buffers to stop returning full/empty frames to consumers/producers
  *
- * This function should only be called by the framework, and not by processes.
+ * This function should only be called by the framework, and not by stages.
  * Once called it will cause all @c wait_for_empty_frame() and @c wait_for_full_frame()
  * calls to wake up and return NULL; or NULL on the next time they are called.
  *

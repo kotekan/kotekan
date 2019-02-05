@@ -7,12 +7,11 @@
 
 #include <time.h>
 
-REGISTER_KOTEKAN_PROCESS(chimeMetadataDump);
+REGISTER_KOTEKAN_STAGE(chimeMetadataDump);
 
-chimeMetadataDump::chimeMetadataDump(Config& config, const string& unique_name,
-                                     bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&chimeMetadataDump::main_thread, this)) {
+chimeMetadataDump::chimeMetadataDump(kotekan::Config& config, const string& unique_name,
+                                     kotekan::bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&chimeMetadataDump::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());

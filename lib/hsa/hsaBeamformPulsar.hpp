@@ -56,8 +56,8 @@ class hsaBeamformPulsar : public hsaCommand {
 public:
     /// Constructor, also initializes internal variables from config and initializes the array of
     /// phases.
-    hsaBeamformPulsar(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                      hsaDeviceInterface& device);
+    hsaBeamformPulsar(kotekan::Config& config, const string& unique_name,
+                      kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor, cleans up local allocs.
     virtual ~hsaBeamformPulsar();

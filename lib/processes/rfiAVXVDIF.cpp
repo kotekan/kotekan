@@ -37,12 +37,15 @@
 #define PACKET_LEN (_num_local_freq + VDIF_HEADER_LEN)
 #define VDIF_HEADER_LEN sizeof(VDIFHeader)
 
-REGISTER_KOTEKAN_PROCESS(rfiAVXVDIF);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(rfiAVXVDIF);
 
 rfiAVXVDIF::rfiAVXVDIF(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&rfiAVXVDIF::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&rfiAVXVDIF::main_thread, this)) {
     // Retrieve buffers
     buf_in = get_buffer("vdif_in");
     buf_out = get_buffer("rfi_out");

@@ -1,5 +1,8 @@
 #include "hsaRfiBadInputOutput.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_HSA_COMMAND(hsaRfiBadInputOutput);
 
 hsaRfiBadInputOutput::hsaRfiBadInputOutput(Config& config, const string& unique_name,

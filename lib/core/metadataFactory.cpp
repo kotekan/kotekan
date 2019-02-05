@@ -5,6 +5,12 @@
 #include "metadata.h"
 #include "visBuffer.hpp"
 
+using json = nlohmann::json;
+using std::map;
+using std::string;
+
+namespace kotekan {
+
 metadataFactory::metadataFactory(Config& config) : config(config) {}
 
 metadataFactory::~metadataFactory() {}
@@ -12,7 +18,7 @@ metadataFactory::~metadataFactory() {}
 map<string, struct metadataPool*> metadataFactory::build_pools() {
     map<string, struct metadataPool*> pools;
 
-    // Start parsing tree, put the processes in the "pools" vector
+    // Start parsing tree, put the metadata_pool's in the "pools" vector
     build_from_tree(pools, config.get_full_config_json(), "");
 
     return pools;
@@ -27,7 +33,7 @@ void metadataFactory::build_from_tree(map<string, struct metadataPool*>& pools, 
             continue;
         }
 
-        // Check if this is a kotekan_process block, and if so create the process.
+        // Check if this is a kotekan_metadata_pool block, and if so create the metadata_pool.
         string pool_type = it.value().value("kotekan_metadata_pool", "none");
         if (pool_type != "none") {
             string unique_path = path + "/" + it.key();
@@ -41,7 +47,7 @@ void metadataFactory::build_from_tree(map<string, struct metadataPool*>& pools, 
         }
 
         // Recursive part.
-        // This is a section/scope not a process block.
+        // This is a section/scope not a kotekan_metadata_pool block.
         build_from_tree(pools, it.value(), path + "/" + it.key());
     }
 }
@@ -64,3 +70,5 @@ struct metadataPool* metadataFactory::new_pool(const string& pool_type, const st
     // No metadata found
     throw std::runtime_error("No metadata object named: " + pool_type);
 }
+
+} // namespace kotekan

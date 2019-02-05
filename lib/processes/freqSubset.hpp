@@ -1,13 +1,13 @@
 /*****************************************
 @file
-@brief Process for subsetting visibility data by frequency.
-- freqSubset : public KotekanProcess
+@brief Stage for subsetting visibility data by frequency.
+- freqSubset : public kotekan::Stage
 *****************************************/
 #ifndef FREQ_SUBSET_HPP
 #define FREQ_SUBSET_HPP
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
@@ -38,13 +38,14 @@
  *
  * @author Mateus Fandino
  */
-class freqSubset : public KotekanProcess {
+class freqSubset : public kotekan::Stage {
 
 public:
     /// Default constructor
-    freqSubset(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    freqSubset(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& buffer_container);
 
-    /// Main loop for the process
+    /// Main loop for the stage
     void main_thread() override;
 
 private:

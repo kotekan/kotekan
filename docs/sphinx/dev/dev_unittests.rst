@@ -2,10 +2,10 @@
 Unit Tests
 ************
 
-Testing a Process
-=================
+Testing a Stage
+===============
 
-If you wrote a new Process or you added to it's functionality, you should
+If you wrote a new Stage or you added to it's functionality, you should
 probably test if it behaves as expected in all the possible cases.
 To do this you can write a test using
 `pytest <https://docs.pytest.org/en/latest/>`_ and various tools from
