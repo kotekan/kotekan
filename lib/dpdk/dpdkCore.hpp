@@ -200,6 +200,12 @@ private:
     /// Hack pool for numa core 1
     struct rte_mempool * mbuf_pool_1;
 
+    /// Hack pool for numa core 1
+    struct rte_mempool * mbuf_pool_2;
+
+    /// Hack pool for numa core 1
+    struct rte_mempool * mbuf_pool_3;
+
     /// Internal DPDK configuration struct
     struct rte_eth_conf port_conf;
 
