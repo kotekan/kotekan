@@ -102,7 +102,16 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
                                    sizeof(struct rte_pktmbuf_pool_private), rte_pktmbuf_pool_init,
                                    NULL, rte_pktmbuf_init, NULL, 1, 0);
 
-    if (mbuf_pool_0 == NULL || mbuf_pool_1 == NULL) {
+    mbuf_pool_2 = rte_mempool_create("MBUF_POOL_1", num_mbufs * num_ports, mbuf_size, mbuf_cache_size,
+                                   sizeof(struct rte_pktmbuf_pool_private), rte_pktmbuf_pool_init,
+                                   NULL, rte_pktmbuf_init, NULL, 2, 0);
+
+    mbuf_pool_3 = rte_mempool_create("MBUF_POOL_1", num_mbufs * num_ports, mbuf_size, mbuf_cache_size,
+                                   sizeof(struct rte_pktmbuf_pool_private), rte_pktmbuf_pool_init,
+                                   NULL, rte_pktmbuf_init, NULL, 3, 0);
+
+    if (mbuf_pool_0 == NULL || mbuf_pool_1 == NULL
+        || mbuf_pool_2 == NULL || mbuf_pool_3 == NULL) {
         throw std::runtime_error("Cannot create DPDK mbuf pool.");
     }
 
@@ -172,7 +181,7 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
 
     char arg0[] = "./kotekan";
     char arg1[] = "-n";
-    char arg2[] = "6";
+    char arg2[] = "2";
     char arg3[] = "--lcores";
     char* arg4 = (char*)malloc(dpdk_lcore_map.length() + 1);
     strncpy(arg4, dpdk_lcore_map.c_str(), dpdk_lcore_map.length() + 1);
@@ -222,6 +231,8 @@ dpdkCore::~dpdkCore() {
 
     rte_mempool_free(mbuf_pool_0);
     rte_mempool_free(mbuf_pool_1);
+    rte_mempool_free(mbuf_pool_2);
+    rte_mempool_free(mbuf_pool_3);
 
     // Free the handlers
     for (uint32_t i = 0; i < num_system_ports; ++i) {
@@ -250,10 +261,13 @@ int32_t dpdkCore::port_init(uint8_t port) {
     for (q = 0; q < rx_rings; q++) {
         if (port < 16) {
             retval = rte_eth_rx_queue_setup(port, q, rx_ring_size, rte_eth_dev_socket_id(port), NULL,
-                                            mbuf_pool_0);
-        } else {
-            retval = rte_eth_rx_queue_setup(port, q, rx_ring_size, rte_eth_dev_socket_id(port), NULL,
                                             mbuf_pool_1);
+        } else  if (port < 24) {
+            retval = rte_eth_rx_queue_setup(port, q, rx_ring_size, rte_eth_dev_socket_id(port), NULL,
+                                            mbuf_pool_2);
+        } else if (port < 32) {
+            retval = rte_eth_rx_queue_setup(port, q, rx_ring_size, rte_eth_dev_socket_id(port), NULL,
+                                            mbuf_pool_3);
         }
         if (retval < 0) {
             ERROR("Failed to setupt RX queue for port %d, error: %d", port, retval);
