@@ -14,6 +14,8 @@
 // the code to test:
 #include "datasetManager.hpp"
 
+using kotekan::Config;
+
 using json = nlohmann::json;
 
 using namespace std::string_literals;
@@ -23,7 +25,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
     __enable_syslog = 0;
 
     // We have to start the restServer here, because the datasetManager uses it.
-    restServer::instance().start("127.0.0.1");
+    kotekan::restServer::instance().start("127.0.0.1");
 
     json json_config;
     json json_config_dm;

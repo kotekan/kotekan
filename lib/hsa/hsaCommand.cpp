@@ -1,5 +1,8 @@
 #include "hsaCommand.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 using std::string;
 
 #define MAX_ARGS_LEN 64

@@ -14,12 +14,16 @@
 #include <time.h>
 #include <unistd.h>
 
-REGISTER_KOTEKAN_PROCESS(bufferStatus);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::prometheusMetrics;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(bufferStatus);
 
 bufferStatus::bufferStatus(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&bufferStatus::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&bufferStatus::main_thread, this)) {
     buffers = buffer_container.get_buffer_map();
 }
 
@@ -44,11 +48,11 @@ void bufferStatus::main_thread() {
         for (auto& buf_entry : buffers) {
             uint32_t num_full_frames = get_num_full_frames(buf_entry.second);
             string buffer_name = buf_entry.first;
-            metrics.add_process_metric("kotekan_bufferstatus_full_frames_total", unique_name,
-                                       num_full_frames, "buffer_name=\"" + buffer_name + "\"");
-            metrics.add_process_metric("kotekan_bufferstatus_frames_total", unique_name,
-                                       buf_entry.second->num_frames,
-                                       "buffer_name=\"" + buffer_name + "\"");
+            metrics.add_stage_metric("kotekan_bufferstatus_full_frames_total", unique_name,
+                                     num_full_frames, "buffer_name=\"" + buffer_name + "\"");
+            metrics.add_stage_metric("kotekan_bufferstatus_frames_total", unique_name,
+                                     buf_entry.second->num_frames,
+                                     "buffer_name=\"" + buffer_name + "\"");
         }
 
         if (print_status && (now - last_print_time) > ((double)time_delay / 1000000.0)) {

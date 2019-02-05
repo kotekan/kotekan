@@ -1,12 +1,12 @@
 /*****************************************
 @file
-@brief Processes for eigen-factoring the visibilities
-- eigenVis : public KotekanProcess
+@brief Stage for eigen-factoring the visibilities
+- eigenVis : public kotekan::Stage
 *****************************************/
 #ifndef EIGENVIS_HPP
 #define EIGENVIS_HPP
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "datasetManager.hpp"
 #include "visUtil.hpp"
@@ -53,10 +53,11 @@
  *
  * @author Kiyoshi Masui
  */
-class eigenVis : public KotekanProcess {
+class eigenVis : public kotekan::Stage {
 
 public:
-    eigenVis(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    eigenVis(kotekan::Config& config, const string& unique_name,
+             kotekan::bufferContainer& buffer_container);
     virtual ~eigenVis() = default;
     void main_thread() override;
 

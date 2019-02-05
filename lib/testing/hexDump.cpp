@@ -2,10 +2,14 @@
 
 #include "util.h"
 
-REGISTER_KOTEKAN_PROCESS(hexDump);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(hexDump);
 
 hexDump::hexDump(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container, std::bind(&hexDump::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&hexDump::main_thread, this)) {
 
     buf = get_buffer("buf");
     register_consumer(buf, unique_name.c_str());

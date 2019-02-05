@@ -1,14 +1,15 @@
 #ifndef TEST_DATA_GEN_FLOAT_H
 #define TEST_DATA_GEN_FLOAT_H
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 
 // Type: one of "random", "const"
 // Value: the value of the constant
-class testDataGenFloat : public KotekanProcess {
+class testDataGenFloat : public kotekan::Stage {
 public:
-    testDataGenFloat(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    testDataGenFloat(kotekan::Config& config, const string& unique_name,
+                     kotekan::bufferContainer& buffer_container);
     ~testDataGenFloat();
     void main_thread() override;
 

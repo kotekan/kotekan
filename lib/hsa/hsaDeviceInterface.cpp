@@ -8,6 +8,8 @@
 
 #include <errno.h>
 
+using kotekan::Config;
+
 void error_callback(hsa_status_t status, hsa_queue_t* queue, void* data) {
     // Unused parameter, suppress warning.
     (void)data;

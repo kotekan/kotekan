@@ -15,6 +15,8 @@
 
 using std::vector;
 
+namespace kotekan {
+
 // Instantiation of the most common types to prevent them being built inline
 // everywhere used.
 template float Config::get(const string& base_path, const string& name);
@@ -151,3 +153,5 @@ std::string Config::get_md5sum() {
     return string(md5str);
 }
 #endif
+
+} // namespace kotekan

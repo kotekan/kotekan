@@ -1,12 +1,13 @@
 #ifndef GPU_SIMULATE_HPP
 #define GPU_SIMULATE_HPP
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 
-class gpuSimulate : public KotekanProcess {
+class gpuSimulate : public kotekan::Stage {
 public:
-    gpuSimulate(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    gpuSimulate(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& buffer_container);
     ~gpuSimulate();
     void main_thread() override;
 

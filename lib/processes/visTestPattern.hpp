@@ -1,13 +1,13 @@
 /*****************************************
 @file
-@brief Process for comparing against an expected test pattern in the visBuffers.
-- visTestPattern : public KotekanProcess
+@brief Stage for comparing against an expected test pattern in the visBuffers.
+- visTestPattern : public kotekan::Stage
 *****************************************/
 #ifndef VISTESTPATTERN_HPP
 #define VISTESTPATTERN_HPP
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "visUtil.hpp"
@@ -68,11 +68,11 @@
  *
  * @author Rick Nitsche
  */
-class visTestPattern : public KotekanProcess {
+class visTestPattern : public kotekan::Stage {
 
 public:
-    visTestPattern(Config& config, const std::string& unique_name,
-                   bufferContainer& buffer_container);
+    visTestPattern(kotekan::Config& config, const std::string& unique_name,
+                   kotekan::bufferContainer& buffer_container);
 
     void main_thread() override;
 

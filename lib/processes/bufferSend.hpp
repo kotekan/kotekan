@@ -1,12 +1,12 @@
 /**
  * @file
  * @brief Object for sending buffer frames to another kotekan instance
- * - bufferSend : public KotekanProcess
+ * - bufferSend : public kotekan::Stage
  */
 #ifndef BUFFER_SEND_H
 #define BUFFER_SEND_H
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "errors.h"
 #include "util.h"
@@ -39,7 +39,7 @@ struct bufferFrameHeader {
  * Will attempt to connect to a remote server (likely another kotekan instance)
  * and send frames and metadata as they arrive.
  *
- * If the remote server is down, or the connection breaks, this process will
+ * If the remote server is down, or the connection breaks, this stage will
  * drop incoming frames, and try to reconnect to the server after @c reconnect_time
  * seconds.
  *
@@ -67,10 +67,11 @@ struct bufferFrameHeader {
  *
  * @author Andre Renard
  */
-class bufferSend : public KotekanProcess {
+class bufferSend : public kotekan::Stage {
 public:
     /// Standard constructor
-    bufferSend(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    bufferSend(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     ~bufferSend();

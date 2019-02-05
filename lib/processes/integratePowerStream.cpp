@@ -14,12 +14,16 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-REGISTER_KOTEKAN_PROCESS(integratePowerStream);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(integratePowerStream);
 
 integratePowerStream::integratePowerStream(Config& config, const string& unique_name,
                                            bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&integratePowerStream::main_thread, this)) {
+    Stage(config, unique_name, buffer_container,
+          std::bind(&integratePowerStream::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");
     out_buf = get_buffer("out_buf");

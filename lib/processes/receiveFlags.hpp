@@ -1,12 +1,12 @@
 /*****************************************
 @file
 @brief Receive and set flags for the visibility data.
-- receiveFlags : public KotekanProcess
+- receiveFlags : public kotekan::Stage
 *****************************************/
 #ifndef RECEIVEFLAGS_H
 #define RECEIVEFLAGS_H
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "updateQueue.hpp"
 
 #include <mutex>
@@ -15,7 +15,7 @@
  * @class receiveFlags
  * @brief Receives input flags and adds them to the output buffer.
  *
- * This process registeres as a subscriber to an updatable config block. The
+ * This stage registeres as a subscriber to an updatable config block. The
  * full name of the block should be defined in the value <updatable_block>
  *
  * @note If there are no other consumers on the input buffer it will be able to
@@ -48,10 +48,11 @@
  *
  * @author Rick Nitsche
  */
-class receiveFlags : public KotekanProcess {
+class receiveFlags : public kotekan::Stage {
 public:
     /// Constructor
-    receiveFlags(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    receiveFlags(kotekan::Config& config, const string& unique_name,
+                 kotekan::bufferContainer& buffer_container);
 
     /// Main loop, saves flags in the frames
     void main_thread() override;

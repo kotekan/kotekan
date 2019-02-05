@@ -1,13 +1,13 @@
 /*****************************************
 @file
 @brief Read visFileRaw data.
-- visRawReader : public KotekanProcess
+- visRawReader : public kotekan::Stage
 *****************************************/
 #ifndef _VIS_RAW_READER_HPP
 #define _VIS_RAW_READER_HPP
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
@@ -46,11 +46,12 @@ using json = nlohmann::json;
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte, Rick Nitsche
  */
-class visRawReader : public KotekanProcess {
+class visRawReader : public kotekan::Stage {
 
 public:
     /// default constructor
-    visRawReader(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    visRawReader(kotekan::Config& config, const string& unique_name,
+                 kotekan::bufferContainer& buffer_container);
 
     ~visRawReader();
 

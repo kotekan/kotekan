@@ -41,8 +41,8 @@
 class hsaBeamformTranspose : public hsaCommand {
 public:
     /// Constructor, initializes internal variables from config
-    hsaBeamformTranspose(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                         hsaDeviceInterface& device);
+    hsaBeamformTranspose(kotekan::Config& config, const string& unique_name,
+                         kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor
     virtual ~hsaBeamformTranspose();

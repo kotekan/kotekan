@@ -1,5 +1,8 @@
 #include "hsaBeamformUpchan.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_HSA_COMMAND(hsaBeamformUpchan);
 
 hsaBeamformUpchan::hsaBeamformUpchan(Config& config, const string& unique_name,

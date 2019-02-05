@@ -7,6 +7,8 @@
 
 #include <errno.h>
 
+using kotekan::Config;
+
 clDeviceInterface::clDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_buffer_depth_) :
     gpuDeviceInterface(config_, gpu_id_, gpu_buffer_depth_) {
 

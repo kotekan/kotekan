@@ -15,6 +15,9 @@
 // the code to test:
 #include "datasetManager.hpp"
 
+using kotekan::connectionInstance;
+using kotekan::restServer;
+
 using json = nlohmann::json;
 
 using namespace std::string_literals;

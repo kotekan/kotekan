@@ -1,12 +1,12 @@
 /*****************************************
 @file
 @brief Remove the eigenvalues/vectors from a buffer
-- removeEv : public KotekanProcess
+- removeEv : public kotekan::Stage
 *****************************************/
 #ifndef REMOVE_EV_HPP
 #define REMOVE_EV_HPP
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "datasetManager.hpp"
 #include "visUtil.hpp"
@@ -25,10 +25,11 @@
  *
  * @author Richard Shaw
  */
-class removeEv : public KotekanProcess {
+class removeEv : public kotekan::Stage {
 
 public:
-    removeEv(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    removeEv(kotekan::Config& config, const string& unique_name,
+             kotekan::bufferContainer& buffer_container);
 
     void main_thread() override;
 

@@ -1,21 +1,21 @@
 /**
  * @file
- * @brief Process to transmit VDIF data as a UDP stream.
- *  - streamSingleDishVDIF : public KotekanProcess
+ * @brief Stage to transmit VDIF data as a UDP stream.
+ *  - streamSingleDishVDIF : public kotekan::Stage
  */
 
 #ifndef STREAM_SINGLE_DISH_VDIF_H
 #define STREAM_SINGLE_DISH_VDIF_H
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 
 /**
  * @class streamSingleDishVDIF
- * @brief Process to transmit VDIF data as a UDP stream.
+ * @brief Stage to transmit VDIF data as a UDP stream.
  *
- * This is a consumer process which takes VDIF-formatted data from a buffer and streams
+ * This is a consumer stage which takes VDIF-formatted data from a buffer and streams
  * it via UDP to a remote client.
  *
  * @par Buffers
@@ -32,11 +32,11 @@
  * @author Andre Renard
  *
  */
-class streamSingleDishVDIF : public KotekanProcess {
+class streamSingleDishVDIF : public kotekan::Stage {
 public:
     /// Constructor
-    streamSingleDishVDIF(Config& config, const string& unique_name,
-                         bufferContainer& buffer_container);
+    streamSingleDishVDIF(kotekan::Config& config, const string& unique_name,
+                         kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~streamSingleDishVDIF();
 
@@ -44,7 +44,7 @@ public:
     void main_thread() override;
 
 private:
-    /// Kotekan buffer which this process consumes from.
+    /// Kotekan buffer which this stage consumes from.
     /// Data should be packed into VDIF frames, see e.g. @c vdif_function.h.
     struct Buffer* in_buf;
 

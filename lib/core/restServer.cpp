@@ -10,6 +10,8 @@
 #include "osxBindCPU.hpp"
 #endif
 
+namespace kotekan {
+
 using json = nlohmann::json;
 using std::map;
 using std::string;
@@ -492,3 +494,5 @@ void connectionInstance::send_json_reply(const json& json_reply) {
 
     evhttp_send_reply(request, static_cast<int>(HTTP_RESPONSE::OK), "OK", event_buffer);
 }
+
+} // namespace kotekan

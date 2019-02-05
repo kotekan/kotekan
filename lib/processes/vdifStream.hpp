@@ -2,12 +2,13 @@
 #define VDIF_STREAM
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 
-class vdifStream : public KotekanProcess {
+class vdifStream : public kotekan::Stage {
 public:
-    vdifStream(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    vdifStream(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& buffer_container);
     virtual ~vdifStream();
     void main_thread() override;
 

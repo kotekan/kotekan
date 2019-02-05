@@ -40,12 +40,16 @@
 #define VDIF_HEADER_LEN sizeof(VDIFHeader)
 //#define NUM_FREQ 1024
 
-REGISTER_KOTEKAN_PROCESS(computeDualpolPower);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(computeDualpolPower);
 
 computeDualpolPower::computeDualpolPower(Config& config, const string& unique_name,
                                          bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&computeDualpolPower::main_thread, this)) {
+    Stage(config, unique_name, buffer_container,
+          std::bind(&computeDualpolPower::main_thread, this)) {
     buf_in = get_buffer("vdif_in_buf");
     register_consumer(buf_in, unique_name.c_str());
     buf_out = get_buffer("power_out_buf");

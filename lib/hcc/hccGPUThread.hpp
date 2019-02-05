@@ -1,13 +1,14 @@
 #ifndef HCC_GPU_THREAD_H
 #define HCC_GPU_THREAD_H
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "fpga_header_functions.h"
 
-class hccGPUThread : public KotekanProcess {
+class hccGPUThread : public kotekan::Stage {
 public:
-    hccGPUThread(Config& config, struct Buffer& in_buf, struct Buffer& out_buf, uint32_t gpu_id);
+    hccGPUThread(kotekan::Config& config, struct Buffer& in_buf, struct Buffer& out_buf,
+                 uint32_t gpu_id);
     virtual ~hccGPUThread();
     void main_thread() override;
 

@@ -1,5 +1,8 @@
 #include "hsaBeamformReorder.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_HSA_COMMAND(hsaBeamformReorder);
 
 hsaBeamformReorder::hsaBeamformReorder(Config& config, const string& unique_name,

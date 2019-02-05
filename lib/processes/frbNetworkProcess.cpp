@@ -31,12 +31,20 @@ using std::string;
 // curl localhost:12048/frb/update_beam_offset -X POST -H 'Content-Type: application/json' -d
 // '{"beam_offset":108}'
 
-REGISTER_KOTEKAN_PROCESS(frbNetworkProcess);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+using kotekan::connectionInstance;
+using kotekan::HTTP_RESPONSE;
+using kotekan::restServer;
+
+REGISTER_KOTEKAN_STAGE(frbNetworkProcess);
 
 frbNetworkProcess::frbNetworkProcess(Config& config_, const string& unique_name,
                                      bufferContainer& buffer_container) :
-    KotekanProcess(config_, unique_name, buffer_container,
-                   std::bind(&frbNetworkProcess::main_thread, this)) {
+    Stage(config_, unique_name, buffer_container,
+          std::bind(&frbNetworkProcess::main_thread, this)) {
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 

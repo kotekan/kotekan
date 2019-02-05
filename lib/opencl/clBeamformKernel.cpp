@@ -7,6 +7,9 @@
 
 using std::string;
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_CL_COMMAND(clBeamformKernel);
 
 clBeamformKernel::clBeamformKernel(Config& config, const string& unique_name,

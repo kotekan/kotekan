@@ -1,13 +1,13 @@
 /*
  * @file rfiBadInputFinder.hpp
  * @brief Clssifies broken inputs using statistics of SK values from individual inputs.
- *  - rfiBadInputFinder : public KotekanProcess
+ *  - rfiBadInputFinder : public kotekan::Stage
  */
 #ifndef RFI_BROADCAST_H
 #define RFI_BROADCAST_H
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "chimeMetadata.h"
 #include "powerStreamUtil.hpp"
@@ -18,13 +18,13 @@
 
 /*
  * @class rfiBadInputFinder
- * @brief Consumer ``KotekanProcess`` which consumes a buffer filled with averaged, individual input
- * spectral kurtosis estimates.
+ * @brief Consumer ``kotekan::Stage`` which consumes a buffer filled with averaged,
+ * individual input spectral kurtosis estimates.
  *
- * This process reads RFI data from a kotekan buffer before packaging it into UDP packets and
+ * This stage reads RFI data from a kotekan buffer before packaging it into UDP packets and
  * sending them to a user defined IP address. Each packet is fitted with a header which can be read
  * by the server to ensure that the config parameters of the packet match the server config. This
- * process simply reads the spectral kurtosis estimates, finds outlier inputs based on the
+ * stage simply reads the spectral kurtosis estimates, finds outlier inputs based on the
  * statistics of the estimates, assigns each input a pass or fail for each frame, counts the number
  * of fails for each input, packages the results into a packet (header + data), and sends the
  * packets to a user defined IP address via UDP.
@@ -36,7 +36,7 @@
  *
  * @par Buffers
  * @buffer rfi_in        The kotekan buffer containing spectral kurtosis estimates to be read by the
- * process.
+ * stage.
  * 	@buffer_format   Array of @c floats
  * 	@buffer_metadata chimeMetadata
  *
@@ -59,16 +59,17 @@
  *
  * @author Jacob Taylor
  */
-class rfiBadInputFinder : public KotekanProcess {
+class rfiBadInputFinder : public kotekan::Stage {
 public:
     // Constructor
-    rfiBadInputFinder(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    rfiBadInputFinder(kotekan::Config& config, const string& unique_name,
+                      kotekan::bufferContainer& buffer_container);
     // Deconstructor, cleans up / does nothing
     virtual ~rfiBadInputFinder();
     // Primary loop, reads buffer and sends out UDP stream
     void main_thread() override;
     // Callback function called by rest server
-    void rest_callback(connectionInstance& conn, json& json_request);
+    void rest_callback(kotekan::connectionInstance& conn, json& json_request);
 
 private:
     /// Private functions
@@ -94,11 +95,11 @@ private:
     bool _rfi_combined;
     /// Number of frames to average per UDP packet
     uint32_t _frames_per_packet;
-    // Process specific config parameters
+    // Stage-specific config parameters
     /*
     The number of standard deviations required for a frame to be considered an 'outlier'.
     This is not the threshold used to determine faulty inputs. It sets the statistical
-    framework for which bad input likelihoods are determined. Downstream processes depend
+    framework for which bad input likelihoods are determined. Downstream stages depend
     heavily on this value.
     */
     uint32_t stats_sigma;

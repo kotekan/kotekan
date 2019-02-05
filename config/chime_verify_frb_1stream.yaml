@@ -82,7 +82,7 @@ gpu:
   buffer_depth: 3
   frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 0
     in_buffers:
       network_buf: gpu_input_buffer_0
@@ -93,17 +93,17 @@ gen_data:
   type: random
   value: 153
   test_data_gen_0:
-    kotekan_process: testDataGen
+    kotekan_stage: testDataGen
     network_out_buf: gpu_input_buffer_0
 
 cpu_simulate:
   cpu_data_sim_0:
-    kotekan_process: gpuBeamformSimulate
+    kotekan_stage: gpuBeamformSimulate
     network_in_buf: gpu_input_buffer_0
     beam_out_buf: cpu_output_buffer_0
 
 check_data:
   bf_data_check_0:
-    kotekan_process: testDataCheckFloat
+    kotekan_stage: testDataCheckFloat
     first_buf : beamform_output_buffer_0
     second_buf: cpu_output_buffer_0

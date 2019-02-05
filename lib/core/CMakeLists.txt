@@ -13,12 +13,13 @@ set (KOTEKAN_CORE_SOURCES
               configUpdater.cpp
               errors.c
               kotekanLogging.cpp
-              KotekanProcess.cpp
+              kotekanMode.cpp
               metadata.c
               metadataFactory.cpp
-              processFactory.cpp
               prometheusMetrics.cpp
               restServer.cpp
+              Stage.cpp
+              StageFactory.cpp
        )
 
 add_library ( kotekan_core

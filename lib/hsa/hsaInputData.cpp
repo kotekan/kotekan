@@ -4,6 +4,9 @@
 
 #include <random>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_HSA_COMMAND(hsaInputData);
 
 hsaInputData::hsaInputData(Config& config, const string& unique_name, bufferContainer& host_buffers,

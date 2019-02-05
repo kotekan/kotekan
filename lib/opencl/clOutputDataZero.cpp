@@ -1,5 +1,8 @@
 #include "clOutputDataZero.hpp"
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+
 REGISTER_CL_COMMAND(clOutputDataZero);
 
 clOutputDataZero::clOutputDataZero(Config& config, const string& unique_name,

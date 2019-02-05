@@ -21,7 +21,7 @@ To include **Airspy** input:
     cmake .. -DUSE_AIRSPY=ON
 
 
-To include **FFTW** processes:
+To include **FFTW** stages:
 
 .. code:: bash
 

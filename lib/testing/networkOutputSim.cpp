@@ -24,12 +24,15 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-REGISTER_KOTEKAN_PROCESS(networkOutputSim);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(networkOutputSim);
 
 networkOutputSim::networkOutputSim(Config& config_, const string& unique_name,
                                    bufferContainer& buffer_container) :
-    KotekanProcess(config_, unique_name, buffer_container,
-                   std::bind(&networkOutputSim::main_thread, this)) {
+    Stage(config_, unique_name, buffer_container, std::bind(&networkOutputSim::main_thread, this)) {
 
     buf = get_buffer("network_out_buf");
     register_producer(buf, unique_name.c_str());
