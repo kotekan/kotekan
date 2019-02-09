@@ -165,8 +165,8 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
 
 visRawReader::~visRawReader() {
     if (munmap(mapped_file, ntime * nfreq * file_frame_size) == -1) {
-        std::runtime_error(
-            fmt::format("Failed to unmap file {}: {}.", filename + ".data", strerror(errno)));
+        ERROR(fmt::format("Failed to unmap file {}: {}.", filename + ".data", strerror(errno))
+              .c_str());
     }
 
     close(fd);
