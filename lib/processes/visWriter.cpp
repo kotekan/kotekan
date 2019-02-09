@@ -305,10 +305,14 @@ void visWriter::init_acq(dset_id_t ds_id)
     // Construct metadata
     auto metadata = make_metadata(ds_id);
 
-    acq.file_bundle = std::make_unique<visFileBundle>(
-        file_type, root_path, instrument_name, metadata, chunk_id, file_length,
-        window, ds_id, file_length
-    );
+    try {
+        acq.file_bundle = std::make_unique<visFileBundle>(
+            file_type, root_path, instrument_name, metadata, chunk_id, file_length,
+            window, ds_id, file_length);
+    } catch(std::exception& e) {
+        ERROR("Failed creating file bundle for new acquisition: %s", e.what());
+        raise(SIGINT);
+    }
 }
 
 
