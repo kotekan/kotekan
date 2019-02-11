@@ -5,6 +5,8 @@
 #include "Stage.hpp"
 #include "restServer.hpp"
 
+#include "json.hpp"
+
 namespace kotekan {
 
 /**

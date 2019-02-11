@@ -3,6 +3,7 @@
 #include "Stage.hpp"
 #include "errors.h"
 #include "restServer.hpp"
+#include "visUtil.hpp"
 
 #include "fmt.hpp"
 
@@ -154,23 +155,12 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
             return;
         } else {
             // ...and for correct types
-            if (it.value().type_name() != _init_values[uri].at(it.key()).type_name()) {
+            if (it.value().type() != _init_values[uri].at(it.key()).type()) {
                 std::string msg = fmt::format("configUpdater: Update to endpoint '{}' contained"
                                               " value '{}' of type {} (expected type {}).",
-                                              uri.c_str(), it.key().c_str(), it.value().type_name(),
-                                              _init_values[uri].at(it.key()).type_name());
-
-                WARN(msg.c_str());
-                con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
-                return;
-            }
-
-            if (it.value().type() == nlohmann::json::value_t::number_float
-                && _init_values[uri].at(it.key()).type() != it.value().type()) {
-                std::string msg = fmt::format("configUpdater: Update to endpoint '{}' contained"
-                                              " value '{}' of type float (expected type {}).",
                                               uri.c_str(), it.key().c_str(),
-                                              _init_values[uri].at(it.key()).type_name());
+                                              json_type_name(it.value()),
+                                              json_type_name(_init_values[uri].at(it.key())));
 
                 WARN(msg.c_str());
                 con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
