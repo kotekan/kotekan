@@ -76,6 +76,19 @@ void from_json(const json& j, rstack_ctype& t) {
     t.conjugate = j.at("conjugate").get<bool>();
 }
 
+std::string json_type_name(nlohmann::json& value) {
+    switch (value.type()) {
+    case (json::value_t::number_integer):
+        return "integer";
+    case (json::value_t::number_unsigned):
+        return "integer";
+    case (json::value_t::number_float):
+        return "float";
+    default:
+        return value.type_name();
+    }
+}
+
 // Copy the visibility triangle out of the buffer of data, allowing for a
 // possible reordering of the inputs
 // TODO: port this to using map_vis_triangle. Need a unit test first.
