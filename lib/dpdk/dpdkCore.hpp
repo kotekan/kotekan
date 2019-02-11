@@ -40,6 +40,7 @@ extern "C" {
 
 #include <emmintrin.h>
 #include <string>
+#include <vector>
 
 /**
  * @brief Abstract object for processing packets that come from a given NIC port
@@ -152,8 +153,10 @@ protected:
  * @config   tx_ring_size    Int. Default 512   The size of the Transmit ring
  * @config   max_rx_pkt_len  Int. Default 5000  The max packet size.
  * @config   jumbo_frame     Bool. Default true Enable support for Jumbo frames
+ * @config   num_mem_channels Int. Default 4    The number of system memory channels
+ * @config   init_mem_alloc  Int.  Default 256  The initial memory allocation in MB
  *
- * @author Andre Renard
+ * @author Andre Renard0
  */
 class dpdkCore : public kotekan::Stage {
 public:
@@ -178,15 +181,16 @@ private:
      * @param lcore_cpu_map The mapping of lcores to CPU cores
      * @param master_lcore_cpu The master core CPU ID to bind too
      */
-    void dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu);
+    void dpdk_init(std::vector<int> lcore_cpu_map, uint32_t master_lcore_cpu);
 
     /**
      * @brief Sets up a port for use with DPDK
      *
-     * @param port The port ID to setup
+     * @param port The port ID to setup.
+     * @param lcore_id The lcore which the port is being handled by.
      * @return  0 if it worked, and an error value if it failed.
      */
-    int32_t port_init(uint8_t port);
+    int32_t port_init(uint8_t port, uint32_t lcore_id);
 
     /**
      * @brief Creates the handers for the ports
@@ -195,17 +199,8 @@ private:
      */
     void create_handlers(kotekan::bufferContainer& buffer_container);
 
-    /// The pool of DPDK mbufs
-    struct rte_mempool* mbuf_pool_0;
-
-    /// Hack pool for numa core 1
-    struct rte_mempool * mbuf_pool_1;
-
-    /// Hack pool for numa core 1
-    struct rte_mempool * mbuf_pool_2;
-
-    /// Hack pool for numa core 1
-    struct rte_mempool * mbuf_pool_3;
+    /// The pool of DPDK mbufs, one per numa node
+    std::vector<struct rte_mempool*> mbuf_pools;
 
     /// Internal DPDK configuration struct
     struct rte_eth_conf port_conf;
@@ -236,6 +231,12 @@ private:
 
     /// One of these port list structs exists per lcore
     struct portList* lcore_port_list;
+
+    /// Number of memory channels
+    uint32_t num_mem_channels;
+
+    /// Initial memory allocation in MB
+    uint32_t init_mem_alloc;
 
     /// One of these exists per system port
     dpdkRXhandler** handlers;

@@ -1,4 +1,4 @@
-7#include "configUpdater.hpp"
+#include "configUpdater.hpp"
 
 #include "Stage.hpp"
 #include "errors.h"

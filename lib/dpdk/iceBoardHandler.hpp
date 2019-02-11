@@ -153,8 +153,8 @@ protected:
             return false;
         }
         if (unlikely(fpga_packet_size != cur_mbuf->pkt_len)) {
-            ERROR("Got packet with incorrect length: %d, expected %d", cur_mbuf->pkt_len,
-                  fpga_packet_size);
+            //ERROR("Got packet with incorrect length: %d, expected %d", cur_mbuf->pkt_len,
+            //      fpga_packet_size);
 
             // Getting a packet with the wrong length is almost always
             // a configuration/FPGA problem that needs to be addressed.
@@ -351,6 +351,10 @@ json iceBoardHandler::get_json_port_info() {
     info["lost_packets"] = rx_lost_samples_total / samples_per_packet;
     info["lost_samples"] = rx_lost_samples_total;
 
+    info["rx_packets_total"] = rx_packets_total;
+    info["rx_samples_total"] = rx_packets_total;
+    info["rx_bytes_total"] = rx_bytes_total;
+
     info["ip_cksum_errors"] = rx_ip_cksum_errors_total;
     info["out_of_order_errors"] = rx_out_of_order_errors_total;
 
@@ -422,6 +426,10 @@ inline void iceBoardHandler::update_stats() {
                              rx_packet_len_errors_total, tags);
     metrics.add_stage_metric("kotekan_dpdk_rx_out_of_order_errors_total", unique_name,
                              rx_out_of_order_errors_total, tags);
+
+    // INFO("Port %d, lost packets: %f%%", port, 100.*(double)rx_lost_samples_total/(double)(rx_lost_samples_total + rx_packets_total*samples_per_packet + 1));
+    // rx_lost_samples_total = 0;
+    // rx_packets_total = 0;
 }
 
 #endif

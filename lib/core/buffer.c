@@ -190,7 +190,7 @@ void mark_frame_full(struct Buffer * buf, const char * name, const int ID) {
 
         // If there are no consumers registered then we can just mark the buffer empty
         if (private_consumers_done(buf, ID) == 1) {
-            DEBUG("No consumers are registered on %s dropping data in frame %d...", buf->buffer_name, ID);
+            //DEBUG("No consumers are registered on %s dropping data in frame %d...", buf->buffer_name, ID);
             buf->is_full[ID] = 0;
             if (buf->metadata[ID] != NULL) {
                 decrement_metadata_ref_count(buf->metadata[ID]);
@@ -223,9 +223,9 @@ void *private_zero_frames(void * args) {
     assert (ID <= buf->num_frames);
 
     // This zeros everything, but for VDIF we just need to header zeroed.
-    int div_256 = 256*(buf->frame_size / 256);
-    nt_memset((void *)buf->frames[ID], 0x00, div_256);
-    memset((void *)&buf->frames[ID][div_256], 0x00, buf->frame_size - div_256);
+    //int div_256 = 256*(buf->frame_size / 256);
+    //nt_memset((void *)buf->frames[ID], 0x00, div_256);
+    //memset((void *)&buf->frames[ID][div_256], 0x00, buf->frame_size - div_256);
 
     // HACK: Just zero the first two words of the VDIF header
     //for (int i = 0; i < buf->frame_size/1056; ++i) {
@@ -277,10 +277,16 @@ void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int 
                 cpu_set_t cpuset;
                 CPU_ZERO(&cpuset);
                 // TODO: Move this to the config file (when buffers.c updated to C++11)
-                CPU_SET(4, &cpuset);
-                CPU_SET(21, &cpuset);
-                CPU_SET(12, &cpuset);
-                CPU_SET(28, &cpuset);
+                CPU_SET(0, &cpuset);
+                CPU_SET(16, &cpuset);
+                CPU_SET(1, &cpuset);
+                CPU_SET(17, &cpuset);
+                CPU_SET(6, &cpuset);
+                CPU_SET(22, &cpuset);
+                CPU_SET(10, &cpuset);
+                CPU_SET(26, &cpuset);
+                CPU_SET(14, &cpuset);
+                CPU_SET(30, &cpuset);
 
                 CHECK_ERROR( pthread_create(&zero_t, NULL, &private_zero_frames, (void *)zero_args) );
                 CHECK_ERROR( pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &cpuset) );
