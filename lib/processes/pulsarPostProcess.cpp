@@ -70,7 +70,6 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
     uint freqloop = _num_stream/_num_pulsar;
     for (uint i = 0; i < _num_packet_per_stream; ++i) {  //16 or 80 frames in a stream
         uint64_t fpga_now = (fpga_seq_num + _timesamples_per_pulsar_packet * i);
-        vdif_header->eud3 = (fpga_now & (0xFFFFFFFFl<< 0))>> 0;
         vdif_header->seconds = time_now->tv_sec - unix_offset;
         vdif_header->data_frame =  (time_now->tv_nsec/1.e9) / (_timesamples_per_pulsar_packet*2.56e-6);
 
@@ -146,7 +145,7 @@ void pulsarPostProcess::main_thread() {
     vdif_header.edv = 0;
     vdif_header.eud1 = 0;  //UD: beam number [0 to 9]
     vdif_header.eud2 = 0; //_psr_scaling from metadata
-    vdif_header.eud3 = 0;  // UD: fpga count low bit
+    vdif_header.eud3 = 0;  // Not used for now
     vdif_header.eud4 = 0;  // 16-b RA + 16-b Dec
 
     uint frame = 0;
