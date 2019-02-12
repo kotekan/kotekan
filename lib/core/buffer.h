@@ -437,8 +437,9 @@ uint8_t * buffer_malloc(ssize_t len, int numa_node);
  * @brief Deallocate a frame of memory with the required free method.
  *
  * @param frame_pointer The pointer to the memory to free.
+ * @param size The size of the memory space to free (needed for NUMA)
  */
-void buffer_free(uint8_t * frame_pointer);
+void buffer_free(uint8_t * frame_pointer, size_t size);
 
 /**
  * @brief Gets the raw metadata block for the given frame

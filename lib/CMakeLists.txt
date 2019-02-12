@@ -26,7 +26,13 @@ target_link_libraries( kotekan_libs kotekan_metadata )
 add_subdirectory(utils)
 target_link_libraries( kotekan_libs kotekan_utils )
 
-target_link_libraries( kotekan_libs numa )
+if (NUMA_FOUND)
+    set(WITH_NUMA ${NUMA_FOUND})
+    message("NUMA support enabled")
+    target_link_libraries( kotekan_libs numa )
+else()
+    message("libnuma not found, NUMA support will be disabled")
+endif()
 
 ### SELF-REGISTERING BITS:
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")

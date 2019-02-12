@@ -299,7 +299,7 @@ connInstance::~connInstance() {
     INFO("Closing FD");
     close(fd);
     event_free(event_read);
-    buffer_free(frame_space);
+    buffer_free(frame_space, buf->aligned_frame_size);
     free(metadata_space);
 }
 
