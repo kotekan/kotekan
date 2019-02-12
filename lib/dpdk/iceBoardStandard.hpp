@@ -197,7 +197,7 @@ inline void iceBoardStandard::handle_lost_samples(int64_t lost_samples) {
         }
 
         // Set the lost samples flags in the lost samples frame.
-        //lost_samples_frame[lost_sample_location] = 1;
+        lost_samples_frame[lost_sample_location] = 1;
         lost_sample_location += 1;
         lost_samples -= 1;
         rx_lost_samples_total += 1;
