@@ -272,8 +272,9 @@ void visRawReader::main_thread() {
                     + file_ind * file_frame_size + 1, metadata_size);
 
             // Copy the data from the file
-            std::memcpy(frame, mapped_file + file_ind * file_frame_size
-                    + metadata_size + 1, data_size);
+            std::memcpy(frame, mapped_file + file_ind * file_frame_size + metadata_size + 1,
+                        data_size);
+            DEBUG("visRawReader: Reading full frame: %d", frame_id);
         } else {
             // Set metadata if file contained an empty frame
 			((visMetadata *)(out_buf->metadata[frame_id]->metadata))->num_prod

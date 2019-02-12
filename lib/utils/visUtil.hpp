@@ -451,8 +451,12 @@ struct_layout<T> struct_alignment(
  * @returns  Norm of z.
  **/
 template<typename T>
-inline T fast_norm(const std::complex<T>& z)
-{
+inline T fast_norm(const T& x) {
+    return x * x;
+}
+
+template<typename T>
+inline T fast_norm(const std::complex<T>& z) {
     T r = std::real(z);
     T i = std::imag(z);
     return (r * r + i * i);
