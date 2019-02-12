@@ -63,7 +63,7 @@ void EigenVisIter::main_thread() {
     dset_id_t _output_dset_id = 0;
 
     DynamicHermitian<float> mask;
-    uint32_t num_elements;
+    uint32_t num_elements = 0;
     bool initialized = false;
 
     openblas_set_num_threads(1);
