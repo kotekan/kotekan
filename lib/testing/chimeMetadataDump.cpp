@@ -46,9 +46,7 @@ void chimeMetadataDump::main_thread() {
         struct tm* l_gps_time = gmtime(&temp_gps_time);
         strftime(gps_time_buf, sizeof(gps_time_buf), "%Y-%m-%d %H:%M:%S", l_gps_time);
 
-        INFO("Lost packets: %d", lost_samples);
-
-        DEBUG2("Metadata for %s[%d]: FPGA Seq: %" PRIu64
+        INFO("Metadata for %s[%d]: FPGA Seq: %" PRIu64
              ", stream ID = {create ID: %d, slot ID: %d, link ID: %d, freq ID: %d}, lost samples: "
              "%" PRIu64 " freq_bin: %d, freq: %f MHz , time stamp: %ld.%06ld (%s.%06ld), GPS time: "
              "%ld.%06ld (%s.%09ld)",
