@@ -195,9 +195,15 @@ void pulsarPostProcess::main_thread() {
 	    if (is_gps_global_time_set() != 1) {
   	        ERROR("[Time Check] gps global time not set (%d)", is_gps_global_time_set() );
 	    }
-            uint32_t seq_number_offset = _timesamples_per_pulsar_packet - (first_seq_number % _timesamples_per_pulsar_packet );
+            //uint32_t seq_number_offset = _timesamples_per_pulsar_packet - (first_seq_number % _timesamples_per_pulsar_packet );
+	    uint32_t ns_offset = _timesamples_per_pulsar_packet*2560 - (time_now.tv_nsec %  (_timesamples_per_pulsar_packet*2560));
+	    float seq_number_offset_float = ns_offset / 2560. ; 
+	    uint seq_number_offset = (int)(seq_number_offset_float < 0 ? (seq_number_offset_float - 0.5) : (seq_number_offset_float + 0.5));
+	    INFO("[CHECK PSR PP] %", PRIu32, ns_offset);
+	    INFO("seq_number_offset_float = %f seq_number_offset = %d", seq_number_offset_float, seq_number_offset);
+
             current_input_location = seq_number_offset;
-            first_seq_number  = first_seq_number+seq_number_offset; //so that we start at an fpga_seq_no that is divisible by the packet nsamp
+            first_seq_number  = first_seq_number+seq_number_offset; 
             time_now.tv_nsec +=seq_number_offset*2560;
             if (time_now.tv_nsec > 999999999) {
                 time_now.tv_sec += (uint)(time_now.tv_nsec / 1000000000.);
