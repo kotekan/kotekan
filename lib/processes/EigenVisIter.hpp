@@ -6,7 +6,7 @@
 #ifndef EIGENVISITER_HPP
 #define EIGENVISITER_HPP
 
-#include "Stage.hpp"
+#include "KotekanProcess.hpp"
 #include "buffer.h"
 #include "datasetManager.hpp"
 #include "visUtil.hpp"
@@ -66,11 +66,11 @@
  *
  * @author Richard Shaw, Kiyoshi Masui
  */
-class EigenVisIter : public kotekan::Stage {
+class EigenVisIter : public KotekanProcess {
 
 public:
-    EigenVisIter(kotekan::Config& config, const string& unique_name,
-                 kotekan::bufferContainer& buffer_container);
+    EigenVisIter(Config& config, const string& unique_name,
+                 bufferContainer& buffer_container);
     virtual ~EigenVisIter() = default;
     void main_thread() override;
 
