@@ -8,8 +8,9 @@
 #include "LinearAlgebra.hpp"
 #include "visUtil.hpp"
 
-#include "fmt.hpp"
 
+#include <algorithm>
+#include "fmt.hpp"
 #include <cblas.h>
 #include <blaze/Blaze.h>
 
@@ -28,16 +29,17 @@ EigenVisIter::EigenVisIter(Config& config, const string& unique_name, bufferCont
     register_consumer(in_buf, unique_name.c_str());
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
+
     _num_eigenvectors = config.get<uint32_t>(unique_name, "num_ev");
-    _num_diagonals_filled = config.get_default<uint32_t>(unique_name, "num_diagonals_filled", 0);
-    // Read a list from the config, but permit it to be absent (implying empty).
-    try {
-        for (uint32_t e : config.get<std::vector<uint32_t>>(unique_name, "exclude_inputs")) {
-            _exclude_inputs.push_back(e);
-        }
-    } catch (std::runtime_error const& ex) {
-        // Missing, leave empty.
-    }
+
+    // Masking params
+    _bands_filled = config.get_default<std::vector<std::pair<int32_t, int32_t>>>(
+        unique_name, "bands_filled", {}
+    );
+    _block_fill_size = config.get_default<uint32_t>(unique_name, "block_fill_size", 0);
+    _exclude_inputs = config.get_default<std::vector<uint32_t>>(unique_name, "exclude_inputs", {});
+
+    // Convergence params
     _num_ev_conv = config.get<uint32_t>(unique_name, "num_ev_conv");
     _tol_eval = config.get_default<double>(unique_name, "tol_eval", 1e-6);
     _tol_evec = config.get_default<double>(unique_name, "tol_evec", 1e-5);
@@ -218,10 +220,24 @@ DynamicHermitian<float> EigenVisIter::calculate_mask(uint32_t num_elements) cons
             M(j, iexclude) = 0.0;
         }
     }
-    // Remove close elements
-    int nd = (int)_num_diagonals_filled;
-    for (int i = (1 - nd); i < nd; i++) {
-        blaze::band(M, i) = 0.0;
+
+    // Remove specified bands
+    for (const auto& br : _bands_filled) {
+        std::cout << br.first << " " << br.second << std::endl;
+        for (int32_t i = br.first; i < br.second; i++) {
+            blaze::band(M, i) = 0.0;
+            blaze::band(M, -i) = 0.0;
+        }
+    }
+
+    // Zero out blocks on the diagonal if requested
+    if (_block_fill_size > 0) {
+        unsigned int nb = num_elements / _block_fill_size;
+        for (unsigned int ii = 0; ii < nb; ii++) {
+            unsigned int start = ii * _block_fill_size;
+            unsigned int width = std::min(num_elements - start, _block_fill_size);
+            blaze::submatrix(M, start, start, width, width) = 0.0;
+        }
     }
 
     return blaze::declherm(M);

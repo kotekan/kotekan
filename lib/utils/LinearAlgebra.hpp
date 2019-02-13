@@ -321,6 +321,11 @@ std::pair<eig_t<MT>, EigConvergenceStats> eigen_masked_subspace(
         if (stats.eps_eval < tol_eval && stats.eps_evec < tol_evec) {
             stats.converged = true;
         }
+        // For debugging:
+        // for (uint ii = 0; ii < k; ii++) {
+        //     std::cout << evals[ii] << " ";
+        // }
+        // std::cout << std::endl;
     }
 
     // Calculate the RMS
@@ -328,6 +333,7 @@ std::pair<eig_t<MT>, EigConvergenceStats> eigen_masked_subspace(
     eig_t<MT> eigpair = std::make_pair(evals, V);
     stats.rms = rms(blaze::evaluate(W % (A - expand_rankN(eigpair))));
     stats.rms *= A.rows() / std::sqrt(blaze::sum(W));  // Re-norm to account for masking
+
 
     return {eigpair, stats};
 }

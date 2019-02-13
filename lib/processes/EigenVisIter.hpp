@@ -37,14 +37,19 @@
  * @conf  block_size            Int. The block size of the packed data.
  * @conf  num_ev                UInt. The number of eigenvectors to be calculated as
  *                              an approximation to the visibilities.
- * @conf  num_diagonals_filled  Int, default 0. Number of diagonals to fill with
- *                              the previous time step's solution prior to
- *                              factorization. For example, setting to 1 will replace
- *                              the main diagonal only. Filled with zero on the first
- *                              time step.
+ * @conf  bands_filled          List of pairs of ints, default empty. Ranges of diagonal
+ *                              bands to mask out before the factorization. These are
+ *                              iteratively filled within the eigen decomposition code.
+ * @conf  block_fill_size       UInt, default 0. Mask out blocks of this size on the diagonal.
  * @conf  exclude_inputs        List of UInts, optional. Inputs to exclude (rows and
  *                              columns to set to zero) in visibilities prior to
  *                              factorization.
+ * @conf  tol_eval              Float, default 1e-6. Fractional change in evals must be less
+ *                              than this for convergence.
+ * @conf  tol_evec              Float, default 1e-5. Total eigenvector overlap must be less
+ *                              than this.
+ * @conf  max_iterations        UInt. Maximum number of iterations to compute.
+ * @conf  num_ev_conv           UInt. Test only the top `num_ev_conv` eigenpairs for convergence.
  *
  * @par Metrics
  * @metric kotekan_eigenvisiter_comp_time_seconds
@@ -52,9 +57,12 @@
  *         ~10 samples.
  * @metric kotekan_eigenvisiter_eigenvalue
  *         The value of each eigenvalue calculated, or the RMS.
- * @metric kotekan_eigenvisiter_lapack_failure_total
- *         The number of frames skipped due to LAPACK failing (because of bad input data
- *         or other reasons).
+ * @metric kotekan_eigenvisiter_iterations
+ *         Number of iterations required to compute the last sample.
+ * @metric kotekan_eigenvisiter_eigenvalue_convergence
+ *         Eigenvalue convergence parameter of the last sample.
+ * @metric kotekan_eigenvisiter_eigenvector_convergence
+ *         Eigenvector convergence parameter of the last sample.
  *
  * @author Richard Shaw, Kiyoshi Masui
  */
@@ -83,7 +91,6 @@ private:
     Buffer* out_buf;
 
     uint32_t _num_eigenvectors;
-    uint32_t _num_diagonals_filled;
 
     // Parameters for convergence
     double _tol_eval;
@@ -91,8 +98,10 @@ private:
     uint32_t _num_ev_conv;
     uint32_t _max_iterations;
 
-    /// List of input indices to zero prior to decomposition.
+    /// Parameters for masking the matrix
     std::vector<uint32_t> _exclude_inputs;
+    uint32_t _block_fill_size;
+    std::vector<std::pair<int32_t, int32_t>> _bands_filled;
 
     /// Keep track of the average write time, per frequency and dataset ID
     std::map<std::pair<uint32_t, dset_id_t>, movingAverage> calc_time_map;
