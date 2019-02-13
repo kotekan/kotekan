@@ -25,31 +25,31 @@
  * Rayleigh-Ritz step and a progressive matrix completion of masked values.
  *
  * @par Buffers
- * @buffer in_buf The set of buffers coming out the GPU buffers
+ * @buffer in_buf The stream to eigen decompose.
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
- * @buffer out_buf The merged and transformed buffer
+ * @buffer out_buf Output stream with the calculated eigen-pairs.
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
- * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
- *                              correlator data.
- * @conf  block_size            Int. The block size of the packed data.
- * @conf  num_ev                UInt. The number of eigenvectors to be calculated as
- *                              an approximation to the visibilities.
- * @conf  bands_filled          List of pairs of ints, default empty. Ranges of diagonal
- *                              bands to mask out before the factorization. These are
- *                              iteratively filled within the eigen decomposition code.
- * @conf  block_fill_size       UInt, default 0. Mask out blocks of this size on the diagonal.
- * @conf  exclude_inputs        List of UInts, optional. Inputs to exclude (rows and
- *                              columns to set to zero) in visibilities prior to
- *                              factorization.
- * @conf  tol_eval              Float, default 1e-6. Fractional change in evals must be less
- *                              than this for convergence.
- * @conf  tol_evec              Float, default 1e-5. Total eigenvector overlap must be less
- *                              than this.
- * @conf  max_iterations        UInt. Maximum number of iterations to compute.
- * @conf  num_ev_conv           UInt. Test only the top `num_ev_conv` eigenpairs for convergence.
+ * @conf  num_elements     Int. The number of elements (i.e. inputs) in the
+ *                         correlator data.
+ * @conf  block_size       Int. The block size of the packed data.
+ * @conf  num_ev           UInt. The number of eigenvectors to be calculated as
+ *                         an approximation to the visibilities.
+ * @conf  bands_filled     List of pairs of ints, default empty. Ranges of diagonal
+ *                         bands to mask out before the factorization. These are
+ *                         iteratively filled within the eigen decomposition code.
+ * @conf  block_fill_size  UInt, default 0. Mask out blocks of this size on the diagonal.
+ * @conf  exclude_inputs   List of UInts, optional. Inputs to exclude (rows and
+ *                         columns to set to zero) in visibilities prior to
+ *                         factorization.
+ * @conf  tol_eval         Float, default 1e-6. Fractional change in evals must be less
+ *                         than this for convergence.
+ * @conf  tol_evec         Float, default 1e-5. Total eigenvector overlap must be less
+ *                         than this.
+ * @conf  max_iterations   UInt. Maximum number of iterations to compute.
+ * @conf  num_ev_conv      UInt. Test only the top `num_ev_conv` eigenpairs for convergence.
  *
  * @par Metrics
  * @metric kotekan_eigenvisiter_comp_time_seconds
