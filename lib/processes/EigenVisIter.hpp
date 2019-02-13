@@ -79,20 +79,20 @@ private:
     // Calculate the mask to apply from the object parameters
     DynamicHermitian<float> calculate_mask(uint32_t num_elements) const;
 
-    Buffer* input_buffer;
-    Buffer* output_buffer;
+    Buffer* in_buf;
+    Buffer* out_buf;
 
-    uint32_t num_eigenvectors;
-    uint32_t num_diagonals_filled;
+    uint32_t _num_eigenvectors;
+    uint32_t _num_diagonals_filled;
 
     // Parameters for convergence
-    double tol_eval;
-    double tol_evec;
-    uint32_t num_ev_conv;
-    uint32_t max_iterations;
+    double _tol_eval;
+    double _tol_evec;
+    uint32_t _num_ev_conv;
+    uint32_t _max_iterations;
 
     /// List of input indices to zero prior to decomposition.
-    std::vector<uint32_t> exclude_inputs;
+    std::vector<uint32_t> _exclude_inputs;
 
     /// Keep track of the average write time, per frequency and dataset ID
     std::map<std::pair<uint32_t, dset_id_t>, movingAverage> calc_time_map;
