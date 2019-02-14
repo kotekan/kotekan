@@ -163,7 +163,6 @@ void EigenVisIter::main_thread() {
 }
 
 
-// TODO: this should probably be a private method, but that would mean exposing all the blaze stuff and [j]
 void EigenVisIter::update_metrics(uint32_t freq_id, dset_id_t dset_id, double elapsed_time,
                                   const eig_t<cfloat>& eigpair,
                                   const EigConvergenceStats& stats)
