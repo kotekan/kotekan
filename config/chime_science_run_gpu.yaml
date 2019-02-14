@@ -1038,7 +1038,7 @@ eigcalc:
   # Convergence config
   tol_eval: 1.0e-5
   tol_evec: 1.0e-4
-  max_iterations: 25
+  max_iterations: 14
   num_ev_conv: 2
 
   # Masking config
