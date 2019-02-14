@@ -70,7 +70,6 @@ void pulsarPostProcess::fill_headers(unsigned char * out_buf,
     uint freqloop = _num_stream/_num_pulsar;
     for (uint i = 0; i < _num_packet_per_stream; ++i) {  //16 or 80 frames in a stream
         uint64_t fpga_now = (fpga_seq_num + _timesamples_per_pulsar_packet * i);
-        vdif_header->eud3 = (fpga_now & (0xFFFFFFFFl<< 0))>> 0;
         vdif_header->seconds = time_now->tv_sec - unix_offset;
         vdif_header->data_frame =  (time_now->tv_nsec/1.e9) / (_timesamples_per_pulsar_packet*2.56e-6);
 
@@ -146,7 +145,7 @@ void pulsarPostProcess::main_thread() {
     vdif_header.edv = 0;
     vdif_header.eud1 = 0;  //UD: beam number [0 to 9]
     vdif_header.eud2 = 0; //_psr_scaling from metadata
-    vdif_header.eud3 = 0;  // UD: fpga count low bit
+    vdif_header.eud3 = 0;  // Not used for now
     vdif_header.eud4 = 0;  // 16-b RA + 16-b Dec
 
     uint frame = 0;
@@ -195,14 +194,14 @@ void pulsarPostProcess::main_thread() {
 	    if (is_gps_global_time_set() != 1) {
   	        ERROR("[Time Check] gps global time not set (%d)", is_gps_global_time_set() );
 	    }
-            uint32_t seq_number_offset = _timesamples_per_pulsar_packet - (first_seq_number % _timesamples_per_pulsar_packet );
+	    uint32_t pkt_length_in_ns = _timesamples_per_pulsar_packet*2560;
+	    uint32_t ns_offset = pkt_length_in_ns - (time_now.tv_nsec % pkt_length_in_ns);
+	    float seq_number_offset_float = ns_offset / 2560. ; 
+	    uint seq_number_offset = round(seq_number_offset_float);
+
             current_input_location = seq_number_offset;
-            first_seq_number  = first_seq_number+seq_number_offset; //so that we start at an fpga_seq_no that is divisible by the packet nsamp
-            time_now.tv_nsec +=seq_number_offset*2560;
-            if (time_now.tv_nsec > 999999999) {
-                time_now.tv_sec += (uint)(time_now.tv_nsec / 1000000000.);
-                time_now.tv_nsec = time_now.tv_nsec % 1000000000;
-            }
+            first_seq_number  = first_seq_number+seq_number_offset; 
+	    time_now = compute_gps_time(first_seq_number);
 
             // Fill the first output buffer headers
             fpga_seq_num = first_seq_number;
