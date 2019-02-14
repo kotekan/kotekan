@@ -39,6 +39,8 @@ EigenVisIter::EigenVisIter(Config& config, const string& unique_name, bufferCont
     _tol_eval = config.get_default<double>(unique_name, "tol_eval", 1e-6);
     _tol_evec = config.get_default<double>(unique_name, "tol_evec", 1e-5);
     _max_iterations = config.get_default<uint32_t>(unique_name, "max_iterations", 15);
+    _krylov = config.get_default<uint32_t>(unique_name, "krylov", 2);
+    _subspace = config.get_default<uint32_t>(unique_name, "subspace", 3);
 
     // Create the state describing the eigenvalues
     auto& dm = datasetManager::instance();
@@ -106,7 +108,8 @@ void EigenVisIter::main_thread() {
 
         // Perform the actual eigen-decomposition
         std::tie(eigpair, stats) = eigen_masked_subspace(vis, mask, _num_eigenvectors, _tol_eval,
-                                                         _tol_evec, _max_iterations, _num_ev_conv);
+                                                         _tol_evec, _max_iterations, _num_ev_conv,
+                                                         _krylov, _subspace);
         auto& evals = eigpair.first;
         auto& evecs = eigpair.second;
 

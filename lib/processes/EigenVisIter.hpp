@@ -50,6 +50,8 @@
  *                         than this.
  * @conf  max_iterations   UInt. Maximum number of iterations to compute.
  * @conf  num_ev_conv      UInt. Test only the top `num_ev_conv` eigenpairs for convergence.
+ * @conf  krylov           UInt, default 2. Size of the Krylov basis to use.
+ * @conf  subspace         UInt, default 3. Number of subspace iteration substeps.
  *
  * @par Metrics
  * @metric kotekan_eigenvisiter_comp_time_seconds
@@ -97,6 +99,8 @@ private:
     double _tol_evec;
     uint32_t _num_ev_conv;
     uint32_t _max_iterations;
+    uint32_t _krylov;
+    uint32_t _subspace;
 
     /// Parameters for masking the matrix
     std::vector<uint32_t> _exclude_inputs;
