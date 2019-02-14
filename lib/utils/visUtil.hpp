@@ -175,6 +175,15 @@ namespace std {
 }
 
 /**
+  * @brief Get type name of a JSON value.
+  * Returns a string with the name of the given json value type. Can be one of:
+  * integer, float or value.type_name().
+  * @param value A JSON value.
+  * @return Type name.
+  */
+ std::string json_type_name(nlohmann::json& value);
+
+/**
  * @brief Index into a flattened upper matrix triangle.
  * @param  i Row index.
  * @param  j Column index.
