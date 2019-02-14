@@ -16,6 +16,7 @@
 #include <memory>
 #include <regex>
 #include <stdexcept>
+#include <signal.h>
 
 #include "gsl-lite.hpp"
 #include "json.hpp"
@@ -169,8 +170,10 @@ visRawReader::visRawReader(Config &config,
 
 visRawReader::~visRawReader() {
     if(munmap(mapped_file, ntime * nfreq * file_frame_size) == -1) {
-        std::runtime_error(fmt::format("Failed to unmap file {}: {}.",
-                                       filename + ".data", strerror(errno)));
+        ERROR(fmt::format("Failed to unmap file {}: {}.", filename + ".data", strerror(errno))
+              .c_str());
+        // Make sure kotekan is exiting...
+        raise(SIGINT);
     }
 
     close(fd);
