@@ -64,14 +64,27 @@ if (${USE_FFTW})
   add_definitions(-DWITH_FFTW)
 endif()
 
+include(CheckIncludeFileCXX)
 if (${USE_LAPACK})
+  # Check OpenBLAS is installed
   if (DEFINED OPENBLAS_PATH)
     if (NOT EXISTS ${OPENBLAS_PATH})
-      MESSAGE( "OPENBLAS_PATH: \"${OPENBLAS_PATH}\" does not exsist" )
+      MESSAGE( "OPENBLAS_PATH: \"${OPENBLAS_PATH}\" does not exist" )
     endif()
-    set(ENV{CMAKE_PREFIX_PATH} ${OPENBLAS_PATH})
   endif()
-  find_package( OpenBLAS REQUIRED )
+  find_package( OpenBLAS REQUIRED
+                HINTS ${OPENBLAS_PATH})
+
+  # Check Blaze is installed
+  if (DEFINED BLAZE_PATH)
+    if (NOT EXISTS ${BLAZE_PATH}/blaze/Blaze.h)
+      MESSAGE(FATAL_ERROR "Could not find Blaze headers")
+    else()
+      include_directories(${BLAZE_PATH})
+    endif()
+  endif()
+  add_definitions(-DBLAZE_BLAS_MODE=1)
+  add_definitions(-DBLAZE_BLAS_IS_PARALLEL=1)
 endif()
 
 #Libevent is required now

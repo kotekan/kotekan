@@ -161,6 +161,9 @@ protected:
 
         /// Number of products
         size_t num_vis;
+
+        /// Last update
+        double last_update;
     };
 
     /// The set of open acquisitions
