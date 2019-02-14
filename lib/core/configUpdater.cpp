@@ -2,7 +2,9 @@
 #include "errors.h"
 #include "restServer.hpp"
 #include "KotekanProcess.hpp"
+#include "visUtil.hpp"
 
+#include "json.hpp"
 #include "fmt.hpp"
 #include <iostream>
 #include <signal.h>
@@ -166,28 +168,18 @@ void configUpdater::rest_callback(connectionInstance &con, nlohmann::json &json)
             con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
             return;
         } else {
-            // ...and for correct types
-            if (it.value().type_name() !=
-                _init_values[uri].at(it.key()).type_name()) {
-                std::string msg = fmt::format(
-                            "configUpdater: Update to endpoint '{}' contained" \
-                            " value '{}' of type {} (expected type {}).",
-                            uri.c_str(), it.key().c_str(),
-                            it.value().type_name(),
-                            _init_values[uri].at(it.key()).type_name());
-
-                WARN(msg.c_str());
-                con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
-                return;
-            }
-
-            if (it.value().type() == nlohmann::json::value_t::number_float &&
-                _init_values[uri].at(it.key()).type() != it.value().type()) {
-                std::string msg = fmt::format(
-                            "configUpdater: Update to endpoint '{}' contained" \
-                            " value '{}' of type float (expected type {}).",
-                            uri.c_str(), it.key().c_str(),
-                            _init_values[uri].at(it.key()).type_name());
+            // Reject changes in general type (string vs. number vs. object),
+            // and reject changes between (un)signed integers and floats, but allow both
+            // signed and unsigned integers to be interchanged.
+            if (it.value().type_name() != _init_values[uri].at(it.key()).type_name()
+                || ((it.value().type() == nlohmann::json::value_t::number_float)
+                    ^ (_init_values[uri].at(it.key()).type()
+                       == nlohmann::json::value_t::number_float))){
+                std::string msg = fmt::format("configUpdater: Update to endpoint '{}' contained"
+                                              " value '{}' of type {} (expected type {}).",
+                                              uri.c_str(), it.key().c_str(),
+                                              json_type_name(it.value()),
+                                              json_type_name(_init_values[uri].at(it.key())));
 
                 WARN(msg.c_str());
                 con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
