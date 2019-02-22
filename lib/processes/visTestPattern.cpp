@@ -7,8 +7,8 @@
 #include "datasetState.hpp"
 #include "errors.h"
 #include "prometheusMetrics.hpp"
-#include "restServer.hpp"
 #include "restClient.hpp"
+#include "restServer.hpp"
 #include "visBuffer.hpp"
 
 #include "fmt.hpp"
@@ -119,7 +119,8 @@ void visTestPattern::main_thread() {
         auto frame = visFrameView(in_buf, frame_id);
         if (frame.dataset_id != ds_id) {
             std::string error_msg = fmt::format("Expected dataset id {:#x}, got {:#x}.\nNot "
-                                                "supported. Exiting...", ds_id, frame.dataset_id);
+                                                "supported. Exiting...",
+                                                ds_id, frame.dataset_id);
             std::lock_guard<std::mutex> thread_lck(mtx_update);
             exit_failed_test(error_msg);
             return;
@@ -137,7 +138,8 @@ void visTestPattern::main_thread() {
                         std::string error_msg = fmt::format("Failure computing expected data. "
                                                             "Received FPGA buffer data format "
                                                             "doesn't match data stream: {}\n"
-                                                            "Exiting...", e.what());
+                                                            "Exiting...",
+                                                            e.what());
                         exit_failed_test(error_msg);
                         return;
                     }
@@ -263,7 +265,7 @@ void visTestPattern::main_thread() {
                     json data;
                     data["result"] = "OK";
                     restReply reply = restClient::instance().make_request_blocking(
-                                test_done_path, data, test_done_host, test_done_port);
+                        test_done_path, data, test_done_host, test_done_port);
                     if (!reply.first) {
                         ERROR("Failed to report back test completion f: %s", reply.second.c_str());
                         raise(SIGINT);
@@ -288,7 +290,7 @@ void visTestPattern::main_thread() {
         data["result"] = error_msg;
         data["name"] = test_name;
         restReply reply = restClient::instance().make_request_blocking(
-                    test_done_path, data, test_done_host, test_done_port);
+            test_done_path, data, test_done_host, test_done_port);
         if (!reply.first) {
             ERROR("Failed to report back test completion f: %s", reply.second.c_str());
             raise(SIGINT);
@@ -306,13 +308,12 @@ void visTestPattern::receive_update(kotekan::connectionInstance& conn, json& dat
 
     if (num_frames) {
         std::string msg = fmt::format(
-                    "Received update, but not done with the last test ({} frames remaining).",
-                    num_frames);
+            "Received update, but not done with the last test ({} frames remaining).", num_frames);
         reply_failure(conn, msg);
         return;
     }
 
-    try{
+    try {
         test_done_host = data.at("reply_host").get<std::string>();
         test_done_path = data.at("reply_path").get<std::string>();
         test_done_port = data.at("reply_port").get<unsigned short>();
@@ -343,7 +344,7 @@ void visTestPattern::receive_update(kotekan::connectionInstance& conn, json& dat
             data.at("test_pattern").get<std::map<std::string, std::vector<cfloat>>>();
     } catch (std::exception& e) {
         std::string msg =
-            fmt::format("Failure reading test pattern data from update: %s.", e.what());
+            fmt::format("Failure reading test pattern data from update: {}.", e.what());
         DEBUG2("This was the update: %s", data.dump().c_str());
         num_frames = 0;
         reply_failure(conn, msg);
@@ -352,7 +353,7 @@ void visTestPattern::receive_update(kotekan::connectionInstance& conn, json& dat
 
     if (fpga_buf_pattern.size() != inputs.size()) {
         std::string msg = fmt::format("Failure reading test pattern data from update: Number of "
-                                      "inputs (%d) does not match data stream (%d inputs).",
+                                      "inputs ({}) does not match data stream ({} inputs).",
                                       fpga_buf_pattern.size(), inputs.size());
         num_frames = 0;
         reply_failure(conn, msg);
@@ -362,8 +363,8 @@ void visTestPattern::receive_update(kotekan::connectionInstance& conn, json& dat
     for (auto f : fpga_buf_pattern) {
         if (f.second.size() != freqs.size()) {
             std::string msg = fmt::format("Failure reading test pattern data from update: Number "
-                                          "of frequencies (%d) does not match data stream "
-                                          "(%d frequencies).",
+                                          "of frequencies ({}) does not match data stream "
+                                          "({} frequencies).",
                                           f.second.size(), freqs.size());
             num_frames = 0;
             reply_failure(conn, msg);
@@ -380,13 +381,17 @@ void visTestPattern::receive_update(kotekan::connectionInstance& conn, json& dat
         outfile.close();
     outfile.open(file_name);
     if (!outfile.is_open()) {
-        WARN("Failed to open out file '%s'.", file_name.c_str());
+        std::string msg = fmt::format("Failed to open out file '{}'.", file_name);
+        reply_failure(conn, msg);
+        return;
     }
     outfile << "fpga_count,time,freq_id,num_bad,avg_err,min_err,max_err" << std::endl;
 
     // Set iostream decimal precision
     outfile << std::setprecision(REPORT_PRECISION);
     outfile << std::fixed;
+
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
 
     INFO("Created new report file: %s", file_name.c_str());
     INFO("Running test '%s' for %d frames.", test_name.c_str(), num_frames);
@@ -451,8 +456,8 @@ void visTestPattern::exit_failed_test(std::string error_msg) {
     // tell orchestrator that we failed with this test
     json data;
     data["result"] = error_msg;
-    restClient::instance().make_request_blocking(
-                test_done_path, data, test_done_host, test_done_port);
+    restClient::instance().make_request_blocking(test_done_path, data, test_done_host,
+                                                 test_done_port);
 
     raise(SIGINT);
 }
