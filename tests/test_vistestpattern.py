@@ -31,15 +31,15 @@ params = {
         },
         'num_frames': 0
     },
-    'log_level': "debug2",
+    'log_level': "debug",
 }
 
 STAGE_NAME = "testpattern_stage"
 
 def command_test_pattern(name, num_frames, test_pattern):
-    return ('post', ENDPOINT_NAME, {'num_frames': num_frames,
-                                                         'test_pattern': test_pattern,
-                                                         'name': name})
+    return ('post', ENDPOINT_NAME, {'reply_host': '127.0.0.1', 'reply_port': 8000,
+                                    'reply_path': 'reply_endpoint', 'num_frames': num_frames,
+                                    'test_pattern': test_pattern, 'name': name})
 
 def run_test(write_dir,rest_commands = None, params=params, noise = False, name="simple"):
 

@@ -99,7 +99,7 @@ private:
     void compute_expected_data();
 
     /// Report error in error_msg to orchestrator and log. Exit kotekan.
-    void exit_failed_test();
+    void exit_failed_test(std::string error_msg);
 
     /// Export information on one frame to prometheus.
     void export_prometheus_metrics(size_t num_bad, float avg_err, float min_err, float max_err,
@@ -141,16 +141,13 @@ private:
     // Endpoint name (config value)
     std::string endpoint_name;
 
-    // To store error message. Sent to orchestrator in case test fails.
-    std::string error_msg;
-
     // Stop at the next frame and lock the thread when an update comes in.
     std::mutex mtx_update;
-    std::condition_variable cv;
-    bool no_update;
 
-    // Stop the update callback to run the test before answering the update request.
-    bool test_done;
+    // Details on where to report back on finished test (received with update).
+    std::string test_done_path;
+    std::string test_done_host;
+    unsigned short test_done_port;
 
     // Name of the test
     std::string test_name;
