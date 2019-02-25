@@ -1,3 +1,4 @@
+
 #include "hsaBeamformUpchan.hpp"
 
 using kotekan::bufferContainer;
@@ -8,7 +9,7 @@ REGISTER_HSA_COMMAND(hsaBeamformUpchan);
 hsaBeamformUpchan::hsaBeamformUpchan(Config& config, const string& unique_name,
                                      bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "upchannelize",
-               "upchannelize_flip.hsaco") {
+               "upchannelize_flip_16bp.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
