@@ -55,46 +55,60 @@ using namespace kotekan;
 
 // Embedded script for converting the YAML config to json
 const std::string yaml_to_json = R"(
-import yaml, json, sys
+import yaml, json, sys, os, subprocess
 
-with open(sys.argv[1], "r") as stream:
-    try:
-        sys.stdout.write(json.dumps(yaml.load(stream)))
-    except yaml.YAMLError as exc:
-        sys.stderr.write(exc)
-)";
+file_name = sys.argv[1]
+gps_server = ""
+if len(sys.argv) == 3:
+    gps_server = sys.argv[2]
 
-// Emedded script for converting the YAML config to josn
-// and include the GPS time information
-const std::string gps_yaml_to_json = R"(
-import yaml, json, sys
-import requests
+# Lint the YAML file, helpful for finding errors
+try:
+    output = subprocess.Popen(["yamllint",
+                               "-d",
+                               "{extends: relaxed, \
+                                 rules: {line-length: {max: 100}, \
+                                        commas: disable, \
+                                        trailing-spaces: {level: warning}}}" ,
+                                 file_name],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    response,stderr = output.communicate()
+    if response != "":
+        sys.stderr.write("yamllint warnings/errors for: ")
+        sys.stderr.write(response)
+except OSError as e:
+    if e.errno == os.errno.ENOENT:
+        sys.stderr.write("yamllint not installed, skipping pre-validation\n")
+    else:
+        sys.stderr.write("error with yamllint, skipping pre-validation\n")
 
-with open(sys.argv[1], "r") as stream:
+with open(file_name, "r") as stream:
     try:
         config_json = yaml.load(stream)
     except yaml.YAMLError as exc:
         sys.stderr.write(exc)
 
-try:
-    gps_request = requests.get(sys.argv[2])
-    gps_request.raise_for_status()
-except requests.exceptions.HTTPError as rex:
-    config_json["gps_time"] = {}
-    config_json["gps_time"]["error"] = str(rex)
-    sys.stdout.write(json.dumps(config_json))
-    quit()
-except requests.exceptions.RequestException as rex:
-    config_json["gps_time"] = {}
-    config_json["gps_time"]["error"] = str(rex)
-    sys.stdout.write(json.dumps(config_json))
-    quit()
+# Get the GPS server time if a server was given
+if gps_server != "":
+    try:
+        gps_request = requests.get(gps_server)
+        gps_request.raise_for_status()
+    except requests.exceptions.HTTPError as rex:
+        config_json["gps_time"] = {}
+        config_json["gps_time"]["error"] = str(rex)
+        sys.stdout.write(json.dumps(config_json))
+        quit()
+    except requests.exceptions.RequestException as rex:
+        config_json["gps_time"] = {}
+        config_json["gps_time"]["error"] = str(rex)
+        sys.stdout.write(json.dumps(config_json))
+        quit()
 
-try:
-    config_json["gps_time"] = gps_request.json()
-except:
-    config_json["gps_time"] = {}
-    config_json["gps_time"]["error"] = "Server did not return valid JSON"
+    try:
+        config_json["gps_time"] = gps_request.json()
+    except:
+        config_json["gps_time"] = {}
+        config_json["gps_time"]["error"] = "Server did not return valid JSON"
 
 sys.stdout.write(json.dumps(config_json))
 )";
@@ -363,7 +377,7 @@ int main(int argc, char** argv) {
         if (gps_time) {
             INFO("Getting GPS time from server (%s), this might take some time...",
                  gps_time_source.c_str());
-            exec_command = "python -c '" + gps_yaml_to_json + "' " + std::string(config_file_name)
+            exec_command = "python -c '" + yaml_to_json + "' " + std::string(config_file_name)
                            + " " + gps_time_source;
         } else {
             exec_command = "python -c '" + yaml_to_json + "' " + std::string(config_file_name);
