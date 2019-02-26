@@ -379,8 +379,8 @@ int main(int argc, char** argv) {
         if (gps_time) {
             INFO("Getting GPS time from server (%s), this might take some time...",
                  gps_time_source.c_str());
-            exec_command = "python -c '" + yaml_to_json + "' " + std::string(config_file_name)
-                           + " " + gps_time_source;
+            exec_command = "python -c '" + yaml_to_json + "' " + std::string(config_file_name) + " "
+                           + gps_time_source;
         } else {
             exec_command = "python -c '" + yaml_to_json + "' " + std::string(config_file_name);
         }
