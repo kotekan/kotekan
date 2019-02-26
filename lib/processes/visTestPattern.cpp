@@ -18,6 +18,7 @@
 #include <complex>
 #include <cstdint>
 #include <cstring>
+#include <dirent.h>
 #include <exception>
 #include <functional>
 #include <future>
@@ -26,9 +27,10 @@
 #include <mutex>
 #include <regex>
 #include <stdexcept>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <time.h>
 #include <tuple>
-
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -57,6 +59,14 @@ visTestPattern::visTestPattern(Config& config, const std::string& unique_name,
                                     + std::to_string(_tolerance) + ").");
 
     write_dir = config.get<std::string>(unique_name, "write_dir");
+    if (opendir(write_dir.c_str()) == nullptr) {
+        // Create directory
+        if (mkdir(write_dir.c_str(), S_IRWXU | S_IRGRP | S_IROTH) < 0) {
+            std::string error =
+                fmt::format("Failure creating directory {}: {}", write_dir, std::strerror(errno));
+            throw std::runtime_error(error);
+        }
+    }
     INFO("Writing report to '%s'.", write_dir.c_str());
 
     endpoint_name = config.get_default<std::string>(unique_name, "endpoint_name", "run_test");
@@ -137,7 +147,7 @@ void visTestPattern::main_thread() {
                     } catch (std::exception& e) {
                         std::string error_msg = fmt::format("Failure computing expected data. "
                                                             "Received FPGA buffer data format "
-                                                            "doesn't match data stream: {}\n"
+                                                            "doesn't match data stream: {}. "
                                                             "Exiting...",
                                                             e.what());
                         exit_failed_test(error_msg);
@@ -264,12 +274,15 @@ void visTestPattern::main_thread() {
                     // Report back.
                     json data;
                     data["result"] = "OK";
+                    data["name"] = test_name;
                     restReply reply = restClient::instance().make_request_blocking(
                         test_done_path, data, test_done_host, test_done_port);
                     if (!reply.first) {
-                        ERROR("Failed to report back test completion f: %s", reply.second.c_str());
+                        ERROR("Failed to report back test completion: %s", reply.second.c_str());
                         raise(SIGINT);
                     }
+
+                    INFO("Test '%s' done.", test_name.c_str());
                 }
             }
         }
@@ -305,6 +318,13 @@ void visTestPattern::reply_failure(kotekan::connectionInstance& conn, std::strin
 
 void visTestPattern::receive_update(kotekan::connectionInstance& conn, json& data) {
     std::unique_lock<std::mutex> thread_lck(mtx_update);
+
+    if (inputs.empty()) {
+        std::string msg =
+            fmt::format("Received update before receiving first frame. Try again later.");
+        reply_failure(conn, msg);
+        return;
+    }
 
     if (num_frames) {
         std::string msg = fmt::format(
