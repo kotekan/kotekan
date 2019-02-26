@@ -69,6 +69,7 @@ try:
                                "{extends: relaxed, \
                                  rules: {line-length: {max: 100}, \
                                         commas: disable, \
+                                        brackets: disable, \
                                         trailing-spaces: {level: warning}}}" ,
                                  file_name],
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -90,6 +91,7 @@ with open(file_name, "r") as stream:
 
 # Get the GPS server time if a server was given
 if gps_server != "":
+    import requests
     try:
         gps_request = requests.get(gps_server)
         gps_request.raise_for_status()
