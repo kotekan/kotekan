@@ -37,7 +37,7 @@ pipeline {
                   mkdir build_base
                   cd build_base/
                   cmake ..
-                  make -j 4
+                  make
                   cd ..
                   mkdir build_full
                   cd build_full/
@@ -45,7 +45,7 @@ pipeline {
                         -DUSE_LAPACK=ON -DOPENBLAS_PATH=/usr/local/opt/OpenBLAS \
                         -DUSE_HDF5=ON -DHIGHFIVE_PATH=/usr/local/opt/HighFive \
                         -DCOMPILE_DOCS=ON -DUSE_OPENCL=ON ..
-                  make -j 4'''
+                  make'''
           }
         }
         stage('Build docs') {
