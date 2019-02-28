@@ -9,6 +9,7 @@
 
 #include "basebandReadoutManager.hpp"
 #include "gpsTime.h"
+#include "prometheusMetrics.hpp"
 #include "restServer.hpp"
 
 #include "json.hpp"
@@ -38,6 +39,10 @@ void to_json(json& j, const basebandDumpStatus& s);
  * loop, and when the result is non-null, use the returned @c basebandDumpStatus
  * to keep track of the data written so far. Once the writing of the data file
  * is completed, the ``state`` of the request should be set to ``DONE``.
+ *
+ * @par Metrics
+ * @metric kotekan_baseband_requests_total
+ *         The count of dump requests received by the REST endpoint ``/baseband``
  *
  * @author Davor Cubranic
  */
@@ -162,7 +167,7 @@ public:
 
 private:
     /// Constructor, not used directly
-    basebandApiManager() = default;
+    basebandApiManager();
 
     /// Sampling frequency (Hz)
     static constexpr double ADC_SAMPLE_RATE = 800e6;
@@ -233,6 +238,9 @@ private:
 
     /// Map of registered readout stages, indexed by `freq_id`
     basebandReadoutRegistry readout_registry;
+
+    prometheusMetrics& metrics;
+    uint32_t request_count = 0;
 };
 
 } // namespace kotekan

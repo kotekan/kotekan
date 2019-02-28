@@ -12,6 +12,7 @@
 #include "buffer.h"
 #include "chimeMetadata.h"
 #include "gpsTime.h"
+#include "prometheusMetrics.hpp"
 #include "visUtil.hpp"
 
 #include "gsl-lite.hpp"
@@ -87,6 +88,13 @@ struct basebandDumpData {
  * @conf  write_throttle        Float, default 0. Add sleep time while writing dumps
  *                              equal to this factor times real time.
  *
+ * @par Metrics
+ * @metric kotekan_baseband_readout_total
+ *         The count of requests handled by an instance of this stage.
+ *         Labels:
+ *         - status: 'done', 'error', 'no_data'
+ *         - freq_id: channel frequency received by this stage
+ *
  * @author Kiyoshi Masui, Davor Cubranic
  */
 class basebandReadout : public kotekan::Stage {
@@ -140,6 +148,12 @@ private:
     std::unique_ptr<basebandDumpData> dump_to_write;
     std::condition_variable ready_to_write;
     std::mutex dump_to_write_mtx;
+
+    kotekan::prometheusMetrics& metrics = kotekan::prometheusMetrics::instance();
+    std::string freq_id_label;
+    uint32_t request_done_count = 0;
+    uint32_t request_error_count = 0;
+    uint32_t request_no_data_count = 0;
 };
 
 #endif
