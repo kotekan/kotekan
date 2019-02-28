@@ -7,6 +7,7 @@
 #include "visUtil.hpp"
 #include "restServer.hpp"
 #include "datasetManager.hpp"
+#include "fpga_header_functions.h"
 
 #define XX=0
 #define XY=1
@@ -95,19 +96,18 @@ public:
 
 private:
 
-    bool setup();
+    void change_dataset_state(dset_id_t ds_id);
 
-};
+    // dataset states and IDs
+    dset_id_t output_dset_id;
+    dset_id_t input_dset_id;
+    const prodState* prod_state_ptr;
+    const stackState* old_stack_state_ptr;
+    const stackState* new_stack_state_ptr;
 
-
-class redundantStack : public KotekanProcess {
-
-public:
-
-    redundantStack(Config &config,
-                   const string& unique_name,
-                   bufferContainer &buffer_container);
-
+    // Buffers
+    Buffer* in_buf;
+    Buffer* out_buf;
 };
 
 #endif
