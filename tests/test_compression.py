@@ -13,10 +13,12 @@ diag_global_params = {
     'mode': 'phase_ij',
     'freq_ids': [0, 250],
     'buffer_depth': 5,
-    'use_dataset_manager': True
+    'dataset_manager': {
+        'use_dataset_broker': False
+    }
 }
 
-diag_process_params = {
+diag_stage_params = {
     'stack_type': 'diagonal'
 }
 
@@ -29,10 +31,12 @@ chime_global_params = {
     'mode': 'chime',
     'freq_ids': [0, 250, 500],
     'buffer_depth': 100,
-    'use_dataset_manager': True
+    'dataset_manager': {
+        'use_dataset_broker': False
+    }
 }
 
-chime_process_params = {
+chime_stage_params = {
     'stack_type': 'chime_in_cyl'
 }
 
@@ -63,8 +67,8 @@ def diagonal_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanProcessTester(
-        'baselineCompression', diag_process_params,
+    test = runner.KotekanStageTester(
+        'baselineCompression', diag_stage_params,
         fakevis_buffer,
         dump_buffer,
         diag_global_params
@@ -88,8 +92,8 @@ def chime_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanProcessTester(
-        'baselineCompression', chime_process_params,
+    test = runner.KotekanStageTester(
+        'baselineCompression', chime_stage_params,
         fakevis_buffer,
         dump_buffer,
         chime_global_params
@@ -119,8 +123,6 @@ def test_chime(chime_data):
 
     # This is the typical number of entries per polarisation (for XX, XY and YY, not YX)
     np1 = 4 * 256 + 6 * 511
-
-    print "hello", chime_data
 
     for frame in chime_data:
         assert frame.vis.shape[0] == nvis_chime

@@ -46,7 +46,7 @@ ew_spacing: [-1.,0.,1.,2.]
 # Pool
 main_pool:
     kotekan_metadata_pool: chimeMetadata
-    num_metadata_objects: 15 * buffer_depth
+    num_metadata_objects: 45 * buffer_depth
 
 # Buffers
 gpu_input_buffers:
@@ -55,25 +55,12 @@ gpu_input_buffers:
     metadata_pool: main_pool
     gpu_input_buffer_0:
         kotekan_buffer: standard
-    gpu_input_buffer_1:
-        kotekan_buffer: standard
-    gpu_input_buffer_2:
-        kotekan_buffer: standard
-    gpu_input_buffer_3:
-        kotekan_buffer: standard
-
-beamform_output_buffesrs:
-    num_frames: buffer_depth
-    frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
-    metadata_pool: main_pool
-    beamform_output_buffer_0:
-        kotekan_buffer: standard
-    beamform_output_buffer_1:
-        kotekan_buffer: standard
-    beamform_output_buffer_2:
-        kotekan_buffer: standard
-    beamform_output_buffer_3:
-        kotekan_buffer: standard
+#    gpu_input_buffer_1:
+#        kotekan_buffer: standard
+#    gpu_input_buffer_2:
+#        kotekan_buffer: standard
+#    gpu_input_buffer_3:
+#        kotekan_buffer: standard
 
 frb_output_buffer:
     num_frames: buffer_depth
@@ -87,145 +74,180 @@ gpu_output_buffers:
     metadata_pool: main_pool
     gpu_output_buffer_0:
         kotekan_buffer: standard
-    gpu_output_buffer_1:
-        kotekan_buffer: standard
-    gpu_output_buffer_2:
-        kotekan_buffer: standard
-    gpu_output_buffer_3:
-        kotekan_buffer: standard
-
-#file_output_buffers:
-#    num_frames: buffer_depth
-#    frame_size: 4 * num_data_sets * num_local_freq * ((num_elements * num_elements) + (num_elements * block_size))
-#    metadata_pool: main_pool
-#    file_output_buffer_0:
+#    gpu_output_buffer_1:
 #        kotekan_buffer: standard
-#    file_output_buffer_1:
+#    gpu_output_buffer_2:
 #        kotekan_buffer: standard
-#    file_output_buffer_2:
+#    gpu_output_buffer_3:
 #        kotekan_buffer: standard
-#    file_output_buffer_3:
-#        kotekan_buffer: standard
-
-#dpdk:
-#  kotekan_process: dpdkWrapper
-#  mode: shuffle4
-#  num_lcores: 4
-#  link_map: [0,1,2,3]
-#  network_out_buf_0: gpu_input_buffer_0
-#  network_out_buf_1: gpu_input_buffer_1
-#  network_out_buf_2: gpu_input_buffer_2
-#  network_out_buf_3: gpu_input_buffer_3
 
 gen_data:
   type: const
   value: 153
   test_data_gen_0:
-    kotekan_process: testDataGen
+    kotekan_stage: testDataGen
     network_out_buf: gpu_input_buffer_0
-  test_data_gen_1:
-    kotekan_process: testDataGen
-    network_out_buf: gpu_input_buffer_1
-  test_data_gen_2:
-    kotekan_process: testDataGen
-    network_out_buf: gpu_input_buffer_2
-  test_data_gen_3:
-    kotekan_process: testDataGen
-    network_out_buf: gpu_input_buffer_3
+#  test_data_gen_1:
+#    kotekan_stage: testDataGen
+#    network_out_buf: gpu_input_buffer_1
+#  test_data_gen_2:
+#    kotekan_stage: testDataGen
+#    network_out_buf: gpu_input_buffer_2
+#  test_data_gen_3:
+#    kotekan_stage: testDataGen
+#    network_out_buf: gpu_input_buffer_3
+
+lost_samples_buffer:
+    kotekan_buffer: standard
+    num_frames: 2 * buffer_depth
+    frame_size: samples_per_data_set * num_local_freq
+    metadata_pool: main_pool
+
+gen_ok:
+  type: const
+  value: 0
+  lost_zero:
+    kotekan_stage: testDataGen
+    network_out_buf: lost_samples_buffer
 
 gpu:
   kernel_path: "../lib/hsa/kernels/"
   gain_dir: "../../kotekan/"
-  commands:
+  commands: &command_list
   - name: hsaInputData
+
   - name: hsaPresumZero
+    sub_frame_index: 0
+  - name: hsaPresumZero
+    sub_frame_index: 1
+  - name: hsaPresumZero
+    sub_frame_index: 2
+  - name: hsaPresumZero
+    sub_frame_index: 3
+
   - name: hsaOutputDataZero
+    sub_frame_index: 0
+  - name: hsaOutputDataZero
+    sub_frame_index: 1
+  - name: hsaOutputDataZero
+    sub_frame_index: 2
+  - name: hsaOutputDataZero
+    sub_frame_index: 3
+
   - name: hsaBarrier
+
+#  - name: hsaBeamformReorder
+#  - name: hsaBeamformKernel
+#  - name: hsaBeamformTranspose
+#  - name: hsaBeamformUpchan
+
   - name: hsaPresumKernel
+    sub_frame_index: 0
+  - name: hsaPresumKernel
+    sub_frame_index: 1
+  - name: hsaPresumKernel
+    sub_frame_index: 2
+  - name: hsaPresumKernel
+    sub_frame_index: 3
+
   - name: hsaCorrelatorKernel
-  - name: hsaBeamformReorder
-  - name: hsaBeamformKernel
-  - name: hsaBeamformTranspose
-  - name: hsaBeamformUpchan
-  - name: hsaBeamformOutputData
+    sub_frame_index: 0
+  - name: hsaCorrelatorKernel
+    sub_frame_index: 1
+  - name: hsaCorrelatorKernel
+    sub_frame_index: 2
+  - name: hsaCorrelatorKernel
+    sub_frame_index: 3
+
+  #Copy out queue
   - name: hsaOutputData
+    sub_frame_index: 0
+  - name: hsaOutputData
+    sub_frame_index: 1
+  - name: hsaOutputData
+    sub_frame_index: 2
+  - name: hsaOutputData
+    sub_frame_index: 3
+
   link_map: [0,1,2,3]
-  num_gpus: 4
+  num_gpus: 1
+  log_level: debug2
   block_size: 32
   buffer_depth: 4
-  n_intg: 24576
+  num_sub_frames: 4
+  n_intg: samples_per_data_set / 2 / num_sub_frames #6144
+
   frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
-    kotekan_process: hsaProcess
+    commands: *command_list
+    kotekan_stage: hsaProcess
     gpu_id: 0
     in_buffers:
       network_buf: gpu_input_buffer_0
+      lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_output_buffer_0
-      beamform_output_buf: beamform_output_buffer_0
-  gpu_1:
-    kotekan_process: hsaProcess
-    gpu_id: 1
-    in_buffers:
-      network_buf: gpu_input_buffer_1
-    out_buffers:
-      output_buf: gpu_output_buffer_1
-      beamform_output_buf: beamform_output_buffer_1
-  gpu_2:
-    kotekan_process: hsaProcess
-    gpu_id: 2
-    in_buffers:
-      network_buf: gpu_input_buffer_2
-    out_buffers:
-      output_buf: gpu_output_buffer_2
-      beamform_output_buf: beamform_output_buffer_2
-  gpu_3:
-    kotekan_process: hsaProcess
-    gpu_id: 3
-    in_buffers:
-      network_buf: gpu_input_buffer_3
-    out_buffers:
-      output_buf: gpu_output_buffer_3
-      beamform_output_buf: beamform_output_buffer_3
-#postprocess:
-#  kotekan_process: frbPostProcess
-#  network_input_buffer_0: beamform_output_buffer_0
-#  network_input_buffer_1: beamform_output_buffer_1
-#  network_input_buffer_2: beamform_output_buffer_2
-#  network_input_buffer_3: beamform_output_buffer_3
-#  frb_out_buf: frb_output_buffer
+#  gpu_1:
+#    commands: *command_list
+#    kotekan_stage: hsaProcess
+#    gpu_id: 1
+#    in_buffers:
+#      network_buf: gpu_input_buffer_1
+#      lost_samples_buf: lost_samples_buffer
+#    out_buffers:
+#      output_buf: gpu_output_buffer_1
+#  gpu_2:
+#    commands: *command_list
+#    kotekan_stage: hsaProcess
+#    gpu_id: 2
+#    in_buffers:
+#      network_buf: gpu_input_buffer_2
+#      lost_samples_buf: lost_samples_buffer
+#    out_buffers:
+#      output_buf: gpu_output_buffer_2
+#  gpu_3:
+#    commands: *command_list
+#    kotekan_stage: hsaProcess
+#    gpu_id: 3
+#    in_buffers:
+#      network_buf: gpu_input_buffer_3
+#      lost_samples_buf: lost_samples_buffer
+#    out_buffers:
+#      output_buf: gpu_output_buffer_3
+
+#block_size: 32
+#num_blocks: (num_elements/block_size)*(num_elements/block_size+1)/2
+#cpu_output_buffers:
+#    num_frames: buffer_depth * 4
+#    frame_size: num_local_freq * num_blocks * (block_size*block_size)*2*num_data_sets * 4
+#    metadata_pool: main_pool
+#    cpu_output_buffer:
+#        kotekan_buffer: standard
+#cpu:
+#  kotekan_stage: gpuSimulate
+#  log_level: debug
+#  network_in_buf: gpu_input_buffer_0
+#  corr_out_buf: cpu_output_buffer
+#check_data:
+#  kotekan_stage: testDataCheckInt
+#  first_buf: gpu_output_buffer_0
+#  second_buf: cpu_output_buffer
+
 
 check_data:
-  real: [98304]
+  real: [24576]
   imag: [0]
   const_data_check_0:
-    kotekan_process: constDataCheck
+    kotekan_stage: constDataCheck
     in_buf: gpu_output_buffer_0
-  const_data_check_1:
-    kotekan_process: constDataCheck
-    in_buf: gpu_output_buffer_1
-  const_data_check_2:
-    kotekan_process: constDataCheck
-    in_buf: gpu_output_buffer_2
-  const_data_check_3:
-    kotekan_process: constDataCheck
-    in_buf: gpu_output_buffer_3
 
-#accumulate:
-#    acc_0:
-#        kotekan_process: accumulate
-#        in_buf: gpu_output_buffer_0
-#        out_buf: file_output_buffer_0
-#    acc_1:
-#        kotekan_process: accumulate
-#        in_buf: gpu_output_buffer_1
-#        out_buf: file_output_buffer_1
-#    acc_2:
-#        kotekan_process: accumulate
-#        in_buf: gpu_output_buffer_2
-#        out_buf: file_output_buffer_2
-#    acc_3:
-#        kotekan_process: accumulate
-#        in_buf: gpu_output_buffer_3
-#        out_buf: file_output_buffer_3
 
+#  const_data_check_1:
+#    kotekan_stage: constDataCheck
+#    in_buf: gpu_output_buffer_1
+#  const_data_check_2:
+#    kotekan_stage: constDataCheck
+#    in_buf: gpu_output_buffer_2
+#  const_data_check_3:
+#    kotekan_stage: constDataCheck
+#    in_buf: gpu_output_buffer_3

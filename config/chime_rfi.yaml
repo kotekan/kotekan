@@ -156,26 +156,26 @@ lost_samples_buffer:
 #    lost_samples_buffer_3:
 #        kotekan_buffer: standard
 
-#Processes
+#Stages
 #gen_data:
 #  type: const
 #  value: 255
 #  test_data_gen_0:
-#    kotekan_process: testDataGen
+#    kotekan_stage: testDataGen
 #    network_out_buf: network_buffer_0
 #  test_data_gen_1:
-#    kotekan_process: testDataGen
+#    kotekan_stage: testDataGen
 #    network_out_buf: network_buffer_1
 #  test_data_gen_2:
-#    kotekan_process: testDataGen
+#    kotekan_stage: testDataGen
 #    network_out_buf: network_buffer_2
 #  test_data_gen_3:
-#    kotekan_process: testDataGen
+#    kotekan_stage: testDataGen
 #    network_out_buf: network_buffer_3
 
 cpu_affinity: [2,3,8,9]
 dpdk:
-    kotekan_process: dpdkCore
+    kotekan_stage: dpdkCore
     # Format is index = lcore, value = cpu core
     lcore_cpu_map: [0,1,6,7]
     master_lcore_cpu: 2
@@ -205,22 +205,22 @@ zero_samples:
     duplicate_ls_buffer: False
     lost_samples_buf: lost_samples_buffer
     zero_0:
-        kotekan_process: zeroSamples
+        kotekan_stage: zeroSamples
         out_buf: network_buffer_0
         out_lost_sample_buffers:
             - lost_samples_buffer_0
     zero_1:
-        kotekan_process: zeroSamples
+        kotekan_stage: zeroSamples
         out_buf: network_buffer_1
         out_lost_sample_buffers:
             - lost_samples_buffer_1
     zero_2:
-        kotekan_process: zeroSamples
+        kotekan_stage: zeroSamples
         out_buf: network_buffer_2
         out_lost_sample_buffers:
             - lost_samples_buffer_2
     zero_3:
-        kotekan_process: zeroSamples
+        kotekan_stage: zeroSamples
         out_buf: network_buffer_3
         out_lost_sample_buffers:
             - lost_samples_buffer_3
@@ -257,7 +257,7 @@ gpu:
   n_intg: 24576
   frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 0
     bad_inputs: []
     updatable_rfi_zeroing: /rfi_masking/toggle
@@ -271,7 +271,7 @@ gpu:
       rfi_output_buf: gpu_rfi_output_buffer_0
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_0
   gpu_1:
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 1
     bad_inputs: []
     updatable_rfi_zeroing: /rfi_masking/toggle
@@ -285,7 +285,7 @@ gpu:
       rfi_output_buf: gpu_rfi_output_buffer_1
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_1
   gpu_2:
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 2
     bad_inputs: []
     updatable_rfi_zeroing: /rfi_masking/toggle
@@ -299,7 +299,7 @@ gpu:
       rfi_output_buf: gpu_rfi_output_buffer_2
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_2
   gpu_3:
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 3
     bad_inputs: []
     updatable_rfi_zeroing: /rfi_masking/toggle
@@ -322,25 +322,25 @@ rfi_broadcast:
 ##  destination_ip: 127.0.0.1
   gpu_0:
     frames_per_packet: 1
-    kotekan_process: rfiBroadcast
+    kotekan_stage: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_0
     rfi_mask: gpu_rfi_mask_output_buffer_0
     destination_port: 41215
   gpu_1:
     frames_per_packet: 1
-    kotekan_process: rfiBroadcast
+    kotekan_stage: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_1
     rfi_mask: gpu_rfi_mask_output_buffer_1
     destination_port: 41216
   gpu_2:
     frames_per_packet: 1
-    kotekan_process: rfiBroadcast
+    kotekan_stage: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_2
     rfi_mask: gpu_rfi_mask_output_buffer_2
     destination_port: 41217
   gpu_3:
     frames_per_packet: 1
-    kotekan_process: rfiBroadcast
+    kotekan_stage: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_3
     rfi_mask: gpu_rfi_mask_output_buffer_3
     destination_port: 41218
@@ -351,46 +351,46 @@ rfi_bad_input_finder:
   destination_port: 41219
   gpu_0:
     bi_frames_per_packet: 10
-    kotekan_process: rfiBadInputFinder
+    kotekan_stage: rfiBadInputFinder
     rfi_in: gpu_rfi_bad_input_buffer_0
   gpu_1:
     bi_frames_per_packet: 10
-    kotekan_process: rfiBadInputFinder
+    kotekan_stage: rfiBadInputFinder
     rfi_in: gpu_rfi_bad_input_buffer_1
   gpu_2:
     bi_frames_per_packet: 10
-    kotekan_process: rfiBadInputFinder
+    kotekan_stage: rfiBadInputFinder
     rfi_in: gpu_rfi_bad_input_buffer_2
   gpu_3:
     bi_frames_per_packet: 10
-    kotekan_process: rfiBadInputFinder
+    kotekan_stage: rfiBadInputFinder
     rfi_in: gpu_rfi_bad_input_buffer_3
 
 rfi_record:
   total_links: 1
   gpu_0:
-    kotekan_process: rfiRecord
+    kotekan_stage: rfiRecord
     write_to: /mnt/gong/RFI
     write_to_disk: false
     rfi_in: gpu_rfi_output_buffer_0
   gpu_1:
-    kotekan_process: rfiRecord
+    kotekan_stage: rfiRecord
     write_to: /mnt/gong/RFI
     write_to_disk: false
     rfi_in: gpu_rfi_output_buffer_1
   gpu_2:
-    kotekan_process: rfiRecord
+    kotekan_stage: rfiRecord
     write_to: /mnt/gong/RFI
     write_to_disk: false
     rfi_in: gpu_rfi_output_buffer_2
   gpu_3:
-    kotekan_process: rfiRecord
+    kotekan_stage: rfiRecord
     write_to: /mnt/gong/RFI
     write_to_disk: false
     rfi_in: gpu_rfi_output_buffer_3
 
 buffer_status:
-  kotekan_process: bufferStatus
+  kotekan_stage: bufferStatus
   time_delay: 5000000
 
 #RFI Live-view Paramters

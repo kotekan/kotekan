@@ -189,7 +189,7 @@ void mark_frame_full(struct Buffer * buf, const char * name, const int ID) {
 
         // If there are no consumers registered then we can just mark the buffer empty
         if (private_consumers_done(buf, ID) == 1) {
-            INFO("No consumers are registered on %s dropping data in frame %d...", buf->buffer_name, ID);
+            DEBUG("No consumers are registered on %s dropping data in frame %d...", buf->buffer_name, ID);
             buf->is_full[ID] = 0;
             if (buf->metadata[ID] != NULL) {
                 decrement_metadata_ref_count(buf->metadata[ID]);
@@ -325,8 +325,11 @@ uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, c
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 
+//TODO: temporary solution to not print buffer status on gossec
+#ifndef _GOSSEC
     if (print_stat == 1)
         print_buffer_status(buf);
+#endif
 
     if (buf->shutdown_signal == 1)
         return NULL;
@@ -349,7 +352,7 @@ void register_consumer(struct Buffer * buf, const char *name) {
     for (int i = 0; i < MAX_CONSUMERS; ++i) {
         if (buf->consumers[i].in_use == 0) {
             buf->consumers[i].in_use = 1;
-            strncpy(buf->consumers[i].name, name, MAX_PROCESS_NAME_LEN);
+            strncpy(buf->consumers[i].name, name, MAX_STAGE_NAME_LEN);
             CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
             return;
         }
@@ -374,7 +377,7 @@ void register_producer(struct Buffer * buf, const char *name) {
     for (int i = 0; i < MAX_PRODUCERS; ++i) {
         if (buf->producers[i].in_use == 0) {
             buf->producers[i].in_use = 1;
-            strncpy(buf->producers[i].name, name, MAX_PROCESS_NAME_LEN);
+            strncpy(buf->producers[i].name, name, MAX_STAGE_NAME_LEN);
             CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
             return;
         }
@@ -390,7 +393,7 @@ int private_get_consumer_id(struct Buffer * buf, const char * name) {
 
     for (int i = 0; i < MAX_CONSUMERS; ++i) {
         if (buf->consumers[i].in_use == 1 &&
-            strncmp(buf->consumers[i].name, name, MAX_PROCESS_NAME_LEN) == 0) {
+            strncmp(buf->consumers[i].name, name, MAX_STAGE_NAME_LEN) == 0) {
             return i;
         }
     }
@@ -401,7 +404,7 @@ int private_get_producer_id(struct Buffer * buf, const char * name) {
 
     for (int i = 0; i < MAX_PRODUCERS; ++i) {
         if (buf->producers[i].in_use == 1 &&
-            strncmp(buf->producers[i].name, name, MAX_PROCESS_NAME_LEN) == 0) {
+            strncmp(buf->producers[i].name, name, MAX_STAGE_NAME_LEN) == 0) {
             return i;
         }
     }
@@ -457,7 +460,7 @@ int private_consumers_done(struct Buffer * buf, const int ID) {
 
 int private_producers_done(struct Buffer * buf, const int ID) {
 
-    for (int i = 0; i < MAX_CONSUMERS; ++i) {
+    for (int i = 0; i < MAX_PRODUCERS; ++i) {
         if (buf->producers[i].in_use == 1 && buf->producers_done[ID][i] == 0)
             return 0;
     }
@@ -515,7 +518,7 @@ int wait_for_full_frame_timeout(struct Buffer* buf, const char * name,
     // This loop exists when is_full == 1 (i.e. a full buffer) AND
     // when this producer hasn't already marked this buffer as
     while ( (buf->is_full[ID] == 0 ||
-            buf->consumers_done[ID][consumer_id] == 1) && 
+            buf->consumers_done[ID][consumer_id] == 1) &&
             buf->shutdown_signal == 0 && err == 0) {
         err = pthread_cond_timedwait(&buf->full_cond, &buf->lock, &timeout);
     }
@@ -524,7 +527,7 @@ int wait_for_full_frame_timeout(struct Buffer* buf, const char * name,
 
     if (buf->shutdown_signal == 1)
         return -1;
-    
+
     if (err == ETIMEDOUT)
         return 1;
 
@@ -548,6 +551,30 @@ int get_num_full_frames(struct Buffer* buf)
     return numFull;
 }
 
+int get_num_consumers(struct Buffer * buf) {
+    int num_consumers = 0;
+    CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
+    for (int i = 0; i < MAX_CONSUMERS; ++i) {
+        if (buf->consumers[i].in_use == 1) {
+            num_consumers++;
+        }
+    }
+    CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
+    return num_consumers;
+}
+
+int get_num_producers(struct Buffer * buf) {
+    int num_producers = 0;
+    CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
+    for (int i = 0; i < MAX_PRODUCERS; ++i) {
+        if (buf->producers[i].in_use == 1) {
+            num_producers++;
+        }
+    }
+    CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
+    return num_producers;
+}
+
 void print_buffer_status(struct Buffer* buf)
 {
     int is_full[buf->num_frames];
@@ -568,12 +595,8 @@ void print_buffer_status(struct Buffer* buf)
         }
     }
     status_string[buf->num_frames] = '\0';
-//TODO: temporary solution to not print buffer status on gossec
-#ifndef _GOSSEC
+
     INFO("Buffer %s, status: %s", buf->buffer_name, status_string);
-#else
-    DEBUG("Buffer %s, status: %s", buf->buffer_name, status_string);
-#endif
 }
 
 void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf, int to_ID) {
@@ -598,6 +621,37 @@ void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf
     // If this is true then the to_buf already has a metadata container for this ID and its different!
     assert(to_buf->metadata[to_ID] == metadata_container);
     CHECK_ERROR( pthread_mutex_unlock(&to_buf->lock) );
+}
+
+void copy_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf, int to_ID) {
+
+    CHECK_ERROR( pthread_mutex_lock(&from_buf->lock) );
+    CHECK_ERROR( pthread_mutex_lock(&to_buf->lock) );
+
+    if (from_buf->metadata[from_ID] == NULL) {
+        WARN("No metadata in source buffer %s[%d], was this intended?", from_buf->buffer_name, from_ID);
+        // Cannot wait to update this to C++14 locks...
+        goto unlock_exit;
+    }
+
+    if (to_buf->metadata[to_ID] == NULL) {
+        WARN("No metadata in dest buffer %s[%d], was this intended?", from_buf->buffer_name, from_ID);
+        goto unlock_exit;
+    }
+
+    struct metadataContainer * from_metadata_container = from_buf->metadata[from_ID];
+    struct metadataContainer * to_metadata_container = to_buf->metadata[to_ID];
+
+    if (from_metadata_container->metadata_size != to_metadata_container->metadata_size) {
+        WARN("Metadata sizes don't match, cannot copy metadata!!");
+        goto unlock_exit;
+    }
+
+    memcpy(to_metadata_container->metadata, from_metadata_container->metadata, from_metadata_container->metadata_size);
+
+    unlock_exit:
+    CHECK_ERROR( pthread_mutex_unlock(&to_buf->lock) );
+    CHECK_ERROR( pthread_mutex_unlock(&from_buf->lock) );
 }
 
 void allocate_new_metadata_object(struct Buffer * buf, int ID) {
@@ -651,34 +705,17 @@ void swap_frames(struct Buffer * from_buf, int from_frame_id,
     assert(to_frame_id < to_buf->num_frames);
     assert(from_buf->aligned_frame_size == to_buf->aligned_frame_size);
 
-    CHECK_ERROR( pthread_mutex_lock(&from_buf->lock) );
-    CHECK_ERROR( pthread_mutex_lock(&to_buf->lock) );
-
-    // Check that we don't have more than one consumer on the from_buf.
-    int num_consumers = 0;
-    for (int i = 0; i < MAX_CONSUMERS; ++i) {
-        if (from_buf->consumers[i].in_use == 1) {
-            num_consumers++;
-        }
-    }
+    int num_consumers = get_num_consumers(from_buf);
     assert(num_consumers == 1);
-
-    // Check that we don't have more than one producer on the to_buf.
-    int num_producers = 0;
-    for (int i = 0; i < MAX_PRODUCERS; ++i) {
-        if (to_buf->producers[i].in_use == 1) {
-            num_producers++;
-        }
-    }
+    (void)num_consumers;
+    int num_producers = get_num_producers(to_buf);
     assert(num_producers == 1);
+    (void)num_producers;
 
     // Swap the frames
     uint8_t * temp_frame = from_buf->frames[from_frame_id];
     from_buf->frames[from_frame_id] = to_buf->frames[to_frame_id];
     to_buf->frames[to_frame_id] = temp_frame;
-
-    CHECK_ERROR( pthread_mutex_unlock(&to_buf->lock) );
-    CHECK_ERROR( pthread_mutex_unlock(&from_buf->lock) );
 
 }
 

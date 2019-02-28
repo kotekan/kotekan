@@ -23,9 +23,8 @@ samples_per_data_set: 32768
 buffer_depth: 64
 num_gpu_frames: 128
 block_size: 32
-cpu_affinity: [4,5,6,7,12,13,14,15]
+cpu_affinity: [1,6,7,9,14,15]
 num_ev: 4
-use_dataset_manager: True
 
 dataset_manager:
   use_dataset_broker: True
@@ -42,19 +41,36 @@ vis_buffer:
     kotekan_buffer: vis
   visbuf_10s_gain:
     kotekan_buffer: vis
+    buffer_depth: 384  # Before slow stage
   visbuf_10s_flags:
     kotekan_buffer: vis
-    buffer_depth: 512  # This is immediately before the first slow process so it needs a longer length
+    buffer_depth: 256  # Before slow stage
   visbuf_10s_stack:
     kotekan_buffer: vis
+    num_prod: 17000  # Approximation to the correct size
+  visbuf_10s_stack_ne:
+    kotekan_buffer: vis
+    num_ev: 0
     num_prod: 17000  # Approximation to the correct size
   visbuf_10s_mfreq:
     kotekan_buffer: vis
   visbuf_10s_stack_mfreq:
     kotekan_buffer: vis
-  visbuf_5s_26m:
+  visbuf_5s_26m_ungated:
     kotekan_buffer: vis
     buffer_depth: 4096
+    num_prod: 4096
+  visbuf_5s_26m_gated:
+    kotekan_buffer: vis
+    buffer_depth: 4096
+    num_prod: 4096
+  visbuf_5s_26m_ungated_post:
+    kotekan_buffer: vis
+    buffer_depth: 1024
+    num_prod: 4096
+  visbuf_5s_26m_gated_post:
+    kotekan_buffer: vis
+    buffer_depth: 1024
     num_prod: 4096
   visbuf_10s_cal:
     kotekan_buffer: vis
@@ -62,6 +78,11 @@ vis_buffer:
     buffer_depth: 1024  # Increase as this subset is produced very quickly
   visbuf_10s_timing:
     num_prod: 66
+    kotekan_buffer: vis
+    buffer_depth: 1024  # Increase as this subset is produced very quickly
+  visbuf_10s_timing_ne:
+    num_prod: 66
+    num_ev: 0
     kotekan_buffer: vis
     buffer_depth: 1024  # Increase as this subset is produced very quickly
 
@@ -79,82 +100,105 @@ updatable_config:
     kotekan_update_endpoint: "json"
     start_time: 1541039597.
     tag: "gain_20181101T023317.440691Z_cyga"
+  26m_gated:
+    kotekan_update_endpoint: "json"
+    enabled: false
+  26m_ungated:
+    kotekan_update_endpoint: "json"
+    enabled: false
 
-
-# Kotekan processes
+# Kotekan stages
 buffer_recv:
   n2:
-    kotekan_process: bufferRecv
+    kotekan_stage: bufferRecv
     buf: visbuf_10s_all
     listen_port: 11024
     cpu_affinity: [0, 8]
     num_threads: 2
-  26m:
-    kotekan_process: bufferRecv
-    buf: visbuf_5s_26m
+  26m_ungated:
+    kotekan_stage: bufferRecv
+    buf: visbuf_5s_26m_ungated
     listen_port: 11025
-#  26m_gated:
-#    kotekan_process: bufferRecv
-#    buf: visbuf_5s_26m
-#    listen_port: 11026
+  26m_gated:
+    kotekan_stage: bufferRecv
+    buf: visbuf_5s_26m_gated
+    listen_port: 11026
+
+switch_26m_ungated:
+  kotekan_stage: bufferSwitch
+  in_bufs:
+    - enabled: visbuf_5s_26m_ungated
+  out_buf: visbuf_5s_26m_ungated_post
+  updatable_config: "/updatable_config/26m_ungated"
+
+switch_26m_gated:
+  kotekan_stage: bufferSwitch
+  in_bufs:
+    - enabled: visbuf_5s_26m_gated
+  out_buf: visbuf_5s_26m_gated_post
+  updatable_config: "/updatable_config/26m_gated"
 
 apply_flags:
-  kotekan_process: receiveFlags
+  kotekan_stage: receiveFlags
   in_buf: visbuf_10s_all
   out_buf: visbuf_10s_flags
   updatable_config: "/updatable_config/flagging"
 
 vis_debug:
   n2:
-    kotekan_process: visDebug
+    kotekan_stage: visDebug
     in_buf: visbuf_10s_flags
-  26m:
-    kotekan_process: visDebug
-    in_buf: visbuf_5s_26m
+  26m_ungated:
+    kotekan_stage: visDebug
+    in_buf: visbuf_5s_26m_ungated_post
+  26m_gated:
+    kotekan_stage: visDebug
+    in_buf: visbuf_5s_26m_gated_post
 
 count_check:
   n2:
-    kotekan_process: countCheck
+    kotekan_stage: countCheck
     in_buf: visbuf_10s_flags
-  26m:
-    kotekan_process: countCheck
-    in_buf: visbuf_5s_26m
+  26m_ungated:
+    kotekan_stage: countCheck
+    in_buf: visbuf_5s_26m_ungated
+  26m_gated:
+    kotekan_stage: countCheck
+    in_buf: visbuf_5s_26m_gated
 
 apply_gains:
-  cpu_affinity: [1]
-  kotekan_process: applyGains
+  cpu_affinity: [4, 5]
+  num_threads: 2
+  kotekan_stage: applyGains
   in_buf: visbuf_10s_flags
   out_buf: visbuf_10s_gain
   gains_dir: "/mnt/recv1/calibration/gain_updates/"
   updatable_config: "/updatable_config/gains"
 
 stacking:
-  kotekan_process: baselineCompression
+  kotekan_stage: baselineCompression
   in_buf: visbuf_10s_gain
   out_buf: visbuf_10s_stack
   stack_type: chime_in_cyl
   exclude_inputs: [
-    46, 142, 688, 944, 960, 1058, 1166, 1225, 1314, 1521, 1543, 2032, 2034,
-    221, 222, 384, 385, 386, 387, 424, 425, 426, 427, 552, 553, 644, 645,    # Cable swaps feeds (and following lines)
-    646, 647, 650, 651, 672, 673, 674, 675, 682, 683, 906, 907, 1134, 1135,
-    1910, 1911, 1950, 1951
+    46, 142, 688, 944, 960, 1058, 1166, 1225, 1314, 1521, 1543, 2032, 2034
   ]
   num_threads: 2
   cpu_affinity: [2, 3]
 
 buffer_status:
-  kotekan_process: bufferStatus
+  kotekan_stage: bufferStatus
   print_status: false
 
 # Generate the calibration stream
 cal_subset:
-  kotekan_process: prodSubset
+  kotekan_stage: prodSubset
   in_buf: visbuf_10s_flags
   out_buf: visbuf_10s_cal
   prod_subset_type: autos
 
 timing_subset:
-  kotekan_process: prodSubset
+  kotekan_stage: prodSubset
   in_buf: visbuf_10s_flags
   out_buf: visbuf_10s_timing
   prod_subset_type: only_inputs
@@ -164,13 +208,13 @@ timing_subset:
 mfreq_subset:
   subset_list: *mfreq  # 10 good frequencies within the upper 1/4 band
   n2:
-    kotekan_process: freqSubset
+    kotekan_stage: freqSubset
     in_buf: visbuf_10s_flags
     out_buf: visbuf_10s_mfreq
-#  stack:
-#    kotekan_process: freqSubset
-#    in_buf: visbuf_10s_stack
-#    out_buf: visbuf_10s_stack_mfreq
+  stack:
+    kotekan_stage: freqSubset
+    in_buf: visbuf_10s_stack
+    out_buf: visbuf_10s_stack_mfreq
 
 buffer_writers:
   file_length: 256
@@ -179,62 +223,74 @@ buffer_writers:
   file_base: buffer
 
   cal:
-    kotekan_process: visCalWriter
+    kotekan_stage: visCalWriter
     in_buf: visbuf_10s_cal
     instrument_name: chimecal
     file_length: 256
     dir_name: cal
 
   timing:
-    kotekan_process: visCalWriter
+    kotekan_stage: visCalWriter
     in_buf: visbuf_10s_timing
     instrument_name: chimetiming
     dir_name: timing
+
+remove_ev:
+
+  chimestack:
+    kotekan_stage: removeEv
+    in_buf: visbuf_10s_stack
+    out_buf: visbuf_10s_stack_ne
+
+  timing:
+    kotekan_stage: removeEv
+    in_buf: visbuf_10s_timing
+    out_buf: visbuf_10s_timing_ne
+
 
 archive_writers:
 
   file_length: 512
   file_type: raw
-  write_ev: True
   root_path: /data/untransposed/
 
   n2_mf:
-    kotekan_process: visWriter
+    kotekan_stage: visWriter
     in_buf: visbuf_10s_mfreq
     instrument_name: chimeN2
 
   chimestack:
-    kotekan_process: visWriter
-    in_buf: visbuf_10s_stack
+    kotekan_stage: visWriter
+    in_buf: visbuf_10s_stack_ne
     instrument_name: chimestack
 
-#  26m:
-#    kotekan_process: visWriter
-#    in_buf: visbuf_5s_26m
-#    instrument_name: chime26m
+  26m:
+    kotekan_stage: visWriter
+    in_buf: visbuf_5s_26m_ungated_post
+    instrument_name: chime26m
 
-#  26m_gated:
-#    kotekan_process: visWriter
-#    in_buf: visbuf_5s_26m
-#    instrument_name: chime26mgated
+  26mgated:
+    kotekan_stage: visWriter
+    in_buf: visbuf_5s_26m_gated_post
+    instrument_name: chime26mgated
 
   cal:
-    kotekan_process: visWriter
+    kotekan_stage: visWriter
     in_buf: visbuf_10s_cal
     instrument_name: chimecal
     file_length: 256
 
   timing:
-    kotekan_process: visWriter
-    in_buf: visbuf_10s_timing
+    kotekan_stage: visWriter
+    in_buf: visbuf_10s_timing_ne
     instrument_name: chimetiming
-    write_ev: False
 
 
 # Transmit part of the stack to the recv1 for testing
-#buffer_send:
-#  server_ip: 10.1.50.11
-#  stack_mfreq:
-#    kotekan_process: bufferSend
-#    buf: visbuf_10s_stack_mfreq
-#    server_port: 14096
+buffer_send:
+  server_ip: 10.1.50.11
+  stack_mfreq:
+    kotekan_stage: bufferSend
+    buf: visbuf_10s_stack_mfreq
+    server_port: 14096
+

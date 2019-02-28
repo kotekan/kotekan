@@ -8,14 +8,15 @@
 
 #include "hsaCommand.hpp"
 #include "restServer.hpp"
+
 #include <mutex>
 
 /*
  * @class hsaRfiBadInput
  * @brief hsaCommand to average single input kurtosis values across a packet.
  *
- * This is an hsaCommand that launches the kernel (rfi_bad_input.hsaco) to compute and average 
- * spectral kurtosis estimates from individual inputs. These values are then used to determine  
+ * This is an hsaCommand that launches the kernel (rfi_bad_input.hsaco) to compute and average
+ * spectral kurtosis estimates from individual inputs. These values are then used to determine
  * which inputs are not functioning properly.
  *
  * @requires_kernel    rfi_bad_input.hasco
@@ -45,20 +46,19 @@
  *
  * @author Jacob Taylor
  */
-class hsaRfiBadInput: public hsaCommand
-{
+class hsaRfiBadInput : public hsaCommand {
 
 public:
     /// Constructor, initializes internal variables.
-    hsaRfiBadInput(Config& config, const string &unique_name,
-                            bufferContainer& host_buffers, hsaDeviceInterface& device);
+    hsaRfiBadInput(kotekan::Config& config, const string& unique_name,
+                   kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiBadInput();
     /// Rest Server callback function
-    void rest_callback(connectionInstance& conn, json& json_request);
+    void rest_callback(kotekan::connectionInstance& conn, json& json_request);
     /// Executes rfi_bad_input.hsaco kernel. Allocates kernel variables.
-    hsa_signal_t execute(int gpu_frame_id,
-                         hsa_signal_t precede_signal) override;
+    hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
+
 private:
     /// Length of the input frame
     uint32_t input_frame_len;

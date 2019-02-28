@@ -22,6 +22,11 @@ class time_spec(ctypes.Structure):
     ]
 
 
+class timeval(ctypes.Structure):
+    """Struct repr of a timeval type."""
+    _fields_ = [("tv_sec", ctypes.c_long), ("tv_usec", ctypes.c_long)]
+
+
 class VisMetadata(ctypes.Structure):
     """Wrap a visMetadata struct.
     """
@@ -36,6 +41,28 @@ class VisMetadata(ctypes.Structure):
         ("num_elements", ctypes.c_uint32),
         ("num_prod", ctypes.c_uint32),
         ("num_ev", ctypes.c_uint32)
+    ]
+
+
+class psrCoord(ctypes.Structure):
+    """ Struct repr of psrCoord field in ChimeMetadata."""
+
+    _fields_ = [("ra", ctypes.ARRAY(ctypes.c_float, 10)),
+               ("dec", ctypes.ARRAY(ctypes.c_float, 10)),
+               ("scaling", ctypes.ARRAY(ctypes.c_uint32, 10))]
+
+
+class ChimeMetadata(ctypes.Structure):
+    """Wrap a ChimeMetadata struct."""
+
+    _fields_ = [
+        ("fpga_seq_num", ctypes.c_uint64),
+        ("first_packet_recv_time", timeval),
+        ("gps_time", time_spec),
+        ("lost_timesamples", ctypes.c_int32),
+        ("stream_ID", ctypes.c_uint16),
+        ("psrCoord", psrCoord),
+        ("rfi_zeroed", ctypes.c_uint32)
     ]
 
 
@@ -296,7 +323,91 @@ class VisRaw(object):
         self.data = self.raw['data']
         self.metadata = self.raw['metadata']
         self.valid_frames = self.raw['valid']
+        self.file_metadata = metadata
 
     @staticmethod
     def _parse_filename(fname):
         return os.path.splitext(fname)[0]
+
+
+def freq_id_to_stream_id(f_id):
+    """ Convert a frequency ID to a stream ID. """
+    pre_encode = (0, (f_id % 16), (f_id / 16), (f_id / 256))
+    stream_id = ((pre_encode[0] & 0xF) +
+                 ((pre_encode[1] & 0xF) << 4) +
+                 ((pre_encode[2] & 0xF) << 8) +
+                 ((pre_encode[3] & 0xF) << 12))
+    return stream_id
+
+
+class GpuBuffer(object):
+    """Python representation of a GPU buffer dump.
+
+    Parameters
+    ----------
+    buffer : np.ndarray(dtype=np.uint32)
+        Visibility buffer as integers in blocked format.
+    metadata: ChimeMetadata
+        Associated metadata.
+    """
+
+    def __init__(self, buffer, metadata):
+
+        self.data = buffer
+        self.metadata = metadata
+
+    @classmethod
+    def from_file(cls, filename):
+        """Load a GpuBuffer from a kotekan dump file.
+        """
+
+        with io.FileIO(filename, 'rb') as fh:
+            # first 4 bytes are metadata size
+            fh.seek(4)
+            cm = ChimeMetadata()
+            fh.readinto(cm)
+            buf = np.frombuffer(fh.read(), dtype=np.uint32)
+
+        return cls(buf, cm)
+
+    @classmethod
+    def load_files(cls, pattern):
+        """Read a set of dump files as GpuBuffers.
+
+        Parameters
+        ----------
+        pattern : str
+            A globable pattern to read.
+
+        Returns
+        -------
+        buffers : list of GpuBuffers
+        """
+        import glob
+
+        return [cls.from_file(fname) for fname in sorted(glob.glob(pattern))]
+
+    @classmethod
+    def to_files(cls, buffers, basename):
+        """Write a list of buffers to disk.
+
+        Parameters
+        ----------
+        buffers : list of GpuBuffers
+            Buffers to write.
+        basename : str
+            Basename for filenames.
+        """
+        pat = basename + "_%07d.dump"
+
+        msize_c = np.uint32(ctypes.sizeof(ChimeMetadata))
+
+        for ii, buf in enumerate(buffers):
+
+            with open(pat % ii, 'wb+') as fh:
+                # first write metadata size
+                fh.write(msize_c)
+                # then metadata itself
+                fh.write(buf.metadata)
+                # finally visibility data
+                fh.write(buf.data.astype(dtype=np.uint32).tobytes())

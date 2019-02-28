@@ -13,12 +13,13 @@ set (KOTEKAN_CORE_SOURCES
               configUpdater.cpp
               errors.c
               kotekanLogging.cpp
-              KotekanProcess.cpp
+              kotekanMode.cpp
               metadata.c
               metadataFactory.cpp
-              processFactory.cpp
               prometheusMetrics.cpp
               restServer.cpp
+              Stage.cpp
+              StageFactory.cpp
        )
 
 add_library ( kotekan_core
@@ -26,8 +27,8 @@ add_library ( kotekan_core
 
 target_link_libraries( kotekan_core ${CMAKE_THREAD_LIBS_INIT} )
 #target_link_libraries( kotekan_core libinclude )
-target_link_libraries( kotekan_core event )
-target_link_libraries( kotekan_core event_pthreads )
+#target_link_libraries( kotekan_core event )
+#target_link_libraries( kotekan_core event_pthreads )
 
 if( OPENSSL_FOUND )
     target_link_libraries(kotekan_core ${OPENSSL_LIBRARIES})

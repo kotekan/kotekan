@@ -1,22 +1,23 @@
 /**
  * @file
  * @brief Displays CHIME metadata for a given buffer.
- *  - chimeMetadataDump : public KotekanProcess
+ *  - chimeMetadataDump : public Stage
  */
 #ifndef CHIME_METADATA_DUMP_HPP
 #define CHIME_METADATA_DUMP_HPP
 
+#include "Stage.hpp"
 #include "buffer.h"
-#include "KotekanProcess.hpp"
 #include "errors.h"
 #include "util.h"
+
 #include <unistd.h>
 
 /**
  * @class chimeMetadataDump
  * @brief Displays CHIME metedata for a given buffer
  *
- * This is a simple process which prints (via the @c INFO mechanism)
+ * This is a simple stage which prints (via the @c INFO mechanism)
  * CHIME metadata from a target buffer.
  *
  * @par Buffers
@@ -28,21 +29,21 @@
  *
  */
 
-class chimeMetadataDump : public KotekanProcess {
+class chimeMetadataDump : public kotekan::Stage {
 public:
-    ///Constructor.
-    chimeMetadataDump(Config &config,
-                  const string& unique_name,
-                  bufferContainer &buffer_container);
+    /// Constructor.
+    chimeMetadataDump(kotekan::Config& config, const string& unique_name,
+                      kotekan::bufferContainer& buffer_container);
 
-    ///Destructor.
+    /// Destructor.
     ~chimeMetadataDump();
 
     /// Primary loop, which waits on input frames, prints the metadata.
     void main_thread() override;
+
 private:
-    ///Input kotekanBuffer.
-    struct Buffer *in_buf;
+    /// Input kotekanBuffer.
+    struct Buffer* in_buf;
 };
 
 #endif

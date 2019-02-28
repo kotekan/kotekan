@@ -57,7 +57,7 @@ You should now be able to build with airspy,
 
 FFTW
 -----
-To include **FFTW** processes:
+To include **FFTW** stages:
 
 .. code:: bash
 

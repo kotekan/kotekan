@@ -1,14 +1,14 @@
 /**
  * @file
  * @brief Contains a 4-buffer data generation producer for kotekan.
- *  - testDataGenQuad : public KotekanProcess
+ *  - testDataGenQuad : public Stage
  */
 
 #ifndef TEST_DATA_GEN_QUAD_H
 #define TEST_DATA_GEN_QUAD_H
 
+#include "Stage.hpp"
 #include "buffer.h"
-#include "KotekanProcess.hpp"
 
 
 /**
@@ -19,7 +19,7 @@
  *
  * @par Buffers
  * @buffer out_buf0 A kotekan buffer which will be fed, can be any size.
- *     @buffer_format Array of @c shorts 
+ *     @buffer_format Array of @c shorts
  *     @buffer_metadata none
  * @buffer out_buf0 A kotekan buffer which will be fed, can be any size.
  *     @buffer_format Array of @c shorts
@@ -42,11 +42,11 @@
  * @author Keith Vanderlinde
  *
  */
-class testDataGenQuad : public KotekanProcess {
+class testDataGenQuad : public kotekan::Stage {
 public:
     /// Constructor, also initializes internal variables from config.
-    testDataGenQuad(Config& config, const string& unique_name,
-                bufferContainer &buffer_container);
+    testDataGenQuad(kotekan::Config& config, const string& unique_name,
+                    kotekan::bufferContainer& buffer_container);
 
     /// Destructor, cleans up local allocs.
     ~testDataGenQuad();
@@ -55,7 +55,7 @@ public:
     void main_thread() override;
 
 private:
-    struct Buffer *buf[4];
+    struct Buffer* buf[4];
     std::string type;
     vector<int32_t> value;
 };

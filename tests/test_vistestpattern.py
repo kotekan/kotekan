@@ -17,7 +17,9 @@ params = {
     'buffer_depth': 5,
     'tolerance': 0.001,
     'report_freq': 60,
-    'log_level': 'DEBUG'
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 @pytest.fixture(scope="module")
@@ -34,7 +36,7 @@ def test_pattern(tmpdir_factory):
     dump_buffer = runner.DumpVisBuffer(
             str(tmpdir))
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'visTestPattern', {},
         fakevis_buffer,
         dump_buffer,
@@ -75,13 +77,13 @@ def test_pattern_noise(tmpdir_factory):
     fakevis_dump_conf['file_ext'] = 'dump'
     fakevis_dump_conf['base_dir'] = str(tmpdir)
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'visTestPattern', {},
         buffers_in = fakevis_buffer,
         buffers_out = dump_buffer,
         global_config = params,
-        parallel_process_type = 'rawFileWrite',
-        parallel_process_config = fakevis_dump_conf,
+        parallel_stage_type = 'rawFileWrite',
+        parallel_stage_config = fakevis_dump_conf,
         noise = True
     )
 
@@ -172,7 +174,7 @@ def test_pattern_no_noise_freq(tmpdir_factory):
     dump_buffer = runner.DumpVisBuffer(
             str(tmpdir))
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'visTestPattern', {"num_freq": 30},
         buffers_in = fakevis_buffer,
         buffers_out = dump_buffer,
@@ -235,13 +237,13 @@ def test_pattern_noise_freq(tmpdir_factory):
     fakevis_dump_conf['file_ext'] = 'dump'
     fakevis_dump_conf['base_dir'] = str(tmpdir)
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'visTestPattern', freq_params,
         buffers_in = fakevis_buffer,
         buffers_out = dump_buffer,
         global_config = freq_params,
-        parallel_process_type = 'rawFileWrite',
-        parallel_process_config = fakevis_dump_conf,
+        parallel_stage_type = 'rawFileWrite',
+        parallel_stage_config = fakevis_dump_conf,
         noise = True
     )
 

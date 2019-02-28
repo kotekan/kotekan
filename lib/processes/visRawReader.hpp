@@ -1,19 +1,27 @@
 /*****************************************
 @file
 @brief Read visFileRaw data.
-- visRawReader : public KotekanProcess
+- visRawReader : public kotekan::Stage
 *****************************************/
 #ifndef _VIS_RAW_READER_HPP
 #define _VIS_RAW_READER_HPP
 
-#include "json.hpp"
+#include "Config.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
-#include "visUtil.hpp"
-#include "visBuffer.hpp"
-#include "KotekanProcess.hpp"
+#include "bufferContainer.hpp"
 #include "datasetManager.hpp"
+#include "prometheusMetrics.hpp"
+#include "visUtil.hpp"
+
+#include <stddef.h>
+#include <stdint.h>
+#include <string>
+#include <utility>
+#include <vector>
 
 using json = nlohmann::json;
+
 
 /**
  * @class visRawReader
@@ -35,19 +43,15 @@ using json = nlohmann::json;
  * @conf    infile              String. Path to the (data-meta-pair of) files to
  *                              read (e.g. "/path/to/0000_000", without .data or
  *                              .meta).
- * @conf    use_dataset_manager Bool. This will register dataset states with the
- *                              datasetManager and write a dataset ID into the
- *                              frame if set to true.
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte, Rick Nitsche
  */
-class visRawReader : public KotekanProcess {
+class visRawReader : public kotekan::Stage {
 
 public:
     /// default constructor
-    visRawReader(Config &config,
-                 const string& unique_name,
-                 bufferContainer &buffer_container);
+    visRawReader(kotekan::Config& config, const string& unique_name,
+                 kotekan::bufferContainer& buffer_container);
 
     ~visRawReader();
 
@@ -57,47 +61,59 @@ public:
     /**
      * @brief Get the times in the file.
      **/
-    const std::vector<time_ctype>& times() { return _times; }
+    const std::vector<time_ctype>& times() {
+        return _times;
+    }
 
     /**
      * @brief Get the frequencies in the file.
      **/
-    const std::vector<std::pair<uint32_t, freq_ctype>>& freqs()
-    { return _freqs; }
+    const std::vector<std::pair<uint32_t, freq_ctype>>& freqs() {
+        return _freqs;
+    }
 
     /**
      * @brief Get the products in the file.
      **/
-    const std::vector<prod_ctype>& prods() { return _prods; }
+    const std::vector<prod_ctype>& prods() {
+        return _prods;
+    }
 
     /**
      * @brief Get the stack in the file.
      **/
-    const std::vector<stack_ctype>& stack() { return _stack; }
+    const std::vector<stack_ctype>& stack() {
+        return _stack;
+    }
 
     /**
      * @brief Get the inputs in the file.
      **/
-    const std::vector<input_ctype>& inputs() { return _inputs; }
+    const std::vector<input_ctype>& inputs() {
+        return _inputs;
+    }
 
     /**
      * @brief Get the ev axis in the file.
      **/
-    const std::vector<uint32_t>& ev() { return _ev; }
+    const std::vector<uint32_t>& ev() {
+        return _ev;
+    }
 
     /**
      * @brief Get the metadata saved into the file.
      **/
-    const json& metadata() { return _metadata; }
+    const json& metadata() {
+        return _metadata;
+    }
 
 private:
-
     /**
      * @brief Tells the datasetManager about all the datasetStates of the data
      * that is read.
      *
      * Adds the following states: metadata, time, prod, freq, input, eigenvalue
-     * and stack.
+     * and, if the data is stacked, stack.
      * Sets the dataset ID that should be given to the dataset coming from
      * the file that is read.
      */
@@ -124,7 +140,7 @@ private:
      **/
     int position_map(int ind);
 
-    Buffer * out_buf;
+    Buffer* out_buf;
 
     // The metadata
     json _metadata;
@@ -153,7 +169,7 @@ private:
     // the input file
     std::string filename;
     int fd;
-    uint8_t * mapped_file;
+    uint8_t* mapped_file;
 
     size_t file_frame_size, metadata_size, data_size, nfreq, ntime;
 
@@ -162,9 +178,6 @@ private:
 
     // The ID for the data coming from the file that is read.
     dset_id_t _dataset_id;
-
-    // Config value
-    bool _use_dataset_manager;
 };
 
 #endif

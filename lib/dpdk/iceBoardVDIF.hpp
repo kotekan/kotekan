@@ -7,30 +7,31 @@
 #ifndef ICE_BOARD_VDIF
 #define ICE_BOARD_VDIF
 
+#include "buffer.h"
 #include "iceBoardHandler.hpp"
 #include "packet_copy.h"
-#include "vdif_functions.h"
 #include "util.h"
-#include "buffer.h"
+#include "vdif_functions.h"
 
 /**
  * @brief Handler for extacting two elements from 8 links from an
  *        ICEboard running in PFB 16-element mode
  *
  * This mode only works when attached to an ICEboard running in shuffle16 mode with the PFB enabled.
- * The receiving system must be connected to all 8 FPGA links.  And this hander must be used in a group of 8,
- * with all 8 handers attached to the same output buffer and lost samples buffer.
- * The order of the links attached to the node however does not matter.
+ * The receiving system must be connected to all 8 FPGA links.  And this hander must be used in a
+ * group of 8, with all 8 handers attached to the same output buffer and lost samples buffer. The
+ * order of the links attached to the node however does not matter.
  *
  * The output data stream is standard VDIF see: https://vlbi.org/vdif/
  *
  * Note that when one more packets is lost the entire VDIF frame is marked as invalid. This requires
- * the use of the invalidateVDIFframes process to mark the VDIF frames as invalid.  Note once a frame is
- * marked as invalid there is no guarantee any data will be good, including the time stamp.
+ * the use of the invalidateVDIFframes stage to mark the VDIF frames as invalid.  Note once a
+ * frame is marked as invalid there is no guarantee any data will be good, including the time stamp.
  * Only the frame lenght can be considered be correct.
  *
  * @par REST Endpoints
- * @endpoint /<unique_name>/port_data ``[GET]`` Returns stats about the PORT and the packets received on it.
+ * @endpoint /<unique_name>/port_data ``[GET]`` Returns stats about the PORT and the packets
+ * received on it.
  *
  * @par Buffers
  * @buffer out_buf  Kotekan buffer to place the VDIF frames in.
@@ -42,38 +43,37 @@
  *
  * @config station_id   Int   Default 0x4151 ('AQ') Interger stored ascii denoting the standard VDIF
  *                            Station ID.  AQ == ARO
- * @config offset       Int   Defailt 0.  The offset from the first element.  i.e. a value of 2 would
- *                            select the 3nd and 4rd element (one based), a value of 0 gives 1st and 2nd element
+ * @config offset       Int   Defailt 0.  The offset from the first element.  i.e. a value of 2
+ * would select the 3nd and 4rd element (one based), a value of 0 gives 1st and 2nd element
  *
  * @author Andre Renard
  */
 class iceBoardVDIF : public iceBoardHandler {
 
 public:
-    iceBoardVDIF(Config &config, const std::string &unique_name,
-                 bufferContainer &buffer_container, int port);
+    iceBoardVDIF(kotekan::Config& config, const std::string& unique_name,
+                 kotekan::bufferContainer& buffer_container, int port);
 
-    virtual int handle_packet(struct rte_mbuf *mbuf);
+    virtual int handle_packet(struct rte_mbuf* mbuf);
 
 protected:
-
     bool advance_vdif_frame(uint64_t new_seq, bool first_time = false);
 
-    void copy_packet_vdif(struct rte_mbuf *mbuf);
+    void copy_packet_vdif(struct rte_mbuf* mbuf);
 
     void handle_lost_samples(int64_t lost_samples);
 
     void set_vdif_header_options(int vdif_frame_location, uint64_t seq);
 
-    struct Buffer * out_buf;
+    struct Buffer* out_buf;
     int32_t out_buf_frame_id = 0;
-    uint8_t * out_buf_frame;
+    uint8_t* out_buf_frame;
 
     /// The flag buffer tracking lost samples
-    struct Buffer * lost_samples_buf;
+    struct Buffer* lost_samples_buf;
 
     /// The active lost sample frame
-    uint8_t * lost_samples_frame;
+    uint8_t* lost_samples_frame;
 
     /// Current lost samples frame id
     int lost_samples_frame_id = 0;
@@ -103,22 +103,20 @@ protected:
     const int64_t num_elements = 2; // This is also the number of threads.
 };
 
-iceBoardVDIF::iceBoardVDIF(Config &config, const std::string &unique_name,
-                           bufferContainer &buffer_container, int port) :
+iceBoardVDIF::iceBoardVDIF(kotekan::Config& config, const std::string& unique_name,
+                           kotekan::bufferContainer& buffer_container, int port) :
     iceBoardHandler(config, unique_name, buffer_container, port) {
 
-    out_buf = buffer_container.get_buffer(
-                config.get<std::string>(unique_name, "out_buf"));
+    out_buf = buffer_container.get_buffer(config.get<std::string>(unique_name, "out_buf"));
     register_producer(out_buf, unique_name.c_str());
 
-    lost_samples_buf = buffer_container.get_buffer(
-                config.get<std::string>(unique_name, "lost_samples_buf"));
+    lost_samples_buf =
+        buffer_container.get_buffer(config.get<std::string>(unique_name, "lost_samples_buf"));
     register_producer(lost_samples_buf, unique_name.c_str());
     // We want to make sure the flag buffers are zeroed between uses.
     zero_frames(lost_samples_buf);
 
-    station_id = config.get_default<uint32_t>(
-                unique_name, "station_id", 0x4151); // AQ
+    station_id = config.get_default<uint32_t>(unique_name, "station_id", 0x4151); // AQ
     offset = config.get_default<uint32_t>(unique_name, "offset", 0);
 
     if (offset > 14) {
@@ -126,13 +124,14 @@ iceBoardVDIF::iceBoardVDIF(Config &config, const std::string &unique_name,
     }
 
     std::string endpoint_name = unique_name + "/port_data";
-    restServer::instance().register_get_callback(endpoint_name, [&] (connectionInstance &conn) {
-        json info = get_json_port_info();
-        conn.send_json_reply(info);
-    });
+    kotekan::restServer::instance().register_get_callback(endpoint_name,
+                                                          [&](kotekan::connectionInstance& conn) {
+                                                              json info = get_json_port_info();
+                                                              conn.send_json_reply(info);
+                                                          });
 }
 
-int iceBoardVDIF::handle_packet(struct rte_mbuf *mbuf) {
+int iceBoardVDIF::handle_packet(struct rte_mbuf* mbuf) {
 
     // Check if the packet is valid
     if (!iceBoardHandler::check_packet(mbuf))
@@ -198,14 +197,11 @@ bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
             // Compute the time at fpga_seq_num == 0 in nano seconds
             // relative to the year 2000 epoch
             vdif_base_time = gps_time.tv_sec * 1000000000 + gps_time.tv_nsec
-                             - new_seq * FPGA_PERIOD_NS
-                             - year_2000_epoch * 1000000000;
+                             - new_seq * FPGA_PERIOD_NS - year_2000_epoch * 1000000000;
         } else {
-            vdif_base_time = now.tv_sec * 1000000000 + now.tv_usec * 1000
-                             - new_seq * FPGA_PERIOD_NS
+            vdif_base_time = now.tv_sec * 1000000000 + now.tv_usec * 1000 - new_seq * FPGA_PERIOD_NS
                              - year_2000_epoch * 1000000000;
         }
-
     }
 
     allocate_new_metadata_object(out_buf, out_buf_frame_id);
@@ -225,7 +221,8 @@ bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
         mark_frame_full(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
         lost_samples_frame_id = (lost_samples_frame_id + 1) % lost_samples_buf->num_frames;
     }
-    lost_samples_frame = wait_for_empty_frame(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
+    lost_samples_frame =
+        wait_for_empty_frame(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
     if (lost_samples_frame == NULL)
         return false;
 
@@ -236,8 +233,8 @@ inline void iceBoardVDIF::handle_lost_samples(int64_t lost_samples) {
 
     const int64_t frame_size = vdif_packet_len * num_elements;
 
-    int64_t lost_sample_location = last_seq + samples_per_packet
-                                    - get_fpga_seq_num(out_buf, out_buf_frame_id);
+    int64_t lost_sample_location =
+        last_seq + samples_per_packet - get_fpga_seq_num(out_buf, out_buf_frame_id);
     uint64_t temp_seq = last_seq + samples_per_packet;
 
     // TODO this could be made more efficent by breaking it down into blocks of memsets.
@@ -256,7 +253,7 @@ inline void iceBoardVDIF::handle_lost_samples(int64_t lost_samples) {
     }
 }
 
-void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf *mbuf) {
+void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
 
     const int64_t frame_size = vdif_packet_len * num_elements;
 
@@ -278,8 +275,7 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf *mbuf) {
     // Create the parts of the VDIF frame that are in this packet.
     int from_idx = header_offset + offset;
     int mbuf_len = mbuf->data_len;
-    for (uint32_t time_step = 0;
-            time_step < samples_per_packet; ++time_step ){
+    for (uint32_t time_step = 0; time_step < samples_per_packet; ++time_step) {
         for (int freq = 0; freq < 128; ++freq) {
             for (int elem = 0; elem < num_elements; ++elem) {
 
@@ -287,19 +283,20 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf *mbuf) {
                 if (unlikely(from_idx >= mbuf_len)) {
                     mbuf = mbuf->next;
                     assert(mbuf);
-                    from_idx -= mbuf_len;  // Subtract the last mbuf_len from the current idx.
+                    from_idx -= mbuf_len; // Subtract the last mbuf_len from the current idx.
                     mbuf_len = mbuf->data_len;
                 }
 
-                int output_idx = vdif_frame_location * frame_size + // Frame location in output buffer.
+                int output_idx =
+                    vdif_frame_location * frame_size +           // Frame location in output buffer.
                     vdif_packet_len * num_elements * time_step + // Time step in output frame.
                     vdif_packet_len * elem + // VDIF pack for the correct element (ThreadID).
-                    vdif_header_len + // Offset for the vdif header.
-                    bin_number_16_elem(&port_stream_id, freq); // Location in the VDIF packet is just frequency.
+                    vdif_header_len +        // Offset for the vdif header.
+                    bin_number_16_elem(&port_stream_id,
+                                       freq); // Location in the VDIF packet is just frequency.
 
                 // After all that indexing copy one byte :)
-                out_buf_frame[output_idx] =
-                        *(rte_pktmbuf_mtod(mbuf, char *) + from_idx);
+                out_buf_frame[output_idx] = *(rte_pktmbuf_mtod(mbuf, char*) + from_idx);
 
                 from_idx += 1;
             }
@@ -311,16 +308,14 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf *mbuf) {
 
 inline void iceBoardVDIF::set_vdif_header_options(int vdif_frame_location, uint64_t seq) {
 
-    for(uint32_t time_step = 0; time_step < samples_per_packet; ++time_step) {
+    for (uint32_t time_step = 0; time_step < samples_per_packet; ++time_step) {
         for (int elem = 0; elem < num_elements; ++elem) {
-            int header_idx = vdif_frame_location +
-                vdif_packet_len * num_elements * time_step +
-                vdif_packet_len * elem;
+            int header_idx = vdif_frame_location + vdif_packet_len * num_elements * time_step
+                             + vdif_packet_len * elem;
 
             assert(header_idx < out_buf->frame_size);
 
-            struct VDIFHeader * vdif_header =
-                (struct VDIFHeader *)&out_buf_frame[header_idx];
+            struct VDIFHeader* vdif_header = (struct VDIFHeader*)&out_buf_frame[header_idx];
 
             vdif_header->invalid = 0;
             vdif_header->legacy = 0;
@@ -343,7 +338,6 @@ inline void iceBoardVDIF::set_vdif_header_options(int vdif_frame_location, uint6
             uint64_t cur_time = (seq + time_step) * FPGA_PERIOD_NS + vdif_base_time;
             vdif_header->seconds = (cur_time) / 1000000000;
             vdif_header->data_frame = (cur_time % 1000000000) / FPGA_PERIOD_NS;
-
         }
     }
 }

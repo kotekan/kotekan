@@ -8,9 +8,10 @@
 #define HSA_PULSAR_UPDATE_PHASE_H
 
 #include "hsaCommand.hpp"
+#include "restServer.hpp"
+
 #include <mutex>
 #include <thread>
-#include "restServer.hpp"
 
 /**
  * @class hsaPulsarUpdatePhase
@@ -24,13 +25,13 @@
  * to give an array of phase delay of size 2048*10*2 to be provided as input for
  * hsaBeamformPulsar.cpp and the kernel pulsar_beamformer.hsaco.
  * There are two banks of phases to alternate between to avoid read/write conflict.
- * Each of the 10 source position (and an associated scaling factor) can be 
+ * Each of the 10 source position (and an associated scaling factor) can be
  * changed/re-pointed on a per beam basis via endpoint.
  *
  * The gain path is registered as a subscriber to an updatable config block.
  *
  * @par REST Endpoints
- * @endpoint  /update_pulsar/<gpu id>   ``POST`` Trigger re-pointing of a 
+ * @endpoint  /update_pulsar/<gpu id>   ``POST`` Trigger re-pointing of a
  *            specific beam at RA+Dec with a scaling factor.
  *            requires json values      "beam", "ra", "dec", "scaling"
  *            update config             source_ra[beam], source_dec[beam], psr_scaling[beam]
@@ -45,22 +46,24 @@
  * @conf   num_beams            Int (default 10). Number of pulsars
  * @conf   feed_sep_NS          Float (default 0.3048). N-S feed separation in m.
  * @conf   feed_sep_EW          Float (default 22.0). E-W feed separation in m.
- * @conf   default_gains        Float array (default 1+1j). Default gain value if gain file is missing
+ * @conf   default_gains        Float array (default 1+1j). Default gain value if gain file is
+ * missing
  * @conf   source_ra            Float array - 10 initial RA (in deg) to form beams on.
  * @conf   source_dec           Float array - 10 initial Dec (in deg) to form beams on.
- * @conf   psr_scaling          Int array - 10 nominal scaling for all beams (can be changed on per beam basis via endpoint)
+ * @conf   psr_scaling          Int array - 10 nominal scaling for all beams (can be changed on per
+ * beam basis via endpoint)
  *
  * @author Cherry Ng
  *
  */
 
 
-class hsaPulsarUpdatePhase: public hsaCommand
-{
+class hsaPulsarUpdatePhase : public hsaCommand {
 public:
-    ///Constructor, also initializes internal variables from config, allocates host_gain, host_phase_0, host_pahse_1, and set up 2 endpoints
-    hsaPulsarUpdatePhase( Config &config,const string &unique_name,
-                        bufferContainer &host_buffers, hsaDeviceInterface &device);
+    /// Constructor, also initializes internal variables from config, allocates host_gain,
+    /// host_phase_0, host_pahse_1, and set up 2 endpoints
+    hsaPulsarUpdatePhase(kotekan::Config& config, const string& unique_name,
+                         kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor, cleans up local allocs.
     virtual ~hsaPulsarUpdatePhase();
@@ -69,28 +72,28 @@ public:
     int wait_on_precondition(int gpu_frame_id) override;
 
     /// Endpoint for providing new directory path for gain updates
-    bool update_gains_callback(nlohmann::json &json);
+    bool update_gains_callback(nlohmann::json& json);
 
-    /// Figure our LST at this frame and the Alt-Az of the 10 sources, then calculate phase delays at each input
-    void calculate_phase(struct psrCoord psr_coord, timespec time_now, float freq_now, float *gain, float *output);
+    /// Figure our LST at this frame and the Alt-Az of the 10 sources, then calculate phase delays
+    /// at each input
+    void calculate_phase(struct psrCoord psr_coord, timespec time_now, float freq_now, float* gain,
+                         float* output);
 
     /// Load gain, update phases every second by alternating the use of 2 banks.
-    hsa_signal_t execute(int gpu_frame_id,
-                         hsa_signal_t precede_signal) override;
+    hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
     void finalize_frame(int frame_id);
 
     /// Endpoint for providing new pulsar target (RA, Dec, sacling factor, beam_id)
-    void pulsar_grab_callback(connectionInstance& conn, json& json_request);
+    void pulsar_grab_callback(kotekan::connectionInstance& conn, json& json_request);
 
 private:
-
     /// Length of arrray of phases, should be 2048 x 10 x 2 for complex
     int32_t phase_frame_len;
     /// One of two alternating array of host phase
-    float * host_phase_0;
+    float* host_phase_0;
     /// Two of two alternating array of host phase
-    float * host_phase_1;
+    float* host_phase_1;
     /// 2048 elements x 2 for complex
     int32_t gain_len;
     /// Directory path where gain files are
@@ -98,7 +101,7 @@ private:
     /// Default gain values if gain file is missing for this freq
     vector<float> default_gains;
     /// Array of gains, float size of 2048*2
-    float * host_gain;
+    float* host_gain;
 
     /// Number of elements, should be 2048
     uint32_t _num_elements;
@@ -110,11 +113,11 @@ private:
     /// Metadata buffer precondition ID
     int32_t metadata_buffer_precondition_id;
     /// Buffer for accessing metadata
-    Buffer * metadata_buf;
+    Buffer* metadata_buf;
 
     /// 10 pulsar RA, DEC and scaling factor
-    struct psrCoord psr_coord;  //active coordinates to be passed to metatdata
-    struct psrCoord psr_coord_latest_update; //Last updated coordinates
+    struct psrCoord psr_coord;               // active coordinates to be passed to metatdata
+    struct psrCoord psr_coord_latest_update; // Last updated coordinates
     vector<float> _source_ra;
     vector<float> _source_dec;
     vector<int> _source_scl;
@@ -131,7 +134,7 @@ private:
     int32_t _feed_sep_EW;
 
     /// Which phase bank (0 or 1) is used by with gpu_frame_id
-    uint * bankID;
+    uint* bankID;
     /// Keep track of outstanding async copies involving phase bank 0
     uint bank_use_0;
     /// Keep track of outstanding async copies involving phase bank 1
@@ -156,6 +159,8 @@ private:
     /// Endpoint for updating psr coordinates
     std::string endpoint_psrcoord;
 
+    /// Config base (@TODO this is a huge hack replace with updatable config)
+    string config_base;
 };
 
 #endif

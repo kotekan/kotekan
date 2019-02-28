@@ -8,6 +8,7 @@
 
 #include "hsaCommand.hpp"
 #include "restServer.hpp"
+
 #include <mutex>
 
 /*
@@ -37,28 +38,26 @@
  *
  * @author Jacob Taylor
  */
-class hsaRfiZeroData: public hsaCommand
-{
+class hsaRfiZeroData : public hsaCommand {
 
 public:
     /// Constructor, initializes internal variables.
-    hsaRfiZeroData(Config& config, const string &unique_name,
-                            bufferContainer& host_buffers, hsaDeviceInterface& device);
+    hsaRfiZeroData(kotekan::Config& config, const string& unique_name,
+                   kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiZeroData();
 
     /// Function to hadle updatable config rest server calls
-    bool update_rfi_zero_flag(nlohmann::json &json);
+    bool update_rfi_zero_flag(nlohmann::json& json);
 
     /// Executes rfi_chime_zero.hsaco kernel. Allocates kernel variables.
-    hsa_signal_t execute(int gpu_frame_id,
-                         hsa_signal_t precede_signal) override;
-private:
+    hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
-    ///The current netowrk buffer frame id
+private:
+    /// The current netowrk buffer frame id
     int32_t network_buffer_id;
     /// The network buffer object (i.e. the host input data buffer)
-    Buffer * network_buf;
+    Buffer* network_buf;
     /// Length of the input frame, should be sizeof_uchar x n_elem x n_freq x nsamp
     uint32_t input_frame_len;
     /// Length of the RFI mask

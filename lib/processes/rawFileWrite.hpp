@@ -1,8 +1,9 @@
 #ifndef RAW_FILE_WRITE_H
 #define RAW_FILE_WRITE_H
 
+#include "Stage.hpp"
 #include "buffer.h"
-#include "KotekanProcess.hpp"
+
 #include <string>
 
 /**
@@ -24,15 +25,15 @@
  *
  * @author Andre Renard
  **/
-class rawFileWrite : public KotekanProcess {
+class rawFileWrite : public kotekan::Stage {
 public:
-    rawFileWrite(Config& config,
-                 const string& unique_name,
-                 bufferContainer &buffer_container);
+    rawFileWrite(kotekan::Config& config, const string& unique_name,
+                 kotekan::bufferContainer& buffer_container);
     virtual ~rawFileWrite();
     void main_thread() override;
+
 private:
-    struct Buffer *buf;
+    struct Buffer* buf;
     std::string base_dir;
     std::string file_name;
     std::string file_ext;

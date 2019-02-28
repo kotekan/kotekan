@@ -1,25 +1,28 @@
 #include "visDebug.hpp"
+
+#include "StageFactory.hpp"
 #include "buffer.h"
+#include "bufferContainer.hpp"
 #include "errors.h"
-#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
 #include "visBuffer.hpp"
-#include "bufferContainer.hpp"
 
 #include "fmt.hpp"
 
-#include <stdint.h>
 #include <atomic>
 #include <functional>
+#include <stdint.h>
 
-REGISTER_KOTEKAN_PROCESS(visDebug);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::prometheusMetrics;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(visDebug);
 
 
-visDebug::visDebug(Config& config,
-                   const string& unique_name,
-                   bufferContainer &buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&visDebug::main_thread, this)) {
+visDebug::visDebug(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&visDebug::main_thread, this)) {
 
     // Setup the input vector
     in_buf = get_buffer("in_buf");
@@ -35,8 +38,7 @@ void visDebug::main_thread() {
     while (!stop_thread) {
 
         // Wait for the buffer to be filled with data
-        if(wait_for_full_frame(in_buf, unique_name.c_str(),
-                               frame_id) == nullptr) {
+        if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
             break;
         }
 
@@ -47,13 +49,12 @@ void visDebug::main_thread() {
         DEBUG("%s", frame.summary().c_str());
 
         // Update the frame count for prometheus
-        fd_pair key {frame.freq_id, frame.dataset_id};
-        frame_counts[key]++;  // Relies on the fact that insertion zero intialises
-        std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\"",
-                                         frame.freq_id, frame.dataset_id);
-        prometheusMetrics::instance().add_process_metric(
-            "kotekan_visdebug_frame_total", unique_name, frame_counts[key], labels
-        );
+        fd_pair key{frame.freq_id, frame.dataset_id};
+        frame_counts[key]++; // Relies on the fact that insertion zero intialises
+        std::string labels =
+            fmt::format("freq_id=\"{}\",dataset_id=\"{}\"", frame.freq_id, frame.dataset_id);
+        prometheusMetrics::instance().add_stage_metric("kotekan_visdebug_frame_total", unique_name,
+                                                       frame_counts[key], labels);
 
         // Mark the buffers and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);

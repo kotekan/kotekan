@@ -26,6 +26,9 @@ global_params = {
     'wait': True,
     'combine_gains_time': 10.,
     'num_threads': 4,
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 
@@ -70,7 +73,7 @@ def apply_data(cmds, tmpdir_factory):
 
     out_dump_buffer = runner.DumpVisBuffer(str(apply_dir))
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'applyGains', global_params,
         buffers_in=fakevis_buffer,
         buffers_out=out_dump_buffer,

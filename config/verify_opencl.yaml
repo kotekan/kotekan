@@ -25,11 +25,9 @@ buffer_depth: 4
 num_gpu_frames: 16
 cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
-one: 1
-two: 2
-num_elements: 2048
+num_elements: 256 #2048
 num_local_freq: 1
-num_blocks: 2080 #(num_elements / block_size) * (num_elements / block_size + one) / two
+num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
 sizeof_int: 4
 
 # Pool
@@ -47,29 +45,29 @@ gpu_input_buffers:
 
 gpu_output_buffers:
     num_frames: buffer_depth * 4
-    frame_size: num_local_freq * num_blocks * (block_size*block_size)*two*num_data_sets  * sizeof_int
+    frame_size: num_local_freq * num_blocks * (block_size*block_size)*2*num_data_sets  * sizeof_int
     metadata_pool: main_pool
     gpu_output_buffer:
         kotekan_buffer: standard
 
 cpu_output_buffers:
     num_frames: buffer_depth * 4
-    frame_size: num_local_freq * num_blocks * (block_size*block_size)*two*num_data_sets  * sizeof_int
+    frame_size: num_local_freq * num_blocks * (block_size*block_size)*2*num_data_sets  * sizeof_int
     metadata_pool: main_pool
     cpu_output_buffer:
         kotekan_buffer: standard
 
 beamform_output_buffers:
-    frame_size: samples_per_data_set * num_data_sets * num_local_freq * two
+    frame_size: samples_per_data_set * num_data_sets * num_local_freq * 2
     metadata_pool: main_pool
     beamform_output_buffer:
         kotekan_buffer: standard
         num_frames: buffer_depth
 
 gen_data:
-  type: const
+  type: random #const
   value: 153
-  kotekan_process: testDataGen
+  kotekan_stage: testDataGen
   network_out_buf: gpu_input_buffer
 
 #data_format: dot4b
@@ -91,27 +89,27 @@ gpu:
   - name: clKVCorr
   - name: clOutputData
   gpu_0:
-    kotekan_process: clProcess
+    kotekan_stage: clProcess
     gpu_id: 1
     in_buffers:
       network_buf: gpu_input_buffer
     out_buffers:
       output_buf: gpu_output_buffer
 
-#cpu:
-#  kotekan_process: gpuSimulate
-#  log_level: debug
-#  network_in_buf: gpu_input_buffer
-#  corr_out_buf: cpu_output_buffer
-
-#check_data:
-#  kotekan_process: testDataCheckInt
-#  first_buf: gpu_output_buffer
-#  second_buf: cpu_output_buffer
+cpu:
+  kotekan_stage: gpuSimulate
+  log_level: debug
+  network_in_buf: gpu_input_buffer
+  corr_out_buf: cpu_output_buffer
 
 check_data:
-  imag: [0]
-  real: [98304] #[4816896] #98 * samples_per_dataset
-  const_data_check:
-    kotekan_process: constDataCheck
-    in_buf: gpu_output_buffer
+  kotekan_stage: testDataCheckInt
+  first_buf: gpu_output_buffer
+  second_buf: cpu_output_buffer
+
+#check_data:
+#  imag: [0]
+#  real: [98304] #[4816896] #98 * samples_per_dataset
+#  const_data_check:
+#    kotekan_stage: constDataCheck
+#    in_buf: gpu_output_buffer

@@ -18,7 +18,10 @@ writer_params = {
     'chunk_size': [2, 6, 5],
     'mode': 'test_pattern_simple',
     'test_pattern_value': [0, 0],
-    'file_type': 'hdf5fast'
+    'file_type': 'hdf5fast',
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 stack_params = {
@@ -28,6 +31,7 @@ stack_params = {
     'file_length': 3,
     'freq': [3, 777, 554],
     'chunk_size': [2, 64, 3],
+    'dataset_manager': {'use_dataset_broker':False},
 }
 
 @pytest.fixture(scope="module")
@@ -54,11 +58,12 @@ def transpose(tmpdir_factory):
         }
     }
     fakevis_buffer.buffer_block.update(fsel_buf)
-    fakevis_buffer.process_block.update({"fakevis_fsel": {
-            "kotekan_process": "freqSubset",
+    fakevis_buffer.stage_block.update({"fakevis_fsel": {
+            "kotekan_stage": "visDrop",
             "in_buf": fakevis_buffer.name,
             "out_buf": fsel_buf_name,
-            "subset_list": writer_params['freq'][:-1]
+            "freq": [writer_params['freq'][-1]],
+            "log_level": "debug"
         }
     })
     fakevis_buffer.name = fsel_buf_name
@@ -66,23 +71,22 @@ def transpose(tmpdir_factory):
     # Write fake data in hdf5 format
     tmpdir_h5 = str(tmpdir_factory.mktemp("dump_h5"))
     dumph5_conf = writer_params.copy()
-    dumph5_conf['freq_ids'] = dumph5_conf['freq']
     dumph5_conf['root_path'] = str(tmpdir_h5)
     dumph5_conf['file_name'] = 'dumph5'
-    dumph5_conf['write_ev'] = True
     dumph5_conf['node_mode'] = False
 
     params = writer_params.copy()
     params['root_path'] = tmpdir
 
-    writer = runner.KotekanProcessTester(
+    writer = runner.KotekanStageTester(
         'visWriter',
-        {'freq_ids': params['freq'], 'node_mode': False, 'write_ev': True, 'file_type': 'raw'},
+        {'node_mode': False, 'write_ev': True,
+        'file_type': 'raw'},
         fakevis_buffer,
         None,
         params,
-        parallel_process_type = 'visWriter',
-        parallel_process_config = dumph5_conf,
+        parallel_stage_type = 'visWriter',
+        parallel_stage_config = dumph5_conf,
         noise="random"
     )
 
@@ -101,7 +105,7 @@ def transpose(tmpdir_factory):
     # Tranpose and write data
     raw_buf = runner.ReadRawBuffer(infile, writer_params['chunk_size'])
     outfile = tmpdir + "/transposed"
-    transposer = runner.KotekanProcessTester(
+    transposer = runner.KotekanStageTester(
         'visTranspose',
         {'outfile': outfile, 'infile': infile,
             'chunk_size': writer_params['chunk_size']},
@@ -186,9 +190,8 @@ def transpose_stack(tmpdir_factory):
         num_frames=stack_params['file_length'],
         cadence=stack_params['cadence'],
         mode="chime",
-        use_dataset_manager=True
     )
-    # Add stacking process
+    # Add stacking stage
     stack_buf_name = "fake_stacked"
     stack_buf = { stack_buf_name: {
             'kotekan_buffer': 'vis',
@@ -197,11 +200,11 @@ def transpose_stack(tmpdir_factory):
         }
     }
     fakevis_buffer.buffer_block.update(stack_buf)
-    fakevis_buffer.process_block.update({"fakevis_stack": {
-            "kotekan_process": "baselineCompression",
+    fakevis_buffer.stage_block.update({"fakevis_stack": {
+            "kotekan_stage": "baselineCompression",
             "in_buf": fakevis_buffer.name,
             "out_buf": stack_buf_name,
-            "stack_type": "chime_in_cyl"
+            "stack_type": "chime_in_cyl",
         }
     })
     fakevis_buffer.name = stack_buf_name
@@ -209,11 +212,11 @@ def transpose_stack(tmpdir_factory):
     params = stack_params.copy()
     params['root_path'] = tmpdir
 
-    writer = runner.KotekanProcessTester(
+    writer = runner.KotekanStageTester(
         'visWriter',
         {
-            'freq_ids': params['freq'], 'node_mode': False, 'write_ev': True,
-            'file_type': 'raw', 'use_dataset_manager': True
+            'node_mode': False, 'write_ev': True,
+            'file_type': 'raw'
         },
         fakevis_buffer,
         None,
@@ -230,7 +233,7 @@ def transpose_stack(tmpdir_factory):
     # Tranpose and write data
     raw_buf = runner.ReadRawBuffer(infile, stack_params['chunk_size'])
     outfile = tmpdir + "/transposed"
-    transposer = runner.KotekanProcessTester(
+    transposer = runner.KotekanStageTester(
         'visTranspose',
         {
             'outfile': outfile, 'infile': infile,

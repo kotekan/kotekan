@@ -1,42 +1,45 @@
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <string.h>
-#include <pthread.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <fcntl.h>
-#include <sys/time.h>
-
 #include "streamSingleDishVDIF.hpp"
+
 #include "buffer.h"
 #include "errors.h"
 
-REGISTER_KOTEKAN_PROCESS(streamSingleDishVDIF);
+#include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
 
-streamSingleDishVDIF::streamSingleDishVDIF(Config& config,
-                                       const string& unique_name,
-                                       bufferContainer &buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&streamSingleDishVDIF::main_thread, this)){
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(streamSingleDishVDIF);
+
+streamSingleDishVDIF::streamSingleDishVDIF(Config& config, const string& unique_name,
+                                           bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container,
+          std::bind(&streamSingleDishVDIF::main_thread, this)) {
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
     // Apply config.
-    num_freq = config.get<int>(unique_name,"num_freq");
-    dest_port = config.get<uint32_t>(unique_name,"dest_port");
-    dest_ip = config.get<std::string>(unique_name,"dest_ip");
+    num_freq = config.get<int>(unique_name, "num_freq");
+    dest_port = config.get<uint32_t>(unique_name, "dest_port");
+    dest_ip = config.get<std::string>(unique_name, "dest_ip");
 }
-streamSingleDishVDIF::~streamSingleDishVDIF() {
-}
+streamSingleDishVDIF::~streamSingleDishVDIF() {}
 
 void streamSingleDishVDIF::main_thread() {
 
     int frame_id = 0;
-    uint8_t * frame = NULL;
+    uint8_t* frame = NULL;
 
     // Send files over the loop back address;
     // UDP variables
@@ -55,7 +58,7 @@ void streamSingleDishVDIF::main_thread() {
         return;
     }
 
-    memset((char *) &saddr_remote, 0, saddr_len);
+    memset((char*)&saddr_remote, 0, saddr_len);
     saddr_remote.sin_family = AF_INET;
     saddr_remote.sin_port = htons(dest_port);
     if (inet_aton(dest_ip.c_str(), &saddr_remote.sin_addr) == 0) {
@@ -64,22 +67,21 @@ void streamSingleDishVDIF::main_thread() {
         return;
     }
 
-    INFO ("Starting VDIF data stream thread to %s:%d", dest_ip.c_str(), dest_port);
+    INFO("Starting VDIF data stream thread to %s:%d", dest_ip.c_str(), dest_port);
 
     while (!stop_thread) {
 
         // Wait for a full buffer.
         frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-        if (frame == NULL) break;
+        if (frame == NULL)
+            break;
 
         // Send data to remote server.
         // TODO rate limit this output
         for (int i = 0; i < in_buf->frame_size / packet_size; ++i) {
 
-            int bytes_sent = sendto(socket_fd,
-                             (void *)&frame[packet_size*i],
-                             packet_size, 0,
-                             (struct sockaddr *)&saddr_remote, saddr_len);
+            int bytes_sent = sendto(socket_fd, (void*)&frame[packet_size * i], packet_size, 0,
+                                    (struct sockaddr*)&saddr_remote, saddr_len);
 
             if (bytes_sent == -1) {
                 ERROR("Cannot set VDIF packet");
@@ -90,11 +92,11 @@ void streamSingleDishVDIF::main_thread() {
                 ERROR("Did not send full vdif packet.");
             }
 
-//            if (i%2048 == 0) usleep(200);
+            //            if (i%2048 == 0) usleep(200);
         }
 
         // Mark buffer as empty.
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
-        frame_id = ( frame_id + 1 ) % in_buf->num_frames;
+        frame_id = (frame_id + 1) % in_buf->num_frames;
     }
 }

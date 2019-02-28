@@ -1,10 +1,11 @@
 #ifndef HEX_DUMP_H
 #define HEX_DUMP_H
 
+#include "Stage.hpp"
 #include "buffer.h"
-#include "KotekanProcess.hpp"
 #include "errors.h"
 #include "util.h"
+
 #include <unistd.h>
 
 /*
@@ -15,15 +16,15 @@
  * "imag": Expected imaginary value (int)
  */
 
-class hexDump : public KotekanProcess {
+class hexDump : public kotekan::Stage {
 public:
-    hexDump(Config &config,
-                  const string& unique_name,
-                  bufferContainer &buffer_container);
+    hexDump(kotekan::Config& config, const string& unique_name,
+            kotekan::bufferContainer& buffer_container);
     ~hexDump();
     void main_thread() override;
+
 private:
-    struct Buffer *buf;
+    struct Buffer* buf;
     int32_t len;
     int32_t offset;
 };

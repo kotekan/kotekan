@@ -3,7 +3,7 @@ REST Endpoints
 **************
 
 Interaction with a running instance of **kotekan** takes place via a set of REST endpoints.
-New processes should adhere to some basic conventions for where to put them and how to interact.
+New stages should adhere to some basic conventions for where to put them and how to interact.
 
 Both ``GET`` and ``POST`` endpoints are supported,
 messages to the latter should be formatted as ``json`` strings.
@@ -44,9 +44,9 @@ The kotekan framework registers a number of points
     metrics which serve a host of system state properties.
 
 
-Per-process
+Per-stage
 **************
-Individual processes can register REST endpoints using code similar to:
+Individual stages can register REST endpoints using code similar to:
 
 .. code-block:: c++
 
@@ -59,9 +59,9 @@ Individual processes can register REST endpoints using code similar to:
     rest_server.register_get_callback(unique_name + "/my_get_endpoint",
             std::bind(&myKotekanPorcess::endpoint_callback_func, this, _1));
 
-Processes should always register endpoints relative to ``/unique_name``.
+Stages should always register endpoints relative to ``/unique_name``.
 
-The endpoint should be removed in the destructor of the process registering it:
+The endpoint should be removed in the destructor of the stage registering it:
 
 .. code-block:: c++
 
@@ -73,7 +73,7 @@ The endpoint should be removed in the destructor of the process registering it:
 
 Shared Endpoints
 *****************
-If several processes need to share one endpoint, the endpoint can be created by the `configUpdater`.
+If several stages need to share one endpoint, the endpoint can be created by the `configUpdater`.
 
 .. doxygenclass:: configUpdater
 
@@ -82,7 +82,7 @@ Aliases
 To make things easier to access, it is possible to define aliases to endpoints in
 the config under ``the aliases:`` block in the ``rest_server`` block:
 
-.. code-block:: json
+.. code-block:: json-object
 
     rest_server:
         aliases:
@@ -98,7 +98,7 @@ The CPU affinity defaults to the global ``cpu_affinity:`` property
 
 To override that and pin it to say cores 3,4:
 
-.. code-block:: json
+.. code-block:: json-object
 
     rest_server:
         cpu_affinity: [3,4]

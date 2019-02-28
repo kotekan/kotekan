@@ -16,7 +16,9 @@ subset_params = {
     'freq_ids': [250],
     'buffer_depth': 5,
     'prod_subset_type': 'autos',
-    'use_dataset_manager': False
+    'dataset_manager': {
+        'use_dataset_broker': False
+    },
 }
 
 vis_params = {}
@@ -29,15 +31,12 @@ def subset_data(tmpdir_factory):
     fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=subset_params['freq_ids'],
         num_frames=subset_params['total_frames'],
-        use_dataset_manager=False
     )
 
     write_buffer = runner.VisWriterBuffer(
-        str(tmpdir), "raw",
-        subset_params['freq_ids'],
-        extra_config={'use_dataset_manager': False})
+        str(tmpdir), "raw")
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'prodSubset', vis_params,
         fakevis_buffer,
         write_buffer,

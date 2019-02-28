@@ -1,23 +1,31 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <functional>
+#include "fullPacketDump.hpp"
 
 #include "buffer.h"
 #include "errors.h"
 #include "output_formating.h"
-#include "fullPacketDump.hpp"
 #include "restServer.hpp"
+
+#include <fcntl.h>
+#include <functional>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 #define MAX_NUM_PACKETS 100
 
-REGISTER_KOTEKAN_PROCESS(fullPacketDump);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+using kotekan::connectionInstance;
+using kotekan::HTTP_RESPONSE;
+using kotekan::restServer;
+
+REGISTER_KOTEKAN_STAGE(fullPacketDump);
 
 fullPacketDump::fullPacketDump(Config& config, const string& unique_name,
-                               bufferContainer &buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                    std::bind(&fullPacketDump::main_thread, this)) {
+                               bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&fullPacketDump::main_thread, this)) {
 
     link_id = config.get<int>(unique_name, "link_id");
     buf = get_buffer("network_in_buf");
@@ -32,10 +40,10 @@ fullPacketDump::fullPacketDump(Config& config, const string& unique_name,
     _packet_frame = (uint8_t*)malloc(_packet_size * MAX_NUM_PACKETS);
 
     using namespace std::placeholders;
-    restServer &rest_server = restServer::instance();
+    restServer& rest_server = restServer::instance();
     endpoint = unique_name + "/packet_grab/" + std::to_string(link_id);
-    rest_server.register_post_callback(endpoint,
-            std::bind(&fullPacketDump::packet_grab_callback, this, _1, _2));
+    rest_server.register_post_callback(
+        endpoint, std::bind(&fullPacketDump::packet_grab_callback, this, _1, _2));
 }
 
 fullPacketDump::~fullPacketDump() {
@@ -54,8 +62,7 @@ void fullPacketDump::packet_grab_callback(connectionInstance& conn, json& json_r
     try {
         num_packets = json_request["num_packets"];
     } catch (...) {
-        conn.send_error("could not parse/find num_packets parameter",
-                        HTTP_RESPONSE::BAD_REQUEST);
+        conn.send_error("could not parse/find num_packets parameter", HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
 
@@ -65,7 +72,7 @@ void fullPacketDump::packet_grab_callback(connectionInstance& conn, json& json_r
     }
     int len = num_packets * _packet_size;
     std::lock_guard<std::mutex> lock(_packet_frame_lock);
-    conn.send_binary_reply((uint8_t *)_packet_frame, len);
+    conn.send_binary_reply((uint8_t*)_packet_frame, len);
 }
 
 void fullPacketDump::main_thread() {
@@ -77,37 +84,35 @@ void fullPacketDump::main_thread() {
 
 
     int first_time = 1;
-    uint8_t * frame = NULL;
+    uint8_t* frame = NULL;
 
     // Wait for, and drop full buffers
     while (!stop_thread) {
 
         // This call is blocking!
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL) break;
+        if (frame == NULL)
+            break;
 
         if (!_dump_to_disk) {
             std::lock_guard<std::mutex> lock(_packet_frame_lock);
             memcpy(_packet_frame, frame, _packet_size * MAX_NUM_PACKETS);
-            if (!got_packets) got_packets = true;
+            if (!got_packets)
+                got_packets = true;
         }
 
         if (_dump_to_disk) {
 
-	    if(first_time == 1) {
-		sleep(5);
-		first_time = 0;
-	    }
+            if (first_time == 1) {
+                sleep(5);
+                first_time = 0;
+            }
 
             const int file_name_len = 200;
             char file_name[file_name_len];
 
-            snprintf(file_name, file_name_len, "%s/%s/%s_%d_%07d.pkt",
-                _file_base.c_str(),
-                _data_set.c_str(),
-                host_name,
-                link_id,
-                file_num);
+            snprintf(file_name, file_name_len, "%s/%s/%s_%d_%07d.pkt", _file_base.c_str(),
+                     _data_set.c_str(), host_name, link_id, file_num);
 
             int fd = open(file_name, O_WRONLY | O_CREAT, 0666);
 

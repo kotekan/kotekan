@@ -1,21 +1,23 @@
 #ifndef RAW_FILE_READ_H
 #define RAW_FILE_READ_H
 
+#include "Stage.hpp"
 #include "buffer.h"
-#include "KotekanProcess.hpp"
+
+#include <cstdio>
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <cstdio>
 
-class rawFileRead : public KotekanProcess {
+class rawFileRead : public kotekan::Stage {
 public:
-    rawFileRead(Config& config, const string& unique_name,
-                bufferContainer &buffer_container);
+    rawFileRead(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& buffer_container);
     virtual ~rawFileRead();
     void main_thread() override;
+
 private:
-    struct Buffer *buf;
+    struct Buffer* buf;
     std::string base_dir;
     std::string file_name;
     std::string file_ext;

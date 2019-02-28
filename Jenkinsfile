@@ -11,7 +11,7 @@ pipeline {
           steps {
             sh '''cd build/
                   cmake -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive -DOPENBLAS_PATH=/opt/OpenBLAS/build/ -DUSE_LAPACK=ON -DUSE_OMP=ON -DBOOST_TESTS=ON ..
-                  make'''
+                  make -j 4'''
           }
         }
         stage('Build CHIME kotekan') {
@@ -19,7 +19,7 @@ pipeline {
             sh '''mkdir build_chime
                   cd build_chime/
                   cmake -DRTE_SDK=/opt/dpdk-stable-16.11.4/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive -DOPENBLAS_PATH=/opt/OpenBLAS/build/ -DUSE_LAPACK=ON -DUSE_OMP=ON -DBOOST_TESTS=ON ..
-                  make'''
+                  make -j 4'''
           }
         }
         stage('Build base kotekan') {
@@ -27,7 +27,7 @@ pipeline {
             sh '''mkdir build_base
                   cd build_base
                   cmake ..
-                  make'''
+                  make -j 4'''
           }
         }
         stage('Build MacOS kotekan') {
@@ -53,9 +53,18 @@ pipeline {
             sh '''export PATH=${PATH}:/var/lib/jenkins/.local/bin/
                   mkdir build-docs
                   cd build-docs/
-                  cmake -DCOMPILE_DOCS=ON ..
+                  cmake -DCOMPILE_DOCS=ON -DPLANTUML_PATH=/opt/plantuml/ ..
                   cd docs/
-                  make'''
+                  make -j 4'''
+          }
+        }
+        stage('Check code formatting') {
+          steps {
+            sh '''mkdir build-check-format
+                  cd build-check-format/
+                  cmake ..
+                  make clang-format
+                  git diff --exit-code'''
           }
         }
       }
