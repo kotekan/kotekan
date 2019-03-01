@@ -2,32 +2,29 @@
 #ifndef RINGMAP_HPP
 #define RINGMAP_HPP
 
-#include "gsl-lite.hpp"
-#include "KotekanProcess.hpp"
+#include "Config.hpp"
+#include "Stage.hpp"
 #include "visUtil.hpp"
 #include "restServer.hpp"
 #include "datasetManager.hpp"
 #include "fpga_header_functions.h"
+#include "gsl-lite.hpp"
 
-#define XX=0
-#define XY=1
-#define YX=2
-#define YY=3
-
-class mapMaker : public KotekanProcess {
+class mapMaker : public kotekan::Stage {
 
 public:
 
     // Default constructor
-    mapMaker(Config &config,
+    mapMaker(kotekan::Config &config,
              const string& unique_name,
-             bufferContainer &buffer_container);
+             kotekan::bufferContainer &buffer_container);
 
     // Main loop for the process
     void main_thread() override;
 
     /// REST endpoint to request a map
-    nlohmann::json rest_callback(connectionInstance& conn, nlohmann::json &json);
+    //nlohmann::json rest_callback(kotekan::connectionInstance& conn,
+    //                             nlohmann::json &json);
 
     /// Abbreviation for RingMap type
     typedef std::vector<std::vector<cfloat>> RingMap;
@@ -49,8 +46,8 @@ private:
     // Matrix from visibilities to map for every freq (same for each pol)
     std::map<uint32_t,std::vector<cfloat>> vis2map;
     // Store the maps and weight maps for every frequency
-    std::map<uint32_t,RingMap> map;
-    std::map<uint32_t,RingMap> wgt_map;
+    std::map<uint32_t,std::vector<std::vector<cfloat>>> map;
+    std::map<uint32_t,std::vector<std::vector<float>>> wgt_map;
     std::vector<float> ns_baselines;
     std::vector<stack_ctype> stacks;
     std::vector<prod_ctype> prods;
@@ -81,16 +78,15 @@ private:
 
     // Buffer to read from
     Buffer* in_buf;
-    dset_id_t ds_id;
 };
 
-class redundantStack : public KotekanProcess {
+class redundantStack : public kotekan::Stage {
 
 public:
 
-    redundantStack(Config &config,
+    redundantStack(kotekan::Config &config,
                    const string& unique_name,
-                   bufferContainer &buffer_container);
+                   kotekan::bufferContainer &buffer_container);
 
     void main_thread();
 
@@ -109,5 +105,10 @@ private:
     Buffer* in_buf;
     Buffer* out_buf;
 };
+
+std::pair<uint32_t, std::vector<rstack_ctype>> calculate_restack(
+    const std::vector<input_ctype>& inputs,
+    const std::vector<stack_ctype>& old_stacks
+);
 
 #endif

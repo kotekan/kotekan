@@ -1,28 +1,37 @@
 #include "ringmap.hpp"
 #include "visBuffer.hpp"
 #include "datasetManager.hpp"
+#include "StageFactory.hpp"
 #include "visCompression.hpp"
 #include <complex>
 #include <cblas.h>
 
 using namespace std::complex_literals;
+using namespace std::placeholders;
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::prometheusMetrics;
+using kotekan::Stage;
+using kotekan::restServer;
+
 const float pi = std::acos(-1);
 
-REGISTER_KOTEKAN_PROCESS(mapMaker);
+REGISTER_KOTEKAN_STAGE(mapMaker);
+REGISTER_KOTEKAN_STAGE(redundantStack);
 
 mapMaker::mapMaker(Config &config,
                    const string& unique_name,
                    bufferContainer &buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&mapMaker::main_thread, this)) {
+    Stage(config, unique_name, buffer_container,
+          std::bind(&mapMaker::main_thread, this)) {
 
     // Register REST callback
-    using namespace std::placeholders;
-    restServer::instance().register_post_callback("ringmap",
-        std::bind(&mapMaker::rest_callback,
-                this, std::placeholders::_1, std::placeholders::_2
-        )
-    );
+    //using namespace std::placeholders;
+    //restServer::instance().register_post_callback("ringmap",
+    //    std::bind(&mapMaker::rest_callback,
+    //            this, std::placeholders::_1, std::placeholders::_2
+    //    )
+    //);
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -46,8 +55,8 @@ void mapMaker::main_thread() {
     float beta = 0.;
 
     // Initialize the time indexing
-    max_fpga, min_fpga = 0;
-    latest = 0;
+    max_fpga = 0, min_fpga = 0;
+    latest = modulo<size_t>(num_time);
 
     while (!stop_thread) {
 
@@ -83,13 +92,15 @@ void mapMaker::main_thread() {
             for (uint p = 0; p < num_pol; p++) {
                 // transform into map slice
                 cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl,
-                            &alpha, vis2map.at(f_id).data, num_pix, &input_frame.vis[p*num_bl],
-                            1, &beta, &map.at(f_id).at(p).data[t_ind*num_pix], 1);
+                            &alpha, vis2map.at(f_id).data(), num_pix,
+                            input_frame.vis.data() + p * num_bl, 1, &beta,
+                            map.at(f_id).at(p).data() + t_ind * num_pix, 1);
 
                  // same for weights map
                 cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl,
-                            &alpha, vis2map.at(f_id).data, num_pix, &input_frame.weight[p*num_bl],
-                            1, &beta, &wgt_map.at(f_id).at(p).data[t_ind*num_pix], 1);
+                            &alpha, vis2map.at(f_id).data(), num_pix,
+                            input_frame.weight.data() + p * num_bl, 1, &beta,
+                            wgt_map.at(f_id).at(p).data() + t_ind * num_pix, 1);
             }
         }
         // Move to next frame
@@ -97,19 +108,22 @@ void mapMaker::main_thread() {
     }
 }
 
-nlohmann::json mapMaker::rest_callback(connectionInstance& conn, nlohmann::json& json) {
+/*
+nlohmann::json mapMaker::rest_callback(kotekan::connectionInstance& conn, nlohmann::json& json) {
     // return the map for the specified frequency and polarization in JSON format
     // make sure to lock the map arrays
 }
+*/
 
 bool mapMaker::setup(size_t frame_id) {
 
     // Wait for the input buffer to be filled with data
-    if(wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr)
+    if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
         return false;
+    }
 
-    auto frame = visFrameView(in_buf, frame_id);
-    ds_id = frame.dataset_id;
+    auto in_frame = visFrameView(in_buf, frame_id);
+    ds_id = in_frame.dataset_id;
     auto& dm = datasetManager::instance();
 
     change_dataset_state();
@@ -134,7 +148,7 @@ bool mapMaker::setup(size_t frame_id) {
     // TODO: make these config options ?
     num_pix = 512; // # unique NS baselines
     num_pol = 4;
-    num_time = 24. * 360. / (frame.fpga_seq_length * 2.56e-6);
+    num_time = 24. * 360. / (in_frame.fpga_seq_length * 2.56e-6);
     num_stack = sstate->get_num_stack();
     num_bl = num_stack / 4;
 
@@ -152,13 +166,13 @@ bool mapMaker::setup(size_t frame_id) {
 
     // initialize map containers
     for (auto fid : freq_id) {
-        map.at(fid).reserve(num_pol);
-        wgt_map.at(fid).reserve(num_pol);
         for (uint p = 0; p < num_pol; p++) {
             map.at(fid).at(p).reserve(num_pix*num_time);
             wgt_map.at(fid).at(p).reserve(num_pix*num_time);
         }
     }
+
+    return true;
 }
 
 void mapMaker::change_dataset_state() {
@@ -190,16 +204,18 @@ void mapMaker::change_dataset_state() {
                                  + ", metadata "
                                  + std::to_string(mstate != nullptr));
 
-    // compare git commit hashes
-    // TODO: enforce and crash here if build type is Release?
-    //if (mstate->get_git_version_tag() != std::string(get_git_commit_hash())) {
-    //    INFO("Git version tags don't match: dataset %zu has tag %s, while "\
-    //         "the local git version tag is %s", ds_id,
-    //         mstate->get_git_version_tag().c_str(),
-    //         get_git_commit_hash());
-    //}
+    /*
+     compare git commit hashes
+     TODO: enforce and crash here if build type is Release?
+    if (mstate->get_git_version_tag() != std::string(get_git_commit_hash())) {
+        INFO("Git version tags don't match: dataset %zu has tag %s, while "\
+             "the local git version tag is %s", ds_id,
+             mstate->get_git_version_tag().c_str(),
+             get_git_commit_hash());
+    }
+    */
 
-    if (!sstate->is_stacked())
+    if (sstate == nullptr)
         throw std::runtime_error("MapMaker requires visibilities stacked ");
     num_stack = sstate->get_num_stack();
 }
@@ -245,12 +261,14 @@ int64_t mapMaker::resolve_time(time_ctype t){
         // Increment position and remove previous entry
         min_fpga = times[latest++].fpga_count;
         times_map.erase(min_fpga);
+        size_t start = latest;
+        size_t stop = size_t(latest) + 1;
         for (auto fid : freq_id) {
             for (uint p = 0; p < num_pol; p++) {
-                std::fill(map.at(fid).at(p).begin() + latest*num_pix,
-                          map.at(fid).at(p).begin() + (latest+1)*num_pix, 0.);
-                std::fill(wgt_map.at(fid).at(p).begin() + latest*num_pix,
-                          wgt_map.at(fid).at(p).begin() + (latest+1)*num_pix, 0.);
+                std::fill(map.at(fid).at(p).begin() + start*num_pix,
+                          map.at(fid).at(p).begin() + stop*num_pix, 0.);
+                std::fill(wgt_map.at(fid).at(p).begin() + start*num_pix,
+                          wgt_map.at(fid).at(p).begin() + stop*num_pix, 0.);
             }
         }
         times[latest] = t;
@@ -272,8 +290,8 @@ int64_t mapMaker::resolve_time(time_ctype t){
 redundantStack::redundantStack(Config &config,
                    const string& unique_name,
                    bufferContainer &buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&mapMaker::main_thread, this)) {
+    Stage(config, unique_name, buffer_container,
+          std::bind(&redundantStack::main_thread, this)) {
 
     // Get buffers from config
     in_buf = get_buffer("in_buf");
@@ -287,49 +305,43 @@ void redundantStack::change_dataset_state(dset_id_t ds_id) {
     auto& dm = datasetManager::instance();
     state_id_t stack_state_id;
 
-    // TODO: get both states synchronoulsy?
-    auto input_state_ptr = dm.dataset_state<inputState>(ds_id);
+    // Get input & prod states synchronoulsy
+    const inputState*  input_state_ptr = dm.dataset_state<inputState>(ds_id);
+    prod_state_ptr = dm.dataset_state<prodState>(ds_id);
+    old_stack_state_ptr = dm.dataset_state<stackState>(ds_id);
+
     if (input_state_ptr == nullptr)
         throw std::runtime_error("Could not find inputState for " \
                                  "incoming dataset with ID "
                                  + std::to_string(ds_id) + ".");
-    prod_state_ptr = dm.dataset_state<prodState>(ds_id);
     if (prod_state_ptr == nullptr)
         throw std::runtime_error("Could not find prodState for " \
                                  "incoming dataset with ID "
                                  + std::to_string(ds_id) + ".");
-    old_stack_state_ptr = dm.dataset_state<stackState>(ds_id);
     if (old_stack_state_ptr == nullptr)
         throw std::runtime_error("Could not find stackState for " \
                                  "incoming dataset with ID "
                                  + std::to_string(ds_id) + ".");
 
-    auto sspec = calculate_stack(input_state_ptr->get_inputs(),
-                                 old_stack_state_ptr->get_stack_map());
+    auto sspec = calculate_restack(input_state_ptr->get_inputs(),
+                                   old_stack_state_ptr->get_stack_map());
     auto sstate = std::make_unique<stackState>(
         sspec.first, std::move(sspec.second));
 
     std::tie(stack_state_id, new_stack_state_ptr) =
         dm.add_state(std::move(sstate));
 
-    output_dset_id = dm.add_dataset(dataset(stack_state_id, ds_id));
+    output_dset_id = dm.add_dataset(ds_id, stack_state_id);
 }
 
 void redundantStack::main_thread() {
 
     frameID in_frame_id(in_buf);
+    frameID output_frame_id(out_buf);
 
-    if (!setup(in_frame_id))
-        return;
     auto input_frame = visFrameView(in_buf, in_frame_id);
     input_dset_id = input_frame.dataset_id;
-    try {
-        change_dataset_state(input_dset_id);
-    } catch (std::runtime_error& e) {
-        retry_broker = true;
-        WARN("redundantStack: Failure in " \
-             "datasetManager, retrying: %s", e.what());
-    }
+    change_dataset_state(input_dset_id);
 
     while (!stop_thread) {
 
@@ -341,10 +353,9 @@ void redundantStack::main_thread() {
 
         // Get a view of the current frame
         auto input_frame = visFrameView(in_buf, in_frame_id);
-        uint32_t f_id = input_frame.freq_id;
 
         // Check dataset id hasn't changed
-        if (input_frame.dataset_id != ds_id) {
+        if (input_frame.dataset_id != input_dset_id) {
             // TODO: what to do then ?
         }
 
@@ -371,8 +382,8 @@ void redundantStack::main_thread() {
                                          input_frame.num_ev);
 
         // Copy over the data we won't modify
-        output_frame.copy_nonconst_metadata(input_frame);
-        output_frame.copy_nonvis_buffer(input_frame);
+        output_frame.copy_metadata(input_frame);
+        output_frame.copy_data(input_frame, {visField::vis, visField::weight});
         output_frame.dataset_id = output_dset_id;
 
         // Zero the output frame
@@ -396,7 +407,7 @@ void redundantStack::main_thread() {
             cfloat vis = in_vis[old_ind];
             float weight = in_weight[old_ind];
 
-            auto& s = new_stack_rmap[old_ind];
+            auto& s = stack_rmap[old_ind];
             auto& old_s = old_stack_map[old_ind];
             auto& p = prods[old_s.prod];
 
@@ -443,53 +454,16 @@ void redundantStack::main_thread() {
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
-        mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
-
+        mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id);
+    }
 }
 
 using feed_diff = std::tuple<int8_t, int8_t, int8_t, int16_t>;
 
-// Modified to operate on a previous stack
-std::pair<uint32_t, std::vector<rstack_ctype>> calculate_stack(
-    const std::vector<input_ctype>& inputs,
-    const std::vector<stack_ctype>& old_stacks
-) {
-    // Calculate the set of baseline properties
-    std::vector<std::pair<feed_diff, bool>> bl_prop;
-    std::transform(std::begin(old_stacks), std::end(old_stacks),
-                   std::back_inserter(bl_prop),
-                   std::bind(calculate_chime_vis, _1.prod, inputs));
-
-    // Create an index array for doing the sorting
-    std::vector<uint32_t> sort_ind(old_stacks.size());
-    std::iota(std::begin(sort_ind), std::end(sort_ind), 0);
-
-    auto sort_fn = [&](const uint32_t& ii, const uint32_t& jj) -> bool {
-        return (bl_prop[ii].first <
-                bl_prop[jj].first);
-    };
-    std::sort(std::begin(sort_ind), std::end(sort_ind), sort_fn);
-
-    std::vector<rstack_ctype> stack_map(old_stacks.size());
-
-    feed_diff cur = bl_prop[sort_ind[0]].first;
-    uint32_t cur_stack_ind = 0;
-
-    for(auto& ind : sort_ind) {
-        if(bl_prop[ind].first != cur) {
-            cur = bl_prop[ind].first;
-            cur_stack_ind++;
-        }
-        stack_map[ind] = {cur_stack_ind, bl_prop[ind].second};
-    }
-
-    return {++cur_stack_ind, stack_map};
-}
-
 // Calculate the baseline parameters and whether the product must be
 // conjugated to get canonical ordering
 // Modified to return cylinder separation
-std::pair<feed_diff, bool> calculate_chime_vis(
+std::pair<feed_diff, bool> calculate_chime_vis_full(
     const prod_ctype& p, const std::vector<input_ctype>& inputs)
 {
 
@@ -525,4 +499,45 @@ std::pair<feed_diff, bool> calculate_chime_vis(
                         fb.feed_location - fa.feed_location),
         conjugate
     };
+}
+
+// Modified to operate on a previous stack
+std::pair<uint32_t, std::vector<rstack_ctype>> calculate_restack(
+    const std::vector<input_ctype>& inputs,
+    const std::vector<stack_ctype>& old_stacks
+) {
+    // Calculate the set of baseline properties
+    std::vector<std::pair<feed_diff, bool>> bl_prop;
+    std::vector<prod_ctype> old_prods;
+    std::transform(std::begin(old_stacks), std::end(old_stacks),
+                   std::back_inserter(old_prods),
+                   [&old_prods](stack_ctype s){return old_prods[s.prod];});
+    std::transform(std::begin(old_prods), std::end(old_prods),
+                   std::back_inserter(bl_prop),
+                   std::bind(calculate_chime_vis_full, _1, inputs));
+
+    // Create an index array for doing the sorting
+    std::vector<uint32_t> sort_ind(old_stacks.size());
+    std::iota(std::begin(sort_ind), std::end(sort_ind), 0);
+
+    auto sort_fn = [&](const uint32_t& ii, const uint32_t& jj) -> bool {
+        return (bl_prop[ii].first <
+                bl_prop[jj].first);
+    };
+    std::sort(std::begin(sort_ind), std::end(sort_ind), sort_fn);
+
+    std::vector<rstack_ctype> stack_map(old_stacks.size());
+
+    feed_diff cur = bl_prop[sort_ind[0]].first;
+    uint32_t cur_stack_ind = 0;
+
+    for(auto& ind : sort_ind) {
+        if(bl_prop[ind].first != cur) {
+            cur = bl_prop[ind].first;
+            cur_stack_ind++;
+        }
+        stack_map[ind] = {cur_stack_ind, bl_prop[ind].second};
+    }
+
+    return {++cur_stack_ind, stack_map};
 }
