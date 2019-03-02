@@ -108,6 +108,7 @@ private:
 
 std::pair<uint32_t, std::vector<rstack_ctype>> calculate_restack(
     const std::vector<input_ctype>& inputs,
+    const std::vector<prod_ctype>& all_prods,
     const std::vector<stack_ctype>& old_stacks
 );
 

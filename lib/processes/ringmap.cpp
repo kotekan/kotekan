@@ -324,6 +324,7 @@ void redundantStack::change_dataset_state(dset_id_t ds_id) {
                                  + std::to_string(ds_id) + ".");
 
     auto sspec = calculate_restack(input_state_ptr->get_inputs(),
+                                   prod_state_ptr->get_prods(),
                                    old_stack_state_ptr->get_stack_map());
     auto sstate = std::make_unique<stackState>(
         sspec.first, std::move(sspec.second));
@@ -338,6 +339,12 @@ void redundantStack::main_thread() {
 
     frameID in_frame_id(in_buf);
     frameID output_frame_id(out_buf);
+
+    // Wait for the input buffer to be filled with data
+    if(wait_for_full_frame(in_buf, unique_name.c_str(),
+                           in_frame_id) == nullptr) {
+        return;
+    }
 
     auto input_frame = visFrameView(in_buf, in_frame_id);
     input_dset_id = input_frame.dataset_id;
@@ -453,8 +460,8 @@ void redundantStack::main_thread() {
         }
 
         // Mark the buffers and move on
-        mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
-        mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id);
+        mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
+        mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id++);
     }
 }
 
@@ -504,6 +511,7 @@ std::pair<feed_diff, bool> calculate_chime_vis_full(
 // Modified to operate on a previous stack
 std::pair<uint32_t, std::vector<rstack_ctype>> calculate_restack(
     const std::vector<input_ctype>& inputs,
+    const std::vector<prod_ctype>& all_prods,
     const std::vector<stack_ctype>& old_stacks
 ) {
     // Calculate the set of baseline properties
@@ -511,7 +519,7 @@ std::pair<uint32_t, std::vector<rstack_ctype>> calculate_restack(
     std::vector<prod_ctype> old_prods;
     std::transform(std::begin(old_stacks), std::end(old_stacks),
                    std::back_inserter(old_prods),
-                   [&old_prods](stack_ctype s){return old_prods[s.prod];});
+                   [&all_prods](stack_ctype s){return all_prods[s.prod];});
     std::transform(std::begin(old_prods), std::end(old_prods),
                    std::back_inserter(bl_prop),
                    std::bind(calculate_chime_vis_full, _1, inputs));
