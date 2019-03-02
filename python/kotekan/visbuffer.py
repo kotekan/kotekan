@@ -292,29 +292,31 @@ class VisRaw(object):
 
         self.time = np.array(
             [(t['fpga_count'], t['ctime']) for t in self.index_map['time']],
-            dtype=[('fpga_count', np.uint64), ('ctime', np.float64)]
+            dtype=[(b'fpga_count', np.uint64), (b'ctime', np.float64)]
         )
 
         self.num_freq = metadata['structure']['nfreq']
         self.num_time = metadata['structure']['ntime']
         self.num_prod = len(self.index_map['prod'])
+        self.num_stack = (len(self.index_map['stack'])
+                          if 'stack' in self.index_map.keys() else self.num_prod)
         self.num_elements = len(self.index_map['input'])
         self.num_ev = len(self.index_map['ev'])
 
         # Packing of the data on disk. First byte indicates if data is present.
         data_struct = np.dtype([
-            ('vis', np.complex64, self.num_prod),
-            ('weight', np.float32, self.num_prod),
-            ('flags', np.float32, self.num_elements),
-            ("eval", np.float32,  self.num_ev),
-            ("evec", np.complex64, self.num_ev * self.num_elements),
-            ("erms", np.float32,  1),
-            ("gain", np.complex64, self.num_elements),
+            (b"vis", np.complex64, self.num_stack),
+            (b"weight", np.float32, self.num_stack),
+            (b"flags", np.float32, self.num_elements),
+            (b"eval", np.float32,  self.num_ev),
+            (b"evec", np.complex64, self.num_ev * self.num_elements),
+            (b"erms", np.float32,  1),
+            (b"gain", np.complex64, self.num_elements),
         ], align=True)
         frame_struct = np.dtype({
-            'names': ['valid', 'metadata', 'data'],
-            'formats': [np.uint8, VisMetadata, data_struct],
-            'itemsize': metadata['structure']['frame_size']
+            b"names": ['valid', 'metadata', 'data'],
+            b"formats": [np.uint8, VisMetadata, data_struct],
+            b"itemsize": metadata['structure']['frame_size']
         })
 
         # Load data into on-disk numpy array
