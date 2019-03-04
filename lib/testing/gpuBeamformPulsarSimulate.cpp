@@ -111,7 +111,7 @@ void gpuBeamformPulsarSimulate::calculate_phase(struct psrCoord psr_coord, times
                                                 float freq_now, float* gains, double* output) {
     float FREQ = freq_now;
     struct tm* timeinfo;
-    timeinfo = localtime (&time_now.tv_sec);
+    timeinfo = localtime(&time_now.tv_sec);
     uint year = timeinfo->tm_year + 1900;
     uint month = timeinfo->tm_mon + 1;
     if (month < 3) {

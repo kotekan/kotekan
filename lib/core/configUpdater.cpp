@@ -4,8 +4,8 @@
 #include "errors.h"
 #include "restServer.hpp"
 
-#include "json.hpp"
 #include "fmt.hpp"
+#include "json.hpp"
 
 #include <iostream>
 #include <signal.h>
@@ -160,12 +160,12 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
             if (it.value().type_name() != _init_values[uri].at(it.key()).type_name()
                 || ((it.value().type() == nlohmann::json::value_t::number_float)
                     ^ (_init_values[uri].at(it.key()).type()
-                       == nlohmann::json::value_t::number_float))){
-                std::string msg = fmt::format("configUpdater: Update to endpoint '{}' contained"
-                                              " value '{}' of type {} (expected type {}).",
-                                              uri.c_str(), it.key().c_str(),
-                                              json_type_name(it.value()),
-                                              json_type_name(_init_values[uri].at(it.key())));
+                       == nlohmann::json::value_t::number_float))) {
+                std::string msg =
+                    fmt::format("configUpdater: Update to endpoint '{}' contained"
+                                " value '{}' of type {} (expected type {}).",
+                                uri.c_str(), it.key().c_str(), json_type_name(it.value()),
+                                json_type_name(_init_values[uri].at(it.key())));
 
                 WARN(msg.c_str());
                 con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);

@@ -106,8 +106,8 @@ private:
     /// Number of frames received too late, every thread must be able to increment
     std::atomic<size_t> num_late_frames;
 
-	/// Entrancepoint for n threads. Each thread takes frames with a
-	/// different frame_id from the buffer and applies gains.
+    /// Entrancepoint for n threads. Each thread takes frames with a
+    /// different frame_id from the buffer and applies gains.
     void apply_thread();
 
     /// Vector to hold the thread handles

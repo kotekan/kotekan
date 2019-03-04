@@ -141,10 +141,10 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec t
 
     float FREQ = freq_now;
     struct tm* timeinfo;
-    timeinfo = localtime (&time_now.tv_sec);
+    timeinfo = localtime(&time_now.tv_sec);
     uint year = timeinfo->tm_year + 1900;
     uint month = timeinfo->tm_mon + 1;
-    if (month <3) {
+    if (month < 3) {
         month = month + 12;
         year = year - 1;
     }

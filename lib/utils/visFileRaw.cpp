@@ -110,10 +110,10 @@ void visFileRaw::create_file(const std::string& name,
     _name = name;
     lock_filename = create_lockfile(name);
     metadata_file = std::ofstream(name + ".meta", std::ios::binary);
-    if((fd = open((name + ".data").c_str(), oflags,
-                  S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) == -1) {
-        throw std::runtime_error(fmt::format("Failed to open file {}: {}.",
-                                       name + ".data", strerror(errno)));
+    if ((fd = open((name + ".data").c_str(), oflags, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH))
+        == -1) {
+        throw std::runtime_error(
+            fmt::format("Failed to open file {}: {}.", name + ".data", strerror(errno)));
     }
 
     // Preallocate data file (without increasing the length)

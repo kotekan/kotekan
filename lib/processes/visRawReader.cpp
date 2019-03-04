@@ -24,8 +24,8 @@
 #include <iostream>
 #include <memory>
 #include <regex>
-#include <stdexcept>
 #include <signal.h>
+#include <stdexcept>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -165,9 +165,9 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
 }
 
 visRawReader::~visRawReader() {
-    if(munmap(mapped_file, ntime * nfreq * file_frame_size) == -1) {
+    if (munmap(mapped_file, ntime * nfreq * file_frame_size) == -1) {
         ERROR(fmt::format("Failed to unmap file {}: {}.", filename + ".data", strerror(errno))
-              .c_str());
+                  .c_str());
         // Make sure kotekan is exiting...
         raise(SIGINT);
     }

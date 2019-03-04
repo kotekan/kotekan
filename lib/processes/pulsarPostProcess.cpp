@@ -185,7 +185,7 @@ void pulsarPostProcess::main_thread() {
         if (unlikely(startup == 1)) {
             startup = 0;
 
-            //GPS time, need ch_master
+            // GPS time, need ch_master
             time_now = get_gps_time(in_buf[0], in_buffer_ID[0]);
 
             struct timespec time_now_from_compute2 = compute_gps_time(first_seq_number);
@@ -204,11 +204,11 @@ void pulsarPostProcess::main_thread() {
             }
             uint32_t pkt_length_in_ns = _timesamples_per_pulsar_packet * 2560;
             uint32_t ns_offset = pkt_length_in_ns - (time_now.tv_nsec % pkt_length_in_ns);
-            float seq_number_offset_float = ns_offset / 2560. ;
+            float seq_number_offset_float = ns_offset / 2560.;
             uint seq_number_offset = round(seq_number_offset_float);
 
             current_input_location = seq_number_offset;
-            first_seq_number  = first_seq_number+seq_number_offset;
+            first_seq_number = first_seq_number + seq_number_offset;
             time_now = compute_gps_time(first_seq_number);
 
             // Fill the first output buffer headers
@@ -247,22 +247,21 @@ void pulsarPostProcess::main_thread() {
                         for (uint32_t p = 0; p < _num_pol; ++p) {
                             uint32_t out_index = 0;
                             if (_timesamples_per_pulsar_packet == 3125) {
-                                //freq->beam->packets->[time-pol]
+                                // freq->beam->packets->[time-pol]
                                 out_index = (thread_id * _num_pulsar + psr)
-                                            * _udp_pulsar_packet_size * _num_packet_per_stream
+                                                * _udp_pulsar_packet_size * _num_packet_per_stream
                                             + frame * _udp_pulsar_packet_size
-                                            + (in_frame_location * _num_pol + p )
-                                            + udp_pulsar_header_size ;
-                            }
-                            else if (_timesamples_per_pulsar_packet == 625) {
-                                //beam->packets->[time-freq-pol]
-                                out_index = psr *_udp_pulsar_packet_size * _num_packet_per_stream
+                                            + (in_frame_location * _num_pol + p)
+                                            + udp_pulsar_header_size;
+                            } else if (_timesamples_per_pulsar_packet == 625) {
+                                // beam->packets->[time-freq-pol]
+                                out_index = psr * _udp_pulsar_packet_size * _num_packet_per_stream
                                             + frame * _udp_pulsar_packet_size
                                             + (in_frame_location * _num_gpus * _num_pol
                                                + thread_id * _num_pol + p)
                                             + udp_pulsar_header_size;
-                            }
-                            else throw std::runtime_error("Unknown timesamples per VDIF packet.");
+                            } else
+                                throw std::runtime_error("Unknown timesamples per VDIF packet.");
 
                             // clang-format off
                             float real_float =
@@ -272,17 +271,21 @@ void pulsarPostProcess::main_thread() {
                                 ((in_buf_data[(i * _num_pulsar * _num_pol + psr * _num_pol + p) * 2 + 1])
                                 / float(psr_coord[thread_id].scaling[psr]) + 0.5) + 8;
                             // clang-format on
-                            if (real_float > 15) real_float = 15.;
-                            if (imag_float > 15) imag_float = 15.;
-                            if (real_float < 0) real_float = 0.;
-                            if (imag_float < 0) imag_float = 0.;
+                            if (real_float > 15)
+                                real_float = 15.;
+                            if (imag_float > 15)
+                                imag_float = 15.;
+                            if (real_float < 0)
+                                real_float = 0.;
+                            if (imag_float < 0)
+                                imag_float = 0.;
                             uint8_t real_part = int(real_float);
                             uint8_t imag_part = int(imag_float);
 
-                            out_buf[out_index] = ((real_part<<4) & 0xF0) + (imag_part & 0x0F);
-                        } //end loop pol
-                    }     //end loop psr
-                }         //end loop 4 GPUs
+                            out_buf[out_index] = ((real_part << 4) & 0xF0) + (imag_part & 0x0F);
+                        } // end loop pol
+                    }     // end loop psr
+                }         // end loop 4 GPUs
                 in_frame_location++;
             } // end looping i
             current_input_location = 0;

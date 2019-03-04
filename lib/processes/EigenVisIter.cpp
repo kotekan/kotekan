@@ -1,24 +1,26 @@
 #include "EigenVisIter.hpp"
 
+#include "LinearAlgebra.hpp"
 #include "chimeMetadata.h"
 #include "errors.h"
 #include "fpga_header_functions.h"
 #include "prometheusMetrics.hpp"
 #include "visBuffer.hpp"
-#include "LinearAlgebra.hpp"
 #include "visUtil.hpp"
 
+#include "fmt.hpp"
 
 #include <algorithm>
-#include "fmt.hpp"
-#include <cblas.h>
 #include <blaze/Blaze.h>
+#include <cblas.h>
 
 
 REGISTER_KOTEKAN_PROCESS(EigenVisIter);
 
-EigenVisIter::EigenVisIter(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container, std::bind(&EigenVisIter::main_thread, this)) {
+EigenVisIter::EigenVisIter(Config& config, const string& unique_name,
+                           bufferContainer& buffer_container) :
+    KotekanProcess(config, unique_name, buffer_container,
+                   std::bind(&EigenVisIter::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -29,8 +31,7 @@ EigenVisIter::EigenVisIter(Config& config, const string& unique_name, bufferCont
 
     // Masking params
     _bands_filled = config.get_default<std::vector<std::pair<int32_t, int32_t>>>(
-        unique_name, "bands_filled", {}
-    );
+        unique_name, "bands_filled", {});
     _block_fill_size = config.get_default<uint32_t>(unique_name, "block_fill_size", 0);
     _exclude_inputs = config.get_default<std::vector<uint32_t>>(unique_name, "exclude_inputs", {});
 
@@ -86,8 +87,7 @@ void EigenVisIter::main_thread() {
         }
 
         // Check that we have the full triangle
-        uint32_t num_prod_full = input_frame.num_elements *
-            (input_frame.num_elements + 1) / 2;
+        uint32_t num_prod_full = input_frame.num_elements * (input_frame.num_elements + 1) / 2;
         if (input_frame.num_prod != num_prod_full) {
             throw std::runtime_error("Eigenvectors require full correlation"
                                      " triangle");
@@ -107,9 +107,9 @@ void EigenVisIter::main_thread() {
         DynamicHermitian<cfloat> vis = to_blaze_herm(input_frame.vis);
 
         // Perform the actual eigen-decomposition
-        std::tie(eigpair, stats) = eigen_masked_subspace(vis, mask, _num_eigenvectors, _tol_eval,
-                                                         _tol_evec, _max_iterations, _num_ev_conv,
-                                                         _krylov, _subspace);
+        std::tie(eigpair, stats) =
+            eigen_masked_subspace(vis, mask, _num_eigenvectors, _tol_eval, _tol_evec,
+                                  _max_iterations, _num_ev_conv, _krylov, _subspace);
         auto& evals = eigpair.first;
         auto& evecs = eigpair.second;
 
@@ -164,47 +164,41 @@ void EigenVisIter::main_thread() {
 
 
 void EigenVisIter::update_metrics(uint32_t freq_id, dset_id_t dset_id, double elapsed_time,
-                                  const eig_t<cfloat>& eigpair,
-                                  const EigConvergenceStats& stats)
-{
+                                  const eig_t<cfloat>& eigpair, const EigConvergenceStats& stats) {
     // Update average write time in prometheus
     auto key = std::make_pair(freq_id, dset_id);
     auto& calc_time = calc_time_map[key];
     calc_time.add_sample(elapsed_time);
     prometheusMetrics::instance().add_process_metric("kotekan_eigenvisiter_comp_time_seconds",
-                                                   unique_name, calc_time.average());
+                                                     unique_name, calc_time.average());
 
     // Output eigenvalues to prometheus
     for (uint32_t i = 0; i < _num_eigenvectors; i++) {
-        std::string labels = fmt::format("eigenvalue=\"{}\",freq_id=\"{}\",dataset_id=\"{}\"",
-                                         i, freq_id, dset_id);
-        prometheusMetrics::instance().add_process_metric("kotekan_eigenvisiter_eigenvalue",
-                                                       unique_name,
-                                                       eigpair.first[_num_eigenvectors - 1 - i],
-                                                       labels);
+        std::string labels =
+            fmt::format("eigenvalue=\"{}\",freq_id=\"{}\",dataset_id=\"{}\"", i, freq_id, dset_id);
+        prometheusMetrics::instance().add_process_metric(
+            "kotekan_eigenvisiter_eigenvalue", unique_name,
+            eigpair.first[_num_eigenvectors - 1 - i], labels);
     }
 
     // Output RMS to prometheus
-    std::string labels = fmt::format("eigenvalue=\"rms\",freq_id=\"{}\",dataset_id=\"{}\"",
-                                     freq_id, dset_id);
+    std::string labels =
+        fmt::format("eigenvalue=\"rms\",freq_id=\"{}\",dataset_id=\"{}\"", freq_id, dset_id);
     prometheusMetrics::instance().add_process_metric("kotekan_eigenvisiter_eigenvalue", unique_name,
-                                                   stats.rms, labels);
+                                                     stats.rms, labels);
 
     // Output convergence stats
     labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\"", freq_id, dset_id);
     prometheusMetrics::instance().add_process_metric("kotekan_eigenvisiter_iterations", unique_name,
-                                                   stats.iterations, labels);
+                                                     stats.iterations, labels);
     prometheusMetrics::instance().add_process_metric("kotekan_eigenvisiter_eigenvalue_convergence",
-                                                   unique_name, stats.eps_eval, labels);
+                                                     unique_name, stats.eps_eval, labels);
     prometheusMetrics::instance().add_process_metric("kotekan_eigenvisiter_eigenvector_convergence",
-                                                   unique_name, stats.eps_evec, labels);
-
-
+                                                     unique_name, stats.eps_evec, labels);
 }
 
 
-DynamicHermitian<float> EigenVisIter::calculate_mask(uint32_t num_elements) const
-{
+DynamicHermitian<float> EigenVisIter::calculate_mask(uint32_t num_elements) const {
     blaze::DynamicMatrix<float, blaze::columnMajor> M;
     M.resize(num_elements, num_elements);
 
@@ -238,5 +232,4 @@ DynamicHermitian<float> EigenVisIter::calculate_mask(uint32_t num_elements) cons
     }
 
     return blaze::declherm(M);
-
 }

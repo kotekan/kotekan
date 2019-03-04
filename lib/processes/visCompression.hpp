@@ -72,9 +72,8 @@ public:
     void main_thread() override;
 
 private:
-
-	/// Entrancepoint for n threads. Each thread takes frames with a
-	/// different frame_id from the buffer and compresses them.
+    /// Entrancepoint for n threads. Each thread takes frames with a
+    /// different frame_id from the buffer and compresses them.
     void compress_thread();
 
     /// Tracks input dataset ID and gets output dataset IDs from manager

@@ -78,14 +78,14 @@ void from_json(const json& j, rstack_ctype& t) {
 
 std::string json_type_name(nlohmann::json& value) {
     switch (value.type()) {
-    case (json::value_t::number_integer):
-        return "integer";
-    case (json::value_t::number_unsigned):
-        return "integer";
-    case (json::value_t::number_float):
-        return "float";
-    default:
-        return value.type_name();
+        case (json::value_t::number_integer):
+            return "integer";
+        case (json::value_t::number_unsigned):
+            return "integer";
+        case (json::value_t::number_float):
+            return "float";
+        default:
+            return value.type_name();
     }
 }
 
