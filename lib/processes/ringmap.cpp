@@ -45,18 +45,18 @@ mapMaker::mapMaker(Config &config,
 
 void mapMaker::main_thread() {
 
-    frameID in_frame_id(in_buf);
-
-    if (!setup(in_frame_id))
-        return;
+    // Initialize the time indexing
+    max_fpga = 0, min_fpga = 0;
+    latest = modulo<size_t>(num_time);
 
     // coefficients of CBLAS multiplication
     float alpha = 1.;
     float beta = 0.;
 
-    // Initialize the time indexing
-    max_fpga = 0, min_fpga = 0;
-    latest = modulo<size_t>(num_time);
+    frameID in_frame_id(in_buf);
+
+    if (!setup(in_frame_id))
+        return;
 
     while (!stop_thread) {
 
@@ -148,14 +148,17 @@ bool mapMaker::setup(size_t frame_id) {
     // TODO: make these config options ?
     num_pix = 512; // # unique NS baselines
     num_pol = 4;
-    num_time = 24. * 360. / (in_frame.fpga_seq_length * 2.56e-6);
+    num_time = 24. * 3600. / (in_frame.fpga_seq_length * 2.56e-6);
     num_stack = sstate->get_num_stack();
-    num_bl = num_stack / 4;
+    num_bl = (num_stack + 1) / 4;
 
     sinza = std::vector<float>(num_pix, 0.);
     for (uint i = 0; i < num_pix; i++) {
         sinza[i] = i * 2. / num_pix - 1. + 1. / num_pix;
     }
+
+    min_fpga = std::get<0>(in_frame.time);
+    times = std::vector<time_ctype>(num_time, {0, 0.});
 
     stacks = sstate->get_stack_map();
     prods = pstate->get_prods();
@@ -258,9 +261,13 @@ int64_t mapMaker::resolve_time(time_ctype t){
     if (t.fpga_count > max_fpga) {
         // We need to add a new time
         max_fpga = t.fpga_count;
-        // Increment position and remove previous entry
-        min_fpga = times[latest++].fpga_count;
-        times_map.erase(min_fpga);
+        // Increment position
+        uint64_t rem_fpga = times[latest++].fpga_count;
+        if (rem_fpga > 0) {
+            // Unless we are still filling in array, remove entry
+            min_fpga = rem_fpga;
+            times_map.erase(min_fpga);
+        }
         size_t start = latest;
         size_t stop = size_t(latest) + 1;
         for (auto fid : freq_id) {
