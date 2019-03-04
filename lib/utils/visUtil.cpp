@@ -1,4 +1,5 @@
 #include "visUtil.hpp"
+
 #include <cstring>
 
 // Initialise the serial from a std::string
@@ -14,8 +15,7 @@ input_ctype::input_ctype(uint16_t id, std::string serial) {
     serial.copy(correlator_input, 32);
 }
 
-bool operator!=(const rstack_ctype& lhs, const rstack_ctype& rhs)
-{
+bool operator!=(const rstack_ctype& lhs, const rstack_ctype& rhs) {
     return (lhs.stack != rhs.stack) || (lhs.conjugate != rhs.conjugate);
 }
 
@@ -92,12 +92,10 @@ std::string json_type_name(nlohmann::json& value) {
 // Copy the visibility triangle out of the buffer of data, allowing for a
 // possible reordering of the inputs
 // TODO: port this to using map_vis_triangle. Need a unit test first.
-void copy_vis_triangle(
-    const int32_t * inputdata, const std::vector<uint32_t>& inputmap,
-    size_t block, size_t N, gsl::span<cfloat> output
-) {
+void copy_vis_triangle(const int32_t* inputdata, const std::vector<uint32_t>& inputmap,
+                       size_t block, size_t N, gsl::span<cfloat> output) {
 
-    auto copyfunc  = [&](int32_t pi, int32_t bi, bool conj) {
+    auto copyfunc = [&](int32_t pi, int32_t bi, bool conj) {
         int i_sign = conj ? -1 : 1;
         output[pi] = {(float)inputdata[2 * bi + 1], i_sign * (float)inputdata[2 * bi]};
     };
@@ -106,23 +104,21 @@ void copy_vis_triangle(
 }
 
 // Apply a function over the visibility triangle
-void map_vis_triangle(const std::vector<uint32_t>& inputmap,
-    size_t block, size_t N, uint32_t freq,
-    std::function<void(int32_t, int32_t, bool)> f
-) {
+void map_vis_triangle(const std::vector<uint32_t>& inputmap, size_t block, size_t N, uint32_t freq,
+                      std::function<void(int32_t, int32_t, bool)> f) {
 
     size_t pi = 0;
     uint32_t bi;
     uint32_t ii, jj;
     bool no_flip;
 
-    if(*std::max_element(inputmap.begin(), inputmap.end()) >= N) {
+    if (*std::max_element(inputmap.begin(), inputmap.end()) >= N) {
         throw std::invalid_argument("Input map asks for elements out of range.");
     }
 
-    uint32_t num_blocks1 = ((N - 1) / block) + 1;  // Blocks per side
+    uint32_t num_blocks1 = ((N - 1) / block) + 1;               // Blocks per side
     uint32_t num_blocks2 = num_blocks1 * (num_blocks1 + 1) / 2; // ... triangle
-    uint32_t offset = freq * num_blocks2 * block * block; // Offset due to freq
+    uint32_t offset = freq * num_blocks2 * block * block;       // Offset due to freq
 
     for (auto i = inputmap.begin(); i != inputmap.end(); i++) {
         for (auto j = i; j != inputmap.end(); j++) {
@@ -145,7 +141,7 @@ void map_vis_triangle(const std::vector<uint32_t>& inputmap,
 
 
 std::tuple<uint32_t, uint32_t, std::string> parse_reorder_single(json j) {
-    if(!j.is_array() || j.size() != 3) {
+    if (!j.is_array() || j.size() != 3) {
         throw std::runtime_error("Could not parse json item for input reordering: " + j.dump());
     }
 
@@ -164,11 +160,11 @@ std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> parse_reorder(json& 
     std::vector<uint32_t> adc_ids;
     std::vector<input_ctype> inputmap;
 
-    if(!j.is_array()) {
+    if (!j.is_array()) {
         throw std::runtime_error("Was expecting list of input orders.");
     }
 
-    for(auto& element : j) {
+    for (auto& element : j) {
         std::tie(adc_id, chan_id, serial) = parse_reorder_single(element);
 
         adc_ids.push_back(adc_id);
@@ -176,7 +172,6 @@ std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> parse_reorder(json& 
     }
 
     return std::make_tuple(adc_ids, inputmap);
-
 }
 
 std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> default_reorder(size_t num_elements) {
@@ -184,17 +179,16 @@ std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> default_reorder(size
     std::vector<uint32_t> adc_ids;
     std::vector<input_ctype> inputmap;
 
-    for(uint32_t i = 0; i < num_elements; i++) {
+    for (uint32_t i = 0; i < num_elements; i++) {
         adc_ids.push_back(i);
         inputmap.emplace_back(i, "INVALID");
     }
 
     return std::make_tuple(adc_ids, inputmap);
-
 }
 
 std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
-parse_reorder_default(Config& config, const std::string base_path) {
+parse_reorder_default(kotekan::Config& config, const std::string base_path) {
 
     size_t num_elements = config.get<size_t>("/", "num_elements");
 
@@ -202,8 +196,7 @@ parse_reorder_default(Config& config, const std::string base_path) {
         json reorder_config = config.get<std::vector<json>>(base_path, "input_reorder");
 
         return parse_reorder(reorder_config);
-    }
-    catch(const std::exception& e) {
+    } catch (const std::exception& e) {
         return default_reorder(num_elements);
     }
 }
@@ -223,7 +216,7 @@ movingAverage::movingAverage(double length) {
 void movingAverage::add_sample(double value) {
 
     // Special case for the first sample.
-    if(!initialised) {
+    if (!initialised) {
         current_value = value;
         initialised = true;
     } else {
@@ -232,7 +225,7 @@ void movingAverage::add_sample(double value) {
 }
 
 double movingAverage::average() {
-    if(!initialised) {
+    if (!initialised) {
         return NAN;
     }
     return current_value;
@@ -242,7 +235,6 @@ std::vector<std::string> regex_split(const std::string input, const std::string 
     vector<std::string> split_array;
     std::regex split_regex(reg);
     std::copy(std::sregex_token_iterator(input.begin(), input.end(), split_regex, -1),
-              std::sregex_token_iterator(),
-              std::back_inserter(split_array));
+              std::sregex_token_iterator(), std::back_inserter(split_array));
     return split_array;
 }

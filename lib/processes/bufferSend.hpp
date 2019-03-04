@@ -1,27 +1,27 @@
 /**
  * @file
  * @brief Object for sending buffer frames to another kotekan instance
- * - bufferSend : public KotekanProcess
+ * - bufferSend : public kotekan::Stage
  */
 #ifndef BUFFER_SEND_H
 #define BUFFER_SEND_H
 
+#include "Stage.hpp"
 #include "buffer.h"
-#include "KotekanProcess.hpp"
 #include "errors.h"
 #include "util.h"
-#include <unistd.h>
-#include <string>
-#include <atomic>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
 
-#include <stdio.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <string.h>
 #include <arpa/inet.h>
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <netinet/in.h>
+#include <stdio.h>
+#include <string.h>
+#include <string>
+#include <sys/socket.h>
+#include <thread>
+#include <unistd.h>
 
 /**
  * @struct bufferFrameHeader
@@ -39,7 +39,7 @@ struct bufferFrameHeader {
  * Will attempt to connect to a remote server (likely another kotekan instance)
  * and send frames and metadata as they arrive.
  *
- * If the remote server is down, or the connection breaks, this process will
+ * If the remote server is down, or the connection breaks, this stage will
  * drop incoming frames, and try to reconnect to the server after @c reconnect_time
  * seconds.
  *
@@ -67,12 +67,11 @@ struct bufferFrameHeader {
  *
  * @author Andre Renard
  */
-class bufferSend : public KotekanProcess {
+class bufferSend : public kotekan::Stage {
 public:
     /// Standard constructor
-    bufferSend(Config &config,
-                  const string& unique_name,
-                  bufferContainer &buffer_container);
+    bufferSend(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     ~bufferSend();
@@ -82,7 +81,7 @@ public:
 
 private:
     /// The input buffer to send frames from.
-    struct Buffer *buf;
+    struct Buffer* buf;
 
     /// The server port to connect to.
     uint32_t server_port;
@@ -123,7 +122,6 @@ private:
 
     /// Thread for connecting to the remote server
     void connect_to_server();
-
 };
 
 #endif

@@ -4,48 +4,43 @@
 
 // the code to test:
 #include "Config.hpp"
+
 #include "json.hpp"
+
+using kotekan::Config;
 
 using json = nlohmann::json;
 
-BOOST_AUTO_TEST_CASE( _get_value_recursive )
-{
+BOOST_AUTO_TEST_CASE(_get_value_recursive) {
     json json_config = {
         {"pi", 3.141},
-        { "truth", {
-              {"not", true},
-              {"but", false},
-          }},
-        { "lie", {
-              {"not", false},
-              {"but", true}
-          }},
+        {"truth",
+         {
+             {"not", true},
+             {"but", false},
+         }},
+        {"lie", {{"not", false}, {"but", true}}},
         {"happy", true},
         {"name", "Niels"},
         {"nothing", nullptr},
-        {"answer", {
-             {"everything", 42}
-         }},
+        {"answer", {{"everything", 42}}},
         {"list", {1, 0, 2}},
-        {"object", {
-             {"currency", "USD"},
-             {"value", 42.99},
-             {"hidden", {
-                  {"treasure", "found"}
-              }}
-         }}
-    };
+        {"object", {{"currency", "USD"}, {"value", 42.99}, {"hidden", {{"treasure", "found"}}}}}};
     Config config;
     config.update_config(json_config);
 
-    BOOST_CHECK((config.get_value("not").at(0).get<bool>()
-                 && config.get_value("not").at(1).get<bool>()) == false);
-    BOOST_CHECK((config.get_value("not").at(0).get<bool>()
-                 || config.get_value("not").at(1).get<bool>()) == true);
-    BOOST_CHECK((config.get_value("but").at(0).get<bool>()
-                 && config.get_value("but").at(1).get<bool>()) == false);
-    BOOST_CHECK((config.get_value("but").at(0).get<bool>()
-                 || config.get_value("but").at(1).get<bool>()) == true);
+    BOOST_CHECK(
+        (config.get_value("not").at(0).get<bool>() && config.get_value("not").at(1).get<bool>())
+        == false);
+    BOOST_CHECK(
+        (config.get_value("not").at(0).get<bool>() || config.get_value("not").at(1).get<bool>())
+        == true);
+    BOOST_CHECK(
+        (config.get_value("but").at(0).get<bool>() && config.get_value("but").at(1).get<bool>())
+        == false);
+    BOOST_CHECK(
+        (config.get_value("but").at(0).get<bool>() || config.get_value("but").at(1).get<bool>())
+        == true);
 
     std::vector<json> results;
 
@@ -63,11 +58,7 @@ BOOST_AUTO_TEST_CASE( _get_value_recursive )
     results.push_back(j);
     BOOST_CHECK_EQUAL(config.get_value("pi"), results);
 
-    j = {{"currency", "USD"},
-         {"value", 42.99},
-         {"hidden", {
-              {"treasure", "found"}
-    }}};
+    j = {{"currency", "USD"}, {"value", 42.99}, {"hidden", {{"treasure", "found"}}}};
     results.clear();
     results.push_back(j);
     BOOST_CHECK_EQUAL(config.get_value("object"), results);

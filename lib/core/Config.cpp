@@ -1,9 +1,10 @@
 #include "Config.hpp"
+
 #include "errors.h"
 #include "visUtil.hpp"
 
-#include <iostream>
 #include <fstream>
+#include <iostream>
 #include <json.hpp>
 #include <stdexcept>
 #include <vector>
@@ -13,6 +14,8 @@
 #endif
 
 using std::vector;
+
+namespace kotekan {
 
 // Instantiation of the most common types to prevent them being built inline
 // everywhere used.
@@ -25,21 +28,14 @@ template int16_t Config::get(const string& base_path, const string& name);
 template uint16_t Config::get(const string& base_path, const string& name);
 template bool Config::get(const string& base_path, const string& name);
 template std::string Config::get(const string& base_path, const string& name);
-template std::vector<int32_t> Config::get(const string& base_path,
-                                          const string& name);
-template std::vector<uint32_t> Config::get(const string& base_path,
-                                           const string& name);
-template std::vector<float> Config::get(const string& base_path,
-                                        const string& name);
-template std::vector<std::string> Config::get(const string& base_path,
-                                              const string& name);
-template std::vector<nlohmann::json> Config::get(const string& base_path,
-                                                 const string& name);
-template std::vector<std::complex<float>> Config::get(const string& base_path,
-                                                      const string& name);
+template std::vector<int32_t> Config::get(const string& base_path, const string& name);
+template std::vector<uint32_t> Config::get(const string& base_path, const string& name);
+template std::vector<float> Config::get(const string& base_path, const string& name);
+template std::vector<std::string> Config::get(const string& base_path, const string& name);
+template std::vector<nlohmann::json> Config::get(const string& base_path, const string& name);
+template std::vector<std::complex<float>> Config::get(const string& base_path, const string& name);
 
-Config::Config() {
-}
+Config::Config() {}
 
 Config::~Config() {
     _json.clear();
@@ -49,7 +45,7 @@ void Config::parse_file(const string& file_name) {
     try {
         std::ifstream config_file_stream(file_name);
         config_file_stream >> _json;
-    } catch (std::exception const & ex) {
+    } catch (std::exception const& ex) {
         WARN("Could not parse json file: %s, error: %s", file_name.c_str(), ex.what());
         throw ex;
     }
@@ -91,13 +87,14 @@ json Config::get_value(const string& base_path, const string& name) {
 
         if (exists(search_path, name)) {
             json::json_pointer value_pointer(search_path + "/" + name);
-            return  _json.at(value_pointer);
+            return _json.at(value_pointer);
         }
 
         std::size_t last_slash = search_path.find_last_of("/");
         search_path = search_path.substr(0, last_slash);
     }
-    throw std::runtime_error("The config option: " + name + " is required, but was not found in the path: " + base_path);
+    throw std::runtime_error("The config option: " + name
+                             + " is required, but was not found in the path: " + base_path);
 }
 
 bool Config::exists(const string& base_path, const string& name) {
@@ -111,7 +108,7 @@ bool Config::exists(const string& base_path, const string& name) {
     json::json_pointer search_pointer(search_path);
     try {
         _json.at(search_pointer);
-    } catch (std::exception const & ex) {
+    } catch (std::exception const& ex) {
         return false;
     }
     return true;
@@ -124,9 +121,8 @@ std::vector<json> Config::get_value(const std::string& name) const {
 }
 
 void Config::get_value_recursive(const json& j, const std::string& name,
-                            std::vector<json>& results) const {
-    for(auto it = j.begin(); it != j.end(); ++it)
-    {
+                                 std::vector<json>& results) const {
+    for (auto it = j.begin(); it != j.end(); ++it) {
         if (it.key() == name)
             results.push_back(it.value());
         if (it->is_object())
@@ -138,7 +134,7 @@ void Config::dump_config() {
     INFO("Config: %s", _json.dump().c_str());
 }
 
-json &Config::get_full_config_json() {
+json& Config::get_full_config_json() {
     return _json;
 }
 
@@ -148,12 +144,14 @@ std::string Config::get_md5sum() {
 
     string config_dump = _json.dump().c_str();
 
-    MD5((const unsigned char *)config_dump.c_str(), config_dump.size(), md5sum);
+    MD5((const unsigned char*)config_dump.c_str(), config_dump.size(), md5sum);
 
     char md5str[33];
-    for(int i = 0; i < 16; i++)
-        sprintf(&md5str[i*2], "%02x", (unsigned int)md5sum[i]);
+    for (int i = 0; i < 16; i++)
+        sprintf(&md5str[i * 2], "%02x", (unsigned int)md5sum[i]);
 
     return string(md5str);
 }
 #endif
+
+} // namespace kotekan

@@ -6,21 +6,21 @@
 #ifndef VIS_FILE_RAW_HPP
 #define VIS_FILE_RAW_HPP
 
-#include <fcntl.h>
-#include <stddef.h>
-#include <sys/types.h>
-#include <cstdint>
-#include <fstream>
-#include <map>
-#include <string>
-#include <vector>
-
 #include "Config.hpp"
 #include "datasetManager.hpp"
 #include "prometheusMetrics.hpp"
 #include "visBuffer.hpp"
 #include "visFile.hpp"
 #include "visUtil.hpp"
+
+#include <cstdint>
+#include <fcntl.h>
+#include <fstream>
+#include <map>
+#include <stddef.h>
+#include <string>
+#include <sys/types.h>
+#include <vector>
 
 using json = nlohmann::json;
 
@@ -49,7 +49,6 @@ using json = nlohmann::json;
 class visFileRaw : public visFile {
 
 public:
-
     ~visFileRaw();
 
     /**
@@ -67,8 +66,7 @@ public:
      * @param freq_ind Frequency index to write into.
      * @param frame Frame to write out.
      **/
-    void write_sample(uint32_t time_ind, uint32_t freq_ind,
-                      const visFrameView& frame) override;
+    void write_sample(uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame) override;
 
     /**
      * @brief Return the current number of current time samples.
@@ -88,10 +86,8 @@ public:
     void deactivate_time(uint32_t time_ind) override;
 
 protected:
-
     // Implement the create file method
-    void create_file(const std::string& name,
-                     const std::map<std::string, std::string>& metadata,
+    void create_file(const std::string& name, const std::map<std::string, std::string>& metadata,
                      dset_id_t dataset, size_t max_time) override;
 
     /// Flags used for opening new files
@@ -144,7 +140,6 @@ protected:
     // TODO: consider if this is necessary at all, or whether we need to be
     // checking all structure params
     size_t num_ev;
-
 };
 
 #endif

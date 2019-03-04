@@ -1,31 +1,31 @@
 #ifndef GPU_POST_PROCESS
 #define GPU_POST_PROCESS
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "restServer.hpp"
 #include "util.h"
 
-#include <vector>
 #include <mutex>
+#include <vector>
 
 using std::vector;
 
 #define MAX_GATE_DESCRIPTION_LEN 127
-#define HDF5_NAME_LEN   65
+#define HDF5_NAME_LEN 65
 
-class gpuPostProcess : public KotekanProcess {
+class gpuPostProcess : public kotekan::Stage {
 public:
-    gpuPostProcess(Config& config_,
-                    const string& unique_name,
-                    bufferContainer &buffer_container);
+    gpuPostProcess(kotekan::Config& config_, const string& unique_name,
+                   kotekan::bufferContainer& buffer_container);
     virtual ~gpuPostProcess();
     void main_thread() override;
 
-    void vis_endpoint(connectionInstance &conn, json &json_request);
+    void vis_endpoint(kotekan::connectionInstance& conn, json& json_request);
+
 private:
-    struct Buffer **in_buf;
-    struct Buffer *out_buf;
-    struct Buffer *gate_buf;
+    struct Buffer** in_buf;
+    struct Buffer* out_buf;
+    struct Buffer* gate_buf;
 
     // Config variables
     // Aside (wow this stage needs a lot of configuration options)
@@ -39,13 +39,12 @@ private:
     int32_t _block_size;
     vector<int32_t> _link_map;
     vector<int32_t> _product_remap;
-    int32_t * _product_remap_c = NULL;
+    int32_t* _product_remap_c = NULL;
     int32_t _num_fpga_links;
     bool _enable_basic_gating;
     int32_t _gate_phase;
     int32_t _gate_cadence;
     int32_t _num_gpus;
-
 };
 
 // A TCP frame contains this header followed by the visibilities, and flags.
@@ -75,17 +74,17 @@ struct tcp_frame_header {
 };
 
 struct per_frequency_data {
-  struct stream_id stream_id;
-  uint32_t index; // The position in the FPGA frame which is assoicated with
-                  // this frequency.
-  uint32_t lost_packet_count;
-  uint32_t rfi_count;
+    struct stream_id stream_id;
+    uint32_t index; // The position in the FPGA frame which is assoicated with
+                    // this frequency.
+    uint32_t lost_packet_count;
+    uint32_t rfi_count;
 };
 
 struct per_element_data {
-  uint32_t fpga_adc_count;
-  uint32_t fpga_fft_count;
-  uint32_t fpga_scalar_count;
+    uint32_t fpga_adc_count;
+    uint32_t fpga_fft_count;
+    uint32_t fpga_scalar_count;
 };
 #pragma pack(0)
 

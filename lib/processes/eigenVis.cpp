@@ -1,37 +1,40 @@
 #include "eigenVis.hpp"
-#include "visBuffer.hpp"
+
+#include "chimeMetadata.h"
 #include "errors.h"
 #include "fpga_header_functions.h"
-#include "chimeMetadata.h"
 #include "prometheusMetrics.hpp"
-#include "fmt.hpp"
+#include "visBuffer.hpp"
 #include "visUtil.hpp"
+
+#include "fmt.hpp"
 
 #include <cblas.h>
 #include <lapacke.h>
 #include <time.h>
 
-REGISTER_KOTEKAN_PROCESS(eigenVis);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::prometheusMetrics;
+using kotekan::Stage;
 
-eigenVis::eigenVis(Config& config,
-                       const string& unique_name,
-                       bufferContainer &buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container, std::bind(&eigenVis::main_thread, this)) {
+REGISTER_KOTEKAN_STAGE(eigenVis);
+
+eigenVis::eigenVis(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&eigenVis::main_thread, this)) {
 
     input_buffer = get_buffer("in_buf");
     register_consumer(input_buffer, unique_name.c_str());
     output_buffer = get_buffer("out_buf");
     register_producer(output_buffer, unique_name.c_str());
-    num_eigenvectors =  config.get<uint32_t>(unique_name, "num_ev");
-    num_diagonals_filled =  config.get_default<uint32_t>(unique_name,
-                                                   "num_diagonals_filled", 0);
+    num_eigenvectors = config.get<uint32_t>(unique_name, "num_ev");
+    num_diagonals_filled = config.get_default<uint32_t>(unique_name, "num_diagonals_filled", 0);
     // Read a list from the config, but permit it to be absent (implying empty).
     try {
-        for (uint32_t e : config.get<std::vector<uint32_t>>(unique_name,
-                                                            "exclude_inputs")) {
+        for (uint32_t e : config.get<std::vector<uint32_t>>(unique_name, "exclude_inputs")) {
             exclude_inputs.push_back(e);
         }
-    } catch (std::runtime_error const & ex) {
+    } catch (std::runtime_error const& ex) {
         // Missing, leave empty.
     }
 
@@ -41,8 +44,7 @@ eigenVis::eigenVis(Config& config,
     ev_state_id = dm.add_state(std::move(ev_state)).first;
 }
 
-dset_id_t eigenVis::change_dataset_state(dset_id_t input_dset_id)
-{
+dset_id_t eigenVis::change_dataset_state(dset_id_t input_dset_id) {
     auto& dm = datasetManager::instance();
     return dm.add_dataset(input_dset_id, ev_state_id);
 }
@@ -74,8 +76,7 @@ void eigenVis::main_thread() {
     while (!stop_thread) {
 
         // Get input visibilities. We assume the shape of these doesn't change.
-        if (wait_for_full_frame(input_buffer, unique_name.c_str(),
-                                input_frame_id) == nullptr) {
+        if (wait_for_full_frame(input_buffer, unique_name.c_str(), input_frame_id) == nullptr) {
             break;
         }
         auto input_frame = visFrameView(input_buffer, input_frame_id);
@@ -106,10 +107,8 @@ void eigenVis::main_thread() {
         freq_id = input_frame.freq_id;
         // Conditionally initialize eigenvector storage space.
         if (last_evs.find(freq_id) == last_evs.end()) {
-            last_evs.emplace(std::piecewise_construct,
-                             std::forward_as_tuple(freq_id),
-                             std::forward_as_tuple(num_elements * num_eigenvectors, 0)
-                             );
+            last_evs.emplace(std::piecewise_construct, std::forward_as_tuple(freq_id),
+                             std::forward_as_tuple(num_elements * num_eigenvectors, 0));
         }
 
         // Fill the upper half (lower in fortran order!) of the square version
@@ -142,14 +141,12 @@ void eigenVis::main_thread() {
             }
         }
 
-        nside = (int32_t) num_elements;
-        nev = (int32_t) num_eigenvectors;
+        nside = (int32_t)num_elements;
+        nev = (int32_t)num_eigenvectors;
         info = LAPACKE_cheevr(LAPACK_COL_MAJOR, 'V', 'I', 'L', nside,
-                              (lapack_complex_float *) vis_square.data(), nside,
-                              0.0, 0.0, nside - nev + 1, nside, 0.0,
-                              &ev_found, evals.data(),
-                              (lapack_complex_float *) evecs.data(),
-                              nside, NULL);
+                              (lapack_complex_float*)vis_square.data(), nside, 0.0, 0.0,
+                              nside - nev + 1, nside, 0.0, &ev_found, evals.data(),
+                              (lapack_complex_float*)evecs.data(), nside, NULL);
 
         DEBUG("LAPACK exit status: %d", info);
         if (info) {
@@ -157,14 +154,10 @@ void eigenVis::main_thread() {
             lapack_failure_total++;
 
             // Output prometheus metric about LAPACK failures
-            std::string labels = fmt::format(
-                "freq_id=\"{}\",dataset_id=\"{}\"",
-                freq_id, input_frame.dataset_id
-            );
-            prometheusMetrics::instance().add_process_metric(
-                "kotekan_eigenvis_lapack_failure_total",
-                unique_name, lapack_failure_total, labels
-            );
+            std::string labels =
+                fmt::format("freq_id=\"{}\",dataset_id=\"{}\"", freq_id, input_frame.dataset_id);
+            prometheusMetrics::instance().add_stage_metric(
+                "kotekan_eigenvis_lapack_failure_total", unique_name, lapack_failure_total, labels);
 
             // Clear frame and advance
             mark_frame_empty(input_buffer, unique_name.c_str(), input_frame_id++);
@@ -182,16 +175,16 @@ void eigenVis::main_thread() {
         // Calculate RMS residuals to eigenvalue approximation to the visibilities.
         double sum_sq = 0;
         int nprod_sum = 0;
-        std::vector<int> ipts(num_elements); // Inputs to iterate over
+        std::vector<int> ipts(num_elements);    // Inputs to iterate over
         std::iota(ipts.begin(), ipts.end(), 0); // Fill sequentially
 
         for (auto iexclude : exclude_inputs) { // Remove excluded inputs
-            ipts.erase(std::remove(ipts.begin(), ipts.end(), iexclude),ipts.end());
+            ipts.erase(std::remove(ipts.begin(), ipts.end(), iexclude), ipts.end());
         }
-        for(auto i = ipts.begin(); i != ipts.end(); i++) {
+        for (auto i = ipts.begin(); i != ipts.end(); i++) {
             auto jstart = std::lower_bound(i, ipts.end(), *i + num_diagonals_filled);
-            for(auto j = jstart; j != ipts.end(); j++) {
-                prod_ind = cmap(*i,*j,num_elements);
+            for (auto j = jstart; j != ipts.end(); j++) {
+                prod_ind = cmap(*i, *j, num_elements);
                 cfloat residual = input_frame.vis[prod_ind];
                 for (uint32_t ev_ind = 0; ev_ind < num_eigenvectors; ev_ind++) {
                     residual -= (last_evs[freq_id][ev_ind * num_elements + *i]
@@ -212,63 +205,49 @@ void eigenVis::main_thread() {
         for (uint32_t i = 0; i < num_eigenvectors; i++) {
             str_evals += " " + std::to_string(evals[i]);
         }
-        INFO("Found eigenvalues:%s, with RMS residuals: %e, in %3.1f s.",
-             str_evals.c_str(), rms,elapsed_time);
+        INFO("Found eigenvalues:%s, with RMS residuals: %e, in %3.1f s.", str_evals.c_str(), rms,
+             elapsed_time);
 
         // Update average write time in prometheus
         calc_time.add_sample(elapsed_time);
-        prometheusMetrics::instance().add_process_metric(
-            "kotekan_eigenvis_comp_time_seconds",
-            unique_name, calc_time.average()
-        );
+        prometheusMetrics::instance().add_stage_metric("kotekan_eigenvis_comp_time_seconds",
+                                                       unique_name, calc_time.average());
 
         // Output eigenvalues to prometheus
-        for(uint32_t i = 0; i < num_eigenvectors; i++) {
-            std::string labels = fmt::format(
-                "eigenvalue=\"{}\",freq_id=\"{}\",dataset_id=\"{}\"",
-                i, freq_id, input_frame.dataset_id
-            );
-            prometheusMetrics::instance().add_process_metric(
-                "kotekan_eigenvis_eigenvalue",
-                unique_name, evals[num_eigenvectors - 1 - i], labels
-            );
+        for (uint32_t i = 0; i < num_eigenvectors; i++) {
+            std::string labels = fmt::format("eigenvalue=\"{}\",freq_id=\"{}\",dataset_id=\"{}\"",
+                                             i, freq_id, input_frame.dataset_id);
+            prometheusMetrics::instance().add_stage_metric("kotekan_eigenvis_eigenvalue",
+                                                           unique_name,
+                                                           evals[num_eigenvectors - 1 - i], labels);
         }
 
         // Output RMS to prometheus
-        std::string labels = fmt::format(
-            "eigenvalue=\"rms\",freq_id=\"{}\",dataset_id=\"{}\"",
-            freq_id, input_frame.dataset_id
-        );
-        prometheusMetrics::instance().add_process_metric(
-            "kotekan_eigenvis_eigenvalue",
-            unique_name, rms, labels
-        );
+        std::string labels = fmt::format("eigenvalue=\"rms\",freq_id=\"{}\",dataset_id=\"{}\"",
+                                         freq_id, input_frame.dataset_id);
+        prometheusMetrics::instance().add_stage_metric("kotekan_eigenvis_eigenvalue", unique_name,
+                                                       rms, labels);
 
         // Get output buffer for visibilities. Essentially identical to input buffers.
-        if (wait_for_empty_frame(output_buffer, unique_name.c_str(),
-                                 output_frame_id) == nullptr) {
+        if (wait_for_empty_frame(output_buffer, unique_name.c_str(), output_frame_id) == nullptr) {
             break;
         }
         allocate_new_metadata_object(output_buffer, output_frame_id);
-        auto output_frame = visFrameView(
-            output_buffer, output_frame_id,
-            input_frame.num_elements, input_frame.num_prod, num_eigenvectors
-        );
+        auto output_frame = visFrameView(output_buffer, output_frame_id, input_frame.num_elements,
+                                         input_frame.num_prod, num_eigenvectors);
 
         // Copy over metadata and data, but skip all ev members which may not be
         // defined
         output_frame.copy_metadata(input_frame);
         output_frame.dataset_id = _output_dset_id;
-        output_frame.copy_data(
-            input_frame, {visField::eval, visField::evec, visField::erms}
-        );
+        output_frame.copy_data(input_frame, {visField::eval, visField::evec, visField::erms});
 
         // Copy in eigenvectors and eigenvalues.
-        for(uint32_t i = 0; i < num_eigenvectors; i++) {
+        for (uint32_t i = 0; i < num_eigenvectors; i++) {
             int indr = num_eigenvectors - 1 - i;
             output_frame.eval[i] = evals[indr];
 
-            for(uint32_t j = 0; j < num_elements; j++) {
+            for (uint32_t j = 0; j < num_elements; j++) {
                 output_frame.evec[i * num_elements + j] = evecs[indr * num_elements + j];
             }
         }

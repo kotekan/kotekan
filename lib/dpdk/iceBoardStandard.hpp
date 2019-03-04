@@ -7,13 +7,13 @@
 #ifndef ICE_BOARD_STANDARD_HPP
 #define ICE_BOARD_STANDARD_HPP
 
-#include "iceBoardHandler.hpp"
-#include "prometheusMetrics.hpp"
-#include "packet_copy.h"
-#include "chimeMetadata.h"
-#include "util.h"
-#include "gpsTime.h"
 #include "buffer.h"
+#include "chimeMetadata.h"
+#include "gpsTime.h"
+#include "iceBoardHandler.hpp"
+#include "packet_copy.h"
+#include "prometheusMetrics.hpp"
+#include "util.h"
 
 /**
  * @brief DPDK Packet handler for capturing one port's data and placing it in one buffer
@@ -23,11 +23,12 @@
  * packet in the output frame in a location determined by the seq number in the header.
  * This means the location in the output frame corresponds to an exact seq number and time.
  *
- * @note It is important that this handler is paired with an zeroSample process to zero out
+ * @note It is important that this handler is paired with a zeroSample stage to zero out
  *       memory which this handler did not fill because the packet was lost or invalide.
  *
  * @par REST Endpoints
- * @endpoint /<unique_name>/port_data ``[GET]`` Returns stats about the PORT and the packets received on it.
+ * @endpoint /<unique_name>/port_data ``[GET]`` Returns stats about the PORT and the packets
+ * received on it.
  *
  * @par Buffers
  * @buffer out_buf  Kotekan buffer to place the packets in.
@@ -42,52 +43,48 @@
 class iceBoardStandard : public iceBoardHandler {
 
 public:
+    iceBoardStandard(kotekan::Config& config, const std::string& unique_name,
+                     kotekan::bufferContainer& buffer_container, int port);
 
-    iceBoardStandard(Config &config, const std::string &unique_name,
-                     bufferContainer &buffer_container, int port);
-
-    virtual int handle_packet(rte_mbuf *mbuf);
+    virtual int handle_packet(rte_mbuf* mbuf);
 
 protected:
-
     bool advance_frame(uint64_t new_seq, bool first_time = false);
 
     void handle_lost_samples(int64_t lost_samples);
 
-    void copy_packet(struct rte_mbuf * mbuf);
+    void copy_packet(struct rte_mbuf* mbuf);
 
     /// The output buffer
-    struct Buffer * out_buf;
+    struct Buffer* out_buf;
 
     /// The current frame
-    uint8_t * out_frame;
+    uint8_t* out_frame;
 
     /// The ID of the current frame
     int32_t out_frame_id = 0;
 
     /// The flag buffer tracking lost samples
-    struct Buffer * lost_samples_buf;
+    struct Buffer* lost_samples_buf;
 
     /// The active lost sample frame
-    uint8_t * lost_samples_frame;
+    uint8_t* lost_samples_frame;
 
     /// Frame IDs
     int lost_samples_frame_id = 0;
-
 };
 
-iceBoardStandard::iceBoardStandard(Config &config, const std::string &unique_name,
-                                 bufferContainer &buffer_container, int port) :
+iceBoardStandard::iceBoardStandard(kotekan::Config& config, const std::string& unique_name,
+                                   kotekan::bufferContainer& buffer_container, int port) :
     iceBoardHandler(config, unique_name, buffer_container, port) {
 
     DEBUG("iceBoardStandard: %s", unique_name.c_str());
 
-    out_buf = buffer_container.get_buffer(
-                config.get<std::string>(unique_name, "out_buf"));
+    out_buf = buffer_container.get_buffer(config.get<std::string>(unique_name, "out_buf"));
     register_producer(out_buf, unique_name.c_str());
 
-    lost_samples_buf = buffer_container.get_buffer(
-                config.get<std::string>(unique_name, "lost_samples_buf"));
+    lost_samples_buf =
+        buffer_container.get_buffer(config.get<std::string>(unique_name, "lost_samples_buf"));
     register_producer(lost_samples_buf, unique_name.c_str());
     // We want to make sure the flag buffers are zeroed between uses.
     zero_frames(lost_samples_buf);
@@ -95,15 +92,14 @@ iceBoardStandard::iceBoardStandard(Config &config, const std::string &unique_nam
     // TODO Some parts of this function are common to the various ICEboard
     // handlers, and could likely be factored out.
     std::string endpoint_name = unique_name + "/port_data";
-    restServer::instance().register_get_callback(endpoint_name, [&] (connectionInstance &conn) {
-        json info = get_json_port_info();
-
-        conn.send_json_reply(info);
-    });
-
+    kotekan::restServer::instance().register_get_callback(endpoint_name,
+                                                          [&](kotekan::connectionInstance& conn) {
+                                                              json info = get_json_port_info();
+                                                              conn.send_json_reply(info);
+                                                          });
 }
 
-inline int iceBoardStandard::handle_packet(struct rte_mbuf *mbuf) {
+inline int iceBoardStandard::handle_packet(struct rte_mbuf* mbuf) {
 
     // Check if the packet is valid
     if (!iceBoardHandler::check_packet(mbuf))
@@ -176,7 +172,8 @@ inline bool iceBoardStandard::advance_frame(uint64_t new_seq, bool first_time) {
         mark_frame_full(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
         lost_samples_frame_id = (lost_samples_frame_id + 1) % lost_samples_buf->num_frames;
     }
-    lost_samples_frame = wait_for_empty_frame(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
+    lost_samples_frame =
+        wait_for_empty_frame(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
     if (lost_samples_frame == NULL)
         return false;
 
@@ -188,8 +185,8 @@ inline bool iceBoardStandard::advance_frame(uint64_t new_seq, bool first_time) {
 // refactor some of this code.
 inline void iceBoardStandard::handle_lost_samples(int64_t lost_samples) {
 
-    int64_t lost_sample_location = last_seq + samples_per_packet
-                                    - get_fpga_seq_num(out_buf, out_frame_id);
+    int64_t lost_sample_location =
+        last_seq + samples_per_packet - get_fpga_seq_num(out_buf, out_frame_id);
     uint64_t temp_seq = last_seq + samples_per_packet;
 
     // TODO this could be made more efficent by breaking it down into blocks of memsets.
@@ -208,7 +205,7 @@ inline void iceBoardStandard::handle_lost_samples(int64_t lost_samples) {
     }
 }
 
-inline void iceBoardStandard::copy_packet(struct rte_mbuf * mbuf) {
+inline void iceBoardStandard::copy_packet(struct rte_mbuf* mbuf) {
 
     // Note this assumes that frame_size is divisable by samples_per_packet,
     // or the assert below will fail.
@@ -226,10 +223,8 @@ inline void iceBoardStandard::copy_packet(struct rte_mbuf * mbuf) {
     // Initial packet offset, advances with each call to copy_block.
     int pkt_offset = header_offset;
 
-    copy_block(&mbuf,
-                (uint8_t *) &out_frame[sample_location * sample_size],
-                sample_size * samples_per_packet,
-                &pkt_offset);
+    copy_block(&mbuf, (uint8_t*)&out_frame[sample_location * sample_size],
+               sample_size * samples_per_packet, &pkt_offset);
 }
 
 #endif

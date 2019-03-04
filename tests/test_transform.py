@@ -23,7 +23,7 @@ def transform_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'visTransform', {'num_ev': 4},
         [runner.FakeGPUBuffer(
             mode='accumulate',
@@ -46,7 +46,7 @@ def lostsamples_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'visTransform', {'num_ev': 4},
         [runner.FakeGPUBuffer(
             mode='lostsamples',

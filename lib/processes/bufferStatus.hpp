@@ -1,7 +1,7 @@
 #ifndef BUFFER_STATUS_H
 #define BUFFER_STATUS_H
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "bufferContainer.hpp"
 
 /**
@@ -30,12 +30,13 @@
  *
  * @author Jacob Taylor, Andre Renard
  */
-class bufferStatus : public KotekanProcess {
+class bufferStatus : public kotekan::Stage {
 public:
-    bufferStatus(Config& config, const string& unique_name,
-                         bufferContainer &buffer_container);
+    bufferStatus(kotekan::Config& config, const string& unique_name,
+                 kotekan::bufferContainer& buffer_container);
     virtual ~bufferStatus();
     void main_thread() override;
+
 private:
     map<string, Buffer*> buffers;
 

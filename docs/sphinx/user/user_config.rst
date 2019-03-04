@@ -9,8 +9,8 @@ Buffers
 ----------
 
 
-Processes
-----------
+Stages
+------
 
 .. toctree::
     :glob:

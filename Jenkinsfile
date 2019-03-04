@@ -13,7 +13,7 @@ pipeline {
                   cmake -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build/ -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
                   -DUSE_OMP=ON -DBOOST_TESTS=ON ..
-                  make'''
+                  make -j 4'''
           }
         }
         stage('Build CHIME kotekan') {
@@ -25,7 +25,7 @@ pipeline {
                   -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build/ -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
                   -DUSE_OMP=ON -DBOOST_TESTS=ON ..
-                  make'''
+                  make -j 4'''
           }
         }
         stage('Build base kotekan') {
@@ -33,7 +33,7 @@ pipeline {
             sh '''mkdir build_base
                   cd build_base
                   cmake ..
-                  make'''
+                  make -j 4'''
           }
         }
         stage('Build MacOS kotekan') {
@@ -62,7 +62,16 @@ pipeline {
                   cd build-docs/
                   cmake -DCOMPILE_DOCS=ON -DPLANTUML_PATH=/opt/plantuml/ ..
                   cd docs/
-                  make'''
+                  make -j 4'''
+          }
+        }
+        stage('Check code formatting') {
+          steps {
+            sh '''mkdir build-check-format
+                  cd build-check-format/
+                  cmake ..
+                  make clang-format
+                  git diff --exit-code'''
           }
         }
       }

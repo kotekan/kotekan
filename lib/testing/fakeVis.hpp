@@ -1,33 +1,33 @@
 /*****************************************
 @file
 @brief Generate fake visBuffer data.
-- fakeVis : public KotekanProcess
+- fakeVis : public Stage
 *****************************************/
 
 #ifndef FAKE_VIS
 #define FAKE_VIS
 
-#include <stddef.h>
-#include <stdint.h>
-#include <functional>
-#include <map>
-#include <string>
-#include <vector>
-
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
 
+#include <functional>
+#include <map>
+#include <stddef.h>
+#include <stdint.h>
+#include <string>
+#include <vector>
+
 
 /**
  * @brief Generate fake visibility data into a ``visBuffer``.
  *
- * This process produces fake visibility data that can be used to feed
- * downstream kotekan processes for testing. It fills its buffer with frames in
+ * This stage produces fake visibility data that can be used to feed
+ * downstream kotekan stages for testing. It fills its buffer with frames in
  * the ``visFrameView`` format. Frames are generated for a set of frequencies
  * and a cadence specified in the config.
  *
@@ -68,13 +68,12 @@
  * @author  Tristan Pinsonneault-Marotte
  *
  */
-class fakeVis : public KotekanProcess {
+class fakeVis : public kotekan::Stage {
 
 public:
     /// Constructor. Loads config options.
-    fakeVis(Config &config,
-            const string& unique_name,
-            bufferContainer &buffer_container);
+    fakeVis(kotekan::Config& config, const string& unique_name,
+            kotekan::bufferContainer& buffer_container);
 
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
     void main_thread() override;
@@ -149,7 +148,7 @@ private:
     std::vector<cfloat> test_pattern_value;
 
     /// Output buffer
-    Buffer * out_buf;
+    Buffer* out_buf;
 
     /// List of frequencies for this buffer
     std::vector<uint32_t> freq;
@@ -197,21 +196,19 @@ private:
  * @author Richard Shaw
  *
  */
-class replaceVis : public KotekanProcess {
+class replaceVis : public kotekan::Stage {
 
 public:
     /// Constructor. Loads config options.
-    replaceVis(Config& config,
-               const string& unique_name,
-               bufferContainer& buffer_container);
+    replaceVis(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& buffer_container);
 
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
     void main_thread() override;
 
 private:
     /// Buffers
-    Buffer * in_buf;
-    Buffer * out_buf;
-
+    Buffer* in_buf;
+    Buffer* out_buf;
 };
 #endif

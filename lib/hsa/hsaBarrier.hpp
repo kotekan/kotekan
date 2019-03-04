@@ -3,17 +3,14 @@
 
 #include "hsaCommand.hpp"
 
-class hsaBarrier: public hsaCommand
-{
+class hsaBarrier : public hsaCommand {
 public:
-
-    hsaBarrier(Config &config, const string &unique_name,
-               bufferContainer &host_buffers, hsaDeviceInterface &device);
+    hsaBarrier(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaBarrier();
 
-    hsa_signal_t execute(int gpu_frame_id,
-                         hsa_signal_t precede_signal) override;
+    hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
     void finalize_frame(int frame_id) override;
 };

@@ -8,15 +8,16 @@
 
 #include "hsaCommand.hpp"
 #include "restServer.hpp"
+
 #include <mutex>
 
 /*
  * @class hsaRfiTimeSum
  * @brief hsaCommand to performs prallel sum of power and square power across time.
  *
- * This is an hsaCommand that launches the kernel (rfi_chime_timesum.hsaco) to perform 
- * a parallel sum of power and square power estimates across time. The sum is then normalized 
- * by the mean power and sent to the hsaRfiIputSum command. 
+ * This is an hsaCommand that launches the kernel (rfi_chime_timesum.hsaco) to perform
+ * a parallel sum of power and square power estimates across time. The sum is then normalized
+ * by the mean power and sent to the hsaRfiIputSum command.
  *
  * @requires_kernel    rfi_chime_timesum_private.hasco
  *
@@ -43,18 +44,18 @@
  *
  * @author Jacob Taylor
  */
-class hsaRfiTimeSum: public hsaCommand
-{
+class hsaRfiTimeSum : public hsaCommand {
 
 public:
     /// Constructor, initializes internal variables.
-    hsaRfiTimeSum(Config& config, const string &unique_name,
-                            bufferContainer& host_buffers, hsaDeviceInterface& device);
+    hsaRfiTimeSum(kotekan::Config& config, const string& unique_name,
+                  kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiTimeSum();
-    /// Executes rfi_chime_inputsum.hsaco kernel. Allocates kernel variables, initalizes input mask array.
-    hsa_signal_t execute(int gpu_frame_id,
-                         hsa_signal_t precede_signal) override;
+    /// Executes rfi_chime_inputsum.hsaco kernel. Allocates kernel variables, initalizes input mask
+    /// array.
+    hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
+
 private:
     /// Length of the input frame, should be sizeof_uchar x n_elem x n_freq x nsamp
     uint32_t input_frame_len;
@@ -62,7 +63,7 @@ private:
     uint32_t output_frame_len;
     /// Length of the lost sample frame
     uint32_t lost_samples_frame_len;
-     /// Length of the lost sample correction frame
+    /// Length of the lost sample correction frame
     uint32_t lost_samples_correction_len;
     /// Number of elements (2048 for CHIME or 256 for Pathfinder)
     uint32_t _num_elements;

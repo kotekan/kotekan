@@ -1,15 +1,15 @@
 /*****************************************
 @file
-@brief Process for merging GPU buffers into a visBuffer stream.
-- visTransform : public KotekanProcess
+@brief Stage for merging GPU buffers into a visBuffer stream.
+- visTransform : public kotekan::Stage
 *****************************************/
 #ifndef VISTRANSFORM_H
 #define VISTRANSFORM_H
 
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
-#include "bufferContainer.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
+#include "bufferContainer.hpp"
 #include "datasetManager.hpp"
 #include "visUtil.hpp"
 
@@ -49,26 +49,23 @@
  *
  * @author Richard Shaw
  */
-class visTransform : public KotekanProcess {
+class visTransform : public kotekan::Stage {
 
 public:
-
     // Default constructor
-    visTransform(Config &config,
-                 const std::string& unique_name,
-                 bufferContainer &buffer_container);
+    visTransform(kotekan::Config& config, const std::string& unique_name,
+                 kotekan::bufferContainer& buffer_container);
 
-    // Main loop for the process
+    // Main loop for the stage
     void main_thread() override;
 
 private:
-
     // Parameters saved from the config files
     size_t num_elements, num_eigenvectors, block_size;
 
     // Vector of the buffers we are using and their current frame ids.
     std::vector<std::pair<Buffer*, unsigned int>> in_bufs;
-    Buffer * out_buf;
+    Buffer* out_buf;
 
     // The mapping from buffer element order to output file element ordering
     std::vector<uint32_t> input_remap;
@@ -85,7 +82,6 @@ private:
     std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
     std::vector<input_ctype> _inputs;
     std::vector<prod_ctype> _prods;
-
 };
 
 #endif // VISTRANSFORM_H

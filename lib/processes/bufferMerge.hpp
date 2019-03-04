@@ -1,13 +1,13 @@
 #ifndef BUFFER_MERGE_HPP
 #define BUFFER_MERGE_HPP
 
-#include <vector>
+#include "Stage.hpp"
+#include "buffer.h"
+#include "visUtil.hpp"
+
 #include <string>
 #include <tuple>
-
-#include "buffer.h"
-#include "KotekanProcess.hpp"
-#include "visUtil.hpp"
+#include <vector>
 
 /**
  * @brief Merges frames from many buffers into one buffer.
@@ -15,7 +15,7 @@
  * Merges the frames in order in a round-robin pattern. This means
  * the frame arrival rate must be the same for all input buffers.
  *
- * If this process is the only comsumer of the input buffers then
+ * If this stage is the only comsumer of the input buffers then
  * the operation is zero-copy, it just swaps the frames.  However
  * if there is more than one comsumer on the input buffer then it
  * does a full memcpy of the frame.
@@ -46,13 +46,11 @@
  *
  * @author Andre Renard
  */
-class bufferMerge : public KotekanProcess {
+class bufferMerge : public kotekan::Stage {
 public:
-
     /// Constructor
-    bufferMerge(Config& config,
-                const string& unique_name,
-                bufferContainer &buffer_container);
+    bufferMerge(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     ~bufferMerge() = default;
@@ -69,19 +67,18 @@ public:
      * @return true if the frame should be swapped into the out_buf, false if
      *         it should be dropped.
      */
-    virtual bool select_frame(const std::string &internal_name,
-                              Buffer * in_buf, uint32_t frame_id);
+    virtual bool select_frame(const std::string& internal_name, Buffer* in_buf, uint32_t frame_id);
 
     /// Thread for merging the frames.
     void main_thread() override;
-protected:
 
+protected:
     /// Array of input buffers to get frames from
     /// Items are "internal_name", "buffer", "frame_id", "use_memcpy"
-    std::vector<std::tuple<std::string, Buffer *, frameID>> in_bufs;
+    std::vector<std::tuple<std::string, Buffer*, frameID>> in_bufs;
 
     /// The output buffer to put frames into
-    struct Buffer *out_buf;
+    struct Buffer* out_buf;
 
     /// The in seconds to wait for a new frame on one of the input buffers.
     double _timeout;

@@ -70,7 +70,8 @@
  * @conf   num_local_freq       Int (default 1). Number of local freq.
  * @conf   samples_per_data_set Int (default 49152). Number of time samples in a data set
  * @conf   scaling              Float (default 1.0). Scaling factor on gains
- * @conf   default_gains        Float array (default 1+1j). Default gain value if gain file is missing
+ * @conf   default_gains        Float array (default 1+1j). Default gain value if gain file is
+ * missing
  * @conf   northmost_beam       Float - Setting the extent in NS of the FFT formed beams.
  *                              Zenith angle of the northmost beam (in deg).
  * @conf   ew_spacing           Float array - 4 sky angles for the columns of E-W beams (in deg).
@@ -82,12 +83,12 @@
  *
  */
 
-class hsaBeamformKernel: public hsaCommand
-{
+class hsaBeamformKernel : public hsaCommand {
 public:
-    ///Constructor, also initializes internal variables from config, allocates host_map, host_coeff and host_gain, get metadata buffer and register endpoint for gain path.
-    hsaBeamformKernel(Config &config, const string &unique_name,
-                        bufferContainer &host_buffers, hsaDeviceInterface &device);
+    /// Constructor, also initializes internal variables from config, allocates host_map, host_coeff
+    /// and host_gain, get metadata buffer and register endpoint for gain path.
+    hsaBeamformKernel(kotekan::Config& config, const string& unique_name,
+                      kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor, cleans up local allocs.
     virtual ~hsaBeamformKernel();
@@ -95,27 +96,26 @@ public:
     /// Wait for full metadata frame and keep track of precondition_id
     int wait_on_precondition(int gpu_frame_id) override;
 
-    /// Figure out freq from metadata, calculate freq-specific param, load gains, allocate kernel argument buffer, set kernel dimensions, enqueue kernel
-    hsa_signal_t execute(int gpu_frame_id,
-                         hsa_signal_t precede_signal) override;
+    /// Figure out freq from metadata, calculate freq-specific param, load gains, allocate kernel
+    /// argument buffer, set kernel dimensions, enqueue kernel
+    hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
     /// Endpoint for providing new directory path for gain updates
-    bool update_gains_callback(nlohmann::json &json);
+    bool update_gains_callback(nlohmann::json& json);
     /// Endpoint for setting N-S beam extent
-    void update_NS_beam_callback(connectionInstance& conn, json& json_request);
+    void update_NS_beam_callback(kotekan::connectionInstance& conn, json& json_request);
     /// Endpoint for setting E-W beam sky angle
-    void update_EW_beam_callback(connectionInstance& conn, json& json_request);
+    void update_EW_beam_callback(kotekan::connectionInstance& conn, json& json_request);
 
 
 private:
-
     /**
      * @brief  Calculate clamping index for the N-S beams
      * @param host_map    array of output clamping indices
      * @param freq_now    freq of this gpu
      * @param freq_ref    reference freq, which determines the N-S extent of the beams
      */
-    void calculate_cl_index(uint32_t *host_map, float freq_now, double freq_ref);
+    void calculate_cl_index(uint32_t* host_map, float freq_now, double freq_ref);
 
     /**
      * @brief Calculate phase delays for the E-W beams
@@ -123,7 +123,7 @@ private:
      * @param host_coeff     phase offset
      * @param _ew_spacing_c  Float array size 4 - desired EW sky angles
      */
-    void calculate_ew_phase(float freq_now, float *host_coeff, float *_ew_spacing_c);
+    void calculate_ew_phase(float freq_now, float* host_coeff, float* _ew_spacing_c);
 
     /// Input length, should be nsamp x n_elem x 2 for complex / 2 since we pack two 4-bit in one
     int32_t input_frame_len;
@@ -141,7 +141,7 @@ private:
     vector<float> default_gains;
 
     /// Buffer for accessing metadata
-    Buffer * metadata_buf;
+    Buffer* metadata_buf;
     /// Metadata buffer ID
     int32_t metadata_buffer_id;
     /// Metadata buffer precondition ID
@@ -152,11 +152,11 @@ private:
     float freq_MHz;
 
     /// Array of clamping index, int of size 256
-    uint32_t * host_map;
+    uint32_t* host_map;
     /// Array of phase delays for E-W brute force beamform, float of size 32
-    float * host_coeff;
+    float* host_coeff;
     /// Array of gains, float size of 2048*2
-    float * host_gain;
+    float* host_gain;
 
     /// Scaling factor to be applied on the gains, currently set to 1.0 and somewhat deprecated?
     float scaling;
@@ -172,18 +172,18 @@ private:
     float _northmost_beam;
     /// The sky angle of the 4 EW beams in degree
     vector<float> _ew_spacing;
-    float * _ew_spacing_c;
+    float* _ew_spacing_c;
 
     /// The reference freq for calcating beam spacing, a function of the input _northmost_beam
     double freq_ref;
 
-    ///Flag to control gains to be only loaded on request.
+    /// Flag to control gains to be only loaded on request.
     bool update_gains;
     /// Flag to avoid re-calculating freq-specific params except at first pass
     bool first_pass;
-    ///Flag to update NS beam
+    /// Flag to update NS beam
     bool update_NS_beam;
-    ///Flag to update EW beam
+    /// Flag to update EW beam
     bool update_EW_beam;
 
     /// Endpoint for updating NS beams
@@ -193,7 +193,6 @@ private:
 
     /// Config base (@TODO this is a huge hack replace with updatable config)
     string config_base;
-
 };
 
 #endif

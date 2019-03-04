@@ -286,7 +286,7 @@ lost_samples_buffer:
 
 cpu_affinity: [2,3,8,9]
 dpdk:
-    kotekan_process: dpdkCore
+    kotekan_stage: dpdkCore
     # Format is index = lcore, value = cpu core
     lcore_cpu_map: [0,1,6,7]
     master_lcore_cpu: 2
@@ -316,16 +316,16 @@ zero_samples:
     duplicate_ls_buffer: False
     lost_samples_buf: lost_samples_buffer
     zero_0:
-        kotekan_process: zeroSamples
+        kotekan_stage: zeroSamples
         out_buf: network_buffer_0
     zero_1:
-        kotekan_process: zeroSamples
+        kotekan_stage: zeroSamples
         out_buf: network_buffer_1
     zero_2:
-        kotekan_process: zeroSamples
+        kotekan_stage: zeroSamples
         out_buf: network_buffer_2
     zero_3:
-        kotekan_process: zeroSamples
+        kotekan_stage: zeroSamples
         out_buf: network_buffer_3
 
 baseband:
@@ -334,20 +334,20 @@ baseband:
     base_dir: /mnt/frb-archiver/
     write_throttle: 0
     baseband0:
-      kotekan_process: basebandReadout
+      kotekan_stage: basebandReadout
       in_buf: network_buffer_0
     baseband1:
-      kotekan_process: basebandReadout
+      kotekan_stage: basebandReadout
       in_buf: network_buffer_1
     baseband2:
-      kotekan_process: basebandReadout
+      kotekan_stage: basebandReadout
       in_buf: network_buffer_2
     baseband3:
-      kotekan_process: basebandReadout
+      kotekan_stage: basebandReadout
       in_buf: network_buffer_3
 
 monitor:
-    kotekan_process: monitorBuffer
+    kotekan_stage: monitorBuffer
     bufs:
       - network_buffer_0
       - network_buffer_1
@@ -358,7 +358,7 @@ monitor:
 
 # This seems to find the lockup condition
 monitor_2:
-    kotekan_process: monitorBuffer
+    kotekan_stage: monitorBuffer
     bufs:
       - beamform_pulsar_output_buffer_0
       - beamform_pulsar_output_buffer_1
@@ -441,7 +441,7 @@ gpu:
   n_intg: 24576 / num_sub_frames
   frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 0
     updatable_gain_psr: /pulsar_gain
     updatable_gain_frb: /frb_gain
@@ -464,7 +464,7 @@ gpu:
       rfi_output_buf: gpu_rfi_output_buffer_0
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_0
   gpu_1:
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 1
     updatable_gain_psr: /pulsar_gain
     updatable_gain_frb: /frb_gain
@@ -487,7 +487,7 @@ gpu:
       rfi_output_buf: gpu_rfi_output_buffer_1
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_1
   gpu_2:
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 2
     updatable_gain_psr: /pulsar_gain
     updatable_gain_frb: /frb_gain
@@ -510,7 +510,7 @@ gpu:
       rfi_output_buf: gpu_rfi_output_buffer_2
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_2
   gpu_3:
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 3
     updatable_gain_psr: /pulsar_gain
     updatable_gain_frb: /frb_gain
@@ -550,7 +550,7 @@ frb:
   postprocess:
     log_level: warn
     cpu_affinity: [11]
-    kotekan_process: frbPostProcess
+    kotekan_stage: frbPostProcess
     incoherent_beams: [0,256,512,768]
     #incoherent_truncation: 25.
     frb_out_buf: frb_output_buffer
@@ -561,7 +561,7 @@ frb:
     out_buf: frb_output_buffer
   buffer_read:
     cpu_affinity: [11]
-    kotekan_process: frbNetworkProcess
+    kotekan_stage: frbNetworkProcess
     in_buf: frb_output_buffer
     udp_frb_port_number: 1313
     number_of_nodes: 256
@@ -856,14 +856,14 @@ pulsar:
   postprocess:
     log_level: info
     cpu_affinity: [11]
-    kotekan_process: pulsarPostProcess
+    kotekan_stage: pulsarPostProcess
     network_input_buffer_0: beamform_pulsar_output_buffer_0
     network_input_buffer_1: beamform_pulsar_output_buffer_1
     network_input_buffer_2: beamform_pulsar_output_buffer_2
     network_input_buffer_3: beamform_pulsar_output_buffer_3
     pulsar_out_buf: pulsar_output_buffer
   networkProcess:
-    kotekan_process: pulsarNetworkProcess
+    kotekan_stage: pulsarNetworkProcess
     pulsar_out_buf: pulsar_output_buffer
     udp_pulsar_port_number: 1414
     number_of_nodes: 256
@@ -914,19 +914,19 @@ updatable_config:
 
 valve:
   valve0:
-    kotekan_process: Valve
+    kotekan_stage: Valve
     in_buf: gpu_n2_output_buffer_0
     out_buf: valve_buffer_0
   valve1:
-    kotekan_process: Valve
+    kotekan_stage: Valve
     in_buf: gpu_n2_output_buffer_1
     out_buf: valve_buffer_1
   valve2:
-    kotekan_process: Valve
+    kotekan_stage: Valve
     in_buf: gpu_n2_output_buffer_2
     out_buf: valve_buffer_2
   valve3:
-    kotekan_process: Valve
+    kotekan_stage: Valve
     in_buf: gpu_n2_output_buffer_3
     out_buf: valve_buffer_3
 
@@ -936,7 +936,7 @@ vis_accumulate:
   # prevents referencing the higher level samples_per_data_set and dividing it
   samples_per_data_set: 12288
   acc0:
-    kotekan_process: visAccumulate
+    kotekan_stage: visAccumulate
     in_buf: valve_buffer_0
     out_buf: visbuf_5s_0
     gating:
@@ -946,7 +946,7 @@ vis_accumulate:
     updatable_config:
       psr0: "/updatable_config/gating/psr0_config"
   acc1:
-    kotekan_process: visAccumulate
+    kotekan_stage: visAccumulate
     in_buf: valve_buffer_1
     out_buf: visbuf_5s_1
     gating:
@@ -956,7 +956,7 @@ vis_accumulate:
     updatable_config:
       psr0: "/updatable_config/gating/psr0_config"
   acc2:
-    kotekan_process: visAccumulate
+    kotekan_stage: visAccumulate
     in_buf: valve_buffer_2
     out_buf: visbuf_5s_2
     gating:
@@ -966,7 +966,7 @@ vis_accumulate:
     updatable_config:
       psr0: "/updatable_config/gating/psr0_config"
   acc3:
-    kotekan_process: visAccumulate
+    kotekan_stage: visAccumulate
     in_buf: valve_buffer_3
     out_buf: visbuf_5s_3
     gating:
@@ -979,7 +979,7 @@ vis_accumulate:
 ## Perform all extra time integration and calculate eigenvalues
 
 vis_merge_5s:
-  kotekan_process: bufferMerge
+  kotekan_stage: bufferMerge
   timeout: 0.1
   in_bufs:
     - visbuf_5s_0
@@ -989,7 +989,7 @@ vis_merge_5s:
   out_buf: visbuf_5s_merge
 
 vis_merge_gated_psr0:
-  kotekan_process: bufferMerge
+  kotekan_stage: bufferMerge
   timeout: 0.1
   in_bufs:
     - visbuf_psr0_5s_0
@@ -1001,19 +1001,19 @@ vis_merge_gated_psr0:
 vis_int_10s:
   num_samples: 2
   int0:
-    kotekan_process: timeDownsample
+    kotekan_stage: timeDownsample
     in_buf: visbuf_5s_0
     out_buf: visbuf_10s_0
   int1:
-    kotekan_process: timeDownsample
+    kotekan_stage: timeDownsample
     in_buf: visbuf_5s_1
     out_buf: visbuf_10s_1
   int2:
-    kotekan_process: timeDownsample
+    kotekan_stage: timeDownsample
     in_buf: visbuf_5s_2
     out_buf: visbuf_10s_2
   int3:
-    kotekan_process: timeDownsample
+    kotekan_stage: timeDownsample
     in_buf: visbuf_5s_3
     out_buf: visbuf_10s_3
 
@@ -1060,7 +1060,7 @@ vis_debug:
 
 # Generate the 26m stream
 26m_subset:
-  kotekan_process: prodSubset
+  kotekan_stage: prodSubset
   in_buf: visbuf_5s_merge
   out_buf: visbuf_5s_26m
   prod_subset_type: have_inputs
@@ -1068,7 +1068,7 @@ vis_debug:
 
 # Generate the 26m gated stream
 26m_psr0_subset:
-  kotekan_process: prodSubset
+  kotekan_stage: prodSubset
   in_buf: visbuf_psr0_5s_merge
   out_buf: visbuf_psr0_5s_26m
   prod_subset_type: have_inputs
@@ -1086,16 +1086,16 @@ buffer_send:
     buf: visbuf_eig_10s_merge
     server_port: 11024
   26m:
-    kotekan_process: bufferSend
+    kotekan_stage: bufferSend
     buf: visbuf_5s_26m
     server_port: 11025
   26m_psr0:
-    kotekan_process: bufferSend
+    kotekan_stage: bufferSend
     buf: visbuf_psr0_5s_26m
     server_port: 11026
 
 buffer_status:
-  kotekan_process: bufferStatus
+  kotekan_stage: bufferStatus
   time_delay: 30000000
 
 
@@ -1104,25 +1104,25 @@ rfi_broadcast:
   destination_protocol: UDP
   destination_ip: 10.1.13.1
   gpu_0:
-    kotekan_process: rfiBroadcast
+    kotekan_stage: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_0
     rfi_mask: gpu_rfi_mask_output_buffer_0
     destination_port: 41215
     frames_per_packet: 1
   gpu_1:
-    kotekan_process: rfiBroadcast
+    kotekan_stage: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_1
     rfi_mask: gpu_rfi_mask_output_buffer_1
     destination_port: 41216
     frames_per_packet: 1
   gpu_2:
-    kotekan_process: rfiBroadcast
+    kotekan_stage: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_2
     rfi_mask: gpu_rfi_mask_output_buffer_2
     destination_port: 41217
     frames_per_packet: 1
   gpu_3:
-    kotekan_process: rfiBroadcast
+    kotekan_stage: rfiBroadcast
     rfi_in: gpu_rfi_output_buffer_3
     rfi_mask: gpu_rfi_mask_output_buffer_3
     destination_port: 41218
@@ -1133,40 +1133,40 @@ rfi_bad_input_finder:
   destination_port: 41219
   gpu_0:
     bi_frames_per_packet: 10
-    kotekan_process: rfiBadInputFinder
+    kotekan_stage: rfiBadInputFinder
     rfi_in: gpu_rfi_bad_input_buffer_0
   gpu_1:
     bi_frames_per_packet: 10
-    kotekan_process: rfiBadInputFinder
+    kotekan_stage: rfiBadInputFinder
     rfi_in: gpu_rfi_bad_input_buffer_1
   gpu_2:
     bi_frames_per_packet: 10
-    kotekan_process: rfiBadInputFinder
+    kotekan_stage: rfiBadInputFinder
     rfi_in: gpu_rfi_bad_input_buffer_2
   gpu_3:
     bi_frames_per_packet: 10
-    kotekan_process: rfiBadInputFinder
+    kotekan_stage: rfiBadInputFinder
     rfi_in: gpu_rfi_bad_input_buffer_3
 
 rfi_record:
   total_links: 1
   gpu_0:
-    kotekan_process: rfiRecord
+    kotekan_stage: rfiRecord
     write_to: /mnt/gong/RFI
     write_to_disk: false
     rfi_in: gpu_rfi_output_buffer_0
   gpu_1:
-    kotekan_process: rfiRecord
+    kotekan_stage: rfiRecord
     write_to: /mnt/gong/RFI
     write_to_disk: false
     rfi_in: gpu_rfi_output_buffer_1
   gpu_2:
-    kotekan_process: rfiRecord
+    kotekan_stage: rfiRecord
     write_to: /mnt/gong/RFI
     write_to_disk: false
     rfi_in: gpu_rfi_output_buffer_2
   gpu_3:
-    kotekan_process: rfiRecord
+    kotekan_stage: rfiRecord
     write_to: /mnt/gong/RFI
     write_to_disk: false
     rfi_in: gpu_rfi_output_buffer_3

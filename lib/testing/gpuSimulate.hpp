@@ -1,23 +1,23 @@
 #ifndef GPU_SIMULATE_HPP
 #define GPU_SIMULATE_HPP
 
+#include "Stage.hpp"
 #include "buffer.h"
-#include "KotekanProcess.hpp"
 
-class gpuSimulate : public KotekanProcess {
+class gpuSimulate : public kotekan::Stage {
 public:
-    gpuSimulate(Config& config,
-                const string& unique_name,
-                bufferContainer &buffer_container);
+    gpuSimulate(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& buffer_container);
     ~gpuSimulate();
     void main_thread() override;
+
 private:
     int dot4b(uint a, uint b);
 
-    struct Buffer *input_buf;
-    struct Buffer *output_buf;
+    struct Buffer* input_buf;
+    struct Buffer* output_buf;
 
-    uint32_t * host_block_map;
+    uint32_t* host_block_map;
 
     // Config options
     int32_t _num_local_freq;

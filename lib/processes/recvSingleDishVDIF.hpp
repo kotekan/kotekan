@@ -1,24 +1,25 @@
 /**
  * @file
- * @brief Process to receive VDIF data from a UDP stream.
- *  - recvSingleDishVDIF : public KotekanProcess
+ * @brief Stage to receive VDIF data from a UDP stream.
+ *  - recvSingleDishVDIF : public kotekan::Stage
  */
 
 #ifndef RECV_SINGLE_DISH_VDIF_H
 #define RECV_SINGLE_DISH_VDIF_H
 
+#include "Stage.hpp"
 #include "buffer.h"
-#include "KotekanProcess.hpp"
+
+#include <cstdio>
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <cstdio>
 
 /**
  * @class recvSingleDishVDIF
- * @brief Process to transmit VDIF data as a UDP stream.
+ * @brief Stage to transmit VDIF data as a UDP stream.
  *
- * This is a producer process which gathers VDIF-formatted data from a UDP stream and
+ * This is a producer stage which gathers VDIF-formatted data from a UDP stream and
  * packs it into a target buffer.
  *
  * @par Buffers
@@ -35,26 +36,26 @@
  * @author Andre Renard
  *
  */
-class recvSingleDishVDIF : public KotekanProcess {
+class recvSingleDishVDIF : public kotekan::Stage {
 public:
-    ///Constructor
-    recvSingleDishVDIF(Config& config, const string& unique_name,
-                bufferContainer &buffer_container);
-    ///Destructor
+    /// Constructor
+    recvSingleDishVDIF(kotekan::Config& config, const string& unique_name,
+                       kotekan::bufferContainer& buffer_container);
+    /// Destructor
     virtual ~recvSingleDishVDIF();
 
-    ///Main loop, just waits for network data and stuffs info a frame.
+    /// Main loop, just waits for network data and stuffs info a frame.
     void main_thread() override;
 
 private:
-    struct Buffer *out_buf;
+    struct Buffer* out_buf;
 
-    ///Port of the listening receiver.
+    /// Port of the listening receiver.
     uint32_t orig_port;
-    ///IP of the listening receiver.
+    /// IP of the listening receiver.
     string orig_ip;
 
-    ///Number of frequencies in the buffer
+    /// Number of frequencies in the buffer
     int num_freq;
 };
 

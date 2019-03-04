@@ -11,19 +11,19 @@
 #ifndef VIS_UTIL_HPP
 #define VIS_UTIL_HPP
 
-#include <complex>
-#include <cstdint>
-#include <time.h>
-#include <sys/time.h>
-#include <string>
-#include <vector>
-#include <functional>
+#include "Config.hpp"
+#include "buffer.h"
 
 #include "gsl-lite.hpp"
 #include "json.hpp"
 
-#include "Config.hpp"
-#include "buffer.h"
+#include <complex>
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <sys/time.h>
+#include <time.h>
+#include <vector>
 
 using json = nlohmann::json;
 
@@ -39,7 +39,7 @@ using struct_layout = typename std::pair<size_t, std::map<T, std::pair<size_t, s
 
 /**
  * @brief Frequency index map type
-*/
+ */
 struct freq_ctype {
     /// Centre of frequency channel in MHz
     double centre;
@@ -114,8 +114,7 @@ struct rstack_ctype {
 bool operator!=(const rstack_ctype& lhs, const rstack_ctype& rhs);
 
 /// Comparison operator for products
-inline bool operator==(const prod_ctype& lhs, const prod_ctype& rhs)
-{
+inline bool operator==(const prod_ctype& lhs, const prod_ctype& rhs) {
     return (lhs.input_a == rhs.input_a) && (lhs.input_b == rhs.input_b);
 }
 
@@ -163,16 +162,16 @@ void from_json(const json& j, rstack_ctype& f);
 
 // Conversion of std::complex<T> to and from json
 namespace std {
-    template<class T>
-    void to_json(json& j, const std::complex<T>& p) {
-        j = json{{"real", p.real()}, {"imag", p.imag()}};
-    }
-
-    template<class T>
-    void from_json(const json& j, std::complex<T>& p) {
-        p = std::complex<T>{j.at("real").get<T>(), j.at("imag").get<T>()};
-    }
+template<class T>
+void to_json(json& j, const std::complex<T>& p) {
+    j = json{{"real", p.real()}, {"imag", p.imag()}};
 }
+
+template<class T>
+void from_json(const json& j, std::complex<T>& p) {
+    p = std::complex<T>{j.at("real").get<T>(), j.at("imag").get<T>()};
+}
+} // namespace std
 
 /**
   * @brief Get type name of a JSON value.
@@ -223,7 +222,7 @@ inline prod_ctype icmap(uint32_t k, uint16_t n) {
  * @return       Index into blocked array.
  */
 inline uint32_t prod_index(uint32_t i, uint32_t j, uint32_t block, uint32_t N) {
-    uint32_t num_blocks1 = ((N - 1) / block) + 1;  // Blocks needed to tile 1D
+    uint32_t num_blocks1 = ((N - 1) / block) + 1; // Blocks needed to tile 1D
     uint32_t b_ix = cmap(i / block, j / block, num_blocks1);
 
     return block * block * b_ix + (i % block) * block + (j % block);
@@ -235,7 +234,7 @@ inline uint32_t prod_index(uint32_t i, uint32_t j, uint32_t block, uint32_t N) {
  * @param  tv Time as timeval.
  * @return    Time as double.
  */
-inline double tv_to_double(const timeval & tv) {
+inline double tv_to_double(const timeval& tv) {
     return (tv.tv_sec + 1e-6 * tv.tv_usec);
 }
 
@@ -245,7 +244,7 @@ inline double tv_to_double(const timeval & tv) {
  * @param  ts Time as timespec.
  * @return    Time as double.
  */
-inline double ts_to_double(const timespec & ts) {
+inline double ts_to_double(const timespec& ts) {
     return (ts.tv_sec + 1e-9 * ts.tv_nsec);
 }
 
@@ -301,8 +300,7 @@ inline timespec add_nsec(const timespec& t, const long nsec) {
  * @param  b  Time as timespec.
  * @return    a - b as timespec.
  **/
-inline timespec operator-(const timespec & a, const timespec & b)
-{
+inline timespec operator-(const timespec& a, const timespec& b) {
     auto dm = divmod_pos(a.tv_nsec - b.tv_nsec, 1000000000L);
     return {a.tv_sec - b.tv_sec + dm.first, dm.second};
 }
@@ -313,8 +311,7 @@ inline timespec operator-(const timespec & a, const timespec & b)
  * @param  b  Time as timespec.
  * @return    a + b as timespec.
  **/
-inline timespec operator+(const timespec & a, const timespec & b)
-{
+inline timespec operator+(const timespec& a, const timespec& b) {
     // Use std::div instead of divmod_pos to save the extra instructions.
     auto ns_div = std::div(a.tv_nsec + b.tv_nsec, 1000000000L);
     return {a.tv_sec + b.tv_sec + ns_div.quot, ns_div.rem};
@@ -326,7 +323,7 @@ inline timespec operator+(const timespec & a, const timespec & b)
  * @param  b  Time as timespec.
  * @return    True if (a == b), False otherwise.
  **/
-inline bool operator==(const timespec & a, const timespec & b) {
+inline bool operator==(const timespec& a, const timespec& b) {
     return (a.tv_sec == b.tv_sec && a.tv_nsec == b.tv_nsec);
 }
 
@@ -337,9 +334,8 @@ inline bool operator==(const timespec & a, const timespec & b) {
  * @param  b  Time as timespec.
  * @return    True if (a > b), False otherwise.
  **/
-inline bool operator>(const timespec & a,const timespec & b) {
-    return (a.tv_sec > b.tv_sec ||
-            (a.tv_sec == b.tv_sec && a.tv_nsec > b.tv_nsec));
+inline bool operator>(const timespec& a, const timespec& b) {
+    return (a.tv_sec > b.tv_sec || (a.tv_sec == b.tv_sec && a.tv_nsec > b.tv_nsec));
 }
 
 
@@ -362,10 +358,8 @@ inline double current_time() {
  * @param N         Number of inputs in input data.
  * @param output    Region of memory to write into.
  */
-void copy_vis_triangle(
-    const int32_t * inputdata, const std::vector<uint32_t>& inputmap,
-    size_t block, size_t N, gsl::span<cfloat> output
-);
+void copy_vis_triangle(const int32_t* inputdata, const std::vector<uint32_t>& inputmap,
+                       size_t block, size_t N, gsl::span<cfloat> output);
 
 
 /**
@@ -390,10 +384,8 @@ void copy_vis_triangle(
  *                    - The same product in the GPU packed data.
  *                    - Whether we need to conjugate to map between the two.
  */
-void map_vis_triangle(const std::vector<uint32_t>& inputmap,
-    size_t block, size_t N, uint32_t freq,
-    std::function<void(int32_t, int32_t, bool)> f
-);
+void map_vis_triangle(const std::vector<uint32_t>& inputmap, size_t block, size_t N, uint32_t freq,
+                      std::function<void(int32_t, int32_t, bool)> f);
 
 
 /**
@@ -403,7 +395,8 @@ void map_vis_triangle(const std::vector<uint32_t>& inputmap,
  * @return          Tuple containing a vector of the input reorder map, and a
  *                  vector of the input labels for the index map.
  */
-std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> parse_reorder_default(Config& config, const std::string base_path);
+std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
+parse_reorder_default(kotekan::Config& config, const std::string base_path);
 
 /**
  * @brief Return the next aligned location for a given type size
@@ -413,27 +406,25 @@ std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> parse_reorder_defaul
  */
 size_t _member_alignment(size_t offset, size_t size);
 
- /**
-  * @brief Calculate the alignment of members in a struct and its total size.
-  *
-  * @param  members  A vector of tuples of a `label` for the member (can be
-  *                  any type, but must be unique per member), `element_size`
-  *                  and `num_elements`. `name` can be of any type.
-  * @return          A pair, of the total size and the struct layout. The
-  *                  layout is a map of member name to start and end in bytes
-  *                  of each member.
-  */
+/**
+ * @brief Calculate the alignment of members in a struct and its total size.
+ *
+ * @param  members  A vector of tuples of a `label` for the member (can be
+ *                  any type, but must be unique per member), `element_size`
+ *                  and `num_elements`. `name` can be of any type.
+ * @return          A pair, of the total size and the struct layout. The
+ *                  layout is a map of member name to start and end in bytes
+ *                  of each member.
+ */
 template<typename T>
-struct_layout<T> struct_alignment(
-    std::vector<std::tuple<T, size_t, size_t>> members
-) {
+struct_layout<T> struct_alignment(std::vector<std::tuple<T, size_t, size_t>> members) {
 
     T label;
     size_t size, num, end = 0, max_size = 0;
 
     std::map<T, std::pair<size_t, size_t>> layout;
 
-    for(auto member : members) {
+    for (auto member : members) {
         std::tie(label, size, num) = member;
 
         // Uses the end of the *last* member
@@ -481,7 +472,6 @@ inline T fast_norm(const std::complex<T>& z) {
 class movingAverage {
 
 public:
-
     /**
      * @brief Create a moving average calculation.
      *
@@ -490,7 +480,7 @@ public:
      *                 samples. Or equivalently the distance at which the weight per sample has
      *                 decreased by a factor of two.
      **/
-    movingAverage(double length=4.0);
+    movingAverage(double length = 4.0);
 
     /**
      * @brief Add a new sample in the time series.
@@ -526,15 +516,13 @@ private:
  *
  * @returns A vector of the zipped pairs.
  **/
-template< typename T, typename U >
-inline std::vector< std::pair< T, U > > zip( const std::vector< T >& first, const std::vector< U >& second )
-{
+template<typename T, typename U>
+inline std::vector<std::pair<T, U>> zip(const std::vector<T>& first, const std::vector<U>& second) {
     size_t min_size = std::min(first.size(), second.size());
-    std::vector< std::pair<T, U> > result;
+    std::vector<std::pair<T, U>> result;
     result.reserve(min_size);
 
-    for( unsigned int i = 0; i < min_size; ++i )
-    {
+    for (unsigned int i = 0; i < min_size; ++i) {
         result.push_back({first[i], second[i]});
     }
     return result;
@@ -549,11 +537,9 @@ inline std::vector< std::pair< T, U > > zip( const std::vector< T >& first, cons
  *
  * @returns A pair of the unzipped vectors.
  **/
-template< typename T, typename U >
-inline std::pair< std::vector<T>, std::vector<U> > unzip(
-    const std::vector< std::pair<T, U> >& both)
-{
-    std::pair< std::vector< T >, std::vector< U > > result;
+template<typename T, typename U>
+inline std::pair<std::vector<T>, std::vector<U>> unzip(const std::vector<std::pair<T, U>>& both) {
+    std::pair<std::vector<T>, std::vector<U>> result;
     result.first.reserve(both.size());
     result.second.reserve(both.size());
 
@@ -573,13 +559,11 @@ inline std::pair< std::vector<T>, std::vector<U> > unzip(
  * @returns Vector with the mapped elements.
  **/
 template<typename T, typename U>
-inline std::vector<U> func_map(const std::vector<T>& vec,
-                               std::function<U(const T&)> func)
-{
+inline std::vector<U> func_map(const std::vector<T>& vec, std::function<U(const T&)> func) {
     std::vector<U> ret;
     ret.reserve(vec.size());
 
-    for(const T& x : vec) {
+    for (const T& x : vec) {
         ret.push_back(func(x));
     }
     return ret;
@@ -609,33 +593,61 @@ template<typename T>
 class modulo {
 
 public:
-
     // Use an unsigned type for the base
     using Tu = typename std::make_unsigned<T>::type;
 
     /**
      * @brief Create a new modular number.
      **/
-    modulo(Tu n) : _n(n) {};
+    modulo(Tu n) : _n(n){};
 
     // Default constructor
-    modulo() : modulo(0) {};
+    modulo() : modulo(0){};
 
     /// Assignment of a number into the modular number.
-    modulo<T>& operator=(const T& i) { _i = i; return *this; }
+    modulo<T>& operator=(const T& i) {
+        _i = i;
+        return *this;
+    }
 
     // Increment and decrement
-    modulo<T>& operator++() { _i++; return *this; }
-    modulo<T>& operator--() { _i--; return *this; }
-    modulo<T> operator++(int) { modulo<T> t(*this); operator++(); return t; }
-    modulo<T> operator--(int) { modulo<T> t(*this); operator--(); return t; }
+    modulo<T>& operator++() {
+        _i++;
+        return *this;
+    }
+    modulo<T>& operator--() {
+        _i--;
+        return *this;
+    }
+    modulo<T> operator++(int) {
+        modulo<T> t(*this);
+        operator++();
+        return t;
+    }
+    modulo<T> operator--(int) {
+        modulo<T> t(*this);
+        operator--();
+        return t;
+    }
 
-    modulo<T>& operator+=(const T& rhs) { _i += rhs; return *this; }
-    modulo<T>& operator-=(const T& rhs) { _i -= rhs; return *this; }
+    modulo<T>& operator+=(const T& rhs) {
+        _i += rhs;
+        return *this;
+    }
+    modulo<T>& operator-=(const T& rhs) {
+        _i -= rhs;
+        return *this;
+    }
 
     // Add and subtract are *asymmetric*. Must be always be modulo<T> +/- T
-    friend modulo<T> operator+(modulo<T> lhs, const T& rhs) { lhs += rhs; return lhs; }
-    friend modulo<T> operator-(modulo<T> lhs, const T& rhs) { lhs -= rhs; return lhs; }
+    friend modulo<T> operator+(modulo<T> lhs, const T& rhs) {
+        lhs += rhs;
+        return lhs;
+    }
+    friend modulo<T> operator-(modulo<T> lhs, const T& rhs) {
+        lhs -= rhs;
+        return lhs;
+    }
 
     // Comparisons are always false if the bases don't match
     friend bool operator==(const modulo<T>& lhs, const modulo<T>& rhs) {
@@ -662,13 +674,16 @@ public:
      *
      * @returns The modular number.
      **/
-    T norm() const { return _i % _n; }
+    T norm() const {
+        return _i % _n;
+    }
 
     /// Conversion back to type T
-    operator T() const { return norm(); }
+    operator T() const {
+        return norm();
+    }
 
 private:
-
     // Internally we don't actually keep bother mod'ing the number when
     // we do arithmetic, only at output time.
     T _i = 0;
@@ -679,9 +694,8 @@ private:
 
 /// Stream output for modular types
 template<typename T>
-std::ostream& operator<<(std::ostream& os, const modulo<T>& m)
-{
-  return (os << m.norm());
+std::ostream& operator<<(std::ostream& os, const modulo<T>& m) {
+    return (os << m.norm());
 }
 
 
@@ -690,7 +704,6 @@ std::ostream& operator<<(std::ostream& os, const modulo<T>& m)
  **/
 class frameID : public modulo<int> {
 public:
-
     /**
      * @brief Create a frameID for a given buffer.
      *

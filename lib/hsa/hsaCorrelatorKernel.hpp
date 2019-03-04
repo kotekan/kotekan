@@ -12,17 +12,14 @@ struct corr_kernel_config_t {
 };
 #pragma pack(0)
 
-class hsaCorrelatorKernel: public hsaSubframeCommand
-{
+class hsaCorrelatorKernel : public hsaSubframeCommand {
 public:
-
-    hsaCorrelatorKernel(Config &config, const string &unique_name,
-                        bufferContainer &host_buffers, hsaDeviceInterface &device);
+    hsaCorrelatorKernel(kotekan::Config& config, const string& unique_name,
+                        kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaCorrelatorKernel();
 
-    hsa_signal_t execute(int gpu_frame_id,
-                         hsa_signal_t precede_signal) override;
+    hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
 private:
     int32_t input_frame_len;
@@ -30,8 +27,8 @@ private:
     int32_t corr_frame_len;
     int32_t block_map_len;
 
-    uint32_t * host_block_map;
-    corr_kernel_config_t * host_kernel_args;
+    uint32_t* host_block_map;
+    corr_kernel_config_t* host_kernel_args;
 
     // TODO maybe factor these into a CHIME command object class?
     int32_t _num_local_freq;

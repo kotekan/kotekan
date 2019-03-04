@@ -1,30 +1,30 @@
 /*****************************************
 @file
-@brief Processes for triggered baseband recording
+@brief Stages for triggered baseband recording
 - basebandDumpData
-- basebandReadout : public KotekanProcess
+- basebandReadout : public kotekan::Stage
 *****************************************/
 #ifndef BASEBAND_READOUT_H
 #define BASEBAND_READOUT_H
 
-#include <string>
-#include <mutex>
-#include <queue>
-#include <tuple>
-#include <condition_variable>
+#include "Stage.hpp"
+#include "basebandReadoutManager.hpp"
+#include "buffer.h"
+#include "chimeMetadata.h"
+#include "gpsTime.h"
+#include "prometheusMetrics.hpp"
+#include "visUtil.hpp"
 
 #include "gsl-lite.hpp"
 
-#include <highfive/H5File.hpp>
+#include <condition_variable>
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5DataSpace.hpp>
-
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "KotekanProcess.hpp"
-#include "gpsTime.h"
-#include "basebandReadoutManager.hpp"
-#include "visUtil.hpp"
+#include <highfive/H5File.hpp>
+#include <mutex>
+#include <queue>
+#include <string>
+#include <tuple>
 
 
 constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
@@ -44,15 +44,9 @@ struct basebandDumpData {
     /// Default constructor used to indicate error
     basebandDumpData();
     /// Initialize the container with all parameters but does not fill in the data.
-    basebandDumpData(
-            uint64_t event_id_,
-            uint32_t freq_id_,
-            uint32_t num_elements_,
-            int64_t data_start_fpga_,
-            uint64_t data_length_fpga_,
-            timespec data_start_ctime_,
-            uint8_t * data_ref
-            );
+    basebandDumpData(uint64_t event_id_, uint32_t freq_id_, uint32_t num_elements_,
+                     int64_t data_start_fpga_, uint64_t data_length_fpga_,
+                     timespec data_start_ctime_, uint8_t* data_ref);
 
     //@{
     /// Metadata.
@@ -94,14 +88,22 @@ struct basebandDumpData {
  * @conf  write_throttle        Float, default 0. Add sleep time while writing dumps
  *                              equal to this factor times real time.
  *
+ * @par Metrics
+ * @metric kotekan_baseband_readout_total
+ *         The count of requests handled by an instance of this stage.
+ *         Labels:
+ *         - status: 'done', 'error', 'no_data'
+ *         - freq_id: channel frequency received by this stage
+ *
  * @author Kiyoshi Masui, Davor Cubranic
  */
-class basebandReadout : public KotekanProcess {
+class basebandReadout : public kotekan::Stage {
 public:
-    basebandReadout(Config& config, const string& unique_name,
-                    bufferContainer &buffer_container);
+    basebandReadout(kotekan::Config& config, const string& unique_name,
+                    kotekan::bufferContainer& buffer_container);
     virtual ~basebandReadout();
     void main_thread() override;
+
 private:
     // settings from the config file
     std::string _base_dir;
@@ -112,17 +114,15 @@ private:
     double _write_throttle;
     std::vector<input_ctype> _inputs;
 
-    struct Buffer * buf;
+    struct Buffer* buf;
     int next_frame, oldest_frame;
     std::vector<std::mutex> frame_locks;
 
     std::mutex manager_lock;
 
-    void listen_thread(const uint32_t freq_id,
-                       basebandReadoutManager& readout_manager);
-    void write_thread(basebandReadoutManager& readout_manager);
-    void write_dump(basebandDumpData data,
-                    basebandDumpStatus& dump_status,
+    void listen_thread(const uint32_t freq_id, kotekan::basebandReadoutManager& readout_manager);
+    void write_thread(kotekan::basebandReadoutManager& readout_manager);
+    void write_dump(basebandDumpData data, kotekan::basebandDumpStatus& dump_status,
                     std::mutex& request_mtx);
     int add_replace_frame(int frame_id);
     void lock_range(int start_frame, int end_frame);
@@ -138,11 +138,8 @@ private:
      * @return A fully initialized `basebandDumpData` if the call succeeded, or
      * an empty one if the frame data was not availabe for the time requested
      */
-    basebandDumpData get_data(
-            uint64_t event_id,
-            int64_t trigger_start_fpga,
-            int64_t trigger_length_fpga
-            );
+    basebandDumpData get_data(uint64_t event_id, int64_t trigger_start_fpga,
+                              int64_t trigger_length_fpga);
 
     /// baseband data array
     const std::unique_ptr<uint8_t[]> baseband_data;
@@ -151,6 +148,12 @@ private:
     std::unique_ptr<basebandDumpData> dump_to_write;
     std::condition_variable ready_to_write;
     std::mutex dump_to_write_mtx;
+
+    kotekan::prometheusMetrics& metrics = kotekan::prometheusMetrics::instance();
+    std::string freq_id_label;
+    uint32_t request_done_count = 0;
+    uint32_t request_error_count = 0;
+    uint32_t request_no_data_count = 0;
 };
 
 #endif

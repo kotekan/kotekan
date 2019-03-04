@@ -1,53 +1,51 @@
 #include <assert.h>
+#include <functional>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
-#include <functional>
 #include <string>
 
 using std::string;
 
 // TODO Where do these live?
-# define likely(x)      __builtin_expect(!!(x), 1)
-# define unlikely(x)    __builtin_expect(!!(x), 0)
+#define likely(x) __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
 
 #include "beamformingPostProcess.hpp"
-#include "util.h"
 #include "errors.h"
 #include "time_tracking.h"
+#include "util.h"
 #include "vdif_functions.h"
 
-REGISTER_KOTEKAN_PROCESS(beamformingPostProcess);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
 
-beamformingPostProcess::beamformingPostProcess(Config& config,
-        const string& unique_name,
-        bufferContainer &buffer_container) :
-        KotekanProcess(config, unique_name, buffer_container,
-                       std::bind(&beamformingPostProcess::main_thread, this))
-{
+REGISTER_KOTEKAN_STAGE(beamformingPostProcess);
+
+beamformingPostProcess::beamformingPostProcess(Config& config, const string& unique_name,
+                                               bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container,
+          std::bind(&beamformingPostProcess::main_thread, this)) {
     _num_fpga_links = config.get<uint32_t>(unique_name, "num_links");
     //_num_gpus = config.get_int("/gpu", "num_gpus");
     _num_gpus = config.get<uint32_t>(unique_name, "num_gpus");
-    in_buf = (struct Buffer **)malloc(_num_gpus * sizeof (struct Buffer *));
+    in_buf = (struct Buffer**)malloc(_num_gpus * sizeof(struct Buffer*));
     for (uint32_t i = 0; i < _num_gpus; ++i) {
         in_buf[i] = get_buffer("beam_in_buf_" + std::to_string(i));
         register_consumer(in_buf[i], unique_name.c_str());
     }
     vdif_buf = get_buffer("vdif_out_buf");
     register_producer(vdif_buf, unique_name.c_str());
-
 }
 
 beamformingPostProcess::~beamformingPostProcess() {
     free(in_buf);
 }
 
-void beamformingPostProcess::fill_headers(unsigned char * out_buf,
-                  struct VDIFHeader * vdif_header,
-                  const uint32_t second,
-                  const uint32_t fpga_seq_num,
-                  const uint32_t num_links,
-                  uint32_t *thread_id) {
+void beamformingPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* vdif_header,
+                                          const uint32_t second, const uint32_t fpga_seq_num,
+                                          const uint32_t num_links, uint32_t* thread_id) {
     // Populate the headers
     vdif_header->seconds = second;
     assert(sizeof(struct VDIFHeader) == 32);
@@ -55,15 +53,15 @@ void beamformingPostProcess::fill_headers(unsigned char * out_buf,
     for (int i = 0; i < 625; ++i) {
         vdif_header->data_frame = i;
 
-        for(uint32_t j = 0; j < num_links; ++j) {
+        for (uint32_t j = 0; j < num_links; ++j) {
             vdif_header->thread_id = thread_id[j];
             vdif_header->eud2 = fpga_seq_num + 625 * i;
 
             // Each polarization is its own station
             vdif_header->station_id = 0;
-            memcpy(&out_buf[(i*16+j*2)*5032], vdif_header, sizeof(struct VDIFHeader));
+            memcpy(&out_buf[(i * 16 + j * 2) * 5032], vdif_header, sizeof(struct VDIFHeader));
             vdif_header->station_id = 1;
-            memcpy(&out_buf[(i*16+j*2 + 1)*5032], vdif_header, sizeof(struct VDIFHeader));
+            memcpy(&out_buf[(i * 16 + j * 2 + 1) * 5032], vdif_header, sizeof(struct VDIFHeader));
         }
     }
 }
@@ -71,15 +69,14 @@ void beamformingPostProcess::fill_headers(unsigned char * out_buf,
 void beamformingPostProcess::main_thread() {
 
     // Apply config.
-    _samples_per_data_set = config.get<uint32_t>(unique_name,
-                                                 "samples_per_data_set");
+    _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
     _num_data_sets = config.get<uint32_t>(unique_name, "num_data_sets");
     _link_map = config.get<std::vector<int32_t>>(unique_name, "link_map");
     _num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
 
     int in_buffer_ID[_num_gpus];
     int in_buffer_ID_final[_num_gpus];
-    uint8_t * in_frame[_num_fpga_links];
+    uint8_t* in_frame[_num_fpga_links];
     int out_buffer_ID = 0;
     int startup = 1;
 
@@ -99,13 +96,13 @@ void beamformingPostProcess::main_thread() {
 
     // Header template
     struct VDIFHeader vdif_header;
-    vdif_header.bits_depth = 3; // 4-bit data
-    vdif_header.data_type = 1; // Complex
+    vdif_header.bits_depth = 3;  // 4-bit data
+    vdif_header.data_type = 1;   // Complex
     vdif_header.frame_len = 629; // 5032 bytes / 8
     vdif_header.invalid = 0;
     vdif_header.legacy = 0;
     vdif_header.log_num_chan = 3; // log(8)/log(2)
-    vdif_header.ref_epoch = 0; // TODO set this dynamically from the current date.
+    vdif_header.ref_epoch = 0;    // TODO set this dynamically from the current date.
     vdif_header.unused = 0;
     vdif_header.vdif_version = 1; // Correct?
     vdif_header.edv = 0;
@@ -120,11 +117,11 @@ void beamformingPostProcess::main_thread() {
     uint32_t fpga_seq_num = 0;
 
     // Get the first output buffer which will always be id = 0 to start.
-    uint8_t * vdif_frame = wait_for_empty_frame(vdif_buf, unique_name.c_str(), out_buffer_ID);
+    uint8_t* vdif_frame = wait_for_empty_frame(vdif_buf, unique_name.c_str(), out_buffer_ID);
 
-    while(!stop_thread) {
+    while (!stop_thread) {
 
-        //INFO("beamforming_post_process; waiting for GPU output.");
+        // INFO("beamforming_post_process; waiting for GPU output.");
 
         uint32_t first_seq_number = 0;
 
@@ -135,14 +132,17 @@ void beamformingPostProcess::main_thread() {
             int gpu_id = _link_map[i];
 
             // This call is blocking!
-            in_frame[i] = wait_for_full_frame(in_buf[gpu_id], unique_name.c_str(), in_buffer_ID[gpu_id]);
-            if (in_frame[i] == NULL) goto end_loop;
+            in_frame[i] =
+                wait_for_full_frame(in_buf[gpu_id], unique_name.c_str(), in_buffer_ID[gpu_id]);
+            if (in_frame[i] == NULL)
+                goto end_loop;
 
-            if (i == 0){
-                first_seq_number = (uint32_t)get_fpga_seq_num(in_buf[_link_map[0]], in_buffer_ID[0]);
+            if (i == 0) {
+                first_seq_number =
+                    (uint32_t)get_fpga_seq_num(in_buf[_link_map[0]], in_buffer_ID[0]);
             } else {
-                assert(first_seq_number ==
-                    (uint32_t)get_fpga_seq_num(in_buf[gpu_id], in_buffer_ID[gpu_id]));
+                assert(first_seq_number
+                       == (uint32_t)get_fpga_seq_num(in_buf[gpu_id], in_buffer_ID[gpu_id]));
             }
 
             int stream_id = get_stream_id(in_buf[gpu_id], in_buffer_ID[gpu_id]);
@@ -153,7 +153,7 @@ void beamformingPostProcess::main_thread() {
             in_buffer_ID[gpu_id] = (in_buffer_ID[gpu_id] + 1) % in_buf[gpu_id]->num_frames;
         }
 
-        //INFO("beamforming_post_process; got full set of GPU output buffers");
+        // INFO("beamforming_post_process; got full set of GPU output buffers");
 
         // If this is the first time wait until we get the start of an interger second period.
         if (unlikely(startup == 1)) {
@@ -165,13 +165,9 @@ void beamformingPostProcess::main_thread() {
             second = (int)(round((double)time.tv_sec / 20.0) * 20.0) - 946728000;
             // Fill the first output buffer headers
             fpga_seq_num = first_seq_number;
-            fill_headers((unsigned char*)vdif_frame,
-                         &vdif_header,
-                         second,
-                         first_seq_number,
-                         _num_fpga_links,
-                         thread_ids);
-            //second = get_vdif_second(first_seq_number + current_input_location);
+            fill_headers((unsigned char*)vdif_frame, &vdif_header, second, first_seq_number,
+                         _num_fpga_links, thread_ids);
+            // second = get_vdif_second(first_seq_number + current_input_location);
         }
 
         // This loop which takes data from the input buffer and formats the output.
@@ -193,38 +189,37 @@ void beamformingPostProcess::main_thread() {
 
                         // Get a new output buffer
                         out_buffer_ID = (out_buffer_ID + 1) % vdif_buf->num_frames;
-                        vdif_frame = wait_for_empty_frame(vdif_buf, unique_name.c_str(), out_buffer_ID);
-                        if (vdif_frame == NULL) goto end_loop;
+                        vdif_frame =
+                            wait_for_empty_frame(vdif_buf, unique_name.c_str(), out_buffer_ID);
+                        if (vdif_frame == NULL)
+                            goto end_loop;
 
                         // Fill the headers of the new buffer
-                        fpga_seq_num += 625*625;
-                        fill_headers((unsigned char*)vdif_frame,
-                                     &vdif_header,
-                                     second,
-                                     fpga_seq_num,
-                                     _num_fpga_links,
-                                     thread_ids);
+                        fpga_seq_num += 625 * 625;
+                        fill_headers((unsigned char*)vdif_frame, &vdif_header, second, fpga_seq_num,
+                                     _num_fpga_links, thread_ids);
                     }
                 }
 
                 for (uint32_t thread_id = 0; thread_id < _num_fpga_links; ++thread_id) {
-                    unsigned char * out_buf = (unsigned char*)vdif_frame;
+                    unsigned char* out_buf = (unsigned char*)vdif_frame;
                     uint32_t station_0_index = frame * frame_size * _num_fpga_links * 2
-                                                + thread_id * frame_size * 2
-                                                + in_frame_location * 8 + header_size;
+                                               + thread_id * frame_size * 2 + in_frame_location * 8
+                                               + header_size;
 
                     uint32_t station_1_index = frame * frame_size * _num_fpga_links * 2
-                                                + thread_id * frame_size * 2 + frame_size
-                                                + in_frame_location * 8 + header_size;
+                                               + thread_id * frame_size * 2 + frame_size
+                                               + in_frame_location * 8 + header_size;
 
-                    //DEBUG("beamforming_post_process: station_0_index = %d", station_0_index);
+                    // DEBUG("beamforming_post_process: station_0_index = %d", station_0_index);
 
                     for (uint32_t freq = 0; freq < _num_local_freq; ++freq) {
-                        unsigned char * in_buf_data = (unsigned char *)in_frame[thread_id];
+                        unsigned char* in_buf_data = (unsigned char*)in_frame[thread_id];
                         // The two polarizations.
-                        // Each sample is 4-bit real, 4-bit complex, so byte operations work just fine here.
-                        out_buf[station_0_index + freq] = in_buf_data[i*16 + freq*2];
-                        out_buf[station_1_index + freq] = in_buf_data[i*16 + freq*2 + 1];
+                        // Each sample is 4-bit real, 4-bit complex, so byte operations work just
+                        // fine here.
+                        out_buf[station_0_index + freq] = in_buf_data[i * 16 + freq * 2];
+                        out_buf[station_1_index + freq] = in_buf_data[i * 16 + freq * 2 + 1];
                     }
                 }
 
@@ -238,8 +233,9 @@ void beamformingPostProcess::main_thread() {
             int gpu_id = _link_map[i];
 
             mark_frame_empty(in_buf[gpu_id], unique_name.c_str(), in_buffer_ID_final[gpu_id]);
-            in_buffer_ID_final[gpu_id] = (in_buffer_ID_final[gpu_id] + 1) % in_buf[gpu_id]->num_frames;
+            in_buffer_ID_final[gpu_id] =
+                (in_buffer_ID_final[gpu_id] + 1) % in_buf[gpu_id]->num_frames;
         }
     }
-    end_loop:;
+end_loop:;
 }

@@ -18,7 +18,7 @@ diag_global_params = {
     }
 }
 
-diag_process_params = {
+diag_stage_params = {
     'stack_type': 'diagonal'
 }
 
@@ -36,7 +36,7 @@ chime_global_params = {
     }
 }
 
-chime_process_params = {
+chime_stage_params = {
     'stack_type': 'chime_in_cyl'
 }
 
@@ -67,8 +67,8 @@ def diagonal_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanProcessTester(
-        'baselineCompression', diag_process_params,
+    test = runner.KotekanStageTester(
+        'baselineCompression', diag_stage_params,
         fakevis_buffer,
         dump_buffer,
         diag_global_params
@@ -92,8 +92,8 @@ def chime_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanProcessTester(
-        'baselineCompression', chime_process_params,
+    test = runner.KotekanStageTester(
+        'baselineCompression', chime_stage_params,
         fakevis_buffer,
         dump_buffer,
         chime_global_params

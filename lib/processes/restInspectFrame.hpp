@@ -1,8 +1,9 @@
 #ifndef REST_INSPECT_FRAME_HPP
 #define REST_INSPECT_FRAME_HPP
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "restServer.hpp"
+
 #include <mutex>
 #include <string>
 
@@ -31,7 +32,7 @@
  *               front of the latest frame. Default the frame size of @c in_buf
  *               Note if set to zero, this will be set to frame size of @c in_buf
  *
- * @warning This process makes a copy of the data in each and every frame ( upto @c len ).
+ * @warning This stage makes a copy of the data in each and every frame ( upto @c len ).
  *          So it should not be used in places where this extra memory copy would be
  *          expensive for the system to deal with, and should only be enabled when it
  *          is needed for trouble shooting.
@@ -41,12 +42,11 @@
  *
  * @author Andre Renard
  */
-class restInspectFrame : public KotekanProcess {
+class restInspectFrame : public kotekan::Stage {
 public:
-
     /// Constructor
-    restInspectFrame(Config& config, const string& unique_name,
-                   bufferContainer &buffer_container);
+    restInspectFrame(kotekan::Config& config, const string& unique_name,
+                     kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     virtual ~restInspectFrame();
@@ -62,26 +62,25 @@ public:
      *
      * @param conn The HTTP connection object
      */
-    void rest_callback(connectionInstance& conn);
+    void rest_callback(kotekan::connectionInstance& conn);
 
 private:
-
     /// The buffer to allow inspections on.
-    struct Buffer *in_buf;
+    struct Buffer* in_buf;
 
     /// The name (from the config) of the buffer we are inspecting
     std::string in_buf_config_name;
 
     /// The part of the frame to hold off to side for
     /// the REST call back.
-    uint8_t *frame_copy;
+    uint8_t* frame_copy;
 
     /// Locks changes to @c frame_copy
     std::mutex frame_copy_lock;
-    
+
     /// The REST server endpoint name
     std::string endpoint;
-    
+
     /// Has the REST server end point been registered?
     bool registered;
 

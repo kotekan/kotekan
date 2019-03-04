@@ -1,33 +1,36 @@
 #include "visTestPattern.hpp"
+
+#include "StageFactory.hpp"
 #include "buffer.h"
-#include "errors.h"
-#include "processFactory.hpp"
-#include "visBuffer.hpp"
 #include "bufferContainer.hpp"
+#include "errors.h"
+#include "visBuffer.hpp"
 
 #include "gsl-lite.hpp"
 
-#include <math.h>
-#include <time.h>
 #include <atomic>
 #include <complex>
 #include <cstdint>
 #include <cstring>
 #include <exception>
 #include <functional>
+#include <math.h>
 #include <regex>
 #include <stdexcept>
+#include <time.h>
 #include <tuple>
 
 
-REGISTER_KOTEKAN_PROCESS(visTestPattern);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(visTestPattern);
 
 
-visTestPattern::visTestPattern(Config& config,
-                               const std::string& unique_name,
-                               bufferContainer &buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&visTestPattern::main_thread, this)) {
+visTestPattern::visTestPattern(Config& config, const std::string& unique_name,
+                               bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&visTestPattern::main_thread, this)) {
 
     // Setup the buffers
     in_buf = get_buffer("in_buf");
@@ -40,30 +43,26 @@ visTestPattern::visTestPattern(Config& config,
 
     INFO("visCheckTestPattern: mode = %s", mode.c_str());
     if (mode == "test_pattern_simple") {
-        exp_val = config.get_default<cfloat>(unique_name,
-                                             "default_val", {1.,0});
+        exp_val = config.get_default<cfloat>(unique_name, "default_val", {1., 0});
     } else if (mode == "test_pattern_freq") {
-        num_freq = config.get<size_t>(unique_name,"num_freq");
+        num_freq = config.get<size_t>(unique_name, "num_freq");
 
-        cfloat default_val = config.get_default<cfloat>(unique_name,
-                                                 "default_val", {128., 0.});
-        std::vector<uint32_t> bins = config.get<std::vector<uint32_t>>(
-                       unique_name, "frequencies");
-        std::vector<cfloat> bin_values = config.get<std::vector<cfloat>>(
-                       unique_name, "freq_values");
+        cfloat default_val = config.get_default<cfloat>(unique_name, "default_val", {128., 0.});
+        std::vector<uint32_t> bins = config.get<std::vector<uint32_t>>(unique_name, "frequencies");
+        std::vector<cfloat> bin_values =
+            config.get<std::vector<cfloat>>(unique_name, "freq_values");
         if (bins.size() != bin_values.size()) {
             throw std::invalid_argument("fakeVis: lengths of frequencies ("
-                                        + std::to_string(bins.size())
-                                        + ") and freq_value ("
+                                        + std::to_string(bins.size()) + ") and freq_value ("
                                         + std::to_string(bin_values.size())
                                         + ") arrays have to be equal.");
         }
         if (bins.size() > num_freq) {
-            throw std::invalid_argument(
-                        "fakeVis: length of frequencies array ("
-                        + std::to_string(bins.size()) + ") can not be larger " \
-                        "than num_freq (" + std::to_string(num_freq)
-                        + ").");
+            throw std::invalid_argument("fakeVis: length of frequencies array ("
+                                        + std::to_string(bins.size())
+                                        + ") can not be larger "
+                                          "than num_freq ("
+                                        + std::to_string(num_freq) + ").");
         }
 
         exp_val_freq = std::vector<cfloat>(num_freq);
@@ -79,8 +78,7 @@ visTestPattern::visTestPattern(Config& config,
                 exp_val_freq[i] = bin_values.at(j);
         }
     } else
-        throw std::invalid_argument("visCheckTestpattern: unknown mode: " +
-                                    mode);
+        throw std::invalid_argument("visCheckTestpattern: unknown mode: " + mode);
 
     tolerance = config.get_default<float>(unique_name, "tolerance", 1e-6);
     report_freq = config.get_default<uint64_t>(unique_name, "report_freq", 1000);
@@ -88,16 +86,17 @@ visTestPattern::visTestPattern(Config& config,
     outfile_name = config.get<std::string>(unique_name, "out_file");
 
     if (tolerance < 0)
-        throw std::invalid_argument("visCheckTestPattern: tolerance has to be" \
-               " positive (is " + std::to_string(tolerance) + ").");
+        throw std::invalid_argument("visCheckTestPattern: tolerance has to be"
+                                    " positive (is "
+                                    + std::to_string(tolerance) + ").");
 
-    outfile.open (outfile_name);
+    outfile.open(outfile_name);
     if (!outfile.is_open()) {
-        throw std::ios_base::failure("visCheckTestPattern: Failed to open " \
-                                     "out file " + outfile_name);
+        throw std::ios_base::failure("visCheckTestPattern: Failed to open "
+                                     "out file "
+                                     + outfile_name);
     }
-    outfile << "fpga_count,time,freq_id,num_bad,avg_err,min_err,max_err"
-        << std::endl;
+    outfile << "fpga_count,time,freq_id,num_bad,avg_err,min_err,max_err" << std::endl;
 }
 
 void visTestPattern::main_thread() {
@@ -131,14 +130,13 @@ void visTestPattern::main_thread() {
     while (!stop_thread) {
 
         // Wait for the buffer to be filled with data
-        if(wait_for_full_frame(in_buf, unique_name.c_str(),
-                               frame_id) == nullptr) {
+        if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
             break;
         }
 
         // Print out debug information from the buffer
-         auto frame = visFrameView(in_buf, frame_id);
-         //INFO("%s", frame.summary().c_str());
+        auto frame = visFrameView(in_buf, frame_id);
+        // INFO("%s", frame.summary().c_str());
 
         num_bad = 0;
         avg_err = 0.0;
@@ -197,8 +195,7 @@ void visTestPattern::main_thread() {
             DEBUG("mean error: %f", avg_err);
             DEBUG("min error: %f", min_err);
             DEBUG("max error: %f", max_err);
-            DEBUG("time: %d, %lld.%d", fpga_count, (long long)time.tv_sec,
-                    time.tv_nsec);
+            DEBUG("time: %d, %lld.%d", fpga_count, (long long)time.tv_sec, time.tv_nsec);
             DEBUG("freq id: %d", freq_id);
             DEBUG("expected: (%f,%f)", expected.real(), expected.imag());
 
@@ -214,8 +211,7 @@ void visTestPattern::main_thread() {
             // pass this bad frame to the output buffer:
 
             // Wait for an empty frame in the output buffer
-            if(wait_for_empty_frame(out_buf, unique_name.c_str(),
-                                    output_frame_id) == nullptr) {
+            if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
                 break;
             }
 
@@ -223,13 +219,11 @@ void visTestPattern::main_thread() {
             pass_metadata(in_buf, frame_id, out_buf, output_frame_id);
 
             // Copy the frame data here:
-            std::memcpy(out_buf->frames[output_frame_id],
-                        in_buf->frames[frame_id],
+            std::memcpy(out_buf->frames[output_frame_id], in_buf->frames[frame_id],
                         in_buf->frame_size);
 
 
-            mark_frame_full(out_buf, unique_name.c_str(),
-                                output_frame_id);
+            mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
 
             // Advance output frame id
             output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
@@ -243,9 +237,9 @@ void visTestPattern::main_thread() {
             if (num_bad_tot == 0)
                 avg_err_tot = 0;
 
-            INFO("Summary from last %d frames: num bad values: %d, mean " \
-                    "error: %f, min error: %f, max error: %f", report_freq,
-                    num_bad_tot, avg_err_tot, min_err_tot, max_err_tot);
+            INFO("Summary from last %d frames: num bad values: %d, mean "
+                 "error: %f, min error: %f, max error: %f",
+                 report_freq, num_bad_tot, avg_err_tot, min_err_tot, max_err_tot);
             avg_err_tot = 0.0;
             num_bad_tot = 0;
             min_err_tot = 0;

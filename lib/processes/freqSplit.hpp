@@ -1,28 +1,29 @@
 /*****************************************
 @file
-@brief Processes for splitting visibility data by frequency.
-- freqSplit : public KotekanProcess
+@brief Stage for splitting visibility data by frequency.
+- freqSplit : public kotekan::Stage
 *****************************************/
 #ifndef FREQ_SPLIT_HPP
 #define FREQ_SPLIT_HPP
 
-#include <stdint.h>
-#include <array>
-#include <future>
-#include <string>
-#include <utility>
-#include <vector>
-
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
 
+#include <array>
+#include <future>
+#include <stdint.h>
+#include <string>
+#include <utility>
+#include <vector>
+
 
 /**
  * @class freqSplit
- * @brief Separate a visBuffer stream into two by selecting frequencies in the upper and lower half of the band.
+ * @brief Separate a visBuffer stream into two by selecting frequencies in the upper and lower half
+ * of the band.
  *
  * This task takes data coming out of a visBuffer stream and separates it into
  * two streams. It selects which frames to copy to which buffer by assigning
@@ -45,16 +46,14 @@
  * @todo Generalise to arbitary frequency splits.
  * @author Mateus Fandino
  */
-class freqSplit : public KotekanProcess {
+class freqSplit : public kotekan::Stage {
 
 public:
-
     // Default constructor
-    freqSplit(Config &config,
-              const string& unique_name,
-              bufferContainer &buffer_container);
+    freqSplit(kotekan::Config& config, const string& unique_name,
+              kotekan::bufferContainer& buffer_container);
 
-    // Main loop for the process
+    // Main loop for the stage
     void main_thread() override;
 
 private:
@@ -63,7 +62,7 @@ private:
 
     // Vector of the buffers we are using and their current frame ids.
     std::vector<std::pair<Buffer*, unsigned int>> out_bufs;
-    Buffer * in_buf;
+    Buffer* in_buf;
 
     std::future<std::array<dset_id_t, 2>> _output_dset_id;
 

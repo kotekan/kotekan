@@ -2,26 +2,27 @@
  * @file gpuCommand.hpp
  * @brief Base class for defining commands to execute on GPUs
  *  - gpuCommand
- */ 
+ */
 
 #ifndef GPU_COMMAND_H
 #define GPU_COMMAND_H
 
 #include "Config.hpp"
-#include "errors.h"
-#include <stdio.h>
-#include "gpuDeviceInterface.hpp"
-#include "gpuEventContainer.hpp"
-#include "factory.hpp"
-#include "bufferContainer.hpp"
-#include "kotekanLogging.hpp"
 #include "assert.h"
 #include "buffer.h"
-#include <string>
+#include "bufferContainer.hpp"
+#include "errors.h"
+#include "factory.hpp"
+#include "gpuDeviceInterface.hpp"
+#include "gpuEventContainer.hpp"
+#include "kotekanLogging.hpp"
+
 #include <signal.h>
+#include <stdio.h>
+#include <string>
 
 /// Enumeration of known GPU command types.
-enum class gpuCommandType {COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET};
+enum class gpuCommandType { COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET };
 
 /**
  * @class gpuCommand
@@ -30,7 +31,7 @@ enum class gpuCommandType {COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET};
  * Commands executed on a GPU can either be kernels that perform a simple calculation
  * or resource management instructions to support kernel execution, generally these
  * break down into three categories, copy-in, copy-out, and kernels.
- * 
+ *
  * @conf buffer_depth  Global buffer depth for all buffer arrays in the subsystem.
  *                     Generally sets the number of frames used for staging input / output.
  * @conf kernel        If an external file (CL, binary, etc) is used, this gives the filename.
@@ -40,8 +41,7 @@ enum class gpuCommandType {COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET};
  *
  * @author Keith Vanderlinde
  */
-class gpuCommand: public kotekanLogging
-{
+class gpuCommand : public kotekan::kotekanLogging {
 public:
     /**
      * @brief Constructor, needs to be initialized by any derived classes.
@@ -54,15 +54,14 @@ public:
      * @param default_file_name      (optional) external file (e.g. CL) used
      *.                              by a command
      */
-    gpuCommand(Config &config, const string &unique_name,
-              bufferContainer &host_buffers, gpuDeviceInterface &device,
-              const string &default_kernel_command="",
-              const string &default_kernel_file_name=""
-              );
+    gpuCommand(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& host_buffers, gpuDeviceInterface& device,
+               const string& default_kernel_command = "",
+               const string& default_kernel_file_name = "");
     /// Destructor that frees memory for the kernel and name.
     virtual ~gpuCommand();
     /// Get that returns the name given to this gpuCommand object.
-    string &get_name();
+    string& get_name();
 
     /**
      * @brief This function blocks on whatever resource is required by the command.
@@ -92,19 +91,20 @@ public:
     gpuCommandType get_command_type();
 
 protected:
-    /// A unique name used for the gpu command. Used in indexing commands in a list and referencing them by this value.
+    /// A unique name used for the gpu command. Used in indexing commands in a list and referencing
+    /// them by this value.
     string kernel_command;
     /// File reference for the openCL file (.cl) where the kernel is written.
     string kernel_file_name;
     /// reference to the config file for the current run
-    Config &config;
+    kotekan::Config& config;
 
     /// Name to use with consumer and producer assignment for buffers defined in yaml files.
     string unique_name;
-    bufferContainer host_buffers;
+    kotekan::bufferContainer host_buffers;
 
     /// Reference to a derived device interface.
-    gpuDeviceInterface &dev;
+    gpuDeviceInterface& dev;
 
     /// Sets the number of frames to be queued up in each buffer.
     int32_t _gpu_buffer_depth;
@@ -117,4 +117,3 @@ protected:
 };
 
 #endif // GPU_COMMAND_H
-

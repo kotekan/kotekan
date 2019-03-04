@@ -1,17 +1,17 @@
 /**
  * @file
- * @brief Process to watch a buffer or buffers and exit the system if it doesn't
+ * @brief Stage to watch a buffer or buffers and exit the system if it doesn't
  *        get new data within a set timeout
- *  - monitorBuffer : public KotekanProcess
+ *  - monitorBuffer : public kotekan::Stage
  */
 
 #ifndef MONITOR_BUFFER_H
 #define MONITOR_BUFFER_H
 
-#include <vector>
-
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "bufferContainer.hpp"
+
+#include <vector>
 
 /**
  * @class monitorBuffer
@@ -31,11 +31,11 @@
  * @conf fill_threshold  Float, default 2.0 (disabled)  The ratio of full to total frames,
  *                       which if exceeded with trigger an exit.
  */
-class monitorBuffer : public KotekanProcess {
+class monitorBuffer : public kotekan::Stage {
 public:
     /// Common constructor
-    monitorBuffer(Config& config, const string& unique_name,
-                         bufferContainer &buffer_container);
+    monitorBuffer(kotekan::Config& config, const string& unique_name,
+                  kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     virtual ~monitorBuffer();
@@ -53,7 +53,6 @@ private:
     /// The maximum fraction of full buffers before the system exits
     /// If set above 1 then this check is disabled
     float fill_threshold;
-
 };
 
 #endif

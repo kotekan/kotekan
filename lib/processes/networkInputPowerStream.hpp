@@ -1,28 +1,29 @@
 /**
  * @file
- * @brief Process to receive an intensity stream from a remote client.
- *  - networkInputPowerStream : public KotekanProcess
+ * @brief Stage to receive an intensity stream from a remote client.
+ *  - networkInputPowerStream : public kotekan::Stage
  */
 
 #ifndef NETWORK_INPUT_POWER_STREAM_H
 #define NETWORK_INPUT_POWER_STREAM_H
 
-#include "powerStreamUtil.hpp"
-#include <sys/socket.h>
 #include "Config.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
-#include "KotekanProcess.hpp"
+#include "powerStreamUtil.hpp"
+
 #include <atomic>
+#include <sys/socket.h>
 
 
 /**
  * @class networkInputPowerStream
- * @brief Process to take an intensity stream and stream to a remote client.
+ * @brief Stage to take an intensity stream and stream to a remote client.
  *
- * This is a consumer process which takes intensity data from a buffer and streams
+ * This is a consumer stage which takes intensity data from a buffer and streams
  * it via TCP (and some day UDP) to a remote client, primarily for visualization purposes.
  *
- * In TCP mode, the process should continually attempt to establish a TCP connection,
+ * In TCP mode, the stage should continually attempt to establish a TCP connection,
  * then transmit data once successful.
  *
  * @par Buffers
@@ -44,38 +45,37 @@
  * @author Keith Vanderlinde
  *
  */
-class networkInputPowerStream : public KotekanProcess {
+class networkInputPowerStream : public kotekan::Stage {
 public:
-    ///Constructor.
-    networkInputPowerStream(Config& config,
-                           const string& unique_name,
-                           bufferContainer &buffer_container);
-    ///Destructor.
+    /// Constructor.
+    networkInputPowerStream(kotekan::Config& config, const string& unique_name,
+                            kotekan::bufferContainer& buffer_container);
+    /// Destructor.
     virtual ~networkInputPowerStream();
 
     /// Primary loop, which waits on input frames, integrates, and dumps to output.
     void main_thread() override;
 
 private:
-    ///Simple function to receive data of @c length bytes.
-    void receive_packet(void *buffer, int length, int socket_fd);
+    /// Simple function to receive data of @c length bytes.
+    void receive_packet(void* buffer, int length, int socket_fd);
 
-    ///Output kotekanBuffer.
-    struct Buffer *out_buf;
+    /// Output kotekanBuffer.
+    struct Buffer* out_buf;
 
-    ///Port of the listening receiver.
+    /// Port of the listening receiver.
     uint32_t port;
-    ///IP of the listening receiver.
+    /// IP of the listening receiver.
     string server_ip;
-    ///Protocol to use: TCP or UDP. (Only TCP works now)
+    /// Protocol to use: TCP or UDP. (Only TCP works now)
     string protocol;
 
 
-    ///Number of frequencies in the buffer
+    /// Number of frequencies in the buffer
     int freqs;
-    ///Number of times in the buffer
+    /// Number of times in the buffer
     int times;
-    ///Number of elems in the buffer
+    /// Number of elems in the buffer
     int elems;
 };
 
