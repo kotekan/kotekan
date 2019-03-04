@@ -7,19 +7,15 @@ REGISTER_CL_COMMAND(clOutputData);
 
 clOutputData::clOutputData(Config& config, const string& unique_name, bufferContainer& host_buffers,
                            clDeviceInterface& device) :
-    clCommand(config, unique_name, host_buffers, device, "", "") {
+    clCommand(config, unique_name, host_buffers, device, "clOutputData", "") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _block_size = config.get<int>(unique_name, "block_size");
     _num_data_sets = config.get<int>(unique_name, "num_data_sets");
-    _num_blocks = config.get<int>(unique_name, "num_blocks");
+    _num_blocks = config.get<int>(unique_name,"num_blocks");
 
     network_buffer = host_buffers.get_buffer("network_buf");
-    register_consumer(network_buffer, unique_name.c_str());
-
     output_buffer = host_buffers.get_buffer("output_buf");
-    register_producer(output_buffer, unique_name.c_str());
-
     output_buffer_execute_id = 0;
     output_buffer_precondition_id = 0;
 

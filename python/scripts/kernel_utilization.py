@@ -2,22 +2,28 @@ import requests
 from tabulate import tabulate
 import json
 import os
+import argparse
+
+parser = argparse.ArgumentParser(description='Query Kotekan GPU timings and display the results')
+parser.add_argument('-i', help='ID(s) of GPUs', dest='gpu_ids', type=int, default=[0,1,2,3],
+                          nargs='+')
+args = parser.parse_args()
 
 headers = {'Content-type': 'application/json'}
 
 r = []
 json_data = []
-n_gpus = 4
+gpu_ids = args.gpu_ids
 
-for gpu_id in range(0,n_gpus):
+for i,gpu_id in enumerate(gpu_ids):
     r.append(requests.get('http://localhost:12048/gpu_profile/' + str(gpu_id)))
-    json_data.append(r[gpu_id].json())
+    json_data.append(r[i].json())
 
 kernels = []
 copy_ins = []
 copy_outs = []
 
-for gpu_id in range(0,n_gpus):
+for gpu_id in range(0,len(gpu_ids)):
     kernels.append([])
     # Kernel tables
     for kernel in json_data[gpu_id]["kernel"]:
@@ -34,7 +40,7 @@ for gpu_id in range(0,n_gpus):
         copy_outs[gpu_id].append([copy_out["name"], '%.6f' % copy_out["time"], '%.4f' % (copy_out["utilization"]*100) + "%"])
     copy_outs[gpu_id].append(["Total:", '%.6f' % json_data[gpu_id]["copy_out_total_time"], '%.4f' % (json_data[gpu_id]["copy_out_utilization"]*100) + "%"])
 
-for gpu_id in range(0,n_gpus):
+for gpu_id in range(0,len(gpu_ids)):
     print("| -------- GPU[" + str(gpu_id) + "] Kernel timing --------")
     print(tabulate(kernels[gpu_id], headers=["Kernel name", "time", "utilization"], tablefmt='orgtbl'))
     print("| -------- Host->GPU DMA timing --------")

@@ -21,14 +21,14 @@ private:
     int32_t _num_elements;
     /// Number of frequencies per data stream sent to each node.
     int32_t _num_local_freq;
-    /// Number of independent integrations within a single dataset. (eg. 8 means
-    /// samples_per_data_set/8= amount of integration per dataset.)
+    /// Number of independent integrations within a single dataset.
+    /// (eg. 8 means samples_per_data_set/8= amount of integration per dataset.)
     int32_t _num_data_sets;
-    /// Calculated value: num_adjusted_elements/block_size * (num_adjusted_elements/block_size +
-    /// 1)/2
+    /// Calculated value: num_adjusted_elements/block_size *
+    ///                   (num_adjusted_elements/block_size + 1)/2
     int32_t _num_blocks;
-    /// This is a kernel tuning parameter for a global work space dimension that sets data sizes for
-    /// GPU work items.
+    /// This is a kernel tuning parameter for a global work space
+    /// dimension that sets data sizes for GPU work items.
     int32_t _block_size;
 };
 

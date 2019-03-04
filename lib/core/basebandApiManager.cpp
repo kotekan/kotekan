@@ -52,13 +52,6 @@ void to_json(json& j, const basebandDumpStatus& d) {
     }
 }
 
-basebandApiManager::basebandApiManager() :
-    // clang-format off
-    metrics(prometheusMetrics::instance()) // clang-format on
-{
-    metrics.add_stage_metric("kotekan_baseband_requests_total", "baseband", request_count);
-}
-
 basebandApiManager& basebandApiManager::instance() {
     static basebandApiManager _instance;
     return _instance;
@@ -173,14 +166,11 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
                                                      {"start_fpga", readout_slice.start_fpga},
                                                      {"length_fpga", readout_slice.length_fpga}};
         }
-
         restServer& rest_server = restServer::instance();
         rest_server.register_get_callback("/baseband/" + std::to_string(event_id),
                                           [event_id, this](connectionInstance& nc) {
                                               status_callback_single_event(event_id, nc);
                                           });
-
-        metrics.add_stage_metric("kotekan_baseband_requests_total", "baseband", ++request_count);
 
         conn.send_json_reply(response);
     } catch (const std::exception& ex) {

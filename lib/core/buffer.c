@@ -729,7 +729,8 @@ uint8_t * buffer_malloc(ssize_t len) {
     if (frame == NULL) {
         return NULL;
     }
-
+//#elif WITH_OPENCL
+//    frame = cl
 #else
     // Create a page alligned block of memory for the buffer
     int err = 0;

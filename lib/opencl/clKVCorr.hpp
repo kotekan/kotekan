@@ -15,6 +15,7 @@ public:
 protected:
     void defineOutputDataMap();
     cl_int* zeros;
+    cl_mem device_block_lock;
 
     // Host Buffers
     cl_mem id_x_map;

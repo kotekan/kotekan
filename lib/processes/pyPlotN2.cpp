@@ -80,30 +80,38 @@ void pyPlotN2::main_thread() {
 }
 
 
-void pyPlotN2::make_plot(void) {
-    FILE* python_script;
-    python_script = popen("python -u /usr/sbin/pyPlotN2.py", "w");
-    { // N^2
+void pyPlotN2::make_plot(void)
+{
+    FILE *python_script;
+    DEBUG("Starting new thread");
+    python_script = popen("/usr/bin/python -u /usr/sbin/pyPlotN2.py","w");
+    if (python_script == NULL) ERROR("AGH, failed!");
+    //if (true) { // N^2
         uint num_elements = config.get<uint>(unique_name, "num_elements");
-        uint block_dim = 32;
-        uint num_blocks = (num_elements / block_dim) * (num_elements / block_dim + 1) / 2;
-        uint block_size = block_dim * block_dim * 2; // real, complex
+        uint block_dim = config.get<uint>(unique_name, "block_size"); //32;
+        uint num_freqs = config.get_default<uint>(unique_name, "num_freq",1);
+        uint num_blocks = (num_elements/block_dim)*(num_elements/block_dim + 1)/2;
+        uint block_size = block_dim*block_dim*2; //real, complex
 
         usleep(10000);
 
         json header = {
-            {"data_length", num_blocks * block_size},
-            {"type", "CORR_MATRIX"},
-            {"num_elements", num_elements},
-            {"block_dim", {block_dim, block_dim, 2}},
-            {"stream_id",
-             {stream_id.crate_id, stream_id.slot_id, stream_id.link_id, stream_id.unused}}};
-        std::string s = header.dump() + "\n";
-        fwrite(s.c_str(), 1, s.length(), python_script);
-        for (uint32_t i = 0; i < num_blocks; i++) {
-            fwrite(in_local + i * sizeof(int) * block_size, sizeof(int), block_size, python_script);
-            fflush(python_script);
+            {"data_length",num_blocks*block_size*num_freqs},
+            {"type","CORR_MATRIX"},
+            {"num_elements",num_elements},
+            {"block_dim",{block_dim,block_dim,2}},
+            {"stream_id", {stream_id.crate_id, stream_id.slot_id, stream_id.link_id, stream_id.unused}}
+        };
+        std::string s = header.dump()+"\n";
+        fwrite(s.c_str(),1,s.length(),python_script);
+        for (uint32_t f = 0; f < num_freqs; f++) {
+            for (uint32_t i = 0; i < num_blocks; i++) {
+                fwrite(in_local + i * sizeof(int) * block_size,sizeof(int), block_size, python_script);
+                fflush(python_script);
+            }
         }
-    }
+    //}
+//    pclose(python_script);
+    DEBUG("Done?");
     busy = false;
 }

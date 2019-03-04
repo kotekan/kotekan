@@ -231,6 +231,8 @@ void visFileRaw::write_sample(uint32_t time_ind, uint32_t freq_ind, const visFra
 
     // Write out data to the right place
     off_t offset = (time_ind * nfreq + freq_ind) * frame_size;
+    INFO("Write to time_ind: %d, nfreq: %d, freq_ind: %d, frame_size: %d, offset: %d",
+         time_ind, nfreq, freq_ind, frame_size, offset);
 
     write_raw(offset, 1, &ONE);
     write_raw(offset + 1, metadata_size, frame.metadata());

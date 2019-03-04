@@ -7,7 +7,7 @@ REGISTER_CL_COMMAND(clInputData);
 
 clInputData::clInputData(Config& config, const string& unique_name, bufferContainer& host_buffers,
                          clDeviceInterface& device) :
-    clCommand(config, unique_name, host_buffers, device, "", "") {
+    clCommand(config, unique_name, host_buffers, device, "clInputData", "") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
@@ -40,25 +40,50 @@ int clInputData::wait_on_precondition(int gpu_frame_id) {
     return 0;
 }
 
-cl_event clInputData::execute(int gpu_frame_id, cl_event pre_event) {
-    pre_execute(gpu_frame_id);
+cl_event clInputData::execute(int gpu_frame_id, cl_event pre_event)
+{
+    DEBUG2("CLINPUTDATA::EXECUTE");
 
-    cl_mem gpu_memory_frame = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
-    void* host_memory_frame = (void*)network_buf->frames[network_buffer_id];
+    clCommand::execute(gpu_frame_id, 0, pre_event);
+
+    cl_mem gpu_memory_frame = device.get_gpu_memory_array("input",
+                                                gpu_frame_id, input_frame_len);
+    void * host_memory_frame = (void *)network_buf->frames[network_buffer_id];
+
+    //convince the driver the input memory is pinned
+    //for unclear reasons, it doesn't work if you do this ahead of time in the constructor
+    cl_int err;
+    cl_event map_event;
+    cl_mem host_clmem_frame = clCreateBuffer(device.get_context(),
+                                  CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, input_frame_len,
+                                  (void *)network_buf->frames[network_buffer_id], &err);
+    CHECK_CL_ERROR(err);
+    clEnqueueMapBuffer(device.getQueue(0), host_clmem_frame, CL_FALSE,
+                                           CL_MAP_READ, 0, input_frame_len,
+                                           (pre_event==NULL)?0:1,
+                                           (pre_event==NULL)?NULL:&pre_event,
+                                           &map_event, &err);
+    CHECK_CL_ERROR(err);
 
     // Data transfer to GPU
-    CHECK_CL_ERROR(
-        clEnqueueWriteBuffer(device.getQueue(0), gpu_memory_frame, CL_FALSE,
-                             0, // offset
-                             input_frame_len, host_memory_frame, (pre_event == NULL) ? 0 : 1,
-                             (pre_event == NULL) ? NULL : &pre_event, &post_events[gpu_frame_id]));
+    CHECK_CL_ERROR( clEnqueueWriteBuffer(device.getQueue(0),
+                                            gpu_memory_frame,
+                                            CL_FALSE,
+                                            0, //offset
+                                            input_frame_len,
+                                            host_memory_frame,
+                                            1,&map_event,
+                                            &post_event[gpu_frame_id]) );
 
     network_buffer_id = (network_buffer_id + 1) % network_buf->num_frames;
-    return post_events[gpu_frame_id];
+    return post_event[gpu_frame_id];
 }
 
 void clInputData::finalize_frame(int frame_id) {
     clCommand::finalize_frame(frame_id);
-    mark_frame_empty(network_buf, unique_name.c_str(), network_buffer_finalize_id);
-    network_buffer_finalize_id = (network_buffer_finalize_id + 1) % network_buf->num_frames;
+
+//    this only happens on output!
+//    mark_frame_empty(network_buf, unique_name.c_str(), network_buffer_finalize_id);
+//    network_buffer_finalize_id = (network_buffer_finalize_id + 1) % network_buf->num_frames;
 }
+

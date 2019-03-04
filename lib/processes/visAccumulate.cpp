@@ -10,6 +10,7 @@
 #include "metadata.h"
 #include "prometheusMetrics.hpp"
 #include "version.h"
+#include "util.h"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
 
@@ -324,8 +325,11 @@ void visAccumulate::main_thread() {
 
                     finalise_output(dset, freq_ind, total_samples);
 
-                    mark_frame_full(dset.buf, unique_name.c_str(), dset.frame_id++);
+                    mark_frame_full(dset.buf, unique_name.c_str(), dset.frame_id + freq_ind);
                 }
+                // Need to delay the increment here as finalise_output used
+                // dset.frame_id + freq_ind internally
+                dset.frame_id += num_freq_in_frame;
             }
 
             init = false;
@@ -442,7 +446,10 @@ void visAccumulate::initialise_output(visAccumulate::internalState& state, int i
     frame.fill_chime_metadata((const chimeMetadata*)in_buf->metadata[in_frame_id]->metadata);
 
     // TODO: set frequency id in some sensible generic manner
-    frame.freq_id += freq_ind;
+    if (num_freq_in_frame == 128) { // 16 element system
+	    stream_id_t stream_id = get_stream_id_t(in_buf, in_frame_id);
+        frame.freq_id = bin_number_16_elem(&stream_id, freq_ind);
+    }
 
     // Set dataset ID produced by the dM
     // TODO: this should be different for different gated streams

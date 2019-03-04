@@ -103,9 +103,7 @@ void map_vis_triangle(const std::vector<uint32_t>& inputmap, size_t block, size_
         throw std::invalid_argument("Input map asks for elements out of range.");
     }
 
-    uint32_t num_blocks1 = ((N - 1) / block) + 1;               // Blocks per side
-    uint32_t num_blocks2 = num_blocks1 * (num_blocks1 + 1) / 2; // ... triangle
-    uint32_t offset = freq * num_blocks2 * block * block;       // Offset due to freq
+    uint32_t offset = freq * gpu_N2_size(N, block);
 
     for (auto i = inputmap.begin(); i != inputmap.end(); i++) {
         for (auto j = i; j != inputmap.end(); j++) {

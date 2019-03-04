@@ -7,7 +7,7 @@ REGISTER_CL_COMMAND(clPresumZero);
 
 clPresumZero::clPresumZero(Config& config, const string& unique_name, bufferContainer& host_buffers,
                            clDeviceInterface& device) :
-    clCommand(config, unique_name, host_buffers, device, "", "") {
+    clCommand(config, unique_name, host_buffers, device, "clPresumZero", "") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     presum_len = _num_elements * _num_local_freq * 2 * sizeof(int32_t);
@@ -22,23 +22,26 @@ clPresumZero::clPresumZero(Config& config, const string& unique_name, bufferCont
     }
 
     // Ask that all pages be kept in memory
-    // TODO: DO WITH STANDARD BUFFERS?
-    err = mlock((void*)presum_zeros, presum_len);
-    if (err == -1) {
+    err = mlock((void *) presum_zeros, presum_len);
+    if ( err == -1 ) {
         ERROR("Error locking memory - check ulimit -a to check memlock limits");
         exit(errno);
     }
-    memset(presum_zeros, 0, presum_len);
+    memset(presum_zeros, 0, presum_len );
 
-    command_type = gpuCommandType::COPY_IN;
+    command_type = clCommandType::COPY_IN;
 }
 
-clPresumZero::~clPresumZero() {
+clPresumZero::~clPresumZero()
+{
     free(presum_zeros);
 }
 
-cl_event clPresumZero::execute(int gpu_frame_id, cl_event pre_event) {
-    pre_execute(gpu_frame_id);
+cl_event clPresumZero::execute(int gpu_frame_id, cl_event pre_event)
+{
+    DEBUG2("CLPRESUMZERO::EXECUTE");
+
+    clCommand::execute(gpu_frame_id, pre_event);
 
     cl_mem gpu_memory_frame = device.get_gpu_memory_array("presum", gpu_frame_id, presum_len);
 

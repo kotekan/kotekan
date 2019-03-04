@@ -1,0 +1,350 @@
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: debug
+
+buffer_depth: 8
+samples_per_data_set: 49152
+num_elements: 16
+num_links: 8
+num_freq: 1024
+num_local_freq: num_freq / num_links
+num_freq_in_frame: num_freq / num_links
+block_size: 16
+num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
+
+sizeof_int: 4
+sizeof_float: 4
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+# Buffers
+gpu_input_buffers:
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * num_elements * num_local_freq
+    metadata_pool: main_pool
+    gpu_input_buffer_0:
+        kotekan_buffer: standard
+    gpu_input_buffer_1:
+        kotekan_buffer: standard
+    gpu_input_buffer_2:
+        kotekan_buffer: standard
+    gpu_input_buffer_3:
+        kotekan_buffer: standard
+    gpu_input_buffer_4:
+        kotekan_buffer: standard
+    gpu_input_buffer_5:
+        kotekan_buffer: standard
+    gpu_input_buffer_6:
+        kotekan_buffer: standard
+    gpu_input_buffer_7:
+        kotekan_buffer: standard
+
+
+lost_samples_buffers:
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set
+    metadata_pool: main_pool
+    lost_samples_buffer_0:
+        kotekan_buffer: standard
+    lost_samples_buffer_1:
+        kotekan_buffer: standard
+    lost_samples_buffer_2:
+        kotekan_buffer: standard
+    lost_samples_buffer_3:
+        kotekan_buffer: standard
+    lost_samples_buffer_4:
+        kotekan_buffer: standard
+    lost_samples_buffer_5:
+        kotekan_buffer: standard
+    lost_samples_buffer_6:
+        kotekan_buffer: standard
+    lost_samples_buffer_7:
+        kotekan_buffer: standard
+
+merged_network_buf:
+    kotekan_buffer: standard
+    num_frames: buffer_depth * 8
+    frame_size: samples_per_data_set * num_elements * num_local_freq
+    metadata_pool: main_pool
+
+gpu_output_buffers:
+    num_frames: buffer_depth * num_links
+    frame_size: num_local_freq * num_blocks * (block_size*block_size) * 2  * sizeof_int
+    metadata_pool: main_pool
+    gpu_output_buffer:
+        kotekan_buffer: standard
+
+gpu_output_split_buffer:
+    num_frames: buffer_depth
+    frame_size: num_local_freq * num_blocks * (block_size*block_size) * 2  * sizeof_int
+    metadata_pool: main_pool
+    gpu_output_split_buffer_0:
+        kotekan_buffer: standard
+    gpu_output_split_buffer_1:
+        kotekan_buffer: standard
+    gpu_output_split_buffer_2:
+        kotekan_buffer: standard
+    gpu_output_split_buffer_3:
+        kotekan_buffer: standard
+    gpu_output_split_buffer_4:
+        kotekan_buffer: standard
+    gpu_output_split_buffer_5:
+        kotekan_buffer: standard
+    gpu_output_split_buffer_6:
+        kotekan_buffer: standard
+    gpu_output_split_buffer_7:
+        kotekan_buffer: standard
+
+cpu_affinity: [4,5,10,11] # other cores are on DPDK
+dpdk:
+    kotekan_process: dpdkCore
+    # Format is index = lcore, value = cpu core
+    lcore_cpu_map: [0,1,2,3,6,7,8,9]
+    master_lcore_cpu: 2
+    fpga_packet_size: 4680
+    alignment: samples_per_data_set
+    # Format is index = lcore, value = array of port IDs
+    # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
+    # and lcore 1 to service ports 2 and 3.
+    lcore_port_map:
+        - [0]
+        - [1]
+        - [2]
+        - [3]
+        - [4]
+        - [5]
+        - [6]
+        - [7]
+    # One handler must be given per port on the system.
+    handlers:
+        - dpdk_handler: iceBoardStandard
+          out_buf: gpu_input_buffer_0
+          lost_samples_buf: lost_samples_buffer_0
+        - dpdk_handler: iceBoardStandard
+          out_buf: gpu_input_buffer_1
+          lost_samples_buf: lost_samples_buffer_1
+        - dpdk_handler: iceBoardStandard
+          out_buf: gpu_input_buffer_2
+          lost_samples_buf: lost_samples_buffer_2
+        - dpdk_handler: iceBoardStandard
+          out_buf: gpu_input_buffer_3
+          lost_samples_buf: lost_samples_buffer_3
+        - dpdk_handler: iceBoardStandard
+          out_buf: gpu_input_buffer_4
+          lost_samples_buf: lost_samples_buffer_4
+        - dpdk_handler: iceBoardStandard
+          out_buf: gpu_input_buffer_5
+          lost_samples_buf: lost_samples_buffer_5
+        - dpdk_handler: iceBoardStandard
+          out_buf: gpu_input_buffer_6
+          lost_samples_buf: lost_samples_buffer_6
+        - dpdk_handler: iceBoardStandard
+          out_buf: gpu_input_buffer_7
+          lost_samples_buf: lost_samples_buffer_7
+
+zero_samples:
+    zero_0:
+        kotekan_process: zeroSamples
+        out_buf: gpu_input_buffer_0
+        lost_samples_buf: lost_samples_buffer_0
+    zero_1:
+        kotekan_process: zeroSamples
+        out_buf: gpu_input_buffer_1
+        lost_samples_buf: lost_samples_buffer_1
+    zero_2:
+        kotekan_process: zeroSamples
+        out_buf: gpu_input_buffer_2
+        lost_samples_buf: lost_samples_buffer_2
+    zero_3:
+        kotekan_process: zeroSamples
+        out_buf: gpu_input_buffer_3
+        lost_samples_buf: lost_samples_buffer_3
+    zero_4:
+        kotekan_process: zeroSamples
+        out_buf: gpu_input_buffer_4
+        lost_samples_buf: lost_samples_buffer_4
+    zero_5:
+        kotekan_process: zeroSamples
+        out_buf: gpu_input_buffer_5
+        lost_samples_buf: lost_samples_buffer_5
+    zero_6:
+        kotekan_process: zeroSamples
+        out_buf: gpu_input_buffer_6
+        lost_samples_buf: lost_samples_buffer_6
+    zero_7:
+        kotekan_process: zeroSamples
+        out_buf: gpu_input_buffer_7
+        lost_samples_buf: lost_samples_buffer_7
+
+merge:
+  kotekan_process: mergeBuffer
+  in_bufs:
+    - gpu_input_buffer_0
+    - gpu_input_buffer_1
+    - gpu_input_buffer_2
+    - gpu_input_buffer_3
+    - gpu_input_buffer_4
+    - gpu_input_buffer_5
+    - gpu_input_buffer_6
+    - gpu_input_buffer_7
+  out_buf: merged_network_buf
+
+gpu:
+  num_data_sets: 1
+  profiling: true
+  kernel_path: "./opencl/kernels/"
+  log_level: info
+  frame_arrival_period: samples_per_data_set / 390625 / num_links
+  commands:
+  - name: clInputData
+  - name: clPresumZero
+  - name: clOutputDataZero
+  - name: clPresumKernel
+  - name: clKVCorr
+  - name: clOutputData
+  gpu_0:
+    kotekan_process: clProcess
+    gpu_id: 0
+    in_buffers:
+      network_buf: merged_network_buf
+    out_buffers:
+      output_buf: gpu_output_buffer
+
+split:
+    kotekan_process: BufferSplit
+    in_buf: gpu_output_buffer
+    out_bufs:
+      - gpu_output_split_buffer_0
+      - gpu_output_split_buffer_1
+      - gpu_output_split_buffer_2
+      - gpu_output_split_buffer_3
+      - gpu_output_split_buffer_4
+      - gpu_output_split_buffer_5
+      - gpu_output_split_buffer_6
+      - gpu_output_split_buffer_7
+
+debug_plots:
+    #kotekan_process: pyPlotN2
+    in_buf: gpu_output_buffer
+    num_freq: num_freq/8
+    gpu_id: 0
+
+metadata:
+    #kotekan_process: chimeMetadataDump
+    in_buf: gpu_output_buffer
+
+# Metadata pool
+vis_pool:
+  kotekan_metadata_pool: visMetadata
+  num_metadata_objects: 20 * buffer_depth * num_freq_in_frame
+
+# N2 global options
+num_ev: 0
+
+# Buffers
+vis_buffers:
+  metadata_pool: vis_pool
+  num_frames: buffer_depth * num_freq_in_frame
+  visbuf_5s_merged:
+    kotekan_buffer: vis
+  visbuf_5s_0:
+    kotekan_buffer: vis
+  visbuf_5s_1:
+    kotekan_buffer: vis
+  visbuf_5s_2:
+    kotekan_buffer: vis
+  visbuf_5s_3:
+    kotekan_buffer: vis
+  visbuf_5s_4:
+    kotekan_buffer: vis
+  visbuf_5s_5:
+    kotekan_buffer: vis
+  visbuf_5s_6:
+    kotekan_buffer: vis
+  visbuf_5s_7:
+    kotekan_buffer: vis
+
+
+use_dataset_manager: true
+
+vis_accumulate_processes:
+  integration_time: 5  # Integrate to roughly 5s cadence
+  acc_0:
+    kotekan_process: visAccumulate
+    in_buf: gpu_output_split_buffer_0
+    out_buf: visbuf_5s_0
+  acc_1:
+    kotekan_process: visAccumulate
+    in_buf: gpu_output_split_buffer_1
+    out_buf: visbuf_5s_1
+  acc_2:
+    kotekan_process: visAccumulate
+    in_buf: gpu_output_split_buffer_2
+    out_buf: visbuf_5s_2
+  acc_3:
+    kotekan_process: visAccumulate
+    in_buf: gpu_output_split_buffer_3
+    out_buf: visbuf_5s_3
+  acc_4:
+    kotekan_process: visAccumulate
+    in_buf: gpu_output_split_buffer_4
+    out_buf: visbuf_5s_4
+  acc_5:
+    kotekan_process: visAccumulate
+    in_buf: gpu_output_split_buffer_5
+    out_buf: visbuf_5s_5
+  acc_6:
+    kotekan_process: visAccumulate
+    in_buf: gpu_output_split_buffer_6
+    out_buf: visbuf_5s_6
+  acc_7:
+    kotekan_process: visAccumulate
+    in_buf: gpu_output_split_buffer_7
+    out_buf: visbuf_5s_7
+
+
+merge_acc:
+    kotekan_process: mergeBuffer
+    in_bufs:
+      - visbuf_5s_0
+      - visbuf_5s_1
+      - visbuf_5s_2
+      - visbuf_5s_3
+      - visbuf_5s_4
+      - visbuf_5s_5
+      - visbuf_5s_6
+      - visbuf_5s_7
+    out_buf: visbuf_5s_merged
+
+test_writer:
+#  kotekan_process: rawFileWrite
+  in_buf: visbuf_5s_merged
+  file_name: 'vis_acc_output'
+  file_ext: 'dump'
+  base_dir: '/data/raw_frame/201812171240/'
+
+vis_writer:
+  kotekan_process: visWriter
+  in_buf: visbuf_5s_merged
+  node_mode: true
+  file_type: hdf5
+  log_level: debug
+  root_path: /data/archive/
+  instrument_name: test16el
+  freq_ids: []
+  write_ev: False
+#  weights_type: inverse_var
+  file_length: 16
+  #window: 2
+
+
+
+
+
+
