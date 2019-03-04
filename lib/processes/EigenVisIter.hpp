@@ -6,8 +6,8 @@
 #ifndef EIGENVISITER_HPP
 #define EIGENVISITER_HPP
 
-#include "Stage.hpp"
 #include "LinearAlgebra.hpp" // TODO: figure out how to forward declare eig_t
+#include "Stage.hpp"
 #include "buffer.h"
 #include "datasetManager.hpp"
 #include "visUtil.hpp"
