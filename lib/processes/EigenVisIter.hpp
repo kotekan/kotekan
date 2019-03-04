@@ -6,7 +6,7 @@
 #ifndef EIGENVISITER_HPP
 #define EIGENVISITER_HPP
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "LinearAlgebra.hpp" // TODO: figure out how to forward declare eig_t
 #include "buffer.h"
 #include "datasetManager.hpp"
@@ -68,10 +68,11 @@
  *
  * @author Richard Shaw, Kiyoshi Masui
  */
-class EigenVisIter : public KotekanProcess {
+class EigenVisIter : public kotekan::Stage {
 
 public:
-    EigenVisIter(Config& config, const string& unique_name, bufferContainer& buffer_container);
+    EigenVisIter(kotekan::Config& config, const string& unique_name,
+                 kotekan::bufferContainer& buffer_container);
     virtual ~EigenVisIter() = default;
     void main_thread() override;
 

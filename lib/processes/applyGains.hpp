@@ -88,10 +88,10 @@ private:
     /// The gains and when to start applying them in a FIFO (len set by config)
     updateQueue<gainUpdate> gains_fifo;
 
-    /// Output buffer with gains applied
-    Buffer* out_buf;
     /// Input buffer to read from
     Buffer* in_buf;
+    /// Output buffer with gains applied
+    Buffer* out_buf;
 
     /// Mutex to protect access to gains
     // N.B. `shared_mutex` is only available in C++17

@@ -14,13 +14,16 @@
 #include <blaze/Blaze.h>
 #include <cblas.h>
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::prometheusMetrics;
+using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(EigenVisIter);
+REGISTER_KOTEKAN_STAGE(EigenVisIter);
 
 EigenVisIter::EigenVisIter(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&EigenVisIter::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&EigenVisIter::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -169,14 +172,14 @@ void EigenVisIter::update_metrics(uint32_t freq_id, dset_id_t dset_id, double el
     auto key = std::make_pair(freq_id, dset_id);
     auto& calc_time = calc_time_map[key];
     calc_time.add_sample(elapsed_time);
-    prometheusMetrics::instance().add_process_metric("kotekan_eigenvisiter_comp_time_seconds",
+    prometheusMetrics::instance().add_stage_metric("kotekan_eigenvisiter_comp_time_seconds",
                                                      unique_name, calc_time.average());
 
     // Output eigenvalues to prometheus
     for (uint32_t i = 0; i < _num_eigenvectors; i++) {
         std::string labels =
             fmt::format("eigenvalue=\"{}\",freq_id=\"{}\",dataset_id=\"{}\"", i, freq_id, dset_id);
-        prometheusMetrics::instance().add_process_metric(
+        prometheusMetrics::instance().add_stage_metric(
             "kotekan_eigenvisiter_eigenvalue", unique_name,
             eigpair.first[_num_eigenvectors - 1 - i], labels);
     }
@@ -184,16 +187,16 @@ void EigenVisIter::update_metrics(uint32_t freq_id, dset_id_t dset_id, double el
     // Output RMS to prometheus
     std::string labels =
         fmt::format("eigenvalue=\"rms\",freq_id=\"{}\",dataset_id=\"{}\"", freq_id, dset_id);
-    prometheusMetrics::instance().add_process_metric("kotekan_eigenvisiter_eigenvalue", unique_name,
+    prometheusMetrics::instance().add_stage_metric("kotekan_eigenvisiter_eigenvalue", unique_name,
                                                      stats.rms, labels);
 
     // Output convergence stats
     labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\"", freq_id, dset_id);
-    prometheusMetrics::instance().add_process_metric("kotekan_eigenvisiter_iterations", unique_name,
+    prometheusMetrics::instance().add_stage_metric("kotekan_eigenvisiter_iterations", unique_name,
                                                      stats.iterations, labels);
-    prometheusMetrics::instance().add_process_metric("kotekan_eigenvisiter_eigenvalue_convergence",
+    prometheusMetrics::instance().add_stage_metric("kotekan_eigenvisiter_eigenvalue_convergence",
                                                      unique_name, stats.eps_eval, labels);
-    prometheusMetrics::instance().add_process_metric("kotekan_eigenvisiter_eigenvector_convergence",
+    prometheusMetrics::instance().add_stage_metric("kotekan_eigenvisiter_eigenvector_convergence",
                                                      unique_name, stats.eps_evec, labels);
 }
 

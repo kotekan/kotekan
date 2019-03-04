@@ -5,6 +5,8 @@
 #ifndef LINEARALGEBRA_HPP
 #define LINEARALGEBRA_HPP
 
+#include "visUtil.hpp"
+
 #include <blaze/Blaze.h>
 
 // Type defs for simplicity

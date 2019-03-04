@@ -1018,7 +1018,7 @@ vis_int_10s:
     out_buf: visbuf_10s_3
 
 vis_merge_10s:
-  kotekan_process: bufferMerge
+  kotekan_stage: bufferMerge
   timeout: 0.1
   in_bufs:
     - visbuf_10s_0
@@ -1028,7 +1028,7 @@ vis_merge_10s:
   out_buf: visbuf_10s_merge
 
 eigcalc:
-  kotekan_process: EigenVisIter
+  kotekan_stage: EigenVisIter
   cpu_affinity: [4]
   log_level: warn
 
@@ -1053,7 +1053,7 @@ eigcalc:
 
 
 vis_debug:
-  kotekan_process: visDebug
+  kotekan_stage: visDebug
   in_buf: visbuf_eig_10s_merge
 
 ## Start frequency and baseline downselect
@@ -1082,7 +1082,7 @@ buffer_send:
   reconnect_time: 20
   log_level: warn
   n2:
-    kotekan_process: bufferSend
+    kotekan_stage: bufferSend
     buf: visbuf_eig_10s_merge
     server_port: 11024
   26m:

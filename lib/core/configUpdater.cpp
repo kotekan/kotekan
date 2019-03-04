@@ -3,6 +3,7 @@
 #include "Stage.hpp"
 #include "errors.h"
 #include "restServer.hpp"
+#include "visUtil.hpp"
 
 #include "fmt.hpp"
 #include "json.hpp"
