@@ -291,6 +291,7 @@ class VisRaw(object):
 
         self.index_map = metadata['index_map']
 
+        # TODO: (Python 3) Used native_str for compatibility here
         self.time = np.array(
             [(t['fpga_count'], t['ctime']) for t in self.index_map['time']],
             dtype=[(native_str('fpga_count'), np.uint64), (native_str('ctime'), np.float64)]
@@ -314,7 +315,7 @@ class VisRaw(object):
             ("erms", np.float32,  1),
             ("gain", np.complex64, self.num_elements),
         ]
-        # Process dtype labels to ensure Python 2/3 compatibility
+        # TODO: (Python 3) Process dtype labels to ensure Python 2/3 compatibility
         data_struct = np.dtype([(native_str(d[0]),) + d[1:] for d in data_struct], align=True)
         frame_struct = np.dtype({
             "names": ['valid', 'metadata', 'data'],
