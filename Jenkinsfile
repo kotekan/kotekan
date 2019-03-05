@@ -30,14 +30,14 @@ pipeline {
                   make -j 4'''
           }
         }
-        stage('Build MacOS kotekan') {
+        /* stage('Build MacOS kotekan') {
           agent {label 'macos'}
           steps {
             sh '''export PATH=${PATH}:/usr/local/bin/
                   mkdir build_base
                   cd build_base/
                   cmake ..
-                  make
+                  make -j 4
                   cd ..
                   mkdir build_full
                   cd build_full/
@@ -45,9 +45,9 @@ pipeline {
                         -DUSE_LAPACK=ON -DOPENBLAS_PATH=/usr/local/opt/OpenBLAS \
                         -DUSE_HDF5=ON -DHIGHFIVE_PATH=/usr/local/opt/HighFive \
                         -DCOMPILE_DOCS=ON -DUSE_OPENCL=ON ..
-                  make'''
+                  make -j 4'''
           }
-        }
+        } */
         stage('Build docs') {
           steps {
             sh '''export PATH=${PATH}:/var/lib/jenkins/.local/bin/
