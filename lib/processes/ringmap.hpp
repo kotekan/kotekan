@@ -33,14 +33,12 @@ private:
 
     bool setup(size_t frame_id);
 
-    void change_dataset_state();
-
     void gen_matrices();
 
     int64_t resolve_time(time_ctype t);
 
-    inline float wl(uint32_t fid) {
-        return 299.792458 / freq_from_bin(fid);
+    inline float wl(float freq) {
+        return 299.792458 / freq;
     };
 
     // Matrix from visibilities to map for every freq (same for each pol)
@@ -52,14 +50,14 @@ private:
     std::vector<stack_ctype> stacks;
     std::vector<prod_ctype> prods;
     std::vector<input_ctype> inputs;
+    std::vector<std::pair<uint32_t, freq_ctype>> freqs;
 
     // Keep track of map dimensions
     std::vector<float> sinza;
-    std::vector<uint32_t> freq_id;
-    std::vector<freq_ctype> freqs;
     std::vector<time_ctype> times;
     std::map<uint64_t, size_t> times_map;
     modulo<size_t> latest;
+    //size_t latest;
     uint64_t max_fpga, min_fpga;
 
     uint32_t num_time;
@@ -70,8 +68,6 @@ private:
 
     dset_id_t ds_id;
     std::vector<uint32_t> excl_input;
-    std::vector<std::pair<uint32_t, freq_ctype>> freq;
-    std::vector<prod_ctype> prod;
 
     // Map buffer file
     void * map_file;

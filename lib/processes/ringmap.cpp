@@ -45,10 +45,6 @@ mapMaker::mapMaker(Config &config,
 
 void mapMaker::main_thread() {
 
-    // Initialize the time indexing
-    max_fpga = 0, min_fpga = 0;
-    latest = modulo<size_t>(num_time);
-
     // coefficients of CBLAS multiplication
     float alpha = 1.;
     float beta = 0.;
@@ -57,6 +53,10 @@ void mapMaker::main_thread() {
 
     if (!setup(in_frame_id))
         return;
+
+    // Initialize the time indexing
+    max_fpga = 0, min_fpga = 0;
+    latest = modulo<size_t>(num_time);
 
     while (!stop_thread) {
 
@@ -92,13 +92,13 @@ void mapMaker::main_thread() {
             for (uint p = 0; p < num_pol; p++) {
                 // transform into map slice
                 cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl,
-                            &alpha, vis2map.at(f_id).data(), num_pix,
+                            &alpha, vis2map.at(f_id).data(), num_bl,
                             input_frame.vis.data() + p * num_bl, 1, &beta,
                             map.at(f_id).at(p).data() + t_ind * num_pix, 1);
 
                  // same for weights map
                 cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl,
-                            &alpha, vis2map.at(f_id).data(), num_pix,
+                            &alpha, vis2map.at(f_id).data(), num_bl,
                             input_frame.weight.data() + p * num_bl, 1, &beta,
                             wgt_map.at(f_id).at(p).data() + t_ind * num_pix, 1);
             }
@@ -126,24 +126,25 @@ bool mapMaker::setup(size_t frame_id) {
     ds_id = in_frame.dataset_id;
     auto& dm = datasetManager::instance();
 
-    change_dataset_state();
-
     // Get the product spec and (if available) the stackState to determine the
     // number of vis entries we are expecting
     auto istate = dm.dataset_state<inputState>(ds_id);
     auto pstate = dm.dataset_state<prodState>(ds_id);
     auto sstate = dm.dataset_state<stackState>(ds_id);
-    auto mstate = dm.dataset_state<metadataState>(ds_id);
-    if (pstate == nullptr || sstate == nullptr || mstate == nullptr || istate == nullptr)
+    auto fstate = dm.dataset_state<freqState>(ds_id);
+    if (pstate == nullptr || istate == nullptr || fstate == nullptr)
         throw std::runtime_error("Could not find all dataset states for " \
                                  "incoming dataset with ID "
                                  + std::to_string(ds_id) + ".\n" \
                                  "One of them is a nullptr (0): prod "
                                  + std::to_string(pstate != nullptr)
+                                 + ", input "
+                                 + std::to_string(istate != nullptr)
                                  + ", stack "
-                                 + std::to_string(sstate != nullptr)
-                                 + ", metadata "
-                                 + std::to_string(mstate != nullptr));
+                                 + std::to_string(sstate != nullptr));
+
+    if (sstate == nullptr)
+        throw std::runtime_error("MapMaker requires visibilities stacked ");
 
     // TODO: make these config options ?
     num_pix = 512; // # unique NS baselines
@@ -158,69 +159,30 @@ bool mapMaker::setup(size_t frame_id) {
     }
 
     min_fpga = std::get<0>(in_frame.time);
-    times = std::vector<time_ctype>(num_time, {0, 0.});
 
     stacks = sstate->get_stack_map();
     prods = pstate->get_prods();
     inputs = istate->get_inputs();
+    freqs = fstate->get_freqs();
 
     // generate map making matrices
     gen_matrices();
 
     // initialize map containers
-    for (auto fid : freq_id) {
+    for (auto f : freqs) {
+        std::vector<std::vector<cfloat>> vis(num_pol);
+        std::vector<std::vector<float>> wgt(num_pol);
         for (uint p = 0; p < num_pol; p++) {
-            map.at(fid).at(p).reserve(num_pix*num_time);
-            wgt_map.at(fid).at(p).reserve(num_pix*num_time);
+            vis.at(p).resize(num_time * num_pix);
+            wgt.at(p).resize(num_time * num_pix);
+            std::fill(vis.at(p).begin(), vis.at(p).end(), cfloat(0.,0.));
+            std::fill(wgt.at(p).begin(), wgt.at(p).end(), 0.);
         }
+        map.insert(std::pair<uint64_t, std::vector<std::vector<cfloat>>>(f.first, vis));
+        wgt_map.insert(std::pair<uint64_t, std::vector<std::vector<float>>>(f.first, wgt));
     }
 
     return true;
-}
-
-void mapMaker::change_dataset_state() {
-
-    auto& dm = datasetManager::instance();
-
-    // Get the frequency spec to determine the freq_ids expected at this Writer.
-    auto fstate = dm.dataset_state<freqState>(ds_id);
-    if (fstate == nullptr)
-        throw std::runtime_error("Could not find freqState for " \
-                                 "incoming dataset with ID "
-                                 + std::to_string(ds_id) + ".");
-
-    freq = fstate->get_freqs();
-
-    // Get the product spec and (if available) the stackState to determine the
-    // number of vis entries we are expecting
-    auto pstate = dm.dataset_state<prodState>(ds_id);
-    auto sstate = dm.dataset_state<stackState>(ds_id);
-    auto mstate = dm.dataset_state<metadataState>(ds_id);
-    if (pstate == nullptr || sstate == nullptr || mstate == nullptr)
-        throw std::runtime_error("Could not find all dataset states for " \
-                                 "incoming dataset with ID "
-                                 + std::to_string(ds_id) + ".\n" \
-                                 "One of them is a nullptr (0): prod "
-                                 + std::to_string(pstate != nullptr)
-                                 + ", stack "
-                                 + std::to_string(sstate != nullptr)
-                                 + ", metadata "
-                                 + std::to_string(mstate != nullptr));
-
-    /*
-     compare git commit hashes
-     TODO: enforce and crash here if build type is Release?
-    if (mstate->get_git_version_tag() != std::string(get_git_commit_hash())) {
-        INFO("Git version tags don't match: dataset %zu has tag %s, while "\
-             "the local git version tag is %s", ds_id,
-             mstate->get_git_version_tag().c_str(),
-             get_git_commit_hash());
-    }
-    */
-
-    if (sstate == nullptr)
-        throw std::runtime_error("MapMaker requires visibilities stacked ");
-    num_stack = sstate->get_num_stack();
 }
 
 void mapMaker::gen_matrices() {
@@ -238,15 +200,15 @@ void mapMaker::gen_matrices() {
     }
 
     // Construct matrix of phase weights for every baseline and pixel
-    for (auto fid : freq_id) {
-        std::vector<cfloat> m = vis2map[fid];
-        m.reserve(num_pix * num_bl);
-        float lam = wl(fid);
+    for (auto f : freqs) {
+        std::vector<cfloat> m(num_pix * num_bl);
+        float lam = wl(f.second.centre);
         for (uint p = 0; p < num_pix; p++) {
             for (uint i = 0; i < num_bl; i++) {
                 m[p*num_bl + i] = std::exp(cfloat(-2.i) * pi * ns_baselines[i] / lam * sinza[p]);
             }
         }
+        vis2map.insert(std::pair<uint64_t, std::vector<cfloat>>(f.first, m));
     }
 }
 
@@ -262,24 +224,31 @@ int64_t mapMaker::resolve_time(time_ctype t){
         // We need to add a new time
         max_fpga = t.fpga_count;
         // Increment position
-        uint64_t rem_fpga = times[latest++].fpga_count;
-        if (rem_fpga > 0) {
-            // Unless we are still filling in array, remove entry
-            min_fpga = rem_fpga;
+        if (times.size() < num_time) {
+            // Still filling in the array
+            latest++;
+            //latest = (latest + 1) % num_time;
+            times.push_back(t);
+        } else {
+            // Remove oldest entry
+            //latest = (latest + 1) % num_time;
+            min_fpga = times[latest++].fpga_count;
+            //min_fpga = times[latest].fpga_count;
             times_map.erase(min_fpga);
+            times[latest] = t;
         }
         size_t start = latest;
         size_t stop = size_t(latest) + 1;
-        for (auto fid : freq_id) {
+        for (auto f : freqs) {
+            uint64_t fid = f.first;
             for (uint p = 0; p < num_pol; p++) {
                 std::fill(map.at(fid).at(p).begin() + start*num_pix,
-                          map.at(fid).at(p).begin() + stop*num_pix, 0.);
+                          map.at(fid).at(p).begin() + stop*num_pix, cfloat(0., 0.));
                 std::fill(wgt_map.at(fid).at(p).begin() + start*num_pix,
                           wgt_map.at(fid).at(p).begin() + stop*num_pix, 0.);
             }
         }
-        times[latest] = t;
-        times_map.at(t.fpga_count) = latest;
+        times_map.insert(std::pair<uint64_t, size_t>(t.fpga_count, latest));
 
         return latest;
     }
