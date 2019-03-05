@@ -37,7 +37,7 @@ pipeline {
                   mkdir build_base
                   cd build_base/
                   cmake ..
-                  make -j 4
+                  make -j 4 
                   cd ..
                   mkdir build_full
                   cd build_full/
