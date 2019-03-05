@@ -43,12 +43,13 @@ REGISTER_KOTEKAN_STAGE(baselineCompression);
 baselineCompression::baselineCompression(Config& config, const string& unique_name,
                                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
-          std::bind(&baselineCompression::main_thread, this)) {
+          std::bind(&baselineCompression::main_thread, this)),
+    in_buf(get_buffer("in_buf")),
+    out_buf(get_buffer("out_buf")),
+    frame_id_in(in_buf),
+    frame_id_out(out_buf) {
 
-    in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
-
-    out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
     // Fill out the map of stack types
@@ -83,7 +84,7 @@ void baselineCompression::main_thread() {
     // Create the threads
     thread_handles.resize(num_threads);
     for (uint32_t i = 0; i < num_threads; ++i) {
-        thread_handles[i] = std::thread(&baselineCompression::compress_thread, this, i);
+        thread_handles[i] = std::thread(&baselineCompression::compress_thread, this);
 
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
@@ -127,14 +128,20 @@ dset_id_t baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
     return dm.add_dataset(input_ds_id, stack_state_id);
 }
 
-void baselineCompression::compress_thread(int thread_id) {
+void baselineCompression::compress_thread() {
 
-    // use the thread id as an offset on frame ids
-    unsigned int output_frame_id = thread_id;
-    unsigned int input_frame_id = thread_id;
+    int input_frame_id;
+    int output_frame_id;
 
     dset_id_t input_dset_id;
     dset_id_t output_dset_id = 0;
+
+    // Get the current values of the shared frame IDs.
+    {
+        std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
+        output_frame_id = frame_id_out++;
+        input_frame_id = frame_id_in++;
+    }
 
     // Wait for the input buffer to be filled with data
     // in order to get dataset ID
@@ -263,9 +270,12 @@ void baselineCompression::compress_thread(int thread_id) {
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
         mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
 
-        // Advance the current frame id
-        output_frame_id = (output_frame_id + num_threads) % out_buf->num_frames;
-        input_frame_id = (input_frame_id + num_threads) % in_buf->num_frames;
+        // Get the current values of the shared frame IDs and increment them.
+        {
+            std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
+            output_frame_id = frame_id_out++;
+            input_frame_id = frame_id_in++;
+        }
 
         // Calculate residuals (return zero if no data for this freq)
         float residual = (normt != 0.0) ? (vart / normt) : 0.0;

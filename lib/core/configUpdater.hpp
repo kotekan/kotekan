@@ -7,6 +7,8 @@
 
 namespace kotekan {
 
+#include "json.hpp"
+
 /**
  * @brief Kotekan core component that creates endpoints defined in the config
  * that stages can subscribe to to receive updates.

@@ -201,15 +201,9 @@ vis_buffers:
     kotekan_buffer: vis
   visbuf_10s_3:
     kotekan_buffer: vis
-  visbuf_eig_10s_0:
-    kotekan_buffer: vis
-  visbuf_eig_10s_1:
-    kotekan_buffer: vis
-  visbuf_eig_10s_2:
-    kotekan_buffer: vis
-  visbuf_eig_10s_3:
-    kotekan_buffer: vis
   visbuf_10s_merge:
+    kotekan_buffer: vis
+  visbuf_eig_10s_merge:
     kotekan_buffer: vis
   # Buffers for gated
   visbuf_psr0_5s_0:
@@ -1023,47 +1017,44 @@ vis_int_10s:
     in_buf: visbuf_5s_3
     out_buf: visbuf_10s_3
 
+vis_merge_10s:
+  kotekan_stage: bufferMerge
+  timeout: 0.1
+  in_bufs:
+    - visbuf_10s_0
+    - visbuf_10s_1
+    - visbuf_10s_2
+    - visbuf_10s_3
+  out_buf: visbuf_10s_merge
+
 eigcalc:
-  num_diagonals_filled: 30
-  cpu_affinity: [4, 10]
+  kotekan_stage: EigenVisIter
+  cpu_affinity: [4]
+  log_level: warn
+
+  in_buf: visbuf_10s_merge
+  out_buf: visbuf_eig_10s_merge
+
+  # Convergence config
+  tol_eval: 1.0e-5
+  tol_evec: 1.0e-4
+  max_iterations: 19
+  num_ev_conv: 2
+  krylov: 2
+  subspace: 1
+
+  # Masking config
+  bands_filled: [ [0, 30], [251, 262] ]
   exclude_inputs: [
       46,   84,  142,  319,  550,  638,  688,  742,  784,  944,
      960,  971, 1020, 1023, 1058, 1166, 1225, 1285, 1314, 1380,
     1521, 1543, 1738, 1794, 1982, 1984, 1987, 2032, 2034
   ]
-  log_level: warn
-  eig0:
-    kotekan_stage: eigenVis
-    in_buf: visbuf_10s_0
-    out_buf: visbuf_eig_10s_0
-  eig1:
-    kotekan_stage: eigenVis
-    in_buf: visbuf_10s_1
-    out_buf: visbuf_eig_10s_1
-  eig2:
-    kotekan_stage: eigenVis
-    in_buf: visbuf_10s_2
-    out_buf: visbuf_eig_10s_2
-  eig3:
-    kotekan_stage: eigenVis
-    in_buf: visbuf_10s_3
-    out_buf: visbuf_eig_10s_3
 
-merge_eig_10s:
-  kotekan_stage: bufferMerge
-  timeout: 0.1
-  in_bufs:
-    - visbuf_eig_10s_0
-    - visbuf_eig_10s_1
-    - visbuf_eig_10s_2
-    - visbuf_eig_10s_3
-  out_buf: visbuf_10s_merge
-
-## Time integration done
 
 vis_debug:
   kotekan_stage: visDebug
-  in_buf: visbuf_10s_merge
+  in_buf: visbuf_eig_10s_merge
 
 ## Start frequency and baseline downselect
 
@@ -1092,7 +1083,7 @@ buffer_send:
   log_level: warn
   n2:
     kotekan_stage: bufferSend
-    buf: visbuf_10s_merge
+    buf: visbuf_eig_10s_merge
     server_port: 11024
   26m:
     kotekan_stage: bufferSend
