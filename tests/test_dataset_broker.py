@@ -5,9 +5,9 @@ from subprocess import Popen
 from subprocess import call
 import signal
 
-producer_path = "./boost/dataset-broker/dataset_broker_producer"
-producer2_path = "./boost/dataset-broker/dataset_broker_producer2"
-consumer_path = "./boost/dataset-broker/dataset_broker_consumer"
+producer_path = "../build/tests/boost/dataset_broker_producer"
+producer2_path = "../build/tests/boost/dataset_broker_producer2"
+consumer_path = "../build/tests/boost/dataset_broker_consumer"
 broker_path = "../build/ext/src/ch_acq/dataset_broker.py"
 
 def test_produce_consume():
