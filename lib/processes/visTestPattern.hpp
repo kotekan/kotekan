@@ -24,8 +24,6 @@
 
 using json = nlohmann::json;
 
-#define REPORT_PRECISION 7
-
 
 /**
  * @class visTestPattern
@@ -86,6 +84,8 @@ public:
     visTestPattern(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
 
+    ~visTestPattern();
+
     void main_thread() override;
 
     /// Callback function to receive updates from configUpdater.
@@ -112,8 +112,11 @@ private:
     Buffer* out_buf;
 
     // Config parameters
-    float _tolerance;
+    double _tolerance;
     size_t _report_freq;
+
+    // Report file floating point precision (function of configured tolerance).
+    int8_t precision;
 
     // Data in the fpga buffers. Used to compute expected data.
     std::map<std::string, std::vector<cfloat>> fpga_buf_pattern;

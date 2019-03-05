@@ -138,9 +138,6 @@ fakeVis::fakeVis(Config& config, const string& unique_name, bufferContainer& buf
         }
 
         size_t num_prods = num_elements * (num_elements + 1) / 2;
-        if (num_prods < 3)
-            num_prods = 3;
-
         test_pattern_value = std::vector<cfloat>(num_prods);
         size_t ind = 0;
         for (size_t i = 0; i < num_elements; i++) {

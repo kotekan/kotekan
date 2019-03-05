@@ -51,12 +51,22 @@ visTestPattern::visTestPattern(Config& config, const std::string& unique_name,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    _tolerance = config.get_default<float>(unique_name, "tolerance", 1e-6);
+    _tolerance = config.get_default<double>(unique_name, "tolerance", 1e-6);
     _report_freq = config.get_default<uint64_t>(unique_name, "report_freq", 1000);
 
-    if (_tolerance < 0)
+    if (_tolerance <= 0)
         throw std::invalid_argument("visCheckTestPattern: tolerance has to be positive (is "
                                     + std::to_string(_tolerance) + ").");
+
+    // report precision: a bit more than error tolerance
+    precision = log10(1. / _tolerance) + 2;
+
+    if (precision < 0) {
+        throw std::invalid_argument("visCheckTestPattern: invalid value for tolerance: %f "
+                                    "(resultet in negative report precision)" +
+                                    std::to_string(_tolerance));
+    }
+    INFO("Using report precision %f", precision);
 
     write_dir = config.get<std::string>(unique_name, "write_dir");
     if (opendir(write_dir.c_str()) == nullptr) {
@@ -80,6 +90,10 @@ visTestPattern::visTestPattern(Config& config, const std::string& unique_name,
     kotekan::restServer::instance().register_post_callback(
         endpoint_name, std::bind(&visTestPattern::receive_update, this, std::placeholders::_1,
                                  std::placeholders::_2));
+}
+
+visTestPattern::~visTestPattern() {
+    kotekan::restServer::instance().remove_json_callback(endpoint_name);
 }
 
 void visTestPattern::main_thread() {
@@ -109,6 +123,7 @@ void visTestPattern::main_thread() {
 
     // Wait for the first frame
     if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
+        INFO("No frames in input buffer on start.");
         if (outfile.is_open())
             outfile.close();
         return;
@@ -407,8 +422,8 @@ void visTestPattern::receive_update(kotekan::connectionInstance& conn, json& dat
     }
     outfile << "fpga_count,time,freq_id,num_bad,avg_err,min_err,max_err" << std::endl;
 
-    // Set iostream decimal precision
-    outfile << std::setprecision(REPORT_PRECISION);
+    // Set iostream decimal precision to a bit more than the configured tolerance
+    outfile << std::setprecision(precision);
     outfile << std::fixed;
 
     conn.send_empty_reply(HTTP_RESPONSE::OK);
