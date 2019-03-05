@@ -31,9 +31,10 @@ using json = nlohmann::json;
  *
  * This stage is just dropping incoming frames until it receives an update on what data to expect.
  * An update would be sent to the endpoint `/run-test`.  *
- * This stage will run the test for the given number of frames, then reply on the request to its
- * endpoint to signal that the test is done. In case there was an error during the test, it replies
- * with the HTTP error code `REQUEST_FAILED`.
+ * This stage will run the test for the given number of frames, then send a request to a
+ * reply-endpoint to signal that the test is done. The reply endpoint is expected in the update.
+ * In case there was an error during the test, it replies
+ * with the error message in the result field.
  * Afterwards it will stay idle until the next test is started.
  *
  * Errors are calculated as the norm of the difference between the expected and
@@ -61,6 +62,9 @@ using json = nlohmann::json;
  *                              For example: `{'FCCXXYYZZ': [2048 list of uint8], ...}`, where the
  *                              2048 uint8 are the real and imaginary component for each frequency
  *                              bin and FCCXXYYZZ is the serial number of the correlator input.
+ *              reply_host      String. Hostname to send test-done message to.
+ *              reply_path      String. Endpoint path to send test-done message to.
+ *              reply_port      Int. Port to send test-done message to.
  *
  * @par Buffers
  * @buffer in_buf               The buffer to debug
