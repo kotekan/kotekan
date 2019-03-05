@@ -13,6 +13,7 @@ using kotekan::Config;
 using kotekan::prometheusMetrics;
 using kotekan::Stage;
 using kotekan::restServer;
+using kotekan::HTTP_RESPONSE;
 
 const float pi = std::acos(-1);
 
@@ -25,13 +26,17 @@ mapMaker::mapMaker(Config &config,
     Stage(config, unique_name, buffer_container,
           std::bind(&mapMaker::main_thread, this)) {
 
-    // Register REST callback
-    //using namespace std::placeholders;
-    //restServer::instance().register_post_callback("ringmap",
-    //    std::bind(&mapMaker::rest_callback,
-    //            this, std::placeholders::_1, std::placeholders::_2
-    //    )
-    //);
+    // Register REST callbacks
+    restServer::instance().register_post_callback("ringmap",
+        std::bind(&mapMaker::rest_callback,
+                  this, std::placeholders::_1, std::placeholders::_2
+        )
+    );
+    restServer::instance().register_get_callback("ringmap",
+        std::bind(&mapMaker::rest_callback_get,
+                  this, std::placeholders::_1
+        )
+    );
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -53,10 +58,6 @@ void mapMaker::main_thread() {
 
     if (!setup(in_frame_id))
         return;
-
-    // Initialize the time indexing
-    max_fpga = 0, min_fpga = 0;
-    latest = modulo<size_t>(num_time);
 
     while (!stop_thread) {
 
@@ -89,6 +90,7 @@ void mapMaker::main_thread() {
                         ts_to_double(std::get<1>(input_frame.time))};
         int64_t t_ind = resolve_time(t);
         if (t_ind >= 0) {
+            mtx.lock();
             for (uint p = 0; p < num_pol; p++) {
                 // transform into map slice
                 cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl,
@@ -102,18 +104,64 @@ void mapMaker::main_thread() {
                             input_frame.weight.data() + p * num_bl, 1, &beta,
                             wgt_map.at(f_id).at(p).data() + t_ind * num_pix, 1);
             }
+            mtx.unlock();
         }
         // Move to next frame
         mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id++);
     }
 }
 
-/*
-nlohmann::json mapMaker::rest_callback(kotekan::connectionInstance& conn, nlohmann::json& json) {
+void mapMaker::rest_callback_get(kotekan::connectionInstance& conn) {
+
+    // Return the available frequencies and polarisations
+    nlohmann::json resp;
+    std::vector<float> fphys;
+    for (auto f : freqs)
+        fphys.push_back(f.second.centre);
+    resp["freq"] = nlohmann::json(fphys);
+    std::vector<int> pol;
+    for (int i = 0; i < num_pol; i++)
+        pol.push_back(i);
+    resp["pol"] = nlohmann::json(pol);
+    conn.send_json_reply(resp);
+    return;
+}
+
+void mapMaker::rest_callback(kotekan::connectionInstance& conn,
+                                       nlohmann::json& json) {
     // return the map for the specified frequency and polarization in JSON format
     // make sure to lock the map arrays
+
+    // Extract requested polarization and frequency
+    int pol;
+    if (json.find("pol") != json.end()) {
+        pol = json.at("pol");
+    } else {
+        conn.send_error("Did not find key 'pol' in JSON request.",
+                       HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    int f_ind;
+    if (json.find("freq_ind") != json.end()) {
+        f_ind = json.at("freq_ind");
+    } else {
+        conn.send_error("Did not find key 'freq_ind' in JSON request.",
+                       HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+
+    // Format map into JSON
+    // TODO: lock with mutex
+    nlohmann::json resp;
+    mtx.lock();
+    resp["time"] = nlohmann::json(times);
+    resp["sinza"] = nlohmann::json(sinza);
+    resp["ringmap"] = nlohmann::json(map.at(freqs[f_ind].first).at(pol));
+    resp["weight_map"] = nlohmann::json(wgt_map.at(freqs[f_ind].first).at(pol));
+    mtx.unlock();
+    conn.send_json_reply(resp);
+    return;
 }
-*/
 
 bool mapMaker::setup(size_t frame_id) {
 
@@ -169,6 +217,7 @@ bool mapMaker::setup(size_t frame_id) {
     gen_matrices();
 
     // initialize map containers
+    mtx.lock();
     for (auto f : freqs) {
         std::vector<std::vector<cfloat>> vis(num_pol);
         std::vector<std::vector<float>> wgt(num_pol);
@@ -181,6 +230,11 @@ bool mapMaker::setup(size_t frame_id) {
         map.insert(std::pair<uint64_t, std::vector<std::vector<cfloat>>>(f.first, vis));
         wgt_map.insert(std::pair<uint64_t, std::vector<std::vector<float>>>(f.first, wgt));
     }
+    mtx.unlock();
+
+    // Initialize the time indexing
+    max_fpga = 0, min_fpga = 0;
+    latest = modulo<size_t>(num_time);
 
     return true;
 }
@@ -221,6 +275,7 @@ int64_t mapMaker::resolve_time(time_ctype t){
     }
 
     if (t.fpga_count > max_fpga) {
+        mtx.lock();
         // We need to add a new time
         max_fpga = t.fpga_count;
         // Increment position
@@ -249,6 +304,7 @@ int64_t mapMaker::resolve_time(time_ctype t){
             }
         }
         times_map.insert(std::pair<uint64_t, size_t>(t.fpga_count, latest));
+        mtx.unlock();
 
         return latest;
     }

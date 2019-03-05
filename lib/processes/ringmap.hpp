@@ -23,8 +23,9 @@ public:
     void main_thread() override;
 
     /// REST endpoint to request a map
-    //nlohmann::json rest_callback(kotekan::connectionInstance& conn,
-    //                             nlohmann::json &json);
+    void rest_callback(kotekan::connectionInstance& conn,
+                       nlohmann::json &json);
+    void rest_callback_get(kotekan::connectionInstance& conn);
 
     /// Abbreviation for RingMap type
     typedef std::vector<std::vector<cfloat>> RingMap;
@@ -57,7 +58,6 @@ private:
     std::vector<time_ctype> times;
     std::map<uint64_t, size_t> times_map;
     modulo<size_t> latest;
-    //size_t latest;
     uint64_t max_fpga, min_fpga;
 
     uint32_t num_time;
@@ -68,6 +68,9 @@ private:
 
     dset_id_t ds_id;
     std::vector<uint32_t> excl_input;
+
+    // Mutex for reading and writing to maps
+    std::mutex mtx;
 
     // Map buffer file
     void * map_file;
