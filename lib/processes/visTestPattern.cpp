@@ -63,8 +63,8 @@ visTestPattern::visTestPattern(Config& config, const std::string& unique_name,
 
     if (precision < 0) {
         throw std::invalid_argument("visCheckTestPattern: invalid value for tolerance: %f "
-                                    "(resultet in negative report precision)" +
-                                    std::to_string(_tolerance));
+                                    "(resultet in negative report precision)"
+                                    + std::to_string(_tolerance));
     }
     INFO("Using report precision %f", precision);
 
