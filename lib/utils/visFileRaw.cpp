@@ -112,7 +112,7 @@ void visFileRaw::create_file(const std::string& name,
     metadata_file = std::ofstream(name + ".meta", std::ios::binary);
     if ((fd = open((name + ".data").c_str(), oflags, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH))
         == -1) {
-        std::runtime_error(
+        throw std::runtime_error(
             fmt::format("Failed to open file {}: {}.", name + ".data", strerror(errno)));
     }
 

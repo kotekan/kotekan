@@ -53,6 +53,73 @@ extern "C" {
 using json = nlohmann::json;
 using namespace kotekan;
 
+// Embedded script for converting the YAML config to json
+const std::string yaml_to_json = R"(
+import yaml, json, sys, os, subprocess
+
+file_name = sys.argv[1]
+gps_server = ""
+if len(sys.argv) == 3:
+    gps_server = sys.argv[2]
+
+# Lint the YAML file, helpful for finding errors
+try:
+    output = subprocess.Popen(["yamllint",
+                               "-d",
+                               "{extends: relaxed, \
+                                 rules: {line-length: {max: 100}, \
+                                        commas: disable, \
+                                        brackets: disable, \
+                                        trailing-spaces: {level: warning}}}" ,
+                                 file_name],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    response,stderr = output.communicate()
+    if response != "":
+        sys.stderr.write("yamllint warnings/errors for: ")
+        sys.stderr.write(response)
+except OSError as e:
+    if e.errno == os.errno.ENOENT:
+        sys.stderr.write("yamllint not installed, skipping pre-validation\n")
+    else:
+        sys.stderr.write("error with yamllint, skipping pre-validation\n")
+
+with open(file_name, "r") as stream:
+    try:
+        config_json = yaml.load(stream)
+    except yaml.YAMLError as exc:
+        sys.stderr.write(exc)
+
+# Get the GPS server time if a server was given
+if gps_server != "":
+    import requests
+    try:
+        gps_request = requests.get(gps_server)
+        gps_request.raise_for_status()
+    except requests.exceptions.HTTPError as rex:
+        config_json["gps_time"] = {}
+        config_json["gps_time"]["error"] = str(rex)
+        sys.stdout.write(json.dumps(config_json))
+        quit()
+    except requests.exceptions.RequestException as rex:
+        config_json["gps_time"] = {}
+        config_json["gps_time"]["error"] = str(rex)
+        sys.stdout.write(json.dumps(config_json))
+        quit()
+
+    try:
+        config_json["gps_time"] = gps_request.json()
+    except:
+        config_json["gps_time"] = {}
+        config_json["gps_time"]["error"] = "Server did not return valid JSON"
+
+sys.stdout.write(json.dumps(config_json))
+)";
+
+// The default location for getting the GPS time reference
+// TODO This entire GPS time system might be moved out of kotekan.cpp entirely
+// since it's a very CHIME specific system.
+const std::string default_gps_source = "http://carillon.chime:54321/get-frame0-time";
+
 kotekanMode* kotekan_mode = nullptr;
 bool running = false;
 std::mutex kotekan_state_lock;
@@ -66,11 +133,12 @@ void print_help() {
     printf("usage: kotekan [opts]\n\n");
     printf("Options:\n");
     printf("    --config (-c) [file]           The local JSON config file to use.\n");
-    printf("    --config-daemon (-d) [file]    Same as -c, but uses installed yaml->json script\n");
-    printf("    --bind-address (-b) [ip:port]  The IP address and port to bind (default "
-           "0.0.0.0:12048)\n");
-    printf("    --gps-time (-g)                Used with -c, try to get GPS time (CHIME cmd line "
-           "runs only).\n");
+    printf("    --bind-address (-b) [ip:port]  The IP address and port to bind"
+           " (default 0.0.0.0:12048)\n");
+    printf("    --gps-time (-g)                Used with -c, try to get GPS time"
+           " (CHIME cmd line runs only).\n");
+    printf("    --gps-time-source (-t)         URL for GPS server (used with -g) default: %s\n",
+           default_gps_source.c_str());
     printf("    --syslog (-s)                  Send a copy of the output to syslog.\n");
     printf("    --no-stderr (-n)               Disables output to std error if syslog (-s) is "
            "enabled.\n");
@@ -207,9 +275,9 @@ int main(int argc, char** argv) {
     int opt_val = 0;
     char* config_file_name = (char*)"none";
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
-    bool opt_d_set = false;
     bool gps_time = false;
     bool enable_stderr = true;
+    std::string gps_time_source = default_gps_source;
     std::string bind_address = "0.0.0.0:12048";
     // We disable syslog to start.
     // If only --config is provided, then we only send messages to stderr
@@ -220,9 +288,9 @@ int main(int argc, char** argv) {
 
     for (;;) {
         static struct option long_options[] = {{"config", required_argument, 0, 'c'},
-                                               {"config-daemon", required_argument, 0, 'd'},
                                                {"bind-address", required_argument, 0, 'b'},
                                                {"gps-time", no_argument, 0, 'g'},
+                                               {"gps-time-source", required_argument, 0, 't'},
                                                {"help", no_argument, 0, 'h'},
                                                {"syslog", no_argument, 0, 's'},
                                                {"no-stderr", no_argument, 0, 'n'},
@@ -231,7 +299,7 @@ int main(int argc, char** argv) {
 
         int option_index = 0;
 
-        opt_val = getopt_long(argc, argv, "ghc:d:b:snv", long_options, &option_index);
+        opt_val = getopt_long(argc, argv, "gt:hc:b:snv", long_options, &option_index);
 
         // End of args
         if (opt_val == -1) {
@@ -246,12 +314,11 @@ int main(int argc, char** argv) {
             case 'c':
                 config_file_name = strdup(optarg);
                 break;
-            case 'd':
-                config_file_name = strdup(optarg);
-                opt_d_set = true;
-                break;
             case 'b':
                 bind_address = string(optarg);
+                break;
+            case 't':
+                gps_time_source = string(optarg);
                 break;
             case 'g':
                 gps_time = true;
@@ -308,20 +375,15 @@ int main(int argc, char** argv) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         INFO("Opening config file %s", config_file_name);
 
-        string exec_script;
-        string exec_base;
+        std::string exec_command;
         if (gps_time) {
-            INFO("Getting GPS time from ch_master, this might take some time...");
-            exec_script = "gps_yaml_to_json.py ";
+            INFO("Getting GPS time from server (%s), this might take some time...",
+                 gps_time_source.c_str());
+            exec_command = "python -c '" + yaml_to_json + "' " + std::string(config_file_name) + " "
+                           + gps_time_source;
         } else {
-            exec_script = "yaml_to_json.py ";
+            exec_command = "python -c '" + yaml_to_json + "' " + std::string(config_file_name);
         }
-        if (opt_d_set) {
-            exec_base = "/usr/local/bin/";
-        } else {
-            exec_base = "../../scripts/";
-        }
-        string exec_command = "python " + exec_base + exec_script + std::string(config_file_name);
         std::string json_string = exec(exec_command.c_str());
         json config_json = json::parse(json_string.c_str());
         config.update_config(config_json);

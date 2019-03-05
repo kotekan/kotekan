@@ -174,6 +174,15 @@ void from_json(const json& j, std::complex<T>& p) {
 } // namespace std
 
 /**
+ * @brief Get type name of a JSON value.
+ * Returns a string with the name of the given json value type. Can be one of:
+ * integer, float or value.type_name().
+ * @param value A JSON value.
+ * @return Type name.
+ */
+std::string json_type_name(nlohmann::json& value);
+
+/**
  * @brief Index into a flattened upper matrix triangle.
  * @param  i Row index.
  * @param  j Column index.
@@ -441,6 +450,11 @@ struct_layout<T> struct_alignment(std::vector<std::tuple<T, size_t, size_t>> mem
  * @param z  Number to find the norm of.
  * @returns  Norm of z.
  **/
+template<typename T>
+inline T fast_norm(const T& x) {
+    return x * x;
+}
+
 template<typename T>
 inline T fast_norm(const std::complex<T>& z) {
     T r = std::real(z);

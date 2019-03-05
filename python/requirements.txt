@@ -1,5 +1,5 @@
 numpy>=1.15.1
-msgpack
+msgpack>=0.6.1
 click
 h5py
 future
