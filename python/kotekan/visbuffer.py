@@ -3,6 +3,7 @@
 # Python 2/3 compatibility
 from __future__ import (absolute_import, division,
                         print_function, unicode_literals)
+from future.utils import native_str
 from builtins import (ascii, bytes, chr, dict, filter, hex, input,
                       int, map, next, oct, open, pow, range, round,
                       str, super, zip)
@@ -285,36 +286,41 @@ class VisRaw(object):
         self.data_path = self.filename + ".data"
 
         # Read file metadata
-        with open(self.meta_path, 'rb') as fh:
-            metadata = msgpack.load(fh, raw=False)
+        with io.open(self.meta_path, 'rb') as fh:
+            metadata = msgpack.load(fh, encoding='utf-8')
 
         self.index_map = metadata['index_map']
 
+        # TODO: (Python 3) Used native_str for compatibility here
         self.time = np.array(
             [(t['fpga_count'], t['ctime']) for t in self.index_map['time']],
-            dtype=[('fpga_count', np.uint64), ('ctime', np.float64)]
+            dtype=[(native_str('fpga_count'), np.uint64), (native_str('ctime'), np.float64)]
         )
 
         self.num_freq = metadata['structure']['nfreq']
         self.num_time = metadata['structure']['ntime']
         self.num_prod = len(self.index_map['prod'])
+        self.num_stack = (len(self.index_map['stack'])
+                          if 'stack' in self.index_map.keys() else self.num_prod)
         self.num_elements = len(self.index_map['input'])
         self.num_ev = len(self.index_map['ev'])
 
         # Packing of the data on disk. First byte indicates if data is present.
-        data_struct = np.dtype([
-            ('vis', np.complex64, self.num_prod),
-            ('weight', np.float32, self.num_prod),
-            ('flags', np.float32, self.num_elements),
+        data_struct = [
+            ("vis", np.complex64, self.num_stack),
+            ("weight", np.float32, self.num_stack),
+            ("flags", np.float32, self.num_elements),
             ("eval", np.float32,  self.num_ev),
             ("evec", np.complex64, self.num_ev * self.num_elements),
             ("erms", np.float32,  1),
             ("gain", np.complex64, self.num_elements),
-        ], align=True)
+        ]
+        # TODO: Python 3 - Process dtype labels to ensure Python 2/3 compatibility
+        data_struct = np.dtype([(native_str(d[0]),) + d[1:] for d in data_struct], align=True)
         frame_struct = np.dtype({
-            'names': ['valid', 'metadata', 'data'],
-            'formats': [np.uint8, VisMetadata, data_struct],
-            'itemsize': metadata['structure']['frame_size']
+            "names": ['valid', 'metadata', 'data'],
+            "formats": [np.uint8, VisMetadata, data_struct],
+            "itemsize": metadata['structure']['frame_size']
         })
 
         # Load data into on-disk numpy array
