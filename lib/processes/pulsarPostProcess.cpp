@@ -67,7 +67,6 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* 
     uint freqloop = _num_stream / _num_pulsar;
     for (uint i = 0; i < _num_packet_per_stream; ++i) { // 16 or 80 frames in a stream
         uint64_t fpga_now = (fpga_seq_num + _timesamples_per_pulsar_packet * i);
-        vdif_header->eud3 = (fpga_now & (0xFFFFFFFFl << 0)) >> 0;
         vdif_header->seconds = time_now->tv_sec - unix_offset;
         vdif_header->data_frame =
             (time_now->tv_nsec / 1.e9) / (_timesamples_per_pulsar_packet * 2.56e-6);
@@ -151,7 +150,7 @@ void pulsarPostProcess::main_thread() {
     vdif_header.edv = 0;
     vdif_header.eud1 = 0; // UD: beam number [0 to 9]
     vdif_header.eud2 = 0; //_psr_scaling from metadata
-    vdif_header.eud3 = 0; // UD: fpga count low bit
+    vdif_header.eud3 = 0; // Not used for now
     vdif_header.eud4 = 0; // 16-b RA + 16-b Dec
 
     uint frame = 0;
@@ -182,10 +181,8 @@ void pulsarPostProcess::main_thread() {
             freq_ids[i] = bin_number_chime(&stream_id);
         }
 
-
         // If this is the first time wait until we get the start of an interger second period.
         if (unlikely(startup == 1)) {
-            // testing sync code
             startup = 0;
 
             // GPS time, need ch_master
@@ -193,35 +190,33 @@ void pulsarPostProcess::main_thread() {
 
             struct timespec time_now_from_compute2 = compute_gps_time(first_seq_number);
             if (time_now.tv_sec != time_now_from_compute2.tv_sec) {
-                ERROR("[Time Check] mismatch in execute time_now.tv_sec=%ld "
-                      "time_now_from_compute2.tv_sec=%ld",
+                ERROR("[Time Check] mismatch in execute time_now.tv_sec=%ld"
+                      " time_now_from_compute2.tv_sec=%ld",
                       time_now.tv_sec, time_now_from_compute2.tv_sec);
             }
             if (time_now.tv_nsec != time_now_from_compute2.tv_nsec) {
-                ERROR("[Time Check] mismatch in execute time_now.tv_nsec=%ld "
-                      "time_now_from_compute2.tv_nsec=%ld",
+                ERROR("[Time Check] mismatch in execute time_now.tv_nsec=%ld"
+                      " time_now_from_compute2.tv_nsec=%ld",
                       time_now.tv_nsec, time_now_from_compute2.tv_nsec);
             }
             if (is_gps_global_time_set() != 1) {
                 ERROR("[Time Check] gps global time not set (%d)", is_gps_global_time_set());
             }
-            uint32_t seq_number_offset = _timesamples_per_pulsar_packet
-                                         - (first_seq_number % _timesamples_per_pulsar_packet);
+            uint32_t pkt_length_in_ns = _timesamples_per_pulsar_packet * 2560;
+            uint32_t ns_offset = pkt_length_in_ns - (time_now.tv_nsec % pkt_length_in_ns);
+            float seq_number_offset_float = ns_offset / 2560.;
+            uint seq_number_offset = round(seq_number_offset_float);
+
             current_input_location = seq_number_offset;
-            first_seq_number =
-                first_seq_number + seq_number_offset; // so that we start at an fpga_seq_no that is
-                                                      // divisible by the packet nsamp
-            time_now.tv_nsec += seq_number_offset * 2560;
-            if (time_now.tv_nsec > 999999999) {
-                time_now.tv_sec += (uint)(time_now.tv_nsec / 1000000000.);
-                time_now.tv_nsec = time_now.tv_nsec % 1000000000;
-            }
+            first_seq_number = first_seq_number + seq_number_offset;
+            time_now = compute_gps_time(first_seq_number);
 
             // Fill the first output buffer headers
             fpga_seq_num = first_seq_number;
             fill_headers((unsigned char*)out_frame, &vdif_header, first_seq_number, &time_now,
                          psr_coord, (uint16_t*)freq_ids);
         }
+
         // This loop which takes data from the input buffer and formats the output.
         if (likely(startup == 0)) {
             for (uint i = current_input_location; i < _samples_per_data_set; ++i) {
@@ -268,23 +263,25 @@ void pulsarPostProcess::main_thread() {
                             } else
                                 throw std::runtime_error("Unknown timesamples per VDIF packet.");
 
-                            uint8_t real_part =
-                                int((in_buf_data[(i * _num_pulsar * _num_pol + psr * _num_pol + p)
-                                                 * 2])
-                                        / float(psr_coord[thread_id].scaling[psr])
-                                    + 0.5)
-                                + 8;
-                            uint8_t imag_part =
-                                int((in_buf_data[(i * _num_pulsar * _num_pol + psr * _num_pol + p)
-                                                     * 2
-                                                 + 1])
-                                        / float(psr_coord[thread_id].scaling[psr])
-                                    + 0.5)
-                                + 8;
-                            if (real_part > 15)
-                                real_part = 15;
-                            if (imag_part > 15)
-                                imag_part = 15;
+                            // clang-format off
+                            float real_float =
+                                ((in_buf_data[(i * _num_pulsar * _num_pol + psr * _num_pol + p) * 2])
+                                / float(psr_coord[thread_id].scaling[psr]) + 0.5) + 8;
+                            float imag_float =
+                                ((in_buf_data[(i * _num_pulsar * _num_pol + psr * _num_pol + p) * 2 + 1])
+                                / float(psr_coord[thread_id].scaling[psr]) + 0.5) + 8;
+                            // clang-format on
+                            if (real_float > 15)
+                                real_float = 15.;
+                            if (imag_float > 15)
+                                imag_float = 15.;
+                            if (real_float < 0)
+                                real_float = 0.;
+                            if (imag_float < 0)
+                                imag_float = 0.;
+                            uint8_t real_part = int(real_float);
+                            uint8_t imag_part = int(imag_float);
+
                             out_buf[out_index] = ((real_part << 4) & 0xF0) + (imag_part & 0x0F);
                         } // end loop pol
                     }     // end loop psr

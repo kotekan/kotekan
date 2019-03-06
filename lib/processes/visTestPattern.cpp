@@ -3,26 +3,39 @@
 #include "StageFactory.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
+#include "datasetManager.hpp"
+#include "datasetState.hpp"
 #include "errors.h"
+#include "prometheusMetrics.hpp"
+#include "restClient.hpp"
+#include "restServer.hpp"
 #include "visBuffer.hpp"
 
+#include "fmt.hpp"
 #include "gsl-lite.hpp"
 
 #include <atomic>
 #include <complex>
 #include <cstdint>
 #include <cstring>
+#include <dirent.h>
 #include <exception>
 #include <functional>
+#include <future>
+#include <iomanip>
 #include <math.h>
+#include <mutex>
 #include <regex>
 #include <stdexcept>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <time.h>
 #include <tuple>
 
-
 using kotekan::bufferContainer;
 using kotekan::Config;
+using kotekan::HTTP_RESPONSE;
+using kotekan::prometheusMetrics;
 using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(visTestPattern);
@@ -38,71 +51,55 @@ visTestPattern::visTestPattern(Config& config, const std::string& unique_name,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
-    // get config
-    mode = config.get<std::string>(unique_name, "mode");
+    _tolerance = config.get_default<double>(unique_name, "tolerance", 1e-6);
+    _report_freq = config.get_default<uint64_t>(unique_name, "report_freq", 1000);
 
-    INFO("visCheckTestPattern: mode = %s", mode.c_str());
-    if (mode == "test_pattern_simple") {
-        exp_val = config.get_default<cfloat>(unique_name, "default_val", {1., 0});
-    } else if (mode == "test_pattern_freq") {
-        num_freq = config.get<size_t>(unique_name, "num_freq");
+    if (_tolerance <= 0)
+        throw std::invalid_argument("visCheckTestPattern: tolerance has to be positive (is "
+                                    + std::to_string(_tolerance) + ").");
 
-        cfloat default_val = config.get_default<cfloat>(unique_name, "default_val", {128., 0.});
-        std::vector<uint32_t> bins = config.get<std::vector<uint32_t>>(unique_name, "frequencies");
-        std::vector<cfloat> bin_values =
-            config.get<std::vector<cfloat>>(unique_name, "freq_values");
-        if (bins.size() != bin_values.size()) {
-            throw std::invalid_argument("fakeVis: lengths of frequencies ("
-                                        + std::to_string(bins.size()) + ") and freq_value ("
-                                        + std::to_string(bin_values.size())
-                                        + ") arrays have to be equal.");
-        }
-        if (bins.size() > num_freq) {
-            throw std::invalid_argument("fakeVis: length of frequencies array ("
-                                        + std::to_string(bins.size())
-                                        + ") can not be larger "
-                                          "than num_freq ("
-                                        + std::to_string(num_freq) + ").");
-        }
+    // report precision: a bit more than error tolerance
+    precision = log10(1. / _tolerance) + 2;
 
-        exp_val_freq = std::vector<cfloat>(num_freq);
-        for (size_t i = 0; i < num_freq; i++) {
-            size_t j;
-            for (j = 0; j < bins.size(); j++) {
-                if (bins.at(j) == i)
-                    break;
-            }
-            if (j == bins.size())
-                exp_val_freq[i] = default_val;
-            else
-                exp_val_freq[i] = bin_values.at(j);
-        }
-    } else
-        throw std::invalid_argument("visCheckTestpattern: unknown mode: " + mode);
-
-    tolerance = config.get_default<float>(unique_name, "tolerance", 1e-6);
-    report_freq = config.get_default<uint64_t>(unique_name, "report_freq", 1000);
-
-    outfile_name = config.get<std::string>(unique_name, "out_file");
-
-    if (tolerance < 0)
-        throw std::invalid_argument("visCheckTestPattern: tolerance has to be"
-                                    " positive (is "
-                                    + std::to_string(tolerance) + ").");
-
-    outfile.open(outfile_name);
-    if (!outfile.is_open()) {
-        throw std::ios_base::failure("visCheckTestPattern: Failed to open "
-                                     "out file "
-                                     + outfile_name);
+    if (precision < 0) {
+        throw std::invalid_argument("visCheckTestPattern: invalid value for tolerance: %f "
+                                    "(resultet in negative report precision)"
+                                    + std::to_string(_tolerance));
     }
-    outfile << "fpga_count,time,freq_id,num_bad,avg_err,min_err,max_err" << std::endl;
+    INFO("Using report precision %f", precision);
+
+    write_dir = config.get<std::string>(unique_name, "write_dir");
+    if (opendir(write_dir.c_str()) == nullptr) {
+        // Create directory
+        if (mkdir(write_dir.c_str(), S_IRWXU | S_IRGRP | S_IROTH) < 0) {
+            std::string error =
+                fmt::format("Failure creating directory {}: {}", write_dir, std::strerror(errno));
+            throw std::runtime_error(error);
+        }
+    }
+    INFO("Writing report to '%s'.", write_dir.c_str());
+
+    endpoint_name = config.get_default<std::string>(unique_name, "endpoint_name", "run_test");
+
+    // Don't run any tests until update received.
+    num_frames = 0;
+
+    expected_data_ready = false;
+
+    // Subscribe to the dynamic config update: used to start a test for a number of frames.
+    kotekan::restServer::instance().register_post_callback(
+        endpoint_name, std::bind(&visTestPattern::receive_update, this, std::placeholders::_1,
+                                 std::placeholders::_2));
+}
+
+visTestPattern::~visTestPattern() {
+    kotekan::restServer::instance().remove_json_callback(endpoint_name);
 }
 
 void visTestPattern::main_thread() {
 
-    unsigned int frame_id = 0;
-    unsigned int output_frame_id = 0;
+    frameID frame_id(in_buf);
+    frameID output_frame_id(out_buf);
 
     // number of bad elements in frame and totally
     size_t num_bad, num_bad_tot = 0;
@@ -124,131 +121,394 @@ void visTestPattern::main_thread() {
 
     uint64_t i_frame = 0;
 
+    // Wait for the first frame
+    if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
+        INFO("No frames in input buffer on start.");
+        if (outfile.is_open())
+            outfile.close();
+        return;
+    }
+    dset_id_t ds_id = visFrameView(in_buf, frame_id).dataset_id;
+    get_dataset_state(ds_id);
+
     // Comparisons will be against tolerance^2
-    float t2 = tolerance * tolerance;
+    float t2 = _tolerance * _tolerance;
 
     while (!stop_thread) {
-
         // Wait for the buffer to be filled with data
         if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
             break;
         }
 
-        // Print out debug information from the buffer
+        // Check if the dataset ID changed.
         auto frame = visFrameView(in_buf, frame_id);
-        // INFO("%s", frame.summary().c_str());
-
-        num_bad = 0;
-        avg_err = 0.0;
-        min_err = 0.0;
-        max_err = 0.0;
-
-        cfloat expected;
-
-        if (mode == "test_pattern_simple")
-            expected = exp_val;
-        else if (mode == "test_pattern_freq") {
-            expected = exp_val_freq.at(frame.freq_id);
+        if (frame.dataset_id != ds_id) {
+            std::string error_msg = fmt::format("Expected dataset id {:#x}, got {:#x}.\nNot "
+                                                "supported. Exiting...",
+                                                ds_id, frame.dataset_id);
+            std::lock_guard<std::mutex> thread_lck(mtx_update);
+            exit_failed_test(error_msg);
+            return;
         }
 
-        // Iterate over covariance matrix
-        for (size_t i = 0; i < frame.num_prod; i++) {
+        {
+            // Wait, if there is an update.
+            std::lock_guard<std::mutex> thread_lck(mtx_update);
+            // Did someone send a config to our endpoint recently? Otherwise skip this frame...
+            if (num_frames) {
+                if (!expected_data_ready) {
+                    try {
+                        compute_expected_data();
+                    } catch (std::exception& e) {
+                        std::string error_msg = fmt::format("Failure computing expected data. "
+                                                            "Received FPGA buffer data format "
+                                                            "doesn't match data stream: {}. "
+                                                            "Exiting...",
+                                                            e.what());
+                        exit_failed_test(error_msg);
+                        return;
+                    }
+                }
 
-            // Calculate the error^2 and compared this to the tolerance as it's
-            // much faster than taking the square root where we don't need to.
-            float r2 = fast_norm(frame.vis[i] - expected);
+                num_bad = 0;
+                avg_err = 0.0;
+                min_err = 0.0;
+                max_err = 0.0;
 
-            // check for bad values
-            if (r2 > t2) {
-                num_bad++;
+                // Iterate over covariance matrix
+                for (size_t i = 0; i < frame.num_prod; i++) {
 
-                // Calculate the error here, this square root is then
-                // evalulated only when there is bad data.
-                float error = sqrt(r2);
-                avg_err += error;
+                    // Calculate the error^2 and compared this to the tolerance as it's
+                    // much faster than taking the square root where we don't need to.
+                    float r2 = fast_norm(frame.vis[i] - expected.at(frame.freq_id).at(i));
 
-                if (error > max_err)
-                    max_err = error;
-                if (error < min_err || min_err == 0.0)
-                    min_err = error;
+                    // check for bad values
+                    if (r2 > t2) {
+                        DEBUG2("Bad value (product %d): Expected %f + %fj, but found %f + %fj in "
+                               "frame %d with freq_id %d.",
+                               i, expected.at(frame.freq_id).at(i).real(),
+                               expected.at(frame.freq_id).at(i).imag(), frame.vis[i].real(),
+                               frame.vis[i].imag(), frame_id, frame.freq_id);
+                        num_bad++;
+
+                        // Calculate the error here, this square root is then
+                        // evalulated only when there is bad data.
+                        float error = sqrt(r2);
+                        avg_err += error;
+
+                        if (error > max_err)
+                            max_err = error;
+                        if (error < min_err || min_err == 0.0)
+                            min_err = error;
+                    }
+                }
+
+
+                if (num_bad) {
+                    avg_err /= (float)num_bad;
+                    time = std::get<1>(frame.time);
+                    fpga_count = std::get<0>(frame.time);
+                    freq_id = frame.freq_id;
+
+                    // write frame report to outfile
+                    outfile << fpga_count << ",";
+                    outfile << time.tv_sec << "." << time.tv_nsec << ",";
+                    outfile << freq_id << ",";
+                    outfile << num_bad << ",";
+                    outfile << avg_err << ",";
+                    outfile << min_err << ",";
+                    outfile << max_err << std::endl;
+
+                    // report errors in this frame
+                    DEBUG("%d bad elements", num_bad);
+                    DEBUG("mean error: %f", avg_err);
+                    DEBUG("min error: %f", min_err);
+                    DEBUG("max error: %f", max_err);
+                    DEBUG("time: %d, %lld.%d", fpga_count, (long long)time.tv_sec, time.tv_nsec);
+                    DEBUG("freq id: %d", freq_id);
+
+                    // Export results to prometheus.
+                    export_prometheus_metrics(num_bad, avg_err, min_err, max_err, fpga_count, time,
+                                              freq_id);
+
+                    // gather data for report after many frames
+                    num_bad_tot += num_bad;
+                    avg_err_tot += avg_err * (float)num_bad;
+                    if (min_err < min_err_tot || min_err_tot == 0)
+                        min_err_tot = min_err;
+                    if (max_err > max_err_tot)
+                        max_err_tot = max_err;
+
+
+                    // pass this bad frame to the output buffer:
+
+                    // Wait for an empty frame in the output buffer
+                    if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id)
+                        == nullptr) {
+                        break;
+                    }
+
+                    // Transfer metadata
+                    pass_metadata(in_buf, frame_id, out_buf, output_frame_id);
+
+                    // Copy the frame data here:
+                    std::memcpy(out_buf->frames[output_frame_id], in_buf->frames[frame_id],
+                                in_buf->frame_size);
+
+
+                    mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
+
+                    // Advance output frame id
+                    output_frame_id++;
+                }
+
+                // print report some times
+                if (++i_frame == _report_freq) {
+                    i_frame = 0;
+
+                    avg_err_tot /= (float)num_bad_tot;
+                    if (num_bad_tot == 0)
+                        avg_err_tot = 0;
+
+                    INFO("Summary from last %d frames: num bad values: %d, mean "
+                         "error: %f, min error: %f, max error: %f",
+                         _report_freq, num_bad_tot, avg_err_tot, min_err_tot, max_err_tot);
+                    avg_err_tot = 0.0;
+                    num_bad_tot = 0;
+                    min_err_tot = 0;
+                    max_err_tot = 0;
+                }
+
+                num_frames--;
+
+                // Test done?
+                if (num_frames == 0) {
+                    // Compute expected data at beginning of next test.
+                    expected_data_ready = false;
+
+                    // Report back.
+                    json data;
+                    data["result"] = "OK";
+                    data["name"] = test_name;
+                    restReply reply = restClient::instance().make_request_blocking(
+                        test_done_path, data, test_done_host, test_done_port);
+                    if (!reply.first) {
+                        ERROR("Failed to report back test completion: %s", reply.second.c_str());
+                        raise(SIGINT);
+                    }
+
+                    INFO("Test '%s' done.", test_name.c_str());
+                }
             }
-        }
-
-
-        if (num_bad) {
-            avg_err /= (float)num_bad;
-            time = std::get<1>(frame.time);
-            fpga_count = std::get<0>(frame.time);
-            freq_id = frame.freq_id;
-
-            // write frame report to outfile
-            outfile << fpga_count << ",";
-            outfile << time.tv_sec << "." << time.tv_nsec << ",";
-            outfile << freq_id << ",";
-            outfile << num_bad << ",";
-            outfile << avg_err << ",";
-            outfile << min_err << ",";
-            outfile << max_err << std::endl;
-
-            // report errors in this frame
-            DEBUG("%d bad elements", num_bad);
-            DEBUG("mean error: %f", avg_err);
-            DEBUG("min error: %f", min_err);
-            DEBUG("max error: %f", max_err);
-            DEBUG("time: %d, %lld.%d", fpga_count, (long long)time.tv_sec, time.tv_nsec);
-            DEBUG("freq id: %d", freq_id);
-            DEBUG("expected: (%f,%f)", expected.real(), expected.imag());
-
-            // gather data for report after many frames
-            num_bad_tot += num_bad;
-            avg_err_tot += avg_err * (float)num_bad;
-            if (min_err < min_err_tot || min_err_tot == 0)
-                min_err_tot = min_err;
-            if (max_err > max_err_tot)
-                max_err_tot = max_err;
-
-
-            // pass this bad frame to the output buffer:
-
-            // Wait for an empty frame in the output buffer
-            if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
-                break;
-            }
-
-            // Transfer metadata
-            pass_metadata(in_buf, frame_id, out_buf, output_frame_id);
-
-            // Copy the frame data here:
-            std::memcpy(out_buf->frames[output_frame_id], in_buf->frames[frame_id],
-                        in_buf->frame_size);
-
-
-            mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
-
-            // Advance output frame id
-            output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
-        }
-
-        // print report some times
-        if (++i_frame == report_freq) {
-            i_frame = 0;
-
-            avg_err_tot /= (float)num_bad_tot;
-            if (num_bad_tot == 0)
-                avg_err_tot = 0;
-
-            INFO("Summary from last %d frames: num bad values: %d, mean "
-                 "error: %f, min error: %f, max error: %f",
-                 report_freq, num_bad_tot, avg_err_tot, min_err_tot, max_err_tot);
-            avg_err_tot = 0.0;
-            num_bad_tot = 0;
-            min_err_tot = 0;
-            max_err_tot = 0;
         }
 
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
 
         // Advance input frame id
-        frame_id = (frame_id + 1) % in_buf->num_frames;
+        frame_id++;
     }
+    if (outfile.is_open())
+        outfile.close();
+
+    if (num_frames) {
+        std::string error_msg = "Kotekan exited before test was done.";
+        WARN(error_msg.c_str());
+        std::lock_guard<std::mutex> thread_lck(mtx_update);
+        json data;
+        data["result"] = error_msg;
+        data["name"] = test_name;
+        restReply reply = restClient::instance().make_request_blocking(
+            test_done_path, data, test_done_host, test_done_port);
+        if (!reply.first) {
+            ERROR("Failed to report back test completion f: %s", reply.second.c_str());
+            raise(SIGINT);
+        }
+    }
+}
+
+void visTestPattern::reply_failure(kotekan::connectionInstance& conn, std::string& msg) {
+    WARN(msg.c_str());
+    conn.send_error(msg, HTTP_RESPONSE::REQUEST_FAILED);
+}
+
+void visTestPattern::receive_update(kotekan::connectionInstance& conn, json& data) {
+    std::unique_lock<std::mutex> thread_lck(mtx_update);
+
+    if (inputs.empty()) {
+        std::string msg =
+            fmt::format("Received update before receiving first frame. Try again later.");
+        reply_failure(conn, msg);
+        return;
+    }
+
+    if (num_frames) {
+        std::string msg = fmt::format(
+            "Received update, but not done with the last test ({} frames remaining).", num_frames);
+        reply_failure(conn, msg);
+        return;
+    }
+
+    try {
+        test_done_host = data.at("reply_host").get<std::string>();
+        test_done_path = data.at("reply_path").get<std::string>();
+        test_done_port = data.at("reply_port").get<unsigned short>();
+    } catch (std::exception& e) {
+        std::string msg = fmt::format("Failure reading reply-endpoint from update: {}.", e.what());
+        DEBUG2("This was the update: %s", data.dump().c_str());
+        reply_failure(conn, msg);
+        return;
+    }
+
+    try {
+        num_frames = data.at("num_frames").get<uint32_t>();
+    } catch (std::exception& e) {
+        std::string msg = fmt::format("Failure reading 'num_frames' from update: {}.", e.what());
+        DEBUG2("This was the update: %s", data.dump().c_str());
+        reply_failure(conn, msg);
+        return;
+    }
+    if (num_frames == 0) {
+        INFO("Received update: DISABLE");
+        conn.send_empty_reply(HTTP_RESPONSE::OK);
+        return;
+    }
+
+    try {
+        test_name = data.at("name").get<std::string>();
+        fpga_buf_pattern =
+            data.at("test_pattern").get<std::map<std::string, std::vector<cfloat>>>();
+    } catch (std::exception& e) {
+        std::string msg =
+            fmt::format("Failure reading test pattern data from update: {}.", e.what());
+        DEBUG2("This was the update: %s", data.dump().c_str());
+        num_frames = 0;
+        reply_failure(conn, msg);
+        return;
+    }
+
+    if (fpga_buf_pattern.size() != inputs.size()) {
+        std::string msg = fmt::format("Failure reading test pattern data from update: Number of "
+                                      "inputs ({}) does not match data stream ({} inputs).",
+                                      fpga_buf_pattern.size(), inputs.size());
+        num_frames = 0;
+        reply_failure(conn, msg);
+        return;
+    }
+
+    for (auto f : fpga_buf_pattern) {
+        if (f.second.size() != freqs.size()) {
+            std::string msg = fmt::format("Failure reading test pattern data from update: Number "
+                                          "of frequencies ({}) does not match data stream "
+                                          "({} frequencies).",
+                                          f.second.size(), freqs.size());
+            num_frames = 0;
+            reply_failure(conn, msg);
+            return;
+        }
+    }
+
+    INFO("Received update. Reply-endpoint set to %s:%d/%s", test_done_host.c_str(), test_done_port,
+         test_done_path.c_str());
+
+    // Open a new report file for this test
+    std::string file_name = fmt::format("{}/{}.csv", write_dir, test_name);
+    if (outfile.is_open())
+        outfile.close();
+    outfile.open(file_name);
+    if (!outfile.is_open()) {
+        std::string msg = fmt::format("Failed to open out file '{}'.", file_name);
+        reply_failure(conn, msg);
+        return;
+    }
+    outfile << "fpga_count,time,freq_id,num_bad,avg_err,min_err,max_err" << std::endl;
+
+    // Set iostream decimal precision to a bit more than the configured tolerance
+    outfile << std::setprecision(precision);
+    outfile << std::fixed;
+
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
+
+    INFO("Created new report file: %s", file_name.c_str());
+    INFO("Running test '%s' for %d frames.", test_name.c_str(), num_frames);
+    DEBUG2("This was the update: %s", data.dump().c_str());
+}
+
+void visTestPattern::get_dataset_state(dset_id_t ds_id) {
+    auto& dm = datasetManager::instance();
+
+    // Get the frequency and input state asynchronously.
+    auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm, ds_id);
+    auto istate_fut = std::async(&datasetManager::dataset_state<inputState>, &dm, ds_id);
+    auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>, &dm, ds_id);
+
+    const freqState* fstate = fstate_fut.get();
+    const inputState* istate = istate_fut.get();
+    const prodState* pstate = pstate_fut.get();
+
+    if (fstate == nullptr || istate == nullptr || pstate == nullptr) {
+        ERROR("Could not find all required states of dataset with ID 0x%" PRIx64 ".\nExiting...",
+              ds_id);
+        if (outfile.is_open())
+            outfile.close();
+        raise(SIGINT);
+    }
+
+    freqs = fstate->get_freqs();
+    inputs = istate->get_inputs();
+    prods = pstate->get_prods();
+}
+
+void visTestPattern::compute_expected_data() {
+
+    size_t num_freqs = freqs.size();
+    size_t num_prods = prods.size();
+
+    expected.resize(num_freqs);
+
+    // Sort input feed values by frequency.
+    for (size_t f = 0; f < num_freqs; f++) {
+        // Generate auto product.
+        expected[f].resize(num_prods);
+        for (size_t p = 0; p < num_prods; p++) {
+            uint16_t input_id_a = prods.at(p).input_a;
+            uint16_t input_id_b = prods.at(p).input_b;
+            cfloat input_a = fpga_buf_pattern.at(inputs.at(input_id_a).correlator_input).at(f);
+            cfloat input_b = fpga_buf_pattern.at(inputs.at(input_id_b).correlator_input).at(f);
+            expected[f][p] = input_a * std::conj(input_b);
+
+            DEBUG("For frequency %d and product %d, expecting %f, %f.", f, p, expected[f][p].real(),
+                  expected[f][p].imag());
+        }
+    }
+    expected_data_ready = true;
+}
+
+void visTestPattern::exit_failed_test(std::string error_msg) {
+    ERROR(error_msg.c_str());
+    if (outfile.is_open())
+        outfile.close();
+
+    // tell orchestrator that we failed with this test
+    json data;
+    data["result"] = error_msg;
+    restClient::instance().make_request_blocking(test_done_path, data, test_done_host,
+                                                 test_done_port);
+
+    raise(SIGINT);
+}
+
+void visTestPattern::export_prometheus_metrics(size_t num_bad, float avg_err, float min_err,
+                                               float max_err, uint64_t fpga_count, timespec time,
+                                               uint32_t freq_id) {
+    prometheusMetrics& prometheus = prometheusMetrics::instance();
+    std::string labels = fmt::format("name=\"{}\",freq_id=\"{}\"", test_name, freq_id);
+    prometheus.add_stage_metric("kotekan_vistestpattern_bad_values_total", unique_name, num_bad,
+                                labels);
+    prometheus.add_stage_metric("kotekan_vistestpattern_avg_error", unique_name, avg_err, labels);
+    prometheus.add_stage_metric("kotekan_vistestpattern_min_error", unique_name, min_err, labels);
+    prometheus.add_stage_metric("kotekan_vistestpattern_max_error", unique_name, max_err, labels);
+    prometheus.add_stage_metric("kotekan_vistestpattern_fpga_sequence_number", unique_name,
+                                fpga_count, labels);
+    prometheus.add_stage_metric("kotekan_vistestpattern_ctime_seconds", unique_name,
+                                ts_to_double(time), labels);
 }

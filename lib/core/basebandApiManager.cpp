@@ -9,8 +9,8 @@
 
 namespace kotekan {
 
-basebandReadoutManager& basebandApiManager::basebandReadoutRegistry::
-operator[](const uint32_t& key) {
+basebandReadoutManager&
+    basebandApiManager::basebandReadoutRegistry::operator[](const uint32_t& key) {
     std::lock_guard<std::mutex> lock(map_lock);
     return readout_map[key];
 }

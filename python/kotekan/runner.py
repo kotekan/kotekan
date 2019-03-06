@@ -123,7 +123,7 @@ class KotekanRunner(object):
                                                                 cmd)
 
                         print("Failed sending REST command: " + rtype + " to " +
-                              endpoint + " with data " + data)
+                              endpoint + " with data " + str(data))
 
             while (self.debug and None == p.poll()):
                 time.sleep(10)

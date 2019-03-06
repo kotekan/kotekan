@@ -43,7 +43,7 @@ pattern_test:
   kotekan_stage: visTestPattern
   in_buf: visbuf_10s_all
   out_buf: vis_test_dump
-  out_file: '/data/patterntest/20181211/simple_test/report.csv'
+  write_dir: '/data/patterntest'
   mode: 'test_pattern_simple'
 
 test_writer:

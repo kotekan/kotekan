@@ -73,6 +73,7 @@ fakeVis::fakeVis(Config& config, const string& unique_name, bufferContainer& buf
     fill_map["chime"] = std::bind(&fakeVis::fill_mode_chime, this, _1);
     fill_map["test_pattern_simple"] = std::bind(&fakeVis::fill_mode_test_pattern_simple, this, _1);
     fill_map["test_pattern_freq"] = std::bind(&fakeVis::fill_mode_test_pattern_freq, this, _1);
+    fill_map["test_pattern_inputs"] = std::bind(&fakeVis::fill_mode_test_pattern_inputs, this, _1);
 
     mode = config.get_default<std::string>(unique_name, "mode", "default");
 
@@ -120,10 +121,32 @@ fakeVis::fakeVis(Config& config, const string& unique_name, bufferContainer& buf
                     break;
             }
             if (j == bins.size())
-                test_pattern_value[i] = default_val;
+                test_pattern_value[i] = default_val * std::conj(default_val);
             else
-                test_pattern_value[i] = bin_values.at(j);
+                test_pattern_value[i] = bin_values.at(j) * std::conj(bin_values.at(j));
         }
+        DEBUG("Using test pattern mode %s with default value %f+%fj and %d frequency values",
+              mode.c_str(), default_val.real(), default_val.imag(), bins.size());
+    } else if (mode == "test_pattern_inputs") {
+        std::vector<cfloat> input_values =
+            config.get<std::vector<cfloat>>(unique_name, "input_values");
+        if (input_values.size() != num_elements) {
+            throw std::invalid_argument("fakeVis: lengths of input values ("
+                                        + std::to_string(input_values.size())
+                                        + ") and number of elements ("
+                                        + std::to_string(num_elements) + ") have to be equal.");
+        }
+
+        size_t num_prods = num_elements * (num_elements + 1) / 2;
+        test_pattern_value = std::vector<cfloat>(num_prods);
+        size_t ind = 0;
+        for (size_t i = 0; i < num_elements; i++) {
+            for (size_t j = 0; j <= i; j++) {
+                test_pattern_value[ind] = input_values.at(j) * std::conj(input_values.at(i));
+                ind++;
+            }
+        }
+        DEBUG("Using test pattern mode %s with %d input values", mode.c_str(), input_values.size());
     }
 }
 
@@ -370,6 +393,39 @@ void fakeVis::fill_mode_test_pattern_freq(visFrameView& frame) {
     for (uint32_t i = 0; i < num_elements; i++) {
         for (uint32_t j = i; j < num_elements; j++) {
             frame.weight[ind] = fill_value.real();
+            ind++;
+        }
+    }
+
+    // Set flags and gains
+    std::fill(frame.flags.begin(), frame.flags.end(), 1.0);
+    std::fill(frame.gain.begin(), frame.gain.end(), 1.0);
+}
+
+void fakeVis::fill_mode_test_pattern_inputs(visFrameView& frame) {
+    // Fill vis
+    int ind = 0;
+    for (uint32_t i = 0; i < num_elements; i++) {
+        for (uint32_t j = i; j < num_elements; j++) {
+            frame.vis[ind] = test_pattern_value[ind];
+            ind++;
+        }
+    }
+    // Fill ev
+    for (uint32_t i = 0; i < num_eigenvectors; i++) {
+        for (uint32_t j = 0; j < num_elements; j++) {
+            int k = i * num_elements + j;
+            frame.evec[k] = {(float)i, 1};
+        }
+        frame.eval[i] = i;
+    }
+    frame.erms = 1;
+
+    // Fill weights
+    ind = 0;
+    for (uint32_t i = 0; i < num_elements; i++) {
+        for (uint32_t j = i; j < num_elements; j++) {
+            frame.weight[ind] = 1;
             ind++;
         }
     }
