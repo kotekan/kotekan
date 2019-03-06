@@ -207,8 +207,8 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
     while (search.first != search.second) {
         // subscriber callback
         if (!search.first->second(json)) {
-            std::string msg = fmt::format("configUpdater: Failed updating %s "
-                                          "with value %s.",
+            std::string msg = fmt::format("configUpdater: Failed updating {} "
+                                          "with new values: {}.",
                                           uri.c_str(), json.dump().c_str());
             ERROR(msg.c_str());
             con.send_error(msg, HTTP_RESPONSE::INTERNAL_ERROR);
@@ -230,7 +230,7 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
             _config->update_value(uri, it.key(), it.value());
         } catch (const std::exception& e) {
             std::string msg = fmt::format("configUpdater: Failed applying "
-                                          "update to endpoint %s: %s",
+                                          "update to endpoint {}: {}",
                                           uri.c_str(), e.what());
             ERROR(msg.c_str());
             con.send_error(msg, HTTP_RESPONSE::INTERNAL_ERROR);
