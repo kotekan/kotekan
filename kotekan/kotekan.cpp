@@ -76,7 +76,7 @@ try:
     response,stderr = output.communicate()
     if response != "":
         sys.stderr.write("yamllint warnings/errors for: ")
-        sys.stderr.write(response)
+        sys.stderr.write(str(response))
 except OSError as e:
     if e.errno == os.errno.ENOENT:
         sys.stderr.write("yamllint not installed, skipping pre-validation\n")

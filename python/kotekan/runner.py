@@ -73,7 +73,7 @@ class KotekanRunner(object):
             kotekan_cmd = './kotekan -c %s'
             wd = build_dir
         else:
-            kotekan_cmd = 'kotekan -d %s'
+            kotekan_cmd = 'kotekan -c %s'
             wd = os.curdir
 
         with tempfile.NamedTemporaryFile() as fh, \
@@ -123,7 +123,7 @@ class KotekanRunner(object):
                                                                 cmd)
 
                         print("Failed sending REST command: " + rtype + " to " +
-                              endpoint + " with data " + data)
+                              endpoint + " with data " + str(data))
 
             while (self.debug and None == p.poll()):
                 time.sleep(10)
