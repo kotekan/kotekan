@@ -46,7 +46,7 @@ private:
     std::map<uint32_t,std::vector<cfloat>> vis2map;
     // Store the maps and weight maps for every frequency
     std::map<uint32_t,std::vector<std::vector<cfloat>>> map;
-    std::map<uint32_t,std::vector<std::vector<float>>> wgt_map;
+    std::map<uint32_t,std::vector<std::vector<cfloat>>> wgt_map;
     std::vector<float> ns_baselines;
     std::vector<stack_ctype> stacks;
     std::vector<prod_ctype> prods;

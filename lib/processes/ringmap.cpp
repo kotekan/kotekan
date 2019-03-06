@@ -248,15 +248,15 @@ bool mapMaker::setup(size_t frame_id) {
     mtx.lock();
     for (auto f : freqs) {
         std::vector<std::vector<cfloat>> vis(num_pol);
-        std::vector<std::vector<float>> wgt(num_pol);
+        std::vector<std::vector<cfloat>> wgt(num_pol);
         for (uint p = 0; p < num_pol; p++) {
             vis.at(p).resize(num_time * num_pix);
             wgt.at(p).resize(num_time * num_pix);
             std::fill(vis.at(p).begin(), vis.at(p).end(), cfloat(0.,0.));
-            std::fill(wgt.at(p).begin(), wgt.at(p).end(), 0.);
+            std::fill(wgt.at(p).begin(), wgt.at(p).end(), cfloat(0.,0.));
         }
         map.insert(std::pair<uint64_t, std::vector<std::vector<cfloat>>>(f.first, vis));
-        wgt_map.insert(std::pair<uint64_t, std::vector<std::vector<float>>>(f.first, wgt));
+        wgt_map.insert(std::pair<uint64_t, std::vector<std::vector<cfloat>>>(f.first, wgt));
     }
     mtx.unlock();
 
