@@ -13,10 +13,11 @@ broker_path = "../build/ext/src/ch_acq/dataset_broker.py"
 def test_produce_consume():
     if not os.path.isfile(producer_path) or \
       not os.path.isfile(consumer_path) or \
-      not os.path.isfile(producer2_path) or \
-      not os.path.isfile(broker_path):
+      not os.path.isfile(producer2_path):
         print("Deactivated! Build with -DBOOST_TESTS=ON to activate this test")
-        print("and make sure the dataset_broker is at", broker_path)
+        return
+    if not os.path.isfile(broker_path):
+        print("Deactivated! Make sure the dataset_broker is at {}".format(broker_path))
         return
 
     broker = Popen([broker_path])
