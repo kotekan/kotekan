@@ -73,7 +73,7 @@ class KotekanRunner(object):
             kotekan_cmd = './kotekan -c %s'
             wd = build_dir
         else:
-            kotekan_cmd = 'kotekan -d %s'
+            kotekan_cmd = 'kotekan -c %s'
             wd = os.curdir
 
         with tempfile.NamedTemporaryFile() as fh, \
