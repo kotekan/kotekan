@@ -47,33 +47,36 @@ private:
     // Store the maps and weight maps for every frequency
     std::map<uint32_t,std::vector<std::vector<cfloat>>> map;
     std::map<uint32_t,std::vector<std::vector<cfloat>>> wgt_map;
-    std::vector<float> ns_baselines;
+
+    // Visibilities specs
     std::vector<stack_ctype> stacks;
     std::vector<prod_ctype> prods;
     std::vector<input_ctype> inputs;
     std::vector<std::pair<uint32_t, freq_ctype>> freqs;
+    std::vector<float> ns_baselines;
 
-    // Keep track of map dimensions
-    std::vector<float> sinza;
-    std::vector<time_ctype> times;
-    std::map<uint64_t, size_t> times_map;
-    modulo<size_t> latest;
-    uint64_t max_fpga, min_fpga;
-
+    // Dimensions
     uint32_t num_time;
     uint32_t num_pix;
     uint8_t num_pol;
     uint32_t num_stack;
     uint32_t num_bl;
 
+    // Map dimensions and time keeping
+    std::vector<float> sinza;
+    std::vector<time_ctype> times;
+    std::map<uint64_t, size_t> times_map;
+    modulo<size_t> latest;
+    uint64_t max_fpga, min_fpga;
+
+    // Dataset ID of incoming stream
     dset_id_t ds_id;
-    std::vector<uint32_t> excl_input;
+
+    // Configurable
+    float feed_sep;
 
     // Mutex for reading and writing to maps
     std::mutex mtx;
-
-    // Map buffer file
-    void * map_file;
 
     // Buffer to read from
     Buffer* in_buf;

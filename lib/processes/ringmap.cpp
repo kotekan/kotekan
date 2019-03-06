@@ -41,10 +41,8 @@ mapMaker::mapMaker(Config &config,
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
-    if (config.exists(unique_name, "exclude_inputs")) {
-        excl_input = config.get<std::vector<uint32_t>>(unique_name,
-                                                    "exclude_inputs");
-    }
+    // config parameters
+    feed_sep = config.get_default<int32_t>(unique_name, "feed_sep", 0.3048);
 
 }
 
@@ -276,7 +274,7 @@ void mapMaker::gen_matrices() {
         stack_ctype s = stacks[i];
         input_a = chimeFeed::from_input(inputs[prods[s.prod].input_a]);
         input_b = chimeFeed::from_input(inputs[prods[s.prod].input_b]);
-        ns_baselines[i] = input_b.feed_location - input_a.feed_location;
+        ns_baselines[i] = feed_sep * (input_b.feed_location - input_a.feed_location);
         if (s.conjugate)
             ns_baselines[i] *= -1;
     }
