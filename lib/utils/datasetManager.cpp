@@ -1,6 +1,7 @@
 #include "datasetManager.hpp"
 
 #include "restClient.hpp"
+#include "restServer.hpp"
 #include "visUtil.hpp"
 
 #include "fmt/ostream.h"
@@ -83,6 +84,19 @@ std::vector<stack_ctype> invert_stack(uint32_t num_stack,
     return res;
 }
 
+datasetManager::datasetManager() :
+    _conn_error_count(0),
+    _timestamp_update(json(0)),
+    _stop_request_threads(false),
+    _n_request_threads(0),
+    _config_applied(false),
+    _rest_client(restClient::instance()) {
+
+    kotekan::restServer::instance().register_get_callback(
+        DS_FORCE_UPDATE_ENDPOINT_NAME,
+        std::bind(&datasetManager::force_update_callback, this, std::placeholders::_1));
+}
+
 datasetManager& datasetManager::private_instance() {
     static datasetManager dm;
     return dm;
@@ -128,6 +142,8 @@ datasetManager& datasetManager::instance(kotekan::Config& config) {
 
 datasetManager::~datasetManager() {
     _stop_request_threads = true;
+
+    kotekan::restServer::instance().remove_get_callback(DS_FORCE_UPDATE_ENDPOINT_NAME);
 
     // wait for the detached threads
     std::unique_lock<std::mutex> lk(_lock_stop_request_threads);
@@ -565,6 +581,36 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
 
     _timestamp_update = timestamp;
     return true;
+}
+
+void datasetManager::force_update_callback(kotekan::connectionInstance& conn) {
+
+    INFO("Sending forced update to broker.");
+
+    if (!_use_broker) {
+        conn.send_error("This kotekan instance is not configured to use"
+                        " the dataset_broker. Unable to force an update.",
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+
+    // Register all states.
+    {
+        std::lock_guard<std::mutex> slock(_lock_states);
+        for (auto s = _states.begin(); s != _states.end(); s++) {
+            register_state(s->first);
+        }
+    }
+
+    // Register all datasets.
+    {
+        std::lock_guard<std::mutex> dslock(_lock_dsets);
+        for (auto ds : _datasets) {
+            register_dataset(ds.first, ds.second);
+        }
+    }
+
+    conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
 }
 
 

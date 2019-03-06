@@ -6,6 +6,7 @@
 #include "errors.h"
 #include "prometheusMetrics.hpp"
 #include "restClient.hpp"
+#include "restServer.hpp"
 #include "signal.h"
 
 #include "json.hpp"
@@ -32,13 +33,14 @@
 
 
 #define DS_UNIQUE_NAME "/dataset_manager"
+#define DS_FORCE_UPDATE_ENDPOINT_NAME "/dataset-manager/force-update"
 
 // names of broker endpoints
-#define PATH_REGISTER_STATE "register-state"
-#define PATH_SEND_STATE "send-state"
-#define PATH_REGISTER_DATASET "register-dataset"
-#define PATH_UPDATE_DATASETS "update-datasets"
-#define PATH_REQUEST_STATE "request-state"
+const std::string PATH_REGISTER_STATE = "/register-state";
+const std::string PATH_SEND_STATE = "/send-state";
+const std::string PATH_REGISTER_DATASET = "/register-dataset";
+const std::string PATH_UPDATE_DATASETS = "/update-datasets";
+const std::string PATH_REQUEST_STATE = "/request-state";
 
 // Alias certain types to give semantic meaning to the IDs
 // This is the output format of a std::hash
@@ -203,6 +205,11 @@ private:
  * @metric kotekan_datasetbroker_error_count Number of errors encountered in
  *                                           communication with the broker.
  *
+ * @par endpoints
+ * @endpoint    /force-update ``GET`` Forces the datasetManager to register
+ *                                    all datasets and states with the
+ *                                    dataset_broker.
+ *
  * @author Richard Shaw, Rick Nitsche
  **/
 class datasetManager {
@@ -307,15 +314,15 @@ public:
     template<typename T>
     inline const T* dataset_state(dset_id_t dset);
 
+    /**
+     * @brief Callback for endpoint `force-update` called by the restServer.
+     * @param conn The HTTP connection object.
+     */
+    void force_update_callback(kotekan::connectionInstance& conn);
+
 private:
     /// Constructor
-    datasetManager() :
-        _conn_error_count(0),
-        _timestamp_update(json(0)),
-        _stop_request_threads(false),
-        _n_request_threads(0),
-        _config_applied(false),
-        _rest_client(restClient::instance()) {}
+    datasetManager();
 
     /// Generate a private static instance so that the overloaded instance()
     /// members can use the same static variable

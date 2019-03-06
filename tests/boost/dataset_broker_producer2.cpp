@@ -1,6 +1,7 @@
 #define BOOST_TEST_MODULE "test_dataset_broker_producer2"
 
 #include "restClient.hpp"
+#include "restServer.hpp"
 #include "test_utils.hpp"
 #include "visCompression.hpp"
 #include "visUtil.hpp"
@@ -28,6 +29,9 @@ using namespace std::string_literals;
 BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, CompareCTypes) {
     __log_level = 5;
     __enable_syslog = 0;
+
+    // We have to start the restServer here, because the datasetManager uses it.
+    kotekan::restServer::instance().start("127.0.0.1");
 
     json json_config;
     json json_config_dm;

@@ -1,6 +1,7 @@
 #define BOOST_TEST_MODULE "test_dataset_broker_consumer"
 
 #include "restClient.hpp"
+#include "restServer.hpp"
 #include "test_utils.hpp"
 #include "visCompression.hpp"
 #include "visUtil.hpp"
@@ -29,6 +30,9 @@ using namespace std::string_literals;
 BOOST_FIXTURE_TEST_CASE(_ask_broker_for_ancestors, CompareCTypes) {
     __log_level = 4;
     __enable_syslog = 0;
+
+    // We have to start the restServer here, because the datasetManager uses it.
+    kotekan::restServer::instance().start("127.0.0.1");
 
     json json_config;
     json json_config_dm;
@@ -192,6 +196,12 @@ BOOST_FIXTURE_TEST_CASE(_ask_broker_for_second_root_update, CompareCTypes) {
     for (auto s : dm.datasets())
         std::cout << s.second.state() << " - " << s.second.base_dset() << std::endl;
 
+    // Force the dM to register everything again.
+    restReply reply = restClient::instance().make_request_blocking("/dataset-manager/force-update");
+    BOOST_CHECK(reply.first == true);
+    BOOST_CHECK(reply.second == "");
+
+
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(500000);
+    usleep(600000);
 }

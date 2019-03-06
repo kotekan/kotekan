@@ -201,7 +201,8 @@ void restClient::cleanup(
     delete pair;
 }
 
-bool restClient::make_request(std::string path, std::function<void(restReply)> request_done_cb,
+bool restClient::make_request(const std::string& path,
+                              std::function<void(restReply)> request_done_cb,
                               const nlohmann::json& data, const std::string& host,
                               const unsigned short port, const int retries, const int timeout) {
     struct evhttp_connection* evcon = nullptr;
@@ -210,12 +211,6 @@ bool restClient::make_request(std::string path, std::function<void(restReply)> r
     struct evbuffer* output_buffer;
 
     int ret;
-
-    // Fix path in case it is nothing or missing '/' in the beginning
-    if (path.length() == 0) {
-        path = string("/");
-    } else if (path.at(0) != '/')
-        path = "/" + path;
 
     evcon = evhttp_connection_base_new(_base, _dns, host.c_str(), port);
     if (evcon == nullptr) {
@@ -314,7 +309,7 @@ bool restClient::make_request(std::string path, std::function<void(restReply)> r
     return true;
 }
 
-restReply restClient::make_request_blocking(std::string path, const nlohmann::json& data,
+restReply restClient::make_request_blocking(const std::string& path, const nlohmann::json& data,
                                             const std::string& host, const unsigned short port,
                                             const int retries, const int timeout) {
     restReply reply = restReply(false, "");
