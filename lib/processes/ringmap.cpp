@@ -59,6 +59,13 @@ void mapMaker::main_thread() {
     if (!setup(in_frame_id))
         return;
 
+    // These will be used to get around the missing cross-polar visibility
+    // TODO: this is not at all generic
+    size_t offset;
+    uint p_special = 2;  // This is the pol that is shorter than the others
+    std::vector<cfloat> special_vis(num_bl);
+    std::vector<float> special_wgt(num_bl);
+
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
@@ -92,17 +99,39 @@ void mapMaker::main_thread() {
         if (t_ind >= 0) {
             mtx.lock();
             for (uint p = 0; p < num_pol; p++) {
+                // Pointers to the span of visibilities for this pol
+                cfloat* input_vis;
+                float* input_wgt;
+
+                if (p != p_special) {
+                    // Need offset to account for missing cross-pol
+                    offset = p * num_bl - (p > p_special);
+                    input_vis = input_frame.vis.data() + offset;
+                    input_wgt = input_frame.weight.data() + offset;
+                } else {
+                    // For now just copy the visibility. This might be slow...
+                    std::copy(input_frame.vis.begin() + p * num_bl,
+                        input_frame.vis.begin() + (p + 1) * num_bl - 1,
+                        special_vis.begin() + 1);
+                    std::copy(input_frame.weight.begin() + p * num_bl,
+                        input_frame.weight.begin() + (p + 1) * num_bl - 1,
+                        special_wgt.begin() + 1);
+                    // Add missing cross-pol
+                    special_vis.at(0) = conj(input_frame.vis.at((p - 1) * num_bl));
+                    special_wgt.at(0) = input_frame.weight.at((p - 1) * num_bl);
+
+                    input_vis = special_vis.data();
+                    input_wgt = special_wgt.data();
+                }
                 // transform into map slice
                 cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl,
-                            &alpha, vis2map.at(f_id).data(), num_bl,
-                            input_frame.vis.data() + p * num_bl, 1, &beta,
-                            map.at(f_id).at(p).data() + t_ind * num_pix, 1);
+                            &alpha, vis2map.at(f_id).data(), num_bl, input_vis,
+                            1, &beta, map.at(f_id).at(p).data() + t_ind * num_pix, 1);
 
                  // same for weights map
                 cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl,
-                            &alpha, vis2map.at(f_id).data(), num_bl,
-                            input_frame.weight.data() + p * num_bl, 1, &beta,
-                            wgt_map.at(f_id).at(p).data() + t_ind * num_pix, 1);
+                            &alpha, vis2map.at(f_id).data(), num_bl, input_wgt,
+                            1, &beta, wgt_map.at(f_id).at(p).data() + t_ind * num_pix, 1);
             }
             mtx.unlock();
         }
