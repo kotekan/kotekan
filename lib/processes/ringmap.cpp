@@ -151,7 +151,6 @@ void mapMaker::rest_callback(kotekan::connectionInstance& conn,
     }
 
     // Format map into JSON
-    // TODO: lock with mutex
     nlohmann::json resp;
     mtx.lock();
     resp["time"] = nlohmann::json(times);
@@ -355,9 +354,8 @@ void redundantStack::change_dataset_state(dset_id_t ds_id) {
                                  "incoming dataset with ID "
                                  + std::to_string(ds_id) + ".");
 
-    auto sspec = calculate_restack(input_state_ptr->get_inputs(),
-                                   prod_state_ptr->get_prods(),
-                                   old_stack_state_ptr->get_stack_map());
+    auto sspec = full_redundant(input_state_ptr->get_inputs(),
+                                prod_state_ptr->get_prods());
     auto sstate = std::make_unique<stackState>(
         sspec.first, std::move(sspec.second));
 
@@ -446,9 +444,9 @@ void redundantStack::main_thread() {
             cfloat vis = in_vis[old_ind];
             float weight = in_weight[old_ind];
 
-            auto& s = stack_rmap[old_ind];
             auto& old_s = old_stack_map[old_ind];
             auto& p = prods[old_s.prod];
+            auto& s = stack_rmap[old_s.prod];
 
             // If the weight is zero, completey skip this iteration
             if (weight == 0 || flags[p.input_a] == 0 || flags[p.input_b] == 0)
@@ -540,39 +538,30 @@ std::pair<feed_diff, bool> calculate_chime_vis_full(
     };
 }
 
-// Modified to operate on a previous stack
-std::pair<uint32_t, std::vector<rstack_ctype>> calculate_restack(
-    const std::vector<input_ctype>& inputs,
-    const std::vector<prod_ctype>& all_prods,
-    const std::vector<stack_ctype>& old_stacks
-) {
+// Only modification is to use fully redundant stacking
+std::pair<uint32_t, std::vector<rstack_ctype>>
+full_redundant(const std::vector<input_ctype>& inputs, const std::vector<prod_ctype>& prods) {
     // Calculate the set of baseline properties
     std::vector<std::pair<feed_diff, bool>> bl_prop;
-    std::vector<prod_ctype> old_prods;
-    std::transform(std::begin(old_stacks), std::end(old_stacks),
-                   std::back_inserter(old_prods),
-                   [&all_prods](stack_ctype s){return all_prods[s.prod];});
-    std::transform(std::begin(old_prods), std::end(old_prods),
-                   std::back_inserter(bl_prop),
+    std::transform(std::begin(prods), std::end(prods), std::back_inserter(bl_prop),
                    std::bind(calculate_chime_vis_full, _1, inputs));
 
     // Create an index array for doing the sorting
-    std::vector<uint32_t> sort_ind(old_stacks.size());
+    std::vector<uint32_t> sort_ind(prods.size());
     std::iota(std::begin(sort_ind), std::end(sort_ind), 0);
 
     auto sort_fn = [&](const uint32_t& ii, const uint32_t& jj) -> bool {
-        return (bl_prop[ii].first <
-                bl_prop[jj].first);
+        return (bl_prop[ii].first < bl_prop[jj].first);
     };
     std::sort(std::begin(sort_ind), std::end(sort_ind), sort_fn);
 
-    std::vector<rstack_ctype> stack_map(old_stacks.size());
+    std::vector<rstack_ctype> stack_map(prods.size());
 
     feed_diff cur = bl_prop[sort_ind[0]].first;
     uint32_t cur_stack_ind = 0;
 
-    for(auto& ind : sort_ind) {
-        if(bl_prop[ind].first != cur) {
+    for (auto& ind : sort_ind) {
+        if (bl_prop[ind].first != cur) {
             cur = bl_prop[ind].first;
             cur_stack_ind++;
         }

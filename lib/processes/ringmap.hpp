@@ -105,10 +105,9 @@ private:
     Buffer* out_buf;
 };
 
-std::pair<uint32_t, std::vector<rstack_ctype>> calculate_restack(
+std::pair<uint32_t, std::vector<rstack_ctype>> full_redundant(
     const std::vector<input_ctype>& inputs,
-    const std::vector<prod_ctype>& all_prods,
-    const std::vector<stack_ctype>& old_stacks
+    const std::vector<prod_ctype>& prods
 );
 
 #endif
