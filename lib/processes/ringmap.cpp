@@ -42,7 +42,7 @@ mapMaker::mapMaker(Config &config,
     register_consumer(in_buf, unique_name.c_str());
 
     // config parameters
-    feed_sep = config.get_default<int32_t>(unique_name, "feed_sep", 0.3048);
+    feed_sep = config.get_default<float>(unique_name, "feed_sep", 0.3048);
 
 }
 
@@ -307,8 +307,8 @@ int64_t mapMaker::resolve_time(time_ctype t){
         // Increment position
         if (times.size() < num_time) {
             // Still filling in the array
-            latest++;
-            //latest = (latest + 1) % num_time;
+            if (times.size() > 0)
+                latest++;
             times.push_back(t);
         } else {
             // Remove oldest entry
