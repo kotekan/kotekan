@@ -10,6 +10,8 @@
 #define n_all 256
 #define scaling 400.
 
+__constant float BP[16] = { 0.52225748 , 0.58330915 , 0.6868705 , 0.80121821 , 0.89386546 , 0.95477358 , 0.98662733 , 0.99942558 , 0.99988676 , 0.98905127 , 0.95874124 , 0.90094667 , 0.81113021 , 0.6999944 , 0.59367968 , 0.52614263};
+
 #define BIT_REVERSE_7_BITS(index) ((( ( (((index) * 0x0802) & 0x22110) | (((index) * 0x8020)&0x88440) ) * 0x10101 ) >> 17) & 0x7F)
 //input data is float2 with beam-pol-time, try to do 3 N=128 at once so that we can sum 3 time samples
 //LWS = {     64 ,  1  }
@@ -276,7 +278,7 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array)
       if (p == 1) {
         outtmp = outtmp/48.;
         //FFT shift by (id+8)%16
-        results_array[get_global_id(1)*nsamp_out*16+get_group_id(0)*16+ ((get_local_id(0)+8)%16) ] = outtmp;
+        results_array[get_global_id(1)*nsamp_out*16+get_group_id(0)*16+ ((get_local_id(0)+8)%16) ] = outtmp/BP[((get_local_id(0)+8)%16)] ;
       }
     }
   } //end loop of 2 pol
