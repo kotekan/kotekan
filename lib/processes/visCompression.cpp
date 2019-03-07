@@ -270,13 +270,6 @@ void baselineCompression::compress_thread() {
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
         mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
 
-        // Get the current values of the shared frame IDs and increment them.
-        {
-            std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
-            output_frame_id = frame_id_out++;
-            input_frame_id = frame_id_in++;
-        }
-
         // Calculate residuals (return zero if no data for this freq)
         float residual = (normt != 0.0) ? (vart / normt) : 0.0;
 
@@ -289,6 +282,15 @@ void baselineCompression::compress_thread() {
                                                        unique_name, residual, labels);
         prometheusMetrics::instance().add_stage_metric("kotekan_baselinecompression_time_seconds",
                                                        unique_name, elapsed);
+        prometheusMetrics::instance().add_stage_metric("kotekan_baselinecompression_frame_id",
+                                                       unique_name, input_frame_id);
+
+        // Get the current values of the shared frame IDs and increment them.
+        {
+            std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
+            output_frame_id = frame_id_out++;
+            input_frame_id = frame_id_in++;
+        }
 
         DEBUG("Compression time %.4f", elapsed);
     }
