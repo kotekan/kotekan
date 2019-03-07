@@ -32,6 +32,8 @@ public:
 
 private:
 
+    void change_dataset_state(dset_id_t ds_id);
+
     bool setup(size_t frame_id);
 
     void gen_matrices();

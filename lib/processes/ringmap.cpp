@@ -78,16 +78,14 @@ void mapMaker::main_thread() {
 
         // Check dataset id hasn't changed
         if (input_frame.dataset_id != ds_id) {
-
-            // TODO: what should happen in this case?
-
-            //string msg = fmt::format(
-            //    "Unexpected dataset ID={} received (expected id={}).",
-            //    input_frame.dataset_id, ds_id
-            //);
-            //ERROR(msg.c_str());
-            //raise(SIGINT);
-            //return;
+            size_t old_num_stack = num_stack;
+            change_dataset_state(input_frame.dataset_id);
+            // This should never happen...
+            if (num_stack != old_num_stack) {
+                // Need to regenerate matrices
+                if (!setup(in_frame_id))
+                    return;
+            }
         }
 
         // Find the time index to append to
@@ -189,15 +187,11 @@ void mapMaker::rest_callback(kotekan::connectionInstance& conn,
     return;
 }
 
-bool mapMaker::setup(size_t frame_id) {
+void mapMaker::change_dataset_state(dset_id_t new_ds_id) {
 
-    // Wait for the input buffer to be filled with data
-    if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
-        return false;
-    }
+    // Update stored ID
+    ds_id = new_ds_id;
 
-    auto in_frame = visFrameView(in_buf, frame_id);
-    ds_id = in_frame.dataset_id;
     auto& dm = datasetManager::instance();
 
     // Get the product spec and (if available) the stackState to determine the
@@ -220,11 +214,29 @@ bool mapMaker::setup(size_t frame_id) {
     if (sstate == nullptr)
         throw std::runtime_error("MapMaker requires visibilities stacked ");
 
+    stacks = sstate->get_stack_map();
+    prods = pstate->get_prods();
+    inputs = istate->get_inputs();
+    freqs = fstate->get_freqs();
+
+    num_stack = sstate->get_num_stack();
+}
+
+bool mapMaker::setup(size_t frame_id) {
+
+    // Wait for the input buffer to be filled with data
+    if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
+        return false;
+    }
+
+    auto in_frame = visFrameView(in_buf, frame_id);
+    ds_id = in_frame.dataset_id;
+    change_dataset_state(ds_id);
+
     // TODO: make these config options ?
     num_pix = 512; // # unique NS baselines
     num_pol = 4;
     num_time = 24. * 3600. / (in_frame.fpga_seq_length * 2.56e-6);
-    num_stack = sstate->get_num_stack();
     num_bl = (num_stack + 1) / 4;
 
     sinza = std::vector<float>(num_pix, 0.);
@@ -233,11 +245,6 @@ bool mapMaker::setup(size_t frame_id) {
     }
 
     min_fpga = std::get<0>(in_frame.time);
-
-    stacks = sstate->get_stack_map();
-    prods = pstate->get_prods();
-    inputs = istate->get_inputs();
-    freqs = fstate->get_freqs();
 
     // generate map making matrices
     gen_matrices();
@@ -257,6 +264,10 @@ bool mapMaker::setup(size_t frame_id) {
         wgt_map.insert(std::pair<uint64_t, std::vector<std::vector<cfloat>>>(f.first, wgt));
     }
     mtx.unlock();
+
+    // Make sure times are empty
+    times.clear();
+    times_map.clear();
 
     // Initialize the time indexing
     max_fpga = 0, min_fpga = 0;
@@ -420,7 +431,9 @@ void redundantStack::main_thread() {
 
         // Check dataset id hasn't changed
         if (input_frame.dataset_id != input_dset_id) {
-            // TODO: what to do then ?
+            WARN("Input dataset ID has changed. Regenerating stack specs.");
+            input_dset_id = input_frame.dataset_id;
+            change_dataset_state(input_dset_id);
         }
 
         const auto& stack_rmap = new_stack_state_ptr->get_rstack_map();
