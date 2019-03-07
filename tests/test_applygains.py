@@ -5,8 +5,6 @@ from kotekan import runner
 from kotekan import visutil
 import time
 
-print runner.__file__
-
 old_tmstp = time.time()
 old_tag = "gains{0}".format(int(old_tmstp))
 
@@ -134,7 +132,7 @@ def test_apply(tmpdir_factory):
     global_params['gains_dir'] = str(gains_dir)
     tcombine = global_params['combine_gains_time']
     n_el = global_params['num_elements']
-    num_prod = n_el * (n_el + 1) / 2
+    num_prod = n_el * (n_el + 1) // 2
 
     # REST commands
     cmds = [["post", "gains",

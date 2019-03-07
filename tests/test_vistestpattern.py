@@ -259,7 +259,7 @@ def test_pattern_noise_freq(tmpdir_factory):
       [21, -21],
       [34, -34],
       [55, -55]]
-    freq_params['freq_ids'] = range(0,30)
+    freq_params['freq_ids'] = list(range(0,30))
     freq_params['total_frames'] = 6
 
     random.seed()

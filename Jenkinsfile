@@ -79,7 +79,7 @@ pipeline {
     stage('Unit Tests') {
       steps {
         sh '''cd tests/
-              PYTHONPATH=../python/ pytest -s -vvv'''
+              PYTHONPATH=../python/ python3 -m pytest -s -vvv'''
       }
     }
   }

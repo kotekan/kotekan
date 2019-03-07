@@ -49,7 +49,7 @@ def test_structure(vis_data):
         assert (frame.metadata.num_ev == downsamp_params['num_ev'])
 
     # Check that we have the expected number of samples
-    nsamp = downsamp_params['total_frames'] / downsamp_params['num_samples']
+    nsamp = downsamp_params['total_frames'] // downsamp_params['num_samples']
     assert len(vis_data) == nsamp
 
 
@@ -81,7 +81,7 @@ def test_contents(vis_data):
     n_ev = downsamp_params['num_ev']
 
     # Reproduce expected fakeVis output
-    model_vis = np.zeros(n * (n+1) / 2, dtype=np.complex64)
+    model_vis = np.zeros(n * (n+1) // 2, dtype=np.complex64)
     ind = 0
     for i in range(n):
         for j in range(i, n):

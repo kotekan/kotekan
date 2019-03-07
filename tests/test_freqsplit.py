@@ -14,7 +14,7 @@ params = {
     'cadence': 10.0,
     'mode': 'default',
     'buffer_depth': 5,
-    'freq_ids': range(50),
+    'freq_ids': list(range(50)),
     'split_freq': 42,
     'dataset_manager': {
         'use_dataset_broker': False

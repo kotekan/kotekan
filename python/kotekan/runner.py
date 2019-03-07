@@ -76,7 +76,7 @@ class KotekanRunner(object):
             kotekan_cmd = 'kotekan -c %s'
             wd = os.curdir
 
-        with tempfile.NamedTemporaryFile() as fh, \
+        with tempfile.NamedTemporaryFile(mode='w') as fh, \
              tempfile.NamedTemporaryFile() as f_out:
 
             yaml.safe_dump(config_dict, fh)
@@ -131,7 +131,7 @@ class KotekanRunner(object):
 
             # Wait for kotekan to finish and capture the output
             p.wait()
-            self.output = file(f_out.name).read()
+            self.output = open(f_out.name, 'r').read()
 
             # Print out the output from Kotekan for debugging
             print(self.output)

@@ -125,7 +125,7 @@ def test_eigenvectors(written_data):
 
         im_ev = np.array(vr.index_map['ev'])
 
-        print im_ev, ne
+        print(im_ev, ne)
 
         # Check that the index map is there correctly
         assert (im_ev == np.arange(ne)).all()

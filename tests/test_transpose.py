@@ -281,16 +281,16 @@ def test_transpose_stack(transpose_stack):
     assert f['reverse_map/stack'].shape == (n_prod,)
 
     # check the stack against those in the input file
-    with open(infile + '.meta', 'r') as f_meta:
+    with open(infile + '.meta', 'rb') as f_meta:
         meta = msgpack.load(f_meta)
 
-    stack_im = np.array([ tuple(s.values()) for s in meta['index_map']['stack'] ],
-                        dtype=f['index_map/stack'].dtype)
-    assert (f['index_map/stack'][:] == stack_im).all()
+    stack_im = np.array([ tuple(s.values()) for s in meta[b'index_map'][b'stack'] ],
+                        dtype=f['index_map']['stack'].dtype)
+    assert (f['index_map']['stack'][:] == stack_im).all()
 
-    stack_rm = np.array([ tuple(s.values()) for s in meta['reverse_map']['stack'] ],
-                        dtype=f['reverse_map/stack'].dtype)
-    assert (f['reverse_map/stack'][:] == stack_rm).all()
+    stack_rm = np.array([ tuple(s.values()) for s in meta[b'reverse_map'][b'stack'] ],
+                        dtype=f['reverse_map']['stack'].dtype)
+    assert (f['reverse_map']['stack'][:] == stack_rm).all()
 
     # check stacked visibilities are still as expected
     # this is adapted from test_compression.py

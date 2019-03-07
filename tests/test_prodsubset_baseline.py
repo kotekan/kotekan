@@ -63,7 +63,7 @@ def max_bl_condition(prod, xmax, ymax):
 def test_subset(subset_data):
 
     n_el = subset_params['num_elements']
-    num_prod = n_el * (n_el + 1) / 2
+    num_prod = n_el * (n_el + 1) // 2
 
     vis = []
     for ii in range(num_prod):

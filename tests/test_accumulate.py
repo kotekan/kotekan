@@ -202,7 +202,7 @@ def test_structure(accumulate_data):
         assert (frame.metadata.num_ev == 0)
 
     # Check that we have the expected number of samples
-    nsamp = accumulate_params['total_frames'] / accumulate_params['int_frames']
+    nsamp = accumulate_params['total_frames'] // accumulate_params['int_frames']
     assert len(accumulate_data) == nsamp
 
 
@@ -262,7 +262,7 @@ def test_int_time(time_data):
 
     time_per_frame = 2.56e-6 * time_params['samples_per_data_set']
     frames_per_int = (int(time_params['integration_time'] /
-                          time_per_frame) / 2) * 2
+                          time_per_frame) // 2) * 2
     delta_samp = time_params['samples_per_data_set'] * frames_per_int
     fpga0 = time_data[0].metadata.fpga_seq
 
