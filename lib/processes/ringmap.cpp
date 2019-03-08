@@ -99,7 +99,7 @@ void mapMaker::main_thread() {
             std::transform(
                 input_frame.weight.begin(), input_frame.weight.begin() + num_stack,
                 complex_wgt.begin(),
-                [](float a) {return cfloat(a);}
+                [](const float& a) {return cfloat(a, 0.);}
             );
             mtx.lock();
             for (uint p = 0; p < num_pol; p++) {
@@ -118,12 +118,12 @@ void mapMaker::main_thread() {
                         input_frame.vis.begin() + (p + 1) * num_bl - 1,
                         special_vis.begin() + 1);
                     // for the weights, need to cast
-                    std::transform(input_frame.weight.begin() + p * num_bl,
-                        input_frame.weight.begin() + (p + 1) * num_bl - 1,
-                        special_wgt.begin() + 1, [](float a) {return cfloat(a);});
+                    std::copy(complex_wgt.begin() + p * num_bl,
+                        complex_wgt.begin() + (p + 1) * num_bl - 1,
+                        special_wgt.begin() + 1);
                     // Add missing cross-pol
                     special_vis.at(0) = conj(input_frame.vis.at((p - 1) * num_bl));
-                    special_wgt.at(0) = cfloat(input_frame.weight.at((p - 1) * num_bl));
+                    special_wgt.at(0) = complex_wgt.at((p - 1) * num_bl);
 
                     input_vis = special_vis.data();
                     input_wgt = special_wgt.data();
@@ -185,15 +185,16 @@ void mapMaker::rest_callback(kotekan::connectionInstance& conn,
         return;
     }
 
-    // Format map into JSON
+    // Format map into msgpack
     nlohmann::json resp;
     mtx.lock();
     resp["time"] = nlohmann::json(times);
     resp["sinza"] = nlohmann::json(sinza);
     resp["ringmap"] = nlohmann::json(map.at(freqs[f_ind].first).at(pol));
     resp["weight_map"] = nlohmann::json(wgt_map.at(freqs[f_ind].first).at(pol));
+    std::vector<std::uint8_t> resp_msgpack = nlohmann::json::to_msgpack(resp);
     mtx.unlock();
-    conn.send_json_reply(resp);
+    conn.send_binary_reply(resp_msgpack.data(), resp_msgpack.size());
     return;
 }
 
@@ -529,8 +530,9 @@ void redundantStack::main_thread() {
             float inorm = (norm != 0.0) ? (1.0 / norm) : 0.0;
 
             output_frame.vis[stack_ind] *= inorm;
-            output_frame.weight[stack_ind] = norm * norm /
-                output_frame.weight[stack_ind];
+            float iwgt = ((output_frame.weight[stack_ind] != 0.0)
+                          ? 1.0 / output_frame.weight[stack_ind] : 0.0);
+            output_frame.weight[stack_ind] = norm * norm * iwgt;
 
             // Accumulate to calculate the variance of the residuals
             vart += stack_v2[stack_ind]
