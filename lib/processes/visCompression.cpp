@@ -47,7 +47,8 @@ baselineCompression::baselineCompression(Config& config, const string& unique_na
     in_buf(get_buffer("in_buf")),
     out_buf(get_buffer("out_buf")),
     frame_id_in(in_buf),
-    frame_id_out(out_buf) {
+    frame_id_out(out_buf),
+    frame_counter_global(0) {
 
     register_consumer(in_buf, unique_name.c_str());
     register_producer(out_buf, unique_name.c_str());
@@ -84,7 +85,7 @@ void baselineCompression::main_thread() {
     // Create the threads
     thread_handles.resize(num_threads);
     for (uint32_t i = 0; i < num_threads; ++i) {
-        thread_handles[i] = std::thread(&baselineCompression::compress_thread, this);
+        thread_handles[i] = std::thread(&baselineCompression::compress_thread, this, i);
 
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
@@ -128,10 +129,11 @@ dset_id_t baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
     return dm.add_dataset(input_ds_id, stack_state_id);
 }
 
-void baselineCompression::compress_thread() {
+void baselineCompression::compress_thread(uint32_t thread_id) {
 
     int input_frame_id;
     int output_frame_id;
+    uint64_t frame_counter;
 
     dset_id_t input_dset_id;
     dset_id_t output_dset_id = 0;
@@ -141,6 +143,7 @@ void baselineCompression::compress_thread() {
         std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
         output_frame_id = frame_id_out++;
         input_frame_id = frame_id_in++;
+        frame_counter = frame_counter_global++;
     }
 
     // Wait for the input buffer to be filled with data
@@ -277,19 +280,20 @@ void baselineCompression::compress_thread() {
         double elapsed = current_time() - start_time;
         std::string labels =
             fmt::format("freq_id=\"{}\",dataset_id=\"{}\",thread_id=\"{}\"", output_frame.freq_id,
-                        output_frame.dataset_id, std::this_thread::get_id());
+                        output_frame.dataset_id, thread_id);
         prometheusMetrics::instance().add_stage_metric("kotekan_baselinecompression_residuals",
                                                        unique_name, residual, labels);
         prometheusMetrics::instance().add_stage_metric("kotekan_baselinecompression_time_seconds",
                                                        unique_name, elapsed);
-        prometheusMetrics::instance().add_stage_metric("kotekan_baselinecompression_frame_id",
-                                                       unique_name, input_frame_id);
+        prometheusMetrics::instance().add_stage_metric("kotekan_baselinecompression_frame_counter",
+                                                       unique_name, frame_counter);
 
         // Get the current values of the shared frame IDs and increment them.
         {
             std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
             output_frame_id = frame_id_out++;
             input_frame_id = frame_id_in++;
+            frame_counter = frame_counter_global++;
         }
 
         DEBUG("Compression time %.4f", elapsed);
