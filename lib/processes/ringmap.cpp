@@ -326,19 +326,19 @@ int64_t mapMaker::resolve_time(time_ctype t){
         // We need to add a new time
         max_fpga = t.fpga_count;
         // Increment position
-        if (times.size() < num_time) {
+        if (times_map.size() < num_time) {
             // Still filling in the array
-            if (times.size() > 0)
+            if (times_map.size() > 0)
                 latest++;
             times.push_back(t);
         } else {
             // Remove oldest entry
-            //latest = (latest + 1) % num_time;
-            min_fpga = times[latest++].fpga_count;
-            //min_fpga = times[latest].fpga_count;
+            min_fpga = times[++latest].fpga_count;
             times_map.erase(min_fpga);
             times[latest] = t;
         }
+        times_map.insert(std::pair<uint64_t, size_t>(t.fpga_count, latest));
+        // Clear maps
         size_t start = latest;
         size_t stop = size_t(latest) + 1;
         for (auto f : freqs) {
@@ -347,10 +347,9 @@ int64_t mapMaker::resolve_time(time_ctype t){
                 std::fill(map.at(fid).at(p).begin() + start*num_pix,
                           map.at(fid).at(p).begin() + stop*num_pix, cfloat(0., 0.));
                 std::fill(wgt_map.at(fid).at(p).begin() + start*num_pix,
-                          wgt_map.at(fid).at(p).begin() + stop*num_pix, 0.);
+                          wgt_map.at(fid).at(p).begin() + stop*num_pix, cfloat(0., 0.));
             }
         }
-        times_map.insert(std::pair<uint64_t, size_t>(t.fpga_count, latest));
         mtx.unlock();
 
         return latest;
