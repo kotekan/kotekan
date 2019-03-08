@@ -62,7 +62,9 @@ void mapMaker::main_thread() {
     size_t offset;
     uint p_special = 2;  // This is the pol that is shorter than the others
     std::vector<cfloat> special_vis(num_bl);
-    std::vector<float> special_wgt(num_bl);
+    std::vector<cfloat> special_wgt(num_bl);
+    // We will need to cast weights into complex
+    std::vector<cfloat> complex_wgt(num_stack);
 
     while (!stop_thread) {
 
@@ -93,28 +95,35 @@ void mapMaker::main_thread() {
                         ts_to_double(std::get<1>(input_frame.time))};
         int64_t t_ind = resolve_time(t);
         if (t_ind >= 0) {
+            // Copy weights into a complex vector
+            std::transform(
+                input_frame.weight.begin(), input_frame.weight.begin() + num_stack,
+                complex_wgt.begin(),
+                [](float a) {return cfloat(a);}
+            );
             mtx.lock();
             for (uint p = 0; p < num_pol; p++) {
                 // Pointers to the span of visibilities for this pol
                 cfloat* input_vis;
-                float* input_wgt;
+                cfloat* input_wgt;
 
                 if (p != p_special) {
                     // Need offset to account for missing cross-pol
                     offset = p * num_bl - (p > p_special);
                     input_vis = input_frame.vis.data() + offset;
-                    input_wgt = input_frame.weight.data() + offset;
+                    input_wgt = complex_wgt.data() + offset;
                 } else {
                     // For now just copy the visibility. This might be slow...
                     std::copy(input_frame.vis.begin() + p * num_bl,
                         input_frame.vis.begin() + (p + 1) * num_bl - 1,
                         special_vis.begin() + 1);
-                    std::copy(input_frame.weight.begin() + p * num_bl,
+                    // for the weights, need to cast
+                    std::transform(input_frame.weight.begin() + p * num_bl,
                         input_frame.weight.begin() + (p + 1) * num_bl - 1,
-                        special_wgt.begin() + 1);
+                        special_wgt.begin() + 1, [](float a) {return cfloat(a);});
                     // Add missing cross-pol
                     special_vis.at(0) = conj(input_frame.vis.at((p - 1) * num_bl));
-                    special_wgt.at(0) = input_frame.weight.at((p - 1) * num_bl);
+                    special_wgt.at(0) = cfloat(input_frame.weight.at((p - 1) * num_bl));
 
                     input_vis = special_vis.data();
                     input_wgt = special_wgt.data();
@@ -128,6 +137,7 @@ void mapMaker::main_thread() {
                 cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl,
                             &alpha, vis2map.at(f_id).data(), num_bl, input_wgt,
                             1, &beta, wgt_map.at(f_id).at(p).data() + t_ind * num_pix, 1);
+                // TODO: consider keeping just the real part to save space
             }
             mtx.unlock();
         }
