@@ -329,6 +329,8 @@ uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, c
 #ifndef _GOSSEC
     if (print_stat == 1)
         print_buffer_status(buf);
+#else
+    (void)print_stat;
 #endif
 
     if (buf->shutdown_signal == 1)
