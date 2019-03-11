@@ -463,23 +463,28 @@ void visTestPattern::compute_expected_data() {
     size_t num_freqs = freqs.size();
     size_t num_prods = prods.size();
 
+    INFO("Computing expected data...");
     expected.resize(num_freqs);
+    for (size_t f = 0; f < num_freqs; f++)
+        expected[f].resize(num_prods);
 
     // Sort input feed values by frequency.
-    for (size_t f = 0; f < num_freqs; f++) {
+#ifdef _OPENMP
+    INFO("Speeding up calculation of exptected data with OpenMP.");
+#pragma omp parallel for
+#endif
+    for (size_t p = 0; p < num_prods; p++) {
         // Generate auto product.
-        expected[f].resize(num_prods);
-        for (size_t p = 0; p < num_prods; p++) {
-            uint16_t input_id_a = prods.at(p).input_a;
-            uint16_t input_id_b = prods.at(p).input_b;
-            cfloat input_a = fpga_buf_pattern.at(inputs.at(input_id_a).correlator_input).at(f);
-            cfloat input_b = fpga_buf_pattern.at(inputs.at(input_id_b).correlator_input).at(f);
-            expected[f][p] = input_a * std::conj(input_b);
+        std::vector<cfloat> buf_a = fpga_buf_pattern.at(inputs.at(prods.at(p).input_a).correlator_input);
+        std::vector<cfloat> buf_b = fpga_buf_pattern.at(inputs.at(prods.at(p).input_b).correlator_input);
+        for (size_t f = 0; f < num_freqs; f++) {
+            expected[f][p] = buf_a.at(f) * std::conj(buf_b.at(f));
 
             DEBUG("For frequency %d and product %d, expecting %f, %f.", f, p, expected[f][p].real(),
                   expected[f][p].imag());
         }
     }
+    INFO("Computing expected data done!");
     expected_data_ready = true;
 }
 
