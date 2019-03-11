@@ -56,6 +56,7 @@ vis_buffer:
     kotekan_buffer: vis
   visbuf_10s_stack_mfreq:
     kotekan_buffer: vis
+    num_prod: 17000  # Approximation to the correct size
   visbuf_5s_26m_ungated:
     kotekan_buffer: vis
     buffer_depth: 4096
@@ -215,6 +216,8 @@ mfreq_subset:
     kotekan_stage: freqSubset
     in_buf: visbuf_10s_stack
     out_buf: visbuf_10s_stack_mfreq
+    # pick more or less arbitrary 64 ferquencies for now, including original 4
+    subset_list: [1, 17, 33, 49, 65, 81, 97, 107, 129, 145, 161, 177, 193, 209, 225, 241, 257, 273, 289, 305, 321, 344, 353, 369, 385, 401, 417, 433, 449, 465, 481, 497, 513, 529, 545, 561, 577, 593, 609, 619, 641, 657, 673, 689, 705, 721, 737, 753, 769, 785, 801, 817, 833, 849, 865, 881, 897, 913, 929, 938, 961, 977, 993, 1009]
 
 buffer_writers:
   file_length: 256
