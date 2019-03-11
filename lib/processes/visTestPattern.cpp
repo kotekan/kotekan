@@ -204,11 +204,11 @@ void visTestPattern::main_thread() {
                 }
 
 
+                time = std::get<1>(frame.time);
+                fpga_count = std::get<0>(frame.time);
+                freq_id = frame.freq_id;
                 if (num_bad) {
                     avg_err /= (float)num_bad;
-                    time = std::get<1>(frame.time);
-                    fpga_count = std::get<0>(frame.time);
-                    freq_id = frame.freq_id;
 
                     // write frame report to outfile
                     outfile << fpga_count << ",";
@@ -260,6 +260,9 @@ void visTestPattern::main_thread() {
 
                     // Advance output frame id
                     output_frame_id++;
+                } else {
+                    // Export results to prometheus.
+                    export_prometheus_metrics(num_bad, 0, 0, 0, fpga_count, time, freq_id);
                 }
 
                 // print report some times
