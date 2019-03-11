@@ -260,9 +260,11 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
 
             // Invert norm if set, otherwise use zero to set data to zero.
             float inorm = (norm != 0.0) ? (1.0 / norm) : 0.0;
+            float iwgt = (output_frame.weight[stack_ind] != 0.0) ?
+                    (1.0 / output_frame.weight[stack_ind]) : 0.0;
 
             output_frame.vis[stack_ind] *= inorm;
-            output_frame.weight[stack_ind] = norm * norm / output_frame.weight[stack_ind];
+            output_frame.weight[stack_ind] = norm * norm * iwgt;
 
             // Accumulate to calculate the variance of the residuals
             vart += stack_v2[stack_ind] - std::norm(output_frame.vis[stack_ind]) * norm;
