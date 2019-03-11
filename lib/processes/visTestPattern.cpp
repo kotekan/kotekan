@@ -471,15 +471,17 @@ void visTestPattern::compute_expected_data() {
     for (size_t f = 0; f < num_freqs; f++)
         expected[f].resize(num_prods);
 
-    // Sort input feed values by frequency.
+        // Sort input feed values by frequency.
 #ifdef _OPENMP
     INFO("Speeding up calculation of exptected data with OpenMP.");
 #pragma omp parallel for
 #endif
     for (size_t p = 0; p < num_prods; p++) {
         // Generate auto product.
-        std::vector<cfloat> buf_a = fpga_buf_pattern.at(inputs.at(prods.at(p).input_a).correlator_input);
-        std::vector<cfloat> buf_b = fpga_buf_pattern.at(inputs.at(prods.at(p).input_b).correlator_input);
+        std::vector<cfloat> buf_a =
+            fpga_buf_pattern.at(inputs.at(prods.at(p).input_a).correlator_input);
+        std::vector<cfloat> buf_b =
+            fpga_buf_pattern.at(inputs.at(prods.at(p).input_b).correlator_input);
         for (size_t f = 0; f < num_freqs; f++) {
             expected[f][p] = buf_a.at(f) * std::conj(buf_b.at(f));
 
