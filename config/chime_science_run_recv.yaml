@@ -89,6 +89,15 @@ vis_buffer:
 
 # Subset of good frequencies to output whole for monitoring
 mfreq: &mfreq [107, 344, 619, 938]
+# Larger subset to be sent to map maker, spanning entire band
+mapfreq: &mapfreq [
+        0,   15,   27,   40,   53,   66,   79,   92,  104, 107,
+        184,  196, 209,  220,  234,  245,  259,  281,  293,  305,  318,  333,  344,
+        358,  374,  386,  399,  411,  422,  433,  445,  456,  469,  481,
+        494,  506,  520,  534,  546,  610, 619,  623,  671,  703,  715,  727,
+        740,  752,  805,  824,  837,  852,  863,  886,  903,  917,  928,
+        938,  950,  962,  975,  986, 1000, 1011
+    ]
 
 # Updatable config blocks
 updatable_config:
@@ -207,17 +216,16 @@ timing_subset:
 
 # Generate the monitoring freq full N^2 stream
 mfreq_subset:
-  subset_list: *mfreq  # 10 good frequencies within the upper 1/4 band
   n2:
     kotekan_stage: freqSubset
     in_buf: visbuf_10s_flags
     out_buf: visbuf_10s_mfreq
+    subset_list: *mfreq
   stack:
     kotekan_stage: freqSubset
     in_buf: visbuf_10s_stack
     out_buf: visbuf_10s_stack_mfreq
-    # pick more or less arbitrary 64 ferquencies for now, including original 4
-    subset_list: [1, 17, 33, 49, 65, 81, 97, 107, 129, 145, 161, 177, 193, 209, 225, 241, 257, 273, 289, 305, 321, 344, 353, 369, 385, 401, 417, 433, 449, 465, 481, 497, 513, 529, 545, 561, 577, 593, 609, 619, 641, 657, 673, 689, 705, 721, 737, 753, 769, 785, 801, 817, 833, 849, 865, 881, 897, 913, 929, 938, 961, 977, 993, 1009]
+    subset_list: *mapfreq
 
 buffer_writers:
   file_length: 256
