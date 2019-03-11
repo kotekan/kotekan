@@ -1,9 +1,13 @@
+from flask import Flask, request
 import pytest
 import numpy as np
 import csv
 import math
 import random
+import threading
+import time
 import copy
+from werkzeug.serving import make_server
 
 from kotekan import visbuffer
 from kotekan import runner
@@ -36,12 +40,34 @@ params = {
 
 STAGE_NAME = "testpattern_stage"
 
+class ServerThread(threading.Thread):
+    def __init__(self, app):
+        threading.Thread.__init__(self)
+        self.srv = make_server('127.0.0.1', 5050, app)
+        self.ctx = app.app_context()
+        self.ctx.push()
+
+    def run(self):
+        self.srv.serve_forever()
+
+    def shutdown(self):
+        self.srv.shutdown()
+
+app = Flask(__name__)
+@app.route('/reply_endpoint', methods=['POST'])
+def reply_endpoint():
+    print("/reply_endpoint received {}".format(request.json))
+    return "Yey"
+
 def command_test_pattern(name, num_frames, test_pattern):
-    return ('post', ENDPOINT_NAME, {'reply_host': '127.0.0.1', 'reply_port': 8000,
+    return ('post', ENDPOINT_NAME, {'reply_host': '127.0.0.1', 'reply_port': 5050,
                                     'reply_path': 'reply_endpoint', 'num_frames': num_frames,
                                     'test_pattern': test_pattern, 'name': name})
 
 def run_test(write_dir,rest_commands = None, params=params, noise = False, name="simple"):
+    capo = ServerThread(app)
+    capo.start()
+    print("Started fake capo endoint.")
 
     params['write_dir'] = write_dir
 
@@ -96,6 +122,10 @@ def run_test(write_dir,rest_commands = None, params=params, noise = False, name=
         in_data = visbuffer.VisBuffer.load_files("%s/*fakevis_dump*.dump" % write_dir)
     else:
         in_data = None
+
+    capo.shutdown()
+    print("Removed fake capo endpoint.")
+    time.sleep(1)
 
     return (out_data, in_data, dump_buffer.load())
 

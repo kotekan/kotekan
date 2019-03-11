@@ -474,6 +474,7 @@ void visTestPattern::compute_expected_data() {
         // Sort input feed values by frequency.
 #ifdef _OPENMP
     INFO("Speeding up calculation of exptected data with OpenMP.");
+// Extreme speed up on recv2 but much slower in unit tests...
 #pragma omp parallel for
 #endif
     for (size_t p = 0; p < num_prods; p++) {
