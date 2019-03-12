@@ -466,14 +466,14 @@ void visTestPattern::compute_expected_data() {
     size_t num_freqs = freqs.size();
     size_t num_prods = prods.size();
 
-    INFO("Computing expected data...");
+    DEBUG("Computing expected data...");
     expected.resize(num_freqs);
     for (size_t f = 0; f < num_freqs; f++)
         expected[f].resize(num_prods);
 
         // Sort input feed values by frequency.
 #ifdef _OPENMP
-    INFO("Speeding up calculation of exptected data with OpenMP.");
+    DEBUG("Speeding up calculation of exptected data with OpenMP.");
 // Extreme speed up on recv2 but much slower in unit tests...
 #pragma omp parallel for
 #endif
@@ -486,11 +486,11 @@ void visTestPattern::compute_expected_data() {
         for (size_t f = 0; f < num_freqs; f++) {
             expected[f][p] = buf_a.at(f) * std::conj(buf_b.at(f));
 
-            DEBUG("For frequency %d and product %d, expecting %f, %f.", f, p, expected[f][p].real(),
-                  expected[f][p].imag());
+            DEBUG2("For frequency %d and product %d, expecting %f, %f.", f, p,
+                   expected[f][p].real(), expected[f][p].imag());
         }
     }
-    INFO("Computing expected data done!");
+    DEBUG("Computing expected data done!");
     expected_data_ready = true;
 }
 
