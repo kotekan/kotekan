@@ -93,7 +93,7 @@ def run_test(write_dir, rest_commands=None, params=params, noise=False,
             reader = csv.DictReader(csvfile)
             for row in reader:
                 out_data.append(row)
-    except:
+    except Exception:
         out_data = None
 
     if noise:
@@ -114,8 +114,8 @@ def no_data(tmpdir_factory):
 
 def test_idle(no_data):
     # No command was sent to the endpoint, so no dump file should be created.
-    assert (no_data[0] == None)
-    assert (no_data[1] == None)
+    assert (no_data[0] is None)
+    assert (no_data[1] is None)
     assert (len(no_data[2]) == 0)
 
 
@@ -136,10 +136,11 @@ def test_pattern(tmpdir_factory):
 
 
 def test_no_noise(test_pattern):
-    # A test was started by sending a command to the endpoint, so the files should exist.
-    # But they should be empty, since there was no noise added to the test pattern data.
+    # A test was started by sending a command to the endpoint, so the files
+    # should exist. But they should be empty, since there was no noise added
+    # to the test pattern data.
     assert (len(test_pattern[0]) == 0)
-    assert (test_pattern[1] == None)
+    assert (test_pattern[1] is None)
     assert (len(test_pattern[2]) == 0)
 
 
@@ -252,10 +253,11 @@ def test_pattern_no_noise_freq(tmpdir_factory):
 
 
 def test_no_noise_freq(test_pattern_no_noise_freq):
-    # A test was started by sending a command to the endpoint, so the files should exist.
-    # But they should be empty, since there was no noise added to the test pattern data.
+    # A test was started by sending a command to the endpoint, so the files
+    # should exist. But they should be empty, since there was no noise added
+    # to the test pattern data.
     assert (len(test_pattern_no_noise_freq[0]) == 0)
-    assert (test_pattern_no_noise_freq[1] == None)
+    assert (test_pattern_no_noise_freq[1] is None)
     assert (len(test_pattern_no_noise_freq[2]) == 0)
 
 
@@ -332,7 +334,8 @@ def test_noise_freq(test_pattern_noise_freq):
             if freq_id in freq_params['frequencies']:
                 i = freq_params['frequencies'].index(freq_id)
                 expected = np.complex64(freq_params['freq_values'][i][0] +
-                                        freq_params['freq_values'][i][1] * (1j))
+                                        freq_params['freq_values'][i][1]
+                                        * (1j))
             else:
                 expected = np.complex64(128 + 0j)
 
@@ -363,12 +366,12 @@ def test_noise_freq(test_pattern_noise_freq):
                 avg_error /= num_bad
 
                 assert (int(row['num_bad']) == num_bad)
-                assert (float(row['avg_err']) == pytest.approx(avg_error,
-                                                               abs=REPORT_PRECISION))
-                assert (float(row['min_err']) == pytest.approx(min_error,
-                                                               abs=REPORT_PRECISION))
-                assert (float(row['max_err']) == pytest.approx(max_error,
-                                                               abs=REPORT_PRECISION))
+                assert (float(row['avg_err'])
+                        == pytest.approx(avg_error, abs=REPORT_PRECISION))
+                assert (float(row['min_err'])
+                        == pytest.approx(min_error, abs=REPORT_PRECISION))
+                assert (float(row['max_err'])
+                        == pytest.approx(max_error, abs=REPORT_PRECISION))
                 i_report += 1
             if num_to_compare == 0:
                 break
@@ -413,10 +416,11 @@ def test_pattern_no_noise_inputs(tmpdir_factory):
 
 
 def test_no_noise_inputs(test_pattern_no_noise_inputs):
-    # A test was started by sending a command to the endpoint, so the files should exist.
-    # But they should be empty, since there was no noise added to the test pattern data.
+    # A test was started by sending a command to the endpoint, so the files
+    # should exist. But they should be empty, since there was no noise added
+    # to the test pattern data.
     assert (len(test_pattern_no_noise_inputs[0]) == 0)
-    assert (test_pattern_no_noise_inputs[1] == None)
+    assert (test_pattern_no_noise_inputs[1] is None)
     assert (len(test_pattern_no_noise_inputs[2]) == 0)
 
 
@@ -476,7 +480,8 @@ def test_noise_inputs(test_pattern_noise_inputs):
         for i in range(2):
             for j in range(i, 2):
                 expected = np.complex64(input_params['input_values'][i][0] +
-                                        input_params['input_values'][i][1] * 1j)
+                                        input_params['input_values'][i][1]
+                                        * 1j)
                 expected *= np.complex64(input_params['input_values'][j][0] +
                                          input_params['input_values'][j][
                                              1] * 1j).conj()

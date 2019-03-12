@@ -129,7 +129,7 @@ def test_eigenvectors(written_data):
         # Check that the datasets have the correct values
         assert (evals == np.arange(ne)[np.newaxis, np.newaxis, :]).all()
         assert (evecs.real == np.arange(ne)[np.newaxis, np.newaxis, :,
-                              np.newaxis]).all()
+                                            np.newaxis]).all()
         assert (evecs.imag == np.arange(ni)[np.newaxis, np.newaxis, np.newaxis,
-                              :]).all()
+                                            :]).all()
         assert (erms == 1.0).all()

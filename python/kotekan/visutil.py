@@ -80,5 +80,3 @@ def ts_to_double(ts):
         Time as UNIX time float.
     """
     return ts.tv + 1e-9 * ts.tv_nsec
-
-

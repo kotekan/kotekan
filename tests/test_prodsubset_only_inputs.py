@@ -70,7 +70,8 @@ def test_subset(subset_data):
             vis.append(prod.input_a + 1j * prod.input_b)
 
     evecs = (np.arange(subset_params['num_ev'])[:, None] +
-             1.0J * np.arange(subset_params['num_elements'])[None, :]).flatten()
+             1.0J * np.arange(subset_params['num_elements'])[None, :])\
+        .flatten()
 
     assert (subset_data.data['vis'] == np.array(vis)).all()
     assert (subset_data.data['eval'] == np.arange(

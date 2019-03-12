@@ -25,7 +25,8 @@ DATAGEN_PNAME = 'fakenetwork'
 
 def command_rest_frames(num_frames):
     return (
-    'post', DATAGEN_PNAME + '/generate_test_data', {'num_frames': num_frames})
+        'post', DATAGEN_PNAME + '/generate_test_data',
+        {'num_frames': num_frames})
 
 
 def command_trigger(start, length, event_id=123456, file_path="", dm=0,
@@ -163,7 +164,7 @@ def test_basic(tmpdir_factory):
         assert f.attrs['event_id'] == rest_commands[2 + ii][2]['event_id']
         assert f.attrs['freq_id'] == 0
         assert shape == (
-        rest_commands[2 + ii][2]['duration_nano'] / 2560, num_elements)
+            rest_commands[2 + ii][2]['duration_nano'] / 2560, num_elements)
         assert np.all(f['index_map/input'][:]['chan_id']
                       == np.arange(num_elements))
         edata = f.attrs['time0_fpga_count'] + np.arange(shape[0], dtype=int)

@@ -64,7 +64,8 @@ class KotekanRunner(object):
 
         # Set the working directory for the run
         build_dir = os.path.normpath(os.path.join(os.path.dirname(__file__),
-                                                  "..", "..", "build", "kotekan"))
+                                                  "..", "..", "build",
+                                                  "kotekan"))
 
         # If this path exists we are using a non installed version of the
         # kotekan python packages. If so we want to run the local kotekan
@@ -77,7 +78,7 @@ class KotekanRunner(object):
             wd = os.curdir
 
         with tempfile.NamedTemporaryFile(mode='w') as fh, \
-             tempfile.NamedTemporaryFile() as f_out:
+                tempfile.NamedTemporaryFile() as f_out:
 
             yaml.safe_dump(config_dict, fh)
             print(yaml.safe_dump(config_dict))
@@ -108,7 +109,7 @@ class KotekanRunner(object):
                         command(rest_addr + endpoint,
                                 headers=rest_header,
                                 data=json.dumps(data))
-                    except:
+                    except BaseException:
                         # print kotekan output if sending REST command fails
                         # (kotekan might have crashed and we want to know)
                         p.wait()
@@ -122,10 +123,11 @@ class KotekanRunner(object):
                             raise subprocess.CalledProcessError(p.returncode,
                                                                 cmd)
 
-                        print("Failed sending REST command: " + rtype + " to " +
-                              endpoint + " with data " + str(data))
+                        print(
+                            "Failed sending REST command: " + rtype + " to " +
+                            endpoint + " with data " + str(data))
 
-            while (self.debug and None == p.poll()):
+            while (self.debug and p.poll() is None):
                 time.sleep(10)
                 print(file(f_out.name).read())
 
@@ -202,7 +204,6 @@ class FakeGPUBuffer(InputBuffer):
     _buf_ind = 0
 
     def __init__(self, **kwargs):
-
         self.name = 'fakegpu_buf%i' % self._buf_ind
         stage_name = 'fakegpu%i' % self._buf_ind
         self.__class__._buf_ind += 1
@@ -241,7 +242,6 @@ class FakeVisBuffer(InputBuffer):
     _buf_ind = 0
 
     def __init__(self, **kwargs):
-
         self.name = 'fakevis_buf%i' % self._buf_ind
         stage_name = 'fakevis%i' % self._buf_ind
         self.__class__._buf_ind += 1
@@ -312,7 +312,7 @@ class VisWriterBuffer(OutputBuffer):
             'node_mode': False,
         }
         if extra_config is not None:
-            stage_config.update(extra_config);
+            stage_config.update(extra_config)
 
         self.stage_block = {stage_name: stage_config}
 
@@ -329,8 +329,9 @@ class VisWriterBuffer(OutputBuffer):
         # For now assume only one file is found
         # TODO: Might be nice to be able to check the file is the right one.
         # But visWriter creates the acquisition and file names on the flight
-        flnm = glob.glob(self.output_dir+'/*/*.data')[0]
+        flnm = glob.glob(self.output_dir + '/*/*.data')[0]
         return visbuffer.VisRaw(os.path.splitext(flnm)[0])
+
 
 #        return visbuffer.VisBuffer.load_files("%s/*%s*.dump" %
 #                                              (self.output_dir, self.name))
@@ -343,7 +344,6 @@ class ReadVisBuffer(InputBuffer):
     _buf_ind = 0
 
     def __init__(self, input_dir, buffer_list):
-
         self.name = 'rawfileread_buf'
         stage_name = 'rawfileread%i' % self._buf_ind
         self.__class__._buf_ind += 1
@@ -391,7 +391,6 @@ class DumpVisBuffer(OutputBuffer):
     name = None
 
     def __init__(self, output_dir):
-
         self.name = 'dumpvis_buf%i' % self._buf_ind
         stage_name = 'dump%i' % self._buf_ind
         self.__class__._buf_ind += 1
@@ -429,11 +428,9 @@ class DumpVisBuffer(OutputBuffer):
 
 
 class ReadRawBuffer(InputBuffer):
-
     _buf_ind = 0
 
     def __init__(self, infile, chunk_size):
-
         self.name = "read_raw_buf{:d}".format(self._buf_ind)
         stage_name = "read_raw{:d}".format(self._buf_ind)
         self.__class__._buf_ind += 1
@@ -478,7 +475,8 @@ class KotekanStageTester(KotekanRunner):
     global_config : dict
         Any global configuration to run with.
     parallel_stage_type : str
-        Name of the stage to be run in parallel with the stage under test (It will use the same in buffers).
+        Name of the stage to be run in parallel with the stage under test
+        (It will use the same in buffers).
     parallel_stage_config : dict
         any configurations to the parallel stage
     noise : string
@@ -510,9 +508,9 @@ class KotekanStageTester(KotekanRunner):
             parallel_config['in_buf'] = 'noise_buf'
             noise_buffer = {
                 "noise_buf": {
-                  'kotekan_buffer': 'vis',
-                  'metadata_pool': 'vis_pool',
-                  'num_frames': 'buffer_depth',
+                    'kotekan_buffer': 'vis',
+                    'metadata_pool': 'vis_pool',
+                    'num_frames': 'buffer_depth',
                 }
             }
         else:
@@ -553,7 +551,7 @@ class KotekanStageTester(KotekanRunner):
             buffer_block.update(noise_buffer)
 
         super(KotekanStageTester, self).__init__(buffer_block, stage_block,
-                                                   global_config, rest_commands)
+                                                 global_config, rest_commands)
 
 
 default_config = """

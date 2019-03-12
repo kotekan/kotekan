@@ -30,16 +30,17 @@ def data(tmpdir_factory):
         'stageUnderTest', {},
         fakevis_buffer,
         dump_buffer,
-        params
-)
+        params)
+
 
 test.run()
 
-# here the data that the stage under test put out is passed on to test the stage
+# here the data that the stage under test put out is passed on to test the
+# stage
 yield dump_buffer.load()
+
 
 # this is the actual test (give a name to it)
 def test_<name>(data):
-
     for frame in data:
-        assert (frame.vis == {1,0})
+        assert (frame.vis == {1, 0})

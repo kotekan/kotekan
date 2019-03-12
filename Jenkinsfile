@@ -67,7 +67,7 @@ pipeline {
         }
         stage('Check code formatting') {
           steps {
-            sh '''find . -name \*.py -exec pycodestyle {} +
+            sh '''find . -path ./docs -prune -o -name \*.py -exec pycodestyle {} +
                   mkdir build-check-format
                   cd build-check-format/
                   cmake ..

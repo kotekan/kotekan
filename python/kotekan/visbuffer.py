@@ -49,8 +49,8 @@ class psrCoord(ctypes.Structure):
     """ Struct repr of psrCoord field in ChimeMetadata."""
 
     _fields_ = [("ra", ctypes.ARRAY(ctypes.c_float, 10)),
-               ("dec", ctypes.ARRAY(ctypes.c_float, 10)),
-               ("scaling", ctypes.ARRAY(ctypes.c_uint32, 10))]
+                ("dec", ctypes.ARRAY(ctypes.c_float, 10)),
+                ("scaling", ctypes.ARRAY(ctypes.c_uint32, 10))]
 
 
 class ChimeMetadata(ctypes.Structure):
@@ -104,7 +104,6 @@ class VisBuffer(object):
                                                   self.metadata.num_ev)
 
         for member in layout['members']:
-
             arr = np.frombuffer(_data[member['start']:member['end']],
                                 dtype=member['dtype'])
             setattr(self, member['name'], arr)
@@ -128,9 +127,9 @@ class VisBuffer(object):
             ('vis', np.complex64, num_prod),
             ('weight', np.float32, num_prod),
             ('flags', np.float32, num_elements),
-            ("eval", np.float32,  num_ev),
+            ("eval", np.float32, num_ev),
             ("evec", np.complex64, num_ev * num_elements),
-            ("erms", np.float32,  1),
+            ("erms", np.float32, 1),
             ("gain", np.complex64, num_elements)
         ]
 
@@ -140,7 +139,6 @@ class VisBuffer(object):
         maxsize = 0
 
         for name, dtype, num in structure:
-
             member = {}
 
             size = np.dtype(dtype).itemsize
@@ -210,11 +208,9 @@ class VisBuffer(object):
         msize_c = ctypes.c_int(ctypes.sizeof(VisMetadata))
 
         for ii, buf in enumerate(buffers):
-
             with open(pat % ii, 'wb+') as fh:
                 fh.write(msize_c)
                 fh.write(bytearray(buf._buffer))
-
 
     @classmethod
     def new_from_params(cls, num_elements, num_prod, num_ev, insert_size=True):
@@ -277,7 +273,6 @@ class VisRaw(object):
     """
 
     def __init__(self, filename, mmap=False):
-
         import msgpack
 
         # Get filenames
@@ -294,14 +289,16 @@ class VisRaw(object):
         # TODO: (Python 3) Used native_str for compatibility here
         self.time = np.array(
             [(t['fpga_count'], t['ctime']) for t in self.index_map['time']],
-            dtype=[(native_str('fpga_count'), np.uint64), (native_str('ctime'), np.float64)]
+            dtype=[(native_str('fpga_count'), np.uint64),
+                   (native_str('ctime'), np.float64)]
         )
 
         self.num_freq = metadata['structure']['nfreq']
         self.num_time = metadata['structure']['ntime']
         self.num_prod = len(self.index_map['prod'])
         self.num_stack = (len(self.index_map['stack'])
-                          if 'stack' in self.index_map.keys() else self.num_prod)
+                          if 'stack' in self.index_map.keys()
+                          else self.num_prod)
         self.num_elements = len(self.index_map['input'])
         self.num_ev = len(self.index_map['ev'])
 
@@ -310,13 +307,15 @@ class VisRaw(object):
             ("vis", np.complex64, self.num_stack),
             ("weight", np.float32, self.num_stack),
             ("flags", np.float32, self.num_elements),
-            ("eval", np.float32,  self.num_ev),
+            ("eval", np.float32, self.num_ev),
             ("evec", np.complex64, self.num_ev * self.num_elements),
-            ("erms", np.float32,  1),
+            ("erms", np.float32, 1),
             ("gain", np.complex64, self.num_elements),
         ]
-        # TODO: Python 3 - Process dtype labels to ensure Python 2/3 compatibility
-        data_struct = np.dtype([(native_str(d[0]),) + d[1:] for d in data_struct], align=True)
+        # TODO: Python 3 - Process dtype labels to ensure Python 2/3
+        #       compatibility
+        data_struct = np.dtype(
+            [(native_str(d[0]),) + d[1:] for d in data_struct], align=True)
         frame_struct = np.dtype({
             "names": ['valid', 'metadata', 'data'],
             "formats": [np.uint8, VisMetadata, data_struct],
@@ -358,7 +357,6 @@ class GpuBuffer(object):
     """
 
     def __init__(self, buffer, metadata):
-
         self.data = buffer
         self.metadata = metadata
 
@@ -409,7 +407,6 @@ class GpuBuffer(object):
         msize_c = np.uint32(ctypes.sizeof(ChimeMetadata))
 
         for ii, buf in enumerate(buffers):
-
             with open(pat % ii, 'wb+') as fh:
                 # first write metadata size
                 fh.write(msize_c)

@@ -1,11 +1,10 @@
+import json
+import sys
+import time
+import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
-
-
-import matplotlib.pyplot as plt
-import sys, json
-import time
 
 
 header = json.loads(sys.stdin.readline())
@@ -17,54 +16,58 @@ target.write("{}\n".format(header))
 data_length = header["data_length"]
 data_type = header["type"]
 
-if (data_type == "CORR_MATRIX"): #N^2
-	num_elements = header["num_elements"]
-	block_dims = header["block_dim"]
-	num_blocks = (num_elements/block_dims[0]) * (num_elements/block_dims[0]+1)/2
+if (data_type == "CORR_MATRIX"):  # N^2
+    num_elements = header["num_elements"]
+    block_dims = header["block_dim"]
+    num_blocks = (num_elements / block_dims[0]) * \
+        (num_elements / block_dims[0] + 1) / 2
 
-	target.write("Data Length: {}\n".format(data_length))
-	target.write("Elements: {}\n".format(num_elements))
-	target.write("Block Dims: {}\n".format(block_dims))
-	target.write("Blocks: {}\n".format(num_blocks))
-	target.close()
+    target.write("Data Length: {}\n".format(data_length))
+    target.write("Elements: {}\n".format(num_elements))
+    target.write("Block Dims: {}\n".format(block_dims))
+    target.write("Blocks: {}\n".format(num_blocks))
+    target.close()
 
+    data = np.fromfile(sys.stdin, dtype=np.int32, count=data_length, sep='')
+    data = data.reshape([num_blocks, block_dims[0] * block_dims[1], 2])
 
-	data = np.fromfile(sys.stdin, dtype=np.int32, count=data_length, sep='')
-	data=data.reshape([num_blocks,block_dims[0]*block_dims[1],2])
+    corr_matrix = np.zeros([num_elements, num_elements, 2])
+    x_blk = 0
+    y_blk = 0
+    for i in np.arange(num_blocks):
+        corr_matrix[x_blk:x_blk + block_dims[0], y_blk:y_blk + block_dims[1],
+                    :] = data[i, :, :].reshape(block_dims).transpose(1, 0, 2)
+        x_blk += block_dims[0]
+        if x_blk >= num_elements:
+            y_blk += block_dims[1]
+            x_blk = y_blk
 
-	corr_matrix = np.zeros([num_elements,num_elements,2])
-	x_blk=0
-	y_blk=0
-	for i in np.arange(num_blocks):
-		corr_matrix[x_blk:x_blk+block_dims[0],y_blk:y_blk+block_dims[1],:]=data[i,:,:].reshape(block_dims).transpose(1,0,2)
-		x_blk+=block_dims[0]
-		if x_blk >= num_elements:
-			y_blk+=block_dims[1];
-			x_blk=y_blk;
+    f, (ax1, ax2) = plt.subplots(1, 2, figsize=[18, 6])
 
-	f, (ax1, ax2) = plt.subplots(1, 2, figsize=[18,6])
+    logmag = np.log(np.array(corr_matrix[:, :, 1].T)**2)
+    logmag[logmag == -np.inf] = 0
+    im = ax1.imshow(logmag, origin='upper', interpolation='nearest')
+    ax1.set_title("log(Re.^2)")
+    f.colorbar(im, ax=ax1)
 
-	logmag = np.log(np.array(corr_matrix[:,:,1].T)**2)
-	logmag[logmag==-np.inf] = 0
-	im=ax1.imshow(logmag, origin='upper',interpolation='nearest')
-	ax1.set_title("log(Re.^2)")
-	f.colorbar(im,ax=ax1)
+    logmag_im = np.log(np.array(corr_matrix[:, :, 0].T)**2)
+    logmag_im[logmag_im == -np.inf] = 0
+    im = ax2.imshow(logmag_im, origin='upper', interpolation='nearest')
+    ax2.set_title("log(Im.^2)")
+    f.colorbar(im, ax=ax2)
 
-	logmag_im = np.log(np.array(corr_matrix[:,:,0].T)**2)
-	logmag_im[logmag_im==-np.inf] = 0
-	im=ax2.imshow(logmag_im, origin='upper',interpolation='nearest')
-	ax2.set_title("log(Im.^2)")
-	f.colorbar(im,ax=ax2)
+    ax1.set_xlabel("X Input")
+    ax2.set_xlabel("X Input")
+    ax1.set_ylabel("Y Input")
 
-	ax1.set_xlabel("X Input")
-	ax2.set_xlabel("X Input")
-	ax1.set_ylabel("Y Input")
+    vsize = ax1.get_position().size[1]  # fraction of figure occupied by axes
+    axesdpi = int(2048 / (f.get_size_inches()[1] * ax1.get_position().size[1]))
 
-	vsize=ax1.get_position().size[1]  #fraction of figure occupied by axes
-	axesdpi= int(2048/(f.get_size_inches()[1]*ax1.get_position().size[1]))
-
-	plt.savefig("correlation_{}.pdf".format(time.time()), dpi=axesdpi,bbox_inches='tight')
-
+    plt.savefig(
+        "correlation_{}.pdf".format(
+            time.time()),
+        dpi=axesdpi,
+        bbox_inches='tight')
 
 
 '''

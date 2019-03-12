@@ -31,7 +31,7 @@ def vis_data(tmpdir_factory):
         num_frames=trunc_params['total_frames'],
         mode=trunc_params['fakevis_mode'],
         test_pattern_value=trunc_params['test_pattern_value'],
-        cadence=trunc_params['cadence']);
+        cadence=trunc_params['cadence'])
 
     in_dump_config = trunc_params.copy()
     in_dump_config['base_dir'] = str(tmpdir)
@@ -66,7 +66,7 @@ def vis_data_zero_weights(tmpdir_factory):
         num_frames=trunc_params['total_frames'],
         mode=trunc_params['fakevis_mode'],
         cadence=trunc_params['cadence'],
-        zero_weight=True);
+        zero_weight=True)
 
     in_dump_config = trunc_params.copy()
     in_dump_config['base_dir'] = str(tmpdir)
