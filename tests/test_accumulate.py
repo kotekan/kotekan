@@ -3,7 +3,6 @@ import numpy as np
 
 from kotekan import runner
 
-
 accumulate_params = {
     'num_elements': 4,
     'num_ev': 4,
@@ -34,13 +33,13 @@ pulsar_params.update({
     'wait': True,
     'samples_per_data_set': 4000,  # ~10. ms frames
     'num_frames': 200,
-    #'integration_time': 0.5,
+    # 'integration_time': 0.5,
     'num_gpu_frames': 40,
     'coeff': [0., 0.],
     'dm': 0.,
     't_ref': 58000.,
     'phase_ref': 0.,
-    #'rot_freq': 9.765625,  # period exactly 10 frames
+    # 'rot_freq': 9.765625,  # period exactly 10 frames
     'rot_freq': 8.,
     'pulse_width': 1e-9,
 })
@@ -48,7 +47,6 @@ pulsar_params.update({
 
 @pytest.fixture(scope="module")
 def accumulate_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("accumulate")
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
@@ -71,7 +69,6 @@ def accumulate_data(tmpdir_factory):
 
 @pytest.fixture(scope="module")
 def gaussian_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("gaussian")
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
@@ -94,7 +91,6 @@ def gaussian_data(tmpdir_factory):
 
 @pytest.fixture(scope="module")
 def lostsamples_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("lostsamples")
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
@@ -117,7 +113,6 @@ def lostsamples_data(tmpdir_factory):
 
 @pytest.fixture(scope="module")
 def time_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("time")
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
@@ -140,7 +135,6 @@ def time_data(tmpdir_factory):
 
 @pytest.fixture(scope="module")
 def pulsar_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("pulsar")
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
@@ -192,7 +186,6 @@ def pulsar_data(tmpdir_factory):
 
 
 def test_structure(accumulate_data):
-
     n = accumulate_params['num_elements']
 
     # Check that each samples is the expected shape
@@ -202,18 +195,17 @@ def test_structure(accumulate_data):
         assert (frame.metadata.num_ev == 0)
 
     # Check that we have the expected number of samples
-    nsamp = accumulate_params['total_frames'] // accumulate_params['int_frames']
+    nsamp = accumulate_params['total_frames']\
+        // accumulate_params['int_frames']
     assert len(accumulate_data) == nsamp
 
 
 def test_metadata(accumulate_data):
-
     for frame in accumulate_data:
         assert frame.metadata.freq_id == accumulate_params['freq']
 
 
 def test_time(accumulate_data):
-
     def timespec_to_float(ts):
         return ts.tv + ts.tv_nsec * 1e-9
 
@@ -231,13 +223,11 @@ def test_time(accumulate_data):
 
 
 def test_accumulate(accumulate_data):
-
     row, col = np.triu_indices(accumulate_params['num_elements'])
 
     pat = (row + 1.0J * col).astype(np.complex64)
 
     for frame in accumulate_data:
-
         assert (frame.vis == pat).all()
         assert (frame.weight == 8.0).all()
         assert (frame.flags == 1.0).all()
@@ -246,7 +236,6 @@ def test_accumulate(accumulate_data):
 
 # Test the the statistics are being calculated correctly
 def test_gaussian(gaussian_data):
-
     vis_set = np.array([frame.vis for frame in gaussian_data])
     weight_set = np.array([frame.weight for frame in gaussian_data])
 
@@ -259,7 +248,6 @@ def test_gaussian(gaussian_data):
 
 
 def test_int_time(time_data):
-
     time_per_frame = 2.56e-6 * time_params['samples_per_data_set']
     frames_per_int = (int(time_params['integration_time'] /
                           time_per_frame) // 2) * 2
@@ -274,30 +262,28 @@ def test_int_time(time_data):
 
 # Test that we are correctly normalising for lost packets
 def test_lostsamples(lostsamples_data):
-
     row, col = np.triu_indices(accumulate_params['num_elements'])
 
     pat = (row + 1.0J * col).astype(np.complex64)
 
     for frame in lostsamples_data:
-
         assert np.allclose(frame.vis, pat, rtol=1e-7, atol=1e-8)
 
 
 def test_pulsar(pulsar_data):
-
     # count number of frames that span a pulse
     pulse_width = int(pulsar_params['pulse_width'] /
-                      (pulsar_params['samples_per_data_set']*2.56e-6))
+                      (pulsar_params['samples_per_data_set'] * 2.56e-6))
     pulse_width += ((pulsar_params['pulse_width'] %
-                     (pulsar_params['samples_per_data_set']*2.56e-6)) > 0)
+                     (pulsar_params['samples_per_data_set'] * 2.56e-6)) > 0)
     # count total number of frames in an accumulation
     if 'num_gpu_frames' in pulsar_params.keys():
         num_tot = pulsar_params['num_gpu_frames']
     else:
         num_tot = int(pulsar_params['integration_time'] /
-                      (pulsar_params['samples_per_data_set']*2.56e-6))
-    actual_integration = num_tot * (pulsar_params['samples_per_data_set']*2.56e-6)
+                      (pulsar_params['samples_per_data_set'] * 2.56e-6))
+    actual_integration = num_tot * (
+                pulsar_params['samples_per_data_set'] * 2.56e-6)
     # count number of pulses in an accumulation
     num_pulse = int(actual_integration * pulsar_params['rot_freq'])
 
@@ -308,8 +294,9 @@ def test_pulsar(pulsar_data):
 
     vis = pulsar_data.data['vis'][:, pulsar_params['freq']]
     # allow for one frame to be added from time to time
-    assert (vis >= (1-fudge) * 10 * pulse_width * num_pulse / num_tot).all()
-    assert (vis <= (1+fudge) * 10 * pulse_width * (num_pulse+1) / num_tot).all()
+    assert (vis >= (1 - fudge) * 10 * pulse_width * num_pulse / num_tot).all()
+    assert (vis <= (1 + fudge) * 10 * pulse_width * (
+                num_pulse + 1) / num_tot).all()
 
 
 def test_pulsar_metadata(pulsar_data):

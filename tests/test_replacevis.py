@@ -1,9 +1,7 @@
-
 import pytest
 import numpy as np
 
 from kotekan import runner
-
 
 replace_params = {
     'num_elements': 16,
@@ -21,7 +19,6 @@ replace_params = {
 
 @pytest.fixture(scope="module")
 def replace_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("replace")
 
     fakevis_buffer = runner.FakeVisBuffer(
@@ -44,7 +41,6 @@ def replace_data(tmpdir_factory):
 
 
 def test_replace(replace_data):
-
     # for frame in replace_data:
     #     print frame.metadata.freq_id, frame.metadata.fpga_seq
     #     print frame.vis

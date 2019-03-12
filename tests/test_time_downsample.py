@@ -15,9 +15,9 @@ downsamp_params = {
     },
 }
 
+
 @pytest.fixture(scope="module")
 def vis_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("vis_data")
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
@@ -39,7 +39,6 @@ def vis_data(tmpdir_factory):
 
 
 def test_structure(vis_data):
-
     n = downsamp_params['num_elements']
 
     # Check that each samples is the expected shape
@@ -54,7 +53,6 @@ def test_structure(vis_data):
 
 
 def test_metadata(vis_data):
-
     input_frame_length = int(800e6 / 2048 * downsamp_params['cadence'])
     frame_length = input_frame_length * downsamp_params['num_samples']
 
@@ -65,23 +63,23 @@ def test_metadata(vis_data):
 
 
 def test_time(vis_data):
-
     def timespec_to_float(ts):
         return ts.tv + ts.tv_nsec * 1e-9
 
-    ctime = np.array([ timespec_to_float(v.metadata.ctime) for v in vis_data ])
+    ctime = np.array([timespec_to_float(v.metadata.ctime) for v in vis_data])
 
     # Check downsampled cadence
-    assert np.all(np.diff(ctime) == downsamp_params['cadence'] * downsamp_params['num_samples'])
+    assert np.all(
+        np.diff(ctime) == downsamp_params['cadence'] * downsamp_params[
+            'num_samples'])
 
 
 def test_contents(vis_data):
-
     n = downsamp_params['num_elements']
     n_ev = downsamp_params['num_ev']
 
     # Reproduce expected fakeVis output
-    model_vis = np.zeros(n * (n+1) // 2, dtype=np.complex64)
+    model_vis = np.zeros(n * (n + 1) // 2, dtype=np.complex64)
     ind = 0
     for i in range(n):
         for j in range(i, n):

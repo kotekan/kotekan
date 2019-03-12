@@ -20,17 +20,16 @@ default_params = {
 
 
 def run_eigenvis(tdir_factory, params=None):
-
     if not params:
         params = default_params
 
     tmpdir = tdir_factory.mktemp("eigenvis")
 
     fakevis_buffer = runner.FakeVisBuffer(
-            freq_ids=params['freq'],
-            num_frames=params['total_frames'],
-            mode=params['mode'],
-            )
+        freq_ids=params['freq'],
+        num_frames=params['total_frames'],
+        mode=params['mode'],
+    )
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
@@ -46,7 +45,6 @@ def run_eigenvis(tdir_factory, params=None):
 
 
 def test_basic(tmpdir_factory):
-
     params = default_params
     num_elements = params['num_elements']
     expected_evec_phase_fact = np.exp(1j * np.arange(num_elements))
@@ -65,7 +63,6 @@ def test_basic(tmpdir_factory):
 
 
 def test_filled(tmpdir_factory):
-
     params = dict(default_params)
     params['num_diagonals_filled'] = 10
     num_elements = params['num_elements']
@@ -84,7 +81,6 @@ def test_filled(tmpdir_factory):
 
 
 def test_input_excluded(tmpdir_factory):
-
     params = dict(default_params)
     params['exclude_inputs'] = [5, 10, 6]
     nexclude = len(params['exclude_inputs'])

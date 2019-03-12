@@ -67,7 +67,8 @@ pipeline {
         }
         stage('Check code formatting') {
           steps {
-            sh '''mkdir build-check-format
+            sh '''find . -name \*.py -exec pycodestyle {} +
+                  mkdir build-check-format
                   cd build-check-format/
                   cmake ..
                   make clang-format

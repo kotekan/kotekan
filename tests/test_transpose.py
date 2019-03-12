@@ -1,4 +1,3 @@
-
 import pytest
 import numpy as np
 import h5py
@@ -31,12 +30,12 @@ stack_params = {
     'file_length': 3,
     'freq': [3, 777, 554],
     'chunk_size': [2, 64, 3],
-    'dataset_manager': {'use_dataset_broker':False},
+    'dataset_manager': {'use_dataset_broker': False},
 }
+
 
 @pytest.fixture(scope="module")
 def transpose(tmpdir_factory):
-
     writer_params['file_length'] = writer_params['total_frames']
 
     # Write fake data in raw format
@@ -51,20 +50,20 @@ def transpose(tmpdir_factory):
 
     # Remove the last frequency to test handling of empty frames
     fsel_buf_name = "fake_freqsel"
-    fsel_buf = { fsel_buf_name: {
-            'kotekan_buffer': 'vis',
-            'metadata_pool': 'vis_pool',
-            'num_frames': 'buffer_depth',
-        }
+    fsel_buf = {fsel_buf_name: {
+        'kotekan_buffer': 'vis',
+        'metadata_pool': 'vis_pool',
+        'num_frames': 'buffer_depth',
+    }
     }
     fakevis_buffer.buffer_block.update(fsel_buf)
     fakevis_buffer.stage_block.update({"fakevis_fsel": {
-            "kotekan_stage": "visDrop",
-            "in_buf": fakevis_buffer.name,
-            "out_buf": fsel_buf_name,
-            "freq": [writer_params['freq'][-1]],
-            "log_level": "debug"
-        }
+        "kotekan_stage": "visDrop",
+        "in_buf": fakevis_buffer.name,
+        "out_buf": fsel_buf_name,
+        "freq": [writer_params['freq'][-1]],
+        "log_level": "debug"
+    }
     })
     fakevis_buffer.name = fsel_buf_name
 
@@ -81,12 +80,12 @@ def transpose(tmpdir_factory):
     writer = runner.KotekanStageTester(
         'visWriter',
         {'node_mode': False, 'write_ev': True,
-        'file_type': 'raw'},
+         'file_type': 'raw'},
         fakevis_buffer,
         None,
         params,
-        parallel_stage_type = 'visWriter',
-        parallel_stage_config = dumph5_conf,
+        parallel_stage_type='visWriter',
+        parallel_stage_config=dumph5_conf,
         noise="random"
     )
 
@@ -108,7 +107,7 @@ def transpose(tmpdir_factory):
     transposer = runner.KotekanStageTester(
         'visTranspose',
         {'outfile': outfile, 'infile': infile,
-            'chunk_size': writer_params['chunk_size']},
+         'chunk_size': writer_params['chunk_size']},
         raw_buf,
         None,
         params
@@ -126,7 +125,6 @@ def transpose(tmpdir_factory):
 
 
 def test_transpose(transpose):
-
     # The transposed and untransposed files
     f_tr = transpose[0]
     f = transpose[1]
@@ -136,7 +134,7 @@ def test_transpose(transpose):
     n_f = len(writer_params['freq'])
     n_elems = writer_params['num_elements']
     n_prod = n_elems * (n_elems + 1) / 2
-    n_ev = writer_params['num_ev'];
+    n_ev = writer_params['num_ev']
 
     # get all the data
     vis = f['vis'].value
@@ -162,14 +160,15 @@ def test_transpose(transpose):
     assert f_tr['vis'].shape == (n_f, n_prod, n_t)
     assert f_tr['flags/vis_weight'].shape == (n_f, n_prod, n_t)
     assert f_tr['eval'].shape == (n_f, writer_params['num_ev'], n_t)
-    assert f_tr['evec'].shape == (n_f, writer_params['num_ev'], writer_params['num_elements'], n_t)
+    assert f_tr['evec'].shape == (
+        n_f, writer_params['num_ev'], writer_params['num_elements'], n_t)
     assert f_tr['erms'].shape == (n_f, n_t)
     assert f_tr['gain'].shape == (n_f, n_elems, n_t)
     assert f_tr['flags/inputs'].shape == (n_elems, n_t)
     assert f_tr['flags/frac_lost'].shape == (n_f, n_t)
 
-    assert (f_tr['flags/frac_lost'][:n_f-1,:] == 0.).all()
-    assert (f_tr['flags/frac_lost'][-1:,:] == 1.).all()
+    assert (f_tr['flags/frac_lost'][:n_f - 1, :] == 0.).all()
+    assert (f_tr['flags/frac_lost'][-1:, :] == 1.).all()
 
     # transpose with numpy and see if data is the same
     dsets = ['vis', 'flags/vis_weight',
@@ -180,9 +179,9 @@ def test_transpose(transpose):
     # Check flags were not overwritten by empty frames
     assert (f_tr['flags/inputs'][:] == 1.).all()
 
+
 @pytest.fixture(scope="module")
 def transpose_stack(tmpdir_factory):
-
     # Write fake stacked data in raw format
     tmpdir = str(tmpdir_factory.mktemp("writer"))
     fakevis_buffer = runner.FakeVisBuffer(
@@ -193,19 +192,19 @@ def transpose_stack(tmpdir_factory):
     )
     # Add stacking stage
     stack_buf_name = "fake_stacked"
-    stack_buf = { stack_buf_name: {
-            'kotekan_buffer': 'vis',
-            'metadata_pool': 'vis_pool',
-            'num_frames': 'buffer_depth',
-        }
+    stack_buf = {stack_buf_name: {
+        'kotekan_buffer': 'vis',
+        'metadata_pool': 'vis_pool',
+        'num_frames': 'buffer_depth',
+    }
     }
     fakevis_buffer.buffer_block.update(stack_buf)
     fakevis_buffer.stage_block.update({"fakevis_stack": {
-            "kotekan_stage": "baselineCompression",
-            "in_buf": fakevis_buffer.name,
-            "out_buf": stack_buf_name,
-            "stack_type": "chime_in_cyl",
-        }
+        "kotekan_stage": "baselineCompression",
+        "in_buf": fakevis_buffer.name,
+        "out_buf": stack_buf_name,
+        "stack_type": "chime_in_cyl",
+    }
     })
     fakevis_buffer.name = stack_buf_name
 
@@ -252,8 +251,8 @@ def transpose_stack(tmpdir_factory):
 
     fh.close()
 
-def test_transpose_stack(transpose_stack):
 
+def test_transpose_stack(transpose_stack):
     infile, f = transpose_stack
 
     # some useful params
@@ -284,24 +283,27 @@ def test_transpose_stack(transpose_stack):
     with open(infile + '.meta', 'rb') as f_meta:
         meta = msgpack.load(f_meta)
 
-    stack_im = np.array([ tuple(s.values()) for s in meta[b'index_map'][b'stack'] ],
-                        dtype=f['index_map']['stack'].dtype)
+    stack_im = np.array(
+        [tuple(s.values()) for s in meta[b'index_map'][b'stack']],
+        dtype=f['index_map']['stack'].dtype)
     assert (f['index_map']['stack'][:] == stack_im).all()
 
-    stack_rm = np.array([ tuple(s.values()) for s in meta[b'reverse_map'][b'stack'] ],
-                        dtype=f['reverse_map']['stack'].dtype)
+    stack_rm = np.array(
+        [tuple(s.values()) for s in meta[b'reverse_map'][b'stack']],
+        dtype=f['reverse_map']['stack'].dtype)
     assert (f['reverse_map']['stack'][:] == stack_rm).all()
 
     # check stacked visibilities are still as expected
     # this is adapted from test_compression.py
 
-    # This is the typical number of entries per polarisation (for XX, XY and YY, not YX)
+    # This is the typical number of entries per polarisation (for XX, XY and
+    # YY, not YX)
     np1 = 4 * 256 + 6 * 511
     for t in range(n_t):
         for ff in range(n_f):
 
-            a_vis = f['vis'][ff,:,t]
-            a_weight = f['flags/vis_weight'][ff,:,t]
+            a_vis = f['vis'][ff, :, t]
+            a_weight = f['flags/vis_weight'][ff, :, t]
 
             # Check that the entries in XX and XY are the same
             assert float_allclose(a_vis[:np1], a_vis[np1:(2 * np1)])
@@ -312,10 +314,12 @@ def test_transpose_stack(transpose_stack):
             # Loop over all pairs of cylinders for XX
             for ci in range(4):
                 for cj in range(ci, 4):
+                    # These numbers depend if we are within a cyl or not:
+                    # Number of entries to compare
+                    nv = 256 if ci == cj else 511
 
-                    # These numbers depend if we are within a cyl or not
-                    nv = 256 if ci == cj else 511  # Number of entries to compare
-                    lb = 0 if ci == cj else -255  # The most negative separation
+                    # The most negative separation
+                    lb = 0 if ci == cj else -255
 
                     # A list of the feed separations in the NS dir
                     d = np.arange(lb, 256)
@@ -325,4 +329,3 @@ def test_transpose_stack(transpose_stack):
 
                     v1 = v1[nv:]
                     w1 = w1[nv:]
-

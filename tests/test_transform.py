@@ -16,9 +16,9 @@ params = {
     },
 }
 
+
 @pytest.fixture(scope="module")
 def transform_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("transform")
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
@@ -41,7 +41,6 @@ def transform_data(tmpdir_factory):
 
 @pytest.fixture(scope="module")
 def lostsamples_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("lostsamples")
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
@@ -63,7 +62,6 @@ def lostsamples_data(tmpdir_factory):
 
 
 def test_structure(transform_data):
-
     n = params['num_elements']
 
     # Check that each samples is the expected shape
@@ -79,13 +77,11 @@ def test_structure(transform_data):
 
 
 def test_metadata(transform_data):
-
     for frame in transform_data:
         assert frame.metadata.freq_id == params['freq']
 
 
 def test_time(transform_data):
-
     def timespec_to_float(ts):
         return ts.tv + ts.tv_nsec * 1e-9
 

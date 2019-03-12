@@ -1,4 +1,3 @@
-
 import pytest
 import numpy as np
 
@@ -27,12 +26,11 @@ accumulate_params.update({
     'dataset_manager': {
         'use_dataset_broker': False
     },
-    })
+})
 
 
 @pytest.fixture(scope="module")
 def pulsar_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("accumulate")
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))

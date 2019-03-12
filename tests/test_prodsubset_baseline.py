@@ -1,4 +1,3 @@
-
 import pytest
 import numpy as np
 
@@ -23,9 +22,9 @@ subset_params = {
 
 vis_params = {}
 
+
 @pytest.fixture(scope="module")
 def subset_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("subset")
 
     fakevis_buffer = runner.FakeVisBuffer(
@@ -49,7 +48,6 @@ def subset_data(tmpdir_factory):
 
 
 def max_bl_condition(prod, xmax, ymax):
-
     x_sep = prod.input_a / 512 - prod.input_b / 512
     y_sep = prod.input_a % 256 - prod.input_b % 256
     if x_sep < 0:
@@ -61,7 +59,6 @@ def max_bl_condition(prod, xmax, ymax):
 
 
 def test_subset(subset_data):
-
     n_el = subset_params['num_elements']
     num_prod = n_el * (n_el + 1) // 2
 
@@ -80,6 +77,6 @@ def test_subset(subset_data):
 
     assert (subset_data.data['vis'] == np.array(vis)).all()
     assert (subset_data.data['eval'] == np.arange(
-            subset_params['num_ev'])).all()
+        subset_params['num_ev'])).all()
     assert (subset_data.data['evec'] == evecs).all()
     assert (subset_data.data['erms'] == 1.0).all()

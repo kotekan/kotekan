@@ -1,9 +1,7 @@
-
 import pytest
 import numpy as np
 
 from kotekan import runner
-
 
 merge_params = {
     'num_elements': 4,
@@ -22,7 +20,6 @@ merge_params = {
 
 @pytest.fixture(scope="module")
 def merge_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("merge")
 
     fakevis_buffers = [
@@ -45,12 +42,12 @@ def merge_data(tmpdir_factory):
 
     yield dump_buffer.load()
 
+
 # This test case is designed to test deadlock issues when frames are arriving
 # at different rates. If the buffer deadlock occurs then we should only
 # receiver 3 frames, otherwise we'll get 6.
 @pytest.fixture(scope="module")
 def mergewait_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("mergewait")
 
     fakevis_fast = runner.FakeVisBuffer(
@@ -82,7 +79,6 @@ def mergewait_data(tmpdir_factory):
 
 
 def test_metadata(merge_data):
-
     freqs = [frame.metadata.freq_id for frame in merge_data]
     fpga_seq = [frame.metadata.fpga_seq for frame in merge_data]
 
@@ -92,12 +88,11 @@ def test_metadata(merge_data):
     # Check that they appeared in the right order (i.e. the timestamps occur
     # in blocks of num freq
     assert (np.ptp(np.array(fpga_seq).reshape(
-                merge_params['total_frames'], -1
-            ), axis=1) == 0.0).all()
+        merge_params['total_frames'], -1
+    ), axis=1) == 0.0).all()
 
 
 def test_data(merge_data):
-
     rows, cols = np.triu_indices(merge_params['num_elements'])
 
     test_pattern = (rows + 1.0J * cols).astype(np.complex64)
@@ -110,5 +105,4 @@ def test_data(merge_data):
 # this test is designed to check that the buffer wait function doesn't get
 # stuck
 def test_deadlock(mergewait_data):
-
     assert len(mergewait_data) == 6

@@ -21,9 +21,9 @@ subset_params = {
 
 vis_params = {}
 
+
 @pytest.fixture(scope="module")
 def subset_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("subset")
 
     fakevis_buffer = runner.FakeVisBuffer(
@@ -46,7 +46,6 @@ def subset_data(tmpdir_factory):
 
 
 def only_inputs_condition(prod, input_list):
-
     inpa_in_list = False
     inpb_in_list = False
     for ipt in input_list:
@@ -59,7 +58,6 @@ def only_inputs_condition(prod, input_list):
 
 
 def test_subset(subset_data):
-
     n_el = subset_params['num_elements']
     num_prod = n_el * (n_el + 1) // 2
 
@@ -76,7 +74,6 @@ def test_subset(subset_data):
 
     assert (subset_data.data['vis'] == np.array(vis)).all()
     assert (subset_data.data['eval'] == np.arange(
-            subset_params['num_ev'])).all()
+        subset_params['num_ev'])).all()
     assert (subset_data.data['evec'] == evecs).all()
     assert (subset_data.data['erms'] == 1.0).all()
-

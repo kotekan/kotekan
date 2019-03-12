@@ -1,9 +1,7 @@
-
 import pytest
 import numpy as np
 
 from kotekan import runner
-
 
 global_params = {
     'num_elements': 16,
@@ -33,9 +31,9 @@ global_params = {
     }
 }
 
+
 @pytest.fixture(scope="module")
 def complete_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("no_drop")
 
     fakevis_buffer = runner.FakeVisBuffer(
@@ -63,13 +61,14 @@ def complete_data(tmpdir_factory):
 
     yield dump_buffer.load()
 
+
 def test_complete(complete_data):
     n_frames = len(global_params['freq_ids']) * global_params['total_frames']
-    assert(len(complete_data) == n_frames)
+    assert (len(complete_data) == n_frames)
+
 
 @pytest.fixture(scope="module")
 def incomplete_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("drop")
 
     # Make the buffer flow over:
@@ -84,7 +83,6 @@ def incomplete_data(tmpdir_factory):
     global_params.update(dump_buffer.buffer_block)
     global_params.update(dump_buffer.stage_block)
     global_params['compress']['out_buf'] = dump_buffer.name
-
 
     valve_params = {
         'out_buf': 'compress_buffer'
@@ -101,13 +99,13 @@ def incomplete_data(tmpdir_factory):
 
     yield dump_buffer.load()
 
+
 def test_incomplete(incomplete_data):
     n_frames = len(global_params['freq_ids']) * global_params['total_frames']
-    assert(len(incomplete_data) < n_frames)
+    assert (len(incomplete_data) < n_frames)
+
 
 def test_metadata(incomplete_data):
-
     for frame in incomplete_data:
-
         assert (frame.metadata.freq_id == 0 or frame.metadata.freq_id == 250)
         assert (frame.metadata.num_prod == global_params['num_elements'])

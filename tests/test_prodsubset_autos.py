@@ -1,4 +1,3 @@
-
 import pytest
 import numpy as np
 import h5py
@@ -6,13 +5,12 @@ import glob
 
 from kotekan import runner
 
-
 subset_params = {
     'num_elements': 16,
     'num_ev': 2,
     'total_frames': 128,
     'cadence': 5.0,
-    'mode':'fill_ij',
+    'mode': 'fill_ij',
     'freq_ids': [250],
     'buffer_depth': 5,
     'prod_subset_type': 'autos',
@@ -23,9 +21,9 @@ subset_params = {
 
 vis_params = {}
 
+
 @pytest.fixture(scope="module")
 def subset_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("subset")
 
     fakevis_buffer = runner.FakeVisBuffer(
@@ -49,7 +47,6 @@ def subset_data(tmpdir_factory):
 
 
 def test_subset(subset_data):
-
     vis = (np.arange(subset_params['num_elements']) +
            1.0J * np.arange(subset_params['num_elements']))
     evecs = (np.arange(subset_params['num_ev'])[:, None] +
@@ -57,6 +54,6 @@ def test_subset(subset_data):
 
     assert (subset_data.data['vis'] == np.array(vis)).all()
     assert (subset_data.data['eval'] == np.arange(
-            subset_params['num_ev'])).all()
+        subset_params['num_ev'])).all()
     assert (subset_data.data['evec'] == evecs).all()
     assert (subset_data.data['erms'] == 1.0).all()

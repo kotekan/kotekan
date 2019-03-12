@@ -6,7 +6,6 @@ import re
 from kotekan import visbuffer
 from kotekan import runner
 
-
 params = {
     'num_elements': 5,
     'num_ev': 0,
@@ -21,9 +20,9 @@ params = {
     },
 }
 
+
 @pytest.fixture(scope="module")
 def vis_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("freqsub")
 
     fakevis_buffer = runner.FakeVisBuffer(
@@ -34,7 +33,7 @@ def vis_data(tmpdir_factory):
     )
 
     dump_buffer = runner.DumpVisBuffer(
-            str(tmpdir))
+        str(tmpdir))
 
     test = runner.KotekanStageTester(
         'freqSubset', {},
@@ -47,9 +46,9 @@ def vis_data(tmpdir_factory):
 
     yield dump_buffer.load()
 
+
 @pytest.fixture(scope="module")
 def write_data(tmpdir_factory):
-
     tmpdir = tmpdir_factory.mktemp("freqsub_write")
 
     fakevis_buffer = runner.FakeVisBuffer(
@@ -60,7 +59,7 @@ def write_data(tmpdir_factory):
     )
 
     write_buffer = runner.VisWriterBuffer(
-            str(tmpdir), 'raw')
+        str(tmpdir), 'raw')
 
     test = runner.KotekanStageTester(
         'freqSubset', {},
@@ -73,12 +72,12 @@ def write_data(tmpdir_factory):
 
     return write_buffer.load()
 
-def test_freqslice(vis_data):
 
+def test_freqslice(vis_data):
     assert len(vis_data) == params['total_frames'] * len(params['subset_list'])
 
     # Count frames by frequency
-    counts = [ 0 ] * len(params['subset_list'])
+    counts = [0] * len(params['subset_list'])
     for frame in vis_data:
         # get freq ids from fakeVis
         fid = int(frame.vis[2].real)
@@ -86,11 +85,11 @@ def test_freqslice(vis_data):
         # keep track of number of frames so far
         counts[params['subset_list'].index(fid)] += 1
 
-    assert counts == [ params['total_frames'] ] * len(params['subset_list'])
+    assert counts == [params['total_frames']] * len(params['subset_list'])
+
 
 def test_write(write_data):
-
-    counts = [ 0 ] * len(params['subset_list'])
+    counts = [0] * len(params['subset_list'])
     for t in range(params['total_frames']):
         for f in range(len(params['subset_list'])):
             # get freq ids from fakeVis
@@ -101,4 +100,4 @@ def test_write(write_data):
             # keep track of number of frames so far
             counts[params['subset_list'].index(fid)] += 1
 
-    assert counts == [ params['total_frames'] ] * len(params['subset_list'])
+    assert counts == [params['total_frames']] * len(params['subset_list'])

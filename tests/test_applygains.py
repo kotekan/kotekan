@@ -20,7 +20,7 @@ global_params = {
     'gains': {'kotekan_update_endpoint': "json",
               'start_time': old_tmstp,
               'tag': old_tag
-    },
+              },
     'wait': True,
     'combine_gains_time': 10.,
     'num_threads': 4,
@@ -32,15 +32,14 @@ global_params = {
 
 def gen_gains(gains_dir, tag=None, mult_factor=1.,
               nelem=global_params['num_elements'], nfreq=1024):
-
     if tag is None:
         tag = global_params['gains']['tag']
-    filepath = gains_dir.join(tag+'.hdf5')
+    filepath = gains_dir.join(tag + '.hdf5')
     f = h5py.File(str(filepath), "w")
 
     dset = f.create_dataset('gain', (nfreq, nelem), dtype='c8')
     gain = (np.arange(nfreq, dtype='f2')[:, None]
-            * 1j*np.arange(nelem, dtype='f2')[None, :])
+            * 1j * np.arange(nelem, dtype='f2')[None, :])
     dset[...] = gain * mult_factor
 
     dset2 = f.create_dataset('weight', (nfreq, nelem), dtype='f')
@@ -60,7 +59,6 @@ def gen_gains(gains_dir, tag=None, mult_factor=1.,
 
 
 def apply_data(cmds, tmpdir_factory):
-
     apply_dir = tmpdir_factory.mktemp("apply")
 
     fakevis_buffer = runner.FakeVisBuffer(
@@ -85,7 +83,6 @@ def apply_data(cmds, tmpdir_factory):
 
 
 def load_gains(filepath, fr, ipt=None):
-
     gains = h5py.File(filepath, 'r')['gain']
     if ipt is None:
         return gains[fr]
@@ -94,7 +91,6 @@ def load_gains(filepath, fr, ipt=None):
 
 
 def load_gain_weight(filepath, fr, ipt=None):
-
     gain_weight = h5py.File(filepath, 'r')['weight']
     if ipt is None:
         return gain_weight[fr]
@@ -111,7 +107,7 @@ def combine_gains(tframe, tcombine, new_tmstp, old_tmstp,
         return old_gains
     elif tframe < new_tmstp + tcombine:
         tpast = tframe - new_tmstp
-        new_coef = tpast/tcombine
+        new_coef = tpast / tcombine
         old_coef = 1. - new_coef
         return new_coef * new_gains + old_coef * old_gains
     else:
@@ -119,15 +115,14 @@ def combine_gains(tframe, tcombine, new_tmstp, old_tmstp,
 
 
 def test_apply(tmpdir_factory):
-
     gains_dir = tmpdir_factory.mktemp("gains")
     new_tmstp = time.time() + 5.
     new_tag = 'gains{0}'.format(int(new_tmstp))
 
     gen_gains(gains_dir)
     gen_gains(gains_dir, tag=new_tag, mult_factor=2.)
-    old_filepath = gains_dir.join(old_tag+'.hdf5')
-    new_filepath = gains_dir.join(new_tag+'.hdf5')
+    old_filepath = gains_dir.join(old_tag + '.hdf5')
+    new_filepath = gains_dir.join(new_tag + '.hdf5')
 
     global_params['gains_dir'] = str(gains_dir)
     tcombine = global_params['combine_gains_time']
@@ -158,22 +153,22 @@ def test_apply(tmpdir_factory):
                 gains[ii] = 1.
                 weight_factor[ii] = 0.
             else:
-                weight_factor[ii] = 1./abs(gains[ii])**2
+                weight_factor[ii] = 1. / abs(gains[ii]) ** 2
 
         expvis = np.zeros(num_prod, dtype=frame.vis[:].dtype)
         for ii in range(num_prod):
             prod = visutil.icmap(ii, global_params['num_elements'])
             # With fill_ij, vis_ij = i+j*(1j)
-            expvis[ii] = ((prod.input_a + 1j*prod.input_b)
+            expvis[ii] = ((prod.input_a + 1j * prod.input_b)
                           * (gains[prod.input_a])
                           * np.conj((gains[prod.input_b])))
         assert (abs(frame.vis[:].real - expvis.real)
-                <= 1E-5*abs(frame.vis[:].real)).all()
+                <= 1E-5 * abs(frame.vis[:].real)).all()
         assert (abs(frame.vis[:].imag - expvis.imag)
-                <= 1E-5*abs(frame.vis[:].imag)).all()
+                <= 1E-5 * abs(frame.vis[:].imag)).all()
 
         assert (frame.eval == np.arange(
-                global_params['num_ev'])).all()
+            global_params['num_ev'])).all()
         evecs = (np.arange(global_params['num_ev'])[:, None]
                  + 1.0J
                  * np.arange(global_params['num_elements'])[None, :]).flatten()
@@ -182,14 +177,14 @@ def test_apply(tmpdir_factory):
         # This relies on the fact that the initial value
         # of the gains is 1 in fakevis.
         assert (abs(frame.gain.real - gains.real)
-                <= 1E-5*abs(gains.real)).all()
+                <= 1E-5 * abs(gains.real)).all()
         assert (abs(frame.gain.imag - gains.imag)
-                <= 1E-5*abs(gains.imag)).all()
+                <= 1E-5 * abs(gains.imag)).all()
 
         expweight = []
         for ii in range(n_el):
             for jj in range(ii, n_el):
-                expweight.append(1.*weight_factor[ii]*weight_factor[jj])
+                expweight.append(1. * weight_factor[ii] * weight_factor[jj])
         expweight = np.array(expweight)
         assert (abs(frame.weight - expweight)
-                <= 1E-5*abs(frame.weight)).all()
+                <= 1E-5 * abs(frame.weight)).all()

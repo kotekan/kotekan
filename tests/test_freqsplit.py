@@ -6,7 +6,6 @@ import re
 from kotekan import visbuffer
 from kotekan import runner
 
-
 params = {
     'num_elements': 5,
     'num_ev': 0,
@@ -21,9 +20,9 @@ params = {
     },
 }
 
+
 @pytest.fixture(scope="module")
 def vis_data(tmpdir_factory):
-
     tmpdir_l = tmpdir_factory.mktemp("freqsplit_lower")
     tmpdir_h = tmpdir_factory.mktemp("freqsplit_higher")
 
@@ -35,10 +34,10 @@ def vis_data(tmpdir_factory):
     )
 
     dump_buffer_l = runner.DumpVisBuffer(
-            str(tmpdir_l))
+        str(tmpdir_l))
 
     dump_buffer_h = runner.DumpVisBuffer(
-            str(tmpdir_h))
+        str(tmpdir_h))
 
     test = runner.KotekanStageTester(
         'freqSplit', {},
@@ -51,9 +50,9 @@ def vis_data(tmpdir_factory):
 
     yield [dump_buffer_l.load(), dump_buffer_h.load()]
 
+
 @pytest.fixture(scope="module")
 def write_data(tmpdir_factory):
-
     tmpdir_l = tmpdir_factory.mktemp("freqsplit_write_lower")
     tmpdir_h = tmpdir_factory.mktemp("freqsplit_write_higher")
 
@@ -65,9 +64,9 @@ def write_data(tmpdir_factory):
     )
 
     write_buffer_l = runner.VisWriterBuffer(
-            str(tmpdir_l), 'raw')
+        str(tmpdir_l), 'raw')
     write_buffer_h = runner.VisWriterBuffer(
-            str(tmpdir_h), 'raw')
+        str(tmpdir_h), 'raw')
     test = runner.KotekanStageTester(
         'freqSplit', {},
         fakevis_buffer,
@@ -78,6 +77,7 @@ def write_data(tmpdir_factory):
     test.run()
 
     return [write_buffer_l.load(), write_buffer_h.load()]
+
 
 def test_freqsplit(vis_data):
     vis_data_l = vis_data[0]
@@ -90,7 +90,7 @@ def test_freqsplit(vis_data):
     assert len(vis_data_h) == params['total_frames'] * len(f_higher)
 
     # Count frames by frequency
-    counts = [ 0 ] * len(f_lower)
+    counts = [0] * len(f_lower)
     for frame in vis_data_l:
         # get freq ids from fakeVis
         fid = int(frame.vis[2].real)
@@ -98,9 +98,9 @@ def test_freqsplit(vis_data):
         # keep track of number of frames so far
         counts[f_lower.index(fid)] += 1
 
-    assert counts == [ params['total_frames'] ] * len(f_lower)
+    assert counts == [params['total_frames']] * len(f_lower)
 
-    counts = [ 0 ] * len(f_higher)
+    counts = [0] * len(f_higher)
     for frame in vis_data_h:
         # get freq ids from fakeVis
         fid = int(frame.vis[2].real)
@@ -108,7 +108,8 @@ def test_freqsplit(vis_data):
         # keep track of number of frames so far
         counts[f_higher.index(fid)] += 1
 
-    assert counts == [ params['total_frames'] ] * len(f_higher)
+    assert counts == [params['total_frames']] * len(f_higher)
+
 
 def test_write(write_data):
     write_data_l = write_data[0]
@@ -117,7 +118,7 @@ def test_write(write_data):
     f_lower = [f for f in params['freq_ids'] if f < params['split_freq']]
     f_higher = [f for f in params['freq_ids'] if f >= params['split_freq']]
 
-    counts = [ 0 ] * len(f_lower)
+    counts = [0] * len(f_lower)
     for t in range(params['total_frames']):
         for f in range(len(f_lower)):
             # get freq ids from fakeVis
@@ -128,9 +129,9 @@ def test_write(write_data):
             # keep track of number of frames so far
             counts[f_lower.index(fid)] += 1
 
-    assert counts == [ params['total_frames'] ] * len(f_lower)
+    assert counts == [params['total_frames']] * len(f_lower)
 
-    counts = [ 0 ] * len(f_higher)
+    counts = [0] * len(f_higher)
     for t in range(params['total_frames']):
         for f in range(len(f_higher)):
             # get freq ids from fakeVis
@@ -141,4 +142,4 @@ def test_write(write_data):
             # keep track of number of frames so far
             counts[f_higher.index(fid)] += 1
 
-    assert counts == [ params['total_frames'] ] * len(f_higher)
+    assert counts == [params['total_frames']] * len(f_higher)
