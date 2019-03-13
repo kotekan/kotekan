@@ -281,15 +281,15 @@ def test_transpose_stack(transpose_stack):
 
     # check the stack against those in the input file
     with open(infile + '.meta', 'rb') as f_meta:
-        meta = msgpack.load(f_meta)
+        meta = msgpack.load(f_meta, encoding='utf-8')
 
     stack_im = np.array(
-        [tuple(s.values()) for s in meta[b'index_map'][b'stack']],
+        [tuple(s.values()) for s in meta['index_map']['stack']],
         dtype=f['index_map']['stack'].dtype)
     assert (f['index_map']['stack'][:] == stack_im).all()
 
     stack_rm = np.array(
-        [tuple(s.values()) for s in meta[b'reverse_map'][b'stack']],
+        [tuple(s.values()) for s in meta['reverse_map']['stack']],
         dtype=f['reverse_map']['stack'].dtype)
     assert (f['reverse_map']['stack'][:] == stack_rm).all()
 
