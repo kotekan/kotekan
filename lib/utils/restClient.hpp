@@ -5,19 +5,19 @@
 #ifndef RESTCLIENT_HPP
 #define RESTCLIENT_HPP
 
-#include <event2/util.h>
+#include "Config.hpp"
+#include "restServer.hpp"
+
+#include "json.hpp"
+
 #include <atomic>
 #include <condition_variable>
+#include <event2/util.h>
 #include <functional>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <utility>
-
-#include "json.hpp"
-
-#include "Config.hpp"
-#include "restServer.hpp"
 
 using restReply = std::pair<bool, std::string>;
 
@@ -33,13 +33,12 @@ using restReply = std::pair<bool, std::string>;
  */
 class restClient {
 public:
-
     /**
      * @brief Returns an instance of the rest client.
      *
      * @return Returns the rest client instance.
      */
-    static restClient &instance();
+    static restClient& instance();
 
     /**
      * @brief Send GET or POST with json data to an endpoint.
@@ -61,12 +60,10 @@ public:
      * (of 50 seconds) is set (default: -1).
      * @return          `true` if successfull, otherwise `false`.
      */
-    bool make_request(std::string path,
-                      std::function<void(restReply)> request_done_cb,
-                      const nlohmann::json& data = {},
-                      const std::string& host = "127.0.0.1",
-                      const unsigned short port = PORT_REST_SERVER,
-                      const int retries = 0, const int timeout = -1);
+    bool make_request(const std::string& path, std::function<void(restReply)> request_done_cb,
+                      const nlohmann::json& data = {}, const std::string& host = "127.0.0.1",
+                      const unsigned short port = PORT_REST_SERVER, const int retries = 0,
+                      const int timeout = -1);
 
     /**
      * @brief Send GET or POST with json data to an endpoint. Blocking.
@@ -88,12 +85,10 @@ public:
      *
      * @return          restReply object.
      */
-    restReply make_request_blocking(
-            std::string path,
-            const nlohmann::json& data = {},
-            const std::string& host = "127.0.0.1",
-            const unsigned short port = PORT_REST_SERVER,
-            const int retries = 0, const int timeout = -1);
+    restReply make_request_blocking(const std::string& path, const nlohmann::json& data = {},
+                                    const std::string& host = "127.0.0.1",
+                                    const unsigned short port = PORT_REST_SERVER,
+                                    const int retries = 0, const int timeout = -1);
 
 private:
     /// Private constuctor
@@ -103,7 +98,7 @@ private:
     virtual ~restClient();
 
     /// @brief Internal timer call back to check for thread exit condition
-    static void timer(evutil_socket_t fd, short event, void *arg);
+    static void timer(evutil_socket_t fd, short event, void* arg);
 
     /// Do not allow copy or assignment
     restClient(restClient const&);
@@ -113,11 +108,10 @@ private:
     void event_thread();
 
     /// callback function for http requests
-    static void http_request_done(struct evhttp_request *req, void *arg);
+    static void http_request_done(struct evhttp_request* req, void* arg);
 
     /// cleanup function that deletes evcon and the argument pair
-    static void cleanup(std::pair<std::function<void(restReply)>,
-                                         struct evhttp_connection*>* pair);
+    static void cleanup(std::pair<std::function<void(restReply)>, struct evhttp_connection*>* pair);
 
     /// Main event thread handle
     std::thread _main_thread;
@@ -139,4 +133,3 @@ private:
 };
 
 #endif // RESTCLIENT_HPP
-

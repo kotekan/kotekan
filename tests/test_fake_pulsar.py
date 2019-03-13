@@ -37,7 +37,7 @@ def pulsar_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanProcessTester(
+    test = runner.KotekanStageTester(
         'visAccumulate', accumulate_params,
         runner.FakeGPUBuffer(**pulsar_params),
         dump_buffer,

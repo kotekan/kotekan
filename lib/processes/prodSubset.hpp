@@ -1,29 +1,29 @@
 /*****************************************
 @file
 @brief Extract a subset of products from a visBuffer.
-- prodSubset : public KotekanProcess
+- prodSubset : public kotekan::Stage
 *****************************************/
 #ifndef PROD_SUB_HPP
 #define PROD_SUB_HPP
 
-#include <stddef.h>
-#include <stdint.h>
-#include <future>
-#include <string>
-#include <tuple>
-#include <vector>
-
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
 #include "visUtil.hpp"
 
+#include <future>
+#include <stddef.h>
+#include <stdint.h>
+#include <string>
+#include <tuple>
+#include <vector>
+
 
 /**
  * @class prodSubset
- * @brief ``KotekanProcess`` that extracts a subset of the products.
+ * @brief ``kotekan::Stage`` that extracts a subset of the products.
  *
  * This task consumes a full set of visibilities from a ``visBuffer`` and
  * passes on a subset of products to an output ``visBuffer``. The subset
@@ -70,13 +70,12 @@
  * @author  Tristan Pinsonneault-Marotte and Mateus Fandino
  *
  */
-class prodSubset : public KotekanProcess {
+class prodSubset : public kotekan::Stage {
 
 public:
     /// Constructor. Loads config options. Defines subset of products.
-    prodSubset(Config &config,
-                   const string& unique_name,
-                   bufferContainer &buffer_container);
+    prodSubset(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& buffer_container);
 
     /// Primary loop: sorts products and passes them on to output buffer.
     void main_thread() override;
@@ -85,16 +84,14 @@ private:
     /// keeps track of the input dataset ID
     /// and gets new output dataset ID from manager
     ///
-    dset_id_t change_dataset_state(dset_id_t ds_id,
-                                   std::vector<prod_ctype>& prod_subset,
-                                   std::vector<size_t>& prod_ind,
-                                   size_t& subset_num_prod);
+    dset_id_t change_dataset_state(dset_id_t ds_id, std::vector<prod_ctype>& prod_subset,
+                                   std::vector<size_t>& prod_ind, size_t& subset_num_prod);
 
     /// Number of products in subset
     size_t subset_num_prod;
 
     /// Input buffer
-    Buffer * in_buf;
+    Buffer* in_buf;
 
     /// Output buffer to receive baseline subset visibilities
     Buffer* out_buf;
@@ -110,17 +107,15 @@ private:
 };
 
 
-
 /**
  * @brief Parse the product subseting section
- * @param config    Configuration handle.
+ * @param config    kotekan::Configuration handle.
  * @param base_path Path into YAML file to search from.
  * @return          Tuple containing a vector of the product inputs, and a
  *                  vector of the corresponding input labels.
  */
-std::tuple<std::vector<size_t>, std::vector<prod_ctype>> parse_prod_subset(Config& config, const std::string base_path);
-
+std::tuple<std::vector<size_t>, std::vector<prod_ctype>>
+parse_prod_subset(kotekan::Config& config, const std::string base_path);
 
 
 #endif
-

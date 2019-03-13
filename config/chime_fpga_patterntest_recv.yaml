@@ -38,25 +38,25 @@ vis_buffer:
   vis_test_dump:
     kotekan_buffer: vis
 
-# test process
+# test stage
 pattern_test:
-  kotekan_process: visTestPattern
+  kotekan_stage: visTestPattern
   in_buf: visbuf_10s_all
   out_buf: vis_test_dump
-  out_file: '/data/patterntest/20181211/simple_test/report.csv'
+  write_dir: '/data/patterntest'
   mode: 'test_pattern_simple'
 
 test_writer:
-  kotekan_process: rawFileWrite
+  kotekan_stage: rawFileWrite
   in_buf: vis_test_dump
   file_name: 'patterntest'
   file_ext: 'dump'
   base_dir: '/data/patterntest/20181211/simple_test'
 
-# Kotekan processes
+# Kotekan stages
 buffer_recv:
   n2:
-    kotekan_process: bufferRecv
+    kotekan_stage: bufferRecv
     buf: visbuf_10s_all
     listen_port: 11024
     cpu_affinity: [0, 8]
@@ -64,14 +64,14 @@ buffer_recv:
 
 vis_debug:
   n2:
-    kotekan_process: visDebug
+    kotekan_stage: visDebug
     in_buf: visbuf_10s_all
 
 count_check:
   n2:
-    kotekan_process: countCheck
+    kotekan_stage: countCheck
     in_buf: visbuf_10s_all
 
 buffer_status:
-  kotekan_process: bufferStatus
+  kotekan_stage: bufferStatus
   print_status: false

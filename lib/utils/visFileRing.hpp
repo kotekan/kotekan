@@ -25,10 +25,8 @@
 class visFileRing : public visFileRaw {
 
 public:
-
     // Implement the create_file method
-    void create_file(const std::string& name,
-                     const std::map<std::string, std::string>& metadata,
+    void create_file(const std::string& name, const std::map<std::string, std::string>& metadata,
                      dset_id_t dataset, size_t max_time) override;
 
     /**
@@ -44,10 +42,8 @@ public:
     void write_metadata();
 
 private:
-
     size_t file_len;
     size_t cur_pos = 0;
-
 };
 
 #endif

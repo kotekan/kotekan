@@ -1,13 +1,16 @@
 #include "hsaOutputData.hpp"
-#include "visUtil.hpp"
+
 #include "gpsTime.h"
+#include "visUtil.hpp"
+
+using kotekan::bufferContainer;
+using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaOutputData);
 
-hsaOutputData::hsaOutputData(Config& config, const string &unique_name,
-                            bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaSubframeCommand(config, unique_name,
-                                 host_buffers, device, "hsaOutputData",""){
+hsaOutputData::hsaOutputData(Config& config, const string& unique_name,
+                             bufferContainer& host_buffers, hsaDeviceInterface& device) :
+    hsaSubframeCommand(config, unique_name, host_buffers, device, "hsaOutputData", "") {
     command_type = gpuCommandType::COPY_OUT;
 
     network_buffer = host_buffers.get_buffer("network_buf");
@@ -33,35 +36,32 @@ hsaOutputData::hsaOutputData(Config& config, const string &unique_name,
     lost_samples_buf_id = 0;
 }
 
-hsaOutputData::~hsaOutputData() {
-}
+hsaOutputData::~hsaOutputData() {}
 
 int hsaOutputData::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
     // We want to make sure we have some space to put our results.
-    uint8_t * frame = wait_for_empty_frame(output_buffer,
-                          unique_name.c_str(), output_buffer_precondition_id);
-    if (frame == NULL) return -1;
-    output_buffer_precondition_id = (output_buffer_precondition_id + _num_sub_frames) %
-                                    output_buffer->num_frames;
+    uint8_t* frame =
+        wait_for_empty_frame(output_buffer, unique_name.c_str(), output_buffer_precondition_id);
+    if (frame == NULL)
+        return -1;
+    output_buffer_precondition_id =
+        (output_buffer_precondition_id + _num_sub_frames) % output_buffer->num_frames;
     return 0;
 }
 
-hsa_signal_t hsaOutputData::execute(int gpu_frame_id,
-                                    hsa_signal_t precede_signal) {
+hsa_signal_t hsaOutputData::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
-    void * gpu_output_ptr =
-        device.get_gpu_memory_array("corr_" + std::to_string(_sub_frame_index),
-                                    gpu_frame_id, output_buffer->frame_size);
+    void* gpu_output_ptr = device.get_gpu_memory_array("corr_" + std::to_string(_sub_frame_index),
+                                                       gpu_frame_id, output_buffer->frame_size);
 
-    void * host_output_ptr = (void *)output_buffer->frames[output_buffer_excute_id];
+    void* host_output_ptr = (void*)output_buffer->frames[output_buffer_excute_id];
 
-    device.async_copy_gpu_to_host(host_output_ptr,
-            gpu_output_ptr, output_buffer->frame_size,
-            precede_signal, signals[gpu_frame_id]);
+    device.async_copy_gpu_to_host(host_output_ptr, gpu_output_ptr, output_buffer->frame_size,
+                                  precede_signal, signals[gpu_frame_id]);
 
-    output_buffer_excute_id = (output_buffer_excute_id + _num_sub_frames) %
-                              output_buffer->num_frames;
+    output_buffer_excute_id =
+        (output_buffer_excute_id + _num_sub_frames) % output_buffer->num_frames;
 
     return signals[gpu_frame_id];
 }
@@ -74,8 +74,7 @@ void hsaOutputData::finalize_frame(int frame_id) {
 
     // We make a new copy of the metadata since there are now
     // _num_sub_frames output frames for each input frame.
-    copy_metadata(network_buffer, network_buffer_id,
-                  output_buffer, output_buffer_id);
+    copy_metadata(network_buffer, network_buffer_id, output_buffer, output_buffer_id);
 
     // Adjust the time stamps
 
@@ -96,12 +95,11 @@ void hsaOutputData::finalize_frame(int frame_id) {
     set_first_packet_recv_time(output_buffer, output_buffer_id, sys_time);
 
     // Add up the number of lost samples (from packet loss/packet errors)
-    uint8_t * frame = lost_samples_buf->frames[lost_samples_buf_id];
+    uint8_t* frame = lost_samples_buf->frames[lost_samples_buf_id];
 
     uint32_t num_sum_frame_lost_samples = 0;
     for (uint32_t i = _sub_frame_samples * _sub_frame_index;
-         i < (_sub_frame_samples * (_sub_frame_index + 1));
-         ++i) {
+         i < (_sub_frame_samples * (_sub_frame_index + 1)); ++i) {
         if (frame[i] == 1) {
             num_sum_frame_lost_samples++;
         }

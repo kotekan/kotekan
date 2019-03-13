@@ -14,12 +14,12 @@
  * @brief hsaCommand to brute-force beamform for pulsar obs
  *
  *
- * This is an hsaCommand that launches the kernel (pulsar_beamformer) for 
- * brute-force coherent beamforming and is most applicable to pulsar observations. 
- * An array of phases (shape @c n_psr x @c n_elem x 2) is calculated by hsaPulsarUpdatePhase.cpp. 
- * The default number of pulsar beams to be formed is 10. The phases are matrix 
- * multiplied with the input data (shape @c n_samp x @c n_elem) and the output is of dimension 
- * (@c n_samp x @c n_psr x @c n_pol x 2). Output data type is 4-4b int packed as char. Currently 
+ * This is an hsaCommand that launches the kernel (pulsar_beamformer) for
+ * brute-force coherent beamforming and is most applicable to pulsar observations.
+ * An array of phases (shape @c n_psr x @c n_elem x 2) is calculated by hsaPulsarUpdatePhase.cpp.
+ * The default number of pulsar beams to be formed is 10. The phases are matrix
+ * multiplied with the input data (shape @c n_samp x @c n_elem) and the output is of dimension
+ * (@c n_samp x @c n_psr x @c n_pol x 2). Output data type is 4-4b int packed as char. Currently
  * it is float, as we are pending on decision of data truncation scheme.
  *
  * @requires_kernel    pulsar_beamformer.hasco
@@ -52,32 +52,32 @@
  */
 
 
-class hsaBeamformPulsar: public hsaCommand
-{
+class hsaBeamformPulsar : public hsaCommand {
 public:
-    /// Constructor, also initializes internal variables from config and initializes the array of phases.
-    hsaBeamformPulsar(Config &config, const string &unique_name,
-                        bufferContainer &host_buffers, hsaDeviceInterface &device);
+    /// Constructor, also initializes internal variables from config and initializes the array of
+    /// phases.
+    hsaBeamformPulsar(kotekan::Config& config, const string& unique_name,
+                      kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor, cleans up local allocs.
     virtual ~hsaBeamformPulsar();
 
     /// Allocate kernel argument buffer, set kernel dimensions, enqueue kernel
-    hsa_signal_t execute(int gpu_frame_id,
-                         hsa_signal_t precede_signal) override;
+    hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
 private:
     /// Input length, should be nsamp x n_elem x 2 for complex / 2 since we pack two 4-bit in one
     int32_t input_frame_len;
-    /// Output length, should be 10psr x nsamp x 2 pol x 2 for complex / 2 since we pack two 4-bit in one
+    /// Output length, should be 10psr x nsamp x 2 pol x 2 for complex / 2 since we pack two 4-bit
+    /// in one
     int32_t output_frame_len;
 
-    ///Length of the array of phases for beamforming, should be 10 psr * 2048 elem * 2 for complex
+    /// Length of the array of phases for beamforming, should be 10 psr * 2048 elem * 2 for complex
     int32_t phase_len;
     /// pointer to the phase array
-    float * host_phase;
+    float* host_phase;
 
-    ///numbler of elements, should be 2048
+    /// numbler of elements, should be 2048
     int32_t _num_elements;
     /// number of pulsar beams to be formed, should be 10
     int32_t _num_pulsar;

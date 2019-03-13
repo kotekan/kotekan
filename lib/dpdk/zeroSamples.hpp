@@ -1,8 +1,10 @@
 #ifndef ZERO_SAMPLES_HPP
 #define ZERO_SAMPLES_HPP
 
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
+
 #include "json.hpp"
+
 #include <vector>
 
 /**
@@ -24,10 +26,11 @@
  *
  * @config  sample_size               Int. Default 2048.  The size of the time samples in @c out_buf
  *
- * @config  duplicate_ls_buffer       Bool. Default False. Whether or not to dupliate the lost samples buf
+ * @config  duplicate_ls_buffer       Bool. Default False. Whether or not to dupliate the lost
+ * samples buf
  *
- * @config  out_lost_sample_buffers   Buffers to hold the duplicated lost samples buffer. For example:
- *                                    out_lost_sample_buffers:
+ * @config  out_lost_sample_buffers   Buffers to hold the duplicated lost samples buffer. For
+ * example: out_lost_sample_buffers:
  *                                        - lost_samples_buffer_0
  *                                        - lost_samples_buffer_1
  *                                        - lost_samples_buffer_2
@@ -38,12 +41,11 @@
  *
  * @author Andre Renard
  */
-class zeroSamples : public KotekanProcess {
+class zeroSamples : public kotekan::Stage {
 public:
-
     /// Standard constructor
-    zeroSamples(Config& config, const string& unique_name,
-             bufferContainer &buffer_container);
+    zeroSamples(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     ~zeroSamples();
@@ -52,12 +54,11 @@ public:
     void main_thread() override;
 
 private:
-
     /// The buffer with the network data
-    struct Buffer * out_buf;
+    struct Buffer* out_buf;
 
     /// The buffer with the array of flags indicating lost data.
-    struct Buffer * lost_samples_buf;
+    struct Buffer* lost_samples_buf;
 
     /// Current ID for out_buf
     int32_t out_buf_frame_id = 0;

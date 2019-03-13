@@ -1,27 +1,30 @@
 /**
  * @file
- * @brief A process to read VDIF files from multiple drives.
- *  - nDiskFileWrite : public KotekanProcess
+ * @brief A stage to read VDIF files from multiple drives.
+ *  - nDiskFileWrite : public kotekan::Stage
  */
 
 #ifndef N_DISK_FILE_WRITE_H
 #define N_DISK_FILE_WRITE_H
 
+#include "Stage.hpp"
 #include "buffer.h"
-#include "KotekanProcess.hpp"
+
 #include <string>
-#include <vector>
 #include <thread>
+#include <vector>
 
 using std::string;
 
 /**
  * @class nDiskFileWrite
- * @brief Consumer ``KotekanProcess`` which writes VDIF-formatted input  data on multiple drives.
+ * @brief Consumer ``kotekan::Stage`` which writes VDIF-formatted input  data on multiple
+ * drives.
  *
- * This is a consumer which initiates n threads to write to ``n`` disks. Each drive will receive data from every
- * ``n``th buffer, stored within a common-named subfolder. Within each folder the data files will be numbered
- * incrementally across the disks.
+ * This is a consumer which initiates n threads to write to ``n`` disks. Each drive will receive
+ * data from every
+ * ``n``th buffer, stored within a common-named subfolder. Within each folder the data files will be
+ * numbered incrementally across the disks.
  *
  * @par Buffers
  * @buffer in_buf The kotkean buffer holing the data to be written
@@ -40,7 +43,7 @@ using std::string;
  *
  * Worked Example with n = 3:
  *
- * Config Parameters:
+ * kotekan::Config Parameters:
  *
  * - num_disk: 3
  * - disk_base: /drives/
@@ -72,52 +75,52 @@ using std::string;
  *
  * @author Andre Renard
  */
-class nDiskFileWrite : public KotekanProcess {
+class nDiskFileWrite : public kotekan::Stage {
 public:
-    ///Constructor
-    nDiskFileWrite(Config &config,
-                   const string& unique_name,
-                   bufferContainer &buffer_containter);
+    /// Constructor
+    nDiskFileWrite(kotekan::Config& config, const string& unique_name,
+                   kotekan::bufferContainer& buffer_containter);
 
-    ///Destructor, currently does nothing
+    /// Destructor, currently does nothing
     virtual ~nDiskFileWrite();
 
-    ///Creates n safe instances of the file_read_thread thread
+    /// Creates n safe instances of the file_read_thread thread
     void main_thread() override;
-private:
-    ///The kotekan buffer object the processes is consuming from
-    struct Buffer *buf;
 
-    ///Which disk in the array is currently being written to
+private:
+    /// The kotekan buffer object the stage is consuming from
+    struct Buffer* buf;
+
+    /// Which disk in the array is currently being written to
     uint32_t disk_id;
-    ///A holder for the config parameter num_disks
+    /// A holder for the config parameter num_disks
     uint32_t num_disks;
 
     void file_write_thread(int disk_id);
     std::vector<std::thread> file_thread_handles;
 
-    ///The subfolder name where the files will be stored
+    /// The subfolder name where the files will be stored
     string dataset_name;
-    ///A holder for the config parameter disk_base, where the drive sets are mounted
+    /// A holder for the config parameter disk_base, where the drive sets are mounted
     string disk_base;
-    ///A holder for the config parameter disk_set, where to write files
+    /// A holder for the config parameter disk_set, where to write files
     string disk_set;
-    ///Boolean config parameter to enable or disable file output
+    /// Boolean config parameter to enable or disable file output
     bool write_to_disk;
 
-    ///Flag to enable or disable writing out the metadata and gains
+    /// Flag to enable or disable writing out the metadata and gains
     bool write_metadata_and_gains;
 
-    ///Function to make subdirectories dataset_name on each disk in the disk set
+    /// Function to make subdirectories dataset_name on each disk in the disk set
     void mk_dataset_dir();
 
-    ///Function to write relevant config parameters to a settings.txt file alongside the VDIF data
+    /// Function to write relevant config parameters to a settings.txt file alongside the VDIF data
     void save_meta_data(char* timestr);
 
-    ///Function to back up the FPGA gain file alongside the VDIF data
-    void copy_gains(const string &gain_file_dir, const string &gain_file_name);
+    /// Function to back up the FPGA gain file alongside the VDIF data
+    void copy_gains(const string& gain_file_dir, const string& gain_file_name);
 
-    ///A holder for the config parameter instrument name, used in VDIF header
+    /// A holder for the config parameter instrument name, used in VDIF header
     string instrument_name;
 };
 

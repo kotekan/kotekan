@@ -1,27 +1,26 @@
 /**
  * @file
- * @brief An FFTW-based F-engine process.
- *  - fftwEngine : public KotekanProcess
+ * @brief An FFTW-based F-engine stage.
+ *  - fftwEngine : public kotekan::Stage
  */
 
 #ifndef FFTW_ENGINE_HPP
 #define FFTW_ENGINE_HPP
-#include <unistd.h>
-
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "errors.h"
 #include "util.h"
-#include <fftw3.h>
 
+#include <fftw3.h>
 #include <string>
+#include <unistd.h>
 using std::string;
 
 /**
  * @class fftwEngine
- * @brief Kotekan Process to Fourier Transform an input stream.
+ * @brief Kotekan Stage to Fourier Transform an input stream.
  *
- * This is a simple signal processing block which takes (complex) data from an input buffer,
+ * This is a simple signal processing stage which takes (complex) data from an input buffer,
  * Fourier Transforms it with FFTW, and stuffs the results into an output buffer.
  * Both input and output buffers' frame lengths should be integer multiples of the FFT length,
  * though they need not be the same length as each other.
@@ -47,33 +46,33 @@ using std::string;
  * @author Keith Vanderlinde
  *
  */
-class fftwEngine : public KotekanProcess {
+class fftwEngine : public kotekan::Stage {
 public:
     /// Constructor, also initializes FFTW and values from config yaml.
-    fftwEngine(Config& config, const string& unique_name,
-                         bufferContainer &buffer_container);
+    fftwEngine(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& buffer_container);
     /// Destructor, frees local allocs and exits FFTW.
     virtual ~fftwEngine();
     /// Primary loop, which waits on input frames, FFTs, and dumps to output.
     void main_thread() override;
 
 private:
-    /// Kotekan buffer which this process consumes from.
+    /// Kotekan buffer which this stage consumes from.
     /// Data should be packed as int16_t values, [r,i] in each 32b value.
-    struct Buffer *in_buf;
-    /// Kotekan buffer which this process produces into.
-    struct Buffer *out_buf;
+    struct Buffer* in_buf;
+    /// Kotekan buffer which this stage produces into.
+    struct Buffer* out_buf;
 
     /// Frame index for the input buffer.
     int frame_in;
     /// Frame index for the output buffer.
     int frame_out;
 
-    //options
+    // options
     /// FFTW buffer for staging the input samples.
-    fftwf_complex *samples;
+    fftwf_complex* samples;
     /// FFTW buffer which returns the FFT'd results.
-    fftwf_complex *spectrum;
+    fftwf_complex* spectrum;
     /// FFTW object containing information about the transform
     fftwf_plan fft_plan;
     /// Length of the FFT to run

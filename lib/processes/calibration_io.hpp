@@ -1,21 +1,22 @@
 /*****************************************
 @file
 @brief Write out eigenvectors to file.
-- eigenWriter : public KotekanProcess
+- eigenWriter : public kotekan::Stage
 - eigenFile
 *****************************************/
 
 #ifndef CAL_PROC
 #define CAL_PROC
 
-#include <unistd.h>
+#include "Stage.hpp"
 #include "buffer.h"
-#include "KotekanProcess.hpp"
 #include "errors.h"
 #include "util.h"
 #include "visUtil.hpp"
-#include <highfive/H5File.hpp>
+
 #include <highfive/H5DataSet.hpp>
+#include <highfive/H5File.hpp>
+#include <unistd.h>
 
 /**
  * @class eigenFile
@@ -43,11 +44,8 @@ public:
      * @param freqs The list of frequencies for which eigenvectors will be provided
      * @param inputs The list of inputs that make up the eigenvectors
      */
-    eigenFile(const std::string & fname,
-              const uint16_t & num_ev,
-              const size_t & num_times,
-              const std::vector<freq_ctype> & freqs,
-              const std::vector<input_ctype> & inputs);
+    eigenFile(const std::string& fname, const uint16_t& num_ev, const size_t& num_times,
+              const std::vector<freq_ctype>& freqs, const std::vector<input_ctype>& inputs);
     ~eigenFile();
 
     /// Flush the HDF5 file to disk
@@ -63,8 +61,8 @@ public:
      * @param erms The RMS value to write out
      */
     void write_eigenvectors(time_ctype new_time, uint32_t freq_ind,
-                            std::vector<cfloat> eigenvectors,
-                            std::vector<float> eigenvalues, float erms);
+                            std::vector<cfloat> eigenvectors, std::vector<float> eigenvalues,
+                            float erms);
 
     /// Access eigenvector dataset
     HighFive::DataSet evec();
@@ -80,7 +78,6 @@ public:
     HighFive::DataSet input();
 
 private:
-
     // file dataset dimensions
     size_t ntimes;
     size_t ninput;
@@ -92,17 +89,16 @@ private:
     size_t eof_ind;
 
     std::unique_ptr<HighFive::File> file;
-
 };
 
 /**
  * @class eigenWriter
- * @brief Consumer ``KotekanProcess`` that extracts eigenvectors etc from a ``visBuffer``
+ * @brief Consumer ``kotekan::Stage`` that extracts eigenvectors etc from a ``visBuffer``
  *        and writes them to disk in a rolling HDF5 file.
  *
- * This process reads the eigenvectors, eigenvalues, and RMS values carried in an input
+ * This stage reads the eigenvectors, eigenvalues, and RMS values carried in an input
  * visbility buffer and writes them to an ``eigenFile'' HDF5 file in single writer multiple
- * reader mode. This file has a specified length and rolls over when it fills up. 
+ * reader mode. This file has a specified length and rolls over when it fills up.
  *
  * @par Buffers
  * @buffer in_buf The kotekan buffer from which the data is read.
@@ -119,13 +115,12 @@ private:
  * @author  Tristan Pinsonneault-Marotte
  *
  */
-class eigenWriter : public KotekanProcess {
+class eigenWriter : public kotekan::Stage {
 
 public:
     /// Constructor. Loads config options. Creates output file.
-    eigenWriter(Config &config,
-                  const string& unique_name,
-                  bufferContainer &buffer_container);
+    eigenWriter(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& buffer_container);
 
     /// Destructor. Flushes file contents to disk.
     ~eigenWriter();
@@ -150,8 +145,7 @@ private:
     std::unique_ptr<eigenFile> file;
 
     /// Input buffer
-    Buffer * in_buf;
-
+    Buffer* in_buf;
 };
 
 

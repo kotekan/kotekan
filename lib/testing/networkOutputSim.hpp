@@ -1,24 +1,23 @@
 #ifndef NETWORK_OUTPUT_SIM
 #define NETWORK_OUTPUT_SIM
 
-#define SIM_CONSTANT   0
+#define SIM_CONSTANT 0
 #define SIM_FULL_RANGE 1
-#define SIM_SINE        2
+#define SIM_SINE 2
 
+#include "Stage.hpp"
 #include "buffer.h"
 #include "errors.h"
-#include "KotekanProcess.hpp"
 
-class networkOutputSim : public KotekanProcess {
+class networkOutputSim : public kotekan::Stage {
 public:
-    networkOutputSim(Config &config,
-                     const string& unique_name,
-                     bufferContainer &buffer_container);
+    networkOutputSim(kotekan::Config& config, const string& unique_name,
+                     kotekan::bufferContainer& buffer_container);
     virtual ~networkOutputSim();
     void main_thread() override;
 
 private:
-    struct Buffer * buf;
+    struct Buffer* buf;
     int num_links_in_group;
     int link_id;
     int pattern;
@@ -28,7 +27,6 @@ private:
     int32_t _samples_per_data_set;
     int32_t _num_local_freq;
     int32_t _num_elem;
-
 };
 
 #endif

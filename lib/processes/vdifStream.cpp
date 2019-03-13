@@ -1,30 +1,33 @@
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <sys/time.h>
+#include "vdifStream.hpp"
+
+#include "errors.h"
+#include "util.h"
+
 #include <arpa/inet.h>
+#include <functional>
 #include <netinet/in.h>
-#include <unistd.h>
 #include <stdio.h>
 #include <string.h>
-#include <functional>
 #include <string>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
 
-#include "vdifStream.hpp"
-#include "util.h"
-#include "errors.h"
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(vdifStream);
+REGISTER_KOTEKAN_STAGE(vdifStream);
 
 vdifStream::vdifStream(Config& config, const string& unique_name,
-                       bufferContainer &buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&vdifStream::main_thread, this)) {
+                       bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&vdifStream::main_thread, this)) {
 
     buf = get_buffer("vdif_in_buf");
     register_consumer(buf, unique_name.c_str());
 }
-vdifStream::~vdifStream() {
-}
+vdifStream::~vdifStream() {}
 
 void vdifStream::main_thread() {
 
@@ -33,7 +36,7 @@ void vdifStream::main_thread() {
     _vdif_server_ip = config.get<std::string>(unique_name, "vdif_server_ip");
 
     int frame_id = {0};
-    uint8_t * frame = NULL;
+    uint8_t* frame = NULL;
 
     double start_t, diff_t;
     int sleep_period = 3000;
@@ -51,7 +54,7 @@ void vdifStream::main_thread() {
         return;
     }
 
-    memset((char *) &saddr_remote, 0, saddr_len);
+    memset((char*)&saddr_remote, 0, saddr_len);
     saddr_remote.sin_family = AF_INET;
     saddr_remote.sin_port = htons(_vdif_port);
     if (inet_aton(_vdif_server_ip.c_str(), &saddr_remote.sin_addr) == 0) {
@@ -59,27 +62,26 @@ void vdifStream::main_thread() {
         return;
     }
 
-    while(!stop_thread) {
-//IT - commented out to test performance without INFO calls.
-//        INFO("vdif_stream; waiting for full buffer to send, server_ip:%s:%d",
-//             _vdif_server_ip.c_str(),
-//             _vdif_port);
+    while (!stop_thread) {
+        // IT - commented out to test performance without INFO calls.
+        //        INFO("vdif_stream; waiting for full buffer to send, server_ip:%s:%d",
+        //             _vdif_server_ip.c_str(),
+        //             _vdif_port);
 
         // Wait for a full buffer.
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL) break;
-//IT - commented out to test performance without INFO calls.
-//        INFO("vdif_stream; got full buffer, sending to VDIF server.");
+        if (frame == NULL)
+            break;
+        // IT - commented out to test performance without INFO calls.
+        //        INFO("vdif_stream; got full buffer, sending to VDIF server.");
 
         start_t = e_time();
 
         // Send data to remote server.
-        for (int i = 0; i < 16*625; ++i) {
+        for (int i = 0; i < 16 * 625; ++i) {
 
-            int bytes_sent = sendto(socket_fd,
-                             (void *)(&frame[packet_size*i]),
-                             packet_size, 0,
-                             (struct sockaddr *) &saddr_remote, saddr_len);
+            int bytes_sent = sendto(socket_fd, (void*)(&frame[packet_size * i]), packet_size, 0,
+                                    (struct sockaddr*)&saddr_remote, saddr_len);
 
             if (i % 50 == 0) {
                 usleep(sleep_period);
@@ -96,10 +98,9 @@ void vdifStream::main_thread() {
         }
 
         diff_t = e_time() - start_t;
-        INFO("vdif_stream: sent 1 seconds of vdif data to %s:%d in %f seconds; sleep set to %d microseconds",
-              _vdif_server_ip.c_str(),
-              _vdif_port,
-              diff_t, sleep_period);
+        INFO("vdif_stream: sent 1 seconds of vdif data to %s:%d in %f seconds; sleep set to %d "
+             "microseconds",
+             _vdif_server_ip.c_str(), _vdif_port, diff_t, sleep_period);
 
         if (diff_t < 0.96) {
             sleep_period += 50;

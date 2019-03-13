@@ -49,7 +49,7 @@ inline int32_t count_zeros(int32_t x) {
     x = x | (x >> 2);
     x = x | (x >> 4);
     x = x | (x >> 8);
-    x = x | (x >>16);
+    x = x | (x >> 16);
     return __builtin_popcount(~x);
 }
 
@@ -64,12 +64,12 @@ inline int32_t count_zeros(int32_t x) {
  * @returns The result of 2^e
  */
 inline float fast_pow(int8_t e) {
-    float * out_f;
+    float* out_f;
     // Construct float bitwise
     uint32_t out_i = ((uint32_t)(127 + e) << 23);
     // Cast into float
-    out_f = (float*) &out_i;
-    return * out_f;
+    out_f = (float*)&out_i;
+    return *out_f;
 }
 
 
@@ -84,7 +84,7 @@ inline float fast_pow(int8_t e) {
  */
 inline float bit_truncate_float(float val, float err) {
     // cast float memory into an int
-    int32_t *cast_val_ptr = (int32_t *) &val;
+    int32_t* cast_val_ptr = (int32_t*)&val;
     // extract the exponent and sign
     int32_t val_pre = cast_val_ptr[0] >> 23;
     // strip sign
@@ -94,7 +94,7 @@ inline float bit_truncate_float(float val, float err) {
     int32_t val_man = (cast_val_ptr[0] & 8388607) + 8388608;
     // scale the error to the integer representation of the mantissa
     // scale by 2**(23 + 127 - pow)
-    int32_t int_err = (int32_t) (err * fast_pow(150 - val_pow));
+    int32_t int_err = (int32_t)(err * fast_pow(150 - val_pow));
     // make sure hasn't overflowed. if set to 2**30-1, will surely round to 0.
     // must keep err < 2**30 for bit_truncate to work
     int_err = (int_err & HIGH_BITS) ? 1073741823 : int_err;
@@ -113,8 +113,7 @@ inline float bit_truncate_float(float val, float err) {
     // restore sign and exponent
     int32_t tr_val = tr_man | ((val_pow | (val_s << 8)) << 23);
     // cast back to float
-    float * tr_val_ptr = (float *) &tr_val;
+    float* tr_val_ptr = (float*)&tr_val;
 
     return tr_val_ptr[0];
 }
-

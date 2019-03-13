@@ -1,9 +1,9 @@
 #ifndef UPDATEQUEUE_HPP
 #define UPDATEQUEUE_HPP
 
-#include <deque>
-
 #include "visUtil.hpp"
+
+#include <deque>
 
 using namespace std;
 
@@ -18,106 +18,103 @@ using namespace std;
  *
  * @author Rick Nitsche
  */
-template <class T>
+template<class T>
 class updateQueue {
 public:
-        /**
-         * @brief Create an updateQueue of length len.
-         *
-         * @param len      The length of the queue.
-         */
-        updateQueue(const size_t len) : _len(len) {};
+    /**
+     * @brief Create an updateQueue of length len.
+     *
+     * @param len      The length of the queue.
+     */
+    updateQueue(const size_t len) : _len(len){};
 
-        /**
-         * @brief Create an updateQueue of length 0.
-         */
-        updateQueue() : _len(0) {};
+    /**
+     * @brief Create an updateQueue of length 0.
+     */
+    updateQueue() : _len(0){};
 
-        /**
-         * @brief Resize the queue.
-         * @param len   The new size.
-         */
-        void resize(const size_t len) {
-            _len = len;
+    /**
+     * @brief Resize the queue.
+     * @param len   The new size.
+     */
+    void resize(const size_t len) {
+        _len = len;
 
-            while (values.size() > _len)
-                values.pop_front();
-        }
+        while (values.size() > _len)
+            values.pop_front();
+    }
 
 
-        /**
-         * @brief Insert an update.
-         *
-         * Inserts an update into the queue, according to its timestamp. Removes
-         * The oldest update if otherwise the queue would exceed its length.
-         *
-         * @param timestamp      The timestamp of the inserted update.
-         * @param update         The value of the inserted update.
-         */
-        void insert(timespec timestamp, T&& update) {
-            // usually just push update to the back of the queue
-            if (!values.size() || timestamp > values.crbegin()->first)
-                values.push_back(pair<timespec, T>(timestamp, move(update)));
-            else { // this is more complicated...
-                auto u = values.rbegin();
-                while (u->first > timestamp) {
-                    u++;
-                    if (u == values.crend())
-                        break;
-                }
-                // check if timestamp is identical -> replace update
-
-                if (u != values.crend() && u->first == timestamp)
-                    u->second = move(update);
-                else
-                    // insert the new update where it belongs in the queue
-                    values.insert(u.base(),
-                                    pair<timespec, T>(timestamp, move(update)));
-            }
-
-            if (values.size() > _len)
-                values.pop_front();
-        };
-
-        /**
-         * @brief Fetch the latest update for a frame with the given timestamp.
-         *
-         * Finds the update from the queue that should be applied to a frame
-         * with the given timestamp.
-         *
-         * @param   timestamp           The timestamp of a frame.
-         *
-         * @returns     The value of the most recent update from before the
-         *              given timestamp and the timestamp associated to the
-         *              update. If the queue is empty, a nullptr is returned
-         *              as update.
-         */
-        std::pair<timespec, const T*> get_update(timespec timestamp) {
-            auto u = values.crbegin();
-
-            if (u == values.crend()) {
-                return std::pair<timespec, const T*>({0,0}, nullptr);
-            }
-
+    /**
+     * @brief Insert an update.
+     *
+     * Inserts an update into the queue, according to its timestamp. Removes
+     * The oldest update if otherwise the queue would exceed its length.
+     *
+     * @param timestamp      The timestamp of the inserted update.
+     * @param update         The value of the inserted update.
+     */
+    void insert(timespec timestamp, T&& update) {
+        // usually just push update to the back of the queue
+        if (!values.size() || timestamp > values.crbegin()->first)
+            values.push_back(pair<timespec, T>(timestamp, move(update)));
+        else { // this is more complicated...
+            auto u = values.rbegin();
             while (u->first > timestamp) {
                 u++;
-                if (u == values.crend()) {
-                    u--;
+                if (u == values.crend())
                     break;
-
-                }
             }
-            return std::pair<timespec,const T*>(u->first, &(u->second));
-        };
+            // check if timestamp is identical -> replace update
+
+            if (u != values.crend() && u->first == timestamp)
+                u->second = move(update);
+            else
+                // insert the new update where it belongs in the queue
+                values.insert(u.base(), pair<timespec, T>(timestamp, move(update)));
+        }
+
+        if (values.size() > _len)
+            values.pop_front();
+    };
+
+    /**
+     * @brief Fetch the latest update for a frame with the given timestamp.
+     *
+     * Finds the update from the queue that should be applied to a frame
+     * with the given timestamp.
+     *
+     * @param   timestamp           The timestamp of a frame.
+     *
+     * @returns     The value of the most recent update from before the
+     *              given timestamp and the timestamp associated to the
+     *              update. If the queue is empty, a nullptr is returned
+     *              as update.
+     */
+    std::pair<timespec, const T*> get_update(timespec timestamp) {
+        auto u = values.crbegin();
+
+        if (u == values.crend()) {
+            return std::pair<timespec, const T*>({0, 0}, nullptr);
+        }
+
+        while (u->first > timestamp) {
+            u++;
+            if (u == values.crend()) {
+                u--;
+                break;
+            }
+        }
+        return std::pair<timespec, const T*>(u->first, &(u->second));
+    };
 
 private:
-        // The updates with their timestamps ("use this value for frames with
-        // timestamps later than this").
-        deque<pair<timespec, T>> values;
+    // The updates with their timestamps ("use this value for frames with
+    // timestamps later than this").
+    deque<pair<timespec, T>> values;
 
-        // Length of the queue.
-        size_t _len;
+    // Length of the queue.
+    size_t _len;
 };
 
 #endif // UPDATEQUEUE_HPP
-

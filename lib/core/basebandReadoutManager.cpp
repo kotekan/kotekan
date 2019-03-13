@@ -1,6 +1,8 @@
 #include "basebandReadoutManager.hpp"
 
 
+namespace kotekan {
+
 void basebandReadoutManager::add(basebandRequest req) {
     std::unique_lock<std::mutex> lock(requests_mtx);
 
@@ -12,7 +14,8 @@ void basebandReadoutManager::add(basebandRequest req) {
 }
 
 
-std::unique_ptr<basebandReadoutManager::requestStatusMutex> basebandReadoutManager::get_next_waiting_request() {
+std::unique_ptr<basebandReadoutManager::requestStatusMutex>
+basebandReadoutManager::get_next_waiting_request() {
     std::unique_lock<std::mutex> lock(requests_mtx);
 
     // NB: the requests_mtx is released while the thread is waiting on
@@ -34,7 +37,7 @@ basebandReadoutManager::requestStatusMutex basebandReadoutManager::get_next_read
     while (current != waiting && current != tail) {
         basebandDumpStatus& ev = *++current;
         if (ev.state == basebandDumpStatus::State::INPROGRESS) {
-            return { ev, current_mtx };
+            return {ev, current_mtx};
         }
     }
 
@@ -79,3 +82,5 @@ std::unique_ptr<basebandDumpStatus> basebandReadoutManager::find(uint64_t event_
 
     return nullptr;
 }
+
+} // namespace kotekan

@@ -1,22 +1,23 @@
 /**
  * @file
- * @brief A simple process to take an intensity stream and sum down.
- *  - integratePowerStream : public KotekanProcess
+ * @brief A simple stage to take an intensity stream and sum down.
+ *  - integratePowerStream : public kotekan::Stage
  */
 
 #ifndef INTEGRATE_POWER_STREAM_H
 #define INTEGRATE_POWER_STREAM_H
 
-#include "powerStreamUtil.hpp"
-#include <sys/socket.h>
 #include "Config.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
-#include "KotekanProcess.hpp"
+#include "powerStreamUtil.hpp"
+
 #include <atomic>
+#include <sys/socket.h>
 
 /**
  * @class integratePowerStream
- * @brief A simple process to take a @c radioPowerStream and sum down.
+ * @brief A simple stage to take a @c radioPowerStream and sum down.
  *
  * This is a simple signal processing block which takes power data from an input buffer,
  * integrates over time, and stuffs the results into an output buffer.
@@ -38,12 +39,11 @@
  * @author Keith Vanderlinde
  *
  */
-class integratePowerStream : public KotekanProcess {
+class integratePowerStream : public kotekan::Stage {
 public:
     /// Constructor.
-    integratePowerStream(Config& config,
-                           const string& unique_name,
-                           bufferContainer &buffer_container);
+    integratePowerStream(kotekan::Config& config, const string& unique_name,
+                         kotekan::bufferContainer& buffer_container);
 
     /// Destructor.
     virtual ~integratePowerStream();
@@ -52,22 +52,22 @@ public:
     void main_thread() override;
 
 private:
-	void tcpConnect();
+    void tcpConnect();
 
-    /// Kotekan buffer which this process consumes from.
+    /// Kotekan buffer which this stage consumes from.
     /// Data should be packed with IntensityPacketHeader's.
-    struct Buffer *in_buf;
-    /// Kotekan buffer which this process produces into.
-    struct Buffer *out_buf;
+    struct Buffer* in_buf;
+    /// Kotekan buffer which this stage produces into.
+    struct Buffer* out_buf;
 
-    ///Number of frequencies in the buffer
+    /// Number of frequencies in the buffer
     int freqs;
-    ///Number of times in the buffer
+    /// Number of times in the buffer
     int times;
-    ///Number of elems in the buffer
+    /// Number of elems in the buffer
     int elems;
 
-    //options
+    // options
     /// Number of timesteps to sum for each output value.
     int integration_length;
 };

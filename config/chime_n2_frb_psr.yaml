@@ -121,7 +121,7 @@ file_output_buffers:
 
 dpdk:
   udp_packet_size: 4928
-  kotekan_process: dpdkWrapper
+  kotekan_stage: dpdkWrapper
   mode: shuffle4
   num_lcores: 4
   network_out_buf_0: gpu_input_buffer_0
@@ -161,7 +161,7 @@ gpu:
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
     ew_spacing: [0,-0.1,0.1,0.2]
     northmost_beam: 90.0
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 0
     in_buffers:
       network_buf: gpu_input_buffer_0
@@ -176,7 +176,7 @@ gpu:
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
     ew_spacing: [0,-0.1,0.1,0.2]
     northmost_beam: 90.0
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 1
     in_buffers:
       network_buf: gpu_input_buffer_1
@@ -191,7 +191,7 @@ gpu:
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
     ew_spacing: [0,-0.1,0.1,0.2]
     northmost_beam: 90.0
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 2
     in_buffers:
       network_buf: gpu_input_buffer_2
@@ -206,7 +206,7 @@ gpu:
     psr_scaling: [48,48,48,48,48,48,48,48,48,48]
     ew_spacing: [0,-0.1,0.1,0.2]
     northmost_beam: 90.0
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 3
     in_buffers:
       network_buf: gpu_input_buffer_3
@@ -218,19 +218,19 @@ gpu:
 accumulate:
     cpu_affinity: [8]
     acc_0:
-        kotekan_process: accumulate
+        kotekan_stage: accumulate
         in_buf: gpu_output_buffer_0
         out_buf: file_output_buffer_0
     acc_1:
-        kotekan_process: accumulate
+        kotekan_stage: accumulate
         in_buf: gpu_output_buffer_1
         out_buf: file_output_buffer_1
     acc_2:
-        kotekan_process: accumulate
+        kotekan_stage: accumulate
         in_buf: gpu_output_buffer_2
         out_buf: file_output_buffer_2
     acc_3:
-        kotekan_process: accumulate
+        kotekan_stage: accumulate
         in_buf: gpu_output_buffer_3
         out_buf: file_output_buffer_3
 
@@ -249,7 +249,7 @@ frb:
   postprocess:
     log_level: warn
     cpu_affinity: [11]
-    kotekan_process: frbPostProcess
+    kotekan_stage: frbPostProcess
     incoherent_beams: [0]
     #incoherent_truncation: 25.    
     network_input_buffer_0: beamform_output_buffer_0
@@ -264,7 +264,7 @@ frb:
     out_buf: frb_output_buffer
   buffer_read:
     cpu_affinity: [11]
-    kotekan_process: frbNetworkProcess
+    kotekan_stage: frbNetworkProcess
     in_buf: frb_output_buffer
     udp_frb_port_number: 1313
     number_of_nodes: 256
@@ -304,7 +304,7 @@ pulsar:
   postprocess:
     log_level: info
     cpu_affinity: [11]
-    kotekan_process: pulsarPostProcess
+    kotekan_stage: pulsarPostProcess
     network_input_buffer_0: beamform_pulsar_output_buffer_0
     network_input_buffer_1: beamform_pulsar_output_buffer_1
     network_input_buffer_2: beamform_pulsar_output_buffer_2

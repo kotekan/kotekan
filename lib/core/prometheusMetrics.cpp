@@ -1,11 +1,13 @@
 #include "prometheusMetrics.hpp"
+
 #include "errors.h"
 #include "metadata.h"
 
-prometheusMetrics::prometheusMetrics() {
-}
+namespace kotekan {
 
-prometheusMetrics &prometheusMetrics::instance() {
+prometheusMetrics::prometheusMetrics() {}
+
+prometheusMetrics& prometheusMetrics::instance() {
     static prometheusMetrics _instance;
     return _instance;
 }
@@ -14,25 +16,23 @@ prometheusMetrics &prometheusMetrics::instance() {
 prometheusMetrics::~prometheusMetrics() {
     restServer::instance().remove_get_callback("/metrics");
 
-    for (auto &process_metric : process_metrics)
-        delete process_metric.second;
+    for (auto& stage_metric : stage_metrics)
+        delete stage_metric.second;
 }
 
-prometheusMetrics::metric::~metric() {
-}
+prometheusMetrics::metric::~metric() {}
 
-void prometheusMetrics::remove_metric(const string& name,
-                                      const string& process_name,
+void prometheusMetrics::remove_metric(const string& name, const string& stage_name,
                                       const string& labels) {
     std::lock_guard<std::mutex> lock(metrics_lock);
-    std::tuple<string, string, string> key {name, process_name, labels};
+    std::tuple<string, string, string> key{name, stage_name, labels};
 
-    if (process_metrics.count(key) == 1) {
-        delete process_metrics[key];
-        process_metrics.erase(key);
+    if (stage_metrics.count(key) == 1) {
+        delete stage_metrics[key];
+        stage_metrics.erase(key);
     } else {
-        WARN("Tried to remove metric (%s, %s, %s), which does not exist",
-                name.c_str(), process_name.c_str(), labels.c_str());
+        WARN("Tried to remove metric (%s, %s, %s), which does not exist", name.c_str(),
+             stage_name.c_str(), labels.c_str());
     }
 }
 
@@ -42,12 +42,12 @@ void prometheusMetrics::metrics_callback(connectionInstance& conn) {
     {
         std::lock_guard<std::mutex> lock(metrics_lock);
 
-        for (auto &element : process_metrics) {
+        for (auto& element : stage_metrics) {
             string metric_name = std::get<0>(element.first);
-            string process_name = std::get<1>(element.first);
+            string stage_name = std::get<1>(element.first);
             string extra_labels = std::get<2>(element.first);
 
-            output += metric_name + "{process_name=\"" + process_name + "\"";
+            output += metric_name + "{stage_name=\"" + stage_name + "\"";
             if (extra_labels != "")
                 output += "," + extra_labels;
             output += "} " + element.second->to_string() + " "
@@ -63,7 +63,7 @@ void prometheusMetrics::metrics_callback(connectionInstance& conn) {
 void prometheusMetrics::register_with_server(restServer* rest_server) {
     using namespace std::placeholders;
     rest_server->register_get_callback("/metrics",
-            std::bind(&prometheusMetrics::metrics_callback, this, _1));
+                                       std::bind(&prometheusMetrics::metrics_callback, this, _1));
 }
 
 uint64_t prometheusMetrics::get_time_in_milliseconds() {
@@ -72,3 +72,5 @@ uint64_t prometheusMetrics::get_time_in_milliseconds() {
 
     return (uint64_t)(tv.tv_sec) * 1000 + (uint64_t)(tv.tv_usec) / 1000;
 }
+
+} // namespace kotekan

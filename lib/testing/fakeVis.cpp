@@ -1,8 +1,15 @@
 #include "fakeVis.hpp"
 
-#include <math.h>
-#include <sys/time.h>
-#include <time.h>
+#include "StageFactory.hpp"
+#include "datasetManager.hpp"
+#include "datasetState.hpp"
+#include "errors.h"
+#include "version.h"
+#include "visBuffer.hpp"
+#include "visUtil.hpp"
+
+#include "gsl-lite.hpp"
+
 #include <algorithm>
 #include <atomic>
 #include <complex>
@@ -12,41 +19,35 @@
 #include <fmt.hpp>
 #include <functional>
 #include <iterator>
+#include <math.h>
 #include <memory>
 #include <regex>
 #include <stdexcept>
+#include <sys/time.h>
+#include <time.h>
 #include <tuple>
 #include <type_traits>
 #include <utility>
 
-#include "gsl-lite.hpp"
-
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "processFactory.hpp"
-#include "version.h"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
-
 
 using namespace std::placeholders;
 
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
 
-REGISTER_KOTEKAN_PROCESS(fakeVis);
-REGISTER_KOTEKAN_PROCESS(replaceVis);
+
+REGISTER_KOTEKAN_STAGE(fakeVis);
+REGISTER_KOTEKAN_STAGE(replaceVis);
 
 
-fakeVis::fakeVis(Config &config,
-                 const string& unique_name,
-                 bufferContainer &buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&fakeVis::main_thread, this)) {
+fakeVis::fakeVis(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&fakeVis::main_thread, this)) {
 
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");
     block_size = config.get<size_t>(unique_name, "block_size");
-    num_eigenvectors =  config.get<size_t>(unique_name, "num_ev");
+    num_eigenvectors = config.get<size_t>(unique_name, "num_ev");
 
     // Get the output buffer
     std::string buffer_name = config.get<std::string>(unique_name, "out_buf");
@@ -70,14 +71,13 @@ fakeVis::fakeVis(Config &config,
     fill_map["fill_ij"] = std::bind(&fakeVis::fill_mode_fill_ij, this, _1);
     fill_map["phase_ij"] = std::bind(&fakeVis::fill_mode_phase_ij, this, _1);
     fill_map["chime"] = std::bind(&fakeVis::fill_mode_chime, this, _1);
-    fill_map["test_pattern_simple"] = std::bind(
-                &fakeVis::fill_mode_test_pattern_simple, this, _1);
-    fill_map["test_pattern_freq"] = std::bind(
-                &fakeVis::fill_mode_test_pattern_freq, this, _1);
+    fill_map["test_pattern_simple"] = std::bind(&fakeVis::fill_mode_test_pattern_simple, this, _1);
+    fill_map["test_pattern_freq"] = std::bind(&fakeVis::fill_mode_test_pattern_freq, this, _1);
+    fill_map["test_pattern_inputs"] = std::bind(&fakeVis::fill_mode_test_pattern_inputs, this, _1);
 
     mode = config.get_default<std::string>(unique_name, "mode", "default");
 
-    if(fill_map.count(mode) == 0) {
+    if (fill_map.count(mode) == 0) {
         throw std::invalid_argument("unknown fill type " + mode);
     }
     INFO("Using fill type: %s", mode.c_str());
@@ -93,28 +93,24 @@ fakeVis::fakeVis(Config &config,
 
     if (mode == "test_pattern_simple") {
         test_pattern_value = std::vector<cfloat>(1);
-        test_pattern_value[0] = config.get_default<cfloat>(
-                    unique_name, "default_val", {1., 0.});
+        test_pattern_value[0] = config.get_default<cfloat>(unique_name, "default_val", {1., 0.});
     } else if (mode == "test_pattern_freq") {
-        cfloat default_val = config.get_default<cfloat>(unique_name,
-                                                 "default_val", {128., 0.});
-        std::vector<uint32_t> bins = config.get<std::vector<uint32_t>>(
-                       unique_name, "frequencies");
-        std::vector<cfloat> bin_values = config.get<std::vector<cfloat>>(
-                       unique_name, "freq_values");
+        cfloat default_val = config.get_default<cfloat>(unique_name, "default_val", {128., 0.});
+        std::vector<uint32_t> bins = config.get<std::vector<uint32_t>>(unique_name, "frequencies");
+        std::vector<cfloat> bin_values =
+            config.get<std::vector<cfloat>>(unique_name, "freq_values");
         if (bins.size() != bin_values.size()) {
             throw std::invalid_argument("fakeVis: lengths of frequencies ("
-                                        + std::to_string(bins.size())
-                                        + ") and freq_value ("
+                                        + std::to_string(bins.size()) + ") and freq_value ("
                                         + std::to_string(bin_values.size())
                                         + ") arrays have to be equal.");
         }
         if (bins.size() > freq.size()) {
-            throw std::invalid_argument(
-                        "fakeVis: length of frequencies array ("
-                        + std::to_string(bins.size()) + ") can not be larger " \
-                        "than size of freq_ids array (" +
-                        std::to_string(freq.size()) + ").");
+            throw std::invalid_argument("fakeVis: length of frequencies array ("
+                                        + std::to_string(bins.size())
+                                        + ") can not be larger "
+                                          "than size of freq_ids array ("
+                                        + std::to_string(freq.size()) + ").");
         }
 
         test_pattern_value = std::vector<cfloat>(freq.size());
@@ -125,10 +121,32 @@ fakeVis::fakeVis(Config &config,
                     break;
             }
             if (j == bins.size())
-                test_pattern_value[i] = default_val;
+                test_pattern_value[i] = default_val * std::conj(default_val);
             else
-                test_pattern_value[i] = bin_values.at(j);
+                test_pattern_value[i] = bin_values.at(j) * std::conj(bin_values.at(j));
         }
+        DEBUG("Using test pattern mode %s with default value %f+%fj and %d frequency values",
+              mode.c_str(), default_val.real(), default_val.imag(), bins.size());
+    } else if (mode == "test_pattern_inputs") {
+        std::vector<cfloat> input_values =
+            config.get<std::vector<cfloat>>(unique_name, "input_values");
+        if (input_values.size() != num_elements) {
+            throw std::invalid_argument("fakeVis: lengths of input values ("
+                                        + std::to_string(input_values.size())
+                                        + ") and number of elements ("
+                                        + std::to_string(num_elements) + ") have to be equal.");
+        }
+
+        size_t num_prods = num_elements * (num_elements + 1) / 2;
+        test_pattern_value = std::vector<cfloat>(num_prods);
+        size_t ind = 0;
+        for (size_t i = 0; i < num_elements; i++) {
+            for (size_t j = 0; j <= i; j++) {
+                test_pattern_value[ind] = input_values.at(j) * std::conj(input_values.at(i));
+                ind++;
+            }
+        }
+        DEBUG("Using test pattern mode %s with %d input values", mode.c_str(), input_values.size());
     }
 }
 
@@ -151,16 +169,14 @@ void fakeVis::main_thread() {
     if (_fixed_dset_id) {
         ds_id = _dset_id;
     } else {
-        auto mstate = std::make_unique<metadataState>("not set", "fakeVis",
-                                                      get_git_commit_hash());
+        auto mstate = std::make_unique<metadataState>("not set", "fakeVis", get_git_commit_hash());
 
         std::vector<std::pair<uint32_t, freq_ctype>> fspec;
         // TODO: CHIME specific
-        std::transform(
-            std::begin(freq), std::end(freq), std::back_inserter(fspec),
-            [] (const uint32_t& id) -> std::pair<uint32_t, freq_ctype> {
-                return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
-            });
+        std::transform(std::begin(freq), std::end(freq), std::back_inserter(fspec),
+                       [](const uint32_t& id) -> std::pair<uint32_t, freq_ctype> {
+                           return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
+                       });
         auto fstate = std::make_unique<freqState>(fspec, std::move(mstate));
 
         std::vector<input_ctype> ispec;
@@ -173,8 +189,7 @@ void fakeVis::main_thread() {
             for (uint16_t j = i; j < num_elements; j++)
                 pspec.push_back({i, j});
         auto pstate = std::make_unique<prodState>(pspec, std::move(istate));
-        auto evstate = std::make_unique<eigenvalueState>(num_eigenvectors,
-                                                         std::move(pstate));
+        auto evstate = std::make_unique<eigenvalueState>(num_eigenvectors, std::move(pstate));
 
         auto s = dm.add_state(std::move(evstate));
 
@@ -191,15 +206,14 @@ void fakeVis::main_thread() {
             DEBUG("Making fake visBuffer for freq=%i, fpga_seq=%i", f, fpga_seq);
 
             // Wait for the buffer frame to be free
-            if (wait_for_empty_frame(out_buf, unique_name.c_str(),
-                                     output_frame_id) == nullptr) {
+            if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
                 break;
             }
 
             // Allocate metadata and get frame
             allocate_new_metadata_object(out_buf, output_frame_id);
-            auto output_frame = visFrameView(out_buf, output_frame_id,
-                                             num_elements, num_eigenvectors);
+            auto output_frame =
+                visFrameView(out_buf, output_frame_id, num_elements, num_eigenvectors);
 
             output_frame.dataset_id = ds_id;
 
@@ -217,13 +231,12 @@ void fakeVis::main_thread() {
             fill(output_frame);
 
             // gains
-            for(uint32_t i = 0; i < num_elements; i++) {
+            for (uint32_t i = 0; i < num_elements; i++) {
                 output_frame.gain[i] = 1;
             }
 
             // Mark the buffers and move on
-            mark_frame_full(out_buf, unique_name.c_str(),
-                            output_frame_id);
+            mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
 
             // Advance the current frame ids
             output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
@@ -231,14 +244,14 @@ void fakeVis::main_thread() {
 
         // Increment time
         fpga_seq += delta_seq;
-        frame_count++;  // NOTE: frame count increase once for all freq
+        frame_count++; // NOTE: frame count increase once for all freq
 
         // Increment the timespec
         ts.tv_sec += ((ts.tv_nsec + delta_ns) / 1000000000);
         ts.tv_nsec = (ts.tv_nsec + delta_ns) % 1000000000;
 
         // Cause kotekan to exit if we've hit the maximum number of frames
-        if(num_frames > 0 && frame_count >= (unsigned) num_frames) {
+        if (num_frames > 0 && frame_count >= (unsigned)num_frames) {
             INFO("Reached frame limit [%i frames]. Exiting kotekan...", num_frames);
             std::raise(SIGINT);
             return;
@@ -246,7 +259,7 @@ void fakeVis::main_thread() {
 
         // If requested sleep for the extra time required to produce a fake vis
         // at the correct cadence
-        if(this->wait) {
+        if (this->wait) {
             double diff = cadence - (current_time() - start);
             timespec ts_diff = double_to_ts(diff);
             nanosleep(&ts_diff, nullptr);
@@ -255,35 +268,34 @@ void fakeVis::main_thread() {
 }
 
 
-void fakeVis::fill_mode_default(visFrameView& frame)
-{
+void fakeVis::fill_mode_default(visFrameView& frame) {
     auto out_vis = frame.vis;
     // Set diagonal elements to (0, row)
     for (uint32_t i = 0; i < num_elements; i++) {
         uint32_t pi = cmap(i, i, num_elements);
-        out_vis[pi] = {0., (float) i};
+        out_vis[pi] = {0., (float)i};
     }
     // Save metadata in first few cells
-    if ( out_vis.size() < 3 ) {
-        ERROR("Number of elements (%d) is too small to encode the 3 debugging" \
-              " values of fill-mode 'default' in fake visibilities." \
-              "\nExiting...", num_elements);
+    if (out_vis.size() < 3) {
+        ERROR("Number of elements (%d) is too small to encode the 3 debugging"
+              " values of fill-mode 'default' in fake visibilities."
+              "\nExiting...",
+              num_elements);
         raise(SIGINT);
     } else {
         // For simplicity overwrite diagonal if needed
-        out_vis[0] = {(float) std::get<0>(frame.time), 0.0};
-        out_vis[1] = {(float) ts_to_double(std::get<1>(frame.time)), 0.0};
-        out_vis[2] = {(float) frame.freq_id, 0.};
-        //out_vis[3] = {(float) output_frame_id, 0.};
+        out_vis[0] = {(float)std::get<0>(frame.time), 0.0};
+        out_vis[1] = {(float)ts_to_double(std::get<1>(frame.time)), 0.0};
+        out_vis[2] = {(float)frame.freq_id, 0.};
+        // out_vis[3] = {(float) output_frame_id, 0.};
     }
     fill_non_vis(frame);
 }
 
-void fakeVis::fill_mode_fill_ij(visFrameView& frame)
-{
+void fakeVis::fill_mode_fill_ij(visFrameView& frame) {
     int ind = 0;
-    for(uint32_t i = 0; i < num_elements; i++) {
-        for(uint32_t j = i; j < num_elements; j++) {
+    for (uint32_t i = 0; i < num_elements; i++) {
+        for (uint32_t j = i; j < num_elements; j++) {
             frame.vis[ind] = {(float)i, (float)j};
             ind++;
         }
@@ -291,12 +303,11 @@ void fakeVis::fill_mode_fill_ij(visFrameView& frame)
     fill_non_vis(frame);
 }
 
-void fakeVis::fill_mode_phase_ij(visFrameView& frame)
-{
+void fakeVis::fill_mode_phase_ij(visFrameView& frame) {
     int ind = 0;
-    for(uint32_t i = 0; i < num_elements; i++) {
-        for(uint32_t j = i; j < num_elements; j++) {
-            float phase = (float) i - (float) j;
+    for (uint32_t i = 0; i < num_elements; i++) {
+        for (uint32_t j = i; j < num_elements; j++) {
+            float phase = (float)i - (float)j;
             frame.vis[ind] = {cosf(phase), sinf(phase)};
             ind++;
         }
@@ -304,11 +315,10 @@ void fakeVis::fill_mode_phase_ij(visFrameView& frame)
     fill_non_vis(frame);
 }
 
-void fakeVis::fill_mode_chime(visFrameView& frame)
-{
+void fakeVis::fill_mode_chime(visFrameView& frame) {
     int ind = 0;
-    for(uint32_t i = 0; i < num_elements; i++) {
-        for(uint32_t j = i; j < num_elements; j++) {
+    for (uint32_t i = 0; i < num_elements; i++) {
+        for (uint32_t j = i; j < num_elements; j++) {
             int cyl_i = i / 512;
             int cyl_j = j / 512;
 
@@ -322,12 +332,11 @@ void fakeVis::fill_mode_chime(visFrameView& frame)
     fill_non_vis(frame);
 }
 
-void fakeVis::fill_mode_test_pattern_simple(visFrameView& frame)
-{
+void fakeVis::fill_mode_test_pattern_simple(visFrameView& frame) {
     // Fill vis
     int ind = 0;
-    for(uint32_t i = 0; i < num_elements; i++) {
-        for(uint32_t j = i; j < num_elements; j++) {
+    for (uint32_t i = 0; i < num_elements; i++) {
+        for (uint32_t j = i; j < num_elements; j++) {
             frame.vis[ind] = {1, 0};
             ind++;
         }
@@ -345,8 +354,8 @@ void fakeVis::fill_mode_test_pattern_simple(visFrameView& frame)
 
     // Fill weights
     ind = 0;
-    for(uint32_t i = 0; i < num_elements; i++) {
-        for(uint32_t j = i; j < num_elements; j++) {
+    for (uint32_t i = 0; i < num_elements; i++) {
+        for (uint32_t j = i; j < num_elements; j++) {
             frame.weight[ind] = 1.;
             ind++;
         }
@@ -357,14 +366,13 @@ void fakeVis::fill_mode_test_pattern_simple(visFrameView& frame)
     std::fill(frame.gain.begin(), frame.gain.end(), 1.0);
 }
 
-void fakeVis::fill_mode_test_pattern_freq(visFrameView& frame)
-{
+void fakeVis::fill_mode_test_pattern_freq(visFrameView& frame) {
     cfloat fill_value = test_pattern_value.at(frame.freq_id);
 
     // Fill vis
     int ind = 0;
-    for(uint32_t i = 0; i < num_elements; i++) {
-        for(uint32_t j = i; j < num_elements; j++) {
+    for (uint32_t i = 0; i < num_elements; i++) {
+        for (uint32_t j = i; j < num_elements; j++) {
             frame.vis[ind] = fill_value;
             ind++;
         }
@@ -382,8 +390,8 @@ void fakeVis::fill_mode_test_pattern_freq(visFrameView& frame)
 
     // Fill weights
     ind = 0;
-    for(uint32_t i = 0; i < num_elements; i++) {
-        for(uint32_t j = i; j < num_elements; j++) {
+    for (uint32_t i = 0; i < num_elements; i++) {
+        for (uint32_t j = i; j < num_elements; j++) {
             frame.weight[ind] = fill_value.real();
             ind++;
         }
@@ -394,8 +402,40 @@ void fakeVis::fill_mode_test_pattern_freq(visFrameView& frame)
     std::fill(frame.gain.begin(), frame.gain.end(), 1.0);
 }
 
-void fakeVis::fill_non_vis(visFrameView& frame)
-{
+void fakeVis::fill_mode_test_pattern_inputs(visFrameView& frame) {
+    // Fill vis
+    int ind = 0;
+    for (uint32_t i = 0; i < num_elements; i++) {
+        for (uint32_t j = i; j < num_elements; j++) {
+            frame.vis[ind] = test_pattern_value[ind];
+            ind++;
+        }
+    }
+    // Fill ev
+    for (uint32_t i = 0; i < num_eigenvectors; i++) {
+        for (uint32_t j = 0; j < num_elements; j++) {
+            int k = i * num_elements + j;
+            frame.evec[k] = {(float)i, 1};
+        }
+        frame.eval[i] = i;
+    }
+    frame.erms = 1;
+
+    // Fill weights
+    ind = 0;
+    for (uint32_t i = 0; i < num_elements; i++) {
+        for (uint32_t j = i; j < num_elements; j++) {
+            frame.weight[ind] = 1;
+            ind++;
+        }
+    }
+
+    // Set flags and gains
+    std::fill(frame.flags.begin(), frame.flags.end(), 1.0);
+    std::fill(frame.gain.begin(), frame.gain.end(), 1.0);
+}
+
+void fakeVis::fill_non_vis(visFrameView& frame) {
     // Set ev section
     for (uint32_t i = 0; i < num_eigenvectors; i++) {
         for (uint32_t j = 0; j < num_elements; j++) {
@@ -409,8 +449,8 @@ void fakeVis::fill_non_vis(visFrameView& frame)
     // Set weights
     int ind = 0;
     const float weight_fill = zero_weight ? 0.0 : 1.0;
-    for(uint32_t i = 0; i < num_elements; i++) {
-        for(uint32_t j = i; j < num_elements; j++) {
+    for (uint32_t i = 0; i < num_elements; i++) {
+        for (uint32_t j = i; j < num_elements; j++) {
             frame.weight[ind] = weight_fill;
             ind++;
         }
@@ -419,14 +459,11 @@ void fakeVis::fill_non_vis(visFrameView& frame)
     // Set flags and gains
     std::fill(frame.flags.begin(), frame.flags.end(), 1.0);
     std::fill(frame.gain.begin(), frame.gain.end(), 1.0);
-
 }
 
-replaceVis::replaceVis(Config& config,
-                       const string& unique_name,
-                       bufferContainer &buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&replaceVis::main_thread, this)) {
+replaceVis::replaceVis(Config& config, const string& unique_name,
+                       bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&replaceVis::main_thread, this)) {
 
     // Setup the input buffer
     in_buf = get_buffer("in_buf");
@@ -445,14 +482,12 @@ void replaceVis::main_thread() {
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
-        if(wait_for_full_frame(in_buf, unique_name.c_str(),
-                               input_frame_id) == nullptr) {
+        if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
             break;
         }
 
         // Wait for the output buffer to be empty of data
-        if(wait_for_empty_frame(out_buf, unique_name.c_str(),
-                                output_frame_id) == nullptr) {
+        if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
             break;
         }
         // Create view to input frame
@@ -460,13 +495,10 @@ void replaceVis::main_thread() {
 
         // Copy input frame to output frame and create view
         allocate_new_metadata_object(out_buf, output_frame_id);
-        auto output_frame = visFrameView(out_buf,
-                                         output_frame_id, input_frame);
+        auto output_frame = visFrameView(out_buf, output_frame_id, input_frame);
 
-        for(uint32_t i = 0; i < output_frame.num_prod; i++) {
-            float real = (i % 2 == 0 ?
-                          output_frame.freq_id :
-                          std::get<0>(output_frame.time));
+        for (uint32_t i = 0; i < output_frame.num_prod; i++) {
+            float real = (i % 2 == 0 ? output_frame.freq_id : std::get<0>(output_frame.time));
             float imag = i;
 
             output_frame.vis[i] = {real, imag};

@@ -1,30 +1,30 @@
 /*****************************************
 @file
-@brief Processes for compressing visibility data.
+@brief Stage for compressing visibility data.
 - baselineCompression
 *****************************************/
 #ifndef VIS_COMPRESSION_HPP
 #define VIS_COMPRESSION_HPP
 
-#include <sys/types.h>
-#include <atomic>
-#include <cstdint>
-#include <functional>
-#include <iosfwd>
-#include <map>
-#include <string>
-#include <thread>
-#include <utility>
-#include <vector>
-
 #include "Config.hpp"
-#include "KotekanProcess.hpp"
+#include "Stage.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
 #include "datasetState.hpp"
 #include "prometheusMetrics.hpp"
 #include "visUtil.hpp"
+
+#include <atomic>
+#include <cstdint>
+#include <functional>
+#include <iosfwd>
+#include <map>
+#include <string>
+#include <sys/types.h>
+#include <thread>
+#include <utility>
+#include <vector>
 
 // This type is used a lot so let's use an alias
 using json = nlohmann::json;
@@ -61,23 +61,20 @@ using json = nlohmann::json;
  *
  * @author Richard Shaw
  */
-class baselineCompression : public KotekanProcess {
+class baselineCompression : public kotekan::Stage {
 
 public:
-
     // Default constructor
-    baselineCompression(Config &config,
-                        const string& unique_name,
-                        bufferContainer &buffer_container);
+    baselineCompression(kotekan::Config& config, const string& unique_name,
+                        kotekan::bufferContainer& buffer_container);
 
-    // Main loop for the process: Creates n threads that do the compression.
+    // Main loop for the stage: Creates n threads that do the compression.
     void main_thread() override;
 
 private:
-
-	/// Entrancepoint for n threads. Each thread takes frames with a
-	/// different frame_id from the buffer and compresses them.
-    void compress_thread();
+    /// Entrancepoint for n threads. Each thread takes frames with a
+    /// different frame_id from the buffer and compresses them.
+    void compress_thread(uint32_t thread_id);
 
     /// Tracks input dataset ID and gets output dataset IDs from manager
     dset_id_t change_dataset_state(dset_id_t input_ds_id);
@@ -93,11 +90,8 @@ private:
     // vector of (stack_output_index, conjugate) pairs. In this conjugate
     // describes whether the input must be complex conjugated prior to stacking.
     // Inputs are the usual input map and product map.
-    using stack_def_fn = std::function<
-        std::pair<uint32_t, std::vector<rstack_ctype>>(
-            const std::vector<input_ctype>&, const std::vector<prod_ctype>&
-        )
-    >;
+    using stack_def_fn = std::function<std::pair<uint32_t, std::vector<rstack_ctype>>(
+        const std::vector<input_ctype>&, const std::vector<prod_ctype>&)>;
 
     /// Map from the name of a stack to its definiting function.
     std::map<std::string, stack_def_fn> stack_type_defs;
@@ -119,6 +113,7 @@ private:
     // Frame IDs, shared by compress threads and their mutex.
     frameID frame_id_in;
     frameID frame_id_out;
+    uint64_t frame_counter_global;
     std::mutex m_frame_ids;
 };
 
@@ -134,10 +129,8 @@ private:
  *
  * @returns Stack definition.
  **/
-std::pair<uint32_t, std::vector<rstack_ctype>> stack_diagonal(
-    const std::vector<input_ctype>& inputs,
-    const std::vector<prod_ctype>& prods
-);
+std::pair<uint32_t, std::vector<rstack_ctype>>
+stack_diagonal(const std::vector<input_ctype>& inputs, const std::vector<prod_ctype>& prods);
 
 /**
  * @brief Stack redundant baselines between cylinder pairs for CHIME.
@@ -154,10 +147,8 @@ std::pair<uint32_t, std::vector<rstack_ctype>> stack_diagonal(
  *
  * @returns Stack definition.
  **/
-std::pair<uint32_t, std::vector<rstack_ctype>> stack_chime_in_cyl(
-    const std::vector<input_ctype>& inputs,
-    const std::vector<prod_ctype>& prods
-);
+std::pair<uint32_t, std::vector<rstack_ctype>>
+stack_chime_in_cyl(const std::vector<input_ctype>& inputs, const std::vector<prod_ctype>& prods);
 
 /**
  * @brief Take an a rstack map and generate a stack->prod mapping.
@@ -167,8 +158,8 @@ std::pair<uint32_t, std::vector<rstack_ctype>> stack_chime_in_cyl(
  *
  * @returns The stack->prod mapping.
  **/
-std::vector<stack_ctype> invert_stack(
-    uint32_t num_stack, const std::vector<rstack_ctype>& stack_map);
+std::vector<stack_ctype> invert_stack(uint32_t num_stack,
+                                      const std::vector<rstack_ctype>& stack_map);
 
 
 #define CYL_A 0
@@ -207,7 +198,7 @@ struct chimeFeed {
 /**
  * @brief Implement an output operator to help debugging.
  **/
-std::ostream & operator<<(std::ostream &os, const chimeFeed& f);
+std::ostream& operator<<(std::ostream& os, const chimeFeed& f);
 
 
 #endif

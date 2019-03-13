@@ -2,30 +2,27 @@
 #define GPU_HSA_COMMAND_H
 
 #include "Config.hpp"
-#include "errors.h"
 #include "buffer.h"
-#include "chimeMetadata.h"
-#include "hsaDeviceInterface.hpp"
 #include "bufferContainer.hpp"
-#include "kotekanLogging.hpp"
-#include "hsaBase.h"
+#include "chimeMetadata.h"
+#include "errors.h"
 #include "factory.hpp"
-
-#include <stdio.h>
-#include <string>
-#include <assert.h>
-#include <string.h>
-#include <iostream>
-#include <fstream>
-#include <string>
-#include <stdlib.h>
-#include <unistd.h>
-
 #include "gpuCommand.hpp"
-
 #include "hsa/hsa.h"
-#include "hsa/hsa_ext_finalize.h"
 #include "hsa/hsa_ext_amd.h"
+#include "hsa/hsa_ext_finalize.h"
+#include "hsaBase.h"
+#include "hsaDeviceInterface.hpp"
+#include "kotekanLogging.hpp"
+
+#include <assert.h>
+#include <fstream>
+#include <iostream>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <string>
+#include <unistd.h>
 
 struct kernelParams {
     uint16_t workgroup_size_x;
@@ -34,7 +31,7 @@ struct kernelParams {
     uint32_t grid_size_x;
     uint32_t grid_size_y;
     uint32_t grid_size_z;
-    uint16_t num_dims;  // Could this be automatically generated from above?
+    uint16_t num_dims; // Could this be automatically generated from above?
     uint16_t private_segment_size;
     uint16_t group_segment_size;
 };
@@ -50,19 +47,17 @@ struct kernelParams {
 // This allow us to have host->gpu copies, kernels, and gpu->host copies
 // running co-currently, at the expense of some complexity and extra memory.
 
-class hsaCommand: public gpuCommand
-{
+class hsaCommand : public gpuCommand {
 public:
     // Kernel file name is optional.
-    hsaCommand(Config &config, const string &unique_name,
-               bufferContainer &host_buffers, hsaDeviceInterface &device,
-               const string &default_kernel_command="",
-               const string &default_kernel_file_name="");
+    hsaCommand(kotekan::Config& config, const string& unique_name,
+               kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device,
+               const string& default_kernel_command = "",
+               const string& default_kernel_file_name = "");
     virtual ~hsaCommand();
 
     // Adds either a copy or kernel to one of the hardware queues.
-    virtual hsa_signal_t execute(int gpu_frame_id,
-                                    hsa_signal_t precede_signal) = 0;
+    virtual hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) = 0;
 
     // Should clean any signals used by the command.
     // Note that as a byproduct of this, one shouldn't use the signal after this
@@ -74,30 +69,29 @@ public:
     string get_kernel_file_name();
 
 protected:
-
     // Extract the code handle for the specified kernelName from the specified fileName
     // Returns a 64-bit code object which can be used with an AQL packet
-    uint64_t load_hsaco_file(string &file_name, string &kernel_name);
+    uint64_t load_hsaco_file(string& file_name, string& kernel_name);
 
     // Creates the memory needed for the kernel args.
     void allocate_kernel_arg_memory(int max_size);
 
     // Requires that kernel_args[frame_id] has been populated with the
     // kernel arguments.
-    hsa_signal_t enqueue_kernel(const kernelParams &dims, const int gpu_frame_id);
+    hsa_signal_t enqueue_kernel(const kernelParams& dims, const int gpu_frame_id);
 
     // Final signals array
     // Note a value of zero for one of the signals means that
     // it isn't currently set.
-    hsa_signal_t * signals;
+    hsa_signal_t* signals;
 
-    hsaDeviceInterface &device;
+    hsaDeviceInterface& device;
 
     // Pointers to kernel args
     // Note, not used for all commands, only kernel commands.
     // It's possible we might want to break this into two classes,
     // but for now this works.
-    void ** kernel_args;
+    void** kernel_args;
 
     // Pointer to the kernel
     uint64_t kernel_object = 0;
@@ -109,11 +103,10 @@ protected:
 };
 
 // Create a factory for hsaCommands
-CREATE_FACTORY(hsaCommand, //const string &, const string &,
-                Config &, const string &,
-                bufferContainer &, hsaDeviceInterface &);
-#define REGISTER_HSA_COMMAND(newCommand) REGISTER_NAMED_TYPE_WITH_FACTORY(hsaCommand, newCommand, #newCommand)
+CREATE_FACTORY(hsaCommand, // const string &, const string &,
+               kotekan::Config&, const string&, kotekan::bufferContainer&, hsaDeviceInterface&);
+#define REGISTER_HSA_COMMAND(newCommand)                                                           \
+    REGISTER_NAMED_TYPE_WITH_FACTORY(hsaCommand, newCommand, #newCommand)
 
 
 #endif // GPU_COMMAND_H
-

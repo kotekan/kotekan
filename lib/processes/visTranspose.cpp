@@ -1,39 +1,43 @@
 #include "visTranspose.hpp"
 
-#include <cxxabi.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <algorithm>
-#include <atomic>
-#include <complex>
-#include <csignal>
-#include <cstdint>
-#include <exception>
-#include <functional>
-#include <future>
-#include <iterator>
-#include <regex>
-#include <stdexcept>
-#include <utility>
-#include <inttypes.h>
-
-#include "gsl-lite.hpp"
-
+#include "StageFactory.hpp"
 #include "datasetManager.hpp"
 #include "datasetState.hpp"
 #include "errors.h"
-#include "processFactory.hpp"
 #include "prometheusMetrics.hpp"
 #include "version.h"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
 
-REGISTER_KOTEKAN_PROCESS(visTranspose);
+#include "gsl-lite.hpp"
 
-visTranspose::visTranspose(Config &config, const string& unique_name,
-        bufferContainer &buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-            std::bind(&visTranspose::main_thread, this)) {
+#include <algorithm>
+#include <atomic>
+#include <complex>
+#include <csignal>
+#include <cstdint>
+#include <cxxabi.h>
+#include <exception>
+#include <functional>
+#include <future>
+#include <inttypes.h>
+#include <iterator>
+#include <regex>
+#include <stdexcept>
+#include <sys/types.h>
+#include <unistd.h>
+#include <utility>
+
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::prometheusMetrics;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(visTranspose);
+
+visTranspose::visTranspose(Config& config, const string& unique_name,
+                           bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&visTranspose::main_thread, this)) {
 
     // Fetch the buffers, register
     in_buf = get_buffer("in_buf");
@@ -42,11 +46,12 @@ visTranspose::visTranspose(Config &config, const string& unique_name,
     // get chunk dimensions for write from config file
     chunk = config.get<std::vector<int>>(unique_name, "chunk_size");
     if (chunk.size() != 3)
-        throw std::invalid_argument("Chunk size needs exactly three elements " \
-                "(has " + std::to_string(chunk.size()) + ").");
+        throw std::invalid_argument("Chunk size needs exactly three elements "
+                                    "(has "
+                                    + std::to_string(chunk.size()) + ").");
     if (chunk[0] < 1 || chunk[1] < 1 || chunk[2] < 1)
-        throw std::invalid_argument("visTranspose: Config: Chunk size needs " \
-                "to be equal to or greater than one.");
+        throw std::invalid_argument("visTranspose: Config: Chunk size needs "
+                                    "to be equal to or greater than one.");
     chunk_t = chunk[2];
     chunk_f = chunk[0];
 
@@ -71,20 +76,13 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     datasetManager& dm = datasetManager::instance();
 
     // Get the states synchronously.
-    auto tstate_fut = std::async(&datasetManager::dataset_state<timeState>, &dm,
-                                 ds_id);
-    auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>, &dm,
-                                 ds_id);
-    auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm,
-                                 ds_id);
-    auto istate_fut = std::async(&datasetManager::dataset_state<inputState>,
-                                 &dm, ds_id);
-    auto evstate_fut = std::async(
-                &datasetManager::dataset_state<eigenvalueState>, &dm, ds_id);
-    auto mstate_fut = std::async(
-                &datasetManager::dataset_state<metadataState>, &dm, ds_id);
-    auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>,
-                                 &dm, ds_id);
+    auto tstate_fut = std::async(&datasetManager::dataset_state<timeState>, &dm, ds_id);
+    auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>, &dm, ds_id);
+    auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm, ds_id);
+    auto istate_fut = std::async(&datasetManager::dataset_state<inputState>, &dm, ds_id);
+    auto evstate_fut = std::async(&datasetManager::dataset_state<eigenvalueState>, &dm, ds_id);
+    auto mstate_fut = std::async(&datasetManager::dataset_state<metadataState>, &dm, ds_id);
+    auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>, &dm, ds_id);
 
     const stackState* sstate = sstate_fut.get();
     const metadataState* mstate = mstate_fut.get();
@@ -95,8 +93,8 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     const inputState* istate = istate_fut.get();
 
 
-    if (mstate == nullptr || tstate == nullptr || pstate == nullptr ||
-        fstate == nullptr || istate == nullptr || evstate == nullptr)
+    if (mstate == nullptr || tstate == nullptr || pstate == nullptr || fstate == nullptr
+        || istate == nullptr || evstate == nullptr)
         return false;
 
     // TODO split instrument_name up into the real instrument name,
@@ -107,12 +105,11 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
 
     std::string git_commit_hash_dataset = mstate->get_git_version_tag();
 
-    //TODO: enforce this if build type == release?
-    if (git_commit_hash_dataset
-                != metadata["git_version_tag"].get<std::string>())
-        INFO("Git version tags don't match: dataset 0x%" PRIx64 " has tag %s," \
-             "while the local git version tag is %s", ds_id,
-             git_commit_hash_dataset.c_str(),
+    // TODO: enforce this if build type == release?
+    if (git_commit_hash_dataset != metadata["git_version_tag"].get<std::string>())
+        INFO("Git version tags don't match: dataset 0x%" PRIx64 " has tag %s,"
+             "while the local git version tag is %s",
+             ds_id, git_commit_hash_dataset.c_str(),
              metadata["git_version_tag"].get<std::string>().c_str());
 
     times = tstate->get_times();
@@ -123,9 +120,8 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     // unzip the vector of pairs in freqState
     auto freq_pairs = fstate->get_freqs();
     for (auto it = std::make_move_iterator(freq_pairs.begin()),
-             end = std::make_move_iterator(freq_pairs.end());
-         it != end; ++it)
-    {
+              end = std::make_move_iterator(freq_pairs.end());
+         it != end; ++it) {
         freqs.push_back(std::move(it->second));
     }
 
@@ -145,8 +141,8 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     // the dimension of the visibilities is different for stacked data
     eff_prod_dim = (stack.size() > 0) ? stack.size() : num_prod;
 
-    DEBUG("Dataset 0x%" PRIx64 " has %d times, %d frequencies, %d products",
-          ds_id, num_time, num_freq, eff_prod_dim);
+    DEBUG("Dataset 0x%" PRIx64 " has %d times, %d frequencies, %d products", ds_id, num_time,
+          num_freq, eff_prod_dim);
 
     // Ensure chunk_size not too large
     chunk_t = std::min(chunk_t, num_time);
@@ -155,14 +151,14 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     write_f = chunk_f;
 
     // Allocate memory for collecting frames
-    vis.resize(chunk_t*chunk_f*eff_prod_dim);
-    vis_weight.resize(chunk_t*chunk_f*eff_prod_dim);
-    eval.resize(chunk_t*chunk_f*num_ev);
-    evec.resize(chunk_t*chunk_f*num_ev*num_input);
-    erms.resize(chunk_t*chunk_f);
-    gain.resize(chunk_t*chunk_f*num_input);
-    frac_lost.resize(chunk_t*chunk_f);
-    input_flags.resize(chunk_t*num_input);
+    vis.resize(chunk_t * chunk_f * eff_prod_dim);
+    vis_weight.resize(chunk_t * chunk_f * eff_prod_dim);
+    eval.resize(chunk_t * chunk_f * num_ev);
+    evec.resize(chunk_t * chunk_f * num_ev * num_input);
+    erms.resize(chunk_t * chunk_f);
+    gain.resize(chunk_t * chunk_f * num_input);
+    frac_lost.resize(chunk_t * chunk_f);
+    input_flags.resize(chunk_t * num_input);
     std::fill(input_flags.begin(), input_flags.end(), 0.);
 
     return true;
@@ -181,22 +177,21 @@ void visTranspose::main_thread() {
     uint64_t frame_size = 0;
 
     // Wait for a frame in the input buffer in order to get the dataset ID
-    if((wait_for_full_frame(in_buf, unique_name.c_str(), 0)) == nullptr) {
+    if ((wait_for_full_frame(in_buf, unique_name.c_str(), 0)) == nullptr) {
         return;
     }
     auto frame = visFrameView(in_buf, 0);
     dset_id_t ds_id = frame.dataset_id;
-    auto future_ds_state = std::async(&visTranspose::get_dataset_state, this,
-                                      ds_id);
+    auto future_ds_state = std::async(&visTranspose::get_dataset_state, this, ds_id);
 
     if (!future_ds_state.get()) {
-       ERROR("Set to not use dataset_broker and couldn't find " \
-             "ancestor of dataset 0x%" PRIx64 ". Make sure there is a process"\
-             " upstream in the config, that adds the dataset states." \
-             "\nExiting...",
-             ds_id);
-       raise(SIGINT);
-   }
+        ERROR("Set to not use dataset_broker and couldn't find "
+              "ancestor of dataset 0x%" PRIx64 ". Make sure there is a stage"
+              " upstream in the config, that adds the dataset states."
+              "\nExiting...",
+              ds_id);
+        raise(SIGINT);
+    }
 
     // Once the async get_dataset_state() is done, we have all the metadata to
     // create a file.
@@ -205,28 +200,25 @@ void visTranspose::main_thread() {
 
     // Create HDF5 file
     if (stack.size() > 0) {
-        file = std::unique_ptr<visFileArchive>(new visFileArchive(filename,
-                    metadata, times, freqs, inputs, prods,
-                    stack, reverse_stack, num_ev, chunk)
-        );
+        file = std::unique_ptr<visFileArchive>(new visFileArchive(
+            filename, metadata, times, freqs, inputs, prods, stack, reverse_stack, num_ev, chunk));
     } else {
-        file = std::unique_ptr<visFileArchive>(new visFileArchive(filename,
-                    metadata, times, freqs, inputs, prods, num_ev, chunk)
-        );
+        file = std::unique_ptr<visFileArchive>(
+            new visFileArchive(filename, metadata, times, freqs, inputs, prods, num_ev, chunk));
     }
 
     while (!stop_thread) {
         // Wait for a full frame in the input buffer
-        if((wait_for_full_frame(in_buf, unique_name.c_str(),
-                                        frame_id)) == nullptr) {
+        if ((wait_for_full_frame(in_buf, unique_name.c_str(), frame_id)) == nullptr) {
             break;
         }
         auto frame = visFrameView(in_buf, frame_id);
 
         if (frame.dataset_id != ds_id) {
-            ERROR("Dataset ID of incoming frames changed from 0x%" PRIx64 " to"\
-                  "0x%" PRIx64 ". " \
-                  "Not supported, exiting...", ds_id, frame.dataset_id);
+            ERROR("Dataset ID of incoming frames changed from 0x%" PRIx64 " to"
+                  "0x%" PRIx64 ". "
+                  "Not supported, exiting...",
+                  ds_id, frame.dataset_id);
             raise(SIGINT);
         }
 
@@ -234,19 +226,18 @@ void visTranspose::main_thread() {
         // Time-transpose as frames come in
         // Fastest varying is time (needs to be consistent with reader!)
         offset = fi * write_t;
-        strided_copy(frame.vis.data(), vis.data(), offset*eff_prod_dim + ti,
-                write_t, eff_prod_dim);
-        strided_copy(frame.weight.data(), vis_weight.data(),
-                offset*eff_prod_dim + ti, write_t, eff_prod_dim);
-        strided_copy(frame.eval.data(), eval.data(), fi*num_ev*write_t + ti,
-                write_t, num_ev);
-        strided_copy(frame.evec.data(), evec.data(),
-                fi*num_ev*num_input*write_t + ti, write_t, num_ev*num_input);
+        strided_copy(frame.vis.data(), vis.data(), offset * eff_prod_dim + ti, write_t,
+                     eff_prod_dim);
+        strided_copy(frame.weight.data(), vis_weight.data(), offset * eff_prod_dim + ti, write_t,
+                     eff_prod_dim);
+        strided_copy(frame.eval.data(), eval.data(), fi * num_ev * write_t + ti, write_t, num_ev);
+        strided_copy(frame.evec.data(), evec.data(), fi * num_ev * num_input * write_t + ti,
+                     write_t, num_ev * num_input);
         erms[offset + ti] = frame.erms;
-        frac_lost[offset + ti] = frame.fpga_seq_length == 0 ?
-                1. : 1. - float(frame.fpga_seq_total) / frame.fpga_seq_length;
-        strided_copy(frame.gain.data(), gain.data(), offset*num_input + ti,
-                write_t, num_input);
+        frac_lost[offset + ti] = frame.fpga_seq_length == 0
+                                     ? 1.
+                                     : 1. - float(frame.fpga_seq_total) / frame.fpga_seq_length;
+        strided_copy(frame.gain.data(), gain.data(), offset * num_input + ti, write_t, num_input);
 
         // Only copy flags if we haven't already
         if (!found_flags[ti]) {
@@ -261,8 +252,7 @@ void visTranspose::main_thread() {
             if (nz_flags) {
                 // Copy flags into the buffer. These will not be overwritten until
                 // the chunks increment in time
-                strided_copy(frame.flags.data(), input_flags.data(), ti,
-                        write_t, num_input);
+                strided_copy(frame.flags.data(), input_flags.data(), ti, write_t, num_input);
                 found_flags[ti] = true;
             }
         }
@@ -281,11 +271,10 @@ void visTranspose::main_thread() {
 
             // export prometheus metric
             if (frame_size == 0)
-                frame_size = frame.calculate_buffer_layout(num_input, num_prod,
-                        num_ev).first;
-            prometheusMetrics::instance().add_process_metric(
+                frame_size = frame.calculate_buffer_layout(num_input, num_prod, num_ev).first;
+            prometheusMetrics::instance().add_stage_metric(
                 "kotekan_vistranspose_data_transposed_bytes", unique_name,
-                        frame_size * frames_so_far);
+                frame_size * frames_so_far);
         }
 
         frames_so_far++;
@@ -305,8 +294,7 @@ void visTranspose::write() {
 
     file->write_block("vis", f_ind, t_ind, write_f, write_t, vis.data());
 
-    file->write_block("vis_weight", f_ind, t_ind, write_f, write_t,
-            vis_weight.data());
+    file->write_block("vis_weight", f_ind, t_ind, write_f, write_t, vis_weight.data());
 
     if (num_ev > 0) {
         file->write_block("eval", f_ind, t_ind, write_f, write_t, eval.data());
@@ -314,14 +302,11 @@ void visTranspose::write() {
         file->write_block("erms", f_ind, t_ind, write_f, write_t, erms.data());
     }
 
-    file->write_block("gain", f_ind, t_ind, write_f, write_t,
-            gain.data());
+    file->write_block("gain", f_ind, t_ind, write_f, write_t, gain.data());
 
-    file->write_block("flags/frac_lost", f_ind, t_ind, write_f, write_t,
-            frac_lost.data());
+    file->write_block("flags/frac_lost", f_ind, t_ind, write_f, write_t, frac_lost.data());
 
-    file->write_block("flags/inputs", f_ind, t_ind, write_f, write_t,
-            input_flags.data());
+    file->write_block("flags/inputs", f_ind, t_ind, write_f, write_t, input_flags.data());
 }
 
 // increment between chunks

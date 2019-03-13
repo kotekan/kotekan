@@ -1,34 +1,34 @@
 #include "chimeMetadataDump.hpp"
-#include "util.h"
-#include "fpga_header_functions.h"
+
 #include "chimeMetadata.h"
 #include "errors.h"
+#include "fpga_header_functions.h"
+#include "util.h"
+
 #include <time.h>
 
-REGISTER_KOTEKAN_PROCESS(chimeMetadataDump);
+REGISTER_KOTEKAN_STAGE(chimeMetadataDump);
 
-chimeMetadataDump::chimeMetadataDump(Config& config,
-                        const string& unique_name,
-                        bufferContainer &buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container,
-                   std::bind(&chimeMetadataDump::main_thread, this)) {
+chimeMetadataDump::chimeMetadataDump(kotekan::Config& config, const string& unique_name,
+                                     kotekan::bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&chimeMetadataDump::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 }
 
-chimeMetadataDump::~chimeMetadataDump() {
-}
+chimeMetadataDump::~chimeMetadataDump() {}
 
 void chimeMetadataDump::main_thread() {
 
     int frame_id = 0;
-    uint8_t * frame = NULL;
+    uint8_t* frame = NULL;
 
     while (!stop_thread) {
 
         frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-        if (frame == NULL) break;
+        if (frame == NULL)
+            break;
 
         uint64_t fpga_seq = get_fpga_seq_num(in_buf, frame_id);
         stream_id_t stream_id = get_stream_id_t(in_buf, frame_id);
@@ -47,14 +47,13 @@ void chimeMetadataDump::main_thread() {
         strftime(gps_time_buf, sizeof(gps_time_buf), "%Y-%m-%d %H:%M:%S", l_gps_time);
 
         INFO("Metadata for %s[%d]: FPGA Seq: %" PRIu64
-                ", stream ID = {create ID: %d, slot ID: %d, link ID: %d, freq ID: %d}, lost samples: %" PRIu64
-                 " freq_bin: %d, freq: %f MHz , time stamp: %ld.%06ld (%s.%06ld), GPS time: %ld.%06ld (%s.%09ld)",
-                in_buf->buffer_name, frame_id, fpga_seq,
-                stream_id.crate_id, stream_id.slot_id,
-                stream_id.link_id, stream_id.unused, lost_samples,
-                bin_number_chime(&stream_id), freq_from_bin(bin_number_chime(&stream_id)),
-                time_v.tv_sec, time_v.tv_usec, time_buf, time_v.tv_usec,
-                time_s.tv_sec, time_s.tv_nsec, gps_time_buf, time_s.tv_nsec);
+             ", stream ID = {create ID: %d, slot ID: %d, link ID: %d, freq ID: %d}, lost samples: "
+             "%" PRIu64 " freq_bin: %d, freq: %f MHz , time stamp: %ld.%06ld (%s.%06ld), GPS time: "
+             "%ld.%06ld (%s.%09ld)",
+             in_buf->buffer_name, frame_id, fpga_seq, stream_id.crate_id, stream_id.slot_id,
+             stream_id.link_id, stream_id.unused, lost_samples, bin_number_chime(&stream_id),
+             freq_from_bin(bin_number_chime(&stream_id)), time_v.tv_sec, time_v.tv_usec, time_buf,
+             time_v.tv_usec, time_s.tv_sec, time_s.tv_nsec, gps_time_buf, time_s.tv_nsec);
 
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
         frame_id = (frame_id + 1) % in_buf->num_frames;

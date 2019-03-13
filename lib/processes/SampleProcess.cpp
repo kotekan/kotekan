@@ -1,14 +1,18 @@
 #include "SampleProcess.hpp"
+
 #include "errors.h"
 
-REGISTER_KOTEKAN_PROCESS(SampleProcess);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
 
-SampleProcess::SampleProcess(Config &config, const string& unique_name, bufferContainer &buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container, std::bind(&SampleProcess::main_thread, this)) {
-}
+REGISTER_KOTEKAN_STAGE(SampleProcess);
 
-SampleProcess::~SampleProcess() {
-}
+SampleProcess::SampleProcess(Config& config, const string& unique_name,
+                             bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&SampleProcess::main_thread, this)) {}
+
+SampleProcess::~SampleProcess() {}
 
 void SampleProcess::main_thread() {
     INFO("Sample Process, reached main_thread!");
@@ -16,4 +20,3 @@ void SampleProcess::main_thread() {
         INFO("In thread!");
     }
 }
-

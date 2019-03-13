@@ -22,8 +22,8 @@ and listing their content functions or classes.
 
   /**
    * @file
-   * @brief An FFTW-based F-engine process.
-   *  - fftwEngine : public KotekanProcess
+   * @brief An FFTW-based F-engine stage.
+   *  - fftwEngine : public kotekan::Stage
    */
 
 Classes
@@ -44,12 +44,12 @@ All classes should include a comment block immediately preceeding their declarat
    *
    */
 
-kotekanProcesses
-++++++++++++++++
+kotekan::Stages
++++++++++++++++
 Should additionally describe their use of (and requirements for) config file options.
 Special doxygen aliases exist to help make these explicit.
 
-- ``@par Buffer`` should lead a section describing the buffers used by the process
+- ``@par Buffer`` should lead a section describing the buffers used by the stage
 
  - ``@buffer`` commands should list the input and output buffers or array of buffers
 
@@ -65,10 +65,10 @@ A simple example comment follows:
 .. code-block:: c++
 
   /**
-   * @class exampleProcess
-   * @brief @c kotekanProcess to demonstrate @c doxygen formatting.
+   * @class exampleStage
+   * @brief @c Kotekan Stage to demonstrate @c doxygen formatting.
    *
-   * This is a detailed description of the example process.
+   * This is a detailed description of the example stage.
    *
    * @par Buffers
    * @buffer in_buf Input kotekan buffer, to be consumed from.

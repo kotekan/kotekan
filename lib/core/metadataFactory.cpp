@@ -1,26 +1,31 @@
 #include "metadataFactory.hpp"
-#include "metadata.h"
-#include "chimeMetadata.h"
-#include "visBuffer.hpp"
+
 #include "Config.hpp"
+#include "chimeMetadata.h"
+#include "metadata.h"
+#include "visBuffer.hpp"
 
-metadataFactory::metadataFactory(Config& config) : config(config) {
-}
+using json = nlohmann::json;
+using std::map;
+using std::string;
 
-metadataFactory::~metadataFactory() {
-}
+namespace kotekan {
 
-map<string, struct metadataPool *> metadataFactory::build_pools() {
-    map<string, struct metadataPool *> pools;
+metadataFactory::metadataFactory(Config& config) : config(config) {}
 
-    // Start parsing tree, put the processes in the "pools" vector
+metadataFactory::~metadataFactory() {}
+
+map<string, struct metadataPool*> metadataFactory::build_pools() {
+    map<string, struct metadataPool*> pools;
+
+    // Start parsing tree, put the metadata_pool's in the "pools" vector
     build_from_tree(pools, config.get_full_config_json(), "");
 
     return pools;
 }
 
-void metadataFactory::build_from_tree(map<string, struct metadataPool *> &pools,
-                                      json& config_tree, const string& path) {
+void metadataFactory::build_from_tree(map<string, struct metadataPool*>& pools, json& config_tree,
+                                      const string& path) {
 
     for (json::iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
         // If the item isn't an object we can just ignore it.
@@ -28,28 +33,30 @@ void metadataFactory::build_from_tree(map<string, struct metadataPool *> &pools,
             continue;
         }
 
-        // Check if this is a kotekan_process block, and if so create the process.
+        // Check if this is a kotekan_metadata_pool block, and if so create the metadata_pool.
         string pool_type = it.value().value("kotekan_metadata_pool", "none");
         if (pool_type != "none") {
             string unique_path = path + "/" + it.key();
             string name = it.key();
             if (pools.count(name) != 0) {
-                throw std::runtime_error("The metadata object named " + name + " has already been defined!");
+                throw std::runtime_error("The metadata object named " + name
+                                         + " has already been defined!");
             }
             pools[name] = new_pool(pool_type, unique_path);
             continue;
         }
 
         // Recursive part.
-        // This is a section/scope not a process block.
+        // This is a section/scope not a kotekan_metadata_pool block.
         build_from_tree(pools, it.value(), path + "/" + it.key());
     }
 }
 
 
-struct metadataPool* metadataFactory::new_pool(const string &pool_type, const string &location) {
+struct metadataPool* metadataFactory::new_pool(const string& pool_type, const string& location) {
 
-    INFO("Creating metadata pool of type: %s, at config tree path: %s", pool_type.c_str(), location.c_str());
+    INFO("Creating metadata pool of type: %s, at config tree path: %s", pool_type.c_str(),
+         location.c_str());
 
     uint32_t num_metadata_objects = config.get<uint32_t>(location, "num_metadata_objects");
 
@@ -63,3 +70,5 @@ struct metadataPool* metadataFactory::new_pool(const string &pool_type, const st
     // No metadata found
     throw std::runtime_error("No metadata object named: " + pool_type);
 }
+
+} // namespace kotekan

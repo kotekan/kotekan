@@ -3,21 +3,16 @@
 
 #include "hsaSubframeCommand.hpp"
 
-class hsaPresumKernel: public hsaSubframeCommand
-{
+class hsaPresumKernel : public hsaSubframeCommand {
 public:
-
-    hsaPresumKernel(
-                  Config &config, const string &unique_name,
-                  bufferContainer &host_buffers, hsaDeviceInterface &device);
+    hsaPresumKernel(kotekan::Config& config, const string& unique_name,
+                    kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaPresumKernel();
 
-    hsa_signal_t execute(int gpu_frame_id,
-                            hsa_signal_t precede_signal) override;
+    hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
 private:
-
     int32_t input_frame_len;
     int32_t presum_len;
 

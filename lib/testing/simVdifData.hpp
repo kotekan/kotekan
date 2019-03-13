@@ -1,20 +1,20 @@
 #ifndef SIM_VDIF_DATA_H
 #define SIM_VDIF_DATA_H
 
+#include "Stage.hpp"
 #include "buffer.h"
-#include "KotekanProcess.hpp"
 #include "vdif_functions.h"
 
-class simVdifData : public KotekanProcess {
+class simVdifData : public kotekan::Stage {
 public:
-    simVdifData(Config& config, const string& unique_name,
-                        bufferContainer &buffer_container);
+    simVdifData(kotekan::Config& config, const string& unique_name,
+                kotekan::bufferContainer& buffer_container);
     ~simVdifData();
     void main_thread() override;
-private:
-    struct Buffer *buf;
-    double start_time, stop_time;
 
+private:
+    struct Buffer* buf;
+    double start_time, stop_time;
 };
 
 #endif

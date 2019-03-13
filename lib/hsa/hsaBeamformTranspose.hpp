@@ -13,11 +13,11 @@
  * @class hsaBeamformTranspose
  * @brief hsaCommand to transpose FRB data from time-pol-beam to pol-beam-time
  *
- * This is an hsaCommand that transposes FRB output from the beamform 
- * kernel with format time-pol-beam to pol-beam-time, in order to 
- * minimize striding for the next step of upchannelization, which 
- * needs time to be fastest varying. 32 blank columns are padded to the output 
- * of this transpose for GPU memory access optimization. 
+ * This is an hsaCommand that transposes FRB output from the beamform
+ * kernel with format time-pol-beam to pol-beam-time, in order to
+ * minimize striding for the next step of upchannelization, which
+ * needs time to be fastest varying. 32 blank columns are padded to the output
+ * of this transpose for GPU memory access optimization.
  *
  * @requires_kernel    transpose.hasco
  *
@@ -38,19 +38,17 @@
  *
  */
 
-class hsaBeamformTranspose: public hsaCommand
-{
+class hsaBeamformTranspose : public hsaCommand {
 public:
     /// Constructor, initializes internal variables from config
-    hsaBeamformTranspose(Config &config, const string &unique_name,
-                         bufferContainer &host_buffers, hsaDeviceInterface &device);
+    hsaBeamformTranspose(kotekan::Config& config, const string& unique_name,
+                         kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor
     virtual ~hsaBeamformTranspose();
 
     /// Allocate kernel argument buffer, set kernel dimensions, enqueue kernel
-    hsa_signal_t execute(int gpu_frame_id,
-                         hsa_signal_t precede_signal) override;
+    hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
 private:
     /// Input length, should be size of num_elem x nsamp x 2

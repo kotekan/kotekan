@@ -6,11 +6,11 @@
 #ifndef EIGENVISITER_HPP
 #define EIGENVISITER_HPP
 
-#include "KotekanProcess.hpp"
+#include "LinearAlgebra.hpp" // TODO: figure out how to forward declare eig_t
+#include "Stage.hpp"
 #include "buffer.h"
 #include "datasetManager.hpp"
 #include "visUtil.hpp"
-#include "LinearAlgebra.hpp" // TODO: figure out how to forward declare eig_t
 
 
 /**
@@ -68,23 +68,21 @@
  *
  * @author Richard Shaw, Kiyoshi Masui
  */
-class EigenVisIter : public KotekanProcess {
+class EigenVisIter : public kotekan::Stage {
 
 public:
-    EigenVisIter(Config& config, const string& unique_name,
-                 bufferContainer& buffer_container);
+    EigenVisIter(kotekan::Config& config, const string& unique_name,
+                 kotekan::bufferContainer& buffer_container);
     virtual ~EigenVisIter() = default;
     void main_thread() override;
 
 private:
-
     // Update the dataset ID when we receive a new input dataset
     dset_id_t change_dataset_state(dset_id_t input_dset_id) const;
 
     // Update the prometheus metrics
-    void update_metrics(uint32_t freq_id, dset_id_t dset_id,
-                        double elapsed_time, const eig_t<cfloat>& eigpair,
-                        const EigConvergenceStats& stats);
+    void update_metrics(uint32_t freq_id, dset_id_t dset_id, double elapsed_time,
+                        const eig_t<cfloat>& eigpair, const EigConvergenceStats& stats);
 
     // Calculate the mask to apply from the object parameters
     DynamicHermitian<float> calculate_mask(uint32_t num_elements) const;

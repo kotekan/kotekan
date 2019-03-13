@@ -1,5 +1,10 @@
 #include "restClient.hpp"
 
+#include "errors.h"
+#include "signal.h"
+
+#include <chrono>
+#include <condition_variable>
 #include <event2/buffer.h>
 #include <event2/dns.h>
 #include <event2/event.h>
@@ -9,14 +14,9 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include <sys/uio.h>
-#include <chrono>
-#include <condition_variable>
-
-#include "errors.h"
-#include "signal.h"
 
 
-restClient &restClient::instance() {
+restClient& restClient::instance() {
     static restClient client_instance;
     return client_instance;
 }
@@ -35,7 +35,7 @@ restClient::restClient() : _main_thread() {
     // wait until the event_base is initialized in the
     // event_thread before someone makes a request.
     std::unique_lock<std::mutex> lck_start(_mtx_start);
-    _cv_start.wait(lck_start, [this](){return _event_thread_started;});
+    _cv_start.wait(lck_start, [this]() { return _event_thread_started; });
 }
 
 restClient::~restClient() {
@@ -46,13 +46,13 @@ restClient::~restClient() {
     DEBUG("restClient: event thread stopped.");
 }
 
-void restClient::timer(evutil_socket_t fd, short event, void *arg) {
+void restClient::timer(evutil_socket_t fd, short event, void* arg) {
 
     // Unused parameters, required by libevent. Suppress warning.
     (void)fd;
     (void)event;
 
-    restClient * client = (restClient *)arg;
+    restClient* client = (restClient*)arg;
     if (client->_stop_thread) {
         event_base_loopbreak(client->_base);
     }
@@ -81,7 +81,7 @@ void restClient::event_thread() {
     }
 
     // Create a timer to check for the exit condition
-    struct event *timer_event;
+    struct event* timer_event;
     timer_event = event_new(_base, -1, EV_PERSIST, timer, this);
     struct timeval interval;
     interval.tv_sec = 0;
@@ -97,7 +97,7 @@ void restClient::event_thread() {
     // run event loop
     DEBUG("restClient: starting event loop");
     while (!_stop_thread) {
-        if(event_base_dispatch(_base) < 0) {
+        if (event_base_dispatch(_base) < 0) {
             ERROR("restClient::event_thread(): Failure in the event loop.");
             raise(SIGINT);
         }
@@ -110,7 +110,7 @@ void restClient::event_thread() {
     event_base_free(_base);
 }
 
-void restClient::http_request_done(struct evhttp_request *req, void *arg){
+void restClient::http_request_done(struct evhttp_request* req, void* arg) {
     // FIXME: evcon is passed here, because evhttp_request_get_connection(req)
     // always returns NULL and there is no way to free the connection on
     // completion in libevent < 2.1
@@ -118,8 +118,7 @@ void restClient::http_request_done(struct evhttp_request *req, void *arg){
     // the bufferevent never gets deleted...
     // TODO: maybe keep the evhttp_connections in a pool and reuse them
     // (set Connection:keep-alive header)
-    auto pair = (std::pair<std::function<void(restReply)>,
-                 struct evhttp_connection*>*) arg;
+    auto pair = (std::pair<std::function<void(restReply)>, struct evhttp_connection*>*)arg;
     std::function<void(restReply)> ext_cb = pair->first;
 
     // this is where we store the reply
@@ -130,8 +129,7 @@ void restClient::http_request_done(struct evhttp_request *req, void *arg){
         WARN("restClient: request failed.");
         // Print socket error
         std::string str = evutil_socket_error_to_string(errcode);
-        WARN("restClient: socket error = %s (%d)",
-             str.c_str(), errcode);
+        WARN("restClient: socket error = %s (%d)", str.c_str(), errcode);
         ext_cb(restReply(false, str_data));
         cleanup(pair);
         return;
@@ -141,8 +139,7 @@ void restClient::http_request_done(struct evhttp_request *req, void *arg){
 
     if (response_code != 200) {
 #if LIBEVENT_VERSION_NUMBER < 0x02010000
-        INFO("restClient: Received response code %d (%s)", response_code,
-             req->response_code_line);
+        INFO("restClient: Received response code %d (%s)", response_code, req->response_code_line);
 #else
         INFO("restClient: Received response code %d (%s)", response_code,
              evhttp_request_get_response_code_line(req));
@@ -197,33 +194,23 @@ void restClient::http_request_done(struct evhttp_request *req, void *arg){
     cleanup(pair);
 }
 
-void restClient::cleanup(std::pair<std::function<void(restReply)>,
-                              struct evhttp_connection*>* pair) {
+void restClient::cleanup(
+    std::pair<std::function<void(restReply)>, struct evhttp_connection*>* pair) {
     if (pair->second)
         evhttp_connection_free(pair->second);
     delete pair;
 }
 
-bool restClient::make_request(std::string path,
-                              std::function<void(restReply)>
-                                request_done_cb,
-                              const nlohmann::json& data,
-                              const std::string& host,
-                              const unsigned short port,
-                              const int retries,
-                              const int timeout) {
+bool restClient::make_request(const std::string& path,
+                              std::function<void(restReply)> request_done_cb,
+                              const nlohmann::json& data, const std::string& host,
+                              const unsigned short port, const int retries, const int timeout) {
     struct evhttp_connection* evcon = nullptr;
     struct evhttp_request* req;
-    struct evkeyvalq *output_headers;
-    struct evbuffer *output_buffer;
+    struct evkeyvalq* output_headers;
+    struct evbuffer* output_buffer;
 
     int ret;
-
-    // Fix path in case it is nothing or missing '/' in the beginning
-    if (path.length() == 0) {
-        path = string("/");
-    } else if (path.at(0) != '/')
-        path = "/" + path;
 
     evcon = evhttp_connection_base_new(_base, _dns, host.c_str(), port);
     if (evcon == nullptr) {
@@ -240,7 +227,7 @@ bool restClient::make_request(std::string path,
 
     // Fire off the request and pass the external callback to the internal one.
     // check if external callback function is callable
-    if(!request_done_cb) {
+    if (!request_done_cb) {
         ERROR("restClient: external callback function is not callable.");
         evhttp_connection_free(evcon);
         return false;
@@ -250,9 +237,8 @@ bool restClient::make_request(std::string path,
     // to run out of scope on the calling side
     // also pass the connection to the callback, so it can be freed there
     std::pair<std::function<void(restReply)>, struct evhttp_connection*>* pair =
-            new std::pair<std::function<void(restReply)>,
-                          struct evhttp_connection*>
-            (request_done_cb, evcon);
+        new std::pair<std::function<void(restReply)>, struct evhttp_connection*>(request_done_cb,
+                                                                                 evcon);
 
     req = evhttp_request_new(http_request_done, pair);
     if (req == nullptr) {
@@ -299,7 +285,7 @@ bool restClient::make_request(std::string path,
             return false;
         }
 
-        evutil_snprintf(buf, sizeof(buf)-1, "%lu", (unsigned long)datalen);
+        evutil_snprintf(buf, sizeof(buf) - 1, "%lu", (unsigned long)datalen);
         ret = evhttp_add_header(output_headers, "Content-Length", buf);
         if (ret) {
             WARN("restClient: Failure adding \"Content-Length\" header.");
@@ -323,12 +309,9 @@ bool restClient::make_request(std::string path,
     return true;
 }
 
-restReply restClient::make_request_blocking(std::string path,
-                                            const nlohmann::json& data,
-                                            const std::string& host,
-                                            const unsigned short port,
-                                            const int retries,
-                                            const int timeout) {
+restReply restClient::make_request_blocking(const std::string& path, const nlohmann::json& data,
+                                            const std::string& host, const unsigned short port,
+                                            const int retries, const int timeout) {
     restReply reply = restReply(false, "");
     bool reply_copied = false;
 
@@ -337,7 +320,7 @@ restReply restClient::make_request_blocking(std::string path,
     std::mutex mtx_reply;
 
     // As a callback, pass a lambda that synchronizes copying the reply in here.
-    std::function<void(restReply)> callback([&](restReply reply_in){
+    std::function<void(restReply)> callback([&](restReply reply_in) {
         std::lock_guard<std::mutex> lck_reply(mtx_reply);
         reply = reply_in;
         reply_copied = true;
@@ -356,15 +339,15 @@ restReply restClient::make_request_blocking(std::string path,
     // calls the callback lambda we pass to it. That's a serious error case.
     // In a normal timeout situation, we have to make sure libevent times out
     // before this, that's why we wait twice as long.
-    auto time_point = std::chrono::system_clock::now()
-            + std::chrono::seconds(timeout == -1 ? 100 : timeout * 2);
-    while (!cv_reply.wait_until(lck_reply, time_point,
-                              [&](){return reply_copied;})) {
-            ERROR("restClient: Timeout in make_request_blocking " \
-                  "(%s:%d/%s). This might leave the restClient in an abnormal "\
-                  "state. Exiting...", host.c_str(), port, path.c_str());
-            raise(SIGINT);
-            return reply;
+    auto time_point =
+        std::chrono::system_clock::now() + std::chrono::seconds(timeout == -1 ? 100 : timeout * 2);
+    while (!cv_reply.wait_until(lck_reply, time_point, [&]() { return reply_copied; })) {
+        ERROR("restClient: Timeout in make_request_blocking "
+              "(%s:%d/%s). This might leave the restClient in an abnormal "
+              "state. Exiting...",
+              host.c_str(), port, path.c_str());
+        raise(SIGINT);
+        return reply;
     }
     return reply;
 }

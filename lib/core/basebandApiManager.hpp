@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief Manager for tracking baseband readout processes and handling REST API
+ * @brief Manager for tracking baseband readout stages and handling REST API
  *  - basebandApiManager
  */
 
@@ -8,15 +8,20 @@
 #define BASEBAND_API_MANAGER_HPP
 
 #include "basebandReadoutManager.hpp"
-#include "json.hpp"
 #include "gpsTime.h"
+#include "prometheusMetrics.hpp"
 #include "restServer.hpp"
+
+#include "json.hpp"
+
 #include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <map>
 #include <memory>
 
+
+namespace kotekan {
 
 /// Implicit conversion for constructing `nlohmann::json` from a `basebandDumpStatus`
 void to_json(json& j, const basebandDumpStatus& s);
@@ -30,10 +35,14 @@ void to_json(json& j, const basebandDumpStatus& s);
  * using the @c register_with_server() function.
  *
  * This class is a singleton, and can be accessed with @c instance(). The normal
- * use is for the @c basebandReadout process to call @get_next_request in a
+ * use is for the @c basebandReadout stage to call @get_next_request in a
  * loop, and when the result is non-null, use the returned @c basebandDumpStatus
  * to keep track of the data written so far. Once the writing of the data file
  * is completed, the ``state`` of the request should be set to ``DONE``.
+ *
+ * @par Metrics
+ * @metric kotekan_baseband_requests_total
+ *         The count of dump requests received by the REST endpoint ``/baseband``
  *
  * @author Davor Cubranic
  */
@@ -50,7 +59,7 @@ public:
      *        ``/baseband`` end point
      * @param rest_server The server to register with.
      */
-    void register_with_server(restServer * rest_server);
+    void register_with_server(restServer* rest_server);
 
     /**
      * @brief The call back function for GET requests to `/baseband`.
@@ -149,16 +158,16 @@ public:
     void handle_request_callback(connectionInstance& conn, json& request);
 
     /**
-     * @brief Register a readout process for specified frequency
+     * @brief Register a readout stage for specified frequency
      *
      * @return a shared_ptr to the mutex used to guard access to the baseband
      * dump currently in progress.
      */
-    basebandReadoutManager& register_readout_process(const uint32_t freq_id);
+    basebandReadoutManager& register_readout_stage(const uint32_t freq_id);
 
 private:
     /// Constructor, not used directly
-    basebandApiManager() = default;
+    basebandApiManager();
 
     /// Sampling frequency (Hz)
     static constexpr double ADC_SAMPLE_RATE = 800e6;
@@ -171,7 +180,7 @@ private:
     // Can also be done as FPGA_FRAME_RATE = ADC_SAMPLE_RATE / FPGA_NSAMP_FFT
 
     /// Width of frequency bin, used to calculate frequency of an index, relative to FPGA_FREQ0
-    static constexpr double FPGA_DELTA_FREQ  = - ADC_SAMPLE_RATE / FPGA_NSAMP_FFT;
+    static constexpr double FPGA_DELTA_FREQ = -ADC_SAMPLE_RATE / FPGA_NSAMP_FFT;
 
     /// Physical constant: elementary charge (C)
     static constexpr double ELEMENTARY_CHARGE = 1.6021766208e-19;
@@ -188,12 +197,8 @@ private:
     static constexpr double CM = 1e-2;
 
     /// Physical constant: Dispersion measure, in Hz**2 s / (pc cm^-3)
-    static constexpr double K_DM = (
-        ELEMENTARY_CHARGE * ELEMENTARY_CHARGE
-        / 2 / M_PI
-        / 4 / M_PI / EPSILON_0
-        / ELECTRON_MASS / C
-        * (PARSEC / (CM * CM * CM)));
+    static constexpr double K_DM = (ELEMENTARY_CHARGE * ELEMENTARY_CHARGE / 2 / M_PI / 4 / M_PI
+                                    / EPSILON_0 / ELECTRON_MASS / C * (PARSEC / (CM * CM * CM)));
 
     /// Reference frequency in the L1 subsystem. (TODO verify. May be off by 1 bin.)
     static constexpr double L1_REFERERENCE_FREQ = 400e6;
@@ -202,35 +207,42 @@ private:
     static constexpr double N_DM_ERROR_TOL = 3;
 
     /// convenience wrapper for a pair of starting FPGA frame and length of the dump in FPGA frames
-    struct basebandSlice { int64_t start_fpga; int64_t length_fpga; };
+    struct basebandSlice {
+        int64_t start_fpga;
+        int64_t length_fpga;
+    };
 
     /// Utility function that adjusts the trigger times given for the reference
     /// frequency to those for the frequency `freq_id`
-    static basebandSlice translate_trigger(int64_t fpga_time0, int64_t fpga_width,
-                                           const double dm, const double dm_error,
-                                           const uint32_t freq_id,
-                                           const double ref_freq_hz=L1_REFERERENCE_FREQ);
+    static basebandSlice translate_trigger(int64_t fpga_time0, int64_t fpga_width, const double dm,
+                                           const double dm_error, const uint32_t freq_id,
+                                           const double ref_freq_hz = L1_REFERERENCE_FREQ);
 
     void status_callback_single_event(connectionInstance& conn);
 
     /**
      * @class basebandReadoutRegistry
-     * @brief encapsulation of a lock-protected map to registered readout processes
+     * @brief encapsulation of a lock-protected map to registered readout stage
      */
     class basebandReadoutRegistry {
     public:
         using iterator = std::map<uint32_t, basebandReadoutManager>::iterator;
         iterator begin() noexcept;
         iterator end() noexcept;
-        basebandReadoutManager& operator[]( const uint32_t& key );
+        basebandReadoutManager& operator[](const uint32_t& key);
 
     private:
         std::mutex map_lock;
         std::map<uint32_t, basebandReadoutManager> readout_map;
     };
 
-    /// Map of registered readout processes, indexed by `freq_id`
+    /// Map of registered readout stages, indexed by `freq_id`
     basebandReadoutRegistry readout_registry;
+
+    prometheusMetrics& metrics;
+    uint32_t request_count = 0;
 };
+
+} // namespace kotekan
 
 #endif /* BASEBAND_API_MANAGER_HPP */

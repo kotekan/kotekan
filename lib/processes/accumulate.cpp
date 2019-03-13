@@ -1,47 +1,51 @@
 #include "accumulate.hpp"
+
+#include "chimeMetadata.h"
 #include "errors.h"
 #include "fpga_header_functions.h"
-#include "chimeMetadata.h"
 
-REGISTER_KOTEKAN_PROCESS(accumulate);
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
 
-accumulate::accumulate(Config& config,
-                       const string& unique_name,
-                       bufferContainer &buffer_container) :
-    KotekanProcess(config, unique_name, buffer_container, std::bind(&accumulate::main_thread, this)) {
+REGISTER_KOTEKAN_STAGE(accumulate);
+
+accumulate::accumulate(Config& config, const string& unique_name,
+                       bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&accumulate::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
-    _samples_per_data_set = config.get<int32_t>(unique_name,
-                                                "samples_per_data_set");
+    _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     _num_gpu_frames = config.get<int32_t>(unique_name, "num_gpu_frames");
 }
 
-accumulate::~accumulate() {
-}
+accumulate::~accumulate() {}
 
 void accumulate::main_thread() {
 
     int in_frame_id = 0;
     int out_frame_id = 0;
     int64_t frame_id = 0;
-    int32_t * input;
-    int32_t * output=NULL;
-//    uint64_t seq_num;
+    int32_t* input;
+    int32_t* output = NULL;
+    //    uint64_t seq_num;
 
     while (!stop_thread) {
-        uint8_t * in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
-        if (in_frame == NULL) break;
-        input = (int32_t *)in_frame;
+        uint8_t* in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
+        if (in_frame == NULL)
+            break;
+        input = (int32_t*)in_frame;
 
-//        seq_num = get_fpga_seq_num(in_buf, in_frame_id);
+        //        seq_num = get_fpga_seq_num(in_buf, in_frame_id);
 
         if (frame_id % _num_gpu_frames == 0) {
-            uint8_t * out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
-            if (out_frame == NULL) break;
-            output = (int32_t *)out_frame;
+            uint8_t* out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
+            if (out_frame == NULL)
+                break;
+            output = (int32_t*)out_frame;
 
             allocate_new_metadata_object(out_buf, out_frame_id);
 
@@ -61,7 +65,7 @@ void accumulate::main_thread() {
             uint64_t lost_samples = get_lost_timesamples(in_buf, in_frame_id);
             atomic_add_lost_timesamples(out_buf, out_frame_id, lost_samples);
 
-            for (uint32_t i = 0; i < in_buf->frame_size/sizeof(int32_t); ++i) {
+            for (uint32_t i = 0; i < in_buf->frame_size / sizeof(int32_t); ++i) {
                 output[i] = input[i];
             }
 
@@ -70,7 +74,7 @@ void accumulate::main_thread() {
             uint64_t lost_samples = get_lost_timesamples(in_buf, in_frame_id);
             atomic_add_lost_timesamples(out_buf, out_frame_id, lost_samples);
 
-            for (uint32_t i = 0; i < in_buf->frame_size/sizeof(int32_t); ++i) {
+            for (uint32_t i = 0; i < in_buf->frame_size / sizeof(int32_t); ++i) {
                 output[i] += input[i];
             }
         }

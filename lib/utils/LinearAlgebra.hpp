@@ -5,22 +5,28 @@
 #ifndef LINEARALGEBRA_HPP
 #define LINEARALGEBRA_HPP
 
+#include "visUtil.hpp"
+
 #include <blaze/Blaze.h>
 
 // Type defs for simplicity
 // Map complex types to their real equivalent
 template<typename T>
-struct eigenval_type { typedef T type; };
+struct eigenval_type {
+    typedef T type;
+};
 template<typename T>
-struct eigenval_type<std::complex<T>> { typedef T type; };
+struct eigenval_type<std::complex<T>> {
+    typedef T type;
+};
 
 // A type alias for a set of eigenpairs
 template<typename MT>
 using real_t = typename eigenval_type<MT>::type;
 
 template<typename MT>
-using eig_t = std::pair<blaze::DynamicVector<real_t<MT>>,
-                        blaze::DynamicMatrix<MT, blaze::columnMajor>>;
+using eig_t =
+    std::pair<blaze::DynamicVector<real_t<MT>>, blaze::DynamicMatrix<MT, blaze::columnMajor>>;
 
 
 template<typename MT>
@@ -34,8 +40,7 @@ using DynamicHermitian = blaze::HermitianMatrix<blaze::DynamicMatrix<MT, blaze::
  * @returns   The RMS.
  **/
 template<typename MT, bool SO>
-double rms(const blaze::DenseMatrix<MT, SO>& A)
-{
+double rms(const blaze::DenseMatrix<MT, SO>& A) {
     double t = 0.0;
 
     auto At = ~A;
@@ -48,8 +53,7 @@ double rms(const blaze::DenseMatrix<MT, SO>& A)
     return std::sqrt(t / n);
 }
 template<typename MT, bool TF>
-double rms(const blaze::DenseVector<MT, TF>& A)
-{
+double rms(const blaze::DenseVector<MT, TF>& A) {
     double t = 0.0;
 
     auto At = ~A;
@@ -71,10 +75,8 @@ double rms(const blaze::DenseVector<MT, TF>& A)
  * @return    Orthonormal vectors.
  **/
 template<typename MT>
-blaze::DynamicMatrix<MT, blaze::columnMajor> orth(
-    const blaze::DynamicMatrix<MT, blaze::columnMajor>& x
-)
-{
+blaze::DynamicMatrix<MT, blaze::columnMajor>
+orth(const blaze::DynamicMatrix<MT, blaze::columnMajor>& x) {
     blaze::DynamicMatrix<MT, blaze::columnMajor> Q, R;
     qr(x, Q, R);
     return Q;
@@ -91,13 +93,12 @@ blaze::DynamicMatrix<MT, blaze::columnMajor> orth(
  **/
 template<typename MT>
 eig_t<MT> ritz(const DynamicHermitian<MT>& A,
-               const blaze::DynamicMatrix<MT, blaze::columnMajor>& V)
-{
+               const blaze::DynamicMatrix<MT, blaze::columnMajor>& V) {
     blaze::DynamicVector<real_t<MT>> evals;
     blaze::DynamicMatrix<MT, blaze::columnMajor> evecst;
 
     auto Vt = orth(V);
-    //auto At = blaze::evaluate(blaze::declherm(blaze::ctrans(V) * A * V));
+    // auto At = blaze::evaluate(blaze::declherm(blaze::ctrans(V) * A * V));
     DynamicHermitian<MT> At = blaze::declherm(blaze::ctrans(Vt) * A * Vt);
     blaze::eigen(At, evals, evecst);
 
@@ -116,19 +117,16 @@ eig_t<MT> ritz(const DynamicHermitian<MT>& A,
  * @return    The block Krylov subspace.
  **/
 template<typename MT>
-blaze::DynamicMatrix<MT, blaze::columnMajor> krylov(
-    const DynamicHermitian<MT>& A,
-    const blaze::DynamicMatrix<MT, blaze::columnMajor>& V,
-    unsigned int p
-)
-{
+blaze::DynamicMatrix<MT, blaze::columnMajor>
+krylov(const DynamicHermitian<MT>& A, const blaze::DynamicMatrix<MT, blaze::columnMajor>& V,
+       unsigned int p) {
     size_t nr = V.rows();
     size_t nc = V.columns();
 
     // Create matrix for holding Krylov subspace and set the first block
     // TODO: this will probably break if the number of elements is not a
     // multiple of eight
-    blaze::DynamicMatrix<MT, blaze::columnMajor> K {nr, nc * p};
+    blaze::DynamicMatrix<MT, blaze::columnMajor> K{nr, nc * p};
     blaze::submatrix<blaze::aligned>(K, 0, 0, nr, nc) = V;
 
     // Iteratively apply A and set the result
@@ -153,9 +151,7 @@ blaze::DynamicMatrix<MT, blaze::columnMajor> krylov(
  **/
 template<typename MT>
 eig_t<MT> augmented_ritz(const DynamicHermitian<MT>& A,
-                         const blaze::DynamicMatrix<MT, blaze::columnMajor>& V,
-                         unsigned int p)
-{
+                         const blaze::DynamicMatrix<MT, blaze::columnMajor>& V, unsigned int p) {
     size_t nr = V.rows();
     size_t nc = V.columns();
 
@@ -178,10 +174,8 @@ eig_t<MT> augmented_ritz(const DynamicHermitian<MT>& A,
 
     // Create views of the relevant eigenvalues and vectors, these should get
     // turned into Dynamic arrays by the implicit copy constructor
-    return {
-        blaze::subvector(epair.first, (p - 1) * nc, nc),
-        blaze::submatrix(epair.second, 0, (p - 1) * nc, nr, nc)
-    };
+    return {blaze::subvector(epair.first, (p - 1) * nc, nc),
+            blaze::submatrix(epair.second, 0, (p - 1) * nc, nr, nc)};
 }
 
 
@@ -193,8 +187,7 @@ eig_t<MT> augmented_ritz(const DynamicHermitian<MT>& A,
  * @return          The approximate matrix.
  **/
 template<typename MT>
-DynamicHermitian<MT> expand_rankN(const eig_t<MT>& eigpair)
-{
+DynamicHermitian<MT> expand_rankN(const eig_t<MT>& eigpair) {
     // Create an array with the eigenvalues on the diagonal
     blaze::DiagonalMatrix<blaze::DynamicMatrix<MT, blaze::columnMajor>> L;
     L.resize(eigpair.second.columns());
@@ -247,13 +240,11 @@ struct EigConvergenceStats {
  * @return           The estimated eigenpairs.
  **/
 template<typename MT>
-std::pair<eig_t<MT>, EigConvergenceStats> eigen_masked_subspace(
-    const DynamicHermitian<MT>& A,
-    const DynamicHermitian<float>& W,   // Should this be symmetric
-    size_t k, float tol_eval, float tol_evec, size_t maxiter,
-    size_t k_conv = 0, size_t p = 2, size_t q = 3
-)
-{
+std::pair<eig_t<MT>, EigConvergenceStats>
+eigen_masked_subspace(const DynamicHermitian<MT>& A,
+                      const DynamicHermitian<float>& W, // Should this be symmetric
+                      size_t k, float tol_eval, float tol_evec, size_t maxiter, size_t k_conv = 0,
+                      size_t p = 2, size_t q = 3) {
     blaze::DynamicVector<real_t<MT>> evals, evalsp;
     blaze::DynamicMatrix<MT, blaze::columnMajor> V, Vp;
 
@@ -280,8 +271,7 @@ std::pair<eig_t<MT>, EigConvergenceStats> eigen_masked_subspace(
 
     EigConvergenceStats stats;
 
-    for (stats.iterations = 0; !stats.converged && stats.iterations < maxiter;
-         stats.iterations++) {
+    for (stats.iterations = 0; !stats.converged && stats.iterations < maxiter; stats.iterations++) {
 
         // Perform the subspace iteration steps
         for (unsigned int ss_ind = 0; ss_ind < q; ss_ind++) {
@@ -306,13 +296,12 @@ std::pair<eig_t<MT>, EigConvergenceStats> eigen_masked_subspace(
         //     blaze::submatrix(evec_conv, k - k_conv, k - k_conv, k_conv, k_conv)
         // );
         stats.eps_evec = blaze::sum(blaze::abs(
-            blaze::submatrix(evec_conv, k - k_conv, k - k_conv, k_conv, k_conv)
-        )) / (k_conv * k_conv);
+                             blaze::submatrix(evec_conv, k - k_conv, k - k_conv, k_conv, k_conv)))
+                         / (k_conv * k_conv);
 
         // Calculate the eigenvalue convergence (Summed fractional change in eigenvalues)
-        stats.eps_eval = rms(
-            blaze::evaluate(blaze::subvector((evalsp - evals) / evals, k - k_conv, k_conv))
-        );
+        stats.eps_eval =
+            rms(blaze::evaluate(blaze::subvector((evalsp - evals) / evals, k - k_conv, k_conv)));
 
         evalsp = evals;
         Vp = V;
@@ -332,7 +321,7 @@ std::pair<eig_t<MT>, EigConvergenceStats> eigen_masked_subspace(
     // TODO: the blaze norm implementation is slow and naive. This is better.
     eig_t<MT> eigpair = std::make_pair(evals, V);
     stats.rms = rms(blaze::evaluate(W % (A - expand_rankN(eigpair))));
-    stats.rms *= A.rows() / std::sqrt(blaze::sum(W));  // Re-norm to account for masking
+    stats.rms *= A.rows() / std::sqrt(blaze::sum(W)); // Re-norm to account for masking
 
 
     return {eigpair, stats};
@@ -346,8 +335,7 @@ std::pair<eig_t<MT>, EigConvergenceStats> eigen_masked_subspace(
  * @return       The blaze matrix.
  **/
 template<typename MT>
-DynamicHermitian<MT> to_blaze_herm(const gsl::span<MT>& data)
-{
+DynamicHermitian<MT> to_blaze_herm(const gsl::span<MT>& data) {
     size_t N = (size_t)std::sqrt(2 * data.size());
 
     DynamicHermitian<MT> A;
@@ -364,7 +352,6 @@ DynamicHermitian<MT> to_blaze_herm(const gsl::span<MT>& data)
     }
 
     return A;
-
 }
 
 

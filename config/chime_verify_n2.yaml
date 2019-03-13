@@ -85,16 +85,16 @@ gen_data:
   type: const
   value: 153
   test_data_gen_0:
-    kotekan_process: testDataGen
+    kotekan_stage: testDataGen
     network_out_buf: gpu_input_buffer_0
 #  test_data_gen_1:
-#    kotekan_process: testDataGen
+#    kotekan_stage: testDataGen
 #    network_out_buf: gpu_input_buffer_1
 #  test_data_gen_2:
-#    kotekan_process: testDataGen
+#    kotekan_stage: testDataGen
 #    network_out_buf: gpu_input_buffer_2
 #  test_data_gen_3:
-#    kotekan_process: testDataGen
+#    kotekan_stage: testDataGen
 #    network_out_buf: gpu_input_buffer_3
 
 lost_samples_buffer:
@@ -107,7 +107,7 @@ gen_ok:
   type: const
   value: 0
   lost_zero:
-    kotekan_process: testDataGen
+    kotekan_stage: testDataGen
     network_out_buf: lost_samples_buffer
 
 gpu:
@@ -180,7 +180,7 @@ gpu:
   frame_arrival_period: samples_per_data_set / 390625
   gpu_0:
     commands: *command_list
-    kotekan_process: hsaProcess
+    kotekan_stage: hsaProcess
     gpu_id: 0
     in_buffers:
       network_buf: gpu_input_buffer_0
@@ -189,7 +189,7 @@ gpu:
       output_buf: gpu_output_buffer_0
 #  gpu_1:
 #    commands: *command_list
-#    kotekan_process: hsaProcess
+#    kotekan_stage: hsaProcess
 #    gpu_id: 1
 #    in_buffers:
 #      network_buf: gpu_input_buffer_1
@@ -198,7 +198,7 @@ gpu:
 #      output_buf: gpu_output_buffer_1
 #  gpu_2:
 #    commands: *command_list
-#    kotekan_process: hsaProcess
+#    kotekan_stage: hsaProcess
 #    gpu_id: 2
 #    in_buffers:
 #      network_buf: gpu_input_buffer_2
@@ -207,7 +207,7 @@ gpu:
 #      output_buf: gpu_output_buffer_2
 #  gpu_3:
 #    commands: *command_list
-#    kotekan_process: hsaProcess
+#    kotekan_stage: hsaProcess
 #    gpu_id: 3
 #    in_buffers:
 #      network_buf: gpu_input_buffer_3
@@ -224,12 +224,12 @@ gpu:
 #    cpu_output_buffer:
 #        kotekan_buffer: standard
 #cpu:
-#  kotekan_process: gpuSimulate
+#  kotekan_stage: gpuSimulate
 #  log_level: debug
 #  network_in_buf: gpu_input_buffer_0
 #  corr_out_buf: cpu_output_buffer
 #check_data:
-#  kotekan_process: testDataCheckInt
+#  kotekan_stage: testDataCheckInt
 #  first_buf: gpu_output_buffer_0
 #  second_buf: cpu_output_buffer
 
@@ -238,16 +238,16 @@ check_data:
   real: [24576]
   imag: [0]
   const_data_check_0:
-    kotekan_process: constDataCheck
+    kotekan_stage: constDataCheck
     in_buf: gpu_output_buffer_0
 
 
 #  const_data_check_1:
-#    kotekan_process: constDataCheck
+#    kotekan_stage: constDataCheck
 #    in_buf: gpu_output_buffer_1
 #  const_data_check_2:
-#    kotekan_process: constDataCheck
+#    kotekan_stage: constDataCheck
 #    in_buf: gpu_output_buffer_2
 #  const_data_check_3:
-#    kotekan_process: constDataCheck
+#    kotekan_stage: constDataCheck
 #    in_buf: gpu_output_buffer_3

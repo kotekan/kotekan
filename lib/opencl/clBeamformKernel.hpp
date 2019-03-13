@@ -6,14 +6,14 @@
 
 #include <vector>
 
-class clBeamformKernel: public clCommand
-{
+class clBeamformKernel : public clCommand {
 public:
-    clBeamformKernel(Config& config, const string &unique_name,
-                    bufferContainer& host_buffers, clDeviceInterface& device);
+    clBeamformKernel(kotekan::Config& config, const string& unique_name,
+                     kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
     ~clBeamformKernel();
     virtual void build() override;
     virtual cl_event execute(int param_bufferID, cl_event pre_event) override;
+
 protected:
     cl_mem device_mask;
 
@@ -28,13 +28,11 @@ private:
     int32_t _num_data_sets;
     int32_t _num_local_freq;
     int32_t _samples_per_data_set;
-    Buffer * network_buf;
+    Buffer* network_buf;
 
     // <streamID, freq_map>
     cl_mem get_freq_map(int32_t encoded_stream_id);
     std::map<int32_t, cl_mem> device_freq_map;
-
 };
 
-#endif //CL_BEAMFORM_KERNEL_H
-
+#endif // CL_BEAMFORM_KERNEL_H

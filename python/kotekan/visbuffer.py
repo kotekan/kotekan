@@ -3,6 +3,7 @@
 # Python 2/3 compatibility
 from __future__ import (absolute_import, division,
                         print_function, unicode_literals)
+from future.utils import native_str
 from builtins import (ascii, bytes, chr, dict, filter, hex, input,
                       int, map, next, oct, open, pow, range, round,
                       str, super, zip)
@@ -22,6 +23,11 @@ class time_spec(ctypes.Structure):
     ]
 
 
+class timeval(ctypes.Structure):
+    """Struct repr of a timeval type."""
+    _fields_ = [("tv_sec", ctypes.c_long), ("tv_usec", ctypes.c_long)]
+
+
 class VisMetadata(ctypes.Structure):
     """Wrap a visMetadata struct.
     """
@@ -36,6 +42,28 @@ class VisMetadata(ctypes.Structure):
         ("num_elements", ctypes.c_uint32),
         ("num_prod", ctypes.c_uint32),
         ("num_ev", ctypes.c_uint32)
+    ]
+
+
+class psrCoord(ctypes.Structure):
+    """ Struct repr of psrCoord field in ChimeMetadata."""
+
+    _fields_ = [("ra", ctypes.ARRAY(ctypes.c_float, 10)),
+               ("dec", ctypes.ARRAY(ctypes.c_float, 10)),
+               ("scaling", ctypes.ARRAY(ctypes.c_uint32, 10))]
+
+
+class ChimeMetadata(ctypes.Structure):
+    """Wrap a ChimeMetadata struct."""
+
+    _fields_ = [
+        ("fpga_seq_num", ctypes.c_uint64),
+        ("first_packet_recv_time", timeval),
+        ("gps_time", time_spec),
+        ("lost_timesamples", ctypes.c_int32),
+        ("stream_ID", ctypes.c_uint16),
+        ("psrCoord", psrCoord),
+        ("rfi_zeroed", ctypes.c_uint32)
     ]
 
 
@@ -258,36 +286,41 @@ class VisRaw(object):
         self.data_path = self.filename + ".data"
 
         # Read file metadata
-        with open(self.meta_path, 'rb') as fh:
-            metadata = msgpack.load(fh, raw=False)
+        with io.open(self.meta_path, 'rb') as fh:
+            metadata = msgpack.load(fh, encoding='utf-8')
 
         self.index_map = metadata['index_map']
 
+        # TODO: (Python 3) Used native_str for compatibility here
         self.time = np.array(
             [(t['fpga_count'], t['ctime']) for t in self.index_map['time']],
-            dtype=[('fpga_count', np.uint64), ('ctime', np.float64)]
+            dtype=[(native_str('fpga_count'), np.uint64), (native_str('ctime'), np.float64)]
         )
 
         self.num_freq = metadata['structure']['nfreq']
         self.num_time = metadata['structure']['ntime']
         self.num_prod = len(self.index_map['prod'])
+        self.num_stack = (len(self.index_map['stack'])
+                          if 'stack' in self.index_map.keys() else self.num_prod)
         self.num_elements = len(self.index_map['input'])
         self.num_ev = len(self.index_map['ev'])
 
         # Packing of the data on disk. First byte indicates if data is present.
-        data_struct = np.dtype([
-            ('vis', np.complex64, self.num_prod),
-            ('weight', np.float32, self.num_prod),
-            ('flags', np.float32, self.num_elements),
+        data_struct = [
+            ("vis", np.complex64, self.num_stack),
+            ("weight", np.float32, self.num_stack),
+            ("flags", np.float32, self.num_elements),
             ("eval", np.float32,  self.num_ev),
             ("evec", np.complex64, self.num_ev * self.num_elements),
             ("erms", np.float32,  1),
             ("gain", np.complex64, self.num_elements),
-        ], align=True)
+        ]
+        # TODO: Python 3 - Process dtype labels to ensure Python 2/3 compatibility
+        data_struct = np.dtype([(native_str(d[0]),) + d[1:] for d in data_struct], align=True)
         frame_struct = np.dtype({
-            'names': ['valid', 'metadata', 'data'],
-            'formats': [np.uint8, VisMetadata, data_struct],
-            'itemsize': metadata['structure']['frame_size']
+            "names": ['valid', 'metadata', 'data'],
+            "formats": [np.uint8, VisMetadata, data_struct],
+            "itemsize": metadata['structure']['frame_size']
         })
 
         # Load data into on-disk numpy array
@@ -298,7 +331,89 @@ class VisRaw(object):
         self.valid_frames = self.raw['valid']
         self.file_metadata = metadata
 
-
     @staticmethod
     def _parse_filename(fname):
         return os.path.splitext(fname)[0]
+
+
+def freq_id_to_stream_id(f_id):
+    """ Convert a frequency ID to a stream ID. """
+    pre_encode = (0, (f_id % 16), (f_id / 16), (f_id / 256))
+    stream_id = ((pre_encode[0] & 0xF) +
+                 ((pre_encode[1] & 0xF) << 4) +
+                 ((pre_encode[2] & 0xF) << 8) +
+                 ((pre_encode[3] & 0xF) << 12))
+    return stream_id
+
+
+class GpuBuffer(object):
+    """Python representation of a GPU buffer dump.
+
+    Parameters
+    ----------
+    buffer : np.ndarray(dtype=np.uint32)
+        Visibility buffer as integers in blocked format.
+    metadata: ChimeMetadata
+        Associated metadata.
+    """
+
+    def __init__(self, buffer, metadata):
+
+        self.data = buffer
+        self.metadata = metadata
+
+    @classmethod
+    def from_file(cls, filename):
+        """Load a GpuBuffer from a kotekan dump file.
+        """
+
+        with io.FileIO(filename, 'rb') as fh:
+            # first 4 bytes are metadata size
+            fh.seek(4)
+            cm = ChimeMetadata()
+            fh.readinto(cm)
+            buf = np.frombuffer(fh.read(), dtype=np.uint32)
+
+        return cls(buf, cm)
+
+    @classmethod
+    def load_files(cls, pattern):
+        """Read a set of dump files as GpuBuffers.
+
+        Parameters
+        ----------
+        pattern : str
+            A globable pattern to read.
+
+        Returns
+        -------
+        buffers : list of GpuBuffers
+        """
+        import glob
+
+        return [cls.from_file(fname) for fname in sorted(glob.glob(pattern))]
+
+    @classmethod
+    def to_files(cls, buffers, basename):
+        """Write a list of buffers to disk.
+
+        Parameters
+        ----------
+        buffers : list of GpuBuffers
+            Buffers to write.
+        basename : str
+            Basename for filenames.
+        """
+        pat = basename + "_%07d.dump"
+
+        msize_c = np.uint32(ctypes.sizeof(ChimeMetadata))
+
+        for ii, buf in enumerate(buffers):
+
+            with open(pat % ii, 'wb+') as fh:
+                # first write metadata size
+                fh.write(msize_c)
+                # then metadata itself
+                fh.write(buf.metadata)
+                # finally visibility data
+                fh.write(buf.data.astype(dtype=np.uint32).tobytes())

@@ -2,12 +2,19 @@
 /*****************************************
 @file
 @brief Accumulation and gating of visibility data.
-- visAccumulate : public KotekanProcess
+- visAccumulate : public kotekan::Stage
 *****************************************/
 #ifndef VIS_ACCUMULATE_HPP
 #define VIS_ACCUMULATE_HPP
 
-#include <time.h>
+#include "Config.hpp"
+#include "Stage.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
+#include "datasetManager.hpp"
+#include "gateSpec.hpp"
+#include "visUtil.hpp"
+
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -15,23 +22,16 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <time.h>
 #include <utility>
 #include <vector>
-
-#include "Config.hpp"
-#include "KotekanProcess.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "gateSpec.hpp"
-#include "visUtil.hpp"
 
 
 /**
  * @class visAccumulate
  * @brief Accumulate the high rate GPU output into integrated visBuffers.
  *
- * This process will accumulate the GPU output and calculate the within sample
+ * This stage will accumulate the GPU output and calculate the within sample
  * variance for weights.
  *
  * It tags the stream with a properly allocated dataset_id and adds associated
@@ -58,9 +58,9 @@
  * @conf  num_freq_in_frame     Int. Number of frequencies in each GPU frame.
  * @conf  block_size            Int. The block size of the packed data.
  * @conf  input_reorder         Array of [int, int, string]. The reordering mapping.
- *                              Only the first element of each sub-array is used and it is the the index of
- *                              the input to move into this new location. The remaining elements of the
- *                              subarray are for correctly labelling the input in ``visWriter``.
+ *                              Only the first element of each sub-array is used and it is the the
+ * index of the input to move into this new location. The remaining elements of the subarray are for
+ * correctly labelling the input in ``visWriter``.
  * @conf  low_sample_fraction   If a frames has less than this fraction of the
  *                              data expected, skip it. This is set to 1% by default.
  * @conf  instrument_name       String. Name of the instrument. Default "chime".
@@ -74,16 +74,14 @@
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte
  */
-class visAccumulate : public KotekanProcess {
+class visAccumulate : public kotekan::Stage {
 public:
-    visAccumulate(Config& config,
-                  const string& unique_name,
-                  bufferContainer &buffer_container);
+    visAccumulate(kotekan::Config& config, const string& unique_name,
+                  kotekan::bufferContainer& buffer_container);
     ~visAccumulate() = default;
     void main_thread() override;
 
 private:
-
     // NOTE: Annoyingly this can't be forward declared, and defined fully externally
     // as the std::deque needs the complete type
     /**
@@ -138,7 +136,7 @@ private:
 
     // Buffers to read/write
     Buffer* in_buf;
-    Buffer* out_buf;  // Output for the main vis dataset only
+    Buffer* out_buf; // Output for the main vis dataset only
 
     // Parameters saved from the config files
     size_t num_elements;
@@ -161,12 +159,10 @@ private:
     void combine_gated(internalState& gate, internalState& vis);
 
     // Set initial values of visBuffer
-    void initialise_output(internalState& state,
-                           int in_frame_id, int freq_ind);
+    void initialise_output(internalState& state, int in_frame_id, int freq_ind);
 
     // Fill in data sections of visBuffer
-    void finalise_output(internalState& state, int freq_ind,
-                         uint32_t total_samples);
+    void finalise_output(internalState& state, int freq_ind, uint32_t total_samples);
 
     // List of gating specifications
     std::map<std::string, gateSpec*> gating_specs;
@@ -191,10 +187,8 @@ private:
     /// prodState, inputState and freqState according to config and an empty
     /// stackState
     dset_id_t base_dataset_state(std::string& instrument_name,
-                                 std::vector<std::pair<uint32_t, freq_ctype>>&
-                                 freqs,
-                                 std::vector<input_ctype>& inputs,
-                                 std::vector<prod_ctype>& prods);
+                                 std::vector<std::pair<uint32_t, freq_ctype>>& freqs,
+                                 std::vector<input_ctype>& inputs, std::vector<prod_ctype>& prods);
 
     /// Register a new state with the gating params
     dset_id_t gate_dataset_state(const gateSpec& spec);

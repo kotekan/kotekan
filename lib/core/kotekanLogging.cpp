@@ -1,6 +1,9 @@
 #include "kotekanLogging.hpp"
+
 #include <stdexcept>
 #include <strings.h>
+
+namespace kotekan {
 
 kotekanLogging::kotekanLogging() {
     __log_level = 3;
@@ -23,7 +26,7 @@ void kotekanLogging::internal_logging(int type, const char* format, ...) {
         va_list args;
         va_start(args, format);
         if (__enable_syslog == 1) {
-            (void) vsyslog(type, format, args);
+            (void)vsyslog(type, format, args);
         } else {
             (void)vsnprintf(log_buf, __max_log_msg_len, format, args);
             fprintf(stderr, "%s\n", log_buf);
@@ -32,15 +35,15 @@ void kotekanLogging::internal_logging(int type, const char* format, ...) {
     }
 }
 
-void kotekanLogging::set_log_level(const logLevel &log_level) {
+void kotekanLogging::set_log_level(const logLevel& log_level) {
     __log_level = static_cast<std::underlying_type<logLevel>::type>(log_level);
 }
 
-void kotekanLogging::set_log_prefix(const string &log_prefix) {
+void kotekanLogging::set_log_prefix(const string& log_prefix) {
     __log_prefix = log_prefix;
 }
 
-void kotekanLogging::set_log_level(const string &s_log_level) {
+void kotekanLogging::set_log_level(const string& s_log_level) {
 
     logLevel log_level;
 
@@ -57,9 +60,12 @@ void kotekanLogging::set_log_level(const string &s_log_level) {
     } else if (strcasecmp(s_log_level.c_str(), "debug2") == 0) {
         log_level = logLevel::DEBUG2;
     } else {
-        throw std::runtime_error("The value given for log_level: '" + s_log_level + "is not valid! " +
-                "(It should be one of 'off', 'error', 'warn', 'info', 'debug', 'debug2')");
+        throw std::runtime_error(
+            "The value given for log_level: '" + s_log_level + "is not valid! "
+            + "(It should be one of 'off', 'error', 'warn', 'info', 'debug', 'debug2')");
     }
 
     set_log_level(log_level);
 }
+
+} // namespace kotekan

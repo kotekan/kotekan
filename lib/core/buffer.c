@@ -325,8 +325,13 @@ uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, c
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 
+//TODO: temporary solution to not print buffer status on gossec
+#ifndef _GOSSEC
     if (print_stat == 1)
         print_buffer_status(buf);
+#else
+    (void)print_stat;
+#endif
 
     if (buf->shutdown_signal == 1)
         return NULL;
@@ -349,7 +354,7 @@ void register_consumer(struct Buffer * buf, const char *name) {
     for (int i = 0; i < MAX_CONSUMERS; ++i) {
         if (buf->consumers[i].in_use == 0) {
             buf->consumers[i].in_use = 1;
-            strncpy(buf->consumers[i].name, name, MAX_PROCESS_NAME_LEN);
+            strncpy(buf->consumers[i].name, name, MAX_STAGE_NAME_LEN);
             CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
             return;
         }
@@ -374,7 +379,7 @@ void register_producer(struct Buffer * buf, const char *name) {
     for (int i = 0; i < MAX_PRODUCERS; ++i) {
         if (buf->producers[i].in_use == 0) {
             buf->producers[i].in_use = 1;
-            strncpy(buf->producers[i].name, name, MAX_PROCESS_NAME_LEN);
+            strncpy(buf->producers[i].name, name, MAX_STAGE_NAME_LEN);
             CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
             return;
         }
@@ -390,7 +395,7 @@ int private_get_consumer_id(struct Buffer * buf, const char * name) {
 
     for (int i = 0; i < MAX_CONSUMERS; ++i) {
         if (buf->consumers[i].in_use == 1 &&
-            strncmp(buf->consumers[i].name, name, MAX_PROCESS_NAME_LEN) == 0) {
+            strncmp(buf->consumers[i].name, name, MAX_STAGE_NAME_LEN) == 0) {
             return i;
         }
     }
@@ -401,7 +406,7 @@ int private_get_producer_id(struct Buffer * buf, const char * name) {
 
     for (int i = 0; i < MAX_PRODUCERS; ++i) {
         if (buf->producers[i].in_use == 1 &&
-            strncmp(buf->producers[i].name, name, MAX_PROCESS_NAME_LEN) == 0) {
+            strncmp(buf->producers[i].name, name, MAX_STAGE_NAME_LEN) == 0) {
             return i;
         }
     }
@@ -592,12 +597,8 @@ void print_buffer_status(struct Buffer* buf)
         }
     }
     status_string[buf->num_frames] = '\0';
-//TODO: temporary solution to not print buffer status on gossec
-#ifndef _GOSSEC
+
     INFO("Buffer %s, status: %s", buf->buffer_name, status_string);
-#else
-    DEBUG("Buffer %s, status: %s", buf->buffer_name, status_string);
-#endif
 }
 
 void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf, int to_ID) {
@@ -708,8 +709,10 @@ void swap_frames(struct Buffer * from_buf, int from_frame_id,
 
     int num_consumers = get_num_consumers(from_buf);
     assert(num_consumers == 1);
+    (void)num_consumers;
     int num_producers = get_num_producers(to_buf);
     assert(num_producers == 1);
+    (void)num_producers;
 
     // Swap the frames
     uint8_t * temp_frame = from_buf->frames[from_frame_id];

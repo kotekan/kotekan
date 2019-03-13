@@ -1,41 +1,38 @@
 /*****************************************
 @file
-@brief Process that adds noise to the
+@brief Stage that adds noise to the
        visibility data.
-- visNoise : public KotekanProcess
+- visNoise : public Stage
 *****************************************/
 #ifndef VISNOISE_HPP
 #define VISNOISE_HPP
 
+#include "Stage.hpp"
+
 #include <random>
 
-#include "KotekanProcess.hpp"
-
 /**
-* @brief Adds gaussian noise.
-*
-* Add normally distributed random noise to real and imaginary parts.
-* The same distribution is used to set the weights. Note that the seed for the
-* generator is not random.
-* @conf  standard_deviation           The std dev of the noise distribution.
-* @conf  num_ev                       Number of eigenvectors in the data.
-* @conf  num_elements                 Number of elements in the data.
-* @conf  random                       If false, the noise generation will not be
-*                                     initialized with a random seed.
-**/
-class visNoise : public KotekanProcess {
+ * @brief Adds gaussian noise.
+ *
+ * Add normally distributed random noise to real and imaginary parts.
+ * The same distribution is used to set the weights. Note that the seed for the
+ * generator is not random.
+ * @conf  standard_deviation           The std dev of the noise distribution.
+ * @conf  num_ev                       Number of eigenvectors in the data.
+ * @conf  num_elements                 Number of elements in the data.
+ * @conf  random                       If false, the noise generation will not be
+ *                                     initialized with a random seed.
+ **/
+class visNoise : public kotekan::Stage {
 public:
-
     // Default constructor
-    visNoise(Config &config,
-             const string& unique_name,
-             bufferContainer &buffer_container);
+    visNoise(kotekan::Config& config, const string& unique_name,
+             kotekan::bufferContainer& buffer_container);
 
-    // Main loop for the process
+    // Main loop for the stage
     void main_thread() override;
 
 private:
-
     // random number generation
     std::default_random_engine gen;
 
@@ -50,4 +47,3 @@ private:
 };
 
 #endif /* VISNOISE_HPP */
-
