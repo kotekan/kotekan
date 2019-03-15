@@ -47,8 +47,8 @@ private:
     // Matrix from visibilities to map for every freq (same for each pol)
     std::map<uint32_t,std::vector<cfloat>> vis2map;
     // Store the maps and weight maps for every frequency
-    std::map<uint32_t,std::vector<std::vector<cfloat>>> map;
-    std::map<uint32_t,std::vector<std::vector<cfloat>>> wgt_map;
+    std::map<uint32_t,std::vector<std::vector<float>>> map;
+    std::map<uint32_t,std::vector<std::vector<float>>> wgt_map;
 
     // Visibilities specs
     std::vector<stack_ctype> stacks;

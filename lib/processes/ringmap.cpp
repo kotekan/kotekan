@@ -65,6 +65,9 @@ void mapMaker::main_thread() {
     std::vector<cfloat> special_wgt(num_bl);
     // We will need to cast weights into complex
     std::vector<cfloat> complex_wgt(num_stack);
+    // Buffers to hold result before saving real part
+    std::vector<cfloat> tmp_vismap(num_pix);
+    std::vector<cfloat> tmp_wgtmap(num_pix);
 
     while (!stop_thread) {
 
@@ -133,11 +136,18 @@ void mapMaker::main_thread() {
                             &alpha, vis2map.at(f_id).data(), num_bl, input_vis,
                             1, &beta, map.at(f_id).at(p).data() + t_ind * num_pix, 1);
 
-                 // same for weights map
+                // same for weights map
                 cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl,
                             &alpha, vis2map.at(f_id).data(), num_bl, input_wgt,
                             1, &beta, wgt_map.at(f_id).at(p).data() + t_ind * num_pix, 1);
-                // TODO: consider keeping just the real part to save space
+
+                // multiply visibility and weight maps
+                // keep real part only
+                uint map_offset = t_ind * num_pix;
+                for (uint i = 0; i < num_pix; i++) {
+                    wgt_map.at(f_id).at(p).at(map_offset + i) = (tmp_vismap.at(i) * tmp_wgtmap.at(i)).real();
+                    map.at(f_id).at(p).at(map_offset + i) = tmp_vismap.at(i).real();
+                }
             }
             mtx.unlock();
         }
@@ -185,7 +195,9 @@ void mapMaker::rest_callback(kotekan::connectionInstance& conn,
         return;
     }
 
-    // Format map into msgpack
+    // TODO: Process weights map here to save data transfer
+
+    // Pack map into msgpack
     nlohmann::json resp;
     mtx.lock();
     resp["time"] = nlohmann::json(times);
@@ -263,16 +275,16 @@ bool mapMaker::setup(size_t frame_id) {
     // initialize map containers
     mtx.lock();
     for (auto f : freqs) {
-        std::vector<std::vector<cfloat>> vis(num_pol);
-        std::vector<std::vector<cfloat>> wgt(num_pol);
+        std::vector<std::vector<float>> vis(num_pol);
+        std::vector<std::vector<float>> wgt(num_pol);
         for (uint p = 0; p < num_pol; p++) {
             vis.at(p).resize(num_time * num_pix);
             wgt.at(p).resize(num_time * num_pix);
-            std::fill(vis.at(p).begin(), vis.at(p).end(), cfloat(0.,0.));
-            std::fill(wgt.at(p).begin(), wgt.at(p).end(), cfloat(0.,0.));
+            std::fill(vis.at(p).begin(), vis.at(p).end(), 0.);
+            std::fill(wgt.at(p).begin(), wgt.at(p).end(), 0.);
         }
-        map.insert(std::pair<uint64_t, std::vector<std::vector<cfloat>>>(f.first, vis));
-        wgt_map.insert(std::pair<uint64_t, std::vector<std::vector<cfloat>>>(f.first, wgt));
+        map.insert(std::pair<uint64_t, std::vector<std::vector<float>>>(f.first, vis));
+        wgt_map.insert(std::pair<uint64_t, std::vector<std::vector<float>>>(f.first, wgt));
     }
     mtx.unlock();
 
