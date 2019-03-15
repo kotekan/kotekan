@@ -134,16 +134,16 @@ void mapMaker::main_thread() {
                 // transform into map slice
                 cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl,
                             &alpha, vis2map.at(f_id).data(), num_bl, input_vis,
-                            1, &beta, map.at(f_id).at(p).data() + t_ind * num_pix, 1);
+                            1, &beta, tmp_vismap.data(), 1);
 
                 // same for weights map
                 cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl,
                             &alpha, vis2map.at(f_id).data(), num_bl, input_wgt,
-                            1, &beta, wgt_map.at(f_id).at(p).data() + t_ind * num_pix, 1);
+                            1, &beta, tmp_wgtmap.data(), 1);
 
                 // multiply visibility and weight maps
                 // keep real part only
-                uint map_offset = t_ind * num_pix;
+                size_t map_offset = t_ind * num_pix;
                 for (uint i = 0; i < num_pix; i++) {
                     wgt_map.at(f_id).at(p).at(map_offset + i) = (tmp_vismap.at(i) * tmp_wgtmap.at(i)).real();
                     map.at(f_id).at(p).at(map_offset + i) = tmp_vismap.at(i).real();
@@ -358,9 +358,9 @@ int64_t mapMaker::resolve_time(time_ctype t){
             uint64_t fid = f.first;
             for (uint p = 0; p < num_pol; p++) {
                 std::fill(map.at(fid).at(p).begin() + start*num_pix,
-                          map.at(fid).at(p).begin() + stop*num_pix, cfloat(0., 0.));
+                          map.at(fid).at(p).begin() + stop*num_pix, 0.);
                 std::fill(wgt_map.at(fid).at(p).begin() + start*num_pix,
-                          wgt_map.at(fid).at(p).begin() + stop*num_pix, cfloat(0., 0.));
+                          wgt_map.at(fid).at(p).begin() + stop*num_pix, 0.);
             }
         }
         mtx.unlock();
