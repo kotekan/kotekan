@@ -401,12 +401,15 @@ int main(int argc, char** argv) {
     rest_server.register_post_callback("/start", [&](connectionInstance& conn, json& json_config) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         if (running) {
+            WARN("/start was called, but the system is already running, ignoring start request.");
             conn.send_error("Already running", HTTP_RESPONSE::REQUEST_FAILED);
+            return;
         }
 
         config.update_config(json_config);
 
         try {
+            INFO("Starting new kotekan mode using POSTed config.");
             start_new_kotekan_mode(config, false);
         } catch (const std::out_of_range& ex) {
             ERROR("Out of range exception %s", ex.what());
@@ -433,9 +436,11 @@ int main(int argc, char** argv) {
     rest_server.register_get_callback("/stop", [&](connectionInstance& conn) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         if (!running) {
+            WARN("/stop called, but the system is already stopped, ignoring stop request.");
             conn.send_error("kotekan is already stopped", HTTP_RESPONSE::REQUEST_FAILED);
             return;
         }
+        INFO("/stop endpoint called, shutting down current config.");
         assert(kotekan_mode != nullptr);
         kotekan_mode->stop_stages();
         // TODO should we have three states (running, shutting down, and stopped)?
@@ -448,6 +453,7 @@ int main(int argc, char** argv) {
     });
 
     rest_server.register_get_callback("/kill", [&](connectionInstance& conn) {
+        INFO("/kill endpoint called, raising SIGINT to shutdown the kotekan system process.");
         raise(SIGINT);
         conn.send_empty_reply(HTTP_RESPONSE::OK);
     });

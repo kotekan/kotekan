@@ -74,7 +74,7 @@ public:
 private:
     /// Entrancepoint for n threads. Each thread takes frames with a
     /// different frame_id from the buffer and compresses them.
-    void compress_thread();
+    void compress_thread(uint32_t thread_id);
 
     /// Tracks input dataset ID and gets output dataset IDs from manager
     dset_id_t change_dataset_state(dset_id_t input_ds_id);
@@ -113,6 +113,7 @@ private:
     // Frame IDs, shared by compress threads and their mutex.
     frameID frame_id_in;
     frameID frame_id_out;
+    uint64_t frame_counter_global;
     std::mutex m_frame_ids;
 };
 
