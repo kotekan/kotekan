@@ -1,49 +1,42 @@
 #include "ringmap.hpp"
-#include "visBuffer.hpp"
-#include "datasetManager.hpp"
+
 #include "StageFactory.hpp"
+#include "datasetManager.hpp"
+#include "visBuffer.hpp"
 #include "visCompression.hpp"
-#include <complex>
+
 #include <cblas.h>
+#include <complex>
 
 using namespace std::complex_literals;
 using namespace std::placeholders;
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheusMetrics;
-using kotekan::Stage;
-using kotekan::restServer;
 using kotekan::HTTP_RESPONSE;
+using kotekan::prometheusMetrics;
+using kotekan::restServer;
+using kotekan::Stage;
 
 const float pi = std::acos(-1);
 
 REGISTER_KOTEKAN_STAGE(mapMaker);
 REGISTER_KOTEKAN_STAGE(redundantStack);
 
-mapMaker::mapMaker(Config &config,
-                   const string& unique_name,
-                   bufferContainer &buffer_container) :
-    Stage(config, unique_name, buffer_container,
-          std::bind(&mapMaker::main_thread, this)) {
+mapMaker::mapMaker(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&mapMaker::main_thread, this)) {
 
     // Register REST callbacks
-    restServer::instance().register_post_callback("ringmap",
-        std::bind(&mapMaker::rest_callback,
-                  this, std::placeholders::_1, std::placeholders::_2
-        )
-    );
-    restServer::instance().register_get_callback("ringmap",
-        std::bind(&mapMaker::rest_callback_get,
-                  this, std::placeholders::_1
-        )
-    );
+    restServer::instance().register_post_callback(
+        "ringmap",
+        std::bind(&mapMaker::rest_callback, this, std::placeholders::_1, std::placeholders::_2));
+    restServer::instance().register_get_callback(
+        "ringmap", std::bind(&mapMaker::rest_callback_get, this, std::placeholders::_1));
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
     // config parameters
     feed_sep = config.get_default<float>(unique_name, "feed_sep", 0.3048);
-
 }
 
 void mapMaker::main_thread() {
@@ -60,20 +53,19 @@ void mapMaker::main_thread() {
     // These will be used to get around the missing cross-polar visibility
     // TODO: this is not at all generic
     size_t offset;
-    uint p_special = 2;  // This is the pol that is shorter than the others
+    uint p_special = 2; // This is the pol that is shorter than the others
     std::vector<cfloat> special_vis(num_bl);
-    std::vector<cfloat> special_wgt(num_bl);
+    std::vector<float> special_var(num_bl);
     // We will need to cast weights into complex
-    std::vector<cfloat> complex_wgt(num_stack);
+    std::vector<float> frame_var(num_stack);
     // Buffers to hold result before saving real part
     std::vector<cfloat> tmp_vismap(num_pix);
-    std::vector<cfloat> tmp_wgtmap(num_pix);
+    std::vector<float> tmp_varmap(num_pix);
 
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
-        if(wait_for_full_frame(in_buf, unique_name.c_str(),
-                               in_frame_id) == nullptr) {
+        if (wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id) == nullptr) {
             break;
         }
 
@@ -94,58 +86,55 @@ void mapMaker::main_thread() {
         }
 
         // Find the time index to append to
-        time_ctype t = {std::get<0>(input_frame.time),
-                        ts_to_double(std::get<1>(input_frame.time))};
+        time_ctype t = {std::get<0>(input_frame.time), ts_to_double(std::get<1>(input_frame.time))};
         int64_t t_ind = resolve_time(t);
         if (t_ind >= 0) {
-            // Copy weights into a complex vector
-            std::transform(
-                input_frame.weight.begin(), input_frame.weight.begin() + num_stack,
-                complex_wgt.begin(),
-                [](const float& a) {return cfloat(a, 0.);}
-            );
+            // Copy variances into a vector
+            std::transform(input_frame.weight.begin(), input_frame.weight.begin() + num_stack,
+                           frame_var.begin(),
+                           [](const float& a) { return (a != 0.) ? 1. / a : 0.; });
             mtx.lock();
             for (uint p = 0; p < num_pol; p++) {
                 // Pointers to the span of visibilities for this pol
                 cfloat* input_vis;
-                cfloat* input_wgt;
+                float* input_var;
 
                 if (p != p_special) {
                     // Need offset to account for missing cross-pol
                     offset = p * num_bl - (p > p_special);
                     input_vis = input_frame.vis.data() + offset;
-                    input_wgt = complex_wgt.data() + offset;
+                    input_var = frame_var.data() + offset;
                 } else {
                     // For now just copy the visibility. This might be slow...
                     std::copy(input_frame.vis.begin() + p * num_bl,
-                        input_frame.vis.begin() + (p + 1) * num_bl - 1,
-                        special_vis.begin() + 1);
+                              input_frame.vis.begin() + (p + 1) * num_bl - 1,
+                              special_vis.begin() + 1);
                     // for the weights, need to cast
-                    std::copy(complex_wgt.begin() + p * num_bl,
-                        complex_wgt.begin() + (p + 1) * num_bl - 1,
-                        special_wgt.begin() + 1);
+                    std::copy(frame_var.begin() + p * num_bl,
+                              frame_var.begin() + (p + 1) * num_bl - 1, special_var.begin() + 1);
                     // Add missing cross-pol
                     special_vis.at(0) = conj(input_frame.vis.at((p - 1) * num_bl));
-                    special_wgt.at(0) = complex_wgt.at((p - 1) * num_bl);
+                    special_var.at(0) = frame_var.at((p - 1) * num_bl);
 
                     input_vis = special_vis.data();
-                    input_wgt = special_wgt.data();
+                    input_var = special_var.data();
                 }
                 // transform into map slice
-                cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl,
-                            &alpha, vis2map.at(f_id).data(), num_bl, input_vis,
-                            1, &beta, tmp_vismap.data(), 1);
+                cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl, &alpha,
+                            vis2map.at(f_id).data(), num_bl, input_vis, 1, &beta, tmp_vismap.data(),
+                            1);
 
                 // same for weights map
-                cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl,
-                            &alpha, vis2map.at(f_id).data(), num_bl, input_wgt,
-                            1, &beta, tmp_wgtmap.data(), 1);
+                cblas_sgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl, alpha,
+                            wgt2map.at(f_id).data(), num_bl, input_var, 1, beta, tmp_varmap.data(),
+                            1);
 
                 // multiply visibility and weight maps
                 // keep real part only
                 size_t map_offset = t_ind * num_pix;
                 for (uint i = 0; i < num_pix; i++) {
-                    wgt_map.at(f_id).at(p).at(map_offset + i) = (tmp_vismap.at(i) * tmp_wgtmap.at(i)).real();
+                    wgt_map.at(f_id).at(p).at(map_offset + i) =
+                        (tmp_varmap.at(i) != 0.) ? tmp_varmap.at(i) : 0.;
                     map.at(f_id).at(p).at(map_offset + i) = tmp_vismap.at(i).real();
                 }
             }
@@ -172,8 +161,7 @@ void mapMaker::rest_callback_get(kotekan::connectionInstance& conn) {
     return;
 }
 
-void mapMaker::rest_callback(kotekan::connectionInstance& conn,
-                                       nlohmann::json& json) {
+void mapMaker::rest_callback(kotekan::connectionInstance& conn, nlohmann::json& json) {
     // return the map for the specified frequency and polarization in JSON format
     // make sure to lock the map arrays
 
@@ -182,16 +170,14 @@ void mapMaker::rest_callback(kotekan::connectionInstance& conn,
     if (json.find("pol") != json.end()) {
         pol = json.at("pol");
     } else {
-        conn.send_error("Did not find key 'pol' in JSON request.",
-                       HTTP_RESPONSE::BAD_REQUEST);
+        conn.send_error("Did not find key 'pol' in JSON request.", HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
     int f_ind;
     if (json.find("freq_ind") != json.end()) {
         f_ind = json.at("freq_ind");
     } else {
-        conn.send_error("Did not find key 'freq_ind' in JSON request.",
-                       HTTP_RESPONSE::BAD_REQUEST);
+        conn.send_error("Did not find key 'freq_ind' in JSON request.", HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
 
@@ -224,14 +210,13 @@ void mapMaker::change_dataset_state(dset_id_t new_ds_id) {
     auto sstate = dm.dataset_state<stackState>(ds_id);
     auto fstate = dm.dataset_state<freqState>(ds_id);
     if (pstate == nullptr || istate == nullptr || fstate == nullptr)
-        throw std::runtime_error("Could not find all dataset states for " \
+        throw std::runtime_error("Could not find all dataset states for "
                                  "incoming dataset with ID "
-                                 + std::to_string(ds_id) + ".\n" \
-                                 "One of them is a nullptr (0): prod "
-                                 + std::to_string(pstate != nullptr)
-                                 + ", input "
-                                 + std::to_string(istate != nullptr)
-                                 + ", stack "
+                                 + std::to_string(ds_id)
+                                 + ".\n"
+                                   "One of them is a nullptr (0): prod "
+                                 + std::to_string(pstate != nullptr) + ", input "
+                                 + std::to_string(istate != nullptr) + ", stack "
                                  + std::to_string(sstate != nullptr));
 
     if (sstate == nullptr)
@@ -316,17 +301,20 @@ void mapMaker::gen_matrices() {
     // Construct matrix of phase weights for every baseline and pixel
     for (auto f : freqs) {
         std::vector<cfloat> m(num_pix * num_bl);
+        std::vector<float> w(num_pix * num_bl);
         float lam = wl(f.second.centre);
         for (uint p = 0; p < num_pix; p++) {
             for (uint i = 0; i < num_bl; i++) {
-                m[p*num_bl + i] = std::exp(cfloat(-2.i) * pi * ns_baselines[i] / lam * sinza[p]);
+                m[p * num_bl + i] = std::exp(cfloat(-2.i) * pi * ns_baselines[i] / lam * sinza[p]);
+                w[p * num_bl + i] = fast_norm(m[p * num_bl + i]);
             }
         }
         vis2map.insert(std::pair<uint64_t, std::vector<cfloat>>(f.first, m));
+        wgt2map.insert(std::pair<uint64_t, std::vector<float>>(f.first, w));
     }
 }
 
-int64_t mapMaker::resolve_time(time_ctype t){
+int64_t mapMaker::resolve_time(time_ctype t) {
 
     if (t.fpga_count < min_fpga) {
         // time is too old, discard
@@ -357,10 +345,10 @@ int64_t mapMaker::resolve_time(time_ctype t){
         for (auto f : freqs) {
             uint64_t fid = f.first;
             for (uint p = 0; p < num_pol; p++) {
-                std::fill(map.at(fid).at(p).begin() + start*num_pix,
-                          map.at(fid).at(p).begin() + stop*num_pix, 0.);
-                std::fill(wgt_map.at(fid).at(p).begin() + start*num_pix,
-                          wgt_map.at(fid).at(p).begin() + stop*num_pix, 0.);
+                std::fill(map.at(fid).at(p).begin() + start * num_pix,
+                          map.at(fid).at(p).begin() + stop * num_pix, 0.);
+                std::fill(wgt_map.at(fid).at(p).begin() + start * num_pix,
+                          wgt_map.at(fid).at(p).begin() + stop * num_pix, 0.);
             }
         }
         mtx.unlock();
@@ -378,18 +366,15 @@ int64_t mapMaker::resolve_time(time_ctype t){
     return res->second;
 }
 
-redundantStack::redundantStack(Config &config,
-                   const string& unique_name,
-                   bufferContainer &buffer_container) :
-    Stage(config, unique_name, buffer_container,
-          std::bind(&redundantStack::main_thread, this)) {
+redundantStack::redundantStack(Config& config, const string& unique_name,
+                               bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&redundantStack::main_thread, this)) {
 
     // Get buffers from config
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
-
 }
 
 void redundantStack::change_dataset_state(dset_id_t ds_id) {
@@ -397,30 +382,27 @@ void redundantStack::change_dataset_state(dset_id_t ds_id) {
     state_id_t stack_state_id;
 
     // Get input & prod states synchronoulsy
-    const inputState*  input_state_ptr = dm.dataset_state<inputState>(ds_id);
+    const inputState* input_state_ptr = dm.dataset_state<inputState>(ds_id);
     prod_state_ptr = dm.dataset_state<prodState>(ds_id);
     old_stack_state_ptr = dm.dataset_state<stackState>(ds_id);
 
     if (input_state_ptr == nullptr)
-        throw std::runtime_error("Could not find inputState for " \
+        throw std::runtime_error("Could not find inputState for "
                                  "incoming dataset with ID "
                                  + std::to_string(ds_id) + ".");
     if (prod_state_ptr == nullptr)
-        throw std::runtime_error("Could not find prodState for " \
+        throw std::runtime_error("Could not find prodState for "
                                  "incoming dataset with ID "
                                  + std::to_string(ds_id) + ".");
     if (old_stack_state_ptr == nullptr)
-        throw std::runtime_error("Could not find stackState for " \
+        throw std::runtime_error("Could not find stackState for "
                                  "incoming dataset with ID "
                                  + std::to_string(ds_id) + ".");
 
-    auto sspec = full_redundant(input_state_ptr->get_inputs(),
-                                prod_state_ptr->get_prods());
-    auto sstate = std::make_unique<stackState>(
-        sspec.first, std::move(sspec.second));
+    auto sspec = full_redundant(input_state_ptr->get_inputs(), prod_state_ptr->get_prods());
+    auto sstate = std::make_unique<stackState>(sspec.first, std::move(sspec.second));
 
-    std::tie(stack_state_id, new_stack_state_ptr) =
-        dm.add_state(std::move(sstate));
+    std::tie(stack_state_id, new_stack_state_ptr) = dm.add_state(std::move(sstate));
 
     output_dset_id = dm.add_dataset(ds_id, stack_state_id);
 }
@@ -431,8 +413,7 @@ void redundantStack::main_thread() {
     frameID output_frame_id(out_buf);
 
     // Wait for the input buffer to be filled with data
-    if(wait_for_full_frame(in_buf, unique_name.c_str(),
-                           in_frame_id) == nullptr) {
+    if (wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id) == nullptr) {
         return;
     }
 
@@ -443,8 +424,7 @@ void redundantStack::main_thread() {
     while (!stop_thread) {
 
         // Wait for the input buffer to be filled with data
-        if(wait_for_full_frame(in_buf, unique_name.c_str(),
-                               in_frame_id) == nullptr) {
+        if (wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id) == nullptr) {
             break;
         }
 
@@ -467,18 +447,15 @@ void redundantStack::main_thread() {
         std::vector<float> stack_v2(new_stack_state_ptr->get_num_stack(), 0.0);
 
         // Wait for the output buffer frame to be free
-        if(wait_for_empty_frame(out_buf, unique_name.c_str(),
-                                output_frame_id) == nullptr) {
+        if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
             break;
         }
 
         // Allocate metadata and get output frame
         allocate_new_metadata_object(out_buf, output_frame_id);
         // Create view to output frame
-        auto output_frame = visFrameView(out_buf, output_frame_id,
-                                         input_frame.num_elements,
-                                         num_stack,
-                                         input_frame.num_ev);
+        auto output_frame = visFrameView(out_buf, output_frame_id, input_frame.num_elements,
+                                         num_stack, input_frame.num_ev);
 
         // Copy over the data we won't modify
         output_frame.copy_metadata(input_frame);
@@ -486,10 +463,8 @@ void redundantStack::main_thread() {
         output_frame.dataset_id = output_dset_id;
 
         // Zero the output frame
-        std::fill(std::begin(output_frame.vis),
-                  std::end(output_frame.vis), 0.0);
-        std::fill(std::begin(output_frame.weight),
-                  std::end(output_frame.weight), 0.0);
+        std::fill(std::begin(output_frame.vis), std::end(output_frame.vis), 0.0);
+        std::fill(std::begin(output_frame.weight), std::end(output_frame.weight), 0.0);
 
         auto in_vis = input_frame.vis.data();
         auto out_vis = output_frame.vis.data();
@@ -498,7 +473,7 @@ void redundantStack::main_thread() {
         auto flags = output_frame.flags.data();
 
         // Iterate over all the products and average together
-        for(uint32_t old_ind = 0; old_ind < old_stack_map.size(); old_ind++) {
+        for (uint32_t old_ind = 0; old_ind < old_stack_map.size(); old_ind++) {
             // TODO: if the weights are ever different from 0 or 1, we will
             // definitely need to rewrite this.
 
@@ -533,7 +508,7 @@ void redundantStack::main_thread() {
         // Loop over the stacks and normalise (and invert the variances)
         float vart = 0.0;
         float normt = 0.0;
-        for(uint32_t stack_ind = 0; stack_ind < num_stack; stack_ind++) {
+        for (uint32_t stack_ind = 0; stack_ind < num_stack; stack_ind++) {
 
             // Calculate the mean and accumulate weight and place in the frame
             float norm = stack_norm[stack_ind];
@@ -542,13 +517,13 @@ void redundantStack::main_thread() {
             float inorm = (norm != 0.0) ? (1.0 / norm) : 0.0;
 
             output_frame.vis[stack_ind] *= inorm;
-            float iwgt = ((output_frame.weight[stack_ind] != 0.0)
-                          ? 1.0 / output_frame.weight[stack_ind] : 0.0);
+            float iwgt =
+                ((output_frame.weight[stack_ind] != 0.0) ? 1.0 / output_frame.weight[stack_ind]
+                                                         : 0.0);
             output_frame.weight[stack_ind] = norm * norm * iwgt;
 
             // Accumulate to calculate the variance of the residuals
-            vart += stack_v2[stack_ind]
-                    - std::norm(output_frame.vis[stack_ind]) * norm;
+            vart += stack_v2[stack_ind] - std::norm(output_frame.vis[stack_ind]) * norm;
             normt += norm;
         }
 
@@ -563,30 +538,23 @@ using feed_diff = std::tuple<int8_t, int8_t, int8_t, int16_t>;
 // Calculate the baseline parameters and whether the product must be
 // conjugated to get canonical ordering
 // Modified to return cylinder separation
-std::pair<feed_diff, bool> calculate_chime_vis_full(
-    const prod_ctype& p, const std::vector<input_ctype>& inputs)
-{
+std::pair<feed_diff, bool> calculate_chime_vis_full(const prod_ctype& p,
+                                                    const std::vector<input_ctype>& inputs) {
 
     chimeFeed fa = chimeFeed::from_input(inputs[p.input_a]);
     chimeFeed fb = chimeFeed::from_input(inputs[p.input_b]);
 
     bool is_wrong_cylorder = (fa.cylinder > fb.cylinder);
-    bool is_same_cyl_wrong_feed_order = (
-            (fa.cylinder == fb.cylinder) &&
-            (fa.feed_location > fb.feed_location)
-    );
-    bool is_same_feed_wrong_pol_order = (
-        (fa.cylinder == fb.cylinder) &&
-        (fa.feed_location == fb.feed_location) &&
-        (fa.polarisation > fb.polarisation)
-    );
+    bool is_same_cyl_wrong_feed_order =
+        ((fa.cylinder == fb.cylinder) && (fa.feed_location > fb.feed_location));
+    bool is_same_feed_wrong_pol_order =
+        ((fa.cylinder == fb.cylinder) && (fa.feed_location == fb.feed_location)
+         && (fa.polarisation > fb.polarisation));
 
     bool conjugate = false;
 
     // Check if we need to conjugate/transpose to get the correct order
-    if (is_wrong_cylorder ||
-        is_same_cyl_wrong_feed_order ||
-        is_same_feed_wrong_pol_order) {
+    if (is_wrong_cylorder || is_same_cyl_wrong_feed_order || is_same_feed_wrong_pol_order) {
 
         chimeFeed t = fa;
         fa = fb;
@@ -594,11 +562,9 @@ std::pair<feed_diff, bool> calculate_chime_vis_full(
         conjugate = true;
     }
 
-    return {
-        std::make_tuple(fa.polarisation, fb.polarisation, fb.cylinder - fa.cylinder,
-                        fb.feed_location - fa.feed_location),
-        conjugate
-    };
+    return {std::make_tuple(fa.polarisation, fb.polarisation, fb.cylinder - fa.cylinder,
+                            fb.feed_location - fa.feed_location),
+            conjugate};
 }
 
 // Only modification is to use fully redundant stacking

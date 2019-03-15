@@ -4,34 +4,31 @@
 
 #include "Config.hpp"
 #include "Stage.hpp"
-#include "visUtil.hpp"
-#include "restServer.hpp"
 #include "datasetManager.hpp"
 #include "fpga_header_functions.h"
+#include "restServer.hpp"
+#include "visUtil.hpp"
+
 #include "gsl-lite.hpp"
 
 class mapMaker : public kotekan::Stage {
 
 public:
-
     // Default constructor
-    mapMaker(kotekan::Config &config,
-             const string& unique_name,
-             kotekan::bufferContainer &buffer_container);
+    mapMaker(kotekan::Config& config, const string& unique_name,
+             kotekan::bufferContainer& buffer_container);
 
     // Main loop for the process
     void main_thread() override;
 
     /// REST endpoint to request a map
-    void rest_callback(kotekan::connectionInstance& conn,
-                       nlohmann::json &json);
+    void rest_callback(kotekan::connectionInstance& conn, nlohmann::json& json);
     void rest_callback_get(kotekan::connectionInstance& conn);
 
     /// Abbreviation for RingMap type
     typedef std::vector<std::vector<cfloat>> RingMap;
 
 private:
-
     void change_dataset_state(dset_id_t ds_id);
 
     bool setup(size_t frame_id);
@@ -45,10 +42,11 @@ private:
     };
 
     // Matrix from visibilities to map for every freq (same for each pol)
-    std::map<uint32_t,std::vector<cfloat>> vis2map;
+    std::map<uint32_t, std::vector<cfloat>> vis2map;
+    std::map<uint32_t, std::vector<float>> wgt2map;
     // Store the maps and weight maps for every frequency
-    std::map<uint32_t,std::vector<std::vector<float>>> map;
-    std::map<uint32_t,std::vector<std::vector<float>>> wgt_map;
+    std::map<uint32_t, std::vector<std::vector<float>>> map;
+    std::map<uint32_t, std::vector<std::vector<float>>> wgt_map;
 
     // Visibilities specs
     std::vector<stack_ctype> stacks;
@@ -87,15 +85,12 @@ private:
 class redundantStack : public kotekan::Stage {
 
 public:
-
-    redundantStack(kotekan::Config &config,
-                   const string& unique_name,
-                   kotekan::bufferContainer &buffer_container);
+    redundantStack(kotekan::Config& config, const string& unique_name,
+                   kotekan::bufferContainer& buffer_container);
 
     void main_thread();
 
 private:
-
     void change_dataset_state(dset_id_t ds_id);
 
     // dataset states and IDs
@@ -110,9 +105,7 @@ private:
     Buffer* out_buf;
 };
 
-std::pair<uint32_t, std::vector<rstack_ctype>> full_redundant(
-    const std::vector<input_ctype>& inputs,
-    const std::vector<prod_ctype>& prods
-);
+std::pair<uint32_t, std::vector<rstack_ctype>>
+full_redundant(const std::vector<input_ctype>& inputs, const std::vector<prod_ctype>& prods);
 
 #endif
