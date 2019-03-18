@@ -282,7 +282,7 @@ class VisRaw(object):
 
         # Read file metadata
         with io.open(self.meta_path, 'rb') as fh:
-            metadata = msgpack.load(fh, encoding='utf-8')
+            metadata = msgpack.load(fh, raw=False)
 
         self.index_map = metadata['index_map']
 

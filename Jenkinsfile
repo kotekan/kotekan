@@ -81,8 +81,10 @@ pipeline {
       steps {
         sh '''cd tests/
               PYTHONPATH=../python/ python3 -m pytest -s -vvv
+              PYTHONPATH=../python/ python2 -m pytest -s -vvv
               cd ../build/tests/
-              PYTHONPATH=../python/ python3 -m pytest -s -vvv'''
+              PYTHONPATH=../python/ python3 -m pytest -s -vvv
+              PYTHONPATH=../python/ python2 -m pytest -s -vvv'''
       }
     }
   }
