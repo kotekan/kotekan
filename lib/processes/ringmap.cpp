@@ -120,6 +120,7 @@ void mapMaker::main_thread() {
                     input_var = special_var.data();
                 }
                 // transform into map slice
+                std::fill(tmp_vismap.begin(), tmp_vismap.end(), cfloat(0., 0.));
                 cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl, &alpha,
                             vis2map.at(f_id).data(), num_bl, input_vis, 1, &beta, tmp_vismap.data(),
                             1);
