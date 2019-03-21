@@ -46,7 +46,7 @@ private:
     std::map<uint32_t, std::vector<float>> wgt2map;
     // Store the maps and weight maps for every frequency
     std::map<uint32_t, std::vector<std::vector<float>>> map;
-    std::map<uint32_t, std::vector<std::vector<float>>> wgt_map;
+    std::map<uint32_t, std::vector<std::vector<float>>> wgt;
 
     // Visibilities specs
     std::vector<stack_ctype> stacks;

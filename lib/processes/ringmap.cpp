@@ -55,12 +55,10 @@ void mapMaker::main_thread() {
     size_t offset;
     uint p_special = 2; // This is the pol that is shorter than the others
     std::vector<cfloat> special_vis(num_bl);
-    std::vector<float> special_var(num_bl);
     // We will need to cast weights into complex
     std::vector<float> frame_var(num_stack);
     // Buffers to hold result before saving real part
     std::vector<cfloat> tmp_vismap(num_pix);
-    std::vector<float> tmp_varmap(num_pix);
 
     while (!stop_thread) {
 
@@ -95,29 +93,27 @@ void mapMaker::main_thread() {
                            [](const float& a) { return (a != 0.) ? 1. / a : 0.; });
             mtx.lock();
             for (uint p = 0; p < num_pol; p++) {
-                // Pointers to the span of visibilities for this pol
+                // Pointer to the span of visibilities for this pol
                 cfloat* input_vis;
-                float* input_var;
 
+                // Sum of variances for this pol
+                float var = 0.;
+
+                offset = p * num_bl;
                 if (p != p_special) {
                     // Need offset to account for missing cross-pol
-                    offset = p * num_bl - (p > p_special);
+                    offset -= (p > p_special);
                     input_vis = input_frame.vis.data() + offset;
-                    input_var = frame_var.data() + offset;
                 } else {
                     // For now just copy the visibility. This might be slow...
                     std::copy(input_frame.vis.begin() + p * num_bl,
                               input_frame.vis.begin() + (p + 1) * num_bl - 1,
                               special_vis.begin() + 1);
-                    // for the weights, need to cast
-                    std::copy(frame_var.begin() + p * num_bl,
-                              frame_var.begin() + (p + 1) * num_bl - 1, special_var.begin() + 1);
                     // Add missing cross-pol
                     special_vis.at(0) = conj(input_frame.vis.at((p - 1) * num_bl));
-                    special_var.at(0) = frame_var.at((p - 1) * num_bl);
+                    var = frame_var.at((p - 1) * num_bl);
 
                     input_vis = special_vis.data();
-                    input_var = special_var.data();
                 }
                 // transform into map slice
                 std::fill(tmp_vismap.begin(), tmp_vismap.end(), cfloat(0., 0.));
@@ -125,19 +121,15 @@ void mapMaker::main_thread() {
                             vis2map.at(f_id).data(), num_bl, input_vis, 1, &beta, tmp_vismap.data(),
                             1);
 
-                // same for weights map
-                cblas_sgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl, alpha,
-                            wgt2map.at(f_id).data(), num_bl, input_var, 1, beta, tmp_varmap.data(),
-                            1);
-
-                // multiply visibility and weight maps
                 // keep real part only
-                size_t map_offset = t_ind * num_pix;
-                for (uint i = 0; i < num_pix; i++) {
-                    wgt_map.at(f_id).at(p).at(map_offset + i) =
-                        (tmp_varmap.at(i) != 0.) ? tmp_varmap.at(i) : 0.;
-                    map.at(f_id).at(p).at(map_offset + i) = tmp_vismap.at(i).real();
+                for (size_t i = 0; i < num_pix; i++) {
+                    map.at(f_id).at(p).at(t_ind * num_pix + i) = tmp_vismap.at(i).real();
                 }
+                // accumulate variances. for special pol, we already have the first entry
+                for (size_t i = 0; i < num_pix - (p == p_special); i++) {
+                    var += frame_var.at(offset + i);
+                }
+                wgt.at(f_id).at(p).at(t_ind) = (var != 0.) ? 1. / var : 0.;
             }
             mtx.unlock();
         }
@@ -182,15 +174,13 @@ void mapMaker::rest_callback(kotekan::connectionInstance& conn, nlohmann::json& 
         return;
     }
 
-    // TODO: Process weights map here to save data transfer
-
     // Pack map into msgpack
     nlohmann::json resp;
     mtx.lock();
     resp["time"] = nlohmann::json(times);
     resp["sinza"] = nlohmann::json(sinza);
     resp["ringmap"] = nlohmann::json(map.at(freqs[f_ind].first).at(pol));
-    resp["weight_map"] = nlohmann::json(wgt_map.at(freqs[f_ind].first).at(pol));
+    resp["weight"] = nlohmann::json(wgt.at(freqs[f_ind].first).at(pol));
     std::vector<std::uint8_t> resp_msgpack = nlohmann::json::to_msgpack(resp);
     mtx.unlock();
     conn.send_binary_reply(resp_msgpack.data(), resp_msgpack.size());
@@ -262,15 +252,15 @@ bool mapMaker::setup(size_t frame_id) {
     mtx.lock();
     for (auto f : freqs) {
         std::vector<std::vector<float>> vis(num_pol);
-        std::vector<std::vector<float>> wgt(num_pol);
+        std::vector<std::vector<float>> w(num_pol);
         for (uint p = 0; p < num_pol; p++) {
             vis.at(p).resize(num_time * num_pix);
-            wgt.at(p).resize(num_time * num_pix);
+            w.at(p).resize(num_time);
             std::fill(vis.at(p).begin(), vis.at(p).end(), 0.);
-            std::fill(wgt.at(p).begin(), wgt.at(p).end(), 0.);
+            std::fill(w.at(p).begin(), w.at(p).end(), 0.);
         }
         map.insert(std::pair<uint64_t, std::vector<std::vector<float>>>(f.first, vis));
-        wgt_map.insert(std::pair<uint64_t, std::vector<std::vector<float>>>(f.first, wgt));
+        wgt.insert(std::pair<uint64_t, std::vector<std::vector<float>>>(f.first, w));
     }
     mtx.unlock();
 
@@ -302,16 +292,13 @@ void mapMaker::gen_matrices() {
     // Construct matrix of phase weights for every baseline and pixel
     for (auto f : freqs) {
         std::vector<cfloat> m(num_pix * num_bl);
-        std::vector<float> w(num_pix * num_bl);
         float lam = wl(f.second.centre);
         for (uint p = 0; p < num_pix; p++) {
             for (uint i = 0; i < num_bl; i++) {
                 m[p * num_bl + i] = std::exp(cfloat(-2.i) * pi * ns_baselines[i] / lam * sinza[p]);
-                w[p * num_bl + i] = fast_norm(m[p * num_bl + i]);
             }
         }
         vis2map.insert(std::pair<uint64_t, std::vector<cfloat>>(f.first, m));
-        wgt2map.insert(std::pair<uint64_t, std::vector<float>>(f.first, w));
     }
 }
 
@@ -348,8 +335,8 @@ int64_t mapMaker::resolve_time(time_ctype t) {
             for (uint p = 0; p < num_pol; p++) {
                 std::fill(map.at(fid).at(p).begin() + start * num_pix,
                           map.at(fid).at(p).begin() + stop * num_pix, 0.);
-                std::fill(wgt_map.at(fid).at(p).begin() + start * num_pix,
-                          wgt_map.at(fid).at(p).begin() + stop * num_pix, 0.);
+                std::fill(wgt.at(fid).at(p).begin() + start,
+                          wgt.at(fid).at(p).begin() + stop, 0.);
             }
         }
         mtx.unlock();
