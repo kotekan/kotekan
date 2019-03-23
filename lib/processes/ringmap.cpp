@@ -428,7 +428,6 @@ void redundantStack::main_thread() {
 
         const auto& stack_rmap = new_stack_state_ptr->get_rstack_map();
         const auto& old_stack_map = old_stack_state_ptr->get_stack_map();
-        const auto& prods = prod_state_ptr->get_prods();
         auto num_stack = new_stack_state_ptr->get_num_stack();
 
         std::vector<float> stack_norm(new_stack_state_ptr->get_num_stack(), 0.0);
@@ -458,7 +457,6 @@ void redundantStack::main_thread() {
         auto out_vis = output_frame.vis.data();
         auto in_weight = input_frame.weight.data();
         auto out_weight = output_frame.weight.data();
-        auto flags = output_frame.flags.data();
 
         // Iterate over all the products and average together
         for (uint32_t old_ind = 0; old_ind < old_stack_map.size(); old_ind++) {
@@ -470,11 +468,10 @@ void redundantStack::main_thread() {
             float weight = in_weight[old_ind];
 
             auto& old_s = old_stack_map[old_ind];
-            auto& p = prods[old_s.prod];
             auto& s = stack_rmap[old_s.prod];
 
             // If the weight is zero, completey skip this iteration
-            if (weight == 0 || flags[p.input_a] == 0 || flags[p.input_b] == 0)
+            if (weight == 0)
                 continue;
 
             vis = (s.conjugate != old_s.conjugate) ? conj(vis) : vis;
