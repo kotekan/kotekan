@@ -129,7 +129,8 @@ void mapMaker::main_thread() {
                 for (size_t i = 0; i < num_pix - (p == p_special); i++) {
                     var += frame_var.at(offset + i);
                 }
-                wgt.at(f_id).at(p).at(t_ind) = (var != 0.) ? 1. / var : 0.;
+                // variance of real part is half, we've divided by number of baselines
+                wgt.at(f_id).at(p).at(t_ind) = (var != 0.) ? 2. * num_bl * num_bl / var : 0.;
             }
             mtx.unlock();
         }
@@ -295,7 +296,8 @@ void mapMaker::gen_matrices() {
         float lam = wl(f.second.centre);
         for (uint p = 0; p < num_pix; p++) {
             for (uint i = 0; i < num_bl; i++) {
-                m[p * num_bl + i] = std::exp(cfloat(-2.i) * pi * ns_baselines[i] / lam * sinza[p]);
+                m[p * num_bl + i] =
+                    std::exp(cfloat(-2.i) * pi * ns_baselines[i] / lam * sinza[p]) / float(num_bl);
             }
         }
         vis2map.insert(std::pair<uint64_t, std::vector<cfloat>>(f.first, m));
@@ -335,8 +337,7 @@ int64_t mapMaker::resolve_time(time_ctype t) {
             for (uint p = 0; p < num_pol; p++) {
                 std::fill(map.at(fid).at(p).begin() + start * num_pix,
                           map.at(fid).at(p).begin() + stop * num_pix, 0.);
-                std::fill(wgt.at(fid).at(p).begin() + start,
-                          wgt.at(fid).at(p).begin() + stop, 0.);
+                std::fill(wgt.at(fid).at(p).begin() + start, wgt.at(fid).at(p).begin() + stop, 0.);
             }
         }
         mtx.unlock();
