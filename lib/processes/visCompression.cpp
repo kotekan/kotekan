@@ -286,9 +286,9 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
         prometheusMetrics::instance().add_stage_metric("kotekan_baselinecompression_residuals",
                                                        unique_name, residual, labels);
         prometheusMetrics::instance().add_stage_metric("kotekan_baselinecompression_time_seconds",
-                                                       unique_name, elapsed);
+                                                       unique_name, elapsed, labels);
         prometheusMetrics::instance().add_stage_metric("kotekan_baselinecompression_frame_counter",
-                                                       unique_name, frame_counter);
+                                                       unique_name, frame_counter, labels);
 
         // Get the current values of the shared frame IDs and increment them.
         {
