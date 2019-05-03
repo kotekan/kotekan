@@ -39,6 +39,8 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
     _base_dir(config.get_default<std::string>(unique_name, "base_dir", "./")),
     _num_frames_buffer(config.get<int>(unique_name, "num_frames_buffer")),
     _num_elements(config.get<int>(unique_name, "num_elements")),
+    _num_local_freq(config.get<int>(unique_name,"num_local_freq")),
+    _instrument_name(config.get<std::string>(unique_name,"instrument_name")),
     _samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
     _max_dump_samples(config.get_default<uint64_t>(unique_name, "max_dump_samples", 1 << 30)),
     _write_throttle(config.get_default<float>(unique_name, "write_throttle", 0.)),
@@ -106,13 +108,26 @@ void basebandReadout::main_thread() {
             auto first_meta = (chimeMetadata*)buf->metadata[buf_frame]->metadata;
 
             stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
-            uint32_t freq_id = bin_number_chime(&stream_id);
-            INFO("Starting request-listening thread for freq_id: %" PRIu32, freq_id);
-            basebandReadoutManager& mgr =
-                basebandApiManager::instance().register_readout_stage(freq_id);
-            lt = std::make_unique<std::thread>([&] { this->listen_thread(freq_id, mgr); });
+            // Switch freq_id based on instrument name, default to CHIME 
+            uint32_t freq_ids [_num_local_freq]; //
+            if (_instrument_name == "pathfinder") {
+                for(int freqidx=0; freqidx<_num_local_freq;freqidx++){
+                    freq_ids[freqidx] = bin_number(&stream_id,freqidx);
+                }
+            } else {
+            
+                freq_ids[0] = bin_number_chime(&stream_id);
+            }
 
-            wt = std::make_unique<std::thread>([&] { this->write_thread(mgr); });
+            for(int freqidx=0; freqidx<_num_local_freq;freqidx++){
+                INFO("Starting request-listening thread for freq_id: %" PRIu32, freq_ids[freqidx]);
+                basebandReadoutManager& mgr =
+                    basebandApiManager::instance().register_readout_stage(freq_ids[freqidx]);
+                lt = std::make_unique<std::thread>([&] { this->listen_thread(freq_ids[freqidx], mgr); });
+                printf("Listen Thread Made!");
+
+                wt = std::make_unique<std::thread>([&] { this->write_thread(mgr); });
+            }
         }
 
         int done_frame = add_replace_frame(frame_id);
