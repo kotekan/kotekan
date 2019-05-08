@@ -118,16 +118,23 @@ void basebandReadout::main_thread() {
             
                 freq_ids[0] = bin_number_chime(&stream_id);
             }
+            std::vector<std::reference_wrapper<basebandReadoutManager>> mgrs ;
 
             for(int freqidx=0; freqidx<_num_local_freq;freqidx++){
                 INFO("Starting request-listening thread for freq_id: %" PRIu32, freq_ids[freqidx]);
-                basebandReadoutManager& mgr =
-                    basebandApiManager::instance().register_readout_stage(freq_ids[freqidx]);
-                lt = std::make_unique<std::thread>([&] { this->listen_thread(freq_ids[freqidx], mgr); });
-                printf("Listen Thread Made!");
+                //basebandReadoutManager& mgr = basebandApiManager::instance().register_readout_stage(freq_ids[freqidx]); 
+                // TODO: make array of these...make a class with 1 attribute which is a reference to bbr manager; make an array of instances.
+                basebandReadoutManager& mgr = basebandApiManager::instance().register_readout_stage(freq_ids[freqidx]);
+                mgrs[freqidx] = std::reference_wrapper<basebandReadoutManager>(mgr);
+            
+//TODO: don't make a bunch of threads. Change listen_thread and write_thread to accept arrays if freq_ids and bbr managers.
+                }
+                INFO("Exited registration loop");
+                lt = std::make_unique<std::thread>([&] { this->listen_thread(freq_ids, mgrs); });
+                INFO("Listen Thread Made!");
 
-                wt = std::make_unique<std::thread>([&] { this->write_thread(mgr); });
-            }
+                wt = std::make_unique<std::thread>([&] { this->write_thread(mgrs); });
+            
         }
 
         int done_frame = add_replace_frame(frame_id);
@@ -147,14 +154,15 @@ void basebandReadout::main_thread() {
     }
 }
 
-void basebandReadout::listen_thread(const uint32_t freq_id, basebandReadoutManager& mgr) {
+void basebandReadout::listen_thread(const uint32_t freq_id[], std::vector<std::reference_wrapper<basebandReadoutManager>> mgrs) {
+    basebandReadoutManager& mgr = mgrs.front(); //make call signs work
 
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
         // Latency is *key* here. We want to call get_data within 100ms
         // of L4 sending the trigger.
 
-        auto next_request = mgr.get_next_waiting_request();
+        auto next_request = mgr.get_next_waiting_request(); // now there are 8 mgr objects, all need to return before dumping
 
         if (next_request) {
             basebandDumpStatus& dump_status = std::get<0>(*next_request);
@@ -218,7 +226,8 @@ void basebandReadout::listen_thread(const uint32_t freq_id, basebandReadoutManag
     }
 }
 
-void basebandReadout::write_thread(basebandReadoutManager& mgr) {
+void basebandReadout::write_thread(std::vector<std::reference_wrapper<basebandReadoutManager>> mgrs) {
+    basebandReadoutManager& mgr = mgrs.front();
     while (!stop_thread) {
         std::unique_lock<std::mutex> lock(dump_to_write_mtx);
 
