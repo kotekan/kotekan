@@ -32,8 +32,9 @@ def parse_dict(cmd, _dict):
         else:
             if key in cmd.config.keys():
                 if(type(cmd.config[key]) == type(value)):
-                    print("Setting Config Paramter %s to %s" %(key,str(value)))
+                    print("Setting Config Parameter %s to %s" %(key,str(value)))
                     cmd.config[key] = value
+
 
 class CommandLine:
 
