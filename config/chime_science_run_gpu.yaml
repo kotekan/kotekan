@@ -39,8 +39,10 @@ num_gpus: 4
 link_map: [0,1,2,3]
 
 dataset_manager:
+  # This enables the dataset broker use in GPU kotekan and the RFI server.
   use_dataset_broker: True
   ds_broker_host: "10.1.50.11" # recv1
+  ds_broker_port: 12050
 
 # Constants
 sizeof_float: 4
