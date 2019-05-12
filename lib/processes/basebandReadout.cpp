@@ -118,14 +118,16 @@ void basebandReadout::main_thread() {
             
                 freq_ids[0] = bin_number_chime(&stream_id);
             }
-            std::vector<std::reference_wrapper<basebandReadoutManager>> mgrs ;
+            std::vector<std::reference_wrapper<kotekan::basebandReadoutManager>> mgrs;
 
             for(int freqidx=0; freqidx<_num_local_freq;freqidx++){
                 INFO("Starting request-listening thread for freq_id: %" PRIu32, freq_ids[freqidx]);
                 //basebandReadoutManager& mgr = basebandApiManager::instance().register_readout_stage(freq_ids[freqidx]); 
                 // TODO: make array of these...make a class with 1 attribute which is a reference to bbr manager; make an array of instances.
                 basebandReadoutManager& mgr = basebandApiManager::instance().register_readout_stage(freq_ids[freqidx]);
-                mgrs[freqidx] = std::reference_wrapper<basebandReadoutManager>(mgr);
+                INFO("Made bbrManager& for freq_id: %" PRIu32, freq_ids[freqidx]);
+                mgrs.push_back(mgr);
+                INFO("Put bbrManager into vector");
             
 //TODO: don't make a bunch of threads. Change listen_thread and write_thread to accept arrays if freq_ids and bbr managers.
                 }
@@ -134,6 +136,7 @@ void basebandReadout::main_thread() {
                 INFO("Listen Thread Made!");
 
                 wt = std::make_unique<std::thread>([&] { this->write_thread(mgrs); });
+                INFO("Write Thread Made!");
             
         }
 
@@ -161,6 +164,8 @@ void basebandReadout::listen_thread(const uint32_t freq_id[], std::vector<std::r
         // Code that listens and waits for triggers and fills in trigger parameters.
         // Latency is *key* here. We want to call get_data within 100ms
         // of L4 sending the trigger.
+
+        INFO("Looping in listen_thread()");
 
         auto next_request = mgr.get_next_waiting_request(); // now there are 8 mgr objects, all need to return before dumping
 
@@ -227,8 +232,10 @@ void basebandReadout::listen_thread(const uint32_t freq_id[], std::vector<std::r
 }
 
 void basebandReadout::write_thread(std::vector<std::reference_wrapper<basebandReadoutManager>> mgrs) {
+    INFO("Entered write_thread()");
     basebandReadoutManager& mgr = mgrs.front();
     while (!stop_thread) {
+        INFO("Looping in write_thread()");
         std::unique_lock<std::mutex> lock(dump_to_write_mtx);
 
         // This will reset `dump_to_write` to nullptr so that even if this
