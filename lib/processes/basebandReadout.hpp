@@ -102,7 +102,6 @@ private:
     int _num_frames_buffer;
     int _num_elements;
     int _num_local_freq;
-    std::string _instrument_name;
     int _samples_per_data_set;
     int64_t _max_dump_samples;
     double _write_throttle;
