@@ -101,7 +101,6 @@ private:
     std::string _base_dir;
     int _num_frames_buffer;
     int _num_elements;
-    int _num_local_freq;
     int _samples_per_data_set;
     int64_t _max_dump_samples;
     double _write_throttle;
@@ -113,8 +112,8 @@ private:
 
     std::mutex manager_lock;
 
-    void listen_thread(const uint32_t freq_ids[], std::vector<std::reference_wrapper<kotekan::basebandReadoutManager>> readout_managers);
-    void write_thread(std::vector<std::reference_wrapper<kotekan::basebandReadoutManager>> readout_manager);
+    void listen_thread(const uint32_t freq_id, kotekan::basebandReadoutManager& readout_manager);
+    void write_thread(kotekan::basebandReadoutManager& readout_manager);
     void write_dump(basebandDumpData data, kotekan::basebandDumpStatus& dump_status,
                     std::mutex& request_mtx);
     int add_replace_frame(int frame_id);
