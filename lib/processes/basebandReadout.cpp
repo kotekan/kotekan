@@ -39,6 +39,7 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
     _base_dir(config.get_default<std::string>(unique_name, "base_dir", "./")),
     _num_frames_buffer(config.get<int>(unique_name, "num_frames_buffer")),
     _num_elements(config.get<int>(unique_name, "num_elements")),
+    _num_local_freq(config.get<int>(unique_name, "num_local_freq")),
     _samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
     _max_dump_samples(config.get_default<uint64_t>(unique_name, "max_dump_samples", 1 << 30)),
     _write_throttle(config.get_default<float>(unique_name, "write_throttle", 0.)),
@@ -106,13 +107,25 @@ void basebandReadout::main_thread() {
             auto first_meta = (chimeMetadata*)buf->metadata[buf_frame]->metadata;
 
             stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
-            uint32_t freq_id = bin_number_chime(&stream_id);
+            uint32_t freq_ids[_num_local_freq];
+            std::vector<std::reference_wrapper<basebandReadoutManager>> mgrs;
+            int freq_id;
+                for(int freqidx=0; freqidx < _num_local_freq;freqidx++){
+                    freq_id = bin_number(&stream_id,freqidx);
+                    freq_ids[freqidx] = freq_id;
+                }
+                freq_id = freq_ids[0];
             INFO("Starting request-listening thread for freq_id: %" PRIu32, freq_id);
-            basebandReadoutManager& mgr =
-                basebandApiManager::instance().register_readout_stage(freq_id);
-            lt = std::make_unique<std::thread>([&] { this->listen_thread(freq_id, mgr); });
+            basebandReadoutManager& mgr0=
+                basebandApiManager::instance().register_readout_stage(freq_ids[0]);
+            basebandReadoutManager& mgr1=
+                basebandApiManager::instance().register_readout_stage(freq_ids[1]);
+            mgrs.push_back(mgr0);
+            mgrs.push_back(mgr1);
+            
+            lt = std::make_unique<std::thread>([&] { this->listen_thread(freq_id, mgr0); });
 
-            wt = std::make_unique<std::thread>([&] { this->write_thread(mgr); });
+            wt = std::make_unique<std::thread>([&] { this->write_thread(mgr0); });
         }
 
         int done_frame = add_replace_frame(frame_id);
