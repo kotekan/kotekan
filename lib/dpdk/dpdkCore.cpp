@@ -339,7 +339,7 @@ int dpdkCore::lcore_rx(void* args) {
     const uint32_t* ports = port_list.ports;
     const uint32_t burst_size = core->burst_size;
 
-    for (uint32_t i = 0; i < num_local_ports; ++i) {
+    /*for (uint32_t i = 0; i < num_local_ports; ++i) {
         uint32_t port = ports[i];
         if (core->handlers[port] == nullptr) {
             // This is the one place (static member function) where normal logging does work.
@@ -347,13 +347,17 @@ int dpdkCore::lcore_rx(void* args) {
             //raise(SIGINT);
             return 0;
         }
-    }
+    }*/
 
     while (!core->stop_thread) {
         for (uint32_t i = 0; i < num_local_ports; ++i) {
             uint32_t port = ports[i];
 
+            if (core->handlers[port] == nullptr)
+                continue;
+
             const uint16_t num_rx = rte_eth_rx_burst(port, 0, mbufs, burst_size);
+            //fprintf(stderr, "Got packet, port %d\n", port);
 
             for (uint16_t j = 0; j < num_rx; ++j) {
 
