@@ -153,8 +153,8 @@ protected:
             return false;
         }
         if (unlikely(fpga_packet_size != cur_mbuf->pkt_len)) {
-            //ERROR("Got packet with incorrect length: %d, expected %d", cur_mbuf->pkt_len,
-            //      fpga_packet_size);
+            ERROR("Got packet with incorrect length: %d, expected %d", cur_mbuf->pkt_len,
+                  fpga_packet_size);
 
             // Getting a packet with the wrong length is almost always
             // a configuration/FPGA problem that needs to be addressed.
