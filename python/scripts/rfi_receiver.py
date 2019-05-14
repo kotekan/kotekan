@@ -22,8 +22,11 @@ import time
 import argparse
 import yaml
 import json
+import subprocess
 import sys
 import requests
+
+VERSION_SCRIPT = '../../scripts/version.py'
 
 def parse_dict(cmd, _dict):
     for key, value in _dict.items():
@@ -41,6 +44,17 @@ class CommandLine:
     def __init__(self):
 
         #Defaults
+        self.startup_time = datetime.datetime.now()
+
+        # TODO: Install this RFI script and version.py. Get the version at install time.
+        try:
+            self.git_version = subprocess.check_output(['python2', VERSION_SCRIPT])\
+                .strip()
+        except subprocess.CalledProcessError:
+            print('Failure calling {}. Make sure you run this script from kotekan/python/scripts'
+                  .format(VERSION_SCRIPT))
+            raise
+
         self.UDP_IP= "0.0.0.0"
         self.UDP_PORT = 2900
         self.TCP_IP = '10.10.10.2'
@@ -122,6 +136,7 @@ class CommandLine:
                 exit(1)
             comet = Manager(comet_host, comet_port)
             try:
+                comet.register_start(self.startup_time, self.git_version)
                 comet.register_config(config)
             except CometError as exc:
                 print('Comet failed registering initial config: {}'.format(exc))
