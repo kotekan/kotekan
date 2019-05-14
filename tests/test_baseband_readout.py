@@ -11,6 +11,7 @@ from kotekan import runner
 default_params = {
     'max_dump_samples': 3500,
     'num_elements': 256,
+    'num_local_freq': 1,
     'total_frames': 60,
     'stream_id': 0,
     'buffer_depth': 20,
