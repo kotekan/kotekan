@@ -75,8 +75,8 @@ def polyco_config(fname, start_time, generate_polyco, end_time, dm, segment, nco
     print(formatter(pfile.config_block(start_time, end_time)))
 
 
-if __name__ == '__main__':
-    cli.add_command(polyco_config)
-    cli.add_command(mjd)
+cli.add_command(polyco_config)
+cli.add_command(mjd)
 
+if __name__ == '__main__':
     cli()
