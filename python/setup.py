@@ -31,6 +31,6 @@ setup(
     entry_points="""
         [console_scripts]
         kotekan-ctl=kotekan.scripts.ctl:cli
-        polyco-tools=kotekan.scripts.polyco_tools:get_config_block
+        polyco-tools=kotekan.scripts.polyco_tools:cli
     """
 )
