@@ -20,6 +20,10 @@ def send_get(url, timeout=TIMEOUT):
     except requests.exceptions.ReadTimeout:
         print("Server response timed out.")
         return
+    except requests.exceptions.ConnectionError as e:
+        print("Could not reach server.")
+        print(str(e))
+        return
     if r.status_code != 200:
         print("Request unsuccessful.")
         print(r.headers)
@@ -33,6 +37,10 @@ def send_post(url, json_data="", timeout=TIMEOUT):
         r = requests.post(url, timeout=timeout, json=json_data, headers=header)
     except requests.exceptions.ReadTimeout:
         print("Server response timed out.")
+        return
+    except requests.exceptions.ConnectionError as e:
+        print("Could not reach server.")
+        print(str(e))
         return
     if r.status_code != 200:
         print("Request unsuccessful.")
@@ -71,6 +79,8 @@ def stop(url):
 def status(url):
     """ Query kotekan status. """
     r = send_get(urljoin(url, "status"))
+    if r is None:
+        return
     if r.status_code == 200:
         host_addr = urlsplit(url).netloc
         state = "running" if r.json()['running'] else "idle"
