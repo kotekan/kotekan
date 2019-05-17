@@ -2,7 +2,6 @@
 
 #include "restClient.hpp"
 #include "restServer.hpp"
-#include "type.hpp"
 #include "visUtil.hpp"
 
 #include "fmt/ostream.h"
@@ -16,6 +15,7 @@
 #include <regex>
 #include <signal.h>
 #include <stdio.h>
+#include <typeinfo>
 
 
 dataset::dataset(json& js) {
@@ -65,7 +65,7 @@ bool dataset::equals(dataset& ds) const {
 
 
 std::ostream& operator<<(std::ostream& out, const datasetState& dt) {
-    out << type(dt);
+    out << typeid(dt).name();
 
     return out;
 }
