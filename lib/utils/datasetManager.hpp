@@ -581,7 +581,7 @@ inline const T* datasetManager::get_closest_ancestor(dset_id_t dset) {
 
             // walk through the inner states until we find the right type
             while (state != nullptr) {
-                if (typeid(*state) == typeid(T))
+                if (typeid(*state).hash_code() == typeid(T).hash_code())
                     return (const T*)state;
                 state = state->_inner_state.get();
             }
@@ -678,7 +678,7 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
 
         // find the inner state matching the type
         while (true) {
-            if (typeid(T) == typeid(*s))
+            if (typeid(T).hash_code() == typeid(*s).hash_code())
                 return (const T*)s;
             if (s->_inner_state == nullptr)
                 throw std::runtime_error(
