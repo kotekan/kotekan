@@ -1,6 +1,7 @@
 #include "datasetState.hpp"
 
-#include <typeinfo>
+#include "type.hpp"
+
 
 // Initialise static map of types
 std::map<std::string, std::function<state_uptr(json&, state_uptr)>>&
@@ -40,7 +41,7 @@ json datasetState::to_json() const {
     json j;
 
     // Use RTTI to serialise the type of datasetState this is
-    j["type"] = typeid(*this).name();
+    j["type"] = type(*this);
 
     // Recursively serialise any inner states
     if (_inner_state != nullptr) {
@@ -59,12 +60,12 @@ bool datasetState::equals(datasetState& s) const {
 std::set<std::string> datasetState::types() const {
     std::set<std::string> types;
 
-    types.insert(typeid(*this).name());
+    types.insert(type(*this));
 
     const datasetState* t = _inner_state.get();
 
     while (t != nullptr) {
-        types.insert(typeid(*t).name());
+        types.insert(type(*t));
         t = t->_inner_state.get();
     }
 
