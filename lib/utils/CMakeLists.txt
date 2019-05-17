@@ -18,6 +18,7 @@ set ( KOTEKAN_UTIL_SOURCES
       visFileRaw.cpp
       visFileRing.cpp
       tx_utils.cpp
+      type.cpp
       datasetManager.cpp
       pulsarTiming.cpp
       datasetState.cpp
