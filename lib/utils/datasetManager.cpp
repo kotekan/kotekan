@@ -331,6 +331,7 @@ bool datasetManager::register_state_parser(std::string& reply) {
             {
                 std::lock_guard<std::mutex> slck(_lock_states);
                 js_post["state"] = _states.at(state)->to_json();
+                js_post["type"] = type(*_states.at(state));
             }
 
             std::lock_guard<std::mutex> lk(_lock_stop_request_threads);
