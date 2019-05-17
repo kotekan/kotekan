@@ -488,23 +488,6 @@ private:
 //
 
 template<typename T>
-inline int datasetState::_register_state_type() {
-
-    // Get the unique name for the type to generate the lookup key. This is
-    // the same used by RTTI which is what we use to label the serialised
-    // instances.
-    std::string key = typeid(T).name();
-
-    DEBUG("Registering state type: %s", key.c_str());
-
-    // Generate a lambda function that creates an instance of the type
-    datasetState::_registered_types()[key] = [](json& data, state_uptr inner) -> state_uptr {
-        return std::make_unique<T>(data, move(inner));
-    };
-    return 0;
-}
-
-template<typename T>
 inline const T* datasetManager::dataset_state(dset_id_t dset) {
 
     if (!_use_broker)
@@ -569,7 +552,8 @@ inline const T* datasetManager::get_closest_ancestor(dset_id_t dset) {
             // Search for the requested type in each dataset (includes inner
             // states).
             try {
-                if (_datasets.at(dset).types().count(typeid(T).name())) {
+                if (_datasets.at(dset).types().count(
+                        datasetState::_registered_names[typeid(T).hash_code()])) {
                     ancestor = _datasets.at(dset).state();
                     break;
                 }
@@ -697,10 +681,11 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
             if (typeid(T) == typeid(*s))
                 return (const T*)s;
             if (s->_inner_state == nullptr)
-                throw std::runtime_error("Broker sent state that didn't match "
-                                         "requested type ("
-                                         + std::string(typeid(T).name())
-                                         + "): " + js_reply.at("state").dump());
+                throw std::runtime_error(
+                    "Broker sent state that didn't match "
+                    "requested type ("
+                    + std::string(datasetState::_registered_names[typeid(T).hash_code()])
+                    + "): " + js_reply.at("state").dump());
             s = s->_inner_state.get();
         }
     } catch (std::exception& e) {

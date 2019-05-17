@@ -65,7 +65,7 @@ bool dataset::equals(dataset& ds) const {
 
 
 std::ostream& operator<<(std::ostream& out, const datasetState& dt) {
-    out << typeid(dt).name();
+    out << datasetState::_registered_names[typeid(dt).hash_code()];
 
     return out;
 }
@@ -331,7 +331,8 @@ bool datasetManager::register_state_parser(std::string& reply) {
             {
                 std::lock_guard<std::mutex> slck(_lock_states);
                 js_post["state"] = _states.at(state)->to_json();
-                js_post["type"] = type(*_states.at(state));
+                js_post["type"] =
+                    datasetState::_registered_names[typeid(*_states.at(state)).hash_code()];
             }
 
             std::lock_guard<std::mutex> lk(_lock_stop_request_threads);
@@ -613,13 +614,3 @@ void datasetManager::force_update_callback(kotekan::connectionInstance& conn) {
 
     conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
 }
-
-
-REGISTER_DATASET_STATE(freqState);
-REGISTER_DATASET_STATE(inputState);
-REGISTER_DATASET_STATE(prodState);
-REGISTER_DATASET_STATE(stackState);
-REGISTER_DATASET_STATE(eigenvalueState);
-REGISTER_DATASET_STATE(timeState);
-REGISTER_DATASET_STATE(metadataState);
-REGISTER_DATASET_STATE(gatingState);
