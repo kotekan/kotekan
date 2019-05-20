@@ -113,19 +113,23 @@ void basebandReadout::main_thread() {
                 for(int freqidx=0; freqidx < _num_local_freq;freqidx++){
                     freq_id = bin_number(&stream_id,freqidx);
                     freq_ids[freqidx] = freq_id;
-                }
-                freq_id = freq_ids[0];
-            INFO("Starting request-listening thread for freq_id: %" PRIu32, freq_id);
-            basebandReadoutManager& mgr0=
-                basebandApiManager::instance().register_readout_stage(freq_ids[0]);
-            basebandReadoutManager& mgr1=
-                basebandApiManager::instance().register_readout_stage(freq_ids[1]);
-            mgrs.push_back(mgr0);
-            mgrs.push_back(mgr1);
-            
-            lt = std::make_unique<std::thread>([&] { this->listen_thread(freq_id, mgr0); });
+                    basebandReadoutManager& mgr = 
+                        basebandApiManager::instance().register_readout_stage(freq_ids[freqidx]);
+                    mgrs.push_back(mgr);
+                    INFO("Starting request-listening thread for freq_id: %" PRIu32, freq_id);
 
-            wt = std::make_unique<std::thread>([&] { this->write_thread(mgr0); });
+                }
+                INFO("Managers put into vector");
+                freq_id = freq_ids[0];
+            basebandReadoutManager& mgr = mgrs[0];
+            //  basebandReadoutManager& mgr0=
+            //      basebandApiManager::instance().register_readout_stage(freq_ids[0]);
+            //  basebandReadoutManager& mgr1=
+            //      basebandApiManager::instance().register_readout_stage(freq_ids[1]);
+            
+            lt = std::make_unique<std::thread>([&] { this->listen_thread(freq_ids[0], mgr); });
+
+            wt = std::make_unique<std::thread>([&] { this->write_thread(mgr); });
         }
 
         int done_frame = add_replace_frame(frame_id);
