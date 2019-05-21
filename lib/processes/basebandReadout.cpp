@@ -95,6 +95,7 @@ void basebandReadout::main_thread() {
 
     std::unique_ptr<std::thread> wt;
     std::unique_ptr<std::thread> lt;
+    basebandReadoutManager *mgrs[_num_local_freq];
 
     while (!stop_thread) {
 
@@ -109,7 +110,6 @@ void basebandReadout::main_thread() {
             stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
             uint32_t freq_ids[_num_local_freq];
             //basebandReadoutManager<std::reference_wrapper<basebandReadoutManager>> mgrs;
-            basebandReadoutManager *mgrs[_num_local_freq];
             int freq_id;
                 for(int freqidx=0; freqidx < _num_local_freq;freqidx++){
                     freq_id = bin_number(&stream_id,freqidx);
@@ -123,15 +123,16 @@ void basebandReadout::main_thread() {
                 }
                 INFO("Pointers to managers put into array");
                 freq_id = freq_ids[0];
+                basebandReadoutManager& mgr = *mgrs[0];
             //basebandReadoutManager& mgr = *mgrs[0];
             //  basebandReadoutManager& mgr0=
             //      basebandApiManager::instance().register_readout_stage(freq_ids[0]);
             //  basebandReadoutManager& mgr1=
             //      basebandApiManager::instance().register_readout_stage(freq_ids[1]);
             
-            lt = std::make_unique<std::thread>([&] { this->listen_thread(freq_ids[0], *(mgrs[0])); });
+            lt = std::make_unique<std::thread>([&] { this->listen_thread(freq_ids[0], *mgrs[0]); });
 
-            wt = std::make_unique<std::thread>([&] { this->write_thread(*(mgrs[0])); });
+            wt = std::make_unique<std::thread>([&] { this->write_thread(*mgrs[0]); });
         }
 
         int done_frame = add_replace_frame(frame_id);
