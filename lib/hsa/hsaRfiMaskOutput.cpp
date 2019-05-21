@@ -85,7 +85,7 @@ void hsaRfiMaskOutput::finalize_frame(int frame_id) {
         // Total number of samples flaged as RFI
         uint32_t flagged_samples = 0;
 
-        // The number of samples flaged as RFI less the number of
+        // The number of samples flagged as RFI less the number of
         // samples flaged as missing (i.e. packet loss/currupt packet).
         uint32_t net_lost_samples = 0;
 
