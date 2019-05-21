@@ -178,6 +178,7 @@ private:
     float _seg;                     // length of polyco segments in s
     std::vector<double> _tmid;      // in MJD
     std::vector<double> _phase_ref; // in number of rotations
+    std::vector<std::vector<float>> _coeff;
     SegmentedPolyco _polycos;
 };
 
