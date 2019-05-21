@@ -82,7 +82,7 @@ void hsaRfiMaskOutput::finalize_frame(int frame_id) {
 
     for (uint32_t subframe = 0; subframe < _num_sub_frames; ++subframe) {
 
-        // Total number of samples flaged as RFI
+        // Total number of samples flagged as RFI
         uint32_t flagged_samples = 0;
 
         // The number of samples flagged as RFI less the number of
