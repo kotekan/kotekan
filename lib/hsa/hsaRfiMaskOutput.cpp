@@ -98,8 +98,7 @@ void hsaRfiMaskOutput::finalize_frame(int frame_id) {
                 // Remove any samples which were also counted as lost samples
                 // in this block of data.
                 for (uint32_t j = 0; j < _sk_step; ++j) {
-                    uint32_t lost_samples_idx = subframe * _sub_frame_samples +
-                                                i * _sk_step + j;
+                    uint32_t lost_samples_idx = subframe * _sub_frame_samples + i * _sk_step + j;
                     assert(lost_samples_idx < (uint32_t)_lost_samples_buf->frame_size);
                     if (lost_samples_frame[lost_samples_idx] == 1)
                         net_lost_samples--;

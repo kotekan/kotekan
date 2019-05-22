@@ -420,13 +420,14 @@ void visAccumulate::main_thread() {
             }
 
             // Accumulate the total number of samples, accounting for lost ones
-            assert((int64_t)samples_per_data_set - (int64_t)get_lost_timesamples(in_buf, in_frame_id) >= 0);
+            assert((int64_t)samples_per_data_set
+                       - (int64_t)get_lost_timesamples(in_buf, in_frame_id)
+                   >= 0);
             total_samples += samples_per_data_set - get_lost_timesamples(in_buf, in_frame_id);
 
             DEBUG("Lost samples %d, RFI flagged samples %d, total_samples: %u",
-                 get_lost_timesamples(in_buf, in_frame_id),
-                 get_rfi_flaged_samples(in_buf, in_frame_id),
-                 total_samples);
+                  get_lost_timesamples(in_buf, in_frame_id),
+                  get_rfi_flaged_samples(in_buf, in_frame_id), total_samples);
         }
 
         // Move the input buffer on one step
