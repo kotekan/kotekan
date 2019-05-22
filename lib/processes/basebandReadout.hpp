@@ -113,8 +113,8 @@ private:
 
     std::mutex manager_lock;
 
-    void listen_thread(const uint32_t freq_id, kotekan::basebandReadoutManager& readout_manager);
-    void write_thread(kotekan::basebandReadoutManager& readout_manager);
+    void listen_thread(const uint32_t freq_id, kotekan::basebandReadoutManager *mgrs[]);
+    void write_thread(kotekan::basebandReadoutManager *mgrs[]);
     void write_dump(basebandDumpData data, kotekan::basebandDumpStatus& dump_status,
                     std::mutex& request_mtx);
     int add_replace_frame(int frame_id);

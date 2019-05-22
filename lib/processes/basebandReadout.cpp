@@ -117,22 +117,22 @@ void basebandReadout::main_thread() {
                     //basebandReadoutManager& mgr = 
                     //    basebandApiManager::instance().register_readout_stage(freq_ids[freqidx]);
                     //mgrs.push_back(mgr);
-                    mgrs[freqidx] = &(                        basebandApiManager::instance().register_readout_stage(freq_ids[freqidx]));
+                    mgrs[freqidx] = &(basebandApiManager::instance().register_readout_stage(freq_ids[freqidx]));
                     INFO("Starting request-listening thread for freq_id: %" PRIu32, freq_id);
 
                 }
                 INFO("Pointers to managers put into array");
                 freq_id = freq_ids[0];
-                basebandReadoutManager& mgr = *mgrs[0];
+                //basebandReadoutManager& mgr = *mgrs[0];
             //basebandReadoutManager& mgr = *mgrs[0];
             //  basebandReadoutManager& mgr0=
             //      basebandApiManager::instance().register_readout_stage(freq_ids[0]);
             //  basebandReadoutManager& mgr1=
             //      basebandApiManager::instance().register_readout_stage(freq_ids[1]);
             
-            lt = std::make_unique<std::thread>([&] { this->listen_thread(freq_ids[0], *mgrs[0]); });
+            lt = std::make_unique<std::thread>([&] { this->listen_thread(freq_ids[0], mgrs); });
 
-            wt = std::make_unique<std::thread>([&] { this->write_thread(*mgrs[0]); });
+            wt = std::make_unique<std::thread>([&] { this->write_thread(mgrs); });
         }
 
         int done_frame = add_replace_frame(frame_id);
@@ -152,7 +152,8 @@ void basebandReadout::main_thread() {
     }
 }
 
-void basebandReadout::listen_thread(const uint32_t freq_id, basebandReadoutManager& mgr) {
+void basebandReadout::listen_thread(const uint32_t freq_id, basebandReadoutManager *mgrs[]) {
+    basebandReadoutManager& mgr = *(mgrs[0]);
 
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
@@ -223,7 +224,8 @@ void basebandReadout::listen_thread(const uint32_t freq_id, basebandReadoutManag
     }
 }
 
-void basebandReadout::write_thread(basebandReadoutManager& mgr) {
+void basebandReadout::write_thread(basebandReadoutManager *mgrs[]) {
+    basebandReadoutManager& mgr = *(mgrs[0]);
     while (!stop_thread) {
         std::unique_lock<std::mutex> lock(dump_to_write_mtx);
 
