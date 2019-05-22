@@ -10,6 +10,8 @@ from requests.compat import urljoin, urlsplit
 import click
 import yaml
 
+click.disable_unicode_literals_warning = True
+
 TIMEOUT = 10.
 
 
