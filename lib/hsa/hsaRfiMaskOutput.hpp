@@ -44,14 +44,18 @@ public:
     void finalize_frame(int frame_id) override;
 
 private:
-    /// The very first input data from dpdk
+    /// The raw time series data from the FPGAs
     Buffer* _network_buf;
+    /// The array of missing sample flags for _network_buf
+    Buffer* _lost_samples_buf;
     /// Output buffer from the FRB pipeline
     Buffer* _rfi_mask_output_buf;
     /// Output of the N2 correlation products
     Buffer* _output_buf;
     /// ID for _network_buf
     int32_t _network_buf_id;
+    /// ID for _lost_samples_buf
+    int32_t _lost_samples_buf_id;
     /// ID for _output_buf;
     int32_t _output_buf_id;
     /// ID for _rfi_mask_output_buf

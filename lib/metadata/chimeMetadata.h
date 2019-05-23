@@ -19,12 +19,29 @@ struct psrCoord {
 };
 
 struct chimeMetadata {
+    /// The ICEBoard sequence number
     int64_t fpga_seq_num;
+    /// The system time when the first packet in the frame was captured
     struct timeval first_packet_recv_time;
-    struct timespec gps_time; // The GPS time of the fpga_seq_num.
+    /// The GPS time of @c fpga_seq_num.
+    struct timespec gps_time;
+    /// The total lost time samples for lost/currupt packets and RFI zeroing.
+    /// This value only include RFI losses if RFI zeroing was used.
     int32_t lost_timesamples;
+    /// The number of 2.56us samples flaged as containg RFI.
+    /// NOTE: This value might contain overlap with lost samples, so it can count
+    /// missing samples as samples with RFI.  For renormalization this value
+    /// should NOT be used, use @c lost_timesamples instead.
+    /// This value will be filled even if RFI zeroing is disabled.
+    int32_t rfi_flagged_samples;
+    /// The stream ID from the ICEBoard
+    /// Note in the case of CHIME-2048 the normally unused section
+    /// Encodes the port-shuffle freqeuncy information
     uint16_t stream_ID;
+    /// The corrdinates of the pulsar beam (if applicable)
     struct psrCoord psr_coord;
+    /// This value is set to 1 if the RFI containing samples were zeroed
+    /// in the correlation, and 0 otherwise.
     uint32_t rfi_zeroed;
 };
 
@@ -52,6 +69,19 @@ inline int32_t get_lost_timesamples(struct Buffer * buf, int ID) {
     struct chimeMetadata * chime_metadata =
      (struct chimeMetadata *) buf->metadata[ID]->metadata;
     return chime_metadata->lost_timesamples;
+}
+
+/**
+ * @brief Get the number of RFI flagged samples
+ *
+ * @param buf The buffer containing the frame
+ * @param ID The frame to get metadata from
+ * @return The number of RFI flagged samples
+ */
+inline int32_t get_rfi_flaged_samples(struct Buffer * buf, int ID) {
+    struct chimeMetadata * chime_metadata =
+     (struct chimeMetadata *) buf->metadata[ID]->metadata;
+    return chime_metadata->rfi_flagged_samples;
 }
 
 inline uint16_t get_stream_id(struct Buffer * buf, int ID) {
@@ -84,6 +114,22 @@ inline void atomic_add_lost_timesamples(struct Buffer * buf, int ID,
     lock_metadata(mc);
     struct chimeMetadata * chime_metadata = (struct chimeMetadata *) mc->metadata;
     chime_metadata->lost_timesamples += num_lost_samples;
+    unlock_metadata(mc);
+}
+
+/**
+ * @brief Add RFI flagged samples to the metadata
+ *
+ * @param buf The buffer with the metadata
+ * @param ID The frame in the buffer to add metadata too
+ * @param num_flagged_samples The number of flagged samples to add
+ */
+inline void atomic_add_rfi_flagged_samples(struct Buffer * buf, int ID,
+                                           int64_t num_flagged_samples) {
+    struct metadataContainer * mc = buf->metadata[ID];
+    lock_metadata(mc);
+    struct chimeMetadata * chime_metadata = (struct chimeMetadata *) mc->metadata;
+    chime_metadata->rfi_flagged_samples += num_flagged_samples;
     unlock_metadata(mc);
 }
 
