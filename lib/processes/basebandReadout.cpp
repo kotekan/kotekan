@@ -122,7 +122,6 @@ void basebandReadout::main_thread() {
 
                 }
                 INFO("Pointers to managers put into array");
-                freq_id = freq_ids[0];
                 //basebandReadoutManager& mgr = *mgrs[0];
             //basebandReadoutManager& mgr = *mgrs[0];
             //  basebandReadoutManager& mgr0=
@@ -130,7 +129,7 @@ void basebandReadout::main_thread() {
             //  basebandReadoutManager& mgr1=
             //      basebandApiManager::instance().register_readout_stage(freq_ids[1]);
             
-            lt = std::make_unique<std::thread>([&] { this->listen_thread(freq_ids[0], mgrs); });
+            lt = std::make_unique<std::thread>([&] { this->listen_thread(freq_ids, mgrs); });
 
             wt = std::make_unique<std::thread>([&] { this->write_thread(mgrs); });
         }
@@ -152,8 +151,10 @@ void basebandReadout::main_thread() {
     }
 }
 
-void basebandReadout::listen_thread(const uint32_t freq_id, basebandReadoutManager *mgrs[]) {
+void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutManager *mgrs[]) {
     basebandReadoutManager& mgr = *(mgrs[0]);
+    const uint32_t freq_id = freq_ids[0];
+    //unique_ptr<basebandReadoutManager::requestStatusMutex> next_requests[_num_local_freq];
 
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
