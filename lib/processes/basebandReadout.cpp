@@ -110,7 +110,7 @@ void basebandReadout::main_thread() {
             stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
             uint32_t freq_ids[_num_local_freq];
             //basebandReadoutManager<std::reference_wrapper<basebandReadoutManager>> mgrs;
-            int freq_id;
+            uint32_t freq_id;
                 for(int freqidx=0; freqidx < _num_local_freq;freqidx++){
                     freq_id = bin_number(&stream_id,freqidx);
                     freq_ids[freqidx] = freq_id;
@@ -152,16 +152,23 @@ void basebandReadout::main_thread() {
 }
 
 void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutManager *mgrs[]) {
-    basebandReadoutManager& mgr = *(mgrs[0]);
+    //basebandReadoutManager& mgr = *(mgrs[0]);
     const uint32_t freq_id = freq_ids[0];
-    //unique_ptr<basebandReadoutManager::requestStatusMutex> next_requests[_num_local_freq];
-
+    std::unique_ptr<basebandReadoutManager::requestStatusMutex> next_requests[_num_local_freq];
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
         // Latency is *key* here. We want to call get_data within 100ms
         // of L4 sending the trigger.
-
-        auto next_request = mgr.get_next_waiting_request();
+        // for(int freqidx = 0; freqidx < _num_local_freq; freqidx++){
+        //     auto next_request = mgrs[freqidx]->get_next_waiting_request();
+        //     uint32_t freq_id = freq_ids[freqidx];
+        //     // INFO("Request for event %" PRIu32,freq_ids[freqidx]);
+        //     if (next_request) {
+        //         //next_requests[freqidx] = next_request;
+        //         INFO("Non-null request for freq_id %" PRIu32, freq_id);
+        //     }
+        // }
+        auto next_request = mgrs[0]->get_next_waiting_request();
 
         if (next_request) {
             basebandDumpStatus& dump_status = std::get<0>(*next_request);
