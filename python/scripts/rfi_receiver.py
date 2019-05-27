@@ -44,7 +44,7 @@ class CommandLine:
     def __init__(self):
 
         #Defaults
-        self.startup_time = datetime.datetime.now()
+        self.startup_time = datetime.datetime.utcnow()
 
         # TODO: Install this RFI script and version.py. Get the version at install time.
         try:
