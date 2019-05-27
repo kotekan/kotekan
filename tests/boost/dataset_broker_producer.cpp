@@ -8,6 +8,7 @@
 #include "json.hpp"
 
 #include <boost/test/included/unit_test.hpp>
+#include <fstream>
 #include <iostream>
 #include <string>
 
@@ -59,7 +60,12 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
         dm.add_state(std::make_unique<inputState>(
             inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
     // register new dataset with the twin state
-    dm.add_dataset(init_ds_id, input_state2.first);
+    dset_id_t ds_id = dm.add_dataset(init_ds_id, input_state2.first);
+
+    // write ID to disk for producer2
+    std::ofstream o("DS_ID.txt");
+    o << ds_id;
+    o.close();
 
     for (auto s : dm.states())
         std::cout << s.first << " - " << s.second->data_to_json().dump() << std::endl;
@@ -123,7 +129,12 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_second_root) {
         dm.add_state(std::make_unique<inputState>(
             inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
 
-    dm.add_dataset(input_state.first);
+    dset_id_t second_root = dm.add_dataset(input_state.first);
+
+    // write ID to disk for consumer
+    std::ofstream o("SECOND_ROOT.txt");
+    o << second_root;
+    o.close();
 
     // wait a bit, to make sure we see errors in any late callbacks
     usleep(1000000);

@@ -1,9 +1,13 @@
+from flask import Flask, request
 import pytest
 import numpy as np
 import csv
 import math
 import random
+import threading
+import time
 import copy
+from werkzeug.serving import make_server
 
 from kotekan import visbuffer
 from kotekan import runner
@@ -14,7 +18,7 @@ REPORT_PRECISION = 1e-2
 params = {
     'num_elements': 2,
     'num_ev': 0,
-    'total_frames': 6,
+    'total_frames': 12,
     'freq_ids': [0, 1, 2],
     'cadence': 1.0,
     'mode': 'test_pattern_simple',
@@ -36,12 +40,34 @@ params = {
 
 STAGE_NAME = "testpattern_stage"
 
+class ServerThread(threading.Thread):
+    def __init__(self, app):
+        threading.Thread.__init__(self)
+        self.srv = make_server('127.0.0.1', 5050, app)
+        self.ctx = app.app_context()
+        self.ctx.push()
+
+    def run(self):
+        self.srv.serve_forever()
+
+    def shutdown(self):
+        self.srv.shutdown()
+
+app = Flask(__name__)
+@app.route('/reply_endpoint', methods=['POST'])
+def reply_endpoint():
+    print("/reply_endpoint received {}".format(request.json))
+    return "Yey"
+
 def command_test_pattern(name, num_frames, test_pattern):
-    return ('post', ENDPOINT_NAME, {'reply_host': '127.0.0.1', 'reply_port': 8000,
+    return ('post', ENDPOINT_NAME, {'reply_host': '127.0.0.1', 'reply_port': 5050,
                                     'reply_path': 'reply_endpoint', 'num_frames': num_frames,
                                     'test_pattern': test_pattern, 'name': name})
 
 def run_test(write_dir,rest_commands = None, params=params, noise = False, name="simple"):
+    capo = ServerThread(app)
+    capo.start()
+    print("Started fake capo endoint.")
 
     params['write_dir'] = write_dir
 
@@ -96,6 +122,10 @@ def run_test(write_dir,rest_commands = None, params=params, noise = False, name=
         in_data = visbuffer.VisBuffer.load_files("%s/*fakevis_dump*.dump" % write_dir)
     else:
         in_data = None
+
+    capo.shutdown()
+    print("Removed fake capo endpoint.")
+    time.sleep(1)
 
     return (out_data, in_data, dump_buffer.load())
 
@@ -215,7 +245,7 @@ def test_pattern_no_noise_freq(tmpdir_factory):
       [1, 1],
       [2, -2]]
     freq_params['freq_ids'] = [0,1,2,3]
-    freq_params['total_frames'] = 10
+    freq_params['total_frames'] = 16
 
     random.seed()
     for i in range(2):
@@ -260,7 +290,7 @@ def test_pattern_noise_freq(tmpdir_factory):
       [34, -34],
       [55, -55]]
     freq_params['freq_ids'] = range(0,30)
-    freq_params['total_frames'] = 6
+    freq_params['total_frames'] = 12
 
     random.seed()
     for i in range(10):
@@ -364,7 +394,7 @@ input_params = freq_params.copy()
 def test_pattern_no_noise_inputs(tmpdir_factory):
     input_params['mode'] = "test_pattern_inputs"
     input_params['input_values'] = [[0, 0], [1, 1]]
-    input_params['total_frames'] = 10
+    input_params['total_frames'] = 16
 
     random.seed()
     for i in range(2):
@@ -399,7 +429,7 @@ def test_no_noise_inputs(test_pattern_no_noise_inputs):
 def test_pattern_noise_inputs(tmpdir_factory):
     input_params['mode'] = "test_pattern_inputs"
     input_params['input_values'] = [[0, 0], [1, 1]]
-    input_params['total_frames'] = 4
+    input_params['total_frames'] = 8
 
     random.seed()
     for i in range(2):
