@@ -85,8 +85,6 @@ Cmake build options
     Includes DPDK support.
 * ``-DUSE_HSA=ON``
     Build with HSA support if available. On by default.
-* ``-DUSE_PRECOMPILED_OPENCL=ON``
-    For HSA, use precompiled OpenCL .hsaco binaries. Otherwise will attempt cloc.sh to compile.
 * ``-DUSE_OPENCL=ON``
     Build with OpenCL support.
 * ``-DUSE_HCC=ON``
