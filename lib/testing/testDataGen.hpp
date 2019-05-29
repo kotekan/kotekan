@@ -52,6 +52,7 @@ private:
     void rest_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     bool can_i_go(int frame_id_abs);
     struct Buffer* buf;
+    struct Buffer* lost_samples_buf;
     std::string type;
     std::string endpoint;
     int value;

@@ -29,8 +29,15 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
 
     buf = get_buffer("network_out_buf");
     register_producer(buf, unique_name.c_str());
+
+    lost_samples_buf = get_buffer("lost_samples_buf");
+    register_producer(lost_samples_buf, unique_name.c_str());
+
     type = config.get<std::string>(unique_name, "type");
-    assert(type == "const" || type == "random" || type == "ramp" || type == "tpluse");
+    if (type != "const" && type != "random" && type != "ramp" && type != "tpluse"
+        && type != "rfi") {
+        throw std::runtime_error("testDataGen type given " + type + " doesn't match a known type");
+    }
     if (type == "const")
         value = config.get<int>(unique_name, "value");
     if (type == "ramp")
@@ -94,6 +101,9 @@ void testDataGen::main_thread() {
     bool finished_seeding_consant = false;
     static struct timeval now;
 
+    uint8_t* lost_samples_frame = NULL;
+    int lost_samples_frame_id = 0;
+
     int link_id = 0;
 
     while (!stop_thread) {
@@ -106,6 +116,11 @@ void testDataGen::main_thread() {
 
         frame = (uint8_t*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
         if (frame == NULL)
+            break;
+
+        lost_samples_frame =
+            wait_for_empty_frame(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
+        if (lost_samples_frame == NULL)
             break;
 
         allocate_new_metadata_object(buf, frame_id);
@@ -138,7 +153,14 @@ void testDataGen::main_thread() {
                 frame[j] = temp_output;
             } else if (type == "tpluse") {
                 frame[j] = seq_num + j / num_elements + j % num_elements;
+            } else if (type == "rfi") {
+                if (finished_seeding_consant)
+                    break;
+                frame[j] = 136 + 1 * (j / 2) + 4 * (j / 2048);
             }
+        }
+        for (int32_t j = 0; j < lost_samples_buf->frame_size; ++j) {
+            lost_samples_frame[j] = 1 * ((j % 128) == 0); // Lose a sample every 128 samples
         }
         DEBUG("Generated a %s test data set in %s[%d]", type.c_str(), buf->buffer_name, frame_id);
 
@@ -150,6 +172,9 @@ void testDataGen::main_thread() {
             break;
         };
         frame_id = frame_id_abs % buf->num_frames;
+
+        mark_frame_full(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
+        lost_samples_frame_id = (lost_samples_frame_id + 1) % lost_samples_buf->num_frames;
 
         if (_pathfinder_test_mode == true) {
             // Test PF seq_num increment.
