@@ -353,7 +353,7 @@ void gpuBeamformSimulate::main_thread() {
             }
         } else {
             uint32_t read_length = sizeof(float) * 2 * 2048;
-            if (read_length != fread(cpu_gain, read_length, 1, ptr_myfile)) {
+            if (fread(cpu_gain, read_length, 1, ptr_myfile) != 1) {
                 ERROR("Couldn't read gain file...");
             }
             for (uint32_t i = 0; i < 2048; i++) {
