@@ -118,16 +118,11 @@ void basebandReadout::main_thread() {
                     //    basebandApiManager::instance().register_readout_stage(freq_ids[freqidx]);
                     //mgrs.push_back(mgr);
                     mgrs[freqidx] = &(basebandApiManager::instance().register_readout_stage(freq_ids[freqidx]));
-                    INFO("Starting request-listening thread for freq_id: %" PRIu32, freq_id);
+                    INFO("Starting request-listening thread for freq_id      : %" PRIu32, freq_id);
+                    INFO("Starting request-listening thread for freq_ids[idx]: %" PRIu32, freq_ids[freqidx]);
 
                 }
                 INFO("Pointers to managers put into array");
-                //basebandReadoutManager& mgr = *mgrs[0];
-            //basebandReadoutManager& mgr = *mgrs[0];
-            //  basebandReadoutManager& mgr0=
-            //      basebandApiManager::instance().register_readout_stage(freq_ids[0]);
-            //  basebandReadoutManager& mgr1=
-            //      basebandApiManager::instance().register_readout_stage(freq_ids[1]);
             
             lt = std::make_unique<std::thread>([&] { this->listen_thread(freq_ids, mgrs); });
 
@@ -153,23 +148,22 @@ void basebandReadout::main_thread() {
 
 void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutManager *mgrs[]) {
     //basebandReadoutManager& mgr = *(mgrs[0]);
-    const uint32_t freq_id = freq_ids[0];
     std::unique_ptr<basebandReadoutManager::requestStatusMutex> next_requests[_num_local_freq];
+    std::shared_ptr<basebandReadoutManager::requestStatusMutex> next_request;
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
         // Latency is *key* here. We want to call get_data within 100ms
         // of L4 sending the trigger.
-        // for(int freqidx = 0; freqidx < _num_local_freq; freqidx++){
-        //     auto next_request = mgrs[freqidx]->get_next_waiting_request();
-        //     uint32_t freq_id = freq_ids[freqidx];
-        //     INFO("Request for event %" PRIu32,freq_ids[freqidx]);
-        //     if (next_request) {
-        //         //next_requests[freqidx] = next_request;
-        //         INFO("Non-null request for freq_id %" PRIu32, freq_id);
-        //     }
-        // }
-        next_requests[0] = mgrs[0]->get_next_waiting_request();
-        std::shared_ptr<basebandReadoutManager::requestStatusMutex> next_request = std::move(next_requests[0]);
+        for(int freqidx = 0; freqidx < _num_local_freq; freqidx++){
+            next_requests[freqidx] = mgrs[freqidx]->get_next_waiting_request();
+            //INFO("Request for event %" PRIu32,freq_id);
+            if (next_requests[freqidx]) {
+                //next_requests[freqidx] = next_request;
+                INFO("Non-null request for freq_ids[idx]: %" PRIu32, freq_ids[freqidx]);
+            }
+        }
+        next_request = std::move(next_requests[0]); // PROGRESS FRONTIER
+        const uint32_t freq_id = freq_ids[0];
 
         if (next_request) {
             basebandDumpStatus& dump_status = std::get<0>(*next_request);
