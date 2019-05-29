@@ -9,6 +9,7 @@
 *********************************************************************************/
 """
 
+from comet import Manager, CometError
 from prometheus_client import start_http_server, Gauge
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
 import threading
@@ -21,8 +22,11 @@ import time
 import argparse
 import yaml
 import json
+import subprocess
 import sys
 import requests
+
+VERSION_SCRIPT = '../../scripts/version.py'
 
 def parse_dict(cmd, _dict):
     for key, value in _dict.items():
@@ -31,14 +35,26 @@ def parse_dict(cmd, _dict):
         else:
             if key in cmd.config.keys():
                 if(type(cmd.config[key]) == type(value)):
-                    print("Setting Config Paramter %s to %s" %(key,str(value)))
+                    print("Setting Config Parameter %s to %s" %(key,str(value)))
                     cmd.config[key] = value
+
 
 class CommandLine:
 
     def __init__(self):
 
         #Defaults
+        self.startup_time = datetime.datetime.utcnow()
+
+        # TODO: Install this RFI script and version.py. Get the version at install time.
+        try:
+            self.git_version = subprocess.check_output(['python2', VERSION_SCRIPT])\
+                .strip()
+        except subprocess.CalledProcessError:
+            print('Failure calling {}. Make sure you run this script from kotekan/python/scripts'
+                  .format(VERSION_SCRIPT))
+            raise
+
         self.UDP_IP= "0.0.0.0"
         self.UDP_PORT = 2900
         self.TCP_IP = '10.10.10.2'
@@ -49,7 +65,8 @@ class CommandLine:
         self.max_seq = -1
         self.config = {'frames_per_packet': 4, 'num_global_freq': 1024, 'num_local_freq': 8, 'samples_per_data_set':32768, 'num_elements': 2,
                         'timestep':2.56e-6, 'bytes_per_freq': 16, 'waterfallX': 1024, 'waterfallY': 1024, 'bi_frames_per_packet': 10,
-                        'sk_step': 256, 'chime_rfi_header_size': 35, 'num_receive_threads': 4}
+                        'sk_step': 256, 'chime_rfi_header_size': 35, 'num_receive_threads': 4,
+                        'use_dataset_broker': True, 'ds_broker_host': "10.1.50.11", 'ds_broker_port': 12050}
         self.supportedModes = ['vdif', 'pathfinder', 'chime']
         parser = argparse.ArgumentParser(description = "RFI Receiver Script")
         parser.add_argument("-H", "--Help", help = "Example: Help argument", required = False, default = "")
@@ -78,13 +95,14 @@ class CommandLine:
         if argument.receive:
             print("You have used '-r' or '--receive' with argument: {0}".format(argument.receive))
             self.UDP_IP = argument.receive[:argument.receive.index(':')]
-            self.UDP_PORT = int(argument.receive[argument.receive.index(':')+1:]) 
+            self.UDP_PORT = int(argument.receive[argument.receive.index(':')+1:])
             print("Setting UDP IP: %s PORT: %d"%(self.UDP_IP ,self.UDP_PORT ))
             status = True
         if argument.config:
             print("You have used '-c' or '--config' with argument: {0}".format(argument.config))
             parse_dict(self,yaml.load(open(argument.config)))
             print(self.config)
+            self.register_config(self.config)
             status = True
         if argument.mode:
             print("You have used '-m' or '--mode' with argument: {0}".format(argument.mode))
@@ -98,8 +116,33 @@ class CommandLine:
                     print("- ",mode)
             status = True
         if not status:
-            print("Remember: You can use -H or - Help to see configuration options") 
+            print("Remember: You can use -H or - Help to see configuration options")
         self.bad_input_mask = [0]*self.config['num_elements']
+
+    def register_config(self, config):
+        # Register config with comet broker
+        try:
+            enable_comet = config['use_dataset_broker']
+        except KeyError:
+            print("Missing config value 'dataset_manager/use_dataset_broker'.")
+            exit(1)
+        if enable_comet:
+            try:
+                comet_host = config['ds_broker_host']
+                comet_port = config['ds_broker_port']
+            except KeyError as exc:
+                print("Failure registering initial config with comet broker: '{}' not defined in "
+                      "config.".format(exc[0]))
+                exit(1)
+            comet = Manager(comet_host, comet_port)
+            try:
+                comet.register_start(self.startup_time, self.git_version)
+                comet.register_config(config)
+            except CometError as exc:
+                print('Comet failed registering initial config: {}'.format(exc))
+                exit(1)
+        else:
+            print("Config registration DISABLED. This is only OK for testing.")
 
 class Stream:
 

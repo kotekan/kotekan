@@ -15,11 +15,6 @@
 // the code to test:
 #include "datasetManager.hpp"
 
-// dataset id from producer
-// TODO: pass this here via a file instead
-#define DSET_ID 12068105840200711747UL
-#define SECOND_ROOT 1355729954233464875UL
-
 using kotekan::Config;
 
 using json = nlohmann::json;
@@ -49,13 +44,25 @@ BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, CompareCTypes) {
     std::vector<std::pair<uint32_t, freq_ctype>> old_freqs = {
         {1, {1.1, 1}}, {2, {2, 2.2}}, {3, {3, 3}}};
 
-    auto freq_state = dm.dataset_state<freqState>(DSET_ID);
+    // read ds_id from file
+    std::string line;
+    std::ifstream f("DS_ID.txt");
+    if (f.is_open()) {
+        if (!std::getline(f, line))
+            std::cout << "Unable to read from file DS_ID.txt\n";
+        f.close();
+    } else
+        std::cout << "Unable to open file DS_D.txt\n";
+    dset_id_t ds_id;
+    std::stringstream(line) >> ds_id;
+
+    auto freq_state = dm.dataset_state<freqState>(ds_id);
     check_equal(old_freqs, freq_state->get_freqs());
 
-    auto prod_state = dm.dataset_state<prodState>(DSET_ID);
+    auto prod_state = dm.dataset_state<prodState>(ds_id);
     check_equal(old_prods, prod_state->get_prods());
 
-    auto input_state = dm.dataset_state<inputState>(DSET_ID);
+    auto input_state = dm.dataset_state<inputState>(ds_id);
     check_equal(old_inputs, input_state->get_inputs());
 
     // change states:
@@ -66,7 +73,12 @@ BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, CompareCTypes) {
     std::pair<state_id_t, const inputState*> new_input_state = dm.add_state(
         std::make_unique<inputState>(new_inputs, std::make_unique<freqState>(new_freqs)));
 
-    dm.add_dataset(DSET_ID, new_input_state.first);
+    dset_id_t ds_id2 = dm.add_dataset(ds_id, new_input_state.first);
+
+    // write ID to disk for consumer
+    std::ofstream o("DS_ID2.txt");
+    o << ds_id2;
+    o.close();
 
     std::cout << dm.summary() << std::endl;
 
