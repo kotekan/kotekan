@@ -162,13 +162,14 @@ void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutMa
         // for(int freqidx = 0; freqidx < _num_local_freq; freqidx++){
         //     auto next_request = mgrs[freqidx]->get_next_waiting_request();
         //     uint32_t freq_id = freq_ids[freqidx];
-        //     // INFO("Request for event %" PRIu32,freq_ids[freqidx]);
+        //     INFO("Request for event %" PRIu32,freq_ids[freqidx]);
         //     if (next_request) {
         //         //next_requests[freqidx] = next_request;
         //         INFO("Non-null request for freq_id %" PRIu32, freq_id);
         //     }
         // }
-        auto next_request = mgrs[0]->get_next_waiting_request();
+        next_requests[0] = mgrs[0]->get_next_waiting_request();
+        std::shared_ptr<basebandReadoutManager::requestStatusMutex> next_request = std::move(next_requests[0]);
 
         if (next_request) {
             basebandDumpStatus& dump_status = std::get<0>(*next_request);
