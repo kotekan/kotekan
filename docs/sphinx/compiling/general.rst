@@ -32,7 +32,7 @@ Required for some options
 ==========================
 
 * `libevent <http://libevent.org/>`_
-* `DPDK dpdk-16.11.3 <http://dpdk.org/>`_ (see :ref:`dpdk`), requires hugepage support
+* `DPDK dpdk-16.11.9 <http://dpdk.org/>`_ (see :ref:`dpdk`), requires hugepage support
 * `AMD OpenCL drivers <http://support.amd.com/en-us/download/linux>`_ and `SDK <http://developer.amd.com/amd-accelerated-parallel-processing-app-sdk/>`_
 * `AMD ROCm <https://github.com/RadeonOpenCompute/ROCm>`_
 * `HDF5 <https://www.hdfgroup.org/HDF5/>`_ and branch ``extensible-datasets`` of jrs65's fork of `HighFive <https://github.com/jrs65/HighFive>`_
@@ -85,8 +85,6 @@ Cmake build options
     Includes DPDK support.
 * ``-DUSE_HSA=ON``
     Build with HSA support if available. On by default.
-* ``-DUSE_PRECOMPILED_OPENCL=ON``
-    For HSA, use precompiled OpenCL .hsaco binaries. Otherwise will attempt cloc.sh to compile.
 * ``-DUSE_OPENCL=ON``
     Build with OpenCL support.
 * ``-DUSE_HCC=ON``
