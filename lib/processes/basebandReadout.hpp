@@ -138,7 +138,7 @@ private:
     const std::unique_ptr<uint8_t[]> baseband_data;
 
     // the next/current dump to write (reset to nullptr after done)
-    std::unique_ptr<basebandDumpData> dump_to_write;
+    std::unique_ptr<std::vector<basebandDumpData>> dumps_to_write;
     std::condition_variable ready_to_write;
     std::mutex dump_to_write_mtx;
 };
