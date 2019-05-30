@@ -114,20 +114,18 @@ void basebandReadout::main_thread() {
             //basebandReadoutManager<std::reference_wrapper<basebandReadoutManager>> mgrs;
             uint32_t freq_id;
                 for(int freqidx=0; freqidx < _num_local_freq;freqidx++){
-                    // TODO: make sure is backwards compatible with 1 frequency ID
-                    // condition on num_local_freq = 1, specify with XXX means this is impt
-                    freq_id = bin_number(&stream_id,freqidx);
+                    // XXX Map stream IDs to freq IDs with bin_number() (for Pathfinder) or bin_number_chime()
+                    // XXX Use num_local_freqs to figure out if we're running on CHIME or PF
+                    if (_num_local_freq == 1){
+                        freq_id = bin_number_chime(&stream_id);
+                    } else { // more than one freq per stream
+                        freq_id = bin_number(&stream_id,freqidx);
+                    }
                     freq_ids[freqidx] = freq_id;
-                    //basebandReadoutManager& mgr = 
-                    //    basebandApiManager::instance().register_readout_stage(freq_ids[freqidx]);
-                    //mgrs.push_back(mgr);
                     mgrs[freqidx] = &(basebandApiManager::instance().register_readout_stage(freq_ids[freqidx]));
-                    INFO("Starting request-listening thread for freq_id      : %" PRIu32, freq_id);
-                    INFO("Starting request-listening thread for freq_ids[idx]: %" PRIu32, freq_ids[freqidx]);
+                    INFO("Starting request-listening thread for freq_id: %" PRIu32, freq_id);
 
                 }
-                INFO("Pointers to managers put into array");
-            
             lt = std::make_unique<std::thread>([&] { this->listen_thread(freq_ids, mgrs); });
 
             wt = std::make_unique<std::thread>([&] { this->write_thread(mgrs); });
@@ -174,7 +172,6 @@ void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutMa
             std::mutex *request_mtxs[_num_local_freq];
             const basebandRequest *basebandRequests[_num_local_freq];
 
-
             for(int freqidx = 0; freqidx < _num_local_freq; freqidx++){
             
                 basebandDumpStatuses[freqidx] = &(std::get<0>(*next_requests[freqidx]));
@@ -185,11 +182,12 @@ void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutMa
                 basebandRequest request = basebandDumpStatuses[freqidx]->request;
                 basebandRequests[freqidx] = &request;
                 // std::time_t tt = std::chrono::system_clock::to_time_t(request.received);
-                const uint64_t event_id = request.event_id;
                 INFO("Received baseband dump request for event %" PRIu64 ": %" PRIi64
                      " samples starting at count %" PRIi64 ". (next_frame: %d)",
-                     event_id, request.length_fpga, request.start_fpga, next_frame);
+                     request.event_id, request.length_fpga, request.start_fpga, next_frame);
             }//end loopify
+            //XXX Assume that all eight dumps have the same event ID.
+            const uint64_t event_id = basebandRequests[0]->event_id;
             
             // std::mutex& request_mtx = std::get<1>(*next_requests[0]);
             // basebandDumpStatus& dump_status = std::get<0>(*next_requests[0]);
@@ -199,13 +197,6 @@ void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutMa
             //      " samples starting at count %" PRIi64 ". (next_frame: %d)",
             //      event_id, request.length_fpga, request.start_fpga, next_frame);
             
-            next_request = std::move(next_requests[0]); // PROGRESS FRONTIER
-            const uint32_t freq_id = freq_ids[0]; // PROGRESS FRONTIER
-            std::mutex& request_mtx = *request_mtxs[0];
-            basebandDumpStatus& dump_status = *basebandDumpStatuses[0];
-            const basebandRequest request = *basebandRequests[0];
-            const uint64_t event_id = request.event_id;
-            INFO("You Are Here");// PROGRESS FRONTIER
             
             std::unique_lock<std::mutex> lock(dump_to_write_mtx);
             while (dump_to_write) {
@@ -217,8 +208,8 @@ void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutMa
 
             {
                 //loopify
-                std::lock_guard<std::mutex> lock(request_mtx);
-                dump_status.state = basebandDumpStatus::State::INPROGRESS;
+                std::lock_guard<std::mutex> lock(*request_mtxs[0]);
+                basebandDumpStatuses[0]->state = basebandDumpStatus::State::INPROGRESS;
                 // Note: the length of the dump still needs to be set with
                 // actual sizes. This is done in `get_data` as it verifies what
                 // is available in the current buffers.
@@ -229,27 +220,38 @@ void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutMa
             // out is done by another thread. This keeps the number of threads that can lock out
             // the main buffer limited to 2 (listen and main).
             // loopify function call,
-            basebandDumpData data =
-                get_data(event_id, request.start_fpga,
-                         std::min((int64_t)request.length_fpga, _max_dump_samples));
+            basebandDumpData *basebandDumpDatas[_num_local_freq];
+            for(int freqidx = 0; freqidx < _num_local_freq; freqidx++){
+                basebandDumpData data =
+                    get_data(event_id, basebandRequests[freqidx]->start_fpga,
+                             std::min((int64_t)basebandRequests[freqidx]->length_fpga, _max_dump_samples));
+                basebandDumpDatas[freqidx] = &data;
+            }
             // end loopify  
+            //const uint32_t freq_id = freq_ids[0]; // PROGRESS FRONTIER
+            next_request = std::move(next_requests[0]); // PROGRESS FRONTIER
+            //std::mutex& request_mtx = *request_mtxs[0]; // PROGRESS FRONTIER
+            basebandDumpStatus& dump_status = *basebandDumpStatuses[0];
+            const basebandRequest request = *basebandRequests[0];
+            basebandDumpData data = *basebandDumpDatas[0];
+            INFO("You Are Here");// PROGRESS FRONTIER
 
 
             // At this point we know how much of the requested data we managed to read from the
             // buffer (which may be nothing if the request as recieved too late).
             {
-                std::lock_guard<std::mutex> lock(request_mtx);
-                dump_status.bytes_total = data.num_elements * data.data_length_fpga;
-                dump_status.bytes_remaining = dump_status.bytes_total;
-                if (data.data_length_fpga == 0) {
+                std::lock_guard<std::mutex> lock(*request_mtxs[0]);
+                basebandDumpStatuses[0]->bytes_total = basebandDumpDatas[0]->num_elements * basebandDumpDatas[0]->data_length_fpga;
+                basebandDumpStatuses[0]->bytes_remaining = basebandDumpStatuses[0]->bytes_total;
+                if (basebandDumpDatas[0]->data_length_fpga == 0) {
                     INFO("Captured no data for event %" PRIu64 " and freq %" PRIu32 ".", event_id,
-                         freq_id);
+                         freq_ids[0]);
                     dump_status.state = basebandDumpStatus::State::ERROR;
                     dump_status.reason = "No data captured.";
                     continue;
                 } else {
                     INFO("Captured %" PRId64 " samples for event %" PRIu64 " and freq %" PRIu32 ".",
-                         data.data_length_fpga, data.event_id, data.freq_id);
+                         basebandDumpDatas[0]->data_length_fpga, basebandDumpDatas[0]->event_id, basebandDumpDatas[0]->freq_id);
                 }
             }
 
