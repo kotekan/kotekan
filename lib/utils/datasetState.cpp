@@ -2,6 +2,10 @@
 
 #include <typeinfo>
 
+
+// Static map of type names
+std::map<size_t, std::string> datasetState::_registered_names;
+
 // Initialise static map of types
 std::map<std::string, std::function<state_uptr(json&, state_uptr)>>&
 datasetState::_registered_types() {
@@ -40,7 +44,7 @@ json datasetState::to_json() const {
     json j;
 
     // Use RTTI to serialise the type of datasetState this is
-    j["type"] = typeid(*this).name();
+    j["type"] = datasetState::_registered_names[typeid(*this).hash_code()];
 
     // Recursively serialise any inner states
     if (_inner_state != nullptr) {
@@ -59,14 +63,23 @@ bool datasetState::equals(datasetState& s) const {
 std::set<std::string> datasetState::types() const {
     std::set<std::string> types;
 
-    types.insert(typeid(*this).name());
+    types.insert(datasetState::_registered_names[typeid(*this).hash_code()]);
 
     const datasetState* t = _inner_state.get();
 
     while (t != nullptr) {
-        types.insert(typeid(*t).name());
+        types.insert(datasetState::_registered_names[typeid(*t).hash_code()]);
         t = t->_inner_state.get();
     }
 
     return types;
 }
+
+REGISTER_DATASET_STATE(freqState, "frequencies");
+REGISTER_DATASET_STATE(inputState, "inputs");
+REGISTER_DATASET_STATE(prodState, "products");
+REGISTER_DATASET_STATE(stackState, "stack");
+REGISTER_DATASET_STATE(eigenvalueState, "eigenvalues");
+REGISTER_DATASET_STATE(timeState, "time");
+REGISTER_DATASET_STATE(metadataState, "metadata");
+REGISTER_DATASET_STATE(gatingState, "gating");

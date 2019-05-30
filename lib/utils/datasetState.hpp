@@ -90,7 +90,7 @@ public:
      * @returns Always returns zero.
      **/
     template<typename T>
-    static inline int _register_state_type();
+    static inline int _register_state_type(std::string name);
 
     /**
      * @brief Compare to another dataset state.
@@ -100,10 +100,13 @@ public:
     bool equals(datasetState& s) const;
 
     /**
-     * @brief Get typeids of this state and its inner states.
+     * @brief Get names of this state and its inner states.
      * @return A set of state names.
      */
     std::set<std::string> types() const;
+
+    // Static map of type names
+    static std::map<size_t, std::string> _registered_names;
 
 private:
     /**
@@ -126,12 +129,26 @@ private:
     friend datasetManager;
 };
 
-#define REGISTER_DATASET_STATE(T) int _register_##T = datasetState::_register_state_type<T>()
+#define REGISTER_DATASET_STATE(T, s) int _register_##T = datasetState::_register_state_type<T>(s)
 
 
 // Printing for datasetState
 std::ostream& operator<<(std::ostream&, const datasetState&);
 
+
+template<typename T>
+inline int datasetState::_register_state_type(std::string name) {
+
+    DEBUG("Registering state type: %s", name.c_str());
+
+    // Generate a lambda function that creates an instance of the type
+    datasetState::_registered_types()[name] = [](json& data, state_uptr inner) -> state_uptr {
+        return std::make_unique<T>(data, move(inner));
+    };
+
+    datasetState::_registered_names[typeid(T).hash_code()] = name;
+    return 0;
+}
 
 /**
  * @brief A dataset state that describes the frequencies in a datatset.
