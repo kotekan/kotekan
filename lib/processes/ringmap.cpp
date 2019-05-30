@@ -244,8 +244,6 @@ bool mapMaker::setup(size_t frame_id) {
         sinza[i] = i * 2. / num_pix - 1. + 1. / num_pix;
     }
 
-    min_fpga = std::get<0>(in_frame.time);
-
     // generate map making matrices
     gen_matrices();
 
@@ -270,7 +268,8 @@ bool mapMaker::setup(size_t frame_id) {
     times_map.clear();
 
     // Initialize the time indexing
-    max_fpga = 0, min_fpga = 0;
+    min_ctime = ts_to_double(std::get<1>(in_frame.time));
+    max_ctime = min_ctime;
     latest = modulo<size_t>(num_time);
 
     return true;
@@ -306,16 +305,16 @@ void mapMaker::gen_matrices() {
 
 int64_t mapMaker::resolve_time(time_ctype t) {
 
-    if (t.fpga_count < min_fpga) {
+    if (t.ctime < min_ctime) {
         // time is too old, discard
         WARN("Frame older than oldest time in ringmap. Discarding.");
         return -1;
     }
 
-    if (t.fpga_count > max_fpga) {
+    if (t.ctime > max_ctime) {
         mtx.lock();
         // We need to add a new time
-        max_fpga = t.fpga_count;
+        max_ctime = t.ctime;
         // Increment position
         if (times_map.size() < num_time) {
             // Still filling in the array
@@ -324,11 +323,11 @@ int64_t mapMaker::resolve_time(time_ctype t) {
             times.push_back(t);
         } else {
             // Remove oldest entry
-            min_fpga = times[++latest].fpga_count;
-            times_map.erase(min_fpga);
+            min_ctime = times[++latest].ctime;
+            times_map.erase(min_ctime);
             times[latest] = t;
         }
-        times_map.insert(std::pair<uint64_t, size_t>(t.fpga_count, latest));
+        times_map.insert(std::pair<double, size_t>(t.ctime, latest));
         // Clear maps
         size_t start = latest;
         size_t stop = size_t(latest) + 1;
@@ -346,7 +345,7 @@ int64_t mapMaker::resolve_time(time_ctype t) {
     }
 
     // Otherwise find the existing time
-    auto res = times_map.find(t.fpga_count);
+    auto res = times_map.find(t.ctime);
     if (res == times_map.end()) {
         // No entry for this time
         WARN("Could not find this time in ringmap. Discarding.");

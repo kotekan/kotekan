@@ -65,9 +65,9 @@ private:
     // Map dimensions and time keeping
     std::vector<float> sinza;
     std::vector<time_ctype> times;
-    std::map<uint64_t, size_t> times_map;
+    std::map<double, size_t> times_map;
     modulo<size_t> latest;
-    uint64_t max_fpga, min_fpga;
+    double max_ctime, min_ctime;
 
     // Dataset ID of incoming stream
     dset_id_t ds_id;
