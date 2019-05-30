@@ -187,7 +187,7 @@ void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutMa
                      request.event_id, request.length_fpga, request.start_fpga, next_frame);
             }//end loopify
             //XXX Assume that all eight dumps have the same event ID.
-            const uint64_t event_id = basebandRequests[0]->event_id;
+            //const uint64_t event_id = basebandRequests[0]->event_id;
             
             // std::mutex& request_mtx = std::get<1>(*next_requests[0]);
             // basebandDumpStatus& dump_status = std::get<0>(*next_requests[0]);
@@ -205,15 +205,17 @@ void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutMa
                     return;
             }
             INFO("Ready to copy samples into the baseband readout buffer");
-
+            
+            for(int freqidx = 0; freqidx < _num_local_freq; freqidx++){
             {
                 //loopify
-                std::lock_guard<std::mutex> lock(*request_mtxs[0]);
-                basebandDumpStatuses[0]->state = basebandDumpStatus::State::INPROGRESS;
+                std::lock_guard<std::mutex> lock(*request_mtxs[freqidx]);
+                basebandDumpStatuses[freqidx]->state = basebandDumpStatus::State::INPROGRESS;
                 // Note: the length of the dump still needs to be set with
                 // actual sizes. This is done in `get_data` as it verifies what
                 // is available in the current buffers.
                 // end loopify
+            }
             }
 
             // Copying the data from the ring buffer is done in *this* thread. Writing the data
@@ -223,39 +225,42 @@ void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutMa
             basebandDumpData *basebandDumpDatas[_num_local_freq];
             for(int freqidx = 0; freqidx < _num_local_freq; freqidx++){
                 basebandDumpData data =
-                    get_data(event_id, basebandRequests[freqidx]->start_fpga,
+                    get_data(basebandRequests[freqidx]->event_id, basebandRequests[freqidx]->start_fpga,
                              std::min((int64_t)basebandRequests[freqidx]->length_fpga, _max_dump_samples));
                 basebandDumpDatas[freqidx] = &data;
             }
             // end loopify  
             //const uint32_t freq_id = freq_ids[0]; // PROGRESS FRONTIER
-            next_request = std::move(next_requests[0]); // PROGRESS FRONTIER
+            //next_request = std::move(next_requests[0]); // PROGRESS FRONTIER
             //std::mutex& request_mtx = *request_mtxs[0]; // PROGRESS FRONTIER
-            basebandDumpStatus& dump_status = *basebandDumpStatuses[0];
-            const basebandRequest request = *basebandRequests[0];
-            basebandDumpData data = *basebandDumpDatas[0];
+            //basebandDumpStatus& dump_status = *basebandDumpStatuses[0];
+            //const basebandRequest request = *basebandRequests[0];
+            //basebandDumpData data = *basebandDumpDatas[0];
             INFO("You Are Here");// PROGRESS FRONTIER
 
 
             // At this point we know how much of the requested data we managed to read from the
             // buffer (which may be nothing if the request as recieved too late).
-            {
-                std::lock_guard<std::mutex> lock(*request_mtxs[0]);
-                basebandDumpStatuses[0]->bytes_total = basebandDumpDatas[0]->num_elements * basebandDumpDatas[0]->data_length_fpga;
-                basebandDumpStatuses[0]->bytes_remaining = basebandDumpStatuses[0]->bytes_total;
-                if (basebandDumpDatas[0]->data_length_fpga == 0) {
-                    INFO("Captured no data for event %" PRIu64 " and freq %" PRIu32 ".", event_id,
-                         freq_ids[0]);
-                    dump_status.state = basebandDumpStatus::State::ERROR;
-                    dump_status.reason = "No data captured.";
-                    continue;
-                } else {
-                    INFO("Captured %" PRId64 " samples for event %" PRIu64 " and freq %" PRIu32 ".",
-                         basebandDumpDatas[0]->data_length_fpga, basebandDumpDatas[0]->event_id, basebandDumpDatas[0]->freq_id);
+            for(int freqidx = 0; freqidx < _num_local_freq; freqidx++){
+                {
+                    std::lock_guard<std::mutex> lock(*request_mtxs[freqidx]);
+                    basebandDumpStatuses[freqidx]->bytes_total = basebandDumpDatas[freqidx]->num_elements * basebandDumpDatas[freqidx]->data_length_fpga;
+                    basebandDumpStatuses[freqidx]->bytes_remaining = basebandDumpStatuses[freqidx]->bytes_total;
+                    if (basebandDumpDatas[freqidx]->data_length_fpga == 0) {
+                        INFO("Captured no data for event %" PRIu64 " and freq %" PRIu32 ".", basebandRequests[freqidx]->event_id,
+                             freq_ids[freqidx]);
+                        basebandDumpStatuses[freqidx]->state = basebandDumpStatus::State::ERROR;
+                        basebandDumpStatuses[freqidx]->reason = "No data captured.";
+                        continue;
+                    } else {
+                        INFO("Captured %" PRId64 " samples for event %" PRIu64 " and freq %" PRIu32 ".",
+                             basebandDumpDatas[freqidx]->data_length_fpga, basebandDumpDatas[freqidx]->event_id, basebandDumpDatas[freqidx]->freq_id);
+                        INFO("freq_ids[freqidx] is: " PRIu32, freq_ids[freqidx]);
+                    }
+                dump_to_write = std::make_unique<basebandDumpData>(*basebandDumpDatas[freqidx]);
                 }
             }
-
-            dump_to_write = std::make_unique<basebandDumpData>(data);
+            
             lock.unlock();
             ready_to_write.notify_one();
         }
