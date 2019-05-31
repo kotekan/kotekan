@@ -26,7 +26,7 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array,
   uint local_address = get_local_id(0);
   float outtmp = 0.f;
   float freq_1_time_sum = 0.f, freq_2_time_sum = 0.f;
-  __local float time_sum[128];
+  float time_sum[128];
 
   for (int i=0; i<128; i++) time_sum[i] = 0.f;
 
