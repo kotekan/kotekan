@@ -225,6 +225,7 @@ private:
         iterator begin() noexcept;
         iterator end() noexcept;
         basebandReadoutManager& operator[](const uint32_t& key);
+        size_t count (const uint32_t& key);
 
     private:
         std::mutex map_lock;

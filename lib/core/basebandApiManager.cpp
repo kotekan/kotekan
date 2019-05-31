@@ -15,6 +15,13 @@ operator[](const uint32_t& key) {
     return readout_map[key];
 }
 
+size_t basebandApiManager::basebandReadoutRegistry::
+count(const uint32_t& key) {
+    std::lock_guard<std::mutex> lock(map_lock);
+    return readout_map.count(key);
+}
+
+
 basebandApiManager::basebandReadoutRegistry::iterator
 basebandApiManager::basebandReadoutRegistry::begin() noexcept {
     std::lock_guard<std::mutex> lock(map_lock);
@@ -181,6 +188,9 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
 
 
 basebandReadoutManager& basebandApiManager::register_readout_stage(const uint32_t freq_id) {
+    if (readout_registry.count(freq_id)) {
+        std::runtime_error("Freq_id added to baseband readout registry twice.");
+    }
     return readout_registry[freq_id];
 }
 
