@@ -266,7 +266,6 @@ void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutMa
 }
 
 void basebandReadout::write_thread(basebandReadoutManager *mgrs[]) {
-    basebandReadoutManager& mgr = *(mgrs[0]);
     while (!stop_thread) {
         std::unique_lock<std::mutex> lock(dump_to_write_mtx);
 
@@ -281,25 +280,27 @@ void basebandReadout::write_thread(basebandReadoutManager *mgrs[]) {
         INFO("wt: dumps_to_write filled");
         }
 
+        //basebandReadoutManager& mgr = *(mgrs[0]); //PROGRESS FRONTIER
         auto data1 = std::move(dumps_to_write); // nulls dump_to_write
-        auto data = &((*data1)[0]);//PROGRESS FRONTIER
+        for(int freqidx = 0; freqidx < _num_local_freq; freqidx++){
+            auto data = &((*data1)[freqidx]);//PROGRESS FRONTIER
+            auto next_request = mgrs[freqidx]->get_next_ready_request();
+            basebandDumpStatus& dump_status = std::get<0>(next_request);
+            // Sanity check
+            if (dump_status.request.event_id != data->event_id) {
+                ERROR("Mismatched event ids: %ld - %ld", dump_status.request.event_id, data->event_id);
+                throw std::runtime_error("Mismatched id - abort");
+            }
+            std::mutex& request_mtx = std::get<1>(next_request);
 
-        auto next_request = mgr.get_next_ready_request();
-        basebandDumpStatus& dump_status = std::get<0>(next_request);
-        // Sanity check
-        if (dump_status.request.event_id != data->event_id) {
-            ERROR("Mismatched event ids: %ld - %ld", dump_status.request.event_id, data->event_id);
-            throw std::runtime_error("Mismatched id - abort");
-        }
-        std::mutex& request_mtx = std::get<1>(next_request);
-
-        try {
-            write_dump(*data, dump_status, request_mtx);
-        } catch (HighFive::FileException& e) {
-            INFO("Writing Baseband dump file failed with hdf5 error.");
-            std::lock_guard<std::mutex> lock(request_mtx);
-            dump_status.state = basebandDumpStatus::State::ERROR;
-            dump_status.reason = e.what();
+            try {
+                write_dump(*data, dump_status, request_mtx);
+            } catch (HighFive::FileException& e) {
+                INFO("Writing Baseband dump file failed with hdf5 error.");
+                std::lock_guard<std::mutex> lock(request_mtx);
+                dump_status.state = basebandDumpStatus::State::ERROR;
+                dump_status.reason = e.what();
+            }
         }
         lock.unlock();
         ready_to_write.notify_one();
