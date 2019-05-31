@@ -48,6 +48,7 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       rfiRecord.cpp
       rfiBadInputFinder.cpp
       receiveFlags.cpp
+      SynthesisDeWalsh.cpp
       valve.cpp
       visTransform.cpp
       visTestPattern.cpp
