@@ -11,6 +11,7 @@ hsaBeamformUpchan::hsaBeamformUpchan(Config& config, const string& unique_name,
                "upchannelize_flip.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
+    // Read parameters from config file.
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     _downsample_time = config.get<int32_t>(unique_name, "downsample_time");
@@ -20,6 +21,10 @@ hsaBeamformUpchan::hsaBeamformUpchan(Config& config, const string& unique_name,
     input_frame_len = _num_elements * (_samples_per_data_set + 32) * 2 * sizeof(float);
     output_frame_len = _num_frb_total_beams
                        * (_samples_per_data_set / _downsample_time / _downsample_freq)
+                       * sizeof(float);
+    output_hfb_frame_len = _num_frb_total_beams
+                       * 128 // No. of frequencies
+                       //* (_samples_per_data_set / _downsample_time)
                        * sizeof(float);
 }
 
@@ -33,11 +38,15 @@ hsa_signal_t hsaBeamformUpchan::execute(int gpu_frame_id, hsa_signal_t precede_s
     struct __attribute__((aligned(16))) args_t {
         void* input_buffer;
         void* output_buffer;
+        void* output_hyperfine_beam_buffer;
     } args;
     memset(&args, 0, sizeof(args));
 
+    INFO("\nHFB frame length: %d", output_hfb_frame_len);
+
     args.input_buffer = device.get_gpu_memory("transposed_output", input_frame_len);
     args.output_buffer = device.get_gpu_memory_array("bf_output", gpu_frame_id, output_frame_len);
+    args.output_hyperfine_beam_buffer = device.get_gpu_memory_array("hfb_output", gpu_frame_id, output_hfb_frame_len);
 
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
@@ -46,7 +55,7 @@ hsa_signal_t hsaBeamformUpchan::execute(int gpu_frame_id, hsa_signal_t precede_s
     params.workgroup_size_x = 64;
     params.workgroup_size_y = 1;
     params.grid_size_x = _samples_per_data_set / 6;
-    params.grid_size_y = 1024;
+    params.grid_size_y = 1024; // No. of FRB beams
     params.num_dims = 2;
 
     params.private_segment_size = 0;

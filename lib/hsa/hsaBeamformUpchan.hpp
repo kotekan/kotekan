@@ -21,6 +21,7 @@
  * averaged in order to downsample to fit the output bandwidth. The 2
  * polarizations are summed to produce a final output in float of
  * 1024 beams x 128 times x 16 freq.
+ * TODO JSW: Add description of hyper fine beam tap
  *
  * @requires_kernel    upchannelize_flip.hasco
  *
@@ -33,6 +34,7 @@
  *     @gpu_mem_type            staging
  *     @gpu_mem_format          Array of @c float
  *     @gpu_mem_metadata        chimeMetadata
+ * @gpu_mem  hfb_output         Output data of size output_hfb_frame_len
  *
  * @conf   num_elements         Int (default 2048). Number of elements
  * @conf   samples_per_data_set Int (default 49152). Number of time samples in a data set
@@ -63,6 +65,8 @@ private:
     int32_t input_frame_len;
     /// Output length, num_frb_total_beams x (nsamp/downsample_time/downsample_freq)
     int32_t output_frame_len;
+    /// Output length, num_frb_total_beams x (nsamp/downsample_time)
+    int32_t output_hfb_frame_len;
 
     /// Number of elements, should be 2048
     int32_t _num_elements;
