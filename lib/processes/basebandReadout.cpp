@@ -160,6 +160,7 @@ void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutMa
         // of L4 sending the trigger.
         next_requests[0] = mgrs[0]->get_next_waiting_request();
         if (next_requests[0]) {
+            INFO("Non-null request for freq_ids[idx]: %" PRIu32, freq_ids[0]);
             for(int freqidx = 1; freqidx < _num_local_freq; freqidx++){
                 next_requests[freqidx] = mgrs[freqidx]->get_next_waiting_request();
                 //INFO("Request for event %" PRIu32,freq_id);
@@ -225,7 +226,7 @@ void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutMa
                 // out is done by another thread. This keeps the number of threads that can lock out
                 // the main buffer limited to 2 (listen and main).
                 // loopify function call,
-                dumps_to_write_vec.push_back(get_data(basebandRequests[freqidx]->event_id, basebandRequests[freqidx]->start_fpga,                             std::min((int64_t)basebandRequests[freqidx]->length_fpga, _max_dump_samples)));
+                dumps_to_write_vec.push_back(get_data(basebandRequests[freqidx]->event_id, basebandRequests[freqidx]->start_fpga,                             std::min((int64_t)basebandRequests[freqidx]->length_fpga, _max_dump_samples),freqidx));
                 auto currentData = dumps_to_write_vec.back();
                 // At this point we know how much of the requested data we managed to read from the
                 // buffer (which may be nothing if the request as recieved too late).
@@ -328,7 +329,7 @@ int basebandReadout::add_replace_frame(int frame_id) {
 
 
 basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_start_fpga,
-                                           int64_t trigger_length_fpga) {
+                                           int64_t trigger_length_fpga, int freqidx) {
     // This assumes that the frame's timestamps are in order, but not that they
     // are necessarily contiguous.
 
@@ -416,7 +417,15 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
     auto first_meta = (chimeMetadata*)buf->metadata[buf_frame]->metadata;
 
     stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
-    uint32_t freq_id = bin_number_chime(&stream_id);
+    // XXX Map stream IDs to freq IDs with bin_number() (for Pathfinder) or bin_number_chime()
+    // XXX Use num_local_freqs to figure out if we're running on CHIME or PF
+
+    uint32_t freq_id;
+    if (_num_local_freq == 1){
+        freq_id = bin_number_chime(&stream_id);
+    } else { // more than one freq per stream
+        freq_id = bin_number(&stream_id,freqidx);
+    }
 
     // Figure out how much data we have.
     int64_t data_start_fpga = std::max(trigger_start_fpga, first_meta->fpga_seq_num);
@@ -433,9 +442,9 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
     //baseband_data.get() is a pointer to preallocated memory. baseband_dataPreallocated at startup
     //Passing baseband_data.get() twice overwrites
     //Allocate 8 times more memory somewhere. Use different memory.
-    basebandDumpData dump(event_id, freq_id, _num_elements, data_start_fpga,
-                          data_end_fpga - data_start_fpga, packet_time0, baseband_data.get());
 
+    basebandDumpData dump(event_id, freq_id, _num_elements, data_start_fpga,
+                              data_end_fpga - data_start_fpga, packet_time0, baseband_data.get() + freqidx * (_num_elements * _max_dump_samples));
     // Fill in the data.
     int64_t next_data_ind = 0;
     for (int frame_index = dump_start_frame; frame_index < dump_end_frame; frame_index++) {
