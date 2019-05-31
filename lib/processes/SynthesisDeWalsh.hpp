@@ -26,7 +26,19 @@ using std::string;
  * @brief Producer ``KotekanProcess`` which streams simple-formatted data
  * from a serial port ``Buffer``.
  *
- * This is a simple producer which initializes a UART.
+ * This is a simple producer which polls a serial port for a 4B status list.
+ * It is intended to be used with a trinket m0 running the script in
+ * /python/scripts/trinket_m0_main.py.
+ * The polling consists of sending any 1B string to the serial port of the
+ * trinket, which will reply with a 4B string giving the 3.3V digital state
+ * of DIO ports 1,2,3,4 (NOT port 0) on the trinket.
+ *
+ * On receiving an appropriate toggle (SAMPLE rise), this process populates
+ * the output frame with a 16x16 de-walshing matrix populated with ±1, which
+ * should be item-by-item multiplied into the correlation matrix to remove
+ * front-end modulations in the Synthesis Telescope's LOs.
+ *
+ * @todo We probably want to include a timestamp in the output buffer as well?
  *
  * @par Buffers
  * @buffer out_buf The kotekan buffer which will be fed, can be any size.

@@ -53,7 +53,7 @@ void SynthesisDeWalsh::main_thread() {
     int frame_id = 0;
     char *frame_ptr;
 
-    INFO("STARTING DEWALSHER");
+    DEBUG("STARTING DEWALSHER");
 
     //57600, 115200, 230400, 460800, 921600, 1843200, 
     set_interface_attribs(UART,115200,0);
@@ -77,7 +77,6 @@ void SynthesisDeWalsh::main_thread() {
         {-1,-1,-1,-1,-1,-1,-1,-1,  -1,-1,-1,-1,-1,-1,-1,-1},
         {-1,-1,-1,-1,-1,-1,-1,-1,  -1,-1,-1,-1,-1,-1,-1,-1}
     };
-    INFO("WALSH: %i\n",walsh[4][3]);
 
     bool od[4] = {0,0,0,0};
     unsigned char walsh_idx = 0;
@@ -120,6 +119,7 @@ void SynthesisDeWalsh::main_thread() {
 
         (void)MISC;
         (void)RESET;
+        (void)fall;
 
         if (rise[SYNC]) walsh_idx=0;
 
@@ -134,21 +134,23 @@ void SynthesisDeWalsh::main_thread() {
             for (int i=0; i<16; i++) for (int j=0; j<16; j++)
                 frame_ptr[i*16+j] = walsh[i][walsh_idx] * walsh[j][walsh_idx];
             frame_ptr[16*16] = walsh_idx;
+/*          //quick hack to print out the current walsh matrix, for debugging
             for (int i=0; i<16; i++){
                 for (int j=0; j<16; j++){
                     printf("%2d ",frame_ptr[i*16+j]);
                 }
                 printf("\n");
             }
+*/
         }
 
 
-        INFO("State: %d,%d,%d,%d  Rise: %d,%d,%d,%d  Fall: %d,%d,%d,%d  Walsh Idx: %d",
+        DEBUG("State: %d,%d,%d,%d  Rise: %d,%d,%d,%d  Fall: %d,%d,%d,%d  Walsh Idx: %d",
                 d[0],d[1],d[2],d[3],
                 rise[0],rise[1],rise[2],rise[3],
                 fall[0],fall[1],fall[2],fall[3],
                 walsh_idx);
-        sleep(1);
+        sleep(0.01);
     }
 }
 
