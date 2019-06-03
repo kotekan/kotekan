@@ -50,7 +50,8 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
     // Over allocate so we can align the memory.
     // TODO: Make array of pointers here.
     // TODO: Pointer to array of 8, each of 8 points to a baseband_data
-    baseband_data(std::make_unique<uint8_t[]>(_num_elements * _max_dump_samples * _num_local_freq + 15))
+    // TODO: Make this 15 alignment bits PER chunk
+    baseband_data(std::make_unique<uint8_t[]>((_num_elements * _max_dump_samples+ 15 )* _num_local_freq))
     {
     // ensure a trailing slash in _base_dir
     if (_base_dir.back() != '/') {
@@ -123,7 +124,7 @@ void basebandReadout::main_thread() {
                         freq_id = bin_number(&stream_id,freqidx);
                     }
                     freq_ids[freqidx] = freq_id;
-                    mgrs[freqidx] = &(basebandApiManager::instance().register_readout_stage(freq_ids[freqidx]));
+                    mgrs[freqidx] = &(basebandApiManager::instance().register_readout_stage(freq_ids[freqidx]));//TODO: Check register_readout_stage
                     INFO("Starting request-listening thread for freq_id: %" PRIu32, freq_id);
 
                 }
@@ -201,13 +202,11 @@ void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutMa
             
             
             std::unique_lock<std::mutex> lock(dump_to_write_mtx);
-            INFO("lt: Waiting for dumps_to_write to become null");
             while (dumps_to_write) {
                 ready_to_write.wait(lock);
                 if (stop_thread)
                     return;
             }
-            INFO("lt: dumps_to_write nulled");
             INFO("Ready to copy samples into the baseband readout buffer");
             
             std::vector<basebandDumpData> dumps_to_write_vec;
@@ -243,22 +242,10 @@ void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutMa
                      } else {
                          INFO("Captured %" PRId64 " samples for event %" PRIu64 " and freq %" PRIu32 ".",
                               currentData.data_length_fpga, currentData.event_id, currentData.freq_id);
-                         INFO("freq_ids[freqidx] is: " PRIu32, freq_ids[freqidx]);
                      }
                 }
                 dumps_to_write = std::make_unique<std::vector<basebandDumpData>>(dumps_to_write_vec);//ready to be read out
             }
-            // end loopify  
-            //const uint32_t freq_id = freq_ids[0]; // PROGRESS FRONTIER
-            //next_request = std::move(next_requests[0]); // PROGRESS FRONTIER
-            //std::mutex& request_mtx = *request_mtxs[0]; // PROGRESS FRONTIER
-            //basebandDumpStatus& dump_status = *basebandDumpStatuses[0];
-            //const basebandRequest request = *basebandRequests[0];
-            //basebandDumpData data = *basebandDumpDatas[0];
-            INFO("You Are Here");// PROGRESS FRONTIER
-
-
-            
             lock.unlock();
             ready_to_write.notify_one();
         }
@@ -272,18 +259,16 @@ void basebandReadout::write_thread(basebandReadoutManager *mgrs[]) {
         // This will reset `dump_to_write` to nullptr so that even if this
         // raises an exception, it will be empty until `listen_thread` copies
         // the next request's data
-        INFO("wt: Waiting for dumps_to_write to become full");
         while (!dumps_to_write) {
             ready_to_write.wait(lock);
             if (stop_thread)
                 return;
-        INFO("wt: dumps_to_write filled");
         }
+        INFO("wt:Dumps to write is not null");
 
-        //basebandReadoutManager& mgr = *(mgrs[0]); //PROGRESS FRONTIER
-        auto data1 = std::move(dumps_to_write); // nulls dump_to_write
+        auto safe_dumps = std::move(dumps_to_write); // nulls dump_to_write, moves data to safe_dumps
         for(int freqidx = 0; freqidx < _num_local_freq; freqidx++){
-            auto data = &((*data1)[freqidx]);//PROGRESS FRONTIER
+            auto data = &((*safe_dumps)[freqidx]);//PROGRESS FRONTIER
             auto next_request = mgrs[freqidx]->get_next_ready_request();
             basebandDumpStatus& dump_status = std::get<0>(next_request);
             // Sanity check
@@ -294,7 +279,9 @@ void basebandReadout::write_thread(basebandReadoutManager *mgrs[]) {
             std::mutex& request_mtx = std::get<1>(next_request);
 
             try {
+                INFO("Before write_dump() for freq_id:%" PRIu32, data->freq_id);
                 write_dump(*data, dump_status, request_mtx);
+                INFO("After write_dump() for freq_id:%" PRIu32, data->freq_id);
             } catch (HighFive::FileException& e) {
                 INFO("Writing Baseband dump file failed with hdf5 error.");
                 std::lock_guard<std::mutex> lock(request_mtx);
@@ -445,7 +432,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
     //Allocate 8 times more memory somewhere. Use different memory.
 
     basebandDumpData dump(event_id, freq_id, _num_elements, data_start_fpga,
-                              data_end_fpga - data_start_fpga, packet_time0, baseband_data.get() + freqidx * (_num_elements * _max_dump_samples));
+                              data_end_fpga - data_start_fpga, packet_time0, baseband_data.get() + freqidx * (_num_elements * _max_dump_samples + 15));
     // Fill in the data.
     int64_t next_data_ind = 0;
     for (int frame_index = dump_start_frame; frame_index < dump_end_frame; frame_index++) {
