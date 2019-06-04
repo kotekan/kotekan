@@ -189,7 +189,7 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
 
 basebandReadoutManager& basebandApiManager::register_readout_stage(const uint32_t freq_id) {
     if (readout_registry.count(freq_id)) {
-        std::runtime_error("Freq_id added to baseband readout registry twice.");
+        throw std::runtime_error("Freq_id added to baseband readout registry twice.");
     }
     return readout_registry[freq_id];
 }
