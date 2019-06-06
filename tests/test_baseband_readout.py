@@ -277,13 +277,13 @@ def test_basic_multifreq(tmpdir_factory):
     for ii, f in enumerate(sorted(dump_files)):
         f = h5py.File(f, 'r')
         shape = f['baseband'].shape
-        assert f.attrs['time0_fpga_count'] * 2560 == rest_commands[2 + ii][2]['start_unix_nano'] # makes sure time0_fpga_count is recorded properly?
-        assert f.attrs['event_id'] == rest_commands[2 + ii][2]['event_id']
+        assert f.attrs['time0_fpga_count'] * 2560 == rest_commands[2 + ii/params['num_local_freq']][2]['start_unix_nano'] # makes sure time0_fpga_count is recorded properly?
+        assert f.attrs['event_id'] == rest_commands[2 + ii/params['num_local_freq']][2]['event_id'] # ii / num_local_freq indexing because there are many frequency files for each event
         assert f.attrs['freq_id'] == scrape_freqid(f.filename) # where is this defined? not in run_baseband or default_params.
-        assert shape == (rest_commands[2 + ii][2]['duration_nano']/2560, num_elements) # axes: [time samples][feed]. Eventually want [time][freq][feed] as [slow][med][fast]
+        assert shape == (rest_commands[2 + ii/params['num_local_freq']][2]['duration_nano']/2560, num_elements) # axes: [time samples][feed]. Eventually want [time][freq][feed] as [slow][med][fast]
         assert np.all(f['index_map/input'][:]['chan_id']
                       == np.arange(num_elements))
-        # edata = f.attrs['time0_fpga_count'] + np.arange(shape[0], dtype=int)
-        # edata = edata[:, None] + np.arange(shape[1], dtype=int)
-        # edata = edata % 256
-        # assert np.all(f['baseband'][:] == edata)
+        edata = f.attrs['time0_fpga_count'] + np.arange(shape[0], dtype=int)
+        edata = edata[:, None] + np.arange(shape[1], dtype=int)
+        edata = edata % 256
+        assert np.all(f['baseband'][:] == edata)
