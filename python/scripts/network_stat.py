@@ -47,7 +47,9 @@ class Port(object):
 
         ret = {}
         ret["Gbps"] = 8*rx_bytes_diff/time_diff/(1000*1000*1000)
-        ret["loss_percent"] = (100.0 * float(rx_lost_packets_diff)
+        ret["loss_percent"] = 100.0
+        if (rx_packets_diff + rx_lost_packets_diff ) > 0:
+            ret["loss_percent"] = (100.0 * float(rx_lost_packets_diff)
                               / float(rx_packets_diff + rx_lost_packets_diff))
         ret["pps"] = rx_packets_diff/time_diff
 
