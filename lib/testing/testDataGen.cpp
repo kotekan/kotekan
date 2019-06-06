@@ -39,6 +39,7 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
 
     samples_per_data_set = config.get_default<int>(unique_name, "samples_per_data_set", 32768);
     stream_id = config.get_default<int>(unique_name, "stream_id", 0);
+    num_local_freq = config.get_default<int>(unique_name,"num_local_freq",1);
     num_frames = config.get_default<int>(unique_name, "num_frames", -1);
     // Try to generate data based on `samples_per_dataset` cadence or else just generate it as
     // fast as possible.
@@ -120,7 +121,7 @@ void testDataGen::main_thread() {
         // std::uniform_int_distribution<> dis(0, 255);
         srand(42);
         unsigned char temp_output;
-        int num_elements = buf->frame_size / sizeof(uint8_t) / samples_per_data_set;
+        int num_elements = buf->frame_size / sizeof(uint8_t) / samples_per_data_set / num_local_freq;
         for (uint j = 0; j < buf->frame_size / sizeof(uint8_t); ++j) {
             if (type == "const") {
                 if (finished_seeding_consant)
@@ -138,6 +139,8 @@ void testDataGen::main_thread() {
                 frame[j] = temp_output;
             } else if (type == "tpluse") {
                 frame[j] = seq_num + j / num_elements + j % num_elements;
+            } else if (type == "tpluseplusf") {
+                frame[j] = seq_num + j /num_elements + j % num_elements;
             }
         }
         DEBUG("Generated a %s test data set in %s[%d]", type.c_str(), buf->buffer_name, frame_id);
