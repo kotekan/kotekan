@@ -62,6 +62,7 @@ private:
     std::string rest_mode;
     int num_frames;
     int stream_id;
+    int num_local_freq;
 };
 
 #endif
