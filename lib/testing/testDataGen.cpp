@@ -139,6 +139,7 @@ void testDataGen::main_thread() {
                 frame[j] = temp_output;
             } else if (type == "tpluse") {
                 frame[j] = seq_num + j / num_elements + j % num_elements;
+                // seq_num (frame offset, usu. ==0) + element number (I think)
             } else if (type == "tpluseplusf") {
                 frame[j] = seq_num + j /num_elements + j % num_elements;
             }
