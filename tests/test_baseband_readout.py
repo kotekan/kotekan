@@ -245,6 +245,16 @@ def test_overload_no_crash(tmpdir_factory):
 
     run_baseband(tmpdir_factory, params, rest_commands)
 
+def scrape_freqid(string):
+    # e.g.: str = 'baseband_17_640.h5'
+    freqid = ''
+    for length in range(3):
+        try:
+            freqid = int(string[-4-length:-3]))
+        except:
+            break
+    return freqid
+
 def test_basic_multifreq(tmpdir_factory):
     # Eight frequencies
 
@@ -269,7 +279,7 @@ def test_basic_multifreq(tmpdir_factory):
         shape = f['baseband'].shape
         assert f.attrs['time0_fpga_count'] * 2560 == rest_commands[2 + ii][2]['start_unix_nano'] # makes sure time0_fpga_count is recorded properly?
         assert f.attrs['event_id'] == rest_commands[2 + ii][2]['event_id']
-        assert f.attrs['freq_id'] == 0 # where is this defined? not in run_baseband or default_params.
+        assert f.attrs['freq_id'] == scrape_freqid(f.filename) # where is this defined? not in run_baseband or default_params.
         assert shape == (rest_commands[2 + ii][2]['duration_nano']/2560, num_elements) # axes: [time samples][feed]. Eventually want [time][freq][feed] as [slow][med][fast]
         assert np.all(f['index_map/input'][:]['chan_id']
                       == np.arange(num_elements))
