@@ -1,6 +1,7 @@
 import glob
 import random
 import pytest
+import pdb
 
 import numpy as np
 import h5py
@@ -269,13 +270,18 @@ def test_basic_multifreq(tmpdir_factory):
             ]
     params = {
             'num_local_freq': 8,
+            'type': 'tpluseplusf'
             }
     dump_files = run_baseband(tmpdir_factory, params, rest_commands)
     assert len(dump_files) == (3*params['num_local_freq']) # we want one dump per trigger.
 
     num_elements = default_params['num_elements']
-    for ii, f in enumerate(sorted(dump_files)):
-        f = h5py.File(f, 'r')
+    filenames = sorted(dump_files)
+    files = [h5py.File(filename, 'r') for filename in filenames] #makes it easier to debug across frequencies
+
+    for ii, f in enumerate(files):
+        command_idx = 2 + ii/params['num_local_freq']
+        freq_idx = ii % params['num_local_freq']
         shape = f['baseband'].shape
         assert f.attrs['time0_fpga_count'] * 2560 == rest_commands[2 + ii/params['num_local_freq']][2]['start_unix_nano'] # makes sure time0_fpga_count is recorded properly?
         assert f.attrs['event_id'] == rest_commands[2 + ii/params['num_local_freq']][2]['event_id'] # ii / num_local_freq indexing because there are many frequency files for each event
@@ -283,7 +289,8 @@ def test_basic_multifreq(tmpdir_factory):
         assert shape == (rest_commands[2 + ii/params['num_local_freq']][2]['duration_nano']/2560, num_elements) # axes: [time samples][feed]. Eventually want [time][freq][feed] as [slow][med][fast]
         assert np.all(f['index_map/input'][:]['chan_id']
                       == np.arange(num_elements))
-        edata = f.attrs['time0_fpga_count'] + np.arange(shape[0], dtype=int)
+        edata = f.attrs['time0_fpga_count'] + freq_idx + np.arange(shape[0], dtype=int) # increment freq_idx every time
         edata = edata[:, None] + np.arange(shape[1], dtype=int)
         edata = edata % 256
         assert np.all(f['baseband'][:] == edata)
+    pdb.set_trace()
