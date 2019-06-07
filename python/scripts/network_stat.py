@@ -34,10 +34,15 @@ class Port(object):
         resp = requests.get("http://" + self.hostname
                             + ":12048/dpdk/handlers/" + str(self.port_number) + "/port_data")
         json_data = json.loads(resp.text)
-        cur_rx_bytes = json_data["rx_bytes_total"]
-        cur_rx_packets = json_data["rx_packets_total"]
-        cur_rx_lost_packets = json_data["lost_packets"]
-
+        try:
+            cur_rx_bytes = json_data["rx_bytes_total"]
+            cur_rx_packets = json_data["rx_packets_total"]
+            cur_rx_lost_packets = json_data["lost_packets"]
+        except KeyError:
+            cur_rx_bytes = 0
+            cur_rx_packets = 0
+            cur_rx_lost_packets = 0
+            print("Port "+str(self.port_number)+" not responding")
         cur_time = time.time()
 
         time_diff = cur_time - self.last_update
