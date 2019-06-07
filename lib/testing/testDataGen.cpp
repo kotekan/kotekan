@@ -1,5 +1,5 @@
 #include "testDataGen.hpp"
-
+#include "fpga_header_functions.h"
 #include "chimeMetadata.h"
 #include "errors.h"
 
@@ -30,7 +30,7 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
     buf = get_buffer("network_out_buf");
     register_producer(buf, unique_name.c_str());
     type = config.get<std::string>(unique_name, "type");
-    assert(type == "const" || type == "random" || type == "ramp" || type == "tpluse");
+    assert(type == "const" || type == "random" || type == "ramp" || type == "tpluse" || type == "tpluseplusf");
     if (type == "const")
         value = config.get<int>(unique_name, "value");
     if (type == "ramp")
@@ -121,7 +121,8 @@ void testDataGen::main_thread() {
         // std::uniform_int_distribution<> dis(0, 255);
         srand(42);
         unsigned char temp_output;
-        int num_elements = buf->frame_size / sizeof(uint8_t) / samples_per_data_set / num_local_freq;
+        //stream_id_t real_stream_id = extract_stream_id(stream_id); //get the stream_id object from the encoded stream_id
+        int num_elements = buf->frame_size / samples_per_data_set / num_local_freq / sizeof(uint8_t);
         for (uint j = 0; j < buf->frame_size / sizeof(uint8_t); ++j) {
             if (type == "const") {
                 if (finished_seeding_consant)
@@ -138,10 +139,12 @@ void testDataGen::main_thread() {
                 temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
                 frame[j] = temp_output;
             } else if (type == "tpluse") {
-                frame[j] = seq_num + j / num_elements + j % num_elements;
-                // seq_num (frame offset, usu. ==0) + element number (I think)
-            } else if (type == "tpluseplusf") {
                 frame[j] = seq_num + j /num_elements + j % num_elements;
+                // seq_num (frame offset, usu. ==0) + element number (I think)
+            }  else if (type == "tpluseplusf") {
+                //frame[j] = seq_num + j/(num_local_freq*num_elements) + bin_number(&real_stream_id,(j % (num_local_freq * num_elements)) /num_elements) + j % num_elements;
+                frame[j] = seq_num + j/(samples_per_data_set*num_elements) + (j /  num_elements) + j % num_elements;
+                // seq_num (frame offset, usu. ==0) + element number (I think) + freq_id(stream_id, freq_idx) +
             }
         }
         DEBUG("Generated a %s test data set in %s[%d], %d elements", type.c_str(), buf->buffer_name, frame_id,num_elements);
