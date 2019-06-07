@@ -12,7 +12,7 @@ type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
-log_level: debug
+log_level: info
 num_elements: 2048
 num_local_freq: 1
 num_data_sets: 1
@@ -108,6 +108,7 @@ cpu_simulate:
     kotekan_stage: gpuBeamformSimulate
     network_in_buf: network_buffer_0
     beam_out_buf: cpu_output_buffer_0
+    hfb_out_buf: cpu_hfb_output_buffer_0
 
 frb_gain:
   kotekan_update_endpoint: json
@@ -149,3 +150,9 @@ check_data:
     kotekan_stage: testDataCheckFloat
     first_buf : gpu_beamform_output_buffer_0
     second_buf: cpu_output_buffer_0
+
+check_data:
+  hfb_data_check_0:
+    kotekan_stage: testDataCheckFloat
+    first_buf : gpu_beamform_hfb_output_buffer_0
+    second_buf: cpu_hfb_output_buffer_0

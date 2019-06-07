@@ -53,11 +53,15 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const string& unique_na
     register_consumer(input_buf, unique_name.c_str());
     output_buf = get_buffer("beam_out_buf");
     register_producer(output_buf, unique_name.c_str());
+    
+    hfb_output_buf = get_buffer("hfb_out_buf");
+    register_producer(hfb_output_buf, unique_name.c_str());
 
     input_len = _samples_per_data_set * _num_elements * 2;
     input_len_padded = input_len * 2;
     transposed_len = (_samples_per_data_set + 32) * _num_elements * 2;
     output_len = _num_elements * (_samples_per_data_set / _downsample_time / _downsample_freq / 2);
+    hfb_output_len = _num_elements * (_samples_per_data_set / _downsample_time / 2);
 
     input_unpacked = (double*)malloc(input_len * sizeof(double));
     input_unpacked_padded = (double*)malloc(input_len_padded * sizeof(double));
@@ -66,6 +70,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const string& unique_na
     transposed_output = (double*)malloc(transposed_len * sizeof(double));
     tmp128 = (double*)malloc(_factor_upchan * 2 * sizeof(double));
     cpu_final_output = (float*)malloc(output_len * sizeof(float));
+    cpu_hfb_final_output = (float*)malloc(hfb_output_len * sizeof(float));
 
     cpu_gain = (float*)malloc(2 * 2048 * sizeof(float));
 
@@ -94,6 +99,7 @@ gpuBeamformSimulate::~gpuBeamformSimulate() {
     free(transposed_output);
     free(tmp128);
     free(cpu_final_output);
+    free(cpu_hfb_final_output);
     free(reorder_map_c);
     free(_ew_spacing_c);
 }
@@ -308,6 +314,12 @@ void gpuBeamformSimulate::main_thread() {
         if (output == NULL)
             break;
 
+        float* hfb_output =
+            (float*)wait_for_empty_frame(hfb_output_buf, unique_name.c_str(), output_buf_id);
+
+        if (hfb_output == NULL)
+            break;
+
         for (int i = 0; i < input_len; i++) {
             cpu_beamform_output[i] = 0.0; // Need this
             clamping_output[i] = 0.0;     // Maybe don't need this
@@ -324,6 +336,9 @@ void gpuBeamformSimulate::main_thread() {
         INFO("Simulating GPU beamform processing for %s[%d] putting result in %s[%d]",
              input_buf->buffer_name, input_buf_id, output_buf->buffer_name, output_buf_id);
 
+        INFO("Simulating GPU hyper fine beam processing for %s[%d] putting result in %s[%d]",
+             input_buf->buffer_name, input_buf_id, hfb_output_buf->buffer_name, output_buf_id);
+        
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
         freq_now = bin_number_chime(&stream_id);
         freq_MHz = freq_from_bin(freq_now);
@@ -449,9 +464,49 @@ void gpuBeamformSimulate::main_thread() {
             }
         }
 
-        // Downsample
-        int nfreq_out = _factor_upchan / _downsample_freq;
+        // Sum times for every frequency for 21-cm line data before downsampling
+        int nfreq_out = _factor_upchan;
         int nsamp_out = _samples_per_data_set / _factor_upchan / _downsample_time;
+        
+        // Loop over every beam
+        for (int b = 0; b < 1024; b++) {
+            for (int t = 0; t < nsamp_out; t++) {
+                for (int f = 0; f < nfreq_out; f++) {
+                    // FFT shift by (id+8)%16
+                    int out_id = b * nsamp_out * nfreq_out + t * nfreq_out + ((f + 8) % 16);
+                    float tmp_real = 0.0;
+                    float tmp_imag = 0.0;
+                    float out_sq = 0.0;
+                    for (int pp = 0; pp < npol; pp++) {
+                        for (int tt = 0; tt < _downsample_time; tt++) {
+                            for (int ff = 0; ff < _downsample_freq; ff++) {
+                                tmp_real = cpu_beamform_output[(pp * 1024 * _samples_per_data_set
+                                                                + b * _samples_per_data_set
+                                                                + (t * _downsample_time + tt)
+                                                                      * _factor_upchan
+                                                                + (f * _downsample_freq + ff))
+                                                               * 2];
+                                tmp_imag = cpu_beamform_output[(pp * 1024 * _samples_per_data_set
+                                                                + b * _samples_per_data_set
+                                                                + (t * _downsample_time + tt)
+                                                                      * _factor_upchan
+                                                                + (f * _downsample_freq + ff))
+                                                                   * 2
+                                                               + 1];
+                                out_sq += tmp_real * tmp_real + tmp_imag * tmp_imag;
+                            }
+                        } // end for tt
+                    }     // end for pol
+                    cpu_hfb_final_output[out_id] = out_sq / 3.;
+                } // end for freq
+            }     // end for time
+        }         // end for beam
+
+        memcpy(hfb_output, cpu_hfb_final_output, hfb_output_buf->frame_size);
+
+        // Downsample
+        nfreq_out = _factor_upchan / _downsample_freq;
+        nsamp_out = _samples_per_data_set / _factor_upchan / _downsample_time;
         for (int b = 0; b < 1024; b++) {
             for (int t = 0; t < nsamp_out; t++) {
                 for (int f = 0; f < nfreq_out; f++) {
@@ -493,6 +548,7 @@ void gpuBeamformSimulate::main_thread() {
         pass_metadata(input_buf, input_buf_id, output_buf, output_buf_id);
         mark_frame_empty(input_buf, unique_name.c_str(), input_buf_id);
         mark_frame_full(output_buf, unique_name.c_str(), output_buf_id);
+        mark_frame_full(hfb_output_buf, unique_name.c_str(), output_buf_id);
 
         input_buf_id = (input_buf_id + 1) % input_buf->num_frames;
         metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
