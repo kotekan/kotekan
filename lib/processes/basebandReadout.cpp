@@ -448,9 +448,17 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
         nt_memset(&dump.data[next_data_ind * _num_elements], 0,
                   (data_ind_start - next_data_ind) * _num_elements);
         // Now copy in the frame data.
-        nt_memcpy(&dump.data[data_ind_start * _num_elements],
-                  &buf_data[frame_ind_start * _num_elements],
-                  (frame_ind_end - frame_ind_start) * _num_elements);
+        if (_num_local_freq == 1){
+            nt_memcpy(&dump.data[data_ind_start * _num_elements],
+                      &buf_data[frame_ind_start * _num_elements],
+                      (frame_ind_end - frame_ind_start) * _num_elements);
+        } else if (_num_local_freq > 1){
+            for(int timeidx = 0; timeidx < (frame_ind_end - frame_ind_start); timeidx++){
+                nt_memcpy(&dump.data[(data_ind_start + timeidx) * _num_elements],
+                          &buf_data[((frame_ind_start + timeidx) * _num_local_freq + freqidx) * _num_elements],
+                          _num_elements);
+            }
+        }
         // What data index are we expecting on the next iteration.
         next_data_ind = data_ind_start + frame_ind_end - frame_ind_start;
         // Done with this frame. Allow it to participate in the ring buffer.
