@@ -121,7 +121,7 @@ void testDataGen::main_thread() {
         // std::uniform_int_distribution<> dis(0, 255);
         srand(42);
         unsigned char temp_output;
-        //stream_id_t real_stream_id = extract_stream_id(stream_id); //get the stream_id object from the encoded stream_id
+        stream_id_t real_stream_id = extract_stream_id(stream_id); //get the stream_id object from the encoded stream_id
         int num_elements = buf->frame_size / samples_per_data_set / num_local_freq / sizeof(uint8_t);
         for (uint j = 0; j < buf->frame_size / sizeof(uint8_t); ++j) {
             if (type == "const") {
@@ -142,8 +142,8 @@ void testDataGen::main_thread() {
                 frame[j] = seq_num + j /num_elements + j % num_elements;
                 // seq_num (frame offset, usu. ==0) + element number (I think)
             }  else if (type == "tpluseplusf") {
-                //frame[j] = seq_num + j/(num_local_freq*num_elements) + bin_number(&real_stream_id,(j % (num_local_freq * num_elements)) /num_elements) + j % num_elements;
-                frame[j] = seq_num + j/(samples_per_data_set*num_elements) + (j /  num_elements) + j % num_elements;
+                frame[j] = seq_num + j/(num_local_freq*num_elements) + bin_number(&real_stream_id,(j % (num_local_freq * num_elements)) /num_elements) + j % num_elements; //Kiyo's code
+                //frame[j] = seq_num + j/(samples_per_data_set*num_elements) + (j /  num_elements) + j % num_elements; //Calvin's scratchwork
                 // seq_num (frame offset, usu. ==0) + element number (I think) + freq_id(stream_id, freq_idx) +
             }
         }
