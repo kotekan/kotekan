@@ -261,7 +261,7 @@ protected:
         // This case deals with the first handler setting it's seq number.
         if (seq_num != alignment_first_seq
             && alignment_first_seq == std::numeric_limits<uint64_t>::max()) {
-            DEBUG("Port %d: Got first alignemnt value of %" PRIu64 "", port, seq_num);
+            DEBUG("Port %d: Got first alignment value of %" PRIu64 "", port, seq_num);
             alignment_first_seq = seq_num;
             return true;
         }
@@ -269,13 +269,13 @@ protected:
         // This case deals with each addational handler checking if it has the same
         // first seq number.
         if (seq_num != alignment_first_seq) {
-            ERROR("Port %d: Got alignemnt value of %" PRIu64 ", but expected %" PRIu64 "", port,
+            ERROR("Port %d: Got alignment value of %" PRIu64 ", but expected %" PRIu64 "", port,
                   seq_num, alignment_first_seq);
-            return false;
+            return false; 
         }
 
         // Addational handler(s) got the same first seq number.
-        DEBUG("Port %d: Got alignemnt value of %" PRIu64 "", port, seq_num);
+        DEBUG("Port %d: Got alignment value of %" PRIu64 "", port, seq_num);
         return true;
     }
 
