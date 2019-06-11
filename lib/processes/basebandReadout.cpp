@@ -210,6 +210,9 @@ void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutMa
             INFO("Ready to copy samples into the baseband readout buffer");
             
             std::vector<basebandDumpData> dumps_to_write_vec;
+            using namespace std::chrono;
+            milliseconds ms_before = duration_cast<milliseconds>(
+                   system_clock::now().time_since_epoch());
             for(int freqidx = 0; freqidx < _num_local_freq; freqidx++){
                 {
                     //loopify
@@ -244,6 +247,9 @@ void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutMa
                               currentData.data_length_fpga, currentData.event_id, currentData.freq_id);
                      }
                 }
+                milliseconds ms_after = duration_cast<milliseconds>(
+                        system_clock::now().time_since_epoch());
+                INFO("memcpy() call: %d = %d-%d ms", ms_after.count() - ms_before.count(),ms_after.count(),ms_before.count());
                 dumps_to_write = std::make_unique<std::vector<basebandDumpData>>(dumps_to_write_vec);//ready to be read out
             }
             lock.unlock();
@@ -449,15 +455,28 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
                   (data_ind_start - next_data_ind) * _num_elements);
         // Now copy in the frame data.
         if (_num_local_freq == 1){
+            //using namespace std::chrono;
+            //milliseconds ms_before = duration_cast<milliseconds>(
+            //        system_clock::now().time_since_epoch());
             nt_memcpy(&dump.data[data_ind_start * _num_elements],
                       &buf_data[frame_ind_start * _num_elements],
                       (frame_ind_end - frame_ind_start) * _num_elements);
+            //milliseconds ms_after = duration_cast<milliseconds>(
+            //        system_clock::now().time_since_epoch());
+            //INFO("memcpy() call: %d = %d-%d ms", ms_after.count() - ms_before.count(),ms_after.count(),ms_before.count());
+
         } else if (_num_local_freq > 1){
+            //using namespace std::chrono;
+            //milliseconds ms_before = duration_cast<milliseconds>(
+            //        system_clock::now().time_since_epoch());
             for(int timeidx = 0; timeidx < (frame_ind_end - frame_ind_start); timeidx++){
                 nt_memcpy(&dump.data[(data_ind_start + timeidx) * _num_elements],
                           &buf_data[((frame_ind_start + timeidx) * _num_local_freq + freqidx) * _num_elements],
                           _num_elements);
             }
+            //milliseconds ms_after = duration_cast<milliseconds>(
+            //      system_clock::now().time_since_epoch());
+            //INFO("memcpy() call: %d = %d-%d ms", ms_after.count() - ms_before.count(),ms_after.count(),ms_before.count());
         }
         // What data index are we expecting on the next iteration.
         next_data_ind = data_ind_start + frame_ind_end - frame_ind_start;
