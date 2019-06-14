@@ -14,10 +14,10 @@ __constant float BP[16] = { 0.52225748 , 0.58330915 , 0.6868705 , 0.80121821 , 0
 
 #define BIT_REVERSE_7_BITS(index) ((( ( (((index) * 0x0802) & 0x22110) | (((index) * 0x8020)&0x88440) ) * 0x10101 ) >> 17) & 0x7F)
 //input data is float2 with beam-pol-time, try to do 3 N=128 at once so that we can sum 3 time samples
-//LWS = {     64 ,  1  }
-//GWS = {nsamp/6*, 1024}
+//LWS = {     64 ,  1  } {nsamples / 128, 1}
+//GWS = {nsamp/6*, 1024} {time, beam }
 
-__kernel void upchannelize(__global float2 *data, __global float *results_array, __global float *hfb_output_array){
+__kernel void upchannelize(__global float2 *data, __global float *results_array, __global int *hfb_output_array){
 
   uint nbeam = get_global_size(1);
   uint nsamp = get_global_size(0)*6+32;
@@ -26,9 +26,8 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array,
   uint local_address = get_local_id(0);
   float outtmp = 0.f;
   float freq_1_time_sum = 0.f, freq_2_time_sum = 0.f;
-  float time_sum[128];
-
-  for (int i=0; i<128; i++) time_sum[i] = 0.f;
+  const int work_offset = get_local_id(0) * 2;
+  float time_sum_1 = 0.f, time_sum_2 = 0.f;
 
   // Loop over 2 polarisations
   for (int p=0;p<2;p++){
@@ -271,48 +270,24 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array,
     //Downsample: sum all time and both polarisations (amplitude Re*Re + Im*Im)
     //Each work item processes 2 frequencies
     //so write out 128 numbers only
-    
-    if (get_local_id(0) == 0) { //currently only work item 0 has work to do. not ideal
-        for (int j=0; j<3; j++) {
-            for (int i=0; i<128; i++){
-                //Offset of work item ID + stride in memory of freq + first or second freq being worked on
-                const int time_offset_1 = j*128 + i;
+    for (int j=0; j<3; j++) {
+        //Offset of work item ID + stride in memory of freq + first or second freq being worked on
 
-                time_sum[i] += local_data[time_offset_1].REAL * local_data[time_offset_1].REAL + 
-                    local_data[time_offset_1].IMAG * local_data[time_offset_1].IMAG;
-                //freq_2_time_sum += local_data[time_offset_2].REAL * local_data[time_offset_2].REAL + 
-                //    local_data[time_offset_2].IMAG * local_data[time_offset_2].IMAG;
-            }
-        }
-        //for (int j=0; j<3; j++) {
-        //    //Offset of work item ID + stride in memory of freq + first or second freq being worked on
-        //    const int time_offset_1 = get_local_id(0)*2 + j*128 + 0;
-        //    const int time_offset_2 = get_local_id(0)*2 + j*128 + 1;
+        const int time_offset_1 = j*128 + work_offset;
+        const int time_offset_2 = j*128 + work_offset + 1;
 
-        //    freq_1_time_sum += local_data[time_offset_1].REAL * local_data[time_offset_1].REAL + 
-        //        local_data[time_offset_1].IMAG * local_data[time_offset_1].IMAG;
-        //    freq_2_time_sum += local_data[time_offset_2].REAL * local_data[time_offset_2].REAL + 
-        //        local_data[time_offset_2].IMAG * local_data[time_offset_2].IMAG;
-        //}
-        
-        barrier(CLK_LOCAL_MEM_FENCE);
-    
-        if (p == 1) {
-            for (int i=0; i<128; i++){
-                hfb_output_array[get_group_id(1) * 128 + i] = time_sum[i] / 3.f;
-            }
-        }
+        time_sum_1 += local_data[time_offset_1].REAL * local_data[time_offset_1].REAL + 
+            local_data[time_offset_1].IMAG * local_data[time_offset_1].IMAG;
+        time_sum_2 += local_data[time_offset_2].REAL * local_data[time_offset_2].REAL + 
+            local_data[time_offset_2].IMAG * local_data[time_offset_2].IMAG;
     }
 
-    //if (p == 1) {
-    //    freq_1_time_sum /= 48.f;
-    //    freq_2_time_sum /= 48.f;
+    barrier(CLK_LOCAL_MEM_FENCE);
 
-    //    printf("Work item: %d, Freq_1: %f, Freq_2: %f\n", get_local_id(0), freq_1_time_sum, freq_2_time_sum);
-
-    //    hfb_output_array[get_group_id(1) * 128 + get_local_id(0)*2 + 0] = freq_1_time_sum;
-    //    hfb_output_array[get_group_id(1) * 128 + get_local_id(0)*2 + 1] = freq_2_time_sum;
-    //} 
+    if (p == 1) {
+        atomic_add((__global int *)&(hfb_output_array[get_group_id(1) * 128 + work_offset]), (int)(time_sum_1 / 6.f));
+        atomic_add((__global int *)&(hfb_output_array[get_group_id(1) * 128 + work_offset + 1]), (int)(time_sum_2 / 6.f));
+    }
 
     //Downsample sum every 8 frequencies and 3 time, and sum Re Im
     //so write out 16 numbers only
