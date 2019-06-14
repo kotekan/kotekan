@@ -87,7 +87,7 @@ void testDataCheck<A_Type>::main_thread() {
             } else { // N2 numbers are int
                 // INFO("Checking non float numbers-----------");
                 if (first_value != second_value) {
-                    if (num_errors++ < 10000)
+                    if (num_errors++ < 20)
                         ERROR("%s[%d][%d] != %s[%d][%d]; values: (%f, %f)", first_buf->buffer_name,
                               first_buf_id, i, second_buf->buffer_name, second_buf_id, i,
                               (double)first_value, (double)second_value);
