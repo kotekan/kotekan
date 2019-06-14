@@ -126,6 +126,7 @@ gpu:
   - name: hsaBeamformUpchan
   - name: hsaBeamformOutputData
   - name: hsaBeamformHFBOutputData
+  - name: hsaBeamformHFBZeroData
   enable_delay: true
   cpu_affinity: [2, 3, 8, 9]
   delay_max_fraction: 2.0
