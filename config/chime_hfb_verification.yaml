@@ -102,7 +102,7 @@ gen_data:
 
 cpu_simulate:
   cpu_data_sim_0:
-    gain_dir: /home/willis/FRB-GainFiles/eigen_CygA_8_12/
+    gain_dir: "/root/FRB-GainFiles/eigen_CygA_8_12/"
     ew_spacing: [0.0, 0.1, 0.2, 0.3]
     northmost_beam: 90.0
     kotekan_stage: gpuBeamformSimulate
@@ -110,9 +110,9 @@ cpu_simulate:
     beam_out_buf: cpu_output_buffer_0
     hfb_out_buf: cpu_hfb_output_buffer_0
 
-frb_gain:
-  kotekan_update_endpoint: json
-  frb_gain_dir: /home/willis/FRB-GainFiles/eigen_CygA_8_12/
+    #frb_gain:
+    #  kotekan_update_endpoint: json
+    #  frb_gain_dir: /home/willis/FRB-GainFiles/eigen_CygA_8_12/
 
 gpu:
   kernel_path: "../lib/hsa/kernels/"
@@ -136,7 +136,7 @@ gpu:
   gpu_0:
     kotekan_stage: hsaProcess
     gpu_id: 0
-    updatable_gain_frb: /frb_gain
+    gain_dir: "/root/FRB-GainFiles/eigen_CygA_8_12/"
     ew_spacing: [0.0, 0.1, 0.2, 0.3]
     northmost_beam: 90.0
     in_buffers:
@@ -153,6 +153,6 @@ check_data:
 
 check_data:
   hfb_data_check_0:
-    kotekan_stage: testDataCheckFloat
+    kotekan_stage: testDataCheckInt
     first_buf : gpu_beamform_hfb_output_buffer_0
     second_buf: cpu_hfb_output_buffer_0
