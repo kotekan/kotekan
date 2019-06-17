@@ -140,6 +140,7 @@ void print_help() {
     printf("    --gps-time-source (-t)         URL for GPS server (used with -g) default: %s\n",
            default_gps_source.c_str());
     printf("    --syslog (-s)                  Send a copy of the output to syslog.\n");
+    printf("    --no-syslog (-o)               Write to stdout in daemon mode.\n");
     printf("    --no-stderr (-n)               Disables output to std error if syslog (-s) is "
            "enabled.\n");
     printf("    --version (-v)                 Prints the kotekan version and build details.\n\n");
@@ -277,6 +278,7 @@ int main(int argc, char** argv) {
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
     bool gps_time = false;
     bool enable_stderr = true;
+    bool enable_stdout = false;
     std::string gps_time_source = default_gps_source;
     std::string bind_address = "0.0.0.0:12048";
     // We disable syslog to start.
@@ -287,19 +289,16 @@ int main(int argc, char** argv) {
     __enable_syslog = 0;
 
     for (;;) {
-        static struct option long_options[] = {{"config", required_argument, 0, 'c'},
-                                               {"bind-address", required_argument, 0, 'b'},
-                                               {"gps-time", no_argument, 0, 'g'},
-                                               {"gps-time-source", required_argument, 0, 't'},
-                                               {"help", no_argument, 0, 'h'},
-                                               {"syslog", no_argument, 0, 's'},
-                                               {"no-stderr", no_argument, 0, 'n'},
-                                               {"version", no_argument, 0, 'v'},
-                                               {0, 0, 0, 0}};
+        static struct option long_options[] = {
+            {"config", required_argument, 0, 'c'}, {"bind-address", required_argument, 0, 'b'},
+            {"gps-time", no_argument, 0, 'g'},     {"gps-time-source", required_argument, 0, 't'},
+            {"help", no_argument, 0, 'h'},         {"syslog", no_argument, 0, 's'},
+            {"no-syslog", no_argument, 0, 'o'},    {"no-stderr", no_argument, 0, 'n'},
+            {"version", no_argument, 0, 'v'},      {0, 0, 0, 0}};
 
         int option_index = 0;
 
-        opt_val = getopt_long(argc, argv, "gt:hc:b:snv", long_options, &option_index);
+        opt_val = getopt_long(argc, argv, "gt:hoc:b:snv", long_options, &option_index);
 
         // End of args
         if (opt_val == -1) {
@@ -326,6 +325,9 @@ int main(int argc, char** argv) {
             case 's':
                 __enable_syslog = 1;
                 break;
+            case 'o':
+                enable_stdout = true;
+                break;
             case 'n':
                 enable_stderr = false;
                 break;
@@ -344,7 +346,7 @@ int main(int argc, char** argv) {
     kotekan_hsa_start();
 #endif
 
-    if (string(config_file_name) == "none") {
+    if (string(config_file_name) == "none" && !enable_stdout) {
         __enable_syslog = 1;
         fprintf(stderr, "Kotekan running in daemon mode, output is to syslog only.\n");
         fprintf(stderr, "Configuration should be provided via the `/start` REST endpoint.\n");
