@@ -1,4 +1,13 @@
 #!/usr/bin/env python
+# === Start Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+try:
+    from future_builtins import *  # noqa  pylint: disable=W0401, W0614
+    from future_builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+except ImportError:
+    pass
+# === End Python 2/3 compatibility
 
 """
 KOTEKAN RELEASE VERSIONING
@@ -142,9 +151,9 @@ def get_version(git_dir=None, python_package=None,
                     git_dir_release = True
 
                 if debug:
-                    print ("Using git_dirt to create release version.")
-                    print ("git dir: {}".format(git_dir))
-                    print ("branch : {}".format(branch))
+                    print("Using git_dirt to create release version.")
+                    print("git dir: {}".format(git_dir))
+                    print("branch : {}".format(branch))
             except Exception:
                 raise Exception(
                     "Unable to use git_dir: {} to create release version.".
@@ -161,9 +170,9 @@ def get_version(git_dir=None, python_package=None,
                 branch = _run_cmd(cmd=git_branch_cmd,
                                   directory=package_dir)
                 if debug:
-                    print "python package dir      : {}".format(package_dir)
-                    print "python package git info : {}".format(git_info)
-                    print "python package branch   : {}".format(branch)
+                    print("python package dir      : {}".format(package_dir))
+                    print("python package git info : {}".format(git_info))
+                    print("python package branch   : {}".format(branch))
 
                 if (len(git_info) and len(branch)) != 0:
                     # Sanitize git_info and branch
@@ -176,8 +185,8 @@ def get_version(git_dir=None, python_package=None,
                     # by setuptools.
                     pkg_version = get_distribution(python_package).version
                     if debug:
-                        print "python package setup ver: {}".format(
-                            pkg_version)
+                        print("python package setup ver: {}".format(
+                            pkg_version))
                     return pkg_version
             except Exception:
                 raise Exception(
@@ -217,10 +226,10 @@ def get_version(git_dir=None, python_package=None,
             on_release_branch = True
 
         if debug:
-            print ("tag     : {}".format(tag))
-            print ("commits : {}".format(commits_ahead))
-            print ("git_sha : {}".format(git_sha))
-            print ("dirty   : {}".format(dirty))
+            print("tag     : {}".format(tag))
+            print("commits : {}".format(commits_ahead))
+            print("git_sha : {}".format(git_sha))
+            print("dirty   : {}".format(dirty))
 
         if int(commits_ahead) == 0 and not dirty:
             # Get Remote tag information to verify a clean release version.
@@ -236,21 +245,21 @@ def get_version(git_dir=None, python_package=None,
                                        directory=remote_tags_dir)
 
                 if debug:
-                    print ("tags_dir   : {}".format(remote_tags_dir))
-                    print ("tags       : {}".format(remote_tags))
-                    print ("git_release: {}".format(git_dir_release))
-                    print ("pkg_release: {}".format(python_package_release))
-                    print ("cwd_release: {}".format(cwd_release))
+                    print("tags_dir   : {}".format(remote_tags_dir))
+                    print("tags       : {}".format(remote_tags))
+                    print("git_release: {}".format(git_dir_release))
+                    print("pkg_release: {}".format(python_package_release))
+                    print("cwd_release: {}".format(cwd_release))
 
                 if len(remote_tags) != 0:
                     for remote_tag in remote_tags:
                         if remote_tag.find(tag) != -1:
                             if debug:
-                                print ("Matching Remote Tag: {}".format(tag))
-                                print ("Making a clean tagged release.")
+                                print("Matching Remote Tag: {}".format(tag))
+                                print("Making a clean tagged release.")
                             clean_release = True
             except Exception:
-                print ("Unable to fetch remote tags.")
+                print("Unable to fetch remote tags.")
 
         # Format the release version based on branch and clean status.
         release_format = branch_formatting
@@ -267,4 +276,4 @@ def get_version(git_dir=None, python_package=None,
 
 
 if __name__ == '__main__':
-    print get_version()
+    print(get_version())
