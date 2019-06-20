@@ -95,7 +95,7 @@ private:
     int* reorder_map_c;
     /// Output data
     float* cpu_final_output;
-    int* cpu_hfb_final_output;
+    float* cpu_hfb_final_output;
 
     /// Input length, should be nsamp x n_elem x 2
     int input_len;

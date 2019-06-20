@@ -75,7 +75,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const string& unique_na
     transposed_output = (double*)malloc(transposed_len * sizeof(double));
     tmp128 = (double*)malloc(_factor_upchan * 2 * sizeof(double));
     cpu_final_output = (float*)malloc(output_len * sizeof(float));
-    cpu_hfb_final_output = (int*)malloc(hfb_output_len * sizeof(int));
+    cpu_hfb_final_output = (float*)malloc(hfb_output_len * sizeof(float));
 
     cpu_gain = (float*)malloc(2 * 2048 * sizeof(float));
 
@@ -336,7 +336,7 @@ void gpuBeamformSimulate::main_thread() {
             cpu_final_output[i] = 0.0;
         }
         
-        for (int i = 0; i < hfb_output_len; i++) cpu_hfb_final_output[i] = 0.0;
+        for (int i = 0; i < hfb_output_len; i++) cpu_hfb_final_output[i] = 0.f;
 
         // TODO adjust to allow for more than one frequency.
         // TODO remove all the 32's in here with some kind of constant/define
@@ -484,10 +484,11 @@ void gpuBeamformSimulate::main_thread() {
         
         // Loop over every beam
         for (int b = 0; b < 1024; b++) {
-          for (int t = 0; t < nsamp_out; t++) {
-            for (int f = 0; f < nfreq_out; f++) {
+          for (int f = 0; f < nfreq_out; f++) {
+            float total_sum = 0.0;
+            for (int t = 0; t < nsamp_out; t++) {
 
-              float tmp_real = 0.f, tmp_imag = 0.f, out_sq = 0.0;
+              float tmp_real = 0.f, tmp_imag = 0.f, out_sq = 0.f;
               for (int pp = 0; pp < npol; pp++) {
                 for (int tt = 0; tt < 3; tt++) {
                   const int sample_offset = (pp * 1024 * _samples_per_data_set + 
@@ -501,17 +502,18 @@ void gpuBeamformSimulate::main_thread() {
                   out_sq += tmp_real * tmp_real + tmp_imag * tmp_imag;
                 } // end for tt
               } // end for pol
-              
-              const int output_offset = b * nfreq_out + f;
-              cpu_hfb_final_output[output_offset] += out_sq / 6.f;
-            } // end for freq
-          } // end for time
+              total_sum += out_sq / 6.f;
+            } // end for nsamp
+
+            const int output_offset = b * nfreq_out + f;
+            cpu_hfb_final_output[output_offset] = total_sum;
+          } // end for freq
         } // end for beam
 
         ofstream file;
         file.open("hfb_cpu_out.dat");
 
-        for(uint i=0; i<hfb_output_buf->frame_size / sizeof(float); i++) file << "hfb_out[" << i << "]: "<< (int)cpu_hfb_final_output[i] << endl;
+        for(uint i=0; i<hfb_output_buf->frame_size / sizeof(float); i++) file << "hfb_out[" << i << "]: "<< cpu_hfb_final_output[i] << endl;
 
         file.close();
 
