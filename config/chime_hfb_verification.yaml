@@ -124,9 +124,9 @@ gpu:
   - name: hsaBeamformKernel
   - name: hsaBeamformTranspose
   - name: hsaBeamformUpchan
+  - name: hsaBeamformHFBSum
   - name: hsaBeamformOutputData
   - name: hsaBeamformHFBOutputData
-  - name: hsaBeamformHFBZeroData
   enable_delay: true
   cpu_affinity: [2, 3, 8, 9]
   delay_max_fraction: 2.0
@@ -154,6 +154,6 @@ check_data:
 
 check_data:
   hfb_data_check_0:
-    kotekan_stage: testDataCheckInt
+    kotekan_stage: testDataCheckFloat
     first_buf : gpu_beamform_hfb_output_buffer_0
     second_buf: cpu_hfb_output_buffer_0
