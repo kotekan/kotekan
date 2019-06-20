@@ -17,7 +17,7 @@ __constant float BP[16] = { 0.52225748 , 0.58330915 , 0.6868705 , 0.80121821 , 0
 //LWS = {     64 ,  1  } {nsamples / 128, 1}
 //GWS = {nsamp/6*, 1024} {time, beam }
 
-__kernel void upchannelize(__global float2 *data, __global float *results_array, __global int *hfb_output_array){
+__kernel void upchannelize(__global float2 *data, __global float *results_array, __global float *hfb_output_array){
 
   uint nbeam = get_global_size(1);
   uint nsamp = get_global_size(0)*6+32;
@@ -285,8 +285,8 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array,
     barrier(CLK_LOCAL_MEM_FENCE);
 
     if (p == 1) {
-        atomic_add((__global int *)&(hfb_output_array[get_group_id(1) * 128 + work_offset]), (int)(time_sum_1 / 6.f));
-        atomic_add((__global int *)&(hfb_output_array[get_group_id(1) * 128 + work_offset + 1]), (int)(time_sum_2 / 6.f));
+        hfb_output_array[(get_group_id(0) * 1024 * 128) + get_group_id(1) * 128 + work_offset] = time_sum_1 / 6.f;
+        hfb_output_array[(get_group_id(0) * 1024 * 128) + get_group_id(1) * 128 + work_offset + 1] = time_sum_2 / 6.f;
     }
 
     //Downsample sum every 8 frequencies and 3 time, and sum Re Im
