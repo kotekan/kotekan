@@ -24,7 +24,7 @@ hsaBeamformUpchan::hsaBeamformUpchan(Config& config, const string& unique_name,
                        * sizeof(float);
     output_hfb_frame_len = _num_frb_total_beams
                        * 128 // No. of frequencies
-                       //* (_samples_per_data_set / _downsample_time)
+                       * 10 // No. of samples per beam
                        * sizeof(float);
 }
 
@@ -46,7 +46,7 @@ hsa_signal_t hsaBeamformUpchan::execute(int gpu_frame_id, hsa_signal_t precede_s
 
     args.input_buffer = device.get_gpu_memory("transposed_output", input_frame_len);
     args.output_buffer = device.get_gpu_memory_array("bf_output", gpu_frame_id, output_frame_len);
-    args.output_hyperfine_beam_buffer = device.get_gpu_memory_array("hfb_output", gpu_frame_id, output_hfb_frame_len);
+    args.output_hyperfine_beam_buffer = device.get_gpu_memory("hfb_output", output_hfb_frame_len);
 
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
