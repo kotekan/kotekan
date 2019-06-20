@@ -36,24 +36,30 @@ void prometheusMetrics::remove_metric(const string& name, const string& stage_na
     }
 }
 
-void prometheusMetrics::metrics_callback(connectionInstance& conn) {
-    string output;
 
-    {
-        std::lock_guard<std::mutex> lock(metrics_lock);
+string prometheusMetrics::serialize() {
+    std::ostringstream output;
 
-        for (auto& element : stage_metrics) {
-            string metric_name = std::get<0>(element.first);
-            string stage_name = std::get<1>(element.first);
-            string extra_labels = std::get<2>(element.first);
+    std::lock_guard<std::mutex> lock(metrics_lock);
 
-            output += metric_name + "{stage_name=\"" + stage_name + "\"";
-            if (extra_labels != "")
-                output += "," + extra_labels;
-            output += "} " + element.second->to_string() + " "
-                      + std::to_string(element.second->last_update_time_stamp) + "\n";
-        }
+    for (auto& element : stage_metrics) {
+        string metric_name = std::get<0>(element.first);
+        string stage_name = std::get<1>(element.first);
+        string extra_labels = std::get<2>(element.first);
+
+        output << metric_name << "{stage_name=\"" << stage_name << "\"";
+        if (extra_labels != "")
+            output << "," << extra_labels;
+        output << "} " << element.second->to_string() << " "
+               << std::to_string(element.second->last_update_time_stamp) << "\n";
     }
+
+    return output.str();
+}
+
+
+void prometheusMetrics::metrics_callback(connectionInstance& conn) {
+    string output = serialize();
 
     // Sending the reply doesn't need to be locked.
     // Just accessing the metrics array.

@@ -60,6 +60,25 @@ public:
     void metrics_callback(connectionInstance& conn);
 
     /**
+     * @brief Converts the registered metrics to Prometheus text exposition format
+     *
+     * Metrics are serialized one per line, ending with a newline, with each line
+     * in the following format:
+     * ```
+     * metric_name [
+     * "{" label_name "=" `"` label_value `"` { "," label_name "=" `"` label_value `"` } [ "," ] "}"
+     * ] value timestamp
+     * ```
+     *
+     * @remark See [Prometheus
+     * documentation](https://prometheus.io/docs/instrumenting/exposition_formats/)
+     * for the precise format specification.
+     *
+     * @return A string representation of the metrics
+     */
+    string serialize();
+
+    /**
      * @brief Adds a new metric or updates an existing one.
      *
      * The value given must be a number (float, double, int, etc.) and be
