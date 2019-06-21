@@ -85,6 +85,9 @@ void visWriter::main_thread() {
 
     frameID frame_id(in_buf);
 
+    auto* write_time_metric = prometheusMetrics::instance()
+        .add_stage_metric("kotekan_viswriter_write_time_seconds", unique_name, NAN);
+
     while (!stop_thread) {
 
         // Wait for the buffer to be filled with data
@@ -155,8 +158,7 @@ void visWriter::main_thread() {
 
             // Update average write time in prometheus
             write_time.add_sample(elapsed);
-            prometheusMetrics::instance().add_stage_metric("kotekan_viswriter_write_time_seconds",
-                                                           unique_name, write_time.average());
+            write_time_metric->set(write_time.average());
         }
 
         // Mark the buffer and move on

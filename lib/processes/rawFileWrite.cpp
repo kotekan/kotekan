@@ -42,6 +42,9 @@ void rawFileWrite::main_thread() {
     char hostname[64];
     gethostname(hostname, 64);
 
+    auto* write_time_metric = prometheusMetrics::instance()
+        .add_stage_metric("kotekan_rawfilewrite_write_time_seconds",
+                          unique_name, NAN);
     while (!stop_thread) {
 
         // This call is blocking.
@@ -101,8 +104,8 @@ void rawFileWrite::main_thread() {
         }
 
         double elapsed = current_time() - st;
-        prometheusMetrics::instance().add_stage_metric("kotekan_rawfilewrite_write_time_seconds",
-                                                       unique_name, elapsed);
+        write_time_metric->set(elapsed);
+
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
 
         frame_id = (frame_id + 1) % buf->num_frames;

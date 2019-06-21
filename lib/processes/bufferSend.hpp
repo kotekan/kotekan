@@ -7,6 +7,7 @@
 #define BUFFER_SEND_H
 
 #include "Stage.hpp"
+#include "prometheusMetrics.hpp"
 #include "buffer.h"
 #include "errors.h"
 #include "util.h"
@@ -100,7 +101,7 @@ private:
      * Only counts dropped data from caused by the send being too slow,
      * it does not include the number of frames dropped because the server is down.
      */
-    uint64_t dropped_frame_count;
+    kotekan::Counter* const dropped_frame_counter;
 
     /// Set to true if there is an active connection
     std::atomic<bool> connected;

@@ -151,9 +151,9 @@ private:
 
     kotekan::prometheusMetrics& metrics = kotekan::prometheusMetrics::instance();
     std::string freq_id_label;
-    uint32_t request_done_count = 0;
-    uint32_t request_error_count = 0;
-    uint32_t request_no_data_count = 0;
+    kotekan::Counter* request_done_counter = 0;
+    kotekan::Counter* request_error_counter = 0;
+    kotekan::Counter* request_no_data_counter = 0;
 };
 
 #endif

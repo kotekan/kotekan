@@ -24,8 +24,6 @@ REGISTER_KOTEKAN_STAGE(Valve);
 Valve::Valve(Config& config, const std::string& unique_name, bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&Valve::main_thread, this)) {
 
-    _dropped_total = 0;
-
     _buf_in = get_buffer("in_buf");
     register_consumer(_buf_in, unique_name.c_str());
     _buf_out = get_buffer("out_buf");
@@ -35,6 +33,10 @@ Valve::Valve(Config& config, const std::string& unique_name, bufferContainer& bu
 void Valve::main_thread() {
     frameID frame_id_in(_buf_in);
     frameID frame_id_out(_buf_out);
+
+    /// Metric to track the number of dropped frames.
+    auto* dropped_total = prometheusMetrics::instance()
+        .add_stage_counter("kotekan_valve_dropped_frames_total", unique_name);
 
     while (!stop_thread) {
         // Fetch a new frame and get its sequence id
@@ -53,8 +55,7 @@ void Valve::main_thread() {
             mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
         } else {
             WARN("Output buffer full. Dropping incoming frame %d.", frame_id_in);
-            prometheusMetrics::instance().add_stage_metric("kotekan_valve_dropped_frames_total",
-                                                           unique_name, ++_dropped_total);
+            dropped_total->inc();
         }
         mark_frame_empty(_buf_in, unique_name.c_str(), frame_id_in++);
     }

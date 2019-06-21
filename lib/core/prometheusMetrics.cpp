@@ -15,12 +15,37 @@ prometheusMetrics& prometheusMetrics::instance() {
 
 prometheusMetrics::~prometheusMetrics() {
     restServer::instance().remove_get_callback("/metrics");
-
-    for (auto& stage_metric : stage_metrics)
-        delete stage_metric.second;
 }
 
-prometheusMetrics::metric::~metric() {}
+Gauge* prometheusMetrics::add_stage_metric(const string& name, const string& stage_name, const double value,
+                                            const string& labels) {
+    std::lock_guard<std::mutex> lock(metrics_lock);
+    std::tuple<string, string, string> key{name, stage_name, labels};
+
+    if (stage_metrics.count(key) == 0) {
+        stage_metrics[key] = std::unique_ptr<metric>(new Gauge);;
+    }
+
+    Gauge* gauge = ((Gauge*)stage_metrics[key].get());
+    gauge->set(value);
+    return gauge;
+}
+
+Counter* prometheusMetrics::add_stage_counter(const string& name, const string& stage_name,
+                                              const string& labels) {
+    std::lock_guard<std::mutex> lock(metrics_lock);
+    std::tuple<string, string, string> key{name, stage_name, labels};
+
+    if (stage_metrics.count(key) == 0) {
+        stage_metrics[key] = std::unique_ptr<metric>(new Counter);;
+    }
+    else {
+        throw std::runtime_error("Cannot define an already existing metric: " + name + "/" + stage_name + "/" + labels);
+    }
+
+    Counter* counter = ((Counter*)stage_metrics[key].get());
+    return counter;
+}
 
 void prometheusMetrics::remove_metric(const string& name, const string& stage_name,
                                       const string& labels) {
@@ -28,7 +53,6 @@ void prometheusMetrics::remove_metric(const string& name, const string& stage_na
     std::tuple<string, string, string> key{name, stage_name, labels};
 
     if (stage_metrics.count(key) == 1) {
-        delete stage_metrics[key];
         stage_metrics.erase(key);
     } else {
         WARN("Tried to remove metric (%s, %s, %s), which does not exist", name.c_str(),
@@ -50,8 +74,7 @@ string prometheusMetrics::serialize() {
         output << metric_name << "{stage_name=\"" << stage_name << "\"";
         if (extra_labels != "")
             output << "," << extra_labels;
-        output << "} " << element.second->to_string() << " "
-               << std::to_string(element.second->last_update_time_stamp) << "\n";
+        output << "} " << element.second->to_string() << "\n";
     }
 
     return output.str();
@@ -72,7 +95,29 @@ void prometheusMetrics::register_with_server(restServer* rest_server) {
                                        std::bind(&prometheusMetrics::metrics_callback, this, _1));
 }
 
-uint64_t prometheusMetrics::get_time_in_milliseconds() {
+void Gauge::set(const double value) {
+    this->value = value;
+    this->last_update_time_stamp = get_time_in_milliseconds();
+}
+
+string Gauge::to_string() {
+    std::ostringstream output;
+    output << value << " " << std::to_string(last_update_time_stamp);
+    return output.str();
+}
+
+void Counter::inc() {
+    this->value += 1;
+}
+
+string Counter::to_string() {
+    std::ostringstream output;
+    output << value << " " << get_time_in_milliseconds();
+    return output.str();
+}
+
+/* static */
+uint64_t metric::get_time_in_milliseconds() {
     struct timeval tv;
     gettimeofday(&tv, NULL);
 

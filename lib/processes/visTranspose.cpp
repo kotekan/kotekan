@@ -207,6 +207,9 @@ void visTranspose::main_thread() {
             new visFileArchive(filename, metadata, times, freqs, inputs, prods, num_ev, chunk));
     }
 
+    auto* transposed_bytes = prometheusMetrics::instance().add_stage_metric(
+        "kotekan_vistranspose_data_transposed_bytes", unique_name, NAN);
+
     while (!stop_thread) {
         // Wait for a full frame in the input buffer
         if ((wait_for_full_frame(in_buf, unique_name.c_str(), frame_id)) == nullptr) {
@@ -272,9 +275,7 @@ void visTranspose::main_thread() {
             // export prometheus metric
             if (frame_size == 0)
                 frame_size = frame.calculate_buffer_layout(num_input, num_prod, num_ev).first;
-            prometheusMetrics::instance().add_stage_metric(
-                "kotekan_vistranspose_data_transposed_bytes", unique_name,
-                frame_size * frames_so_far);
+                transposed_bytes->set(frame_size * frames_so_far);
         }
 
         frames_so_far++;

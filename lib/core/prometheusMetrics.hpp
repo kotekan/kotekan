@@ -17,6 +17,39 @@ using std::string;
 namespace kotekan {
 
 /**
+ * @class metric
+ * @brief An internal base class for storing metric values
+ */
+class metric {
+public:
+    /// @brief Returns the stored value as a string.
+    virtual string to_string() = 0;
+    virtual ~metric() = default;
+
+protected:
+    /// The actual value to be returned
+    double value = 0;
+
+    /// Internal function to get the time in
+    static uint64_t get_time_in_milliseconds();
+};
+
+class Gauge : public metric {
+public:
+    /// @brief Sets the current metric value
+    void set(double value);
+    string to_string() override;
+private:
+    /// Time stamp in milliseconds.
+    uint64_t last_update_time_stamp;
+};
+
+class Counter : public metric {
+public:
+    void inc();
+    string to_string() override;
+};
+/**
  * @class prometheusMetrics
  * @brief Class for exporting system metrics to a prometheus server
  *
@@ -109,20 +142,14 @@ public:
      * @param value The value associated with this metric.
      * @param labels (optional) The metric labels.
      */
-    template<class T>
-    void add_stage_metric(const string& name, const string& stage_name, const T& value,
-                          const string& labels = "") {
-        std::lock_guard<std::mutex> lock(metrics_lock);
-        std::tuple<string, string, string> key{name, stage_name, labels};
+    Gauge* add_stage_metric(const string& name,
+                            const string& stage_name,
+                            const double value,
+                            const string& labels = "");
 
-        if (stage_metrics.count(key) == 0) {
-            StageMetric<T>* new_metric = new StageMetric<T>;
-            stage_metrics[key] = (prometheusMetrics::metric*)new_metric;
-        }
-
-        ((StageMetric<T>*)stage_metrics[key])->value = value;
-        ((StageMetric<T>*)stage_metrics[key])->last_update_time_stamp = get_time_in_milliseconds();
-    }
+    Counter* add_stage_counter(const string& name,
+                               const string& stage_name,
+                               const string& labels = "");
 
     /**
      * @brief Removes a given metric.
@@ -136,34 +163,6 @@ public:
     void remove_metric(const string& name, const string& stage_name, const string& labels = "");
 
 private:
-    /**
-     * @class metric
-     * @brief An internal base class for storing metric values
-     */
-    struct metric {
-        virtual ~metric();
-        /// Time stamp in milliseconds.
-        uint64_t last_update_time_stamp;
-        /// The pure virtual function for converting the stored value to a string
-        virtual string to_string() = 0;
-    };
-
-    /**
-     * @class StageMetric
-     * @brief A template class for storing a numeric value which can be converted
-     *        to a string with @c std::to_string()
-     */
-    template<typename T, typename = std::enable_if<std::is_arithmetic<T>::value>>
-    struct StageMetric : public metric {
-        /// The actual value to be returned
-        T value;
-        /**
-         * @brief Returns the stored value as a string.
-         */
-        string to_string() override {
-            return std::to_string(value);
-        }
-    };
 
     /// Constructor, not used directly
     prometheusMetrics();
@@ -172,10 +171,7 @@ private:
      * The metric storage object with the format:
      * <<metric_name, stage_name, tags>, metric>
      */
-    map<std::tuple<string, string, string>, metric*> stage_metrics;
-
-    /// Internal function to get the time in
-    uint64_t get_time_in_milliseconds();
+    map<std::tuple<string, string, string>, std::unique_ptr<metric>> stage_metrics;
 
     /// Metric updating lock
     std::mutex metrics_lock;
