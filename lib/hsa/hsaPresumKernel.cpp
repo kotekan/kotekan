@@ -1,5 +1,13 @@
 #include "hsaPresumKernel.hpp"
 
+// Use old symbol naming convention if 
+// compiled with ROCM version 2.3 or older
+#ifdef USE_OLD_ROCM
+#define KERNEL_NAME "CHIME_presum"
+#else
+#define KERNEL_NAME "CHIME_presum.kd"
+#endif
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 
@@ -9,7 +17,7 @@ hsaPresumKernel::hsaPresumKernel(Config& config, const string& unique_name,
                                  bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaSubframeCommand(config, unique_name, host_buffers,
                        //                                 device, "CHIME_presum","presum.hsaco") {
-                       device, "CHIME_presum", "presum_opencl.hsaco") {
+                       device, KERNEL_NAME, "presum_opencl.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
