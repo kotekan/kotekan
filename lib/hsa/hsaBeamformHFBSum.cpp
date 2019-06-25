@@ -7,7 +7,7 @@ REGISTER_HSA_COMMAND(hsaBeamformHFBSum);
 
 hsaBeamformHFBSum::hsaBeamformHFBSum(Config& config, const string& unique_name,
                                      bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "sum_hfb",
+    hsaCommand(config, unique_name, host_buffers, device, "sum_hfb" KERNEL_EXT,
                "sum_hfb.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
