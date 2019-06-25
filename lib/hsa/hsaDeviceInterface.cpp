@@ -80,17 +80,20 @@ hsaDeviceInterface::hsaDeviceInterface(Config& config_, int32_t gpu_id_, int gpu
 }
 
 hsaDeviceInterface::~hsaDeviceInterface() {
-    HSA_CHECK(hsa_queue_destroy(queue));
+    hsa_status_t hsa_status = hsa_queue_destroy(queue);
+    HSA_CHECK(hsa_status);
 }
 
 void* hsaDeviceInterface::alloc_gpu_memory(int len) {
     void* ptr;
-    HSA_CHECK(hsa_amd_memory_pool_allocate(global_region, len, 0, &ptr));
+    hsa_status_t hsa_status = hsa_amd_memory_pool_allocate(global_region, len, 0, &ptr);
+    HSA_CHECK(hsa_status);
     return ptr;
 }
 
 void hsaDeviceInterface::free_gpu_memory(void* ptr) {
-    HSA_CHECK(hsa_amd_memory_pool_free(ptr));
+    hsa_status_t hsa_status = hsa_amd_memory_pool_free(ptr);
+    HSA_CHECK(hsa_status);
 }
 
 
@@ -237,9 +240,9 @@ hsa_status_t hsaDeviceInterface::get_gpu_agent(hsa_agent_t agent, void* data) {
     gpu_config_t* gpu_config = (gpu_config_t*)data;
 
     status = hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &device_type);
-    HSA_CHECK(status);
+    assert(status == HSA_STATUS_SUCCESS);
     status = hsa_agent_get_info(agent, HSA_AGENT_INFO_NODE, &num);
-    HSA_CHECK(status);
+    assert(status == HSA_STATUS_SUCCESS);
     if ((HSA_DEVICE_TYPE_GPU == device_type) && (gpu_config->gpu_id == (num - 1))) {
         uint32_t features = 0;
         hsa_agent_get_info(agent, HSA_AGENT_INFO_FEATURE, &features);
