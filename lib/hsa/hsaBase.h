@@ -5,9 +5,9 @@
 #define HSA_CHECK(hsa_status)                   \
 {                                               \
     if(hsa_status != HSA_STATUS_SUCCESS) {      \
-      const char *status;                       \
-      hsa_status_string(hsa_status, &status);   \
-      ERROR("HSA_STATUS: %s", status);          \
+      const char *_status;                       \
+      hsa_status_string(hsa_status, &_status);   \
+      ERROR("HSA_STATUS: %s", _status);          \
       assert(HSA_STATUS_SUCCESS == hsa_status); \
     }                                           \
 }
