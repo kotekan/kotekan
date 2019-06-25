@@ -24,6 +24,14 @@
 #include <string>
 #include <unistd.h>
 
+// Use old symbol naming convention if 
+// compiled with ROCM version 2.3 or older
+#ifdef USE_OLD_ROCM
+#define KERNEL_EXT ""
+#else
+#define KERNEL_EXT ".kd"
+#endif
+
 struct kernelParams {
     uint16_t workgroup_size_x;
     uint16_t workgroup_size_y;
