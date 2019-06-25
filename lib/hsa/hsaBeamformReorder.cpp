@@ -7,7 +7,7 @@ REGISTER_HSA_COMMAND(hsaBeamformReorder);
 
 hsaBeamformReorder::hsaBeamformReorder(Config& config, const string& unique_name,
                                        bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "reorder", "reorder.hsaco") {
+    hsaCommand(config, unique_name, host_buffers, device, "reorder" KERNEL_EXT, "reorder.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");

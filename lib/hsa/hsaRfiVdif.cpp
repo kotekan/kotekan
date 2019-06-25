@@ -21,7 +21,7 @@ REGISTER_HSA_COMMAND(hsaRfiVdif);
 
 hsaRfiVdif::hsaRfiVdif(Config& config, const string& unique_name, bufferContainer& host_buffers,
                        hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "rfi_vdif", "rfi_vdif.hsaco") {
+    hsaCommand(config, unique_name, host_buffers, device, "rfi_vdif" KERNEL_EXT, "rfi_vdif.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
     // Grab values from config and calculates buffer size
