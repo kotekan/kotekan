@@ -24,7 +24,7 @@
 #include <string>
 #include <unistd.h>
 
-// Use old symbol naming convention if 
+// Use old symbol naming convention if
 // compiled with ROCM version 2.3 or older
 #ifdef USE_OLD_ROCM
 #define KERNEL_EXT ""
