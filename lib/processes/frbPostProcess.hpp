@@ -30,6 +30,8 @@ using std::vector;
  * This stage can also optionally produce a sum-of-all-beams "incoherent" beam,
  * which will be stored in the 0th beam position in output packets.
  *
+ * Time samples with dropped packet are set to zero. 
+ *
  * This stage depends on ``AVX2`` intrinsics.
  *
  * @par Buffers
@@ -48,6 +50,9 @@ using std::vector;
  * @buffer out_buf Kotekan buffer that will be populated with packetized data.
  *     @buffer_format Array of @c uchars
  *     @buffer_metadata chimeMetadata
+ * @buffer lost_samples_buf Koktekan buffer with drop packet info, where 1=dropped
+ *     @buffer_metadata chimeMetadata
+ *     @buffer_format Array of @c uint8
  *
  * @conf   num_gpus                   Int. Number of GPUs.
  * @conf   samples_per_data_set       Int. Number of baseband samples corresponding to each buffer.
@@ -64,7 +69,7 @@ using std::vector;
  *                                        anomalously high values, this limits values used prior to
  * summing into the incoherent beam.
  *
- * @author Keith Vanderlinde
+ * @author Keith Vanderlinde, Cherry Ng
  *
  */
 class frbPostProcess : public kotekan::Stage {
@@ -83,6 +88,10 @@ public:
 private:
     void write_header(unsigned char* dest);
 
+    /// Lost sample - drop packet
+    Buffer* lost_samples_buf;
+    int32_t lost_samples_buf_id;
+  
     struct Buffer** in_buf;
     struct Buffer* frb_buf;
 
