@@ -165,6 +165,19 @@ protected:
     /// Tracks the number of times at least one of the flags in the second or
     /// thrid stage shuffle were set.  Not including the sticky flags.
     uint64_t rx_shuffle_flags_set = 0;
+
+    /// Prometheus metrics
+    kotekan::Family<kotekan::Gauge>& third_shuffle_error;
+    kotekan::Family<kotekan::Gauge>& third_crc_error;
+    kotekan::Family<kotekan::Gauge>& third_missing_short_error;
+    kotekan::Family<kotekan::Gauge>& third_long_error;
+    kotekan::Family<kotekan::Gauge>& third_fifo_overflow_error;
+
+    kotekan::Family<kotekan::Gauge>& second_shuffle_error;
+    kotekan::Family<kotekan::Gauge>& second_crc_error;
+    kotekan::Family<kotekan::Gauge>& second_missing_short_error;
+    kotekan::Family<kotekan::Gauge>& second_long_error;
+    kotekan::Family<kotekan::Gauge>& second_fifo_overflow_error;
 };
 
 iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& unique_name,
@@ -196,7 +209,7 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
                                          unique_name, {"port"})),
     second_long_error(kotekan::prometheusMetrics::instance()
                       .AddGauge("kotekan_dpdk_shuffle_fpga_second_stage_long_errors_total",
-                                unique_name), {"port"}),
+                                unique_name, {"port"})),
     second_fifo_overflow_error(kotekan::prometheusMetrics::instance()
                                .AddGauge("kotekan_dpdk_shuffle_fpga_second_stage_fifo_overflow_errors_total",
                                          unique_name, {"port"})) {
@@ -504,7 +517,7 @@ void iceBoardShuffle::update_stats() {
     std::string port_str = std::to_string(port);
 
     for (int i = 0; i < 8; ++i) {
-        second_fifo_overflow_error.Labels({port_str, std::to_string(i)})
+        third_shuffle_error.Labels({port_str, std::to_string(i)})
             .set(fpga_third_stage_shuffle_errors[i]);
     }
 

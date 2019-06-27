@@ -332,10 +332,10 @@ protected:
     kotekan::Family<kotekan::Gauge>& rx_samples_total_metric;
     kotekan::Family<kotekan::Gauge>& rx_lost_packets_total_metric;
     kotekan::Family<kotekan::Gauge>& lost_samples_total_metric;
+
     kotekan::Family<kotekan::Gauge>& rx_bytes_total_metric;
     kotekan::Family<kotekan::Gauge>& rx_errors_total_metric;
 
-    kotekan::Family<kotekan::Gauge>& lost_samples_total_metric;
     kotekan::Family<kotekan::Gauge>& rx_ip_cksum_errors_total_metric;
     kotekan::Family<kotekan::Gauge>& rx_packet_len_errors_total_metric;
     kotekan::Family<kotekan::Gauge>& rx_out_of_order_errors_total_metric;
@@ -344,25 +344,24 @@ protected:
 inline iceBoardHandler::iceBoardHandler(kotekan::Config& config, const std::string& unique_name,
                                         kotekan::bufferContainer& buffer_container, int port) :
     dpdkRXhandler(config, unique_name, buffer_container, port),
-    rx_packets_total_metric(prometheusMetrics::instance()
+    rx_packets_total_metric(kotekan::prometheusMetrics::instance()
                             .AddGauge("kotekan_dpdk_rx_packets_total", unique_name, {"port"})),
-    rx_samples_total_metric(prometheusMetrics::instance()
+    rx_samples_total_metric(kotekan::prometheusMetrics::instance()
                             .AddGauge("kotekan_dpdk_rx_samples_total", unique_name, {"port"})),
-    rx_lost_packets_total_metric(prometheusMetrics::instance()
+    rx_lost_packets_total_metric(kotekan::prometheusMetrics::instance()
                                  .AddGauge("kotekan_dpdk_rx_lost_packets_total", unique_name, {"port"})),
-    lost_samples_total_metric(prometheusMetrics::instance()
+    lost_samples_total_metric(kotekan::prometheusMetrics::instance()
                               .AddGauge("kotekan_dpdk_lost_samples_total", unique_name, {"port"})),
-    rx_bytes_total_metric(prometheusMetrics::instance()
+    rx_bytes_total_metric(kotekan::prometheusMetrics::instance()
                           .AddGauge("kotekan_dpdk_rx_bytes_total", unique_name, {"port"})),
-    rx_errors_total_metric(prometheusMetrics::instance()
+    rx_errors_total_metric(kotekan::prometheusMetrics::instance()
                            .AddGauge("kotekan_dpdk_rx_errors_total", unique_name, {"port"})),
 
-    lost_samples_total_metric(),
-    rx_ip_cksum_errors_total_metric(prometheusMetrics::instance()
+    rx_ip_cksum_errors_total_metric(kotekan::prometheusMetrics::instance()
                                     .AddGauge("kotekan_dpdk_rx_ip_cksum_errors_total", unique_name, {"port"})),
-    rx_packet_len_errors_total_metric(prometheusMetrics::instance()
+    rx_packet_len_errors_total_metric(kotekan::prometheusMetrics::instance()
                                       .AddGauge("kotekan_dpdk_rx_packet_len_errors_total", unique_name, {"port"})),
-    rx_out_of_order_errors_total_metric(prometheusMetrics::instance()
+    rx_out_of_order_errors_total_metric(kotekan::prometheusMetrics::instance()
                                         .AddGauge("kotekan_dpdk_rx_out_of_order_errors_total", unique_name, {"port"})) {
 
     sample_size = config.get_default<uint32_t>(unique_name, "sample_size", 2048);
@@ -435,17 +434,17 @@ json iceBoardHandler::get_json_port_info() {
 inline void iceBoardHandler::update_stats() {
     std::vector<std::string> port_label = {std::to_string(port)};
 
-    rx_packets_total_metric.Labels(labels).set(rx_packets_total);
-    rx_samples_total_metric.Labels(labels).set(rx_packets_total * samples_per_packet);
-    rx_lost_packets_total_metric.Labels(labels).set((int)(rx_lost_samples_total / samples_per_packet));
-    lost_samples_total_metric.Labels(labels).set(rx_lost_samples_total);
-    rx_bytes_total_metric.Labels(labels).set(rx_bytes_total);
-    rx_errors_total_metric.Labels(labels).set(rx_errors_total);
+    rx_packets_total_metric.Labels(port_label).set(rx_packets_total);
+    rx_samples_total_metric.Labels(port_label).set(rx_packets_total * samples_per_packet);
+    rx_lost_packets_total_metric.Labels(port_label).set((int)(rx_lost_samples_total / samples_per_packet));
+    lost_samples_total_metric.Labels(port_label).set(rx_lost_samples_total);
 
-    lost_samples_total_metric.Labels(labels).set(rx_lost_samples_total);
-    rx_ip_cksum_errors_total_metric.Labels(labels).set(rx_ip_cksum_errors_total);
-    rx_packet_len_errors_total_metric.Labels(labels).set(rx_packet_len_errors_total);
-    rx_out_of_order_errors_total_metric.Labels(labels).set(rx_out_of_order_errors_total);
+    rx_bytes_total_metric.Labels(port_label).set(rx_bytes_total);
+    rx_errors_total_metric.Labels(port_label).set(rx_errors_total);
+
+    rx_ip_cksum_errors_total_metric.Labels(port_label).set(rx_ip_cksum_errors_total);
+    rx_packet_len_errors_total_metric.Labels(port_label).set(rx_packet_len_errors_total);
+    rx_out_of_order_errors_total_metric.Labels(port_label).set(rx_out_of_order_errors_total);
 }
 
 #endif
