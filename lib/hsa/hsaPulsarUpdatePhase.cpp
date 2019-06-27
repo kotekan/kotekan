@@ -50,7 +50,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_
     vector<float> dg = {0.0, 0.0}; // re,im
     default_gains = config.get_default<std::vector<float>>(unique_name, "frb_missing_gains", dg);
 
-    for (uint i = 0; i < _num_beams; i++) {
+    for (int i = 0; i < _num_beams; i++) {
         psr_coord_latest_update.ra[i] = config.get<float>(unique_name, "pulsar_pointing/"+std::to_string(i)+"/ra");
         psr_coord_latest_update.dec[i] = config.get<float>(unique_name, "pulsar_pointing/"+std::to_string(i)+"/dec");
         psr_coord_latest_update.scaling[i] = config.get<float>(unique_name, "pulsar_pointing/"+std::to_string(i)+"/scaling");
