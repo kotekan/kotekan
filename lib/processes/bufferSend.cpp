@@ -25,7 +25,7 @@ bufferSend::bufferSend(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferSend::main_thread, this)),
     dropped_frame_counter(prometheusMetrics::instance()
-                          .add_stage_counter("kotekan_buffer_send_dropped_frame_count", unique_name))
+                          .AddCounter("kotekan_buffer_send_dropped_frame_count", unique_name))
 {
 
     buf = get_buffer("buf");
@@ -70,7 +70,7 @@ void bufferSend::main_thread() {
             WARN(
                 "Number of full frames in buffer %s is %d (total frames: %d), dropping frame_id %d",
                 buf->buffer_name, num_full_frames, buf->num_frames, frame_id);
-            dropped_frame_counter->inc();
+            dropped_frame_counter.inc();
         } else if (connected) {
             // Send header
             struct bufferFrameHeader header;

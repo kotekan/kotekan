@@ -134,6 +134,13 @@ void visTestPattern::main_thread() {
     // Comparisons will be against tolerance^2
     float t2 = _tolerance * _tolerance;
 
+    auto& bad_values = prometheusMetrics::instance().AddGauge("kotekan_vistestpattern_bad_values_total", unique_name, {"name", "freq_id"});
+    auto& avg_error = prometheusMetrics::instance().AddGauge("kotekan_vistestpattern_avg_error", unique_name, {"name", "freq_id"});
+    auto& min_error = prometheusMetrics::instance().AddGauge("kotekan_vistestpattern_min_error", unique_name, {"name", "freq_id"});
+    auto& max_error = prometheusMetrics::instance().AddGauge("kotekan_vistestpattern_max_error", unique_name, {"name", "freq_id"});
+    auto& fpga_sequence_number = prometheusMetrics::instance().AddGauge("kotekan_vistestpattern_fpga_sequence_number", unique_name, {"name", "freq_id"});
+    auto& ctime_seconds = prometheusMetrics::instance().AddGauge("kotekan_vistestpattern_ctime_seconds", unique_name, {"name", "freq_id"});
+
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
         if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
@@ -207,6 +214,13 @@ void visTestPattern::main_thread() {
                 time = std::get<1>(frame.time);
                 fpga_count = std::get<0>(frame.time);
                 freq_id = frame.freq_id;
+
+                // update Prometheus metrics
+                const std::string freq_id_label = std::to_string(freq_id);
+                bad_values.Labels({test_name, freq_id_label}).set(num_bad);
+                fpga_sequence_number.Labels({test_name, freq_id_label}).set(fpga_count);
+                ctime_seconds.Labels({test_name, freq_id_label}).set(ts_to_double(time));
+
                 if (num_bad) {
                     avg_err /= (float)num_bad;
 
@@ -227,9 +241,10 @@ void visTestPattern::main_thread() {
                     DEBUG("time: %d, %lld.%d", fpga_count, (long long)time.tv_sec, time.tv_nsec);
                     DEBUG("freq id: %d", freq_id);
 
-                    // Export results to prometheus.
-                    export_prometheus_metrics(num_bad, avg_err, min_err, max_err, fpga_count, time,
-                                              freq_id);
+                    // update error stats
+                    avg_error.Labels({test_name, freq_id_label}).set(avg_err);
+                    min_error.Labels({test_name, freq_id_label}).set(min_err);
+                    max_error.Labels({test_name, freq_id_label}).set(max_err);
 
                     // gather data for report after many frames
                     num_bad_tot += num_bad;
@@ -261,8 +276,9 @@ void visTestPattern::main_thread() {
                     // Advance output frame id
                     output_frame_id++;
                 } else {
-                    // Export results to prometheus.
-                    export_prometheus_metrics(num_bad, 0, 0, 0, fpga_count, time, freq_id);
+                    avg_error.Labels({test_name, freq_id_label}).set(0);
+                    min_error.Labels({test_name, freq_id_label}).set(0);
+                    max_error.Labels({test_name, freq_id_label}).set(0);
                 }
 
                 // print report some times
@@ -506,20 +522,4 @@ void visTestPattern::exit_failed_test(std::string error_msg) {
                                                  test_done_port);
 
     raise(SIGINT);
-}
-
-void visTestPattern::export_prometheus_metrics(size_t num_bad, float avg_err, float min_err,
-                                               float max_err, uint64_t fpga_count, timespec time,
-                                               uint32_t freq_id) {
-    prometheusMetrics& prometheus = prometheusMetrics::instance();
-    std::string labels = fmt::format("name=\"{}\",freq_id=\"{}\"", test_name, freq_id);
-    prometheus.add_stage_metric("kotekan_vistestpattern_bad_values_total", unique_name, num_bad,
-                                labels);
-    prometheus.add_stage_metric("kotekan_vistestpattern_avg_error", unique_name, avg_err, labels);
-    prometheus.add_stage_metric("kotekan_vistestpattern_min_error", unique_name, min_err, labels);
-    prometheus.add_stage_metric("kotekan_vistestpattern_max_error", unique_name, max_err, labels);
-    prometheus.add_stage_metric("kotekan_vistestpattern_fpga_sequence_number", unique_name,
-                                fpga_count, labels);
-    prometheus.add_stage_metric("kotekan_vistestpattern_ctime_seconds", unique_name,
-                                ts_to_double(time), labels);
 }

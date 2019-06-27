@@ -34,7 +34,7 @@ protected:
     static uint64_t get_time_in_milliseconds();
 };
 
-class Gauge : public metric {
+class gauge : public metric {
 public:
     /// @brief Sets the current metric value
     void set(double value);
@@ -44,11 +44,88 @@ private:
     uint64_t last_update_time_stamp;
 };
 
-class Counter : public metric {
+/**
+ * @class metric
+ * @brief An internal base class for storing metric values
+ */
+class Metric {
 public:
+    Metric(const std::vector<string>&);
+    virtual ~Metric() = default;
+
+    /// @brief Returns the stored value as a string.
+    virtual string to_string() = 0;
+    virtual std::ostringstream& to_string(std::ostringstream& out) = 0;
+    const std::vector<string> label_values;
+};
+
+class Counter : public Metric {
+public:
+    Counter(const std::vector<string>&);
     void inc();
     string to_string() override;
+    std::ostringstream& to_string(std::ostringstream& out) override;
+private:
+    int value = 0;
 };
+
+class Gauge : public Metric {
+public:
+    Gauge(const std::vector<string>&);
+    void set(const double);
+    string to_string() override;
+    std::ostringstream& to_string(std::ostringstream& out) override;
+private:
+    /// The actual value to be returned
+    double value = 0;
+};
+
+enum class MetricType {
+    Counter,
+    Gauge,
+    Untyped,
+};
+
+struct Serializable {
+    virtual ~Serializable() = default;
+    virtual string Serialize() = 0;
+};
+
+template<typename T>
+class Family : public Serializable {
+public:
+    Family(const string& name,
+           const string& stage,
+            const std::vector<string>& label_names,
+            const MetricType = MetricType::Untyped);
+
+    // T& Labels(const std::vector<string>& label_values);
+
+    T& Labels(const std::vector<string>& label_values) {
+        if (label_names.size() != label_values.size()) {
+            throw std::runtime_error("Label values don't match the names");
+        }
+
+        for (auto& m : metrics) {
+            if (m.label_values == label_values) {
+                return m;
+            }
+        }
+        metrics.emplace_back(label_values);
+        return metrics.back();
+    }
+
+
+    string Serialize() override;
+
+    const string name;
+    const string stage_name;
+    const std::vector<string> label_names;
+private:
+    std::vector<T> metrics;
+    const MetricType metric_type;
+};
+
 /**
  * @class prometheusMetrics
  * @brief Class for exporting system metrics to a prometheus server
@@ -142,14 +219,6 @@ public:
      * @param value The value associated with this metric.
      * @param labels (optional) The metric labels.
      */
-    Gauge* add_stage_metric(const string& name,
-                            const string& stage_name,
-                            const double value,
-                            const string& labels = "");
-
-    Counter* add_stage_counter(const string& name,
-                               const string& stage_name,
-                               const string& labels = "");
 
     /**
      * @brief Removes a given metric.
@@ -162,16 +231,34 @@ public:
      */
     void remove_metric(const string& name, const string& stage_name, const string& labels = "");
 
+    string Serialize();
+
+    Gauge& AddGauge(const string&, const string&);
+    Family<Gauge>& AddGauge(const string&,
+                            const string&,
+                            const std::vector<string>&);
+    Counter& AddCounter(const string&, const string&);
+    Family<Counter>& AddCounter(const string&,
+                                const string&,
+                                const std::vector<string>&);
 private:
 
     /// Constructor, not used directly
     prometheusMetrics();
+
+    void Add(const string, const string, std::shared_ptr<Serializable>);
 
     /**
      * The metric storage object with the format:
      * <<metric_name, stage_name, tags>, metric>
      */
     map<std::tuple<string, string, string>, std::unique_ptr<metric>> stage_metrics;
+
+    /**
+     * The metric storage object with the format:
+     * <<metric_name, stage_name>, Family>
+     */
+    map<std::tuple<string, string>, std::shared_ptr<Serializable>> families;
 
     /// Metric updating lock
     std::mutex metrics_lock;

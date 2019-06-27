@@ -472,7 +472,8 @@ int main(int argc, char** argv) {
 
     prometheusMetrics& metrics = prometheusMetrics::instance();
     metrics.register_with_server(&rest_server);
-    auto* kotekan_running = metrics.add_stage_metric("kotekan_running", "main", running);
+    auto& kotekan_running = metrics.AddGauge("kotekan_running", "main");
+    kotekan_running.set(running);
 
     basebandApiManager& baseband = basebandApiManager::instance();
     baseband.register_with_server(&rest_server);
@@ -482,7 +483,8 @@ int main(int argc, char** argv) {
         // Update running state
         {
             std::lock_guard<std::mutex> lock(kotekan_state_lock);
-            kotekan_running->set(running);
+            // kotekan_running->set(running);
+            kotekan_running.set(running);
         }
 
         if (sig_value == SIGINT) {

@@ -201,8 +201,13 @@ void applyGains::apply_thread() {
         input_frame_id = frame_id_in++;
     }
 
-    auto* update_age_metric = prometheusMetrics::instance()
-        .add_stage_metric("kotekan_applygains_update_age_seconds", unique_name, NAN);
+    auto& update_age_metric = prometheusMetrics::instance()
+        .AddGauge("kotekan_applygains_update_age_seconds", unique_name);
+    auto& late_update_counter = prometheusMetrics::instance()
+        .AddGauge("kotekan_applygains_late_update_count", unique_name);
+    auto& late_frames_counter = prometheusMetrics::instance()
+        .AddGauge("kotekan_applygains_late_frame_count", unique_name);
+
     while (!stop_thread) {
 
 
@@ -332,15 +337,13 @@ void applyGains::apply_thread() {
         }
 
         // Report how old the gains being applied to the current data are.
-        update_age_metric->set(tpast);
+        update_age_metric.set(tpast);
 
         // Report number of updates received too late
-        prometheusMetrics::instance().add_stage_metric("kotekan_applygains_late_update_count",
-                                                       unique_name, num_late_updates.load());
+        late_update_counter.set(num_late_updates.load());
 
         // Report number of frames received late
-        prometheusMetrics::instance().add_stage_metric("kotekan_applygains_late_frame_count",
-                                                       unique_name, num_late_frames.load());
+        late_frames_counter.set(num_late_frames.load());
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);

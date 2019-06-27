@@ -35,8 +35,8 @@ void Valve::main_thread() {
     frameID frame_id_out(_buf_out);
 
     /// Metric to track the number of dropped frames.
-    auto* dropped_total = prometheusMetrics::instance()
-        .add_stage_counter("kotekan_valve_dropped_frames_total", unique_name);
+    auto& dropped_total = prometheusMetrics::instance()
+        .AddCounter("kotekan_valve_dropped_frames_total", unique_name);
 
     while (!stop_thread) {
         // Fetch a new frame and get its sequence id
@@ -55,7 +55,7 @@ void Valve::main_thread() {
             mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
         } else {
             WARN("Output buffer full. Dropping incoming frame %d.", frame_id_in);
-            dropped_total->inc();
+            dropped_total.inc();
         }
         mark_frame_empty(_buf_in, unique_name.c_str(), frame_id_in++);
     }

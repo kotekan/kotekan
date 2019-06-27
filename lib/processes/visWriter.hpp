@@ -174,6 +174,9 @@ private:
 
     /// Keep track of the average write time
     movingAverage write_time;
+
+    /// TODO: document
+    kotekan::Family<kotekan::Counter>& dropped_frame_counter;
 };
 
 /**

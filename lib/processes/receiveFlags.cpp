@@ -22,7 +22,7 @@ receiveFlags::receiveFlags(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&receiveFlags::main_thread, this)),
     late_updates_counter(prometheusMetrics::instance()
-                         .add_stage_counter("kotekan_receiveflags_late_update_count", unique_name))
+                         .AddCounter("kotekan_receiveflags_late_update_count", unique_name))
 {
     // Setup the buffers
     buf_in = get_buffer("in_buf");
@@ -94,7 +94,7 @@ bool receiveFlags::flags_callback(nlohmann::json& json) {
         WARN("receiveFlags: Received update with a start_time that is older "
              "than the current frame (The difference is %f s).",
              ts_to_double(ts_frame) - ts);
-        late_updates_counter->inc();
+        late_updates_counter.inc();
     }
 
     // update the flags
@@ -116,13 +116,13 @@ void receiveFlags::main_thread() {
 
     std::pair<timespec, const std::vector<float>*> update;
 
-    auto* receiveflags_update_age = prometheusMetrics::instance()
-        .add_stage_metric("kotekan_receiveflags_update_age_seconds",
-                          unique_name, -ts_to_double(ts_late));
+    auto& receiveflags_update_age = prometheusMetrics::instance()
+        .AddGauge("kotekan_receiveflags_update_age_seconds",
+                  unique_name);
+    receiveflags_update_age.set(-ts_to_double(ts_late));
     // Report number of frames received late
-    auto* receiveflags_late_frame_counter = prometheusMetrics::instance()
-        .add_stage_counter("kotekan_receiveflags_late_frame_count",
-                           unique_name);
+    auto& receiveflags_late_frame_counter = prometheusMetrics::instance()
+        .AddCounter("kotekan_receiveflags_late_frame_count", unique_name);
 
     while (!stop_thread) {
         // Wait for an input frame
@@ -156,14 +156,14 @@ void receiveFlags::main_thread() {
                  "not in memory. Applying oldest flags found. (%d)"
                  " Concider increasing num_kept_updates.",
                  frame_id_in, ts_to_double(ts_frame), ts_to_double(update.first));
-            receiveflags_late_frame_counter->inc();
+            receiveflags_late_frame_counter.inc();
         }
         // actually copy the new flags and apply them from now
         std::copy(update.second->begin(), update.second->end(), frame_out.flags.begin());
         flags_lock.unlock();
 
         // Report how old the flags being applied to the current data are.
-        receiveflags_update_age->set(-ts_to_double(ts_late));
+        receiveflags_update_age.set(-ts_to_double(ts_late));
 
         // Mark output frame full and input frame empty
         mark_frame_full(buf_out, unique_name.c_str(), frame_id_out);

@@ -110,6 +110,12 @@ private:
 
     state_id_t ev_state_id;
     dset_id_t input_dset_id = 0;
+
+    kotekan::Gauge& comp_time_seconds;
+    kotekan::Family<kotekan::Gauge>& eigenvalue;
+    kotekan::Family<kotekan::Gauge>& iterations;
+    kotekan::Family<kotekan::Gauge>& eigenvalue_convergence;
+    kotekan::Family<kotekan::Gauge>& eigenvector_convergence;
 };
 
 #endif

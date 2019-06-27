@@ -142,6 +142,8 @@ void rfiBroadcast::main_thread() {
         }
         // Connection succesful
         INFO("UDP Connection: %i %s", dest_port, dest_server_ip.c_str());
+        auto& mask_percent = metrics.AddGauge("kotekan_rfi_broadcast_mask_percent",
+                                              unique_name, {"freq_bin"});
         // Endless loop
         while (!stop_thread) {
             // Initialize arrays
@@ -204,9 +206,7 @@ void rfiBroadcast::main_thread() {
             // Get current frequency bin and set add the prometheus metric
             stream_id_t current_stream_id = extract_stream_id(StreamIDs[0]);
             uint32_t current_freq_bin = bin_number_chime(&current_stream_id);
-            std::string tags = "freq_bin=\"" + std::to_string(current_freq_bin) + "\"";
-            metrics.add_stage_metric("kotekan_rfi_broadcast_mask_percent", unique_name,
-                                     perc_zeroed.average(), tags);
+            mask_percent.Labels({std::to_string(current_freq_bin)}).set(perc_zeroed.average());
 
 #ifdef DEBUGGING
             // Reset Timer (can't time previous loop due to wait for frame blocking call)

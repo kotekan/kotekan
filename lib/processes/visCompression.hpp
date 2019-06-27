@@ -115,6 +115,10 @@ private:
     frameID frame_id_out;
     uint64_t frame_counter_global;
     std::mutex m_frame_ids;
+
+    kotekan::Family<kotekan::Gauge>& compression_residuals;
+    kotekan::Family<kotekan::Gauge>& compression_time_seconds;
+    kotekan::Family<kotekan::Gauge>& compression_frame_counter;
 };
 
 

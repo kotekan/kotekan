@@ -150,10 +150,7 @@ private:
     std::mutex dump_to_write_mtx;
 
     kotekan::prometheusMetrics& metrics = kotekan::prometheusMetrics::instance();
-    std::string freq_id_label;
-    kotekan::Counter* request_done_counter = 0;
-    kotekan::Counter* request_error_counter = 0;
-    kotekan::Counter* request_no_data_counter = 0;
+    kotekan::Family<kotekan::Counter>& readout_counter;
 };
 
 #endif
