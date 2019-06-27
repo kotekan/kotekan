@@ -10,7 +10,7 @@
 #include "hsaCommand.hpp"
 #include "restServer.hpp"
 
-#define LIGHT_SPEED 299792458
+#define LIGHT_SPEED 299792458.
 #define FEED_SEP 0.3048
 #define PI 3.14159265
 

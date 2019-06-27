@@ -17,7 +17,7 @@
 
 #define PI 3.14159265
 #define feed_sep 0.3048
-#define light 299792458
+#define light 299792458.
 
 using kotekan::bufferContainer;
 using kotekan::Config;
