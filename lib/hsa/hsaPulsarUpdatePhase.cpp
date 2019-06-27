@@ -325,4 +325,5 @@ bool hsaPulsarUpdatePhase::pulsar_grab_callback(nlohmann::json& json, const uint
     INFO("[psr] Updated Beam=%d RA=%.2f Dec=%.2f Scl=%d", beam_id, psr_coord_latest_update.ra[beam_id], psr_coord_latest_update.dec[beam_id], psr_coord_latest_update.scaling[beam_id] );
         update_phase = true;
     }
+    return true;
 }
