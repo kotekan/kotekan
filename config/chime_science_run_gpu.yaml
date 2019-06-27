@@ -90,6 +90,57 @@ pulsar_gain:
     - /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/
     - /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/
     - /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/
+pulsar_pointing:
+  0:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
+  1:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
+  2:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
+  3:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
+  4:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
+  5:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
+  6:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
+  7:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
+  8:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
+  9:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
 
 #RFI stuff
 sk_step: 256
@@ -446,10 +497,8 @@ gpu:
     kotekan_stage: hsaProcess
     gpu_id: 0
     updatable_gain_psr: /pulsar_gain
+    updatable_psr_pt: /pulsar_pointing
     updatable_gain_frb: /frb_gain
-    source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
-    source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
-    psr_scaling: [48,48,48,48,48,48,48,48,48,48]
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     bad_inputs: []
@@ -469,10 +518,8 @@ gpu:
     kotekan_stage: hsaProcess
     gpu_id: 1
     updatable_gain_psr: /pulsar_gain
+    updatable_psr_pt: /pulsar_pointing
     updatable_gain_frb: /frb_gain
-    source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
-    source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
-    psr_scaling: [48,48,48,48,48,48,48,48,48,48]
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     bad_inputs: []
@@ -492,10 +539,8 @@ gpu:
     kotekan_stage: hsaProcess
     gpu_id: 2
     updatable_gain_psr: /pulsar_gain
+    updatable_psr_pt: /pulsar_pointing
     updatable_gain_frb: /frb_gain
-    source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
-    source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
-    psr_scaling: [48,48,48,48,48,48,48,48,48,48]
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     bad_inputs: []
@@ -515,10 +560,8 @@ gpu:
     kotekan_stage: hsaProcess
     gpu_id: 3
     updatable_gain_psr: /pulsar_gain
+    updatable_psr_pt: /pulsar_pointing
     updatable_gain_frb: /frb_gain
-    source_ra:  [53.51337,44.51337,52.1633,60.26337,46.76336,54.63837,49.01337,60.26337,55.76337,55.76337]
-    source_dec: [54.6248916,54.7248916,54.7598915,54.7248916,54.6248916,54.6448916,54.5748916,54.5248916,54.5048916,54.4748916]
-    psr_scaling: [48,48,48,48,48,48,48,48,48,48]
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     bad_inputs: []

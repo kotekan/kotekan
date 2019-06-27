@@ -30,28 +30,23 @@
  *
  * The gain path is registered as a subscriber to an updatable config block.
  *
- * @par REST Endpoints
- * @endpoint  /update_pulsar/<gpu id>   ``POST`` Trigger re-pointing of a
- *            specific beam at RA+Dec with a scaling factor.
- *            requires json values      "beam", "ra", "dec", "scaling"
- *            update config             source_ra[beam], source_dec[beam], psr_scaling[beam]
+ * The pointings are registered as subscrbers to 10 individual endpoints,
+ * each with fields "ra", "dec", "scaling".
  *
  * @par GPU Memory
  * @gpu_mem  beamform_phase     Array of phase delays size 2048x10x2
  *     @gpu_mem_type            staging
  *     @gpu_mem_format          Array of @c float
  *     @gpu_mem_metadata        none
- *
- * @conf   num_elements         Int (default 2048). Number of elements
- * @conf   num_beams            Int (default 10). Number of pulsars
- * @conf   feed_sep_NS          Float (default 0.3048). N-S feed separation in m.
- * @conf   feed_sep_EW          Float (default 22.0). E-W feed separation in m.
- * @conf   default_gains        Float array (default 1+1j). Default gain value if gain file is
- * missing
- * @conf   source_ra            Float array - 10 initial RA (in deg) to form beams on.
- * @conf   source_dec           Float array - 10 initial Dec (in deg) to form beams on.
- * @conf   psr_scaling          Int array - 10 nominal scaling for all beams (can be changed on per
- * beam basis via endpoint)
+ *  
+ * @conf   num_elements               Int (default 2048). Number of elements
+ * @conf   num_beams                  Int (default 10). Number of pulsars
+ * @conf   feed_sep_NS                Float (default 0.3048). N-S feed separation in m.
+ * @conf   feed_sep_EW                Float (default 22.0). E-W feed separation in m.
+ * @conf   default_gains              Float array (default 1+1j). Default gain value if gain file is missing
+ * @conf   pulsar_pointing/i/ra       Float - initial RA (in deg) to form beams on for beam_id=i
+ * @conf   pulsar_pointing/i/dec      Float - initial Dec (in deg) to form beams on for beam_id=i
+ * @conf   pulsar_pointing/i/scaling  Int - nominal scaling for beam_id=i
  *
  * @author Cherry Ng
  *
@@ -85,7 +80,7 @@ public:
     void finalize_frame(int frame_id);
 
     /// Endpoint for providing new pulsar target (RA, Dec, sacling factor, beam_id)
-    void pulsar_grab_callback(kotekan::connectionInstance& conn, json& json_request);
+    bool pulsar_grab_callback(nlohmann::json& json, const uint8_t beamID);
 
 private:
     /// Length of arrray of phases, should be 2048 x 10 x 2 for complex
@@ -118,9 +113,6 @@ private:
     /// 10 pulsar RA, DEC and scaling factor
     struct psrCoord psr_coord;               // active coordinates to be passed to metatdata
     struct psrCoord psr_coord_latest_update; // Last updated coordinates
-    vector<float> _source_ra;
-    vector<float> _source_dec;
-    vector<int> _source_scl;
     /// Time now in second
     struct timespec time_now_gps;
 
@@ -155,9 +147,6 @@ private:
     bool first_pass;
     /// Flag to trigger phase update, either because of endpt message or every second
     bool update_phase;
-
-    /// Endpoint for updating psr coordinates
-    std::string endpoint_psrcoord;
 
     /// Config base (@TODO this is a huge hack replace with updatable config)
     string config_base;

@@ -59,6 +59,57 @@ pulsar_gain:
     - /root/FRB-GainFiles/eigen_CygA_7_9/
     - /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_28_scl/
     - /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_28_scl/
+pulsar_pointing:
+  0:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
+  1:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
+  2:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
+  3:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
+  4:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
+  5:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
+  6:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
+  7:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
+  8:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
+  9:
+    kotekan_update_endpoint: json
+    ra: 53.6197236741
+    dec: 54.6433973569
+    scaling: 48
 
 # Pool
 main_pool:
@@ -127,9 +178,7 @@ gpu:
     kotekan_stage: hsaProcess
     gpu_id: 0
     updatable_gain_psr: /pulsar_gain
-    source_ra: [300.022454326,  299.772454326, 300.272454326 , 300.022454326, 300.022454326, 299.771454326 , 299.771454326 , 300.273454326,  300.273454326, 300.022454326]
-    source_dec: [40.7839418602, 40.7839418602, 40.7839418602, 41.0339418602, 40.5339418602, 40.5329418602 , 41.0349418602 , 40.5329418602 , 41.0349418602 , 40.7839418602]
-    psr_scaling: [48,48,48,48,48,48,48,48,48,48]
+    updatable_psr_pt: /pulsar_pointing
     bad_inputs: []
     in_buffers:
       network_buf: gpu_input_buffer_0
@@ -139,9 +188,9 @@ gpu:
 cpu_simulate:
   cpu_data_sim_0:
       kotekan_stage: gpuBeamformPulsarSimulate
-      source_ra: [300.022454326,  299.772454326, 300.272454326 , 300.022454326, 300.022454326, 299.771454326 , 299.771454326 , 300.273454326,  300.273454326, 300.022454326]
-      source_dec: [40.7839418602, 40.7839418602, 40.7839418602, 41.0339418602, 40.5339418602, 40.5329418602 , 41.0349418602 , 40.5329418602 , 41.0349418602 , 40.7839418602]
-      network_in_buf: gpu_input_buffer_0
+      source_ra: [53.6197236741, 53.6197236741, 53.6197236741, 53.6197236741, 53.6197236741, 53.6197236741, 53.6197236741, 53.6197236741, 53.6197236741, 53.6197236741]
+       source_dec: [54.6433973569, 54.6433973569, 54.6433973569, 54.6433973569, 54.6433973569, 54.6433973569, 54.6433973569, 54.6433973569, 54.6433973569, 54.6433973569]
+       network_in_buf: gpu_input_buffer_0
       beam_out_buf: cpu_output_buffer_0
 
 check_data:
@@ -149,4 +198,4 @@ check_data:
     kotekan_stage: testDataCheckFloat
     first_buf : beamform_pulsar_output_buffer_0
     second_buf: cpu_output_buffer_0
-
+    
