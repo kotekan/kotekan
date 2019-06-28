@@ -89,13 +89,13 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_
     using namespace std::placeholders;
     for (uint beam_id = 0 ; beam_id<10 ; beam_id++) {
         configUpdater::instance().subscribe(
-            config.get<std::string>(unique_name, "updatable_psr_pt")+"/"+std::to_string(beam_id),
+            config.get<std::string>(unique_name, "updatable_config/psr_pt")+"/"+std::to_string(beam_id),
             [beam_id, this](json& json_msg) -> bool { return pulsar_grab_callback(json_msg, beam_id);});
     }
 
     // listen for gain updates
     configUpdater::instance().subscribe(
-        config.get<std::string>(unique_name, "updatable_gain_psr"),
+        config.get<std::string>(unique_name, "updatable_config/gain_psr"),
         std::bind(&hsaPulsarUpdatePhase::update_gains_callback, this, _1));
 }
 

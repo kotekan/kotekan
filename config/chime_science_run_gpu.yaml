@@ -73,8 +73,8 @@ frb_gain:
   frb_gain_dir: /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_26_scl/
 
 #Pulsar stuff
-feed_sep_NS : 0.3048
-feed_sep_EW : 22.0
+feed_sep_NS: 0.3048
+feed_sep_EW: 22.0
 num_beams: 10
 num_pol: 2
 pulsar_gain:
@@ -497,9 +497,10 @@ gpu:
   gpu_0:
     kotekan_stage: hsaProcess
     gpu_id: 0
-    updatable_gain_psr: /pulsar_gain
-    updatable_psr_pt: /pulsar_pointing
-    updatable_gain_frb: /frb_gain
+    updatable_config:
+      gain_psr: /pulsar_gain
+      psr_pt: /pulsar_pointing
+      gain_frb: /frb_gain
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     bad_inputs: []
@@ -518,9 +519,10 @@ gpu:
   gpu_1:
     kotekan_stage: hsaProcess
     gpu_id: 1
-    updatable_gain_psr: /pulsar_gain
-    updatable_psr_pt: /pulsar_pointing
-    updatable_gain_frb: /frb_gain
+    updatable_config:
+      gain_psr: /pulsar_gain
+      psr_pt: /pulsar_pointing
+      gain_frb: /frb_gain
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     bad_inputs: []
@@ -539,9 +541,10 @@ gpu:
   gpu_2:
     kotekan_stage: hsaProcess
     gpu_id: 2
-    updatable_gain_psr: /pulsar_gain
-    updatable_psr_pt: /pulsar_pointing
-    updatable_gain_frb: /frb_gain
+    updatable_config:
+      gain_psr: /pulsar_gain
+      psr_pt: /pulsar_pointing
+      gain_frb: /frb_gain
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     bad_inputs: []
@@ -560,9 +563,10 @@ gpu:
   gpu_3:
     kotekan_stage: hsaProcess
     gpu_id: 3
-    updatable_gain_psr: /pulsar_gain
-    updatable_psr_pt: /pulsar_pointing
-    updatable_gain_frb: /frb_gain
+    updatable_config:
+      gain_psr: /pulsar_gain
+      psr_pt: /pulsar_pointing
+      gain_frb: /frb_gain
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     bad_inputs: []
