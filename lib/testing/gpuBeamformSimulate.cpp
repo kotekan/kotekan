@@ -8,9 +8,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#define SWAP(a, b)                                                                                 \
-    tempr = (a);                                                                                   \
-    (a) = (b);                                                                                     \
+#define SWAP(a, b)
+    tempr = (a);
+    (a) = (b); 
     (b) = tempr
 #define HI_NIBBLE(b) (((b) >> 4) & 0x0F)
 #define LO_NIBBLE(b) ((b)&0x0F)
@@ -449,10 +449,10 @@ void gpuBeamformSimulate::main_thread() {
             }
         }
 
-        //16-bandpass correction
-        float BP[16] {0.52225748,0.58330915,0.6868705,0.80121821,0.89386546,
-        0.95477358,0.98662733,0.99942558,0.99988676,0.98905127,0.95874124,
-        0.90094667,0.81113021,0.6999944,0.59367968,0.52614263};
+        // 16-bandpass correction
+        float BP[16]{0.52225748, 0.58330915, 0.6868705,  0.80121821, 0.89386546, 0.95477358,
+                     0.98662733, 0.99942558, 0.99988676, 0.98905127, 0.95874124, 0.90094667,
+                     0.81113021, 0.6999944,  0.59367968, 0.52614263};
 
         // Downsample
         int nfreq_out = _factor_upchan / _downsample_freq;
@@ -482,10 +482,10 @@ void gpuBeamformSimulate::main_thread() {
                                                                    * 2
                                                                + 1];
                                 out_sq += tmp_real * tmp_real + tmp_imag * tmp_imag;
-                            } //end for ff
-                        } // end for tt
-                    }     // end for pol
-                    cpu_final_output[out_id] = out_sq / 48. / BP[int((f + 8) % 16)] ;
+                            } // end for ff
+                        }     // end for tt
+                    }         // end for pol
+                    cpu_final_output[out_id] = out_sq / 48. / BP[int((f + 8) % 16)];
 
                 } // end for freq
             }     // end for time
