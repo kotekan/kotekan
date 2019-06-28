@@ -38,12 +38,13 @@
  *     @gpu_mem_type            staging
  *     @gpu_mem_format          Array of @c float
  *     @gpu_mem_metadata        none
- *  
+ *
  * @conf   num_elements               Int (default 2048). Number of elements
  * @conf   num_beams                  Int (default 10). Number of pulsars
  * @conf   feed_sep_NS                Float (default 0.3048). N-S feed separation in m.
  * @conf   feed_sep_EW                Float (default 22.0). E-W feed separation in m.
- * @conf   default_gains              Float array (default 1+1j). Default gain value if gain file is missing
+ * @conf   default_gains              Float array (default 1+1j). Default gain value if gain file is
+ * missing
  * @conf   pulsar_pointing/i/ra       Float - initial RA (in deg) to form beams on for beam_id=i
  * @conf   pulsar_pointing/i/dec      Float - initial Dec (in deg) to form beams on for beam_id=i
  * @conf   pulsar_pointing/i/scaling  Int - nominal scaling for beam_id=i

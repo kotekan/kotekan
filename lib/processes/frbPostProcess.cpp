@@ -15,7 +15,6 @@ REGISTER_KOTEKAN_STAGE(frbPostProcess);
 frbPostProcess::frbPostProcess(Config& config_, const string& unique_name,
                                bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&frbPostProcess::main_thread, this)) {
-     INFO("[frb PP] constructor says hi=======");
     // Apply config.
     _num_gpus = config.get<int32_t>(unique_name, "num_gpus");
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
@@ -51,9 +50,9 @@ frbPostProcess::frbPostProcess(Config& config_, const string& unique_name,
     register_producer(frb_buf, unique_name.c_str());
 
     lost_samples_buf = get_buffer("lost_samples_buf");
-    register_consumer(lost_samples_buf,unique_name.c_str());
+    register_consumer(lost_samples_buf, unique_name.c_str());
     lost_samples_buf_id = 0;
-    
+
     // Dynamic header
     frb_header_beam_ids = new uint16_t[_nbeams];
     frb_header_coarse_freq_ids = new uint16_t[_num_gpus];
@@ -138,43 +137,49 @@ void frbPostProcess::main_thread() {
             for (int thread_id = 0; thread_id < _num_gpus; thread_id++) { // loop 4 GPUs (input)
                 float* in_data = (float*)in_frame[thread_id];
                 for (int b = 0; b < num_L1_streams * _nbeams; b++) { // loop 1024 beams
-                    for (uint t = 0; t< num_samples; t++) {
+                    for (uint t = 0; t < num_samples; t++) {
                         float norm = 1. / _nbeams / num_L1_streams;
                         float ce = _incoherent_truncation / norm;
                         __m256 _ce = _mm256_broadcast_ss(&ce);
 
-                        //check if drop packet by reading 384 original times, if so zero the norm
-                        for (int tz=0; tz< _downsample_time*_factor_upchan; tz++) {
-                            if (lost_samples_frame[t*_factor_upchan*_downsample_time+tz] == 1) {
+                        // check if drop packet by reading 384 original times, if so zero the norm
+                        for (int tz = 0; tz < _downsample_time * _factor_upchan; tz++) {
+                            if (lost_samples_frame[t * _factor_upchan * _downsample_time + tz]
+                                == 1) {
                                 norm = 0.0;
                                 break;
                             }
                         }
                         __m256 _norm = _mm256_broadcast_ss(&norm);
-                        for (int32_t f = 0; f < _factor_upchan_out; f += (sizeof(__m256) / sizeof(float))) { // loop over freq , each +8
-                            int idx = t* _factor_upchan_out+ f;
+                        for (int32_t f = 0; f < _factor_upchan_out;
+                             f += (sizeof(__m256) / sizeof(float))) { // loop over freq , each +8
+                            int idx = t * _factor_upchan_out + f;
                             int idx_next = b * num_samples * _factor_upchan_out; // b*128*16
-                            __m256 _a = _mm256_load_ps(ib + thread_id * num_samples * _factor_upchan_out + idx);
+                            __m256 _a = _mm256_load_ps(
+                                ib + thread_id * num_samples * _factor_upchan_out + idx);
                             __m256 _b = _mm256_load_ps(in_data + idx + idx_next);
                             // limit the max value in e.g. the coherent beam
                             _b = _mm256_min_ps(_b, _ce);
-                            __m256 _c = _mm256_fmadd_ps(_b, _norm, _a);  //SUMMING
-                            _mm256_store_ps(ib + thread_id * num_samples * _factor_upchan_out + idx, _c);
-                        } //end loop f
-                    } //end loop t
+                            __m256 _c = _mm256_fmadd_ps(_b, _norm, _a); // SUMMING
+                            _mm256_store_ps(ib + thread_id * num_samples * _factor_upchan_out + idx,
+                                            _c);
+                        } // end loop f
+                    }     // end loop t
                 }
             }
         }
 
         float ofs, scl;
-        for (uint T = 0; T < num_samples; T += _timesamples_per_frb_packet) { // loop 128 time samples, in 8
+        for (uint T = 0; T < num_samples;
+             T += _timesamples_per_frb_packet) {                      // loop 128 time samples, in 8
             for (int stream = 0; stream < num_L1_streams; stream++) { // loop 256 streams (output)
                 for (int b = 0; b < _nbeams; b++) {                   // loop 4 beams / stream
                     int beam_id = stream * _nbeams + b;
                     // frb_header_beam_ids[b] = beam_id;
                     // Changing to beam id convention 0->255, 1000->1255, 2000->2255, 3000->3255
                     frb_header_beam_ids[b] = (beam_id) % 256 + (int((beam_id) / 256) * 1000);
-                    for (int thread_id = 0; thread_id < _num_gpus; thread_id++) { // loop 4 GPUs (input)
+                    for (int thread_id = 0; thread_id < _num_gpus;
+                         thread_id++) { // loop 4 GPUs (input)
                         float* in_data =
                             ((float*)in_frame[thread_id])
                             + (stream * _nbeams + b) * num_samples * _factor_upchan_out;
@@ -222,10 +227,12 @@ void frbPostProcess::main_thread() {
                         for (int t = 0; t < _timesamples_per_frb_packet; t++) {
                             scl = (253.) / (max - min);
                             off = -ofs * scl;
-                            // Loop through 384 time to check for drop packet, if so, set scl and off to be zero
-                            for (int tz=0; tz< _downsample_time*_factor_upchan; tz++) {
-                                if (lost_samples_frame[T*_factor_upchan*_downsample_time+tz] == 1) {
-                                    scl =0.0;
+                            // Loop through 384 time to check for drop packet, if so, set scl and
+                            // off to be zero
+                            for (int tz = 0; tz < _downsample_time * _factor_upchan; tz++) {
+                                if (lost_samples_frame[T * _factor_upchan * _downsample_time + tz]
+                                    == 1) {
+                                    scl = 0.0;
                                     off = 0.0;
                                     break;
                                 }
@@ -235,15 +242,17 @@ void frbPostProcess::main_thread() {
                             for (int f = 0; f < _factor_upchan_out; f += f_per_m) {
                                 uint32_t in_index = (T + t) * _factor_upchan_out + f;
                                 __m256 _in = _mm256_load_ps(in_data + in_index);
-                                __m256 _out = _mm256_fmadd_ps(_in, _scl, _ofs); // now [0-255]  // APPLY!
+                                __m256 _out =
+                                    _mm256_fmadd_ps(_in, _scl, _ofs); // now [0-255]  // APPLY!
                                 // extract -- probably a better way to do this...
-                                __m256i _y = _mm256_cvtps_epi32(_out);     // Convert them to 32-bit ints
+                                __m256i _y =
+                                    _mm256_cvtps_epi32(_out);     // Convert them to 32-bit ints
                                 _y = _mm256_packus_epi32(_y, _y); // Pack down to 16 bits
                                 _y = _mm256_packus_epi16(_y, _y); // Pack down to 8 bits
                                 *(int32_t*)(utr + t * 16 + f) = _mm256_extract_epi32(_y, 0);
                                 *(int32_t*)(utr + t * 16 + f + 4) = _mm256_extract_epi32(_y, 4);
                             } // end freq f
-                        } // end time t
+                        }     // end time t
                         // transpose
                         for (int t = 0; t < 16; t++)
                             for (int f = 0; f < 16; f++)
@@ -276,7 +285,6 @@ void frbPostProcess::main_thread() {
             // release_info_object(in_buf[gpu_id], in_buffer_ID[i]);
             mark_frame_empty(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
             in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
-
         }
     } // end stop thread
 }

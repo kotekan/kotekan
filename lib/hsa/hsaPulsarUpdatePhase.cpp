@@ -51,9 +51,12 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_
     default_gains = config.get_default<std::vector<float>>(unique_name, "frb_missing_gains", dg);
 
     for (int i = 0; i < _num_beams; i++) {
-        psr_coord_latest_update.ra[i] = config.get<float>(unique_name, "pulsar_pointing/"+std::to_string(i)+"/ra");
-        psr_coord_latest_update.dec[i] = config.get<float>(unique_name, "pulsar_pointing/"+std::to_string(i)+"/dec");
-        psr_coord_latest_update.scaling[i] = config.get<float>(unique_name, "pulsar_pointing/"+std::to_string(i)+"/scaling");
+        psr_coord_latest_update.ra[i] =
+            config.get<float>(unique_name, "pulsar_pointing/" + std::to_string(i) + "/ra");
+        psr_coord_latest_update.dec[i] =
+            config.get<float>(unique_name, "pulsar_pointing/" + std::to_string(i) + "/dec");
+        psr_coord_latest_update.scaling[i] =
+            config.get<float>(unique_name, "pulsar_pointing/" + std::to_string(i) + "/scaling");
     }
 
     // Just for metadata manipulation
@@ -87,10 +90,13 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_
 
     // Register function to listen for new pulsar, and update ra and dec
     using namespace std::placeholders;
-    for (uint beam_id = 0 ; beam_id<10 ; beam_id++) {
+    for (uint beam_id = 0; beam_id < 10; beam_id++) {
         configUpdater::instance().subscribe(
-            config.get<std::string>(unique_name, "updatable_config/psr_pt")+"/"+std::to_string(beam_id),
-            [beam_id, this](json& json_msg) -> bool { return pulsar_grab_callback(json_msg, beam_id);});
+            config.get<std::string>(unique_name, "updatable_config/psr_pt") + "/"
+                + std::to_string(beam_id),
+            [beam_id, this](json& json_msg) -> bool {
+                return pulsar_grab_callback(json_msg, beam_id);
+            });
     }
 
     // listen for gain updates
@@ -303,26 +309,28 @@ void hsaPulsarUpdatePhase::finalize_frame(int frame_id) {
 
 bool hsaPulsarUpdatePhase::pulsar_grab_callback(nlohmann::json& json, const uint8_t beam_id) {
     {
-    std::lock_guard<std::mutex> lock(_pulsar_lock);
-    try {
-        psr_coord_latest_update.ra[beam_id] = json.at("ra").get<float>();
-    } catch (std::exception const& e) {
-        WARN("[PSR] Pointing update fail to read RA %s", e.what());
-        return false;
-    }
-    try {
-        psr_coord_latest_update.dec[beam_id] = json.at("dec").get<float>();
-    } catch	(std::exception const& e) {
-        WARN("[PSR] Pointing update fail to read DEC %s", e.what());
-        return false;
-    }
-    try {
-        psr_coord_latest_update.scaling[beam_id] = json.at("scaling").get<int>();
-    } catch	(std::exception const& e) {
-        WARN("[PSR] Pointing update fail to read scaling factor %s", e.what());
-        return false;
-    }
-    INFO("[psr] Updated Beam=%d RA=%.2f Dec=%.2f Scl=%d", beam_id, psr_coord_latest_update.ra[beam_id], psr_coord_latest_update.dec[beam_id], psr_coord_latest_update.scaling[beam_id] );
+        std::lock_guard<std::mutex> lock(_pulsar_lock);
+        try {
+            psr_coord_latest_update.ra[beam_id] = json.at("ra").get<float>();
+        } catch (std::exception const& e) {
+            WARN("[PSR] Pointing update fail to read RA %s", e.what());
+            return false;
+        }
+        try {
+            psr_coord_latest_update.dec[beam_id] = json.at("dec").get<float>();
+        } catch (std::exception const& e) {
+            WARN("[PSR] Pointing update fail to read DEC %s", e.what());
+            return false;
+        }
+        try {
+            psr_coord_latest_update.scaling[beam_id] = json.at("scaling").get<int>();
+        } catch (std::exception const& e) {
+            WARN("[PSR] Pointing update fail to read scaling factor %s", e.what());
+            return false;
+        }
+        INFO("[psr] Updated Beam=%d RA=%.2f Dec=%.2f Scl=%d", beam_id,
+             psr_coord_latest_update.ra[beam_id], psr_coord_latest_update.dec[beam_id],
+             psr_coord_latest_update.scaling[beam_id]);
         update_phase = true;
     }
     return true;

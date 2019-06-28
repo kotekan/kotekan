@@ -30,7 +30,7 @@ using std::vector;
  * This stage can also optionally produce a sum-of-all-beams "incoherent" beam,
  * which will be stored in the 0th beam position in output packets.
  *
- * Time samples with dropped packet are set to zero. 
+ * Time samples with dropped packet are set to zero.
  *
  * This stage depends on ``AVX2`` intrinsics.
  *
@@ -91,7 +91,7 @@ private:
     /// Lost sample - drop packet
     Buffer* lost_samples_buf;
     int32_t lost_samples_buf_id;
-  
+
     struct Buffer** in_buf;
     struct Buffer* frb_buf;
 
