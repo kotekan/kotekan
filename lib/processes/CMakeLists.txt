@@ -53,6 +53,7 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       visTestPattern.cpp
       visDebug.cpp
       removeEv.cpp
+      integrateHFBData.cpp
     )
 
 if (${USE_AIRSPY})
