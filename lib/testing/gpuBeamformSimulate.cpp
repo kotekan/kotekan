@@ -8,9 +8,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#define SWAP(a, b)
-    tempr = (a);
-    (a) = (b); 
+#define SWAP(a, b)                                                                                 \
+    tempr = (a);                                                                                   \
+    (a) = (b);                                                                                     \
     (b) = tempr
 #define HI_NIBBLE(b) (((b) >> 4) & 0x0F)
 #define LO_NIBBLE(b) ((b)&0x0F)
