@@ -95,7 +95,7 @@ cpu_simulate:
     beam_out_buf: cpu_output_buffer_0
 
 gpu:
-  kernel_path: "../../lib/hsa/kernels/"
+  kernel_path: "../lib/hsa/kernels/"
   commands:
   - name: hsaInputData
   - name: hsaOutputDataZero

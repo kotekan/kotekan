@@ -3,6 +3,7 @@
 
 #include "gpuDeviceInterface.hpp"
 #include "hsa/hsa.h"
+#include "hsa/hsaBase.h"
 #include "hsa/hsa_ext_amd.h"
 #include "hsa/hsa_ext_finalize.h"
 
