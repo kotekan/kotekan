@@ -37,10 +37,7 @@ void integrateHFBData::main_thread() {
     uint8_t* in_frame;
     int out_buffer_ID = 0;
     uint frame = 0;
-    float sum_total[_num_frb_total_beams * _num_sub_freqs];
     
-    for (uint32_t i = 0; i < _num_frb_total_beams * _num_sub_freqs; i++) sum_total[i] = 0.f;
- 
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t* out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
     if (out_frame == NULL)
@@ -54,10 +51,20 @@ void integrateHFBData::main_thread() {
 
       INFO("\n in_frame: %d, in_buffer_ID: %d, frame: %d\n", in_frame, in_buffer_ID, frame);
 
-      // Integrates data from the input buffer to the output buffer.
-      for (uint beam = 0; beam < _num_frb_total_beams; beam++) {
-        for (uint freq = 0; freq < _num_sub_freqs; freq++) {
-          sum_total[beam * num_sub_freqs + freq] += in_buf->frames[in_buffer_ID][beam * num_sub_freqs + freq];
+      float* sum_data = (float*)out_buf->frames[0];
+      float* input_data = (float*)in_buf->frames[in_buffer_ID];
+    
+      // If we are on the first frame copy it directly into the 
+      // output buffer frame so that we don't need to zero the frame
+      if(frame == 0) {
+        memcpy(&sum_data[0], &input_data[0], _num_frb_total_beams * _num_sub_freqs * sizeof(float));
+      }
+      else {
+        // Integrates data from the input buffer to the output buffer.
+        for (uint beam = 0; beam < _num_frb_total_beams; beam++) {
+          for (uint freq = 0; freq < _num_sub_freqs; freq++) {
+            sum_data[beam * _num_sub_freqs + freq] += input_data[beam * _num_sub_freqs + freq];
+          }
         }
       }
 
@@ -65,9 +72,6 @@ void integrateHFBData::main_thread() {
       if (frame == _num_frames_to_integrate) { // last frame
 
         INFO("\nSummed 80 frames of data. buf size: %d, frame size: %d\n", out_buf->frame_size / 4 * out_buf->num_frames, out_buf->frame_size);
-        memcpy(&out_buf->frames[0][0], &sum_total[0], _num_frb_total_beams * num_sub_freqs * sizeof(float));
-
-        for (uint32_t i = 0; i < _num_frb_total_beams * num_sub_freqs; i++) sum_total[i] = 0.f;
         
         frame = 0;
         mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
