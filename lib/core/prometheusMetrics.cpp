@@ -29,6 +29,7 @@ Gauge::Gauge(const std::vector<string>& label_values) : Metric(label_values) {}
 
 void Gauge::set(const double value) {
     this->value = value;
+    this->last_update_time_stamp = get_time_in_milliseconds();
 }
 
 string Gauge::to_string() {
@@ -38,9 +39,18 @@ string Gauge::to_string() {
 }
 
 std::ostringstream& Gauge::to_string(std::ostringstream& out) {
-    out << value;
+    out << value << " " << last_update_time_stamp;
     return out;
 }
+
+/* static */
+uint64_t Gauge::get_time_in_milliseconds() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+
+    return (uint64_t)(tv.tv_sec) * 1000 + (uint64_t)(tv.tv_usec) / 1000;
+}
+
 
 template<typename T>
 MetricFamily<T>::MetricFamily(const string& name, const string& stage_name,

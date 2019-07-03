@@ -69,8 +69,14 @@ public:
     std::ostringstream& to_string(std::ostringstream& out) override;
 
 private:
+    /// Internal function to get the time in
+    static uint64_t get_time_in_milliseconds();
+
     /// The actual value to be returned
     double value = 0;
+
+    /// Time stamp in milliseconds.
+    uint64_t last_update_time_stamp;
 };
 
 /**
