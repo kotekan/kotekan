@@ -121,6 +121,9 @@ private:
     int32_t udp_packet_size;
     int32_t udp_header_size;
     int16_t fpga_counts_per_sample;
+
+    // flag for dropped packet
+    int* droppacket;
 };
 
 #endif

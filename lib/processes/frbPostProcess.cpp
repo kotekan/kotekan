@@ -59,6 +59,8 @@ frbPostProcess::frbPostProcess(Config& config_, const string& unique_name,
     frb_header_scale = new float[_nbeams * _num_gpus];
     frb_header_offset = new float[_nbeams * _num_gpus];
 
+    droppacket = (int*)calloc(num_samples * sizeof(int));
+
     if (posix_memalign((void**)&ib, 32,
                        _num_gpus * num_samples * _factor_upchan_out * sizeof(float))) {
         throw std::runtime_error("Couldn't allocate frbPostProcess memory.");
@@ -71,6 +73,7 @@ frbPostProcess::~frbPostProcess() {
     free(frb_header_coarse_freq_ids);
     free(frb_header_scale);
     free(frb_header_offset);
+    free(droppacket);
     free(ib);
 }
 
@@ -123,6 +126,15 @@ void frbPostProcess::main_thread() {
 
         // Information on drop packets
         uint8_t* lost_samples_frame = lost_samples_buf->frames[lost_samples_buf_id];
+        for (uint t = 0; t < num_samples; t++) {
+            // check if drop packet by reading 384 original times, if so flag that t
+            for (int tz = 0; tz < _downsample_time * _factor_upchan; tz++) {
+                if (lost_samples_frame[t * _factor_upchan * _downsample_time + tz] == 1) {
+                    droppacket[t] = 1;
+                    break;
+                }
+            }
+        }
 
         frb_header.fpga_count = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
         for (int i = 0; i < _num_gpus; ++i) {
@@ -136,36 +148,30 @@ void frbPostProcess::main_thread() {
             memset(ib, 0, _num_gpus * num_samples * _factor_upchan_out * sizeof(float));
             for (int thread_id = 0; thread_id < _num_gpus; thread_id++) { // loop 4 GPUs (input)
                 float* in_data = (float*)in_frame[thread_id];
-                for (int b = 0; b < num_L1_streams * _nbeams; b++) { // loop 1024 beams
-                    for (uint t = 0; t < num_samples; t++) {
-                        float norm = 1. / _nbeams / num_L1_streams;
-                        float ce = _incoherent_truncation / norm;
-                        __m256 _ce = _mm256_broadcast_ss(&ce);
-
-                        // check if drop packet by reading 384 original times, if so zero the norm
-                        for (int tz = 0; tz < _downsample_time * _factor_upchan; tz++) {
-                            if (lost_samples_frame[t * _factor_upchan * _downsample_time + tz]
-                                == 1) {
-                                norm = 0.0;
-                                break;
-                            }
-                        }
-                        __m256 _norm = _mm256_broadcast_ss(&norm);
-                        for (int32_t f = 0; f < _factor_upchan_out;
-                             f += (sizeof(__m256) / sizeof(float))) { // loop over freq , each +8
-                            int idx = t * _factor_upchan_out + f;
+                for (uint t = 0; t < num_samples; t++) {
+                    float norm = 1. / _nbeams / num_L1_streams;
+                    float ce = _incoherent_truncation / norm;
+                    __m256 _ce = _mm256_broadcast_ss(&ce);
+                    if (droppacket[t] == 1) {
+                        norm = 0.0;
+                    }
+                    __m256 _norm = _mm256_broadcast_ss(&norm);
+                    for (int32_t f = 0; f < _factor_upchan_out;
+                         f += (sizeof(__m256) / sizeof(float))) { // loop over freq , each +8
+                        int idx = t * _factor_upchan_out + f;
+                        __m256 _a =
+                            _mm256_load_ps(ib + thread_id * num_samples * _factor_upchan_out + idx);
+                        for (int b = 0; b < num_L1_streams * _nbeams; b++) {     // loop 1024 beams
                             int idx_next = b * num_samples * _factor_upchan_out; // b*128*16
-                            __m256 _a = _mm256_load_ps(
-                                ib + thread_id * num_samples * _factor_upchan_out + idx);
                             __m256 _b = _mm256_load_ps(in_data + idx + idx_next);
                             // limit the max value in e.g. the coherent beam
                             _b = _mm256_min_ps(_b, _ce);
                             __m256 _c = _mm256_fmadd_ps(_b, _norm, _a); // SUMMING
                             _mm256_store_ps(ib + thread_id * num_samples * _factor_upchan_out + idx,
                                             _c);
-                        } // end loop f
-                    }     // end loop t
-                }
+                        } // end loop b
+                    }     // end loop f
+                }         // end loop t
             }
         }
 
@@ -178,8 +184,7 @@ void frbPostProcess::main_thread() {
                     // frb_header_beam_ids[b] = beam_id;
                     // Changing to beam id convention 0->255, 1000->1255, 2000->2255, 3000->3255
                     frb_header_beam_ids[b] = (beam_id) % 256 + (int((beam_id) / 256) * 1000);
-                    for (int thread_id = 0; thread_id < _num_gpus;
-                         thread_id++) { // loop 4 GPUs (input)
+                    for (int thread_id = 0; thread_id < _num_gpus; thread_id++) { // loop 4 GPUs
                         float* in_data =
                             ((float*)in_frame[thread_id])
                             + (stream * _nbeams + b) * num_samples * _factor_upchan_out;
@@ -188,21 +193,32 @@ void frbPostProcess::main_thread() {
                             DEBUG("Incoherent beam! Stream %i, Beam %i; ID %i", stream, b, beam_id);
                             in_data = ib + thread_id * num_samples * _factor_upchan_out;
                         }
+                        // pre-set to zero, in case all samples dropped within these 16 t
+                        float zero = 0.0;
+                        __m256 _mx = _mm256_broadcast_ss(&zero);
+                        __m256 _mn = _mm256_broadcast_ss(&zero);
+                        __m256 _cA = _mm256_broadcast_ss(&zero);
+                        __m256 _cB = _mm256_broadcast_ss(&zero);
+                        // AVX2 option, fastest of a few I tried
+                        bool firstvalue = true;
+                        for (int t = 0; t < _timesamples_per_frb_packet; t++) {
+                            if (droppacket[T * _timesamples_per_frb_packet + t] != 1) {
+                                int idx = (T + t) * _factor_upchan_out;
+                                _cA = _mm256_load_ps(in_data + idx);     // 8f
+                                _cB = _mm256_load_ps(in_data + idx + 8); // 8f
+                                if (firstvalue) {
+                                    _mx = _mm256_max_ps(_cA, _cB);
+                                    _mn = _mm256_min_ps(_cA, _cB);
+                                    firstvalue = false;
+                                } else {
+                                    _mx = _mm256_max_ps(_mx, _mm256_max_ps(_cA, _cB));
+                                    _mn = _mm256_min_ps(_mn, _mm256_min_ps(_cA, _cB));
+                                }
+                            } // end if drop packet
+                        }
+
                         // Calc scale and offset
                         float min, max;
-                        int idx = T * _factor_upchan_out;
-                        // AVX2 option, fastest of a few I tried
-                        __m256 _cA = _mm256_load_ps(in_data + idx);
-                        __m256 _cB = _mm256_load_ps(in_data + idx + 8);
-                        __m256 _mx = _mm256_max_ps(_cA, _cB);
-                        __m256 _mn = _mm256_min_ps(_cA, _cB);
-                        for (int t = 1; t < 16; t++) {
-                            idx += 16;
-                            _cA = _mm256_load_ps(in_data + idx);
-                            _cB = _mm256_load_ps(in_data + idx + 8);
-                            _mx = _mm256_max_ps(_mx, _mm256_max_ps(_cA, _cB));
-                            _mn = _mm256_min_ps(_mn, _mm256_min_ps(_cA, _cB));
-                        }
                         __m128 mx = _mm_max_ps(_mm256_extractf128_ps(_mx, 0),
                                                _mm256_extractf128_ps(_mx, 1));
                         __m128 mn = _mm_min_ps(_mm256_extractf128_ps(_mn, 0),
@@ -225,17 +241,12 @@ void frbPostProcess::main_thread() {
                         int f_per_m = sizeof(__m256) / sizeof(float);
                         unsigned char utr[256], tr[256];
                         for (int t = 0; t < _timesamples_per_frb_packet; t++) {
-                            scl = (253.) / (max - min);
-                            off = -ofs * scl;
-                            // Loop through 384 time to check for drop packet, if so, set scl and
-                            // off to be zero
-                            for (int tz = 0; tz < _downsample_time * _factor_upchan; tz++) {
-                                if (lost_samples_frame[T * _factor_upchan * _downsample_time + tz]
-                                    == 1) {
-                                    scl = 0.0;
-                                    off = 0.0;
-                                    break;
-                                }
+                            if (droppacket[T * _timesamples_per_frb_packet + t] == 1) {
+                                scl = 0.0;
+                                off = 0.0;
+                            } else {
+                                scl = (253.) / (max - min);
+                                off = -ofs * scl;
                             }
                             __m256 _scl = _mm256_broadcast_ss(&scl);
                             __m256 _ofs = _mm256_broadcast_ss(&off);
