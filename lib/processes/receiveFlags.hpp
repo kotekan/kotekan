@@ -80,7 +80,7 @@ private:
     timespec ts_frame = {0, 0};
 
     /// Number of updates received too late
-    kotekan::Counter& late_updates_counter;
+    kotekan::prometheus::Counter& late_updates_counter;
 
     // config values
     /// Number of elements

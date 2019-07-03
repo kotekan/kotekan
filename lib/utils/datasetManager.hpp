@@ -482,7 +482,7 @@ private:
     restClient& _rest_client;
 
     // TODO: this should be a counter, but we don't have it using atomic Ints
-    kotekan::Gauge& error_counter;
+    kotekan::prometheus::Gauge& error_counter;
 };
 
 

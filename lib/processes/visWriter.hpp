@@ -176,7 +176,7 @@ private:
     movingAverage write_time;
 
     /// TODO: document
-    kotekan::Family<kotekan::Counter>& dropped_frame_counter;
+    kotekan::prometheus::Family<kotekan::prometheus::Counter>& dropped_frame_counter;
 };
 
 /**

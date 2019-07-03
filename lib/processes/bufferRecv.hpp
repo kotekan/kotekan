@@ -146,7 +146,7 @@ private:
     struct event_base* base;
 
     /// The number of frames dropped
-    kotekan::Counter& dropped_frame_counter;
+    kotekan::prometheus::Counter& dropped_frame_counter;
 
     /// A lock on the @c dropped_frame_counter
     // TODO: move locking to prometheusMetrics?
@@ -339,7 +339,6 @@ public:
         decrement_ref_count();
         close_instance();
     }
-
 };
 
 #endif

@@ -91,8 +91,8 @@ datasetManager::datasetManager() :
     _n_request_threads(0),
     _config_applied(false),
     _rest_client(restClient::instance()),
-    error_counter(kotekan::prometheusMetrics::instance()
-                  .AddGauge("kotekan_datasetbroker_error_count", DS_UNIQUE_NAME)) {
+    error_counter(kotekan::prometheus::Metrics::instance().AddGauge(
+        "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME)) {
 
     kotekan::restServer::instance().register_get_callback(
         DS_FORCE_UPDATE_ENDPOINT_NAME,

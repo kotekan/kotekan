@@ -15,8 +15,8 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(visDebug);
 
@@ -35,9 +35,8 @@ void visDebug::main_thread() {
 
     uint64_t num_frames = 0;
 
-    auto& frame_counter = prometheusMetrics::instance()
-        .AddCounter("kotekan_visdebug_frame_total", unique_name,
-                    {"freq_id", "dataset_id"});
+    auto& frame_counter = Metrics::instance().AddCounter("kotekan_visdebug_frame_total",
+                                                         unique_name, {"freq_id", "dataset_id"});
     while (!stop_thread) {
 
         // Wait for the buffer to be filled with data
@@ -51,8 +50,8 @@ void visDebug::main_thread() {
         auto frame = visFrameView(in_buf, frame_id);
         DEBUG("%s", frame.summary().c_str());
 
-        frame_counter.Labels({std::to_string(frame.freq_id),
-                              std::to_string(frame.dataset_id)}).inc();
+        frame_counter.Labels({std::to_string(frame.freq_id), std::to_string(frame.dataset_id)})
+            .inc();
 
         // Mark the buffers and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);

@@ -16,28 +16,24 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(EigenVisIter);
 
 EigenVisIter::EigenVisIter(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&EigenVisIter::main_thread, this)),
-    comp_time_seconds(prometheusMetrics::instance()
-                      .AddGauge("kotekan_eigenvisiter_comp_time_seconds", unique_name)),
-    eigenvalue(prometheusMetrics::instance()
-               .AddGauge("kotekan_eigenvisiter_eigenvalue", unique_name,
-        {"eigenvalue", "freq_id", "dataset_id"})),
-    iterations(prometheusMetrics::instance()
-               .AddGauge("kotekan_eigenvisiter_iterations",
-                         unique_name, {"freq_id", "dataset_id"})),
-    eigenvalue_convergence(prometheusMetrics::instance()
-                           .AddGauge("kotekan_eigenvisiter_eigenvalue_convergence",
-                                     unique_name, {"freq_id", "dataset_id"})),
-    eigenvector_convergence(prometheusMetrics::instance()
-                            .AddGauge("kotekan_eigenvisiter_eigenvector_convergence",
-                                      unique_name, {"freq_id", "dataset_id"})) {
+    comp_time_seconds(
+        Metrics::instance().AddGauge("kotekan_eigenvisiter_comp_time_seconds", unique_name)),
+    eigenvalue(Metrics::instance().AddGauge("kotekan_eigenvisiter_eigenvalue", unique_name,
+                                            {"eigenvalue", "freq_id", "dataset_id"})),
+    iterations(Metrics::instance().AddGauge("kotekan_eigenvisiter_iterations", unique_name,
+                                            {"freq_id", "dataset_id"})),
+    eigenvalue_convergence(Metrics::instance().AddGauge(
+        "kotekan_eigenvisiter_eigenvalue_convergence", unique_name, {"freq_id", "dataset_id"})),
+    eigenvector_convergence(Metrics::instance().AddGauge(
+        "kotekan_eigenvisiter_eigenvector_convergence", unique_name, {"freq_id", "dataset_id"})) {
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -195,8 +191,7 @@ void EigenVisIter::update_metrics(uint32_t freq_id, dset_id_t dset_id, double el
     }
 
     // Output RMS to prometheus
-    eigenvalue.Labels({"rms", std::to_string(freq_id), std::to_string(dset_id)})
-        .set(stats.rms);
+    eigenvalue.Labels({"rms", std::to_string(freq_id), std::to_string(dset_id)}).set(stats.rms);
 
     // Output convergence stats
     std::vector<std::string> labels = {std::to_string(freq_id), std::to_string(dset_id)};

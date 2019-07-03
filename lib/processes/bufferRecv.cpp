@@ -27,16 +27,16 @@ using std::vector;
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::connectionInstance;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(bufferRecv);
 
 bufferRecv::bufferRecv(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferRecv::main_thread, this)),
-    dropped_frame_counter(prometheusMetrics::instance()
-                          .AddCounter("kotekan_buffer_recv_dropped_frame_total", unique_name)) {
+    dropped_frame_counter(
+        Metrics::instance().AddCounter("kotekan_buffer_recv_dropped_frame_total", unique_name)) {
 
     listen_port = config.get_default<uint32_t>(unique_name, "listen_port", 11024);
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
@@ -336,17 +336,19 @@ void connInstance::internal_read_callback() {
     // "producer_name" that we use as the "stage" comes from (potentially many)
     // external source(s), so there is no guarantee of its uniqueness.
     static std::mutex producer_transfer_time_map_lock;
-    static std::unordered_map<std::string, std::shared_ptr<kotekan::Family<kotekan::Gauge>>> producer_transfer_time_map;
+    static std::unordered_map<
+        std::string, std::shared_ptr<kotekan::prometheus::Family<kotekan::prometheus::Gauge>>>
+        producer_transfer_time_map;
 
     // Look up the metric for this instance's producer, or create a new one
-    std::shared_ptr<kotekan::Family<kotekan::Gauge>> transfer_time_seconds;
+    std::shared_ptr<kotekan::prometheus::Family<kotekan::prometheus::Gauge>> transfer_time_seconds;
     {
         std::lock_guard<std::mutex> lock(producer_transfer_time_map_lock);
         if (producer_transfer_time_map.count(producer_name) == 0) {
-            auto& m = prometheusMetrics::instance()
-                .AddGauge("kotekan_buffer_recv_transfer_time_seconds",
-                          producer_name, {"source"});
-            producer_transfer_time_map[producer_name] = std::shared_ptr<kotekan::Family<kotekan::Gauge>>(&m);
+            auto& m = Metrics::instance().AddGauge("kotekan_buffer_recv_transfer_time_seconds",
+                                                   producer_name, {"source"});
+            producer_transfer_time_map[producer_name] =
+                std::shared_ptr<kotekan::prometheus::Family<kotekan::prometheus::Gauge>>(&m);
         }
         transfer_time_seconds = producer_transfer_time_map.at(producer_name);
     }

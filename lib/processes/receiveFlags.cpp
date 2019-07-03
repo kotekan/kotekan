@@ -12,8 +12,8 @@ using namespace std::placeholders;
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::configUpdater;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(receiveFlags);
 
@@ -21,9 +21,8 @@ REGISTER_KOTEKAN_STAGE(receiveFlags);
 receiveFlags::receiveFlags(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&receiveFlags::main_thread, this)),
-    late_updates_counter(prometheusMetrics::instance()
-                         .AddCounter("kotekan_receiveflags_late_update_count", unique_name))
-{
+    late_updates_counter(
+        Metrics::instance().AddCounter("kotekan_receiveflags_late_update_count", unique_name)) {
     // Setup the buffers
     buf_in = get_buffer("in_buf");
     buf_out = get_buffer("out_buf");
@@ -45,7 +44,6 @@ receiveFlags::receiveFlags(Config& config, const string& unique_name,
     // we are ready to receive updates with the callback function now!
     // register as a subscriber with configUpdater
     configUpdater::instance().subscribe(this, std::bind(&receiveFlags::flags_callback, this, _1));
-
 }
 
 bool receiveFlags::flags_callback(nlohmann::json& json) {
@@ -116,13 +114,12 @@ void receiveFlags::main_thread() {
 
     std::pair<timespec, const std::vector<float>*> update;
 
-    auto& receiveflags_update_age = prometheusMetrics::instance()
-        .AddGauge("kotekan_receiveflags_update_age_seconds",
-                  unique_name);
+    auto& receiveflags_update_age =
+        Metrics::instance().AddGauge("kotekan_receiveflags_update_age_seconds", unique_name);
     receiveflags_update_age.set(-ts_to_double(ts_late));
     // Report number of frames received late
-    auto& receiveflags_late_frame_counter = prometheusMetrics::instance()
-        .AddCounter("kotekan_receiveflags_late_frame_count", unique_name);
+    auto& receiveflags_late_frame_counter =
+        Metrics::instance().AddCounter("kotekan_receiveflags_late_frame_count", unique_name);
 
     while (!stop_thread) {
         // Wait for an input frame

@@ -15,8 +15,8 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(eigenVis);
 
@@ -73,17 +73,15 @@ void eigenVis::main_thread() {
 
     openblas_set_num_threads(1);
 
-    auto& eigenvalue = prometheusMetrics::instance()
-        .AddGauge("kotekan_eigenvis_eigenvalue", unique_name,
-                  {"eigenvalue", "freq_id", "dataset_id"});
+    auto& eigenvalue = Metrics::instance().AddGauge("kotekan_eigenvis_eigenvalue", unique_name,
+                                                    {"eigenvalue", "freq_id", "dataset_id"});
 
-    auto& comp_time_seconds = prometheusMetrics::instance()
-        .AddGauge("kotekan_eigenvis_comp_time_seconds", unique_name);
+    auto& comp_time_seconds =
+        Metrics::instance().AddGauge("kotekan_eigenvis_comp_time_seconds", unique_name);
 
     // TODO: this should logically be a Counter
-    auto& lapack_failure_counter = prometheusMetrics::instance().AddGauge(
-        "kotekan_eigenvis_lapack_failure_total", unique_name,
-        {"freq_id", "dataset_id"});
+    auto& lapack_failure_counter = Metrics::instance().AddGauge(
+        "kotekan_eigenvis_lapack_failure_total", unique_name, {"freq_id", "dataset_id"});
 
     while (!stop_thread) {
 
@@ -226,13 +224,13 @@ void eigenVis::main_thread() {
         // Output eigenvalues to prometheus
         for (uint32_t i = 0; i < num_eigenvectors; i++) {
             eigenvalue
-                .Labels({std::to_string(i), std::to_string(freq_id), std::to_string(input_frame.dataset_id)})
+                .Labels({std::to_string(i), std::to_string(freq_id),
+                         std::to_string(input_frame.dataset_id)})
                 .set(evals[num_eigenvectors - 1 - i]);
         }
 
         // Output RMS to prometheus
-        eigenvalue
-            .Labels({"rms", std::to_string(freq_id), std::to_string(input_frame.dataset_id)})
+        eigenvalue.Labels({"rms", std::to_string(freq_id), std::to_string(input_frame.dataset_id)})
             .set(rms);
 
         // Get output buffer for visibilities. Essentially identical to input buffers.

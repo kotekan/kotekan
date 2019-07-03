@@ -15,6 +15,7 @@ using std::map;
 using std::string;
 
 namespace kotekan {
+namespace prometheus {
 
 /**
  * @class metric
@@ -39,13 +40,14 @@ public:
     /// @brief Sets the current metric value
     void set(double value);
     string to_string() override;
+
 private:
     /// Time stamp in milliseconds.
     uint64_t last_update_time_stamp;
 };
 
 /**
- * @class metric
+ * @class Metric
  * @brief An internal base class for storing metric values
  */
 class Metric {
@@ -55,26 +57,40 @@ public:
 
     /// @brief Returns the stored value as a string.
     virtual string to_string() = 0;
+    /// @brief Formats the stored value as a string into the given output stream.
     virtual std::ostringstream& to_string(std::ostringstream& out) = 0;
     const std::vector<string> label_values;
 };
 
+/**
+ * @class Counter
+ * @brief Represents a metric whose value can only go up
+ * @see https://prometheus.io/docs/concepts/metric_types/#counter
+ */
 class Counter : public Metric {
 public:
     Counter(const std::vector<string>&);
     void inc();
     string to_string() override;
     std::ostringstream& to_string(std::ostringstream& out) override;
+
 private:
+    /// The actual value to be returned
     int value = 0;
 };
 
+/**
+ * @class Gauge
+ * @brief Represents a metric whose value can go up and down
+ * @see https://prometheus.io/docs/concepts/metric_types/#gauge
+ */
 class Gauge : public Metric {
 public:
     Gauge(const std::vector<string>&);
     void set(const double);
     string to_string() override;
     std::ostringstream& to_string(std::ostringstream& out) override;
+
 private:
     /// The actual value to be returned
     double value = 0;
@@ -86,18 +102,28 @@ enum class MetricType {
     Untyped,
 };
 
+/**
+ * @class Serializable
+ * @brief Interface for types that can be represented in Prometheus text format.
+ */
 struct Serializable {
     virtual ~Serializable() = default;
+
+    /**
+     * @brief Returns a string representation of metrics in Prometheus text format.
+     *
+     * @remark See [Prometheus
+     * documentation](https://prometheus.io/docs/instrumenting/exposition_formats/) for the precise
+     * format specification.
+     */
     virtual string Serialize() = 0;
 };
 
 template<typename T>
 class Family : public Serializable {
 public:
-    Family(const string& name,
-           const string& stage,
-            const std::vector<string>& label_names,
-            const MetricType = MetricType::Untyped);
+    Family(const string& name, const string& stage, const std::vector<string>& label_names,
+           const MetricType = MetricType::Untyped);
 
     // T& Labels(const std::vector<string>& label_values);
 
@@ -121,13 +147,14 @@ public:
     const string name;
     const string stage_name;
     const std::vector<string> label_names;
+
 private:
     std::vector<T> metrics;
     const MetricType metric_type;
 };
 
 /**
- * @class prometheusMetrics
+ * @class Metrics
  * @brief Class for exporting system metrics to a prometheus server
  *
  * This class must be registered with a kotekan REST server instance.=,
@@ -142,16 +169,16 @@ private:
  *
  * @author Andre Renard
  */
-class prometheusMetrics {
+class Metrics {
 public:
     /// Destructor
-    ~prometheusMetrics();
+    ~Metrics();
 
     /**
      * @brief Returns the singleton instance of the prometheusMetrics object.
      * @return A pointer to the prometheusMetrics object
      */
-    static prometheusMetrics& instance();
+    static Metrics& instance();
 
     /**
      * @brief Registers this class with the REST server, creating the
@@ -234,17 +261,13 @@ public:
     string Serialize();
 
     Gauge& AddGauge(const string&, const string&);
-    Family<Gauge>& AddGauge(const string&,
-                            const string&,
-                            const std::vector<string>&);
+    Family<Gauge>& AddGauge(const string&, const string&, const std::vector<string>&);
     Counter& AddCounter(const string&, const string&);
-    Family<Counter>& AddCounter(const string&,
-                                const string&,
-                                const std::vector<string>&);
-private:
+    Family<Counter>& AddCounter(const string&, const string&, const std::vector<string>&);
 
+private:
     /// Constructor, not used directly
-    prometheusMetrics();
+    Metrics();
 
     void Add(const string, const string, std::shared_ptr<Serializable>);
 
@@ -264,6 +287,7 @@ private:
     std::mutex metrics_lock;
 };
 
+} // namespace prometheus
 } // namespace kotekan
 
 #endif /* PROMETHEUS_METRICS_HPP */

@@ -470,7 +470,7 @@ int main(int argc, char** argv) {
     rest_server.register_get_callback(
         "/version", [&](connectionInstance& conn) { conn.send_json_reply(version_json); });
 
-    prometheusMetrics& metrics = prometheusMetrics::instance();
+    auto& metrics = prometheus::Metrics::instance();
     metrics.register_with_server(&rest_server);
     auto& kotekan_running = metrics.AddGauge("kotekan_running", "main");
     kotekan_running.set(running);

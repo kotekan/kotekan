@@ -149,8 +149,7 @@ private:
     std::condition_variable ready_to_write;
     std::mutex dump_to_write_mtx;
 
-    kotekan::prometheusMetrics& metrics = kotekan::prometheusMetrics::instance();
-    kotekan::Family<kotekan::Counter>& readout_counter;
+    kotekan::prometheus::Family<kotekan::prometheus::Counter>& readout_counter;
 };
 
 #endif

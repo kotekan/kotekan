@@ -16,8 +16,8 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(bufferStatus);
 
@@ -35,11 +35,11 @@ void bufferStatus::main_thread() {
     time_delay = config.get_default<int>(unique_name, "time_delay", 1000000);
     print_status = config.get_default<bool>(unique_name, "print_status", true);
 
-    prometheusMetrics& metrics = prometheusMetrics::instance();
-    auto& frames_counter = metrics.AddGauge("kotekan_bufferstatus_frames_total",
-                                            unique_name, {"buffer_name"});
-    auto& full_frames_counter = metrics.AddGauge("kotekan_bufferstatus_full_frames_total",
-                                                 unique_name, {"buffer_name"});
+    Metrics& metrics = Metrics::instance();
+    auto& frames_counter =
+        metrics.AddGauge("kotekan_bufferstatus_frames_total", unique_name, {"buffer_name"});
+    auto& full_frames_counter =
+        metrics.AddGauge("kotekan_bufferstatus_full_frames_total", unique_name, {"buffer_name"});
 
     double last_print_time = current_time();
 

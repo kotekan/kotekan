@@ -39,8 +39,8 @@ using namespace std::placeholders;
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::configUpdater;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(visAccumulate);
 
@@ -272,7 +272,7 @@ void visAccumulate::main_thread() {
     // Have we initialised a frame for writing yet
     bool init = false;
 
-    auto& skipped_frame_counter = prometheusMetrics::instance().AddCounter(
+    auto& skipped_frame_counter = Metrics::instance().AddCounter(
         "kotekan_visaccumulate_skipped_frame_total", unique_name, {"freq_id"});
     while (!stop_thread) {
 

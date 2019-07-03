@@ -239,7 +239,7 @@ private:
     /// Map of registered readout stages, indexed by `freq_id`
     basebandReadoutRegistry readout_registry;
 
-    Counter& request_counter;
+    prometheus::Counter& request_counter;
 };
 
 } // namespace kotekan

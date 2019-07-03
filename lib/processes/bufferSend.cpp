@@ -16,17 +16,16 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(bufferSend);
 
 bufferSend::bufferSend(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferSend::main_thread, this)),
-    dropped_frame_counter(prometheusMetrics::instance()
-                          .AddCounter("kotekan_buffer_send_dropped_frame_count", unique_name))
-{
+    dropped_frame_counter(
+        Metrics::instance().AddCounter("kotekan_buffer_send_dropped_frame_count", unique_name)) {
 
     buf = get_buffer("buf");
     register_consumer(buf, unique_name.c_str());

@@ -15,8 +15,8 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(rawFileWrite);
 
@@ -42,8 +42,8 @@ void rawFileWrite::main_thread() {
     char hostname[64];
     gethostname(hostname, 64);
 
-    auto& write_time_metric = prometheusMetrics::instance()
-        .AddGauge("kotekan_rawfilewrite_write_time_seconds", unique_name);
+    auto& write_time_metric =
+        Metrics::instance().AddGauge("kotekan_rawfilewrite_write_time_seconds", unique_name);
     while (!stop_thread) {
 
         // This call is blocking.

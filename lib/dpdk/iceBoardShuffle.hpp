@@ -167,52 +167,46 @@ protected:
     uint64_t rx_shuffle_flags_set = 0;
 
     /// Prometheus metrics
-    kotekan::Family<kotekan::Gauge>& third_shuffle_error;
-    kotekan::Family<kotekan::Gauge>& third_crc_error;
-    kotekan::Family<kotekan::Gauge>& third_missing_short_error;
-    kotekan::Family<kotekan::Gauge>& third_long_error;
-    kotekan::Family<kotekan::Gauge>& third_fifo_overflow_error;
+    kotekan::prometheus::Family<kotekan::prometheus::Gauge>& third_shuffle_error;
+    kotekan::prometheus::Family<kotekan::prometheus::Gauge>& third_crc_error;
+    kotekan::prometheus::Family<kotekan::prometheus::Gauge>& third_missing_short_error;
+    kotekan::prometheus::Family<kotekan::prometheus::Gauge>& third_long_error;
+    kotekan::prometheus::Family<kotekan::prometheus::Gauge>& third_fifo_overflow_error;
 
-    kotekan::Family<kotekan::Gauge>& second_shuffle_error;
-    kotekan::Family<kotekan::Gauge>& second_crc_error;
-    kotekan::Family<kotekan::Gauge>& second_missing_short_error;
-    kotekan::Family<kotekan::Gauge>& second_long_error;
-    kotekan::Family<kotekan::Gauge>& second_fifo_overflow_error;
+    kotekan::prometheus::Family<kotekan::prometheus::Gauge>& second_shuffle_error;
+    kotekan::prometheus::Family<kotekan::prometheus::Gauge>& second_crc_error;
+    kotekan::prometheus::Family<kotekan::prometheus::Gauge>& second_missing_short_error;
+    kotekan::prometheus::Family<kotekan::prometheus::Gauge>& second_long_error;
+    kotekan::prometheus::Family<kotekan::prometheus::Gauge>& second_fifo_overflow_error;
 };
 
 iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& unique_name,
                                  kotekan::bufferContainer& buffer_container, int port) :
     iceBoardHandler(config, unique_name, buffer_container, port),
-    third_shuffle_error(kotekan::prometheusMetrics::instance()
-                        .AddGauge("kotekan_dpdk_shuffle_fpga_third_stage_shuffle_errors_total",
-                                  unique_name, {"port", "fpga_lane"})),
-    third_crc_error(kotekan::prometheusMetrics::instance()
-                    .AddGauge("kotekan_dpdk_shuffle_fpga_third_stage_crc_errors_total",
-                              unique_name, {"port"})),
-    third_missing_short_error(kotekan::prometheusMetrics::instance()
-                              .AddGauge("kotekan_dpdk_shuffle_fpga_third_stage_missing_short_errors_total",
-                                        unique_name, {"port"})),
-    third_long_error(kotekan::prometheusMetrics::instance()
-                     .AddGauge("kotekan_dpdk_shuffle_fpga_third_stage_long_errors_total",
-                               unique_name, {"port"})),
-    third_fifo_overflow_error(kotekan::prometheusMetrics::instance()
-                              .AddGauge("kotekan_dpdk_shuffle_fpga_third_stage_fifo_overflow_errors_total",
-                                        unique_name, {"port"})),
-    second_shuffle_error(kotekan::prometheusMetrics::instance()
-                         .AddGauge("kotekan_dpdk_shuffle_fpga_second_stage_shuffle_errors_total",
-                                   unique_name, {"port", "fpga_lane"})),
-    second_crc_error(kotekan::prometheusMetrics::instance()
-                     .AddGauge("kotekan_dpdk_shuffle_fpga_second_stage_crc_errors_total",
-                               unique_name, {"port"})),
-    second_missing_short_error(kotekan::prometheusMetrics::instance()
-                               .AddGauge("kotekan_dpdk_shuffle_fpga_second_stage_missing_short_errors_total",
-                                         unique_name, {"port"})),
-    second_long_error(kotekan::prometheusMetrics::instance()
-                      .AddGauge("kotekan_dpdk_shuffle_fpga_second_stage_long_errors_total",
-                                unique_name, {"port"})),
-    second_fifo_overflow_error(kotekan::prometheusMetrics::instance()
-                               .AddGauge("kotekan_dpdk_shuffle_fpga_second_stage_fifo_overflow_errors_total",
-                                         unique_name, {"port"})) {
+    third_shuffle_error(kotekan::prometheus::Metrics::instance().AddGauge(
+        "kotekan_dpdk_shuffle_fpga_third_stage_shuffle_errors_total", unique_name,
+        {"port", "fpga_lane"})),
+    third_crc_error(kotekan::prometheus::Metrics::instance().AddGauge(
+        "kotekan_dpdk_shuffle_fpga_third_stage_crc_errors_total", unique_name, {"port"})),
+    third_missing_short_error(kotekan::prometheus::Metrics::instance().AddGauge(
+        "kotekan_dpdk_shuffle_fpga_third_stage_missing_short_errors_total", unique_name, {"port"})),
+    third_long_error(kotekan::prometheus::Metrics::instance().AddGauge(
+        "kotekan_dpdk_shuffle_fpga_third_stage_long_errors_total", unique_name, {"port"})),
+    third_fifo_overflow_error(kotekan::prometheus::Metrics::instance().AddGauge(
+        "kotekan_dpdk_shuffle_fpga_third_stage_fifo_overflow_errors_total", unique_name, {"port"})),
+    second_shuffle_error(kotekan::prometheus::Metrics::instance().AddGauge(
+        "kotekan_dpdk_shuffle_fpga_second_stage_shuffle_errors_total", unique_name,
+        {"port", "fpga_lane"})),
+    second_crc_error(kotekan::prometheus::Metrics::instance().AddGauge(
+        "kotekan_dpdk_shuffle_fpga_second_stage_crc_errors_total", unique_name, {"port"})),
+    second_missing_short_error(kotekan::prometheus::Metrics::instance().AddGauge(
+        "kotekan_dpdk_shuffle_fpga_second_stage_missing_short_errors_total", unique_name,
+        {"port"})),
+    second_long_error(kotekan::prometheus::Metrics::instance().AddGauge(
+        "kotekan_dpdk_shuffle_fpga_second_stage_long_errors_total", unique_name, {"port"})),
+    second_fifo_overflow_error(kotekan::prometheus::Metrics::instance().AddGauge(
+        "kotekan_dpdk_shuffle_fpga_second_stage_fifo_overflow_errors_total", unique_name,
+        {"port"})) {
 
     DEBUG("iceBoardHandler: %s", unique_name.c_str());
 
@@ -521,28 +515,20 @@ void iceBoardShuffle::update_stats() {
             .set(fpga_third_stage_shuffle_errors[i]);
     }
 
-    third_crc_error.Labels({port_str})
-        .set(fpga_third_stage_crc_errors);
-    third_missing_short_error.Labels({port_str})
-        .set(fpga_third_stage_missing_short_errors);
-    third_long_error.Labels({port_str})
-        .set(fpga_third_stage_long_errors);
-    third_fifo_overflow_error.Labels({port_str})
-        .set(fpga_third_stage_fifo_overflow_errors);
+    third_crc_error.Labels({port_str}).set(fpga_third_stage_crc_errors);
+    third_missing_short_error.Labels({port_str}).set(fpga_third_stage_missing_short_errors);
+    third_long_error.Labels({port_str}).set(fpga_third_stage_long_errors);
+    third_fifo_overflow_error.Labels({port_str}).set(fpga_third_stage_fifo_overflow_errors);
 
     for (int i = 0; i < 16; ++i) {
         second_shuffle_error.Labels({port_str, std::to_string(i)})
             .set(fpga_second_stage_shuffle_errors[i]);
     }
 
-    second_crc_error.Labels({port_str})
-        .set(fpga_second_stage_crc_errors);
-    second_missing_short_error.Labels({port_str})
-        .set(fpga_second_stage_missing_short_errors);
-    second_long_error.Labels({port_str})
-        .set(fpga_second_stage_long_errors);
-    second_fifo_overflow_error.Labels({port_str})
-        .set(fpga_second_stage_fifo_overflow_errors);
+    second_crc_error.Labels({port_str}).set(fpga_second_stage_crc_errors);
+    second_missing_short_error.Labels({port_str}).set(fpga_second_stage_missing_short_errors);
+    second_long_error.Labels({port_str}).set(fpga_second_stage_long_errors);
+    second_fifo_overflow_error.Labels({port_str}).set(fpga_second_stage_fifo_overflow_errors);
 }
 
 #endif

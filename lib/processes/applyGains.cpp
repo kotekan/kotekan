@@ -23,8 +23,8 @@ using namespace std::placeholders;
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::configUpdater;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(applyGains);
 
@@ -201,12 +201,12 @@ void applyGains::apply_thread() {
         input_frame_id = frame_id_in++;
     }
 
-    auto& update_age_metric = prometheusMetrics::instance()
-        .AddGauge("kotekan_applygains_update_age_seconds", unique_name);
-    auto& late_update_counter = prometheusMetrics::instance()
-        .AddGauge("kotekan_applygains_late_update_count", unique_name);
-    auto& late_frames_counter = prometheusMetrics::instance()
-        .AddGauge("kotekan_applygains_late_frame_count", unique_name);
+    auto& update_age_metric =
+        Metrics::instance().AddGauge("kotekan_applygains_update_age_seconds", unique_name);
+    auto& late_update_counter =
+        Metrics::instance().AddGauge("kotekan_applygains_late_update_count", unique_name);
+    auto& late_frames_counter =
+        Metrics::instance().AddGauge("kotekan_applygains_late_frame_count", unique_name);
 
     while (!stop_thread) {
 

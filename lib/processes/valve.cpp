@@ -16,8 +16,8 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(Valve);
 
@@ -35,8 +35,8 @@ void Valve::main_thread() {
     frameID frame_id_out(_buf_out);
 
     /// Metric to track the number of dropped frames.
-    auto& dropped_total = prometheusMetrics::instance()
-        .AddCounter("kotekan_valve_dropped_frames_total", unique_name);
+    auto& dropped_total =
+        Metrics::instance().AddCounter("kotekan_valve_dropped_frames_total", unique_name);
 
     while (!stop_thread) {
         // Fetch a new frame and get its sequence id

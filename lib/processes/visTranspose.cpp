@@ -30,8 +30,8 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(visTranspose);
 
@@ -208,8 +208,8 @@ void visTranspose::main_thread() {
     }
 
     // TODO: it seems like this should be a Counter?
-    auto& transposed_bytes = prometheusMetrics::instance().AddGauge(
-        "kotekan_vistranspose_data_transposed_bytes", unique_name);
+    auto& transposed_bytes =
+        Metrics::instance().AddGauge("kotekan_vistranspose_data_transposed_bytes", unique_name);
 
     while (!stop_thread) {
         // Wait for a full frame in the input buffer
@@ -276,7 +276,7 @@ void visTranspose::main_thread() {
             // export prometheus metric
             if (frame_size == 0)
                 frame_size = frame.calculate_buffer_layout(num_input, num_prod, num_ev).first;
-                transposed_bytes.set(frame_size * frames_so_far);
+            transposed_bytes.set(frame_size * frames_so_far);
         }
 
         frames_so_far++;

@@ -30,8 +30,8 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
@@ -48,9 +48,9 @@ std::map<visWriter::droppedType, std::string> visWriter::dropped_type_map = {
 
 visWriter::visWriter(Config& config, const string& unique_name, bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&visWriter::main_thread, this)),
-    dropped_frame_counter(prometheusMetrics::instance()
-                          .AddCounter("kotekan_viswriter_dropped_frame_total", unique_name,
-                                      {"freq_id", "dataset_id", "reason"})) {
+    dropped_frame_counter(Metrics::instance().AddCounter("kotekan_viswriter_dropped_frame_total",
+                                                         unique_name,
+                                                         {"freq_id", "dataset_id", "reason"})) {
 
     // Fetch any simple configuration
     root_path = config.get_default<std::string>(unique_name, "root_path", ".");
@@ -88,8 +88,8 @@ void visWriter::main_thread() {
 
     frameID frame_id(in_buf);
 
-    auto& write_time_metric = prometheusMetrics::instance()
-        .AddGauge("kotekan_viswriter_write_time_seconds", unique_name);
+    auto& write_time_metric =
+        Metrics::instance().AddGauge("kotekan_viswriter_write_time_seconds", unique_name);
 
     while (!stop_thread) {
 
@@ -182,8 +182,9 @@ void visWriter::report_dropped_frame(dset_id_t ds_id, uint32_t freq_id, droppedT
     auto key = std::make_pair(freq_id, reason);
     // TODO: check if this is necessary
     acq.dropped_frame_count[key] += 1;
-    dropped_frame_counter.Labels({std::to_string(freq_id), std::to_string(ds_id),
-                                  dropped_type_map.at(reason)}).inc();
+    dropped_frame_counter
+        .Labels({std::to_string(freq_id), std::to_string(ds_id), dropped_type_map.at(reason)})
+        .inc();
 }
 
 void visWriter::close_old_acqs() {

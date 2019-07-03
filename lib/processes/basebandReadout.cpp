@@ -48,10 +48,8 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
     frame_locks(_num_frames_buffer),
     // Over allocate so we can align the memory.
     baseband_data(std::make_unique<uint8_t[]>(_num_elements * _max_dump_samples + 15)),
-    readout_counter(metrics.AddCounter("kotekan_baseband_readout_total",
-                                       unique_name,
-                                       {"freq_id", "status"}))
-{
+    readout_counter(kotekan::prometheus::Metrics::instance().AddCounter(
+        "kotekan_baseband_readout_total", unique_name, {"freq_id", "status"})) {
     // ensure a trailing slash in _base_dir
     if (_base_dir.back() != '/') {
         _base_dir.push_back('/');

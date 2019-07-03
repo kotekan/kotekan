@@ -4,15 +4,12 @@
 #include "metadata.h"
 
 namespace kotekan {
+namespace prometheus {
 
-Metric::Metric(const std::vector<string>& label_values) :
-    label_values(label_values)
-{}
+Metric::Metric(const std::vector<string>& label_values) : label_values(label_values) {}
 
 
-Counter::Counter(const std::vector<string>& label_values) :
-    Metric(label_values)
-{}
+Counter::Counter(const std::vector<string>& label_values) : Metric(label_values) {}
 
 void Counter::inc() {
     ++value;
@@ -27,9 +24,7 @@ std::ostringstream& Counter::to_string(std::ostringstream& out) {
     return out;
 }
 
-Gauge::Gauge(const std::vector<string>& label_values) :
-    Metric(label_values)
-{}
+Gauge::Gauge(const std::vector<string>& label_values) : Metric(label_values) {}
 
 void Gauge::set(const double value) {
     this->value = value;
@@ -47,35 +42,34 @@ std::ostringstream& Gauge::to_string(std::ostringstream& out) {
 }
 
 template<typename T>
-Family<T>::Family(const string& name,
-                  const string& stage_name,
-                  const std::vector<string>& label_names,
-                  const MetricType metric_type) :
+Family<T>::Family(const string& name, const string& stage_name,
+                  const std::vector<string>& label_names, const MetricType metric_type) :
     name(name),
     stage_name(stage_name),
     label_names(label_names),
-    metric_type(metric_type)
-{}
+    metric_type(metric_type) {}
 
 template<typename T>
 string Family<T>::Serialize() {
-    if (metrics.empty()) return "";
+    if (metrics.empty())
+        return "";
 
     std::ostringstream out;
     out << "# HELP " << name << "\n";
     switch (metric_type) {
-    case MetricType::Counter:
-        out << "# TYPE " << name << " counter\n";
-        break;
-    case MetricType::Gauge:
-        out << "# TYPE " << name << " gauge\n";
-        break;
-    default:
-        out << "# TYPE " << name << " untyped\n";
+        case MetricType::Counter:
+            out << "# TYPE " << name << " counter\n";
+            break;
+        case MetricType::Gauge:
+            out << "# TYPE " << name << " gauge\n";
+            break;
+        default:
+            out << "# TYPE " << name << " untyped\n";
     }
     for (auto m : metrics) {
         out << name;
-        out << "{" << "stage_name=\"" << stage_name << "\"";
+        out << "{"
+            << "stage_name=\"" << stage_name << "\"";
         if (!label_names.empty()) {
             auto value = m.label_values.begin();
             for (auto label : label_names) {
@@ -83,27 +77,27 @@ string Family<T>::Serialize() {
                 out << label << "=\"" << *value++ << "\"";
             }
         }
-        out << "}" << " ";
+        out << "}"
+            << " ";
         m.to_string(out);
         out << "\n";
     }
     return out.str();
 }
 
-prometheusMetrics::prometheusMetrics() {}
+Metrics::Metrics() {}
 
-prometheusMetrics& prometheusMetrics::instance() {
-    static prometheusMetrics _instance;
+Metrics& Metrics::instance() {
+    static Metrics _instance;
     return _instance;
 }
 
 
-prometheusMetrics::~prometheusMetrics() {
+Metrics::~Metrics() {
     restServer::instance().remove_get_callback("/metrics");
 }
 
-void prometheusMetrics::remove_metric(const string& name, const string& stage_name,
-                                      const string& labels) {
+void Metrics::remove_metric(const string& name, const string& stage_name, const string& labels) {
     std::lock_guard<std::mutex> lock(metrics_lock);
     std::tuple<string, string, string> key{name, stage_name, labels};
 
@@ -116,7 +110,7 @@ void prometheusMetrics::remove_metric(const string& name, const string& stage_na
 }
 
 
-string prometheusMetrics::serialize() {
+string Metrics::serialize() {
     std::ostringstream output;
 
     std::lock_guard<std::mutex> lock(metrics_lock);
@@ -135,9 +129,7 @@ string prometheusMetrics::serialize() {
     return output.str();
 }
 
-void prometheusMetrics::Add(const string name,
-                            const string stage_name,
-                            std::shared_ptr<Serializable> s) {
+void Metrics::Add(const string name, const string stage_name, std::shared_ptr<Serializable> s) {
     if (stage_name.empty()) {
         throw std::runtime_error("Empty stage name: " + stage_name);
     }
@@ -148,7 +140,7 @@ void prometheusMetrics::Add(const string name,
     families[key] = s;
 }
 
-string prometheusMetrics::Serialize() {
+string Metrics::Serialize() {
     std::ostringstream out;
 
     for (auto& f : families) {
@@ -159,40 +151,36 @@ string prometheusMetrics::Serialize() {
     return out.str();
 }
 
-Gauge& prometheusMetrics::AddGauge(const string& name,
-                                   const string& stage_name) {
+Gauge& Metrics::AddGauge(const string& name, const string& stage_name) {
     const std::vector<string> empty_labels;
     auto f = std::make_shared<Family<Gauge>>(name, stage_name, empty_labels, MetricType::Gauge);
     Add(name, stage_name, f);
     return f->Labels({});
 }
 
-Family<Gauge>& prometheusMetrics::AddGauge(const string& name,
-                                           const string& stage_name,
-                                           const std::vector<string>& label_names) {
+Family<Gauge>& Metrics::AddGauge(const string& name, const string& stage_name,
+                                 const std::vector<string>& label_names) {
     auto f = std::make_shared<Family<Gauge>>(name, stage_name, label_names, MetricType::Gauge);
     Add(name, stage_name, f);
     return *f;
 }
 
-Counter& prometheusMetrics::AddCounter(const string& name,
-                                       const string& stage_name) {
+Counter& Metrics::AddCounter(const string& name, const string& stage_name) {
     const std::vector<string> empty_labels;
     auto f = std::make_shared<Family<Counter>>(name, stage_name, empty_labels, MetricType::Counter);
     Add(name, stage_name, f);
     return f->Labels({});
 }
 
-Family<Counter>& prometheusMetrics::AddCounter(const string& name,
-                                               const string& stage_name,
-                                               const std::vector<string>& label_names) {
+Family<Counter>& Metrics::AddCounter(const string& name, const string& stage_name,
+                                     const std::vector<string>& label_names) {
     auto f = std::make_shared<Family<Counter>>(name, stage_name, label_names, MetricType::Counter);
     Add(name, stage_name, f);
     return *f;
 }
 
 
-void prometheusMetrics::metrics_callback(connectionInstance& conn) {
+void Metrics::metrics_callback(connectionInstance& conn) {
     string output = Serialize();
 
     // Sending the reply doesn't need to be locked.
@@ -200,10 +188,9 @@ void prometheusMetrics::metrics_callback(connectionInstance& conn) {
     conn.send_text_reply(output);
 }
 
-void prometheusMetrics::register_with_server(restServer* rest_server) {
+void Metrics::register_with_server(restServer* rest_server) {
     using namespace std::placeholders;
-    rest_server->register_get_callback("/metrics",
-                                       std::bind(&prometheusMetrics::metrics_callback, this, _1));
+    rest_server->register_get_callback("/metrics", std::bind(&Metrics::metrics_callback, this, _1));
 }
 
 void gauge::set(const double value) {
@@ -225,4 +212,5 @@ uint64_t metric::get_time_in_milliseconds() {
     return (uint64_t)(tv.tv_sec) * 1000 + (uint64_t)(tv.tv_usec) / 1000;
 }
 
+} // namespace prometheus
 } // namespace kotekan

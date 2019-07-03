@@ -35,8 +35,8 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::HTTP_RESPONSE;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(visTestPattern);
 
@@ -134,12 +134,18 @@ void visTestPattern::main_thread() {
     // Comparisons will be against tolerance^2
     float t2 = _tolerance * _tolerance;
 
-    auto& bad_values = prometheusMetrics::instance().AddGauge("kotekan_vistestpattern_bad_values_total", unique_name, {"name", "freq_id"});
-    auto& avg_error = prometheusMetrics::instance().AddGauge("kotekan_vistestpattern_avg_error", unique_name, {"name", "freq_id"});
-    auto& min_error = prometheusMetrics::instance().AddGauge("kotekan_vistestpattern_min_error", unique_name, {"name", "freq_id"});
-    auto& max_error = prometheusMetrics::instance().AddGauge("kotekan_vistestpattern_max_error", unique_name, {"name", "freq_id"});
-    auto& fpga_sequence_number = prometheusMetrics::instance().AddGauge("kotekan_vistestpattern_fpga_sequence_number", unique_name, {"name", "freq_id"});
-    auto& ctime_seconds = prometheusMetrics::instance().AddGauge("kotekan_vistestpattern_ctime_seconds", unique_name, {"name", "freq_id"});
+    auto& bad_values = Metrics::instance().AddGauge("kotekan_vistestpattern_bad_values_total",
+                                                    unique_name, {"name", "freq_id"});
+    auto& avg_error = Metrics::instance().AddGauge("kotekan_vistestpattern_avg_error", unique_name,
+                                                   {"name", "freq_id"});
+    auto& min_error = Metrics::instance().AddGauge("kotekan_vistestpattern_min_error", unique_name,
+                                                   {"name", "freq_id"});
+    auto& max_error = Metrics::instance().AddGauge("kotekan_vistestpattern_max_error", unique_name,
+                                                   {"name", "freq_id"});
+    auto& fpga_sequence_number = Metrics::instance().AddGauge(
+        "kotekan_vistestpattern_fpga_sequence_number", unique_name, {"name", "freq_id"});
+    auto& ctime_seconds = Metrics::instance().AddGauge("kotekan_vistestpattern_ctime_seconds",
+                                                       unique_name, {"name", "freq_id"});
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
