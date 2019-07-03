@@ -12,6 +12,8 @@ Metric::Metric(const std::vector<string>& label_values) : label_values(label_val
 Counter::Counter(const std::vector<string>& label_values) : Metric(label_values) {}
 
 void Counter::inc() {
+    std::lock_guard<std::mutex> lock(metric_lock);
+
     ++value;
 }
 
@@ -20,6 +22,8 @@ string Counter::to_string() {
 }
 
 std::ostringstream& Counter::to_string(std::ostringstream& out) {
+    std::lock_guard<std::mutex> lock(metric_lock);
+
     out << value;
     return out;
 }
@@ -28,6 +32,8 @@ std::ostringstream& Counter::to_string(std::ostringstream& out) {
 Gauge::Gauge(const std::vector<string>& label_values) : Metric(label_values) {}
 
 void Gauge::set(const double value) {
+    std::lock_guard<std::mutex> lock(metric_lock);
+
     this->value = value;
     this->last_update_time_stamp = get_time_in_milliseconds();
 }
@@ -39,6 +45,8 @@ string Gauge::to_string() {
 }
 
 std::ostringstream& Gauge::to_string(std::ostringstream& out) {
+    std::lock_guard<std::mutex> lock(metric_lock);
+
     out << value << " " << last_update_time_stamp;
     return out;
 }
@@ -63,6 +71,8 @@ MetricFamily<T>::MetricFamily(const string& name, const string& stage_name,
 
 template<typename T>
 string MetricFamily<T>::serialize() {
+    std::lock_guard<std::mutex> lock(metrics_lock);
+
     if (metrics.empty())
         return "";
 
@@ -78,7 +88,7 @@ string MetricFamily<T>::serialize() {
         default:
             out << "# TYPE " << name << " untyped\n";
     }
-    for (auto m : metrics) {
+    for (auto& m : metrics) {
         out << name;
         out << "{"
             << "stage_name=\"" << stage_name << "\"";
@@ -159,16 +169,16 @@ MetricFamily<Gauge>& Metrics::add_gauge(const string& name, const string& stage_
 
 Counter& Metrics::add_counter(const string& name, const string& stage_name) {
     const std::vector<string> empty_labels;
-    auto f = std::make_shared<MetricFamily<Counter>>(name, stage_name, empty_labels,
-                                                     MetricFamily<Counter>::MetricType::Counter);
+    auto f = std::shared_ptr<MetricFamily<Counter>>(new MetricFamily<Counter>(
+        name, stage_name, empty_labels, MetricFamily<Counter>::MetricType::Counter));
     add(name, stage_name, f);
     return f->labels({});
 }
 
 MetricFamily<Counter>& Metrics::add_counter(const string& name, const string& stage_name,
                                             const std::vector<string>& label_names) {
-    auto f = std::make_shared<MetricFamily<Counter>>(name, stage_name, label_names,
-                                                     MetricFamily<Counter>::MetricType::Counter);
+    auto f = std::shared_ptr<MetricFamily<Counter>>(new MetricFamily<Counter>(
+        name, stage_name, label_names, MetricFamily<Counter>::MetricType::Counter));
     add(name, stage_name, f);
     return *f;
 }

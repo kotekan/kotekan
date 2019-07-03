@@ -31,6 +31,10 @@ public:
     /// @brief Formats the stored value as a string into the given output stream.
     virtual std::ostringstream& to_string(std::ostringstream& out) = 0;
     const std::vector<string> label_values;
+
+protected:
+    /// Metric updating lock
+    std::mutex metric_lock;
 };
 
 /**
@@ -129,6 +133,8 @@ public:
             throw std::runtime_error("Label values don't match the names");
         }
 
+        std::lock_guard<std::mutex> lock(metrics_lock);
+
         for (auto& m : metrics) {
             if (m.label_values == label_values) {
                 return m;
@@ -152,10 +158,13 @@ public:
 
 private:
     /// metric instances for label combinations observed so far
-    std::vector<T> metrics;
+    std::deque<T> metrics;
 
     /// metric type
     const MetricType metric_type;
+
+    /// Metric list updating lock
+    std::mutex metrics_lock;
 };
 
 /**
