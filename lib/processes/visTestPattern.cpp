@@ -134,18 +134,18 @@ void visTestPattern::main_thread() {
     // Comparisons will be against tolerance^2
     float t2 = _tolerance * _tolerance;
 
-    auto& bad_values = Metrics::instance().AddGauge("kotekan_vistestpattern_bad_values_total",
-                                                    unique_name, {"name", "freq_id"});
-    auto& avg_error = Metrics::instance().AddGauge("kotekan_vistestpattern_avg_error", unique_name,
-                                                   {"name", "freq_id"});
-    auto& min_error = Metrics::instance().AddGauge("kotekan_vistestpattern_min_error", unique_name,
-                                                   {"name", "freq_id"});
-    auto& max_error = Metrics::instance().AddGauge("kotekan_vistestpattern_max_error", unique_name,
-                                                   {"name", "freq_id"});
-    auto& fpga_sequence_number = Metrics::instance().AddGauge(
+    auto& bad_values = Metrics::instance().add_gauge("kotekan_vistestpattern_bad_values_total",
+                                                     unique_name, {"name", "freq_id"});
+    auto& avg_error = Metrics::instance().add_gauge("kotekan_vistestpattern_avg_error", unique_name,
+                                                    {"name", "freq_id"});
+    auto& min_error = Metrics::instance().add_gauge("kotekan_vistestpattern_min_error", unique_name,
+                                                    {"name", "freq_id"});
+    auto& max_error = Metrics::instance().add_gauge("kotekan_vistestpattern_max_error", unique_name,
+                                                    {"name", "freq_id"});
+    auto& fpga_sequence_number = Metrics::instance().add_gauge(
         "kotekan_vistestpattern_fpga_sequence_number", unique_name, {"name", "freq_id"});
-    auto& ctime_seconds = Metrics::instance().AddGauge("kotekan_vistestpattern_ctime_seconds",
-                                                       unique_name, {"name", "freq_id"});
+    auto& ctime_seconds = Metrics::instance().add_gauge("kotekan_vistestpattern_ctime_seconds",
+                                                        unique_name, {"name", "freq_id"});
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
@@ -223,9 +223,9 @@ void visTestPattern::main_thread() {
 
                 // update Prometheus metrics
                 const std::string freq_id_label = std::to_string(freq_id);
-                bad_values.Labels({test_name, freq_id_label}).set(num_bad);
-                fpga_sequence_number.Labels({test_name, freq_id_label}).set(fpga_count);
-                ctime_seconds.Labels({test_name, freq_id_label}).set(ts_to_double(time));
+                bad_values.labels({test_name, freq_id_label}).set(num_bad);
+                fpga_sequence_number.labels({test_name, freq_id_label}).set(fpga_count);
+                ctime_seconds.labels({test_name, freq_id_label}).set(ts_to_double(time));
 
                 if (num_bad) {
                     avg_err /= (float)num_bad;
@@ -248,9 +248,9 @@ void visTestPattern::main_thread() {
                     DEBUG("freq id: %d", freq_id);
 
                     // update error stats
-                    avg_error.Labels({test_name, freq_id_label}).set(avg_err);
-                    min_error.Labels({test_name, freq_id_label}).set(min_err);
-                    max_error.Labels({test_name, freq_id_label}).set(max_err);
+                    avg_error.labels({test_name, freq_id_label}).set(avg_err);
+                    min_error.labels({test_name, freq_id_label}).set(min_err);
+                    max_error.labels({test_name, freq_id_label}).set(max_err);
 
                     // gather data for report after many frames
                     num_bad_tot += num_bad;
@@ -282,9 +282,9 @@ void visTestPattern::main_thread() {
                     // Advance output frame id
                     output_frame_id++;
                 } else {
-                    avg_error.Labels({test_name, freq_id_label}).set(0);
-                    min_error.Labels({test_name, freq_id_label}).set(0);
-                    max_error.Labels({test_name, freq_id_label}).set(0);
+                    avg_error.labels({test_name, freq_id_label}).set(0);
+                    min_error.labels({test_name, freq_id_label}).set(0);
+                    max_error.labels({test_name, freq_id_label}).set(0);
                 }
 
                 // print report some times

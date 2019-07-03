@@ -10,21 +10,21 @@ BOOST_AUTO_TEST_CASE(simple_metrics) {
     Metrics& metrics = Metrics::instance();
     BOOST_CHECK(metrics.serialize() == "");
 
-    auto& foo = metrics.AddCounter("foo_metric", "foo");
+    auto& foo = metrics.add_counter("foo_metric", "foo");
     foo.inc();
-    std::cout << metrics.Serialize();
+    std::cout << metrics.serialize();
     BOOST_CHECK(
-        metrics.Serialize().find(
+        metrics.serialize().find(
             "# HELP foo_metric\n# TYPE foo_metric counter\nfoo_metric{stage_name=\"foo\"} 1")
         != std::string::npos);
 
-    auto& foos = metrics.AddGauge("foo_metric", "foos"); // a new stage of the same metric
+    auto& foos = metrics.add_gauge("foo_metric", "foos"); // a new stage of the same metric
     foos.set(10);
-    auto& bar = metrics.AddGauge("bar_metric", "foos"); // a metric for the same stage
+    auto& bar = metrics.add_gauge("bar_metric", "foos"); // a metric for the same stage
     bar.set(100);
 
     foo.inc();
-    auto multi_metrics = metrics.Serialize();
+    auto multi_metrics = metrics.serialize();
 
     // new value
     BOOST_CHECK(multi_metrics.find("foo_metric{stage_name=\"foo\"} 2") != std::string::npos);
@@ -40,23 +40,23 @@ BOOST_AUTO_TEST_CASE(simple_metrics) {
 BOOST_AUTO_TEST_CASE(counters_with_labels) {
     Metrics& metrics = Metrics::instance();
 
-    auto& m1 = metrics.AddCounter("http_requests_total", "main", {"method", "handler"});
-    m1.Labels({"POST", "/messages"}).inc();
-    m1.Labels({"GET", "/messages"}).inc();
-    m1.Labels({"GET", "/messages"}).inc();
-    std::cout << m1.Serialize();
-    BOOST_CHECK(m1.Serialize().find("# HELP http_requests_total\n# TYPE http_requests_total "
+    auto& m1 = metrics.add_counter("http_requests_total", "main", {"method", "handler"});
+    m1.labels({"POST", "/messages"}).inc();
+    m1.labels({"GET", "/messages"}).inc();
+    m1.labels({"GET", "/messages"}).inc();
+    std::cout << m1.serialize();
+    BOOST_CHECK(m1.serialize().find("# HELP http_requests_total\n# TYPE http_requests_total "
                                     "counter\nhttp_requests_total{stage_name=\"main\",method="
                                     "\"POST\",handler=\"/messages\"} 1")
                 != std::string::npos);
-    BOOST_CHECK(m1.Serialize().find(
+    BOOST_CHECK(m1.serialize().find(
         "http_requests_total{stage_name=\"main\",method=\"GET\",handler=\"/messages\"} 2"));
 
-    auto& m2 = metrics.AddCounter("total_count", "sidecar");
+    auto& m2 = metrics.add_counter("total_count", "sidecar");
     m2.inc();
     m2.inc();
     m2.inc();
-    BOOST_CHECK(metrics.Serialize().find(
+    BOOST_CHECK(metrics.serialize().find(
         "# HELP total_count\n#TYPE total_count counter\ntotal_count{stage_name=\"sidecar\"} 3"));
 }
 
@@ -64,20 +64,20 @@ BOOST_AUTO_TEST_CASE(counters_with_labels) {
 BOOST_AUTO_TEST_CASE(gauges_with_labels) {
     Metrics& metrics = Metrics::instance();
 
-    auto& m1 = metrics.AddGauge("foo_with_labels", "foo", {"quux"});
-    m1.Labels({"fred"}).set(1);
-    BOOST_CHECK(metrics.Serialize().find("foo_with_labels{stage_name=\"foo\",quux=\"fred\"} 1")
+    auto& m1 = metrics.add_gauge("foo_with_labels", "foo", {"quux"});
+    m1.labels({"fred"}).set(1);
+    BOOST_CHECK(metrics.serialize().find("foo_with_labels{stage_name=\"foo\",quux=\"fred\"} 1")
                 != std::string::npos);
 
-    m1.Labels({"fred"}).set(2);
+    m1.labels({"fred"}).set(2);
 
-    m1.Labels({"baz"}).set(10); // a different label value of the same metric
+    m1.labels({"baz"}).set(10); // a different label value of the same metric
 
-    auto& m2 = metrics.AddGauge("bar_with_labels", "foo",
-                                {"quux"}); // a different label value of the same metric
-    m2.Labels({"baz"}).set(42);
+    auto& m2 = metrics.add_gauge("bar_with_labels", "foo",
+                                 {"quux"}); // a different label value of the same metric
+    m2.labels({"baz"}).set(42);
 
-    auto multi_metrics = metrics.Serialize();
+    auto multi_metrics = metrics.serialize();
     // std::cout << multi_metrics << "\n";
 
     // new value

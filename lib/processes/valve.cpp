@@ -36,7 +36,7 @@ void Valve::main_thread() {
 
     /// Metric to track the number of dropped frames.
     auto& dropped_total =
-        Metrics::instance().AddCounter("kotekan_valve_dropped_frames_total", unique_name);
+        Metrics::instance().add_counter("kotekan_valve_dropped_frames_total", unique_name);
 
     while (!stop_thread) {
         // Fetch a new frame and get its sequence id

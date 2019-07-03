@@ -25,14 +25,14 @@ EigenVisIter::EigenVisIter(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&EigenVisIter::main_thread, this)),
     comp_time_seconds(
-        Metrics::instance().AddGauge("kotekan_eigenvisiter_comp_time_seconds", unique_name)),
-    eigenvalue(Metrics::instance().AddGauge("kotekan_eigenvisiter_eigenvalue", unique_name,
-                                            {"eigenvalue", "freq_id", "dataset_id"})),
-    iterations(Metrics::instance().AddGauge("kotekan_eigenvisiter_iterations", unique_name,
-                                            {"freq_id", "dataset_id"})),
-    eigenvalue_convergence(Metrics::instance().AddGauge(
+        Metrics::instance().add_gauge("kotekan_eigenvisiter_comp_time_seconds", unique_name)),
+    eigenvalue(Metrics::instance().add_gauge("kotekan_eigenvisiter_eigenvalue", unique_name,
+                                             {"eigenvalue", "freq_id", "dataset_id"})),
+    iterations(Metrics::instance().add_gauge("kotekan_eigenvisiter_iterations", unique_name,
+                                             {"freq_id", "dataset_id"})),
+    eigenvalue_convergence(Metrics::instance().add_gauge(
         "kotekan_eigenvisiter_eigenvalue_convergence", unique_name, {"freq_id", "dataset_id"})),
-    eigenvector_convergence(Metrics::instance().AddGauge(
+    eigenvector_convergence(Metrics::instance().add_gauge(
         "kotekan_eigenvisiter_eigenvector_convergence", unique_name, {"freq_id", "dataset_id"})) {
 
     in_buf = get_buffer("in_buf");
@@ -186,18 +186,18 @@ void EigenVisIter::update_metrics(uint32_t freq_id, dset_id_t dset_id, double el
 
     // Output eigenvalues to prometheus
     for (uint32_t i = 0; i < _num_eigenvectors; i++) {
-        eigenvalue.Labels({std::to_string(i), std::to_string(freq_id), std::to_string(dset_id)})
+        eigenvalue.labels({std::to_string(i), std::to_string(freq_id), std::to_string(dset_id)})
             .set(eigpair.first[_num_eigenvectors - 1 - i]);
     }
 
     // Output RMS to prometheus
-    eigenvalue.Labels({"rms", std::to_string(freq_id), std::to_string(dset_id)}).set(stats.rms);
+    eigenvalue.labels({"rms", std::to_string(freq_id), std::to_string(dset_id)}).set(stats.rms);
 
     // Output convergence stats
     std::vector<std::string> labels = {std::to_string(freq_id), std::to_string(dset_id)};
-    iterations.Labels(labels).set(stats.iterations);
-    eigenvalue_convergence.Labels(labels).set(stats.eps_eval);
-    eigenvector_convergence.Labels(labels).set(stats.eps_evec);
+    iterations.labels(labels).set(stats.iterations);
+    eigenvalue_convergence.labels(labels).set(stats.eps_eval);
+    eigenvector_convergence.labels(labels).set(stats.eps_evec);
 }
 
 

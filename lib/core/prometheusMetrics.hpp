@@ -18,41 +18,12 @@ namespace kotekan {
 namespace prometheus {
 
 /**
- * @class metric
- * @brief An internal base class for storing metric values
- */
-class metric {
-public:
-    /// @brief Returns the stored value as a string.
-    virtual string to_string() = 0;
-    virtual ~metric() = default;
-
-protected:
-    /// The actual value to be returned
-    double value = 0;
-
-    /// Internal function to get the time in
-    static uint64_t get_time_in_milliseconds();
-};
-
-class gauge : public metric {
-public:
-    /// @brief Sets the current metric value
-    void set(double value);
-    string to_string() override;
-
-private:
-    /// Time stamp in milliseconds.
-    uint64_t last_update_time_stamp;
-};
-
-/**
  * @class Metric
- * @brief An internal base class for storing metric values
+ * @brief An internal base class for storing metric value for a given combination of label values
  */
 class Metric {
 public:
-    Metric(const std::vector<string>&);
+    Metric(const std::vector<string>& label_values);
     virtual ~Metric() = default;
 
     /// @brief Returns the stored value as a string.
@@ -65,7 +36,10 @@ public:
 /**
  * @class Counter
  * @brief Represents a metric whose value can only go up
- * @see https://prometheus.io/docs/concepts/metric_types/#counter
+ *
+ * @remark See [Prometheus
+ * documentation](https://prometheus.io/docs/instrumenting/exposition_formats/) for the precise
+ * format specification.
  */
 class Counter : public Metric {
 public:
@@ -82,7 +56,10 @@ private:
 /**
  * @class Gauge
  * @brief Represents a metric whose value can go up and down
- * @see https://prometheus.io/docs/concepts/metric_types/#gauge
+ *
+ * @remark See [Prometheus
+ * documentation](https://prometheus.io/docs/instrumenting/exposition_formats/) for the precise
+ * format specification.
  */
 class Gauge : public Metric {
 public:
@@ -94,12 +71,6 @@ public:
 private:
     /// The actual value to be returned
     double value = 0;
-};
-
-enum class MetricType {
-    Counter,
-    Gauge,
-    Untyped,
 };
 
 /**
@@ -116,18 +87,38 @@ struct Serializable {
      * documentation](https://prometheus.io/docs/instrumenting/exposition_formats/) for the precise
      * format specification.
      */
-    virtual string Serialize() = 0;
+    virtual string serialize() = 0;
 };
 
+/**
+ * @class MetricFamily
+ * @brief Groups together a set of metrics with the same name, type, and label names, but different
+ * label values.
+ */
 template<typename T>
-class Family : public Serializable {
+class MetricFamily : public Serializable {
 public:
-    Family(const string& name, const string& stage, const std::vector<string>& label_names,
-           const MetricType = MetricType::Untyped);
+    enum class MetricType {
+        Counter,
+        Gauge,
+        Untyped,
+    };
 
-    // T& Labels(const std::vector<string>& label_values);
+    MetricFamily(const string& name, const string& stage, const std::vector<string>& label_names,
+                 const MetricType metric_type = MetricType::Untyped);
 
-    T& Labels(const std::vector<string>& label_values) {
+    /**
+     * @brief Returns the ``Metric`` instance for the given combination of label values
+     *
+     * If the combination of values is seen for the first time, a new Metric
+     * instance will be created and added to the family.
+     *
+     * @param label_values
+     * @return reference to the Metric
+     * @ @throw std::runtime_error if the number of label values doesn't match the length of the
+     * family's label names
+     */
+    T& labels(const std::vector<string>& label_values) {
         if (label_names.size() != label_values.size()) {
             throw std::runtime_error("Label values don't match the names");
         }
@@ -142,14 +133,22 @@ public:
     }
 
 
-    string Serialize() override;
+    string serialize() override;
 
+    /// metric name
     const string name;
+
+    /// stage name
     const string stage_name;
+
+    /// label names
     const std::vector<string> label_names;
 
 private:
+    /// metric instances for label combinations observed so far
     std::vector<T> metrics;
+
+    /// metric type
     const MetricType metric_type;
 };
 
@@ -160,8 +159,9 @@ private:
  * This class must be registered with a kotekan REST server instance.=,
  * using the @c register_with_server() function.
  *
- * The most common function to call will be @c add_stage_metric, which
- * adds or updates a given metric.
+ * The typical usage is to declare the metric with @c add_gauge or @c
+ * add_counter methods, and then use the returned Metric instance to set the
+ * metric's value (for a particular combination of label values, if applicable).
  *
  * This class is a singleton, and can be accessed with @c instance()
  *
@@ -216,19 +216,55 @@ public:
     string serialize();
 
     /**
-     * @brief Adds a new metric or updates an existing one.
+     * @brief Adds a new metric of type gauge and no labels
      *
-     * The value given must be a number (float, double, int, etc.) and be
-     * convertible to a string with the standard @c std::to_string function.
+     * @param name The name of the metric.
+     * @param stage_name The unique stage name, normally @c unique_name.
+     * @return a reference to the newly created @c Gauge instance
+     * @throw std::runtime_error if the metric with that name is already registered.
+     */
+    Gauge& add_gauge(const string& name, const string& stage_name);
+
+    /**
+     * @brief Adds a new metric family of type gauge
      *
-     * Metrics are stored based on the unique tuple: (name, stage_name, labels).
+     * @param name The name of the metric.
+     * @param stage_name The unique stage name, normally @c unique_name.
+     * @param label_names The names of the labels used
+     * @return a reference to the newly created @c MetricFamily<Gauge> instance
+     * @throw std::runtime_error if the metric with that name is already registered.
+     */
+    MetricFamily<Gauge>& add_gauge(const string& name, const string& stage_name,
+                                   const std::vector<string>& label_names);
+
+    /**
+     * @brief Adds a new metric of type counter and no labels
      *
-     * Any new tuple will be added to the list of metrics, and any existing
-     * tuple will be updates with the value give.
+     * @param name The name of the metric.
+     * @param stage_name The unique stage name, normally @c unique_name.
+     * @return a reference to the newly created @c Counter instance
+     * @throw std::runtime_error if the metric with that name is already registered.
+     */
+    Counter& add_counter(const string& name, const string& stage_name);
+
+    /**
+     * @brief Adds a new metric family of type counter
      *
-     * Note the time this function was last called is also stored with the value
-     * so even if the value might not update, it can still be useful in some cases
-     * to call this function to update the time stamp associated with the metric.
+     * @param name The name of the metric.
+     * @param stage_name The unique stage name, normally @c unique_name.
+     * @param label_names The names of the labels used
+     * @return a reference to the newly created @c MetricFamily<Counter> instance
+     * @throw std::runtime_error if the metric with that name is already registered.
+     */
+    MetricFamily<Counter>& add_counter(const string& name, const string& stage_name,
+                                       const std::vector<string>& label_names);
+
+private:
+    /// Constructor, not used directly
+    Metrics();
+
+    /**
+     * @brief Adds a new metric
      *
      * Note metrics should follow the prometheus metric name and label
      * conventions which can be found here: https://prometheus.io/docs/practices/naming/
@@ -239,47 +275,17 @@ public:
      * metric name, which should satisfy the standard prometheus guidelines.
      * For example `kotekan_viswriter_write_time_seconds`.
      *
-     * Also note that label values must be surrounded by double quotes.
-     *
      * @param name The name of the metric.
      * @param stage_name The unique stage name, normally @c unique_name.
-     * @param value The value associated with this metric.
-     * @param labels (optional) The metric labels.
+     * @param metric the metric family to registered under this name/stage
+     * @throw std::runtime_error if the metric with that name is already registered or if the
+     * ``name`` or ``stage_name`` are left empty.
      */
-
-    /**
-     * @brief Removes a given metric.
-     *
-     * Removed the metric based on the unique tuple: (name, stage_name, labels).
-     *
-     * @param name The name of the metric.
-     * @param stage_name The unique stage name.
-     * @param labels (optional) Any metric labels.
-     */
-    void remove_metric(const string& name, const string& stage_name, const string& labels = "");
-
-    string Serialize();
-
-    Gauge& AddGauge(const string&, const string&);
-    Family<Gauge>& AddGauge(const string&, const string&, const std::vector<string>&);
-    Counter& AddCounter(const string&, const string&);
-    Family<Counter>& AddCounter(const string&, const string&, const std::vector<string>&);
-
-private:
-    /// Constructor, not used directly
-    Metrics();
-
-    void Add(const string, const string, std::shared_ptr<Serializable>);
+    void add(const string name, const string stage_name, std::shared_ptr<Serializable>);
 
     /**
      * The metric storage object with the format:
-     * <<metric_name, stage_name, tags>, metric>
-     */
-    map<std::tuple<string, string, string>, std::unique_ptr<metric>> stage_metrics;
-
-    /**
-     * The metric storage object with the format:
-     * <<metric_name, stage_name>, Family>
+     * <<metric_name, stage_name>, MetricFamily>
      */
     map<std::tuple<string, string>, std::shared_ptr<Serializable>> families;
 

@@ -24,6 +24,7 @@ std::ostringstream& Counter::to_string(std::ostringstream& out) {
     return out;
 }
 
+
 Gauge::Gauge(const std::vector<string>& label_values) : Metric(label_values) {}
 
 void Gauge::set(const double value) {
@@ -42,25 +43,26 @@ std::ostringstream& Gauge::to_string(std::ostringstream& out) {
 }
 
 template<typename T>
-Family<T>::Family(const string& name, const string& stage_name,
-                  const std::vector<string>& label_names, const MetricType metric_type) :
+MetricFamily<T>::MetricFamily(const string& name, const string& stage_name,
+                              const std::vector<string>& label_names,
+                              const MetricFamily<T>::MetricType metric_type) :
     name(name),
     stage_name(stage_name),
     label_names(label_names),
     metric_type(metric_type) {}
 
 template<typename T>
-string Family<T>::Serialize() {
+string MetricFamily<T>::serialize() {
     if (metrics.empty())
         return "";
 
     std::ostringstream out;
     out << "# HELP " << name << "\n";
     switch (metric_type) {
-        case MetricType::Counter:
+        case MetricFamily<T>::MetricType::Counter:
             out << "# TYPE " << name << " counter\n";
             break;
-        case MetricType::Gauge:
+        case MetricFamily<T>::MetricType::Gauge:
             out << "# TYPE " << name << " gauge\n";
             break;
         default:
@@ -85,6 +87,7 @@ string Family<T>::Serialize() {
     return out.str();
 }
 
+
 Metrics::Metrics() {}
 
 Metrics& Metrics::instance() {
@@ -97,91 +100,72 @@ Metrics::~Metrics() {
     restServer::instance().remove_get_callback("/metrics");
 }
 
-void Metrics::remove_metric(const string& name, const string& stage_name, const string& labels) {
-    std::lock_guard<std::mutex> lock(metrics_lock);
-    std::tuple<string, string, string> key{name, stage_name, labels};
-
-    if (stage_metrics.count(key) == 1) {
-        stage_metrics.erase(key);
-    } else {
-        WARN("Tried to remove metric (%s, %s, %s), which does not exist", name.c_str(),
-             stage_name.c_str(), labels.c_str());
-    }
-}
-
-
 string Metrics::serialize() {
-    std::ostringstream output;
+    std::ostringstream out;
 
     std::lock_guard<std::mutex> lock(metrics_lock);
-
-    for (auto& element : stage_metrics) {
-        string metric_name = std::get<0>(element.first);
-        string stage_name = std::get<1>(element.first);
-        string extra_labels = std::get<2>(element.first);
-
-        output << metric_name << "{stage_name=\"" << stage_name << "\"";
-        if (extra_labels != "")
-            output << "," << extra_labels;
-        output << "} " << element.second->to_string() << "\n";
-    }
-
-    return output.str();
-}
-
-void Metrics::Add(const string name, const string stage_name, std::shared_ptr<Serializable> s) {
-    if (stage_name.empty()) {
-        throw std::runtime_error("Empty stage name: " + stage_name);
-    }
-    auto key = std::make_tuple(name, stage_name);
-    if (families.count(key)) {
-        throw std::runtime_error("Duplicate metric name: " + name);
-    }
-    families[key] = s;
-}
-
-string Metrics::Serialize() {
-    std::ostringstream out;
 
     for (auto& f : families) {
         // out << f.first << ": " << f.second.label_names.size() << "\n";
-        out << f.second->Serialize();
+        out << f.second->serialize();
     }
 
     return out.str();
 }
 
-Gauge& Metrics::AddGauge(const string& name, const string& stage_name) {
-    const std::vector<string> empty_labels;
-    auto f = std::make_shared<Family<Gauge>>(name, stage_name, empty_labels, MetricType::Gauge);
-    Add(name, stage_name, f);
-    return f->Labels({});
+void Metrics::add(const string name, const string stage_name,
+                  std::shared_ptr<Serializable> metric) {
+    if (name.empty()) {
+        throw std::runtime_error("Empty metric name.");
+    }
+    if (stage_name.empty()) {
+        throw std::runtime_error("Empty stage name: " + name);
+    }
+
+    std::lock_guard<std::mutex> lock(metrics_lock);
+
+    auto key = std::make_tuple(name, stage_name);
+    if (families.count(key)) {
+        throw std::runtime_error("Duplicate metric name: " + name + "/" + stage_name);
+    }
+    families[key] = metric;
 }
 
-Family<Gauge>& Metrics::AddGauge(const string& name, const string& stage_name,
-                                 const std::vector<string>& label_names) {
-    auto f = std::make_shared<Family<Gauge>>(name, stage_name, label_names, MetricType::Gauge);
-    Add(name, stage_name, f);
+Gauge& Metrics::add_gauge(const string& name, const string& stage_name) {
+    const std::vector<string> empty_labels;
+    auto f = std::make_shared<MetricFamily<Gauge>>(name, stage_name, empty_labels,
+                                                   MetricFamily<Gauge>::MetricType::Gauge);
+    add(name, stage_name, f);
+    return f->labels({});
+}
+
+MetricFamily<Gauge>& Metrics::add_gauge(const string& name, const string& stage_name,
+                                        const std::vector<string>& label_names) {
+    auto f = std::make_shared<MetricFamily<Gauge>>(name, stage_name, label_names,
+                                                   MetricFamily<Gauge>::MetricType::Gauge);
+    add(name, stage_name, f);
     return *f;
 }
 
-Counter& Metrics::AddCounter(const string& name, const string& stage_name) {
+Counter& Metrics::add_counter(const string& name, const string& stage_name) {
     const std::vector<string> empty_labels;
-    auto f = std::make_shared<Family<Counter>>(name, stage_name, empty_labels, MetricType::Counter);
-    Add(name, stage_name, f);
-    return f->Labels({});
+    auto f = std::make_shared<MetricFamily<Counter>>(name, stage_name, empty_labels,
+                                                     MetricFamily<Counter>::MetricType::Counter);
+    add(name, stage_name, f);
+    return f->labels({});
 }
 
-Family<Counter>& Metrics::AddCounter(const string& name, const string& stage_name,
-                                     const std::vector<string>& label_names) {
-    auto f = std::make_shared<Family<Counter>>(name, stage_name, label_names, MetricType::Counter);
-    Add(name, stage_name, f);
+MetricFamily<Counter>& Metrics::add_counter(const string& name, const string& stage_name,
+                                            const std::vector<string>& label_names) {
+    auto f = std::make_shared<MetricFamily<Counter>>(name, stage_name, label_names,
+                                                     MetricFamily<Counter>::MetricType::Counter);
+    add(name, stage_name, f);
     return *f;
 }
 
 
 void Metrics::metrics_callback(connectionInstance& conn) {
-    string output = Serialize();
+    string output = serialize();
 
     // Sending the reply doesn't need to be locked.
     // Just accessing the metrics array.
@@ -191,25 +175,6 @@ void Metrics::metrics_callback(connectionInstance& conn) {
 void Metrics::register_with_server(restServer* rest_server) {
     using namespace std::placeholders;
     rest_server->register_get_callback("/metrics", std::bind(&Metrics::metrics_callback, this, _1));
-}
-
-void gauge::set(const double value) {
-    this->value = value;
-    this->last_update_time_stamp = get_time_in_milliseconds();
-}
-
-string gauge::to_string() {
-    std::ostringstream output;
-    output << value << " " << std::to_string(last_update_time_stamp);
-    return output.str();
-}
-
-/* static */
-uint64_t metric::get_time_in_milliseconds() {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-
-    return (uint64_t)(tv.tv_sec) * 1000 + (uint64_t)(tv.tv_usec) / 1000;
 }
 
 } // namespace prometheus

@@ -22,7 +22,7 @@ receiveFlags::receiveFlags(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&receiveFlags::main_thread, this)),
     late_updates_counter(
-        Metrics::instance().AddCounter("kotekan_receiveflags_late_update_count", unique_name)) {
+        Metrics::instance().add_counter("kotekan_receiveflags_late_update_count", unique_name)) {
     // Setup the buffers
     buf_in = get_buffer("in_buf");
     buf_out = get_buffer("out_buf");
@@ -115,11 +115,11 @@ void receiveFlags::main_thread() {
     std::pair<timespec, const std::vector<float>*> update;
 
     auto& receiveflags_update_age =
-        Metrics::instance().AddGauge("kotekan_receiveflags_update_age_seconds", unique_name);
+        Metrics::instance().add_gauge("kotekan_receiveflags_update_age_seconds", unique_name);
     receiveflags_update_age.set(-ts_to_double(ts_late));
     // Report number of frames received late
     auto& receiveflags_late_frame_counter =
-        Metrics::instance().AddCounter("kotekan_receiveflags_late_frame_count", unique_name);
+        Metrics::instance().add_counter("kotekan_receiveflags_late_frame_count", unique_name);
 
     while (!stop_thread) {
         // Wait for an input frame

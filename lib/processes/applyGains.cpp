@@ -202,11 +202,11 @@ void applyGains::apply_thread() {
     }
 
     auto& update_age_metric =
-        Metrics::instance().AddGauge("kotekan_applygains_update_age_seconds", unique_name);
+        Metrics::instance().add_gauge("kotekan_applygains_update_age_seconds", unique_name);
     auto& late_update_counter =
-        Metrics::instance().AddGauge("kotekan_applygains_late_update_count", unique_name);
+        Metrics::instance().add_gauge("kotekan_applygains_late_update_count", unique_name);
     auto& late_frames_counter =
-        Metrics::instance().AddGauge("kotekan_applygains_late_frame_count", unique_name);
+        Metrics::instance().add_gauge("kotekan_applygains_late_frame_count", unique_name);
 
     while (!stop_thread) {
 

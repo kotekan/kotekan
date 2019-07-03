@@ -272,7 +272,7 @@ void visAccumulate::main_thread() {
     // Have we initialised a frame for writing yet
     bool init = false;
 
-    auto& skipped_frame_counter = Metrics::instance().AddCounter(
+    auto& skipped_frame_counter = Metrics::instance().add_counter(
         "kotekan_visaccumulate_skipped_frame_total", unique_name, {"freq_id"});
     while (!stop_thread) {
 
@@ -313,7 +313,7 @@ void visAccumulate::main_thread() {
 
                         if (freq_ind == 0) {
                             auto frame = visFrameView(dset.buf, dset.frame_id);
-                            skipped_frame_counter.Labels({std::to_string(frame.freq_id)}).inc();
+                            skipped_frame_counter.labels({std::to_string(frame.freq_id)}).inc();
                         }
                         continue;
                     }

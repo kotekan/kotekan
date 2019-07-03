@@ -56,7 +56,7 @@ basebandApiManager::basebandApiManager() :
     // clang-format off
     request_counter(
         prometheus::Metrics::instance()
-        .AddCounter("kotekan_baseband_requests_total", "baseband")
+        .add_counter("kotekan_baseband_requests_total", "baseband")
         ) // clang-format on
 {}
 

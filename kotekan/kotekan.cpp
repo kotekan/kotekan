@@ -472,7 +472,7 @@ int main(int argc, char** argv) {
 
     auto& metrics = prometheus::Metrics::instance();
     metrics.register_with_server(&rest_server);
-    auto& kotekan_running = metrics.AddGauge("kotekan_running", "main");
+    auto& kotekan_running = metrics.add_gauge("kotekan_running", "main");
     kotekan_running.set(running);
 
     basebandApiManager& baseband = basebandApiManager::instance();

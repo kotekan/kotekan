@@ -209,7 +209,7 @@ void visTranspose::main_thread() {
 
     // TODO: it seems like this should be a Counter?
     auto& transposed_bytes =
-        Metrics::instance().AddGauge("kotekan_vistranspose_data_transposed_bytes", unique_name);
+        Metrics::instance().add_gauge("kotekan_vistranspose_data_transposed_bytes", unique_name);
 
     while (!stop_thread) {
         // Wait for a full frame in the input buffer

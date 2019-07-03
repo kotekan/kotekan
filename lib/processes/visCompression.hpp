@@ -116,9 +116,9 @@ private:
     uint64_t frame_counter_global;
     std::mutex m_frame_ids;
 
-    kotekan::prometheus::Family<kotekan::prometheus::Gauge>& compression_residuals;
-    kotekan::prometheus::Family<kotekan::prometheus::Gauge>& compression_time_seconds;
-    kotekan::prometheus::Family<kotekan::prometheus::Gauge>& compression_frame_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_residuals;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_time_seconds;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_frame_counter;
 };
 
 

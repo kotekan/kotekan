@@ -25,7 +25,7 @@ bufferSend::bufferSend(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferSend::main_thread, this)),
     dropped_frame_counter(
-        Metrics::instance().AddCounter("kotekan_buffer_send_dropped_frame_count", unique_name)) {
+        Metrics::instance().add_counter("kotekan_buffer_send_dropped_frame_count", unique_name)) {
 
     buf = get_buffer("buf");
     register_consumer(buf, unique_name.c_str());

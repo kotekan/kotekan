@@ -36,7 +36,7 @@ bufferRecv::bufferRecv(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferRecv::main_thread, this)),
     dropped_frame_counter(
-        Metrics::instance().AddCounter("kotekan_buffer_recv_dropped_frame_total", unique_name)) {
+        Metrics::instance().add_counter("kotekan_buffer_recv_dropped_frame_total", unique_name)) {
 
     listen_port = config.get_default<uint32_t>(unique_name, "listen_port", 11024);
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
@@ -337,18 +337,19 @@ void connInstance::internal_read_callback() {
     // external source(s), so there is no guarantee of its uniqueness.
     static std::mutex producer_transfer_time_map_lock;
     static std::unordered_map<
-        std::string, std::shared_ptr<kotekan::prometheus::Family<kotekan::prometheus::Gauge>>>
+        std::string, std::shared_ptr<kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>>>
         producer_transfer_time_map;
 
     // Look up the metric for this instance's producer, or create a new one
-    std::shared_ptr<kotekan::prometheus::Family<kotekan::prometheus::Gauge>> transfer_time_seconds;
+    std::shared_ptr<kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>>
+        transfer_time_seconds;
     {
         std::lock_guard<std::mutex> lock(producer_transfer_time_map_lock);
         if (producer_transfer_time_map.count(producer_name) == 0) {
-            auto& m = Metrics::instance().AddGauge("kotekan_buffer_recv_transfer_time_seconds",
-                                                   producer_name, {"source"});
+            auto& m = Metrics::instance().add_gauge("kotekan_buffer_recv_transfer_time_seconds",
+                                                    producer_name, {"source"});
             producer_transfer_time_map[producer_name] =
-                std::shared_ptr<kotekan::prometheus::Family<kotekan::prometheus::Gauge>>(&m);
+                std::shared_ptr<kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>>(&m);
         }
         transfer_time_seconds = producer_transfer_time_map.at(producer_name);
     }
@@ -474,7 +475,7 @@ void connInstance::internal_read_callback() {
                 // TODO: having IP:port as the "source" label is a **bad**
                 // Prometheus practice and of dubious usefulness
                 std::string source_label = fmt::format("{}:{}", client_ip, port);
-                transfer_time_seconds->Labels({source_label}).set(elapsed);
+                transfer_time_seconds->labels({source_label}).set(elapsed);
 
                 DEBUG("Received data from client: %s:%d into frame: %s[%d]", client_ip.c_str(),
                       port, buf->buffer_name, frame_id);

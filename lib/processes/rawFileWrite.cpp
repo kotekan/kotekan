@@ -43,7 +43,7 @@ void rawFileWrite::main_thread() {
     gethostname(hostname, 64);
 
     auto& write_time_metric =
-        Metrics::instance().AddGauge("kotekan_rawfilewrite_write_time_seconds", unique_name);
+        Metrics::instance().add_gauge("kotekan_rawfilewrite_write_time_seconds", unique_name);
     while (!stop_thread) {
 
         // This call is blocking.

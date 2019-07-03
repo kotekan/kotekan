@@ -112,10 +112,10 @@ private:
     dset_id_t input_dset_id = 0;
 
     kotekan::prometheus::Gauge& comp_time_seconds;
-    kotekan::prometheus::Family<kotekan::prometheus::Gauge>& eigenvalue;
-    kotekan::prometheus::Family<kotekan::prometheus::Gauge>& iterations;
-    kotekan::prometheus::Family<kotekan::prometheus::Gauge>& eigenvalue_convergence;
-    kotekan::prometheus::Family<kotekan::prometheus::Gauge>& eigenvector_convergence;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& eigenvalue;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& iterations;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& eigenvalue_convergence;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& eigenvector_convergence;
 };
 
 #endif
