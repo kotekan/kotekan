@@ -59,7 +59,7 @@ frbPostProcess::frbPostProcess(Config& config_, const string& unique_name,
     frb_header_scale = new float[_nbeams * _num_gpus];
     frb_header_offset = new float[_nbeams * _num_gpus];
 
-    droppacket = (int*)calloc(num_samples * sizeof(int));
+    droppacket = (int*)calloc(num_samples, sizeof(int));
 
     if (posix_memalign((void**)&ib, 32,
                        _num_gpus * num_samples * _factor_upchan_out * sizeof(float))) {
