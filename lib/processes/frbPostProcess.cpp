@@ -237,7 +237,7 @@ void frbPostProcess::main_thread() {
                             frb_header_scale[b * _num_gpus + thread_id] = 0.0;
                             frb_header_offset[b * _num_gpus + thread_id] = 0.0;
                             scl = 0.0;
-                            off = 0.0;
+                            ofs = 0.0;
                         } else {
                             // scale to 1-254 (0 and 255 are both error codes)
                             scl = (253.) / (max - min);
