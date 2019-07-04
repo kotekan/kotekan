@@ -153,7 +153,7 @@ void frbPostProcess::main_thread() {
                     float ce = _incoherent_truncation / norm;
                     __m256 _ce = _mm256_broadcast_ss(&ce);
                     if (droppacket[t] == 1) {
-                        //zero output with dropped packet by setting norm to zero
+                        // zero output with dropped packet by setting norm to zero
                         norm = 0.0;
                     }
                     __m256 _norm = _mm256_broadcast_ss(&norm);
