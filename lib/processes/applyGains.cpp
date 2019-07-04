@@ -36,9 +36,12 @@ applyGains::applyGains(Config& config, const string& unique_name,
     out_buf(get_buffer("out_buf")),
     frame_id_in(in_buf),
     frame_id_out(out_buf),
-    update_age_metric(Metrics::instance().add_gauge("kotekan_applygains_update_age_seconds", unique_name)),
-    late_update_counter(Metrics::instance().add_gauge("kotekan_applygains_late_update_count", unique_name)),
-    late_frames_counter(Metrics::instance().add_gauge("kotekan_applygains_late_frame_count", unique_name)) {
+    update_age_metric(
+        Metrics::instance().add_gauge("kotekan_applygains_update_age_seconds", unique_name)),
+    late_update_counter(
+        Metrics::instance().add_gauge("kotekan_applygains_late_update_count", unique_name)),
+    late_frames_counter(
+        Metrics::instance().add_gauge("kotekan_applygains_late_frame_count", unique_name)) {
 
     // Setup the input buffer
     register_consumer(in_buf, unique_name.c_str());

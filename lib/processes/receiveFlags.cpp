@@ -114,9 +114,9 @@ void receiveFlags::main_thread() {
 
     std::pair<timespec, const std::vector<float>*> update;
 
-    auto& receiveflags_update_age =
+    auto& receiveflags_update_age_metric =
         Metrics::instance().add_gauge("kotekan_receiveflags_update_age_seconds", unique_name);
-    receiveflags_update_age.set(-ts_to_double(ts_late));
+    receiveflags_update_age_metric.set(-ts_to_double(ts_late));
     // Report number of frames received late
     auto& receiveflags_late_frame_counter =
         Metrics::instance().add_counter("kotekan_receiveflags_late_frame_count", unique_name);
@@ -160,7 +160,7 @@ void receiveFlags::main_thread() {
         flags_lock.unlock();
 
         // Report how old the flags being applied to the current data are.
-        receiveflags_update_age.set(-ts_to_double(ts_late));
+        receiveflags_update_age_metric.set(-ts_to_double(ts_late));
 
         // Mark output frame full and input frame empty
         mark_frame_full(buf_out, unique_name.c_str(), frame_id_out);

@@ -49,10 +49,10 @@ baselineCompression::baselineCompression(Config& config, const string& unique_na
     frame_id_in(in_buf),
     frame_id_out(out_buf),
     frame_counter_global(0),
-    compression_residuals(Metrics::instance().add_gauge("kotekan_baselinecompression_residuals",
-                                                        unique_name,
-                                                        {"freq_id", "dataset_id", "thread_id"})),
-    compression_time_seconds(
+    compression_residuals_metric(
+        Metrics::instance().add_gauge("kotekan_baselinecompression_residuals", unique_name,
+                                      {"freq_id", "dataset_id", "thread_id"})),
+    compression_time_seconds_metric(
         Metrics::instance().add_gauge("kotekan_baselinecompression_time_seconds", unique_name,
                                       {"freq_id", "dataset_id", "thread_id"})),
     compression_frame_counter(
@@ -292,11 +292,11 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
         double elapsed = current_time() - start_time;
         std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\",thread_id=\"{}\"",
                                          output_frame.freq_id, output_frame.dataset_id, thread_id);
-        compression_residuals
+        compression_residuals_metric
             .labels({std::to_string(output_frame.freq_id), std::to_string(output_frame.dataset_id),
                      std::to_string(thread_id)})
             .set(residual);
-        compression_time_seconds
+        compression_time_seconds_metric
             .labels({std::to_string(output_frame.freq_id), std::to_string(output_frame.dataset_id),
                      std::to_string(thread_id)})
             .set(elapsed);

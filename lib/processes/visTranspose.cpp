@@ -208,7 +208,7 @@ void visTranspose::main_thread() {
     }
 
     // TODO: it seems like this should be a Counter?
-    auto& transposed_bytes =
+    auto& transposed_bytes_metric =
         Metrics::instance().add_gauge("kotekan_vistranspose_data_transposed_bytes", unique_name);
 
     while (!stop_thread) {
@@ -276,7 +276,7 @@ void visTranspose::main_thread() {
             // export prometheus metric
             if (frame_size == 0)
                 frame_size = frame.calculate_buffer_layout(num_input, num_prod, num_ev).first;
-            transposed_bytes.set(frame_size * frames_so_far);
+            transposed_bytes_metric.set(frame_size * frames_so_far);
         }
 
         frames_so_far++;
