@@ -110,6 +110,11 @@ void basebandReadout::main_thread() {
             stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
             uint32_t freq_id = bin_number_chime(&stream_id);
 
+            DEBUG("Initialize baseband metrics for freq_id: $s" PRIu32, freq_id);
+            readout_counter.labels({std::to_string(freq_id), "done"});
+            readout_counter.labels({std::to_string(freq_id), "error"});
+            readout_counter.labels({std::to_string(freq_id), "no_data"});
+
             INFO("Starting request-listening thread for freq_id: %" PRIu32, freq_id);
             basebandReadoutManager& mgr =
                 basebandApiManager::instance().register_readout_stage(freq_id);
