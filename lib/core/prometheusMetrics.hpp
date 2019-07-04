@@ -54,7 +54,7 @@ public:
 
 private:
     /// The actual value to be returned
-    int value = 0;
+    uint64_t value = 0;
 };
 
 /**
