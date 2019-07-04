@@ -199,7 +199,6 @@ void frbPostProcess::main_thread() {
                         __m256 _mn = _mm256_broadcast_ss(&zero);
                         __m256 _cA = _mm256_broadcast_ss(&zero);
                         __m256 _cB = _mm256_broadcast_ss(&zero);
-                        INFO("[frb PP] Check pt 0 _mx[0]=%.2f _mn[0]=%.2f", _mx[0], _mn[0]);
                         // AVX2 option, fastest of a few I tried
                         bool firstvalue = true;
                         for (int t = 0; t < _timesamples_per_frb_packet; t++) {
@@ -211,18 +210,12 @@ void frbPostProcess::main_thread() {
                                     _mx = _mm256_max_ps(_cA, _cB);
                                     _mn = _mm256_min_ps(_cA, _cB);
                                     firstvalue = false;
-                                    INFO("[frb PP] t=%d Check pt 1 _mx[0]=%.2f _mn[0]=%.2f", t,
-                                         _mx[0], _mn[0]);
                                 } else {
-                                    INFO("[frb PP] t=%d Check pt 1.5 !=firstvalue _mx[0]=%.2f "
-                                         "_mn[0]=%.2f",
-                                         t, _mx[0], _mn[0]);
                                     _mx = _mm256_max_ps(_mx, _mm256_max_ps(_cA, _cB));
                                     _mn = _mm256_min_ps(_mn, _mm256_min_ps(_cA, _cB));
                                 }
                             } // end if drop packet
                         }
-                        INFO("[frb PP] Check pt 2 _mx[0]=%.2f _mn[0]=%.2f", _mx[0], _mn[0]);
 
                         // Calc scale and offset
                         float min, max;
@@ -242,11 +235,11 @@ void frbPostProcess::main_thread() {
                             frb_header_scale[b * _num_gpus + thread_id] = 0.0;
                             frb_header_offset[b * _num_gpus + thread_id] = 1.0;
                         } else {
-                        // scale to 1-254 (0 and 255 are both error codes)
-                        scl = (253.) / (max - min);
-                        ofs = min - 1 / scl; // offset by 1, so 1-254
-                        frb_header_scale[b * _num_gpus + thread_id] = 1. / scl;
-                        frb_header_offset[b * _num_gpus + thread_id] = ofs;
+                            // scale to 1-254 (0 and 255 are both error codes)
+                            scl = (253.) / (max - min);
+                            ofs = min - 1 / scl; // offset by 1, so 1-254
+                            frb_header_scale[b * _num_gpus + thread_id] = 1. / scl;
+                            frb_header_offset[b * _num_gpus + thread_id] = ofs;
                         }
                         // Apply scale and offset
                         int f_per_m = sizeof(__m256) / sizeof(float);
