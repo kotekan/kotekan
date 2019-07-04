@@ -136,9 +136,11 @@ string Metrics::serialize() {
 void Metrics::add(const string name, const string stage_name,
                   std::shared_ptr<Serializable> metric) {
     if (name.empty()) {
+        ERROR("Empty metric name. Exiting.");
         throw std::runtime_error("Empty metric name.");
     }
     if (stage_name.empty()) {
+        ERROR("Empty stage for metric %s. Exiting.", name.c_str());
         throw std::runtime_error("Empty stage name: " + name);
     }
 
@@ -146,7 +148,8 @@ void Metrics::add(const string name, const string stage_name,
 
     auto key = std::make_tuple(name, stage_name);
     if (families.count(key)) {
-        throw std::runtime_error("Duplicate metric name: " + name + "/" + stage_name);
+        ERROR("Duplicate metric name: %s. Exiting.", (name + ":" + stage_name).c_str());
+        throw std::runtime_error("Duplicate metric name: " + name + ":" + stage_name);
     }
     families[key] = metric;
 }
