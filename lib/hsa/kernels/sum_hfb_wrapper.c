@@ -550,7 +550,7 @@ int main(int argc, char **argv){
     float card_tflops = mcl*1e6 * mcm*16*4*2 / 1e12;
     printf("Testing on device 0: max %f TFLOPS\n\n", card_tflops);
 //     printf ("Theoretical: 5 N log2 (N) = 5 x 64 x 6 = 1920 floating point operations\n%f us/FFT\n", 1920.f*1000000/(mcl*1e6 * mcm*16*4));
-    printf ("Theoretical: 5 N log2 (N) = 5 x 128 x 7 = 4480 floating point operations\n%f us/FFT\n", 4480.f*1000000/(mcl*1e6 * mcm*16*4));
+    printf ("Theoretical: 1024 x 128 x 10 = 1310720 floating point operations\n%f us/kernel\n", 1310720.f*1000000/(mcl*1e6 * mcm*16*4));
 
 
     // 3. Create a context and command queues on that device.
@@ -647,15 +647,6 @@ int main(int argc, char **argv){
     //    exit(-1);
     //}
     //initialize
-    int index = 0;
-    //for (int j = 0; j < num_data_sets; j++){
-    //    srand(42); //seed it and make each of the subsequent arrays equal
-    //    for (int i = 0; i < 64; i++){
-    //        array1[index++] = rand()%16;
-    //        array1[index++] = 0;
-    //    }
-    //}
-
     //generate_char_data_set(int generation_Type,
     //                        int random_seed,
     //                        int default_real,
@@ -670,12 +661,6 @@ int main(int argc, char **argv){
     //                        unsigned char *packed_data_set)
     //generate_char_data_set(GEN_TYPE,GEN_DEFAULT_SEED,GEN_DEFAULT_RE, GEN_DEFAULT_IM,GEN_INITIAL_RE,GEN_INITIAL_IM,GEN_FREQ, num_data_sets, 1, 2048, 1, arrayInput);
 
-    printf("Generated arrayInput (packed, from generate_char_data_set) ------:\n");
-    for (int t=0; t < 10; t++){
-      printf(" %2d ", arrayInput[t]);
-    }
-    printf("\n");
-
     float *input_data = (float *)malloc(sizeof(float) * NUM_ELEMENTS);
     float *output_data = (float *)malloc(sizeof(float) * 1024 * 128);
     for(int i=0; i<NUM_ELEMENTS; i++) input_data[i] = 1.f;
@@ -686,9 +671,9 @@ int main(int argc, char **argv){
 
     // Set up work sizes
     //int num_data_sets_device = num_data_sets/4; //each work group processes two sets at once
-    size_t gws[3]={64*2048/4,           // No. of work groups in x (in no. of work items)
-                   1,                   // No. of work groups in y (in no. of work items)
-                   num_data_sets/128};  // No. of work groups in z (in no. of work items)
+    size_t gws[3]={64,                  // No. of work groups in x (in no. of work items)
+                   1024,                // No. of work groups in y (in no. of work items)
+                   1};                  // No. of work groups in z (in no. of work items)
     size_t lws[3]={64,                  // No. of work items per work group in x 
                    1,                   // No. of work items per work group in y
                    1};                  // No. of work items per work group in z
@@ -715,89 +700,52 @@ int main(int argc, char **argv){
     clFinish(queue[0]);
     //stop the timer
     elapsed_time = e_time() - elapsed_time;
-    printf ("Computed %d iterations of %d 128 element FFTs in %f s (%f us/FFT on average)\n",extra_coef, num_data_sets*2048/128, elapsed_time, (double)elapsed_time*1000000/num_data_sets/2048*128/extra_coef);
-
+    printf ("Computed %d iterations of 1024 (beams) x 128 (freq) summed over 10 samples in %f s (%f us/kernel on average)\n",extra_coef, elapsed_time, (double)elapsed_time*1000000/extra_coef);
+    printf("Grid size:       [%ld, %ld, %ld]\n", gws[0], gws[1], gws[2]);
+    printf("Work group size: [%ld, %ld, %ld]\n", lws[0], lws[1], lws[2]);
 
     //read back the result
     err = clEnqueueReadBuffer(queue[0],device_32_output_data, CL_TRUE, 0, 1024*128*sizeof(float), output_data, 0, NULL, NULL);
 
     clFinish(queue[0]);
 
-    //compare results with cpu fft
-    //calculate fft
-    printf("total_number_floats: %d\n", total_number_floats);
-    double *array2;
-    array2 = (double *) malloc(total_number_floats*sizeof(double));
-    if (array2 == NULL){
-        printf("Error allocating memory");
+    FILE *file;
+    file = fopen("hfb_wrapper_out.dat", "w");
+
+    for(uint i=0; i<1024 * 128; i++) fprintf(file, "hfb_out[%d]: %e\n", i, output_data[i]);
+
+    fclose(file);
+
+    //compare results with cpu result
+    float *cpu_input = (float *)malloc(NUM_ELEMENTS * sizeof(float));
+    float *cpu_output = (float *)malloc(1024 * 128 * sizeof(float));
+
+    if (cpu_input == NULL || cpu_output == NULL){
+        printf("Error allocating cpu memory");
         exit (-1);
     }
-    printf("created array: array2\n");
-    //'transpose' the array (elements <-> time) while expanding it out for testing with cpu fft routines
-    //(this is done by swapping the two indice for the nested loop--it would ordinarily have j on the outer loop)
-    index = 0;
-    for (int i = 0; i < 2048; i++){
-        for (int j = 0; j < num_data_sets/128; j++){
-            array2[index++] = HI_NIBBLE(arrayInput[j*2048+i])-8; // to give a range from -8 to 7
-            array2[index++] = LO_NIBBLE(arrayInput[j*2048+i])-8; // to give a range from -8 to 7;
-            //if (j == 0)
-            //    printf("%4d %6.1f %6.1f\n",i,array2[index-2],array2[index-1]);
-        }
-    }
 
-    printf("This is array2 as allocated with HI-/LO-NIBBLE - tranposed\n");
-    for (int i = 0; i < 5; i++){
-      printf("(%.2f %.2f) ",array2[i*2], array2[i*2+1]);
-    }
-    printf("\n next 2048\n");
-    for (int i = 2048; i < 2053; i++){
-      printf("(%.2f %.2f) ",array2[i*2], array2[i*2+1]);
-    }
+    for(int i=0; i<NUM_ELEMENTS; i++) cpu_input[i] = 1.f;
 
-    printf("\npre-fft; num_data_sets*2048/128 = %d\n", num_data_sets*2048/128);
-    //now calculate the fft of the data sets (num_data_sets referred to number of overall timesteps, more or less).
-    for (int j = 0; j < num_data_sets*2048/128; j++){
-        four1double(&array2[j*128*2],128, 1);
-    }
-    printf("fft finished\n");
+    //for (int b = 0; b < 1024; b++) {
+    //  for (int f = 0; f < 128; f++) {
+    //    float sum = 0.0;
+    //    for (int samp = 0; samp < 10; samp++) sum += cpu_input[b * 1024 + f * 128 + samp];
 
-    //need to reorder the data from the FFT or redo the comparison.
-    //presently has order: [Elem0, Freq0-127(upchannelized), Time0],Time1, ..., Time(num_data_sets/128), Elem1...
-    //need it to go to Elem fastest varying, then Freq, then Time
-    //create a new array that is twice as large (elements above 256 are zero padding)
-    double *padded_array;
-    index = 0;
-    padded_array = (double *) malloc(total_number_floats*2*sizeof(double));
-    if (padded_array == NULL){
-        printf("Error allocating memory");
-        exit (-1);
-    }
-    printf("created empty array to store padded and sorted data\n");
-    for (int k = 0; k < num_data_sets/128; k++){ //time loop
-        for (int j = 0; j < 128; j++){
-            for (int i = 0; i < 2048; i++){
-                padded_array[index++]=array2[2*(i*num_data_sets + k*128 + j)];
-                padded_array[index++]=array2[2*(i*num_data_sets + k*128 + j)+1];
-                //padding for spatial transform every 256 items, since there are 256 elements (per polarization) in a line in each Full CHIME cylinder
-                if ((i+1)%256 == 0){
-                    for (int ii = 0; ii < 256; ii++){
-                        padded_array[index++] = 0;
-                        padded_array[index++] = 0;
-                    }
-                }
-            }
-
-        }
-    }
-
-    printf("sorting and padding complete\n");
-    /*
-    for (int j = 0; j < 129; j++){
-        for (int i = 0; i < 4096; i++){
-            printf("%4d %4d GPU: %13.7f %13.7f\n", j, i, array1[j*4096*2+ i*2],array1[j*4096*2+ i*2+1]);
-        }
-	}*/
-//    for (int i = 0; i < 4096; i++){
+    //    const int output_offset = b * 1024 + f;
+    //    cpu_output[output_offset] = sum;
+    //  } // end for freq
+    //} // end for beam
+    
+    //for (int b = 0; b < 1024; b++) {
+    //  for (int f = 0; f < 128; f++) {
+    //    if(AlmostEqualRelativeAndAbs(cpu_output[b * 1024 + f], output_data[b * 1024 + f ], 0, 0)) {
+    //      printf("Difference too large!");
+    //      exit(-1);
+    //    }
+    //  }
+    //}
+//        for (int i = 0; i < 4096; i++){
 //       printf("%4d: %13.8f %13.8f %13.8f %13.8f, %13.8f %13.8f\n", i, RelativeAndAbsdouble(array1[i*2],padded_array[i*2], FLT_EPSILON), RelativeAndAbsdouble(array1[i*2+1],padded_array[i*2+1], FLT_EPSILON),array1[i*2],padded_array[i*2], array1[i*2+1],padded_array[i*2+1]);
 //    }
 
@@ -805,8 +753,6 @@ int main(int argc, char **argv){
     printf("FLT_EPSILON: %1.12f\n\n", eps);
     free(array1);
     free(arrayInput);
-    free(array2);
-    free(padded_array);
 
     clReleaseKernel(fft128);
     clReleaseProgram(program);
