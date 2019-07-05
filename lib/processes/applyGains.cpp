@@ -23,8 +23,8 @@ using namespace std::placeholders;
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::configUpdater;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(applyGains);
 
@@ -35,7 +35,13 @@ applyGains::applyGains(Config& config, const string& unique_name,
     in_buf(get_buffer("in_buf")),
     out_buf(get_buffer("out_buf")),
     frame_id_in(in_buf),
-    frame_id_out(out_buf) {
+    frame_id_out(out_buf),
+    update_age_metric(
+        Metrics::instance().add_gauge("kotekan_applygains_update_age_seconds", unique_name)),
+    late_update_counter(
+        Metrics::instance().add_gauge("kotekan_applygains_late_update_count", unique_name)),
+    late_frames_counter(
+        Metrics::instance().add_gauge("kotekan_applygains_late_frame_count", unique_name)) {
 
     // Setup the input buffer
     register_consumer(in_buf, unique_name.c_str());
@@ -330,16 +336,13 @@ void applyGains::apply_thread() {
         }
 
         // Report how old the gains being applied to the current data are.
-        prometheusMetrics::instance().add_stage_metric("kotekan_applygains_update_age_seconds",
-                                                       unique_name, tpast);
+        update_age_metric.set(tpast);
 
         // Report number of updates received too late
-        prometheusMetrics::instance().add_stage_metric("kotekan_applygains_late_update_count",
-                                                       unique_name, num_late_updates.load());
+        late_update_counter.set(num_late_updates.load());
 
         // Report number of frames received late
-        prometheusMetrics::instance().add_stage_metric("kotekan_applygains_late_frame_count",
-                                                       unique_name, num_late_frames.load());
+        late_frames_counter.set(num_late_frames.load());
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);

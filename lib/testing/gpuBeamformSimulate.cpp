@@ -17,7 +17,7 @@
 
 #define PI 3.14159265
 #define feed_sep 0.3048
-#define light 3.e8
+#define light 299792458.
 
 #include <iostream>
 #include <fstream>
@@ -44,6 +44,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const string& unique_na
     _northmost_beam = config.get<float>(unique_name, "northmost_beam");
     Freq_ref = (light * (128) / (sin(_northmost_beam * PI / 180.) * feed_sep * 256)) / 1.e6;
     _ew_spacing = config.get<std::vector<float>>(unique_name, "ew_spacing");
+    _num_sub_freqs = config.get<uint32_t>(unique_name, "num_sub_freqs");
     _ew_spacing_c = (float*)malloc(4 * sizeof(float));
     for (int i = 0; i < 4; i++) {
         _ew_spacing_c[i] = _ew_spacing[i];
@@ -65,8 +66,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const string& unique_na
     input_len_padded = input_len * 2;
     transposed_len = (_samples_per_data_set + 32) * _num_elements * 2;
     output_len = _num_elements * (_samples_per_data_set / _downsample_time / _downsample_freq / 2);
-    //hfb_output_len = _num_elements * (_samples_per_data_set / _downsample_time / 2);
-    hfb_output_len = 1024 * _factor_upchan;
+    hfb_output_len =  * _num_sub_freqs;
 
     input_unpacked = (double*)malloc(input_len * sizeof(double));
     input_unpacked_padded = (double*)malloc(input_len_padded * sizeof(double));
@@ -471,8 +471,10 @@ void gpuBeamformSimulate::main_thread() {
             }
         }
 
-        //16-bandpass correction
-        float BP[16] {0.52225748,0.58330915,0.6868705,0.80121821,0.89386546,0.95477358,0.98662733,0.99942558,0.99988676,0.98905127,0.95874124,0.90094667,0.81113021,0.6999944,0.59367968,0.52614263};
+        // 16-bandpass correction
+        float BP[16]{0.52225748, 0.58330915, 0.6868705,  0.80121821, 0.89386546, 0.95477358,
+                     0.98662733, 0.99942558, 0.99988676, 0.98905127, 0.95874124, 0.90094667,
+                     0.81113021, 0.6999944,  0.59367968, 0.52614263};
 
         // Downsample
         int nfreq_out = _factor_upchan;
@@ -548,10 +550,10 @@ void gpuBeamformSimulate::main_thread() {
                                                                    * 2
                                                                + 1];
                                 out_sq += tmp_real * tmp_real + tmp_imag * tmp_imag;
-                            } //end for ff
-                        } // end for tt
-                    }     // end for pol
-                    cpu_final_output[out_id] = out_sq / 48. / BP[int((f + 8) % 16)] ;
+                            } // end for ff
+                        }     // end for tt
+                    }         // end for pol
+                    cpu_final_output[out_id] = out_sq / 48. / BP[int((f + 8) % 16)];
 
                 } // end for freq
             }     // end for time

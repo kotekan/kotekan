@@ -34,8 +34,8 @@ using namespace std::placeholders;
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(baselineCompression);
 
@@ -48,7 +48,16 @@ baselineCompression::baselineCompression(Config& config, const string& unique_na
     out_buf(get_buffer("out_buf")),
     frame_id_in(in_buf),
     frame_id_out(out_buf),
-    frame_counter_global(0) {
+    frame_counter_global(0),
+    compression_residuals_metric(
+        Metrics::instance().add_gauge("kotekan_baselinecompression_residuals", unique_name,
+                                      {"freq_id", "dataset_id", "thread_id"})),
+    compression_time_seconds_metric(
+        Metrics::instance().add_gauge("kotekan_baselinecompression_time_seconds", unique_name,
+                                      {"freq_id", "dataset_id", "thread_id"})),
+    compression_frame_counter(
+        Metrics::instance().add_gauge("kotekan_baselinecompression_frame_counter", unique_name,
+                                      {"freq_id", "dataset_id", "thread_id"})) {
 
     register_consumer(in_buf, unique_name.c_str());
     register_producer(out_buf, unique_name.c_str());
@@ -283,12 +292,20 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
         double elapsed = current_time() - start_time;
         std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\",thread_id=\"{}\"",
                                          output_frame.freq_id, output_frame.dataset_id, thread_id);
-        prometheusMetrics::instance().add_stage_metric("kotekan_baselinecompression_residuals",
-                                                       unique_name, residual, labels);
-        prometheusMetrics::instance().add_stage_metric("kotekan_baselinecompression_time_seconds",
-                                                       unique_name, elapsed, labels);
-        prometheusMetrics::instance().add_stage_metric("kotekan_baselinecompression_frame_counter",
-                                                       unique_name, frame_counter, labels);
+        compression_residuals_metric
+            .labels({std::to_string(output_frame.freq_id), std::to_string(output_frame.dataset_id),
+                     std::to_string(thread_id)})
+            .set(residual);
+        compression_time_seconds_metric
+            .labels({std::to_string(output_frame.freq_id), std::to_string(output_frame.dataset_id),
+                     std::to_string(thread_id)})
+            .set(elapsed);
+        // TODO: this feels like it should be a counter, but it's unclear
+        // how `frame_counter` increments exactly
+        compression_frame_counter
+            .labels({std::to_string(output_frame.freq_id), std::to_string(output_frame.dataset_id),
+                     std::to_string(thread_id)})
+            .set(frame_counter);
 
         // Get the current values of the shared frame IDs and increment them.
         {

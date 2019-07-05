@@ -81,7 +81,7 @@ hsa_signal_t hsaRfiVdif::execute(int gpu_frame_id, hsa_signal_t precede_signal) 
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 
     hsa_status_t hsa_status = hsa_signal_create(1, 0, NULL, &signals[gpu_frame_id]);
-    assert(hsa_status == HSA_STATUS_SUCCESS);
+    HSA_CHECK(hsa_status);
 
     // Obtain the current queue write index.
     uint64_t index = hsa_queue_load_write_index_acquire(device.get_queue());

@@ -44,12 +44,6 @@ public:
 
 private:
     Buffer* in_buf;
-
-    // A (freq_id, dataset_id) pair
-    using fd_pair = typename std::pair<uint32_t, uint64_t>;
-
-    // Count the number of frames received for every {freq_id, dataset_id}
-    std::map<fd_pair, uint64_t> frame_counts;
 };
 
 #endif // VISDEBUG_HPP

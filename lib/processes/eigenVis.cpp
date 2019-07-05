@@ -15,8 +15,8 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(eigenVis);
 
@@ -53,7 +53,7 @@ void eigenVis::main_thread() {
 
     frameID input_frame_id(input_buffer);
     frameID output_frame_id(output_buffer);
-    uint32_t num_elements;
+    uint32_t num_elements = 0;
     bool initialized = false;
     size_t lapack_failure_total = 0;
     dset_id_t _output_dset_id = 0;
@@ -72,6 +72,16 @@ void eigenVis::main_thread() {
     uint32_t freq_id;
 
     openblas_set_num_threads(1);
+
+    auto& eigenvalue_metric = Metrics::instance().add_gauge(
+        "kotekan_eigenvis_eigenvalue", unique_name, {"eigenvalue", "freq_id", "dataset_id"});
+
+    auto& comp_time_seconds_metric =
+        Metrics::instance().add_gauge("kotekan_eigenvis_comp_time_seconds", unique_name);
+
+    // TODO: this should logically be a Counter
+    auto& lapack_failure_counter = Metrics::instance().add_gauge(
+        "kotekan_eigenvis_lapack_failure_total", unique_name, {"freq_id", "dataset_id"});
 
     while (!stop_thread) {
 
@@ -153,11 +163,10 @@ void eigenVis::main_thread() {
             ERROR("LAPACK failed with exit code %d", info);
             lapack_failure_total++;
 
-            // Output prometheus metric about LAPACK failures
-            std::string labels =
-                fmt::format("freq_id=\"{}\",dataset_id=\"{}\"", freq_id, input_frame.dataset_id);
-            prometheusMetrics::instance().add_stage_metric(
-                "kotekan_eigenvis_lapack_failure_total", unique_name, lapack_failure_total, labels);
+            // Update prometheus metric about LAPACK failures
+            lapack_failure_counter
+                .labels({std::to_string(freq_id), std::to_string(input_frame.dataset_id)})
+                .set(lapack_failure_total);
 
             // Clear frame and advance
             mark_frame_empty(input_buffer, unique_name.c_str(), input_frame_id++);
@@ -210,23 +219,20 @@ void eigenVis::main_thread() {
 
         // Update average write time in prometheus
         calc_time.add_sample(elapsed_time);
-        prometheusMetrics::instance().add_stage_metric("kotekan_eigenvis_comp_time_seconds",
-                                                       unique_name, calc_time.average());
+        comp_time_seconds_metric.set(calc_time.average());
 
         // Output eigenvalues to prometheus
         for (uint32_t i = 0; i < num_eigenvectors; i++) {
-            std::string labels = fmt::format("eigenvalue=\"{}\",freq_id=\"{}\",dataset_id=\"{}\"",
-                                             i, freq_id, input_frame.dataset_id);
-            prometheusMetrics::instance().add_stage_metric("kotekan_eigenvis_eigenvalue",
-                                                           unique_name,
-                                                           evals[num_eigenvectors - 1 - i], labels);
+            eigenvalue_metric
+                .labels({std::to_string(i), std::to_string(freq_id),
+                         std::to_string(input_frame.dataset_id)})
+                .set(evals[num_eigenvectors - 1 - i]);
         }
 
         // Output RMS to prometheus
-        std::string labels = fmt::format("eigenvalue=\"rms\",freq_id=\"{}\",dataset_id=\"{}\"",
-                                         freq_id, input_frame.dataset_id);
-        prometheusMetrics::instance().add_stage_metric("kotekan_eigenvis_eigenvalue", unique_name,
-                                                       rms, labels);
+        eigenvalue_metric
+            .labels({"rms", std::to_string(freq_id), std::to_string(input_frame.dataset_id)})
+            .set(rms);
 
         // Get output buffer for visibilities. Essentially identical to input buffers.
         if (wait_for_empty_frame(output_buffer, unique_name.c_str(), output_frame_id) == nullptr) {
