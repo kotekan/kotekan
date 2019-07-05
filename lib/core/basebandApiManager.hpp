@@ -169,6 +169,9 @@ private:
     /// Constructor, not used directly
     basebandApiManager();
 
+    /// Destructor to remove the stage metrics
+    ~basebandApiManager();
+
     /// Sampling frequency (Hz)
     static constexpr double ADC_SAMPLE_RATE = 800e6;
 

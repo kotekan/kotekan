@@ -81,6 +81,10 @@ applyGains::applyGains(Config& config, const string& unique_name,
     configUpdater::instance().subscribe(this, std::bind(&applyGains::receive_update, this, _1));
 }
 
+applyGains::~applyGains() {
+    Metrics::instance().remove_stage_metrics(unique_name);
+}
+
 bool applyGains::fexists(const std::string& filename) {
     struct stat buf;
     return (stat(filename.c_str(), &buf) == 0);

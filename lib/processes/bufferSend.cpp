@@ -47,7 +47,9 @@ bufferSend::bufferSend(Config& config, const string& unique_name,
     socket_fd = -1;
 }
 
-bufferSend::~bufferSend() {}
+bufferSend::~bufferSend() {
+    Metrics::instance().remove_stage_metrics(unique_name);
+}
 
 void bufferSend::main_thread() {
 

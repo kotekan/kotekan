@@ -88,7 +88,9 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
     }
 }
 
-basebandReadout::~basebandReadout() {}
+basebandReadout::~basebandReadout() {
+    kotekan::prometheus::Metrics::instance().remove_stage_metrics(unique_name);
+}
 
 void basebandReadout::main_thread() {
 

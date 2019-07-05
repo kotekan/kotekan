@@ -63,6 +63,10 @@ EigenVisIter::EigenVisIter(Config& config, const string& unique_name,
     ev_state_id = dm.add_state(std::move(ev_state)).first;
 }
 
+EigenVisIter::~EigenVisIter() {
+    Metrics::instance().remove_stage_metrics(unique_name);
+}
+
 dset_id_t EigenVisIter::change_dataset_state(dset_id_t input_dset_id) const {
     auto& dm = datasetManager::instance();
     return dm.add_dataset(input_dset_id, ev_state_id);

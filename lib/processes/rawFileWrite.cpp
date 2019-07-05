@@ -110,4 +110,5 @@ void rawFileWrite::main_thread() {
         frame_id = (frame_id + 1) % buf->num_frames;
         file_num++;
     }
+    Metrics::instance().remove_stage_metrics(unique_name);
 }

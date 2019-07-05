@@ -431,6 +431,8 @@ void visAccumulate::main_thread() {
         last_frame_count = frame_count;
         frames_in_this_cycle++;
     }
+
+    Metrics::instance().remove_stage_metrics(unique_name);
 }
 
 

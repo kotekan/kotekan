@@ -335,6 +335,8 @@ void visTestPattern::main_thread() {
     if (outfile.is_open())
         outfile.close();
 
+    Metrics::instance().remove_stage_metrics(unique_name);
+
     if (num_frames) {
         std::string error_msg = "Kotekan exited before test was done.";
         WARN(error_msg.c_str());

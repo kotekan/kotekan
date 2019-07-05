@@ -170,6 +170,7 @@ void visWriter::main_thread() {
         // Clean out any acquisitions that have been inactive long
         close_old_acqs();
     }
+    Metrics::instance().remove_stage_metrics(unique_name);
 }
 
 
@@ -361,6 +362,7 @@ visCalWriter::visCalWriter(Config& config, const string& unique_name,
 
 visCalWriter::~visCalWriter() {
     restServer::instance().remove_get_callback(endpoint);
+    Metrics::instance().remove_stage_metrics(unique_name);
 }
 
 void visCalWriter::rest_callback(connectionInstance& conn) {

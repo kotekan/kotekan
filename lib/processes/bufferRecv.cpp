@@ -46,7 +46,9 @@ bufferRecv::bufferRecv(Config& config, const string& unique_name,
     register_producer(buf, unique_name.c_str());
 }
 
-bufferRecv::~bufferRecv() {}
+bufferRecv::~bufferRecv() {
+    Metrics::instance().remove_stage_metrics(unique_name);
+}
 
 void bufferRecv::read_callback(evutil_socket_t fd, short what, void* arg) {
 

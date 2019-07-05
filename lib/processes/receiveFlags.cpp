@@ -46,6 +46,10 @@ receiveFlags::receiveFlags(Config& config, const string& unique_name,
     configUpdater::instance().subscribe(this, std::bind(&receiveFlags::flags_callback, this, _1));
 }
 
+receiveFlags::~receiveFlags() {
+    Metrics::instance().remove_stage_metrics(unique_name);
+}
+
 bool receiveFlags::flags_callback(nlohmann::json& json) {
     std::vector<float> flags_received(num_elements);
     std::fill(flags_received.begin(), flags_received.end(), 1.0);

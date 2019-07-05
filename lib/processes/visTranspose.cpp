@@ -288,6 +288,7 @@ void visTranspose::main_thread() {
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
         frame_id = (frame_id + 1) % in_buf->num_frames;
     }
+    Metrics::instance().remove_stage_metrics(unique_name);
 }
 
 void visTranspose::write() {
