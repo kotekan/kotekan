@@ -7,6 +7,22 @@
 #include <sstream>
 
 
+// Conversion of std::chrono::system_clock::time_point to JSON
+namespace std {
+namespace chrono {
+    void to_json(json& j, const system_clock::time_point& t) {
+        std::time_t t_c = std::chrono::system_clock::to_time_t(t);
+        std::tm t_tm;
+        localtime_r(&t_c, &t_tm);
+        std::ostringstream out;
+        out << std::put_time(&t_tm, "%FT%T.")
+            << std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch()).count() % 1000
+            << std::put_time(&t_tm, "%z");
+        j = out.str();
+    }
+} // namespace chrono
+} // namespace std
+
 namespace kotekan {
 
 // clang-format off
@@ -31,7 +47,8 @@ basebandApiManager::basebandReadoutRegistry::end() noexcept {
 void to_json(json& j, const basebandDumpStatus& d) {
     j = json{{"file_name", d.request.file_name},
              {"total", d.bytes_total},
-             {"remaining", d.bytes_remaining}};
+             {"remaining", d.bytes_remaining},
+             {"received", d.request.received}};
 
     switch (d.state) {
         case basebandDumpStatus::State::WAITING:
