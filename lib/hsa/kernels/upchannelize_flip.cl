@@ -25,7 +25,6 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array,
   __local float2 local_data[384];
   uint local_address = get_local_id(0);
   float outtmp = 0.f;
-  float freq_1_time_sum = 0.f, freq_2_time_sum = 0.f;
   const int work_offset = get_local_id(0) * 2;
   float time_sum_1 = 0.f, time_sum_2 = 0.f;
 
@@ -270,11 +269,10 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array,
     //Downsample: sum all time and both polarisations (amplitude Re*Re + Im*Im)
     //Each work item processes 2 frequencies
     //so write out 128 numbers only
-    for (int j=0; j<3; j++) {
+    for (int freq=0; freq<3; freq++) {
         //Offset of work item ID + stride in memory of freq + first or second freq being worked on
-
-        const int time_offset_1 = j*128 + work_offset;
-        const int time_offset_2 = j*128 + work_offset + 1;
+        const int time_offset_1 = freq*128 + work_offset;
+        const int time_offset_2 = freq*128 + work_offset + 1;
 
         time_sum_1 += local_data[time_offset_1].REAL * local_data[time_offset_1].REAL + 
             local_data[time_offset_1].IMAG * local_data[time_offset_1].IMAG;
@@ -284,14 +282,8 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array,
 
     barrier(CLK_LOCAL_MEM_FENCE);
 
-    if (p == 1) {
-        hfb_output_array[(get_group_id(0) * 1024 * 128) + get_group_id(1) * 128 + work_offset] = time_sum_1 / 6.f;
-        hfb_output_array[(get_group_id(0) * 1024 * 128) + get_group_id(1) * 128 + work_offset + 1] = time_sum_2 / 6.f;
-    }
-
     //Downsample sum every 8 frequencies and 3 time, and sum Re Im
     //so write out 16 numbers only
-
     if (get_local_id(0) < 16){ //currently only 16 out of 64 has work to do. not ideal
       for (int j=0;j<3;j++){
         for (int i=0;i<8;i++){
@@ -300,13 +292,18 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array,
         }
       }
       barrier(CLK_LOCAL_MEM_FENCE);
-      if (p == 1) {
-        outtmp = outtmp/48.; // Divide by 48 as we want the average of 48 summed elements
-        //FFT shift by (id+8)%16
-        results_array[get_global_id(1)*nsamp_out*16+get_group_id(0)*16+ ((get_local_id(0)+8)%16) ] = outtmp/BP[((get_local_id(0)+8)%16)] ;
-      }
     }
   } //end loop of 2 polarisations
+  
+  // Write data to global
+  // JSW TODO: apply bandpass filter
+  hfb_output_array[(get_group_id(0) * 1024 * 128) + get_group_id(1) * 128 + work_offset] = time_sum_1 / 6.f;
+  hfb_output_array[(get_group_id(0) * 1024 * 128) + get_group_id(1) * 128 + work_offset + 1] = time_sum_2 / 6.f;
+  
+  outtmp = outtmp/48.; // Divide by 48 as we want the average of 48 summed elements
+  //FFT shift by (id+8)%16
+  results_array[get_global_id(1)*nsamp_out*16+get_group_id(0)*16+ ((get_local_id(0)+8)%16) ] = outtmp/BP[((get_local_id(0)+8)%16)] ;
+
 }
 
 
