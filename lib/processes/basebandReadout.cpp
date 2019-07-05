@@ -174,6 +174,8 @@ void basebandReadout::listen_thread(const uint32_t freq_id, basebandReadoutManag
             {
                 std::lock_guard<std::mutex> lock(request_mtx);
                 dump_status.state = basebandDumpStatus::State::INPROGRESS;
+                dump_status.started = std::make_shared<std::chrono::system_clock::time_point>(
+                    std::chrono::system_clock::now());
                 // Note: the length of the dump still needs to be set with
                 // actual sizes. This is done in `get_data` as it verifies what
                 // is available in the current buffers.
@@ -197,6 +199,8 @@ void basebandReadout::listen_thread(const uint32_t freq_id, basebandReadoutManag
                     INFO("Captured no data for event %" PRIu64 " and freq %" PRIu32 ".", event_id,
                          freq_id);
                     dump_status.state = basebandDumpStatus::State::ERROR;
+                    dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
+                        std::chrono::system_clock::now());
                     dump_status.reason = "No data captured.";
                     request_no_data_counter.inc();
                     continue;
@@ -244,6 +248,8 @@ void basebandReadout::write_thread(basebandReadoutManager& mgr) {
             INFO("Writing Baseband dump file failed with hdf5 error.");
             std::lock_guard<std::mutex> lock(request_mtx);
             dump_status.state = basebandDumpStatus::State::ERROR;
+            dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
+                std::chrono::system_clock::now());
             dump_status.reason = e.what();
             readout_counter.labels({std::to_string(data->freq_id), "error"}).inc();
         }
@@ -534,12 +540,16 @@ void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump
     if (ii_samp > data.data_length_fpga) {
         std::lock_guard<std::mutex> lock(request_mtx);
         dump_status.state = basebandDumpStatus::State::DONE;
+        dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
+            std::chrono::system_clock::now());
         readout_counter.labels({std::to_string(data.freq_id), "done"}).inc();
         INFO("Baseband dump for event %" PRIu64 ", freq %" PRIu32 " complete.", data.event_id,
              data.freq_id);
     } else {
         std::lock_guard<std::mutex> lock(request_mtx);
         dump_status.state = basebandDumpStatus::State::ERROR;
+        dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
+            std::chrono::system_clock::now());
         dump_status.reason = "Kotekan exit before write complete.";
         readout_counter.labels({std::to_string(data.freq_id), "error"}).inc();
         INFO("Baseband dump for event %" PRIu64 ", freq %" PRIu32 " incomplete.", data.event_id,
