@@ -128,6 +128,7 @@ void frbPostProcess::main_thread() {
         uint8_t* lost_samples_frame = lost_samples_buf->frames[lost_samples_buf_id];
         for (uint t = 0; t < num_samples; t++) {
             // check if drop packet by reading 384 original times, if so flag that t
+            droppacket[t] = 0;
             for (int tz = 0; tz < _downsample_time * _factor_upchan; tz++) {
                 if (lost_samples_frame[t * _factor_upchan * _downsample_time + tz] == 1) {
                     droppacket[t] = 1;
