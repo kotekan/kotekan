@@ -1,8 +1,5 @@
 #include "hsaBeamformHFBOutput.hpp"
 
-#include <iostream>
-#include <fstream>
-using namespace std;
 using kotekan::bufferContainer;
 using kotekan::Config;
 
@@ -47,15 +44,6 @@ hsa_signal_t hsaBeamformHFBOutputData::execute(int gpu_frame_id, hsa_signal_t pr
     device.async_copy_gpu_to_host(host_output_ptr, gpu_output_ptr, output_buffer->frame_size,
                                   precede_signal, signals[gpu_frame_id]);
 
-    float *data =(float *) host_output_ptr;
-
-    ofstream file;
-    file.open("hfb_out.dat");
-
-    for(uint i=0; i<output_buffer->frame_size / sizeof(float); i++) file << "hfb_out[" << i << "]: "<< data[i] << endl;
-    
-    file.close();
-    //exit(1);
     output_buffer_execute_id = (output_buffer_execute_id + 1) % output_buffer->num_frames;
 
     return signals[gpu_frame_id];

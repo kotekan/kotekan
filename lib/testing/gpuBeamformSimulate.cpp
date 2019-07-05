@@ -19,10 +19,6 @@
 #define feed_sep 0.3048
 #define light 299792458.
 
-#include <iostream>
-#include <fstream>
-using namespace std;
-
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
