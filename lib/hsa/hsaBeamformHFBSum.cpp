@@ -49,7 +49,7 @@ hsa_signal_t hsaBeamformHFBSum::execute(int gpu_frame_id, hsa_signal_t precede_s
     kernelParams params;
     params.workgroup_size_x = 64;
     params.workgroup_size_y = 1;
-    params.grid_size_x = 64;//_samples_per_data_set / 6;
+    params.grid_size_x = 64;
     params.grid_size_y = 1024; // No. of FRB beams
     params.num_dims = 2;
 
