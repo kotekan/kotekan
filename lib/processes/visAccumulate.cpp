@@ -39,8 +39,8 @@ using namespace std::placeholders;
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::configUpdater;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(visAccumulate);
 
@@ -265,7 +265,6 @@ void visAccumulate::main_thread() {
 
     // We will skip data that has fewer than this number of samples in it.
     uint32_t low_sample_cut = low_sample_fraction * num_gpu_frames * samples_per_data_set;
-    size_t skipped_frame_total = 0;
 
     // Temporary arrays for storing intermediates
     std::vector<int32_t> vis_even(2 * num_prod_gpu);
@@ -273,6 +272,8 @@ void visAccumulate::main_thread() {
     // Have we initialised a frame for writing yet
     bool init = false;
 
+    auto& skipped_frame_counter = Metrics::instance().add_counter(
+        "kotekan_visaccumulate_skipped_frame_total", unique_name, {"freq_id"});
     while (!stop_thread) {
 
         // Fetch a new frame and get its sequence id
@@ -310,15 +311,10 @@ void visAccumulate::main_thread() {
                     // Skip the frame if we too much had been flagged out.
                     if (total_samples < low_sample_cut) {
 
-                        if (freq_ind == 0)
-                            skipped_frame_total++;
-
-                        // Update prometheus metrics
-                        auto frame = visFrameView(dset.buf, dset.frame_id);
-                        std::string labels = fmt::format("freq_id=\"{}\"", frame.freq_id);
-                        prometheusMetrics::instance().add_stage_metric(
-                            "kotekan_visaccumulate_skipped_frame_total", unique_name,
-                            skipped_frame_total, labels);
+                        if (freq_ind == 0) {
+                            auto frame = visFrameView(dset.buf, dset.frame_id);
+                            skipped_frame_counter.labels({std::to_string(frame.freq_id)}).inc();
+                        }
                         continue;
                     }
 

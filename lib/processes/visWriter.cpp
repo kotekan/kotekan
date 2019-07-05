@@ -30,8 +30,8 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
@@ -47,7 +47,10 @@ std::map<visWriter::droppedType, std::string> visWriter::dropped_type_map = {
 
 
 visWriter::visWriter(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&visWriter::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&visWriter::main_thread, this)),
+    dropped_frame_counter(Metrics::instance().add_counter("kotekan_viswriter_dropped_frame_total",
+                                                          unique_name,
+                                                          {"freq_id", "dataset_id", "reason"})) {
 
     // Fetch any simple configuration
     root_path = config.get_default<std::string>(unique_name, "root_path", ".");
@@ -84,6 +87,9 @@ visWriter::visWriter(Config& config, const string& unique_name, bufferContainer&
 void visWriter::main_thread() {
 
     frameID frame_id(in_buf);
+
+    auto& write_time_metric =
+        Metrics::instance().add_gauge("kotekan_viswriter_write_time_seconds", unique_name);
 
     while (!stop_thread) {
 
@@ -155,8 +161,7 @@ void visWriter::main_thread() {
 
             // Update average write time in prometheus
             write_time.add_sample(elapsed);
-            prometheusMetrics::instance().add_stage_metric("kotekan_viswriter_write_time_seconds",
-                                                           unique_name, write_time.average());
+            write_time_metric.set(write_time.average());
         }
 
         // Mark the buffer and move on
@@ -175,12 +180,11 @@ void visWriter::report_dropped_frame(dset_id_t ds_id, uint32_t freq_id, droppedT
 
     // Relies on the fact that insertion zero intialises
     auto key = std::make_pair(freq_id, reason);
+    // TODO: check if this is necessary
     acq.dropped_frame_count[key] += 1;
-    std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\",reason=\"{}\"", freq_id,
-                                     ds_id, dropped_type_map.at(reason));
-    prometheusMetrics::instance().add_stage_metric("kotekan_viswriter_dropped_frame_total",
-                                                   unique_name, acq.dropped_frame_count.at(key),
-                                                   labels);
+    dropped_frame_counter
+        .labels({std::to_string(freq_id), std::to_string(ds_id), dropped_type_map.at(reason)})
+        .inc();
 }
 
 void visWriter::close_old_acqs() {

@@ -9,8 +9,9 @@
 
 namespace kotekan {
 
+// clang-format off
 basebandReadoutManager&
-    basebandApiManager::basebandReadoutRegistry::operator[](const uint32_t& key) {
+basebandApiManager::basebandReadoutRegistry::operator[](const uint32_t& key) { // clang-format on
     std::lock_guard<std::mutex> lock(map_lock);
     return readout_map[key];
 }
@@ -54,10 +55,11 @@ void to_json(json& j, const basebandDumpStatus& d) {
 
 basebandApiManager::basebandApiManager() :
     // clang-format off
-    metrics(prometheusMetrics::instance()) // clang-format on
-{
-    metrics.add_stage_metric("kotekan_baseband_requests_total", "baseband", request_count);
-}
+    request_counter(
+        prometheus::Metrics::instance()
+        .add_counter("kotekan_baseband_requests_total", "baseband")
+        ) // clang-format on
+{}
 
 basebandApiManager& basebandApiManager::instance() {
     static basebandApiManager _instance;
@@ -180,7 +182,7 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
                                               status_callback_single_event(event_id, nc);
                                           });
 
-        metrics.add_stage_metric("kotekan_baseband_requests_total", "baseband", ++request_count);
+        request_counter.inc();
 
         conn.send_json_reply(response);
     } catch (const std::exception& ex) {

@@ -16,8 +16,8 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(bufferStatus);
 
@@ -35,7 +35,11 @@ void bufferStatus::main_thread() {
     time_delay = config.get_default<int>(unique_name, "time_delay", 1000000);
     print_status = config.get_default<bool>(unique_name, "print_status", true);
 
-    prometheusMetrics& metrics = prometheusMetrics::instance();
+    Metrics& metrics = Metrics::instance();
+    auto& frames_counter =
+        metrics.add_gauge("kotekan_bufferstatus_frames_total", unique_name, {"buffer_name"});
+    auto& full_frames_counter =
+        metrics.add_gauge("kotekan_bufferstatus_full_frames_total", unique_name, {"buffer_name"});
 
     double last_print_time = current_time();
 
@@ -48,11 +52,8 @@ void bufferStatus::main_thread() {
         for (auto& buf_entry : buffers) {
             uint32_t num_full_frames = get_num_full_frames(buf_entry.second);
             string buffer_name = buf_entry.first;
-            metrics.add_stage_metric("kotekan_bufferstatus_full_frames_total", unique_name,
-                                     num_full_frames, "buffer_name=\"" + buffer_name + "\"");
-            metrics.add_stage_metric("kotekan_bufferstatus_frames_total", unique_name,
-                                     buf_entry.second->num_frames,
-                                     "buffer_name=\"" + buffer_name + "\"");
+            full_frames_counter.labels({buffer_name}).set(num_full_frames);
+            frames_counter.labels({buffer_name}).set(buf_entry.second->num_frames);
         }
 
         if (print_status && (now - last_print_time) > ((double)time_delay / 1000000.0)) {

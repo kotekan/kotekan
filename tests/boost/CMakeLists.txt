@@ -19,6 +19,7 @@ set ( KOTEKAN_BOOST_TEST_SOURCES
       test_restclient.cpp
       test_chime_stacking.cpp
       test_config.cpp
+      test_prometheus_metrics.cpp
     )
 
 # source files for broker test
