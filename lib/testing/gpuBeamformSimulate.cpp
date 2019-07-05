@@ -45,6 +45,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const string& unique_na
     Freq_ref = (light * (128) / (sin(_northmost_beam * PI / 180.) * feed_sep * 256)) / 1.e6;
     _ew_spacing = config.get<std::vector<float>>(unique_name, "ew_spacing");
     _num_sub_freqs = config.get<uint32_t>(unique_name, "num_sub_freqs");
+    _num_frb_total_beams = config.get<int32_t>(unique_name, "num_frb_total_beams");
     _ew_spacing_c = (float*)malloc(4 * sizeof(float));
     for (int i = 0; i < 4; i++) {
         _ew_spacing_c[i] = _ew_spacing[i];
@@ -66,7 +67,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const string& unique_na
     input_len_padded = input_len * 2;
     transposed_len = (_samples_per_data_set + 32) * _num_elements * 2;
     output_len = _num_elements * (_samples_per_data_set / _downsample_time / _downsample_freq / 2);
-    hfb_output_len =  * _num_sub_freqs;
+    hfb_output_len = _num_frb_total_beams * _num_sub_freqs;
 
     input_unpacked = (double*)malloc(input_len * sizeof(double));
     input_unpacked_padded = (double*)malloc(input_len_padded * sizeof(double));
@@ -507,19 +508,12 @@ void gpuBeamformSimulate::main_thread() {
               total_sum += out_sq / 6.f;
             } // end for nsamp
 
+            // JSW TODO: apply bandpass filter
             const int output_offset = b * nfreq_out + f;
             cpu_hfb_final_output[output_offset] = total_sum;
           } // end for freq
         } // end for beam
 
-        ofstream file;
-        file.open("hfb_cpu_out.dat");
-
-        for(uint i=0; i<hfb_output_buf->frame_size / sizeof(float); i++) file << "hfb_out[" << i << "]: "<< cpu_hfb_final_output[i] << endl;
-
-        file.close();
-
-        //exit(1);
         memcpy(hfb_output, cpu_hfb_final_output, hfb_output_buf->frame_size);
 
         // Downsample

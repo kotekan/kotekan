@@ -59,6 +59,10 @@ private:
     float* _ew_spacing_c;
     /// Default gain values if gain file is missing for this freq, currently set to 1+1j
     vector<float> default_gains;
+    /// No. of sub frequencies
+    uint32_t _num_sub_freqs;
+    /// No. of beams
+    uint32_t _num_frb_total_beams;
 
     /// Directory path where gain files are
     string _gain_dir;
