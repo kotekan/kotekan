@@ -535,6 +535,29 @@ gpu:
       rfi_output_buf: gpu_rfi_output_buffer_3
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_3
 
+
+rfi_update_metadata:
+  update_metadata_0:
+    kotekan_stage: rfiUpdateMetadata
+    rfi_mask_buf: gpu_rfi_mask_output_buffer_0
+    lost_samples_buf: lost_samples_buffer
+    gpu_correlation_buf: gpu_n2_output_buffer_0
+  update_metadata_1:
+    kotekan_stage: rfiUpdateMetadata
+    rfi_mask_buf: gpu_rfi_mask_output_buffer_1
+    lost_samples_buf: lost_samples_buffer
+    gpu_correlation_buf: gpu_n2_output_buffer_1
+  update_metadata_2:
+    kotekan_stage: rfiUpdateMetadata
+    rfi_mask_buf: gpu_rfi_mask_output_buffer_2
+    lost_samples_buf: lost_samples_buffer
+    gpu_correlation_buf: gpu_n2_output_buffer_2
+  update_metadata_3:
+    kotekan_stage: rfiUpdateMetadata
+    rfi_mask_buf: gpu_rfi_mask_output_buffer_3
+    lost_samples_buf: lost_samples_buffer
+    gpu_correlation_buf: gpu_n2_output_buffer_3
+
 #### FRB GPU Post processing and Tx ####
 
 frb:
