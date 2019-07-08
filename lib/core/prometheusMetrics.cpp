@@ -187,6 +187,19 @@ MetricFamily<Counter>& Metrics::add_counter(const string& name, const string& st
 }
 
 
+void Metrics::remove_stage_metrics(const string& stage_name) {
+    std::lock_guard<std::mutex> lock(metrics_lock);
+
+    for (auto it = std::begin(families), last = std::end(families); it != last;) {
+        if (std::get<1>(it->first) == stage_name) {
+            it = families.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+
 void Metrics::metrics_callback(connectionInstance& conn) {
     string output = serialize();
 
