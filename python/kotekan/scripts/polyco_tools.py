@@ -15,6 +15,7 @@ from kotekan.pulsar_timing import Timespec, unix2mjd, PolycoFile
 
 
 def parse_parfile(fname):
+    """Read the parameters from a pulsar parfile."""
     param = {}
     with open(fname, 'r') as f:
         line = f.readline()
@@ -74,6 +75,7 @@ def mjd(unixtime):
               help="URL of kotekan master pulsar gating endpoint.")
 def update_polyco(fname, start_time, load_polyco, end_time, dm, name, width, segment, ncoeff,
                   max_ha, format, offset, send_update, no_confirm, url):
+    """Generate a gating polyco update from a parfile and send to kotekan."""
     fname = path.abspath(fname)
     if not load_polyco:
         if end_time is None:
@@ -140,6 +142,7 @@ def update_polyco(fname, start_time, load_polyco, end_time, dm, name, width, seg
 @click.option("--url", type=str, default="http://csBfs:54323/update-pulsar-gating",
               help="URL of kotekan master pulsar gating endpoint.")
 def disable_gating(url):
+    """Send an update to kotekan disabling the pulsar gating."""
     empty_config = {
         "coeff": [[0.0]],
         "t_ref": [0.0],
