@@ -49,7 +49,9 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
     // Over allocate so we can align the memory.
     baseband_data(std::make_unique<uint8_t[]>(_num_elements * _max_dump_samples + 15)),
     readout_counter(kotekan::prometheus::Metrics::instance().add_counter(
-        "kotekan_baseband_readout_total", unique_name, {"freq_id", "status"})) {
+        "kotekan_baseband_readout_total", unique_name, {"freq_id", "status"})),
+    readout_in_progress_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_baseband_readout_in_progress", unique_name, {"freq_id"})) {
     // ensure a trailing slash in _base_dir
     if (_base_dir.back() != '/') {
         _base_dir.push_back('/');
@@ -241,6 +243,7 @@ void basebandReadout::write_thread(basebandReadoutManager& mgr) {
             throw std::runtime_error("Mismatched id - abort");
         }
         std::mutex& request_mtx = std::get<1>(next_request);
+        readout_in_progress_metric.labels({std::to_string(data->freq_id)}).set(1);
 
         try {
             write_dump(*data, dump_status, request_mtx);
@@ -253,6 +256,7 @@ void basebandReadout::write_thread(basebandReadoutManager& mgr) {
             dump_status.reason = e.what();
             readout_counter.labels({std::to_string(data->freq_id), "error"}).inc();
         }
+        readout_in_progress_metric.labels({std::to_string(data->freq_id)}).set(0);
         lock.unlock();
         ready_to_write.notify_one();
     }
