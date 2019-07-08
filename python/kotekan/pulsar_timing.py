@@ -91,6 +91,8 @@ class PolycoFile(object):
         self.polyco_specs = []
         self.polycos = []
         self.dm = None
+        self.width = None
+        self.name = None
         with open(fname, 'r') as fh:
             line = fh.readline()
             while line != '':
@@ -139,8 +141,10 @@ class PolycoFile(object):
                 "rot_freq": poly[0].f0,
                 "dm": poly[0].dm if self.dm is None else self.dm,
                 "segment": poly[0].seg * 60,
-                "pulsar_name": self.polyco_specs[0]['name'],
-                "enabled": True}
+                "pulsar_name": self.polyco_specs[0]['name'] if self.name is None else self.name,
+                "enabled": True,
+                "pulse_width": self.width,
+        }
 
     @classmethod
     def generate(cls, start, end, parfile, dm=None, seg=300., ncoeff=12, max_ha=12.):
