@@ -150,6 +150,7 @@ private:
     std::mutex dump_to_write_mtx;
 
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& readout_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& readout_in_progress_metric;
 };
 
 #endif
