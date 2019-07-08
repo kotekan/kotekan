@@ -535,7 +535,9 @@ gpu:
       rfi_output_buf: gpu_rfi_output_buffer_3
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_3
 
-
+# This set of stages takes information from the packet loss mask
+# and RFI mask and updates the metadata in the output N2 buffers
+# before they are read by other down stream stages.
 rfi_update_metadata:
   update_metadata_0:
     kotekan_stage: rfiUpdateMetadata

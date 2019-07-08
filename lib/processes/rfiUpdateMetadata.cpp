@@ -31,6 +31,7 @@ rfiUpdateMetadata::rfiUpdateMetadata(Config& config, const string& unique_name,
 
     uint32_t samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
     _sub_frame_samples = samples_per_data_set / _num_sub_frames;
+    _sub_frame_mask_len = _sub_frame_samples / _sk_step;
 }
 
 rfiUpdateMetadata::~rfiUpdateMetadata() {}
@@ -71,26 +72,28 @@ void rfiUpdateMetadata::main_thread() {
             // samples flagged as missing (i.e. packet loss/corrupt packet)
             // in the same time block as an RFI flag.
             uint32_t net_lost_samples = 0;
-            uint32_t sub_frame_mask_len = _sub_frame_samples / _sk_step;
 
-            for (uint32_t i = 0; i < sub_frame_mask_len; ++i) {
-                uint32_t mask_idx = subframe * sub_frame_mask_len + i;
+            // Index of the rfi mask subframe
+            uint32_t mask_base_idx = subframe * _sub_frame_mask_len;
+
+            for (uint32_t i = 0; i < _sub_frame_mask_len; ++i) {
+                uint32_t mask_idx = mask_base_idx + i;
                 assert(mask_idx < (uint32_t)rfi_mask_buf->frame_size);
                 if (rfi_mask_frame[mask_idx] == 1) {
                     flagged_samples += _sk_step;
                     net_lost_samples += _sk_step;
                     // Remove any samples which were also counted as lost samples
                     // in this block of data.
+                    uint32_t lost_samples_base_idx = subframe * _sub_frame_samples + i * _sk_step;
                     for (uint32_t j = 0; j < _sk_step; ++j) {
-                        uint32_t lost_samples_idx =
-                            subframe * _sub_frame_samples + i * _sk_step + j;
+                        uint32_t lost_samples_idx = lost_samples_base_idx + j;
                         // assert(lost_samples_idx < (uint32_t)lost_samples_buf->frame_size);
                         if (lost_samples_frame[lost_samples_idx] == 1)
                             net_lost_samples--;
                     }
                 }
             }
-            INFO("flagged_samples: %d, net_lost_samples: %d", flagged_samples, net_lost_samples);
+            DEBUG2("flagged_samples: %d, net_lost_samples: %d", flagged_samples, net_lost_samples);
             atomic_add_rfi_flagged_samples(gpu_correlation_buf, gpu_correlation_frame_id,
                                            flagged_samples);
 

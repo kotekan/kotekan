@@ -61,6 +61,9 @@ private:
     /// The number of samples in each N2 output frame
     uint32_t _sub_frame_samples;
 
+    /// Length of the subframe RFI mask
+    uint32_t _sub_frame_mask_len;
+
     /// The number of samples zeroed at once as RFI
     uint32_t _sk_step;
 };
