@@ -61,10 +61,6 @@ basebandApiManager::basebandApiManager() :
         ) // clang-format on
 {}
 
-basebandApiManager::~basebandApiManager() {
-    kotekan::prometheus::Metrics::instance().remove_stage_metrics("baseband");
-}
-
 basebandApiManager& basebandApiManager::instance() {
     static basebandApiManager _instance;
     return _instance;

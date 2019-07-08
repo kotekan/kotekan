@@ -68,9 +68,6 @@ public:
     baselineCompression(kotekan::Config& config, const string& unique_name,
                         kotekan::bufferContainer& buffer_container);
 
-    /// Destructor to remove the stage metrics
-    virtual ~baselineCompression();
-
     // Main loop for the stage: Creates n threads that do the compression.
     void main_thread() override;
 

@@ -55,9 +55,6 @@ public:
     receiveFlags(kotekan::Config& config, const string& unique_name,
                  kotekan::bufferContainer& buffer_container);
 
-    /// Destructor to remove the stage metrics
-    virtual ~receiveFlags();
-
     /// Main loop, saves flags in the frames
     void main_thread() override;
 

@@ -150,8 +150,6 @@ datasetManager::~datasetManager() {
     // wait for the detached threads
     std::unique_lock<std::mutex> lk(_lock_stop_request_threads);
     _cv_stop_request_threads.wait(lk, [this] { return _n_request_threads == 0; });
-
-    kotekan::prometheus::Metrics::instance().remove_stage_metrics(DS_UNIQUE_NAME);
 }
 
 dset_id_t datasetManager::add_dataset(state_id_t state) {

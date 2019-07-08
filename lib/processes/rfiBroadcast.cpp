@@ -250,8 +250,5 @@ void rfiBroadcast::main_thread() {
     } else {
         ERROR("Bad protocol: %s Only UDP currently Supported", dest_protocol.c_str());
     }
-
-    Metrics::instance().remove_stage_metrics(unique_name);
-
     free(packet_buffer);
 }

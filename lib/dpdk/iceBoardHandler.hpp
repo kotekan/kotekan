@@ -61,9 +61,6 @@ public:
     iceBoardHandler(kotekan::Config& config, const std::string& unique_name,
                     kotekan::bufferContainer& buffer_container, int port);
 
-    /// Destructor to remove the stage metrics
-    virtual ~iceBoardHandler();
-
     /// Same abstract function as in @c dpdkRXhandler
     virtual int handle_packet(struct rte_mbuf* mbuf) = 0;
 
@@ -377,10 +374,6 @@ inline iceBoardHandler::iceBoardHandler(kotekan::Config& config, const std::stri
     alignment = config.get<uint64_t>(unique_name, "alignment");
 
     check_cross_handler_alignment(std::numeric_limits<uint64_t>::max());
-}
-
-inline iceBoardHandler::~iceBoardHandler() {
-    kotekan::prometheus::Metrics::instance().remove_stage_metrics(unique_name);
 }
 
 json iceBoardHandler::get_json_port_info() {

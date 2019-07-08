@@ -73,8 +73,7 @@ class EigenVisIter : public kotekan::Stage {
 public:
     EigenVisIter(kotekan::Config& config, const string& unique_name,
                  kotekan::bufferContainer& buffer_container);
-    /// Destructor to remove the stage metrics
-    virtual ~EigenVisIter();
+    virtual ~EigenVisIter() = default;
     void main_thread() override;
 
 private:

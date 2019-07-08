@@ -89,10 +89,6 @@ baselineCompression::baselineCompression(Config& config, const string& unique_na
                                     "have to be multiples of num_threads.");
 }
 
-baselineCompression::~baselineCompression() {
-    Metrics::instance().remove_stage_metrics(unique_name);
-}
-
 void baselineCompression::main_thread() {
 
     // Create the threads

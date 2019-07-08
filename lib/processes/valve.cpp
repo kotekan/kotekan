@@ -59,8 +59,6 @@ void Valve::main_thread() {
         }
         mark_frame_empty(_buf_in, unique_name.c_str(), frame_id_in++);
     }
-
-    Metrics::instance().remove_stage_metrics(unique_name);
 }
 
 // mostly copied from visFrameView

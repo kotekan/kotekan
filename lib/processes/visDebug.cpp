@@ -60,5 +60,4 @@ void visDebug::main_thread() {
         frame_id = (frame_id + 1) % in_buf->num_frames;
         num_frames++;
     }
-    Metrics::instance().remove_stage_metrics(unique_name);
 }

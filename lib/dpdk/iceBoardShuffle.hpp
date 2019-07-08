@@ -47,9 +47,6 @@ public:
     iceBoardShuffle(kotekan::Config& config, const std::string& unique_name,
                     kotekan::bufferContainer& buffer_container, int port);
 
-    /// Destructor to remove the stage metrics
-    virtual ~iceBoardShuffle();
-
     /**
      * @brief The packet processor, called each time there is a new packet
      *
@@ -260,10 +257,6 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
 
             conn.send_json_reply(info);
         });
-}
-
-inline iceBoardShuffle::~iceBoardShuffle() {
-    kotekan::prometheus::Metrics::instance().remove_stage_metrics(unique_name);
 }
 
 inline int iceBoardShuffle::handle_packet(struct rte_mbuf* mbuf) {

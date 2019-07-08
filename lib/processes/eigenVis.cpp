@@ -263,6 +263,4 @@ void eigenVis::main_thread() {
         mark_frame_empty(input_buffer, unique_name.c_str(), input_frame_id++);
         mark_frame_full(output_buffer, unique_name.c_str(), output_frame_id++);
     }
-
-    Metrics::instance().remove_stage_metrics(unique_name);
 }

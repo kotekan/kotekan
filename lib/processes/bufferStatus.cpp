@@ -63,8 +63,5 @@ void bufferStatus::main_thread() {
                 print_buffer_status(buf_entry.second);
         }
     }
-
-    Metrics::instance().remove_stage_metrics(unique_name);
-
     INFO("Closing Buffer Status thread");
 }
