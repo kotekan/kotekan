@@ -94,6 +94,8 @@ void rfiUpdateMetadata::main_thread() {
             atomic_add_rfi_flagged_samples(gpu_correlation_buf, gpu_correlation_frame_id,
                                            flagged_samples);
 
+            // Only add the RFI flagged samples to the count of lost samples if
+            // we have actively zeroed out the RFI flagged data.
             if (get_rfi_zeroed(gpu_correlation_buf, gpu_correlation_frame_id)) {
                 atomic_add_lost_timesamples(gpu_correlation_buf, gpu_correlation_frame_id,
                                             net_lost_samples);

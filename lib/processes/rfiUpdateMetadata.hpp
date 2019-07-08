@@ -46,9 +46,10 @@ public:
     void main_thread() override;
 
 private:
-    ///
+    /// The mask of which samples were flagged as RFI
     struct Buffer* rfi_mask_buf;
 
+    /// The mask of which samples were lost to packet loss/network errors.
     struct Buffer* lost_samples_buf;
 
     /// The GPU N2 data, we are a producer of this data
