@@ -475,7 +475,7 @@ void gpuBeamformSimulate::main_thread() {
         float HFB_BP[16] = { 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
        
         // Downsample
-        int nfreq_out = _factor_upchan;
+        int nfreq_out = _num_sub_freqs;
         int nsamp_out = _samples_per_data_set / _factor_upchan / _downsample_time;
         
         // Loop over every beam

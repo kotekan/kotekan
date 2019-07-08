@@ -69,7 +69,7 @@ void integrateHFBData::main_thread() {
       frame++;
       if (frame == _num_frames_to_integrate) { // last frame
 
-        INFO("\nSummed %d frames of data. buf size: %d, frame size: %d\n", _num_frames_to_integrate, out_buf->frame_size / 4 * out_buf->num_frames, out_buf->frame_size);
+        INFO("Summed %d frames of data. buf size: %d, frame size: %d", _num_frames_to_integrate, out_buf->frame_size / 4 * out_buf->num_frames, out_buf->frame_size);
         
         frame = 0;
         mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);

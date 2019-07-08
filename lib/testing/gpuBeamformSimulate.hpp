@@ -109,7 +109,7 @@ private:
     int transposed_len;
     /// output length: n_elem*(nsamp/ds_t/ds_f/2)
     int output_len;
-    /// hfb output length: n_elem*(nsamp/ds_t/2)
+    /// hfb output length: num_frb_total_beams x num_sub_freq 
     int hfb_output_len;
 
     /// Scaling factor to be applied on the gains, currently set to 1.0 and somewhat deprecated?

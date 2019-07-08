@@ -23,17 +23,12 @@
  * @gpu_mem  hfb_output  Input data of size input_frame_len
  *     @gpu_mem_type            static
  *     @gpu_mem_format          Array of @c float
- *     @gpu_mem_metadata        chimeMetadata
  * @gpu_mem  hfb_sum_output     Output data of size output_frame_len
  *     @gpu_mem_type            staging
  *     @gpu_mem_format          Array of @c float
- *     @gpu_mem_metadata        chimeMetadata
  *
- * @conf   num_elements         Int (default 2048). Number of elements
- * @conf   samples_per_data_set Int (default 49152). Number of time samples in a data set
  * @conf   num_frb_total_beams  Int (default 1024). Number of total FRB formed beams
- *
- * @todo   Check that the 16 freq axis has the correct orientation
+ * @conf   num_sub_freqs  Int (default 128). Number of sub frequencies
  *
  * @author James Willis
  *
@@ -52,17 +47,15 @@ public:
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
 private:
-    /// Input length, num_frb_total_beams x 128 x 10
+    /// Input length, num_frb_total_beams x num_sub_freqs x 10
     int32_t input_frame_len;
-    /// Output length, num_frb_total_beams x 128
+    /// Output length, num_frb_total_beams x num_sub_freqs
     int32_t output_frame_len;
 
-    /// Number of elements, should be 2048
-    int32_t _num_elements;
-    /// Number of samples, needs to be a multiple of 128x3. currently set to 49152
-    int32_t _samples_per_data_set;
     /// Total number of FRB formed beams, should be 1024
     int32_t _num_frb_total_beams;
+    /// Total number of sub frequencies, should be 128
+    int32_t _num_sub_freqs;
 };
 
 #endif

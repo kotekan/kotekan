@@ -11,22 +11,16 @@
 
 /**
  * @class hsaBeamformHFBOutput
- * @brief hsaCommand for copying HFB output gpu to host (for run with N2).
+ * @brief hsaCommand for copying HFB output gpu to host.
  *
  * This is an hsaCommand that async copy HFB output buffer from GPU
  * to CPU. It marks the HFB output buffer to be full when done so that
- * it can be reused. This code also passes metadata along. The finalize_frame
- * function has been hacked by not marking network_buffer empty, for
- * concurrent run with N2, because the equivalent output code from the N2
- * side is already marking network buffer empty.
+ * it can be reused.
  *
  * @par GPU Memory
  * @gpu_mem  hfb_output      Output from the FRB pipeline, size 1024x128x1
  *     @gpu_mem_type         staging
  *     @gpu_mem_format       Array of @c float
- *     @gpu_mem_metadata     chimeMetadata
- *
- * @todo   tidy up hack in finalize_frame for concurrent run?
  *
  * @author James Willis
  *

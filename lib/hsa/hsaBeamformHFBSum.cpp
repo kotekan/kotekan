@@ -12,16 +12,15 @@ hsaBeamformHFBSum::hsaBeamformHFBSum(Config& config, const string& unique_name,
     command_type = gpuCommandType::KERNEL;
 
     // Read parameters from config file.
-    _num_elements = config.get<int32_t>(unique_name, "num_elements");
-    _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     _num_frb_total_beams = config.get<int32_t>(unique_name, "num_frb_total_beams");
+    _num_sub_freqs = config.get<uint32_t>(unique_name, "num_sub_freqs");
 
     input_frame_len = _num_frb_total_beams
-                          * 128 // No. of frequencies
+                          * _num_sub_freqs
                           * 10 // No. of samples per beam
                           * sizeof(float);
     output_frame_len = _num_frb_total_beams
-                       * 128 // No. of frequencies
+                       * _num_sub_freqs
                        * sizeof(float);
 }
 
@@ -52,7 +51,7 @@ hsa_signal_t hsaBeamformHFBSum::execute(int gpu_frame_id, hsa_signal_t precede_s
     params.num_dims = 2;
 
     params.private_segment_size = 0;
-    params.group_segment_size = 128*10*sizeof(float);
+    params.group_segment_size = 128 * 10 * sizeof(float); // No. of frequencies x no. of samples
 
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
 

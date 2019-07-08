@@ -30,6 +30,7 @@ using std::vector;
  *
  * @conf   num_frames_to_integrate Int. No. of frames to integrate over.
  * @conf   num_frb_total_beams  Int. No. of total FRB beams (should be 1024).
+ * @conf   num_sub_freqs  Int. No. of sub frequencies (should be 128).
  *
  * @author James Willis
  *
