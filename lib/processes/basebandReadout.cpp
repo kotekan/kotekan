@@ -47,7 +47,11 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
     oldest_frame(-1),
     frame_locks(_num_frames_buffer),
     // Over allocate so we can align the memory.
-    baseband_data(std::make_unique<uint8_t[]>(_num_elements * _max_dump_samples + 15)) {
+    baseband_data(std::make_unique<uint8_t[]>(_num_elements * _max_dump_samples + 15)),
+    readout_counter(kotekan::prometheus::Metrics::instance().add_counter(
+        "kotekan_baseband_readout_total", unique_name, {"freq_id", "status"})),
+    readout_in_progress_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_baseband_readout_in_progress", unique_name, {"freq_id"})) {
     // ensure a trailing slash in _base_dir
     if (_base_dir.back() != '/') {
         _base_dir.push_back('/');
@@ -108,14 +112,10 @@ void basebandReadout::main_thread() {
             stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
             uint32_t freq_id = bin_number_chime(&stream_id);
 
-            freq_id_label = "freq_id=\"" + std::to_string(freq_id) + "\"";
-            INFO("baseband metrics label: %", freq_id_label.c_str());
-            metrics.add_stage_metric("kotekan_baseband_readout_total", unique_name,
-                                     request_done_count, freq_id_label + ",status=\"done\"");
-            metrics.add_stage_metric("kotekan_baseband_readout_total", unique_name,
-                                     request_error_count, freq_id_label + ",status=\"error\"");
-            metrics.add_stage_metric("kotekan_baseband_readout_total", unique_name,
-                                     request_no_data_count, freq_id_label + ",status=\"no_data\"");
+            DEBUG("Initialize baseband metrics for freq_id: $s" PRIu32, freq_id);
+            readout_counter.labels({std::to_string(freq_id), "done"});
+            readout_counter.labels({std::to_string(freq_id), "error"});
+            readout_counter.labels({std::to_string(freq_id), "no_data"});
 
             INFO("Starting request-listening thread for freq_id: %" PRIu32, freq_id);
             basebandReadoutManager& mgr =
@@ -143,6 +143,7 @@ void basebandReadout::main_thread() {
 }
 
 void basebandReadout::listen_thread(const uint32_t freq_id, basebandReadoutManager& mgr) {
+    auto& request_no_data_counter = readout_counter.labels({std::to_string(freq_id), "no_data"});
 
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
@@ -175,6 +176,8 @@ void basebandReadout::listen_thread(const uint32_t freq_id, basebandReadoutManag
             {
                 std::lock_guard<std::mutex> lock(request_mtx);
                 dump_status.state = basebandDumpStatus::State::INPROGRESS;
+                dump_status.started = std::make_shared<std::chrono::system_clock::time_point>(
+                    std::chrono::system_clock::now());
                 // Note: the length of the dump still needs to be set with
                 // actual sizes. This is done in `get_data` as it verifies what
                 // is available in the current buffers.
@@ -198,10 +201,10 @@ void basebandReadout::listen_thread(const uint32_t freq_id, basebandReadoutManag
                     INFO("Captured no data for event %" PRIu64 " and freq %" PRIu32 ".", event_id,
                          freq_id);
                     dump_status.state = basebandDumpStatus::State::ERROR;
+                    dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
+                        std::chrono::system_clock::now());
                     dump_status.reason = "No data captured.";
-                    metrics.add_stage_metric("kotekan_baseband_readout_total", unique_name,
-                                             ++request_no_data_count,
-                                             freq_id_label + ",status=\"no_data\"");
+                    request_no_data_counter.inc();
                     continue;
                 } else {
                     INFO("Captured %" PRId64 " samples for event %" PRIu64 " and freq %" PRIu32 ".",
@@ -217,6 +220,7 @@ void basebandReadout::listen_thread(const uint32_t freq_id, basebandReadoutManag
 }
 
 void basebandReadout::write_thread(basebandReadoutManager& mgr) {
+
     while (!stop_thread) {
         std::unique_lock<std::mutex> lock(dump_to_write_mtx);
 
@@ -239,6 +243,7 @@ void basebandReadout::write_thread(basebandReadoutManager& mgr) {
             throw std::runtime_error("Mismatched id - abort");
         }
         std::mutex& request_mtx = std::get<1>(next_request);
+        readout_in_progress_metric.labels({std::to_string(data->freq_id)}).set(1);
 
         try {
             write_dump(*data, dump_status, request_mtx);
@@ -246,10 +251,12 @@ void basebandReadout::write_thread(basebandReadoutManager& mgr) {
             INFO("Writing Baseband dump file failed with hdf5 error.");
             std::lock_guard<std::mutex> lock(request_mtx);
             dump_status.state = basebandDumpStatus::State::ERROR;
+            dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
+                std::chrono::system_clock::now());
             dump_status.reason = e.what();
-            metrics.add_stage_metric("kotekan_baseband_readout_total", unique_name,
-                                     ++request_error_count, freq_id_label + ",status=\"error\"");
+            readout_counter.labels({std::to_string(data->freq_id), "error"}).inc();
         }
+        readout_in_progress_metric.labels({std::to_string(data->freq_id)}).set(0);
         lock.unlock();
         ready_to_write.notify_one();
     }
@@ -537,16 +544,18 @@ void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump
     if (ii_samp > data.data_length_fpga) {
         std::lock_guard<std::mutex> lock(request_mtx);
         dump_status.state = basebandDumpStatus::State::DONE;
-        metrics.add_stage_metric("kotekan_baseband_readout_total", unique_name,
-                                 ++request_done_count, freq_id_label + ",status=\"done\"");
+        dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
+            std::chrono::system_clock::now());
+        readout_counter.labels({std::to_string(data.freq_id), "done"}).inc();
         INFO("Baseband dump for event %" PRIu64 ", freq %" PRIu32 " complete.", data.event_id,
              data.freq_id);
     } else {
         std::lock_guard<std::mutex> lock(request_mtx);
         dump_status.state = basebandDumpStatus::State::ERROR;
+        dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
+            std::chrono::system_clock::now());
         dump_status.reason = "Kotekan exit before write complete.";
-        metrics.add_stage_metric("kotekan_baseband_readout_total", unique_name,
-                                 ++request_error_count, freq_id_label + ",status=\"error\"");
+        readout_counter.labels({std::to_string(data.freq_id), "error"}).inc();
         INFO("Baseband dump for event %" PRIu64 ", freq %" PRIu32 " incomplete.", data.event_id,
              data.freq_id);
     }

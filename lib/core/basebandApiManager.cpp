@@ -7,10 +7,28 @@
 #include <sstream>
 
 
+// Conversion of std::chrono::system_clock::time_point to JSON
+namespace std {
+namespace chrono {
+void to_json(json& j, const system_clock::time_point& t) {
+    std::time_t t_c = std::chrono::system_clock::to_time_t(t);
+    std::tm t_tm;
+    localtime_r(&t_c, &t_tm);
+    std::ostringstream out;
+    out << std::put_time(&t_tm, "%FT%T.")
+        << std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch()).count()
+               % 1000
+        << std::put_time(&t_tm, "%z");
+    j = out.str();
+}
+} // namespace chrono
+} // namespace std
+
 namespace kotekan {
 
+// clang-format off
 basebandReadoutManager&
-    basebandApiManager::basebandReadoutRegistry::operator[](const uint32_t& key) {
+basebandApiManager::basebandReadoutRegistry::operator[](const uint32_t& key) { // clang-format on
     std::lock_guard<std::mutex> lock(map_lock);
     return readout_map[key];
 }
@@ -30,7 +48,8 @@ basebandApiManager::basebandReadoutRegistry::end() noexcept {
 void to_json(json& j, const basebandDumpStatus& d) {
     j = json{{"file_name", d.request.file_name},
              {"total", d.bytes_total},
-             {"remaining", d.bytes_remaining}};
+             {"remaining", d.bytes_remaining},
+             {"received", d.request.received}};
 
     switch (d.state) {
         case basebandDumpStatus::State::WAITING:
@@ -50,14 +69,23 @@ void to_json(json& j, const basebandDumpStatus& d) {
             j["status"] = "error";
             j["reason"] = "Internal: Unknown status code";
     }
+
+    if (d.started) {
+        j["started"] = *d.started;
+    }
+
+    if (d.finished) {
+        j["finished"] = *d.finished;
+    }
 }
 
 basebandApiManager::basebandApiManager() :
     // clang-format off
-    metrics(prometheusMetrics::instance()) // clang-format on
-{
-    metrics.add_stage_metric("kotekan_baseband_requests_total", "baseband", request_count);
-}
+    request_counter(
+        prometheus::Metrics::instance()
+        .add_counter("kotekan_baseband_requests_total", "baseband")
+        ) // clang-format on
+{}
 
 basebandApiManager& basebandApiManager::instance() {
     static basebandApiManager _instance;
@@ -180,7 +208,7 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
                                               status_callback_single_event(event_id, nc);
                                           });
 
-        metrics.add_stage_metric("kotekan_baseband_requests_total", "baseband", ++request_count);
+        request_counter.inc();
 
         conn.send_json_reply(response);
     } catch (const std::exception& ex) {

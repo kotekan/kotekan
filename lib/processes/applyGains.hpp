@@ -124,6 +124,10 @@ private:
 
     /// Mutex protecting shared frame IDs.
     std::mutex m_frame_ids;
+
+    kotekan::prometheus::Gauge& update_age_metric;
+    kotekan::prometheus::Gauge& late_update_counter;
+    kotekan::prometheus::Gauge& late_frames_counter;
 };
 
 

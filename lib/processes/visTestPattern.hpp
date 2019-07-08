@@ -105,10 +105,6 @@ private:
     /// Report error in error_msg to orchestrator and log. Exit kotekan.
     void exit_failed_test(std::string error_msg);
 
-    /// Export information on one frame to prometheus.
-    void export_prometheus_metrics(size_t num_bad, float avg_err, float min_err, float max_err,
-                                   uint64_t fpga_count, timespec time, uint32_t freq_id);
-
     /// Print a warning with the given message and send it as a reply.
     void reply_failure(kotekan::connectionInstance& conn, std::string& msg);
 

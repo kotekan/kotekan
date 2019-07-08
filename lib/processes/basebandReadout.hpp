@@ -149,11 +149,8 @@ private:
     std::condition_variable ready_to_write;
     std::mutex dump_to_write_mtx;
 
-    kotekan::prometheusMetrics& metrics = kotekan::prometheusMetrics::instance();
-    std::string freq_id_label;
-    uint32_t request_done_count = 0;
-    uint32_t request_error_count = 0;
-    uint32_t request_no_data_count = 0;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& readout_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& readout_in_progress_metric;
 };
 
 #endif
