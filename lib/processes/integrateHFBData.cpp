@@ -49,8 +49,6 @@ void integrateHFBData::main_thread() {
       if (in_frame == NULL)
         goto end_loop;
 
-      INFO("\n in_frame: %d, in_buffer_ID: %d, frame: %d\n", in_frame, in_buffer_ID, frame);
-
       float* sum_data = (float*)out_buf->frames[0];
       float* input_data = (float*)in_buf->frames[in_buffer_ID];
     

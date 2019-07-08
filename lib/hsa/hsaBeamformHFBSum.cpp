@@ -38,8 +38,6 @@ hsa_signal_t hsaBeamformHFBSum::execute(int gpu_frame_id, hsa_signal_t precede_s
     } args;
     memset(&args, 0, sizeof(args));
 
-    INFO("\nHFB frame length: %d", output_frame_len);
-
     args.input_buffer = device.get_gpu_memory("hfb_output", input_frame_len);
     args.output_buffer = device.get_gpu_memory_array("hfb_sum_output", gpu_frame_id, output_frame_len);
 
