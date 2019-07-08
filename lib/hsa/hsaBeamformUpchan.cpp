@@ -42,8 +42,6 @@ hsa_signal_t hsaBeamformUpchan::execute(int gpu_frame_id, hsa_signal_t precede_s
     } args;
     memset(&args, 0, sizeof(args));
 
-    INFO("\nHFB frame length: %d", output_hfb_frame_len);
-
     args.input_buffer = device.get_gpu_memory("transposed_output", input_frame_len);
     args.output_buffer = device.get_gpu_memory_array("bf_output", gpu_frame_id, output_frame_len);
     args.output_hyperfine_beam_buffer = device.get_gpu_memory("hfb_output", output_hfb_frame_len);

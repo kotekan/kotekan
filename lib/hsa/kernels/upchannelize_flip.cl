@@ -11,6 +11,7 @@
 #define scaling 400.
 
 __constant float BP[16] = { 0.52225748 , 0.58330915 , 0.6868705 , 0.80121821 , 0.89386546 , 0.95477358 , 0.98662733 , 0.99942558 , 0.99988676 , 0.98905127 , 0.95874124 , 0.90094667 , 0.81113021 , 0.6999944 , 0.59367968 , 0.52614263};
+__constant float HFB_BP[16] = { 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
 
 #define BIT_REVERSE_7_BITS(index) ((( ( (((index) * 0x0802) & 0x22110) | (((index) * 0x8020)&0x88440) ) * 0x10101 ) >> 17) & 0x7F)
 //input data is float2 with beam-pol-time, try to do 3 N=128 at once so that we can sum 3 time samples
@@ -297,8 +298,8 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array,
   
   // Write data to global
   // JSW TODO: apply bandpass filter
-  hfb_output_array[(get_group_id(0) * 1024 * 128) + get_group_id(1) * 128 + work_offset] = time_sum_1 / 6.f;
-  hfb_output_array[(get_group_id(0) * 1024 * 128) + get_group_id(1) * 128 + work_offset + 1] = time_sum_2 / 6.f;
+  hfb_output_array[(get_group_id(0) * 1024 * 128) + get_group_id(1) * 128 + work_offset] = time_sum_1 / 6.f / HFB_BP[((get_local_id(0)+8)%16)];
+  hfb_output_array[(get_group_id(0) * 1024 * 128) + get_group_id(1) * 128 + work_offset + 1] = time_sum_2 / 6.f / HFB_BP[((get_local_id(0)+8)%16)];
   
   outtmp = outtmp/48.; // Divide by 48 as we want the average of 48 summed elements
   //FFT shift by (id+8)%16

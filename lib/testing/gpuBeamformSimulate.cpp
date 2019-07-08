@@ -472,14 +472,11 @@ void gpuBeamformSimulate::main_thread() {
         float BP[16]{0.52225748, 0.58330915, 0.6868705,  0.80121821, 0.89386546, 0.95477358,
                      0.98662733, 0.99942558, 0.99988676, 0.98905127, 0.95874124, 0.90094667,
                      0.81113021, 0.6999944,  0.59367968, 0.52614263};
-
+        float HFB_BP[16] = { 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
+       
         // Downsample
         int nfreq_out = _factor_upchan;
         int nsamp_out = _samples_per_data_set / _factor_upchan / _downsample_time;
-        
-        INFO("HFB output buf frame size: %d, HFB ouput len: %d", hfb_output_buf->frame_size / sizeof(float), hfb_output_len);
-        
-        INFO("\nnsamp_out: %d, nfreq_out: %d, npol: %d", nsamp_out, nfreq_out, npol);
         
         // Loop over every beam
         for (int b = 0; b < 1024; b++) {
@@ -501,7 +498,7 @@ void gpuBeamformSimulate::main_thread() {
                   out_sq += tmp_real * tmp_real + tmp_imag * tmp_imag;
                 } // end for tt
               } // end for pol
-              total_sum += out_sq / 6.f;
+              total_sum += out_sq / 6.f / HFB_BP[int((f + 8) % 16)];
             } // end for nsamp
 
             // JSW TODO: apply bandpass filter
