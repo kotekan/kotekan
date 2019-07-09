@@ -135,10 +135,10 @@ def update_polyco(fname, start_time, load_polyco, end_time, dm, name, width, seg
                 pass
             else:
                 return
-        print(f"Sending update to {url}...")
+        print("Sending update to {}...".format(url))
         r = requests.post(url, data=pfile.config_block(start_time, end_time))
         r.raise_for_status()
-        print(f"Received: ({r.status_code}) {r.content}")
+        print("Received: ({}) {}".format(r.status_code, r.content))
 
 
 @click.command()
@@ -157,10 +157,10 @@ def disable_gating(url):
         "pulsar_name": "none",
         "pulse_width": 0.0
     }
-    print(f"Sending to {url}...")
+    print("Sending update to {}...".format(url))
     r = requests.post(url, data=empty_config)
     r.raise_for_status()
-    print(f"Received: ({r.status_code}) {r.content}")
+    print("Received: ({}) {}".format(r.status_code, r.content))
 
 
 cli.add_command(update_polyco)
