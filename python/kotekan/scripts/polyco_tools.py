@@ -73,8 +73,10 @@ def mjd(unixtime):
               help="Don't ask for confirmation before sending update.")
 @click.option("--url", type=str, default="http://csBfs:54323/update-pulsar-gating",
               help="URL of kotekan master pulsar gating endpoint.")
+@click.option("--tempo-dir", type=str, default="/usr/local/tempo2/",
+              help="TEMPO2 runtime directory")
 def update_polyco(fname, start_time, load_polyco, end_time, dm, name, width, segment, ncoeff,
-                  max_ha, format, offset, send_update, no_confirm, url):
+                  max_ha, format, offset, send_update, no_confirm, url, tempo_dir):
     """Generate a gating polyco update from a parfile and send to kotekan."""
     fname = path.abspath(fname)
     if not load_polyco:
@@ -82,7 +84,8 @@ def update_polyco(fname, start_time, load_polyco, end_time, dm, name, width, seg
             end = start_time + 1.
         else:
             end = end_time
-        pfile = PolycoFile.generate(start_time, end, fname, dm, segment, ncoeff, max_ha)
+        pfile = PolycoFile.generate(start_time, end, fname, dm, segment, ncoeff, max_ha,
+                                    tempo_dir)
         # Read DM and name from parfile since TEMPO mangles them
         parfile = parse_parfile(fname)
     else:

@@ -7,7 +7,8 @@ from builtins import (ascii, bytes, chr, dict, filter, hex, input,
 
 import numpy as np
 import tempfile
-from subprocess import check_call, CalledProcessError
+from subprocess import run, CalledProcessError
+import os
 from shutil import rmtree
 import time
 import json
@@ -147,8 +148,13 @@ class PolycoFile(object):
         }
 
     @classmethod
-    def generate(cls, start, end, parfile, dm=None, seg=300., ncoeff=12, max_ha=12.):
-
+    def generate(cls, start, end, parfile, dm=None, seg=300., ncoeff=12, max_ha=12.,
+                 tempo_dir=None):
+        if tempo_dir is not None:
+            env = os.environ.copy()
+            env["TEMPO2"] = tempo_dir
+        else:
+            env = None
         cmd = [
             'tempo2', '-f', parfile, '-polyco',
             '"{:f} {:f} {:d} {:d} {:f} chime inf"'.format(start, end, int(seg), ncoeff, max_ha),
@@ -158,7 +164,7 @@ class PolycoFile(object):
 
         tmp_dir = tempfile.mkdtemp()
         try:
-            check_call(cmd, cwd=tmp_dir, shell=True)
+            run(cmd, cwd=tmp_dir, shell=True, check=True, env=env)
         except CalledProcessError as e:
             print("Command '{}' failed with return code {:d}.".format(e.cmd, e.returncode))
             print(e.output)
