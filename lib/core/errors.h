@@ -98,7 +98,7 @@ void exit_kotekan(enum ReturnCode code);
 
 // Use this for fatal errors that kotekan can't recover from.
 // Prints an error message and raises a SIGINT.
-#define FATAL_ERROR(message, ...) { ERROR(message, ...); exit_kotekan(ReturnCode::FATAL_ERROR);}
+#define FATAL_ERROR(message, a...) { ERROR(message); exit_kotekan(ReturnCode::FATAL_ERROR);}
 
 #ifdef __cplusplus
 }
