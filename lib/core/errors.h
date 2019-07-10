@@ -8,12 +8,15 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <signal.h>
 
 #ifdef __cplusplus
 #include <cstring>
 #include <cerrno>
 using std::strerror;
 #endif
+
+enum ReturnCode {CLEAN_EXIT = 0, FATAL_ERROR, TEST_PASSED, TEST_FAILED, RETURN_CODE_COUNT}; 
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,6 +38,7 @@ extern int __enable_syslog;
 extern const int __max_log_msg_len;
 
 void internal_logging(int log, const char * format, ...);
+void exit_kotekan(enum ReturnCode code);
 
 #define CHECK_ERROR( err )                                         \
     if ( err ) {                                                    \
@@ -91,6 +95,10 @@ void internal_logging(int log, const char * format, ...);
 // Useful messages to say what the application is doing.
 // Should be used sparingly, and limited to useful areas.
 #define INFO(m, a...) if (__log_level > 2) { internal_logging(LOG_INFO, m, ## a); }
+
+// Use this for fatal errors that kotekan can't recover from.
+// Prints an error message and raises a SIGINT.
+#define FATAL_ERROR(message, ...) { ERROR(message, ...); exit_kotekan(ReturnCode::FATAL_ERROR);}
 
 #ifdef __cplusplus
 }
