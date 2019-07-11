@@ -501,7 +501,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    INFO("kotekan shutdown successfully, with status: %s", returnCodeNames[status_code]);
+    INFO("kotekan shutdown with status: %s", returnCodeNames[status_code]);
 
     closelog();
 
