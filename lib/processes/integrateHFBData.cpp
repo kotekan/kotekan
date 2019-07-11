@@ -49,7 +49,7 @@ void integrateHFBData::main_thread() {
       if (in_frame == NULL)
         goto end_loop;
 
-      float* sum_data = (float*)out_buf->frames[0];
+      float* sum_data = (float*)out_buf->frames[out_buffer_ID];
       float* input_data = (float*)in_buf->frames[in_buffer_ID];
     
       // If we are on the first frame copy it directly into the 
