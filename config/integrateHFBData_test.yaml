@@ -1,0 +1,75 @@
+##########################################
+#
+# Test integrateHFBData stage
+#
+# Runs the integrateHFBData stage. Uses testDataGenFloat to generate input frames and the correct output frame.
+# The correct output frame should have entries which are equal to: num_frames_to_integrate x test_value
+#
+##########################################
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
+num_data_sets: 1
+buffer_depth: 2
+baseband_buffer_depth: 120  # 48Gb, 15s buffer.
+cpu_affinity: [2,3,8,9]
+
+# Constants
+sizeof_float: 4
+num_frb_total_beams: 1024
+num_sub_freqs: 128
+num_frames_to_integrate: 80
+test_value: 2
+
+# Pool
+main_pool:
+  kotekan_metadata_pool: chimeMetadata
+  num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
+
+# Buffers
+cpu_hfb_output_buffers:
+    num_frames: buffer_depth
+    frame_size: num_data_sets * num_sub_freqs * num_frb_total_beams * sizeof_float
+    metadata_pool: main_pool
+    beamform_hfb_input_buffer_0:
+        kotekan_buffer: standard
+    beamform_hfb_output_buffer_0:
+        kotekan_buffer: standard
+    beamform_hfb_sum_test_buffer_0:
+        kotekan_buffer: standard
+
+cpu_affinity: [2,3,8,9]
+
+# Generate input data for integrateHFBData stage
+gen_input_data:
+  type: const
+  value: test_value
+  test_data_gen_0:
+    kotekan_stage: testDataGenFloat
+    network_out_buf: beamform_hfb_input_buffer_0
+
+# Generate expected output data of integrateHFBData stage
+gen_output_data:
+  type: const
+  value: test_value * num_frames_to_integrate
+  test_data_gen_0:
+    kotekan_stage: testDataGenFloat
+    network_out_buf: beamform_hfb_sum_test_buffer_0
+
+# Run stage under test
+hyper_fine_beam:
+  integrate_hfb_data:
+    kotekan_stage: integrateHFBData
+    log_level: debug
+    hfb_input_buf: beamform_hfb_input_buffer_0
+    hfb_output_buf: beamform_hfb_output_buffer_0
+      
+# Check output of stage is correct
+check_data:
+  hfb_data_check_0:
+    kotekan_stage: testDataCheckFloat
+    first_buf : beamform_hfb_sum_test_buffer_0
+    second_buf: beamform_hfb_output_buffer_0
