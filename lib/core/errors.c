@@ -5,7 +5,7 @@ int __log_level = 3;
 int __enable_syslog = 1;
 const int __max_log_msg_len = 1024;
 
-enum ReturnCode status_code = CLEAN_EXIT;
+enum ReturnCode __status_code = CLEAN_EXIT;
 const char *returnCodeNames[RETURN_CODE_COUNT] = {"CLEAN_EXIT", "FATAL_ERROR", "TEST_PASSED", "TEST_FAILED"};
 
 void internal_logging(int log, const char * format, ...)
@@ -25,6 +25,6 @@ void internal_logging(int log, const char * format, ...)
 // Starts kotekan shutdown and sets a status code. 
 void exit_kotekan(enum ReturnCode code)
 {
-  status_code = code;
+  __status_code = code;
   raise(SIGINT); 
 }
