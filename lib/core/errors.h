@@ -41,6 +41,8 @@ void internal_logging(int log, const char * format, ...);
 void exit_kotekan(enum ReturnCode code);
 enum ReturnCode get_exit_code();
 char * get_exit_code_string(enum ReturnCode code);
+char * get_error_message();
+void set_error_message(const char * format, ...);
 
 #define CHECK_ERROR( err )                                         \
     if ( err ) {                                                    \
@@ -100,7 +102,7 @@ char * get_exit_code_string(enum ReturnCode code);
 
 // Use this for fatal errors that kotekan can't recover from.
 // Prints an error message and raises a SIGINT.
-#define FATAL_ERROR(message, a...) { ERROR(message, ## a); exit_kotekan(ReturnCode::FATAL_ERROR);}
+#define FATAL_ERROR(m, a...) { ERROR(m, ## a); set_error_message(m, ## a); exit_kotekan(ReturnCode::FATAL_ERROR);}
 
 #ifdef __cplusplus
 }
