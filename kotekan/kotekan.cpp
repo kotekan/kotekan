@@ -499,7 +499,12 @@ int main(int argc, char** argv) {
         }
     }
 
-    INFO("kotekan shutdown with status: %s\n%s", get_exit_code_string(get_exit_code()), get_error_message());
+    INFO("kotekan shutdown with status: %s", get_exit_code_string(get_exit_code()));
+    
+    // Print error message if there is one.
+    if (string(get_error_message()) != "not set") {
+      INFO("Fatal error message was: %s", get_error_message());
+    }
 
     closelog();
 

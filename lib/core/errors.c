@@ -6,7 +6,7 @@ int __enable_syslog = 1;
 const int __max_log_msg_len = 1024;
 
 enum ReturnCode __status_code = CLEAN_EXIT;
-char __err_msg[1024] = "";
+char __err_msg[1024] = "not set";
 
 void internal_logging(int log, const char * format, ...)
 {
