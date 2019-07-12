@@ -39,6 +39,8 @@ extern const int __max_log_msg_len;
 
 void internal_logging(int log, const char * format, ...);
 void exit_kotekan(enum ReturnCode code);
+enum ReturnCode get_exit_code();
+char * get_exit_code_string(enum ReturnCode code);
 
 #define CHECK_ERROR( err )                                         \
     if ( err ) {                                                    \

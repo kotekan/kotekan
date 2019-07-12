@@ -28,3 +28,28 @@ void exit_kotekan(enum ReturnCode code)
   __status_code = code;
   raise(SIGINT); 
 }
+
+enum ReturnCode get_exit_code() {return __status_code;}
+
+// Return error code as string
+char * get_exit_code_string(enum ReturnCode code) {
+
+  switch (code) {
+    case CLEAN_EXIT:
+      return "CLEAN_EXIT";
+      break;
+    case FATAL_ERROR:
+      return "FATAL_ERROR";
+      break;
+    case TEST_PASSED:
+      return "TEST_PASSED";
+      break;
+    case TEST_FAILED:
+      return "TEST_FAILED";
+      break;
+    default:
+      INFO("status_code: %d", code);
+      return "INVALID_CODE";
+  }
+
+}

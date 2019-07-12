@@ -124,8 +124,6 @@ kotekanMode* kotekan_mode = nullptr;
 bool running = false;
 std::mutex kotekan_state_lock;
 volatile std::sig_atomic_t sig_value = 0;
-extern enum ReturnCode __status_code;
-extern const char *returnCodeNames[RETURN_CODE_COUNT];
 
 void signal_handler(int signal) {
     sig_value = signal;
@@ -501,9 +499,9 @@ int main(int argc, char** argv) {
         }
     }
 
-    INFO("kotekan shutdown with status: %s", returnCodeNames[__status_code]);
+    INFO("kotekan shutdown with status: %s", get_exit_code_string(get_exit_code()));
 
     closelog();
 
-    return __status_code;
+    return get_exit_code();
 }
