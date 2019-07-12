@@ -310,7 +310,7 @@ int dpdkCore::lcore_rx(void* args) {
         if (core->handlers[port] == nullptr) {
             // This is the one place (static member function) where normal logging does work.
             fprintf(stderr, "No valid handler provided for port %d", port);
-            raise(SIGINT);
+            FATAL_ERROR("No valid handler provided for port %d", port);
             return 0;
         }
     }

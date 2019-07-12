@@ -453,8 +453,7 @@ int main(int argc, char** argv) {
     });
 
     rest_server.register_get_callback("/kill", [&](connectionInstance& conn) {
-        INFO("/kill endpoint called, raising SIGINT to shutdown the kotekan system process.");
-        raise(SIGINT);
+        FATAL_ERROR("/kill endpoint called, raising SIGINT to shutdown the kotekan system process.");
         conn.send_empty_reply(HTTP_RESPONSE::OK);
     });
 
