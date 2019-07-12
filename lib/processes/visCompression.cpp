@@ -122,12 +122,11 @@ dset_id_t baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
     const inputState* input_state_ptr = input_state.get();
     prod_state_ptr = prod_state.get();
     if (input_state_ptr == nullptr || prod_state_ptr == nullptr) {
-        ERROR("Set to not use dataset_broker and couldn't find "
+        FATAL_ERROR("Set to not use dataset_broker and couldn't find "
               "freqState ancestor of dataset 0x%" PRIx64 ". Make sure there "
               "is a stage upstream in the config, that adds a freqState.\n"
               "Exiting...",
               input_ds_id);
-        raise(SIGINT);
     }
 
     auto sspec = calculate_stack(input_state_ptr->get_inputs(), prod_state_ptr->get_prods());

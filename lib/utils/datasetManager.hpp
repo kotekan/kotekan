@@ -519,12 +519,11 @@ datasetManager::add_state(std::unique_ptr<T>&& state,
             // FIXME: hash collision. make the value a vector and store same
             // hash entries? This would mean the state/dset has to be sent
             // when registering.
-            ERROR("datasetManager: Hash collision!\n"
+            FATAL_ERROR("datasetManager: Hash collision!\n"
                   "The following states have the same hash (0x%" PRIx64 ")."
                   "\n\n%s\n\n%s\n\n"
                   "datasetManager: Exiting...",
                   hash, state->to_json().dump().c_str(), find->second->to_json().dump().c_str());
-            raise(SIGINT);
         }
     } else {
         // insert the new state

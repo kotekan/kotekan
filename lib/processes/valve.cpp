@@ -49,8 +49,7 @@ void Valve::main_thread() {
             try {
                 copy_frame(_buf_in, frame_id_in, _buf_out, frame_id_out);
             } catch (std::exception& e) {
-                ERROR("Failure copying frame: %s\nExiting...", e.what());
-                raise(SIGINT);
+                FATAL_ERROR("Failure copying frame: %s\nExiting...", e.what());
             }
             mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
         } else {

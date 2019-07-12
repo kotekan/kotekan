@@ -186,8 +186,7 @@ void bufferRecv::main_thread() {
 
     base = event_base_new();
     if (!base) {
-        ERROR("Failed to create libevent base");
-        raise(SIGINT);
+        FATAL_ERROR("Failed to create libevent base");
         return;
     }
 
@@ -216,15 +215,13 @@ void bufferRecv::main_thread() {
     evutil_make_socket_nonblocking(listener);
 
     if (bind(listener, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        ERROR("Failed to bind to socket 0.0.0.0:%d, error: %d (%s)", listen_port, errno,
+        FATAL_ERROR("Failed to bind to socket 0.0.0.0:%d, error: %d (%s)", listen_port, errno,
               strerror(errno));
-        raise(SIGINT);
         return;
     }
 
     if (listen(listener, 256) < 0) {
-        ERROR("Failed to open listener %d (%s)", errno, strerror(errno));
-        raise(SIGINT);
+        FATAL_ERROR("Failed to open listener %d (%s)", errno, strerror(errno));
         return;
     }
 

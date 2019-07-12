@@ -158,10 +158,9 @@ dset_id_t datasetManager::add_dataset(state_id_t state) {
         t = _states.at(state).get();
     } catch (std::exception& e) {
         // This must be a bug in the calling stage...
-        ERROR("datasetManager: Failure registering root dataset : state "
+        FATAL_ERROR("datasetManager: Failure registering root dataset : state "
               "0x%" PRIx64 " not found: %s",
               state, e.what());
-        raise(SIGINT);
     }
     std::set<std::string> types = t->types();
     dataset ds(state, types);
@@ -175,10 +174,9 @@ dset_id_t datasetManager::add_dataset(dset_id_t base_dset, state_id_t state) {
         t = _states.at(state).get();
     } catch (std::exception& e) {
         // This must be a bug in the calling stage...
-        ERROR("datasetManager: Failure registering dataset : state "
+        FATAL_ERROR("datasetManager: Failure registering dataset : state "
               "0x%" PRIx64 " not found (base dataset ID: 0x%" PRIx64 "): %s",
               state, base_dset, e.what());
-        raise(SIGINT);
     }
     std::set<std::string> types = t->types();
     dataset ds(state, base_dset, types);
@@ -202,13 +200,12 @@ dset_id_t datasetManager::add_dataset(dataset ds) {
                 // TODO: hash collision. make the value a vector and store same
                 // hash entries? This would mean the state/dset has to be sent
                 // when registering.
-                ERROR("datasetManager: Hash collision!\n"
+                FATAL_ERROR("datasetManager: Hash collision!\n"
                       "The following datasets have the same hash ("
                       "0x%" PRIx64 ").\n\n%s\n\n%s\n\n"
                       "datasetManager: Exiting...",
                       new_dset_id, ds.to_json().dump().c_str(),
                       find->second.to_json().dump().c_str());
-                raise(SIGINT);
             }
 
             if (ds.is_root())

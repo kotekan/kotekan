@@ -118,8 +118,7 @@ void frbNetworkProcess::main_thread() {
     parse_chime_host_name(rack, node, nos, my_node_id);
     for (int i = 0; i < number_of_subnets; i++) {
         if (std::snprintf(my_ip_address[i], 100, "10.%d.%d.1%d", i + 6, nos + rack, node) > 100) {
-            ERROR("Network Thread: buffer spillover", strerror(errno));
-            raise(SIGINT);
+            FATAL_ERROR("Network Thread: buffer spillover", strerror(errno));
             return;
         }
         INFO("%s ", my_ip_address[i]);
@@ -134,8 +133,7 @@ void frbNetworkProcess::main_thread() {
         sock_fd[i] = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
         if (sock_fd[i] < 0) {
-            ERROR("Network Thread: socket() failed: %s ", strerror(errno));
-            raise(SIGINT);
+            FATAL_ERROR("Network Thread: socket() failed: %s ", strerror(errno));
             return;
         }
     }
@@ -151,8 +149,7 @@ void frbNetworkProcess::main_thread() {
 
         // Binding port to the socket
         if (bind(sock_fd[i], (struct sockaddr*)&myaddr[i], sizeof(myaddr[i])) < 0) {
-            ERROR("port binding failed ");
-            raise(SIGINT);
+            FATAL_ERROR("port binding failed ");
             return;
         }
     }
@@ -169,8 +166,7 @@ void frbNetworkProcess::main_thread() {
     int n = 256 * 1024 * 1024;
     for (int i = 0; i < number_of_subnets; i++) {
         if (setsockopt(sock_fd[i], SOL_SOCKET, SO_SNDBUF, (void*)&n, sizeof(n)) < 0) {
-            ERROR("Network Thread: setsockopt() failed: %s ", strerror(errno));
-            raise(SIGINT);
+            FATAL_ERROR("Network Thread: setsockopt() failed: %s ", strerror(errno));
             return;
         }
     }

@@ -62,22 +62,19 @@ void restClient::event_thread() {
     INFO("restClient: libevent version: %s", event_get_version());
 
     if (evthread_use_pthreads()) {
-        ERROR("restClient: Cannot use pthreads with libevent!");
-        raise(SIGINT);
+        FATAL_ERROR("restClient: Cannot use pthreads with libevent!");
     }
 
     // event base and dns base
     _base = event_base_new();
     if (!_base) {
-        ERROR("restClient: Failure creating new event_base.");
-        raise(SIGINT);
+        FATAL_ERROR("restClient: Failure creating new event_base.");
     }
 
     // DNS resolution is blocking (if not numeric host is passed)
     _dns = evdns_base_new(_base, 1);
     if (_dns == nullptr) {
-        ERROR("restClient: evdns_base_new() failed.");
-        raise(SIGINT);
+        FATAL_ERROR("restClient: evdns_base_new() failed.");
     }
 
     // Create a timer to check for the exit condition
@@ -98,8 +95,7 @@ void restClient::event_thread() {
     DEBUG("restClient: starting event loop");
     while (!_stop_thread) {
         if (event_base_dispatch(_base) < 0) {
-            ERROR("restClient::event_thread(): Failure in the event loop.");
-            raise(SIGINT);
+            FATAL_ERROR("restClient::event_thread(): Failure in the event loop.");
         }
     }
     DEBUG("restClient: exiting event loop");
@@ -342,11 +338,10 @@ restReply restClient::make_request_blocking(const std::string& path, const nlohm
     auto time_point =
         std::chrono::system_clock::now() + std::chrono::seconds(timeout == -1 ? 100 : timeout * 2);
     while (!cv_reply.wait_until(lck_reply, time_point, [&]() { return reply_copied; })) {
-        ERROR("restClient: Timeout in make_request_blocking "
+        FATAL_ERROR("restClient: Timeout in make_request_blocking "
               "(%s:%d/%s). This might leave the restClient in an abnormal "
               "state. Exiting...",
               host.c_str(), port, path.c_str());
-        raise(SIGINT);
         return reply;
     }
     return reply;

@@ -58,12 +58,11 @@ dset_id_t prodSubset::change_dataset_state(dset_id_t ds_id, std::vector<prod_cty
     // create new product dataset state
     const prodState* prod_state_ptr = dm.dataset_state<prodState>(ds_id);
     if (prod_state_ptr == nullptr) {
-        ERROR("Set to not use dataset_broker and couldn't find "
+        FATAL_ERROR("Set to not use dataset_broker and couldn't find "
               "freqState ancestor of dataset 0x%" PRIx64 ". Make sure there "
               "is a stage upstream in the config, that adds a freqState.\n"
               "Exiting...",
               ds_id);
-        raise(SIGINT);
     }
 
     // get a copy of input prods

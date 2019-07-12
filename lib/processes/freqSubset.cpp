@@ -52,12 +52,11 @@ dset_id_t freqSubset::change_dataset_state(dset_id_t input_dset_id,
     // create new frequency dataset state
     const freqState* freq_state_ptr = dm.dataset_state<freqState>(input_dset_id);
     if (freq_state_ptr == nullptr) {
-        ERROR("Set to not use dataset_broker and couldn't find "
+        FATAL_ERROR("Set to not use dataset_broker and couldn't find "
               "freqState ancestor of dataset 0x%" PRIx64 ". Make sure there "
               "is a stage upstream in the config, that adds a freqState.\n"
               "Exiting...",
               input_dset_id);
-        raise(SIGINT);
     }
 
     // put the input_freqs in a map and then pick the ones that are in the

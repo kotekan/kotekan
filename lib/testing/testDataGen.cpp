@@ -146,7 +146,7 @@ void testDataGen::main_thread() {
 
         frame_id_abs += 1;
         if (num_frames >= 0 && frame_id_abs >= num_frames) {
-            std::raise(SIGINT);
+            FATAL_ERROR("Frame ID greater than the no. of frames");
             break;
         };
         frame_id = frame_id_abs % buf->num_frames;

@@ -131,8 +131,7 @@ void fakeGpuBuffer::main_thread() {
 
         // Cause kotekan to exit if we've hit the maximum number of frames
         if (num_frames > 0 && frame_count > num_frames) {
-            INFO("Reached frame limit [%i frames]. Exiting kotekan...", num_frames);
-            std::raise(SIGINT);
+            FATAL_ERROR("Reached frame limit [%i frames]. Exiting kotekan...", num_frames);
             return;
         }
 

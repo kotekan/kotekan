@@ -70,8 +70,7 @@ void bufferMerge::main_thread() {
     frameID out_frame_id(out_buf);
 
     if (get_num_producers(out_buf) != 1) {
-        ERROR("Cannot merge into a buffer with more than one producer");
-        raise(SIGINT);
+        FATAL_ERROR("Cannot merge into a buffer with more than one producer");
     }
 
     while (!stop_thread) {
