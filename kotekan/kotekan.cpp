@@ -504,7 +504,7 @@ int main(int argc, char** argv) {
     
     // Print error message if there is one.
     if (string(get_error_message()) != "not set") {
-      INFO("Fatal error message was: %s", get_error_message());
+      INFO("Exit message was: %s", get_error_message());
     }
 
     closelog();
