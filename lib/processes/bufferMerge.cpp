@@ -71,6 +71,7 @@ void bufferMerge::main_thread() {
 
     if (get_num_producers(out_buf) != 1) {
         FATAL_ERROR("Cannot merge into a buffer with more than one producer");
+        return;
     }
 
     while (!stop_thread) {
