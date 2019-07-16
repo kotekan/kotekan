@@ -34,7 +34,7 @@ void monitorBuffer::main_thread() {
                     print_buffer_status(buf.second);
                 }
                 usleep(50000);
-                FATAL_ERROR("The buffer %s hasn't received a frame for %f seconds.\nClosing kotekan because of system timeout.", buf->buffer_name,
+                FATAL_ERROR("The buffer %s hasn't received a frame for %f seconds.  Closing kotekan because of system timeout.", buf->buffer_name,
                       (cur_time - last_arrival));
                 goto end_loop;
             }
