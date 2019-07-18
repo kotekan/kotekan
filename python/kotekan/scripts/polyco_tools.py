@@ -136,7 +136,7 @@ def update_polyco(fname, start_time, load_polyco, end_time, dm, name, width, seg
             else:
                 return
         print("Sending update to {}...".format(url))
-        r = requests.post(url, json=json.dumps(pfile.config_block(start_time, end_time)))
+        r = requests.post(url, json=pfile.config_block(start_time, end_time))
         r.raise_for_status()
         print("Received: ({}) {}".format(r.status_code, r.content))
 
@@ -158,7 +158,7 @@ def disable_gating(url):
         "pulse_width": 0.0
     }
     print("Sending update to {}...".format(url))
-    r = requests.post(url, json=json.dumps(empty_config))
+    r = requests.post(url, json=empty_config)
     r.raise_for_status()
     print("Received: ({}) {}".format(r.status_code, r.content))
 
