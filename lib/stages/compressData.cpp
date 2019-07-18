@@ -99,7 +99,7 @@ ssize_t compressData::huff_encode(const char* in, uint32_t* out, const ssize_t n
 		out[iout] = tmp;
 	}
 
-	return (iout + 1) * 4;
+	return (iout + 1) * sizeof(uint32_t);
 }
 
 // assumes a uint32_t "chunk" structure
@@ -111,7 +111,7 @@ ssize_t compressData::huff_decompress_bound(const ssize_t size_in)
 	return size_in * 4;
 }
 
-ssize_t compressData::huff_decode(const uint32_t* in, uint8_t* out, const uint8_t* verify, const ssize_t n_in) {
+ssize_t compressData::huff_decode(const uint32_t* in, uint8_t* out, const ssize_t n_in) {
 	assert(n_in > 0);
 
 	ssize_t ichunk = 0;
@@ -148,7 +148,7 @@ ssize_t compressData::huff_decode(const uint32_t* in, uint8_t* out, const uint8_
 
 		this_len = lens[imatch];
 		out[iout] = (uint8_t) imatch;
-		INFO("%d | %d | %d | %d | %d", (uint32_t) out[iout], (uint32_t) verify[iout], bpos, tmp2, tmp3);
+		//INFO("%d | %d | %d | %d | %d", (uint32_t) out[iout], (uint32_t) verify[iout], bpos, tmp2, tmp3);
 		bpos += this_len;
 		iout++;
 
@@ -221,7 +221,7 @@ void compressData::main_thread() {
       // and no amount of logic on the raw (encoded) sample chunk stream can break this degeneracy.
 
       auto start1 = std::chrono::high_resolution_clock::now();
-      const ssize_t recovered_samples = huff_decode(compressed_data, decode_buf, (uint8_t*) quant_data, n_in);
+      const ssize_t recovered_samples = huff_decode(compressed_data, decode_buf, n_in);
       auto end1 = std::chrono::high_resolution_clock::now();
 
       // std::cout << "input | output" << std::endl;
@@ -259,6 +259,8 @@ void compressData::main_thread() {
       INFO("Success! Compression ratio: %f", float(compressed_data_size * 8) / (8 * float(num_elements)));
       INFO("Information efficiency (<=1; 1 is optimal): %f", (entropy5 * float(num_elements))/float(compressed_data_size * 8));
       INFO("bit efficiency (can be >1 with a good coding scheme): %f", (bitsize * float(num_elements))/float(compressed_data_size * 8));
+
+      memcpy(out_buf->frames[out_buffer_ID], compressed_data, compressed_data_size);
 
       mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
 

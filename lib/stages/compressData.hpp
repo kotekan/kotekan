@@ -33,7 +33,7 @@ using std::vector;
  * @conf   num_frb_total_beams  Int. No. of total FRB beams (should be 1024).
  * @conf   num_sub_freqs  Int. No. of sub frequencies (should be 128).
  *
- * @author James Willis
+ * @author James Willis & Alex Roman
  *
  */
 
@@ -54,7 +54,7 @@ private:
     ssize_t huff_size_bound(const ssize_t samples_in);
     ssize_t huff_encode(const char* in, uint32_t* out, const ssize_t n_in);
     ssize_t huff_decompress_bound(const ssize_t size_in);
-    ssize_t huff_decode(const uint32_t* in, uint8_t* out, const uint8_t* verify, const ssize_t n_in);
+    ssize_t huff_decode(const uint32_t* in, uint8_t* out, const ssize_t n_in);
     
     struct Buffer* in_buf;
     struct Buffer* out_buf;
