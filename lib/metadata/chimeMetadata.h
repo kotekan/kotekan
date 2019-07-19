@@ -43,6 +43,8 @@ struct chimeMetadata {
     /// This value is set to 1 if the RFI containing samples were zeroed
     /// in the correlation, and 0 otherwise.
     uint32_t rfi_zeroed;
+    // Data size of frame after compression
+    uint32_t compressed_data_size;
 };
 
 // Helper functions to save lots of pointer work
@@ -106,6 +108,12 @@ inline struct timespec get_gps_time(struct Buffer * buf, int ID) {
     struct chimeMetadata * chime_metadata =
      (struct chimeMetadata *) buf->metadata[ID]->metadata;
     return chime_metadata->gps_time;
+}
+
+inline int64_t get_compressed_data_size(struct Buffer * buf, int ID) {
+    struct chimeMetadata * chime_metadata =
+     (struct chimeMetadata *) buf->metadata[ID]->metadata;
+    return chime_metadata->compressed_data_size;
 }
 
 inline void atomic_add_lost_timesamples(struct Buffer * buf, int ID,
@@ -175,6 +183,12 @@ inline void set_gps_time(struct Buffer * buf, int ID, struct timespec time) {
     struct chimeMetadata * chime_metadata =
      (struct chimeMetadata *) buf->metadata[ID]->metadata;
     chime_metadata->gps_time = time;
+}
+
+inline void set_compressed_data_size(struct Buffer * buf, int ID, uint32_t compressed_size) {
+    struct chimeMetadata * chime_metadata =
+     (struct chimeMetadata *) buf->metadata[ID]->metadata;
+    chime_metadata->compressed_data_size = compressed_size;
 }
 
 /**

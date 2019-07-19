@@ -2,6 +2,7 @@
 
 using std::string;
 
+#include "chimeMetadata.h"
 #include "compressData.hpp"
 
 using kotekan::bufferContainer;
@@ -166,11 +167,11 @@ void compressData::main_thread() {
 
     uint in_buffer_ID = 0; // Process only 1 GPU buffer, cycle through buffer depth
     uint8_t* in_frame;
-    int out_buffer_ID = 0;
+    int out_frame_ID = 0;
     const uint32_t num_elements = _num_frb_total_beams * _num_sub_freqs;
     
     // Get the first output buffer which will always be id = 0 to start.
-    uint8_t* out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
+    uint8_t* out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_ID);
     if (out_frame == NULL)
         goto end_loop;
 
@@ -229,7 +230,6 @@ void compressData::main_thread() {
       // 	std::cout << ((uint8_t) quant_data[i]) << " | " << decode_buf[i] << std::endl;
       // }
 
-
       // check every sample
 
       bool check = true;
@@ -260,14 +260,18 @@ void compressData::main_thread() {
       INFO("Information efficiency (<=1; 1 is optimal): %f", (entropy5 * float(num_elements))/float(compressed_data_size * 8));
       INFO("bit efficiency (can be >1 with a good coding scheme): %f", (bitsize * float(num_elements))/float(compressed_data_size * 8));
 
-      memcpy(out_buf->frames[out_buffer_ID], compressed_data, compressed_data_size);
+      memcpy(out_buf->frames[out_frame_ID], compressed_data, compressed_data_size);
 
-      mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
+      // Set compressed size in metadata of frame
+      allocate_new_metadata_object(out_buf, out_frame_ID);
+      set_compressed_data_size(out_buf, out_frame_ID, compressed_data_size);
+
+      mark_frame_full(out_buf, unique_name.c_str(), out_frame_ID);
 
       // Get a new output buffer
-      out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
+      out_frame_ID = (out_frame_ID + 1) % out_buf->num_frames;
       out_frame =
-        wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
+        wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_ID);
       if (out_frame == NULL)
         goto end_loop;
 
