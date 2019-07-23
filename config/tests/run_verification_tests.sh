@@ -9,9 +9,9 @@ TEST_PASSED=2
 
 print_message () {
     echo " "
-    echo "#################################################"
+    echo "#########################################################"
     echo "# $1"
-    echo "#################################################"
+    echo "#########################################################"
     echo " "
 }
 
@@ -34,6 +34,7 @@ do
     print_message "$config_file TEST PASSED"
   else
     print_message "$config_file returned unknown code"
+    exit
   fi
 
 done
