@@ -105,7 +105,7 @@ cpu_simulate:
 
 check_data:
   bf_data_check_0:
-    num_frames_to_test: 5
+    num_frames_to_test: 1
     kotekan_stage: testDataCheckFloat
     first_buf : beamform_output_buffer_0
     second_buf: cpu_output_buffer_0
