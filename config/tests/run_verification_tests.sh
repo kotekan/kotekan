@@ -29,12 +29,15 @@ do
 
   if [[ $RETURN_CODE == $TEST_FAILED ]]; then
     print_message "$config_file TEST FAILED"
-    exit
+    exit 1
   elif [[ $RETURN_CODE == $TEST_PASSED ]]; then
     print_message "$config_file TEST PASSED"
   else
     print_message "$config_file returned unknown code"
-    exit
+    exit 1
   fi
 
 done
+
+# All tests have passed
+exit 0
