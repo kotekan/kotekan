@@ -104,6 +104,9 @@ void set_error_message(const char * format, ...);
 // Prints an error message and raises a SIGINT.
 #define FATAL_ERROR(m, a...) { ERROR(m, ## a); set_error_message(m, ## a); exit_kotekan(ReturnCode::FATAL_ERROR);}
 
+// Exit kotekan after a successful test.
+#define TEST_PASSED() exit_kotekan(ReturnCode::TEST_PASSED);
+
 #ifdef __cplusplus
 }
 #endif
