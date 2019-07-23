@@ -84,5 +84,11 @@ pipeline {
               PYTHONPATH=../python/ pytest -s -vvv'''
       }
     }
+    stage('Verification Tests') {
+      steps {
+        sh '''cd config/tests/
+              ./run_verification_tests.sh
+      }
+    }
   }
 }
