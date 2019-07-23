@@ -111,7 +111,7 @@ gen_ok:
     network_out_buf: lost_samples_buffer
 
 gpu:
-  kernel_path: "../lib/hsa/kernels/"
+  kernel_path: "../../build/lib/hsa/kernels/"
   gain_dir: "../../kotekan/"
   commands: &command_list
   - name: hsaInputData
