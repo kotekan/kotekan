@@ -567,7 +567,7 @@ frb:
   num_beams_per_frb_packet: 4
   timesamples_per_frb_packet: 16
   frb_output_buffer:
-    num_frames: buffer_depth
+    num_frames: buffer_depth + 4
     frame_size: 8 * 256 * (num_beams_per_frb_packet * num_gpus * factor_upchan_out * timesamples_per_frb_packet
                            + 24 + sizeof_short * num_beams_per_frb_packet + sizeof_short * num_gpus
                                 + sizeof_float * num_beams_per_frb_packet * num_gpus
@@ -877,7 +877,7 @@ pulsar:
   num_packet_per_stream: 80
   num_stream: 10
   pulsar_output_buffer:
-    num_frames: buffer_depth
+    num_frames: buffer_depth + 4
     frame_size: udp_pulsar_packet_size * num_stream * num_packet_per_stream
     metadata_pool: main_pool
     kotekan_buffer: standard
