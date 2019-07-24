@@ -49,24 +49,24 @@ static hsa_status_t get_device_memory_region(hsa_amd_memory_pool_t region, void*
 
 void kotekan_hsa_start() {
     hsa_status_t hsa_status = hsa_init();
-    assert(hsa_status == HSA_STATUS_SUCCESS);
+    HSA_CHECK(hsa_status);
 
     hsa_status = hsa_amd_profiling_async_copy_enable(1);
-    assert(hsa_status == HSA_STATUS_SUCCESS);
+    HSA_CHECK(hsa_status);
 
     // Get the CPU agent
     hsa_status = hsa_iterate_agents(get_cpu_agent, &cpu_agent);
     if(hsa_status == HSA_STATUS_INFO_BREAK) {
         hsa_status = HSA_STATUS_SUCCESS;
     }
-    assert(hsa_status == HSA_STATUS_SUCCESS);
+    HSA_CHECK(hsa_status);
 
     // Get the CPU memory region
     hsa_status = hsa_amd_agent_iterate_memory_pools(cpu_agent, get_device_memory_region, &host_region);
     if (hsa_status == HSA_STATUS_INFO_BREAK) {
         hsa_status = HSA_STATUS_SUCCESS;
     }
-    assert(hsa_status == HSA_STATUS_SUCCESS);
+    HSA_CHECK(hsa_status);
 }
 
 void * hsa_host_malloc(size_t len) {
@@ -74,7 +74,7 @@ void * hsa_host_malloc(size_t len) {
 
     hsa_status_t hsa_status;
     hsa_status = hsa_amd_memory_pool_allocate(host_region, len, 0, &ptr);
-    assert(hsa_status == HSA_STATUS_SUCCESS);
+    HSA_CHECK(hsa_status);
 
     if ( mlock(ptr, len) != 0 ) {
         ERROR("Error locking memory - check ulimit -a to check memlock limits");
@@ -87,7 +87,7 @@ void * hsa_host_malloc(size_t len) {
 void hsa_host_free(void *ptr) {
     hsa_status_t hsa_status;
     hsa_status = hsa_amd_memory_pool_free(ptr);
-    assert(hsa_status == HSA_STATUS_SUCCESS);
+    HSA_CHECK(hsa_status);
 }
 
 void kotekan_hsa_stop() {

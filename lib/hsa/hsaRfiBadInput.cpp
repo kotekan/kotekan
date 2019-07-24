@@ -17,7 +17,8 @@ REGISTER_HSA_COMMAND(hsaRfiBadInput);
 
 hsaRfiBadInput::hsaRfiBadInput(Config& config, const string& unique_name,
                                bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "rfi_bad_input", "rfi_bad_input.hsaco") {
+    hsaCommand(config, unique_name, host_buffers, device, "rfi_bad_input" KERNEL_EXT,
+               "rfi_bad_input.hsaco") {
     command_type = gpuCommandType::KERNEL;
     // Retrieve parameters from kotekan config
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");

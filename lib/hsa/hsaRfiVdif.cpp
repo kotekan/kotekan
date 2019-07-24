@@ -21,7 +21,7 @@ REGISTER_HSA_COMMAND(hsaRfiVdif);
 
 hsaRfiVdif::hsaRfiVdif(Config& config, const string& unique_name, bufferContainer& host_buffers,
                        hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "rfi_vdif", "rfi_vdif.hsaco") {
+    hsaCommand(config, unique_name, host_buffers, device, "rfi_vdif" KERNEL_EXT, "rfi_vdif.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
     // Grab values from config and calculates buffer size
@@ -81,7 +81,7 @@ hsa_signal_t hsaRfiVdif::execute(int gpu_frame_id, hsa_signal_t precede_signal) 
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 
     hsa_status_t hsa_status = hsa_signal_create(1, 0, NULL, &signals[gpu_frame_id]);
-    assert(hsa_status == HSA_STATUS_SUCCESS);
+    HSA_CHECK(hsa_status);
 
     // Obtain the current queue write index.
     uint64_t index = hsa_queue_load_write_index_acquire(device.get_queue());

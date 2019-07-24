@@ -18,7 +18,7 @@
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
 #define PI 3.14159265
-#define light 3.e8
+#define light 299792458.
 #define one_over_c 0.0033356
 #define R2D 180. / PI
 #define D2R PI / 180.

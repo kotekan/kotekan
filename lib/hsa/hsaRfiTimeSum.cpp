@@ -13,7 +13,7 @@ REGISTER_HSA_COMMAND(hsaRfiTimeSum);
 
 hsaRfiTimeSum::hsaRfiTimeSum(Config& config, const string& unique_name,
                              bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_timesum",
+    hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_timesum" KERNEL_EXT,
                "rfi_chime_timesum_private.hsaco") {
     command_type = gpuCommandType::KERNEL;
     // Retrieve parameters from kotekan config
