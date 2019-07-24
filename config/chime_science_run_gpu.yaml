@@ -576,7 +576,7 @@ frb:
     kotekan_buffer: standard
   postprocess:
     log_level: warn
-    cpu_affinity: [11]
+    cpu_affinity: [5,11]
     kotekan_stage: frbPostProcess
     incoherent_beams: [0,256,512,768]
     #incoherent_truncation: 25.
@@ -588,7 +588,7 @@ frb:
     in_buf_3: gpu_beamform_output_buffer_3
     out_buf: frb_output_buffer
   buffer_read:
-    cpu_affinity: [11]
+    cpu_affinity: [5,11]
     kotekan_stage: frbNetworkProcess
     in_buf: frb_output_buffer
     udp_frb_port_number: 1313
@@ -885,7 +885,7 @@ pulsar:
     kotekan_buffer: standard
   postprocess:
     log_level: info
-    cpu_affinity: [11]
+    cpu_affinity: [5,11]
     kotekan_stage: pulsarPostProcess
     network_input_buffer_0: beamform_pulsar_output_buffer_0
     network_input_buffer_1: beamform_pulsar_output_buffer_1
@@ -895,6 +895,7 @@ pulsar:
   networkProcess:
     kotekan_stage: pulsarNetworkProcess
     pulsar_out_buf: pulsar_output_buffer
+    cpu_affinity: [5,11]
     udp_pulsar_port_number: 1414
     number_of_nodes: 256
     number_of_subnets: 2
