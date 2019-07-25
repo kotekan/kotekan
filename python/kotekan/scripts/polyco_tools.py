@@ -58,7 +58,7 @@ def mjd(unixtime):
     "--end-time",
     type=float,
     default=None,
-    help="Specify an end time to generate polyco / match segment with maximum overlap",
+    help="Specify an end time to generate polyco / match segment with maximum overlap. Defaults to start time + 1.",
 )
 @click.option(
     "--dm",
@@ -144,21 +144,29 @@ def update_polyco(
     url,
     tempo_dir,
 ):
-    """Generate a gating polyco update from a parfile and send to kotekan."""
+    """Generate a gating polyco update from a parfile and send to kotekan.
+    Required arguments are the path to the parfile and the start time for the polyco
+    (enter 'now' to use current time minus 0.2 days).
+    """
     fname = path.abspath(fname)
     if not load_polyco:
-        if end_time is None:
-            end = start_time + 1.0
+        if start_time == "now":
+            start_time = unix2mjd(Timespec(time.time())) - 0.2
         else:
-            end = end_time
+            start_time = float(start_time)
+        if end_time is None:
+            end_time = start_time + 1.
         pfile = PolycoFile.generate(
-            start_time, end, fname, dm, segment, ncoeff, max_ha, tempo_dir
+            start_time, end_time, fname, dm, segment, ncoeff, max_ha, tempo_dir
         )
         # Read DM and name from parfile since TEMPO mangles them
         parfile = parse_parfile(fname)
     else:
         pfile = PolycoFile(fname)
         parfile = {}
+
+    # ensure time is a float
+    start_time = float(start_time)
 
     if pfile is None or len(pfile.polycos) == 0:
         print("\nCould not generate/read polyco file.")
