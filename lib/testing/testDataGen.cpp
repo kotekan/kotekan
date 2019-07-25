@@ -146,7 +146,8 @@ void testDataGen::main_thread() {
 
         frame_id_abs += 1;
         if (num_frames >= 0 && frame_id_abs >= num_frames) {
-            FATAL_ERROR("Frame ID greater than the no. of frames");
+            INFO("Frame ID greater than the no. of frames");
+            exist_kotekan(ReturnCode::CLEAN_EXIT);
             break;
         };
         frame_id = frame_id_abs % buf->num_frames;
