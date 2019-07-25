@@ -144,8 +144,8 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
 
     if (!gating_conf.empty() && num_freq_in_frame > 1) {
         FATAL_ERROR("Cannot use gating with multifrequency GPU buffers"
-              "[num_freq_in_frame=%i; gating config=%s].",
-              num_freq_in_frame, gating_conf.dump().c_str());
+                    "[num_freq_in_frame=%i; gating config=%s].",
+                    num_freq_in_frame, gating_conf.dump().c_str());
     }
 
     // Register gating update callbacks
@@ -170,7 +170,7 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
 
         if (!FACTORY(gateSpec)::exists(mode)) {
             FATAL_ERROR("Requested gating mode %s for dataset %s is not a known.", name.c_str(),
-                  mode.c_str());
+                        mode.c_str());
         }
 
         INFO("Creating gated dataset %s of type %s", name.c_str(), mode.c_str());

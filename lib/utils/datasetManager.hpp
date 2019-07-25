@@ -520,10 +520,11 @@ datasetManager::add_state(std::unique_ptr<T>&& state,
             // hash entries? This would mean the state/dset has to be sent
             // when registering.
             FATAL_ERROR("datasetManager: Hash collision!\n"
-                  "The following states have the same hash (0x%" PRIx64 ")."
-                  "\n\n%s\n\n%s\n\n"
-                  "datasetManager: Exiting...",
-                  hash, state->to_json().dump().c_str(), find->second->to_json().dump().c_str());
+                        "The following states have the same hash (0x%" PRIx64 ")."
+                        "\n\n%s\n\n%s\n\n"
+                        "datasetManager: Exiting...",
+                        hash, state->to_json().dump().c_str(),
+                        find->second->to_json().dump().c_str());
         }
     } else {
         // insert the new state

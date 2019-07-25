@@ -206,8 +206,9 @@ protected:
      */
     inline bool check_for_reset(int64_t diff) {
         if (unlikely(diff < -1000)) {
-            FATAL_ERROR("The FPGAs likely reset, kotekan stopping... (FPGA seq number was less than 1000 "
-                  "of highest number seen.)");
+            FATAL_ERROR(
+                "The FPGAs likely reset, kotekan stopping... (FPGA seq number was less than 1000 "
+                "of highest number seen.)");
             return false;
         }
         return true;

@@ -318,7 +318,8 @@ void visTestPattern::main_thread() {
                     restReply reply = restClient::instance().make_request_blocking(
                         test_done_path, data, test_done_host, test_done_port);
                     if (!reply.first) {
-                        FATAL_ERROR("Failed to report back test completion: %s", reply.second.c_str());
+                        FATAL_ERROR("Failed to report back test completion: %s",
+                                    reply.second.c_str());
                     }
 
                     INFO("Test '%s' done.", test_name.c_str());
@@ -471,8 +472,9 @@ void visTestPattern::get_dataset_state(dset_id_t ds_id) {
     if (fstate == nullptr || istate == nullptr || pstate == nullptr) {
         if (outfile.is_open())
             outfile.close();
-        FATAL_ERROR("Could not find all required states of dataset with ID 0x%" PRIx64 ".\nExiting...",
-              ds_id);
+        FATAL_ERROR("Could not find all required states of dataset with ID 0x%" PRIx64
+                    ".\nExiting...",
+                    ds_id);
     }
 
     freqs = fstate->get_freqs();

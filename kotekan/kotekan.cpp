@@ -454,7 +454,8 @@ int main(int argc, char** argv) {
 
     rest_server.register_get_callback("/kill", [&](connectionInstance& conn) {
         ERROR("/kill endpoint called, raising SIGINT to shutdown the kotekan system process.");
-        set_error_message("/kill endpoint called, raising SIGINT to shutdown the kotekan system process.");
+        set_error_message(
+            "/kill endpoint called, raising SIGINT to shutdown the kotekan system process.");
         exit_kotekan(ReturnCode::CLEAN_EXIT);
         conn.send_empty_reply(HTTP_RESPONSE::OK);
     });
@@ -501,10 +502,10 @@ int main(int argc, char** argv) {
     }
 
     INFO("kotekan shutdown with status: %s", get_exit_code_string(get_exit_code()));
-    
+
     // Print error message if there is one.
     if (string(get_error_message()) != "not set") {
-      INFO("Fatal error message was: %s", get_error_message());
+        INFO("Fatal error message was: %s", get_error_message());
     }
 
     closelog();

@@ -277,9 +277,9 @@ void fakeVis::fill_mode_default(visFrameView& frame) {
     // Save metadata in first few cells
     if (out_vis.size() < 3) {
         FATAL_ERROR("Number of elements (%d) is too small to encode the 3 debugging"
-              " values of fill-mode 'default' in fake visibilities."
-              "\nExiting...",
-              num_elements);
+                    " values of fill-mode 'default' in fake visibilities."
+                    "\nExiting...",
+                    num_elements);
     } else {
         // For simplicity overwrite diagonal if needed
         out_vis[0] = {(float)std::get<0>(frame.time), 0.0};

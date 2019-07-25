@@ -216,7 +216,7 @@ void bufferRecv::main_thread() {
 
     if (bind(listener, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         FATAL_ERROR("Failed to bind to socket 0.0.0.0:%d, error: %d (%s)", listen_port, errno,
-              strerror(errno));
+                    strerror(errno));
         return;
     }
 

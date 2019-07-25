@@ -238,8 +238,9 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, hsa_signal_t preced
                 if (_num_elements
                     != fread(&host_gain[b * 2048 * 2], sizeof(float) * 2, _num_elements,
                              ptr_myfile)) {
-                    FATAL_ERROR("Gain file (%s) wasn't long enough! Something went wrong, breaking...",
-                          filename);
+                    FATAL_ERROR(
+                        "Gain file (%s) wasn't long enough! Something went wrong, breaking...",
+                        filename);
                     return precede_signal;
                 }
                 fclose(ptr_myfile);
