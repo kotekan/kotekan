@@ -252,7 +252,8 @@ void fakeVis::main_thread() {
 
         // Cause kotekan to exit if we've hit the maximum number of frames
         if (num_frames > 0 && frame_count >= (unsigned)num_frames) {
-            FATAL_ERROR("Reached frame limit [%i frames]. Exiting kotekan...", num_frames);
+            INFO("Reached frame limit [%i frames]. Exiting kotekan...", num_frames);
+            exit_kotekan(ReturnCode::CLEAN_EXIT);
             return;
         }
 
