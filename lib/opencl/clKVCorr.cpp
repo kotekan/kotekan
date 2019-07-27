@@ -12,7 +12,7 @@ REGISTER_CL_COMMAND(clKVCorr);
 
 clKVCorr::clKVCorr(Config& config, const string& unique_name, bufferContainer& host_buffers,
                    clDeviceInterface& device) :
-    clCommand(config, unique_name, host_buffers, device, "corr", "kv_corr.cl") {
+    clCommand(config, unique_name, host_buffers, device, "corr", "kv_corr_dot4b.cl") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _block_size = config.get<int>(unique_name, "block_size");
@@ -89,14 +89,16 @@ void clKVCorr::build() {
     } else if (_data_format == "dot4b") {
         INFO("Running experimental dot-product data");
         int _wi_size = 4;
-        gws[0] = _block_size / _wi_size * _num_local_freq;
+        gws[0] = _block_size / _wi_size;
         gws[1] = _block_size / _wi_size;
-        gws[2] = _num_blocks;
+        gws[2] = _num_blocks * _num_local_freq;
         lws[0] = _block_size / _wi_size;
         lws[1] = _block_size / _wi_size;
         lws[2] = 1;
         cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_elements);
         cl_options += " -D BLOCK_SIZE=" + std::to_string(_block_size);
+        cl_options += " -D NUM_BLOCKS=" + std::to_string(_num_blocks);
+        cl_options += " -D NUM_FREQS=" + std::to_string(_num_local_freq);
         cl_options += " -D SAMPLES_PER_DATA_SET=" + std::to_string(_samples_per_data_set);
         cl_options += " -D WI_SIZE=" + std::to_string(_wi_size);
         cl_options += " -D COARSE_BLOCK_SIZE=" + std::to_string(_block_size / _wi_size);
