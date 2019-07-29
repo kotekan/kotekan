@@ -508,9 +508,6 @@ std::map<std::string, std::string> connectionInstance::get_query() {
             query_map[string(cur_query->key)] = string(cur_query->value);
             cur_query = cur_query->next.tqe_next;
         }
-    } else {
-        WARN("The query part of the URL could not be parsed for URL: %s",
-            evhttp_request_get_uri(request))
     }
     evhttp_clear_headers(&queries);
     return query_map;
