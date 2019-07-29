@@ -16,7 +16,7 @@ log_level: info
 num_links: 4
 freq_array: [4,7,10,16]
 timesamples_per_packet: 2
-block_size: 32
+block_size: 8
 samples_per_data_set: 49152 #16384
 num_beams: 1
 num_data_sets: 1
@@ -49,16 +49,16 @@ gpu_input_buffers:
 
 gpu_output_buffers:
     num_frames: buffer_depth * 4
-    frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
-#    frame_size: num_local_freq * num_blocks * (block_size*block_size)*2*num_data_sets  * sizeof_int
+#    frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
+    frame_size: num_local_freq * num_blocks * (block_size*block_size)*2*num_data_sets  * sizeof_int
     metadata_pool: main_pool
     gpu_output_buffer:
         kotekan_buffer: standard
 
 cpu_output_buffers:
     num_frames: buffer_depth * 4
-    frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
-#    frame_size: num_local_freq * num_blocks * (block_size*block_size)*2*num_data_sets  * sizeof_int
+#    frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
+    frame_size: num_local_freq * num_blocks * (block_size*block_size)*2*num_data_sets  * sizeof_int
     metadata_pool: main_pool
     cpu_output_buffer:
         kotekan_buffer: standard
@@ -69,7 +69,8 @@ gen_data:
     kotekan_stage: testDataGen
     network_out_buf: gpu_input_buffer
 
-data_format: dot4b
+data_format: "cuda_wmma"
+#data_format: "dot4b"
 #data_format: "4+4b"
 #full_complicated: false #don't use the ISA-like kernel: intrinsics, extra packing, overflows, etc
 
@@ -77,10 +78,10 @@ gpu:
     profiling: true
   #  kernel_path: "./opencl/kernels/"
   #  kernel_path: "/home/hirax/hirax/kotekan-kv/lib/opencl/kernels/"
-    log_level: debug2
+#    log_level: debug2
     commands:
     - name: cudaInputData
-    - name: cudaSaxpyKernel
+    - name: cudaCorrelatorKernel
     - name: cudaOutputData
     gpu_0:
         kotekan_stage: cudaProcess
@@ -92,14 +93,14 @@ gpu:
 
 #cpu:
 #    kotekan_stage: gpuSimulate
-#    log_level: debug
+##    log_level: debug
 #    network_in_buf: gpu_input_buffer
 #    corr_out_buf: cpu_output_buffer
 #
-check_data:
-    kotekan_stage: testDataCheckInt
-    first_buf: gpu_output_buffer
-    second_buf: gpu_input_buffer #cpu_output_buffer
+#check_data:
+#    kotekan_stage: testDataCheckInt
+#    first_buf: gpu_output_buffer
+#    second_buf: cpu_output_buffer
 
 #check_data:
 #  imag: [0]

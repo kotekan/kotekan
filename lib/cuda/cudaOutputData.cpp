@@ -51,19 +51,19 @@ int cudaOutputData::wait_on_precondition(int gpu_frame_id) {
 cudaEvent_t cudaOutputData::execute(int gpu_frame_id, cudaEvent_t pre_event) {
     pre_execute(gpu_frame_id);
 
-    uint32_t output_len = _num_elements * _num_local_freq * _samples_per_data_set;
+    uint32_t output_len = output_buffer->frame_size;
 
     void *gpu_output_frame = device.get_gpu_memory_array("output", gpu_frame_id, output_len);
     void *host_output_frame = (void*)output_buffer->frames[output_buffer_execute_id];
 
-    if (pre_event) CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(2), pre_event, 0));
+    if (pre_event) CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(CUDA_OUTPUT_STREAM), pre_event, 0));
     // Data transfer to GPU
     cudaEventCreate(&pre_events[gpu_frame_id]);
-    cudaEventRecord(pre_events[gpu_frame_id]);
+    cudaEventRecord(pre_events[gpu_frame_id], device.getStream(CUDA_OUTPUT_STREAM));
     CHECK_CUDA_ERROR(cudaMemcpyAsync(host_output_frame, gpu_output_frame,
-                                     output_len, cudaMemcpyDeviceToHost, device.getStream(2)));
+                                     output_len, cudaMemcpyDeviceToHost, device.getStream(CUDA_OUTPUT_STREAM)));
     cudaEventCreate(&post_events[gpu_frame_id]);
-    cudaEventRecord(post_events[gpu_frame_id]);
+    cudaEventRecord(post_events[gpu_frame_id], device.getStream(CUDA_OUTPUT_STREAM));
 
     output_buffer_execute_id = (output_buffer_execute_id + 1) % output_buffer->num_frames;
     return post_events[gpu_frame_id];

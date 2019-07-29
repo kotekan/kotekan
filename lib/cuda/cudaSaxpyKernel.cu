@@ -22,9 +22,6 @@ cudaSaxpyKernel::cudaSaxpyKernel(Config& config, const string& unique_name,
 
 cudaSaxpyKernel::~cudaSaxpyKernel() {}
 
-void cudaSaxpyKernel::build() {
-}
-
 __global__
 void saxpy(int a, int *x, int *y)
 {
@@ -46,13 +43,13 @@ cudaEvent_t cudaSaxpyKernel::execute(int gpu_frame_id, cudaEvent_t pre_event) {
     uint32_t output_len = _num_elements * _num_local_freq * _samples_per_data_set;
     void *output_memory = device.get_gpu_memory_array("output", gpu_frame_id, output_len);
 
-    if (pre_event) CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(0), pre_event, 0));
+    if (pre_event) CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(CUDA_COMPUTE_STREAM), pre_event, 0));
     cudaEventCreate(&pre_events[gpu_frame_id]);
     cudaEventRecord(pre_events[gpu_frame_id]);
 
     dim3 tbp (16,16,4);
     dim3 blk (_num_elements/16, _num_local_freq/16, _samples_per_data_set/16);
-    saxpy<<<blk,tbp,0,device.getStream(0)>>>(1.0f, (int*)input_memory, (int*)output_memory);
+    saxpy<<<blk,tbp,0,device.getStream(CUDA_COMPUTE_STREAM)>>>(1.0f, (int*)input_memory, (int*)output_memory);
 
     cudaEventCreate(&post_events[gpu_frame_id]);
     cudaEventRecord(post_events[gpu_frame_id]);

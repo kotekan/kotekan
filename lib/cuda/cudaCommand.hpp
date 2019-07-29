@@ -25,6 +25,10 @@
 #include <stdio.h>
 #include <string>
 
+#define CUDA_INPUT_STREAM 0
+#define CUDA_COMPUTE_STREAM 1
+#define CUDA_OUTPUT_STREAM 2
+
 
 /**
  * @class cudaCommand
@@ -45,12 +49,6 @@ public:
     /// Destructor that frees memory for the kernel and name.
     virtual ~cudaCommand();
 
-    /** The build function creates the event to return as the post event in an event chaining
-     * sequence. If a kernel is part of the cudaCommand object definition the resources to run it are
-     * allocated on the gpu here.
-     **/
-    virtual void build();
-
     /** Execute a kernel, copy, etc.
      * @param gpu_frame_id  The bufferID associated with the GPU commands.
      * @param pre_event     The preceeding event in a sequence of chained event sequence of
@@ -64,16 +62,6 @@ public:
     virtual void finalize_frame(int gpu_frame_id) override;
 
 protected:
-    /// Compiled instance of the kernel that will execute on the GPU once enqueued.
-    //cl_kernel kernel;
-    /// Allocates resources on the GPU for the kernel.
-    //cl_program program;
-
-    // Kernel values.
-    /// global work space dimension
-    size_t gws[3];
-    /// local work space dimension
-    size_t lws[3];
     cudaEvent_t* post_events; // tracked locally for cleanup
     cudaEvent_t* pre_events; // tracked locally for cleanup
 
@@ -86,4 +74,4 @@ CREATE_FACTORY(cudaCommand, // const string &, const string &,
 #define REGISTER_CUDA_COMMAND(newCommand)                                                            \
     REGISTER_NAMED_TYPE_WITH_FACTORY(cudaCommand, newCommand, #newCommand)
 
-#endif // CL_COMMAND_H
+#endif // CUDA_COMMAND_H

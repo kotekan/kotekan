@@ -20,7 +20,6 @@ protected:
     int32_t network_buffer_precondition_id;
     int32_t network_buffer_finalize_id;
     Buffer* network_buf;
-    int32_t input_frame_len;
 
     int32_t _num_local_freq;
     int32_t _num_elements;

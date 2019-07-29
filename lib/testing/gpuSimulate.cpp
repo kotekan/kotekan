@@ -134,8 +134,51 @@ void gpuSimulate::main_thread() {
                           _num_local_freq);
                 }
             }
+        } else if (_data_format == "cuda_wmma") {
+            printf("CPU Calc:\n");
+            uint32_t* input_u = (uint32_t*)input;
+            for (int f = 0; f < _num_local_freq; ++f) {
+                for (int b = 0; b < _num_blocks; ++b) {
+//                    printf("BLOCK %i! %i %i\n", b, host_block_map[2*b + 0], host_block_map[2*b + 1]);
+                    for (int y = 0; y < _block_size; ++y) {
+                        for (int x = 0; x < _block_size; ++x) {
+                            int real = 0;
+                            int imag = 0;
+                            for (int t = 0; t < _samples_per_data_set / 32; t++) {
+                                for (int tt=0; tt<4; tt++){
+                                    int ix = tt +
+                                             4 * x +
+                                             4 * 2 * _block_size * host_block_map[2*b + 0] +
+                                             4 * 2 * _num_elements * f +
+                                             4 * 2 * _num_elements * _num_local_freq * t;
+                                    int xi = input_u[ix];
+                                    int xr = input_u[ix + _block_size*4];
+                                    int iy = tt +
+                                             4 * y +
+                                             4 * 2 * _block_size * host_block_map[2*b + 1] +
+                                             4 * 2 * _num_elements * f +
+                                             4 * 2 * _num_elements * _num_local_freq * t;
+                                    int yi = input_u[iy];
+                                    int yr = input_u[iy + _block_size*4];
+                                    real += dot4b(xr, yr) + dot4b(xi, yi);
+                                    imag += dot4b(xi, yr);// - dot4b(xr, yi);
+//                                    printf("%08x %08x %08x %08x \n",yi,yr,xi,xr);
+                                }
+                            }
+                            output[(f * _num_blocks + b) * _block_size * _block_size * 2 + x
+                                   + y * _block_size] = real;
+                            output[(f * _num_blocks + b) * _block_size * _block_size * 2 + x
+                                   + y * _block_size + _block_size * _block_size] = imag;
+                            // INFO("real: %d, imag: %d", real, imag);
+//                            printf("%4i ",real);
+                        }
+//                        printf("\n BLOCK %i %i %i\n", b, host_block_map[2*b + 0], host_block_map[2*b + 1]);
+                    }
+                    DEBUG("Done block %d of %d (freq %d of %d)...", b, _num_blocks, f,
+                          _num_local_freq);
+                }
+            }
         }
-
         INFO("Simulating GPU processing done for %s[%d] result is in %s[%d]",
              input_buf->buffer_name, input_frame_id, output_buf->buffer_name, output_frame_id);
 

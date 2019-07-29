@@ -1,14 +1,14 @@
-#ifndef CUDA_SAXPY_KERNEL_CUH
-#define CUDA_SAXPY_KERNEL_CUH
+#ifndef CUDA_CORRELATOR_KERNEL_CUH
+#define CUDA_CORRELATOR_KERNEL_CUH
 
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
 
-class cudaSaxpyKernel : public cudaCommand {
+class cudaCorrelatorKernel : public cudaCommand {
 public:
-    cudaSaxpyKernel(kotekan::Config& config, const string& unique_name,
+    cudaCorrelatorKernel(kotekan::Config& config, const string& unique_name,
                    kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
-    ~cudaSaxpyKernel();
+    ~cudaCorrelatorKernel();
     cudaEvent_t execute(int gpu_frame_id, cudaEvent_t pre_event) override;
 
 protected:
@@ -34,4 +34,4 @@ private:
     int32_t _buffer_depth;
 };
 
-#endif // CUDA_SAXPY_KERNEL_CUH
+#endif // CUDA_CORRELATOR_KERNEL_CUH

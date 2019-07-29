@@ -22,9 +22,11 @@ set ( KOTEKAN_CUDA_SOURCES
 
 # Simple test
       cudaSaxpyKernel.cu
+      cudaCorrelatorKernel.cu
     )
 
 add_library ( kotekan_cuda ${KOTEKAN_CUDA_SOURCES} )
 
-#set_target_properties ( kotekan_cuda PROPERTIES LINKER_LANGUAGE CUDA )
+target_compile_options(kotekan_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-gencode arch=compute_75,code=sm_75>)
+
 add_dependencies( kotekan_cuda kotekan_gpu )

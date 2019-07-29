@@ -1,4 +1,5 @@
 #include "cudaProcess.hpp"
+#include "cuda_profiler_api.h"
 
 #include "unistd.h"
 #include "util.h"
@@ -19,11 +20,14 @@ cudaProcess::cudaProcess(Config& config_, const string& unique_name,
     gpuProcess(config_, unique_name, buffer_container) {
     device = new cudaDeviceInterface(config_, gpu_id, _gpu_buffer_depth);
     dev = device;
-    device->prepareStreams(); // yes profiling
+    device->prepareStreams();
+    cudaProfilerStart();
     init();
 }
 
-cudaProcess::~cudaProcess() {}
+cudaProcess::~cudaProcess() {
+    cudaProfilerStop();
+}
 
 gpuEventContainer* cudaProcess::create_signal() {
     return new cudaEventContainer();
@@ -32,8 +36,6 @@ gpuEventContainer* cudaProcess::create_signal() {
 gpuCommand* cudaProcess::create_command(const std::string& cmd_name, const std::string& unique_name) {
     auto cmd = FACTORY(cudaCommand)::create_bare(cmd_name, config, unique_name,
                                                local_buffer_container, *device);
-    // TODO Why is this not in the constructor?
-    cmd->build();
     DEBUG("Command added: %s", cmd_name.c_str());
     return cmd;
 }
