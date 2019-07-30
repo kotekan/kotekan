@@ -99,8 +99,8 @@ public:
      * @brief Gets the query args as a map of key value strings
      *
      * Example "/my_endpoint?val=42&myval=hello" would return a map with items:
-     * map[myval] == 42
-     * map[val] = hello
+     * map["val"] == "42"
+     * map["myval"] == "hello"
      *
      * In the case there are no URL query args, an empty map is returned.
      *
