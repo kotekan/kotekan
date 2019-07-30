@@ -90,8 +90,7 @@ def test_fails_nonwritable(tmpdir_factory):
             }
 
     import subprocess
-    with pytest.raises(subprocess.CalledProcessError):
-        run_baseband(tmpdir_factory, params)
+    run_baseband(tmpdir_factory, params)
 
 
 def test_io_errors_and_max_samples(tmpdir_factory):
