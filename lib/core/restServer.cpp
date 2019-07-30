@@ -504,7 +504,7 @@ std::map<std::string, std::string> connectionInstance::get_query() {
     const char* query_string = evhttp_uri_get_query(evhttp_request_get_evhttp_uri(request));
     if (query_string && evhttp_parse_query_str(query_string, &queries) == 0) {
         struct evkeyval* cur_query = queries.tqh_first;
-        while(cur_query) {
+        while (cur_query) {
             query_map[string(cur_query->key)] = string(cur_query->value);
             cur_query = cur_query->next.tqe_next;
         }
