@@ -12,7 +12,6 @@ import itertools
 import subprocess
 import tempfile
 import time
-import pytest
 
 from . import visbuffer
 
@@ -144,11 +143,12 @@ class KotekanRunner(object):
                 print("Test failed as expected with exit code: " + p.returncode)
                 self.return_code = p.returncode
             else:
-                with pytest.raises(subprocess.CalledProcessError):
+                try:
                     # Throw an exception if we don't exit cleanly
                     if p.returncode:
                         raise subprocess.CalledProcessError(p.returncode, cmd)
-                assert p.returncode == 1 
+                except subprocess.CalledProcessError:
+                    assert p.returncode != 0 
 
 
 class InputBuffer(object):
