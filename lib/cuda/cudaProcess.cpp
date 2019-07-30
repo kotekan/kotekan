@@ -21,12 +21,12 @@ cudaProcess::cudaProcess(Config& config_, const string& unique_name,
     device = new cudaDeviceInterface(config_, gpu_id, _gpu_buffer_depth);
     dev = device;
     device->prepareStreams();
-    cudaProfilerStart();
+    CHECK_CUDA_ERROR(cudaProfilerStart());
     init();
 }
 
 cudaProcess::~cudaProcess() {
-    cudaProfilerStop();
+    CHECK_CUDA_ERROR(cudaProfilerStop());
 }
 
 gpuEventContainer* cudaProcess::create_signal() {

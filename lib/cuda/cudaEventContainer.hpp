@@ -9,6 +9,7 @@
 #include <thread>
 
 #include "cuda_runtime_api.h"
+#include "cudaUtils.hpp"
 
 class cudaEventContainer final : public gpuEventContainer {
 

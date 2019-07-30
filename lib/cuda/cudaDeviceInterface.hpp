@@ -3,6 +3,7 @@
 
 #include "gpuDeviceInterface.hpp"
 #include "cuda_runtime_api.h"
+#include "cudaUtils.hpp"
 
 // This adjusts the number of queues used by the OpenCL runtime
 // One queue is for data transfers to the GPU, one is for kernels,

@@ -36,10 +36,11 @@ void corr(int *input, int *output, int ne, int nt, int nf)
     fill_fragment(accr_matrix, 0);
     fill_fragment(acci_matrix, 0);
 
-    //x,y coordinates of the upper blocks, cf OpenCL in Action p260
     int n_blk = (ne/8)*(ne/8+1)/2;
     int blk_id = blockIdx.y;
     int f = blockIdx.z;
+
+    //x,y coordinates of the upper blocks, cf OpenCL in Action p260
     int blk_x = blk_id;
     int blk_y = 0;
     int s = ne/8;
@@ -58,6 +59,7 @@ void corr(int *input, int *output, int ne, int nt, int nf)
         mma_sync(accr_matrix, xi_matrix, yi_matrix, accr_matrix);
         mma_sync(accr_matrix, xr_matrix, yr_matrix, accr_matrix);
         mma_sync(acci_matrix, xi_matrix, yr_matrix, acci_matrix);
+        mma_sync(acci_matrix, xr_matrix, yi_matrix, acci_matrix);
     }
 
     store_matrix_sync(output + f*n_blk*8*8*2 + 8*8*2*blk_id,       accr_matrix, 8, mem_col_major);
@@ -78,10 +80,11 @@ cudaEvent_t cudaCorrelatorKernel::execute(int gpu_frame_id, cudaEvent_t pre_even
     CHECK_CUDA_ERROR(cudaEventCreate(&pre_events[gpu_frame_id]));
     CHECK_CUDA_ERROR(cudaEventRecord(pre_events[gpu_frame_id], device.getStream(CUDA_COMPUTE_STREAM)));
 
-    dim3 blk (32,1,1);
+    dim3 blk (8,4,1);
     dim3 grd (1,_num_blocks,_num_local_freq);
     corr<<<grd,blk,0,device.getStream(CUDA_COMPUTE_STREAM)>>>
         ((int*)input_memory, (int*)output_memory, _num_elements, _samples_per_data_set, _num_local_freq);
+    CHECK_CUDA_ERROR(cudaGetLastError());
 
     CHECK_CUDA_ERROR(cudaEventCreate(&post_events[gpu_frame_id]));
     CHECK_CUDA_ERROR(cudaEventRecord(post_events[gpu_frame_id], device.getStream(CUDA_COMPUTE_STREAM)));

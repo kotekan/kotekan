@@ -39,9 +39,9 @@ void cudaCommand::finalize_frame(int gpu_frame_id) {
                                                   post_events[gpu_frame_id]));
             last_gpu_execution_time = exec_time * 1e-3; //concert ms to s
         }
-        cudaEventDestroy(pre_events[gpu_frame_id]);
+        CHECK_CUDA_ERROR(cudaEventDestroy(pre_events[gpu_frame_id]));
         pre_events[gpu_frame_id] = NULL;
-        cudaEventDestroy(post_events[gpu_frame_id]);
+        CHECK_CUDA_ERROR(cudaEventDestroy(post_events[gpu_frame_id]));
         post_events[gpu_frame_id] = NULL;
     } else
         ERROR("*** WTF? Null event!");

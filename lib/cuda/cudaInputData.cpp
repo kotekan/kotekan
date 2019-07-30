@@ -14,6 +14,15 @@ cudaInputData::cudaInputData(Config& config, const string& unique_name, bufferCo
 
     network_buf = host_buffers.get_buffer("network_buf");
     register_consumer(network_buf, unique_name.c_str());
+
+    for (int i=0; i<network_buf->num_frames; i++){
+        uint flags;
+        //only register the memory if it isn't already...
+        if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, network_buf->frames[i])) {
+            CHECK_CUDA_ERROR(cudaHostRegister(network_buf->frames[i], network_buf->frame_size, 0));
+        }
+    }
+
     network_buffer_id = 0;
     network_buffer_precondition_id = 0;
     network_buffer_finalize_id = 0;
@@ -21,7 +30,15 @@ cudaInputData::cudaInputData(Config& config, const string& unique_name, bufferCo
     command_type = gpuCommandType::COPY_IN;
 }
 
-cudaInputData::~cudaInputData() {}
+cudaInputData::~cudaInputData() {
+    for (int i=0; i<network_buf->num_frames; i++){
+        uint flags;
+        //only unregister if it's already been registered
+        if (cudaSuccess == cudaHostGetFlags(&flags, network_buf->frames[i])){
+            CHECK_CUDA_ERROR(cudaHostUnregister(network_buf->frames[i]));
+        }
+    }
+}
 
 int cudaInputData::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
@@ -49,12 +66,12 @@ cudaEvent_t cudaInputData::execute(int gpu_frame_id, cudaEvent_t pre_event) {
 
     if (pre_event) CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(CUDA_INPUT_STREAM), pre_event, 0));
     // Data transfer to GPU
-    cudaEventCreate(&pre_events[gpu_frame_id]);
-    cudaEventRecord(pre_events[gpu_frame_id], device.getStream(CUDA_INPUT_STREAM));
+    CHECK_CUDA_ERROR(cudaEventCreate(&pre_events[gpu_frame_id]));
+    CHECK_CUDA_ERROR(cudaEventRecord(pre_events[gpu_frame_id], device.getStream(CUDA_INPUT_STREAM)));
     CHECK_CUDA_ERROR(cudaMemcpyAsync(gpu_memory_frame, host_memory_frame,
                                      input_frame_len, cudaMemcpyHostToDevice , device.getStream(CUDA_INPUT_STREAM)));
-    cudaEventCreate(&post_events[gpu_frame_id]);
-    cudaEventRecord(post_events[gpu_frame_id], device.getStream(CUDA_INPUT_STREAM));
+    CHECK_CUDA_ERROR(cudaEventCreate(&post_events[gpu_frame_id]));
+    CHECK_CUDA_ERROR(cudaEventRecord(post_events[gpu_frame_id], device.getStream(CUDA_INPUT_STREAM)));
 
     network_buffer_id = (network_buffer_id + 1) % network_buf->num_frames;
     return post_events[gpu_frame_id];

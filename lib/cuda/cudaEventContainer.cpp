@@ -17,5 +17,5 @@ void cudaEventContainer::unset() {
 }
 
 void cudaEventContainer::wait() {
-    cudaEventSynchronize(signal);
+    CHECK_CUDA_ERROR(cudaEventSynchronize(signal));
 }
