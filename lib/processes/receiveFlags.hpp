@@ -7,6 +7,7 @@
 #define RECEIVEFLAGS_H
 
 #include "Stage.hpp"
+#include "prometheusMetrics.hpp"
 #include "updateQueue.hpp"
 
 #include <mutex>
@@ -79,7 +80,7 @@ private:
     timespec ts_frame = {0, 0};
 
     /// Number of updates received too late
-    size_t num_late_updates;
+    kotekan::prometheus::Counter& late_updates_counter;
 
     // config values
     /// Number of elements

@@ -32,6 +32,7 @@
 #include <sys/socket.h>
 #include <thread>
 #include <unistd.h>
+#include <unordered_map>
 
 // Forward declare
 class connInstance;
@@ -145,9 +146,10 @@ private:
     struct event_base* base;
 
     /// The number of frames dropped
-    size_t dropped_frame_count = 0;
+    kotekan::prometheus::Counter& dropped_frame_counter;
 
-    /// A lock on the @c dropped_frame_count counter
+    /// A lock on the @c dropped_frame_counter
+    // TODO: move locking to prometheusMetrics?
     std::mutex dropped_frame_count_mutex;
 
     // Worker threads (thread pool section)

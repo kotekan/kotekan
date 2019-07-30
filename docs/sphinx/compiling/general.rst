@@ -84,7 +84,9 @@ Cmake build options
 * ``-DRTE_TARGET=x86_64-native-linuxapp-gcc``
     Includes DPDK support.
 * ``-DUSE_HSA=ON``
-    Build with HSA support if available. On by default.
+    Build with HSA support if available. Off by default.
+* ``-DUSE_OLD_ROCM=ON``
+    Build for ROCm versions 2.3 or older. Off by default.
 * ``-DUSE_OPENCL=ON``
     Build with OpenCL support.
 * ``-DUSE_HCC=ON``

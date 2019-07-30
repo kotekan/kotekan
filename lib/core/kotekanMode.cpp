@@ -37,6 +37,7 @@ kotekanMode::~kotekanMode() {
     for (auto const& stage : stages) {
         if (stage.second != nullptr) {
             delete stage.second;
+            prometheus::Metrics::instance().remove_stage_metrics(stage.first);
         }
     }
 

@@ -43,12 +43,19 @@ FOREACH(infileName ${inISAFiles})
     SET(infile "${CMAKE_CURRENT_SOURCE_DIR}/${infileName}")
 
     # Custom command to build the hasco
-    ADD_CUSTOM_COMMAND(OUTPUT "${outfile}"
+    if (${USE_OLD_ROCM})
+      ADD_CUSTOM_COMMAND(OUTPUT "${outfile}"
         COMMAND ${AMD_CLANG} -x assembler -target amdgcn--amdhsa -mcpu=fiji -c -o "${objectfile}" "${infile}"
         COMMAND ${AMD_CLANG} -target amdgcn--amdhsa "${objectfile}" -o "${outfile}"
         DEPENDS "${infile}" ${AMD_CLANG}
         COMMENT "Generating hasco file from ${infile}: ${outfile}")
-
+    else ()
+      ADD_CUSTOM_COMMAND(OUTPUT "${outfile}"
+        COMMAND ${AMD_CLANG} -x assembler -target amdgcn--amdhsa -mcpu=fiji -mno-code-object-v3 -c -o "${objectfile}" "${infile}"
+        COMMAND ${AMD_CLANG} -target amdgcn--amdhsa "${objectfile}" -o "${outfile}"
+        DEPENDS "${infile}" ${AMD_CLANG}
+        COMMENT "Generating hasco file from ${infile}: ${outfile}")
+    endif ()
     # Build list of depenencies
     SET(outFiles ${outFiles} "${outfile}")
 ENDFOREACH(infileName)
