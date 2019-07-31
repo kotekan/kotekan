@@ -3,6 +3,8 @@
 #include "errors.h"
 #include "metadata.h"
 
+#include "fmt.hpp"
+
 namespace kotekan {
 namespace prometheus {
 
@@ -39,15 +41,13 @@ void Gauge::set(const double value) {
 }
 
 string Gauge::to_string() {
-    std::ostringstream out;
-    to_string(out);
-    return out.str();
+    return fmt::format("{:f} {}", value, last_update_time_stamp);
 }
 
 std::ostringstream& Gauge::to_string(std::ostringstream& out) {
     std::lock_guard<std::mutex> lock(metric_lock);
 
-    out << value << " " << last_update_time_stamp;
+    fmt::print(out, "{:f} {}", value, last_update_time_stamp);
     return out;
 }
 
