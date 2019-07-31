@@ -3,6 +3,7 @@
 #include "configUpdater.hpp"
 
 #include <signal.h>
+#include <utils/visUtil.hpp>
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -212,6 +213,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_s
     }
 
     if (update_gains) {
+        double start_time = current_time();
         // brute force wait to make sure we don't clobber memory
         if (hsa_signal_wait_scacquire(precede_signal, HSA_SIGNAL_CONDITION_LT, 1, UINT64_MAX,
                                       HSA_WAIT_STATE_BLOCKED)
@@ -246,6 +248,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_s
         }
         void* device_gain = device.get_gpu_memory("beamform_gain", gain_len);
         device.sync_copy_host_to_gpu(device_gain, (void*)host_gain, gain_len);
+        INFO("Time required to load FRB gains: %f", current_time() - start_time);
     }
 
     if (update_NS_beam) {

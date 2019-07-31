@@ -13,6 +13,7 @@
 #include <signal.h>
 #include <string>
 #include <time.h>
+#include <utils/visUtil.hpp>
 
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
@@ -220,6 +221,7 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, hsa_signal_t preced
     }
 
     if (update_gains) {
+        double start_time = current_time();
         update_gains = false;
         FILE* ptr_myfile;
         char filename[256];
@@ -246,6 +248,7 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, hsa_signal_t preced
                 fclose(ptr_myfile);
             }
         } // end beam
+        INFO("Time required to load Pulsar gains: %f", current_time() - start_time);
     }
     if (update_phase) {
         // GPS time, need ch_master
