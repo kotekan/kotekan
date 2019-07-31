@@ -2,6 +2,7 @@
 
 #include "errors.h"
 
+#include <event2/keyvalq_struct.h>
 #include <pthread.h>
 #include <sched.h>
 #include <signal.h>
@@ -56,7 +57,7 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
 
     restServer* server = (restServer*)(cb_data);
 
-    string url = string(evhttp_request_get_uri(request));
+    string url = string(evhttp_uri_get_path(evhttp_request_get_evhttp_uri(request)));
 
     DEBUG2("restServer: Got request with url %s", url.c_str());
 
@@ -493,6 +494,23 @@ void connectionInstance::send_json_reply(const json& json_reply) {
     }
 
     evhttp_send_reply(request, static_cast<int>(HTTP_RESPONSE::OK), "OK", event_buffer);
+}
+
+std::map<std::string, std::string> connectionInstance::get_query() {
+    std::map<std::string, std::string> query_map;
+    struct evkeyvalq queries;
+    queries.tqh_first = nullptr;
+    queries.tqh_last = nullptr;
+    const char* query_string = evhttp_uri_get_query(evhttp_request_get_evhttp_uri(request));
+    if (query_string && evhttp_parse_query_str(query_string, &queries) == 0) {
+        struct evkeyval* cur_query = queries.tqh_first;
+        while (cur_query) {
+            query_map[string(cur_query->key)] = string(cur_query->value);
+            cur_query = cur_query->next.tqe_next;
+        }
+    }
+    evhttp_clear_headers(&queries);
+    return query_map;
 }
 
 } // namespace kotekan
