@@ -53,7 +53,7 @@ def wait(wait_time):
     return ('wait', wait_time, None)
 
 
-def run_baseband(tdir_factory, params=None, rest_commands=None, expect_failure=False):
+def run_baseband(tdir_factory, params=None, rest_commands=None, expect_a_failure=False):
 
     p = dict(default_params)
     tmpdir = tdir_factory.mktemp("baseband")
@@ -74,7 +74,7 @@ def run_baseband(tdir_factory, params=None, rest_commands=None, expect_failure=F
         None,
         p,
         rest_commands=rest_commands,
-        expect_failure = expect_failure
+        expect_failure = expect_a_failure
     )
 
     test.run()
@@ -91,7 +91,7 @@ def test_fails_nonwritable(tmpdir_factory):
             }
 
     import subprocess
-    run_baseband(tmpdir_factory, params, expect_failure = True)
+    run_baseband(tmpdir_factory, params, expect_a_failure = True)
 
 
 def test_io_errors_and_max_samples(tmpdir_factory):
