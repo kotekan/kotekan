@@ -140,7 +140,7 @@ class KotekanRunner(object):
 
             # If failure is expected just report the exit code
             if self.expect_failure is True:
-                print("Test failed as expected with exit code: " + p.returncode)
+                print("Test failed as expected with exit code: " + str(p.returncode))
                 self.return_code = p.returncode
             elif p.returncode:
                 raise subprocess.CalledProcessError(p.returncode, cmd)
@@ -558,7 +558,7 @@ class KotekanStageTester(KotekanRunner):
             buffer_block.update(noise_buffer)
 
         super(KotekanStageTester, self).__init__(buffer_block, stage_block,
-                                                   global_config, rest_commands)
+                                                   global_config, rest_commands, expect_failure = expect_failure)
 
 
 default_config = """
