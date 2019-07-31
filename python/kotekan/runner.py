@@ -142,13 +142,8 @@ class KotekanRunner(object):
             if self.expect_failure is True:
                 print("Test failed as expected with exit code: " + p.returncode)
                 self.return_code = p.returncode
-            else:
-                try:
-                    # Throw an exception if we don't exit cleanly
-                    if p.returncode:
-                        raise subprocess.CalledProcessError(p.returncode, cmd)
-                except subprocess.CalledProcessError:
-                    assert p.returncode != 0 
+            elif p.returncode:
+                raise subprocess.CalledProcessError(p.returncode, cmd)
 
 
 class InputBuffer(object):
