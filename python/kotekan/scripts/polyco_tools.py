@@ -10,9 +10,12 @@ import click
 import yaml
 import json
 import time
+from datetime import datetime
+from tempfile import TemporaryFile
 import requests
+from subprocess import check_call
 from os import path
-from kotekan.pulsar_timing import Timespec, unix2mjd, PolycoFile
+from kotekan.pulsar_timing import Timespec, unix2mjd, mjd2unix, PolycoFile
 
 
 def parse_parfile(fname):
@@ -121,10 +124,21 @@ def mjd(unixtime):
     help="URL of kotekan master pulsar gating endpoint.",
 )
 @click.option(
+    "--recv-url",
+    type=str,
+    default="http://recv2:12048/updatable_config/26m_gated",
+    help="URL of 26m_gated toggle endpoint on receiver node.",
+)
+@click.option(
     "--tempo-dir",
     type=str,
     default="/usr/local/tempo2/",
     help="TEMPO2 runtime directory",
+)
+@click.option(
+    "--schedule",
+    is_flag=True,
+    help="Schedule enabling and disabling gating using specified start and end times. Will also enable writing of 26m_gated dataset.",
 )
 def update_polyco(
     fname,
@@ -142,7 +156,9 @@ def update_polyco(
     send_update,
     no_confirm,
     url,
+    recv_url,
     tempo_dir,
+    schedule,
 ):
     """Generate a gating polyco update from a parfile and send to kotekan.
     Required arguments are the path to the parfile and the start time for the polyco
@@ -155,7 +171,7 @@ def update_polyco(
         else:
             start_time = float(start_time)
         if end_time is None:
-            end_time = start_time + 1.
+            end_time = start_time + 1.0
         pfile = PolycoFile.generate(
             start_time, end_time, fname, dm, segment, ncoeff, max_ha, tempo_dir
         )
@@ -200,23 +216,56 @@ def update_polyco(
         for p in pfile.polycos:
             p.phase_ref += offset * p.f0
 
+    update = pfile.config_block(start_time, end_time)
     print("\nConfig update:\n")
     formatter = (
         yaml.dump if format == "yaml" else json.dumps if format == "json" else repr
     )
-    print(formatter(pfile.config_block(start_time, end_time)))
+    print(formatter(update))
 
-    if send_update:
+    if send_update or schedule:
         if not no_confirm:
-            confirm = eval(input("Send this update to kotekan? (y/N) "))
+            confirm = input(
+                "{} this update? (y/N) ".format("Schedule" if schedule else "Send")
+            )
             if confirm.lower().strip() in ["yes", "y"]:
                 pass
             else:
                 return
-        print("Sending update to {}...".format(url))
-        r = requests.post(url, json=pfile.config_block(start_time, end_time))
-        r.raise_for_status()
-        print("Received: ({}) {}".format(r.status_code, r.content))
+        if schedule:
+            if mjd2unix(start_time).tv_sec <= time.time():
+                raise ValueError("Cannot schedule a gating start time in the past.")
+            start_str = datetime.fromtimestamp(mjd2unix(start_time).tv_sec).strftime(
+                "%H:%M %Y-%m-%d"
+            )
+            end_str = datetime.fromtimestamp(mjd2unix(end_time).tv_sec).strftime(
+                "%H:%M %Y-%m-%d"
+            )
+            enable_cmd = (
+                'curl {} -X POST -H "Content-Type: application/json" -d {} &&'
+                'curl {} -X POST -H "Content-Type: application/json" '
+                "-d \\'{{\"enabled\":true}}\\'"
+            ).format(url, json.dumps(update), recv_url)
+            update["enabled"] = False
+            disable_cmd = (
+                'curl {} -X POST -H "Content-Type: application/json" -d {} &&'
+                'curl {} -X POST -H "Content-Type: application/json" '
+                "-d \\'{{\"enabled\":false}}\\'"
+            ).format(url, json.dumps(update), recv_url)
+            print("Scheduling gating between {} and {}.".format(start_str, end_str))
+            with TemporaryFile(mode="w+") as tmpf:
+                tmpf.write(enable_cmd)
+                tmpf.flush()
+                check_call(["at", start_str], stdin=tmpf)
+            with TemporaryFile(mode="w+") as tmpf:
+                tmpf.write(disable_cmd)
+                tmpf.flush()
+                check_call(["at", end_str], stdin=tmpf)
+        else:
+            print("Sending update to {}...".format(url))
+            r = requests.post(url, json=update)
+            r.raise_for_status()
+            print("Received: ({}) {}".format(r.status_code, r.content))
 
 
 @click.command()
