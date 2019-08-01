@@ -18,7 +18,7 @@ REGISTER_HSA_COMMAND(hsaBeamformKernel);
 // clang-format off
 
 // Request gain file re-parse with e.g.
-// curl localhost:12048/frb_gain -X POST -H 'Content-Type: appication/json' -d '{"frb_gain_dir":"the_new_path"}'
+// curl localhost:12048/updatable_config/frb_gain -X POST -H 'Content-Type: appication/json' -d '{"frb_gain_dir":"the_new_path"}'
 // Update NS beam
 // curl localhost:12048/gpu/gpu_<gpu_id>/frb/update_NS_beam/<gpu_id> -X POST -H 'Content-Type: application/json' -d '{"northmost_beam":<value>}'
 // Update EW beam
@@ -87,10 +87,10 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string& unique_name,
     rest_server.register_post_callback(
         endpoint_EW_beam, std::bind(&hsaBeamformKernel::update_EW_beam_callback, this, _1, _2));
     // listen for gain updates
-    _gain_dir = config.get_default<std::string>(unique_name, "updatable_gain_frb", "");
+    _gain_dir = config.get_default<std::string>(unique_name, "updatable_config/gain_frb", "");
     if (_gain_dir.length() > 0)
         configUpdater::instance().subscribe(
-            config.get<std::string>(unique_name, "updatable_gain_frb"),
+            config.get<std::string>(unique_name, "updatable_config/gain_frb"),
             std::bind(&hsaBeamformKernel::update_gains_callback, this, _1));
 }
 

@@ -1,5 +1,8 @@
-// curl localhost:12048/pulsar_gain -X POST -H 'Content-Type: application/json' -d
+// curl localhost:12048/updatable_config/pulsar_gain -X POST -H 'Content-Type: application/json' -d
 // '{"pulsar_gain_dir":["path0","path1","path2","path3","path4","path5","path6","path7","path8","path9"]}'
+
+// curl localhost:12048/updatable_config/pulsar_pointing/0  -X POST -H 'Content-Type:
+// application/json' -d '{"ra":100.3, "dec":34.23, "scaling":99.0}'
 
 #include "hsaPulsarUpdatePhase.hpp"
 
@@ -51,16 +54,6 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_
     vector<float> dg = {0.0, 0.0}; // re,im
     default_gains = config.get_default<std::vector<float>>(unique_name, "frb_missing_gains", dg);
 
-    _source_ra = config.get<std::vector<float>>(unique_name, "source_ra");
-    _source_dec = config.get<std::vector<float>>(unique_name, "source_dec");
-    _source_scl = config.get<std::vector<int>>(unique_name, "psr_scaling");
-
-    for (int i = 0; i < _num_beams; i++) {
-        psr_coord_latest_update.ra[i] = _source_ra[i];
-        psr_coord_latest_update.dec[i] = _source_dec[i];
-        psr_coord_latest_update.scaling[i] = _source_scl[i];
-    }
-
     // Just for metadata manipulation
     metadata_buf = host_buffers.get_buffer("network_buf");
     metadata_buffer_id = 0;
@@ -88,18 +81,20 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_
     bank_use_1 = 0;
     second_last = 0;
 
-    config_base = "/gpu/gpu_" + std::to_string(device.get_gpu_id());
-
     // Register function to listen for new pulsar, and update ra and dec
     using namespace std::placeholders;
-    restServer& rest_server = restServer::instance();
-    endpoint_psrcoord = config_base + "/update_pulsar/" + std::to_string(device.get_gpu_id());
-    rest_server.register_post_callback(
-        endpoint_psrcoord, std::bind(&hsaPulsarUpdatePhase::pulsar_grab_callback, this, _1, _2));
+    for (uint beam_id = 0; beam_id < 10; beam_id++) {
+        configUpdater::instance().subscribe(
+            config.get<std::string>(unique_name, "updatable_config/psr_pt") + "/"
+                + std::to_string(beam_id),
+            [beam_id, this](json& json_msg) -> bool {
+                return pulsar_grab_callback(json_msg, beam_id);
+            });
+    }
 
     // listen for gain updates
     configUpdater::instance().subscribe(
-        config.get<std::string>(unique_name, "updatable_gain_psr"),
+        config.get<std::string>(unique_name, "updatable_config/gain_psr"),
         std::bind(&hsaPulsarUpdatePhase::update_gains_callback, this, _1));
 }
 
@@ -308,31 +303,31 @@ void hsaPulsarUpdatePhase::finalize_frame(int frame_id) {
     }
 }
 
-void hsaPulsarUpdatePhase::pulsar_grab_callback(connectionInstance& conn, json& json_request) {
-    // Some try statement here
-    int beam;
-    try {
-        beam = json_request["beam"];
-    } catch (...) {
-        conn.send_error("could not parse new pulsar beam id", HTTP_RESPONSE::BAD_REQUEST);
-        return;
-    }
-    // check beam within range
-    if (beam >= _num_beams || beam < 0) {
-        conn.send_error("num_beams out of range", HTTP_RESPONSE::BAD_REQUEST);
-        return;
-    }
-    // update ra and dec
+bool hsaPulsarUpdatePhase::pulsar_grab_callback(nlohmann::json& json, const uint8_t beam_id) {
     {
         std::lock_guard<std::mutex> lock(_pulsar_lock);
-        psr_coord_latest_update.ra[beam] = json_request["ra"];
-        psr_coord_latest_update.dec[beam] = json_request["dec"];
-        psr_coord_latest_update.scaling[beam] = json_request["scaling"];
-        conn.send_empty_reply(HTTP_RESPONSE::OK);
-        config.update_value(config_base, "source_ra/" + std::to_string(beam), json_request["ra"]);
-        config.update_value(config_base, "source_dec/" + std::to_string(beam), json_request["dec"]);
-        config.update_value(config_base, "psr_scaling/" + std::to_string(beam),
-                            json_request["scaling"]);
+        try {
+            psr_coord_latest_update.ra[beam_id] = json.at("ra").get<float>();
+        } catch (std::exception const& e) {
+            WARN("[PSR] Pointing update fail to read RA %s", e.what());
+            return false;
+        }
+        try {
+            psr_coord_latest_update.dec[beam_id] = json.at("dec").get<float>();
+        } catch (std::exception const& e) {
+            WARN("[PSR] Pointing update fail to read DEC %s", e.what());
+            return false;
+        }
+        try {
+            psr_coord_latest_update.scaling[beam_id] = json.at("scaling").get<int>();
+        } catch (std::exception const& e) {
+            WARN("[PSR] Pointing update fail to read scaling factor %s", e.what());
+            return false;
+        }
+        INFO("[psr] Updated Beam=%d RA=%.2f Dec=%.2f Scl=%d", beam_id,
+             psr_coord_latest_update.ra[beam_id], psr_coord_latest_update.dec[beam_id],
+             psr_coord_latest_update.scaling[beam_id]);
         update_phase = true;
     }
+    return true;
 }
