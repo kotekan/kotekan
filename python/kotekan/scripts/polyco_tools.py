@@ -242,23 +242,25 @@ def update_polyco(
                 "%H:%M %Y-%m-%d"
             )
             enable_cmd = (
-                'curl {} -X POST -H "Content-Type: application/json" -d {} &&'
+                'curl {} -X POST -H "Content-Type: application/json" -d \'{}\' &&'
                 'curl {} -X POST -H "Content-Type: application/json" '
-                "-d \\'{{\"enabled\":true}}\\'"
+                "-d '{{\"enabled\":true}}'"
             ).format(url, json.dumps(update), recv_url)
             update["enabled"] = False
             disable_cmd = (
-                'curl {} -X POST -H "Content-Type: application/json" -d {} &&'
+                'curl {} -X POST -H "Content-Type: application/json" -d \'{}\' &&'
                 'curl {} -X POST -H "Content-Type: application/json" '
-                "-d \\'{{\"enabled\":false}}\\'"
+                "-d '{{\"enabled\":false}}'"
             ).format(url, json.dumps(update), recv_url)
             print("Scheduling gating between {} and {}.".format(start_str, end_str))
             with TemporaryFile(mode="w+") as tmpf:
                 tmpf.write(enable_cmd)
+                tmpf.seek(0)
                 tmpf.flush()
                 check_call(["at", start_str], stdin=tmpf)
             with TemporaryFile(mode="w+") as tmpf:
                 tmpf.write(disable_cmd)
+                tmpf.seek(0)
                 tmpf.flush()
                 check_call(["at", end_str], stdin=tmpf)
         else:
