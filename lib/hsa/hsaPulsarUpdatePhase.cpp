@@ -1,7 +1,7 @@
 // curl localhost:12048/pulsar_gain -X POST -H 'Content-Type: application/json' -d
 // '{"pulsar_gain_dir":["path0","path1","path2","path3","path4","path5","path6","path7","path8","path9"]}'
 
-//curl localhost:12048/pulsar_pointing/0  -X POST -H 'Content-Type: application/json' -d 
+// curl localhost:12048/pulsar_pointing/0  -X POST -H 'Content-Type: application/json' -d
 //'{"ra":100.3, "dec":34.23, "scaling":99.0}'
 
 #include "hsaPulsarUpdatePhase.hpp"
@@ -52,15 +52,6 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_
 
     vector<float> dg = {0.0, 0.0}; // re,im
     default_gains = config.get_default<std::vector<float>>(unique_name, "frb_missing_gains", dg);
-
-        for (int i = 0; i < _num_beams; i++) {
-        psr_coord_latest_update.ra[i] =
-            config.get<float>(unique_name, "pulsar_pointing/" + std::to_string(i) + "/ra");
-        psr_coord_latest_update.dec[i] =
-            config.get<float>(unique_name, "pulsar_pointing/" + std::to_string(i) + "/dec");
-        psr_coord_latest_update.scaling[i] =
-            config.get<float>(unique_name, "pulsar_pointing/" + std::to_string(i) + "/scaling");
-    }
 
     // Just for metadata manipulation
     metadata_buf = host_buffers.get_buffer("network_buf");
@@ -337,4 +328,3 @@ bool hsaPulsarUpdatePhase::pulsar_grab_callback(nlohmann::json& json, const uint
     }
     return true;
 }
-
