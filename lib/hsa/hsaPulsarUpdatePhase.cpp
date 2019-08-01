@@ -1,7 +1,7 @@
-// curl localhost:12048/pulsar_gain -X POST -H 'Content-Type: application/json' -d
+// curl localhost:12048/updatable_config/pulsar_gain -X POST -H 'Content-Type: application/json' -d
 // '{"pulsar_gain_dir":["path0","path1","path2","path3","path4","path5","path6","path7","path8","path9"]}'
 
-// curl localhost:12048/pulsar_pointing/0  -X POST -H 'Content-Type: application/json' -d
+// curl localhost:12048/updatable_config/pulsar_pointing/0  -X POST -H 'Content-Type: application/json' -d
 //'{"ra":100.3, "dec":34.23, "scaling":99.0}'
 
 #include "hsaPulsarUpdatePhase.hpp"
