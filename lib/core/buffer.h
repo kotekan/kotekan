@@ -373,6 +373,13 @@ double get_last_arrival_time(struct Buffer * buf);
 void print_buffer_status(struct Buffer * buf);
 
 /**
+ * @brief Prints a summary the frames and state of the producers and consumers.
+ *
+ * @param buf The buffer object
+ */
+void print_full_status(struct Buffer * buf);
+
+/**
  * @brief Allocates a new metadata object from the associated pool
  *
  * Needs to be called by the first producer in a chain, or by a producer

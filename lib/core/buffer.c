@@ -590,7 +590,7 @@ void print_buffer_status(struct Buffer* buf)
     char status_string[buf->num_frames + 1];
 
     for (int i = 0; i < buf->num_frames; ++i) {
-        if (buf->is_full[i] == 1) {
+        if (is_full[i] == 1) {
             status_string[i] = 'X';
         } else {
             status_string[i] = '_';
@@ -600,6 +600,59 @@ void print_buffer_status(struct Buffer* buf)
 
     INFO("Buffer %s, status: %s", buf->buffer_name, status_string);
 }
+
+void print_full_status(struct Buffer* buf) {
+
+    CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
+
+    char status_string[buf->num_frames + 1];
+    status_string[buf->num_frames] = '\0';
+
+    INFO("--------------------- %s ---------------------", buf->buffer_name);
+
+    for (int i = 0; i < buf->num_frames; ++i) {
+        if (buf->is_full[i] == 1) {
+            status_string[i] = 'X';
+        } else {
+            status_string[i] = '_';
+        }
+    }
+
+    INFO("Full Frames (X)                          : %s", status_string);
+
+    INFO("---- Producers ----");
+
+    for (int producer_id = 0; producer_id < MAX_PRODUCERS; ++producer_id) {
+        if (buf->producers[producer_id].in_use == 1) {
+            for (int i = 0; i < buf->num_frames; ++i) {
+                if (buf->producers_done[i][producer_id] == 1) {
+                    status_string[i] = '+';
+                } else {
+                    status_string[i] = '_';
+                }
+            }
+            INFO("%-30s : %s", buf->producers[producer_id].name, status_string);
+        }
+    }
+
+    INFO("---- Consumers ----");
+
+    for (int consumer_id = 0; consumer_id < MAX_CONSUMERS; ++consumer_id) {
+        if (buf->consumers[consumer_id].in_use == 1) {
+            for (int i = 0; i < buf->num_frames; ++i) {
+                if (buf->consumers_done[i][consumer_id] == 1) {
+                    status_string[i] = '=';
+                } else {
+                    status_string[i] = '_';
+                }
+            }
+            INFO("%-30s : %s", buf->consumers[consumer_id].name, status_string);
+        }
+    }
+
+    CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
+}
+
 
 void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf, int to_ID) {
 
