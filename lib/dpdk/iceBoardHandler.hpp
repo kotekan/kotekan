@@ -466,9 +466,11 @@ inline void iceBoardHandler::update_stats() {
 
     double time_now = e_time();
     if (status_cadence != 0 && (time_now - last_status_message_time) > (double)status_cadence) {
-        INFO("DPDK port %d, connected to (create = %d, slot = %d, link = %d), total packets %"
-            PRIu64 " ", port, port_stream_id.crate_id, port_stream_id.slot_id,
-            port_stream_id.link_id, rx_packets_total);
+        INFO(
+            "DPDK port %d, connected to (create = %d, slot = %d, link = %d), total packets %" PRIu64
+            " ",
+            port, port_stream_id.crate_id, port_stream_id.slot_id, port_stream_id.link_id,
+            rx_packets_total);
         last_status_message_time = time_now;
     }
 }
