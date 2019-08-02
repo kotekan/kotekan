@@ -161,7 +161,7 @@ void gpuSimulate::main_thread() {
                                     int yi = input_u[iy];
                                     int yr = input_u[iy + _block_size*4];
                                     real += dot4b(xr, yr) + dot4b(xi, yi);
-                                    imag += dot4b(xi, yr);// - dot4b(xr, yi);
+                                    imag += dot4b(xi, yr) + dot4b(xr, yi); //NOTE: THIS IS WRONG!!!
 //                                    printf("%08x %08x %08x %08x \n",yi,yr,xi,xr);
                                 }
                             }

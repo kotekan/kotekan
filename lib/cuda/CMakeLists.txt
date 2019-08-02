@@ -27,6 +27,6 @@ set ( KOTEKAN_CUDA_SOURCES
 
 add_library ( kotekan_cuda ${KOTEKAN_CUDA_SOURCES} )
 
-target_compile_options(kotekan_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-gencode arch=compute_75,code=sm_75>)
+target_compile_options(kotekan_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-gencode arch=compute_75,code=sm_75 -lineinfo>)
 
 add_dependencies( kotekan_cuda kotekan_gpu )

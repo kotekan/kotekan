@@ -24,8 +24,7 @@ cudaCorrelatorKernel::cudaCorrelatorKernel(Config& config, const string& unique_
 cudaCorrelatorKernel::~cudaCorrelatorKernel() {}
 
 using namespace nvcuda::wmma;
-__global__
-void corr(int *input, int *output, int ne, int nt, int nf)
+__global__ void basic_corr(int *input, int *output, int ne, int nt, int nf)
 {
     fragment<matrix_a, 8, 8, 32, experimental::precision::s4, row_major> xr_matrix;
     fragment<matrix_a, 8, 8, 32, experimental::precision::s4, row_major> xi_matrix;
@@ -66,6 +65,80 @@ void corr(int *input, int *output, int ne, int nt, int nf)
     store_matrix_sync(output + f*n_blk*8*8*2 + 8*8*2*blk_id + 8*8, acci_matrix, 8, mem_col_major);
 }
 
+#define TILE_COARSE_SIZE 4
+#define TENSOR_I 8 //samples
+#define TENSOR_T 32 //samples
+#define TIMES_PER_WORD 8
+#define TENSOR_TWORDS 4
+#define TENSOR_WORDS 32 //(TENSOR_I * TENSOR_T / TIMES_PER_WORD) //words
+#define TILE_SIZE (TENSOR_I * TILE_COARSE_SIZE)
+
+__global__ void corr(int *input, int *output, const int ne, const int nt, const int nf)
+{
+    //[I][t][d]
+    __shared__ int xr[TILE_COARSE_SIZE][TILE_COARSE_SIZE][TENSOR_WORDS], xi[TILE_COARSE_SIZE][TILE_COARSE_SIZE][TENSOR_WORDS],
+                   yi[TILE_COARSE_SIZE][TILE_COARSE_SIZE][TENSOR_WORDS], yr[TILE_COARSE_SIZE][TILE_COARSE_SIZE][TENSOR_WORDS];
+
+    fragment<matrix_a, 8,8,32, experimental::precision::s4, row_major> xr_matrix;
+    fragment<matrix_a, 8,8,32, experimental::precision::s4, row_major> xi_matrix;
+    fragment<matrix_b, 8,8,32, experimental::precision::s4, col_major> yr_matrix;
+    fragment<matrix_b, 8,8,32, experimental::precision::s4, col_major> yi_matrix;
+//    fragment<accumulator, TENSOR_X, TENSOR_Y, TENSOR_T, int> accii_matrix;
+    fragment<accumulator, 8,8,32, int> accrr_matrix;
+//    fragment<accumulator, TENSOR_X, TENSOR_Y, TENSOR_T, int> accir_matrix;
+    fragment<accumulator, 8,8,32, int> accri_matrix;
+//    fill_fragment(accii_matrix, 0);
+    fill_fragment(accrr_matrix, 0);
+//    fill_fragment(accir_matrix, 0);
+    fill_fragment(accri_matrix, 0);
+
+    int n_tile = (ne/TILE_SIZE)*(ne/TILE_SIZE+1)/2;
+    int tile_id = blockIdx.x;
+    int f = blockIdx.y;
+
+    //x,y coordinates of the upper tiles, cf OpenCL in Action p260
+    int tile_x = tile_id;
+    int tile_y = 0;
+    int s = ne/TILE_SIZE;
+    while(tile_x >= s) {
+        tile_x -= s--;
+        tile_y++;
+    }
+    tile_x += tile_y;
+
+    int l=threadIdx.x;
+    int X=threadIdx.y;
+    int Y=threadIdx.z;
+
+    for (int T=0; T<nt/TENSOR_T; T+=TILE_COARSE_SIZE){
+        //each tile does 4x4 of threads, each doing 8x8 submatrix
+        //read 4 timesteps (id'd by Y) into shared memory:
+        xi[Y][X][l] = input[((T+Y)*nf+f)*TENSOR_TWORDS*ne*2 + ((tile_x*2 + 0)*TILE_COARSE_SIZE + X)*TENSOR_WORDS + l];
+        xr[Y][X][l] = input[((T+Y)*nf+f)*TENSOR_TWORDS*ne*2 + ((tile_x*2 + 1)*TILE_COARSE_SIZE + X)*TENSOR_WORDS + l];
+        yi[Y][X][l] = input[((T+Y)*nf+f)*TENSOR_TWORDS*ne*2 + ((tile_y*2 + 0)*TILE_COARSE_SIZE + X)*TENSOR_WORDS + l];
+        yr[Y][X][l] = input[((T+Y)*nf+f)*TENSOR_TWORDS*ne*2 + ((tile_y*2 + 1)*TILE_COARSE_SIZE + X)*TENSOR_WORDS + l];
+        __syncthreads();
+
+        for (int t=0; t<TILE_COARSE_SIZE; t++){
+            load_matrix_sync(xi_matrix, xi[t][X], TENSOR_T);
+            load_matrix_sync(yi_matrix, yi[t][Y], TENSOR_T);
+            mma_sync(accrr_matrix, xi_matrix, yi_matrix, accrr_matrix);
+            load_matrix_sync(xr_matrix, xr[t][X], TENSOR_T);
+            mma_sync(accri_matrix, xr_matrix, yi_matrix, accri_matrix);
+            load_matrix_sync(yr_matrix, yr[t][Y], TENSOR_T);
+            mma_sync(accrr_matrix, xr_matrix, yr_matrix, accrr_matrix);
+            mma_sync(accri_matrix, xi_matrix, yr_matrix, accri_matrix);
+        }
+        __syncthreads();
+    }
+
+    store_matrix_sync(output + ((f*n_tile+tile_id)*2+0)*TILE_SIZE*TILE_SIZE + (Y*TILE_SIZE+X)*TENSOR_I, accrr_matrix, TILE_SIZE, mem_col_major);
+//    store_matrix_sync(output + (f*n_tile+tile_id)*outTileStride*complex, accii_matrix, TENSOR_X, mem_col_major);
+    store_matrix_sync(output + ((f*n_tile+tile_id)*2+1)*TILE_SIZE*TILE_SIZE + (Y*TILE_SIZE+X)*TENSOR_I, accri_matrix, TILE_SIZE, mem_col_major);
+//    store_matrix_sync(output + (f*n_tile+tile_id)*outTileStride*complex + outTileStride, accir_matrix, TENSOR_X, mem_col_major);
+}
+
+
 cudaEvent_t cudaCorrelatorKernel::execute(int gpu_frame_id, cudaEvent_t pre_event) {
     pre_execute(gpu_frame_id);
 
@@ -80,10 +153,15 @@ cudaEvent_t cudaCorrelatorKernel::execute(int gpu_frame_id, cudaEvent_t pre_even
     CHECK_CUDA_ERROR(cudaEventCreate(&pre_events[gpu_frame_id]));
     CHECK_CUDA_ERROR(cudaEventRecord(pre_events[gpu_frame_id], device.getStream(CUDA_COMPUTE_STREAM)));
 
-    dim3 blk (8,4,1);
-    dim3 grd (1,_num_blocks,_num_local_freq);
-    corr<<<grd,blk,0,device.getStream(CUDA_COMPUTE_STREAM)>>>
+    CHECK_CUDA_ERROR(cudaFuncSetAttribute (corr, cudaFuncAttributePreferredSharedMemoryCarveout, 100));
+    dim3 blk (32,TILE_COARSE_SIZE,TILE_COARSE_SIZE);
+    dim3 grd (_num_blocks,_num_local_freq);
+    corr<<<grd,blk,TENSOR_WORDS*TILE_COARSE_SIZE*TILE_COARSE_SIZE,device.getStream(CUDA_COMPUTE_STREAM)>>>
         ((int*)input_memory, (int*)output_memory, _num_elements, _samples_per_data_set, _num_local_freq);
+/*  dim3 blk (32,1,1);
+    dim3 grd (1,_num_blocks,_num_local_freq);
+    basic_corr<<<grd,blk,0,device.getStream(CUDA_COMPUTE_STREAM)>>>
+        ((int*)input_memory, (int*)output_memory, _num_elements, _samples_per_data_set, _num_local_freq);*/
     CHECK_CUDA_ERROR(cudaGetLastError());
 
     CHECK_CUDA_ERROR(cudaEventCreate(&post_events[gpu_frame_id]));

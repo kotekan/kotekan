@@ -16,7 +16,7 @@ log_level: info
 num_links: 4
 freq_array: [4,7,10,16]
 timesamples_per_packet: 2
-block_size: 8
+block_size: 32
 samples_per_data_set: 49152 #16384
 num_beams: 1
 num_data_sets: 1
@@ -25,7 +25,7 @@ buffer_depth: 2
 num_gpu_frames: 16
 cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
-num_elements: 512
+num_elements: 512 #2048
 num_dishes: num_elements / 2
 dish_rows: 32
 dish_cols: num_dishes / dish_rows
