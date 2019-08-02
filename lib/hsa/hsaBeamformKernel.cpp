@@ -65,6 +65,7 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string& unique_name,
     // Figure out which frequency, is there a better way that doesn't involve reading in the whole
     // thing? Check later
     metadata_buf = host_buffers.get_buffer("network_buf");
+    register_consumer(metadata_buf, unique_name.c_str());
     metadata_buffer_id = 0;
     metadata_buffer_precondition_id = 0;
     freq_idx = -1;
@@ -208,9 +209,9 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_s
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
         freq_idx = bin_number_chime(&stream_id);
         freq_MHz = freq_from_bin(freq_idx);
-
-        metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
     }
+    mark_frame_empty(metadata_buf, unique_name.c_str(), metadata_buffer_id);
+    metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
 
     if (update_gains) {
         double start_time = current_time();

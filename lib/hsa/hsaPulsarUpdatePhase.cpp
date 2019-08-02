@@ -58,6 +58,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_
     metadata_buf = host_buffers.get_buffer("network_buf");
     metadata_buffer_id = 0;
     metadata_buffer_precondition_id = 0;
+    register_consumer(metadata_buf, unique_name.c_str());
     freq_idx = -1;
     freq_MHz = -1;
 
@@ -269,6 +270,7 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, hsa_signal_t preced
 
     bankID[gpu_frame_id] = bank_active; // update or not, read from the latest bank
     set_psr_coord(metadata_buf, metadata_buffer_id, psr_coord);
+    mark_frame_empty(metadata_buf, unique_name.c_str(), metadata_buffer_id);
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
 
     // Do the data copy. Now I am doing async everytime there is new data

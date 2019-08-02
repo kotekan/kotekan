@@ -63,6 +63,12 @@ struct StageInfo {
 
     /// The name of the stage (consumer or producer)
     char name[MAX_STAGE_NAME_LEN];
+
+    /// Last frame acquired with a call to wait_for_*
+    int last_frame_acquired;
+
+    /// Last frame to be released with a call to mark_frame_*
+    int last_frame_released;
 };
 
 /**

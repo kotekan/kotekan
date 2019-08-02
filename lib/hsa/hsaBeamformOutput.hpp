@@ -58,9 +58,11 @@ private:
 
     /// ID for network_buffer
     int32_t network_buffer_id;
+    /// ID for network_buffer_precondition
+    int32_t network_buffer_precondition_id;
+
     /// ID for output_buffer
     int32_t output_buffer_id;
-
     /// ID for output_buffer_precondition
     int32_t output_buffer_precondition_id;
     /// ID for output_buffer_execute

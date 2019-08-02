@@ -46,11 +46,16 @@ void Valve::main_thread() {
 
         // check if there is space for it in the output buffer
         if (is_frame_empty(_buf_out, frame_id_out)) {
+            // This call cannot block because of the check above.
+            uint8_t* frame_out = wait_for_empty_frame(_buf_out, unique_name.c_str(), frame_id_out);
+            if (frame_out == nullptr)
+                break;
             try {
                 copy_frame(_buf_in, frame_id_in, _buf_out, frame_id_out);
             } catch (std::exception& e) {
                 ERROR("Failure copying frame: %s\nExiting...", e.what());
                 raise(SIGINT);
+                break;
             }
             mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
         } else {

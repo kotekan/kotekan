@@ -17,6 +17,7 @@ hsaBeamformPulsarOutput::hsaBeamformPulsarOutput(Config& config, const string& u
     register_producer(output_buffer, unique_name.c_str());
 
     network_buffer_id = 0;
+    network_buffer_precondition_id = 0;
     output_buffer_id = 0;
     output_buffer_excute_id = 0;
     output_buffer_precondition_id = 0;
@@ -33,6 +34,14 @@ int hsaBeamformPulsarOutput::wait_on_precondition(int gpu_frame_id) {
     DEBUG("Got empty buffer for output %s[%d], for GPU[%d][%d]", output_buffer->buffer_name,
           output_buffer_precondition_id, device.get_gpu_id(), gpu_frame_id);
     output_buffer_precondition_id = (output_buffer_precondition_id + 1) % output_buffer->num_frames;
+
+    frame =
+        wait_for_full_frame(network_buffer, unique_name.c_str(), network_buffer_precondition_id);
+    if (frame == NULL)
+        return -1;
+    network_buffer_precondition_id =
+        (network_buffer_precondition_id + 1) % network_buffer->num_frames;
+
     return 0;
 }
 
