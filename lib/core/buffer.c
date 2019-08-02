@@ -618,7 +618,7 @@ void print_full_status(struct Buffer* buf) {
         }
     }
 
-    INFO("Full Frames (X)                          : %s", status_string);
+    INFO("Full Frames (X)                : %s", status_string);
 
     INFO("---- Producers ----");
 
