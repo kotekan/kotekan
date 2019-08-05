@@ -7,15 +7,14 @@
 #ifndef CUDA_EVENT_CONTAINER_H
 #define CUDA_EVENT_CONTAINER_H
 
+#include "cudaUtils.hpp"
+#include "cuda_runtime_api.h"
 #include "gpuEventContainer.hpp"
 
 #include <condition_variable>
 #include <mutex>
 #include <signal.h>
 #include <thread>
-
-#include "cuda_runtime_api.h"
-#include "cudaUtils.hpp"
 
 /**
  * @class cudaEventContainer

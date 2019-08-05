@@ -12,7 +12,7 @@
 class cudaProcess final : public gpuProcess {
 public:
     cudaProcess(kotekan::Config& config, const string& unique_name,
-              kotekan::bufferContainer& buffer_container);
+                kotekan::bufferContainer& buffer_container);
     virtual ~cudaProcess();
 
     gpuCommand* create_command(const std::string& cmd_name,

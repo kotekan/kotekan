@@ -5,8 +5,8 @@ using kotekan::Config;
 
 REGISTER_CUDA_COMMAND(cudaOutputData);
 
-cudaOutputData::cudaOutputData(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                           cudaDeviceInterface& device) :
+cudaOutputData::cudaOutputData(Config& config, const string& unique_name,
+                               bufferContainer& host_buffers, cudaDeviceInterface& device) :
     cudaCommand(config, unique_name, host_buffers, device, "", "") {
 
     in_buffer = host_buffers.get_buffer("in_buf");
@@ -15,11 +15,12 @@ cudaOutputData::cudaOutputData(Config& config, const string& unique_name, buffer
     output_buffer = host_buffers.get_buffer("output_buf");
     register_producer(output_buffer, unique_name.c_str());
 
-    for (int i=0; i<output_buffer->num_frames; i++){
+    for (int i = 0; i < output_buffer->num_frames; i++) {
         uint flags;
-        //only register the memory if it isn't already...
+        // only register the memory if it isn't already...
         if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, output_buffer->frames[i])) {
-            CHECK_CUDA_ERROR(cudaHostRegister(output_buffer->frames[i], output_buffer->frame_size, 0));
+            CHECK_CUDA_ERROR(
+                cudaHostRegister(output_buffer->frames[i], output_buffer->frame_size, 0));
         }
     }
 
@@ -33,9 +34,9 @@ cudaOutputData::cudaOutputData(Config& config, const string& unique_name, buffer
 }
 
 cudaOutputData::~cudaOutputData() {
-    for (int i=0; i<output_buffer->num_frames; i++){
+    for (int i = 0; i < output_buffer->num_frames; i++) {
         uint flags;
-        //only register the memory if it isn't already...
+        // only register the memory if it isn't already...
         if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, output_buffer->frames[i])) {
             CHECK_CUDA_ERROR(cudaHostUnregister(output_buffer->frames[i]));
         }
@@ -63,17 +64,20 @@ cudaEvent_t cudaOutputData::execute(int gpu_frame_id, cudaEvent_t pre_event) {
 
     uint32_t output_len = output_buffer->frame_size;
 
-    void *gpu_output_frame = device.get_gpu_memory_array("output", gpu_frame_id, output_len);
-    void *host_output_frame = (void*)output_buffer->frames[output_buffer_execute_id];
+    void* gpu_output_frame = device.get_gpu_memory_array("output", gpu_frame_id, output_len);
+    void* host_output_frame = (void*)output_buffer->frames[output_buffer_execute_id];
 
-    if (pre_event) CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(CUDA_OUTPUT_STREAM), pre_event, 0));
+    if (pre_event)
+        CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(CUDA_OUTPUT_STREAM), pre_event, 0));
     // Data transfer to GPU
     CHECK_CUDA_ERROR(cudaEventCreate(&pre_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(cudaEventRecord(pre_events[gpu_frame_id], device.getStream(CUDA_OUTPUT_STREAM)));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_output_frame, gpu_output_frame,
-                                     output_len, cudaMemcpyDeviceToHost, device.getStream(CUDA_OUTPUT_STREAM)));
+    CHECK_CUDA_ERROR(
+        cudaEventRecord(pre_events[gpu_frame_id], device.getStream(CUDA_OUTPUT_STREAM)));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_output_frame, gpu_output_frame, output_len,
+                                     cudaMemcpyDeviceToHost, device.getStream(CUDA_OUTPUT_STREAM)));
     CHECK_CUDA_ERROR(cudaEventCreate(&post_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(cudaEventRecord(post_events[gpu_frame_id], device.getStream(CUDA_OUTPUT_STREAM)));
+    CHECK_CUDA_ERROR(
+        cudaEventRecord(post_events[gpu_frame_id], device.getStream(CUDA_OUTPUT_STREAM)));
 
     output_buffer_execute_id = (output_buffer_execute_id + 1) % output_buffer->num_frames;
     return post_events[gpu_frame_id];

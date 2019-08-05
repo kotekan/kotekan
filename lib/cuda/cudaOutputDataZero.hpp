@@ -4,7 +4,7 @@
  *  - cudaOutputDataZero : public cudaCommand
  */
 
- #ifndef CUDA_OUTPUT_DATA_ZERO_H
+#ifndef CUDA_OUTPUT_DATA_ZERO_H
 #define CUDA_OUTPUT_DATA_ZERO_H
 
 #include "cudaCommand.hpp"
@@ -32,7 +32,7 @@
 class cudaOutputDataZero : public cudaCommand {
 public:
     cudaOutputDataZero(kotekan::Config& config, const string& unique_name,
-                     kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
+                       kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaOutputDataZero();
     cudaEvent_t execute(int gpu_frame_id, cudaEvent_t pre_event) override;
 

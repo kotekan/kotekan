@@ -1,0 +1,66 @@
+##########################################
+#
+# verify_cuda_saxpy.yaml
+#
+# Config to test the cuda stack.
+#
+# Author: Keith Vanderlinde
+#
+##########################################
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
+buffer_depth: 4
+cpu_affinity: [2,3,4,5,8,9,10,11]
+frame_arrival_period: 1/1e6
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+# Buffers
+gpu_input_buffers:
+    num_frames: buffer_depth
+    frame_size: 1024*1024
+    metadata_pool: main_pool
+    gpu_input_buffer:
+        kotekan_buffer: standard
+
+gpu_output_buffers:
+    num_frames: buffer_depth
+    frame_size: 1024*1024
+    metadata_pool: main_pool
+    gpu_output_buffer:
+        kotekan_buffer: standard
+
+gen_data:
+    type: random
+    kotekan_stage: testDataGen
+    network_out_buf: gpu_input_buffer
+
+gpu:
+    profiling: true
+    commands:
+    - name: cudaInputData
+    - name: cudaOutputDataZero
+    - name: cudaSaxpyKernel
+    - name: cudaOutputData
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        saxpy_scale: 1.0
+        data_length: 1024*1024
+        in_buffers:
+            in_buf: gpu_input_buffer
+        out_buffers:
+            output_buf: gpu_output_buffer
+
+check_data:
+    kotekan_stage: testDataCheckFloat
+    first_buf: gpu_output_buffer
+    second_buf: gpu_input_buffer
+

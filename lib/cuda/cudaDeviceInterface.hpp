@@ -7,9 +7,9 @@
 #ifndef CUDA_DEVICE_INTERFACE_H
 #define CUDA_DEVICE_INTERFACE_H
 
-#include "gpuDeviceInterface.hpp"
-#include "cuda_runtime_api.h"
 #include "cudaUtils.hpp"
+#include "cuda_runtime_api.h"
+#include "gpuDeviceInterface.hpp"
 
 // These adjust the number of queues used by the CUDA runtime
 // One queue is for data transfers to the GPU, one is for kernels,

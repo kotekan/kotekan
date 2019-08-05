@@ -28,7 +28,7 @@
 class cudaInputData : public cudaCommand {
 public:
     cudaInputData(kotekan::Config& config, const string& unique_name,
-                kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
+                  kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaInputData();
     int wait_on_precondition(int gpu_frame_id) override;
     cudaEvent_t execute(int gpu_frame_id, cudaEvent_t pre_event) override;

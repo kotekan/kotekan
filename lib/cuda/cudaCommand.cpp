@@ -8,15 +8,16 @@ using kotekan::Config;
 using std::string;
 using std::to_string;
 
-cudaCommand::cudaCommand(Config& config_, const string& unique_name_, bufferContainer& host_buffers_,
-                      cudaDeviceInterface& device_,
-                      const string& default_kernel_command, const string& default_kernel_file_name) :
+cudaCommand::cudaCommand(Config& config_, const string& unique_name_,
+                         bufferContainer& host_buffers_, cudaDeviceInterface& device_,
+                         const string& default_kernel_command,
+                         const string& default_kernel_file_name) :
     gpuCommand(config_, unique_name_, host_buffers_, device_, default_kernel_command,
                default_kernel_file_name),
     device(device_) {
     pre_events = (cudaEvent_t*)malloc(_gpu_buffer_depth * sizeof(cudaEvent_t));
     post_events = (cudaEvent_t*)malloc(_gpu_buffer_depth * sizeof(cudaEvent_t));
-    for (int j = 0; j < _gpu_buffer_depth; ++j){
+    for (int j = 0; j < _gpu_buffer_depth; ++j) {
         pre_events[j] = NULL;
         post_events[j] = NULL;
     }
@@ -34,10 +35,9 @@ void cudaCommand::finalize_frame(int gpu_frame_id) {
     if (post_events[gpu_frame_id] != NULL) {
         if (profiling) {
             float exec_time;
-            CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time,
-                                                  pre_events[gpu_frame_id],
+            CHECK_CUDA_ERROR(cudaEventElapsedTime(&exec_time, pre_events[gpu_frame_id],
                                                   post_events[gpu_frame_id]));
-            last_gpu_execution_time = exec_time * 1e-3; //concert ms to s
+            last_gpu_execution_time = exec_time * 1e-3; // convert ms to s
         }
         CHECK_CUDA_ERROR(cudaEventDestroy(pre_events[gpu_frame_id]));
         pre_events[gpu_frame_id] = NULL;
@@ -46,4 +46,3 @@ void cudaCommand::finalize_frame(int gpu_frame_id) {
     } else
         ERROR("*** WTF? Null event!");
 }
-

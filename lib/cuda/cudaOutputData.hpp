@@ -25,7 +25,7 @@
 class cudaOutputData : public cudaCommand {
 public:
     cudaOutputData(kotekan::Config& config, const string& unique_name,
-                 kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
+                   kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaOutputData();
     int wait_on_precondition(int gpu_frame_id) override;
     virtual cudaEvent_t execute(int buf_frame_id, cudaEvent_t pre_event) override;
@@ -43,7 +43,6 @@ protected:
 
 private:
     // Common configuration values (which do not change in a run)
-
 };
 
 #endif // CUDA_OUTPUT_DATA_H
