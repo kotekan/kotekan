@@ -8,34 +8,31 @@ REGISTER_CUDA_COMMAND(cudaInputData);
 cudaInputData::cudaInputData(Config& config, const string& unique_name, bufferContainer& host_buffers,
                          cudaDeviceInterface& device) :
     cudaCommand(config, unique_name, host_buffers, device, "", "") {
-    _num_elements = config.get<int>(unique_name, "num_elements");
-    _num_local_freq = config.get<int>(unique_name, "num_local_freq");
-    _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
 
-    network_buf = host_buffers.get_buffer("network_buf");
-    register_consumer(network_buf, unique_name.c_str());
+    in_buf = host_buffers.get_buffer("in_buf");
+    register_consumer(in_buf, unique_name.c_str());
 
-    for (int i=0; i<network_buf->num_frames; i++){
+    for (int i=0; i<in_buf->num_frames; i++){
         uint flags;
         //only register the memory if it isn't already...
-        if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, network_buf->frames[i])) {
-            CHECK_CUDA_ERROR(cudaHostRegister(network_buf->frames[i], network_buf->frame_size, 0));
+        if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, in_buf->frames[i])) {
+            CHECK_CUDA_ERROR(cudaHostRegister(in_buf->frames[i], in_buf->frame_size, 0));
         }
     }
 
-    network_buffer_id = 0;
-    network_buffer_precondition_id = 0;
-    network_buffer_finalize_id = 0;
+    in_buffer_id = 0;
+    in_buffer_precondition_id = 0;
+    in_buffer_finalize_id = 0;
 
     command_type = gpuCommandType::COPY_IN;
 }
 
 cudaInputData::~cudaInputData() {
-    for (int i=0; i<network_buf->num_frames; i++){
+    for (int i=0; i<in_buf->num_frames; i++){
         uint flags;
         //only unregister if it's already been registered
-        if (cudaSuccess == cudaHostGetFlags(&flags, network_buf->frames[i])){
-            CHECK_CUDA_ERROR(cudaHostUnregister(network_buf->frames[i]));
+        if (cudaSuccess == cudaHostGetFlags(&flags, in_buf->frames[i])){
+            CHECK_CUDA_ERROR(cudaHostUnregister(in_buf->frames[i]));
         }
     }
 }
@@ -45,24 +42,21 @@ int cudaInputData::wait_on_precondition(int gpu_frame_id) {
 
     // Wait for there to be data in the input (network) buffer.
     uint8_t* frame =
-        wait_for_full_frame(network_buf, unique_name.c_str(), network_buffer_precondition_id);
+        wait_for_full_frame(in_buf, unique_name.c_str(), in_buffer_precondition_id);
     if (frame == NULL)
         return -1;
-    // INFO("Got full buffer %s[%d], gpu[%d][%d]", network_buf->buffer_name,
-    // network_buffer_precondition_id,
-    //        device.get_gpu_id(), gpu_frame_id);
 
-    network_buffer_precondition_id = (network_buffer_precondition_id + 1) % network_buf->num_frames;
+    in_buffer_precondition_id = (in_buffer_precondition_id + 1) % in_buf->num_frames;
     return 0;
 }
 
 cudaEvent_t cudaInputData::execute(int gpu_frame_id, cudaEvent_t pre_event) {
     pre_execute(gpu_frame_id);
 
-    uint32_t input_frame_len = network_buf->frame_size;
+    uint32_t input_frame_len = in_buf->frame_size;
 
     void *gpu_memory_frame = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
-    void *host_memory_frame = (void*)network_buf->frames[network_buffer_id];
+    void *host_memory_frame = (void*)in_buf->frames[in_buffer_id];
 
     if (pre_event) CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(CUDA_INPUT_STREAM), pre_event, 0));
     // Data transfer to GPU
@@ -73,12 +67,12 @@ cudaEvent_t cudaInputData::execute(int gpu_frame_id, cudaEvent_t pre_event) {
     CHECK_CUDA_ERROR(cudaEventCreate(&post_events[gpu_frame_id]));
     CHECK_CUDA_ERROR(cudaEventRecord(post_events[gpu_frame_id], device.getStream(CUDA_INPUT_STREAM)));
 
-    network_buffer_id = (network_buffer_id + 1) % network_buf->num_frames;
+    in_buffer_id = (in_buffer_id + 1) % in_buf->num_frames;
     return post_events[gpu_frame_id];
 }
 
 void cudaInputData::finalize_frame(int frame_id) {
     cudaCommand::finalize_frame(frame_id);
-    mark_frame_empty(network_buf, unique_name.c_str(), network_buffer_finalize_id);
-    network_buffer_finalize_id = (network_buffer_finalize_id + 1) % network_buf->num_frames;
+    mark_frame_empty(in_buf, unique_name.c_str(), in_buffer_finalize_id);
+    in_buffer_finalize_id = (in_buffer_finalize_id + 1) % in_buf->num_frames;
 }

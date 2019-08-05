@@ -1,8 +1,8 @@
 ##########################################
 #
-# verify_cuda.yaml
+# verify_cuda_n2.yaml
 #
-# Config to test the cuda stack.
+# Config to test the cuda N2 kernel prototypes.
 #
 # Author: Keith Vanderlinde
 #
@@ -16,8 +16,8 @@ log_level: info
 num_links: 4
 freq_array: [4,7,10,16]
 timesamples_per_packet: 2
-block_size: 32
-samples_per_data_set: 49152 #16384
+block_size: 16 #32
+samples_per_data_set: 4096 #49152 #16384
 num_beams: 1
 num_data_sets: 1
 num_gpus: 1
@@ -25,12 +25,12 @@ buffer_depth: 2
 num_gpu_frames: 16
 cpu_affinity: [2,3,4,5,8,9,10,11]
 sizeof_float: 4
-num_elements: 512 #2048
+num_elements: 128 #2048
 num_dishes: num_elements / 2
 dish_rows: 32
 dish_cols: num_dishes / dish_rows
 frame_arrival_period: 0.00000256 * samples_per_data_set
-num_local_freq: 32
+num_local_freq: 2 #32
 num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
 sizeof_int: 4
 
@@ -87,20 +87,20 @@ gpu:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            network_buf: gpu_input_buffer
+            in_buf: gpu_input_buffer
         out_buffers:
             output_buf: gpu_output_buffer
 
-#cpu:
-#    kotekan_stage: gpuSimulate
-##    log_level: debug
-#    network_in_buf: gpu_input_buffer
-#    corr_out_buf: cpu_output_buffer
-#
-#check_data:
-#    kotekan_stage: testDataCheckInt
-#    first_buf: gpu_output_buffer
-#    second_buf: cpu_output_buffer
+cpu:
+    kotekan_stage: gpuSimulate
+#    log_level: debug
+    network_in_buf: gpu_input_buffer
+    corr_out_buf: cpu_output_buffer
+
+check_data:
+    kotekan_stage: testDataCheckInt
+    first_buf: gpu_output_buffer
+    second_buf: cpu_output_buffer
 
 #check_data:
 #  imag: [0]

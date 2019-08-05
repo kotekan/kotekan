@@ -1,6 +1,6 @@
 /**
  * @file cudaCommand.h
- * @brief Base class for defining openCL commands to execute on GPUs
+ * @brief Base class for defining CUDA commands to execute on GPUs
  *  - cudaCommand
  */
 
@@ -25,15 +25,17 @@
 #include <stdio.h>
 #include <string>
 
-#define CUDA_INPUT_STREAM 0
-#define CUDA_COMPUTE_STREAM 1
-#define CUDA_OUTPUT_STREAM 2
-
-
 /**
  * @class cudaCommand
- * @brief Base class for defining openCL commands to execute on GPUs
+ * @brief Base class for defining CUDA commands to execute on GPUs
  *
+ * This is a base class for CUDA commands to run on NVidia hardware.
+ * Kernels and other opersations (I/O) should derive from this class,
+ * which handles a lot of queueing and device interface issues.
+ *
+ * @todo Clean up and refactor GPU code to not require external kernels.
+ *
+ * @author Keith Vanderlinde
  */
 
 class cudaCommand : public gpuCommand {

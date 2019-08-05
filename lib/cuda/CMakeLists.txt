@@ -19,6 +19,7 @@ set ( KOTEKAN_CUDA_SOURCES
 # Copy-in & general-purpose:
       cudaInputData.cpp
       cudaOutputData.cpp
+      cudaOutputDataZero.cpp
 
 # Simple test
       cudaSaxpyKernel.cu

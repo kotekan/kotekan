@@ -3,6 +3,25 @@
 
 #include "cudaCommand.hpp"
 
+/**
+ * @class cudaOutputData
+ * @brief cudaCommand for copying data onto the GPU.
+ *
+ * This is a cudaCommand that async copies a buffer from GPU to CPU.
+ * This code also passes metadata along from another buffer.
+ *
+ * @par GPU Memory
+ * @gpu_mem out_buf          Output buffer, arbitrary size
+ *     @gpu_mem_type         staging
+ *     @gpu_mem_format       Any
+ * @gpu_mem in_buf           Input buffer from which to copy metadata
+ *     @gpu_mem_type         staging
+ *     @gpu_mem_format       Any
+ *
+ * @author Keith Vanderlinde
+ *
+ */
+
 class cudaOutputData : public cudaCommand {
 public:
     cudaOutputData(kotekan::Config& config, const string& unique_name,
@@ -17,28 +36,13 @@ protected:
     int32_t output_buffer_precondition_id;
 
     Buffer* output_buffer;
-    Buffer* network_buffer;
+    Buffer* in_buffer;
 
     int32_t output_buffer_id;
-    int32_t network_buffer_id;
+    int32_t in_buffer_id;
 
 private:
     // Common configuration values (which do not change in a run)
-    /// Number of elements on the telescope (e.g. 2048 - CHIME, 256 - Pathfinder).
-    int32_t _num_elements;
-    /// Number of frequencies per data stream sent to each node.
-    int32_t _num_local_freq;
-    /// Number of independent integrations within a single dataset. (eg. 8 means
-    /// samples_per_data_set/8= amount of integration per dataset.)
-    int32_t _num_data_sets;
-    /// Calculated value: num_adjusted_elements/block_size * (num_adjusted_elements/block_size +
-    /// 1)/2
-    int32_t _num_blocks;
-    /// This is a kernel tuning parameter for a global work space dimension that sets data sizes for
-    /// GPU work items.
-    int32_t _block_size;
-
-    int32_t _samples_per_data_set;
 
 };
 

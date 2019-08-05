@@ -1,3 +1,9 @@
+/**
+ * @file cudaDeviceInterface.h
+ * @brief Class to handle CUDA interactions with GPU hardware
+ *  - cudaCommand
+ */
+
 #ifndef CUDA_DEVICE_INTERFACE_H
 #define CUDA_DEVICE_INTERFACE_H
 
@@ -5,11 +11,31 @@
 #include "cuda_runtime_api.h"
 #include "cudaUtils.hpp"
 
-// This adjusts the number of queues used by the OpenCL runtime
+// These adjust the number of queues used by the CUDA runtime
 // One queue is for data transfers to the GPU, one is for kernels,
 // and one is for data transfers from the GPU to host memory.
-// Unless you really know what you are doing, don't change this.
+// Unless you really know what you are doing, don't change these.
 #define NUM_STREAMS 3
+#define CUDA_INPUT_STREAM 0
+#define CUDA_COMPUTE_STREAM 1
+#define CUDA_OUTPUT_STREAM 2
+
+/**
+ * @class cudaDeviceInterface
+ * @brief Class to handle CUDA interactions with GPU hardware.
+ *
+ * .
+ *
+ * @par GPU Memory
+ * @gpu_mem  bf_output       Output from the FRB pipeline, size 1024x128x16
+ *     @gpu_mem_type         staging
+ *     @gpu_mem_format       Array of @c float
+ *     @gpu_mem_metadata     chimeMetadata
+ *
+ * @todo   Add profiling flag.
+ *
+ * @author Keith Vanderlinde
+ */
 
 class cudaDeviceInterface final : public gpuDeviceInterface {
 public:

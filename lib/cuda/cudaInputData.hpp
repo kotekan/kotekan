@@ -1,7 +1,29 @@
+/**
+ * @file
+ * @brief CUDA command to copy a block of data onto the GPU.
+ *  - cudaInputData : public cudaCommand
+ */
+
 #ifndef CUDA_INPUT_DATA_H
 #define CUDA_INPUT_DATA_H
 
 #include "cudaCommand.hpp"
+
+/**
+ * @class cudaInputData
+ * @brief cudaCommand for copying data onto the GPU.
+ *
+ * This is a cudaCommand that async copies a buffer from CPU to GPU.
+ * This code also passes metadata along.
+ *
+ * @par GPU Memory
+ * @gpu_mem in_buf           Input buffer, arbitrary size
+ *     @gpu_mem_type         staging
+ *     @gpu_mem_format       Any
+ *
+ * @author Keith Vanderlinde
+ *
+ */
 
 class cudaInputData : public cudaCommand {
 public:
@@ -16,14 +38,10 @@ public:
 protected:
     cudaEvent_t* data_staged_event;
 
-    int32_t network_buffer_id;
-    int32_t network_buffer_precondition_id;
-    int32_t network_buffer_finalize_id;
-    Buffer* network_buf;
-
-    int32_t _num_local_freq;
-    int32_t _num_elements;
-    int32_t _samples_per_data_set;
+    int32_t in_buffer_id;
+    int32_t in_buffer_precondition_id;
+    int32_t in_buffer_finalize_id;
+    Buffer* in_buf;
 };
 
 #endif // CUDA_INPUT_DATA_H

@@ -9,7 +9,7 @@
   if (result != cudaSuccess) {                                                        \
     internal_logging(LOG_ERR, "Error at %s:%d; Error type: %s", __FILE__, __LINE__,   \
                      cudaGetErrorString(result));                                     \
-    assert(result == cudaSuccess);                                                    \
+    std::abort();                                                                     \
   }
 
 #endif // CUDA_UTILS_H

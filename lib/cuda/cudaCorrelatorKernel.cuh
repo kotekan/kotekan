@@ -1,8 +1,25 @@
+/**
+ * @file
+ * @brief CUDA N^2 correlator kernel.
+ *  - cudaCorrelatorKernel : public cudaCommand
+ */
+
 #ifndef CUDA_CORRELATOR_KERNEL_CUH
 #define CUDA_CORRELATOR_KERNEL_CUH
 
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
+
+/**
+ * @class cudaCorrelatorKernel
+ * @brief cudaCommand for doing an N2 correlation. Still prototyping sandbox only.
+ *
+ * Longer desription goes here. Kernel still needs heavy optimizing, consider a sandbox only for now.
+ *
+ * @author Keith Vanderlinde
+ *
+ */
+
 
 class cudaCorrelatorKernel : public cudaCommand {
 public:
