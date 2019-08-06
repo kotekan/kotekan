@@ -103,6 +103,23 @@ void basebandApiManager::register_with_server(restServer* rest_server) {
 void basebandApiManager::status_callback_all(connectionInstance& conn) {
     std::map<std::string, std::vector<json>> event_readout_status;
 
+    // Check if there is query arg "?event_id=<event_id>"
+    auto query_args = conn.get_query();
+    if (query_args.find("event_id") != query_args.end()) {
+        uint64_t event_id;
+        try {
+            event_id = std::stoul(query_args["event_id"]);
+        } catch (const std::exception& e) {
+            WARN("Got bad event_id, error: %s", e.what());
+            conn.send_empty_reply(HTTP_RESPONSE::BAD_REQUEST);
+            return;
+        }
+        // This will call conn so we don't need to reply after this call.
+        status_callback_single_event(event_id, conn);
+        return;
+    }
+
+    // If there isn't an event_id given, then return all the events
     for (auto& element : readout_registry) {
         uint32_t freq_id = element.first;
         auto& readout_manager = element.second;
@@ -113,7 +130,6 @@ void basebandApiManager::status_callback_all(connectionInstance& conn) {
             event_readout_status[std::to_string(event.request.event_id)].push_back(j);
         }
     }
-
     conn.send_json_reply(json(event_readout_status));
 }
 
@@ -201,12 +217,6 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
                                                      {"start_fpga", readout_slice.start_fpga},
                                                      {"length_fpga", readout_slice.length_fpga}};
         }
-
-        restServer& rest_server = restServer::instance();
-        rest_server.register_get_callback("/baseband/" + std::to_string(event_id),
-                                          [event_id, this](connectionInstance& nc) {
-                                              status_callback_single_event(event_id, nc);
-                                          });
 
         request_counter.inc();
 

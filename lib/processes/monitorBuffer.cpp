@@ -23,7 +23,6 @@ monitorBuffer::~monitorBuffer() {}
 
 void monitorBuffer::main_thread() {
 
-    // Wait for, and drop full buffers
     while (!stop_thread) {
         sleep(1);
         double cur_time = e_time();
@@ -34,7 +33,7 @@ void monitorBuffer::main_thread() {
                       (cur_time - last_arrival));
                 ERROR("Closing kotekan because of system timeout.");
                 for (auto& buf : buffer_container.get_buffer_map()) {
-                    print_buffer_status(buf.second);
+                    print_full_status(buf.second);
                 }
                 usleep(50000);
                 raise(SIGINT);
@@ -50,7 +49,7 @@ void monitorBuffer::main_thread() {
                       fraction_full, num_frames, num_full_fames, fill_threshold, buf->buffer_name);
                 ERROR("Closing kotekan because of buffer fill threadhold exceeded!");
                 for (auto& buf : buffer_container.get_buffer_map()) {
-                    print_buffer_status(buf.second);
+                    print_full_status(buf.second);
                 }
                 usleep(50000);
                 raise(SIGINT);
