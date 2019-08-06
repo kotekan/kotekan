@@ -14,6 +14,7 @@
 #include "json.hpp"
 
 #include <mutex>
+#include <utils/util.h>
 
 /**
  * @brief Abstract class which contains things which are common to processing
@@ -27,9 +28,12 @@
  *                                   (in number of FPGA samples) but must be a multiple of that.
  * @config   sample_size       Int.  Default 2048. Size of a time samples (unlikely to change)
  * @config   fpga_packet_size  Int.  Default 4928. Full size of the FPGA packet, including Ethernet,
- *                                                IP, UDP, and FPGA frame headers, FPGA data
- * payload, FPGA footer flags, and any padding (but not the Ethernet CRC).
- * @config   samples_per_packet Int. Default 2.   The number of time samples per FPGA packet
+ *                                                 IP, UDP, and FPGA frame headers, FPGA data
+ *                                                 payload, FPGA footer flags, and any padding
+ *                                                 (but not the Ethernet CRC).
+ * @config   samples_per_packet Int. Default 2.    The number of time samples per FPGA packet
+ * @config   status_cadence    Int  Default 0      The time (in seconds between printing port
+ *                                                 status) Default 0 == don't print.
  *
  * @par Metrics
  * @metric kotekan_dpdk_rx_packets_total
@@ -274,7 +278,7 @@ protected:
             return false;
         }
 
-        // Addational handler(s) got the same first seq number.
+        // Additional handler(s) got the same first seq number.
         DEBUG("Port %d: Got alignemnt value of %" PRIu64 "", port, seq_num);
         return true;
     }
@@ -341,6 +345,13 @@ protected:
         rx_packet_len_errors_total_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
         rx_out_of_order_errors_total_metric;
+
+private:
+    // Last time we've printed a status message
+    double last_status_message_time;
+
+    // Timing between status messages
+    uint32_t status_cadence;
 };
 
 inline iceBoardHandler::iceBoardHandler(kotekan::Config& config, const std::string& unique_name,
@@ -374,6 +385,10 @@ inline iceBoardHandler::iceBoardHandler(kotekan::Config& config, const std::stri
     alignment = config.get<uint64_t>(unique_name, "alignment");
 
     check_cross_handler_alignment(std::numeric_limits<uint64_t>::max());
+
+    // Don't print anything for the first 30 seconds
+    last_status_message_time = e_time() + 30;
+    status_cadence = config.get_default<uint32_t>(unique_name, "status_cadence", 0);
 }
 
 json iceBoardHandler::get_json_port_info() {
@@ -448,6 +463,16 @@ inline void iceBoardHandler::update_stats() {
     rx_ip_cksum_errors_total_metric.labels(port_label).set(rx_ip_cksum_errors_total);
     rx_packet_len_errors_total_metric.labels(port_label).set(rx_packet_len_errors_total);
     rx_out_of_order_errors_total_metric.labels(port_label).set(rx_out_of_order_errors_total);
+
+    double time_now = e_time();
+    if (status_cadence != 0 && (time_now - last_status_message_time) > (double)status_cadence) {
+        INFO(
+            "DPDK port %d, connected to (create = %d, slot = %d, link = %d), total packets %" PRIu64
+            " ",
+            port, port_stream_id.crate_id, port_stream_id.slot_id, port_stream_id.link_id,
+            rx_packets_total);
+        last_status_message_time = time_now;
+    }
 }
 
 #endif
