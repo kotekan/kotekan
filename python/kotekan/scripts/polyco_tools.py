@@ -120,14 +120,8 @@ def mjd(unixtime):
 @click.option(
     "--url",
     type=str,
-    default="http://csBfs:54323/update-pulsar-gating",
-    help="URL of kotekan master pulsar gating endpoint.",
-)
-@click.option(
-    "--recv-url",
-    type=str,
-    default="http://recv2:12048/updatable_config/26m_gated",
-    help="URL of 26m_gated toggle endpoint on receiver node.",
+    default="http://csBfs:54323/",
+    help="URL for coco.",
 )
 @click.option(
     "--tempo-dir",
@@ -156,7 +150,6 @@ def update_polyco(
     send_update,
     no_confirm,
     url,
-    recv_url,
     tempo_dir,
     schedule,
 ):
@@ -245,13 +238,17 @@ def update_polyco(
                 'curl {} -X POST -H "Content-Type: application/json" -d \'{}\' &&'
                 'curl {} -X POST -H "Content-Type: application/json" '
                 "-d '{{\"enabled\":true}}'"
-            ).format(url, json.dumps(update), recv_url)
+            ).format(
+                url + "/update-pulsar-gating", json.dumps(update), url + "/26m_gated"
+            )
             update["enabled"] = False
             disable_cmd = (
                 'curl {} -X POST -H "Content-Type: application/json" -d \'{}\' &&'
                 'curl {} -X POST -H "Content-Type: application/json" '
                 "-d '{{\"enabled\":false}}'"
-            ).format(url, json.dumps(update), recv_url)
+            ).format(
+                url + "/update-pulsar-gating", json.dumps(update), url + "/26m_gated"
+            )
             print("Scheduling gating between {} and {}.".format(start_str, end_str))
             with TemporaryFile(mode="w+") as tmpf:
                 tmpf.write(enable_cmd)
@@ -265,7 +262,7 @@ def update_polyco(
                 check_call(["at", end_str], stdin=tmpf)
         else:
             print("Sending update to {}...".format(url))
-            r = requests.post(url, json=update)
+            r = requests.post(url + "/update-pulsar-gating", json=update)
             r.raise_for_status()
             print("Received: ({}) {}".format(r.status_code, r.content))
 
@@ -274,8 +271,8 @@ def update_polyco(
 @click.option(
     "--url",
     type=str,
-    default="http://csBfs:54323/update-pulsar-gating",
-    help="URL of kotekan master pulsar gating endpoint.",
+    default="http://csBfs:54323",
+    help="URL for coco.",
 )
 def disable_gating(url):
     """Send an update to kotekan disabling the pulsar gating."""
@@ -291,7 +288,7 @@ def disable_gating(url):
         "pulse_width": 0.0,
     }
     print("Sending update to {}...".format(url))
-    r = requests.post(url, json=empty_config)
+    r = requests.post(url + "/update-pulsar-gating", json=empty_config)
     r.raise_for_status()
     print("Received: ({}) {}".format(r.status_code, r.content))
 
