@@ -120,7 +120,7 @@ def mjd(unixtime):
 @click.option(
     "--url",
     type=str,
-    default="http://csBfs:54323/",
+    default="http://csBfs:54323",
     help="URL for coco.",
 )
 @click.option(
@@ -157,6 +157,7 @@ def update_polyco(
     Required arguments are the path to the parfile and the start time for the polyco
     (enter 'now' to use current time minus 0.2 days).
     """
+    url = url.strip("/")
     fname = path.abspath(fname)
     if not load_polyco:
         if start_time == "now":
@@ -276,6 +277,7 @@ def update_polyco(
 )
 def disable_gating(url):
     """Send an update to kotekan disabling the pulsar gating."""
+    url = url.strip("/")
     empty_config = {
         "coeff": [[0.0]],
         "t_ref": [0.0],
