@@ -74,7 +74,7 @@ def mjd(unixtime):
 @click.option("--send-update", is_flag=True, help="Send the update to kotekan.")
 @click.option("--no-confirm", is_flag=True,
               help="Don't ask for confirmation before sending update.")
-@click.option("--url", type=str, default="http://csBfs:54323/", help="URL for coco.")
+@click.option("--url", type=str, default="http://csBfs:54323", help="URL for coco.")
 @click.option("--tempo-dir", type=str, default="/usr/local/tempo2/",
               help="TEMPO2 runtime directory")
 @click.option("--schedule", is_flag=True,
@@ -86,6 +86,7 @@ def update_polyco(fname, start_time, load_polyco, end_time, dm, name, width, seg
         Required arguments are the path to the parfile and the start time for the polyco
         (enter 'now' to use current time minus 0.2 days).
     """
+    url = url.strip("/")
     fname = path.abspath(fname)
     if not load_polyco:
         if start_time == "now":
@@ -190,9 +191,10 @@ def update_polyco(fname, start_time, load_polyco, end_time, dm, name, width, seg
 
 
 @click.command()
-@click.option("--url", type=str, default="http://csBfs:54323/", help="URL for coco.")
+@click.option("--url", type=str, default="http://csBfs:54323", help="URL for coco.")
 def disable_gating(url):
     """Send an update to kotekan disabling the pulsar gating."""
+    url = url.strip("/")
     empty_config = {
         "coeff": [[0.0]],
         "t_ref": [0.0],
