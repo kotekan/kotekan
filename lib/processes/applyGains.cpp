@@ -240,8 +240,7 @@ void applyGains::apply_thread() {
             std::shared_lock<std::shared_timed_mutex> lock(gain_mtx);
             gainpair_new = gains_fifo.get_update(double_to_ts(frame_time));
             if (gainpair_new.second == NULL) {
-                WARN("No gains available.\nKilling kotekan");
-                std::raise(SIGINT);
+                FATAL_ERROR("No gains available.\nKilling kotekan");
             }
             tpast = frame_time - ts_to_double(gainpair_new.first);
 

@@ -92,8 +92,7 @@ void pulsarNetworkProcess::main_thread() {
     parse_chime_host_name(rack, node, nos, my_node_id);
     for (int i = 0; i < number_of_subnets; i++) {
         if (std::snprintf(my_ip_address[i], 100, "10.%d.%d.1%d", i + 15, nos + rack, node) > 100) {
-            ERROR("buffer spill over ");
-            raise(SIGINT);
+            FATAL_ERROR("buffer spill over ");
             return;
         }
         INFO("%s ", my_ip_address[i]);
@@ -106,8 +105,7 @@ void pulsarNetworkProcess::main_thread() {
         sock_fd[i] = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
         if (sock_fd[i] < 0) {
-            ERROR("network thread: socket() failed: ");
-            raise(SIGINT);
+            FATAL_ERROR("network thread: socket() failed: ");
             return;
         }
     }
@@ -123,8 +121,7 @@ void pulsarNetworkProcess::main_thread() {
 
         // Binding port to the socket
         if (bind(sock_fd[i], (struct sockaddr*)&myaddr[i], sizeof(myaddr[i])) < 0) {
-            ERROR("port binding failed ");
-            raise(SIGINT);
+            FATAL_ERROR("port binding failed ");
             return;
         }
     }
@@ -140,8 +137,7 @@ void pulsarNetworkProcess::main_thread() {
     int n = 256 * 1024 * 1024;
     for (int i = 0; i < number_of_subnets; i++) {
         if (setsockopt(sock_fd[i], SOL_SOCKET, SO_SNDBUF, (void*)&n, sizeof(n)) < 0) {
-            ERROR("network thread: setsockopt() failed ");
-            raise(SIGINT);
+            FATAL_ERROR("network thread: setsockopt() failed ");
             return;
         }
     }

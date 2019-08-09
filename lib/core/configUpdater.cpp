@@ -212,8 +212,7 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
                                           uri.c_str(), json.dump().c_str());
             ERROR(msg.c_str());
             con.send_error(msg, HTTP_RESPONSE::INTERNAL_ERROR);
-            ERROR("configUpdater: Stopping Kotekan.");
-            raise(SIGINT);
+            FATAL_ERROR("configUpdater: Stopping Kotekan.");
             return;
         }
         search.first++;
@@ -234,8 +233,7 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
                                           uri.c_str(), e.what());
             ERROR(msg.c_str());
             con.send_error(msg, HTTP_RESPONSE::INTERNAL_ERROR);
-            ERROR("configUpdater: Stopping Kotekan.");
-            raise(SIGINT);
+            FATAL_ERROR("configUpdater: Stopping Kotekan.");
             return;
         }
     }

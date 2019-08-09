@@ -56,12 +56,11 @@ std::array<dset_id_t, 2> freqSplit::change_dataset_state(dset_id_t input_dset_id
     // create new frequency dataset state
     const freqState* freq_state_ptr = dm.dataset_state<freqState>(input_dset_id);
     if (freq_state_ptr == nullptr) {
-        ERROR("Set to not use dataset_broker and couldn't find "
-              "freqState ancestor of dataset 0x%" PRIx64 ". Make sure there "
-              "is a stage upstream in the config, that adds a freqState.\n"
-              "Exiting...",
-              input_dset_id);
-        raise(SIGINT);
+        FATAL_ERROR("Set to not use dataset_broker and couldn't find "
+                    "freqState ancestor of dataset 0x%" PRIx64 ". Make sure there "
+                    "is a stage upstream in the config, that adds a freqState.\n"
+                    "Exiting...",
+                    input_dset_id);
     }
 
     const std::vector<std::pair<uint32_t, freq_ctype>>& input_freqs = freq_state_ptr->get_freqs();

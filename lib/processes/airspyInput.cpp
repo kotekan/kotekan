@@ -37,7 +37,7 @@ void airspyInput::main_thread() {
     airspy_init();
     a_device = init_device();
     if (a_device == NULL) {
-        raise(SIGINT);
+        FATAL_ERROR("Error in airspyInput. Cannot find device.");
         return;
     }
     airspy_start_rx(a_device, airspy_callback, static_cast<void*>(this));

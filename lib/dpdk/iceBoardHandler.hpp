@@ -98,8 +98,7 @@ protected:
                  last_seq, seq);
 
             if (!check_cross_handler_alignment(last_seq)) {
-                ERROR("DPDK failed to align packets between handlers, closing kotekan!");
-                raise(SIGINT);
+                FATAL_ERROR("DPDK failed to align packets between handlers, closing kotekan!");
                 return false;
             }
 
@@ -153,13 +152,12 @@ protected:
             return false;
         }
         if (unlikely(fpga_packet_size != cur_mbuf->pkt_len)) {
-            ERROR("Got packet with incorrect length: %d, expected %d", cur_mbuf->pkt_len,
-                  fpga_packet_size);
 
             // Getting a packet with the wrong length is almost always
             // a configuration/FPGA problem that needs to be addressed.
             // So for now we just exit kotekan with an error message.
-            raise(SIGINT);
+            FATAL_ERROR("Got packet with incorrect length: %d, expected %d", cur_mbuf->pkt_len,
+                        fpga_packet_size);
 
             rx_packet_len_errors_total += 1;
             rx_errors_total += 1;
@@ -208,9 +206,9 @@ protected:
      */
     inline bool check_for_reset(int64_t diff) {
         if (unlikely(diff < -1000)) {
-            ERROR("The FPGAs likely reset, kotekan stopping... (FPGA seq number was less than 1000 "
-                  "of highest number seen.)");
-            raise(SIGINT);
+            FATAL_ERROR(
+                "The FPGAs likely reset, kotekan stopping... (FPGA seq number was less than 1000 "
+                "of highest number seen.)");
             return false;
         }
         return true;
