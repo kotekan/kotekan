@@ -166,6 +166,8 @@ def update_polyco(
             start_time = float(start_time)
         if end_time is None:
             end_time = start_time + 1.0
+        elif end_time <= start_time:
+            raise ValueError("Cannot use end time before start time")
         pfile = PolycoFile.generate(
             start_time, end_time, fname, dm, segment, ncoeff, max_ha, tempo_dir
         )
