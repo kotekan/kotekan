@@ -64,7 +64,7 @@ def command_test_pattern(name, num_frames, test_pattern):
                                     'reply_path': 'reply_endpoint', 'num_frames': num_frames,
                                     'test_pattern': test_pattern, 'name': name})
 
-def run_test(write_dir,rest_commands = None, params=params, noise = False, name="simple"):
+def run_test(write_dir,rest_commands = None, params=params, noise = False, name="simple", expect_failure = False):
     capo = ServerThread(app)
     capo.start()
     print("Started fake capo endoint.")
@@ -96,6 +96,7 @@ def run_test(write_dir,rest_commands = None, params=params, noise = False, name=
             parallel_stage_config = fakevis_dump_conf,
             noise = True,
             rest_commands=rest_commands,
+            expect_failure = expect_failure,
         )
     else:
         test = runner.KotekanStageTester(
@@ -104,6 +105,7 @@ def run_test(write_dir,rest_commands = None, params=params, noise = False, name=
             dump_buffer,
             params,
             rest_commands=rest_commands,
+            expect_failure = expect_failure,
         )
 
     test.run()
@@ -154,7 +156,7 @@ def test_pattern(tmpdir_factory):
     # Test 3 frames, to get one of each frequency
     rest_commands = [command_test_pattern('simple', 3, simple_test_pattern)]
 
-    yield run_test(write_dir, rest_commands)
+    yield run_test(write_dir, rest_commands, expect_failure=True)
 
 def test_no_noise(test_pattern):
     # A test was started by sending a command to the endpoint, so the files should exist.
@@ -178,7 +180,7 @@ def test_pattern_noise(tmpdir_factory):
         command_test_pattern('simple', 3, simple_test_pattern)
         ]
 
-    yield run_test(write_dir, rest_commands=rest_commands, noise=True)
+    yield run_test(write_dir, rest_commands=rest_commands, noise=True, expect_failure=True)
 
 
 def test_noise(test_pattern_noise):
@@ -265,7 +267,7 @@ def test_pattern_no_noise_freq(tmpdir_factory):
         ]
 
     yield run_test(write_dir=write_dir, params=freq_params, rest_commands=rest_commands, noise=False,
-                   name="freq")
+                   name="freq", expect_failure=True)
 
 def test_no_noise_freq(test_pattern_no_noise_freq):
     # A test was started by sending a command to the endpoint, so the files should exist.
@@ -315,7 +317,7 @@ def test_pattern_noise_freq(tmpdir_factory):
     ]
 
     yield run_test(write_dir=write_dir, params=freq_params, rest_commands=rest_commands, noise=True,
-                   name="freq")
+                   name="freq", expect_failure=True)
 
 
 
@@ -416,7 +418,7 @@ def test_pattern_no_noise_inputs(tmpdir_factory):
         ]
 
     yield run_test(write_dir=write_dir, params=input_params, rest_commands=rest_commands,
-                   noise=False, name="inputs")
+                   noise=False, name="inputs", expect_failure=True)
 
 def test_no_noise_inputs(test_pattern_no_noise_inputs):
     # A test was started by sending a command to the endpoint, so the files should exist.
@@ -451,7 +453,7 @@ def test_pattern_noise_inputs(tmpdir_factory):
         ]
 
     yield run_test(write_dir=write_dir, params=input_params, rest_commands=rest_commands,
-                   noise=True, name="inputs")
+                   noise=True, name="inputs", expect_failure=True)
 
 def test_noise_inputs(test_pattern_noise_inputs):
 
