@@ -18,7 +18,6 @@ void clEventContainer::unset() {
 
 void clEventContainer::wait() {
     if (clWaitForEvents(1, &signal) != CL_SUCCESS) {
-        ERROR("***** ERROR **** Unexpected event value **** ERROR **** ");
-        raise(SIGINT);
+        FATAL_ERROR("***** ERROR **** Unexpected event value **** ERROR **** ");
     }
 }

@@ -62,8 +62,7 @@ void clCommand::build() {
         DEBUG2("Building! %s", kernel_command.c_str())
         fp = fopen(kernel_file_name.c_str(), "r");
         if (fp == NULL) {
-            ERROR("error loading file: %s", kernel_file_name.c_str());
-            raise(SIGINT);
+            FATAL_ERROR("error loading file: %s", kernel_file_name.c_str());
         }
         fseek(fp, 0, SEEK_END);
         program_size = ftell(fp);

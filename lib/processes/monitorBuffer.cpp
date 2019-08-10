@@ -29,14 +29,13 @@ void monitorBuffer::main_thread() {
         for (struct Buffer* buf : buffers) {
             double last_arrival = get_last_arrival_time(buf);
             if ((cur_time - last_arrival) > timeout && last_arrival > 1) {
-                ERROR("The buffer %s hasn't received a frame for %f seconds.", buf->buffer_name,
-                      (cur_time - last_arrival));
-                ERROR("Closing kotekan because of system timeout.");
                 for (auto& buf : buffer_container.get_buffer_map()) {
                     print_full_status(buf.second);
                 }
                 usleep(50000);
-                raise(SIGINT);
+                FATAL_ERROR("The buffer %s hasn't received a frame for %f seconds.\nClosing "
+                            "kotekan because of system timeout.",
+                            buf->buffer_name, (cur_time - last_arrival));
                 goto end_loop;
             }
 
@@ -44,15 +43,14 @@ void monitorBuffer::main_thread() {
             uint32_t num_full_fames = get_num_full_frames(buf);
             float fraction_full = (float)num_full_fames / (float)num_frames;
             if (fraction_full > fill_threshold) {
-                ERROR("The fraction of full frames %f (%d/%d) is greater than the threadhold %f "
-                      "for buffer: %s",
-                      fraction_full, num_frames, num_full_fames, fill_threshold, buf->buffer_name);
-                ERROR("Closing kotekan because of buffer fill threadhold exceeded!");
                 for (auto& buf : buffer_container.get_buffer_map()) {
                     print_full_status(buf.second);
                 }
                 usleep(50000);
-                raise(SIGINT);
+                FATAL_ERROR(
+                    "The fraction of full frames %f (%d/%d) is greater than the threadhold %f "
+                    "for buffer: %s\nClosing kotekan because of buffer fill threadhold exceeded!",
+                    fraction_full, num_frames, num_full_fames, fill_threshold, buf->buffer_name);
                 goto end_loop;
             }
         }

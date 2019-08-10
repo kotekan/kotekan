@@ -53,7 +53,8 @@ def run_flagging(tmpdir_factory, cmds):
         buffers_in = fakevis_buffer,
         buffers_out = out_dump_buffer,
         global_config = params,
-        rest_commands = cmds
+        rest_commands = cmds,
+        expect_failure = True
     )
 
     test.run()

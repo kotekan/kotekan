@@ -318,8 +318,8 @@ void visTestPattern::main_thread() {
                     restReply reply = restClient::instance().make_request_blocking(
                         test_done_path, data, test_done_host, test_done_port);
                     if (!reply.first) {
-                        ERROR("Failed to report back test completion: %s", reply.second.c_str());
-                        raise(SIGINT);
+                        FATAL_ERROR("Failed to report back test completion: %s",
+                                    reply.second.c_str());
                     }
 
                     INFO("Test '%s' done.", test_name.c_str());
@@ -345,8 +345,7 @@ void visTestPattern::main_thread() {
         restReply reply = restClient::instance().make_request_blocking(
             test_done_path, data, test_done_host, test_done_port);
         if (!reply.first) {
-            ERROR("Failed to report back test completion f: %s", reply.second.c_str());
-            raise(SIGINT);
+            FATAL_ERROR("Failed to report back test completion f: %s", reply.second.c_str());
         }
     }
 }
@@ -471,11 +470,11 @@ void visTestPattern::get_dataset_state(dset_id_t ds_id) {
     const prodState* pstate = pstate_fut.get();
 
     if (fstate == nullptr || istate == nullptr || pstate == nullptr) {
-        ERROR("Could not find all required states of dataset with ID 0x%" PRIx64 ".\nExiting...",
-              ds_id);
         if (outfile.is_open())
             outfile.close();
-        raise(SIGINT);
+        FATAL_ERROR("Could not find all required states of dataset with ID 0x%" PRIx64
+                    ".\nExiting...",
+                    ds_id);
     }
 
     freqs = fstate->get_freqs();
@@ -517,7 +516,6 @@ void visTestPattern::compute_expected_data() {
 }
 
 void visTestPattern::exit_failed_test(std::string error_msg) {
-    ERROR(error_msg.c_str());
     if (outfile.is_open())
         outfile.close();
 
@@ -526,6 +524,5 @@ void visTestPattern::exit_failed_test(std::string error_msg) {
     data["result"] = error_msg;
     restClient::instance().make_request_blocking(test_done_path, data, test_done_host,
                                                  test_done_port);
-
-    raise(SIGINT);
+    FATAL_ERROR(error_msg.c_str());
 }

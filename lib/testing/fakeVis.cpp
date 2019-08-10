@@ -253,7 +253,7 @@ void fakeVis::main_thread() {
         // Cause kotekan to exit if we've hit the maximum number of frames
         if (num_frames > 0 && frame_count >= (unsigned)num_frames) {
             INFO("Reached frame limit [%i frames]. Exiting kotekan...", num_frames);
-            std::raise(SIGINT);
+            exit_kotekan(ReturnCode::CLEAN_EXIT);
             return;
         }
 
@@ -277,11 +277,10 @@ void fakeVis::fill_mode_default(visFrameView& frame) {
     }
     // Save metadata in first few cells
     if (out_vis.size() < 3) {
-        ERROR("Number of elements (%d) is too small to encode the 3 debugging"
-              " values of fill-mode 'default' in fake visibilities."
-              "\nExiting...",
-              num_elements);
-        raise(SIGINT);
+        FATAL_ERROR("Number of elements (%d) is too small to encode the 3 debugging"
+                    " values of fill-mode 'default' in fake visibilities."
+                    "\nExiting...",
+                    num_elements);
     } else {
         // For simplicity overwrite diagonal if needed
         out_vis[0] = {(float)std::get<0>(frame.time), 0.0};

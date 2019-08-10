@@ -139,15 +139,13 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     // Get and validate any gating config
     nlohmann::json gating_conf = config.get_default<nlohmann::json>(unique_name, "gating", {});
     if (!gating_conf.empty() && !gating_conf.is_object()) {
-        ERROR("Gating config must be a dictionary: %s", gating_conf.dump().c_str());
-        std::raise(SIGINT);
+        FATAL_ERROR("Gating config must be a dictionary: %s", gating_conf.dump().c_str());
     }
 
     if (!gating_conf.empty() && num_freq_in_frame > 1) {
-        ERROR("Cannot use gating with multifrequency GPU buffers"
-              "[num_freq_in_frame=%i; gating config=%s].",
-              num_freq_in_frame, gating_conf.dump().c_str());
-        std::raise(SIGINT);
+        FATAL_ERROR("Cannot use gating with multifrequency GPU buffers"
+                    "[num_freq_in_frame=%i; gating config=%s].",
+                    num_freq_in_frame, gating_conf.dump().c_str());
     }
 
     // Register gating update callbacks
@@ -166,15 +164,13 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
                                             + it.value().dump());
             }
         } catch (std::exception& e) {
-            ERROR("Failure reading 'mode' from config: %s", e.what());
-            std::raise(SIGINT);
+            FATAL_ERROR("Failure reading 'mode' from config: %s", e.what());
         }
         std::string mode = it.value().at("mode");
 
         if (!FACTORY(gateSpec)::exists(mode)) {
-            ERROR("Requested gating mode %s for dataset %s is not a known.", name.c_str(),
-                  mode.c_str());
-            std::raise(SIGINT);
+            FATAL_ERROR("Requested gating mode %s for dataset %s is not a known.", name.c_str(),
+                        mode.c_str());
         }
 
         INFO("Creating gated dataset %s of type %s", name.c_str(), mode.c_str());
@@ -187,8 +183,7 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
                                             + it.value().dump());
             }
         } catch (std::exception& e) {
-            ERROR("Failure reading 'buf' from config: %s", e.what());
-            std::raise(SIGINT);
+            FATAL_ERROR("Failure reading 'buf' from config: %s", e.what());
         }
         std::string buffer_name = it.value().at("buf");
 

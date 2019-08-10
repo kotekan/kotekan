@@ -129,8 +129,7 @@ void visWriter::main_thread() {
             string msg = fmt::format("Number of products in frame doesn't match state or file "
                                      "({} != {}).",
                                      frame.num_prod, acq.num_vis);
-            ERROR(msg.c_str());
-            raise(SIGINT);
+            FATAL_ERROR(msg.c_str());
             return;
 
         } else {
@@ -217,14 +216,12 @@ void visWriter::get_dataset_state(dset_id_t ds_id) {
     const prodState* pstate = pstate_fut.get();
 
     if (pstate == nullptr || mstate == nullptr || fstate == nullptr) {
-        ERROR("Set to not use dataset_broker and couldn't find "
-              "ancestor of dataset 0x%" PRIx64 ". Make sure there is a stage"
-              " upstream in the config, that the dataset states.\nExiting...",
-              ds_id);
-        ERROR("One of them is a nullptr (0): prodState %d, metadataState %d, "
-              "freqState %d, stackState %d (but that one is okay).",
-              pstate, mstate, fstate, sstate);
-        raise(SIGINT);
+        FATAL_ERROR("Set to not use dataset_broker and couldn't find "
+                    "ancestor of dataset 0x%" PRIx64 ". Make sure there is a stage"
+                    " upstream in the config, that the dataset states.\nExiting..."
+                    "One of them is a nullptr (0): prodState %d, metadataState %d, "
+                    "freqState %d, stackState %d (but that one is okay).",
+                    ds_id, pstate, mstate, fstate, sstate);
     }
 
     // Get a reference to the acq state
@@ -287,8 +284,7 @@ void visWriter::init_acq(dset_id_t ds_id) {
             std::make_unique<visFileBundle>(file_type, root_path, instrument_name, metadata,
                                             chunk_id, file_length, window, ds_id, file_length);
     } catch (std::exception& e) {
-        ERROR("Failed creating file bundle for new acquisition: %s", e.what());
-        raise(SIGINT);
+        FATAL_ERROR("Failed creating file bundle for new acquisition: %s", e.what());
     }
 }
 
