@@ -125,7 +125,10 @@ void frbPostProcess::main_thread() {
         }
 
         // Information on drop packets
-        uint8_t* lost_samples_frame = lost_samples_buf->frames[lost_samples_buf_id];
+        uint8_t* lost_samples_frame =
+            wait_for_full_frame(lost_samples_buf, unique_name.c_str(), lost_samples_buf_id);
+        if (lost_samples_frame == NULL)
+            return;
         for (uint t = 0; t < num_samples; t++) {
             // check if drop packet by reading 384 original times, if so flag that t
             droppacket[t] = 0;

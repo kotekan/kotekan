@@ -36,8 +36,8 @@ BOOST_AUTO_TEST_CASE(simple_metrics) {
     BOOST_CHECK(multi_metrics.find("foo_metric{stage_name=\"foo\"} 1") == std::string::npos);
 
     // new time series
-    BOOST_CHECK(multi_metrics.find("foo_metric{stage_name=\"foos\"} 10 ") != std::string::npos);
-    BOOST_CHECK(multi_metrics.find("bar_metric{stage_name=\"foos\"} 100 ") != std::string::npos);
+    BOOST_CHECK(multi_metrics.find("foo_metric{stage_name=\"foos\"} 10.0") != std::string::npos);
+    BOOST_CHECK(multi_metrics.find("bar_metric{stage_name=\"foos\"} 100.0") != std::string::npos);
 }
 
 BOOST_AUTO_TEST_CASE(remove_stage_metrics) {
@@ -108,7 +108,7 @@ BOOST_AUTO_TEST_CASE(gauges_with_labels) {
 
     auto& m1 = metrics.add_gauge("foo_with_labels", "foo", {"quux"});
     m1.labels({"fred"}).set(1);
-    BOOST_CHECK(metrics.serialize().find("foo_with_labels{stage_name=\"foo\",quux=\"fred\"} 1 ")
+    BOOST_CHECK(metrics.serialize().find("foo_with_labels{stage_name=\"foo\",quux=\"fred\"} 1.0")
                 != std::string::npos);
 
     m1.labels({"fred"}).set(2);
@@ -123,15 +123,15 @@ BOOST_AUTO_TEST_CASE(gauges_with_labels) {
     // std::cout << multi_metrics << "\n";
 
     // new value
-    BOOST_CHECK(multi_metrics.find("foo_with_labels{stage_name=\"foo\",quux=\"fred\"} 2 ")
+    BOOST_CHECK(multi_metrics.find("foo_with_labels{stage_name=\"foo\",quux=\"fred\"} 2.0")
                 != std::string::npos);
     // old value is not present
     BOOST_CHECK(multi_metrics.find("foo_with_labels{stage_name=\"foo\",quux=\"fred\"} 1")
                 == std::string::npos);
 
     // new time series
-    BOOST_CHECK(multi_metrics.find("foo_with_labels{stage_name=\"foo\",quux=\"baz\"} 10 ")
+    BOOST_CHECK(multi_metrics.find("foo_with_labels{stage_name=\"foo\",quux=\"baz\"} 10.0")
                 != std::string::npos);
-    BOOST_CHECK(multi_metrics.find("bar_with_labels{stage_name=\"foo\",quux=\"baz\"} 42 ")
+    BOOST_CHECK(multi_metrics.find("bar_with_labels{stage_name=\"foo\",quux=\"baz\"} 42.0")
                 != std::string::npos);
 }

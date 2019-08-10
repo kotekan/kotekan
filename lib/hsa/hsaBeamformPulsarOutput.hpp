@@ -21,8 +21,9 @@ private:
     Buffer* output_buffer;
 
     int32_t network_buffer_id;
-    int32_t output_buffer_id;
+    int32_t network_buffer_precondition_id;
 
+    int32_t output_buffer_id;
     int32_t output_buffer_precondition_id;
     int32_t output_buffer_excute_id;
 };

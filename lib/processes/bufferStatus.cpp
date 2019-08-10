@@ -25,15 +25,15 @@ bufferStatus::bufferStatus(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferStatus::main_thread, this)) {
     buffers = buffer_container.get_buffer_map();
+
+    // Apply config.
+    time_delay = config.get_default<int>(unique_name, "time_delay", 1000000);
+    print_status = config.get_default<bool>(unique_name, "print_status", true);
 }
 
 bufferStatus::~bufferStatus() {}
 
 void bufferStatus::main_thread() {
-
-    // Apply config.
-    time_delay = config.get_default<int>(unique_name, "time_delay", 1000000);
-    print_status = config.get_default<bool>(unique_name, "print_status", true);
 
     Metrics& metrics = Metrics::instance();
     auto& frames_counter =

@@ -412,22 +412,28 @@ int main(int argc, char** argv) {
             INFO("Starting new kotekan mode using POSTed config.");
             start_new_kotekan_mode(config, false);
         } catch (const std::out_of_range& ex) {
-            ERROR("Out of range exception %s", ex.what());
             delete kotekan_mode;
             kotekan_mode = nullptr;
             conn.send_error(ex.what(), HTTP_RESPONSE::BAD_REQUEST);
+            // TODO This exit shouldn't be required, but some stages aren't able
+            // to fully clean up on system failure.  This results in the system
+            // getting into a bad state if the posted config is invalid.
+            // See ticket: #464
+            // The same applies to exit (raise) statements in other parts of
+            // this try statement.
+            FATAL_ERROR("Provided config had an out of range exception: %s", ex.what());
             return;
         } catch (const std::runtime_error& ex) {
-            ERROR("Runtime error %s", ex.what());
             delete kotekan_mode;
             kotekan_mode = nullptr;
             conn.send_error(ex.what(), HTTP_RESPONSE::BAD_REQUEST);
+            FATAL_ERROR("Provided config failed to start with runtime error: %s", ex.what());
             return;
         } catch (const std::exception& ex) {
-            ERROR("Generic exception %s", ex.what());
             delete kotekan_mode;
             kotekan_mode = nullptr;
             conn.send_error(ex.what(), HTTP_RESPONSE::BAD_REQUEST);
+            FATAL_ERROR("Provided config failed with exception: %s", ex.what());
             return;
         }
         conn.send_empty_reply(HTTP_RESPONSE::OK);

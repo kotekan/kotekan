@@ -3,6 +3,7 @@
 #include "configUpdater.hpp"
 
 #include <signal.h>
+#include <utils/visUtil.hpp>
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -17,7 +18,7 @@ REGISTER_HSA_COMMAND(hsaBeamformKernel);
 // clang-format off
 
 // Request gain file re-parse with e.g.
-// curl localhost:12048/frb_gain -X POST -H 'Content-Type: appication/json' -d '{"frb_gain_dir":"the_new_path"}'
+// curl localhost:12048/updatable_config/frb_gain -X POST -H 'Content-Type: appication/json' -d '{"frb_gain_dir":"the_new_path"}'
 // Update NS beam
 // curl localhost:12048/gpu/gpu_<gpu_id>/frb/update_NS_beam/<gpu_id> -X POST -H 'Content-Type: application/json' -d '{"northmost_beam":<value>}'
 // Update EW beam
@@ -64,6 +65,7 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string& unique_name,
     // Figure out which frequency, is there a better way that doesn't involve reading in the whole
     // thing? Check later
     metadata_buf = host_buffers.get_buffer("network_buf");
+    register_consumer(metadata_buf, unique_name.c_str());
     metadata_buffer_id = 0;
     metadata_buffer_precondition_id = 0;
     freq_idx = -1;
@@ -86,10 +88,10 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string& unique_name,
     rest_server.register_post_callback(
         endpoint_EW_beam, std::bind(&hsaBeamformKernel::update_EW_beam_callback, this, _1, _2));
     // listen for gain updates
-    _gain_dir = config.get_default<std::string>(unique_name, "updatable_gain_frb", "");
+    _gain_dir = config.get_default<std::string>(unique_name, "updatable_config/gain_frb", "");
     if (_gain_dir.length() > 0)
         configUpdater::instance().subscribe(
-            config.get<std::string>(unique_name, "updatable_gain_frb"),
+            config.get<std::string>(unique_name, "updatable_config/gain_frb"),
             std::bind(&hsaBeamformKernel::update_gains_callback, this, _1));
 }
 
@@ -207,11 +209,12 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_s
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
         freq_idx = bin_number_chime(&stream_id);
         freq_MHz = freq_from_bin(freq_idx);
-
-        metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
     }
+    mark_frame_empty(metadata_buf, unique_name.c_str(), metadata_buffer_id);
+    metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
 
     if (update_gains) {
+        double start_time = current_time();
         // brute force wait to make sure we don't clobber memory
         if (hsa_signal_wait_scacquire(precede_signal, HSA_SIGNAL_CONDITION_LT, 1, UINT64_MAX,
                                       HSA_WAIT_STATE_BLOCKED)
@@ -245,6 +248,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_s
         }
         void* device_gain = device.get_gpu_memory("beamform_gain", gain_len);
         device.sync_copy_host_to_gpu(device_gain, (void*)host_gain, gain_len);
+        INFO("Time required to load FRB gains: %f", current_time() - start_time);
     }
 
     if (update_NS_beam) {
