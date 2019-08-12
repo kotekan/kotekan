@@ -217,11 +217,11 @@ void visWriter::get_dataset_state(dset_id_t ds_id) {
 
     if (pstate == nullptr || mstate == nullptr || fstate == nullptr) {
         FATAL_ERROR("Set to not use dataset_broker and couldn't find "
-              "ancestor of dataset 0x%" PRIx64 ". Make sure there is a stage"
-              " upstream in the config, that the dataset states.\nExiting..."
-              "One of them is a nullptr (0): prodState %d, metadataState %d, "
-              "freqState %d, stackState %d (but that one is okay).", ds_id,
-              pstate, mstate, fstate, sstate);
+                    "ancestor of dataset 0x%" PRIx64 ". Make sure there is a stage"
+                    " upstream in the config, that the dataset states.\nExiting..."
+                    "One of them is a nullptr (0): prodState %d, metadataState %d, "
+                    "freqState %d, stackState %d (but that one is okay).",
+                    ds_id, pstate, mstate, fstate, sstate);
     }
 
     // Get a reference to the acq state

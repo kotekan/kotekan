@@ -23,7 +23,6 @@ monitorBuffer::~monitorBuffer() {}
 
 void monitorBuffer::main_thread() {
 
-    // Wait for, and drop full buffers
     while (!stop_thread) {
         sleep(1);
         double cur_time = e_time();
@@ -31,11 +30,12 @@ void monitorBuffer::main_thread() {
             double last_arrival = get_last_arrival_time(buf);
             if ((cur_time - last_arrival) > timeout && last_arrival > 1) {
                 for (auto& buf : buffer_container.get_buffer_map()) {
-                    print_buffer_status(buf.second);
+                    print_full_status(buf.second);
                 }
                 usleep(50000);
-                FATAL_ERROR("The buffer %s hasn't received a frame for %f seconds.  Closing kotekan because of system timeout.", buf->buffer_name,
-                      (cur_time - last_arrival));
+                FATAL_ERROR("The buffer %s hasn't received a frame for %f seconds.\nClosing "
+                            "kotekan because of system timeout.",
+                            buf->buffer_name, (cur_time - last_arrival));
                 goto end_loop;
             }
 
@@ -44,10 +44,11 @@ void monitorBuffer::main_thread() {
             float fraction_full = (float)num_full_fames / (float)num_frames;
             if (fraction_full > fill_threshold) {
                 for (auto& buf : buffer_container.get_buffer_map()) {
-                    print_buffer_status(buf.second);
+                    print_full_status(buf.second);
                 }
                 usleep(50000);
-                FATAL_ERROR("The fraction of full frames %f (%d/%d) is greater than the threadhold %f "
+                FATAL_ERROR(
+                    "The fraction of full frames %f (%d/%d) is greater than the threadhold %f "
                     "for buffer: %s\nClosing kotekan because of buffer fill threadhold exceeded!",
                     fraction_full, num_frames, num_full_fames, fill_threshold, buf->buffer_name);
                 goto end_loop;

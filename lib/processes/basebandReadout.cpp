@@ -116,6 +116,7 @@ void basebandReadout::main_thread() {
             readout_counter.labels({std::to_string(freq_id), "done"});
             readout_counter.labels({std::to_string(freq_id), "error"});
             readout_counter.labels({std::to_string(freq_id), "no_data"});
+            readout_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
 
             INFO("Starting request-listening thread for freq_id: %" PRIu32, freq_id);
             basebandReadoutManager& mgr =

@@ -186,10 +186,10 @@ void visTranspose::main_thread() {
 
     if (!future_ds_state.get()) {
         FATAL_ERROR("Set to not use dataset_broker and couldn't find "
-              "ancestor of dataset 0x%" PRIx64 ". Make sure there is a stage"
-              " upstream in the config, that adds the dataset states."
-              "\nExiting...",
-              ds_id);
+                    "ancestor of dataset 0x%" PRIx64 ". Make sure there is a stage"
+                    " upstream in the config, that adds the dataset states."
+                    "\nExiting...",
+                    ds_id);
     }
 
     // Once the async get_dataset_state() is done, we have all the metadata to
@@ -219,9 +219,9 @@ void visTranspose::main_thread() {
 
         if (frame.dataset_id != ds_id) {
             FATAL_ERROR("Dataset ID of incoming frames changed from 0x%" PRIx64 " to"
-                  "0x%" PRIx64 ". "
-                  "Not supported, exiting...",
-                  ds_id, frame.dataset_id);
+                        "0x%" PRIx64 ". "
+                        "Not supported, exiting...",
+                        ds_id, frame.dataset_id);
         }
 
         // Collect frames until a chunk is filled

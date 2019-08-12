@@ -168,7 +168,7 @@ visRawReader::~visRawReader() {
     if (munmap(mapped_file, ntime * nfreq * file_frame_size) == -1) {
         // Make sure kotekan is exiting...
         FATAL_ERROR(fmt::format("Failed to unmap file {}: {}.", filename + ".data", strerror(errno))
-                  .c_str());
+                        .c_str());
     }
 
     close(fd);

@@ -339,9 +339,9 @@ restReply restClient::make_request_blocking(const std::string& path, const nlohm
         std::chrono::system_clock::now() + std::chrono::seconds(timeout == -1 ? 100 : timeout * 2);
     while (!cv_reply.wait_until(lck_reply, time_point, [&]() { return reply_copied; })) {
         FATAL_ERROR("restClient: Timeout in make_request_blocking "
-              "(%s:%d/%s). This might leave the restClient in an abnormal "
-              "state. Exiting...",
-              host.c_str(), port, path.c_str());
+                    "(%s:%d/%s). This might leave the restClient in an abnormal "
+                    "state. Exiting...",
+                    host.c_str(), port, path.c_str());
         return reply;
     }
     return reply;
