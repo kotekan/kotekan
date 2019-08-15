@@ -195,7 +195,8 @@ void frbPostProcess::main_thread() {
                             + (stream * _nbeams + b) * num_samples * _factor_upchan_out;
                         if (std::find(_incoherent_beams.begin(), _incoherent_beams.end(), beam_id)
                             != _incoherent_beams.end()) {
-                            DEBUG("Incoherent beam! Stream %i, Beam %i; ID %i", stream, b, beam_id);
+                            DEBUG("Incoherent beam! Stream {:d}, Beam {:d}; ID {:d}", stream, b,
+                                  beam_id);
                             in_data = ib + thread_id * num_samples * _factor_upchan_out;
                         }
                         // pre-set to zero, in case all samples dropped within these 16 t

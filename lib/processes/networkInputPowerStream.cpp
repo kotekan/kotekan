@@ -47,11 +47,11 @@ void networkInputPowerStream::receive_packet(void* buffer, int length, int socke
     while (rec < length) {
         int result = recv(socket_fd, ((char*)buffer) + rec, length - rec, 0);
         if (result == -1) {
-            ERROR("RECV = -1 %i", errno);
+            ERROR("RECV = -1 {:d}", errno);
             // Handle error ...
             break;
         } else if (result == 0) {
-            ERROR("RECV = 0 %i", errno);
+            ERROR("RECV = 0 {:d}", errno);
             // Handle disconnect ...
             break;
         } else {
@@ -90,7 +90,7 @@ void networkInputPowerStream::main_thread() {
                 for (int e = 0; e < elems; e++) {
                     uint32_t len = recvfrom(socket_fd, local_buf, packet_length, 0, NULL, 0);
                     if (len != packet_length) {
-                        ERROR("BAD UDP PACKET! %i %i", len, errno)
+                        ERROR("BAD UDP PACKET! {:d} {:d}", len, errno)
                     } else {
                         memcpy(frame + t * elems * (freqs + 1) * sizeof(uint)
                                    + e * (freqs + 1) * sizeof(uint),
@@ -158,5 +158,5 @@ void networkInputPowerStream::main_thread() {
         free(recv_buffer);
         free(metadata);
     } else
-        ERROR("Bad protocol: %s\n", protocol.c_str());
+        ERROR("Bad protocol: {:s}\n", protocol);
 }

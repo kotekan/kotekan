@@ -30,10 +30,12 @@ REGISTER_VIS_FILE("raw", visFileRaw);
 //
 // Implementation of raw visibility data file
 //
-void visFileRaw::create_file(const std::string& name,
+void visFileRaw::create_file(const std::string& name, const kotekan::logLevel log_level,
                              const std::map<std::string, std::string>& metadata, dset_id_t dataset,
                              size_t max_time) {
-    INFO("Creating new output file %s", name.c_str());
+    set_log_level(log_level);
+
+    INFO("Creating new output file {:s}", name);
 
     // Get properties of stream from datasetManager
     auto& dm = datasetManager::instance();
@@ -49,10 +51,9 @@ void visFileRaw::create_file(const std::string& name,
     const freqState* fstate = fstate_fut.get();
 
     if (!istate || !pstate || !fstate) {
-        ERROR("Required datasetState not found for dataset ID "
-              "0x%" PRIx64 "\nThe following required states were found:\n"
-              "inputState - %d\nprodState - %d\nfreqState - %d\n",
-              dataset, istate, pstate, fstate);
+        ERROR("Required datasetState not found for dataset ID {:#x}\nThe following required states "
+              "were found:\ninputState - {:p}\nprodState - {:p}\nfreqState - {:p}\n",
+              dataset, (void*)istate, (void*)pstate, (void*)fstate);
         throw std::runtime_error("Could not create file.");
     }
 
@@ -210,8 +211,8 @@ bool visFileRaw::write_raw(off_t offset, size_t nb, const void* data) {
     int nbytes = TEMP_FAILURE_RETRY(pwrite(fd, data, nb, offset));
 
     if (nbytes < 0) {
-        ERROR("Write error attempting to write %i bytes at offset %llu into file %s: %s", nb,
-              offset, _name.c_str(), strerror(errno));
+        ERROR("Write error attempting to write {:d} bytes at offset {:d} into file {:s}: {:s}", nb,
+              offset, _name, strerror(errno));
         return false;
     }
 

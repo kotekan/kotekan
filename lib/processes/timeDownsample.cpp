@@ -69,7 +69,7 @@ void timeDownsample::main_thread() {
 
         // Get position within accumulation window
         wdw_pos = (fpga_seq_start % wdw_len) / frame.fpga_seq_length;
-        DEBUG("wdw_pos: %d; wdw_end: %d", wdw_pos, wdw_end);
+        DEBUG("wdw_pos: {:d}; wdw_end: {:d}", wdw_pos, wdw_end);
 
         // Don't start accumulating unless at the start of window
         if (nframes == 0 and wdw_pos != 0) {

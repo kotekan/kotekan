@@ -72,7 +72,7 @@ void pulsarNetworkProcess::main_thread() {
     std::vector<std::string> link_ip =
         config.get<std::vector<std::string>>(unique_name, "pulsar_node_ips");
     int number_of_pulsar_links = link_ip.size();
-    INFO("number_of_pulsar_links: %d", number_of_pulsar_links);
+    INFO("number_of_pulsar_links: {:d}", number_of_pulsar_links);
 
     // Allocating buffers
     sock_fd = (int*)malloc(sizeof(int) * number_of_subnets);
@@ -85,7 +85,7 @@ void pulsarNetworkProcess::main_thread() {
     for (int i = 0; i < number_of_subnets; i++)
         my_ip_address[i] = (char*)malloc(sizeof(char) * 100);
     // std::stringstream temp_ip[number_of_subnets];
-    INFO("number of subnets %d\n", number_of_subnets);
+    INFO("number of subnets {:d}\n", number_of_subnets);
 
     // parsing the host name
 
@@ -95,7 +95,7 @@ void pulsarNetworkProcess::main_thread() {
             FATAL_ERROR("buffer spill over ");
             return;
         }
-        INFO("%s ", my_ip_address[i]);
+        INFO("{:s} ", my_ip_address[i]);
     }
 
     int frame_id = 0;

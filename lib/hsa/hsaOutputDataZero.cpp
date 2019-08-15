@@ -16,7 +16,7 @@ hsaOutputDataZero::hsaOutputDataZero(Config& config, const string& unique_name,
     output_len = _num_blocks * block_size * block_size * 2 * sizeof(int32_t);
 
     output_zeros = hsa_host_malloc(output_len);
-    INFO("hsaOutputDataZero gpu[%d], Creating the output zero buffer: %p, len: %d",
+    INFO("hsaOutputDataZero gpu[{:d}], Creating the output zero buffer: {:p}, len: {:d}",
          device.get_gpu_id(), output_zeros, output_len);
 
     memset(output_zeros, 0, output_len);

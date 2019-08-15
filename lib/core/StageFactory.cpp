@@ -11,7 +11,7 @@ StageFactory::StageFactory(Config& config, bufferContainer& buffer_container) :
 #ifdef DEBUGGING
     auto known_stages = StageFactoryRegistry::get_registered_stages();
     for (auto& stage : known_stages) {
-        DEBUG("Registered Kotekan Stage: %s", stage.first.c_str());
+        DEBUG_NON_OO("Registered Kotekan Stage: {:s}", stage.first);
     }
 #endif
 }
@@ -60,7 +60,7 @@ Stage* StageFactory::create(const string& name, Config& config, const string& un
     auto known_stages = StageFactoryRegistry::get_registered_stages();
     auto i = known_stages.find(name);
     if (i == known_stages.end()) {
-        ERROR("Unrecognized Stage! (%s)", name.c_str());
+        ERROR_NON_OO("Unrecognized Stage! ({:s})", name);
         throw std::runtime_error("Tried to instantiate a stage we don't know about!");
     }
     StageMaker* maker = i->second;
@@ -86,7 +86,7 @@ StageFactoryRegistry::StageFactoryRegistry() {}
 
 void StageFactoryRegistry::kotekan_reg(const std::string& key, StageMaker* proc) {
     if (_kotekan_stages.find(key) != _kotekan_stages.end()) {
-        ERROR("Multiple Kotekan Stage-s registered as '%s'!", key.c_str());
+        ERROR_NON_OO("Multiple Kotekan Stage-s registered as '{:s}'!", key);
         throw std::runtime_error("A Stage was registered twice!");
     }
     _kotekan_stages[key] = proc;

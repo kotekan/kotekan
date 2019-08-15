@@ -318,7 +318,7 @@ public:
         // Resource temporarily unavailable, no need to close connection
         // The two error codes cover MacOS and Linux
         if ((err_num == 35 || err_num == 11) && bytes_read != 0) {
-            DEBUG2("Got resource unavailable error, %d, read return %d", err_num, bytes_read);
+            DEBUG2("Got resource unavailable error, {:d}, read return {:d}", err_num, bytes_read);
             decrement_ref_count();
             // Add the event back to the libevent queue so we are notifed
             // when more data becomes available.
@@ -327,15 +327,16 @@ public:
         }
 
         if (bytes_read == 0) {
-            INFO("Connection to %s closed", client_ip.c_str());
+            INFO("Connection to {:s} closed", client_ip);
             decrement_ref_count();
             close_instance();
             return;
         }
 
         // All other errors close the connection
-        ERROR("Error with operation '%s' for client %s, error code %d (%s).  Closing connection.",
-              msg.c_str(), client_ip.c_str(), err_num, strerror(err_num));
+        ERROR("Error with operation '{:s}' for client {:s}, error code {:d} ({:s}). Closing "
+              "connection.",
+              msg, client_ip, err_num, strerror(err_num));
         decrement_ref_count();
         close_instance();
     }

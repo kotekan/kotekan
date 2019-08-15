@@ -66,7 +66,7 @@ visTestPattern::visTestPattern(Config& config, const std::string& unique_name,
                                     "(resultet in negative report precision)"
                                     + std::to_string(_tolerance));
     }
-    INFO("Using report precision %f", precision);
+    INFO("Using report precision {:d}", precision);
 
     write_dir = config.get<std::string>(unique_name, "write_dir");
     if (opendir(write_dir.c_str()) == nullptr) {
@@ -77,7 +77,7 @@ visTestPattern::visTestPattern(Config& config, const std::string& unique_name,
             throw std::runtime_error(error);
         }
     }
-    INFO("Writing report to '%s'.", write_dir.c_str());
+    INFO("Writing report to '{:s}'.", write_dir);
 
     endpoint_name = config.get_default<std::string>(unique_name, "endpoint_name", "run_test");
 
@@ -197,11 +197,12 @@ void visTestPattern::main_thread() {
 
                     // check for bad values
                     if (r2 > t2) {
-                        DEBUG2("Bad value (product %d): Expected %f + %fj, but found %f + %fj in "
-                               "frame %d with freq_id %d.",
-                               i, expected.at(frame.freq_id).at(i).real(),
-                               expected.at(frame.freq_id).at(i).imag(), frame.vis[i].real(),
-                               frame.vis[i].imag(), frame_id, frame.freq_id);
+                        DEBUG2("Bad value (product {:d}): Expected {:f} + {:f}j, but found {:f} + "
+                               "{:f}j in frame {:d} with freq_id {:d}.",
+                               i, (float)expected.at(frame.freq_id).at(i).real(),
+                               (float)expected.at(frame.freq_id).at(i).imag(),
+                               (float)frame.vis[i].real(), (float)frame.vis[i].imag(),
+                               (int)frame_id, frame.freq_id);
                         num_bad++;
 
                         // Calculate the error here, this square root is then
@@ -240,12 +241,13 @@ void visTestPattern::main_thread() {
                     outfile << max_err << std::endl;
 
                     // report errors in this frame
-                    DEBUG("%d bad elements", num_bad);
-                    DEBUG("mean error: %f", avg_err);
-                    DEBUG("min error: %f", min_err);
-                    DEBUG("max error: %f", max_err);
-                    DEBUG("time: %d, %lld.%d", fpga_count, (long long)time.tv_sec, time.tv_nsec);
-                    DEBUG("freq id: %d", freq_id);
+                    DEBUG("{:d} bad elements", num_bad);
+                    DEBUG("mean error: {:f}", avg_err);
+                    DEBUG("min error: {:f}", min_err);
+                    DEBUG("max error: {:f}", max_err);
+                    DEBUG("time: {:d}, {:d}.{:d}", fpga_count, (long long)time.tv_sec,
+                          time.tv_nsec);
+                    DEBUG("freq id: {:d}", freq_id);
 
                     // update error stats
                     avg_error_metric.labels({test_name, freq_id_label}).set(avg_err);
@@ -295,8 +297,8 @@ void visTestPattern::main_thread() {
                     if (num_bad_tot == 0)
                         avg_err_tot = 0;
 
-                    INFO("Summary from last %d frames: num bad values: %d, mean "
-                         "error: %f, min error: %f, max error: %f",
+                    INFO("Summary from last {:d} frames: num bad values: {:d}, mean "
+                         "error: {:f}, min error: {:f}, max error: {:f}",
                          _report_freq, num_bad_tot, avg_err_tot, min_err_tot, max_err_tot);
                     avg_err_tot = 0.0;
                     num_bad_tot = 0;
@@ -318,11 +320,10 @@ void visTestPattern::main_thread() {
                     restReply reply = restClient::instance().make_request_blocking(
                         test_done_path, data, test_done_host, test_done_port);
                     if (!reply.first) {
-                        FATAL_ERROR("Failed to report back test completion: %s",
-                                    reply.second.c_str());
+                        FATAL_ERROR("Failed to report back test completion: {:s}", reply.second);
                     }
 
-                    INFO("Test '%s' done.", test_name.c_str());
+                    INFO("Test '{:s}' done.", test_name);
                 }
             }
         }
@@ -337,7 +338,7 @@ void visTestPattern::main_thread() {
 
     if (num_frames) {
         std::string error_msg = "Kotekan exited before test was done.";
-        WARN(error_msg.c_str());
+        WARN("{:s}", error_msg);
         std::lock_guard<std::mutex> thread_lck(mtx_update);
         json data;
         data["result"] = error_msg;
@@ -345,13 +346,13 @@ void visTestPattern::main_thread() {
         restReply reply = restClient::instance().make_request_blocking(
             test_done_path, data, test_done_host, test_done_port);
         if (!reply.first) {
-            FATAL_ERROR("Failed to report back test completion f: %s", reply.second.c_str());
+            FATAL_ERROR("Failed to report back test completion: {:s}", reply.second);
         }
     }
 }
 
 void visTestPattern::reply_failure(kotekan::connectionInstance& conn, std::string& msg) {
-    WARN(msg.c_str());
+    WARN("{:s}", msg);
     conn.send_error(msg, HTTP_RESPONSE::REQUEST_FAILED);
 }
 
@@ -377,8 +378,9 @@ void visTestPattern::receive_update(kotekan::connectionInstance& conn, json& dat
         test_done_path = data.at("reply_path").get<std::string>();
         test_done_port = data.at("reply_port").get<unsigned short>();
     } catch (std::exception& e) {
-        std::string msg = fmt::format("Failure reading reply-endpoint from update: {}.", e.what());
-        DEBUG2("This was the update: %s", data.dump().c_str());
+        std::string msg =
+            fmt::format(fmt("Failure reading reply-endpoint from update: {:s}."), e.what());
+        DEBUG2("This was the update: {:s}", data.dump(4));
         reply_failure(conn, msg);
         return;
     }
@@ -386,8 +388,9 @@ void visTestPattern::receive_update(kotekan::connectionInstance& conn, json& dat
     try {
         num_frames = data.at("num_frames").get<uint32_t>();
     } catch (std::exception& e) {
-        std::string msg = fmt::format("Failure reading 'num_frames' from update: {}.", e.what());
-        DEBUG2("This was the update: %s", data.dump().c_str());
+        std::string msg =
+            fmt::format(fmt("Failure reading 'num_frames' from update: {:s}."), e.what());
+        DEBUG2("This was the update: {:s}", data.dump(4));
         reply_failure(conn, msg);
         return;
     }
@@ -403,8 +406,8 @@ void visTestPattern::receive_update(kotekan::connectionInstance& conn, json& dat
             data.at("test_pattern").get<std::map<std::string, std::vector<cfloat>>>();
     } catch (std::exception& e) {
         std::string msg =
-            fmt::format("Failure reading test pattern data from update: {}.", e.what());
-        DEBUG2("This was the update: %s", data.dump().c_str());
+            fmt::format(fmt("Failure reading test pattern data from update: {:s}."), e.what());
+        DEBUG2("This was the update: {:s}", data.dump(4));
         num_frames = 0;
         reply_failure(conn, msg);
         return;
@@ -431,8 +434,8 @@ void visTestPattern::receive_update(kotekan::connectionInstance& conn, json& dat
         }
     }
 
-    INFO("Received update. Reply-endpoint set to %s:%d/%s", test_done_host.c_str(), test_done_port,
-         test_done_path.c_str());
+    INFO("Received update. Reply-endpoint set to {:s}:{:d}/{:s}", test_done_host, test_done_port,
+         test_done_path);
 
     // Open a new report file for this test
     std::string file_name = fmt::format("{}/{}.csv", write_dir, test_name);
@@ -452,9 +455,9 @@ void visTestPattern::receive_update(kotekan::connectionInstance& conn, json& dat
 
     conn.send_empty_reply(HTTP_RESPONSE::OK);
 
-    INFO("Created new report file: %s", file_name.c_str());
-    INFO("Running test '%s' for %d frames.", test_name.c_str(), num_frames);
-    DEBUG2("This was the update: %s", data.dump().c_str());
+    INFO("Created new report file: {:s}", file_name);
+    INFO("Running test '{:s}' for {:d} frames.", test_name, num_frames);
+    DEBUG2("This was the update: {:s}", data.dump(4));
 }
 
 void visTestPattern::get_dataset_state(dset_id_t ds_id) {
@@ -472,8 +475,7 @@ void visTestPattern::get_dataset_state(dset_id_t ds_id) {
     if (fstate == nullptr || istate == nullptr || pstate == nullptr) {
         if (outfile.is_open())
             outfile.close();
-        FATAL_ERROR("Could not find all required states of dataset with ID 0x%" PRIx64
-                    ".\nExiting...",
+        FATAL_ERROR("Could not find all required states of dataset with ID {:#x}.\nExiting...",
                     ds_id);
     }
 
@@ -507,7 +509,7 @@ void visTestPattern::compute_expected_data() {
         for (size_t f = 0; f < num_freqs; f++) {
             expected[f][p] = buf_a.at(f) * std::conj(buf_b.at(f));
 
-            DEBUG2("For frequency %d and product %d, expecting %f, %f.", f, p,
+            DEBUG2("For frequency {:d} and product {:d}, expecting {:f}, {:f}.", f, p,
                    expected[f][p].real(), expected[f][p].imag());
         }
     }
@@ -524,5 +526,5 @@ void visTestPattern::exit_failed_test(std::string error_msg) {
     data["result"] = error_msg;
     restClient::instance().make_request_blocking(test_done_path, data, test_done_host,
                                                  test_done_port);
-    FATAL_ERROR(error_msg.c_str());
+    FATAL_ERROR("{:s}", error_msg);
 }

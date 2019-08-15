@@ -103,7 +103,7 @@ void computeDualpolPower::main_thread() {
         for (int j = 0; j < nthreads; j++)
             this_thread[j].join();
 
-        DEBUG("TIME USED FOR INTEGRATION: %fms\n", (e_time() - start_time) * 1000);
+        DEBUG("TIME USED FOR INTEGRATION: {:f}ms\n", (e_time() - start_time) * 1000);
 
         mark_frame_empty(buf_in, unique_name.c_str(), buf_in_id);
         mark_frame_full(buf_out, unique_name.c_str(), buf_out_id);
@@ -195,7 +195,7 @@ inline void computeDualpolPower::fastSqSumVdif(unsigned char* data, uint* temp_b
         }
     }
 
-    //    INFO("INTEGRATION COUNT: %d %d", integration_count[0], integration_count[1]);
+    //    INFO("INTEGRATION COUNT: {:d} {:d}", integration_count[0], integration_count[1]);
     // Reorder the numbers.
     for (int p = 0; p < num_elem; p++) {
         for (int i = 0; i < num_freq; ++i) {

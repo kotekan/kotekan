@@ -114,7 +114,7 @@ void clKVCorr::build() {
         char* buffer = (char*)calloc(len, sizeof(char));
         CHECK_CL_ERROR(clGetProgramBuildInfo(program, device.get_id(), CL_PROGRAM_BUILD_LOG, len,
                                              buffer, NULL));
-        INFO("CL failed. Build log follows: \n %s", buffer);
+        INFO("CL failed. Build log follows: \n {:s}", buffer);
         free(buffer);
     }
     CHECK_CL_ERROR(err);

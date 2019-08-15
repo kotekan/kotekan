@@ -168,7 +168,7 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
     }
     dpdk_lcore_map.pop_back(); // Remove the last ","
 
-    DEBUG("Using DPDK lcore map: %s", dpdk_lcore_map.c_str());
+    DEBUG("Using DPDK lcore map: {:s}", dpdk_lcore_map);
 
     char arg0[] = "./kotekan";
     char arg1[] = "-n";
@@ -241,7 +241,7 @@ int32_t dpdkCore::port_init(uint8_t port) {
     // Configure the Ethernet device.
     retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
     if (retval != 0) {
-        ERROR("Failed to configure device, port %d, error: %d", port, retval);
+        ERROR("Failed to configure device, port {:d}, error: {:d}", port, retval);
         return retval;
     }
 
@@ -250,7 +250,7 @@ int32_t dpdkCore::port_init(uint8_t port) {
         retval = rte_eth_rx_queue_setup(port, q, rx_ring_size, rte_eth_dev_socket_id(port), NULL,
                                         mbuf_pool);
         if (retval < 0) {
-            ERROR("Failed to setupt RX queue for port %d, error: %d", port, retval);
+            ERROR("Failed to setupt RX queue for port {:d}, error: {:d}", port, retval);
             return retval;
         }
     }
@@ -260,7 +260,7 @@ int32_t dpdkCore::port_init(uint8_t port) {
     for (q = 0; q < tx_rings; q++) {
         retval = rte_eth_tx_queue_setup(port, q, tx_ring_size, rte_eth_dev_socket_id(port), NULL);
         if (retval < 0) {
-            ERROR("Failed to setupt TX queue for port %d, error: %d", port, retval);
+            ERROR("Failed to setupt TX queue for port {:d}, error: {:d}", port, retval);
             return retval;
         }
     }
@@ -268,7 +268,7 @@ int32_t dpdkCore::port_init(uint8_t port) {
     // Start the Ethernet port.
     retval = rte_eth_dev_start(port);
     if (retval < 0) {
-        ERROR("Failed to start port: %d", port);
+        ERROR("Failed to start port: {:d}", port);
         return retval;
     }
 
@@ -276,10 +276,9 @@ int32_t dpdkCore::port_init(uint8_t port) {
     // TODO record the MAC address for export to JSON
     struct ether_addr addr;
     rte_eth_macaddr_get(port, &addr);
-    INFO("Port %u MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 " %02" PRIx8
-         "",
-         (unsigned)port, addr.addr_bytes[0], addr.addr_bytes[1], addr.addr_bytes[2],
-         addr.addr_bytes[3], addr.addr_bytes[4], addr.addr_bytes[5]);
+    INFO("Port {:d} MAC: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}", (unsigned)port,
+         addr.addr_bytes[0], addr.addr_bytes[1], addr.addr_bytes[2], addr.addr_bytes[3],
+         addr.addr_bytes[4], addr.addr_bytes[5]);
 
     // Enable promiscuous mode.
     rte_eth_promiscuous_enable(port);

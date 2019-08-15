@@ -72,11 +72,11 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
         // Calculate nearest *even* number of frames
         num_gpu_frames = 2 * ((int)(int_time / frame_length) / 2);
 
-        INFO("Integrating for %i gpu frames (=%.2f s  ~%.2f s)", num_gpu_frames,
+        INFO("Integrating for {:d} gpu frames (={:.2f} s  ~{:.2f} s)", num_gpu_frames,
              frame_length * num_gpu_frames, int_time);
     } else {
         num_gpu_frames = config.get<size_t>(unique_name, "num_gpu_frames");
-        INFO("Integrating for %i gpu frames.", num_gpu_frames);
+        INFO("Integrating for {:d} gpu frames.", num_gpu_frames);
     }
 
     size_t nb = num_elements / block_size;
@@ -132,20 +132,22 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     register_producer(out_buf, unique_name.c_str());
 
     // Create the state for the main visibility accumulation
-    gated_datasets.emplace_back(out_buf, gateSpec::create("uniform", "vis"), num_prod_gpu);
+    gated_datasets.emplace_back(
+        out_buf, gateSpec::create("uniform", "vis", kotekan::logLevel(_member_log_level)),
+        num_prod_gpu);
     gated_datasets.at(0).output_dataset_id = base_dataset_id;
 
 
     // Get and validate any gating config
     nlohmann::json gating_conf = config.get_default<nlohmann::json>(unique_name, "gating", {});
     if (!gating_conf.empty() && !gating_conf.is_object()) {
-        FATAL_ERROR("Gating config must be a dictionary: %s", gating_conf.dump().c_str());
+        FATAL_ERROR("Gating config must be a dictionary: {:s}", gating_conf.dump());
     }
 
     if (!gating_conf.empty() && num_freq_in_frame > 1) {
-        FATAL_ERROR("Cannot use gating with multifrequency GPU buffers"
-                    "[num_freq_in_frame=%i; gating config=%s].",
-                    num_freq_in_frame, gating_conf.dump().c_str());
+        FATAL_ERROR("Cannot use gating with multifrequency GPU buffers[num_freq_in_frame={:d}; "
+                    "gating config={:s}].",
+                    num_freq_in_frame, gating_conf.dump());
     }
 
     // Register gating update callbacks
@@ -164,16 +166,15 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
                                             + it.value().dump());
             }
         } catch (std::exception& e) {
-            FATAL_ERROR("Failure reading 'mode' from config: %s", e.what());
+            FATAL_ERROR("Failure reading 'mode' from config: {:s}", e.what());
         }
         std::string mode = it.value().at("mode");
 
         if (!FACTORY(gateSpec)::exists(mode)) {
-            FATAL_ERROR("Requested gating mode %s for dataset %s is not a known.", name.c_str(),
-                        mode.c_str());
+            FATAL_ERROR("Requested gating mode {:s} for dataset {:s} is not a known.", name, mode);
         }
 
-        INFO("Creating gated dataset %s of type %s", name.c_str(), mode.c_str());
+        INFO("Creating gated dataset {:s} of type {:s}", name, mode);
 
         // Validate and fetch the output buffer name
         try {
@@ -183,7 +184,7 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
                                             + it.value().dump());
             }
         } catch (std::exception& e) {
-            FATAL_ERROR("Failure reading 'buf' from config: %s", e.what());
+            FATAL_ERROR("Failure reading 'buf' from config: {:s}", e.what());
         }
         std::string buffer_name = it.value().at("buf");
 
@@ -192,7 +193,8 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
         register_producer(buf, unique_name.c_str());
 
         // Create the gated dataset and register the update callback
-        gated_datasets.emplace_back(buf, gateSpec::create(mode, name), num_prod_gpu);
+        gated_datasets.emplace_back(
+            buf, gateSpec::create(mode, name, kotekan::logLevel(_member_log_level)), num_prod_gpu);
 
         auto& state = gated_datasets.back();
         callbacks[name] = [&state](nlohmann::json& json) -> bool {
@@ -290,7 +292,7 @@ void visAccumulate::main_thread() {
         bool wrapped = (last_frame_count / num_gpu_frames) < (frame_count / num_gpu_frames);
         if (init && wrapped) {
 
-            DEBUG("Total samples accumulate %i", total_samples);
+            DEBUG("Total samples accumulate {:d}", total_samples);
 
             // Iterate over *only* the gated datasets (remember that element
             // zero is the vis), and remove the bias and copy in the variance
@@ -416,7 +418,7 @@ void visAccumulate::main_thread() {
                    >= 0);
             total_samples += samples_per_data_set - get_lost_timesamples(in_buf, in_frame_id);
 
-            DEBUG("Lost samples %d, RFI flagged samples %d, total_samples: %u",
+            DEBUG("Lost samples {:d}, RFI flagged samples {:d}, total_samples: {:d}",
                   get_lost_timesamples(in_buf, in_frame_id),
                   get_rfi_flaged_samples(in_buf, in_frame_id), total_samples);
         }

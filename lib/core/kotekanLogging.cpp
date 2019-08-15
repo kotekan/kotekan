@@ -1,42 +1,38 @@
 #include "kotekanLogging.hpp"
 
+#include "fmt.hpp"
+
 #include <stdexcept>
 #include <strings.h>
 
 namespace kotekan {
 
 kotekanLogging::kotekanLogging() {
-    __log_level = 3;
+    _member_log_level = 3;
     __log_prefix = "";
 }
 
-void kotekanLogging::internal_logging(int type, const char* format, ...) {
-    char log_buf[__max_log_msg_len];
-    if (__log_prefix != "") {
-        va_list args;
-        va_start(args, format);
-        vsnprintf(log_buf, __max_log_msg_len, format, args);
-        va_end(args);
+void kotekanLogging::vinternal_logging(int type, fmt::basic_string_view<char> log_prefix,
+                                       const fmt::basic_string_view<char> format,
+                                       fmt::format_args args) {
+    std::string log_msg = fmt::vformat(format, args);
+    if (log_prefix != "") {
         if (__enable_syslog == 1) {
-            syslog(type, "%s: %s\n", __log_prefix.c_str(), log_buf);
+            syslog(type, "%s: %s\n", log_prefix.data(), log_msg.data());
         } else {
-            fprintf(stderr, "%s: %s\n", __log_prefix.c_str(), log_buf);
+            fmt::print(stderr, fmt("{:s}: {:s}\n"), log_prefix, log_msg);
         }
     } else {
-        va_list args;
-        va_start(args, format);
         if (__enable_syslog == 1) {
-            (void)vsyslog(type, format, args);
+            syslog(type, "%s\n", log_msg.data());
         } else {
-            (void)vsnprintf(log_buf, __max_log_msg_len, format, args);
-            fprintf(stderr, "%s\n", log_buf);
+            fmt::print(stderr, fmt("{:s}\n"), log_msg);
         }
-        va_end(args);
     }
 }
 
 void kotekanLogging::set_log_level(const logLevel& log_level) {
-    __log_level = static_cast<std::underlying_type<logLevel>::type>(log_level);
+    _member_log_level = static_cast<std::underlying_type<logLevel>::type>(log_level);
 }
 
 void kotekanLogging::set_log_prefix(const string& log_prefix) {
@@ -66,6 +62,11 @@ void kotekanLogging::set_log_level(const string& s_log_level) {
     }
 
     set_log_level(log_level);
+}
+
+void kotekanLogging::vset_error_message(const fmt::basic_string_view<char> format,
+                                        fmt::format_args args) {
+    fmt::format_to_n(__err_msg, __max_log_msg_len, fmt::vformat(format, args));
 }
 
 } // namespace kotekan

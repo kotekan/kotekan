@@ -110,7 +110,7 @@ void basebandApiManager::status_callback_all(connectionInstance& conn) {
         try {
             event_id = std::stoul(query_args["event_id"]);
         } catch (const std::exception& e) {
-            WARN("Got bad event_id, error: %s", e.what());
+            WARN_NON_OO("Got bad event_id, error: {:s}", e.what());
             conn.send_empty_reply(HTTP_RESPONSE::BAD_REQUEST);
             return;
         }
@@ -165,7 +165,7 @@ basebandApiManager::translate_trigger(const int64_t fpga_time0, const int64_t fp
     const double freq_inv_sq_diff = (1. / (freq * freq) - 1. / (ref_freq_hz * ref_freq_hz));
     double min_delay = K_DM * (dm - N_DM_ERROR_TOL * dm_error) * freq_inv_sq_diff;
     double max_delay = K_DM * (dm + N_DM_ERROR_TOL * dm_error) * freq_inv_sq_diff;
-    DEBUG("min DM delay: %lf, max DM delay, %lf", min_delay, max_delay);
+    DEBUG_NON_OO("min DM delay: {:f}, max DM delay, {:f}", min_delay, max_delay);
 
     int64_t min_delay_fpga = round(min_delay * FPGA_FRAME_RATE);
     int64_t max_delay_fpga = round(max_delay * FPGA_FRAME_RATE);
@@ -222,7 +222,7 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
 
         conn.send_json_reply(response);
     } catch (const std::exception& ex) {
-        INFO("Bad baseband request: %s", ex.what());
+        INFO_NON_OO("Bad baseband request: {:s}", ex.what());
         conn.send_empty_reply(HTTP_RESPONSE::BAD_REQUEST);
     }
 }

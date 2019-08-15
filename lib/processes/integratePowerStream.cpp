@@ -71,7 +71,7 @@ void integratePowerStream::main_thread() {
             accum_header->samples_summed += packet_header->samples_summed;
 
             if (integrated_samples[e] >= integration_length) {
-                //                INFO("Integrated sample! %i", integrated_samples[e]);
+                //                INFO("Integrated sample! {:d}", integrated_samples[e]);
                 integrated_samples[e] = 0;
                 out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buf_id);
                 if (out_frame == NULL)

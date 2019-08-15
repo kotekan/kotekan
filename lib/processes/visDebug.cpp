@@ -46,9 +46,9 @@ void visDebug::main_thread() {
 
         // Print out debug information from the buffer
         if ((num_frames % 1000) == 0)
-            INFO("Got frame number %lli", num_frames);
+            INFO("Got frame number {:d}", num_frames);
         auto frame = visFrameView(in_buf, frame_id);
-        DEBUG("%s", frame.summary().c_str());
+        DEBUG("{:s}", frame.summary());
 
         frame_counter.labels({std::to_string(frame.freq_id), std::to_string(frame.dataset_id)})
             .inc();

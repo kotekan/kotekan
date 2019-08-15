@@ -95,13 +95,15 @@ hsa_signal_t hsaCorrelatorKernel::execute(int gpu_frame_id, hsa_signal_t precede
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 
-    DEBUG2("correlatorKernel: gpu[%d][%d], input_buffer: %p, presum_buffer: %p, corr_buffer: %p, "
-           "blk_map: %p, config: %p, sizeof(args) = %d, kernels_args[%d] = %p",
+    DEBUG2("correlatorKernel: gpu[{:d}][{:d}], input_buffer: {:p}, presum_buffer: {:p}, "
+           "corr_buffer: {:p}, "
+           "blk_map: {:p}, config: {:p}, sizeof(args) = {:d}, kernels_args[{:d}] = {:p}",
            device.get_gpu_id(), gpu_frame_id, args.input_buffer, args.presum_buffer,
            args.corr_buffer, args.blk_map, args.config, (int)sizeof(args), gpu_frame_id,
            kernel_args[gpu_frame_id]);
 
-    DEBUG2("correlatorKernel: gpu[%d][%d], wgx %d, wgy %d, wgz %d, gsx %d, gsy %d, gsz %d",
+    DEBUG2("correlatorKernel: gpu[{:d}][{:d}], wgx {:d}, wgy {:d}, wgz {:d}, gsx {:d}, gsy {:d}, "
+           "gsz {:d}",
            device.get_gpu_id(), gpu_frame_id, 16, 4, 1, 16, 4 * _sub_frame_samples / _n_intg,
            _num_blocks);
 

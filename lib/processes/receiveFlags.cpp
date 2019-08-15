@@ -84,13 +84,13 @@ bool receiveFlags::flags_callback(nlohmann::json& json) {
             flags_received.at(*flag) = 0.0;
         }
     } catch (std::exception& e) {
-        WARN("receiveFlags: Failure parsing message: %s", e.what());
+        WARN("receiveFlags: Failure parsing message: {:s}", e.what());
         return false;
     }
 
     if (ts_frame > double_to_ts(ts)) {
-        WARN("receiveFlags: Received update with a start_time that is older "
-             "than the current frame (The difference is %f s).",
+        WARN("receiveFlags: Received update with a start_time that is older than the current "
+             "frame (The difference is {:f} s).",
              ts_to_double(ts_frame) - ts);
         late_updates_counter.inc();
     }
@@ -100,7 +100,7 @@ bool receiveFlags::flags_callback(nlohmann::json& json) {
     flags.insert(double_to_ts(ts), std::move(flags_received));
     flags_lock.unlock();
 
-    INFO("Updated flags to %s.", json.at("tag").get<std::string>().c_str());
+    INFO("Updated flags to {:s}.", json.at("tag").get<std::string>());
 
     return true;
 }
@@ -141,18 +141,17 @@ void receiveFlags::main_thread() {
         flags_lock.lock();
         update = flags.get_update(ts_frame);
         if (update.second == nullptr) {
-            ERROR("receiveFlags: Flags for frame %d with timestamp %f are"
-                  "not in memory. updateQueue is empty",
+            ERROR("receiveFlags: Flags for frame {:d} with timestamp {:f} are not in memory. "
+                  "updateQueue is empty",
                   frame_id_in, ts_to_double(ts_frame));
         }
         ts_late = update.first - ts_frame;
         if (ts_late.tv_sec > 0 && ts_late.tv_nsec > 0) {
             // This frame is too old,we don't have flags for it
             // --> Use the last update we have
-            WARN("receiveFlags: Flags for frame %d with timestamp %f are"
-                 "not in memory. Applying oldest flags found. (%d)"
-                 " Concider increasing num_kept_updates.",
-                 frame_id_in, ts_to_double(ts_frame), ts_to_double(update.first));
+            WARN("receiveFlags: Flags for frame {:d} with timestamp {:f} are not in memory. "
+                 "Applying oldest flags found ({:f}). Concider increasing num_kept_updates.",
+                 (int)frame_id_in, ts_to_double(ts_frame), ts_to_double(update.first));
             receiveflags_late_frame_counter.inc();
         }
         // actually copy the new flags and apply them from now

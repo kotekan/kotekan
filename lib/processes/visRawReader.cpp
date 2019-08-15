@@ -67,7 +67,7 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
 
     // Read the metadata
     std::string md_filename = (filename + ".meta");
-    INFO("Reading metadata file: %s", md_filename.c_str());
+    INFO("Reading metadata file: {:s}", md_filename);
     struct stat st;
     if (stat(md_filename.c_str(), &st) == -1)
         throw std::ios_base::failure("visRawReader: Error reading from "
@@ -103,17 +103,16 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
         // TODO: add freq IDs to raw file format instead of restoring them here
         // TODO: CHIME specific.
         uint32_t freq_id = 1024.0 / 400.0 * (800.0 - f.centre);
-        DEBUG("restored freq_id for f_centre=%.2f : %d", f.centre, freq_id);
+        DEBUG("restored freq_id for f_centre={:.2f} : {:d}", f.centre, freq_id);
         _freqs.push_back({freq_id, f});
     }
 
     // check git version tag
     // TODO: enforce that they match if build type == "release"?
     if (_metadata.at("git_version_tag").get<std::string>() != std::string(get_git_commit_hash()))
-        INFO("Git version tags don't match: dataset in file %s has tag %s, "
-             "while the local git version tag is %s",
-             filename.c_str(), _metadata.at("git_version_tag").get<std::string>().c_str(),
-             get_git_commit_hash());
+        INFO("Git version tags don't match: dataset in file {:s} has tag {:s}, while the local git "
+             "version tag is {:s}",
+             filename, _metadata.at("git_version_tag").get<std::string>(), get_git_commit_hash());
 
     // Extract the structure
     file_frame_size = _t["structure"]["frame_size"].get<size_t>();
@@ -167,8 +166,7 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
 visRawReader::~visRawReader() {
     if (munmap(mapped_file, ntime * nfreq * file_frame_size) == -1) {
         // Make sure kotekan is exiting...
-        FATAL_ERROR(fmt::format("Failed to unmap file {}: {}.", filename + ".data", strerror(errno))
-                        .c_str());
+        FATAL_ERROR("Failed to unmap file {:s}.data: {:s}.", filename, strerror(errno));
     }
 
     close(fd);
@@ -202,7 +200,7 @@ void visRawReader::read_ahead(int ind) {
     off_t offset = position_map(ind) * file_frame_size;
 
     if (madvise(mapped_file + offset, file_frame_size, MADV_WILLNEED) == -1)
-        DEBUG("madvise failed: %s", strerror(errno));
+        DEBUG("madvise failed: {:s}", strerror(errno));
 }
 
 int visRawReader::position_map(int ind) {
@@ -283,7 +281,7 @@ void visRawReader::main_thread() {
             std::fill(frame.flags.begin(), frame.flags.end(), 0.0);
             frame.freq_id = 0;
             frame.erms = 0;
-            DEBUG("visRawReader: Reading empty frame: %d", frame_id);
+            DEBUG("visRawReader: Reading empty frame: {:d}", frame_id);
         }
 
         // Set the dataset ID
@@ -291,7 +289,7 @@ void visRawReader::main_thread() {
 
         // Try and clear out the cached data as we don't need it again
         if (madvise(mapped_file + file_ind * file_frame_size, file_frame_size, MADV_DONTNEED) == -1)
-            DEBUG("madvise failed: %s", strerror(errno));
+            DEBUG("madvise failed: {:s}", strerror(errno));
 
         // Release the frame and advance all the counters
         mark_frame_full(out_buf, unique_name.c_str(), frame_id);

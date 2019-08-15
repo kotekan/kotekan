@@ -37,6 +37,7 @@ extern "C" {
 #include "errors.h"
 #include "fpga_header_functions.h"
 #include "gpsTime.h"
+#include "kotekanLogging.hpp"
 #include "kotekanMode.hpp"
 #include "prometheusMetrics.hpp"
 #include "restServer.hpp"
@@ -216,7 +217,7 @@ void update_log_levels(Config& config) {
             + "(It should be one of 'off', 'error', 'warn', 'info', 'debug', 'debug2')");
     }
 
-    __log_level = static_cast<std::underlying_type<logLevel>::type>(log_level);
+    _global_log_level = static_cast<std::underlying_type<logLevel>::type>(log_level);
 }
 
 /**
@@ -231,15 +232,16 @@ bool set_gps_time(Config& config) {
 
         uint64_t frame0 = config.get<uint64_t>("/gps_time", "frame0_nano");
         set_global_gps_time(frame0);
-        INFO("Set FPGA frame 0 time to %" PRIu64 " nanoseconds since Unix Epoch\n", frame0);
+        INFO_NON_OO("Set FPGA frame 0 time to {:d} nanoseconds since Unix Epoch\n", frame0);
         return true;
     }
 
     if (config.exists("/gps_time", "error")) {
         string error_message = config.get<std::string>("/gps_time", "error");
-        ERROR("*****\nGPS time lookup failed with reason: \n %s\n ******\n", error_message.c_str());
+        ERROR_NON_OO("*****\nGPS time lookup failed with reason: \n {:s}\n ******\n",
+                     error_message);
     } else {
-        WARN("No GPS time set, using system clock.");
+        WARN_NON_OO("No GPS time set, using system clock.");
     }
     return false;
 }
@@ -256,7 +258,7 @@ void start_new_kotekan_mode(Config& config, bool requires_gps_time) {
     update_log_levels(config);
     if (!set_gps_time(config)) {
         if (requires_gps_time) {
-            ERROR("GPS time was expected to be provided!");
+            ERROR_NON_OO("GPS time was expected to be provided!");
             throw std::runtime_error("GPS time required but not set.");
         }
     }
@@ -361,7 +363,7 @@ int main(int argc, char** argv) {
     }
 
     // Load configuration file.
-    INFO("Kotekan version %s starting...", get_kotekan_version());
+    INFO_NON_OO("Kotekan version {:s} starting...", get_kotekan_version());
 
     Config config;
 
@@ -373,12 +375,12 @@ int main(int argc, char** argv) {
     if (string(config_file_name) != "none") {
         // TODO should be in a try catch block, to make failures cleaner.
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
-        INFO("Opening config file %s", config_file_name);
+        INFO_NON_OO("Opening config file {:s}", config_file_name);
 
         std::string exec_command;
         if (gps_time) {
-            INFO("Getting GPS time from server (%s), this might take some time...",
-                 gps_time_source.c_str());
+            INFO_NON_OO("Getting GPS time from server ({:s}), this might take some time...",
+                        gps_time_source);
             exec_command = "python -c '" + yaml_to_json + "' " + std::string(config_file_name) + " "
                            + gps_time_source;
         } else {
@@ -390,9 +392,9 @@ int main(int argc, char** argv) {
         try {
             start_new_kotekan_mode(config, gps_time);
         } catch (const std::exception& ex) {
-            ERROR("Failed to start kotekan with config file %s, error message: %s",
-                  config_file_name, ex.what());
-            ERROR("Exiting...");
+            ERROR_NON_OO("Failed to start kotekan with config file {:s}, error message: {:s}",
+                         config_file_name, ex.what());
+            ERROR_NON_OO("Exiting...");
             exit(-1);
         }
     }
@@ -401,7 +403,8 @@ int main(int argc, char** argv) {
     rest_server.register_post_callback("/start", [&](connectionInstance& conn, json& json_config) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         if (running) {
-            WARN("/start was called, but the system is already running, ignoring start request.");
+            WARN_NON_OO(
+                "/start was called, but the system is already running, ignoring start request.");
             conn.send_error("Already running", HTTP_RESPONSE::REQUEST_FAILED);
             return;
         }
@@ -409,7 +412,7 @@ int main(int argc, char** argv) {
         config.update_config(json_config);
 
         try {
-            INFO("Starting new kotekan mode using POSTed config.");
+            INFO_NON_OO("Starting new kotekan mode using POSTed config.");
             start_new_kotekan_mode(config, false);
         } catch (const std::out_of_range& ex) {
             delete kotekan_mode;
@@ -421,19 +424,20 @@ int main(int argc, char** argv) {
             // See ticket: #464
             // The same applies to exit (raise) statements in other parts of
             // this try statement.
-            FATAL_ERROR("Provided config had an out of range exception: %s", ex.what());
+            FATAL_ERROR_NON_OO("Provided config had an out of range exception: {:s}", ex.what());
             return;
         } catch (const std::runtime_error& ex) {
             delete kotekan_mode;
             kotekan_mode = nullptr;
             conn.send_error(ex.what(), HTTP_RESPONSE::BAD_REQUEST);
-            FATAL_ERROR("Provided config failed to start with runtime error: %s", ex.what());
+            FATAL_ERROR_NON_OO("Provided config failed to start with runtime error: {:s}",
+                               ex.what());
             return;
         } catch (const std::exception& ex) {
             delete kotekan_mode;
             kotekan_mode = nullptr;
             conn.send_error(ex.what(), HTTP_RESPONSE::BAD_REQUEST);
-            FATAL_ERROR("Provided config failed with exception: %s", ex.what());
+            FATAL_ERROR_NON_OO("Provided config failed with exception: {:s}", ex.what());
             return;
         }
         conn.send_empty_reply(HTTP_RESPONSE::OK);
@@ -442,11 +446,11 @@ int main(int argc, char** argv) {
     rest_server.register_get_callback("/stop", [&](connectionInstance& conn) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         if (!running) {
-            WARN("/stop called, but the system is already stopped, ignoring stop request.");
+            WARN_NON_OO("/stop called, but the system is already stopped, ignoring stop request.");
             conn.send_error("kotekan is already stopped", HTTP_RESPONSE::REQUEST_FAILED);
             return;
         }
-        INFO("/stop endpoint called, shutting down current config.");
+        INFO_NON_OO("/stop endpoint called, shutting down current config.");
         assert(kotekan_mode != nullptr);
         kotekan_mode->stop_stages();
         // TODO should we have three states (running, shutting down, and stopped)?
@@ -459,8 +463,9 @@ int main(int argc, char** argv) {
     });
 
     rest_server.register_get_callback("/kill", [&](connectionInstance& conn) {
-        ERROR("/kill endpoint called, raising SIGINT to shutdown the kotekan system process.");
-        set_error_message("/kill endpoint called.");
+        ERROR_NON_OO(
+            "/kill endpoint called, raising SIGINT to shutdown the kotekan system process.");
+        kotekan::kotekanLogging::set_error_message("/kill endpoint called.");
         exit_kotekan(ReturnCode::CLEAN_EXIT);
         conn.send_empty_reply(HTTP_RESPONSE::OK);
     });
@@ -494,10 +499,10 @@ int main(int argc, char** argv) {
         }
 
         if (sig_value == SIGINT) {
-            INFO("Got SIGINT, shutting down kotekan...");
+            INFO_NON_OO("Got SIGINT, shutting down kotekan...");
             std::lock_guard<std::mutex> lock(kotekan_state_lock);
             if (kotekan_mode != nullptr) {
-                INFO("Attempting to stop and join kotekan_stages...");
+                INFO_NON_OO("Attempting to stop and join kotekan_stages...");
                 kotekan_mode->stop_stages();
                 kotekan_mode->join();
                 delete kotekan_mode;
@@ -506,11 +511,11 @@ int main(int argc, char** argv) {
         }
     }
 
-    INFO("kotekan shutdown with status: %s", get_exit_code_string(get_exit_code()));
+    INFO_NON_OO("kotekan shutdown with status: {:s}", get_exit_code_string(get_exit_code()));
 
     // Print error message if there is one.
     if (string(get_error_message()) != "not set") {
-        INFO("Fatal error message was: %s", get_error_message());
+        INFO_NON_OO("Fatal error message was: {:s}", get_error_message());
     }
 
     closelog();

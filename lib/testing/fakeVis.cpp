@@ -80,7 +80,7 @@ fakeVis::fakeVis(Config& config, const string& unique_name, bufferContainer& buf
     if (fill_map.count(mode) == 0) {
         throw std::invalid_argument("unknown fill type " + mode);
     }
-    INFO("Using fill type: %s", mode.c_str());
+    INFO("Using fill type: {:s}", mode);
     fill = fill_map.at(mode);
 
     // Get timing and frame params
@@ -125,8 +125,9 @@ fakeVis::fakeVis(Config& config, const string& unique_name, bufferContainer& buf
             else
                 test_pattern_value[i] = bin_values.at(j) * std::conj(bin_values.at(j));
         }
-        DEBUG("Using test pattern mode %s with default value %f+%fj and %d frequency values",
-              mode.c_str(), default_val.real(), default_val.imag(), bins.size());
+        DEBUG(
+            "Using test pattern mode {:s} with default value {:f}+{:f}j and {:d} frequency values",
+            mode, default_val.real(), default_val.imag(), bins.size());
     } else if (mode == "test_pattern_inputs") {
         std::vector<cfloat> input_values =
             config.get<std::vector<cfloat>>(unique_name, "input_values");
@@ -146,7 +147,7 @@ fakeVis::fakeVis(Config& config, const string& unique_name, bufferContainer& buf
                 ind++;
             }
         }
-        DEBUG("Using test pattern mode %s with %d input values", mode.c_str(), input_values.size());
+        DEBUG("Using test pattern mode {:s} with {:d} input values", mode, input_values.size());
     }
 }
 
@@ -203,7 +204,7 @@ void fakeVis::main_thread() {
 
         for (auto f : freq) {
 
-            DEBUG("Making fake visBuffer for freq=%i, fpga_seq=%i", f, fpga_seq);
+            DEBUG("Making fake visBuffer for freq={:d}, fpga_seq={:d}", f, fpga_seq);
 
             // Wait for the buffer frame to be free
             if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
@@ -252,7 +253,7 @@ void fakeVis::main_thread() {
 
         // Cause kotekan to exit if we've hit the maximum number of frames
         if (num_frames > 0 && frame_count >= (unsigned)num_frames) {
-            INFO("Reached frame limit [%i frames]. Exiting kotekan...", num_frames);
+            INFO("Reached frame limit [{:d} frames]. Exiting kotekan...", num_frames);
             exit_kotekan(ReturnCode::CLEAN_EXIT);
             return;
         }
@@ -277,9 +278,8 @@ void fakeVis::fill_mode_default(visFrameView& frame) {
     }
     // Save metadata in first few cells
     if (out_vis.size() < 3) {
-        FATAL_ERROR("Number of elements (%d) is too small to encode the 3 debugging"
-                    " values of fill-mode 'default' in fake visibilities."
-                    "\nExiting...",
+        FATAL_ERROR("Number of elements ({:d}) is too small to encode the 3 debugging values of "
+                    "fill-mode 'default' in fake visibilities.\nExiting...",
                     num_elements);
     } else {
         // For simplicity overwrite diagonal if needed

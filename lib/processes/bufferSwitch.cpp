@@ -40,8 +40,8 @@ bool bufferSwitch::enabled_buffers_callback(json& update) {
                 continue;
 
             if (enabled_buffers.count(key) == 0) {
-                WARN("Message contains a key we didn't expect: %s, request JSON %s", key.c_str(),
-                     update.dump().c_str());
+                WARN("Message contains a key we didn't expect: {:s}, request JSON {:s}", key,
+                     update.dump());
                 return false;
             }
 
@@ -49,8 +49,8 @@ bool bufferSwitch::enabled_buffers_callback(json& update) {
             enabled_buffers.at(key) = enabled;
         }
     } catch (std::exception& e) {
-        WARN("bufferSwitch: Failure parsing message. Error: %s, Request JSON: %s", e.what(),
-             update.dump().c_str());
+        WARN("bufferSwitch: Failure parsing message. Error: {:s}, Request JSON: {:s}", e.what(),
+             update.dump());
         return false;
     }
     return true;

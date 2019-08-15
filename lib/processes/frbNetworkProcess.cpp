@@ -84,7 +84,7 @@ void frbNetworkProcess::update_offset_callback(connectionInstance& conn, json& j
         conn.send_error("Couldn't parse new beam_offset parameter.", HTTP_RESPONSE::BAD_REQUEST);
         return;
     }
-    INFO("Updating beam_offset to %i", beam_offset);
+    INFO("Updating beam_offset to {:d}", beam_offset);
     conn.send_empty_reply(HTTP_RESPONSE::OK);
     config.update_value(unique_name, "beam_offset", beam_offset);
 }
@@ -96,7 +96,7 @@ void frbNetworkProcess::main_thread() {
         config.get<std::vector<std::string>>(unique_name, "L1_node_ips");
 
     int number_of_l1_links = link_ip.size();
-    INFO("number_of_l1_links: %d", number_of_l1_links);
+    INFO("number_of_l1_links: {:d}", number_of_l1_links);
 
     // Allocating buffers
     my_ip_address = (char**)malloc(sizeof(char*) * number_of_subnets);
@@ -111,17 +111,17 @@ void frbNetworkProcess::main_thread() {
     ip_socket = (int*)malloc(sizeof(int) * number_of_l1_links);
 
 
-    INFO("number of subnets %d\n", number_of_subnets);
+    INFO("number of subnets {:d}\n", number_of_subnets);
 
 
     // parsing the host name
     parse_chime_host_name(rack, node, nos, my_node_id);
     for (int i = 0; i < number_of_subnets; i++) {
         if (std::snprintf(my_ip_address[i], 100, "10.%d.%d.1%d", i + 6, nos + rack, node) > 100) {
-            FATAL_ERROR("Network Thread: buffer spillover", strerror(errno));
+            FATAL_ERROR("Network Thread: buffer spillover: {:s}", strerror(errno));
             return;
         }
-        INFO("%s ", my_ip_address[i]);
+        INFO("{:s} ", my_ip_address[i]);
     }
 
     // declaring and initializing variables for the buffers
@@ -133,7 +133,7 @@ void frbNetworkProcess::main_thread() {
         sock_fd[i] = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
         if (sock_fd[i] < 0) {
-            FATAL_ERROR("Network Thread: socket() failed: %s ", strerror(errno));
+            FATAL_ERROR("Network Thread: socket() failed: {:s} ", strerror(errno));
             return;
         }
     }
@@ -258,14 +258,14 @@ void frbNetworkProcess::main_thread() {
         int local_beam_offset = beam_offset;
         int beam_offset_upper_limit = 512;
         if (local_beam_offset > beam_offset_upper_limit) {
-            WARN("Large beam_offset requested... capping at %i", beam_offset_upper_limit);
+            WARN("Large beam_offset requested... capping at {:d}", beam_offset_upper_limit);
             local_beam_offset = beam_offset_upper_limit;
         }
         if (local_beam_offset < 0) {
             WARN("Negative beam_offset requested... setting to 0.");
             local_beam_offset = 0;
         }
-        DEBUG("Beam offset: %i", local_beam_offset);
+        DEBUG("Beam offset: {:d}", local_beam_offset);
 
         for (int frame = 0; frame < packets_per_stream; frame++) {
             for (int stream = 0; stream < 256; stream++) {

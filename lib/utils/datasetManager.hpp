@@ -4,6 +4,7 @@
 #include "Config.hpp"
 #include "datasetState.hpp"
 #include "errors.h"
+#include "kotekanLogging.hpp"
 #include "prometheusMetrics.hpp"
 #include "restClient.hpp"
 #include "restServer.hpp"
@@ -519,20 +520,16 @@ datasetManager::add_state(std::unique_ptr<T>&& state,
             // FIXME: hash collision. make the value a vector and store same
             // hash entries? This would mean the state/dset has to be sent
             // when registering.
-            FATAL_ERROR("datasetManager: Hash collision!\n"
-                        "The following states have the same hash (0x%" PRIx64 ")."
-                        "\n\n%s\n\n%s\n\n"
-                        "datasetManager: Exiting...",
-                        hash, state->to_json().dump().c_str(),
-                        find->second->to_json().dump().c_str());
+            FATAL_ERROR_NON_OO("datasetManager: Hash collision!\nThe following states have the "
+                               "same hash {:#x}.\n\n{:s}\n\n{:s}\n\ndatasetManager: Exiting...",
+                               hash, state->to_json().dump(4), find->second->to_json().dump(4));
         }
     } else {
         // insert the new state
         std::lock_guard<std::mutex> slock(_lock_states);
         if (!_states.insert(std::pair<state_id_t, std::unique_ptr<T>>(hash, move(state))).second) {
-            DEBUG("datasetManager: a state with hash 0x%" PRIx64 " is already "
-                  "registered locally.",
-                  hash);
+            DEBUG_NON_OO("datasetManager: a state with hash {:#x} is already registered locally.",
+                         hash);
         }
 
         // tell the broker about it
@@ -570,9 +567,9 @@ inline const T* datasetManager::get_closest_ancestor(dset_id_t dset) {
 
             } catch (std::out_of_range& e) {
                 // we don't have the base dataset
-                DEBUG2("datasetManager: found a dead reference when looking for "
-                       "locally known ancestor: %s",
-                       e.what());
+                DEBUG2_NON_OO("datasetManager: found a dead reference when looking for "
+                              "locally known ancestor: {:s}",
+                              e.what());
                 return nullptr;
             }
         }
@@ -589,16 +586,15 @@ inline const T* datasetManager::get_closest_ancestor(dset_id_t dset) {
                 state = state->_inner_state.get();
             }
         } catch (std::out_of_range& e) {
-            DEBUG("datasetManager: requested state 0x%" PRIx64 " not known "
-                  "locally.",
-                  ancestor);
+            DEBUG_NON_OO("datasetManager: requested state {:#x} not known locally.", ancestor);
         }
         if (_use_broker) {
             // Request the state from the broker.
             state = request_state<T>(ancestor);
             while (!state) {
-                WARN("datasetManager: Failure requesting state "
-                     "0x%" PRIx64 " from broker.\nRetrying...");
+                WARN_NON_OO(
+                    "datasetManager: Failure requesting state {:#x} from broker.\nRetrying...",
+                    ancestor);
                 std::this_thread::sleep_for(std::chrono::milliseconds(_retry_wait_time_ms));
                 state = request_state<T>(ancestor);
             }
@@ -633,9 +629,7 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
     restReply reply = _rest_client.make_request_blocking(PATH_REQUEST_STATE, js_request,
                                                          _ds_broker_host, _ds_broker_port);
     if (!reply.first) {
-        WARN("datasetManager: Failure requesting state from "
-             "broker: %s",
-             reply.second.c_str());
+        WARN_NON_OO("datasetManager: Failure requesting state from broker: {:s}", reply.second);
         error_counter.set(++_conn_error_count);
         return nullptr;
     }
@@ -670,10 +664,9 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
 
         // hash collisions are checked for by the broker
         if (!new_state.second)
-            INFO("datasetManager::request_state: received a "
-                 "state (with hash 0x%" PRIx64 ") that is already registered "
-                 "locally.",
-                 s_id);
+            INFO_NON_OO("datasetManager::request_state: received a state (with hash {:#x}) that "
+                        "is already registered locally.",
+                        s_id);
 
         // get a pointer out of that iterator
         const datasetState* s = (const datasetState*)new_state.first->second.get();
@@ -691,9 +684,9 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
             s = s->_inner_state.get();
         }
     } catch (std::exception& e) {
-        WARN("datasetManager: failure parsing reply received from broker "
-             "after requesting state (reply: %s): %s",
-             reply.second.c_str(), e.what());
+        WARN_NON_OO("datasetManager: failure parsing reply received from broker after requesting "
+                    "state (reply: {:s}): {:s}",
+                    reply.second, e.what());
         error_counter.set(++_conn_error_count);
         return nullptr;
     }

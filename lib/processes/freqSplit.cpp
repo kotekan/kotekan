@@ -56,10 +56,9 @@ std::array<dset_id_t, 2> freqSplit::change_dataset_state(dset_id_t input_dset_id
     // create new frequency dataset state
     const freqState* freq_state_ptr = dm.dataset_state<freqState>(input_dset_id);
     if (freq_state_ptr == nullptr) {
-        FATAL_ERROR("Set to not use dataset_broker and couldn't find "
-                    "freqState ancestor of dataset 0x%" PRIx64 ". Make sure there "
-                    "is a stage upstream in the config, that adds a freqState.\n"
-                    "Exiting...",
+        FATAL_ERROR("Set to not use dataset_broker and couldn't find freqState ancestor of dataset "
+                    "{:#x}. Make sure there is a stage upstream in the config, that adds a "
+                    "freqState.\nExiting...",
                     input_dset_id);
     }
 
@@ -131,7 +130,7 @@ void freqSplit::main_thread() {
         auto& buffer_pair = out_bufs[buf_ind];
         std::tie(buf, frame_id) = buffer_pair;
 
-        INFO("Buffer %i has frame_id=%i", buf_ind, frame_id);
+        INFO("Buffer {:d} has frame_id={:d}", buf_ind, frame_id);
 
         // Wait for the output buffer to be empty of data
         if (wait_for_empty_frame(buf, unique_name.c_str(), frame_id) == nullptr) {

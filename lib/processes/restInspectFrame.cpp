@@ -25,7 +25,8 @@ restInspectFrame::restInspectFrame(Config& config, const string& unique_name,
     if (len == 0) {
         len = in_buf->frame_size;
     } else if (len > in_buf->frame_size) {
-        WARN("Requested len (%d) is greater than the frame_size (%d).", len, in_buf->frame_size);
+        WARN("Requested len ({:d}) is greater than the frame_size ({:d}).", len,
+             in_buf->frame_size);
         len = in_buf->frame_size;
     }
 

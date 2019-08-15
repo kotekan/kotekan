@@ -141,7 +141,7 @@ void rfiBroadcast::main_thread() {
             return;
         }
         // Connection succesful
-        INFO("UDP Connection: %i %s", dest_port, dest_server_ip.c_str());
+        INFO("UDP Connection: {:d} {:s}", dest_port, dest_server_ip);
         auto& mask_percent_metric =
             metrics.add_gauge("kotekan_rfi_broadcast_mask_percent", unique_name, {"freq_bin"});
         // Endless loop
@@ -184,8 +184,9 @@ void rfiBroadcast::main_thread() {
                     for (j = 0; j < _samples_per_data_set / _sk_step; j++) {
                         rfi_avg[link_id][i] += rfi_data[link_id][i + _num_local_freq * j];
                         mask_total += frame_mask[i + _num_local_freq * j];
-                        //                        DEBUG("RFI Mask %d, Mask Total: %d, Frame Size:
-                        //                        %d",, mask_total,rfi_mask_buf->frame_size);
+                        //                        DEBUG("RFI Mask {:d}, Mask Total: {:d}, Frame
+                        //                        Size:
+                        //                        {:d}",, mask_total,rfi_mask_buf->frame_size);
                     }
                 }
                 // Mark Frame Empty
@@ -219,8 +220,9 @@ void rfiBroadcast::main_thread() {
                 for (i = 0; i < _num_local_freq; i++) {
                     rfi_avg[j][i] /= _frames_per_packet * (_samples_per_data_set / _sk_step);
                     if (i == 0) {
-                        DEBUG("SK value %f for freq %d, stream %d", rfi_avg[j][i], i, StreamIDs[j]);
-                        DEBUG("Percent Masked %f for freq %d stream %d",
+                        DEBUG("SK value {:f} for freq {:d}, stream {:d}", rfi_avg[j][i], i,
+                              StreamIDs[j]);
+                        DEBUG("Percent Masked {:f} for freq {:d} stream {:d}",
                               100.0 * (float)mask_total / rfi_mask_buf->frame_size, i,
                               StreamIDs[j]);
                     }
@@ -244,11 +246,11 @@ void rfiBroadcast::main_thread() {
             // Unlock callback mutex
             rest_callback_mutex.unlock();
             rest_zero_callback_mutex.unlock();
-            DEBUG("Frame ID %d Succesfully Broadcasted %d links of %d Bytes in %fms", frame_id,
-                  total_links, bytes_sent, (e_time() - start_time) * 1000);
+            DEBUG("Frame ID {:d} Succesfully Broadcasted {:d} links of {:d} Bytes in {:f}ms",
+                  frame_id, total_links, bytes_sent, (e_time() - start_time) * 1000);
         }
     } else {
-        ERROR("Bad protocol: %s Only UDP currently Supported", dest_protocol.c_str());
+        ERROR("Bad protocol: {:s} Only UDP currently Supported", dest_protocol);
     }
     free(packet_buffer);
 }

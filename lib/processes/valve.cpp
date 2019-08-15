@@ -53,12 +53,12 @@ void Valve::main_thread() {
             try {
                 copy_frame(_buf_in, frame_id_in, _buf_out, frame_id_out);
             } catch (std::exception& e) {
-                FATAL_ERROR("Failure copying frame: %s\nExiting...", e.what());
+                FATAL_ERROR("Failure copying frame: {:s}\nExiting...", e.what());
                 break;
             }
             mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
         } else {
-            WARN("Output buffer full. Dropping incoming frame %d.", frame_id_in);
+            WARN("Output buffer full. Dropping incoming frame {:d}.", (int)frame_id_in);
             dropped_total.inc();
         }
         mark_frame_empty(_buf_in, unique_name.c_str(), frame_id_in++);

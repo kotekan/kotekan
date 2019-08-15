@@ -51,17 +51,19 @@ void testDataCheck<A_Type>::main_thread() {
         uint8_t* first_frame = wait_for_full_frame(first_buf, unique_name.c_str(), first_buf_id);
         if (first_frame == NULL)
             break;
-        DEBUG("testDataCheck: Got the first buffer %s[%d]", first_buf->buffer_name, first_buf_id);
+        DEBUG("testDataCheck: Got the first buffer {:s}[{:d}]", first_buf->buffer_name,
+              first_buf_id);
         uint8_t* second_frame = wait_for_full_frame(second_buf, unique_name.c_str(), second_buf_id);
         if (second_frame == NULL)
             break;
-        DEBUG("testDataCheck: Got the second buffer %s[%d]", second_buf->buffer_name,
+        DEBUG("testDataCheck: Got the second buffer {:s}[{:d}]", second_buf->buffer_name,
               second_buf_id);
         bool error = false;
         num_errors = 0;
 
-        INFO("Checking that the buffers %s[%d] and %s[%d] match, this could take a while...",
-             first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id);
+        INFO(
+            "Checking that the buffers {:s}[{:d}] and {:s}[{:d}] match, this could take a while...",
+            first_buf->buffer_name, first_buf_id, second_buf->buffer_name, second_buf_id);
 
         for (uint32_t i = 0; i < first_buf->frame_size / sizeof(A_Type); ++i) {
             A_Type first_value = *((A_Type*)&(first_frame[i * sizeof(A_Type)]));
@@ -78,28 +80,28 @@ void testDataCheck<A_Type>::main_thread() {
                     error = true;
                     num_errors += 1;
                     if (num_errors < 20) {
-                        FATAL_ERROR(
-                            "%s[%d][%d] != %s[%d][%d]; values: (%f, %f) diffs (%.1f %.1f %.1f)",
-                            first_buf->buffer_name, first_buf_id, i, second_buf->buffer_name,
-                            second_buf_id, i, (double)first_value, (double)second_value, diff,
-                            diff2, diff3);
+                        FATAL_ERROR("{:s}[{:d}][{:d}] != {:s}[{:d}][{:d}]; values: ({:f}, {:f}) "
+                                    "diffs ({:.1f} {:.1f} {:.1f})",
+                                    first_buf->buffer_name, first_buf_id, i,
+                                    second_buf->buffer_name, second_buf_id, i, (double)first_value,
+                                    (double)second_value, diff, diff2, diff3);
                     }
                 }
             } else { // N2 numbers are int
                 // INFO("Checking non float numbers-----------");
                 if (first_value != second_value) {
                     if (num_errors++ < 10000)
-                        ERROR("%s[%d][%d] != %s[%d][%d]; values: (%f, %f)", first_buf->buffer_name,
-                              first_buf_id, i, second_buf->buffer_name, second_buf_id, i,
-                              (double)first_value, (double)second_value);
+                        ERROR("{:s}[{:d}][{:d}] != {:s}[{:d}][{:d}]; values: ({:f}, {:f})",
+                              first_buf->buffer_name, first_buf_id, i, second_buf->buffer_name,
+                              second_buf_id, i, (double)first_value, (double)second_value);
                     error = true;
                 }
             }
         }
 
         if (!error) {
-            INFO("The buffers %s[%d] and %s[%d] are equal", first_buf->buffer_name, first_buf_id,
-                 second_buf->buffer_name, second_buf_id);
+            INFO("The buffers {:s}[{:d}] and {:s}[{:d}] are equal", first_buf->buffer_name,
+                 first_buf_id, second_buf->buffer_name, second_buf_id);
         }
 
         mark_frame_empty(first_buf, unique_name.c_str(), first_buf_id);

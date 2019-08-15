@@ -211,7 +211,7 @@ void beamformingPostProcess::main_thread() {
                                                + thread_id * frame_size * 2 + frame_size
                                                + in_frame_location * 8 + header_size;
 
-                    // DEBUG("beamforming_post_process: station_0_index = %d", station_0_index);
+                    // DEBUG("beamforming_post_process: station_0_index = {:d}", station_0_index);
 
                     for (uint32_t freq = 0; freq < _num_local_freq; ++freq) {
                         unsigned char* in_buf_data = (unsigned char*)in_frame[thread_id];

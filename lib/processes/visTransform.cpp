@@ -128,7 +128,7 @@ void visTransform::main_thread() {
             if (status == -1)
                 break; // Got shutdown signal
 
-            INFO("Got full buffer %s with frame_id=%i", buf->buffer_name, frame_id);
+            INFO("Got full buffer {:s} with frame_id={:d}", buf->buffer_name, frame_id);
 
             frame = buf->frames[frame_id];
 

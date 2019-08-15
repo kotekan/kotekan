@@ -139,7 +139,7 @@ std::ostream& operator<<(std::ostream&, const datasetState&);
 template<typename T>
 inline int datasetState::_register_state_type(std::string name) {
 
-    DEBUG("Registering state type: %s", name.c_str());
+    DEBUG_NON_OO("Registering state type: {:s}", name);
 
     // Generate a lambda function that creates an instance of the type
     datasetState::_registered_types()[name] = [](json& data, state_uptr inner) -> state_uptr {

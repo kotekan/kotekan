@@ -55,8 +55,8 @@ void metadataFactory::build_from_tree(map<string, struct metadataPool*>& pools, 
 
 struct metadataPool* metadataFactory::new_pool(const string& pool_type, const string& location) {
 
-    INFO("Creating metadata pool of type: %s, at config tree path: %s", pool_type.c_str(),
-         location.c_str());
+    INFO_NON_OO("Creating metadata pool of type: {:s}, at config tree path: {:s}", pool_type,
+                location);
 
     uint32_t num_metadata_objects = config.get<uint32_t>(location, "num_metadata_objects");
 

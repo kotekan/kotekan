@@ -58,7 +58,7 @@ void pyPlotN2::main_thread() {
         if (frame == NULL)
             break;
 
-        // INFO("Got buffer, id: %d", bufferID);
+        // INFO("Got buffer, id: {:d}", bufferID);
 
         if ((!busy) && (dump_plot)) {
             dump_plot = false;

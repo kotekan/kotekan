@@ -56,8 +56,8 @@ bool visFileBundle::resolve_sample(time_ctype new_time) {
 
         if (new_time < min_time) {
             // This data is older that anything else in the map so we should just drop it
-            INFO("Dropping integration as buffer (FPGA count: %" PRIu64
-                 ") arrived too late (minimum in pool %" PRIu64 ")",
+            INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (minimum in "
+                 "pool {:d})",
                  new_time.fpga_count, min_time.fpga_count);
             return false;
         }
@@ -93,7 +93,7 @@ bool visFileBundle::resolve_sample(time_ctype new_time) {
         // then it must lie within the range, but not have been saved into the
         // files already. This means that adding it would make the files time
         // axis be out of order, so we just skip it for now.
-        INFO("Skipping integration (FPGA count %" PRIu64 ") as it would be written out of order.",
+        INFO("Skipping integration (FPGA count {:d}) as it would be written out of order.",
              new_time.fpga_count);
         return false;
     }

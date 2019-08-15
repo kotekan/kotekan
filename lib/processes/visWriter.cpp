@@ -70,11 +70,9 @@ visWriter::visWriter(Config& config, const string& unique_name, bufferContainer&
 
     // Check that the window isn't too long
     if (window > file_length) {
-        std::string msg =
-            fmt::format("Active times window ({}) should not be greater than file length"
-                        " ({}). Setting window to file length.",
-                        window, file_length);
-        INFO(msg.c_str());
+        INFO("Active times window ({:d}) should not be greater than file length ({:d}). Setting "
+             "window to file length.",
+             window, file_length);
         window = file_length;
     }
 
@@ -103,10 +101,7 @@ void visWriter::main_thread() {
 
         // Check the dataset ID hasn't changed
         if (acqs.count(frame.dataset_id) == 0) {
-            string msg =
-                fmt::format("Got new dataset ID={}. Starting a new acquisition.", frame.dataset_id);
-            INFO(msg.c_str());
-
+            INFO("Got new dataset ID={:#x}. Starting a new acquisition.", frame.dataset_id);
             init_acq(frame.dataset_id);
         }
 
@@ -122,14 +117,12 @@ void visWriter::main_thread() {
             // we are processing
             // TODO: this should probably be reported to prometheus
         } else if (acq.freq_id_map.count(frame.freq_id) == 0) {
-            WARN("Frequency id=%i not enabled for visWriter, discarding frame", frame.freq_id);
+            WARN("Frequency id={:d} not enabled for visWriter, discarding frame", frame.freq_id);
 
             // Check that the number of visibilities matches what we expect
         } else if (frame.num_prod != acq.num_vis) {
-            string msg = fmt::format("Number of products in frame doesn't match state or file "
-                                     "({} != {}).",
-                                     frame.num_prod, acq.num_vis);
-            FATAL_ERROR(msg.c_str());
+            FATAL_ERROR("Number of products in frame doesn't match state or file ({:d} != {:d}).",
+                        frame.num_prod, acq.num_vis);
             return;
 
         } else {
@@ -151,7 +144,7 @@ void visWriter::main_thread() {
             acq.last_update = current_time();
             double elapsed = acq.last_update - start;
 
-            DEBUG("Written frequency %i in %.5f s", frame.freq_id, elapsed);
+            DEBUG("Written frequency {:d} in {:.5f} s", frame.freq_id, elapsed);
 
             // Increase metric count if we dropped a frame at write time
             if (late) {
@@ -216,12 +209,17 @@ void visWriter::get_dataset_state(dset_id_t ds_id) {
     const prodState* pstate = pstate_fut.get();
 
     if (pstate == nullptr || mstate == nullptr || fstate == nullptr) {
-        FATAL_ERROR("Set to not use dataset_broker and couldn't find "
-                    "ancestor of dataset 0x%" PRIx64 ". Make sure there is a stage"
-                    " upstream in the config, that the dataset states.\nExiting..."
-                    "One of them is a nullptr (0): prodState %d, metadataState %d, "
-                    "freqState %d, stackState %d (but that one is okay).",
-                    ds_id, pstate, mstate, fstate, sstate);
+        ERROR("Set to not use dataset_broker and couldn't find ancestor of dataset {:#x}. Make "
+              "sure there is a stage upstream in the config, that the dataset states. Unexpected "
+              "nullptr: ",
+              ds_id);
+        if (!pstate)
+            ERROR("prodstate is a nullptr");
+        if (!mstate)
+            ERROR("metadataState is a nullptr");
+        if (!fstate)
+            ERROR("metadataState is a nullptr");
+        ERROR("Exiting...");
     }
 
     // Get a reference to the acq state
@@ -234,9 +232,9 @@ void visWriter::get_dataset_state(dset_id_t ds_id) {
     // compare git commit hashes
     // TODO: enforce and crash here if build type is Release?
     if (mstate->get_git_version_tag() != std::string(get_git_commit_hash())) {
-        INFO("Git version tags don't match: dataset 0x%" PRIx64 " has tag %s,"
-             "while the local git version tag is %s",
-             ds_id, mstate->get_git_version_tag().c_str(), get_git_commit_hash());
+        INFO("Git version tags don't match: dataset {:#x} has tag {:s},"
+             "while the local git version tag is {:s}",
+             ds_id, mstate->get_git_version_tag(), get_git_commit_hash());
     }
 
     acq.num_vis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
@@ -251,9 +249,9 @@ bool visWriter::check_git_version(dset_id_t ds_id) {
     // compare git commit hashes
     // TODO: enforce and crash here if build type is Release?
     if (mstate->get_git_version_tag() != std::string(get_git_commit_hash())) {
-        WARN("Git version tags don't match: dataset 0x%" PRIx64 " has tag %s,"
-             "while the local git version tag is %s",
-             ds_id, mstate->get_git_version_tag().c_str(), get_git_commit_hash());
+        WARN("Git version tags don't match: dataset {:#x} has tag {:s},"
+             "while the local git version tag is {:s}",
+             ds_id, mstate->get_git_version_tag(), get_git_commit_hash());
         return ignore_version;
     }
     return true;
@@ -280,11 +278,11 @@ void visWriter::init_acq(dset_id_t ds_id) {
     auto metadata = make_metadata(ds_id);
 
     try {
-        acq.file_bundle =
-            std::make_unique<visFileBundle>(file_type, root_path, instrument_name, metadata,
-                                            chunk_id, file_length, window, ds_id, file_length);
+        acq.file_bundle = std::make_unique<visFileBundle>(
+            file_type, root_path, instrument_name, metadata, chunk_id, file_length, window,
+            kotekan::logLevel(_member_log_level), ds_id, file_length);
     } catch (std::exception& e) {
-        FATAL_ERROR("Failed creating file bundle for new acquisition: %s", e.what());
+        FATAL_ERROR("Failed creating file bundle for new acquisition: {:s}", e.what());
     }
 }
 
@@ -345,7 +343,7 @@ visCalWriter::visCalWriter(Config& config, const string& unique_name,
     std::string full_path = root_path + "/" + acq_name + "/";
     if ((access((full_path + fname_base + "_A.data").c_str(), F_OK) == 0)
         || (access((full_path + fname_base + "_B.data").c_str(), F_OK) == 0)) {
-        INFO(("Clobering files in " + full_path).c_str());
+        INFO("Clobering files in {:s}", full_path);
         check_remove(full_path + fname_base + "_A.data");
         check_remove("." + full_path + fname_base + "_A.lock");
         check_remove(full_path + fname_base + "_A.meta");
@@ -394,8 +392,7 @@ void visCalWriter::init_acq(dset_id_t ds_id) {
 
     // Check there are no other valid acqs
     if (num_enabled > 0) {
-        WARN("visCalWriter can only have one acquistion. Dropping all frames "
-             "of dataset_id=%" PRIx64,
+        WARN("visCalWriter can only have one acquistion. Dropping all frames of dataset_id {:#x}",
              ds_id);
         acq.bad_dataset = true;
         return;
@@ -415,8 +412,9 @@ void visCalWriter::init_acq(dset_id_t ds_id) {
 
     // Create the derived class visCalFileBundle, and save to the instance, then
     // return as a unique_ptr
-    file_cal_bundle = new visCalFileBundle(file_type, root_path, instrument_name, metadata,
-                                           chunk_id, file_length, window, ds_id, file_length);
+    file_cal_bundle =
+        new visCalFileBundle(file_type, root_path, instrument_name, metadata, chunk_id, file_length,
+                             window, kotekan::logLevel(_member_log_level), ds_id, file_length);
     file_cal_bundle->set_file_name(fname_live, acq_name);
 
     acq.file_bundle = std::unique_ptr<visFileBundle>(file_cal_bundle);

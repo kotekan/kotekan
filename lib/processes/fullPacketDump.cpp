@@ -118,7 +118,7 @@ void fullPacketDump::main_thread() {
 
             if (fd == -1) {
                 ERROR("Cannot open file");
-                ERROR("File name was: %s", file_name);
+                ERROR("File name was: {:s}", file_name);
                 exit(errno);
             }
 
@@ -130,10 +130,10 @@ void fullPacketDump::main_thread() {
             }
 
             if (close(fd) == -1) {
-                ERROR("Cannot close file %s", file_name);
+                ERROR("Cannot close file {:s}", file_name);
             }
 
-            INFO("Data file write done for %s", file_name);
+            INFO("Data file write done for {:s}", file_name);
             file_num++;
         }
 

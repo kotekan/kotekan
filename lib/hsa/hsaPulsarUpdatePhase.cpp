@@ -111,12 +111,11 @@ bool hsaPulsarUpdatePhase::update_gains_callback(nlohmann::json& json) {
     update_gains = true;
     try {
         _gain_dir = json.at("pulsar_gain_dir").get<std::vector<string>>();
-        INFO("[PSR] Updating gains from %s %s %s %s %s %s %s %s %s %s", _gain_dir[0].c_str(),
-             _gain_dir[1].c_str(), _gain_dir[2].c_str(), _gain_dir[3].c_str(), _gain_dir[4].c_str(),
-             _gain_dir[5].c_str(), _gain_dir[6].c_str(), _gain_dir[7].c_str(), _gain_dir[8].c_str(),
-             _gain_dir[9].c_str());
+        INFO("[PSR] Updating gains from {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s}",
+             _gain_dir[0], _gain_dir[1], _gain_dir[2], _gain_dir[3], _gain_dir[4], _gain_dir[5],
+             _gain_dir[6], _gain_dir[7], _gain_dir[8], _gain_dir[9]);
     } catch (std::exception const& e) {
-        WARN("[PSR] Fail to read gain_dir %s", e.what());
+        WARN("[PSR] Fail to read gain_dir {:s}", e.what());
         return false;
     }
     return true;
@@ -224,10 +223,10 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, hsa_signal_t preced
         for (int b = 0; b < _num_beams; b++) {
             snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",
                      _gain_dir[b].c_str(), freq_idx);
-            INFO("Loading gains from %s", filename);
+            INFO("Loading gains from {:s}", filename);
             ptr_myfile = fopen(filename, "rb");
             if (ptr_myfile == NULL) {
-                ERROR("GPU Cannot open gain file %s", filename);
+                ERROR("GPU Cannot open gain file {:s}", filename);
                 for (int i = 0; i < 2048; i++) {
                     host_gain[(b * 2048 + i) * 2] = default_gains[0];
                     host_gain[(b * 2048 + i) * 2 + 1] = default_gains[1];
@@ -237,14 +236,14 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, hsa_signal_t preced
                     != fread(&host_gain[b * 2048 * 2], sizeof(float) * 2, _num_elements,
                              ptr_myfile)) {
                     FATAL_ERROR(
-                        "Gain file (%s) wasn't long enough! Something went wrong, breaking...",
+                        "Gain file ({:s}) wasn't long enough! Something went wrong, breaking...",
                         filename);
                     return precede_signal;
                 }
                 fclose(ptr_myfile);
             }
         } // end beam
-        INFO("Time required to load Pulsar gains: %f", current_time() - start_time);
+        INFO("Time required to load Pulsar gains: {:f}", current_time() - start_time);
     }
     if (update_phase) {
         // GPS time, need ch_master
@@ -311,22 +310,22 @@ bool hsaPulsarUpdatePhase::pulsar_grab_callback(nlohmann::json& json, const uint
         try {
             psr_coord_latest_update.ra[beam_id] = json.at("ra").get<float>();
         } catch (std::exception const& e) {
-            WARN("[PSR] Pointing update fail to read RA %s", e.what());
+            WARN("[PSR] Pointing update fail to read RA {:s}", e.what());
             return false;
         }
         try {
             psr_coord_latest_update.dec[beam_id] = json.at("dec").get<float>();
         } catch (std::exception const& e) {
-            WARN("[PSR] Pointing update fail to read DEC %s", e.what());
+            WARN("[PSR] Pointing update fail to read DEC {:s}", e.what());
             return false;
         }
         try {
             psr_coord_latest_update.scaling[beam_id] = json.at("scaling").get<int>();
         } catch (std::exception const& e) {
-            WARN("[PSR] Pointing update fail to read scaling factor %s", e.what());
+            WARN("[PSR] Pointing update fail to read scaling factor {:s}", e.what());
             return false;
         }
-        INFO("[psr] Updated Beam=%d RA=%.2f Dec=%.2f Scl=%d", beam_id,
+        INFO("[psr] Updated Beam={:d} RA={:.2f} Dec={:.2f} Scl={:d}", beam_id,
              psr_coord_latest_update.ra[beam_id], psr_coord_latest_update.dec[beam_id],
              psr_coord_latest_update.scaling[beam_id]);
         update_phase = true;

@@ -112,10 +112,10 @@ bool hsaBeamformKernel::update_gains_callback(nlohmann::json& json) {
     try {
         _gain_dir = json.at("frb_gain_dir");
     } catch (std::exception& e) {
-        WARN("[FRB] Fail to read gain_dir %s", e.what());
+        WARN("[FRB] Fail to read gain_dir {:s}", e.what());
         return false;
     }
-    INFO("[FRB] updated gain with %s", _gain_dir.c_str());
+    INFO("[FRB] updated gain with {:s}", _gain_dir);
     return true;
 }
 
@@ -226,18 +226,19 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_s
         char filename[256];
         snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin", _gain_dir.c_str(),
                  freq_idx);
-        INFO("Loading gains from %s", filename);
+        INFO("Loading gains from {:s}", filename);
         ptr_myfile = fopen(filename, "rb");
         if (ptr_myfile == NULL) {
-            ERROR("GPU Cannot open gain file %s", filename);
+            ERROR("GPU Cannot open gain file {:s}", filename);
             for (int i = 0; i < 2048; i++) {
                 host_gain[i * 2] = default_gains[0] * scaling;
                 host_gain[i * 2 + 1] = default_gains[1] * scaling;
             }
         } else {
             if (_num_elements != fread(host_gain, sizeof(float) * 2, _num_elements, ptr_myfile)) {
-                FATAL_ERROR("Gain file (%s) wasn't long enough! Something went wrong, breaking...",
-                            filename);
+                FATAL_ERROR(
+                    "Gain file ({:s}) wasn't long enough! Something went wrong, breaking...",
+                    filename);
                 return precede_signal;
             }
             fclose(ptr_myfile);
@@ -248,7 +249,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_s
         }
         void* device_gain = device.get_gpu_memory("beamform_gain", gain_len);
         device.sync_copy_host_to_gpu(device_gain, (void*)host_gain, gain_len);
-        INFO("Time required to load FRB gains: %f", current_time() - start_time);
+        INFO("Time required to load FRB gains: {:f}", current_time() - start_time);
     }
 
     if (update_NS_beam) {

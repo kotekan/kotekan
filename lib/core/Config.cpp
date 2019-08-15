@@ -46,7 +46,7 @@ void Config::parse_file(const string& file_name) {
         std::ifstream config_file_stream(file_name);
         config_file_stream >> _json;
     } catch (std::exception const& ex) {
-        WARN("Could not parse json file: %s, error: %s", file_name.c_str(), ex.what());
+        WARN_NON_OO("Could not parse json file: {:s}, error: {:s}", file_name, ex.what());
         throw ex;
     }
 }
@@ -131,7 +131,7 @@ void Config::get_value_recursive(const json& j, const std::string& name,
 }
 
 void Config::dump_config() {
-    INFO("Config: %s", _json.dump().c_str());
+    INFO_NON_OO("Config: {:s}", _json.dump(4));
 }
 
 json& Config::get_full_config_json() {

@@ -7,6 +7,7 @@
 #define CONFIG_HPP
 
 #include "errors.h"
+#include "kotekanLogging.hpp"
 
 #include "json.hpp"
 
@@ -363,7 +364,7 @@ void Config::configEval<Type>::expect(const std::string& symbol) {
     if (current_token == symbol) {
         next();
     } else {
-        ERROR("Expected symbol %s, got %s", symbol.c_str(), tokens.front().c_str());
+        ERROR_NON_OO("Expected symbol {:s}, got {:s}", symbol, tokens.front());
         throw std::runtime_error("Unexpected symbol");
     }
 }
@@ -426,7 +427,7 @@ Type Config::configEval<Type>::factor() {
         ret = exp();
         expect(")");
     } else {
-        ERROR("Unexpected symbol '%s'", current_token.c_str());
+        ERROR_NON_OO("Unexpected symbol '{:s}'", current_token);
         throw std::runtime_error("Unexpected symbol");
     }
     return ret;

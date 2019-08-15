@@ -62,8 +62,7 @@ void nDiskFileRead::file_read_thread(int disk_id) {
     unsigned int buf_id = disk_id;
     // Starting File index
     unsigned int file_index = disk_id + starting_index;
-    INFO("%s%s/%d/%s/%07d.vdif", disk_base.c_str(), disk_set.c_str(), disk_id, capture.c_str(),
-         file_index)
+    INFO("{:s}{:s}/{:d}/{:s}/{:07d}.vdif", disk_base, disk_set, disk_id, capture, file_index)
     // Endless loop
     while (!stop_thread) {
 
@@ -85,7 +84,7 @@ void nDiskFileRead::file_read_thread(int disk_id) {
         rewind(in_file);
 
         if (sz != buf->frame_size) {
-            ERROR("File size %ld Frame Size %d", sz, buf->frame_size);
+            ERROR("File size {:d} Frame Size {:d}", sz, buf->frame_size);
         }
         assert(sz == buf->frame_size);
 
@@ -94,7 +93,7 @@ void nDiskFileRead::file_read_thread(int disk_id) {
             ERROR("Error reading from file!");
         }
         fclose(in_file);
-        INFO("%s Read Complete Marking Frame ID %d Full\n", file_name, buf_id);
+        INFO("{:s} Read Complete Marking Frame ID {:d} Full\n", file_name, buf_id);
 
         mark_frame_full(buf, unique_name.c_str(), buf_id);
 
