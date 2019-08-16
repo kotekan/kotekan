@@ -107,7 +107,7 @@ def mjd(unixtime):
 @click.option("--format", type=click.Choice(['yaml', 'json', 'dict']), default='yaml',
               help="Config format to print out.")
 @click.option("--offset", type=float, default=0.,
-              help="Add an offset (s) to the polyco phase solution.")
+              help="Add an offset (wrapping around 1) to the polyco phase solution.")
 @click.option("--send-update", is_flag=True, help="Send the update to kotekan.")
 @click.option("--no-confirm", is_flag=True,
               help="Don't ask for confirmation before sending update.")
@@ -172,10 +172,15 @@ def update_polyco(fname, start_time, load_polyco, end_time, dm, name, width, seg
     else:
         print("No pulse width provided and can't find in parfile. Aborting.")
         return
+    if offset == 0. and "DPHASE" in parfile:
+        if isinstance(parfile["DPHASE"], (list, tuple)):
+            offset = float(parfile["DPHASE"][0])
+        else:
+            offset = float(parfile["DPHASE"])
 
     if offset != 0.:
         for p in pfile.polycos:
-            p.phase_ref += offset * p.f0
+            p.phase_ref += offset
 
     update = pfile.config_block(start_time, end_time)
     print("\nConfig update:\n")
