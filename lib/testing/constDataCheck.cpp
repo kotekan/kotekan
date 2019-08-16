@@ -44,8 +44,8 @@ void constDataCheck::main_thread() {
 
             if (real != rfr || imag != rfi) {
                 if (num_errors++ < 1000)
-                  FATAL_ERROR("%s[%d][%d] != %d + %di; actual value: %d + %di", buf->buffer_name,
-                          frame_id, i / 2, rfr, rfi, real, imag);
+                    FATAL_ERROR("%s[%d][%d] != %d + %di; actual value: %d + %di", buf->buffer_name,
+                                frame_id, i / 2, rfr, rfi, real, imag);
                 error = true;
             }
         }
@@ -58,7 +58,8 @@ void constDataCheck::main_thread() {
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
         frame_id = (frame_id + 1) % buf->num_frames;
         framect++;
-        
-        if(num_frames_to_test == framect) TEST_PASSED();
+
+        if (num_frames_to_test == framect)
+            TEST_PASSED();
     }
 }
