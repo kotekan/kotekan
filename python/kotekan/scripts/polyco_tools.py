@@ -178,9 +178,10 @@ def update_polyco(fname, start_time, load_polyco, end_time, dm, name, width, seg
         else:
             offset = float(parfile["DPHASE"])
 
-    if offset != 0.:
-        for p in pfile.polycos:
-            p.phase_ref += offset
+    for p in pfile.polycos:
+        p.phase_ref += offset
+        # remove potentially large phase wrappings
+        p.phase_ref = p.phase_ref % 1.
 
     update = pfile.config_block(start_time, end_time)
     print("\nConfig update:\n")
