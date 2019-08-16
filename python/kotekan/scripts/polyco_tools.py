@@ -246,10 +246,15 @@ def update_polyco(
     else:
         print("No pulse width provided and can't find in parfile. Aborting.")
         return
+    if offset == 0.0 and "DPHASE" in parfile:
+        if isinstance(parfile["DPHASE"], (list, tuple)):
+            offset = float(parfile["DPHASE"][0])
+        else:
+            offset = float(parfile["DPHASE"])
 
     if offset != 0.0:
         for p in pfile.polycos:
-            p.phase_ref += offset * p.f0
+            p.phase_ref += offset
 
     update = pfile.config_block(start_time, end_time)
     print("\nConfig update:\n")
