@@ -10,12 +10,18 @@ import click
 import yaml
 import json
 import time
+import re
 from datetime import datetime
 from tempfile import TemporaryFile
 import requests
 from subprocess import check_call
 from os import path
 from kotekan.pulsar_timing import Timespec, unix2mjd, mjd2unix, PolycoFile
+from ch_util import ephemeris as ephem
+
+COCO_URL = "http://csBfs:54323"
+PARFILE_DIR = "/mnt/gong/parfiles/"
+TEMPO_DIR = "/usr/local/tempo2/"
 
 
 def parse_parfile(fname):
@@ -30,6 +36,39 @@ def parse_parfile(fname):
                     param[line[0]] = line[1:] if len(line[1:]) > 1 else line[1]
             line = f.readline()
     return param
+
+
+def parse_26m_sched(fname, n_ant=8):
+    sched = []
+    with open(fname, "r") as f:
+        line = f.readline()
+        while line != "":
+            if line[0] != "#":
+                line = [l.strip() for l in line.split()]
+                if not len(line) == 71:
+                    raise ValueError(
+                        "File {} contains line with unexpected number of entries.".format(
+                            fname
+                        )
+                    )
+                # skip index
+                _ = line.pop[0]
+                name = re.match("^OBS(.+)$", line.pop(0))
+                if name is None:
+                    line = f.readline()
+                    continue  # not a source observation
+                name = name.group(1)
+                # skip RA and dec
+                for i in range(2 * n_ant):
+                    _ = line.pop[0]
+                # skip random characters
+                for i in range(3):
+                    _ = line.pop[0]
+                lst = float(line.pop[0])
+                dur = float(line.pop[0])
+                sched.append({"name": name, "lst": lst, "duration": dur})
+            line = f.readline()
+    return sched
 
 
 @click.group()
@@ -120,13 +159,13 @@ def mjd(unixtime):
 @click.option(
     "--url",
     type=str,
-    default="http://csBfs:54323",
+    default=COCO_URL,
     help="URL for coco.",
 )
 @click.option(
     "--tempo-dir",
     type=str,
-    default="/usr/local/tempo2/",
+    default=TEMPO_DIR,
     help="TEMPO2 runtime directory",
 )
 @click.option(
@@ -271,12 +310,67 @@ def update_polyco(
 
 
 @click.command()
+@click.argument("fname", type=str)
 @click.option(
     "--url",
     type=str,
-    default="http://csBfs:54323",
+    default=COCO_URL,
     help="URL for coco.",
 )
+@click.option(
+    "--tempo-dir",
+    type=str,
+    default=TEMPO_DIR,
+    help="TEMPO2 runtime directory",
+)
+@click.option(
+    "--parfile-dir",
+    type=str,
+    default=PARFILE_DIR,
+    help="Directory containing pulsar parfiles.",
+)
+@click.option(
+    "--reference",
+    type=float,
+    default=None,
+    help="Reference time for observations.",
+)
+@click.pass_context
+def import_schedule(ctx, fname, url, tempo_dir, parfile_dir, reference):
+    if reference is None:
+        cur_t = time.time()
+    else:
+        cur_t = ephem.ensure_unix(reference)
+    sched = parse_26m_sched(fname)
+    if len(sched) == 0:
+        raise ValueError("Found no observations in schedule file {}.".format(fname))
+    for obs in sched:
+        pfile = path.join(parfile_dir, obs["name"])
+        if not path.isfile(pfile):
+            print(
+                "Could not find parfile for {} in directory {}. Skipping observation.".format(
+                    obs["name"], parfile_dir
+                )
+            )
+            continue
+        # Update time from end of previous observation
+        cur_t = ephem.lsa_to_unix(obs["lst"] / 24.0 * 360.0, cur_t)
+        end = cur_t + obs["duration"] * 3600.0
+        ctx.invoke(
+            update_polyco,
+            pfile,
+            unix2mjd(Timespec(cur_t)),
+            url=url,
+            tempo_dir=tempo_dir,
+            end_time=unix2mjd(Timespec(end)),
+            name=obs["name"],
+            schedule=True,
+        )
+        cur_t = end
+
+
+@click.command()
+@click.option("--url", type=str, default=COCO_URL, help="URL for coco.")
 def disable_gating(url):
     """Send an update to kotekan disabling the pulsar gating."""
     url = url.strip("/")
@@ -299,6 +393,7 @@ def disable_gating(url):
 
 cli.add_command(update_polyco)
 cli.add_command(disable_gating)
+cli.add_command(import_schedule)
 cli.add_command(mjd)
 
 if __name__ == "__main__":
