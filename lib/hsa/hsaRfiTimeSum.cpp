@@ -22,10 +22,13 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config, const string& unique_name,
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
     // RFI Config Parameters
     _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
+    _feed_index = config.get_default<uint32_t>(unique_name, "rfi_var_feed_index", 0);
     // Compute Buffer lengths
     input_frame_len = sizeof(uint8_t) * _num_elements * _num_local_freq * _samples_per_data_set;
     output_frame_len =
         sizeof(float) * _num_local_freq * _num_elements * _samples_per_data_set / _sk_step;
+    output_var_frame_len =
+        sizeof(float) * _num_local_freq * _samples_per_data_set / _sk_step;
     lost_samples_frame_len = sizeof(uint8_t) * _samples_per_data_set;
     lost_samples_correction_len = sizeof(uint32_t) * _samples_per_data_set / _sk_step;
     // Local Parameters
@@ -42,21 +45,25 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, hsa_signal_t precede_signa
     struct __attribute__((aligned(16))) args_t {
         void* input;
         void* output;
+        void* output_var;
         //        void *LostSamples;
         //        void *LostSamplesCorrection;
         uint32_t sk_step;
         uint32_t num_elements;
+        uint32_t feed_index;
     } args;
     // Initialize arguments
     memset(&args, 0, sizeof(args));
     // Set argumnets to correct values
     args.input = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
     args.output = device.get_gpu_memory("timesum", output_frame_len);
+    args.output_var = device.get_gpu_memory_array("rfi_output_var", gpu_frame_id, output_var_frame_len);
     //    args.LostSamples = device.get_gpu_memory_array("lost_samples", gpu_frame_id,
     //    lost_samples_frame_len); args.LostSamplesCorrection =
     //    device.get_gpu_memory("lost_sample_correction", lost_samples_correction_len);
     args.sk_step = _sk_step;
     args.num_elements = _num_elements;
+    args.feed_index = _feed_index;
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
     // Apply correct kernel parameters
