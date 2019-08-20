@@ -46,6 +46,8 @@ private:
     Buffer* _network_buf;
     /// Output buffer from the FRB pipeline
     Buffer* _rfi_output_buf;
+    /// Output buffer for the RFI variance
+    Buffer* _rfi_output_var_buf;
     /// ID for _network_buf
     int32_t _network_buf_id;
     /// ID for _rfi_output_buf
@@ -54,6 +56,13 @@ private:
     int32_t _rfi_output_buf_precondition_id;
     /// ID for _rfi_output_buf_execute
     int32_t _rfi_output_buf_execute_id;
+    /// ID for _rfi_output_var_buf
+    int32_t _rfi_output_var_buf_id;
+    /// ID for _rfi_output_var_buf_precondition
+    int32_t _rfi_output_var_buf_precondition_id;
+    /// ID for _rfi_output_var_buf_execute
+    int32_t _rfi_output_var_buf_execute_id;
+
 };
 
 #endif

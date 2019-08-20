@@ -16,7 +16,8 @@ rfi_chime_timesum(
 //     __constant uchar *LostSamples,
 //     __global uint *LostSamplesCorrection,
      const uint sk_step,
-     const uint num_elements
+     const uint num_elements,
+     const uint feed_index
 )
 {
     //Get work id's
