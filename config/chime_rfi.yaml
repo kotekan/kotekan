@@ -143,6 +143,13 @@ lost_samples_buffer:
     frame_size: samples_per_data_set * num_local_freq * num_data_sets
     metadata_pool: main_pool
 
+gpu_rfi_var_output_buffers:
+    num_frames: buffer_depth
+    frame_size: num_local_freq * samples_per_data_set / sk_step
+    metadata_pool: main_pool
+    gpu_rfi_var_output_buffer_0:
+        kotekan_buffer: standard
+
 #duplicate_lost_samples_buffers:
 #    num_frames: 2* buffer_depth
 #    frame_size: samples_per_data_set * num_local_freq * num_data_sets
@@ -270,6 +277,7 @@ gpu:
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_0
       rfi_output_buf: gpu_rfi_output_buffer_0
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_0
+      rfi_var_output_buf: gpu_rfi_var_output_buffer_0
   gpu_1:
     kotekan_stage: hsaProcess
     gpu_id: 1

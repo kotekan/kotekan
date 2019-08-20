@@ -11,6 +11,7 @@ __kernel void
 rfi_chime_timesum(
      __global uint *input,
      __global float *output,
+     __global float *output_var,
 //     __constant uchar *InputMask,
 //     __constant uchar *LostSamples,
 //     __global uint *LostSamplesCorrection,
@@ -70,4 +71,7 @@ rfi_chime_timesum(
     output[1 + address] = tmp.s1;
     output[2 + address] = tmp.s2;
     output[3 + address] = tmp.s3;
+
+    if(gx == feed_index / 4)
+        output_var[gy] = sq_power_across_time.s0 / mean.s0;
 }
