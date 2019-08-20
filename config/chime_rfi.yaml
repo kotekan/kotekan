@@ -47,6 +47,7 @@ frb_scaling: 0.05 #1.0
 sk_step: 256
 rfi_combined: True
 rfi_sigma_cut: 5
+rfi_var_feed_index: 0
 
 rfi_masking:
   toggle:
@@ -110,6 +111,8 @@ gpu_rfi_output_buffers:
         kotekan_buffer: standard
     gpu_rfi_output_buffer_3:
         kotekan_buffer: standard
+    rfi_output_var_buffer:
+        kotekan_buffer: standard
 
 gpu_rfi_mask_output_buffers:
     num_frames: buffer_depth
@@ -143,11 +146,17 @@ lost_samples_buffer:
     frame_size: samples_per_data_set * num_local_freq * num_data_sets
     metadata_pool: main_pool
 
-gpu_rfi_var_output_buffers:
+rfi_var_output_buffers:
     num_frames: buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / sk_step
+    frame_size: num_local_freq * samples_per_data_set / sk_step * sizeof_float
     metadata_pool: main_pool
-    gpu_rfi_var_output_buffer_0:
+    cpu_rfi_var_output_buffer_0:
+        kotekan_buffer: standard
+    cpu_rfi_var_output_buffer_1:
+        kotekan_buffer: standard
+    cpu_rfi_var_output_buffer_2:
+        kotekan_buffer: standard
+    cpu_rfi_var_output_buffer_3:
         kotekan_buffer: standard
 
 #duplicate_lost_samples_buffers:
@@ -270,14 +279,14 @@ gpu:
     updatable_rfi_zeroing: /rfi_masking/toggle
     in_buffers:
       network_buf: network_buffer_0
-#      lost_samples_buf: lost_samples_buffer_0
+      lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_output_buffer_0
       beamform_output_buf: beamform_output_buffer_0
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_0
       rfi_output_buf: gpu_rfi_output_buffer_0
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_0
-      rfi_var_output_buf: gpu_rfi_var_output_buffer_0
+      rfi_var_output_buf: cpu_rfi_var_output_buffer_0
   gpu_1:
     kotekan_stage: hsaProcess
     gpu_id: 1
@@ -285,13 +294,14 @@ gpu:
     updatable_rfi_zeroing: /rfi_masking/toggle
     in_buffers:
       network_buf: network_buffer_1
-#      lost_samples_buf: lost_samples_buffer_1
+      lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_output_buffer_1
       beamform_output_buf: beamform_output_buffer_1
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_1
       rfi_output_buf: gpu_rfi_output_buffer_1
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_1
+      rfi_var_output_buf: cpu_rfi_var_output_buffer_1
   gpu_2:
     kotekan_stage: hsaProcess
     gpu_id: 2
@@ -299,13 +309,14 @@ gpu:
     updatable_rfi_zeroing: /rfi_masking/toggle
     in_buffers:
       network_buf: network_buffer_2
-#      lost_samples_buf: lost_samples_buffer_2
+      lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_output_buffer_2
       beamform_output_buf: beamform_output_buffer_2
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_2
       rfi_output_buf: gpu_rfi_output_buffer_2
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_2
+      rfi_var_output_buf: cpu_rfi_var_output_buffer_2
   gpu_3:
     kotekan_stage: hsaProcess
     gpu_id: 3
@@ -313,13 +324,14 @@ gpu:
     updatable_rfi_zeroing: /rfi_masking/toggle
     in_buffers:
       network_buf: network_buffer_3
-#      lost_samples_buf: lost_samples_buffer_3
+      lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_output_buffer_3
       beamform_output_buf: beamform_output_buffer_3
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_3
       rfi_output_buf: gpu_rfi_output_buffer_3
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_3
+      rfi_var_output_buf: cpu_rfi_var_output_buffer_3
 
 rfi_broadcast:
   log_level: INFO
