@@ -30,6 +30,7 @@ set ( KOTEKAN_HSA_SOURCES
       hsaRfiBadInputOutput.cpp
       hsaRfiMaskOutput.cpp
       hsaRfiOutput.cpp
+      hsaRfiVarOutput.cpp
 
 # CHIME N2 Kernels & copy-out:
       hsaOutputDataZero.cpp
