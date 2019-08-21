@@ -264,6 +264,7 @@ gpu:
   - name: hsaRfiBadInputOutput
   - name: hsaRfiMaskOutput
   - name: hsaRfiOutput
+  - name: hsaRfiVarOutput
   - name: hsaOutputData
   enable_delay: true
   delay_max_fraction: 0.5
