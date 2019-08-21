@@ -73,6 +73,7 @@ rfi_chime_timesum(
     output[2 + address] = tmp.s2;
     output[3 + address] = tmp.s3;
 
+    //Output the variance for the selected feed
     if(gx == feed_index / 4)
-        output_var[gy] = sq_power_across_time.s0 / mean.s0;
+        output_var[gy] = sq_power_across_time[feed_index % 4] / mean[feed_index % 4];
 }
