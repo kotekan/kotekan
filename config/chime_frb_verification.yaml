@@ -89,6 +89,18 @@ cpu_hfb_output_buffers:
     beamform_hfb_output_buffer_0:
         kotekan_buffer: standard
 
+lost_samples_buffer:
+    kotekan_buffer: standard
+    num_frames: 2 * buffer_depth
+    frame_size: samples_per_data_set * num_local_freq * num_data_sets
+    metadata_pool: main_pool
+
+compressed_lost_samples_buffer:
+    kotekan_buffer: standard
+    num_frames: 2 * buffer_depth
+    frame_size: samples_per_data_set * num_data_sets
+    metadata_pool: main_pool
+
 cpu_affinity: [2,3,8,9]
 
 gen_data:
@@ -97,6 +109,13 @@ gen_data:
   test_data_gen_0:
     kotekan_stage: testDataGen
     network_out_buf: network_buffer_0
+
+gen_data:
+  type: const
+  value: 1
+  test_data_gen_0:
+    kotekan_stage: testDataGenFloat
+    network_out_buf: lost_samples_buffer
 
 #baseband:
 #  base_dir: /mnt/gong/cherry/B0329/July10/ForVerification/
@@ -116,6 +135,13 @@ cpu_simulate:
     beam_out_buf: cpu_output_buffer_0
     hfb_out_buf: cpu_hfb_output_buffer_0
 
+compress_lost_samples:
+  compress_lost_samples_buf:
+    kotekan_stage: compressLostSamples
+    log_level: debug
+    lost_samples_buf: lost_samples_buffer
+    compressed_lost_samples_buf: compressed_lost_samples_buffer
+ 
 gpu:
   kernel_path: "../lib/hsa/kernels/"
   commands:
