@@ -56,7 +56,6 @@ struct Buffer* create_buffer(int num_frames, int len,
 {
 
     assert(num_frames > 0);
-    assert(pool != NULL);
 
     struct Buffer * buf = malloc(sizeof(struct Buffer));
     CHECK_MEM(buf);
@@ -737,6 +736,7 @@ void allocate_new_metadata_object(struct Buffer * buf, int ID) {
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
     //DEBUG("Called allocate_new_metadata_object, buf %p, %d", buf, ID);
+    assert(buf->metadata_pool != NULL);
 
     if (buf->metadata[ID] == NULL) {
         buf->metadata[ID] = request_metadata_object(buf->metadata_pool);

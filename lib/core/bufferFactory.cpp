@@ -57,12 +57,15 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
     // DEBUG("Creating buffer of type: %s, at config tree path: %s", name.c_str(),
     // location.c_str());
     uint32_t num_frames = config.get<uint32_t>(location, "num_frames");
-    string metadataPool_name = config.get<std::string>(location, "metadata_pool");
-    if (metadataPools.count(metadataPool_name) != 1) {
-        throw std::runtime_error("The buffer " + name + " is requesting metadata pool named "
-                                 + metadataPool_name + " but no pool exists.");
+    string metadataPool_name = config.get_default<std::string>(location, "metadata_pool", "none");
+    struct metadataPool* pool = nullptr;
+    if (metadataPool_name != "none") {
+        if (metadataPools.count(metadataPool_name) != 1) {
+            throw std::runtime_error("The buffer " + name + " is requesting metadata pool named "
+                                     + metadataPool_name + " but no pool exists.");
+        }
+        pool = metadataPools[metadataPool_name];
     }
-    struct metadataPool* pool = metadataPools[metadataPool_name];
 
     if (type_name == "standard") {
         uint32_t frame_size = config.get<uint32_t>(location, "frame_size");
