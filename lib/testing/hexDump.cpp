@@ -2,38 +2,48 @@
 
 #include "util.h"
 
+#include <utils/visUtil.hpp>
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(hexDump);
 
-hexDump::hexDump(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&hexDump::main_thread, this)) {
+STAGE_CONSTRUCTOR(hexDump) {
 
-    buf = get_buffer("buf");
-    register_consumer(buf, unique_name.c_str());
-    len = config.get_default<int32_t>(unique_name, "len", 128);
-    offset = config.get_default<int32_t>(unique_name, "offset", 0);
+    // Register as consumer on buffer
+    in_buf = get_buffer("in_buf");
+    register_consumer(in_buf, unique_name.c_str());
+
+    // Get some configuration options
+    _len = config.get_default<int32_t>(unique_name, "len", 128);
+    _offset = config.get_default<int32_t>(unique_name, "offset", 0);
+
+    // Check that we won't read past the end
+    if (_offset + _len > in_buf->frame_size) {
+        throw std::runtime_error("HexDump: cannot print past end of buffer");
+    }
 }
 
 hexDump::~hexDump() {}
 
 void hexDump::main_thread() {
 
-    int frame_id = 0;
+    frameID frame_id(in_buf);
 
     while (!stop_thread) {
 
-        uint8_t* frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
+        uint8_t* frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
         if (frame == NULL)
             break;
 
-        DEBUG("hexDump: Got buffer %s[%d]", buf->buffer_name, frame_id);
+        DEBUG("hexDump: Got buffer %s[%d]", in_buf->buffer_name, (int)frame_id);
 
-        hex_dump(16, (void*)&frame[offset], len);
+        // Prints the hex data to screen
+        hex_dump(16, (void*)&frame[_offset], _len);
 
-        mark_frame_empty(buf, unique_name.c_str(), frame_id);
-        frame_id = (frame_id + 1) % buf->num_frames;
+        mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
+        frame_id++;
     }
 }
