@@ -4,6 +4,8 @@
 #include "visFile.hpp"
 #include "visFileH5.hpp"
 
+#include "fmt.hpp"
+
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -82,7 +84,7 @@ void visFileArchive::setup_file(const std::string& name,
                                 const std::vector<prod_ctype>& prods, size_t num_ev,
                                 std::vector<int> chunk_size) {
 
-    std::string data_filename = name + ".h5";
+    std::string data_filename = fmt::format(fmt("{:s}.h5"), name);
 
     lock_filename = create_lockfile(data_filename);
 
@@ -94,10 +96,10 @@ void visFileArchive::setup_file(const std::string& name,
     // Check chunk size
     // Check chunk size
     if (chunk[0] < 1 || chunk[1] < 1 || chunk[2] < 1)
-        throw std::invalid_argument("visFileArchive: config: Chunk size "
-                                    "needs to be greater or equal to (1,1,1) (is ("
-                                    + std::to_string(chunk[0]) + "," + std::to_string(chunk[1])
-                                    + "," + std::to_string(chunk[2]) + ")).");
+        throw std::invalid_argument(fmt::format(fmt("visFileArchive: config: Chunk size needs to "
+                                                    "be greater or equal to (1,1,1) (is ({:d},{:d},"
+                                                    "{:d}))."),
+                                                chunk[0], chunk[1], chunk[2]));
     if (chunk[0] > (int)freqs.size()) {
         chunk[0] = freqs.size();
         INFO("visFileArchive: Chunk frequency dimension greater than axes. Will use a smaller "
@@ -300,7 +302,7 @@ DataSet visFileArchive::dset(const std::string& name) {
 size_t visFileArchive::length(const std::string& axis_name) {
     if (!write_ev && axis_name == "ev")
         return 0;
-    return dset("index_map/" + axis_name).getSpace().getDimensions()[0];
+    return dset(fmt::format(fmt("index_map/{:s}"), axis_name)).getSpace().getDimensions()[0];
 }
 
 

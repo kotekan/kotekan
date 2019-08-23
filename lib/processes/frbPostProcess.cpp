@@ -43,7 +43,7 @@ frbPostProcess::frbPostProcess(Config& config_, const string& unique_name,
 
     in_buf = (struct Buffer**)malloc(_num_gpus * sizeof(struct Buffer*));
     for (int i = 0; i < _num_gpus; ++i) {
-        in_buf[i] = get_buffer("in_buf_" + std::to_string(i));
+        in_buf[i] = get_buffer(fmt::format(fmt("in_buf_{:d}"), i));
         register_consumer(in_buf[i], unique_name.c_str());
     }
     frb_buf = get_buffer("out_buf");

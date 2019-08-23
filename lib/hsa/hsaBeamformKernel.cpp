@@ -2,6 +2,8 @@
 
 #include "configUpdater.hpp"
 
+#include "fmt.hpp"
+
 #include <signal.h>
 #include <utils/visUtil.hpp>
 
@@ -76,14 +78,16 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string& unique_name,
     update_EW_beam = true;
     first_pass = true;
 
-    config_base = "/gpu/gpu_" + std::to_string(device.get_gpu_id());
+    config_base = fmt::format(fmt("/gpu/gpu_{:d}"), device.get_gpu_id());
 
     using namespace std::placeholders;
     restServer& rest_server = restServer::instance();
-    endpoint_NS_beam = config_base + "/frb/update_NS_beam/" + std::to_string(device.get_gpu_id());
+    endpoint_NS_beam =
+        fmt::format(fmt("{:s}/frb/update_NS_beam/{:d}"), config_base, device.get_gpu_id());
     rest_server.register_post_callback(
         endpoint_NS_beam, std::bind(&hsaBeamformKernel::update_NS_beam_callback, this, _1, _2));
-    endpoint_EW_beam = config_base + "/frb/update_EW_beam/" + std::to_string(device.get_gpu_id());
+    endpoint_EW_beam =
+        fmt::format(fmt("{:s}/frb/update_EW_beam/{:d}"), config_base, device.get_gpu_id());
 
     rest_server.register_post_callback(
         endpoint_EW_beam, std::bind(&hsaBeamformKernel::update_EW_beam_callback, this, _1, _2));
@@ -129,7 +133,7 @@ void hsaBeamformKernel::update_EW_beam_callback(connectionInstance& conn, json& 
     }
     _ew_spacing_c[ew_id] = json_request["ew_beam"];
     update_EW_beam = true;
-    config.update_value(config_base, "ew_spacing/" + std::to_string(ew_id),
+    config.update_value(config_base, fmt::format(fmt("ew_spacing/{:d}"), ew_id),
                         json_request["ew_beam"]);
     conn.send_empty_reply(HTTP_RESPONSE::OK);
 }

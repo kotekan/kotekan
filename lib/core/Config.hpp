@@ -9,6 +9,7 @@
 #include "errors.h"
 #include "kotekanLogging.hpp"
 
+#include "fmt.hpp"
 #include "json.hpp"
 
 #include <complex>
@@ -69,19 +70,19 @@ public:
                     Config::configEval<T> eval(*this, base_path, name);
                     value = eval.compute_result();
                 } catch (std::exception const& ex) {
-                    throw std::runtime_error("Failed to evaluate: '" + json_value.get<std::string>()
-                                             + "' with message: '" + ex.what() + "' for name "
-                                             + name + " in path " + base_path);
+                    throw std::runtime_error(
+                        fmt::format(fmt("Failed to evaluate: '{:s}' with message: '{:s}' for name "
+                                        "{:s} in path {:s}"),
+                                    json_value.get<std::string>(), ex.what(), name, base_path));
                 }
             } else {
                 value = json_value.get<T>();
             }
         } catch (std::exception const& ex) {
             int status;
-            throw std::runtime_error("The value " + name + " in path " + base_path
-                                     + " is not of type '"
-                                     + abi::__cxa_demangle(typeid(T).name(), NULL, NULL, &status)
-                                     + "' or doesn't exist");
+            throw std::runtime_error(fmt::format(
+                fmt("The value {:s} in path {:s} is not of type '{:s}' or doesn't exist."), name,
+                base_path, abi::__cxa_demangle(typeid(T).name(), NULL, NULL, &status)));
         }
 
         return value;
@@ -101,10 +102,9 @@ public:
             value = json_value.get<T>();
         } catch (std::exception const& ex) {
             int status;
-            throw std::runtime_error("The value " + name + " in path " + base_path
-                                     + " is not of type '"
-                                     + abi::__cxa_demangle(typeid(T).name(), NULL, NULL, &status)
-                                     + "' or doesn't exist");
+            throw std::runtime_error(fmt::format(
+                fmt("The value {:s} in path {:s} is not of type '{:s}' or doesn't exist"), name,
+                base_path, abi::__cxa_demangle(typeid(T).name(), NULL, NULL, &status)));
         }
 
         return value;
@@ -281,14 +281,14 @@ private:
 
 template<typename T>
 void Config::update_value(const string& base_path, const string& name, const T& value) {
-    string update_path = base_path + "/" + name;
+    string update_path = fmt::format(fmt("{:s}/{:s}"), base_path, name);
     json::json_pointer path(update_path);
 
     try {
         _json.at(path) = value;
     } catch (std::exception const& ex) {
-        throw std::runtime_error("Failed to update config value at: " + update_path
-                                 + " message: " + ex.what());
+        throw std::runtime_error(fmt::format(
+            fmt("Failed to update config value at: {:s} message: {:s}"), update_path, ex.what()));
     }
 }
 
@@ -311,9 +311,9 @@ Config::configEval<Type>::configEval(Config& _config, const std::string& base_pa
     json value = config.get_value(base_path, name);
 
     if (!(value.is_string() || value.is_number())) {
-        throw std::runtime_error("The value " + name + " in path " + base_path
-                                 + " isn't a number or string to eval or "
-                                   "does not exist.");
+        throw std::runtime_error(fmt::format(
+            fmt("The value {:s} in path {:s} isn't a number or string to eval or does not exist."),
+            name, base_path));
     }
     const std::string& expression = value.get<std::string>();
 

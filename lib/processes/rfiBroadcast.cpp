@@ -6,6 +6,8 @@
 #include "util.h"
 #include "visUtil.hpp"
 
+#include "fmt.hpp"
+
 #include <arpa/inet.h>
 #include <errno.h>
 #include <functional>
@@ -65,7 +67,7 @@ rfiBroadcast::rfiBroadcast(Config& config, const string& unique_name,
     endpoint = unique_name + "/change_params";
     rest_server.register_post_callback(endpoint,
                                        std::bind(&rfiBroadcast::rest_callback, this, _1, _2));
-    endpoint_zero = unique_name + "/percent_zeroed";
+    endpoint_zero = fmt::format(fmt("{:s}/percent_zeroed"), unique_name);
     rest_server.register_get_callback(endpoint_zero, std::bind(&rfiBroadcast::rest_zero, this, _1));
 }
 

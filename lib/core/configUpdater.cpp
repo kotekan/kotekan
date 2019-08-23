@@ -52,14 +52,12 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path) {
         // Check if this is a kotekan_update_endpoint block, and if so create
         // the endpoint
         string endpoint_type = it.value().value("kotekan_update_endpoint", "none");
-        string unique_name = path + "/" + it.key();
+        string unique_name = fmt::format(fmt("{:s}/{:s}"), path, it.key());
         if (endpoint_type == "json") {
             if (std::count(_endpoints.begin(), _endpoints.end(), unique_name) != 0) {
-                throw std::runtime_error("configUpdater: An endpoint with the"
-                                         "path "
-                                         + unique_name
-                                         + " has been "
-                                           "defined more than once.");
+                throw std::runtime_error(fmt::format(fmt("configUpdater: An endpoint with the path "
+                                                         "{:s} has been defined more than once."),
+                                                     unique_name));
             }
             INFO_NON_OO("configUpdater: creating endpoint: {:s}", unique_name);
             create_endpoint(unique_name);
@@ -102,9 +100,9 @@ void configUpdater::subscribe(const Stage* subscriber,
                               std::map<std::string, std::function<bool(json&)>> callbacks) {
     for (auto callback : callbacks) {
         if (!_config->exists(subscriber->get_unique_name() + "/updatable_config", callback.first))
-            throw std::runtime_error("configUpdater: key '" + callback.first
-                                     + "' was not found in '" + subscriber->get_unique_name()
-                                     + "/updatable_config' in the config file.");
+            throw std::runtime_error(fmt::format(fmt("configUpdater: key '{:s}' was not found in "
+                                                     "'{:s}/updatable_config' in the config file."),
+                                                 callback.first, subscriber->get_unique_name()));
         subscribe(_config->get<std::string>(subscriber->get_unique_name() + "/updatable_config/",
                                             callback.first),
                   callback.second);

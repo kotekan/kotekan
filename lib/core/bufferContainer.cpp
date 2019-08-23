@@ -1,5 +1,7 @@
 #include "bufferContainer.hpp"
 
+#include "fmt.hpp"
+
 namespace kotekan {
 
 bufferContainer::bufferContainer() {}
@@ -8,7 +10,7 @@ bufferContainer::~bufferContainer() {}
 
 void bufferContainer::add_buffer(const string& name, Buffer* buf) {
     if (buffers.count(name) != 0) {
-        throw std::runtime_error("The buffer named " + name + " already exists!");
+        throw std::runtime_error(fmt::format(fmt("The buffer named {:s} already exists!"), name));
         return;
     }
     buffers[name] = buf;
@@ -16,7 +18,7 @@ void bufferContainer::add_buffer(const string& name, Buffer* buf) {
 
 Buffer* bufferContainer::get_buffer(const string& name) {
     if (buffers.count(name) == 0) {
-        throw std::runtime_error("The buffer named " + name + " doesn't exist!");
+        throw std::runtime_error(fmt::format(fmt("The buffer named {:s} doesn't exist!"), name));
         return nullptr;
     }
     return buffers[name];

@@ -71,20 +71,18 @@ void Valve::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, int 
 
     // Buffer sizes must match exactly
     if (buf_src->frame_size != buf_dest->frame_size) {
-        std::string msg =
-            fmt::format("Buffer sizes must match for direct copy (src %i != dest %i).",
-                        buf_src->frame_size, buf_dest->frame_size);
-        throw std::runtime_error(msg);
+        throw std::runtime_error(
+            fmt::format(fmt("Buffer sizes must match for direct copy (src {:d} != dest {:d})."),
+                        buf_src->frame_size, buf_dest->frame_size));
     }
 
     // Metadata sizes must match exactly
     if (buf_src->metadata[frame_id_src]->metadata_size
         != buf_dest->metadata[frame_id_dest]->metadata_size) {
-        std::string msg =
-            fmt::format("Metadata sizes must match for direct copy (src %i != dest %i).",
+        throw std::runtime_error(
+            fmt::format(fmt("Metadata sizes must match for direct copy (src {:d} != dest {:d})."),
                         buf_src->metadata[frame_id_src]->metadata_size,
-                        buf_dest->metadata[frame_id_dest]->metadata_size);
-        throw std::runtime_error(msg);
+                        buf_dest->metadata[frame_id_dest]->metadata_size));
     }
 
     int num_consumers = get_num_consumers(buf_src);

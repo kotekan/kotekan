@@ -4,6 +4,8 @@
 #include "metadata.h"
 #include "visBuffer.hpp"
 
+#include "fmt.hpp"
+
 using json = nlohmann::json;
 using std::map;
 using std::string;
@@ -39,15 +41,17 @@ void bufferFactory::build_from_tree(map<string, struct Buffer*>& buffers, json& 
         if (buffer_type != "none") {
             string name = it.key();
             if (buffers.count(name) != 0) {
-                throw std::runtime_error("The buffer named " + name + " has already been defined!");
+                throw std::runtime_error(
+                    fmt::format(fmt("The buffer named {:s} has already been defined!"), name));
             }
-            buffers[name] = new_buffer(buffer_type, name, path + "/" + it.key());
+            buffers[name] =
+                new_buffer(buffer_type, name, fmt::format(fmt("{:s}/{:s}"), path, it.key()));
             continue;
         }
 
         // Recursive part.
         // This is a section/scope not a buffer block.
-        build_from_tree(buffers, it.value(), path + "/" + it.key());
+        build_from_tree(buffers, it.value(), fmt::format(fmt("{:s}/{:s}"), path, it.key()));
     }
 }
 
@@ -58,8 +62,9 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
     uint32_t num_frames = config.get<uint32_t>(location, "num_frames");
     string metadataPool_name = config.get<std::string>(location, "metadata_pool");
     if (metadataPools.count(metadataPool_name) != 1) {
-        throw std::runtime_error("The buffer " + name + " is requesting metadata pool named "
-                                 + metadataPool_name + " but no pool exists.");
+        throw std::runtime_error(fmt::format(
+            fmt("The buffer {:s} is requesting metadata pool named {:s} but no pool exists."), name,
+            metadataPool_name));
     }
     struct metadataPool* pool = metadataPools[metadataPool_name];
 
@@ -90,7 +95,7 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
     }
 
     // No metadata found
-    throw std::runtime_error("No buffer type named: " + name);
+    throw std::runtime_error(fmt::format(fmt("No buffer type named: {:s}"), name));
 }
 
 } // namespace kotekan

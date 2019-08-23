@@ -8,6 +8,8 @@
 #include "visFileH5.hpp"
 #include "visUtil.hpp"
 
+#include "fmt.hpp"
+
 #include <algorithm>
 #include <csignal>
 #include <exception>
@@ -95,13 +97,13 @@ bool applyGains::receive_update(nlohmann::json& json) {
     // receive new gains timestamp ("start_time" might move to "start_time")
     try {
         if (!json.at("start_time").is_number())
-            throw std::invalid_argument("applyGains: received bad gains "
-                                        "timestamp: "
-                                        + json.at("start_time").dump());
+            throw std::invalid_argument(fmt::format(fmt("applyGains: received bad gains "
+                                                        "timestamp: {:s}"),
+                                                    json.at("start_time").dump()));
         if (json.at("start_time") < 0)
-            throw std::invalid_argument("applyGains: received negative gains "
-                                        "timestamp: "
-                                        + json.at("start_time").dump());
+            throw std::invalid_argument(fmt::format(fmt("applyGains: received negative gains "
+                                                        "timestamp: {:s}"),
+                                                    json.at("start_time").dump()));
         new_ts = json.at("start_time");
     } catch (std::exception& e) {
         WARN("Failure reading 'start_time' from update: {:s}", e.what());
@@ -117,8 +119,8 @@ bool applyGains::receive_update(nlohmann::json& json) {
     // receive new gains tag
     try {
         if (!json.at("tag").is_string())
-            throw std::invalid_argument("applyGains: received bad gains tag:"
-                                        + json.at("tag").dump());
+            throw std::invalid_argument(fmt::format(fmt("applyGains: received bad gains tag: {:s}"),
+                                                    json.at("tag").dump()));
         gtag = json.at("tag");
     } catch (std::exception& e) {
         WARN("Failure reading 'tag' from update: {:s}", e.what());
@@ -126,11 +128,11 @@ bool applyGains::receive_update(nlohmann::json& json) {
     }
     // Get the gains for this timestamp
     // TODO: For now, assume the tag is the gain file name.
-    gains_path = gains_dir + "/" + gtag + ".h5";
+    gains_path = fmt::format(fmt("{:s}/{:s}.h5"), gains_dir, gtag);
     // Check if file exists
     if (!fexists(gains_path)) {
         // Try a different extension
-        gains_path = gains_dir + "/" + gtag + ".hdf5";
+        gains_path = fmt::format(fmt("{:s}/{:s}.hdf5"), gains_dir, gtag);
         if (!fexists(gains_path)) {
             WARN("Could not update gains. File not found: {:s}", gains_path)
             return false;

@@ -3,6 +3,8 @@
 #include "unistd.h"
 #include "util.h"
 
+#include "fmt.hpp"
+
 #include <iostream>
 #include <sys/time.h>
 
@@ -45,7 +47,7 @@ gpuProcess::gpuProcess(Config& config_, const string& unique_name,
 }
 
 gpuProcess::~gpuProcess() {
-    restServer::instance().remove_get_callback("/gpu_profile/" + std::to_string(gpu_id));
+    restServer::instance().remove_get_callback(fmt::format(fmt("/gpu_profile/{:d}"), gpu_id));
     for (auto& command : commands)
         delete command;
     for (auto& event : final_signals)
@@ -63,12 +65,12 @@ void gpuProcess::init() {
     string s_log_level =
         config.get_default<string>(unique_name, "device_interface_log_level", g_log_level);
     dev->set_log_level(s_log_level);
-    dev->set_log_prefix("GPU[" + std::to_string(gpu_id) + "] device interface");
+    dev->set_log_prefix(fmt::format(fmt("GPU[{:d}] device interface"), gpu_id));
 
     vector<json> cmds = config.get<std::vector<json>>(unique_name, "commands");
     int i = 0;
     for (json cmd : cmds) {
-        std::string unique_path = unique_name + "/commands/" + std::to_string(i++);
+        std::string unique_path = fmt::format(fmt("{:s}/commands/{:d}"), unique_name, i++);
         std::string command_name = cmd["name"];
         commands.push_back(create_command(command_name, unique_path));
     }
@@ -123,7 +125,7 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
 void gpuProcess::main_thread() {
     restServer& rest_server = restServer::instance();
     rest_server.register_get_callback(
-        "/gpu_profile/" + std::to_string(gpu_id),
+        fmt::format(fmt("/gpu_profile/{:d}"), gpu_id),
         std::bind(&gpuProcess::profile_callback, this, std::placeholders::_1));
 
     // Start with the first GPU frame;
@@ -205,8 +207,9 @@ void gpuProcess::results_thread() {
         if (log_profiling) {
             string output = "";
             for (uint32_t i = 0; i < commands.size(); ++i) {
-                output += "kernel: " + commands[i]->get_name() + " time: "
-                          + std::to_string(commands[i]->get_last_gpu_execution_time()) + "; \n";
+                output = fmt::format(fmt("{:s}kernel: {:s} time: {:f}; \n"), output,
+                                     commands[i]->get_name(),
+                                     commands[i]->get_last_gpu_execution_time());
             }
             INFO("GPU[{:d}] Profiling: {:s}", gpu_id, output);
         }

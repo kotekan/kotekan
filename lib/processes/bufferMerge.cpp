@@ -43,12 +43,14 @@ bufferMerge::bufferMerge(Config& config, const string& unique_name,
             in_buf = buffer_container.get_buffer(buffer_name);
             assert(in_buf != nullptr);
         } else {
-            throw std::runtime_error("Unknown value in in_bufs: " + buffer.dump());
+            throw std::runtime_error(
+                fmt::format(fmt("Unknown value in in_bufs: {:s}"), buffer.dump()));
         }
 
         if (in_buf->frame_size != out_buf->frame_size) {
-            throw std::invalid_argument("Input buffer '" + buffer_name
-                                        + "' not equal to output buffer size.");
+            throw std::invalid_argument(fmt::format(fmt("Input buffer '{:s}' not equal to output "
+                                                        "buffer size."),
+                                                    buffer_name));
         }
 
         register_consumer(in_buf, unique_name.c_str());

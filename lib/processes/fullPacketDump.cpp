@@ -5,6 +5,8 @@
 #include "output_formating.h"
 #include "restServer.hpp"
 
+#include "fmt.hpp"
+
 #include <fcntl.h>
 #include <functional>
 #include <stdio.h>
@@ -41,7 +43,7 @@ fullPacketDump::fullPacketDump(Config& config, const string& unique_name,
 
     using namespace std::placeholders;
     restServer& rest_server = restServer::instance();
-    endpoint = unique_name + "/packet_grab/" + std::to_string(link_id);
+    endpoint = fmt::format(fmt("{:s}/packet_grab/{:d}"), unique_name, link_id);
     rest_server.register_post_callback(
         endpoint, std::bind(&fullPacketDump::packet_grab_callback, this, _1, _2));
 }

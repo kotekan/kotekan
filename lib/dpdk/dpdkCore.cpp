@@ -1,5 +1,6 @@
 #include "dpdkCore.hpp"
 
+#include "fmt.hpp"
 #include "json.hpp"
 
 #include <signal.h>
@@ -86,16 +87,17 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     create_handlers(buffer_container);
 
     if (num_ports > num_system_ports) {
-        throw std::runtime_error("Trying to create more ports: " + to_string(num_ports)
-                                 + ", than DPDK found: " + to_string(num_system_ports));
+        throw std::runtime_error(
+            fmt::format(fmt("Trying to create more ports: {:d}, than DPDK found: {:d}"), num_ports,
+                        num_system_ports));
     }
 
     // The plus one is for the master lcore.
     if (rte_lcore_count() != num_lcores + 1) {
         ERROR("Mismatch in the number of lcores");
-        throw std::runtime_error("Num lcores set to: " + to_string(num_lcores)
-                                 + " in the config, but" + " the DPDK run time has: "
-                                 + to_string(rte_lcore_count()) + " lcores.");
+        throw std::runtime_error(fmt::format(
+            fmt("Num lcores set to: {:d} in the config, but the DPDK run time has: {:d} lcores."),
+            num_lcores, rte_lcore_count()));
     }
 
     mbuf_pool = rte_mempool_create("MBUF_POOL", num_mbufs * num_ports, mbuf_size, mbuf_cache_size,
@@ -112,7 +114,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
             // TODO This will fail in a strange way if a port is listed more than once in the
             // config. We should have a check that each port assignment is unique.
             if (port_init(port) != 0) {
-                throw std::runtime_error("DPDK Cannot init port: " + to_string(port));
+                throw std::runtime_error(fmt::format(fmt("DPDK Cannot init port: {:d}"), port));
             }
         }
     }
@@ -126,16 +128,16 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
     vector<json> handlers_block = config.get<std::vector<json>>(unique_name, "handlers");
     uint32_t port = 0;
     if (handlers_block.size() != num_system_ports) {
-        throw std::runtime_error("The number of DPDK handlers (" + to_string(handlers_block.size())
-                                 + ") must be equal to the number of system ports ("
-                                 + to_string(num_system_ports) + ")");
+        throw std::runtime_error(fmt::format(fmt("The number of DPDK handlers ({:d}) must be equal "
+                                                 "to the number of system ports ({:d})"),
+                                             handlers_block.size(), num_system_ports));
     }
     handlers = (dpdkRXhandler**)malloc(num_system_ports * sizeof(dpdkRXhandler*));
     CHECK_MEM(handlers);
     for (json& handler : handlers_block) {
 
         string handler_name = handler["dpdk_handler"];
-        string handler_unique_name = unique_name + "/handlers/" + to_string(port);
+        string handler_unique_name = fmt::format(fmt("{:s}/handlers/{:d}"), unique_name, port);
 
         if (handler_name == "iceBoardShuffle") {
             handlers[port] =
@@ -151,8 +153,8 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
         } else if (handler_name == "none") {
             handlers[port] = nullptr;
         } else {
-            throw std::runtime_error("The dpdk handler type '" + handler_name
-                                     + "' does not exist.");
+            throw std::runtime_error(
+                fmt::format(fmt("The dpdk handler type '{:s}' does not exist."), handler_name));
         }
 
         port++;
@@ -161,10 +163,10 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
 
 void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
 
-    string dpdk_lcore_map = "0@" + to_string(master_lcore_cpu) + ",";
+    string dpdk_lcore_map = fmt::format(fmt("0@{:d},"), master_lcore_cpu);
     int i = 1;
     for (int& core_id : lcore_cpu_map) {
-        dpdk_lcore_map += to_string(i++) + "@" + to_string(core_id) + ",";
+        dpdk_lcore_map += fmt::format(fmt("{:d}@{:d},"), i++, core_id);
     }
     dpdk_lcore_map.pop_back(); // Remove the last ","
 
@@ -187,7 +189,8 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
     if (!__eal_initalized) {
         int ret = rte_eal_init(argc2, argv2);
         if (ret < 0)
-            throw std::runtime_error("Failed to init DPDK EAL with error code: " + to_string(ret));
+            throw std::runtime_error(
+                fmt::format(fmt("Failed to init DPDK EAL with error code: {:d}"), ret));
         __eal_initalized = true;
     }
 }

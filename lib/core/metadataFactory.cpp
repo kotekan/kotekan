@@ -5,6 +5,8 @@
 #include "metadata.h"
 #include "visBuffer.hpp"
 
+#include "fmt.hpp"
+
 using json = nlohmann::json;
 using std::map;
 using std::string;
@@ -36,11 +38,11 @@ void metadataFactory::build_from_tree(map<string, struct metadataPool*>& pools, 
         // Check if this is a kotekan_metadata_pool block, and if so create the metadata_pool.
         string pool_type = it.value().value("kotekan_metadata_pool", "none");
         if (pool_type != "none") {
-            string unique_path = path + "/" + it.key();
+            string unique_path = fmt::format(fmt("{:s}/{:s}"), path, it.key());
             string name = it.key();
             if (pools.count(name) != 0) {
-                throw std::runtime_error("The metadata object named " + name
-                                         + " has already been defined!");
+                throw std::runtime_error(fmt::format(
+                    fmt("The metadata object named {:s} has already been defined!"), name));
             }
             pools[name] = new_pool(pool_type, unique_path);
             continue;
@@ -48,7 +50,7 @@ void metadataFactory::build_from_tree(map<string, struct metadataPool*>& pools, 
 
         // Recursive part.
         // This is a section/scope not a kotekan_metadata_pool block.
-        build_from_tree(pools, it.value(), path + "/" + it.key());
+        build_from_tree(pools, it.value(), fmt::format(fmt("{:s}/{:s}"), path, it.key()));
     }
 }
 
@@ -68,7 +70,7 @@ struct metadataPool* metadataFactory::new_pool(const string& pool_type, const st
         return create_metadata_pool(num_metadata_objects, sizeof(struct visMetadata));
     }
     // No metadata found
-    throw std::runtime_error("No metadata object named: " + pool_type);
+    throw std::runtime_error(fmt::format(fmt("No metadata object named: {:s}"), pool_type));
 }
 
 } // namespace kotekan

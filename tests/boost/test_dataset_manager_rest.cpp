@@ -72,9 +72,9 @@ struct TestContext {
             js.at("state").at("type");
             js.at("state").at("data");
         } catch (std::exception& e) {
-            std::string error = fmt::format("Failure parsing send-state message from "
-                                            "datasetManager: {}\n{}.",
-                                            js.dump(), e.what());
+            std::string error = fmt::format(fmt("Failure parsing send-state message from "
+                                                "datasetManager:\n{:s}\n{:s}."),
+                                            js.dump(4), e.what());
             reply["result"] = error;
             con.send_json_reply(reply);
             BOOST_CHECK_MESSAGE(false, error);

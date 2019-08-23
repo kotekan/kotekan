@@ -56,9 +56,10 @@ void kotekanLogging::set_log_level(const string& s_log_level) {
     } else if (strcasecmp(s_log_level.c_str(), "debug2") == 0) {
         log_level = logLevel::DEBUG2;
     } else {
-        throw std::runtime_error(
-            "The value given for log_level: '" + s_log_level + "is not valid! "
-            + "(It should be one of 'off', 'error', 'warn', 'info', 'debug', 'debug2')");
+        throw std::runtime_error(fmt::format(fmt("The value given for log_level: '{:s}' is not "
+                                                 "valid! (It should be one of 'off', 'error', "
+                                                 "'warn', 'info', 'debug', 'debug2')"),
+                                             s_log_level));
     }
 
     set_log_level(log_level);

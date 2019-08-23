@@ -63,7 +63,8 @@ bool bufferSwitch::select_frame(const std::string& internal_name, Buffer* in_buf
     std::lock_guard<std::mutex> map_lock(enabled_buffers_lock);
     std::map<std::string, bool>::iterator it = enabled_buffers.find(internal_name);
     if (it == enabled_buffers.end()) {
-        throw std::runtime_error("No entry for the buffer named: " + internal_name);
+        throw std::runtime_error(
+            fmt::format(fmt("No entry for the buffer named: {:s}"), internal_name));
     }
     return it->second;
 }

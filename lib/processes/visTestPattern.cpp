@@ -72,9 +72,8 @@ visTestPattern::visTestPattern(Config& config, const std::string& unique_name,
     if (opendir(write_dir.c_str()) == nullptr) {
         // Create directory
         if (mkdir(write_dir.c_str(), S_IRWXU | S_IRGRP | S_IROTH) < 0) {
-            std::string error =
-                fmt::format("Failure creating directory {}: {}", write_dir, std::strerror(errno));
-            throw std::runtime_error(error);
+            throw std::runtime_error(fmt::format(fmt("Failure creating directory {:s}: {:s}"),
+                                                 write_dir, std::strerror(errno)));
         }
     }
     INFO("Writing report to '{:s}'.", write_dir);
@@ -156,8 +155,8 @@ void visTestPattern::main_thread() {
         // Check if the dataset ID changed.
         auto frame = visFrameView(in_buf, frame_id);
         if (frame.dataset_id != ds_id) {
-            std::string error_msg = fmt::format("Expected dataset id {:#x}, got {:#x}.\nNot "
-                                                "supported. Exiting...",
+            std::string error_msg = fmt::format(fmt("Expected dataset id {:#x}, got {:#x}.\nNot "
+                                                    "supported. Exiting..."),
                                                 ds_id, frame.dataset_id);
             std::lock_guard<std::mutex> thread_lck(mtx_update);
             exit_failed_test(error_msg);
@@ -173,12 +172,11 @@ void visTestPattern::main_thread() {
                     try {
                         compute_expected_data();
                     } catch (std::exception& e) {
-                        std::string error_msg = fmt::format("Failure computing expected data. "
-                                                            "Received FPGA buffer data format "
-                                                            "doesn't match data stream: {}. "
-                                                            "Exiting...",
-                                                            e.what());
-                        exit_failed_test(error_msg);
+                        exit_failed_test(
+                            fmt::format(fmt("Failure computing expected data. Received "
+                                            "FPGA buffer data format doesn't match data "
+                                            "stream: {:s}. Exiting..."),
+                                        e.what()));
                         return;
                     }
                 }
@@ -368,7 +366,8 @@ void visTestPattern::receive_update(kotekan::connectionInstance& conn, json& dat
 
     if (num_frames) {
         std::string msg = fmt::format(
-            "Received update, but not done with the last test ({} frames remaining).", num_frames);
+            fmt("Received update, but not done with the last test ({:d} frames remaining)."),
+            num_frames);
         reply_failure(conn, msg);
         return;
     }
@@ -414,9 +413,10 @@ void visTestPattern::receive_update(kotekan::connectionInstance& conn, json& dat
     }
 
     if (fpga_buf_pattern.size() != inputs.size()) {
-        std::string msg = fmt::format("Failure reading test pattern data from update: Number of "
-                                      "inputs ({}) does not match data stream ({} inputs).",
-                                      fpga_buf_pattern.size(), inputs.size());
+        std::string msg =
+            fmt::format(fmt("Failure reading test pattern data from update: Number of "
+                            "inputs ({:d}) does not match data stream ({:d} inputs)."),
+                        fpga_buf_pattern.size(), inputs.size());
         num_frames = 0;
         reply_failure(conn, msg);
         return;
@@ -424,10 +424,11 @@ void visTestPattern::receive_update(kotekan::connectionInstance& conn, json& dat
 
     for (auto f : fpga_buf_pattern) {
         if (f.second.size() != freqs.size()) {
-            std::string msg = fmt::format("Failure reading test pattern data from update: Number "
-                                          "of frequencies ({}) does not match data stream "
-                                          "({} frequencies).",
-                                          f.second.size(), freqs.size());
+            std::string msg =
+                fmt::format(fmt("Failure reading test pattern data from update: Number "
+                                "of frequencies ({:d}) does not match data stream "
+                                "({:d} frequencies)."),
+                            f.second.size(), freqs.size());
             num_frames = 0;
             reply_failure(conn, msg);
             return;
@@ -438,12 +439,12 @@ void visTestPattern::receive_update(kotekan::connectionInstance& conn, json& dat
          test_done_path);
 
     // Open a new report file for this test
-    std::string file_name = fmt::format("{}/{}.csv", write_dir, test_name);
+    std::string file_name = fmt::format(fmt("{:s}/{:s}.csv"), write_dir, test_name);
     if (outfile.is_open())
         outfile.close();
     outfile.open(file_name);
     if (!outfile.is_open()) {
-        std::string msg = fmt::format("Failed to open out file '{}'.", file_name);
+        std::string msg = fmt::format(fmt("Failed to open out file '{:s}'."), file_name);
         reply_failure(conn, msg);
         return;
     }

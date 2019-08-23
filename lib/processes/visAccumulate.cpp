@@ -161,9 +161,9 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
         // Validate and fetch the gating mode
         try {
             if (!it.value().at("mode").is_string()) {
-                throw std::invalid_argument("Config for gated dataset " + name
-                                            + " did not have a valid mode argument: "
-                                            + it.value().dump());
+                throw std::invalid_argument(fmt::format(fmt("Config for gated dataset {:s} did "
+                                                            "not have a valid mode argument: {:s}"),
+                                                        name, it.value().dump()));
             }
         } catch (std::exception& e) {
             FATAL_ERROR("Failure reading 'mode' from config: {:s}", e.what());
@@ -179,9 +179,9 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
         // Validate and fetch the output buffer name
         try {
             if (!it.value().at("buf").is_string()) {
-                throw std::invalid_argument("Config for gated dataset " + name
-                                            + " did not have a valid buf argument: "
-                                            + it.value().dump());
+                throw std::invalid_argument(fmt::format(fmt("Config for gated dataset {:s} did "
+                                                            "not have a valid buf argument: {:s}"),
+                                                        name, it.value().dump()));
             }
         } catch (std::exception& e) {
             FATAL_ERROR("Failure reading 'buf' from config: {:s}", e.what());

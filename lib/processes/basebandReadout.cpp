@@ -437,7 +437,8 @@ void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump
 
     // TODO Create parent directories.
     std::string filename =
-        _base_dir + dump_status.request.file_path + "/" + dump_status.request.file_name;
+        fmt::format(fmt("{:s}{:s}/{:s}"), _base_dir, dump_status.request.file_path,
+                    dump_status.request.file_name);
     std::string lock_filename = create_lockfile(filename);
     INFO("Writing baseband dump to {:s}.", filename);
 

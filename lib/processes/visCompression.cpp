@@ -287,8 +287,9 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
 
         // Update prometheus metrics
         double elapsed = current_time() - start_time;
-        std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\",thread_id=\"{}\"",
-                                         output_frame.freq_id, output_frame.dataset_id, thread_id);
+        std::string labels =
+            fmt::format(fmt("freq_id=\"{:d}\",dataset_id=\"{:#x}\",thread_id=\"{:d}\""),
+                        output_frame.freq_id, output_frame.dataset_id, thread_id);
         compression_residuals_metric
             .labels({std::to_string(output_frame.freq_id), std::to_string(output_frame.dataset_id),
                      std::to_string(thread_id)})
@@ -351,7 +352,7 @@ chimeFeed chimeFeed::from_input(input_ctype input) {
 std::ostream& operator<<(std::ostream& os, const chimeFeed& f) {
     char cyl_name[4] = {'A', 'B', 'C', 'D'};
     char pol_name[2] = {'X', 'Y'};
-    return os << fmt::format("{}{:03}{}", cyl_name[f.cylinder], f.feed_location,
+    return os << fmt::format(fmt("{:c}{:03d}{:c}"), cyl_name[f.cylinder], f.feed_location,
                              pol_name[f.polarisation]);
 }
 

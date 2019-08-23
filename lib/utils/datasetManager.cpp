@@ -338,10 +338,10 @@ bool datasetManager::register_state_parser(std::string& reply) {
             if (t.joinable())
                 t.detach();
         } else {
-            throw std::runtime_error("datasetManager: failure parsing reply received "
-                                     "from broker after registering dataset state "
-                                     "(reply: "
-                                     + reply + ").");
+            throw std::runtime_error(
+                fmt::format(fmt("datasetManager: failure parsing reply received "
+                                "from broker after registering dataset state (reply: {:s})."),
+                            reply));
         }
     } catch (std::exception& e) {
         WARN_NON_OO("datasetManager: failure registering dataset state with broker: {:s}",
@@ -357,7 +357,8 @@ bool datasetManager::send_state_parser(std::string& reply) {
     try {
         js_reply = json::parse(reply);
         if (js_reply.at("result") != "success")
-            throw std::runtime_error("received error from broker: " + js_reply.at("result").dump());
+            throw std::runtime_error(fmt::format(fmt("received error from broker: {:s}"),
+                                                 js_reply.at("result").dump(4)));
 
         return true;
     } catch (std::exception& e) {
@@ -394,7 +395,8 @@ bool datasetManager::register_dataset_parser(std::string& reply) {
     try {
         js_reply = json::parse(reply);
         if (js_reply.at("result") != "success")
-            throw std::runtime_error("received error from broker: " + js_reply.at("result").dump());
+            throw std::runtime_error(fmt::format(fmt("received error from broker: {:s}"),
+                                                 js_reply.at("result").dump(4)));
         return true;
     } catch (std::exception& e) {
         WARN_NON_OO("datasetManager: failure parsing reply received from broker "
@@ -418,7 +420,7 @@ std::string datasetManager::summary() {
         try {
             datasetState* dt = _states.at(t.second.state()).get();
 
-            out += fmt::format("{:>30} : {:#x}\n", *dt, t.second.base_dset());
+            out += fmt::format(fmt("{:>30} : {:#x}\n"), *dt, t.second.base_dset());
             id++;
         } catch (std::out_of_range& e) {
             WARN_NON_OO("datasetManager::summary(): This datasetManager instance "
@@ -530,7 +532,8 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
     try {
         js_reply = json::parse(reply.second);
         if (js_reply.at("result") != "success")
-            throw std::runtime_error("Broker answered with result=" + js_reply.at("result").dump());
+            throw std::runtime_error(fmt::format(fmt("Broker answered with result={:s}"),
+                                                 js_reply.at("result").dump(4)));
 
         std::lock_guard<std::mutex> dslock(_lock_dsets);
         for (json::iterator ds = js_reply.at("datasets").begin();

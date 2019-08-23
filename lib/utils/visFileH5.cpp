@@ -5,6 +5,7 @@
 #include "datasetState.hpp"
 #include "errors.h"
 
+#include "fmt.hpp"
 #include "gsl-lite.hpp"
 
 #include <complex>
@@ -70,7 +71,7 @@ void visFileH5::create_file(const std::string& name, const kotekan::logLevel log
                                  "stacked data.");
     }
 
-    std::string data_filename = name + ".h5";
+    std::string data_filename = fmt::format(fmt("{:s}.h5"), name);
 
     lock_filename = create_lockfile(data_filename);
 
@@ -201,7 +202,7 @@ DataSet visFileH5::dset(const std::string& name) {
 size_t visFileH5::length(const std::string& axis_name) {
     if (axis_name == "ev" && num_ev == 0)
         return 0;
-    return dset("index_map/" + axis_name).getSpace().getDimensions()[0];
+    return dset(fmt::format(fmt("index_map/{:s}"), axis_name)).getSpace().getDimensions()[0];
 }
 
 size_t visFileH5::num_time() {
@@ -244,10 +245,9 @@ void visFileH5::write_sample(uint32_t time_ind, uint32_t freq_ind, const visFram
 
     // TODO: consider adding checks for all dims
     if (frame.num_ev != num_ev) {
-        std::string msg =
-            fmt::format("Number of eigenvalues don't match for write (got {}, expected {})",
-                        frame.num_ev, num_ev);
-        throw std::runtime_error(msg);
+        throw std::runtime_error(fmt::format(
+            fmt("Number of eigenvalues don't match for write (got {:d}, expected {:d})"),
+            frame.num_ev, num_ev));
     }
 
     // Get the current dimensions
@@ -468,10 +468,9 @@ void visFileH5Fast::write_sample(uint32_t time_ind, uint32_t freq_ind, const vis
 
     // TODO: consider adding checks for all dims
     if (frame.num_ev != num_ev) {
-        std::string msg =
-            fmt::format("Number of eigenvalues don't match for write (got {}, expected {})",
-                        frame.num_ev, num_ev);
-        throw std::runtime_error(msg);
+        throw std::runtime_error(fmt::format(
+            fmt("Number of eigenvalues don't match for write (got {:d}, expected {:d})"),
+            frame.num_ev, num_ev));
     }
 
     std::vector<cfloat> gain_coeff(ninput, {1, 0});

@@ -182,7 +182,7 @@ void fakeVis::main_thread() {
 
         std::vector<input_ctype> ispec;
         for (uint32_t i = 0; i < num_elements; i++)
-            ispec.emplace_back((uint32_t)i, fmt::format("dm_input_{}", i));
+            ispec.emplace_back((uint32_t)i, fmt::format(fmt("dm_input_{:d}"), i));
         auto istate = std::make_unique<inputState>(ispec, std::move(fstate));
 
         std::vector<prod_ctype> pspec;

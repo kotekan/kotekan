@@ -32,7 +32,7 @@ beamformingPostProcess::beamformingPostProcess(Config& config, const string& uni
     _num_gpus = config.get<uint32_t>(unique_name, "num_gpus");
     in_buf = (struct Buffer**)malloc(_num_gpus * sizeof(struct Buffer*));
     for (uint32_t i = 0; i < _num_gpus; ++i) {
-        in_buf[i] = get_buffer("beam_in_buf_" + std::to_string(i));
+        in_buf[i] = get_buffer(fmt::format(fmt("beam_in_buf_{:d}"), i));
         register_consumer(in_buf[i], unique_name.c_str());
     }
     vdif_buf = get_buffer("vdif_out_buf");

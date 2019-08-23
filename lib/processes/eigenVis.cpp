@@ -212,7 +212,7 @@ void eigenVis::main_thread() {
         // Report all eigenvalues to stdout.
         std::string str_evals = "";
         for (uint32_t i = 0; i < num_eigenvectors; i++) {
-            str_evals += " " + std::to_string(evals[i]);
+            str_evals = fmt::format(fmt("{:s} {}"), str_evals, evals[i]);
         }
         INFO("Found eigenvalues: {:s}, with RMS residuals: {:e}, in {:3.1f} s.", str_evals, rms,
              elapsed_time);

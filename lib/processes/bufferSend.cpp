@@ -167,7 +167,7 @@ void bufferSend::connect_to_server() {
 
         socket_fd = socket(AF_INET, SOCK_STREAM, 0);
         if (socket_fd == -1) {
-            std::string msg = fmt::format("Could not create socket, errno: {} ({}})", errno,
+            std::string msg = fmt::format(fmt("Could not create socket, errno: {:d} ({:s})"), errno,
                                           std::strerror(errno));
             ERROR("{:s}", msg);
             throw std::runtime_error(msg);

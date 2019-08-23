@@ -3,6 +3,8 @@
 #include "errors.h"
 #include "kotekanLogging.hpp"
 
+#include "fmt.hpp"
+
 #include <event2/keyvalq_struct.h>
 #include <pthread.h>
 #include <sched.h>
@@ -112,7 +114,7 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
 void restServer::register_get_callback(string endpoint,
                                        std::function<void(connectionInstance&)> callback) {
     if (endpoint.substr(0, 1) != "/") {
-        endpoint = "/" + endpoint;
+        endpoint = fmt::format(fmt("/{:s}"), endpoint);
     }
 
     {
@@ -129,7 +131,7 @@ void restServer::register_get_callback(string endpoint,
 void restServer::register_post_callback(string endpoint,
                                         std::function<void(connectionInstance&, json&)> callback) {
     if (endpoint.substr(0, 1) != "/") {
-        endpoint = "/" + endpoint;
+        endpoint = fmt::format(fmt("/{:s}"), endpoint);
     }
 
     {
@@ -145,7 +147,7 @@ void restServer::register_post_callback(string endpoint,
 
 void restServer::remove_get_callback(string endpoint) {
     if (endpoint.substr(0, 1) != "/") {
-        endpoint = "/" + endpoint;
+        endpoint = fmt::format(fmt("/{:s}"), endpoint);
     }
 
     std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
@@ -157,7 +159,7 @@ void restServer::remove_get_callback(string endpoint) {
 
 void restServer::remove_json_callback(string endpoint) {
     if (endpoint.substr(0, 1) != "/") {
-        endpoint = "/" + endpoint;
+        endpoint = fmt::format(fmt("/{:s}"), endpoint);
     }
 
     std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
@@ -169,10 +171,10 @@ void restServer::remove_json_callback(string endpoint) {
 
 void restServer::add_alias(string alias, string target) {
     if (alias.substr(0, 1) != "/") {
-        alias = "/" + alias;
+        alias = fmt::format(fmt("/{:s}"), alias);
     }
     if (target.substr(0, 1) != "/") {
-        target = "/" + target;
+        target = fmt::format(fmt("/{:s}"), target);
     }
 
     std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
@@ -188,7 +190,7 @@ void restServer::add_alias(string alias, string target) {
 
 void restServer::remove_alias(string alias) {
     if (alias.substr(0, 1) != "/") {
-        alias = "/" + alias;
+        alias = fmt::format(fmt("/{:s}"), alias);
     }
 
     std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);

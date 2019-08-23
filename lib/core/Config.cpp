@@ -3,6 +3,8 @@
 #include "errors.h"
 #include "visUtil.hpp"
 
+#include "fmt.hpp"
+
 #include <fstream>
 #include <iostream>
 #include <json.hpp>
@@ -73,7 +75,7 @@ json Config::get_value(const string& base_path, const string& name) {
     for (;;) {
 
         if (search_path == "" && exists("/", name)) {
-            json::json_pointer value_pointer("/" + name);
+            json::json_pointer value_pointer(fmt::format(fmt("/{:s}"), name));
             return _json.at(value_pointer);
         }
 
@@ -86,15 +88,16 @@ json Config::get_value(const string& base_path, const string& name) {
         }
 
         if (exists(search_path, name)) {
-            json::json_pointer value_pointer(search_path + "/" + name);
+            json::json_pointer value_pointer(fmt::format(fmt("{:s}/{:s}"), search_path, name));
             return _json.at(value_pointer);
         }
 
         std::size_t last_slash = search_path.find_last_of("/");
         search_path = search_path.substr(0, last_slash);
     }
-    throw std::runtime_error("The config option: " + name
-                             + " is required, but was not found in the path: " + base_path);
+    throw std::runtime_error(
+        fmt::format(fmt("The config option: {:s} is required, but was not found in the path: {:s}"),
+                    name, base_path));
 }
 
 bool Config::exists(const string& base_path, const string& name) {
@@ -102,7 +105,7 @@ bool Config::exists(const string& base_path, const string& name) {
     if (base_path == "/") {
         search_path = base_path + name;
     } else {
-        search_path = base_path + "/" + name;
+        search_path = fmt::format(fmt("{:s}/{:s}"), base_path, name);
     }
 
     json::json_pointer search_pointer(search_path);

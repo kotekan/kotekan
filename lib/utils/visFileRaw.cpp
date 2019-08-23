@@ -114,7 +114,7 @@ void visFileRaw::create_file(const std::string& name, const kotekan::logLevel lo
     if ((fd = open((name + ".data").c_str(), oflags, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH))
         == -1) {
         throw std::runtime_error(
-            fmt::format("Failed to open file {}: {}.", name + ".data", strerror(errno)));
+            fmt::format(fmt("Failed to open file {:s}.data: {:s}."), name, strerror(errno)));
     }
 
     // Preallocate data file (without increasing the length)
@@ -222,10 +222,9 @@ bool visFileRaw::write_raw(off_t offset, size_t nb, const void* data) {
 void visFileRaw::write_sample(uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame) {
     // TODO: consider adding checks for all dims
     if (frame.num_ev != num_ev) {
-        std::string msg =
-            fmt::format("Number of eigenvalues don't match for write (got {}, expected {})",
-                        frame.num_ev, num_ev);
-        throw std::runtime_error(msg);
+        throw std::runtime_error(fmt::format(fmt("Number of eigenvalues don't match for write (got "
+                                                 "{:d}, expected {:d})"),
+                                             frame.num_ev, num_ev));
     }
 
     const uint8_t ONE = 1;

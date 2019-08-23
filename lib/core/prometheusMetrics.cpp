@@ -41,13 +41,13 @@ void Gauge::set(const double value) {
 }
 
 string Gauge::to_string() {
-    return fmt::format("{:f} {}", value, last_update_time_stamp);
+    return fmt::format(fmt("{:f} {:d}"), value, last_update_time_stamp);
 }
 
 std::ostringstream& Gauge::to_string(std::ostringstream& out) {
     std::lock_guard<std::mutex> lock(metric_lock);
 
-    fmt::print(out, "{:f} {}", value, last_update_time_stamp);
+    fmt::print(out, fmt("{:f} {:d}"), value, last_update_time_stamp);
     return out;
 }
 
@@ -141,7 +141,7 @@ void Metrics::add(const string name, const string stage_name,
     }
     if (stage_name.empty()) {
         ERROR_NON_OO("Empty stage for metric {:s}. Exiting.", name);
-        throw std::runtime_error("Empty stage name: " + name);
+        throw std::runtime_error(fmt::format(fmt("Empty stage name: {:s}"), name));
     }
 
     std::lock_guard<std::mutex> lock(metrics_lock);

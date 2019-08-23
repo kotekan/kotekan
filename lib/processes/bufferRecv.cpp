@@ -201,7 +201,7 @@ void bufferRecv::main_thread() {
         pthread_setaffinity_np(thread_pool.back().native_handle(), sizeof(cpu_set_t), &cpuset);
 #ifndef MAC_OSX
         std::string short_name =
-            string_tail(unique_name + "/worker_thread/" + std::to_string(i), 15);
+            string_tail(fmt::format(fmt("{:s}/worker_thread/{:d}"), unique_name, i), 15);
         pthread_setname_np(thread_pool.back().native_handle(), short_name.c_str());
 #endif
     }
@@ -471,7 +471,7 @@ void connInstance::internal_read_callback() {
                 double elapsed = current_time() - start_time;
                 // TODO: having IP:port as the "source" label is a **bad**
                 // Prometheus practice and of dubious usefulness
-                std::string source_label = fmt::format("{}:{}", client_ip, port);
+                std::string source_label = fmt::format(fmt("{:s}:{:d}"), client_ip, port);
                 transfer_time_seconds_metric->labels({source_label}).set(elapsed);
 
                 DEBUG("Received data from client: {:s}:{:d} into frame: {:s}[{:d}]", client_ip,

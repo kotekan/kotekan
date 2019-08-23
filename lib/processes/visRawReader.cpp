@@ -70,9 +70,8 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
     INFO("Reading metadata file: {:s}", md_filename);
     struct stat st;
     if (stat(md_filename.c_str(), &st) == -1)
-        throw std::ios_base::failure("visRawReader: Error reading from "
-                                     "metadata file: "
-                                     + md_filename);
+        throw std::ios_base::failure(
+            fmt::format(fmt("visRawReader: Error reading from metadata file: {:s}"), md_filename));
     size_t filesize = st.st_size;
     std::vector<uint8_t> packed_json(filesize);
 
@@ -132,8 +131,8 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
 
     // Check metadata is the correct size
     if (sizeof(visMetadata) != metadata_size) {
-        std::string msg = fmt::format("Metadata in file {} is larger "
-                                      "({} bytes) than visMetadata ({} bytes).",
+        std::string msg = fmt::format(fmt("Metadata in file {:s} is larger ({:d} bytes) than "
+                                          "visMetadata ({:d} bytes)."),
                                       filename, metadata_size, sizeof(visMetadata));
         throw std::runtime_error(msg);
     }
@@ -141,22 +140,23 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
     // Check that buffer is large enough
     if ((unsigned int)(out_buf->frame_size) < data_size || out_buf->frame_size < 0) {
         std::string msg =
-            fmt::format("Data in file {} is larger ({} bytes) than buffer size ({} bytes).",
+            fmt::format(fmt("Data in file {:s} is larger ({:d} bytes) than buffer size "
+                            "({:d} bytes)."),
                         filename, data_size, out_buf->frame_size);
         throw std::runtime_error(msg);
     }
 
     // Open up the data file and mmap it
-    INFO("Opening data file: %s", (filename + ".data").c_str());
+    INFO("Opening data file: {:s}.data", filename);
     if ((fd = open((filename + ".data").c_str(), O_RDONLY)) == -1) {
         throw std::runtime_error(
-            fmt::format("Failed to open file {}: {}.", filename + ".data", strerror(errno)));
+            fmt::format(fmt("Failed to open file {:s}.data: {:s}."), filename, strerror(errno)));
     }
     mapped_file =
         (uint8_t*)mmap(NULL, ntime * nfreq * file_frame_size, PROT_READ, MAP_SHARED, fd, 0);
     if (mapped_file == MAP_FAILED)
-        throw std::runtime_error(fmt::format("Failed to map file {} to memory: {}.",
-                                             filename + ".data", strerror(errno)));
+        throw std::runtime_error(fmt::format(fmt("Failed to map file {:s}.data to memory: {:s}."),
+                                             filename, strerror(errno)));
 
     // tell the dataset manager and get a dataset ID for the data coming from
     // this file

@@ -4,6 +4,8 @@
 #include "errors.h"
 #include "output_formating.h"
 
+#include "fmt.hpp"
+
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
@@ -45,7 +47,7 @@ void chrxUplink::main_thread() {
 
     string s_hostname(hostname);
     string lastNum = s_hostname.substr(s_hostname.length() - 2, 2);
-    s_port = "410" + lastNum;
+    s_port = fmt::format(fmt("410{:s}"), lastNum);
 
     _collection_server_port =
         stoi(s_port); // config.get<int32_t>(unique_name, "collection_server_port");

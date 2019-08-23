@@ -372,7 +372,7 @@ void visCalWriter::rest_callback(connectionInstance& conn) {
     file_cal_bundle->swap_file(fname_live, acq_name);
 
     // Respond with frozen file path
-    json reply{"file_path", root_path + "/" + acq_name + "/" + fname_frozen};
+    json reply{"file_path", fmt::format(fmt("{:s}/{:s}/{:s}"), root_path, acq_name, fname_frozen)};
     conn.send_json_reply(reply);
     INFO("Done. Resuming write loop.");
 }

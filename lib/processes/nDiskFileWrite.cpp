@@ -5,6 +5,8 @@
 #include "errors.h"
 #include "util.h"
 
+#include "fmt.hpp"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <functional>
@@ -114,8 +116,9 @@ void nDiskFileWrite::main_thread() {
         for (uint32_t i = 0; i < num_disks; ++i) {
             for (uint32_t j = 0; j < gain_files.size(); ++j) {
                 unsigned int last_slash_pos = gain_files[j].find_last_of("/\\");
-                std::string dest = disk_base + "/" + disk_set + "/" + std::to_string(i) + "/"
-                                   + dataset_name + "/" + gain_files[j].substr(last_slash_pos + 1);
+                std::string dest =
+                    fmt::format(fmt("{:s}/{:s}/{:d}/{:s}/{:s}"), disk_base, disk_set, i,
+                                dataset_name, gain_files[j].substr(last_slash_pos + 1));
                 // Copy the gain file
                 if (cp(dest.c_str(), gain_files[j].c_str()) != 0) {
                     ERROR("Could not copy {:s} to {:s}\n", gain_files[j], dest);

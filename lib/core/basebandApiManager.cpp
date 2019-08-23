@@ -207,7 +207,7 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
             auto& readout_entry = element.second;
 
             const std::string readout_file_name =
-                "baseband_" + std::to_string(event_id) + "_" + std::to_string(freq_id) + ".h5";
+                fmt::format(fmt("baseband_{:d}_{:d}.h5"), event_id, freq_id);
 
             const auto readout_slice =
                 translate_trigger(start_fpga, duration_fpga, dm, dm_error, freq_id);

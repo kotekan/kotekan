@@ -45,6 +45,7 @@ extern "C" {
 #include "version.h"
 #include "visUtil.hpp"
 
+#include "fmt.hpp"
 #include "json.hpp"
 
 #ifdef WITH_HSA
@@ -186,7 +187,7 @@ std::string exec(const std::string& cmd) {
     std::string result;
     std::shared_ptr<FILE> pipe(popen(cmd.c_str(), "r"), pclose);
     if (!pipe)
-        throw std::runtime_error("popen() for the command " + cmd + " failed!");
+        throw std::runtime_error(fmt::format(fmt("popen() for the command {:s} failed!"), cmd));
     while (!feof(pipe.get())) {
         if (fgets(buffer.data(), 256, pipe.get()) != NULL)
             result += buffer.data();
@@ -213,8 +214,9 @@ void update_log_levels(Config& config) {
         log_level = logLevel::DEBUG2;
     } else {
         throw std::runtime_error(
-            "The value given for log_level: '" + s_log_level + "is not valid! "
-            + "(It should be one of 'off', 'error', 'warn', 'info', 'debug', 'debug2')");
+            fmt::format(fmt("The value given for log_level: '{:s}' is not valid! (It should be one "
+                            "of 'off', 'error', 'warn', 'info', 'debug', 'debug2')"),
+                        s_log_level));
     }
 
     _global_log_level = static_cast<std::underlying_type<logLevel>::type>(log_level);
@@ -381,10 +383,11 @@ int main(int argc, char** argv) {
         if (gps_time) {
             INFO_NON_OO("Getting GPS time from server ({:s}), this might take some time...",
                         gps_time_source);
-            exec_command = "python -c '" + yaml_to_json + "' " + std::string(config_file_name) + " "
-                           + gps_time_source;
+            exec_command = fmt::format(fmt("python -c '{:s}' {:s} {:s}"), yaml_to_json,
+                                       config_file_name, gps_time_source);
         } else {
-            exec_command = "python -c '" + yaml_to_json + "' " + std::string(config_file_name);
+            exec_command =
+                fmt::format(fmt("python -c '{:s}' {:s}"), yaml_to_json, config_file_name);
         }
         std::string json_string = exec(exec_command.c_str());
         json config_json = json::parse(json_string.c_str());

@@ -9,6 +9,8 @@
 #include "util.h"
 #include "version.h"
 
+#include "fmt.hpp"
+
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
@@ -43,7 +45,7 @@ gpuPostProcess::gpuPostProcess(Config& config_, const string& unique_name,
 
     in_buf = (struct Buffer**)malloc(_num_gpus * sizeof(struct Buffer*));
     for (int i = 0; i < _num_gpus; ++i) {
-        in_buf[i] = get_buffer("corr_in_buf_" + std::to_string(i));
+        in_buf[i] = get_buffer(fmt::format(fmt("corr_in_buf_{:d}"), i));
         register_consumer(in_buf[i], unique_name.c_str());
     }
 }

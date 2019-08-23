@@ -638,15 +638,16 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
     try {
         js_reply = json::parse(reply.second);
         if (js_reply.at("result") != "success")
-            throw std::runtime_error("Broker answered with result=" + js_reply.at("result").dump());
+            throw std::runtime_error(fmt::format(fmt("Broker answered with result={:s}"),
+                                                 js_reply.at("result").dump(4)));
 
         state_id_t s_id = js_reply.at("id");
 
         state_uptr state = datasetState::from_json(js_reply.at("state"));
         if (state == nullptr) {
-            throw(std::runtime_error("Failed to parse state received from "
-                                     "broker: "
-                                     + js_reply.at("state").dump()));
+            throw(std::runtime_error(fmt::format(fmt("Failed to parse state received from "
+                                                     "broker: {:s}"),
+                                                 js_reply.at("state").dump(4))));
         }
 
         // register the received state
@@ -676,11 +677,10 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
             if (typeid(T).hash_code() == typeid(*s).hash_code())
                 return (const T*)s;
             if (s->_inner_state == nullptr)
-                throw std::runtime_error(
-                    "Broker sent state that didn't match "
-                    "requested type ("
-                    + std::string(datasetState::_registered_names[typeid(T).hash_code()])
-                    + "): " + js_reply.at("state").dump());
+                throw std::runtime_error(fmt::format(
+                    fmt("Broker sent state that didn't match requested type ({:s}): {:s}"),
+                    datasetState::_registered_names[typeid(T).hash_code()],
+                    js_reply.at("state").dump(4)));
             s = s->_inner_state.get();
         }
     } catch (std::exception& e) {

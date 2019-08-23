@@ -38,7 +38,7 @@ clKVCorr::clKVCorr(Config& config, const string& unique_name, bufferContainer& h
         kernel_file_name = config.get_default<string>(unique_name, "kernel_path", ".") + "/"
                            + config.get_default<string>(unique_name, "kernel", "kv_corr_dot4b.cl");
     } else {
-        throw std::invalid_argument("Unknown Data Format: " + _data_format);
+        throw std::invalid_argument(fmt::format(fmt("Unknown Data Format: {:s}"), _data_format));
     }
 
     defineOutputDataMap(); // id_x_map and id_y_map depend on this call.
