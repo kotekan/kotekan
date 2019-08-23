@@ -134,13 +134,9 @@ void restClient::http_request_done(struct evhttp_request* req, void* arg) {
     int response_code = evhttp_request_get_response_code(req);
 
     if (response_code != 200) {
-#if LIBEVENT_VERSION_NUMBER < 0x02010000
-        INFO_NON_OO("restClient: Received response code {:d} ({:s})", response_code,
-                    req->response_code_line);
-#else
-        INFO_NON_OO("restClient: Received response code {:d} ({:s})", response_code,
-                    evhttp_request_get_response_code_line(req));
-#endif
+        INFO_NON_OO("restClient: Received response code {:d}", response_code);
+        if (req->response_code_line)
+            INFO_NON_OO("restClient: {:s}", req->response_code_line);
         if (response_code == 0)
             WARN_NON_OO("restClient: connection error.");
         ext_cb(restReply(false, str_data));
