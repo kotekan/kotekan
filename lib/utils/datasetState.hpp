@@ -581,7 +581,6 @@ public:
      * @return The instrument name.
      */
     const std::string& get_instrument_name() const {
-        INFO("instrument name: %s", _instrument_name.c_str());
         return _instrument_name;
     }
 
