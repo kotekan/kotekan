@@ -57,5 +57,5 @@ dpdk:
 
 hexDump:
   kotekan_stage: hexDump
-  buf: network_capture_buf
+  in_buf: network_capture_buf
   len: packet_size
