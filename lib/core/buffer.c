@@ -841,11 +841,13 @@ uint8_t * buffer_malloc(ssize_t len, int numa_node) {
 
 void buffer_free(uint8_t * frame_pointer, size_t size) {
 #ifdef WITH_HSA
+    (void)size;
     hsa_host_free(frame_pointer);
 #else
     #ifdef WITH_NUMA
         numa_free(frame_pointer, size);
     #else
+        (void)size;
         free(frame_pointer);
     #endif
 #endif
