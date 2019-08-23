@@ -62,22 +62,19 @@ void restClient::event_thread() {
     INFO("restClient: libevent version: %s", event_get_version());
 
     if (evthread_use_pthreads()) {
-        ERROR("restClient: Cannot use pthreads with libevent!");
-        raise(SIGINT);
+        FATAL_ERROR("restClient: Cannot use pthreads with libevent!");
     }
 
     // event base and dns base
     _base = event_base_new();
     if (!_base) {
-        ERROR("restClient: Failure creating new event_base.");
-        raise(SIGINT);
+        FATAL_ERROR("restClient: Failure creating new event_base.");
     }
 
     // DNS resolution is blocking (if not numeric host is passed)
     _dns = evdns_base_new(_base, 1);
     if (_dns == nullptr) {
-        ERROR("restClient: evdns_base_new() failed.");
-        raise(SIGINT);
+        FATAL_ERROR("restClient: evdns_base_new() failed.");
     }
 
     // Create a timer to check for the exit condition
@@ -98,8 +95,7 @@ void restClient::event_thread() {
     DEBUG("restClient: starting event loop");
     while (!_stop_thread) {
         if (event_base_dispatch(_base) < 0) {
-            ERROR("restClient::event_thread(): Failure in the event loop.");
-            raise(SIGINT);
+            FATAL_ERROR("restClient::event_thread(): Failure in the event loop.");
         }
     }
     DEBUG("restClient: exiting event loop");
@@ -201,7 +197,8 @@ void restClient::cleanup(
     delete pair;
 }
 
-bool restClient::make_request(std::string path, std::function<void(restReply)> request_done_cb,
+bool restClient::make_request(const std::string& path,
+                              std::function<void(restReply)> request_done_cb,
                               const nlohmann::json& data, const std::string& host,
                               const unsigned short port, const int retries, const int timeout) {
     struct evhttp_connection* evcon = nullptr;
@@ -210,12 +207,6 @@ bool restClient::make_request(std::string path, std::function<void(restReply)> r
     struct evbuffer* output_buffer;
 
     int ret;
-
-    // Fix path in case it is nothing or missing '/' in the beginning
-    if (path.length() == 0) {
-        path = string("/");
-    } else if (path.at(0) != '/')
-        path = "/" + path;
 
     evcon = evhttp_connection_base_new(_base, _dns, host.c_str(), port);
     if (evcon == nullptr) {
@@ -314,7 +305,7 @@ bool restClient::make_request(std::string path, std::function<void(restReply)> r
     return true;
 }
 
-restReply restClient::make_request_blocking(std::string path, const nlohmann::json& data,
+restReply restClient::make_request_blocking(const std::string& path, const nlohmann::json& data,
                                             const std::string& host, const unsigned short port,
                                             const int retries, const int timeout) {
     restReply reply = restReply(false, "");
@@ -347,11 +338,10 @@ restReply restClient::make_request_blocking(std::string path, const nlohmann::js
     auto time_point =
         std::chrono::system_clock::now() + std::chrono::seconds(timeout == -1 ? 100 : timeout * 2);
     while (!cv_reply.wait_until(lck_reply, time_point, [&]() { return reply_copied; })) {
-        ERROR("restClient: Timeout in make_request_blocking "
-              "(%s:%d/%s). This might leave the restClient in an abnormal "
-              "state. Exiting...",
-              host.c_str(), port, path.c_str());
-        raise(SIGINT);
+        FATAL_ERROR("restClient: Timeout in make_request_blocking "
+                    "(%s:%d/%s). This might leave the restClient in an abnormal "
+                    "state. Exiting...",
+                    host.c_str(), port, path.c_str());
         return reply;
     }
     return reply;

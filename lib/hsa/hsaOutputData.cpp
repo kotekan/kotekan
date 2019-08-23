@@ -14,8 +14,6 @@ hsaOutputData::hsaOutputData(Config& config, const string& unique_name,
     command_type = gpuCommandType::COPY_OUT;
 
     network_buffer = host_buffers.get_buffer("network_buf");
-    register_consumer(network_buffer, unique_name.c_str());
-
     output_buffer = host_buffers.get_buffer("output_buf");
     lost_samples_buf = host_buffers.get_buffer("lost_samples_buf");
     // Each of the command objects in a subframe set outputs is only doing
@@ -23,17 +21,20 @@ hsaOutputData::hsaOutputData(Config& config, const string& unique_name,
     // and one producer name which in this case is ok to be static.
     static_unique_name = "hsa_output_static_" + std::to_string(device.get_gpu_id());
     if (_sub_frame_index == 0) {
+        register_consumer(network_buffer, static_unique_name.c_str());
         register_producer(output_buffer, static_unique_name.c_str());
         register_consumer(lost_samples_buf, static_unique_name.c_str());
     }
 
     network_buffer_id = 0;
+    network_buffer_precondition_id = 0;
 
     output_buffer_id = _sub_frame_index;
     output_buffer_precondition_id = _sub_frame_index;
     output_buffer_excute_id = _sub_frame_index;
 
     lost_samples_buf_id = 0;
+    lost_samples_buf_precondition_id = 0;
 }
 
 hsaOutputData::~hsaOutputData() {}
@@ -41,12 +42,27 @@ hsaOutputData::~hsaOutputData() {}
 int hsaOutputData::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
     // We want to make sure we have some space to put our results.
-    uint8_t* frame =
-        wait_for_empty_frame(output_buffer, unique_name.c_str(), output_buffer_precondition_id);
+    uint8_t* frame = wait_for_empty_frame(output_buffer, static_unique_name.c_str(),
+                                          output_buffer_precondition_id);
     if (frame == NULL)
         return -1;
     output_buffer_precondition_id =
         (output_buffer_precondition_id + _num_sub_frames) % output_buffer->num_frames;
+    if (_sub_frame_index == 0) {
+        frame = wait_for_full_frame(network_buffer, static_unique_name.c_str(),
+                                    network_buffer_precondition_id);
+        if (frame == NULL)
+            return -1;
+        frame = wait_for_full_frame(lost_samples_buf, static_unique_name.c_str(),
+                                    lost_samples_buf_precondition_id);
+        if (frame == NULL)
+            return -1;
+        network_buffer_precondition_id =
+            (network_buffer_precondition_id + 1) % network_buffer->num_frames;
+        lost_samples_buf_precondition_id =
+            (lost_samples_buf_precondition_id + 1) % lost_samples_buf->num_frames;
+    }
+
     return 0;
 }
 
@@ -107,13 +123,12 @@ void hsaOutputData::finalize_frame(int frame_id) {
     zero_lost_samples(output_buffer, output_buffer_id);
     atomic_add_lost_timesamples(output_buffer, output_buffer_id, num_sum_frame_lost_samples);
 
-    // Mark the input buffer as "empty" so that it can be reused.
-    mark_frame_empty(network_buffer, unique_name.c_str(), network_buffer_id);
-
     // Mark the output buffer as full, so it can be processed.
     mark_frame_full(output_buffer, static_unique_name.c_str(), output_buffer_id);
 
     if ((_sub_frame_index + 1) == _num_sub_frames) {
+        // Mark the input buffer as "empty" so that it can be reused.
+        mark_frame_empty(network_buffer, static_unique_name.c_str(), network_buffer_id);
         mark_frame_empty(lost_samples_buf, static_unique_name.c_str(), lost_samples_buf_id);
     }
 

@@ -1,6 +1,7 @@
 #include "datasetManager.hpp"
 
 #include "restClient.hpp"
+#include "restServer.hpp"
 #include "visUtil.hpp"
 
 #include "fmt/ostream.h"
@@ -64,7 +65,7 @@ bool dataset::equals(dataset& ds) const {
 
 
 std::ostream& operator<<(std::ostream& out, const datasetState& dt) {
-    out << typeid(dt).name();
+    out << datasetState::_registered_names[typeid(dt).hash_code()];
 
     return out;
 }
@@ -81,6 +82,21 @@ std::vector<stack_ctype> invert_stack(uint32_t num_stack,
     }
 
     return res;
+}
+
+datasetManager::datasetManager() :
+    _conn_error_count(0),
+    _timestamp_update(json(0)),
+    _stop_request_threads(false),
+    _n_request_threads(0),
+    _config_applied(false),
+    _rest_client(restClient::instance()),
+    error_counter(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME)) {
+
+    kotekan::restServer::instance().register_get_callback(
+        DS_FORCE_UPDATE_ENDPOINT_NAME,
+        std::bind(&datasetManager::force_update_callback, this, std::placeholders::_1));
 }
 
 datasetManager& datasetManager::private_instance() {
@@ -129,6 +145,8 @@ datasetManager& datasetManager::instance(kotekan::Config& config) {
 datasetManager::~datasetManager() {
     _stop_request_threads = true;
 
+    kotekan::restServer::instance().remove_get_callback(DS_FORCE_UPDATE_ENDPOINT_NAME);
+
     // wait for the detached threads
     std::unique_lock<std::mutex> lk(_lock_stop_request_threads);
     _cv_stop_request_threads.wait(lk, [this] { return _n_request_threads == 0; });
@@ -140,10 +158,9 @@ dset_id_t datasetManager::add_dataset(state_id_t state) {
         t = _states.at(state).get();
     } catch (std::exception& e) {
         // This must be a bug in the calling stage...
-        ERROR("datasetManager: Failure registering root dataset : state "
-              "0x%" PRIx64 " not found: %s",
-              state, e.what());
-        raise(SIGINT);
+        FATAL_ERROR("datasetManager: Failure registering root dataset : state "
+                    "0x%" PRIx64 " not found: %s",
+                    state, e.what());
     }
     std::set<std::string> types = t->types();
     dataset ds(state, types);
@@ -157,10 +174,9 @@ dset_id_t datasetManager::add_dataset(dset_id_t base_dset, state_id_t state) {
         t = _states.at(state).get();
     } catch (std::exception& e) {
         // This must be a bug in the calling stage...
-        ERROR("datasetManager: Failure registering dataset : state "
-              "0x%" PRIx64 " not found (base dataset ID: 0x%" PRIx64 "): %s",
-              state, base_dset, e.what());
-        raise(SIGINT);
+        FATAL_ERROR("datasetManager: Failure registering dataset : state "
+                    "0x%" PRIx64 " not found (base dataset ID: 0x%" PRIx64 "): %s",
+                    state, base_dset, e.what());
     }
     std::set<std::string> types = t->types();
     dataset ds(state, base_dset, types);
@@ -184,13 +200,12 @@ dset_id_t datasetManager::add_dataset(dataset ds) {
                 // TODO: hash collision. make the value a vector and store same
                 // hash entries? This would mean the state/dset has to be sent
                 // when registering.
-                ERROR("datasetManager: Hash collision!\n"
-                      "The following datasets have the same hash ("
-                      "0x%" PRIx64 ").\n\n%s\n\n%s\n\n"
-                      "datasetManager: Exiting...",
-                      new_dset_id, ds.to_json().dump().c_str(),
-                      find->second.to_json().dump().c_str());
-                raise(SIGINT);
+                FATAL_ERROR("datasetManager: Hash collision!\n"
+                            "The following datasets have the same hash ("
+                            "0x%" PRIx64 ").\n\n%s\n\n%s\n\n"
+                            "datasetManager: Exiting...",
+                            new_dset_id, ds.to_json().dump().c_str(),
+                            find->second.to_json().dump().c_str());
             }
 
             if (ds.is_root())
@@ -261,8 +276,7 @@ void datasetManager::request_thread(const json&& request, const std::string&& en
             // Parsing errors are reported by the parsing function.
         } else {
             // Complain and retry...
-            kotekan::prometheusMetrics::instance().add_stage_metric(
-                "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
+            error_counter.set(++_conn_error_count);
             WARN("datasetManager: Failure in connection to broker: %s:"
                  "%d/%s. Make sure the broker is "
                  "running.",
@@ -291,8 +305,7 @@ bool datasetManager::register_state_parser(std::string& reply) {
         WARN("datasetManager: failure parsing reply received from broker "
              "after registering dataset state (reply: %s): %s",
              reply.c_str(), e.what());
-        kotekan::prometheusMetrics::instance().add_stage_metric(
-            "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
+        error_counter.set(++_conn_error_count);
         return false;
     }
 
@@ -315,6 +328,8 @@ bool datasetManager::register_state_parser(std::string& reply) {
             {
                 std::lock_guard<std::mutex> slck(_lock_states);
                 js_post["state"] = _states.at(state)->to_json();
+                js_post["type"] =
+                    datasetState::_registered_names[typeid(*_states.at(state)).hash_code()];
             }
 
             std::lock_guard<std::mutex> lk(_lock_stop_request_threads);
@@ -335,8 +350,7 @@ bool datasetManager::register_state_parser(std::string& reply) {
         WARN("datasetManager: failure registering dataset state with "
              "broker: %s",
              e.what());
-        kotekan::prometheusMetrics::instance().add_stage_metric(
-            "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
+        error_counter.set(++_conn_error_count);
         return false;
     }
     return true;
@@ -354,8 +368,7 @@ bool datasetManager::send_state_parser(std::string& reply) {
         WARN("datasetManager: failure parsing reply received from broker "
              "after sending dataset state (reply: %s): %s",
              reply.c_str(), e.what());
-        kotekan::prometheusMetrics::instance().add_stage_metric(
-            "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
+        error_counter.set(++_conn_error_count);
         return false;
     }
 }
@@ -391,8 +404,7 @@ bool datasetManager::register_dataset_parser(std::string& reply) {
         WARN("datasetManager: failure parsing reply received from broker "
              "after registering dataset (reply: %s): %s",
              reply.c_str(), e.what());
-        kotekan::prometheusMetrics::instance().add_stage_metric(
-            "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
+        error_counter.set(++_conn_error_count);
         return false;
     }
 }
@@ -515,8 +527,7 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
         WARN("datasetManager: Failure requesting update on datasets from "
              "broker: %s",
              reply.second.c_str());
-        kotekan::prometheusMetrics::instance().add_stage_metric(
-            "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
+        error_counter.set(++_conn_error_count);
         return false;
     }
 
@@ -548,8 +559,7 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
                      " exception was thrown when parsing dataset %s with ID "
                      "%s: %s",
                      ds.value().dump().c_str(), ds.key().c_str(), e.what());
-                kotekan::prometheusMetrics::instance().add_stage_metric(
-                    "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
+                error_counter.set(++_conn_error_count);
                 return false;
             }
         }
@@ -558,8 +568,7 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
         WARN("datasetManager: failure parsing reply received from broker "
              "after requesting dataset update (reply: %s): %s",
              reply.second.c_str(), e.what());
-        kotekan::prometheusMetrics::instance().add_stage_metric(
-            "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
+        error_counter.set(++_conn_error_count);
         return false;
     }
 
@@ -567,12 +576,32 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
     return true;
 }
 
+void datasetManager::force_update_callback(kotekan::connectionInstance& conn) {
 
-REGISTER_DATASET_STATE(freqState);
-REGISTER_DATASET_STATE(inputState);
-REGISTER_DATASET_STATE(prodState);
-REGISTER_DATASET_STATE(stackState);
-REGISTER_DATASET_STATE(eigenvalueState);
-REGISTER_DATASET_STATE(timeState);
-REGISTER_DATASET_STATE(metadataState);
-REGISTER_DATASET_STATE(gatingState);
+    INFO("Sending forced update to broker.");
+
+    if (!_use_broker) {
+        conn.send_error("This kotekan instance is not configured to use"
+                        " the dataset_broker. Unable to force an update.",
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+
+    // Register all states.
+    {
+        std::lock_guard<std::mutex> slock(_lock_states);
+        for (auto s = _states.begin(); s != _states.end(); s++) {
+            register_state(s->first);
+        }
+    }
+
+    // Register all datasets.
+    {
+        std::lock_guard<std::mutex> dslock(_lock_dsets);
+        for (auto ds : _datasets) {
+            register_dataset(ds.first, ds.second);
+        }
+    }
+
+    conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
+}

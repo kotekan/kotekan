@@ -19,6 +19,7 @@ set ( KOTEKAN_BOOST_TEST_SOURCES
       test_restclient.cpp
       test_chime_stacking.cpp
       test_config.cpp
+      test_prometheus_metrics.cpp
     )
 
 # source files for broker test
@@ -43,11 +44,6 @@ foreach(testSrc ${KOTEKAN_BOOST_TEST_SOURCES})
         include_directories(${HDF5_INCLUDE_DIRS})
         target_link_libraries(${testName} ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
     endif()
-
-    # testing binaries are located in /tests and executed by pytest
-    # if pytest-cpp is installed
-    set_target_properties(${testName} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY  ${CMAKE_CURRENT_SOURCE_DIR}/..)
 endforeach(testSrc)
 
 # Run through each dataset broker test source
@@ -56,9 +52,4 @@ foreach(testSrc ${KOTEKAN_BROKER_TEST_SOURCES})
     add_executable(${testName} ${testSrc})
     target_link_libraries(${testName} kotekan_libs dl m pthread)
     #target_link_libraries(${testName} libinclude)
-
-    # those binaries will be in a seperate folder and are run by
-    # test_dataset_broker.py
-    set_target_properties(${testName} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY  ${CMAKE_CURRENT_SOURCE_DIR}/dataset-broker)
 endforeach(testSrc)

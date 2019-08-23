@@ -7,10 +7,28 @@
 #include <sstream>
 
 
+// Conversion of std::chrono::system_clock::time_point to JSON
+namespace std {
+namespace chrono {
+void to_json(json& j, const system_clock::time_point& t) {
+    std::time_t t_c = std::chrono::system_clock::to_time_t(t);
+    std::tm t_tm;
+    localtime_r(&t_c, &t_tm);
+    std::ostringstream out;
+    out << std::put_time(&t_tm, "%FT%T.")
+        << std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch()).count()
+               % 1000
+        << std::put_time(&t_tm, "%z");
+    j = out.str();
+}
+} // namespace chrono
+} // namespace std
+
 namespace kotekan {
 
-basebandReadoutManager& basebandApiManager::basebandReadoutRegistry::
-operator[](const uint32_t& key) {
+// clang-format off
+basebandReadoutManager&
+basebandApiManager::basebandReadoutRegistry::operator[](const uint32_t& key) { // clang-format on
     std::lock_guard<std::mutex> lock(map_lock);
     return readout_map[key];
 }
@@ -30,7 +48,8 @@ basebandApiManager::basebandReadoutRegistry::end() noexcept {
 void to_json(json& j, const basebandDumpStatus& d) {
     j = json{{"file_name", d.request.file_name},
              {"total", d.bytes_total},
-             {"remaining", d.bytes_remaining}};
+             {"remaining", d.bytes_remaining},
+             {"received", d.request.received}};
 
     switch (d.state) {
         case basebandDumpStatus::State::WAITING:
@@ -50,7 +69,23 @@ void to_json(json& j, const basebandDumpStatus& d) {
             j["status"] = "error";
             j["reason"] = "Internal: Unknown status code";
     }
+
+    if (d.started) {
+        j["started"] = *d.started;
+    }
+
+    if (d.finished) {
+        j["finished"] = *d.finished;
+    }
 }
+
+basebandApiManager::basebandApiManager() :
+    // clang-format off
+    request_counter(
+        prometheus::Metrics::instance()
+        .add_counter("kotekan_baseband_requests_total", "baseband")
+        ) // clang-format on
+{}
 
 basebandApiManager& basebandApiManager::instance() {
     static basebandApiManager _instance;
@@ -68,6 +103,23 @@ void basebandApiManager::register_with_server(restServer* rest_server) {
 void basebandApiManager::status_callback_all(connectionInstance& conn) {
     std::map<std::string, std::vector<json>> event_readout_status;
 
+    // Check if there is query arg "?event_id=<event_id>"
+    auto query_args = conn.get_query();
+    if (query_args.find("event_id") != query_args.end()) {
+        uint64_t event_id;
+        try {
+            event_id = std::stoul(query_args["event_id"]);
+        } catch (const std::exception& e) {
+            WARN("Got bad event_id, error: %s", e.what());
+            conn.send_empty_reply(HTTP_RESPONSE::BAD_REQUEST);
+            return;
+        }
+        // This will call conn so we don't need to reply after this call.
+        status_callback_single_event(event_id, conn);
+        return;
+    }
+
+    // If there isn't an event_id given, then return all the events
     for (auto& element : readout_registry) {
         uint32_t freq_id = element.first;
         auto& readout_manager = element.second;
@@ -78,7 +130,6 @@ void basebandApiManager::status_callback_all(connectionInstance& conn) {
             event_readout_status[std::to_string(event.request.event_id)].push_back(j);
         }
     }
-
     conn.send_json_reply(json(event_readout_status));
 }
 
@@ -166,11 +217,8 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
                                                      {"start_fpga", readout_slice.start_fpga},
                                                      {"length_fpga", readout_slice.length_fpga}};
         }
-        restServer& rest_server = restServer::instance();
-        rest_server.register_get_callback("/baseband/" + std::to_string(event_id),
-                                          [event_id, this](connectionInstance& nc) {
-                                              status_callback_single_event(event_id, nc);
-                                          });
+
+        request_counter.inc();
 
         conn.send_json_reply(response);
     } catch (const std::exception& ex) {

@@ -53,6 +53,73 @@ extern "C" {
 using json = nlohmann::json;
 using namespace kotekan;
 
+// Embedded script for converting the YAML config to json
+const std::string yaml_to_json = R"(
+import yaml, json, sys, os, subprocess
+
+file_name = sys.argv[1]
+gps_server = ""
+if len(sys.argv) == 3:
+    gps_server = sys.argv[2]
+
+# Lint the YAML file, helpful for finding errors
+try:
+    output = subprocess.Popen(["yamllint",
+                               "-d",
+                               "{extends: relaxed, \
+                                 rules: {line-length: {max: 100}, \
+                                        commas: disable, \
+                                        brackets: disable, \
+                                        trailing-spaces: {level: warning}}}" ,
+                                 file_name],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    response,stderr = output.communicate()
+    if response != "":
+        sys.stderr.write("yamllint warnings/errors for: ")
+        sys.stderr.write(str(response))
+except OSError as e:
+    if e.errno == os.errno.ENOENT:
+        sys.stderr.write("yamllint not installed, skipping pre-validation\n")
+    else:
+        sys.stderr.write("error with yamllint, skipping pre-validation\n")
+
+with open(file_name, "r") as stream:
+    try:
+        config_json = yaml.load(stream)
+    except yaml.YAMLError as exc:
+        sys.stderr.write(exc)
+
+# Get the GPS server time if a server was given
+if gps_server != "":
+    import requests
+    try:
+        gps_request = requests.get(gps_server)
+        gps_request.raise_for_status()
+    except requests.exceptions.HTTPError as rex:
+        config_json["gps_time"] = {}
+        config_json["gps_time"]["error"] = str(rex)
+        sys.stdout.write(json.dumps(config_json))
+        quit()
+    except requests.exceptions.RequestException as rex:
+        config_json["gps_time"] = {}
+        config_json["gps_time"]["error"] = str(rex)
+        sys.stdout.write(json.dumps(config_json))
+        quit()
+
+    try:
+        config_json["gps_time"] = gps_request.json()
+    except:
+        config_json["gps_time"] = {}
+        config_json["gps_time"]["error"] = "Server did not return valid JSON"
+
+sys.stdout.write(json.dumps(config_json))
+)";
+
+// The default location for getting the GPS time reference
+// TODO This entire GPS time system might be moved out of kotekan.cpp entirely
+// since it's a very CHIME specific system.
+const std::string default_gps_source = "http://carillon.chime:54321/get-frame0-time";
+
 kotekanMode* kotekan_mode = nullptr;
 bool running = false;
 std::mutex kotekan_state_lock;
@@ -66,11 +133,12 @@ void print_help() {
     printf("usage: kotekan [opts]\n\n");
     printf("Options:\n");
     printf("    --config (-c) [file]           The local JSON config file to use.\n");
-    printf("    --config-daemon (-d) [file]    Same as -c, but uses installed yaml->json script\n");
-    printf("    --bind-address (-b) [ip:port]  The IP address and port to bind (default "
-           "0.0.0.0:12048)\n");
-    printf("    --gps-time (-g)                Used with -c, try to get GPS time (CHIME cmd line "
-           "runs only).\n");
+    printf("    --bind-address (-b) [ip:port]  The IP address and port to bind"
+           " (default 0.0.0.0:12048)\n");
+    printf("    --gps-time (-g)                Used with -c, try to get GPS time"
+           " (CHIME cmd line runs only).\n");
+    printf("    --gps-time-source (-t)         URL for GPS server (used with -g) default: %s\n",
+           default_gps_source.c_str());
     printf("    --syslog (-s)                  Send a copy of the output to syslog.\n");
     printf("    --no-stderr (-n)               Disables output to std error if syslog (-s) is "
            "enabled.\n");
@@ -207,9 +275,9 @@ int main(int argc, char** argv) {
     int opt_val = 0;
     char* config_file_name = (char*)"none";
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
-    bool opt_d_set = false;
     bool gps_time = false;
     bool enable_stderr = true;
+    std::string gps_time_source = default_gps_source;
     std::string bind_address = "0.0.0.0:12048";
     // We disable syslog to start.
     // If only --config is provided, then we only send messages to stderr
@@ -220,9 +288,9 @@ int main(int argc, char** argv) {
 
     for (;;) {
         static struct option long_options[] = {{"config", required_argument, 0, 'c'},
-                                               {"config-daemon", required_argument, 0, 'd'},
                                                {"bind-address", required_argument, 0, 'b'},
                                                {"gps-time", no_argument, 0, 'g'},
+                                               {"gps-time-source", required_argument, 0, 't'},
                                                {"help", no_argument, 0, 'h'},
                                                {"syslog", no_argument, 0, 's'},
                                                {"no-stderr", no_argument, 0, 'n'},
@@ -231,7 +299,7 @@ int main(int argc, char** argv) {
 
         int option_index = 0;
 
-        opt_val = getopt_long(argc, argv, "ghc:d:b:snv", long_options, &option_index);
+        opt_val = getopt_long(argc, argv, "gt:hc:b:snv", long_options, &option_index);
 
         // End of args
         if (opt_val == -1) {
@@ -246,12 +314,11 @@ int main(int argc, char** argv) {
             case 'c':
                 config_file_name = strdup(optarg);
                 break;
-            case 'd':
-                config_file_name = strdup(optarg);
-                opt_d_set = true;
-                break;
             case 'b':
                 bind_address = string(optarg);
+                break;
+            case 't':
+                gps_time_source = string(optarg);
                 break;
             case 'g':
                 gps_time = true;
@@ -308,20 +375,15 @@ int main(int argc, char** argv) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         INFO("Opening config file %s", config_file_name);
 
-        string exec_script;
-        string exec_base;
+        std::string exec_command;
         if (gps_time) {
-            INFO("Getting GPS time from ch_master, this might take some time...");
-            exec_script = "gps_yaml_to_json.py ";
+            INFO("Getting GPS time from server (%s), this might take some time...",
+                 gps_time_source.c_str());
+            exec_command = "python -c '" + yaml_to_json + "' " + std::string(config_file_name) + " "
+                           + gps_time_source;
         } else {
-            exec_script = "yaml_to_json.py ";
+            exec_command = "python -c '" + yaml_to_json + "' " + std::string(config_file_name);
         }
-        if (opt_d_set) {
-            exec_base = "/usr/local/bin/";
-        } else {
-            exec_base = "../../scripts/";
-        }
-        string exec_command = "python " + exec_base + exec_script + std::string(config_file_name);
         std::string json_string = exec(exec_command.c_str());
         json config_json = json::parse(json_string.c_str());
         config.update_config(config_json);
@@ -339,30 +401,39 @@ int main(int argc, char** argv) {
     rest_server.register_post_callback("/start", [&](connectionInstance& conn, json& json_config) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         if (running) {
+            WARN("/start was called, but the system is already running, ignoring start request.");
             conn.send_error("Already running", HTTP_RESPONSE::REQUEST_FAILED);
+            return;
         }
 
         config.update_config(json_config);
 
         try {
+            INFO("Starting new kotekan mode using POSTed config.");
             start_new_kotekan_mode(config, false);
         } catch (const std::out_of_range& ex) {
-            ERROR("Out of range exception %s", ex.what());
             delete kotekan_mode;
             kotekan_mode = nullptr;
             conn.send_error(ex.what(), HTTP_RESPONSE::BAD_REQUEST);
+            // TODO This exit shouldn't be required, but some stages aren't able
+            // to fully clean up on system failure.  This results in the system
+            // getting into a bad state if the posted config is invalid.
+            // See ticket: #464
+            // The same applies to exit (raise) statements in other parts of
+            // this try statement.
+            FATAL_ERROR("Provided config had an out of range exception: %s", ex.what());
             return;
         } catch (const std::runtime_error& ex) {
-            ERROR("Runtime error %s", ex.what());
             delete kotekan_mode;
             kotekan_mode = nullptr;
             conn.send_error(ex.what(), HTTP_RESPONSE::BAD_REQUEST);
+            FATAL_ERROR("Provided config failed to start with runtime error: %s", ex.what());
             return;
         } catch (const std::exception& ex) {
-            ERROR("Generic exception %s", ex.what());
             delete kotekan_mode;
             kotekan_mode = nullptr;
             conn.send_error(ex.what(), HTTP_RESPONSE::BAD_REQUEST);
+            FATAL_ERROR("Provided config failed with exception: %s", ex.what());
             return;
         }
         conn.send_empty_reply(HTTP_RESPONSE::OK);
@@ -371,9 +442,11 @@ int main(int argc, char** argv) {
     rest_server.register_get_callback("/stop", [&](connectionInstance& conn) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
         if (!running) {
+            WARN("/stop called, but the system is already stopped, ignoring stop request.");
             conn.send_error("kotekan is already stopped", HTTP_RESPONSE::REQUEST_FAILED);
             return;
         }
+        INFO("/stop endpoint called, shutting down current config.");
         assert(kotekan_mode != nullptr);
         kotekan_mode->stop_stages();
         // TODO should we have three states (running, shutting down, and stopped)?
@@ -386,7 +459,9 @@ int main(int argc, char** argv) {
     });
 
     rest_server.register_get_callback("/kill", [&](connectionInstance& conn) {
-        raise(SIGINT);
+        ERROR("/kill endpoint called, raising SIGINT to shutdown the kotekan system process.");
+        set_error_message("/kill endpoint called.");
+        exit_kotekan(ReturnCode::CLEAN_EXIT);
         conn.send_empty_reply(HTTP_RESPONSE::OK);
     });
 
@@ -402,8 +477,10 @@ int main(int argc, char** argv) {
     rest_server.register_get_callback(
         "/version", [&](connectionInstance& conn) { conn.send_json_reply(version_json); });
 
-    prometheusMetrics& metrics = prometheusMetrics::instance();
+    auto& metrics = prometheus::Metrics::instance();
     metrics.register_with_server(&rest_server);
+    auto& kotekan_running_metric = metrics.add_gauge("kotekan_running", "main");
+    kotekan_running_metric.set(running);
 
     basebandApiManager& baseband = basebandApiManager::instance();
     baseband.register_with_server(&rest_server);
@@ -413,7 +490,7 @@ int main(int argc, char** argv) {
         // Update running state
         {
             std::lock_guard<std::mutex> lock(kotekan_state_lock);
-            metrics.add_stage_metric("kotekan_running", "main", running);
+            kotekan_running_metric.set(running);
         }
 
         if (sig_value == SIGINT) {
@@ -429,9 +506,14 @@ int main(int argc, char** argv) {
         }
     }
 
-    INFO("kotekan shutdown successfully.");
+    INFO("kotekan shutdown with status: %s", get_exit_code_string(get_exit_code()));
+
+    // Print error message if there is one.
+    if (string(get_error_message()) != "not set") {
+        INFO("Fatal error message was: %s", get_error_message());
+    }
 
     closelog();
 
-    return 0;
+    return get_exit_code();
 }

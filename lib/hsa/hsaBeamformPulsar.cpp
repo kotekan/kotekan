@@ -7,7 +7,7 @@ REGISTER_HSA_COMMAND(hsaBeamformPulsar);
 
 hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const string& unique_name,
                                      bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "pulsarbf_float",
+    hsaCommand(config, unique_name, host_buffers, device, "pulsarbf_float" KERNEL_EXT,
                "pulsar_beamformer_nbeam.hsaco") {
     command_type = gpuCommandType::KERNEL;
 

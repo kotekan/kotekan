@@ -30,8 +30,8 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
@@ -47,7 +47,10 @@ std::map<visWriter::droppedType, std::string> visWriter::dropped_type_map = {
 
 
 visWriter::visWriter(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&visWriter::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&visWriter::main_thread, this)),
+    dropped_frame_counter(Metrics::instance().add_counter("kotekan_viswriter_dropped_frame_total",
+                                                          unique_name,
+                                                          {"freq_id", "dataset_id", "reason"})) {
 
     // Fetch any simple configuration
     root_path = config.get_default<std::string>(unique_name, "root_path", ".");
@@ -84,6 +87,9 @@ visWriter::visWriter(Config& config, const string& unique_name, bufferContainer&
 void visWriter::main_thread() {
 
     frameID frame_id(in_buf);
+
+    auto& write_time_metric =
+        Metrics::instance().add_gauge("kotekan_viswriter_write_time_seconds", unique_name);
 
     while (!stop_thread) {
 
@@ -123,8 +129,7 @@ void visWriter::main_thread() {
             string msg = fmt::format("Number of products in frame doesn't match state or file "
                                      "({} != {}).",
                                      frame.num_prod, acq.num_vis);
-            ERROR(msg.c_str());
-            raise(SIGINT);
+            FATAL_ERROR(msg.c_str());
             return;
 
         } else {
@@ -143,7 +148,8 @@ void visWriter::main_thread() {
                 std::lock_guard<std::mutex> lock(write_mutex);
                 late = acq.file_bundle->add_sample(t, freq_ind, frame);
             }
-            double elapsed = current_time() - start;
+            acq.last_update = current_time();
+            double elapsed = acq.last_update - start;
 
             DEBUG("Written frequency %i in %.5f s", frame.freq_id, elapsed);
 
@@ -154,8 +160,7 @@ void visWriter::main_thread() {
 
             // Update average write time in prometheus
             write_time.add_sample(elapsed);
-            prometheusMetrics::instance().add_stage_metric("kotekan_viswriter_write_time_seconds",
-                                                           unique_name, write_time.average());
+            write_time_metric.set(write_time.average());
         }
 
         // Mark the buffer and move on
@@ -174,19 +179,17 @@ void visWriter::report_dropped_frame(dset_id_t ds_id, uint32_t freq_id, droppedT
 
     // Relies on the fact that insertion zero intialises
     auto key = std::make_pair(freq_id, reason);
+    // TODO: check if this is necessary
     acq.dropped_frame_count[key] += 1;
-    std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\",reason=\"{}\"", freq_id,
-                                     ds_id, dropped_type_map.at(reason));
-    prometheusMetrics::instance().add_stage_metric("kotekan_viswriter_dropped_frame_total",
-                                                   unique_name, acq.dropped_frame_count.at(key),
-                                                   labels);
+    dropped_frame_counter
+        .labels({std::to_string(freq_id), std::to_string(ds_id), dropped_type_map.at(reason)})
+        .inc();
 }
 
 void visWriter::close_old_acqs() {
     auto it = acqs.begin();
     while (it != acqs.end()) {
-        auto last_update = it->second.file_bundle->last_update();
-        double age = current_time() - last_update.ctime;
+        double age = current_time() - it->second.last_update;
 
         if (!it->second.bad_dataset && age > acq_timeout) {
             it = acqs.erase(it);
@@ -213,14 +216,12 @@ void visWriter::get_dataset_state(dset_id_t ds_id) {
     const prodState* pstate = pstate_fut.get();
 
     if (pstate == nullptr || mstate == nullptr || fstate == nullptr) {
-        ERROR("Set to not use dataset_broker and couldn't find "
-              "ancestor of dataset 0x%" PRIx64 ". Make sure there is a stage"
-              " upstream in the config, that the dataset states.\nExiting...",
-              ds_id);
-        ERROR("One of them is a nullptr (0): prodState %d, metadataState %d, "
-              "freqState %d, stackState %d (but that one is okay).",
-              pstate, mstate, fstate, sstate);
-        raise(SIGINT);
+        FATAL_ERROR("Set to not use dataset_broker and couldn't find "
+                    "ancestor of dataset 0x%" PRIx64 ". Make sure there is a stage"
+                    " upstream in the config, that the dataset states.\nExiting..."
+                    "One of them is a nullptr (0): prodState %d, metadataState %d, "
+                    "freqState %d, stackState %d (but that one is okay).",
+                    ds_id, pstate, mstate, fstate, sstate);
     }
 
     // Get a reference to the acq state
@@ -278,9 +279,13 @@ void visWriter::init_acq(dset_id_t ds_id) {
     // Construct metadata
     auto metadata = make_metadata(ds_id);
 
-    acq.file_bundle =
-        std::make_unique<visFileBundle>(file_type, root_path, instrument_name, metadata, chunk_id,
-                                        file_length, window, ds_id, file_length);
+    try {
+        acq.file_bundle =
+            std::make_unique<visFileBundle>(file_type, root_path, instrument_name, metadata,
+                                            chunk_id, file_length, window, ds_id, file_length);
+    } catch (std::exception& e) {
+        FATAL_ERROR("Failed creating file bundle for new acquisition: %s", e.what());
+    }
 }
 
 

@@ -27,14 +27,16 @@ using std::vector;
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::connectionInstance;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(bufferRecv);
 
 bufferRecv::bufferRecv(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&bufferRecv::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&bufferRecv::main_thread, this)),
+    dropped_frame_counter(
+        Metrics::instance().add_counter("kotekan_buffer_recv_dropped_frame_total", unique_name)) {
 
     listen_port = config.get_default<uint32_t>(unique_name, "listen_port", 11024);
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
@@ -93,9 +95,7 @@ void bufferRecv::accept_connection(int listener, short event, void* arg) {
 
 void bufferRecv::increment_droped_frame_count() {
     std::lock_guard<mutex> lock(dropped_frame_count_mutex);
-    dropped_frame_count++;
-    prometheusMetrics::instance().add_stage_metric("kotekan_buffer_recv_dropped_frame_total",
-                                                   unique_name, dropped_frame_count);
+    dropped_frame_counter.inc();
 }
 
 void bufferRecv::internal_accept_connection(evutil_socket_t listener, short event, void* arg) {
@@ -186,8 +186,7 @@ void bufferRecv::main_thread() {
 
     base = event_base_new();
     if (!base) {
-        ERROR("Failed to create libevent base");
-        raise(SIGINT);
+        FATAL_ERROR("Failed to create libevent base");
         return;
     }
 
@@ -216,15 +215,13 @@ void bufferRecv::main_thread() {
     evutil_make_socket_nonblocking(listener);
 
     if (bind(listener, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        ERROR("Failed to bind to socket 0.0.0.0:%d, error: %d (%s)", listen_port, errno,
-              strerror(errno));
-        raise(SIGINT);
+        FATAL_ERROR("Failed to bind to socket 0.0.0.0:%d, error: %d (%s)", listen_port, errno,
+                    strerror(errno));
         return;
     }
 
     if (listen(listener, 256) < 0) {
-        ERROR("Failed to open listener %d (%s)", errno, strerror(errno));
-        raise(SIGINT);
+        FATAL_ERROR("Failed to open listener %d (%s)", errno, strerror(errno));
         return;
     }
 
@@ -330,6 +327,29 @@ void connInstance::close_instance() {
 
 void connInstance::internal_read_callback() {
     DEBUG2("Read Callback");
+
+    // cache for metrics `kotekan_buffer_recv_transfer_time_seconds` because
+    // prometheusMap requires a unique (metric_name, stage_name) key, and the
+    // "producer_name" that we use as the "stage" comes from (potentially many)
+    // external source(s), so there is no guarantee of its uniqueness.
+    static std::mutex producer_transfer_time_map_lock;
+    static std::unordered_map<
+        std::string, std::shared_ptr<kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>>>
+        producer_transfer_time_map;
+
+    // Look up the metric for this instance's producer, or create a new one
+    std::shared_ptr<kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>>
+        transfer_time_seconds_metric;
+    {
+        std::lock_guard<std::mutex> lock(producer_transfer_time_map_lock);
+        if (producer_transfer_time_map.count(producer_name) == 0) {
+            auto& m = Metrics::instance().add_gauge("kotekan_buffer_recv_transfer_time_seconds",
+                                                    producer_name, {"source"});
+            producer_transfer_time_map[producer_name] =
+                std::shared_ptr<kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>>(&m);
+        }
+        transfer_time_seconds_metric = producer_transfer_time_map.at(producer_name);
+    }
 
     // Locking the instance should be equivalent to locking the bufferevent
     // since the callback which includes a given bev has a unique instance
@@ -449,9 +469,10 @@ void connInstance::internal_read_callback() {
 
                 // Save a prometheus metric of the elapsed time
                 double elapsed = current_time() - start_time;
-                std::string labels = fmt::format("source=\"{}:{}\"", client_ip, port);
-                prometheusMetrics::instance().add_stage_metric(
-                    "kotekan_buffer_recv_transfer_time_seconds", producer_name, elapsed, labels);
+                // TODO: having IP:port as the "source" label is a **bad**
+                // Prometheus practice and of dubious usefulness
+                std::string source_label = fmt::format("{}:{}", client_ip, port);
+                transfer_time_seconds_metric->labels({source_label}).set(elapsed);
 
                 DEBUG("Received data from client: %s:%d into frame: %s[%d]", client_ip.c_str(),
                       port, buf->buffer_name, frame_id);

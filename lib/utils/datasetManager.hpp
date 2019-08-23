@@ -6,6 +6,7 @@
 #include "errors.h"
 #include "prometheusMetrics.hpp"
 #include "restClient.hpp"
+#include "restServer.hpp"
 #include "signal.h"
 
 #include "json.hpp"
@@ -32,13 +33,14 @@
 
 
 #define DS_UNIQUE_NAME "/dataset_manager"
+#define DS_FORCE_UPDATE_ENDPOINT_NAME "/dataset-manager/force-update"
 
 // names of broker endpoints
-#define PATH_REGISTER_STATE "register-state"
-#define PATH_SEND_STATE "send-state"
-#define PATH_REGISTER_DATASET "register-dataset"
-#define PATH_UPDATE_DATASETS "update-datasets"
-#define PATH_REQUEST_STATE "request-state"
+const std::string PATH_REGISTER_STATE = "/register-state";
+const std::string PATH_SEND_STATE = "/send-state";
+const std::string PATH_REGISTER_DATASET = "/register-dataset";
+const std::string PATH_UPDATE_DATASETS = "/update-datasets";
+const std::string PATH_REQUEST_STATE = "/request-state";
 
 // Alias certain types to give semantic meaning to the IDs
 // This is the output format of a std::hash
@@ -203,6 +205,11 @@ private:
  * @metric kotekan_datasetbroker_error_count Number of errors encountered in
  *                                           communication with the broker.
  *
+ * @par endpoints
+ * @endpoint    /force-update ``GET`` Forces the datasetManager to register
+ *                                    all datasets and states with the
+ *                                    dataset_broker.
+ *
  * @author Richard Shaw, Rick Nitsche
  **/
 class datasetManager {
@@ -307,15 +314,15 @@ public:
     template<typename T>
     inline const T* dataset_state(dset_id_t dset);
 
+    /**
+     * @brief Callback for endpoint `force-update` called by the restServer.
+     * @param conn The HTTP connection object.
+     */
+    void force_update_callback(kotekan::connectionInstance& conn);
+
 private:
     /// Constructor
-    datasetManager() :
-        _conn_error_count(0),
-        _timestamp_update(json(0)),
-        _stop_request_threads(false),
-        _n_request_threads(0),
-        _config_applied(false),
-        _rest_client(restClient::instance()) {}
+    datasetManager();
 
     /// Generate a private static instance so that the overloaded instance()
     /// members can use the same static variable
@@ -473,29 +480,15 @@ private:
 
     /// a reference to the restClient instance
     restClient& _rest_client;
+
+    // TODO: this should be a counter, but we don't have it using atomic Ints
+    kotekan::prometheus::Gauge& error_counter;
 };
 
 
 //
 // Implementations of templated methods
 //
-
-template<typename T>
-inline int datasetState::_register_state_type() {
-
-    // Get the unique name for the type to generate the lookup key. This is
-    // the same used by RTTI which is what we use to label the serialised
-    // instances.
-    std::string key = typeid(T).name();
-
-    DEBUG("Registering state type: %s", key.c_str());
-
-    // Generate a lambda function that creates an instance of the type
-    datasetState::_registered_types()[key] = [](json& data, state_uptr inner) -> state_uptr {
-        return std::make_unique<T>(data, move(inner));
-    };
-    return 0;
-}
 
 template<typename T>
 inline const T* datasetManager::dataset_state(dset_id_t dset) {
@@ -526,12 +519,12 @@ datasetManager::add_state(std::unique_ptr<T>&& state,
             // FIXME: hash collision. make the value a vector and store same
             // hash entries? This would mean the state/dset has to be sent
             // when registering.
-            ERROR("datasetManager: Hash collision!\n"
-                  "The following states have the same hash (0x%" PRIx64 ")."
-                  "\n\n%s\n\n%s\n\n"
-                  "datasetManager: Exiting...",
-                  hash, state->to_json().dump().c_str(), find->second->to_json().dump().c_str());
-            raise(SIGINT);
+            FATAL_ERROR("datasetManager: Hash collision!\n"
+                        "The following states have the same hash (0x%" PRIx64 ")."
+                        "\n\n%s\n\n%s\n\n"
+                        "datasetManager: Exiting...",
+                        hash, state->to_json().dump().c_str(),
+                        find->second->to_json().dump().c_str());
         }
     } else {
         // insert the new state
@@ -562,7 +555,8 @@ inline const T* datasetManager::get_closest_ancestor(dset_id_t dset) {
             // Search for the requested type in each dataset (includes inner
             // states).
             try {
-                if (_datasets.at(dset).types().count(typeid(T).name())) {
+                if (_datasets.at(dset).types().count(
+                        datasetState::_registered_names[typeid(T).hash_code()])) {
                     ancestor = _datasets.at(dset).state();
                     break;
                 }
@@ -590,7 +584,7 @@ inline const T* datasetManager::get_closest_ancestor(dset_id_t dset) {
 
             // walk through the inner states until we find the right type
             while (state != nullptr) {
-                if (typeid(*state) == typeid(T))
+                if (typeid(*state).hash_code() == typeid(T).hash_code())
                     return (const T*)state;
                 state = state->_inner_state.get();
             }
@@ -642,8 +636,7 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
         WARN("datasetManager: Failure requesting state from "
              "broker: %s",
              reply.second.c_str());
-        kotekan::prometheusMetrics::instance().add_stage_metric(
-            "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
+        error_counter.set(++_conn_error_count);
         return nullptr;
     }
 
@@ -687,21 +680,21 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
 
         // find the inner state matching the type
         while (true) {
-            if (typeid(T) == typeid(*s))
+            if (typeid(T).hash_code() == typeid(*s).hash_code())
                 return (const T*)s;
             if (s->_inner_state == nullptr)
-                throw std::runtime_error("Broker sent state that didn't match "
-                                         "requested type ("
-                                         + std::string(typeid(T).name())
-                                         + "): " + js_reply.at("state").dump());
+                throw std::runtime_error(
+                    "Broker sent state that didn't match "
+                    "requested type ("
+                    + std::string(datasetState::_registered_names[typeid(T).hash_code()])
+                    + "): " + js_reply.at("state").dump());
             s = s->_inner_state.get();
         }
     } catch (std::exception& e) {
         WARN("datasetManager: failure parsing reply received from broker "
              "after requesting state (reply: %s): %s",
              reply.second.c_str(), e.what());
-        kotekan::prometheusMetrics::instance().add_stage_metric(
-            "kotekan_datasetbroker_error_count", DS_UNIQUE_NAME, ++_conn_error_count);
+        error_counter.set(++_conn_error_count);
         return nullptr;
     }
 }

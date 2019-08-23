@@ -34,8 +34,8 @@ using namespace std::placeholders;
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(baselineCompression);
 
@@ -43,12 +43,23 @@ REGISTER_KOTEKAN_STAGE(baselineCompression);
 baselineCompression::baselineCompression(Config& config, const string& unique_name,
                                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
-          std::bind(&baselineCompression::main_thread, this)) {
+          std::bind(&baselineCompression::main_thread, this)),
+    in_buf(get_buffer("in_buf")),
+    out_buf(get_buffer("out_buf")),
+    frame_id_in(in_buf),
+    frame_id_out(out_buf),
+    frame_counter_global(0),
+    compression_residuals_metric(
+        Metrics::instance().add_gauge("kotekan_baselinecompression_residuals", unique_name,
+                                      {"freq_id", "dataset_id", "thread_id"})),
+    compression_time_seconds_metric(
+        Metrics::instance().add_gauge("kotekan_baselinecompression_time_seconds", unique_name,
+                                      {"freq_id", "dataset_id", "thread_id"})),
+    compression_frame_counter(
+        Metrics::instance().add_gauge("kotekan_baselinecompression_frame_counter", unique_name,
+                                      {"freq_id", "dataset_id", "thread_id"})) {
 
-    in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
-
-    out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
     // Fill out the map of stack types
@@ -111,12 +122,11 @@ dset_id_t baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
     const inputState* input_state_ptr = input_state.get();
     prod_state_ptr = prod_state.get();
     if (input_state_ptr == nullptr || prod_state_ptr == nullptr) {
-        ERROR("Set to not use dataset_broker and couldn't find "
-              "freqState ancestor of dataset 0x%" PRIx64 ". Make sure there "
-              "is a stage upstream in the config, that adds a freqState.\n"
-              "Exiting...",
-              input_ds_id);
-        raise(SIGINT);
+        FATAL_ERROR("Set to not use dataset_broker and couldn't find "
+                    "freqState ancestor of dataset 0x%" PRIx64 ". Make sure there "
+                    "is a stage upstream in the config, that adds a freqState.\n"
+                    "Exiting...",
+                    input_ds_id);
     }
 
     auto sspec = calculate_stack(input_state_ptr->get_inputs(), prod_state_ptr->get_prods());
@@ -127,14 +137,22 @@ dset_id_t baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
     return dm.add_dataset(input_ds_id, stack_state_id);
 }
 
-void baselineCompression::compress_thread(int thread_id) {
+void baselineCompression::compress_thread(uint32_t thread_id) {
 
-    // use the thread id as an offset on frame ids
-    unsigned int output_frame_id = thread_id;
-    unsigned int input_frame_id = thread_id;
+    int input_frame_id;
+    int output_frame_id;
+    uint64_t frame_counter;
 
     dset_id_t input_dset_id;
     dset_id_t output_dset_id = 0;
+
+    // Get the current values of the shared frame IDs.
+    {
+        std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
+        output_frame_id = frame_id_out++;
+        input_frame_id = frame_id_in++;
+        frame_counter = frame_counter_global++;
+    }
 
     // Wait for the input buffer to be filled with data
     // in order to get dataset ID
@@ -250,9 +268,12 @@ void baselineCompression::compress_thread(int thread_id) {
 
             // Invert norm if set, otherwise use zero to set data to zero.
             float inorm = (norm != 0.0) ? (1.0 / norm) : 0.0;
+            float iwgt = (output_frame.weight[stack_ind] != 0.0)
+                             ? (1.0 / output_frame.weight[stack_ind])
+                             : 0.0;
 
             output_frame.vis[stack_ind] *= inorm;
-            output_frame.weight[stack_ind] = norm * norm / output_frame.weight[stack_ind];
+            output_frame.weight[stack_ind] = norm * norm * iwgt;
 
             // Accumulate to calculate the variance of the residuals
             vart += stack_v2[stack_ind] - std::norm(output_frame.vis[stack_ind]) * norm;
@@ -263,21 +284,35 @@ void baselineCompression::compress_thread(int thread_id) {
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
         mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
 
-        // Advance the current frame id
-        output_frame_id = (output_frame_id + num_threads) % out_buf->num_frames;
-        input_frame_id = (input_frame_id + num_threads) % in_buf->num_frames;
-
         // Calculate residuals (return zero if no data for this freq)
         float residual = (normt != 0.0) ? (vart / normt) : 0.0;
 
         // Update prometheus metrics
         double elapsed = current_time() - start_time;
-        std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\"", output_frame.freq_id,
-                                         output_frame.dataset_id);
-        prometheusMetrics::instance().add_stage_metric("kotekan_baselinecompression_residuals",
-                                                       unique_name, residual, labels);
-        prometheusMetrics::instance().add_stage_metric("kotekan_baselinecompression_time_seconds",
-                                                       unique_name, elapsed);
+        std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\",thread_id=\"{}\"",
+                                         output_frame.freq_id, output_frame.dataset_id, thread_id);
+        compression_residuals_metric
+            .labels({std::to_string(output_frame.freq_id), std::to_string(output_frame.dataset_id),
+                     std::to_string(thread_id)})
+            .set(residual);
+        compression_time_seconds_metric
+            .labels({std::to_string(output_frame.freq_id), std::to_string(output_frame.dataset_id),
+                     std::to_string(thread_id)})
+            .set(elapsed);
+        // TODO: this feels like it should be a counter, but it's unclear
+        // how `frame_counter` increments exactly
+        compression_frame_counter
+            .labels({std::to_string(output_frame.freq_id), std::to_string(output_frame.dataset_id),
+                     std::to_string(thread_id)})
+            .set(frame_counter);
+
+        // Get the current values of the shared frame IDs and increment them.
+        {
+            std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
+            output_frame_id = frame_id_out++;
+            input_frame_id = frame_id_in++;
+            frame_counter = frame_counter_global++;
+        }
 
         DEBUG("Compression time %.4f", elapsed);
     }

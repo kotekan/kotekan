@@ -95,6 +95,19 @@ public:
      */
     std::string get_uri();
 
+    /**
+     * @brief Gets the query args as a map of key value strings
+     *
+     * Example "/my_endpoint?val=42&myval=hello" would return a map with items:
+     * map["val"] == "42"
+     * map["myval"] == "hello"
+     *
+     * In the case there are no URL query args, an empty map is returned.
+     *
+     * @return A map with string keys and string values with any url query args
+     */
+    std::map<std::string, std::string> get_query();
+
 private:
     /// The request details
     struct evhttp_request* request;
@@ -108,8 +121,7 @@ private:
  *
  * Provides the system for any framwork stage to register endpoints.
  *
- * Currently this object uses the mongoose webserver internally to handle
- * the http requests.
+ * This object uses libevent internally to handle the http requests.
  *
  * See the docs for examples of using this class.
  *

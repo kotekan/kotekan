@@ -74,7 +74,7 @@ public:
 private:
     /// Entrancepoint for n threads. Each thread takes frames with a
     /// different frame_id from the buffer and compresses them.
-    void compress_thread(int thread_id);
+    void compress_thread(uint32_t thread_id);
 
     /// Tracks input dataset ID and gets output dataset IDs from manager
     dset_id_t change_dataset_state(dset_id_t input_ds_id);
@@ -109,6 +109,16 @@ private:
     // dataset states
     const prodState* prod_state_ptr;
     const stackState* stack_state_ptr;
+
+    // Frame IDs, shared by compress threads and their mutex.
+    frameID frame_id_in;
+    frameID frame_id_out;
+    uint64_t frame_counter_global;
+    std::mutex m_frame_ids;
+
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_residuals_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_time_seconds_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_frame_counter;
 };
 
 

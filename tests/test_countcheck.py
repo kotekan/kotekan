@@ -52,7 +52,8 @@ def kotekan_output(tmpdir_factory):
             'countCheck', count_params,
             read_buffer,
             None,  # buffers_out is None
-            root_params
+            root_params,
+            expect_failure = True
         )
 
         test.run()

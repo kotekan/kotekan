@@ -313,6 +313,7 @@ uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, c
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
     int producer_id = private_get_producer_id(buf, producer_name);
+    assert(producer_id != -1);
 
     // If the buffer isn't full, i.e. is_full[ID] == 0, then we never sleep on the cond var.
     // The second condition stops us from using a buffer we've already filled,
@@ -328,12 +329,18 @@ uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, c
 
     CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
 
+//TODO: temporary solution to not print buffer status on gossec
+#ifndef _GOSSEC
     if (print_stat == 1)
         print_buffer_status(buf);
+#else
+    (void)print_stat;
+#endif
 
     if (buf->shutdown_signal == 1)
         return NULL;
 
+    buf->producers[producer_id].last_frame_acquired = ID;
     return buf->frames[ID];
 }
 
@@ -352,6 +359,9 @@ void register_consumer(struct Buffer * buf, const char *name) {
     for (int i = 0; i < MAX_CONSUMERS; ++i) {
         if (buf->consumers[i].in_use == 0) {
             buf->consumers[i].in_use = 1;
+            // -1 here means no frame has been acquired/released
+            buf->consumers[i].last_frame_acquired = -1;
+            buf->consumers[i].last_frame_released = -1;
             strncpy(buf->consumers[i].name, name, MAX_STAGE_NAME_LEN);
             CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
             return;
@@ -377,6 +387,9 @@ void register_producer(struct Buffer * buf, const char *name) {
     for (int i = 0; i < MAX_PRODUCERS; ++i) {
         if (buf->producers[i].in_use == 0) {
             buf->producers[i].in_use = 1;
+            // -1 here means no frame has been acquired/released
+            buf->producers[i].last_frame_acquired = -1;
+            buf->producers[i].last_frame_released = -1;
             strncpy(buf->producers[i].name, name, MAX_STAGE_NAME_LEN);
             CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
             return;
@@ -431,6 +444,7 @@ void private_mark_consumer_done(struct Buffer * buf, const char * name, const in
     // The consumer we are marking as done, shouldn't already be done!
     assert(buf->consumers_done[ID][consumer_id] == 0);
 
+    buf->consumers[consumer_id].last_frame_released = ID;
     buf->consumers_done[ID][consumer_id] = 1;
 }
 
@@ -446,6 +460,7 @@ void private_mark_producer_done(struct Buffer * buf, const char * name, const in
     // The producer we are marking as done, shouldn't already be done!
     assert(buf->producers_done[ID][producer_id] == 0);
 
+    buf->producers[producer_id].last_frame_released = ID;
     buf->producers_done[ID][producer_id] = 1;
 }
 
@@ -491,6 +506,7 @@ uint8_t * wait_for_full_frame(struct Buffer* buf, const char * name, const int I
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
     int consumer_id = private_get_consumer_id(buf, name);
+    assert(consumer_id != -1);
 
     // This loop exists when is_full == 1 (i.e. a full buffer) AND
     // when this producer hasn't already marked this buffer as
@@ -504,6 +520,7 @@ uint8_t * wait_for_full_frame(struct Buffer* buf, const char * name, const int I
     if (buf->shutdown_signal == 1)
         return NULL;
 
+    buf->consumers[consumer_id].last_frame_acquired = ID;
     return buf->frames[ID];
 }
 
@@ -513,6 +530,7 @@ int wait_for_full_frame_timeout(struct Buffer* buf, const char * name,
     CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
 
     int consumer_id = private_get_consumer_id(buf, name);
+    assert(consumer_id != -1);
     int err = 0;
 
     // This loop exists when is_full == 1 (i.e. a full buffer) AND
@@ -531,6 +549,7 @@ int wait_for_full_frame_timeout(struct Buffer* buf, const char * name,
     if (err == ETIMEDOUT)
         return 1;
 
+    buf->consumers[consumer_id].last_frame_acquired = ID;
     return 0;
 }
 
@@ -588,20 +607,73 @@ void print_buffer_status(struct Buffer* buf)
     char status_string[buf->num_frames + 1];
 
     for (int i = 0; i < buf->num_frames; ++i) {
-        if (buf->is_full[i] == 1) {
+        if (is_full[i] == 1) {
             status_string[i] = 'X';
         } else {
             status_string[i] = '_';
         }
     }
     status_string[buf->num_frames] = '\0';
-//TODO: temporary solution to not print buffer status on gossec
-#ifndef _GOSSEC
+
     INFO("Buffer %s, status: %s", buf->buffer_name, status_string);
-#else
-    DEBUG("Buffer %s, status: %s", buf->buffer_name, status_string);
-#endif
 }
+
+void print_full_status(struct Buffer* buf) {
+
+    CHECK_ERROR( pthread_mutex_lock(&buf->lock) );
+
+    char status_string[buf->num_frames + 1];
+    status_string[buf->num_frames] = '\0';
+
+    INFO("--------------------- %s ---------------------", buf->buffer_name);
+
+    for (int i = 0; i < buf->num_frames; ++i) {
+        if (buf->is_full[i] == 1) {
+            status_string[i] = 'X';
+        } else {
+            status_string[i] = '_';
+        }
+    }
+
+    INFO("Full Frames (X)                : %s", status_string);
+
+    INFO("---- Producers ----");
+
+    for (int producer_id = 0; producer_id < MAX_PRODUCERS; ++producer_id) {
+        if (buf->producers[producer_id].in_use == 1) {
+            for (int i = 0; i < buf->num_frames; ++i) {
+                if (buf->producers_done[i][producer_id] == 1) {
+                    status_string[i] = '+';
+                } else {
+                    status_string[i] = '_';
+                }
+            }
+            INFO("%-30s : %s (%d, %d)", buf->producers[producer_id].name, status_string,
+                buf->producers[producer_id].last_frame_acquired,
+                buf->producers[producer_id].last_frame_released);
+        }
+    }
+
+    INFO("---- Consumers ----");
+
+    for (int consumer_id = 0; consumer_id < MAX_CONSUMERS; ++consumer_id) {
+        if (buf->consumers[consumer_id].in_use == 1) {
+            for (int i = 0; i < buf->num_frames; ++i) {
+                if (buf->consumers_done[i][consumer_id] == 1) {
+                    status_string[i] = '=';
+                } else {
+                    status_string[i] = '_';
+                }
+            }
+            INFO("%-30s : %s (%d, %d)", buf->consumers[consumer_id].name, status_string,
+                buf->consumers[consumer_id].last_frame_acquired,
+                buf->consumers[consumer_id].last_frame_released);
+        }
+    }
+
+    CHECK_ERROR( pthread_mutex_unlock(&buf->lock) );
+}
+
 
 void pass_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf, int to_ID) {
 
@@ -711,8 +783,10 @@ void swap_frames(struct Buffer * from_buf, int from_frame_id,
 
     int num_consumers = get_num_consumers(from_buf);
     assert(num_consumers == 1);
+    (void)num_consumers;
     int num_producers = get_num_producers(to_buf);
     assert(num_producers == 1);
+    (void)num_producers;
 
     // Swap the frames
     uint8_t * temp_frame = from_buf->frames[from_frame_id];

@@ -3,8 +3,10 @@
 #include "Stage.hpp"
 #include "errors.h"
 #include "restServer.hpp"
+#include "visUtil.hpp"
 
 #include "fmt.hpp"
+#include "json.hpp"
 
 #include <iostream>
 #include <signal.h>
@@ -153,24 +155,18 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
             con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
             return;
         } else {
-            // ...and for correct types
-            if (it.value().type_name() != _init_values[uri].at(it.key()).type_name()) {
-                std::string msg = fmt::format("configUpdater: Update to endpoint '{}' contained"
-                                              " value '{}' of type {} (expected type {}).",
-                                              uri.c_str(), it.key().c_str(), it.value().type_name(),
-                                              _init_values[uri].at(it.key()).type_name());
-
-                WARN(msg.c_str());
-                con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
-                return;
-            }
-
-            if (it.value().type() == nlohmann::json::value_t::number_float
-                && _init_values[uri].at(it.key()).type() != it.value().type()) {
-                std::string msg = fmt::format("configUpdater: Update to endpoint '{}' contained"
-                                              " value '{}' of type float (expected type {}).",
-                                              uri.c_str(), it.key().c_str(),
-                                              _init_values[uri].at(it.key()).type_name());
+            // Reject changes in general type (string vs. number vs. object),
+            // and reject changes between (un)signed integers and floats, but allow both
+            // signed and unsigned integers to be interchanged.
+            if (it.value().type_name() != _init_values[uri].at(it.key()).type_name()
+                || ((it.value().type() == nlohmann::json::value_t::number_float)
+                    ^ (_init_values[uri].at(it.key()).type()
+                       == nlohmann::json::value_t::number_float))) {
+                std::string msg =
+                    fmt::format("configUpdater: Update to endpoint '{}' contained"
+                                " value '{}' of type {} (expected type {}).",
+                                uri.c_str(), it.key().c_str(), json_type_name(it.value()),
+                                json_type_name(_init_values[uri].at(it.key())));
 
                 WARN(msg.c_str());
                 con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
@@ -211,13 +207,12 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
     while (search.first != search.second) {
         // subscriber callback
         if (!search.first->second(json)) {
-            std::string msg = fmt::format("configUpdater: Failed updating %s "
-                                          "with value %s.",
+            std::string msg = fmt::format("configUpdater: Failed updating {} "
+                                          "with new values: {}.",
                                           uri.c_str(), json.dump().c_str());
             ERROR(msg.c_str());
             con.send_error(msg, HTTP_RESPONSE::INTERNAL_ERROR);
-            ERROR("configUpdater: Stopping Kotekan.");
-            raise(SIGINT);
+            FATAL_ERROR("configUpdater: Stopping Kotekan.");
             return;
         }
         search.first++;
@@ -234,12 +229,11 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
             _config->update_value(uri, it.key(), it.value());
         } catch (const std::exception& e) {
             std::string msg = fmt::format("configUpdater: Failed applying "
-                                          "update to endpoint %s: %s",
+                                          "update to endpoint {}: {}",
                                           uri.c_str(), e.what());
             ERROR(msg.c_str());
             con.send_error(msg, HTTP_RESPONSE::INTERNAL_ERROR);
-            ERROR("configUpdater: Stopping Kotekan.");
-            raise(SIGINT);
+            FATAL_ERROR("configUpdater: Stopping Kotekan.");
             return;
         }
     }

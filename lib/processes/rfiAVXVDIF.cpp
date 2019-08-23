@@ -240,6 +240,10 @@ inline void rfiAVXVDIF::fastSKVDIF(uint8_t* data, uint32_t* temp_buf, uint32_t* 
 #else
 inline void rfiAVXVDIF::fastSKVDIF(uint8_t* data, uint32_t* temp_buf, uint32_t* sq_temp_buf,
                                    float* out) {
+    (void)data;
+    (void)temp_buf;
+    (void)sq_temp_buf;
+    (void)out;
     ERROR("This system does not support AVX2, fast spectral kurtosis will not work");
 }
 #endif

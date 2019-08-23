@@ -30,8 +30,8 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(visTranspose);
 
@@ -185,12 +185,11 @@ void visTranspose::main_thread() {
     auto future_ds_state = std::async(&visTranspose::get_dataset_state, this, ds_id);
 
     if (!future_ds_state.get()) {
-        ERROR("Set to not use dataset_broker and couldn't find "
-              "ancestor of dataset 0x%" PRIx64 ". Make sure there is a stage"
-              " upstream in the config, that adds the dataset states."
-              "\nExiting...",
-              ds_id);
-        raise(SIGINT);
+        FATAL_ERROR("Set to not use dataset_broker and couldn't find "
+                    "ancestor of dataset 0x%" PRIx64 ". Make sure there is a stage"
+                    " upstream in the config, that adds the dataset states."
+                    "\nExiting...",
+                    ds_id);
     }
 
     // Once the async get_dataset_state() is done, we have all the metadata to
@@ -207,6 +206,10 @@ void visTranspose::main_thread() {
             new visFileArchive(filename, metadata, times, freqs, inputs, prods, num_ev, chunk));
     }
 
+    // TODO: it seems like this should be a Counter?
+    auto& transposed_bytes_metric =
+        Metrics::instance().add_gauge("kotekan_vistranspose_data_transposed_bytes", unique_name);
+
     while (!stop_thread) {
         // Wait for a full frame in the input buffer
         if ((wait_for_full_frame(in_buf, unique_name.c_str(), frame_id)) == nullptr) {
@@ -215,11 +218,10 @@ void visTranspose::main_thread() {
         auto frame = visFrameView(in_buf, frame_id);
 
         if (frame.dataset_id != ds_id) {
-            ERROR("Dataset ID of incoming frames changed from 0x%" PRIx64 " to"
-                  "0x%" PRIx64 ". "
-                  "Not supported, exiting...",
-                  ds_id, frame.dataset_id);
-            raise(SIGINT);
+            FATAL_ERROR("Dataset ID of incoming frames changed from 0x%" PRIx64 " to"
+                        "0x%" PRIx64 ". "
+                        "Not supported, exiting...",
+                        ds_id, frame.dataset_id);
         }
 
         // Collect frames until a chunk is filled
@@ -272,15 +274,13 @@ void visTranspose::main_thread() {
             // export prometheus metric
             if (frame_size == 0)
                 frame_size = frame.calculate_buffer_layout(num_input, num_prod, num_ev).first;
-            prometheusMetrics::instance().add_stage_metric(
-                "kotekan_vistranspose_data_transposed_bytes", unique_name,
-                frame_size * frames_so_far);
+            transposed_bytes_metric.set(frame_size * frames_so_far);
         }
 
         frames_so_far++;
         // Exit when all frames have been written
         if (frames_so_far == num_time * num_freq)
-            std::raise(SIGINT);
+            exit_kotekan(ReturnCode::CLEAN_EXIT);
 
         // move to next frame
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);

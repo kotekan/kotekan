@@ -16,14 +16,16 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(bufferSend);
 
 bufferSend::bufferSend(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&bufferSend::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&bufferSend::main_thread, this)),
+    dropped_frame_counter(
+        Metrics::instance().add_counter("kotekan_buffer_send_dropped_frame_count", unique_name)) {
 
     buf = get_buffer("buf");
     register_consumer(buf, unique_name.c_str());
@@ -35,7 +37,7 @@ bufferSend::bufferSend(Config& config, const string& unique_name,
     send_timeout = config.get_default<uint32_t>(unique_name, "send_timeout", 20);
     reconnect_time = config.get_default<uint32_t>(unique_name, "reconnect_time", 5);
 
-    dropped_frame_count = 0;
+    // Publish current dropped frame count.
 
     bzero(&server_addr, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
@@ -50,7 +52,6 @@ bufferSend::~bufferSend() {}
 void bufferSend::main_thread() {
 
     int frame_id = 0;
-    prometheusMetrics& metrics = prometheusMetrics::instance();
 
     std::thread connect_thread = std::thread(&bufferSend::connect_to_server, std::ref(*this));
 
@@ -68,7 +69,7 @@ void bufferSend::main_thread() {
             WARN(
                 "Number of full frames in buffer %s is %d (total frames: %d), dropping frame_id %d",
                 buf->buffer_name, num_full_frames, buf->num_frames, frame_id);
-            dropped_frame_count++;
+            dropped_frame_counter.inc();
         } else if (connected) {
             // Send header
             struct bufferFrameHeader header;
@@ -136,10 +137,6 @@ void bufferSend::main_thread() {
             WARN("Dropping frame %s[%d], because connection to %s:%d is down.", buf->buffer_name,
                  frame_id, server_ip.c_str(), server_port);
         }
-
-        // Publish current dropped frame count.
-        metrics.add_stage_metric("kotekan_buffer_send_dropped_frame_count", unique_name,
-                                 dropped_frame_count);
 
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
         frame_id = (frame_id + 1) % buf->num_frames;

@@ -1,12 +1,14 @@
 #define BOOST_TEST_MODULE "test_dataset_broker_producer"
 
 #include "restClient.hpp"
+#include "restServer.hpp"
 #include "visCompression.hpp"
 #include "visUtil.hpp"
 
 #include "json.hpp"
 
 #include <boost/test/included/unit_test.hpp>
+#include <fstream>
 #include <iostream>
 #include <string>
 
@@ -22,6 +24,9 @@ using namespace std::string_literals;
 BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
     __log_level = 5;
     __enable_syslog = 0;
+
+    // We have to start the restServer here, because the datasetManager uses it.
+    kotekan::restServer::instance().start("127.0.0.1");
 
     json json_config;
     json json_config_dm;
@@ -39,6 +44,11 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
     std::vector<std::pair<uint32_t, freq_ctype>> freqs = {
         {1, {1.1, 1}}, {2, {2, 2.2}}, {3, {3, 3}}};
 
+    // Force the dM to update while it knows of nothing yet.
+    restReply reply = restClient::instance().make_request_blocking("/dataset-manager/force-update");
+    BOOST_CHECK(reply.first == true);
+    BOOST_CHECK(reply.second == "");
+
     std::pair<state_id_t, const inputState*> input_state =
         dm.add_state(std::make_unique<inputState>(
             inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
@@ -50,7 +60,12 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
         dm.add_state(std::make_unique<inputState>(
             inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
     // register new dataset with the twin state
-    dm.add_dataset(init_ds_id, input_state2.first);
+    dset_id_t ds_id = dm.add_dataset(init_ds_id, input_state2.first);
+
+    // write ID to disk for producer2
+    std::ofstream o("DS_ID.txt");
+    o << ds_id;
+    o.close();
 
     for (auto s : dm.states())
         std::cout << s.first << " - " << s.second->data_to_json().dump() << std::endl;
@@ -114,7 +129,12 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_second_root) {
         dm.add_state(std::make_unique<inputState>(
             inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
 
-    dm.add_dataset(input_state.first);
+    dset_id_t second_root = dm.add_dataset(input_state.first);
+
+    // write ID to disk for consumer
+    std::ofstream o("SECOND_ROOT.txt");
+    o << second_root;
+    o.close();
 
     // wait a bit, to make sure we see errors in any late callbacks
     usleep(1000000);

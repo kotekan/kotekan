@@ -157,6 +157,9 @@ protected:
 
         /// Number of products
         size_t num_vis;
+
+        /// Last update
+        double last_update;
     };
 
     /// The set of open acquisitions
@@ -171,6 +174,9 @@ private:
 
     /// Keep track of the average write time
     movingAverage write_time;
+
+    /// TODO: document
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& dropped_frame_counter;
 };
 
 /**

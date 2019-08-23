@@ -50,9 +50,8 @@ void rawFileRead::main_thread() {
         if (!file_exists(full_path)) {
             // Interrupt Kotekan if run out of files to read.
             if (end_interrupt) {
-                INFO("No more files to read. Shutting down Kotekan.");
                 sleep(1);
-                std::raise(SIGINT);
+                FATAL_ERROR("No more files to read. Shutting down Kotekan.");
                 break;
             } else {
                 INFO("rawFileRead: No file named %s, exiting read thread.", full_path);

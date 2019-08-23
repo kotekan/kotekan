@@ -78,10 +78,11 @@ void testDataCheck<A_Type>::main_thread() {
                     error = true;
                     num_errors += 1;
                     if (num_errors < 20) {
-                        INFO("%s[%d][%d] != %s[%d][%d]; values: (%f, %f) diffs (%.1f %.1f %.1f)",
-                             first_buf->buffer_name, first_buf_id, i, second_buf->buffer_name,
-                             second_buf_id, i, (double)first_value, (double)second_value, diff,
-                             diff2, diff3);
+                        FATAL_ERROR(
+                            "%s[%d][%d] != %s[%d][%d]; values: (%f, %f) diffs (%.1f %.1f %.1f)",
+                            first_buf->buffer_name, first_buf_id, i, second_buf->buffer_name,
+                            second_buf_id, i, (double)first_value, (double)second_value, diff,
+                            diff2, diff3);
                     }
                 }
             } else { // N2 numbers are int

@@ -57,10 +57,6 @@ private:
 
     /// Output buffer to receive baseline subset visibilities
     Buffer* _buf_out;
-
-
-    /// Number of dropped frames.
-    uint64_t _dropped_total;
 };
 
 

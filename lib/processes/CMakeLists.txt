@@ -47,6 +47,7 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       rfiBroadcast.cpp
       rfiRecord.cpp
       rfiBadInputFinder.cpp
+      rfiUpdateMetadata.cpp
       receiveFlags.cpp
       valve.cpp
       visTransform.cpp
@@ -82,6 +83,7 @@ endif()
 
 if (${USE_LAPACK})
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} eigenVis.cpp)
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} EigenVisIter.cpp)
 endif ()
 
 add_library (kotekan_processes ${KOTEKAN_PROCESS_LIB_SOURCES})

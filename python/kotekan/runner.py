@@ -35,7 +35,7 @@ class KotekanRunner(object):
     """
 
     def __init__(self, buffers=None, stages=None, config=None,
-                 rest_commands=None, debug=False):
+                 rest_commands=None, debug=False, expect_failure=False):
 
         self._buffers = buffers if buffers is not None else {}
         self._stages = stages if stages is not None else {}
@@ -43,6 +43,8 @@ class KotekanRunner(object):
         self._rest_commands = (rest_commands if rest_commands is not None
                                else [])
         self.debug = debug
+        self.expect_failure = expect_failure
+        self.return_code = 0
 
     def run(self):
         """Run kotekan.
@@ -73,7 +75,7 @@ class KotekanRunner(object):
             kotekan_cmd = './kotekan -c %s'
             wd = build_dir
         else:
-            kotekan_cmd = 'kotekan -d %s'
+            kotekan_cmd = 'kotekan -c %s'
             wd = os.curdir
 
         with tempfile.NamedTemporaryFile() as fh, \
@@ -123,7 +125,7 @@ class KotekanRunner(object):
                                                                 cmd)
 
                         print("Failed sending REST command: " + rtype + " to " +
-                              endpoint + " with data " + data)
+                              endpoint + " with data " + str(data))
 
             while (self.debug and None == p.poll()):
                 time.sleep(10)
@@ -136,8 +138,11 @@ class KotekanRunner(object):
             # Print out the output from Kotekan for debugging
             print(self.output)
 
-            # Throw an exception if we don't exit cleanly
-            if p.returncode:
+            # If failure is expected just report the exit code
+            if self.expect_failure is True:
+                print("Test failed as expected with exit code: " + str(p.returncode))
+                self.return_code = p.returncode
+            elif p.returncode:
                 raise subprocess.CalledProcessError(p.returncode, cmd)
 
 
@@ -489,7 +494,7 @@ class KotekanStageTester(KotekanRunner):
 
     def __init__(self, stage_type, stage_config, buffers_in,
                  buffers_out, global_config={}, parallel_stage_type=None,
-                 parallel_stage_config={}, rest_commands=None, noise=False):
+                 parallel_stage_config={}, rest_commands=None, noise=False, expect_failure=False):
 
         config = stage_config.copy()
         parallel_config = parallel_stage_config.copy()
@@ -553,7 +558,7 @@ class KotekanStageTester(KotekanRunner):
             buffer_block.update(noise_buffer)
 
         super(KotekanStageTester, self).__init__(buffer_block, stage_block,
-                                                   global_config, rest_commands)
+                                                   global_config, rest_commands, expect_failure = expect_failure)
 
 
 default_config = """

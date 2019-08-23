@@ -23,22 +23,30 @@ using namespace std::placeholders;
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::configUpdater;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(applyGains);
 
 
 applyGains::applyGains(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&applyGains::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&applyGains::main_thread, this)),
+    in_buf(get_buffer("in_buf")),
+    out_buf(get_buffer("out_buf")),
+    frame_id_in(in_buf),
+    frame_id_out(out_buf),
+    update_age_metric(
+        Metrics::instance().add_gauge("kotekan_applygains_update_age_seconds", unique_name)),
+    late_update_counter(
+        Metrics::instance().add_gauge("kotekan_applygains_late_update_count", unique_name)),
+    late_frames_counter(
+        Metrics::instance().add_gauge("kotekan_applygains_late_frame_count", unique_name)) {
 
     // Setup the input buffer
-    in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
     // Setup the output buffer
-    out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
     // Apply config.
@@ -167,7 +175,7 @@ void applyGains::main_thread() {
     // Create the threads
     thread_handles.resize(num_threads);
     for (uint32_t i = 0; i < num_threads; ++i) {
-        thread_handles[i] = std::thread(&applyGains::apply_thread, this, i);
+        thread_handles[i] = std::thread(&applyGains::apply_thread, this);
 
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
@@ -184,13 +192,20 @@ void applyGains::main_thread() {
     }
 }
 
-void applyGains::apply_thread(int thread_id) {
+void applyGains::apply_thread() {
 
-    unsigned int output_frame_id = thread_id;
-    unsigned int input_frame_id = thread_id;
+    int output_frame_id;
+    int input_frame_id;
     unsigned int freq;
     double tpast;
     double frame_time;
+
+    // Get the current values of the shared frame IDs and increment them.
+    {
+        std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
+        output_frame_id = frame_id_out++;
+        input_frame_id = frame_id_in++;
+    }
 
     while (!stop_thread) {
 
@@ -225,8 +240,7 @@ void applyGains::apply_thread(int thread_id) {
             std::shared_lock<std::shared_timed_mutex> lock(gain_mtx);
             gainpair_new = gains_fifo.get_update(double_to_ts(frame_time));
             if (gainpair_new.second == NULL) {
-                WARN("No gains available.\nKilling kotekan");
-                std::raise(SIGINT);
+                FATAL_ERROR("No gains available.\nKilling kotekan");
             }
             tpast = frame_time - ts_to_double(gainpair_new.first);
 
@@ -250,10 +264,10 @@ void applyGains::apply_thread(int thread_id) {
                 } else {
                     gain = gainpair_new.second->gain.at(freq);
                     if (tpast < 0) {
-                        WARN("(Thread %d) No gains update is as old as the currently processed "
+                        WARN("No gains update is as old as the currently processed "
                              "frame. Using oldest gains available."
                              "Time difference is: %f seconds.",
-                             thread_id, tpast);
+                             tpast);
                         num_late_frames++;
                     }
                 }
@@ -321,22 +335,23 @@ void applyGains::apply_thread(int thread_id) {
         }
 
         // Report how old the gains being applied to the current data are.
-        prometheusMetrics::instance().add_stage_metric("kotekan_applygains_update_age_seconds",
-                                                       unique_name, tpast);
+        update_age_metric.set(tpast);
 
         // Report number of updates received too late
-        prometheusMetrics::instance().add_stage_metric("kotekan_applygains_late_update_count",
-                                                       unique_name, num_late_updates.load());
+        late_update_counter.set(num_late_updates.load());
 
         // Report number of frames received late
-        prometheusMetrics::instance().add_stage_metric("kotekan_applygains_late_frame_count",
-                                                       unique_name, num_late_frames.load());
+        late_frames_counter.set(num_late_frames.load());
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
         mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
-        // Advance the current frame ids
-        input_frame_id = (input_frame_id + num_threads) % in_buf->num_frames;
-        output_frame_id = (output_frame_id + num_threads) % out_buf->num_frames;
+
+        // Get the current values of the shared frame IDs.
+        {
+            std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
+            output_frame_id = frame_id_out++;
+            input_frame_id = frame_id_in++;
+        }
     }
 }

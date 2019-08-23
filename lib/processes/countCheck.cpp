@@ -57,10 +57,8 @@ void countCheck::main_thread() {
             start_time = new_start_time;
             // Else, test that start time is still the same
         } else if (llabs(start_time - new_start_time) > start_time_tolerance) {
-            WARN("Found wrong start time. Possible acquisition re-start occurred.");
-            WARN("Stopping Kotekan.");
             // Shut Kotekan down
-            std::raise(SIGINT);
+            FATAL_ERROR("Found wrong start time. Possible acquisition re-start occurred.");
             break;
         }
 

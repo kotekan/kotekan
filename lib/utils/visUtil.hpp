@@ -164,14 +164,23 @@ void from_json(const json& j, rstack_ctype& f);
 namespace std {
 template<class T>
 void to_json(json& j, const std::complex<T>& p) {
-    j = json{{"real", p.real()}, {"imag", p.imag()}};
+    j = json{p.real(), p.imag()};
 }
 
 template<class T>
 void from_json(const json& j, std::complex<T>& p) {
-    p = std::complex<T>{j.at("real").get<T>(), j.at("imag").get<T>()};
+    p = std::complex<T>{j.at(0).get<T>(), j.at(1).get<T>()};
 }
 } // namespace std
+
+/**
+ * @brief Get type name of a JSON value.
+ * Returns a string with the name of the given json value type. Can be one of:
+ * integer, float or value.type_name().
+ * @param value A JSON value.
+ * @return Type name.
+ */
+std::string json_type_name(nlohmann::json& value);
 
 /**
  * @brief Index into a flattened upper matrix triangle.
@@ -441,6 +450,11 @@ struct_layout<T> struct_alignment(std::vector<std::tuple<T, size_t, size_t>> mem
  * @param z  Number to find the norm of.
  * @returns  Norm of z.
  **/
+template<typename T>
+inline T fast_norm(const T& x) {
+    return x * x;
+}
+
 template<typename T>
 inline T fast_norm(const std::complex<T>& z) {
     T r = std::real(z);

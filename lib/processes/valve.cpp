@@ -16,15 +16,13 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(Valve);
 
 Valve::Valve(Config& config, const std::string& unique_name, bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&Valve::main_thread, this)) {
-
-    _dropped_total = 0;
 
     _buf_in = get_buffer("in_buf");
     register_consumer(_buf_in, unique_name.c_str());
@@ -36,6 +34,10 @@ void Valve::main_thread() {
     frameID frame_id_in(_buf_in);
     frameID frame_id_out(_buf_out);
 
+    /// Metric to track the number of dropped frames.
+    auto& dropped_total =
+        Metrics::instance().add_counter("kotekan_valve_dropped_frames_total", unique_name);
+
     while (!stop_thread) {
         // Fetch a new frame and get its sequence id
         uint8_t* frame_in = wait_for_full_frame(_buf_in, unique_name.c_str(), frame_id_in);
@@ -44,17 +46,20 @@ void Valve::main_thread() {
 
         // check if there is space for it in the output buffer
         if (is_frame_empty(_buf_out, frame_id_out)) {
+            // This call cannot block because of the check above.
+            uint8_t* frame_out = wait_for_empty_frame(_buf_out, unique_name.c_str(), frame_id_out);
+            if (frame_out == nullptr)
+                break;
             try {
                 copy_frame(_buf_in, frame_id_in, _buf_out, frame_id_out);
             } catch (std::exception& e) {
-                ERROR("Failure copying frame: %s\nExiting...", e.what());
-                raise(SIGINT);
+                FATAL_ERROR("Failure copying frame: %s\nExiting...", e.what());
+                break;
             }
             mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
         } else {
             WARN("Output buffer full. Dropping incoming frame %d.", frame_id_in);
-            prometheusMetrics::instance().add_stage_metric("kotekan_valve_dropped_frames_total",
-                                                           unique_name, ++_dropped_total);
+            dropped_total.inc();
         }
         mark_frame_empty(_buf_in, unique_name.c_str(), frame_id_in++);
     }

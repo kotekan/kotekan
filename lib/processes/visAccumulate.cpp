@@ -39,8 +39,8 @@ using namespace std::placeholders;
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::configUpdater;
-using kotekan::prometheusMetrics;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(visAccumulate);
 
@@ -139,15 +139,13 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     // Get and validate any gating config
     nlohmann::json gating_conf = config.get_default<nlohmann::json>(unique_name, "gating", {});
     if (!gating_conf.empty() && !gating_conf.is_object()) {
-        ERROR("Gating config must be a dictionary: %s", gating_conf.dump().c_str());
-        std::raise(SIGINT);
+        FATAL_ERROR("Gating config must be a dictionary: %s", gating_conf.dump().c_str());
     }
 
     if (!gating_conf.empty() && num_freq_in_frame > 1) {
-        ERROR("Cannot use gating with multifrequency GPU buffers"
-              "[num_freq_in_frame=%i; gating config=%s].",
-              num_freq_in_frame, gating_conf.dump().c_str());
-        std::raise(SIGINT);
+        FATAL_ERROR("Cannot use gating with multifrequency GPU buffers"
+                    "[num_freq_in_frame=%i; gating config=%s].",
+                    num_freq_in_frame, gating_conf.dump().c_str());
     }
 
     // Register gating update callbacks
@@ -166,15 +164,13 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
                                             + it.value().dump());
             }
         } catch (std::exception& e) {
-            ERROR("Failure reading 'mode' from config: %s", e.what());
-            std::raise(SIGINT);
+            FATAL_ERROR("Failure reading 'mode' from config: %s", e.what());
         }
         std::string mode = it.value().at("mode");
 
         if (!FACTORY(gateSpec)::exists(mode)) {
-            ERROR("Requested gating mode %s for dataset %s is not a known.", name.c_str(),
-                  mode.c_str());
-            std::raise(SIGINT);
+            FATAL_ERROR("Requested gating mode %s for dataset %s is not a known.", name.c_str(),
+                        mode.c_str());
         }
 
         INFO("Creating gated dataset %s of type %s", name.c_str(), mode.c_str());
@@ -187,8 +183,7 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
                                             + it.value().dump());
             }
         } catch (std::exception& e) {
-            ERROR("Failure reading 'buf' from config: %s", e.what());
-            std::raise(SIGINT);
+            FATAL_ERROR("Failure reading 'buf' from config: %s", e.what());
         }
         std::string buffer_name = it.value().at("buf");
 
@@ -265,7 +260,6 @@ void visAccumulate::main_thread() {
 
     // We will skip data that has fewer than this number of samples in it.
     uint32_t low_sample_cut = low_sample_fraction * num_gpu_frames * samples_per_data_set;
-    size_t skipped_frame_total = 0;
 
     // Temporary arrays for storing intermediates
     std::vector<int32_t> vis_even(2 * num_prod_gpu);
@@ -273,6 +267,8 @@ void visAccumulate::main_thread() {
     // Have we initialised a frame for writing yet
     bool init = false;
 
+    auto& skipped_frame_counter = Metrics::instance().add_counter(
+        "kotekan_visaccumulate_skipped_frame_total", unique_name, {"freq_id"});
     while (!stop_thread) {
 
         // Fetch a new frame and get its sequence id
@@ -310,15 +306,10 @@ void visAccumulate::main_thread() {
                     // Skip the frame if we too much had been flagged out.
                     if (total_samples < low_sample_cut) {
 
-                        if (freq_ind == 0)
-                            skipped_frame_total++;
-
-                        // Update prometheus metrics
-                        auto frame = visFrameView(dset.buf, dset.frame_id);
-                        std::string labels = fmt::format("freq_id=\"{}\"", frame.freq_id);
-                        prometheusMetrics::instance().add_stage_metric(
-                            "kotekan_visaccumulate_skipped_frame_total", unique_name,
-                            skipped_frame_total, labels);
+                        if (freq_ind == 0) {
+                            auto frame = visFrameView(dset.buf, dset.frame_id);
+                            skipped_frame_counter.labels({std::to_string(frame.freq_id)}).inc();
+                        }
                         continue;
                     }
 
@@ -420,7 +411,14 @@ void visAccumulate::main_thread() {
             }
 
             // Accumulate the total number of samples, accounting for lost ones
+            assert((int64_t)samples_per_data_set
+                       - (int64_t)get_lost_timesamples(in_buf, in_frame_id)
+                   >= 0);
             total_samples += samples_per_data_set - get_lost_timesamples(in_buf, in_frame_id);
+
+            DEBUG("Lost samples %d, RFI flagged samples %d, total_samples: %u",
+                  get_lost_timesamples(in_buf, in_frame_id),
+                  get_rfi_flaged_samples(in_buf, in_frame_id), total_samples);
         }
 
         // Move the input buffer on one step
