@@ -104,18 +104,18 @@ compressed_lost_samples_buffer:
 cpu_affinity: [2,3,8,9]
 
 gen_data:
+  type: const
+  value: 1
+  test_data_gen_0:
+    kotekan_stage: testDataGen
+    network_out_buf: lost_samples_buffer
+
+gen_data:
   type: random
   value: 153
   test_data_gen_0:
     kotekan_stage: testDataGen
     network_out_buf: network_buffer_0
-
-gen_data:
-  type: const
-  value: 1
-  test_data_gen_0:
-    kotekan_stage: testDataGenFloat
-    network_out_buf: lost_samples_buffer
 
 #baseband:
 #  base_dir: /mnt/gong/cherry/B0329/July10/ForVerification/
@@ -181,6 +181,7 @@ hyper_fine_beam:
     log_level: debug
     hfb_input_buf: gpu_beamform_hfb_output_buffer_0
     hfb_output_buf: beamform_hfb_output_buffer_0
+    lost_samples_buf: lost_samples_buffer
       
 check_data:
   bf_data_check_0:
