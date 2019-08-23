@@ -30,11 +30,6 @@ packets_per_frame: 32768
 # Set this to the size of the packet plus Ethernet/IP/UDP headers
 packet_size: 4928
 
-# Pool
-main_pool:
-  kotekan_metadata_pool: chimeMetadata
-  num_metadata_objects: 15 * buffer_depth
-
 # Buffers
 network_capture_buf:
   kotekan_buffer: standard
