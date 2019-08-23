@@ -6,6 +6,7 @@
 #include "errors.h"
 #include "util.h"
 
+#include <cmath>
 #include <type_traits>
 #include <unistd.h>
 
@@ -76,7 +77,8 @@ void testDataCheck<A_Type>::main_thread() {
                 float diff2 = (double)first_value - (double)second_value;
                 float diff3 =
                     ((double)first_value - (double)second_value) / (double)second_value * 100;
-                if (((abs(diff) > 0.001) and (abs(diff2) != 0.0)) or (abs(diff3) > 0.001)) {
+                if (((std::abs(diff) > 0.001) and (std::abs(diff2) != 0.0))
+                    or (std::abs(diff3) > 0.001)) {
                     error = true;
                     num_errors += 1;
                     if (num_errors < 20) {
