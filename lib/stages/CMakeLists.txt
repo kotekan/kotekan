@@ -54,6 +54,7 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       visDebug.cpp
       removeEv.cpp
       integrateHFBData.cpp
+      compressLostSamples.cpp
       compressData.cpp
     )
 
