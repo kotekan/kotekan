@@ -27,7 +27,7 @@ extern "C" {
 
 void kotekan_hsa_start();
 
-void * hsa_host_malloc(size_t len);
+void * hsa_host_malloc(size_t len, uint32_t numa_node);
 
 void hsa_host_free(void *ptr);
 

@@ -802,7 +802,7 @@ uint8_t * buffer_malloc(ssize_t len, int numa_node) {
 #ifdef WITH_HSA
     // Is this memory aligned?
     // TODO this doesn't support NUMA alloc yet, but it should be possible
-    frame = hsa_host_malloc(len);
+    frame = hsa_host_malloc(len, numa_node);
     if (frame == NULL) {
         return NULL;
     }

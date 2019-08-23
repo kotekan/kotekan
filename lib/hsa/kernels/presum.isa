@@ -1,14 +1,14 @@
 	.text
-	;.hsa_code_object_version 2,1
-	;.hsa_code_object_isa 8,0,3,"AMD","AMDGPU"
+	.hsa_code_object_version 2,1
+	.hsa_code_object_isa 8,0,3,"AMD","AMDGPU"
 	.section	.AMDGPU.config
 	.text
 	.globl	CHIME_presum
 	.p2align	8
 	.type	CHIME_presum,@function
-	;.amdgpu_hsa_kernel CHIME_presum
+	.amdgpu_hsa_kernel CHIME_presum
 CHIME_presum: ; @CHIME_presum
-	;.amd_kernel_code_t
+	.amd_kernel_code_t
 		kernel_code_version_major = 1
 		kernel_code_version_minor = 0
 		machine_kind = 1
@@ -71,7 +71,7 @@ CHIME_presum: ; @CHIME_presum
 		wavefront_size = 6
 		call_convention = 0
 		runtime_loader_kernel_symbol = 0
-	;.end_amd_kernel_code_t
+	.end_amd_kernel_code_t
 ; BB#0:
 	s_load_dword s4, s[4:5], 0x4
 	s_load_dwordx2 s[2:3], s[6:7], 0x0

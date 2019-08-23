@@ -30,7 +30,8 @@ struct gpu_mem_config_t {
 
 class hsaDeviceInterface : public gpuDeviceInterface {
 public:
-    hsaDeviceInterface(kotekan::Config& config, int32_t gpu_id, int gpu_buffer_depth);
+    hsaDeviceInterface(kotekan::Config& config, int32_t gpu_id,
+                       int gpu_buffer_depth, uint32_t numa_node);
     virtual ~hsaDeviceInterface();
 
     // Note, if precede_signal is 0, then we don't wait on any signal.
@@ -53,6 +54,7 @@ public:
     hsa_agent_t get_cpu_agent();
     hsa_queue_t* get_queue();
     uint64_t get_hsa_timestamp_freq();
+    uint32_t get_gpu_numa_node();
 
 protected:
     void* alloc_gpu_memory(int len) override;
@@ -75,6 +77,9 @@ protected:
     // CPU HSA variables
     hsa_agent_t cpu_agent;
     hsa_amd_memory_pool_t host_region;
+
+    // The NUMA node this GPU is attached too.
+    uint32_t numa_node;
 
 private:
     static hsa_status_t get_gpu_agent(hsa_agent_t agent, void* data);
