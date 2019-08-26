@@ -11,7 +11,7 @@
 #define FMT_STRING_ALIAS 1
 
 #include <fmt/format.h>
-#include <fmt/time.h>
+#include <fmt/chrono.h>
 #include <fmt/printf.h>
 
 #endif // _FMT_HPP_
