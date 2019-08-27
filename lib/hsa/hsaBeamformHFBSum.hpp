@@ -29,6 +29,7 @@
  *
  * @conf   num_frb_total_beams  Int (default 1024). Number of total FRB formed beams
  * @conf   num_sub_freqs  Int (default 128). Number of sub frequencies
+ * @conf   samples_per_data_set Int. Number of time samples in a data set.
  *
  * @author James Willis
  *
@@ -48,14 +49,20 @@ public:
 
 private:
     /// Input length, num_frb_total_beams x num_sub_freqs x 10
-    int32_t input_frame_len;
+    uint32_t input_frame_len;
     /// Output length, num_frb_total_beams x num_sub_freqs
-    int32_t output_frame_len;
+    uint32_t output_frame_len;
+    /// Length of the lost sample frame
+    uint32_t lost_samples_frame_len;
 
     /// Total number of FRB formed beams, should be 1024
-    int32_t _num_frb_total_beams;
+    uint32_t _num_frb_total_beams;
     /// Total number of sub frequencies, should be 128
-    int32_t _num_sub_freqs;
+    uint32_t _num_sub_freqs;
+    /// Number of time samples per frame (Usually 32768 or 49152)
+    uint32_t _samples_per_data_set;
+    /// Number of samples per frame
+    uint32_t _num_samples;
 };
 
 #endif
