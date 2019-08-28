@@ -20,7 +20,7 @@ pipeline {
           steps {
             sh '''mkdir build_chime
                   cd build_chime/
-                  cmake -DUSE_OLD_ROCM=ON -DRTE_SDK=/opt/dpdk-stable-16.11.4/ \
+                  cmake -DRTE_SDK=/opt/dpdk-stable-16.11.4/ \
                   -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON \
                   -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build/ -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
