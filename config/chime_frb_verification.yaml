@@ -98,7 +98,7 @@ lost_samples_buffer:
 compressed_lost_samples_buffer:
     kotekan_buffer: standard
     num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set * num_data_sets
+    frame_size: samples_per_data_set / num_sub_freqs * num_data_sets
     metadata_pool: main_pool
 
 cpu_affinity: [2,3,8,9]

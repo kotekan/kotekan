@@ -45,9 +45,13 @@ public:
     void finalize_frame(int frame_id) override;
 
 private:
+    /// The very first input data from dpdk
+    Buffer* network_buffer;
     /// Output buffer from the FRB pipeline
     Buffer* output_buffer;
 
+    /// ID for network_buffer
+    int32_t network_buffer_id;
     /// ID for output_buffer
     int32_t output_buffer_id;
 
