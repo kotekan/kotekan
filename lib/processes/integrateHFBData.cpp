@@ -40,7 +40,10 @@ void integrateHFBData::main_thread() {
     int out_buffer_ID = 0;
     uint frame = 0;
     //const int32_t total_timesamples = _num_frb_total_beams * _num_sub_freqs * _num_frames_to_integrate;
-    const int32_t total_timesamples = _samples_per_data_set * _num_frames_to_integrate;
+    const uint32_t total_timesamples = _samples_per_data_set * _num_frames_to_integrate; 
+    // The maximum no. of frames before integrated data is discarded. If frames are missing for more than 2 seconds:
+    // 390625 / 49152 = 7.95 frames per second 
+    const uint32_t max_frames_missing = 16;
     int32_t total_lost_timesamples = 0;
     int64_t fpga_seq_num = 0;
     
@@ -71,23 +74,40 @@ void integrateHFBData::main_thread() {
       }
       else {
 
-        // TODO:JSW Account for large gaps between missing frames
+        const int64_t fpga_seq_num_diff = get_fpga_seq_num(in_buf, in_buffer_ID) - fpga_seq_num;
+
         // TODO:JSW Ensure output frames are aligned
         // TODO:JSW Store the amount of renormalisation used in the frame
         // Increment the no. of lost frames if there are missing frames
-        if(get_fpga_seq_num(in_buf, in_buffer_ID) != fpga_seq_num + _samples_per_data_set)
+        if(fpga_seq_num_diff <= _samples_per_data_set * max_frames_missing) {
+          
+          fpga_seq_num += _samples_per_data_set;
           total_lost_timesamples += get_fpga_seq_num(in_buf, in_buffer_ID) - fpga_seq_num;
 
-        // Integrates data from the input buffer to the output buffer.
-        for (uint beam = 0; beam < _num_frb_total_beams; beam++) {
-          for (uint freq = 0; freq < _num_sub_freqs; freq++) {
-            sum_data[beam * _num_sub_freqs + freq] += input_data[beam * _num_sub_freqs + freq];
+          // Integrates data from the input buffer to the output buffer.
+          for (uint beam = 0; beam < _num_frb_total_beams; beam++) {
+            for (uint freq = 0; freq < _num_sub_freqs; freq++) {
+              sum_data[beam * _num_sub_freqs + freq] += input_data[beam * _num_sub_freqs + freq];
+            }
           }
+
+        }
+        // If there are large gaps in the data, discard integrated data and restart integration
+        else {
+            
+          total_lost_timesamples = 0;
+          frame = 0;
+
+          // Copy first frame
+          memcpy(&sum_data[0], &input_data[0], _num_frb_total_beams * _num_sub_freqs * sizeof(float));
+        
+          // Get the first FPGA sequence no. to check for missing frames
+          fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
+
         }
       }
 
       frame++;
-      fpga_seq_num += _samples_per_data_set;
 
       // When all frames have been integrated output the result
       if (frame == _num_frames_to_integrate) {
