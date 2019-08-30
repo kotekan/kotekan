@@ -103,7 +103,7 @@ void rfiAVXVDIF::main_thread() {
             this_thread[j].join();
         }
         // Log/display time results
-        DEBUG("Time used for kurtosis calculation: %fms\n", (e_time() - start_time) * 1000);
+        DEBUG("Time used for kurtosis calculation: {:f}ms\n", (e_time() - start_time) * 1000);
         // Mark Frames empty/full
         mark_frame_empty(buf_in, unique_name.c_str(), frame_in_id);
         mark_frame_full(buf_out, unique_name.c_str(), frame_out_id);

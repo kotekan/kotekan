@@ -27,7 +27,7 @@ visDrop::visDrop(Config& config, const string& unique_name, bufferContainer& buf
     register_producer(buf_out, unique_name.c_str());
 
     drop_freqs = config.get_default<std::vector<uint32_t>>(unique_name, "freq", {});
-    INFO("Dropping %d frequencies.", drop_freqs.size());
+    INFO("Dropping {:d} frequencies.", drop_freqs.size());
 }
 
 void visDrop::main_thread() {
@@ -50,7 +50,7 @@ void visDrop::main_thread() {
 
         // Check if this frame should be dropped because of its freq_id.
         if (std::find(drop_freqs.begin(), drop_freqs.end(), frame.freq_id) != drop_freqs.end()) {
-            DEBUG("Dropping frame %d with frequency ID %d.", frame_id_in, frame.freq_id);
+            DEBUG("Dropping frame {:d} with frequency ID {:d}.", frame_id_in, frame.freq_id);
             mark_frame_empty(buf_in, unique_name.c_str(), frame_id_in);
             frame_id_in = (frame_id_in + 1) % buf_in->num_frames;
             continue;

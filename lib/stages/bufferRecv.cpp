@@ -79,7 +79,7 @@ void bufferRecv::worker_thread() {
             instance = work_queue.front();
             work_queue.pop_front();
         }
-        DEBUG2("Starting worker thread job, queue depth: %d", work_queue.size());
+        DEBUG2("Starting worker thread job, queue depth: {:d}", work_queue.size());
         instance->internal_read_callback();
     }
 }
@@ -111,7 +111,7 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
     socklen_t slen = sizeof(ss);
     int fd = accept(listener, (struct sockaddr*)&ss, &slen);
     if (fd < 0) {
-        ERROR("Failed to accept connection, error %d (%s).", errno, std::strerror(errno));
+        ERROR("Failed to accept connection, error {:d} ({:s}).", errno, std::strerror(errno));
         return;
     }
     if (fd > FD_SETSIZE) {
@@ -140,7 +140,7 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
     char ip_str[256];
     inet_ntop(AF_INET, &s->sin_addr, ip_str, sizeof(ip_str));
 
-    INFO("New connection from client: %s:%d", ip_str, port);
+    INFO("New connection from client: {:s}:{:d}", ip_str, port);
 
     // New connection instance
     connInstance* instance = new connInstance(accept_args->unique_name, accept_args->buf,
@@ -177,7 +177,7 @@ void bufferRecv::main_thread() {
     struct sockaddr_in server_addr;
     struct event* listener_event;
 
-    INFO("libevent version: %s", event_get_version());
+    INFO("libevent version: {:s}", event_get_version());
 
     if (evthread_use_pthreads()) {
         ERROR("Cannot use pthreads with libevent!");
@@ -201,7 +201,7 @@ void bufferRecv::main_thread() {
         pthread_setaffinity_np(thread_pool.back().native_handle(), sizeof(cpu_set_t), &cpuset);
 #ifndef MAC_OSX
         std::string short_name =
-            string_tail(unique_name + "/worker_thread/" + std::to_string(i), 15);
+            string_tail(fmt::format(fmt("{:s}/worker_thread/{:d}"), unique_name, i), 15);
         pthread_setname_np(thread_pool.back().native_handle(), short_name.c_str());
 #endif
     }
@@ -215,13 +215,13 @@ void bufferRecv::main_thread() {
     evutil_make_socket_nonblocking(listener);
 
     if (bind(listener, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        FATAL_ERROR("Failed to bind to socket 0.0.0.0:%d, error: %d (%s)", listen_port, errno,
+        FATAL_ERROR("Failed to bind to socket 0.0.0.0:{:d}, error: {:d} ({:s})", listen_port, errno,
                     strerror(errno));
         return;
     }
 
     if (listen(listener, 256) < 0) {
-        FATAL_ERROR("Failed to open listener %d (%s)", errno, strerror(errno));
+        FATAL_ERROR("Failed to open listener {:d} ({:s})", errno, strerror(errno));
         return;
     }
 
@@ -308,7 +308,7 @@ void connInstance::increment_ref_count() {
 void connInstance::decrement_ref_count() {
     std::lock_guard<std::mutex> lock(reference_count_lock);
     reference_count--;
-    DEBUG2("decrement reference_count %d, %d", reference_count, close_flag);
+    DEBUG2("decrement reference_count {:d}, {:d}", reference_count, close_flag);
     if (reference_count == 0 && close_flag) {
         event_del(event_read);
         delete this;
@@ -319,7 +319,7 @@ void connInstance::close_instance() {
     std::lock_guard<std::mutex> lock(reference_count_lock);
     event_del(event_read);
     close_flag = true;
-    DEBUG2("close reference_count %d", reference_count);
+    DEBUG2("close reference_count {:d}", reference_count);
     if (reference_count == 0) {
         delete this;
     }
@@ -376,18 +376,18 @@ void connInstance::internal_read_callback() {
                     handle_error("reading header", errno, n);
                     return;
                 }
-                DEBUG2("Header read bytes: %d", n);
+                DEBUG2("Header read bytes: {:d}", n);
                 bytes_read += n;
                 if (bytes_read >= sizeof(struct bufferFrameHeader)) {
                     assert(bytes_read == sizeof(struct bufferFrameHeader));
                     state = connState::metadata;
                     bytes_read = 0;
 
-                    DEBUG2("Got header: metadata_size: %d, frame_size: %d",
+                    DEBUG2("Got header: metadata_size: {:d}, frame_size: {:d}",
                            buf_frame_header.metadata_size, buf_frame_header.frame_size);
 
                     if ((unsigned int)buf->frame_size != buf_frame_header.frame_size) {
-                        ERROR("Frame size does not match between server: %d and client: %d",
+                        ERROR("Frame size does not match between server: {:d} and client: {:d}",
                               buf->frame_size, buf_frame_header.frame_size);
                         decrement_ref_count();
                         close_instance();
@@ -410,7 +410,7 @@ void connInstance::internal_read_callback() {
                     handle_error("reading header", errno, n);
                     return;
                 }
-                DEBUG2("Metadata read bytes: %d", n);
+                DEBUG2("Metadata read bytes: {:d}", n);
                 bytes_read += n;
                 if (bytes_read >= buf_frame_header.metadata_size) {
                     assert(bytes_read == buf_frame_header.metadata_size);
@@ -426,7 +426,7 @@ void connInstance::internal_read_callback() {
                     return;
                 }
                 bytes_read += n;
-                DEBUG2("Frame read bytes: %d, total read: %d", n, bytes_read);
+                DEBUG2("Frame read bytes: {:d}, total read: {:d}", n, bytes_read);
                 if (bytes_read >= buf_frame_header.frame_size) {
                     assert(bytes_read == buf_frame_header.frame_size);
                     state = connState::finished;
@@ -443,7 +443,7 @@ void connInstance::internal_read_callback() {
             DEBUG2("Finished state");
             int frame_id = buffer_recv->get_next_frame();
             if (frame_id == -1) {
-                WARN("No free buffer frames, dropping data from %s", client_ip.c_str());
+                WARN("No free buffer frames, dropping data from {:s}", client_ip);
 
                 // Update dropped frame count in prometheus
                 buffer_recv->increment_droped_frame_count();
@@ -471,10 +471,10 @@ void connInstance::internal_read_callback() {
                 double elapsed = current_time() - start_time;
                 // TODO: having IP:port as the "source" label is a **bad**
                 // Prometheus practice and of dubious usefulness
-                std::string source_label = fmt::format("{}:{}", client_ip, port);
+                std::string source_label = fmt::format(fmt("{:s}:{:d}"), client_ip, port);
                 transfer_time_seconds_metric->labels({source_label}).set(elapsed);
 
-                DEBUG("Received data from client: %s:%d into frame: %s[%d]", client_ip.c_str(),
+                DEBUG("Received data from client: {:s}:{:d} into frame: {:s}[{:d}]", client_ip,
                       port, buf->buffer_name, frame_id);
             }
             state = connState::header;

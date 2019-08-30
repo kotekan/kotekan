@@ -27,7 +27,7 @@ bufferMerge::bufferMerge(Config& config, const string& unique_name,
     Buffer* in_buf = nullptr;
     std::string internal_name;
     std::string buffer_name;
-    INFO("buffer_list %s", buffer_list.dump().c_str());
+    INFO("buffer_list {:s}", buffer_list.dump());
     for (json buffer : buffer_list) {
 
         if (buffer.is_object()) {
@@ -43,16 +43,18 @@ bufferMerge::bufferMerge(Config& config, const string& unique_name,
             in_buf = buffer_container.get_buffer(buffer_name);
             assert(in_buf != nullptr);
         } else {
-            throw std::runtime_error("Unknown value in in_bufs: " + buffer.dump());
+            throw std::runtime_error(
+                fmt::format(fmt("Unknown value in in_bufs: {:s}"), buffer.dump()));
         }
 
         if (in_buf->frame_size != out_buf->frame_size) {
-            throw std::invalid_argument("Input buffer '" + buffer_name
-                                        + "' not equal to output buffer size.");
+            throw std::invalid_argument(fmt::format(fmt("Input buffer '{:s}' not equal to output "
+                                                        "buffer size."),
+                                                    buffer_name));
         }
 
         register_consumer(in_buf, unique_name.c_str());
-        INFO("Adding buffer: %s:%s", internal_name.c_str(), in_buf->buffer_name);
+        INFO("Adding buffer: {:s}:{:s}", internal_name, in_buf->buffer_name);
         in_bufs.push_back(std::make_tuple(internal_name, in_buf, frameID(in_buf)));
     }
 }
@@ -82,7 +84,7 @@ void bufferMerge::main_thread() {
 
             /// Wait for an input frame
             if (_timeout < 0) {
-                DEBUG2("Waiting for %s[%d]", in_buf->buffer_name, (int)in_frame_id);
+                DEBUG2("Waiting for {:s}[{:d}]", in_buf->buffer_name, (int)in_frame_id);
                 uint8_t* input_frame =
                     wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
                 if (input_frame == NULL)

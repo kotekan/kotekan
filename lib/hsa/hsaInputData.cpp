@@ -34,7 +34,7 @@ hsaInputData::hsaInputData(Config& config, const string& unique_name, bufferCont
         double max_delay = (double)_samples_per_data_set / _sample_arrival_rate;
         std::uniform_real_distribution<> dis(0.0, max_delay * _delay_max_fraction);
         _random_delay = dis(gen);
-        INFO("Setting fixed delay to: %f", _random_delay);
+        INFO("Setting fixed delay to: {:f}", _random_delay);
     }
 
     network_buf = host_buffers.get_buffer("network_buf");
@@ -55,7 +55,7 @@ int hsaInputData::wait_on_precondition(int gpu_frame_id) {
         wait_for_full_frame(network_buf, unique_name.c_str(), network_buffer_precondition_id);
     if (frame == NULL)
         return -1;
-    // INFO("Got full buffer %s[%d], gpu[%d][%d]", network_buf->buffer_name,
+    // INFO("Got full buffer {:s}[{:d}], gpu[{:d}][{:d}]", network_buf->buffer_name,
     // network_buffer_precondition_id,
     //        device.get_gpu_id(), gpu_frame_id);
 
@@ -67,8 +67,8 @@ int hsaInputData::wait_on_precondition(int gpu_frame_id) {
         // This adjusts the delay to make sure we don't exceed the frame arrive period,
         // in the event we reach this point after the expected time.
         double delay = _random_delay - (current_time - (d_recv_time + expected_delay));
-        DEBUG2("frame_time: %f, expected_delay: %f, current_time: %f, random_delay: %f, actual "
-               "delay: %f",
+        DEBUG2("frame_time: {:f}, expected_delay: {:f}, current_time: {:f}, random_delay: {:f}, "
+               "actual delay: {:f}",
                d_recv_time, expected_delay, current_time, _random_delay, delay);
         // The above forumal shouldn't produce a delay less than _random_dela, unless
         // something is wrong with the time value given, in which case this delay

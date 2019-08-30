@@ -70,9 +70,9 @@ void rfiRecord::rest_callback(connectionInstance& conn, json& json_request) {
     rest_callback_mutex.lock();
     // Update parameters
     _write_to = json_request["write_to"].get<string>();
-    WARN("write_to %s", _write_to.c_str())
+    WARN("write_to {:s}", _write_to)
     _write_to_disk = json_request["write_to_disk"].get<bool>();
-    WARN("write_to_disk: %d", _write_to_disk)
+    WARN("write_to_disk: {:d}", _write_to_disk)
     // This will trigger main process to update directories
     file_num = 0;
     //    file_num = 2048*(int)((file_num + 2048)/2048);
@@ -105,7 +105,7 @@ void rfiRecord::save_meta_data(uint16_t streamID, int64_t firstSeqNum, timeval t
              streamID, time_dir);
     FILE* info_file = fopen(info_file_name, "w");
     if (!info_file) {
-        ERROR("Error creating info file: %s\n", info_file_name);
+        ERROR("Error creating info file: {:s}\n", info_file_name);
     }
     // Populate Info file with information
     fprintf(info_file, "utcTime=%s\n", data_time);
@@ -128,7 +128,7 @@ void rfiRecord::save_meta_data(uint16_t streamID, int64_t firstSeqNum, timeval t
     fprintf(info_file, "total_links=%d\n", _total_links);
     // Close Info file
     fclose(info_file);
-    INFO("Created meta data file: %s\n", info_file_name);
+    INFO("Created meta data file: {:s}\n", info_file_name);
 }
 void rfiRecord::main_thread() {
     // Initialize variables
@@ -171,7 +171,7 @@ void rfiRecord::main_thread() {
             // Open that file
             fd = open(file_name, O_WRONLY | O_APPEND | O_CREAT, 0666);
             if (fd < 0) {
-                ERROR("Cannot open file %s", file_name);
+                ERROR("Cannot open file {:s}", file_name);
             } else {
                 // Write buffer to that file
                 ssize_t bytes_writen = write(fd, &fpga_seq_num, sizeof(int64_t));
@@ -184,9 +184,9 @@ void rfiRecord::main_thread() {
                 }
                 // Close that file
                 if (close(fd) < 0) {
-                    ERROR("Cannot close file %s", file_name);
+                    ERROR("Cannot close file {:s}", file_name);
                 } else {
-                    INFO("Frame ID %d Succesfully Recorded link %d out of %d links in %fms",
+                    INFO("Frame ID {:d} Succesfully Recorded link {:d} out of {:d} links in {:f}ms",
                          frame_id, link_id + 1, _total_links, (e_time() - start_time) * 1000);
                 }
             }

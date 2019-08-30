@@ -154,7 +154,7 @@ void rfiBadInputFinder::main_thread() {
         return;
     }
     // Connection succesful
-    INFO("UDP Connection: %i %s", dest_port, dest_server_ip.c_str());
+    INFO("UDP Connection: {:d} {:s}", dest_port, dest_server_ip);
     // Main while loop
     while (!stop_thread) {
         // Get a frame
@@ -201,7 +201,7 @@ void rfiBadInputFinder::main_thread() {
             // Check if packet sent properly
             if (bytes_sent != packet_length)
                 ERROR("SOMETHING WENT WRONG IN UDP TRANSMIT");
-            DEBUG("Frame ID %d Succesfully Sent. %d Bytes in %fms", frame_id, bytes_sent,
+            DEBUG("Frame ID {:d} Succesfully Sent. {:d} Bytes in {:f}ms", frame_id, bytes_sent,
                   (e_time() - start_time) * 1000);
             // Reset Counter
             memset(faulty_counter, (uint8_t)0, sizeof(faulty_counter));

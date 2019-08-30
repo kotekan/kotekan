@@ -101,13 +101,13 @@ inline int captureHandler::handle_packet(struct rte_mbuf* mbuf) {
     }
 
     if (unlikely((mbuf->ol_flags | PKT_RX_IP_CKSUM_BAD) == 1)) {
-        WARN("Port: %d; Got bad packet IP checksum", port);
+        WARN("Port: {:d}; Got bad packet IP checksum", port);
         return 0;
     }
 
     if (unlikely(packet_size != mbuf->pkt_len)) {
-        WARN("Port: %d; Got packet with size %d, but expected size was %d", port, mbuf->pkt_len,
-             packet_size);
+        WARN("Port: {:d}; Got packet with size {:d}, but expected size was {:d}", port,
+             mbuf->pkt_len, packet_size);
         return 0;
     }
 

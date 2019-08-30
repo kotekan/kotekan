@@ -9,6 +9,8 @@
 #include "util.h"
 #include "version.h"
 
+#include "fmt.hpp"
+
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
@@ -43,7 +45,7 @@ gpuPostProcess::gpuPostProcess(Config& config_, const string& unique_name,
 
     in_buf = (struct Buffer**)malloc(_num_gpus * sizeof(struct Buffer*));
     for (int i = 0; i < _num_gpus; ++i) {
-        in_buf[i] = get_buffer("corr_in_buf_" + std::to_string(i));
+        in_buf[i] = get_buffer(fmt::format(fmt("corr_in_buf_{:d}"), i));
         register_consumer(in_buf[i], unique_name.c_str());
     }
 }
@@ -175,8 +177,8 @@ void gpuPostProcess::main_thread() {
             wait_for_full_frame(in_buf[gpu_id], unique_name.c_str(), in_frame_ids[gpu_id]);
         if (in_frame == NULL)
             break;
-        //        INFO("GPU Post process got full buffer ID %d for GPU %d", in_frame_ids[gpu_id],
-        //        gpu_id);
+        //        INFO("GPU Post process got full buffer ID {:d} for GPU {:d}",
+        //        in_frame_ids[gpu_id], gpu_id);
 
         // TODO Check that this is valid.  Make sure all seq numbers are the same for a frame, etc.
         uint64_t fpga_seq_number = get_fpga_seq_num(in_buf[gpu_id], in_frame_ids[gpu_id]);
@@ -321,8 +323,8 @@ void gpuPostProcess::main_thread() {
 
                 // If we are on the last frame in the set, push the buffer to the network thread.
                 if (frame_number + 1 >= _num_gpu_frames) {
-                    // INFO("Sending frame to network thread: FPGA_SEQ_NUMBER = %u ; NUM_FREQ = %d ;
-                    // NUM_VIS = %d ; frame_size = %d",
+                    // INFO("Sending frame to network thread: FPGA_SEQ_NUMBER = {:d} ; NUM_FREQ =
+                    // {:d} ; NUM_VIS = {:d} ; frame_size = {:d}",
                     //     header->fpga_seq_number,
                     //     frame_size);
 
@@ -336,8 +338,8 @@ void gpuPostProcess::main_thread() {
                                      / (float)(_samples_per_data_set * _num_gpu_frames));
                         strcat(frame_loss_str, tmp_str);
                     }
-                    INFO("Frame %" PRIu64 " loss rates:%s", header->fpga_seq_number,
-                         frame_loss_str);
+                    INFO("Frame {:d} loss rates: {:s}", header->fpga_seq_number,
+                         std::string(frame_loss_str));
 
                     uint8_t* out_frame =
                         wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
@@ -364,7 +366,7 @@ void gpuPostProcess::main_thread() {
 
                     memcpy(out_frame, buf, frame_size);
                     mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
-                    //                    INFO("gpu_post_process: marked output buffer full: %d",
+                    //                    INFO("gpu_post_process: marked output buffer full: {:d}",
                     //                    out_buffer_ID );
 
                     out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
@@ -375,8 +377,8 @@ void gpuPostProcess::main_thread() {
         }
 
         mark_frame_empty(in_buf[gpu_id], unique_name.c_str(), in_frame_ids[gpu_id]);
-        //        INFO("gpu_post_process: marked in buffer empty: gpu_id %d, buffer id %d", gpu_id,
-        //        in_frame_ids[gpu_id] );
+        //        INFO("gpu_post_process: marked in buffer empty: gpu_id {:d}, buffer id {:d}",
+        //        gpu_id, in_frame_ids[gpu_id] );
 
         in_frame_ids[gpu_id] = (in_frame_ids[gpu_id] + 1) % in_buf[gpu_id]->num_frames;
         link_id = (link_id + 1) % _num_fpga_links;

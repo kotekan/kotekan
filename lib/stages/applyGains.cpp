@@ -8,6 +8,8 @@
 #include "visFileH5.hpp"
 #include "visUtil.hpp"
 
+#include "fmt.hpp"
+
 #include <algorithm>
 #include <csignal>
 #include <exception>
@@ -95,21 +97,21 @@ bool applyGains::receive_update(nlohmann::json& json) {
     // receive new gains timestamp ("start_time" might move to "start_time")
     try {
         if (!json.at("start_time").is_number())
-            throw std::invalid_argument("applyGains: received bad gains "
-                                        "timestamp: "
-                                        + json.at("start_time").dump());
+            throw std::invalid_argument(fmt::format(fmt("applyGains: received bad gains "
+                                                        "timestamp: {:s}"),
+                                                    json.at("start_time").dump()));
         if (json.at("start_time") < 0)
-            throw std::invalid_argument("applyGains: received negative gains "
-                                        "timestamp: "
-                                        + json.at("start_time").dump());
+            throw std::invalid_argument(fmt::format(fmt("applyGains: received negative gains "
+                                                        "timestamp: {:s}"),
+                                                    json.at("start_time").dump()));
         new_ts = json.at("start_time");
     } catch (std::exception& e) {
-        WARN("Failure reading 'start_time' from update: %s", e.what());
+        WARN("Failure reading 'start_time' from update: {:s}", e.what());
         return false;
     }
     if (ts_frame.load() > double_to_ts(new_ts)) {
         WARN("applyGains: Received update with a timestamp that is older "
-             "than the current frame (The difference is %f s).",
+             "than the current frame (The difference is {:f} s).",
              ts_to_double(ts_frame.load()) - new_ts);
         num_late_updates++;
     }
@@ -117,22 +119,22 @@ bool applyGains::receive_update(nlohmann::json& json) {
     // receive new gains tag
     try {
         if (!json.at("tag").is_string())
-            throw std::invalid_argument("applyGains: received bad gains tag:"
-                                        + json.at("tag").dump());
+            throw std::invalid_argument(fmt::format(fmt("applyGains: received bad gains tag: {:s}"),
+                                                    json.at("tag").dump()));
         gtag = json.at("tag");
     } catch (std::exception& e) {
-        WARN("Failure reading 'tag' from update: %s", e.what());
+        WARN("Failure reading 'tag' from update: {:s}", e.what());
         return false;
     }
     // Get the gains for this timestamp
     // TODO: For now, assume the tag is the gain file name.
-    gains_path = gains_dir + "/" + gtag + ".h5";
+    gains_path = fmt::format(fmt("{:s}/{:s}.h5"), gains_dir, gtag);
     // Check if file exists
     if (!fexists(gains_path)) {
         // Try a different extension
-        gains_path = gains_dir + "/" + gtag + ".hdf5";
+        gains_path = fmt::format(fmt("{:s}/{:s}.hdf5"), gains_dir, gtag);
         if (!fexists(gains_path)) {
-            WARN("Could not update gains. File not found: %s", gains_path.c_str())
+            WARN("Could not update gains. File not found: {:s}", gains_path)
             return false;
         }
     }
@@ -147,12 +149,12 @@ bool applyGains::receive_update(nlohmann::json& json) {
     gain_weight_ds.read(weight_read);
     // Check dimensions are consistent
     if (weight_read.size() != gain_read.size()) {
-        WARN("Gain and weight frequency axes are different lengths. ", "Skipping update.");
+        WARN("Gain and weight frequency axes are different lengths. Skipping update.");
         return false;
     }
     for (uint i = 0; i < gain_read.size(); i++) {
         if (weight_read[i].size() != gain_read[i].size()) {
-            WARN("Gain and weight time axes are different lengths. ", "Skipping update.");
+            WARN("Gain and weight time axes are different lengths. Skipping update.");
             return false;
         }
     }
@@ -162,7 +164,7 @@ bool applyGains::receive_update(nlohmann::json& json) {
         std::lock_guard<std::shared_timed_mutex> lock(gain_mtx);
         gains_fifo.insert(double_to_ts(new_ts), std::move(gain_update));
     }
-    INFO("Updated gains to %s.", gtag.c_str());
+    INFO("Updated gains to {:s}.", gtag);
 
     return true;
 }
@@ -264,9 +266,8 @@ void applyGains::apply_thread() {
                 } else {
                     gain = gainpair_new.second->gain.at(freq);
                     if (tpast < 0) {
-                        WARN("No gains update is as old as the currently processed "
-                             "frame. Using oldest gains available."
-                             "Time difference is: %f seconds.",
+                        WARN("No gains update is as old as the currently processed frame. Using "
+                             "oldest gains available. Time difference is: {:f} seconds.",
                              tpast);
                         num_late_frames++;
                     }
@@ -274,7 +275,7 @@ void applyGains::apply_thread() {
                 // Copy weights TODO: should we combine weights somehow?
                 weight_factor = gainpair_new.second->weight.at(freq);
             } catch (std::out_of_range& e) {
-                WARN("Freq ID %d is out of range in gain array: %s", freq, e.what());
+                WARN("Freq ID {:d} is out of range in gain array: {:s}", freq, e.what());
                 continue;
             }
         }
@@ -294,7 +295,7 @@ void applyGains::apply_thread() {
                 gain_conj.at(ii) = std::conj(gain.at(ii));
             }
         } catch (std::out_of_range& e) {
-            WARN("Input out of range in gain array: %s", e.what());
+            WARN("Input out of range in gain array: {:s}", e.what());
             continue;
         }
 

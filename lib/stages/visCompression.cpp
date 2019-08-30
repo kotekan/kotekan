@@ -69,10 +69,10 @@ baselineCompression::baselineCompression(Config& config, const string& unique_na
     // Apply config.
     std::string stack_type = config.get<std::string>(unique_name, "stack_type");
     if (stack_type_defs.count(stack_type) == 0) {
-        ERROR("unknown stack type %s", stack_type.c_str());
+        ERROR("unknown stack type {:s}", stack_type);
         return;
     }
-    INFO("using stack type: %s", stack_type.c_str());
+    INFO("using stack type: {:s}", stack_type);
     calculate_stack = stack_type_defs.at(stack_type);
 
     if (config.exists(unique_name, "exclude_inputs")) {
@@ -81,8 +81,7 @@ baselineCompression::baselineCompression(Config& config, const string& unique_na
 
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     if (num_threads == 0)
-        throw std::invalid_argument("baselineCompression: "
-                                    "num_threads has to be at least 1.");
+        throw std::invalid_argument("baselineCompression: num_threads has to be at least 1.");
     if (in_buf->num_frames % num_threads != 0 || out_buf->num_frames % num_threads != 0)
         throw std::invalid_argument("baselineCompression: both "
                                     "the size of the input and output buffer"
@@ -122,10 +121,9 @@ dset_id_t baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
     const inputState* input_state_ptr = input_state.get();
     prod_state_ptr = prod_state.get();
     if (input_state_ptr == nullptr || prod_state_ptr == nullptr) {
-        FATAL_ERROR("Set to not use dataset_broker and couldn't find "
-                    "freqState ancestor of dataset 0x%" PRIx64 ". Make sure there "
-                    "is a stage upstream in the config, that adds a freqState.\n"
-                    "Exiting...",
+        FATAL_ERROR("Set to not use dataset_broker and couldn't find freqState ancestor of dataset "
+                    "{:#x}. Make sure there is a stage upstream in the config, that adds a "
+                    "freqState.\nExiting...",
                     input_ds_id);
     }
 
@@ -289,8 +287,9 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
 
         // Update prometheus metrics
         double elapsed = current_time() - start_time;
-        std::string labels = fmt::format("freq_id=\"{}\",dataset_id=\"{}\",thread_id=\"{}\"",
-                                         output_frame.freq_id, output_frame.dataset_id, thread_id);
+        std::string labels =
+            fmt::format(fmt("freq_id=\"{:d}\",dataset_id=\"{:#x}\",thread_id=\"{:d}\""),
+                        output_frame.freq_id, output_frame.dataset_id, thread_id);
         compression_residuals_metric
             .labels({std::to_string(output_frame.freq_id), std::to_string(output_frame.dataset_id),
                      std::to_string(thread_id)})
@@ -314,7 +313,7 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
             frame_counter = frame_counter_global++;
         }
 
-        DEBUG("Compression time %.4f", elapsed);
+        DEBUG("Compression time {:.4f}", elapsed);
     }
 }
 
@@ -353,7 +352,7 @@ chimeFeed chimeFeed::from_input(input_ctype input) {
 std::ostream& operator<<(std::ostream& os, const chimeFeed& f) {
     char cyl_name[4] = {'A', 'B', 'C', 'D'};
     char pol_name[2] = {'X', 'Y'};
-    return os << fmt::format("{}{:03}{}", cyl_name[f.cylinder], f.feed_location,
+    return os << fmt::format(fmt("{:c}{:03d}{:c}"), cyl_name[f.cylinder], f.feed_location,
                              pol_name[f.polarisation]);
 }
 

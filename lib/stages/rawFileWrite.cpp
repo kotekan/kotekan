@@ -64,7 +64,7 @@ void rawFileWrite::main_thread() {
 
         if (fd == -1) {
             ERROR("Cannot open file");
-            ERROR("File name was: %s", full_path);
+            ERROR("File name was: {:s}", full_path);
             exit(errno);
         }
 
@@ -78,12 +78,12 @@ void rawFileWrite::main_thread() {
         // just save 0 to the first word.
         if (write(fd, (void*)&metadata_size, sizeof(metadata_size))
             != (int32_t)sizeof(metadata_size)) {
-            ERROR("Failed to write metadata_size to disk for file %s", full_path);
+            ERROR("Failed to write metadata_size to disk for file {:s}", full_path);
             exit(-1);
         }
         if (mc != NULL) {
             if (write(fd, mc->metadata, mc->metadata_size) != (int32_t)mc->metadata_size) {
-                ERROR("Failed to write metadata_size to disk for file %s", full_path);
+                ERROR("Failed to write metadata_size to disk for file {:s}", full_path);
                 exit(-1);
             }
         }
@@ -92,14 +92,14 @@ void rawFileWrite::main_thread() {
         ssize_t bytes_writen = write(fd, frame, buf->frame_size);
 
         if (bytes_writen != buf->frame_size) {
-            ERROR("Failed to write buffer to disk for file %s", full_path);
+            ERROR("Failed to write buffer to disk for file {:s}", full_path);
             exit(-1);
         }
 
-        INFO("Data file write done for %s", full_path);
+        INFO("Data file write done for {:s}", full_path);
 
         if (close(fd) == -1) {
-            ERROR("Cannot close file %s", full_path);
+            ERROR("Cannot close file {:s}", full_path);
         }
 
         double elapsed = current_time() - st;

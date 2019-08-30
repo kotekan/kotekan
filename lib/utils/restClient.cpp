@@ -41,9 +41,9 @@ restClient::restClient() : _main_thread() {
 restClient::~restClient() {
     _stop_thread = true;
     if (event_base_loopbreak(_base))
-        ERROR("restClient: event_base_loopbreak() failed.");
+        ERROR_NON_OO("restClient: event_base_loopbreak() failed.");
     _main_thread.join();
-    DEBUG("restClient: event thread stopped.");
+    DEBUG_NON_OO("restClient: event thread stopped.");
 }
 
 void restClient::timer(evutil_socket_t fd, short event, void* arg) {
@@ -59,22 +59,22 @@ void restClient::timer(evutil_socket_t fd, short event, void* arg) {
 }
 
 void restClient::event_thread() {
-    INFO("restClient: libevent version: %s", event_get_version());
+    INFO_NON_OO("restClient: libevent version: {:s}", event_get_version());
 
     if (evthread_use_pthreads()) {
-        FATAL_ERROR("restClient: Cannot use pthreads with libevent!");
+        FATAL_ERROR_NON_OO("restClient: Cannot use pthreads with libevent!");
     }
 
     // event base and dns base
     _base = event_base_new();
     if (!_base) {
-        FATAL_ERROR("restClient: Failure creating new event_base.");
+        FATAL_ERROR_NON_OO("restClient: Failure creating new event_base.");
     }
 
     // DNS resolution is blocking (if not numeric host is passed)
     _dns = evdns_base_new(_base, 1);
     if (_dns == nullptr) {
-        FATAL_ERROR("restClient: evdns_base_new() failed.");
+        FATAL_ERROR_NON_OO("restClient: evdns_base_new() failed.");
     }
 
     // Create a timer to check for the exit condition
@@ -92,13 +92,13 @@ void restClient::event_thread() {
     _cv_start.notify_one();
 
     // run event loop
-    DEBUG("restClient: starting event loop");
+    DEBUG_NON_OO("restClient: starting event loop");
     while (!_stop_thread) {
         if (event_base_dispatch(_base) < 0) {
-            FATAL_ERROR("restClient::event_thread(): Failure in the event loop.");
+            FATAL_ERROR_NON_OO("restClient::event_thread(): Failure in the event loop.");
         }
     }
-    DEBUG("restClient: exiting event loop");
+    DEBUG_NON_OO("restClient: exiting event loop");
 
     // Cleanup
     event_free(timer_event);
@@ -122,10 +122,10 @@ void restClient::http_request_done(struct evhttp_request* req, void* arg) {
 
     if (req == nullptr) {
         int errcode = EVUTIL_SOCKET_ERROR();
-        WARN("restClient: request failed.");
+        WARN_NON_OO("restClient: request failed.");
         // Print socket error
         std::string str = evutil_socket_error_to_string(errcode);
-        WARN("restClient: socket error = %s (%d)", str.c_str(), errcode);
+        WARN_NON_OO("restClient: socket error = {:s} ({:d})", str, errcode);
         ext_cb(restReply(false, str_data));
         cleanup(pair);
         return;
@@ -134,14 +134,11 @@ void restClient::http_request_done(struct evhttp_request* req, void* arg) {
     int response_code = evhttp_request_get_response_code(req);
 
     if (response_code != 200) {
-#if LIBEVENT_VERSION_NUMBER < 0x02010000
-        INFO("restClient: Received response code %d (%s)", response_code, req->response_code_line);
-#else
-        INFO("restClient: Received response code %d (%s)", response_code,
-             evhttp_request_get_response_code_line(req));
-#endif
+        INFO_NON_OO("restClient: Received response code {:d}", response_code);
+        if (req->response_code_line)
+            INFO_NON_OO("restClient: {:s}", req->response_code_line);
         if (response_code == 0)
-            WARN("restClient: connection error.");
+            WARN_NON_OO("restClient: connection error.");
         ext_cb(restReply(false, str_data));
         cleanup(pair);
         return;
@@ -166,7 +163,7 @@ void restClient::http_request_done(struct evhttp_request* req, void* arg) {
     // determine how many chunks we need.
     int n_vec = evbuffer_peek(input_buffer, datalen, NULL, NULL, 0);
     if (n_vec < 0) {
-        WARN("restClient: Failure in evbuffer_peek()");
+        WARN_NON_OO("restClient: Failure in evbuffer_peek()");
         ext_cb(restReply(false, str_data));
         cleanup(pair);
         return;
@@ -210,7 +207,7 @@ bool restClient::make_request(const std::string& path,
 
     evcon = evhttp_connection_base_new(_base, _dns, host.c_str(), port);
     if (evcon == nullptr) {
-        WARN("restClient: evhttp_connection_base_new() failed.");
+        WARN_NON_OO("restClient: evhttp_connection_base_new() failed.");
         return false;
     }
 
@@ -224,7 +221,7 @@ bool restClient::make_request(const std::string& path,
     // Fire off the request and pass the external callback to the internal one.
     // check if external callback function is callable
     if (!request_done_cb) {
-        ERROR("restClient: external callback function is not callable.");
+        ERROR_NON_OO("restClient: external callback function is not callable.");
         evhttp_connection_free(evcon);
         return false;
     }
@@ -238,7 +235,7 @@ bool restClient::make_request(const std::string& path,
 
     req = evhttp_request_new(http_request_done, pair);
     if (req == nullptr) {
-        WARN("restClient: evhttp_request_new() failed.");
+        WARN_NON_OO("restClient: evhttp_request_new() failed.");
         evhttp_connection_free(evcon);
         return false;
     }
@@ -246,21 +243,21 @@ bool restClient::make_request(const std::string& path,
     output_headers = evhttp_request_get_output_headers(req);
     ret = evhttp_add_header(output_headers, "Host", host.c_str());
     if (ret) {
-        WARN("restClient: Failure adding \"Host\" header.");
+        WARN_NON_OO("restClient: Failure adding \"Host\" header.");
         evhttp_connection_free(evcon);
         evhttp_request_free(req);
         return false;
     }
     ret = evhttp_add_header(output_headers, "Connection", "close");
     if (ret) {
-        WARN("restClient: Failure adding \"Connection\" header.");
+        WARN_NON_OO("restClient: Failure adding \"Connection\" header.");
         evhttp_connection_free(evcon);
         evhttp_request_free(req);
         return false;
     }
     ret = evhttp_add_header(output_headers, "Content-Type", "application/json");
     if (ret) {
-        WARN("restClient: Failure adding \"Content-Type\" header.");
+        WARN_NON_OO("restClient: Failure adding \"Content-Type\" header.");
         evhttp_connection_free(evcon);
         evhttp_request_free(req);
         return false;
@@ -275,7 +272,7 @@ bool restClient::make_request(const std::string& path,
         // copy data into the buffer
         ret = evbuffer_add(output_buffer, data.dump().c_str(), datalen);
         if (ret) {
-            WARN("restClient: Failure adding JSON data to event buffer.");
+            WARN_NON_OO("restClient: Failure adding JSON data to event buffer.");
             evhttp_connection_free(evcon);
             evhttp_request_free(req);
             return false;
@@ -284,20 +281,20 @@ bool restClient::make_request(const std::string& path,
         evutil_snprintf(buf, sizeof(buf) - 1, "%lu", (unsigned long)datalen);
         ret = evhttp_add_header(output_headers, "Content-Length", buf);
         if (ret) {
-            WARN("restClient: Failure adding \"Content-Length\" header.");
+            WARN_NON_OO("restClient: Failure adding \"Content-Length\" header.");
             evhttp_connection_free(evcon);
             evhttp_request_free(req);
             return false;
         }
-        DEBUG2("restClient: Sending %s bytes: %s", buf, data.dump().c_str());
+        DEBUG2_NON_OO("restClient: Sending {:s} bytes: {:s}", buf, data.dump(4));
 
         ret = evhttp_make_request(evcon, req, EVHTTP_REQ_POST, path.c_str());
     } else {
-        DEBUG2("restClient: sending GET request.");
+        DEBUG2_NON_OO("restClient: sending GET request.");
         ret = evhttp_make_request(evcon, req, EVHTTP_REQ_GET, path.c_str());
     }
     if (ret) {
-        WARN("restClient: evhttp_make_request() failed.");
+        WARN_NON_OO("restClient: evhttp_make_request() failed.");
         evhttp_connection_free(evcon);
         evhttp_request_free(req);
         return false;
@@ -326,7 +323,7 @@ restReply restClient::make_request_blocking(const std::string& path, const nlohm
     std::unique_lock<std::mutex> lck_reply(mtx_reply);
 
     if (!make_request(path, callback, data, host, port, retries, timeout)) {
-        WARN("restClient::rest_reply_blocking: Failed.");
+        WARN_NON_OO("restClient::rest_reply_blocking: Failed.");
         return reply;
     }
 
@@ -338,10 +335,9 @@ restReply restClient::make_request_blocking(const std::string& path, const nlohm
     auto time_point =
         std::chrono::system_clock::now() + std::chrono::seconds(timeout == -1 ? 100 : timeout * 2);
     while (!cv_reply.wait_until(lck_reply, time_point, [&]() { return reply_copied; })) {
-        FATAL_ERROR("restClient: Timeout in make_request_blocking "
-                    "(%s:%d/%s). This might leave the restClient in an abnormal "
-                    "state. Exiting...",
-                    host.c_str(), port, path.c_str());
+        FATAL_ERROR_NON_OO("restClient: Timeout in make_request_blocking ({:s}:{:d}/{:s}). This "
+                           "might leave the restClient in an abnormal state. Exiting...",
+                           host, port, path);
         return reply;
     }
     return reply;

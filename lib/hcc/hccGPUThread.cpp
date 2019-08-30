@@ -47,7 +47,7 @@ void hccGPUThread::main_thread() {
           acc_views.push_back(a->create_view());
         }
     }
-    INFO("hccGPUThread: Got %i views.", (int)acc_views.size());
+    INFO("hccGPUThread: Got {:d} views.", (int)acc_views.size());
 
     // Create the index map
     _zeros = (int*)calloc(32*32*n_blk*2,4);
@@ -91,7 +91,7 @@ void hccGPUThread::main_thread() {
             break;
         }
 
-        INFO("hccGPUThread: gpu %d; got full buffer ID %d", gpu_id, in_buffer_id);
+        INFO("hccGPUThread: gpu {:d}; got full buffer ID {:d}", gpu_id, in_buffer_id);
         double start_time = e_time();
 
         int * in = (int *)in_buf.frames[in_buffer_id];
@@ -288,7 +288,7 @@ void hccGPUThread::main_thread() {
 
         // ----------------- End Kernels ----------------
 
-        INFO("hccGPUTHread: gpu %d; Wait for empty output buffer id %d", gpu_id ,out_buffer_id);
+        INFO("hccGPUTHread: gpu {:d}; Wait for empty output buffer id {:d}", gpu_id ,out_buffer_id);
         wait_for_empty_frame(&out_buf, unique_name, out_buffer_id);
 
         // copy the data on the GPU back to the host
@@ -297,10 +297,10 @@ void hccGPUThread::main_thread() {
         corr_f.wait();
 
         double end_time = e_time();
-        INFO("hccGPUThread: gpu %d; Finished GPU exec for buffer id %d, time %fs, expected time %fs", gpu_id, in_buffer_id, end_time-start_time, 0.00000256 * (double)65536);
+        INFO("hccGPUThread: gpu {:d}; Finished GPU exec for buffer id {:d}, time {:f}s, expected time {:f}s", gpu_id, in_buffer_id, end_time-start_time, 0.00000256 * (double)65536);
 
 
-        INFO("hccGPUThread: gpu %d; copied data back with buffer id %d", gpu_id ,in_buffer_id);
+        INFO("hccGPUThread: gpu {:d}; copied data back with buffer id {:d}", gpu_id ,in_buffer_id);
 
         // Copy the information contained in the input buffer
         move_buffer_info(&in_buf, in_buffer_id,

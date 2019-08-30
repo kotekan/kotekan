@@ -63,7 +63,8 @@ void recvSingleDishVDIF::main_thread() {
             */
         }
 
-        INFO("recvSingleDishVDIF: marking buffer %s[%d] as full", out_buf->buffer_name, frame_id);
+        INFO("recvSingleDishVDIF: marking buffer {:s}[{:d}] as full", out_buf->buffer_name,
+             frame_id);
         mark_frame_full(out_buf, unique_name.c_str(), frame_id);
 
         file_num++;

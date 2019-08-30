@@ -137,8 +137,8 @@ void clBeamformPhaseData::get_delays(float* phases, time_t beamform_time) {
         phases[i] = TAU * cos(effective_angle) * offset_distance * one_over_c;
     }
     // ikt - commented out to test performance without INFO calls.
-    //    INFO("get_delays: Computed delays: tnow = %d, lat = %f, long = %f, RA = %f, DEC = %f, LST
-    //    = %f, ALT = %f, AZ = %f",
+    //    INFO("get_delays: Computed delays: tnow = {:d}, lat = {:f}, long = {:f}, RA = {:f}, DEC =
+    //    {:f}, LST = {:f}, ALT = {:f}, AZ = {:f}",
     //            (int)beamform_time, inst_lat, inst_long, ra, dec, lst, alt/D2R, az/D2R);
 
     return;

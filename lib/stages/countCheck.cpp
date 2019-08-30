@@ -49,8 +49,8 @@ void countCheck::main_thread() {
         int64_t utime = std::get<1>(input_frame.time).tv_sec;
         int64_t new_start_time = utime - fpga_seq / counts_per_second;
 
-        DEBUG("Debugging: fpga_seq: %d, utime: %d, start_time: %d, time diff: %d", fpga_seq, utime,
-              start_time, llabs(start_time - new_start_time));
+        DEBUG("Debugging: fpga_seq: {:d}, utime: {:d}, start_time: {:d}, time diff: {:d}", fpga_seq,
+              utime, start_time, llabs(start_time - new_start_time));
 
         // If this is the first frame, store start time
         if (start_time == 0) {
