@@ -44,6 +44,10 @@ public:
 private:
     /// Output buffer for the RFI variance
     Buffer* _rfi_output_var_buf;
+    ///
+    Buffer* _network_buf;
+    int32_t _network_buf_id;
+    int32_t _network_buf_precondition_id;
     /// ID for _rfi_output_var_buf
     int32_t _rfi_output_var_buf_id;
     /// ID for _rfi_output_var_buf_precondition

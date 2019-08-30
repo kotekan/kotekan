@@ -75,10 +75,11 @@ feed_sep_EW: 22.0
 num_beams: 10
 num_pol: 2
 
-# #RFI stuff
-# sk_step: 256
-# rfi_combined: True
-# rfi_sigma_cut: 5
+#RFI stuff
+sk_step: 256
+rfi_combined: True
+rfi_sigma_cut: 5
+rfi_var_feed_index: 840
 
 # #RFI Live-view Paramters
 # waterfallX: 1024
@@ -86,11 +87,10 @@ num_pol: 2
 # colorscale: 0.028
 # waterfall_request_delay: 60
 
-# rfi_masking:
-#   toggle:
-#     kotekan_update_endpoint: "json"
-#     rfi_zeroing: False
-
+rfi_masking:
+  toggle:
+    kotekan_update_endpoint: "json"
+    rfi_zeroing: False
 
 # Pool
 main_pool:
@@ -148,17 +148,17 @@ gpu_beamform_output_buffers:
     kotekan_buffer: standard
 
 pulsar_output_buffers:
-    num_frames: buffer_depth
-    frame_size: _samples_per_data_set * _num_beams * _num_pol * sizeof_float *2
-    metadata_pool: main_pool
-    beamform_pulsar_output_buffer_0:
-        kotekan_buffer: standard
-    beamform_pulsar_output_buffer_1:
-        kotekan_buffer: standard
-    beamform_pulsar_output_buffer_2:
-        kotekan_buffer: standard
-    beamform_pulsar_output_buffer_3:
-        kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: _samples_per_data_set * _num_beams * _num_pol * sizeof_float *2
+  metadata_pool: main_pool
+  beamform_pulsar_output_buffer_0:
+    kotekan_buffer: standard
+  beamform_pulsar_output_buffer_1:
+    kotekan_buffer: standard
+  beamform_pulsar_output_buffer_2:
+    kotekan_buffer: standard
+  beamform_pulsar_output_buffer_3:
+    kotekan_buffer: standard
 
 # Metadata pool
 vis_pool:
@@ -212,213 +212,226 @@ vis_buffers:
     num_prod: 4096
     num_frames: 10 * buffer_depth
 
-# gpu_rfi_output_buffers:
-#     num_frames: buffer_depth
-#     frame_size: sizeof_float * num_local_freq * samples_per_data_set / sk_step
-#     metadata_pool: main_pool
-#     gpu_rfi_output_buffer_0:
-#         kotekan_buffer: standard
-#     gpu_rfi_output_buffer_1:
-#         kotekan_buffer: standard
-#     gpu_rfi_output_buffer_2:
-#         kotekan_buffer: standard
-#     gpu_rfi_output_buffer_3:
-#         kotekan_buffer: standard
+gpu_rfi_output_buffers:
+  num_frames: buffer_depth * 100
+  frame_size: sizeof_float * num_local_freq * samples_per_data_set / sk_step
+  metadata_pool: main_pool
+  gpu_rfi_output_buffer_0:
+    kotekan_buffer: standard
+  gpu_rfi_output_buffer_1:
+    kotekan_buffer: standard
+  gpu_rfi_output_buffer_2:
+    kotekan_buffer: standard
+  gpu_rfi_output_buffer_3:
+    kotekan_buffer: standard
 
-# gpu_rfi_mask_output_buffers:
-#     num_frames: buffer_depth
-#     frame_size: num_local_freq * samples_per_data_set / sk_step
-#     metadata_pool: main_pool
-#     gpu_rfi_mask_output_buffer_0:
-#         kotekan_buffer: standard
-#     gpu_rfi_mask_output_buffer_1:
-#         kotekan_buffer: standard
-#     gpu_rfi_mask_output_buffer_2:
-#         kotekan_buffer: standard
-#     gpu_rfi_mask_output_buffer_3:
-#         kotekan_buffer: standard
+gpu_rfi_mask_output_buffers:
+  num_frames: buffer_depth
+  frame_size: num_local_freq * samples_per_data_set / sk_step
+  metadata_pool: main_pool
+  gpu_rfi_mask_output_buffer_0:
+    kotekan_buffer: standard
+  gpu_rfi_mask_output_buffer_1:
+    kotekan_buffer: standard
+  gpu_rfi_mask_output_buffer_2:
+    kotekan_buffer: standard
+  gpu_rfi_mask_output_buffer_3:
+    kotekan_buffer: standard
 
-# gpu_rfi_bad_input_buffers:
-#     num_frames: buffer_depth
-#     frame_size: sizeof_float * num_elements * num_local_freq
-#     metadata_pool: main_pool
-#     gpu_rfi_bad_input_buffer_0:
-#         kotekan_buffer: standard
-#     gpu_rfi_bad_input_buffer_1:
-#         kotekan_buffer: standard
-#     gpu_rfi_bad_input_buffer_2:
-#         kotekan_buffer: standard
-#     gpu_rfi_bad_input_buffer_3:
-#         kotekan_buffer: standard
+gpu_rfi_bad_input_buffers:
+  num_frames: buffer_depth
+  frame_size: sizeof_float * num_elements * num_local_freq
+  metadata_pool: main_pool
+  gpu_rfi_bad_input_buffer_0:
+    kotekan_buffer: standard
+  gpu_rfi_bad_input_buffer_1:
+    kotekan_buffer: standard
+  gpu_rfi_bad_input_buffer_2:
+    kotekan_buffer: standard
+  gpu_rfi_bad_input_buffer_3:
+    kotekan_buffer: standard
+
+rfi_var_output_buffers:
+  num_frames: buffer_depth * 100
+  frame_size: num_local_freq * samples_per_data_set / sk_step * sizeof_float
+  metadata_pool: main_pool
+  gpu_rfi_var_output_buffer_0:
+    kotekan_buffer: standard
+  gpu_rfi_var_output_buffer_1:
+    kotekan_buffer: standard
+  gpu_rfi_var_output_buffer_2:
+    kotekan_buffer: standard
+  gpu_rfi_var_output_buffer_3:
+    kotekan_buffer: standard
 
 lost_samples_buffer:
-    kotekan_buffer: standard
-    num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set * num_local_freq * num_data_sets
-    metadata_pool: main_pool
+  kotekan_buffer: standard
+  num_frames: 2 * buffer_depth
+  frame_size: samples_per_data_set * num_local_freq * num_data_sets
+  metadata_pool: main_pool
 
-# duplicate_lost_samples_buffers:
-#    num_frames: 2 * buffer_depth
-#    frame_size: samples_per_data_set * num_local_freq * num_data_sets
-#    metadata_pool: main_pool
-#    lost_samples_buffer_0:
-#        kotekan_buffer: standard
-#    lost_samples_buffer_1:
-#        kotekan_buffer: standard
-#    lost_samples_buffer_2:
-#        kotekan_buffer: standard
-#    lost_samples_buffer_3:
-#        kotekan_buffer: standard
+#duplicate_lost_samples_buffers:
+#  num_frames: 2 * buffer_depth
+#  frame_size: samples_per_data_set * num_local_freq * num_data_sets
+#  metadata_pool: main_pool
+#  lost_samples_buffer_0:
+#      kotekan_buffer: standard
+#  lost_samples_buffer_1:
+#      kotekan_buffer: standard
+#  lost_samples_buffer_2:
+#      kotekan_buffer: standard
+#  lost_samples_buffer_3:
+#      kotekan_buffer: standard
 
-cpu_affinity: [2,3,8,9]
 dpdk:
-    kotekan_stage: dpdkCore
-    # Format is index = lcore, value = cpu core
-    lcore_cpu_map: [0,1,6,7]
-    master_lcore_cpu: 2
-    status_cadence: 60
-    alignment: samples_per_data_set * num_data_sets
-    # Format is index = lcore, value = array of port IDs
-    # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
-    # and lcore 1 to service ports 2 and 3.
-    lcore_port_map:
-        - [0]
-        - [1]
-        - [2]
-        - [3]
-    # One handler must be given per port.
-    handlers:
-        - dpdk_handler: iceBoardShuffle
-        - dpdk_handler: iceBoardShuffle
-        - dpdk_handler: iceBoardShuffle
-        - dpdk_handler: iceBoardShuffle
-    out_bufs:
-        - network_buffer_0
-        - network_buffer_1
-        - network_buffer_2
-        - network_buffer_3
-    lost_samples_buf: lost_samples_buffer
+  kotekan_stage: dpdkCore
+  # Format is index = lcore, value = cpu core
+  lcore_cpu_map: [0,1,6,7]
+  master_lcore_cpu: 2
+  status_cadence: 60
+  alignment: samples_per_data_set * num_data_sets
+  # Format is index = lcore, value = array of port IDs
+  # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
+  # and lcore 1 to service ports 2 and 3.
+  lcore_port_map:
+    - [0]
+    - [1]
+    - [2]
+    - [3]
+  # One handler must be given per port.
+  handlers:
+    - dpdk_handler: iceBoardShuffle
+    - dpdk_handler: iceBoardShuffle
+    - dpdk_handler: iceBoardShuffle
+    - dpdk_handler: iceBoardShuffle
+  out_bufs:
+    - network_buffer_0
+    - network_buffer_1
+    - network_buffer_2
+    - network_buffer_3
+  lost_samples_buf: lost_samples_buffer
 
 zero_samples:
-    duplicate_ls_buffer: False
-    lost_samples_buf: lost_samples_buffer
-    zero_0:
-        kotekan_stage: zeroSamples
-        out_buf: network_buffer_0
-    zero_1:
-        kotekan_stage: zeroSamples
-        out_buf: network_buffer_1
-    zero_2:
-        kotekan_stage: zeroSamples
-        out_buf: network_buffer_2
-    zero_3:
-        kotekan_stage: zeroSamples
-        out_buf: network_buffer_3
+  duplicate_ls_buffer: False
+  lost_samples_buf: lost_samples_buffer
+  zero_0:
+    kotekan_stage: zeroSamples
+    out_buf: network_buffer_0
+  zero_1:
+    kotekan_stage: zeroSamples
+    out_buf: network_buffer_1
+  zero_2:
+    kotekan_stage: zeroSamples
+    out_buf: network_buffer_2
+  zero_3:
+    kotekan_stage: zeroSamples
+    out_buf: network_buffer_3
 
 baseband:
-    max_dump_samples: 400000
-    num_frames_buffer: baseband_buffer_depth - 10
-    base_dir: /mnt/frb-baseband/
-    write_throttle: 0
-    baseband0:
-      kotekan_stage: basebandReadout
-      in_buf: network_buffer_0
-    baseband1:
-      kotekan_stage: basebandReadout
-      in_buf: network_buffer_1
-    baseband2:
-      kotekan_stage: basebandReadout
-      in_buf: network_buffer_2
-    baseband3:
-      kotekan_stage: basebandReadout
-      in_buf: network_buffer_3
+  max_dump_samples: 400000
+  num_frames_buffer: baseband_buffer_depth - 10
+  base_dir: /mnt/frb-baseband/
+  write_throttle: 0
+  baseband0:
+    kotekan_stage: basebandReadout
+    in_buf: network_buffer_0
+  baseband1:
+    kotekan_stage: basebandReadout
+    in_buf: network_buffer_1
+  baseband2:
+    kotekan_stage: basebandReadout
+    in_buf: network_buffer_2
+  baseband3:
+    kotekan_stage: basebandReadout
+    in_buf: network_buffer_3
 
 monitor:
-    kotekan_stage: monitorBuffer
-    bufs:
-      - network_buffer_0
-      - network_buffer_1
-      - network_buffer_2
-      - network_buffer_3
-    timeout: 5
-    fill_threshold: 0.98
+  kotekan_stage: monitorBuffer
+  bufs:
+    - network_buffer_0
+    - network_buffer_1
+    - network_buffer_2
+    - network_buffer_3
+  timeout: 5
+  fill_threshold: 0.98
 
 # This seems to find the lockup condition
 monitor_2:
-    kotekan_stage: monitorBuffer
-    bufs:
-      - beamform_pulsar_output_buffer_0
-      - beamform_pulsar_output_buffer_1
-      - beamform_pulsar_output_buffer_2
-      - beamform_pulsar_output_buffer_3
-      - lost_samples_buffer
-    timeout: 10
-    fill_threshold: 0.80
+  kotekan_stage: monitorBuffer
+  bufs:
+    - beamform_pulsar_output_buffer_0
+    - beamform_pulsar_output_buffer_1
+    - beamform_pulsar_output_buffer_2
+    - beamform_pulsar_output_buffer_3
+    - lost_samples_buffer
+  timeout: 10
+  fill_threshold: 0.80
 
 gpu:
   kernel_path: "/var/lib/kotekan/hsa_kernels/"
   commands: &command_list
-  # Copy in queue
-  - name: hsaInputData
-  - name: hsaPresumZero
-    sub_frame_index: 0
-  - name: hsaPresumZero
-    sub_frame_index: 1
-  - name: hsaPresumZero
-    sub_frame_index: 2
-  - name: hsaPresumZero
-    sub_frame_index: 3
-  - name: hsaOutputDataZero
-    sub_frame_index: 0
-  - name: hsaOutputDataZero
-    sub_frame_index: 1
-  - name: hsaOutputDataZero
-    sub_frame_index: 2
-  - name: hsaOutputDataZero
-    sub_frame_index: 3
-  - name: hsaPulsarUpdatePhase
-  # Barrier between copy in and kernels
-  - name: hsaBarrier
-  # Kernel queue
-  - name: hsaBeamformReorder
-  - name: hsaBeamformKernel
-  - name: hsaBeamformTranspose
-  - name: hsaBeamformUpchan
-  - name: hsaBeamformPulsar
-  # - name: hsaRfiTimeSum
-  # - name: hsaRfiBadInput
-  # - name: hsaRfiInputSum
-  # - name: hsaRfiZeroData
-  - name: hsaPresumKernel
-    sub_frame_index: 0
-  - name: hsaPresumKernel
-    sub_frame_index: 1
-  - name: hsaPresumKernel
-    sub_frame_index: 2
-  - name: hsaPresumKernel
-    sub_frame_index: 3
-  - name: hsaCorrelatorKernel
-    sub_frame_index: 0
-  - name: hsaCorrelatorKernel
-    sub_frame_index: 1
-  - name: hsaCorrelatorKernel
-    sub_frame_index: 2
-  - name: hsaCorrelatorKernel
-    sub_frame_index: 3
-  #Copy out queue
-  # - name: hsaRfiBadInputOutput
-  # - name: hsaRfiOutput
-  - name: hsaBeamformPulsarOutput
-  - name: hsaBeamformOutputData
-  - name: hsaOutputData
-    sub_frame_index: 0
-  - name: hsaOutputData
-    sub_frame_index: 1
-  - name: hsaOutputData
-    sub_frame_index: 2
-  - name: hsaOutputData
-    sub_frame_index: 3
-  # - name: hsaRfiMaskOutput
+    # Copy in queue
+    - name: hsaInputData
+    - name: hsaPresumZero
+      sub_frame_index: 0
+    - name: hsaPresumZero
+      sub_frame_index: 1
+    - name: hsaPresumZero
+      sub_frame_index: 2
+    - name: hsaPresumZero
+      sub_frame_index: 3
+    - name: hsaOutputDataZero
+      sub_frame_index: 0
+    - name: hsaOutputDataZero
+      sub_frame_index: 1
+    - name: hsaOutputDataZero
+      sub_frame_index: 2
+    - name: hsaOutputDataZero
+      sub_frame_index: 3
+    - name: hsaPulsarUpdatePhase
+    # Barrier between copy in and kernels
+    - name: hsaBarrier
+    # Kernel queue
+    - name: hsaBeamformReorder
+    - name: hsaBeamformKernel
+    - name: hsaBeamformTranspose
+    - name: hsaBeamformUpchan
+    - name: hsaBeamformPulsar
+    - name: hsaRfiTimeSum
+    - name: hsaRfiBadInput
+    - name: hsaRfiInputSum
+    - name: hsaRfiZeroData
+    - name: hsaPresumKernel
+      sub_frame_index: 0
+    - name: hsaPresumKernel
+      sub_frame_index: 1
+    - name: hsaPresumKernel
+      sub_frame_index: 2
+    - name: hsaPresumKernel
+      sub_frame_index: 3
+    - name: hsaCorrelatorKernel
+      sub_frame_index: 0
+    - name: hsaCorrelatorKernel
+      sub_frame_index: 1
+    - name: hsaCorrelatorKernel
+      sub_frame_index: 2
+    - name: hsaCorrelatorKernel
+      sub_frame_index: 3
+    #Copy out queue
+    - name: hsaRfiBadInputOutput
+    - name: hsaRfiOutput
+    - name: hsaRfiVarOutput
+    - name: hsaBeamformPulsarOutput
+    - name: hsaBeamformOutputData
+    - name: hsaOutputData
+      sub_frame_index: 0
+    - name: hsaOutputData
+      sub_frame_index: 1
+    - name: hsaOutputData
+      sub_frame_index: 2
+    - name: hsaOutputData
+      sub_frame_index: 3
+    - name: hsaRfiMaskOutput
   enable_delay: true
   cpu_affinity: [2, 3, 8, 9]
   delay_max_fraction: 2.0
@@ -436,8 +449,8 @@ gpu:
       psr_pt: /updatable_config/pulsar_pointing
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
-    bad_inputs: []
-    # updatable_rfi_zeroing: /rfi_masking/toggle
+    bad_inputs: [53, 144, 145, 206, 255, 258, 319, 420, 431, 444, 457, 459, 498, 508, 550, 551, 567, 592, 624, 625, 656, 659, 682, 759, 764, 782, 797, 855, 867, 908, 924, 1026, 1240, 1285, 1405, 1407, 1433, 1436, 1437, 1486, 1502, 1639, 1648, 1650, 1694, 1735, 1751, 1753, 1815, 1816, 1834, 1936, 1938, 1998, 2026, 2032, 2035]
+    updatable_rfi_zeroing: /rfi_masking/toggle
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_0
@@ -446,9 +459,10 @@ gpu:
       output_buf: gpu_n2_output_buffer_0
       beamform_output_buf: gpu_beamform_output_buffer_0
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_0
-      # rfi_bad_input_buf: gpu_rfi_bad_input_buffer_0
-      # rfi_output_buf: gpu_rfi_output_buffer_0
-      # rfi_mask_output_buf: gpu_rfi_mask_output_buffer_0
+      rfi_bad_input_buf: gpu_rfi_bad_input_buffer_0
+      rfi_output_buf: gpu_rfi_output_buffer_0
+      rfi_mask_output_buf: gpu_rfi_mask_output_buffer_0
+      rfi_var_output_buf: gpu_rfi_var_output_buffer_0
   gpu_1:
     kotekan_stage: hsaProcess
     gpu_id: 1
@@ -458,8 +472,8 @@ gpu:
       psr_pt: /updatable_config/pulsar_pointing
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
-    bad_inputs: []
-    # updatable_rfi_zeroing: /rfi_masking/toggle
+    bad_inputs: [53, 144, 145, 206, 255, 258, 319, 420, 431, 444, 457, 459, 498, 508, 550, 551, 567, 592, 624, 625, 656, 659, 682, 759, 764, 782, 797, 855, 867, 908, 924, 1026, 1240, 1285, 1405, 1407, 1433, 1436, 1437, 1486, 1502, 1639, 1648, 1650, 1694, 1735, 1751, 1753, 1815, 1816, 1834, 1936, 1938, 1998, 2026, 2032, 2035]
+    updatable_rfi_zeroing: /rfi_masking/toggle
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_1
@@ -468,9 +482,10 @@ gpu:
       output_buf: gpu_n2_output_buffer_1
       beamform_output_buf: gpu_beamform_output_buffer_1
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_1
-      # rfi_bad_input_buf: gpu_rfi_bad_input_buffer_1
-      # rfi_output_buf: gpu_rfi_output_buffer_1
-      # rfi_mask_output_buf: gpu_rfi_mask_output_buffer_1
+      rfi_bad_input_buf: gpu_rfi_bad_input_buffer_1
+      rfi_output_buf: gpu_rfi_output_buffer_1
+      rfi_mask_output_buf: gpu_rfi_mask_output_buffer_1
+      rfi_var_output_buf: gpu_rfi_var_output_buffer_1
   gpu_2:
     kotekan_stage: hsaProcess
     gpu_id: 2
@@ -480,8 +495,8 @@ gpu:
       psr_pt: /updatable_config/pulsar_pointing
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
-    bad_inputs: []
-    # updatable_rfi_zeroing: /rfi_masking/toggle
+    bad_inputs: [53, 144, 145, 206, 255, 258, 319, 420, 431, 444, 457, 459, 498, 508, 550, 551, 567, 592, 624, 625, 656, 659, 682, 759, 764, 782, 797, 855, 867, 908, 924, 1026, 1240, 1285, 1405, 1407, 1433, 1436, 1437, 1486, 1502, 1639, 1648, 1650, 1694, 1735, 1751, 1753, 1815, 1816, 1834, 1936, 1938, 1998, 2026, 2032, 2035]
+    updatable_rfi_zeroing: /rfi_masking/toggle
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_2
@@ -490,9 +505,10 @@ gpu:
       output_buf: gpu_n2_output_buffer_2
       beamform_output_buf: gpu_beamform_output_buffer_2
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_2
-      # rfi_bad_input_buf: gpu_rfi_bad_input_buffer_2
-      # rfi_output_buf: gpu_rfi_output_buffer_2
-      # rfi_mask_output_buf: gpu_rfi_mask_output_buffer_2
+      rfi_bad_input_buf: gpu_rfi_bad_input_buffer_2
+      rfi_output_buf: gpu_rfi_output_buffer_2
+      rfi_mask_output_buf: gpu_rfi_mask_output_buffer_2
+      rfi_var_output_buf: gpu_rfi_var_output_buffer_2
   gpu_3:
     kotekan_stage: hsaProcess
     gpu_id: 3
@@ -502,8 +518,8 @@ gpu:
       psr_pt: /updatable_config/pulsar_pointing
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
-    bad_inputs: []
-    # updatable_rfi_zeroing: /rfi_masking/toggle
+    bad_inputs: [53, 144, 145, 206, 255, 258, 319, 420, 431, 444, 457, 459, 498, 508, 550, 551, 567, 592, 624, 625, 656, 659, 682, 759, 764, 782, 797, 855, 867, 908, 924, 1026, 1240, 1285, 1405, 1407, 1433, 1436, 1437, 1486, 1502, 1639, 1648, 1650, 1694, 1735, 1751, 1753, 1815, 1816, 1834, 1936, 1938, 1998, 2026, 2032, 2035]
+    updatable_rfi_zeroing: /rfi_masking/toggle
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_3
@@ -512,34 +528,35 @@ gpu:
       output_buf: gpu_n2_output_buffer_3
       beamform_output_buf: gpu_beamform_output_buffer_3
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_3
-      # rfi_bad_input_buf: gpu_rfi_bad_input_buffer_3
-      # rfi_output_buf: gpu_rfi_output_buffer_3
-      # rfi_mask_output_buf: gpu_rfi_mask_output_buffer_3
+      rfi_bad_input_buf: gpu_rfi_bad_input_buffer_3
+      rfi_output_buf: gpu_rfi_output_buffer_3
+      rfi_mask_output_buf: gpu_rfi_mask_output_buffer_3
+      rfi_var_output_buf: gpu_rfi_var_output_buffer_3
 
 # This set of stages takes information from the packet loss mask
 # and RFI mask and updates the metadata in the output N2 buffers
 # before they are read by other down stream stages.
-# rfi_update_metadata:
-#   update_metadata_0:
-#     kotekan_stage: rfiUpdateMetadata
-#     rfi_mask_buf: gpu_rfi_mask_output_buffer_0
-#     lost_samples_buf: lost_samples_buffer
-#     gpu_correlation_buf: gpu_n2_output_buffer_0
-#   update_metadata_1:
-#     kotekan_stage: rfiUpdateMetadata
-#     rfi_mask_buf: gpu_rfi_mask_output_buffer_1
-#     lost_samples_buf: lost_samples_buffer
-#     gpu_correlation_buf: gpu_n2_output_buffer_1
-#   update_metadata_2:
-#     kotekan_stage: rfiUpdateMetadata
-#     rfi_mask_buf: gpu_rfi_mask_output_buffer_2
-#     lost_samples_buf: lost_samples_buffer
-#     gpu_correlation_buf: gpu_n2_output_buffer_2
-#   update_metadata_3:
-#     kotekan_stage: rfiUpdateMetadata
-#     rfi_mask_buf: gpu_rfi_mask_output_buffer_3
-#     lost_samples_buf: lost_samples_buffer
-#     gpu_correlation_buf: gpu_n2_output_buffer_3
+rfi_update_metadata:
+  update_metadata_0:
+    kotekan_stage: rfiUpdateMetadata
+    rfi_mask_buf: gpu_rfi_mask_output_buffer_0
+    lost_samples_buf: lost_samples_buffer
+    gpu_correlation_buf: gpu_n2_output_buffer_0
+  update_metadata_1:
+    kotekan_stage: rfiUpdateMetadata
+    rfi_mask_buf: gpu_rfi_mask_output_buffer_1
+    lost_samples_buf: lost_samples_buffer
+    gpu_correlation_buf: gpu_n2_output_buffer_1
+  update_metadata_2:
+    kotekan_stage: rfiUpdateMetadata
+    rfi_mask_buf: gpu_rfi_mask_output_buffer_2
+    lost_samples_buf: lost_samples_buffer
+    gpu_correlation_buf: gpu_n2_output_buffer_2
+  update_metadata_3:
+    kotekan_stage: rfiUpdateMetadata
+    rfi_mask_buf: gpu_rfi_mask_output_buffer_3
+    lost_samples_buf: lost_samples_buffer
+    gpu_correlation_buf: gpu_n2_output_buffer_3
 
 #### FRB GPU Post processing and Tx ####
 
@@ -550,9 +567,9 @@ frb:
   frb_output_buffer:
     num_frames: buffer_depth + 4
     frame_size: 8 * 256 * (num_beams_per_frb_packet * num_gpus * factor_upchan_out * timesamples_per_frb_packet
-                           + 24 + sizeof_short * num_beams_per_frb_packet + sizeof_short * num_gpus
-                                + sizeof_float * num_beams_per_frb_packet * num_gpus
-                                + sizeof_float * num_beams_per_frb_packet * num_gpus)
+      + 24 + sizeof_short * num_beams_per_frb_packet + sizeof_short * num_gpus
+      + sizeof_float * num_beams_per_frb_packet * num_gpus
+      + sizeof_float * num_beams_per_frb_packet * num_gpus)
     metadata_pool: main_pool
     kotekan_buffer: standard
   postprocess:
@@ -897,20 +914,20 @@ pulsar:
 updatable_config:
   frb_gain:
     kotekan_update_endpoint: json
-    frb_gain_dir: /mnt/frb-baseband/GainFiles/Latest_FRB
+    frb_gain_dir: /mnt/frb-archiver/GainFiles/Latest_FRB
   pulsar_gain:
     kotekan_update_endpoint: json
     pulsar_gain_dir:
-      - /mnt/frb-baseband/GainFiles/Latest_PSR
-      - /mnt/frb-baseband/GainFiles/Latest_PSR
-      - /mnt/frb-baseband/GainFiles/Latest_PSR
-      - /mnt/frb-baseband/GainFiles/Latest_PSR
-      - /mnt/frb-baseband/GainFiles/Latest_PSR
-      - /mnt/frb-baseband/GainFiles/Latest_PSR
-      - /mnt/frb-baseband/GainFiles/Latest_PSR
-      - /mnt/frb-baseband/GainFiles/Latest_PSR
-      - /mnt/frb-baseband/GainFiles/Latest_PSR
-      - /mnt/frb-baseband/GainFiles/Latest_PSR
+      - /mnt/frb-archiver/GainFiles/Latest_PSR
+      - /mnt/frb-archiver/GainFiles/Latest_PSR
+      - /mnt/frb-archiver/GainFiles/Latest_PSR
+      - /mnt/frb-archiver/GainFiles/Latest_PSR
+      - /mnt/frb-archiver/GainFiles/Latest_PSR
+      - /mnt/frb-archiver/GainFiles/Latest_PSR
+      - /mnt/frb-archiver/GainFiles/Latest_PSR
+      - /mnt/frb-archiver/GainFiles/Latest_PSR
+      - /mnt/frb-archiver/GainFiles/Latest_PSR
+      - /mnt/frb-archiver/GainFiles/Latest_PSR
   pulsar_pointing:
     0:
       kotekan_update_endpoint: json
@@ -976,19 +993,19 @@ updatable_config:
       t_ref: [58437.4583333332,]
       phase_ref: [1446745468.8439252,]
       coeff: [[
-               3.428779943504219e-10,
-               0.0011253963075329334,
-               -1.1565642124857199e-07,
-               1.1347089844281842e-10,
-               1.1882399863116445e-13,
-               -1.0867680647236115e-16,
-               -7.594309559679319e-20,
-               5.042548967792808e-23,
-               2.745973613190195e-26,
-               -2.279050323988331e-29,
-               -1.1771713330451292e-32,
-               3.948826407949732e-35,
-             ],]
+                3.428779943504219e-10,
+                0.0011253963075329334,
+                -1.1565642124857199e-07,
+                1.1347089844281842e-10,
+                1.1882399863116445e-13,
+                -1.0867680647236115e-16,
+                -7.594309559679319e-20,
+                5.042548967792808e-23,
+                2.745973613190195e-26,
+                -2.279050323988331e-29,
+                -1.1771713330451292e-32,
+                3.948826407949732e-35,
+              ],]
 valve:
   valve0:
     kotekan_stage: Valve
@@ -1123,8 +1140,8 @@ eigcalc:
   # Masking config
   bands_filled: [ [0, 30], [251, 262] ]
   exclude_inputs: [
-      46,   84,  142,  319,  550,  638,  688,  742,  784,  944,
-     960,  971, 1020, 1023, 1058, 1166, 1225, 1285, 1314, 1380,
+    46,   84,  142,  319,  550,  638,  688,  742,  784,  944,
+    960,  971, 1020, 1023, 1058, 1166, 1225, 1285, 1314, 1380,
     1521, 1543, 1738, 1794, 1982, 1984, 1987, 2032, 2034
   ]
 
@@ -1176,77 +1193,100 @@ buffer_status:
   time_delay: 30000000
   print_status: false
 
-# rfi_broadcast:
-#   total_links: 1
-#   destination_protocol: UDP
-#   destination_ip: 10.1.13.1
-#   gpu_0:
-#     kotekan_stage: rfiBroadcast
-#     rfi_in: gpu_rfi_output_buffer_0
-#     rfi_mask: gpu_rfi_mask_output_buffer_0
-#     destination_port: 41215
-#     frames_per_packet: 1
-#   gpu_1:
-#     kotekan_stage: rfiBroadcast
-#     rfi_in: gpu_rfi_output_buffer_1
-#     rfi_mask: gpu_rfi_mask_output_buffer_1
-#     destination_port: 41216
-#     frames_per_packet: 1
-#   gpu_2:
-#     kotekan_stage: rfiBroadcast
-#     rfi_in: gpu_rfi_output_buffer_2
-#     rfi_mask: gpu_rfi_mask_output_buffer_2
-#     destination_port: 41217
-#     frames_per_packet: 1
-#   gpu_3:
-#     kotekan_stage: rfiBroadcast
-#     rfi_in: gpu_rfi_output_buffer_3
-#     rfi_mask: gpu_rfi_mask_output_buffer_3
-#     destination_port: 41218
-#     frames_per_packet: 1
+rfi_broadcast:
+  total_links: 1
+  destination_protocol: UDP
+  destination_ip: 10.1.13.1
+  gpu_0:
+    kotekan_stage: rfiBroadcast
+    rfi_in: gpu_rfi_output_buffer_0
+    rfi_mask: gpu_rfi_mask_output_buffer_0
+    destination_port: 41215
+    frames_per_packet: 1
+  gpu_1:
+    kotekan_stage: rfiBroadcast
+    rfi_in: gpu_rfi_output_buffer_1
+    rfi_mask: gpu_rfi_mask_output_buffer_1
+    destination_port: 41216
+    frames_per_packet: 1
+  gpu_2:
+    kotekan_stage: rfiBroadcast
+    rfi_in: gpu_rfi_output_buffer_2
+    rfi_mask: gpu_rfi_mask_output_buffer_2
+    destination_port: 41217
+    frames_per_packet: 1
+  gpu_3:
+    kotekan_stage: rfiBroadcast
+    rfi_in: gpu_rfi_output_buffer_3
+    rfi_mask: gpu_rfi_mask_output_buffer_3
+    destination_port: 41218
+    frames_per_packet: 1
 
-# rfi_bad_input_finder:
-#   destination_ip: 10.1.13.1
-#   destination_port: 41219
-#   gpu_0:
-#     bi_frames_per_packet: 10
-#     kotekan_stage: rfiBadInputFinder
-#     rfi_in: gpu_rfi_bad_input_buffer_0
-#   gpu_1:
-#     bi_frames_per_packet: 10
-#     kotekan_stage: rfiBadInputFinder
-#     rfi_in: gpu_rfi_bad_input_buffer_1
-#   gpu_2:
-#     bi_frames_per_packet: 10
-#     kotekan_stage: rfiBadInputFinder
-#     rfi_in: gpu_rfi_bad_input_buffer_2
-#   gpu_3:
-#     bi_frames_per_packet: 10
-#     kotekan_stage: rfiBadInputFinder
-#     rfi_in: gpu_rfi_bad_input_buffer_3
+rfi_bad_input_finder:
+  destination_ip: 10.1.13.1
+  destination_port: 41219
+  gpu_0:
+    bi_frames_per_packet: 10
+    kotekan_stage: rfiBadInputFinder
+    rfi_in: gpu_rfi_bad_input_buffer_0
+  gpu_1:
+    bi_frames_per_packet: 10
+    kotekan_stage: rfiBadInputFinder
+    rfi_in: gpu_rfi_bad_input_buffer_1
+  gpu_2:
+    bi_frames_per_packet: 10
+    kotekan_stage: rfiBadInputFinder
+    rfi_in: gpu_rfi_bad_input_buffer_2
+  gpu_3:
+    bi_frames_per_packet: 10
+    kotekan_stage: rfiBadInputFinder
+    rfi_in: gpu_rfi_bad_input_buffer_3
 
-# rfi_record:
-#   total_links: 1
-#   gpu_0:
-#     kotekan_stage: rfiRecord
-#     write_to: /mnt/gong/RFI
-#     write_to_disk: false
-#     rfi_in: gpu_rfi_output_buffer_0
-#   gpu_1:
-#     kotekan_stage: rfiRecord
-#     write_to: /mnt/gong/RFI
-#     write_to_disk: false
-#     rfi_in: gpu_rfi_output_buffer_1
-#   gpu_2:
-#     kotekan_stage: rfiRecord
-#     write_to: /mnt/gong/RFI
-#     write_to_disk: false
-#     rfi_in: gpu_rfi_output_buffer_2
-#   gpu_3:
-#     kotekan_stage: rfiRecord
-#     write_to: /mnt/gong/RFI
-#     write_to_disk: false
-#     rfi_in: gpu_rfi_output_buffer_3
+rfi_record:
+  total_links: 1
+  gpu_0:
+    kotekan_stage: rfiRecord
+    write_to: /mnt/gong/RFI/20190829_test_sk/
+    write_to_disk: true
+    rfi_in: gpu_rfi_output_buffer_0
+  gpu_1:
+    kotekan_stage: rfiRecord
+    write_to: /mnt/gong/RFI/20190829_test_sk/
+    write_to_disk: true
+    rfi_in: gpu_rfi_output_buffer_1
+  gpu_2:
+    kotekan_stage: rfiRecord
+    write_to: /mnt/gong/RFI/20190829_test_sk/
+    write_to_disk: true
+    rfi_in: gpu_rfi_output_buffer_2
+  gpu_3:
+    kotekan_stage: rfiRecord
+    write_to: /mnt/gong/RFI/20190829_test_sk/
+    write_to_disk: true
+    rfi_in: gpu_rfi_output_buffer_3
+
+rfi_var_record:
+  total_links: 1
+  gpu_0:
+    kotekan_stage: rfiRecord
+    write_to: /mnt/gong/RFI/20190829_test_var/
+    write_to_disk: true
+    rfi_in: gpu_rfi_var_output_buffer_0
+  gpu_1:
+    kotekan_stage: rfiRecord
+    write_to: /mnt/gong/RFI/20190829_test_var/
+    write_to_disk: true
+    rfi_in: gpu_rfi_var_output_buffer_1
+  gpu_2:
+    kotekan_stage: rfiRecord
+    write_to: /mnt/gong/RFI/20190829_test_var/
+    write_to_disk: true
+    rfi_in: gpu_rfi_var_output_buffer_2
+  gpu_3:
+    kotekan_stage: rfiRecord
+    write_to: /mnt/gong/RFI/20190829_test_var/
+    write_to_disk: true
+    rfi_in: gpu_rfi_var_output_buffer_3
 
 # Information for input reordering, packed as
 #   (adc_id, chan_id, correlator_input)

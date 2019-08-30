@@ -47,7 +47,7 @@
  * include an input sum.
  * @conf   total_links          Int (default 1). Number of FPGA links per buffer.
  * @conf   write_to             String . Path to directory where the stage will record data.
- * @conf   write_to_dsk         Bool (default false). Whether or not the proccess will wirte to
+ * @conf   write_to_disk        Bool (default false). Whether or not the proccess will wirte to
  * disk.
  *
  * @author Jacob Taylor
@@ -65,14 +65,6 @@ public:
     void rest_callback(kotekan::connectionInstance& conn, json& json_request);
 
 private:
-    /*
-     * @brief  Creates acquisition folders and saves metadata file
-     * @param streamID    The unique id of the current stream
-     * @param firstSeqNum The first sequence number received by kotekan
-     * @param tv          Timeval of when the first packet was received
-     * @param ts          Timespec of gps time of when first packet was received
-     */
-    void save_meta_data(uint16_t streamID, int64_t firstSeqNum, timeval tv, timespec ts);
     /// Kotekan buffer containing kurtosis estimates
     struct Buffer* rfi_buf;
     // General Config Parameters
@@ -84,6 +76,8 @@ private:
     uint32_t _num_freq;
     /// Number of time samples per frame (Usually 32768 or 49152)
     uint32_t _samples_per_data_set;
+    /// How many frames to write into the file befor starting a newone.
+    uint32_t _frames_per_file;
     // RFI config parameters
     /// The kurtosis step (How many timesteps per kurtosis estimate)
     uint32_t _sk_step;
@@ -96,8 +90,6 @@ private:
     uint32_t file_num;
     /// Where to record the RFI data
     string _write_to;
-    /// Holder for time-code directory name
-    char time_dir[64];
     /// Whether or not the stage should write to the disk
     bool _write_to_disk;
     /// A mutex to prevent the rest server callback from overwriting data currently in use

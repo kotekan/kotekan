@@ -17,6 +17,7 @@ hsaRfiBadInputOutput::hsaRfiBadInputOutput(Config& config, const string& unique_
     register_producer(_rfi_output_buf, unique_name.c_str());
     // Initialize ID's
     _network_buf_id = 0;
+    _network_buf_precondition_id = 0;
     _rfi_output_buf_id = 0;
     _rfi_output_buf_precondition_id = 0;
     _rfi_output_buf_execute_id = 0;
@@ -31,9 +32,16 @@ int hsaRfiBadInputOutput::wait_on_precondition(int gpu_frame_id) {
         wait_for_empty_frame(_rfi_output_buf, unique_name.c_str(), _rfi_output_buf_precondition_id);
     if (frame == NULL)
         return -1;
+
+    frame = wait_for_full_frame(_network_buf, unique_name.c_str(), _network_buf_precondition_id);
+    if (frame == nullptr)
+        return -1;
+
     // Update precondition ID
     _rfi_output_buf_precondition_id =
         (_rfi_output_buf_precondition_id + 1) % _rfi_output_buf->num_frames;
+    _network_buf_precondition_id =
+        (_network_buf_precondition_id + 1) % _network_buf->num_frames;
     return 0;
 }
 
