@@ -5,6 +5,8 @@
 #include "errors.h"
 #include "util.h"
 
+#include "fmt.hpp"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <functional>
@@ -51,7 +53,7 @@ void nDiskFileWrite::save_meta_data(char* timestr) {
         FILE* info_file = fopen(file_name, "w");
 
         if (!info_file) {
-            ERROR("Error creating info file: %s\n", file_name);
+            ERROR("Error creating info file: {:s}\n", file_name);
             exit(-1);
         }
 
@@ -84,7 +86,7 @@ void nDiskFileWrite::save_meta_data(char* timestr) {
 
         fclose(info_file);
 
-        INFO("Created meta data file: %s\n", file_name);
+        INFO("Created meta data file: {:s}\n", file_name);
     }
 }
 
@@ -114,14 +116,15 @@ void nDiskFileWrite::main_thread() {
         for (uint32_t i = 0; i < num_disks; ++i) {
             for (uint32_t j = 0; j < gain_files.size(); ++j) {
                 unsigned int last_slash_pos = gain_files[j].find_last_of("/\\");
-                std::string dest = disk_base + "/" + disk_set + "/" + std::to_string(i) + "/"
-                                   + dataset_name + "/" + gain_files[j].substr(last_slash_pos + 1);
+                std::string dest =
+                    fmt::format(fmt("{:s}/{:s}/{:d}/{:s}/{:s}"), disk_base, disk_set, i,
+                                dataset_name, gain_files[j].substr(last_slash_pos + 1));
                 // Copy the gain file
                 if (cp(dest.c_str(), gain_files[j].c_str()) != 0) {
-                    ERROR("Could not copy %s to %s\n", gain_files[j].c_str(), dest.c_str());
+                    ERROR("Could not copy {:s} to {:s}\n", gain_files[j], dest);
                     exit(-1);
                 } else {
-                    INFO("Copied gains from %s to %s\n", gain_files[j].c_str(), dest.c_str());
+                    INFO("Copied gains from {:s} to {:s}\n", gain_files[j], dest);
                 }
             }
         }
@@ -163,7 +166,7 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
         if (frame == NULL)
             break;
 
-        // INFO("Got buffer id: %d, disk id %d", frame_id, disk_id);
+        // INFO("Got buffer id: {:d}, disk id {:d}", frame_id, disk_id);
 
         // Check if the producer has finished, and we should exit.
         if (frame_id == -1) {
@@ -183,7 +186,7 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
 
             if (fd == -1) {
                 ERROR("Cannot open file");
-                ERROR("File name was: %s", file_name);
+                ERROR("File name was: {:s}", file_name);
                 exit(errno);
             }
 
@@ -197,14 +200,14 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
             }
 
             if (close(fd) == -1) {
-                ERROR("Cannot close file %s", file_name);
+                ERROR("Cannot close file {:s}", file_name);
             }
 
-            INFO("Data file write done for %s, lost_packets %d", file_name,
+            INFO("Data file write done for {:s}, lost_packets {:d}", file_name,
                  get_lost_timesamples(buf, frame_id));
         } else {
             // usleep(0.070 * 1e6);
-            INFO("Disk id %d, Lost Packets %d, buffer id %d", disk_id,
+            INFO("Disk id {:d}, Lost Packets {:d}, buffer id {:d}", disk_id,
                  get_lost_timesamples(buf, frame_id), frame_id);
         }
 

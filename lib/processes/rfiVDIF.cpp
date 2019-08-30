@@ -147,7 +147,7 @@ void rfiVDIF::main_thread() {
                                 (((M + 1) / (M - 1))
                                  * ((M * power_sq_arr[k][i]) / (power_arr[k][i] * power_arr[k][i])
                                     - 1));
-                            INFO("SK value %f", RFI_Buffer[rfi_index]);
+                            INFO("SK value {:f}", RFI_Buffer[rfi_index]);
                             rfi_index++;
                         }
                     }
@@ -168,6 +168,6 @@ void rfiVDIF::main_thread() {
         // Move forward one frame
         frame_out_id = (frame_out_id + 1) % buf_out->num_frames;
         frame_in_id = (frame_in_id + 1) % buf_in->num_frames;
-        INFO("Frame %d Complete Time %fms", frame_in_id, (e_time() - start_time) * 1000);
+        INFO("Frame {:d} Complete Time {:f}ms", frame_in_id, (e_time() - start_time) * 1000);
     }
 }

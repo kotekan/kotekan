@@ -34,7 +34,7 @@ gpuCommand* clProcess::create_command(const std::string& cmd_name, const std::st
                                                local_buffer_container, *device);
     // TODO Why is this not in the constructor?
     cmd->build();
-    DEBUG("Command added: %s", cmd_name.c_str());
+    DEBUG("Command added: {:s}", cmd_name);
     return cmd;
 }
 

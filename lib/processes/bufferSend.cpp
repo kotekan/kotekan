@@ -66,9 +66,9 @@ void bufferSend::main_thread() {
         if (num_full_frames > (((uint32_t)buf->num_frames + 1) / 2)) {
             // If the number of full frames is high, then we drop some frames,
             // because we likely aren't sending fast enough to up with the data rate.
-            WARN(
-                "Number of full frames in buffer %s is %d (total frames: %d), dropping frame_id %d",
-                buf->buffer_name, num_full_frames, buf->num_frames, frame_id);
+            WARN("Number of full frames in buffer {:s} is {:d} (total frames: {:d}), dropping "
+                 "frame_id {:d}",
+                 buf->buffer_name, num_full_frames, buf->num_frames, frame_id);
             dropped_frame_counter.inc();
         } else if (connected) {
             // Send header
@@ -80,7 +80,8 @@ void bufferSend::main_thread() {
             header.frame_size = buf->frame_size;
             header.metadata_size = buf->metadata[frame_id]->metadata_size;
 
-            DEBUG2("frame_size: %d, metadata_size: %d", header.frame_size, header.metadata_size);
+            DEBUG2("frame_size: {:d}, metadata_size: {:d}", header.frame_size,
+                   header.metadata_size);
 
             // Recover from partial sends
             DEBUG2("Sending header");
@@ -91,12 +92,12 @@ void bufferSend::main_thread() {
             }
             // Handle errors
             if (n < 0) {
-                ERROR("Error %s, failed to send header to %s:%d", strerror(errno),
-                      server_ip.c_str(), server_port);
+                ERROR("Error {:s}, failed to send header to {:s}:{:d}", strerror(errno), server_ip,
+                      server_port);
                 close_connection();
                 continue;
             }
-            DEBUG2("Sent header: %d", n_sent);
+            DEBUG2("Sent header: {:d}", n_sent);
 
             // Send metadata
             DEBUG2("Sending metadata");
@@ -107,35 +108,35 @@ void bufferSend::main_thread() {
                 n_sent += n;
             }
             if (n < 0) {
-                ERROR("Error %s, failed to metadata to %s:%d", strerror(errno), server_ip.c_str(),
+                ERROR("Error {:s}, failed to metadata to {:s}:{:d}", strerror(errno), server_ip,
                       server_port);
                 close_connection();
                 continue;
             }
-            DEBUG2("Sent metadata: %d", n_sent);
+            DEBUG2("Sent metadata: {:d}", n_sent);
 
             // Send buffer frame.
-            DEBUG2("Sending frame with %d bytes", header.frame_size);
+            DEBUG2("Sending frame with {:d} bytes", header.frame_size);
             n_sent = 0;
             while ((n = send(socket_fd, &frame[n_sent], (int32_t)header.frame_size - n_sent,
                              MSG_NOSIGNAL))
                    > 0) {
                 n_sent += n;
-                // DEBUG("Total sent: %d", n_sent);
+                // DEBUG("Total sent: {:d}", n_sent);
             }
             if (n < 0) {
-                ERROR("Error %s, failed to frame data to %s:%d", strerror(errno), server_ip.c_str(),
+                ERROR("Error {:s}, failed to frame data to {:s}:{:d}", strerror(errno), server_ip,
                       server_port);
                 close_connection();
                 continue;
             }
-            DEBUG2("Sent frame: %d", n_sent);
-            INFO("Sent frame: %s[%d] to %s:%d", buf->buffer_name, frame_id, server_ip.c_str(),
+            DEBUG2("Sent frame: {:d}", n_sent);
+            INFO("Sent frame: {:s}[{:d}] to {:s}:{:d}", buf->buffer_name, frame_id, server_ip,
                  server_port);
 
         } else {
-            WARN("Dropping frame %s[%d], because connection to %s:%d is down.", buf->buffer_name,
-                 frame_id, server_ip.c_str(), server_port);
+            WARN("Dropping frame {:s}[{:d}], because connection to {:s}:{:d} is down.",
+                 buf->buffer_name, frame_id, server_ip, server_port);
         }
 
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
@@ -162,19 +163,20 @@ void bufferSend::connect_to_server() {
 
     while (!stop_thread) {
 
-        DEBUG("Trying to connecting to server: %s:%d", server_ip.c_str(), server_port);
+        DEBUG("Trying to connecting to server: {:s}:{:d}", server_ip, server_port);
 
         socket_fd = socket(AF_INET, SOCK_STREAM, 0);
         if (socket_fd == -1) {
-            std::string msg = fmt::format("Could not create socket, errno: {} ({}})", errno,
+            std::string msg = fmt::format(fmt("Could not create socket, errno: {:d} ({:s})"), errno,
                                           std::strerror(errno));
-            ERROR(msg.c_str());
+            ERROR("{:s}", msg);
             throw std::runtime_error(msg);
         }
 
         if (connect(socket_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
-            WARN("Could not connect to server %s:%d, error: %s(%d), waiting %d seconds to retry...",
-                 server_ip.c_str(), server_port, strerror(errno), errno, reconnect_time);
+            WARN("Could not connect to server {:s}:{:d}, error: {:s}({:d}), waiting {:d} seconds "
+                 "to retry...",
+                 server_ip, server_port, strerror(errno), errno, reconnect_time);
             close(socket_fd);
             // TODO Add a Stage level "breakable sleep" so this doesn't
             // lock up the shutdown process for upto reconnect_time seconds.
@@ -201,7 +203,7 @@ void bufferSend::connect_to_server() {
             ERROR("bufferSend: setsockopt() timeout failed.");
         }
 
-        INFO("Connected to server %s:%d for sending buffer %s", server_ip.c_str(), server_port,
+        INFO("Connected to server {:s}:{:d} for sending buffer {:s}", server_ip, server_port,
              buf->buffer_name);
         {
             std::unique_lock<std::mutex> connection_lock(connection_state_mutex);

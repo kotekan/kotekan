@@ -133,10 +133,11 @@ void EigenVisIter::main_thread() {
         // Report all eigenvalues to stdout.
         std::string str_evals = "";
         for (uint32_t i = 0; i < _num_eigenvectors; i++) {
-            str_evals += " " + std::to_string(evals[i]);
+            str_evals = fmt::format(fmt("{:s} {}"), str_evals, evals[i]);
         }
-        DEBUG("Found eigenvalues:%s, with RMS residuals: %e, in %4.2f s. Took %i/%i iterations.",
-              str_evals.c_str(), stats.rms, elapsed_time, stats.iterations, _max_iterations);
+        DEBUG("Found eigenvalues: {:s}, with RMS residuals: {:e}, in {:4.2f} s. Took {:d}/{:d} "
+              "iterations.",
+              str_evals, stats.rms, elapsed_time, stats.iterations, _max_iterations);
 
         // Update Prometheus metrics
         update_metrics(input_frame.freq_id, input_frame.dataset_id, elapsed_time, eigpair, stats);

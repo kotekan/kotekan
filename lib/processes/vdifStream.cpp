@@ -64,8 +64,8 @@ void vdifStream::main_thread() {
 
     while (!stop_thread) {
         // IT - commented out to test performance without INFO calls.
-        //        INFO("vdif_stream; waiting for full buffer to send, server_ip:%s:%d",
-        //             _vdif_server_ip.c_str(),
+        //        INFO("vdif_stream; waiting for full buffer to send, server_ip:{:s}:{:d}",
+        //             _vdif_server_ip,
         //             _vdif_port);
 
         // Wait for a full buffer.
@@ -88,7 +88,7 @@ void vdifStream::main_thread() {
             }
 
             if (bytes_sent == -1) {
-                ERROR("Cannot send VDIF packet, error: %s", strerror(errno));
+                ERROR("Cannot send VDIF packet, error: {:s}", strerror(errno));
                 return;
             }
 
@@ -98,9 +98,9 @@ void vdifStream::main_thread() {
         }
 
         diff_t = e_time() - start_t;
-        INFO("vdif_stream: sent 1 seconds of vdif data to %s:%d in %f seconds; sleep set to %d "
-             "microseconds",
-             _vdif_server_ip.c_str(), _vdif_port, diff_t, sleep_period);
+        INFO("vdif_stream: sent 1 seconds of vdif data to {:s}:{:d} in {:f} seconds; sleep set to "
+             "{:d} microseconds",
+             _vdif_server_ip, _vdif_port, diff_t, sleep_period);
 
         if (diff_t < 0.96) {
             sleep_period += 50;

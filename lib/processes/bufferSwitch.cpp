@@ -40,8 +40,8 @@ bool bufferSwitch::enabled_buffers_callback(json& update) {
                 continue;
 
             if (enabled_buffers.count(key) == 0) {
-                WARN("Message contains a key we didn't expect: %s, request JSON %s", key.c_str(),
-                     update.dump().c_str());
+                WARN("Message contains a key we didn't expect: {:s}, request JSON {:s}", key,
+                     update.dump());
                 return false;
             }
 
@@ -49,8 +49,8 @@ bool bufferSwitch::enabled_buffers_callback(json& update) {
             enabled_buffers.at(key) = enabled;
         }
     } catch (std::exception& e) {
-        WARN("bufferSwitch: Failure parsing message. Error: %s, Request JSON: %s", e.what(),
-             update.dump().c_str());
+        WARN("bufferSwitch: Failure parsing message. Error: {:s}, Request JSON: {:s}", e.what(),
+             update.dump());
         return false;
     }
     return true;
@@ -63,7 +63,8 @@ bool bufferSwitch::select_frame(const std::string& internal_name, Buffer* in_buf
     std::lock_guard<std::mutex> map_lock(enabled_buffers_lock);
     std::map<std::string, bool>::iterator it = enabled_buffers.find(internal_name);
     if (it == enabled_buffers.end()) {
-        throw std::runtime_error("No entry for the buffer named: " + internal_name);
+        throw std::runtime_error(
+            fmt::format(fmt("No entry for the buffer named: {:s}"), internal_name));
     }
     return it->second;
 }

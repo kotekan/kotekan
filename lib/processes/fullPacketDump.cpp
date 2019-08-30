@@ -5,6 +5,8 @@
 #include "output_formating.h"
 #include "restServer.hpp"
 
+#include "fmt.hpp"
+
 #include <fcntl.h>
 #include <functional>
 #include <stdio.h>
@@ -41,7 +43,7 @@ fullPacketDump::fullPacketDump(Config& config, const string& unique_name,
 
     using namespace std::placeholders;
     restServer& rest_server = restServer::instance();
-    endpoint = unique_name + "/packet_grab/" + std::to_string(link_id);
+    endpoint = fmt::format(fmt("{:s}/packet_grab/{:d}"), unique_name, link_id);
     rest_server.register_post_callback(
         endpoint, std::bind(&fullPacketDump::packet_grab_callback, this, _1, _2));
 }
@@ -118,7 +120,7 @@ void fullPacketDump::main_thread() {
 
             if (fd == -1) {
                 ERROR("Cannot open file");
-                ERROR("File name was: %s", file_name);
+                ERROR("File name was: {:s}", file_name);
                 exit(errno);
             }
 
@@ -130,10 +132,10 @@ void fullPacketDump::main_thread() {
             }
 
             if (close(fd) == -1) {
-                ERROR("Cannot close file %s", file_name);
+                ERROR("Cannot close file {:s}", file_name);
             }
 
-            INFO("Data file write done for %s", file_name);
+            INFO("Data file write done for {:s}", file_name);
             file_num++;
         }
 

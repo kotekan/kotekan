@@ -103,7 +103,7 @@ eigenFile::eigenFile(const std::string& fname, const uint16_t& num_ev, const siz
     nev = num_ev;
 
     // Create file
-    INFO("Creating new eigenvectors file %s", fname.c_str());
+    INFO("Creating new eigenvectors file {:s}", fname);
     file = std::unique_ptr<File>(new File(fname, File::SwmrCreate));
 
     // Create eigenvector dataset

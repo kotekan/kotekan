@@ -28,6 +28,7 @@ Welcome to Kotekan's documentation!
    dev/dev_introduction
    dev/dev_buffers
    dev/dev_processes
+   dev/dev_logging
    dev/dev_rest_endpoints
    dev/dev_dataset_states
    dev/dev_dataset_broker

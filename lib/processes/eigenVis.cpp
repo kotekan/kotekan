@@ -158,9 +158,9 @@ void eigenVis::main_thread() {
                               nside - nev + 1, nside, 0.0, &ev_found, evals.data(),
                               (lapack_complex_float*)evecs.data(), nside, NULL);
 
-        DEBUG("LAPACK exit status: %d", info);
+        DEBUG("LAPACK exit status: {:d}", info);
         if (info) {
-            ERROR("LAPACK failed with exit code %d", info);
+            ERROR("LAPACK failed with exit code {:d}", info);
             lapack_failure_total++;
 
             // Update prometheus metric about LAPACK failures
@@ -212,9 +212,9 @@ void eigenVis::main_thread() {
         // Report all eigenvalues to stdout.
         std::string str_evals = "";
         for (uint32_t i = 0; i < num_eigenvectors; i++) {
-            str_evals += " " + std::to_string(evals[i]);
+            str_evals = fmt::format(fmt("{:s} {}"), str_evals, evals[i]);
         }
-        INFO("Found eigenvalues:%s, with RMS residuals: %e, in %3.1f s.", str_evals.c_str(), rms,
+        INFO("Found eigenvalues: {:s}, with RMS residuals: {:e}, in {:3.1f} s.", str_evals, rms,
              elapsed_time);
 
         // Update average write time in prometheus

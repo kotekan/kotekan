@@ -4,6 +4,8 @@
 #include "errors.h"
 #include "output_formating.h"
 
+#include "fmt.hpp"
+
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
@@ -45,7 +47,7 @@ void chrxUplink::main_thread() {
 
     string s_hostname(hostname);
     string lastNum = s_hostname.substr(s_hostname.length() - 2, 2);
-    s_port = "410" + lastNum;
+    s_port = fmt::format(fmt("410{:s}"), lastNum);
 
     _collection_server_port =
         stoi(s_port); // config.get<int32_t>(unique_name, "collection_server_port");
@@ -60,7 +62,7 @@ void chrxUplink::main_thread() {
 
     int tcp_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (tcp_fd == -1) {
-        ERROR("Could not create socket, errno: %d", errno);
+        ERROR("Could not create socket, errno: {:d}", errno);
         return;
     }
 
@@ -70,9 +72,9 @@ void chrxUplink::main_thread() {
     ch_acq_addr.sin_port = htons(_collection_server_port);
 
     if (connect(tcp_fd, (struct sockaddr*)&ch_acq_addr, sizeof(ch_acq_addr)) == -1) {
-        ERROR("Could not connect to collection server, error: %d", errno);
+        ERROR("Could not connect to collection server, error: {:d}", errno);
     }
-    INFO("Connected to collection server on: %s:%d", _collection_server_ip.c_str(),
+    INFO("Connected to collection server on: {:s}:{:d}", _collection_server_ip,
          _collection_server_port);
 
     // Wait for, and transmit, full buffers.
@@ -83,15 +85,15 @@ void chrxUplink::main_thread() {
         if (vis_frame == NULL)
             break;
 
-        // INFO("Sending TCP frame to ch_master. frame size: %d", vis_buf->frame_size);
+        // INFO("Sending TCP frame to ch_master. frame size: {:d}", vis_buf->frame_size);
 
         ssize_t bytes_sent = send(tcp_fd, vis_frame, vis_buf->frame_size, 0);
         if (bytes_sent <= 0) {
-            ERROR("Could not send frame to chrx, error: %d", errno);
+            ERROR("Could not send frame to chrx, error: {:d}", errno);
             break;
         }
         if (bytes_sent != vis_buf->frame_size) {
-            ERROR("Could not send all bytes: bytes sent = %d; frame_size = %d", (int)bytes_sent,
+            ERROR("Could not send all bytes: bytes sent = {:d}; frame_size = {:d}", (int)bytes_sent,
                   vis_buf->frame_size);
             break;
         }
@@ -106,12 +108,12 @@ void chrxUplink::main_thread() {
             //            DEBUG("Sending gated buffer");
             bytes_sent = send(tcp_fd, gate_frame, gate_buf->frame_size, 0);
             if (bytes_sent <= 0) {
-                ERROR("Could not send gated date frame to ch_acq, error: %d", errno);
+                ERROR("Could not send gated date frame to ch_acq, error: {:d}", errno);
                 break;
             }
             if (bytes_sent != gate_buf->frame_size) {
-                ERROR("Could not send all bytes in gated data frame: bytes sent = %d; frame_size = "
-                      "%d",
+                ERROR("Could not send all bytes in gated data frame: bytes sent = {:d}; frame_size "
+                      "= {:d}",
                       (int)bytes_sent, gate_buf->frame_size);
                 break;
             }

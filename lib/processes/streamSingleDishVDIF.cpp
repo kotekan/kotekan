@@ -62,12 +62,12 @@ void streamSingleDishVDIF::main_thread() {
     saddr_remote.sin_family = AF_INET;
     saddr_remote.sin_port = htons(dest_port);
     if (inet_aton(dest_ip.c_str(), &saddr_remote.sin_addr) == 0) {
-        ERROR("Invalid address given for remote VDIF server: %s", dest_ip.c_str());
+        ERROR("Invalid address given for remote VDIF server: {:s}", dest_ip);
         exit(-1);
         return;
     }
 
-    INFO("Starting VDIF data stream thread to %s:%d", dest_ip.c_str(), dest_port);
+    INFO("Starting VDIF data stream thread to {:s}:{:d}", dest_ip, dest_port);
 
     while (!stop_thread) {
 

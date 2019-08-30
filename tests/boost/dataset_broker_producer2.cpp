@@ -22,7 +22,7 @@ using json = nlohmann::json;
 using namespace std::string_literals;
 
 BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, CompareCTypes) {
-    __log_level = 5;
+    _global_log_level = 5;
     __enable_syslog = 0;
 
     // We have to start the restServer here, because the datasetManager uses it.

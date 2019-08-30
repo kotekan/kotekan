@@ -53,12 +53,12 @@ void Valve::main_thread() {
             try {
                 copy_frame(_buf_in, frame_id_in, _buf_out, frame_id_out);
             } catch (std::exception& e) {
-                FATAL_ERROR("Failure copying frame: %s\nExiting...", e.what());
+                FATAL_ERROR("Failure copying frame: {:s}\nExiting...", e.what());
                 break;
             }
             mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
         } else {
-            WARN("Output buffer full. Dropping incoming frame %d.", frame_id_in);
+            WARN("Output buffer full. Dropping incoming frame {:d}.", (int)frame_id_in);
             dropped_total.inc();
         }
         mark_frame_empty(_buf_in, unique_name.c_str(), frame_id_in++);
@@ -71,20 +71,18 @@ void Valve::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, int 
 
     // Buffer sizes must match exactly
     if (buf_src->frame_size != buf_dest->frame_size) {
-        std::string msg =
-            fmt::format("Buffer sizes must match for direct copy (src %i != dest %i).",
-                        buf_src->frame_size, buf_dest->frame_size);
-        throw std::runtime_error(msg);
+        throw std::runtime_error(
+            fmt::format(fmt("Buffer sizes must match for direct copy (src {:d} != dest {:d})."),
+                        buf_src->frame_size, buf_dest->frame_size));
     }
 
     // Metadata sizes must match exactly
     if (buf_src->metadata[frame_id_src]->metadata_size
         != buf_dest->metadata[frame_id_dest]->metadata_size) {
-        std::string msg =
-            fmt::format("Metadata sizes must match for direct copy (src %i != dest %i).",
+        throw std::runtime_error(
+            fmt::format(fmt("Metadata sizes must match for direct copy (src {:d} != dest {:d})."),
                         buf_src->metadata[frame_id_src]->metadata_size,
-                        buf_dest->metadata[frame_id_dest]->metadata_size);
-        throw std::runtime_error(msg);
+                        buf_dest->metadata[frame_id_dest]->metadata_size));
     }
 
     int num_consumers = get_num_consumers(buf_src);

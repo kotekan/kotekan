@@ -54,7 +54,7 @@ void rawFileRead::main_thread() {
                 FATAL_ERROR("No more files to read. Shutting down Kotekan.");
                 break;
             } else {
-                INFO("rawFileRead: No file named %s, exiting read thread.", full_path);
+                INFO("rawFileRead: No file named {:s}, exiting read thread.", full_path);
                 break;
             }
         }
@@ -69,7 +69,7 @@ void rawFileRead::main_thread() {
         uint32_t metadata_size;
 
         if (fread((void*)&metadata_size, sizeof(uint32_t), 1, fp) != 1) {
-            ERROR("rawFileRead: Failed to read file %s metadata size value, %s", full_path,
+            ERROR("rawFileRead: Failed to read file {:s} metadata size value, {:s}", full_path,
                   strerror(errno));
             break;
         }
@@ -80,22 +80,22 @@ void rawFileRead::main_thread() {
             struct metadataContainer* mc = get_metadata_container(buf, frame_id);
             assert(metadata_size == mc->metadata_size);
             if (fread(mc->metadata, metadata_size, 1, fp) != 1) {
-                ERROR("rawFileRead: Failed to read file %s metadata,", full_path);
+                ERROR("rawFileRead: Failed to read file {:s} metadata,", full_path);
                 break;
             }
-            INFO("rawFileRead: Read in metadata from file %s", full_path);
+            INFO("rawFileRead: Read in metadata from file {:s}", full_path);
         }
 
         int bytes_read = fread((void*)frame, sizeof(char), buf->frame_size, fp);
 
         if (bytes_read != buf->frame_size) {
-            ERROR("rawFileRead: Failed to read file %s!", full_path);
+            ERROR("rawFileRead: Failed to read file {:s}!", full_path);
             break;
         }
 
         fclose(fp);
 
-        INFO("rawFileRead: Read frame data from %s into %s[%i]", full_path, buf->buffer_name,
+        INFO("rawFileRead: Read frame data from {:s} into {:s}[{:d}]", full_path, buf->buffer_name,
              frame_id);
         mark_frame_full(buf, unique_name.c_str(), frame_id);
 

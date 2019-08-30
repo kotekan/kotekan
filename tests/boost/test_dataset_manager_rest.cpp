@@ -41,7 +41,7 @@ struct TestContext {
     }
 
     void register_state(connectionInstance& con, json& js) {
-        DEBUG("test: /register-state received: %s", js.dump().c_str());
+        DEBUG_NON_OO("test: /register-state received:\n{:s}", js.dump(4));
         json reply;
         try {
             js.at("hash");
@@ -60,11 +60,11 @@ struct TestContext {
         reply["hash"] = js.at("hash");
         reply["result"] = "success";
         con.send_json_reply(reply);
-        DEBUG("test: /register-state: replied with %s", reply.dump().c_str());
+        DEBUG_NON_OO("test: /register-state: replied with:\n{:s}", reply.dump(4));
     }
 
     void send_state(connectionInstance& con, json& js) {
-        DEBUG("test: /send-state received: %s", js.dump().c_str());
+        DEBUG_NON_OO("test: /send-state received:\n{:s}", js.dump(4));
         json reply;
         try {
             js.at("hash");
@@ -72,9 +72,9 @@ struct TestContext {
             js.at("state").at("type");
             js.at("state").at("data");
         } catch (std::exception& e) {
-            std::string error = fmt::format("Failure parsing send-state message from "
-                                            "datasetManager: {}\n{}.",
-                                            js.dump(), e.what());
+            std::string error = fmt::format(fmt("Failure parsing send-state message from "
+                                                "datasetManager:\n{:s}\n{:s}."),
+                                            js.dump(4), e.what());
             reply["result"] = error;
             con.send_json_reply(reply);
             BOOST_CHECK_MESSAGE(false, error);
@@ -97,11 +97,11 @@ struct TestContext {
 
         reply["result"] = "success";
         con.send_json_reply(reply);
-        DEBUG("test: /send-state: replied with %s", reply.dump().c_str());
+        DEBUG_NON_OO("test: /send-state: replied with\n{:s}", reply.dump(4));
     }
 
     void register_dataset(connectionInstance& con, json& js) {
-        DEBUG("test: /register-dataset received: %s", js.dump().c_str());
+        DEBUG_NON_OO("test: /register-dataset received:\n{:s}", js.dump(4));
         json reply;
         json js_ds;
         try {
@@ -133,12 +133,12 @@ struct TestContext {
 
         reply["result"] = "success";
         con.send_json_reply(reply);
-        DEBUG("test: /register-dataset: replied with %s", reply.dump().c_str());
+        DEBUG_NON_OO("test: /register-dataset: replied with\n{:s}", reply.dump(4));
     }
 };
 
 BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, TestContext) {
-    __log_level = 4;
+    _global_log_level = 4;
     __enable_syslog = 0;
 
     json json_config;

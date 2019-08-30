@@ -9,6 +9,7 @@
 
 #include "datasetManager.hpp"
 #include "errors.h"
+#include "kotekanLogging.hpp"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
 
@@ -28,7 +29,7 @@
  *
  * @author Richard Shaw
  **/
-class visFile {
+class visFile : public kotekan::kotekanLogging {
 
 public:
     virtual ~visFile() = default;
@@ -43,7 +44,7 @@ public:
      **/
     template<typename... CreateArgs>
     static std::shared_ptr<visFile> create(const std::string& type, const std::string& name,
-                                           CreateArgs&&... args);
+                                           const kotekan::logLevel log_level, CreateArgs&&... args);
 
     /**
      * @brief Extend the file to a new time sample.
@@ -103,7 +104,7 @@ protected:
      *  @param max_time Maximum number of times to write into the file.
      **/
     // TODO: decide if the num_ev can be eliminated.
-    virtual void create_file(const std::string& name,
+    virtual void create_file(const std::string& name, const kotekan::logLevel log_level,
                              const std::map<std::string, std::string>& metadata, dset_id_t dataset,
                              size_t max_time) = 0;
 
@@ -123,18 +124,19 @@ private:
 // Forwards on an argument pack. Actual arguments defined on visFile::create_file
 template<typename... CreateArgs>
 inline std::shared_ptr<visFile> visFile::create(const std::string& type, const std::string& name,
+                                                const kotekan::logLevel log_level,
                                                 CreateArgs&&... args) {
-
     auto& _type_list = _registered_types();
 
     if (_type_list.find(type) == _type_list.end()) {
-        throw std::runtime_error(fmt::format("Cannot create visFile of unknown type {}", type));
+        throw std::runtime_error(
+            fmt::format(fmt("Cannot create visFile of unknown type {:s}"), type));
     }
 
     // Lookup the registered file and create an instance
-    INFO("Creating file %s of type %s", name.c_str(), type.c_str());
+    INFO_NON_OO("Creating file {:s} of type {:s}", name, type);
     auto file = std::shared_ptr<visFile>(_type_list[type]());
-    file->create_file(name, std::forward<CreateArgs>(args)...);
+    file->create_file(name, log_level, std::forward<CreateArgs>(args)...);
 
     return file;
 }
@@ -158,7 +160,7 @@ inline int visFile::register_file_type(const std::string key) {
  *
  * @author Richard Shaw
  **/
-class visFileBundle {
+class visFileBundle : public kotekan::kotekanLogging {
 
 public:
     /**
@@ -176,7 +178,8 @@ public:
     visFileBundle(const std::string& type, const std::string& root_path,
                   const std::string& instrument_name,
                   const std::map<std::string, std::string>& metadata, int freq_chunk,
-                  size_t rollover, size_t window_size, InitArgs... args);
+                  size_t rollover, size_t window_size, const kotekan::logLevel log_level,
+                  InitArgs... args);
 
     /**
      * Write a new time sample into this set of files
@@ -277,24 +280,26 @@ inline visFileBundle::visFileBundle(const std::string& type, const std::string& 
                                     const std::string& instrument_name,
                                     const std::map<std::string, std::string>& metadata,
                                     int freq_chunk, size_t rollover, size_t window_size,
-                                    InitArgs... args) :
+                                    const kotekan::logLevel log_level, InitArgs... args) :
     root_path(root_path),
     instrument_name(instrument_name),
     freq_chunk(freq_chunk),
     rollover(rollover),
     window_size(window_size) {
 
+    set_log_level(log_level);
+
     // Make a lambda function that creates a file. This is a little convoluted,
     // but is the easiest way of passing on the variadic arguments to the
     // constructor into the file creation.
-    mk_file = [type, metadata, args...](std::string file_name, std::string acq_name,
-                                        std::string root_path) {
+    mk_file = [type, metadata, log_level, args...](std::string file_name, std::string acq_name,
+                                                   std::string root_path) {
         // Add the acq name to the metadata
         auto metadata_acq = metadata;
         metadata_acq["acquisition_name"] = acq_name;
 
         std::string abspath = root_path + '/' + acq_name + '/' + file_name;
-        return visFile::create(type, abspath, metadata_acq, args...);
+        return visFile::create(type, abspath, log_level, metadata_acq, args...);
     };
 }
 

@@ -83,13 +83,13 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* 
                 struct timespec time_now_from_compute;
                 time_now_from_compute = compute_gps_time(fpga_now);
                 if (time_now->tv_sec != time_now_from_compute.tv_sec) {
-                    ERROR("[Time Check] mismatch in fill header packet=%d beam=%d "
-                          "time_now->tv_sec=%ld time_now_from_compute.tv_sec=%ld",
+                    ERROR("[Time Check] mismatch in fill header packet={:d} beam={:d} "
+                          "time_now->tv_sec={:d} time_now_from_compute.tv_sec={:d}",
                           i, psr, time_now->tv_sec, time_now_from_compute.tv_sec);
                 }
                 if (time_now->tv_nsec != time_now_from_compute.tv_nsec) {
-                    ERROR("[Time Check] mismatch in fill header packet=%d beam=%d "
-                          "time_now->tv_nsec=%ld time_now_from_compute.tv_nsec=%ld",
+                    ERROR("[Time Check] mismatch in fill header packet={:d} beam={:d} "
+                          "time_now->tv_nsec={:d} time_now_from_compute.tv_nsec={:d}",
                           i, psr, time_now->tv_nsec, time_now_from_compute.tv_nsec);
                 }
                 if (_timesamples_per_pulsar_packet == 3125) {
@@ -190,17 +190,17 @@ void pulsarPostProcess::main_thread() {
 
             struct timespec time_now_from_compute2 = compute_gps_time(first_seq_number);
             if (time_now.tv_sec != time_now_from_compute2.tv_sec) {
-                ERROR("[Time Check] mismatch in execute time_now.tv_sec=%ld"
-                      " time_now_from_compute2.tv_sec=%ld",
+                ERROR("[Time Check] mismatch in execute time_now.tv_sec={:d}"
+                      " time_now_from_compute2.tv_sec={:d}",
                       time_now.tv_sec, time_now_from_compute2.tv_sec);
             }
             if (time_now.tv_nsec != time_now_from_compute2.tv_nsec) {
-                ERROR("[Time Check] mismatch in execute time_now.tv_nsec=%ld"
-                      " time_now_from_compute2.tv_nsec=%ld",
+                ERROR("[Time Check] mismatch in execute time_now.tv_nsec={:d}"
+                      " time_now_from_compute2.tv_nsec={:d}",
                       time_now.tv_nsec, time_now_from_compute2.tv_nsec);
             }
             if (is_gps_global_time_set() != 1) {
-                ERROR("[Time Check] gps global time not set (%d)", is_gps_global_time_set());
+                ERROR("[Time Check] gps global time not set ({:d})", is_gps_global_time_set());
             }
             uint32_t pkt_length_in_ns = _timesamples_per_pulsar_packet * 2560;
             uint32_t ns_offset = pkt_length_in_ns - (time_now.tv_nsec % pkt_length_in_ns);

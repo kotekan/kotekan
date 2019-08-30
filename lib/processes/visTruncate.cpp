@@ -130,7 +130,7 @@ void visTruncate::main_thread() {
         }
 
         if (zero_weight_found) {
-            DEBUG("visTruncate: Frame %d has at least one weight value "
+            DEBUG("visTruncate: Frame {:d} has at least one weight value "
                   "being zero.",
                   frame_id);
             zero_weight_found = false;

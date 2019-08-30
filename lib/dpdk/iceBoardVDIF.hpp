@@ -120,7 +120,7 @@ iceBoardVDIF::iceBoardVDIF(kotekan::Config& config, const std::string& unique_na
     offset = config.get_default<uint32_t>(unique_name, "offset", 0);
 
     if (offset > 14) {
-        throw std::runtime_error("The offset value is too large: " + to_string(offset));
+        throw std::runtime_error(fmt::format(fmt("The offset value is too large: {:d}"), offset));
     }
 
     std::string endpoint_name = unique_name + "/port_data";

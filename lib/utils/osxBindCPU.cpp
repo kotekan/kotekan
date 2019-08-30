@@ -9,7 +9,7 @@ int sched_getaffinity(pid_t pid, size_t cpu_size, cpu_set_t* cpu_set) {
     size_t len = sizeof(core_count);
     int ret = sysctlbyname(SYSCTL_CORE_COUNT, &core_count, &len, 0, 0);
     if (ret) {
-        ERROR("error while get core count %d\n", ret);
+        ERROR("error while get core count {:d}\n", ret);
         return -1;
     }
     cpu_set->count = 0;
@@ -30,8 +30,8 @@ int pthread_setaffinity_np(pthread_t thread, size_t cpu_size, cpu_set_t* cpu_set
     }
 
     if (core > INT_MAX)
-        ERROR("Overflow error in osxBindCPU");
-    INFO("binding to core %d\n", core);
+        ERROR_NON_OO("Overflow error in osxBindCPU");
+    INFO_NON_OO("binding to core {:d}\n", core);
     thread_affinity_policy_data_t policy = {(int)core};
     mach_thread = pthread_mach_thread_np(thread);
     thread_policy_set(mach_thread, THREAD_AFFINITY_POLICY, (thread_policy_t)&policy, 1);

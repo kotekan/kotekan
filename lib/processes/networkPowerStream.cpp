@@ -93,7 +93,7 @@ void networkPowerStream::main_thread() {
             ERROR("Invalid address given for remote server");
             return;
         }
-        INFO("%i %s", dest_port, dest_server_ip.c_str());
+        INFO("{:d} {:s}", dest_port, dest_server_ip);
 
         while (!stop_thread) {
             // Wait for a full buffer.
@@ -172,7 +172,7 @@ void networkPowerStream::main_thread() {
         }
 
     } else
-        ERROR("Bad protocol: %s\n", dest_protocol.c_str());
+        ERROR("Bad protocol: {:s}\n", dest_protocol);
 
     free(packet_buffer);
 }

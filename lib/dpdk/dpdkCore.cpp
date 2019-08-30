@@ -1,5 +1,6 @@
 #include "dpdkCore.hpp"
 
+#include "fmt.hpp"
 #include "json.hpp"
 
 #include <signal.h>
@@ -86,16 +87,17 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     create_handlers(buffer_container);
 
     if (num_ports > num_system_ports) {
-        throw std::runtime_error("Trying to create more ports: " + to_string(num_ports)
-                                 + ", than DPDK found: " + to_string(num_system_ports));
+        throw std::runtime_error(
+            fmt::format(fmt("Trying to create more ports: {:d}, than DPDK found: {:d}"), num_ports,
+                        num_system_ports));
     }
 
     // The plus one is for the master lcore.
     if (rte_lcore_count() != num_lcores + 1) {
         ERROR("Mismatch in the number of lcores");
-        throw std::runtime_error("Num lcores set to: " + to_string(num_lcores)
-                                 + " in the config, but" + " the DPDK run time has: "
-                                 + to_string(rte_lcore_count()) + " lcores.");
+        throw std::runtime_error(fmt::format(
+            fmt("Num lcores set to: {:d} in the config, but the DPDK run time has: {:d} lcores."),
+            num_lcores, rte_lcore_count()));
     }
 
     mbuf_pool = rte_mempool_create("MBUF_POOL", num_mbufs * num_ports, mbuf_size, mbuf_cache_size,
@@ -112,7 +114,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
             // TODO This will fail in a strange way if a port is listed more than once in the
             // config. We should have a check that each port assignment is unique.
             if (port_init(port) != 0) {
-                throw std::runtime_error("DPDK Cannot init port: " + to_string(port));
+                throw std::runtime_error(fmt::format(fmt("DPDK Cannot init port: {:d}"), port));
             }
         }
     }
@@ -126,16 +128,16 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
     vector<json> handlers_block = config.get<std::vector<json>>(unique_name, "handlers");
     uint32_t port = 0;
     if (handlers_block.size() != num_system_ports) {
-        throw std::runtime_error("The number of DPDK handlers (" + to_string(handlers_block.size())
-                                 + ") must be equal to the number of system ports ("
-                                 + to_string(num_system_ports) + ")");
+        throw std::runtime_error(fmt::format(fmt("The number of DPDK handlers ({:d}) must be equal "
+                                                 "to the number of system ports ({:d})"),
+                                             handlers_block.size(), num_system_ports));
     }
     handlers = (dpdkRXhandler**)malloc(num_system_ports * sizeof(dpdkRXhandler*));
     CHECK_MEM(handlers);
     for (json& handler : handlers_block) {
 
         string handler_name = handler["dpdk_handler"];
-        string handler_unique_name = unique_name + "/handlers/" + to_string(port);
+        string handler_unique_name = fmt::format(fmt("{:s}/handlers/{:d}"), unique_name, port);
 
         if (handler_name == "iceBoardShuffle") {
             handlers[port] =
@@ -151,8 +153,8 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
         } else if (handler_name == "none") {
             handlers[port] = nullptr;
         } else {
-            throw std::runtime_error("The dpdk handler type '" + handler_name
-                                     + "' does not exist.");
+            throw std::runtime_error(
+                fmt::format(fmt("The dpdk handler type '{:s}' does not exist."), handler_name));
         }
 
         port++;
@@ -161,14 +163,14 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
 
 void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
 
-    string dpdk_lcore_map = "0@" + to_string(master_lcore_cpu) + ",";
+    string dpdk_lcore_map = fmt::format(fmt("0@{:d},"), master_lcore_cpu);
     int i = 1;
     for (int& core_id : lcore_cpu_map) {
-        dpdk_lcore_map += to_string(i++) + "@" + to_string(core_id) + ",";
+        dpdk_lcore_map += fmt::format(fmt("{:d}@{:d},"), i++, core_id);
     }
     dpdk_lcore_map.pop_back(); // Remove the last ","
 
-    DEBUG("Using DPDK lcore map: %s", dpdk_lcore_map.c_str());
+    DEBUG("Using DPDK lcore map: {:s}", dpdk_lcore_map);
 
     char arg0[] = "./kotekan";
     char arg1[] = "-n";
@@ -187,7 +189,8 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
     if (!__eal_initalized) {
         int ret = rte_eal_init(argc2, argv2);
         if (ret < 0)
-            throw std::runtime_error("Failed to init DPDK EAL with error code: " + to_string(ret));
+            throw std::runtime_error(
+                fmt::format(fmt("Failed to init DPDK EAL with error code: {:d}"), ret));
         __eal_initalized = true;
     }
 }
@@ -241,7 +244,7 @@ int32_t dpdkCore::port_init(uint8_t port) {
     // Configure the Ethernet device.
     retval = rte_eth_dev_configure(port, rx_rings, tx_rings, &port_conf);
     if (retval != 0) {
-        ERROR("Failed to configure device, port %d, error: %d", port, retval);
+        ERROR("Failed to configure device, port {:d}, error: {:d}", port, retval);
         return retval;
     }
 
@@ -250,7 +253,7 @@ int32_t dpdkCore::port_init(uint8_t port) {
         retval = rte_eth_rx_queue_setup(port, q, rx_ring_size, rte_eth_dev_socket_id(port), NULL,
                                         mbuf_pool);
         if (retval < 0) {
-            ERROR("Failed to setupt RX queue for port %d, error: %d", port, retval);
+            ERROR("Failed to setupt RX queue for port {:d}, error: {:d}", port, retval);
             return retval;
         }
     }
@@ -260,7 +263,7 @@ int32_t dpdkCore::port_init(uint8_t port) {
     for (q = 0; q < tx_rings; q++) {
         retval = rte_eth_tx_queue_setup(port, q, tx_ring_size, rte_eth_dev_socket_id(port), NULL);
         if (retval < 0) {
-            ERROR("Failed to setupt TX queue for port %d, error: %d", port, retval);
+            ERROR("Failed to setupt TX queue for port {:d}, error: {:d}", port, retval);
             return retval;
         }
     }
@@ -268,7 +271,7 @@ int32_t dpdkCore::port_init(uint8_t port) {
     // Start the Ethernet port.
     retval = rte_eth_dev_start(port);
     if (retval < 0) {
-        ERROR("Failed to start port: %d", port);
+        ERROR("Failed to start port: {:d}", port);
         return retval;
     }
 
@@ -276,10 +279,9 @@ int32_t dpdkCore::port_init(uint8_t port) {
     // TODO record the MAC address for export to JSON
     struct ether_addr addr;
     rte_eth_macaddr_get(port, &addr);
-    INFO("Port %u MAC: %02" PRIx8 " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 " %02" PRIx8 " %02" PRIx8
-         "",
-         (unsigned)port, addr.addr_bytes[0], addr.addr_bytes[1], addr.addr_bytes[2],
-         addr.addr_bytes[3], addr.addr_bytes[4], addr.addr_bytes[5]);
+    INFO("Port {:d} MAC: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}", (unsigned)port,
+         addr.addr_bytes[0], addr.addr_bytes[1], addr.addr_bytes[2], addr.addr_bytes[3],
+         addr.addr_bytes[4], addr.addr_bytes[5]);
 
     // Enable promiscuous mode.
     rte_eth_promiscuous_enable(port);

@@ -32,7 +32,7 @@ beamformingPostProcess::beamformingPostProcess(Config& config, const string& uni
     _num_gpus = config.get<uint32_t>(unique_name, "num_gpus");
     in_buf = (struct Buffer**)malloc(_num_gpus * sizeof(struct Buffer*));
     for (uint32_t i = 0; i < _num_gpus; ++i) {
-        in_buf[i] = get_buffer("beam_in_buf_" + std::to_string(i));
+        in_buf[i] = get_buffer(fmt::format(fmt("beam_in_buf_{:d}"), i));
         register_consumer(in_buf[i], unique_name.c_str());
     }
     vdif_buf = get_buffer("vdif_out_buf");
@@ -211,7 +211,7 @@ void beamformingPostProcess::main_thread() {
                                                + thread_id * frame_size * 2 + frame_size
                                                + in_frame_location * 8 + header_size;
 
-                    // DEBUG("beamforming_post_process: station_0_index = %d", station_0_index);
+                    // DEBUG("beamforming_post_process: station_0_index = {:d}", station_0_index);
 
                     for (uint32_t freq = 0; freq < _num_local_freq; ++freq) {
                         unsigned char* in_buf_data = (unsigned char*)in_frame[thread_id];

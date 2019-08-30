@@ -43,7 +43,7 @@ frbPostProcess::frbPostProcess(Config& config_, const string& unique_name,
 
     in_buf = (struct Buffer**)malloc(_num_gpus * sizeof(struct Buffer*));
     for (int i = 0; i < _num_gpus; ++i) {
-        in_buf[i] = get_buffer("in_buf_" + std::to_string(i));
+        in_buf[i] = get_buffer(fmt::format(fmt("in_buf_{:d}"), i));
         register_consumer(in_buf[i], unique_name.c_str());
     }
     frb_buf = get_buffer("out_buf");
@@ -195,7 +195,8 @@ void frbPostProcess::main_thread() {
                             + (stream * _nbeams + b) * num_samples * _factor_upchan_out;
                         if (std::find(_incoherent_beams.begin(), _incoherent_beams.end(), beam_id)
                             != _incoherent_beams.end()) {
-                            DEBUG("Incoherent beam! Stream %i, Beam %i; ID %i", stream, b, beam_id);
+                            DEBUG("Incoherent beam! Stream {:d}, Beam {:d}; ID {:d}", stream, b,
+                                  beam_id);
                             in_data = ib + thread_id * num_samples * _factor_upchan_out;
                         }
                         // pre-set to zero, in case all samples dropped within these 16 t
