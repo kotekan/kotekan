@@ -7,8 +7,11 @@
     #define FMT_HEADER_ONLY
 #endif
 
+// Enable the fmt() macro for compile time string format checking
+#define FMT_STRING_ALIAS 1
+
 #include <fmt/format.h>
-#include <fmt/time.h>
+#include <fmt/chrono.h>
 #include <fmt/printf.h>
 
 #endif // _FMT_HPP_

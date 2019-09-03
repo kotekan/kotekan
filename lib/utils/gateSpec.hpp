@@ -7,6 +7,7 @@
 
 #include "buffer.h"
 #include "factory.hpp"
+#include "kotekanLogging.hpp"
 #include "pulsarTiming.hpp"
 #include "visUtil.hpp"
 
@@ -29,14 +30,14 @@
  * @author Richard Shaw, Tristan Pinsonneault-Marotte
  *
  **/
-class gateSpec {
+class gateSpec : public kotekan::kotekanLogging {
 public:
     /**
      * @brief Create a new gateSpec
      *
      * @param  name  Name of the gated dataset.
      **/
-    gateSpec(const std::string& name);
+    gateSpec(const std::string& name, const kotekan::logLevel log_level);
     virtual ~gateSpec() = 0;
 
     /**
@@ -47,7 +48,8 @@ public:
      *
      * @returns      A pointer to the gateSpec instance.
      **/
-    static std::unique_ptr<gateSpec> create(const std::string& type, const ::std::string& name);
+    static std::unique_ptr<gateSpec> create(const std::string& type, const ::std::string& name,
+                                            const kotekan::logLevel&& log_level);
 
 
     /**
@@ -122,7 +124,7 @@ protected:
 };
 
 // Create a factory for gateSpecs
-CREATE_FACTORY(gateSpec, const std::string&);
+CREATE_FACTORY(gateSpec, const std::string&, const kotekan::logLevel);
 #define REGISTER_GATESPEC(specType, name) REGISTER_NAMED_TYPE_WITH_FACTORY(gateSpec, specType, name)
 
 
@@ -148,7 +150,8 @@ public:
     /**
      * @brief Create a pulsar spec.
      **/
-    pulsarSpec(const std::string& name) : gateSpec(name){};
+    pulsarSpec(const std::string& name, const kotekan::logLevel log_level) :
+        gateSpec(name, log_level){};
 
     /**
      * @brief Update the gating from a json message.
@@ -193,7 +196,7 @@ public:
     /**
      * @brief Create a uniform weighted dataset.
      **/
-    uniformSpec(const std::string& name);
+    uniformSpec(const std::string& name, const kotekan::logLevel log_level);
 
     /**
      * @brief Update from json config. Has no effect.

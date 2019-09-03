@@ -274,6 +274,22 @@ public:
     MetricFamily<Counter>& add_counter(const string& name, const string& stage_name,
                                        const std::vector<string>& label_names);
 
+    /**
+     * @brief Remove all registered stage metrics
+     *
+     * After the method completes, these metrics can be re-declared with the same metric and stage
+     * name without ``add`` throwing an error.
+     *
+     * It is not an error to call this method with an unknown stage name, or a stage_name for which
+     * metrics were already deleted.
+     *
+     * Note: after this method completes, references to those ``Metric`` instances that were
+     * returned by the ``Metric::add_gauge`` and ``Metric::add_counter`` are invalid.
+     *
+     * @param stage_name The stage name used in metric declaration, normally @c unique_name.
+     */
+    void remove_stage_metrics(const string& stage_name);
+
 private:
     /// Constructor, not used directly
     Metrics();

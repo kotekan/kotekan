@@ -140,13 +140,14 @@ void testDataGen::main_thread() {
                 frame[j] = seq_num + j / num_elements + j % num_elements;
             }
         }
-        DEBUG("Generated a %s test data set in %s[%d]", type.c_str(), buf->buffer_name, frame_id);
+        DEBUG("Generated a {:s} test data set in {:s}[{:d}]", type, buf->buffer_name, frame_id);
 
         mark_frame_full(buf, unique_name.c_str(), frame_id);
 
         frame_id_abs += 1;
         if (num_frames >= 0 && frame_id_abs >= num_frames) {
-            std::raise(SIGINT);
+            INFO("Frame ID greater than the no. of frames");
+            exit_kotekan(ReturnCode::CLEAN_EXIT);
             break;
         };
         frame_id = frame_id_abs % buf->num_frames;

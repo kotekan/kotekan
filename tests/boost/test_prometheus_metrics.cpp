@@ -11,8 +11,12 @@ BOOST_AUTO_TEST_CASE(simple_metrics) {
     BOOST_CHECK(metrics.serialize() == "");
 
     auto& foo = metrics.add_counter("foo_metric", "foo");
+    BOOST_CHECK(
+        metrics.serialize().find(
+            "# HELP foo_metric\n# TYPE foo_metric counter\nfoo_metric{stage_name=\"foo\"} 0")
+        != std::string::npos);
+
     foo.inc();
-    std::cout << metrics.serialize();
     BOOST_CHECK(
         metrics.serialize().find(
             "# HELP foo_metric\n# TYPE foo_metric counter\nfoo_metric{stage_name=\"foo\"} 1")
@@ -32,8 +36,46 @@ BOOST_AUTO_TEST_CASE(simple_metrics) {
     BOOST_CHECK(multi_metrics.find("foo_metric{stage_name=\"foo\"} 1") == std::string::npos);
 
     // new time series
-    BOOST_CHECK(multi_metrics.find("foo_metric{stage_name=\"foos\"} 10 ") != std::string::npos);
-    BOOST_CHECK(multi_metrics.find("bar_metric{stage_name=\"foos\"} 100 ") != std::string::npos);
+    BOOST_CHECK(multi_metrics.find("foo_metric{stage_name=\"foos\"} 10.0") != std::string::npos);
+    BOOST_CHECK(multi_metrics.find("bar_metric{stage_name=\"foos\"} 100.0") != std::string::npos);
+}
+
+BOOST_AUTO_TEST_CASE(remove_stage_metrics) {
+    Metrics& metrics = Metrics::instance();
+    metrics.remove_stage_metrics("foo");
+    metrics.remove_stage_metrics("foos");
+    BOOST_CHECK(metrics.serialize() == "");
+
+    metrics.add_counter("foo_metric", "foo");
+    metrics.add_counter("foo_metric", "foos");
+    auto multi_metrics = metrics.serialize();
+    BOOST_CHECK(multi_metrics.find("foo_metric{stage_name=\"foo\"} 0") != std::string::npos);
+    BOOST_CHECK(multi_metrics.find("foo_metric{stage_name=\"foos\"} 0") != std::string::npos);
+
+    // remove the metrics we just added
+    metrics.remove_stage_metrics("foo");
+    // all metrics from this stage will be missing
+    BOOST_CHECK(metrics.serialize().find("stage_name=\"foo\"") == std::string::npos);
+    // while other stages are not affected
+    BOOST_CHECK(metrics.serialize().find("foo_metric{stage_name=\"foos\"} 0") != std::string::npos);
+
+    // now remove the rest
+    metrics.remove_stage_metrics("foos");
+    BOOST_CHECK(metrics.serialize() == "");
+
+    // removing already-deleted stages is OK
+    metrics.remove_stage_metrics("foo");
+
+    // now remove the other stage
+    metrics.remove_stage_metrics("foos");
+    BOOST_CHECK(metrics.serialize() == "");
+
+    // re-adding metrics from stages that were deleted once is also OK
+    metrics.add_counter("foo_metric", "foo");
+    metrics.add_counter("foo_metric", "foos");
+    multi_metrics = metrics.serialize();
+    BOOST_CHECK(multi_metrics.find("foo_metric{stage_name=\"foo\"} 0") != std::string::npos);
+    BOOST_CHECK(multi_metrics.find("foo_metric{stage_name=\"foos\"} 0") != std::string::npos);
 }
 
 
@@ -66,7 +108,7 @@ BOOST_AUTO_TEST_CASE(gauges_with_labels) {
 
     auto& m1 = metrics.add_gauge("foo_with_labels", "foo", {"quux"});
     m1.labels({"fred"}).set(1);
-    BOOST_CHECK(metrics.serialize().find("foo_with_labels{stage_name=\"foo\",quux=\"fred\"} 1 ")
+    BOOST_CHECK(metrics.serialize().find("foo_with_labels{stage_name=\"foo\",quux=\"fred\"} 1.0")
                 != std::string::npos);
 
     m1.labels({"fred"}).set(2);
@@ -81,15 +123,15 @@ BOOST_AUTO_TEST_CASE(gauges_with_labels) {
     // std::cout << multi_metrics << "\n";
 
     // new value
-    BOOST_CHECK(multi_metrics.find("foo_with_labels{stage_name=\"foo\",quux=\"fred\"} 2 ")
+    BOOST_CHECK(multi_metrics.find("foo_with_labels{stage_name=\"foo\",quux=\"fred\"} 2.0")
                 != std::string::npos);
     // old value is not present
     BOOST_CHECK(multi_metrics.find("foo_with_labels{stage_name=\"foo\",quux=\"fred\"} 1")
                 == std::string::npos);
 
     // new time series
-    BOOST_CHECK(multi_metrics.find("foo_with_labels{stage_name=\"foo\",quux=\"baz\"} 10 ")
+    BOOST_CHECK(multi_metrics.find("foo_with_labels{stage_name=\"foo\",quux=\"baz\"} 10.0")
                 != std::string::npos);
-    BOOST_CHECK(multi_metrics.find("bar_with_labels{stage_name=\"foo\",quux=\"baz\"} 42 ")
+    BOOST_CHECK(multi_metrics.find("bar_with_labels{stage_name=\"foo\",quux=\"baz\"} 42.0")
                 != std::string::npos);
 }

@@ -22,7 +22,7 @@ using json = nlohmann::json;
 using namespace std::string_literals;
 
 BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
-    __log_level = 5;
+    _global_log_level = 5;
     __enable_syslog = 0;
 
     // We have to start the restServer here, because the datasetManager uses it.
@@ -78,7 +78,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
 
 
 BOOST_AUTO_TEST_CASE(_dataset_manager_state_known_to_broker) {
-    __log_level = 5;
+    _global_log_level = 5;
     __enable_syslog = 0;
 
     json json_config;
@@ -108,7 +108,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_state_known_to_broker) {
 }
 
 BOOST_AUTO_TEST_CASE(_dataset_manager_second_root) {
-    __log_level = 5;
+    _global_log_level = 5;
     __enable_syslog = 0;
 
     json json_config;

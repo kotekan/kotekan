@@ -3,6 +3,8 @@
 #include "errors.h"
 #include "metadata.h"
 
+#include "fmt.hpp"
+
 namespace kotekan {
 namespace prometheus {
 
@@ -39,15 +41,13 @@ void Gauge::set(const double value) {
 }
 
 string Gauge::to_string() {
-    std::ostringstream out;
-    to_string(out);
-    return out.str();
+    return fmt::format(fmt("{:f} {:d}"), value, last_update_time_stamp);
 }
 
 std::ostringstream& Gauge::to_string(std::ostringstream& out) {
     std::lock_guard<std::mutex> lock(metric_lock);
 
-    out << value << " " << last_update_time_stamp;
+    fmt::print(out, fmt("{:f} {:d}"), value, last_update_time_stamp);
     return out;
 }
 
@@ -136,20 +136,21 @@ string Metrics::serialize() {
 void Metrics::add(const string name, const string stage_name,
                   std::shared_ptr<Serializable> metric) {
     if (name.empty()) {
-        ERROR("Empty metric name. Exiting.");
+        ERROR_NON_OO("Empty metric name. Exiting.");
         throw std::runtime_error("Empty metric name.");
     }
     if (stage_name.empty()) {
-        ERROR("Empty stage for metric %s. Exiting.", name.c_str());
-        throw std::runtime_error("Empty stage name: " + name);
+        ERROR_NON_OO("Empty stage for metric {:s}. Exiting.", name);
+        throw std::runtime_error(fmt::format(fmt("Empty stage name: {:s}"), name));
     }
 
     std::lock_guard<std::mutex> lock(metrics_lock);
 
     auto key = std::make_tuple(name, stage_name);
     if (families.count(key)) {
-        ERROR("Duplicate metric name: %s. Exiting.", (name + ":" + stage_name).c_str());
-        throw std::runtime_error("Duplicate metric name: " + name + ":" + stage_name);
+        ERROR_NON_OO("Duplicate metric name: {:s}:{:s}. Exiting.", name, stage_name);
+        throw std::runtime_error(
+            fmt::format(fmt("Duplicate metric name: {:s}:{:s}"), name, stage_name));
     }
     families[key] = metric;
 }
@@ -184,6 +185,19 @@ MetricFamily<Counter>& Metrics::add_counter(const string& name, const string& st
         name, stage_name, label_names, MetricFamily<Counter>::MetricType::Counter));
     add(name, stage_name, f);
     return *f;
+}
+
+
+void Metrics::remove_stage_metrics(const string& stage_name) {
+    std::lock_guard<std::mutex> lock(metrics_lock);
+
+    for (auto it = std::begin(families), last = std::end(families); it != last;) {
+        if (std::get<1>(it->first) == stage_name) {
+            it = families.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 
