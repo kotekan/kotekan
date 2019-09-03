@@ -45,7 +45,7 @@ void constDataCheck::main_thread() {
             if (real != rfr || imag != rfi) {
                 if (num_errors++ < 1000)
                     FATAL_ERROR("{:s}[{:d}][{:d}] != {:d} + {:d}i; actual value: {:d} + {:d}i",
-                          buf->buffer_name, frame_id, i / 2, rfr, rfi, real, imag);
+                                buf->buffer_name, frame_id, i / 2, rfr, rfi, real, imag);
                 error = true;
             }
         }

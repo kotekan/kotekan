@@ -89,7 +89,8 @@ void testDataCheck<A_Type>::main_thread() {
                     error = true;
                     num_errors += 1;
                     if (num_errors < 20) {
-                        FATAL_ERROR("{:s}[{:d}][{:d}] != {:s}[{:d}][{:d}]; values: ({:f}, {:f}), epsilon: {:f}, "
+                        FATAL_ERROR("{:s}[{:d}][{:d}] != {:s}[{:d}][{:d}]; values: ({:f}, {:f}), "
+                                    "epsilon: {:f}, "
                                     "abs(x-y): {:f}, epsilon * abs(x+y): {:f}",
                                     first_buf->buffer_name, first_buf_id, i,
                                     second_buf->buffer_name, second_buf_id, i, (double)first_value,
