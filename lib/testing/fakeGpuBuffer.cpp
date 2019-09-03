@@ -103,7 +103,7 @@ void fakeGpuBuffer::main_thread() {
         if (output == NULL)
             break;
 
-        DEBUG("Simulating GPU buffer in %s[%d]", out_buf->buffer_name, frame_id);
+        DEBUG("Simulating GPU buffer in {:s}[{:d}]", out_buf->buffer_name, frame_id);
 
         allocate_new_metadata_object(out_buf, frame_id);
         set_fpga_seq_num(out_buf, frame_id, fpga_seq);
@@ -131,7 +131,7 @@ void fakeGpuBuffer::main_thread() {
 
         // Cause kotekan to exit if we've hit the maximum number of frames
         if (num_frames > 0 && frame_count > num_frames) {
-            INFO("Reached frame limit [%i frames]. Exiting kotekan...", num_frames);
+            INFO("Reached frame limit [{:d} frames]. Exiting kotekan...", num_frames);
             exit_kotekan(ReturnCode::CLEAN_EXIT);
             return;
         }
@@ -152,7 +152,7 @@ void fakeGpuBuffer::fill_mode_block(int32_t* data, int frame_number, chimeMetada
     int nb1 = num_elements / block_size;
     int num_blocks = nb1 * (nb1 + 1) / 2;
 
-    DEBUG("Block size %i, num blocks %i", block_size, num_blocks);
+    DEBUG("Block size {:d}, num blocks {:d}", block_size, num_blocks);
 
     for (int b = 0; b < num_blocks; ++b) {
         for (int y = 0; y < block_size; ++y) {
@@ -243,12 +243,12 @@ void fakeGpuBuffer::fill_mode_pulsar(int32_t* data, int frame_number, chimeMetad
         std::fill(data, data + num_elements * (num_elements + 1), 0);
     }
 
-    DEBUG2("GPS time %ds%dns", metadata->gps_time.tv_sec, metadata->gps_time.tv_nsec);
+    DEBUG2("GPS time {:d}s {:d}ns", metadata->gps_time.tv_sec, metadata->gps_time.tv_nsec);
 
     // Figure out if we are in a pulse
     double toa = polyco->next_toa(metadata->gps_time, freq_from_bin(freq));
     double last_toa = toa - 1. / rot_freq;
-    DEBUG2("TOA: %f, last TOA: %f", toa, last_toa);
+    DEBUG2("TOA: {:f}, last TOA: {:f}", toa, last_toa);
 
     // TODO: CHIME specific
     // If so, add 10 to real part

@@ -25,6 +25,6 @@ hsaSubframeCommand::hsaSubframeCommand(Config& config, const string& unique_name
         throw std::runtime_error("The number of subframes must divide the number of samples");
     }
 
-    DEBUG2("sub_frame_index: %i, num_sub_frames: %i, sub_frame_samples: %i", _sub_frame_index,
+    DEBUG2("sub_frame_index: {:d}, num_sub_frames: {:d}, sub_frame_samples: {:d}", _sub_frame_index,
            _num_sub_frames, _sub_frame_samples);
 }

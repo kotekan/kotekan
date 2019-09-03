@@ -2,6 +2,7 @@
 #define VIS_FILE_ARCHIVE_HPP
 
 #include "Config.hpp"
+#include "kotekanLogging.hpp"
 #include "visUtil.hpp"
 
 #include <highfive/H5DataSet.hpp>
@@ -21,7 +22,7 @@
  *
  * @author Richard Shaw
  **/
-class visFileArchive {
+class visFileArchive : public kotekan::kotekanLogging {
 
 public:
     /**
@@ -41,7 +42,7 @@ public:
     visFileArchive(const std::string& name, const std::map<std::string, std::string>& metadata,
                    const std::vector<time_ctype>& times, const std::vector<freq_ctype>& freqs,
                    const std::vector<input_ctype>& inputs, const std::vector<prod_ctype>& prods,
-                   size_t num_ev, std::vector<int> chunk_size);
+                   size_t num_ev, std::vector<int> chunk_size, const kotekan::logLevel log_level);
     /**
      * @brief Creates a visFileArchive object.
      *
@@ -62,7 +63,7 @@ public:
                    const std::vector<time_ctype>& times, const std::vector<freq_ctype>& freqs,
                    const std::vector<input_ctype>& inputs, const std::vector<prod_ctype>& prods,
                    const std::vector<stack_ctype>& stack, std::vector<rstack_ctype>& reverse_stack,
-                   size_t num_ev, std::vector<int> chunk_size);
+                   size_t num_ev, std::vector<int> chunk_size, const kotekan::logLevel log_level);
 
     /**
      * @brief Destructor.

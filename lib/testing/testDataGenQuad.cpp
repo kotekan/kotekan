@@ -90,8 +90,7 @@ void testDataGenQuad::main_thread() {
         usleep(125829);
 
         for (int i = 0; i < 4; i++) {
-            INFO("Skipped a %s test data set in %s[%d]", type.c_str(), buf[i]->buffer_name,
-                 frame_id);
+            INFO("Skipped a {:s} test data set in {:s}[{:d}]", type, buf[i]->buffer_name, frame_id);
             mark_frame_full(buf[i], unique_name.c_str(), frame_id);
         }
 

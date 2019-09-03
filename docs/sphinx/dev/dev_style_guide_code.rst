@@ -147,7 +147,8 @@ file <https://github.com/kotekan/kotekan/blob/master/.clang-format>`_.
 
 
 Disabling Code Formatting
- ^^^^^^^^^^^^^^^^^^^^^^^^^^
+ ^^^^^^^^^^^^^^^^^^^^^^^^
+
 If you write a piece of code that you want to be excluded from auto-formatting,
 you can prepend ``// clang-format off`` or ``/* clang-format off */`` and append
 ``// clang-format on`` or ``/* clang-format on */``.

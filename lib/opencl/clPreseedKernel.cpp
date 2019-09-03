@@ -103,12 +103,12 @@ void clPreseedKernel::defineOutputDataMap() {
     id_x_map = clCreateBuffer(device.get_context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                               _num_blocks * sizeof(cl_uint), global_id_x_map, &err);
     if (err) {
-        ERROR("Error in clCreateBuffer %i\n", err);
+        ERROR("Error in clCreateBuffer {:d}\n", err);
     }
 
     id_y_map = clCreateBuffer(device.get_context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                               _num_blocks * sizeof(cl_uint), global_id_y_map, &err);
     if (err) {
-        ERROR("Error in clCreateBuffer %i\n", err);
+        ERROR("Error in clCreateBuffer {:d}\n", err);
     }
 }

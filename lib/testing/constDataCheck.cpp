@@ -30,7 +30,7 @@ void constDataCheck::main_thread() {
         if (frame == NULL)
             break;
 
-        DEBUG("constDataCheck: Got buffer %s[%d]", buf->buffer_name, frame_id);
+        DEBUG("constDataCheck: Got buffer {:s}[{:d}]", buf->buffer_name, frame_id);
 
         bool error = false;
         num_errors = 0;
@@ -44,15 +44,15 @@ void constDataCheck::main_thread() {
 
             if (real != rfr || imag != rfi) {
                 if (num_errors++ < 1000)
-                    FATAL_ERROR("%s[%d][%d] != %d + %di; actual value: %d + %di", buf->buffer_name,
-                                frame_id, i / 2, rfr, rfi, real, imag);
+                    FATAL_ERROR("{:s}[{:d}][{:d}] != {:d} + {:d}i; actual value: {:d} + {:d}i",
+                          buf->buffer_name, frame_id, i / 2, rfr, rfi, real, imag);
                 error = true;
             }
         }
 
         if (!error)
-            INFO("The buffer %s[%d] passed all checks; contains all (%d + %di)", buf->buffer_name,
-                 frame_id, rfr, rfi);
+            INFO("The buffer {:s}[{:d}] passed all checks; contains all ({:d} + {:d}i)",
+                 buf->buffer_name, frame_id, rfr, rfi);
         //                    ref_real, ref_imag);
 
         mark_frame_empty(buf, unique_name.c_str(), frame_id);

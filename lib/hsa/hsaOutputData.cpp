@@ -3,6 +3,8 @@
 #include "gpsTime.h"
 #include "visUtil.hpp"
 
+#include "fmt.hpp"
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 
@@ -19,7 +21,7 @@ hsaOutputData::hsaOutputData(Config& config, const string& unique_name,
     // Each of the command objects in a subframe set outputs is only doing
     // one of every _num_sub_frame frames.  So we only register one consumer
     // and one producer name which in this case is ok to be static.
-    static_unique_name = "hsa_output_static_" + std::to_string(device.get_gpu_id());
+    static_unique_name = fmt::format(fmt("hsa_output_static_{:d}"), device.get_gpu_id());
     if (_sub_frame_index == 0) {
         register_consumer(network_buffer, static_unique_name.c_str());
         register_producer(output_buffer, static_unique_name.c_str());
@@ -68,8 +70,8 @@ int hsaOutputData::wait_on_precondition(int gpu_frame_id) {
 
 hsa_signal_t hsaOutputData::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
-    void* gpu_output_ptr = device.get_gpu_memory_array("corr_" + std::to_string(_sub_frame_index),
-                                                       gpu_frame_id, output_buffer->frame_size);
+    void* gpu_output_ptr = device.get_gpu_memory_array(
+        fmt::format(fmt("corr_{:d}"), _sub_frame_index), gpu_frame_id, output_buffer->frame_size);
 
     void* host_output_ptr = (void*)output_buffer->frames[output_buffer_excute_id];
 
