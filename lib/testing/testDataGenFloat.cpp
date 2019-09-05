@@ -54,7 +54,8 @@ void testDataGenFloat::main_thread() {
         // std::random_device rd;
         // std::mt19937 gen(rd());
         // std::uniform_int_distribution<> dis(0, 255);
-        if (type == "random") srand(value);       
+        if (type == "random")
+            srand(value);
         unsigned char temp_output;
         for (uint j = 0; j < buf->frame_size / sizeof(float); ++j) {
             if (type == "const") {

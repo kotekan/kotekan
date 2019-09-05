@@ -116,7 +116,8 @@ void testDataGen::main_thread() {
         // std::random_device rd;
         // std::mt19937 gen(rd());
         // std::uniform_int_distribution<> dis(0, 255);
-        if (type == "random") srand(value);       
+        if (type == "random")
+            srand(value);
         unsigned char temp_output;
         int num_elements = buf->frame_size / sizeof(uint8_t) / samples_per_data_set;
         for (uint j = 0; j < buf->frame_size / sizeof(uint8_t); ++j) {
