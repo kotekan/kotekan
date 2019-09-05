@@ -42,6 +42,7 @@
 #define _FACTORY_HPP
 
 #include "errors.h"
+#include "kotekanLogging.hpp"
 
 #include "fmt.hpp"
 
@@ -86,7 +87,7 @@ public:
         if (r.find(type) == r.end()) {
             throw std::runtime_error("Could not find subtype name within Factory");
         }
-        DEBUG(fmt::format("FACTORY({}): Creating {} instance.", typelabel(), type).c_str());
+        DEBUG_NON_OO("FACTORY({:s}): Creating {:s} instance.", typelabel(), type);
         return r.at(type)(std::forward<Args>(args)...);
     }
 
@@ -125,7 +126,7 @@ public:
     template<typename U>
     static int register_type(const std::string& type)
     {
-        DEBUG(fmt::format("FACTORY({}): Registering {}.", typelabel(), type).c_str());
+        DEBUG_NON_OO("FACTORY({:s}): Registering {:s}.", typelabel(), type);
         // Register the creation function
         type_registry()[type] = [](Args&&... args) -> T* {
             return new U(std::forward<Args>(args)...);

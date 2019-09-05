@@ -12,6 +12,7 @@
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
+#include "kotekanLogging.hpp"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
 

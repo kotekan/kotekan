@@ -96,14 +96,13 @@ protected:
             cur_seq = seq;
             port_stream_id = stream_id;
 
-            INFO("Port %d; Got StreamID: crate: %d, slot: %d, link: %d, unused: %d, start seq num: "
-                 "%" PRIu64 " current seq num: %" PRIu64 "",
+            INFO("Port {:d}; Got StreamID: crate: {:d}, slot: {:d}, link: {:d}, unused: {:d}, "
+                 "start seq num: {:d} current seq num: {:d}",
                  port, stream_id.crate_id, stream_id.slot_id, stream_id.link_id, stream_id.unused,
                  last_seq, seq);
 
             if (!check_cross_handler_alignment(last_seq)) {
-                ERROR("DPDK failed to align packets between handlers, closing kotekan!");
-                raise(SIGINT);
+                FATAL_ERROR("DPDK failed to align packets between handlers, closing kotekan!");
                 return false;
             }
 
@@ -151,19 +150,18 @@ protected:
      */
     inline bool check_packet(struct rte_mbuf* cur_mbuf) {
         if (unlikely((cur_mbuf->ol_flags | PKT_RX_IP_CKSUM_BAD) == 1)) {
-            WARN("dpdk: Got bad packet checksum on port %d", port);
+            WARN("dpdk: Got bad packet checksum on port {:d}", port);
             rx_ip_cksum_errors_total += 1;
             rx_errors_total += 1;
             return false;
         }
         if (unlikely(fpga_packet_size != cur_mbuf->pkt_len)) {
-            ERROR("Got packet with incorrect length: %d, expected %d", cur_mbuf->pkt_len,
-                  fpga_packet_size);
 
             // Getting a packet with the wrong length is almost always
             // a configuration/FPGA problem that needs to be addressed.
             // So for now we just exit kotekan with an error message.
-            raise(SIGINT);
+            FATAL_ERROR("Got packet with incorrect length: {:d}, expected {:d}", cur_mbuf->pkt_len,
+                        fpga_packet_size);
 
             rx_packet_len_errors_total += 1;
             rx_errors_total += 1;
@@ -188,9 +186,8 @@ protected:
      */
     inline bool check_order(int64_t diff) {
         if (unlikely(diff < 0)) {
-            WARN("Port: %d; Diff %" PRId64
-                 " less than zero, duplicate, bad, or out-of-order packet; last %" PRIu64
-                 "; cur: %" PRIu64 "",
+            WARN("Port: {:d}; Diff {:d} less than zero, duplicate, bad, or out-of-order packet; "
+                 "last {:d}; cur: {:d}",
                  port, diff, last_seq, cur_seq);
             rx_out_of_order_errors_total += 1;
             rx_errors_total += 1;
@@ -212,9 +209,9 @@ protected:
      */
     inline bool check_for_reset(int64_t diff) {
         if (unlikely(diff < -1000)) {
-            ERROR("The FPGAs likely reset, kotekan stopping... (FPGA seq number was less than 1000 "
-                  "of highest number seen.)");
-            raise(SIGINT);
+            FATAL_ERROR(
+                "The FPGAs likely reset, kotekan stopping... (FPGA seq number was less than 1000 "
+                "of highest number seen.)");
             return false;
         }
         return true;
@@ -258,14 +255,14 @@ protected:
         // getting packets.
         if (seq_num == std::numeric_limits<uint64_t>::max()) {
             alignment_first_seq = std::numeric_limits<uint64_t>::max();
-            DEBUG("Setting alignment value to MAX=%" PRIu64 "", alignment_first_seq);
+            DEBUG("Setting alignment value to MAX={:d}", alignment_first_seq);
             return true;
         }
 
         // This case deals with the first handler setting it's seq number.
         if (seq_num != alignment_first_seq
             && alignment_first_seq == std::numeric_limits<uint64_t>::max()) {
-            DEBUG("Port %d: Got first alignemnt value of %" PRIu64 "", port, seq_num);
+            DEBUG("Port {:d}: Got first alignemnt value of {:d}", port, seq_num);
             alignment_first_seq = seq_num;
             return true;
         }
@@ -273,13 +270,13 @@ protected:
         // This case deals with each addational handler checking if it has the same
         // first seq number.
         if (seq_num != alignment_first_seq) {
-            ERROR("Port %d: Got alignemnt value of %" PRIu64 ", but expected %" PRIu64 "", port,
-                  seq_num, alignment_first_seq);
+            ERROR("Port {:d}: Got alignemnt value of {:d}, but expected {:d}", port, seq_num,
+                  alignment_first_seq);
             return false;
         }
 
         // Additional handler(s) got the same first seq number.
-        DEBUG("Port %d: Got alignemnt value of %" PRIu64 "", port, seq_num);
+        DEBUG("Port {:d}: Got alignemnt value of {:d}", port, seq_num);
         return true;
     }
 
@@ -466,11 +463,10 @@ inline void iceBoardHandler::update_stats() {
 
     double time_now = e_time();
     if (status_cadence != 0 && (time_now - last_status_message_time) > (double)status_cadence) {
-        INFO(
-            "DPDK port %d, connected to (create = %d, slot = %d, link = %d), total packets %" PRIu64
-            " ",
-            port, port_stream_id.crate_id, port_stream_id.slot_id, port_stream_id.link_id,
-            rx_packets_total);
+        INFO("DPDK port {:d}, connected to (crate = {:d}, slot = {:d}, link = {:D}), total "
+             "packets {:d} ",
+             port, port_stream_id.crate_id, port_stream_id.slot_id, port_stream_id.link_id,
+             rx_packets_total);
         last_status_message_time = time_now;
     }
 }

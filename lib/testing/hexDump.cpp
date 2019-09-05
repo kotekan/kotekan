@@ -29,7 +29,7 @@ void hexDump::main_thread() {
         if (frame == NULL)
             break;
 
-        DEBUG("hexDump: Got buffer %s[%d]", buf->buffer_name, frame_id);
+        DEBUG("hexDump: Got buffer {:s}[{:d}]", buf->buffer_name, frame_id);
 
         hex_dump(16, (void*)&frame[offset], len);
 

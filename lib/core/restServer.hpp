@@ -2,6 +2,7 @@
 #define REST_SERVER_HPP
 
 #include "Config.hpp"
+#include "kotekanLogging.hpp"
 
 #include "json.hpp"
 

@@ -106,7 +106,7 @@ uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {
     hsa_status_t hsa_status;
 
     // Open file.
-    INFO("Loading %s %s", file_name.c_str(), kernel_name.c_str());
+    INFO("Loading {:s} {:s}", file_name, kernel_name);
     std::ifstream file(file_name, std::ios::in | std::ios::binary);
     assert(file.is_open() && file.good());
 
@@ -162,14 +162,12 @@ uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {
     uint32_t group_segment_size;
     hsa_status = hsa_executable_symbol_get_info(
         kernelSymbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_GROUP_SEGMENT_SIZE, &group_segment_size);
-    INFO("Kernel %s:%s group_segment_size %i", file_name.c_str(), kernel_name.c_str(),
-         group_segment_size);
+    INFO("Kernel {:s}:{:s} group_segment_size {:d}", file_name, kernel_name, group_segment_size);
 
     uint32_t priv_segment_size;
     hsa_status = hsa_executable_symbol_get_info(
         kernelSymbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_PRIVATE_SEGMENT_SIZE, &priv_segment_size);
-    INFO("Kernel %s:%s group_segment_size %i", file_name.c_str(), kernel_name.c_str(),
-         priv_segment_size);
+    INFO("Kernel {:s}:{:s} group_segment_size {:d}", file_name, kernel_name, priv_segment_size);
 
     // Free raw code object memory.
     free((void*)raw_code_object);
