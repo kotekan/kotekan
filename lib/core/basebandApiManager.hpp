@@ -35,7 +35,7 @@ void to_json(json& j, const basebandDumpStatus& s);
  * using the @c register_with_server() function.
  *
  * This class is a singleton, and can be accessed with @c instance(). The normal
- * use is for the @c basebandReadout stage to call @get_next_request in a
+ * use is for the @c basebandReadout stage to call @c get_next_request in a
  * loop, and when the result is non-null, use the returned @c basebandDumpStatus
  * to keep track of the data written so far. Once the writing of the data file
  * is completed, the ``state`` of the request should be set to ``DONE``.

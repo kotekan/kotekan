@@ -23,16 +23,16 @@
  * This needs to be subclassed to actualy do something with the packets, it
  * just provides a common set of functions that are needed for ICEBoard packets
  *
- * @config   alignment         UInt. Align each output frame of data to this FPGA seq number edge.
+ * @conf   alignment         UInt. Align each output frame of data to this FPGA seq number edge.
  *                                   Note it could be larger than the output frame size
  *                                   (in number of FPGA samples) but must be a multiple of that.
- * @config   sample_size       Int.  Default 2048. Size of a time samples (unlikely to change)
- * @config   fpga_packet_size  Int.  Default 4928. Full size of the FPGA packet, including Ethernet,
+ * @conf   sample_size       Int.  Default 2048. Size of a time samples (unlikely to change)
+ * @conf   fpga_packet_size  Int.  Default 4928. Full size of the FPGA packet, including Ethernet,
  *                                                 IP, UDP, and FPGA frame headers, FPGA data
  *                                                 payload, FPGA footer flags, and any padding
  *                                                 (but not the Ethernet CRC).
- * @config   samples_per_packet Int. Default 2.    The number of time samples per FPGA packet
- * @config   status_cadence    Int  Default 0      The time (in seconds between printing port
+ * @conf   samples_per_packet Int. Default 2.    The number of time samples per FPGA packet
+ * @conf   status_cadence    Int  Default 0      The time (in seconds between printing port
  *                                                 status) Default 0 == don't print.
  *
  * @par Metrics

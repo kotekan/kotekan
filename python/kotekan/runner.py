@@ -337,9 +337,6 @@ class VisWriterBuffer(OutputBuffer):
         flnm = glob.glob(self.output_dir+'/*/*.data')[0]
         return visbuffer.VisRaw(os.path.splitext(flnm)[0])
 
-#        return visbuffer.VisBuffer.load_files("%s/*%s*.dump" %
-#                                              (self.output_dir, self.name))
-
 
 class ReadVisBuffer(InputBuffer):
     """Write down a visBuffer and reads it with rawFileRead.

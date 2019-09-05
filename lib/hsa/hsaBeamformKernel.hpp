@@ -35,11 +35,11 @@
  * @requires_kernel    unpack_shift_beamform_flip.hasco
  *
  * @par REST Endpoints
- * @endpoint    /frb/update_NS_beam/<gpu id> ``POST`` Trigger re-set of
+ * @endpoint    /frb/update_NS_beam/\<gpu id\> ``POST`` Trigger re-set of
  *              FFT beam spacing in N-S
  *              requires json values      northmost_beam
  *              update config             northmost_beam
- * @endpoint    /frb/update_EW_beam/<gpu id> ``POST`` Trigger re-calculate
+ * @endpoint    /frb/update_EW_beam/\<gpu id\> ``POST`` Trigger re-calculate
  *              of phase delay for the 4 E-W brute-force formed beams
  *              requires json values      ew_id, ew_beam
  *              update config             ew_spacing[ew_id]
@@ -191,7 +191,7 @@ private:
     /// Endpoint for updating EW beams
     std::string endpoint_EW_beam;
 
-    /// Config base (@TODO this is a huge hack replace with updatable config)
+    /// Config base (@todo this is a huge hack replace with updatable config)
     string config_base;
 };
 

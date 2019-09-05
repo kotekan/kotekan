@@ -51,11 +51,11 @@ struct bufferFrameHeader {
  *        @buffer_format any
  *        @buffer_metadata any
  *
- * @config server_ip       String, the IP address of the server to send data too.
- * @config server_port     Int, default 11024. The port number on the remote server.
- * @config send_timeout    Int, default 20. The number of seconds
+ * @conf server_ip       String, the IP address of the server to send data too.
+ * @conf server_port     Int, default 11024. The port number on the remote server.
+ * @conf send_timeout    Int, default 20. The number of seconds
  *                         before @c send() times out and closes the connection.
- * @config reconnect_time  Int, default 5.  The number of seconds between
+ * @conf reconnect_time  Int, default 5.  The number of seconds between
  *                         connection attempts to the remote server.
  *
  * @par Metrics

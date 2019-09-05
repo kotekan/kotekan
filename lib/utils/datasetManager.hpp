@@ -206,7 +206,7 @@ private:
  * @metric kotekan_datasetbroker_error_count Number of errors encountered in
  *                                           communication with the broker.
  *
- * @par endpoints
+ * @par REST Endpoints
  * @endpoint    /force-update ``GET`` Forces the datasetManager to register
  *                                    all datasets and states with the
  *                                    dataset_broker.

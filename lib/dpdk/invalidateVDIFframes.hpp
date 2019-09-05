@@ -15,7 +15,7 @@
 #include <vector>
 
 /**
- * @brief Invalidate VDIF frames in the @c out_buf based on flags in the @lost_samples_buf
+ * @brief Invalidate VDIF frames in the @c out_buf based on flags in the @c lost_samples_buf
  *
  * Note the synchronization is a little non-standard here.  We wait for the buffer
  * which contains the flags to be full and register as a consumer on that buffer.
@@ -25,7 +25,7 @@
  *
  * @par Buffers
  * @buffer out_buf Kotekan buffer with VDIF frame data already filled
- *     @buffer_format Array with blocks of @C sample_size byte time samples
+ *     @buffer_format Array with blocks of @c sample_size byte time samples
  *     @buffer_metadata chimeMetadata
  * @buffer lost_samples_buf Array of flags which indicate if a sample in a given location is lost
  *     @buffer_format Array of flags uint8_t flags which are either 0 (unset) or 1 (set)

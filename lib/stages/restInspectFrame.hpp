@@ -21,7 +21,7 @@
  * testing this seems like a reasonable compromise.
  *
  * @par REST Endpoints
- * @endpoint /inspect_frame/<buffer name> ``GET`` Returns binary data from the
+ * @endpoint /inspect_frame/\<buffer name\> ``GET`` Returns binary data from the
  *           latest frame in the buffer given in @p in_buf
  *
  * @par Buffers

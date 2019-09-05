@@ -51,14 +51,14 @@ class connInstance;
  * higher bandwidth than one thread alone could support.  In libevent terms there is one base
  * thread, and @c num_threads worker threads which handle the libevent callbacks.
  *
- * @bar buffers
+ * @par buffers
  * @buffer buf The buffer which accepts new frames (producer)
  *        @buffer_format any
  *        @buffer_metadata any
  *
- * @config listen_port         Int, default 11024.  The port to listen for new connections
- * @config num_threads         Int, default 1.  The number of worker threads to use
- * @config connection_timeout  Int, default 60.  Number of seconds before timeout on transfer
+ * @conf listen_port         Int, default 11024.  The port to listen for new connections
+ * @conf num_threads         Int, default 1.  The number of worker threads to use
+ * @conf connection_timeout  Int, default 60.  Number of seconds before timeout on transfer
  *
  * @par Metrics
  * @metric kotekan_buffer_recv_transfer_time_seconds

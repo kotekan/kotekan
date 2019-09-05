@@ -618,9 +618,8 @@ public:
     /**
      * @brief Construct a gating state
      *
-     * @param  type   A string labelling the type of the gating.
-     * @param  data   Arbitrary type specific data to describe what's happening.
-     * @param  inner  Inner state.
+     * @param  spec  gateSpec to describe what's happening.
+     * @param  inner Inner state.
      **/
     gatingState(const gateSpec& spec, state_uptr inner = nullptr) :
         datasetState(std::move(inner)),

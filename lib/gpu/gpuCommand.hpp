@@ -51,8 +51,7 @@ public:
      * @param device        instance of a derived GPU device interface.
      * @param default_kernel_command (optional) function name / proper name
      *                               for a derived command
-     * @param default_file_name      (optional) external file (e.g. CL) used
-     *.                              by a command
+     * @param default_kernel_file_name  (optional) external file (e.g. CL) used by a command
      */
     gpuCommand(kotekan::Config& config, const string& unique_name,
                kotekan::bufferContainer& host_buffers, gpuDeviceInterface& device,

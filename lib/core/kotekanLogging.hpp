@@ -13,20 +13,22 @@ using std::string;
 
 namespace kotekan {
 
-// Note that the macros support fmt's python style string formatting only.
-
-// The deprecated macros with a `_F` suffix are to be used in C code only and only offer
-// printf-style string formatting. They can be found in errors.h.
-
-// Log_level
-// 0 = OFF (No logs at all)
-// 1 = ERROR (Serious error)
-// 2 = WARN (Warning about something wrong)
-// 3 = INFO (Helpful ideally short and infrequent, message about system status)
-// 4 = DEBUG (Message for debugging reasons only)
-// 5 = DEBUG2 (Super detailed debugging messages)
-// Note both DEBUG and DEBUG2 are removed entirely when building in release mode.
-enum class logLevel { OFF = 0, ERROR = 1, WARN = 2, INFO = 3, DEBUG = 4, DEBUG2 = 5 };
+/**
+ * \enum logLevel
+ * \brief Log level
+ * \note Both DEBUG and DEBUG2 are removed entirely when building in release mode.
+ * \note The macros support fmt's python style string formatting only.
+ * \note The deprecated macros with a `_F` suffix are to be used in C code only and only offer
+ *       printf-style string formatting. They can be found in errors.h.
+ */
+enum class logLevel {
+    OFF = 0,   /*!< No logs at all */
+    ERROR = 1, /*!< Serious error */
+    WARN = 2,  /*!< Warning about something wrong */
+    INFO = 3,  /*!< Helpful ideally short and infrequent, message about system status */
+    DEBUG = 4, /*!< Message for debugging reasons only */
+    DEBUG2 = 5 /*!< Super detailed debugging messages */
+};
 
 // Macro to pass a string and arguments to fmt::format including a compile-time string format check.
 #define FORMAT(m, a...) fmt::format(FMT_STRING(m), ##a)

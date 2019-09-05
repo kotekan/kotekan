@@ -118,14 +118,14 @@ protected:
  * In the end anyone should be able to use this class with their own subclass of the
  * @c dpdkRXhandler without understanding all the details about setting up the DPDK framework.
  *
- * @config   lcore_cpu_map   Array of CPU IDs which should be used for lcores (DPDK theads locked to
+ * @conf   lcore_cpu_map   Array of CPU IDs which should be used for lcores (DPDK theads locked to
  * CPU code) For example [0,6] would create 2 lcores mapped to the 1st and 7th CPU core.
- * @config   lcore_port_map  Array of arrays mapping ports to lcores (DPDK theads locked to CPU
+ * @conf   lcore_port_map  Array of arrays mapping ports to lcores (DPDK theads locked to CPU
  * code) Format is index = lcore, value = array of port IDs so @c [[0,1],[2,3]] maps lcore 0 to
  * service ports 0 and 1, and lcore 1 to service ports 2 and 3. Note there is aways one handler per
  * port, so that means there can be more than one handler per lcore.
- * @config   handlers        Array of json objections which each contain the config
- *                           line @c dpdk_handler:<handler_name> which names the hander
+ * @conf   handlers        Array of json objections which each contain the config
+ *                           line @c dpdk_handler:\<handler_name\> which names the hander
  *                           to use for the NIC port at its index in the handlers array.
  *                           Addational config for each handler can be given within each of
  *                           these objects.  For example:
@@ -138,20 +138,20 @@ protected:
  *                           `- dpdk_handler: none`.   The number of handlers much match the number
  *                           of ports in the system, even if they aren't being used by the current
  * config. There must be a valid handler for every port referenced in @c lcore_port_map
- * @config   master_lcore_cpu The CPU ID of the master lcore (which just handles simple things like
+ * @conf   master_lcore_cpu The CPU ID of the master lcore (which just handles simple things like
  *                            updating stats, and other low volume operatings)
  *
  * @par Optional config, don't change unless you know what you are doing.
- * @config   num_mbufs       Int. Default 1024  The size of the mbuf pool
- * @config   mbuf_cache_size Int. Default 250   The number of mbufs to cache
+ * @conf   num_mbufs       Int. Default 1024  The size of the mbuf pool
+ * @conf   mbuf_cache_size Int. Default 250   The number of mbufs to cache
  *                                              Basically this is to try and keep mbufs always in l3
  * by reducing the number of mbufs used by default.
- * @config   burst_size      Int. Default 32    The maximum number of packets returned by @c
+ * @conf   burst_size      Int. Default 32    The maximum number of packets returned by @c
  * rte_eth_rx_burst
- * @config   rx_ring_size    Int. Default 512   The size of the Receive ring
- * @config   tx_ring_size    Int. Default 512   The size of the Transmit ring
- * @config   max_rx_pkt_len  Int. Default 5000  The max packet size.
- * @config   jumbo_frame     Bool. Default true Enable support for Jumbo frames
+ * @conf   rx_ring_size    Int. Default 512   The size of the Receive ring
+ * @conf   tx_ring_size    Int. Default 512   The size of the Transmit ring
+ * @conf   max_rx_pkt_len  Int. Default 5000  The max packet size.
+ * @conf   jumbo_frame     Bool. Default true Enable support for Jumbo frames
  *
  * @author Andre Renard
  */
