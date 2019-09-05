@@ -340,7 +340,7 @@ void gpuBeamformSimulate::main_thread() {
         INFO("Simulating GPU beamform processing for {:s}[{:d}] putting result in {:s}[{:d}]",
              input_buf->buffer_name, input_buf_id, output_buf->buffer_name, output_buf_id);
 
-        INFO("Simulating GPU hyper fine beam processing for %s[%d] putting result in %s[%d]",
+        INFO("Simulating GPU hyper fine beam processing for {:s}[{:d}] putting result in {:s}[{:d}]",
              input_buf->buffer_name, input_buf_id, hfb_output_buf->buffer_name, output_buf_id);
         
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
