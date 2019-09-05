@@ -1,3 +1,10 @@
+# === Start Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+# === End Python 2/3 compatibility
+
 import pytest
 import numpy as np
 
@@ -69,7 +76,7 @@ def test_structure(transform_data):
     # Check that each samples is the expected shape
     for frame in transform_data:
         assert frame.metadata.num_elements == n
-        assert frame.metadata.num_prod == (n * (n + 1) / 2)
+        assert frame.metadata.num_prod == (n * (n + 1) // 2)
         assert (frame.metadata.num_ev ==
                 params['num_ev'])
 

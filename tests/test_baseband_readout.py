@@ -1,3 +1,10 @@
+# === Start Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+# === End Python 2/3 compatibility
+
 import glob
 import random
 import pytest
@@ -165,11 +172,11 @@ def test_basic(tmpdir_factory):
         assert f.attrs['time0_fpga_count'] * 2560 == rest_commands[2 + ii][2]['start_unix_nano']
         assert f.attrs['event_id'] == rest_commands[2 + ii][2]['event_id']
         assert f.attrs['freq_id'] == 0
-        assert shape == (rest_commands[2 + ii][2]['duration_nano']/2560, num_elements)
+        assert shape == (rest_commands[2 + ii][2]['duration_nano']//2560, num_elements)
         assert np.all(f['index_map/input'][:]['chan_id']
                       == np.arange(num_elements))
-        edata = f.attrs['time0_fpga_count'] + np.arange(shape[0], dtype=int)
-        edata = edata[:, None] + np.arange(shape[1], dtype=int)
+        edata = f.attrs['time0_fpga_count'] + np.arange(shape[0], dtype=np.int)
+        edata = edata[:, None] + np.arange(shape[1], dtype=np.int)
         edata = edata % 256
         assert np.all(f['baseband'][:] == edata)
 
@@ -234,7 +241,7 @@ def test_overload_no_crash(tmpdir_factory):
     spd = params['samples_per_data_set']
     n = 30
     for ii in range(n):
-        start = random.randrange(1, (ii * tf / n + 20) * spd)
+        start = random.randrange(1, (ii * tf // n + 20) * spd)
         length = random.randrange(1, spd * 5)
         rest_commands += [command_trigger(start, length, (ii+1))]
     rest_commands += [command_rest_frames(params['total_frames'])]

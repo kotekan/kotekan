@@ -1,3 +1,10 @@
+# === Start Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+# === End Python 2/3 compatibility
+
 import pytest
 import numpy as np
 import pdb
@@ -70,7 +77,7 @@ def run_flagging(tmpdir_factory, cmds):
 
 def test_clear_flags(tmpdir_factory):
     n = params['num_elements']
-    num_prod = (n * (n + 1) / 2)
+    num_prod = (n * (n + 1) // 2)
     flags_set = False
 
     # REST commands
@@ -369,7 +376,7 @@ def test_flags_wrong_type(tmpdir_factory):
     params['cadence'] = 0.1
     params['dynamic_attributes']['flagging']['bad_inputs'] = [1,4]
     n = params['num_elements']
-    num_prod = (n * (n + 1) / 2)
+    num_prod = (n * (n + 1) // 2)
     flags_set = False
 
     # REST commands

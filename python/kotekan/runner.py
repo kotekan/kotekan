@@ -1,11 +1,12 @@
 """Use Python to run a kotekan instance, particularly for testing.
 """
-# Python 2/3 compatibility
+# === Start Python 2/3 compatibility
 from __future__ import (absolute_import, division,
                         print_function, unicode_literals)
-from builtins import (ascii, bytes, chr, dict, filter, hex, input,
-                      int, map, next, oct, open, pow, range, round,
-                      str, super, zip)
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+# === End Python 2/3 compatibility
+
 
 import os
 import itertools
@@ -78,7 +79,7 @@ class KotekanRunner(object):
             kotekan_cmd = 'kotekan -c %s'
             wd = os.curdir
 
-        with tempfile.NamedTemporaryFile() as fh, \
+        with tempfile.NamedTemporaryFile(mode='w') as fh, \
              tempfile.NamedTemporaryFile() as f_out:
 
             yaml.safe_dump(config_dict, fh)
@@ -133,7 +134,7 @@ class KotekanRunner(object):
 
             # Wait for kotekan to finish and capture the output
             p.wait()
-            self.output = file(f_out.name).read()
+            self.output = open(f_out.name, 'r').read()
 
             # Print out the output from Kotekan for debugging
             print(self.output)

@@ -1,3 +1,10 @@
+# === Start Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+# === End Python 2/3 compatibility
+
 from flask import Flask, request
 import pytest
 import numpy as np
@@ -291,7 +298,7 @@ def test_pattern_noise_freq(tmpdir_factory):
       [21, -21],
       [34, -34],
       [55, -55]]
-    freq_params['freq_ids'] = range(0,30)
+    freq_params['freq_ids'] = list(range(0,30))
     freq_params['total_frames'] = 12
 
     random.seed()

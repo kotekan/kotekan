@@ -1,3 +1,10 @@
+# === Start Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+# === End Python 2/3 compatibility
+
 import pytest
 import numpy as np
 
@@ -45,11 +52,11 @@ def test_structure(vis_data):
     # Check that each samples is the expected shape
     for frame in vis_data:
         assert frame.metadata.num_elements == n
-        assert frame.metadata.num_prod == (n * (n + 1) / 2)
+        assert frame.metadata.num_prod == (n * (n + 1) // 2)
         assert (frame.metadata.num_ev == downsamp_params['num_ev'])
 
     # Check that we have the expected number of samples
-    nsamp = downsamp_params['total_frames'] / downsamp_params['num_samples']
+    nsamp = downsamp_params['total_frames'] // downsamp_params['num_samples']
     assert len(vis_data) == nsamp
 
 
@@ -81,7 +88,7 @@ def test_contents(vis_data):
     n_ev = downsamp_params['num_ev']
 
     # Reproduce expected fakeVis output
-    model_vis = np.zeros(n * (n+1) / 2, dtype=np.complex64)
+    model_vis = np.zeros(n * (n+1) // 2, dtype=np.complex64)
     ind = 0
     for i in range(n):
         for j in range(i, n):

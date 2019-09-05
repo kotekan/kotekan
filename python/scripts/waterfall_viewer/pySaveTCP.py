@@ -1,3 +1,12 @@
+# === Start Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+# === End Python 2/3 compatibility
+
+from future import standard_library
+standard_library.install_aliases()
 import time
 import threading
 import socket
@@ -75,7 +84,7 @@ freqlist = np.fromstring(info_header[:pkt_freqs * 4*2],dtype=np.float32).reshape
 freqlist = freqlist/1e6
 elemlist = np.fromstring(info_header[pkt_freqs*4*2:],dtype=np.uint8)
 
-plot_freqs=pkt_freqs/8
+plot_freqs=pkt_freqs//8
 #freqlist = freqlist.reshape(-1,plot_freqs).mean(axis=1)
 
 plot_times=128*4
@@ -117,10 +126,10 @@ def data_listener():
             output_file.close();
             data_pkt_frame_idx, data_pkt_elem_idx, data_pkt_samples_summed = struct.unpack('III',data[:pkt_header])
             d[:,data_pkt_elem_idx] += np.fromstring(data[pkt_header:],dtype=np.uint32) * 1.0 / plot_integration / data_pkt_samples_summed
-        times = np.roll(times,(data_pkt_frame_idx - last_idx)/plot_integration)
+        times = np.roll(times,(data_pkt_frame_idx - last_idx)//plot_integration)
         times[0] = sec_per_pkt_frame * (data_pkt_frame_idx - pkt_idx0) + pkt_utc0
-        waterfall = np.roll(waterfall,(data_pkt_frame_idx - last_idx)/plot_integration,axis=0)
-        waterfall[0,:,:]=10*np.log10(d.reshape(-1,pkt_freqs / plot_freqs,pkt_elems).mean(axis=1)) 
+        waterfall = np.roll(waterfall,(data_pkt_frame_idx - last_idx)//plot_integration,axis=0)
+        waterfall[0,:,:]=10*np.log10(d.reshape(-1,pkt_freqs // plot_freqs,pkt_elems).mean(axis=1)) 
         last_idx = data_pkt_frame_idx
 
 thread = threading.Thread(target=data_listener)

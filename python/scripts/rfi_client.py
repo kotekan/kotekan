@@ -8,6 +8,15 @@
 * Help: Run "python3 rfi_client.py" -H (or --Help) for how to use.
 *********************************************************************************/
 """
+# === Start Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+# === End Python 2/3 compatibility
+
+from future import standard_library
+standard_library.install_aliases()
 import threading
 import socket
 import numpy as np
@@ -28,12 +37,12 @@ def parse_dict(cmd, _dict):
         if(type(value) == dict):
             parse_dict(cmd,value)
         else:
-            if key in cmd.config.keys():
+            if key in cmd.config:
                 if(type(cmd.config[key]) == type(value)):
                     print("Setting Config Paramter %s to %s" %(key,str(value)))
                     cmd.config[key] = value
 
-class CommandLine:
+class CommandLine(object):
 
     def __init__(self):
 
@@ -266,4 +275,4 @@ if( __name__ == '__main__'):
     saveButton = Button(buttonLocation, 'Save')
     saveButton.on_clicked(callback.SaveData)
 
-    input()
+    eval(input())

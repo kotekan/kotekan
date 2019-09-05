@@ -2,6 +2,13 @@
 
 # Imports
 
+# === Start Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+# === End Python 2/3 compatibility
+
 import sys
 import matplotlib
 matplotlib.use('Agg')
@@ -50,8 +57,8 @@ for i in range(0,64):
     fig = figure()
     ax = fig.add_subplot(111)
     ma = ax.matshow(vis_real[i], cmap=cmap, aspect='equal', interpolation='none')
-    bin_num = bin_number(16, i/8, i%8)
-    title("Real visibility matrix for slot 16, link " + str(i/8) + ", index " + str(i%8) + ", frequency " + "{:4.1f}".format(frequency(bin_num)) + "MHz, bin_num: " + str(bin_num))
+    bin_num = bin_number(16, i//8, i%8)
+    title("Real visibility matrix for slot 16, link " + str(i//8) + ", index " + str(i%8) + ", frequency " + "{:4.1f}".format(frequency(bin_num)) + "MHz, bin_num: " + str(bin_num))
     xlabel("Element Number")
     ylabel("Element Number")
     divider = make_axes_locatable(ax)
@@ -63,8 +70,8 @@ for i in range(0,64):
     fig = figure()
     ax = fig.add_subplot(111)
     ma = ax.matshow(vis_imag[i], cmap=cmap, aspect='equal', interpolation='none')
-    bin_num = bin_number(16, i/8, i%8)
-    title("Imaginary visibility matrix for slot 16, link " + str(i/8) + ", index " + str(i%8) + ", frequency " + "{:4.1f}".format(frequency(bin_num)) + "MHz, bin_num: " + str(bin_num))
+    bin_num = bin_number(16, i//8, i%8)
+    title("Imaginary visibility matrix for slot 16, link " + str(i//8) + ", index " + str(i%8) + ", frequency " + "{:4.1f}".format(frequency(bin_num)) + "MHz, bin_num: " + str(bin_num))
     xlabel("Element Number")
     ylabel("Element Number")
     divider = make_axes_locatable(ax)

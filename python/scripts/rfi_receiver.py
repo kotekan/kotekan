@@ -8,10 +8,19 @@
 * Help: Run "python3 rfi_receiver.py" -H (or --Help) for how to use.
 *********************************************************************************/
 """
+# === Start Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+# === End Python 2/3 compatibility
 
+
+from future import standard_library
+standard_library.install_aliases()
 from comet import Manager, CometError
 from prometheus_client import start_http_server, Gauge
-from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 import socket
 import numpy as np
@@ -33,13 +42,13 @@ def parse_dict(cmd, _dict):
         if(type(value) == dict):
             parse_dict(cmd,value)
         else:
-            if key in cmd.config.keys():
+            if key in cmd.config:
                 if(type(cmd.config[key]) == type(value)):
                     print("Setting Config Parameter %s to %s" %(key,str(value)))
                     cmd.config[key] = value
 
 
-class CommandLine:
+class CommandLine(object):
 
     def __init__(self):
 
@@ -144,7 +153,7 @@ class CommandLine:
         else:
             print("Config registration DISABLED. This is only OK for testing.")
 
-class Stream:
+class Stream(object):
 
     def __init__(self, thread_id, mode, header, known_streams):
 
@@ -160,9 +169,9 @@ class Stream:
             elif(mode == "chime"):
                 self.bins = [self.crate*16 + self.slot_id + self.link_id*32 + self.unused *256 for i in range(header['num_local_freq'])]
             elif(mode == "vdif"):
-                self.bins = range(header['num_local_freq'])
+                self.bins = list(range(header['num_local_freq']))
             self.freqs = [800.0 - float(b) * 400.0/1024.0 for b in self.bins]
-            self.bins = np.array(self.bins).astype(int)
+            self.bins = np.array(self.bins).astype(np.int)
             self.freqs = np.array(self.freqs)
             #print("Thread id %d Stream Created %d %d %d %d %d"%(thread_id, encoded_stream_id, self.slot_id, self.link_id, self.crate, self.unused))
             #print(self.bins, self.freqs)
@@ -270,7 +279,7 @@ def data_listener(thread_id):
 
                 if(header['fpga_seq_num'][0] > app.max_seq):
 
-                    roll_amount = int(-1*max((header['fpga_seq_num'][0]-app.max_seq)/(timesteps_per_frame*frames_per_packet),waterfall.shape[1]/8))
+                    roll_amount = int(-1*max((header['fpga_seq_num'][0]-app.max_seq)//(timesteps_per_frame*frames_per_packet),waterfall.shape[1]//8))
                     #If the roll is larger than the whole waterfall (kotekan dies and rejoins)
                     if(-1*roll_amount > waterfall.shape[1]):
                         #Reset Waterfall
@@ -288,7 +297,7 @@ def data_listener(thread_id):
                         t_min += datetime.timedelta(seconds=-1*roll_amount*timestep*timesteps_per_frame*frames_per_packet)
             #if(thread_id == 1):
                 #print(header['fpga_seq_num'][0],min_seq,timesteps_per_frame,frames_per_packet, (header['fpga_seq_num'][0]-min_seq)/(float(timesteps_per_frame)*frames_per_packet), np.median(data))
-            idx = int((header['fpga_seq_num'][0]-app.min_seq)/(timesteps_per_frame*frames_per_packet))
+            idx = int((header['fpga_seq_num'][0]-app.min_seq)//(timesteps_per_frame*frames_per_packet))
             if(idx >= 0 and idx < waterfall.shape[1]): 
                 waterfall[stream_dict[header['encoded_stream_ID'][0]].bins,idx] = data
                 sk_receive_watchdogs[thread_id] = datetime.datetime.now()
@@ -360,7 +369,7 @@ def bad_input_listener(thread_id):
                 firstPacket = False
             #Add data to waterfall
             fq = stream_dict[header['encoded_stream_ID'][0]].bins
-            t = int((header['fpga_seq_num'][0]-bi_min_seq)/(timesteps_per_frame*frames_per_packet)) % bi_waterfall.shape[2]
+            t = int((header['fpga_seq_num'][0]-bi_min_seq)//(timesteps_per_frame*frames_per_packet)) % bi_waterfall.shape[2]
             if(t > max_t_pos):
                 max_t_pos = t
             bi_waterfall[fq, :, t] = data

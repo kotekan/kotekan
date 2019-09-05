@@ -1,3 +1,9 @@
+# === Start Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+# === End Python 2/3 compatibility
 
 import pytest
 import numpy as np
@@ -135,7 +141,7 @@ def test_transpose(transpose):
     n_t = writer_params['total_frames']
     n_f = len(writer_params['freq'])
     n_elems = writer_params['num_elements']
-    n_prod = n_elems * (n_elems + 1) / 2
+    n_prod = n_elems * (n_elems + 1) // 2
     n_ev = writer_params['num_ev'];
 
     # get all the data
@@ -260,7 +266,7 @@ def test_transpose_stack(transpose_stack):
     n_t = stack_params['file_length']
     n_f = len(stack_params['freq'])
     n_elems = stack_params['num_elements']
-    n_prod = n_elems * (n_elems + 1) / 2
+    n_prod = n_elems * (n_elems + 1) // 2
     n_stack = 4 * (4 * 256 - 1) + 6 * 4 * 511
     n_ev = stack_params['num_ev']
 
@@ -281,11 +287,11 @@ def test_transpose_stack(transpose_stack):
     assert f['reverse_map/stack'].shape == (n_prod,)
 
     # check the stack against those in the input file
-    with open(infile + '.meta', 'r') as f_meta:
-        meta = msgpack.load(f_meta)
+    with open(infile + '.meta', 'rb') as f_meta:
+        meta = msgpack.load(f_meta, raw=False)
 
     stack_im = np.array([ tuple(s.values()) for s in meta['index_map']['stack'] ],
-                        dtype=f['index_map/stack'].dtype)
+                        dtype=f['index_map']['stack'].dtype)
     assert (f['index_map/stack'][:] == stack_im).all()
 
     stack_rm = np.array([ tuple(s.values()) for s in meta['reverse_map']['stack'] ],

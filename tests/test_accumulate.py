@@ -1,3 +1,10 @@
+# === Start Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+# === End Python 2/3 compatibility
+
 import pytest
 import numpy as np
 
@@ -198,11 +205,11 @@ def test_structure(accumulate_data):
     # Check that each samples is the expected shape
     for frame in accumulate_data:
         assert frame.metadata.num_elements == n
-        assert frame.metadata.num_prod == (n * (n + 1) / 2)
+        assert frame.metadata.num_prod == (n * (n + 1) // 2)
         assert (frame.metadata.num_ev == 0)
 
     # Check that we have the expected number of samples
-    nsamp = accumulate_params['total_frames'] / accumulate_params['int_frames']
+    nsamp = accumulate_params['total_frames'] // accumulate_params['int_frames']
     assert len(accumulate_data) == nsamp
 
 
@@ -262,7 +269,7 @@ def test_int_time(time_data):
 
     time_per_frame = 2.56e-6 * time_params['samples_per_data_set']
     frames_per_int = (int(time_params['integration_time'] /
-                          time_per_frame) / 2) * 2
+                          time_per_frame) // 2) * 2
     delta_samp = time_params['samples_per_data_set'] * frames_per_int
     fpga0 = time_data[0].metadata.fpga_seq
 
@@ -292,7 +299,7 @@ def test_pulsar(pulsar_data):
     pulse_width += ((pulsar_params['pulse_width'] %
                      (pulsar_params['samples_per_data_set']*2.56e-6)) > 0)
     # count total number of frames in an accumulation
-    if 'num_gpu_frames' in pulsar_params.keys():
+    if 'num_gpu_frames' in pulsar_params:
         num_tot = pulsar_params['num_gpu_frames']
     else:
         num_tot = int(pulsar_params['integration_time'] /
@@ -308,8 +315,8 @@ def test_pulsar(pulsar_data):
 
     vis = pulsar_data.data['vis'][:, pulsar_params['freq']]
     # allow for one frame to be added from time to time
-    assert (vis >= (1-fudge) * 10 * pulse_width * num_pulse / num_tot).all()
-    assert (vis <= (1+fudge) * 10 * pulse_width * (num_pulse+1) / num_tot).all()
+    assert (vis >= (1-fudge) * 10 * pulse_width * num_pulse // num_tot).all()
+    assert (vis <= (1+fudge) * 10 * pulse_width * (num_pulse+1) // num_tot).all()
 
 
 def test_pulsar_metadata(pulsar_data):

@@ -1,12 +1,13 @@
 """Read a visBuffer dump into python.
 """
-# Python 2/3 compatibility
+# === Start Python 2/3 compatibility
 from __future__ import (absolute_import, division,
                         print_function, unicode_literals)
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+# === End Python 2/3 compatibility
+
 from future.utils import native_str
-from builtins import (ascii, bytes, chr, dict, filter, hex, input,
-                      int, map, next, oct, open, pow, range, round,
-                      str, super, zip)
 
 import ctypes
 import os
@@ -287,7 +288,7 @@ class VisRaw(object):
 
         # Read file metadata
         with io.open(self.meta_path, 'rb') as fh:
-            metadata = msgpack.load(fh, encoding='utf-8')
+            metadata = msgpack.load(fh, raw=False)
 
         self.index_map = metadata['index_map']
 
@@ -301,7 +302,7 @@ class VisRaw(object):
         self.num_time = metadata['structure']['ntime']
         self.num_prod = len(self.index_map['prod'])
         self.num_stack = (len(self.index_map['stack'])
-                          if 'stack' in self.index_map.keys() else self.num_prod)
+                          if 'stack' in self.index_map else self.num_prod)
         self.num_elements = len(self.index_map['input'])
         self.num_ev = len(self.index_map['ev'])
 
@@ -338,7 +339,7 @@ class VisRaw(object):
 
 def freq_id_to_stream_id(f_id):
     """ Convert a frequency ID to a stream ID. """
-    pre_encode = (0, (f_id % 16), (f_id / 16), (f_id / 256))
+    pre_encode = (0, (f_id % 16), (f_id // 16), (f_id // 256))
     stream_id = ((pre_encode[0] & 0xF) +
                  ((pre_encode[1] & 0xF) << 4) +
                  ((pre_encode[2] & 0xF) << 8) +

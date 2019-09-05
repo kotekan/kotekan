@@ -1,3 +1,10 @@
+# === Start Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+# === End Python 2/3 compatibility
+
 import pytest
 import numpy as np
 
@@ -60,7 +67,7 @@ def have_inputs_condition(prod, input_list):
 def test_subset(subset_data):
 
     n_el = subset_params['num_elements']
-    num_prod = n_el * (n_el + 1) / 2
+    num_prod = n_el * (n_el + 1) // 2
 
     vis = []
     for ii in range(num_prod):

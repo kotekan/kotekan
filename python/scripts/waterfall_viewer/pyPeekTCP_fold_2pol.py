@@ -1,3 +1,12 @@
+# === Start Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+# === End Python 2/3 compatibility
+
+from future import standard_library
+standard_library.install_aliases()
 import time
 import threading
 import socket
@@ -83,7 +92,7 @@ pkt_int_len = tcp_header[7] # samples_summed
 pkt_idx0	= tcp_header[8] # handshake_idx
 pkt_utc0	= tcp_header[9] # handshake_utc
 
-print tcp_header
+print(tcp_header)
 
 sec_per_pkt_frame = pkt_raw_cad * pkt_int_len
 
@@ -101,11 +110,11 @@ plot_phase=128
 total_integration=1024*4
 
 if (pkt_int_len > total_integration):
-	print "Pre-integrated to longer than desired time!"
-	print "{} vs {}".format(pkt_int_len, total_integration)
-	print "Resetting integration length to {}".format(pkt_int_len)
+	print("Pre-integrated to longer than desired time!")
+	print("{} vs {}".format(pkt_int_len, total_integration))
+	print("Resetting integration length to {}".format(pkt_int_len))
 	total_integration=pkt_int_len
-local_integration=total_integration / pkt_int_len
+local_integration=total_integration // pkt_int_len
 
 waterfall = np.zeros((plot_times,plot_freqs,pkt_elems),dtype=np.float32) + np.nan;
 countfold = np.zeros((plot_phase,plot_freqs,pkt_elems),dtype=np.float32);
@@ -136,16 +145,16 @@ def data_listener():
 			d[:,data_pkt_elem_idx] += np.fromstring(data[pkt_header:],dtype=np.uint32) * 1.0
 			n[:,data_pkt_elem_idx] += data_pkt_samples_summed * 1.0
 			fold_idx = np.array(((sec_per_pkt_frame * data_pkt_frame_idx + 0.5*fold_period) % fold_period) /fold_period * plot_phase,dtype=np.int32)
-			waterfold[fold_idx,:,data_pkt_elem_idx]+=np.fromstring(data[pkt_header:],dtype=np.uint32).reshape(-1,pkt_freqs / plot_freqs).mean(axis=1)
+			waterfold[fold_idx,:,data_pkt_elem_idx]+=np.fromstring(data[pkt_header:],dtype=np.uint32).reshape(-1,pkt_freqs // plot_freqs).mean(axis=1)
 			countfold[fold_idx,:,data_pkt_elem_idx]+=data_pkt_samples_summed
-		roll_idx = (data_pkt_frame_idx - last_idx)/local_integration
+		roll_idx = (data_pkt_frame_idx - last_idx)//local_integration
 		times = np.roll(times,roll_idx)
 		times[0] = sec_per_pkt_frame * (data_pkt_frame_idx - pkt_idx0) + pkt_utc0
 #		print(d,n)
 		waterfall = np.roll(waterfall,roll_idx,axis=0)
-		waterfall[0,:,:]=10*np.log10((d/n).reshape(-1,pkt_freqs / plot_freqs,pkt_elems).mean(axis=1))
+		waterfall[0,:,:]=10*np.log10((d/n).reshape(-1,pkt_freqs // plot_freqs,pkt_elems).mean(axis=1))
 		if (np.mean(n)!= total_integration):
-			print np.mean(n),np.std(n)
+			print(np.mean(n),np.std(n))
 		last_idx = data_pkt_frame_idx
 
 thread = threading.Thread(target=data_listener)

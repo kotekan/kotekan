@@ -6,8 +6,17 @@ Date: August 2017
 Compatibility: Python 2.7 & Python 3.5
 Dependencies: Astropy, PyQt5, Matplotlib, Numpy
 """
+# === Start Python 2/3 compatibility
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+# === End Python 2/3 compatibility
+
 
 #Imports
+from future import standard_library
+standard_library.install_aliases()
 import threading
 import socket
 import sys
@@ -71,7 +80,7 @@ class Settings(QDialog):
         self.freq_lower = float(self.main.freqlist[-1,-1])
         self.total_bandwidth = self.freq_upper- self.freq_lower
 
-        self.Bright_Freq_index = self.main.waterfall.shape[1]/2 
+        self.Bright_Freq_index = self.main.waterfall.shape[1]//2
         self.GraphState = 0
         self.Bright_Freq = self.freq_upper - self.Bright_Freq_index*(self.freq_lower/self.main.waterfall.shape[1])
         self.BrightnessMeasures = []
@@ -473,7 +482,7 @@ class Window(QDialog):
         self.freqlist = np.fromstring(self.info_header[:int(self.pkt_freqs) * 4*2],dtype=np.float32).reshape(-1,2)
         self.freqlist = self.freqlist/1e6
         self.elemlist = np.fromstring(self.info_header[int(self.pkt_freqs)*4*2:],dtype=np.int8)
-        self.plot_freqs = self.pkt_freqs/8
+        self.plot_freqs = self.pkt_freqs//8
         self.plot_times=256
         self.plot_phase=128
         self.total_integration=1024*8
@@ -484,7 +493,7 @@ class Window(QDialog):
             print("Resetting integration length to {}".format(self.pkt_int_len))
             self.total_integration=self.pkt_int_len
 
-        self.local_integration=self.total_integration / self.pkt_int_len
+        self.local_integration=self.total_integration // self.pkt_int_len
 
         #Intialize waterfall arrays
         self.waterfall = np.zeros((self.plot_times,int(self.plot_freqs),int(self.pkt_elems)),dtype=np.float32) + np.nan;
@@ -657,7 +666,7 @@ class Window(QDialog):
                     pulse_max = np.max(np.median(tmpdata,axis = 1))
                     pulse_max_index = np.where(np.median(tmpdata,axis = 1) == pulse_max)[0]
                     if(pulse_max_index.size > 0):
-                        tmpdata = np.roll(tmpdata,int(np.abs(pulse_max_index-tmpdata.shape[0]/2)),axis=0)
+                        tmpdata = np.roll(tmpdata,int(np.abs(pulse_max_index-tmpdata.shape[0]//2)),axis=0)
                 self.p[self.pkt_elems+i].set_data(tmpdata-np.median(tmpdata,axis=0)[np.newaxis,:])
 
             else:
@@ -757,14 +766,14 @@ def data_listener(): #Listens to Data and updates
                 n[:,data_pkt_elem_idx] += data_pkt_samples_summed * 1.0 #Store Integration lengths
                 #n[:,data_pkt_elem_idx][data_array != 0] += data_pkt_samples_summed * 1.0
                 fold_idx = np.array(int(((main.sec_per_pkt_frame * data_pkt_frame_idx + 0.5*main.fold_period) % main.fold_period) /main.fold_period * main.plot_phase),dtype=np.int32)
-                main.waterfold[int(fold_idx),:,int(data_pkt_elem_idx)] += data_array.reshape(-1,int(main.pkt_freqs / main.plot_freqs)).mean(axis=1) #Fold Waterfall
+                main.waterfold[int(fold_idx),:,int(data_pkt_elem_idx)] += data_array.reshape(-1,int(main.pkt_freqs // main.plot_freqs)).mean(axis=1) #Fold Waterfall
                 main.countfold[int(fold_idx),:,int(data_pkt_elem_idx)] += data_pkt_samples_summed
                 #main.countfold[:,15:70,:] = 0
-            roll_idx = (data_pkt_frame_idx - last_idx)/main.local_integration
+            roll_idx = (data_pkt_frame_idx - last_idx)//main.local_integration
             main.times = np.roll(main.times,int(roll_idx)) #Roll times
             main.times[0] = main.sec_per_pkt_frame * (data_pkt_frame_idx - main.pkt_idx0) + main.pkt_utc0 
             main.waterfall = np.roll(main.waterfall,int(roll_idx),axis=0)
-            main.waterfall[0,:,:]=10*np.log10((d/n).reshape(-1,int(main.pkt_freqs / main.plot_freqs),int(main.pkt_elems)).mean(axis=1)) #Add data to waterfall
+            main.waterfall[0,:,:]=10*np.log10((d/n).reshape(-1,int(main.pkt_freqs // main.plot_freqs),int(main.pkt_elems)).mean(axis=1)) #Add data to waterfall
             #main.waterfall[0,:,:] = (d/1000).reshape(-1,main.pkt_freqs / main.plot_freqs,main.pkt_elems).mean(axis=1)
             last_idx = data_pkt_frame_idx
 
