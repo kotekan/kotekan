@@ -20,6 +20,7 @@ set ( KOTEKAN_TESTING_SOURCES
       pulsarSimProcess.cpp
       visNoise.cpp
       visDrop.cpp
+      testDataGenMissingFrames.cpp
     )
 
 add_library ( kotekan_testing ${KOTEKAN_TESTING_SOURCES} )
