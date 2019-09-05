@@ -44,8 +44,8 @@ void integrateHFBData::main_thread() {
     // The maximum no. of frames before integrated data is discarded. If frames are missing for more than 2 seconds:
     // 390625 / 49152 = 7.95 frames per second 
     const uint32_t max_frames_missing = 16;
-    int32_t total_lost_timesamples = 0;
-    int64_t fpga_seq_num = 0;
+    uint32_t total_lost_timesamples = 0;
+    int64_t fpga_seq_num = 0, fpga_seq_num_start = 0, fpga_seq_num_end = 0;
     
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t* out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
@@ -68,9 +68,14 @@ void integrateHFBData::main_thread() {
       // output buffer frame so that we don't need to zero the frame
       if(frame == 0 && get_fpga_seq_num(in_buf, in_buffer_ID) % (_num_frames_to_integrate * _samples_per_data_set) == 0) {
         memcpy(&sum_data[0], &input_data[0], _num_frb_total_beams * _num_sub_freqs * sizeof(float));
-        
+       
+        INFO("\nCopying first frame...\n");
+         
         // Get the first FPGA sequence no. to check for missing frames
         fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
+        fpga_seq_num_start = fpga_seq_num;
+        fpga_seq_num_end = fpga_seq_num_start + (_num_frames_to_integrate - 1) * _samples_per_data_set;
+        frame++;
       }
       else {
 
@@ -79,20 +84,122 @@ void integrateHFBData::main_thread() {
         // TODO:JSW Store the amount of renormalisation used in the frame
         // Increment the no. of lost frames if there are missing frames
         if(fpga_seq_num_diff <= _samples_per_data_set * max_frames_missing) {
-          
-          fpga_seq_num += _samples_per_data_set;
-          total_lost_timesamples += get_fpga_seq_num(in_buf, in_buffer_ID) - fpga_seq_num;
+       
+          // When all frames have been integrated output the result
+          if(get_fpga_seq_num(in_buf, in_buffer_ID) >= fpga_seq_num_end + _samples_per_data_set) {
+        
+            INFO("\n1st output integrated frame...\n");
 
-          // Integrates data from the input buffer to the output buffer.
-          for (uint beam = 0; beam < _num_frb_total_beams; beam++) {
-            for (uint freq = 0; freq < _num_sub_freqs; freq++) {
-              sum_data[beam * _num_sub_freqs + freq] += input_data[beam * _num_sub_freqs + freq];
+            total_lost_timesamples += fpga_seq_num_end - fpga_seq_num;
+         
+            if(total_lost_timesamples > _num_frames_to_integrate * _samples_per_data_set) 
+                FATAL_ERROR("No. of lost samples too large: {:d}, fpga_seq_num_end: {:d}, fpga_seq_num: {:d}", total_lost_timesamples, fpga_seq_num_end, fpga_seq_num);
+
+            INFO("Summed {:d} frames of data. buf size: {:d}, frame size: {:d}", _num_frames_to_integrate, out_buf->frame_size / 4 * out_buf->num_frames, out_buf->frame_size);
+            INFO("No. of lost samples: {:d}", total_lost_timesamples);
+
+            // Normalise data
+            const float normalise_frac = (float)total_timesamples / (total_timesamples - total_lost_timesamples);
+
+            for (uint beam = 0; beam < _num_frb_total_beams; beam++) {
+              for (uint freq = 0; freq < _num_sub_freqs; freq++) {
+                sum_data[beam * _num_sub_freqs + freq] *= normalise_frac;
+              }
+            }
+
+            total_lost_timesamples = 0;
+            frame = 0;
+            mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
+
+            // Get a new output buffer
+            out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
+            out_frame =
+              wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
+            if (out_frame == NULL)
+              goto end_loop;
+      
+            sum_data = (float*)out_buf->frames[out_buffer_ID];
+
+            fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
+            fpga_seq_num_start = fpga_seq_num_end + _samples_per_data_set;
+
+            // Already started next integration
+            if(fpga_seq_num > fpga_seq_num_end) {
+           
+              INFO("\nStarting next integration...\n")
+
+              //total_lost_timesamples += fpga_seq_num - fpga_seq_num_start;
+        
+              memcpy(&sum_data[0], &input_data[0], _num_frb_total_beams * _num_sub_freqs * sizeof(float));  
+              fpga_seq_num_end = fpga_seq_num_start + (_num_frames_to_integrate - 1) * _samples_per_data_set;
+              frame++;
+            }
+            
+          }
+          else { 
+        
+            fpga_seq_num += _samples_per_data_set;
+            total_lost_timesamples += get_fpga_seq_num(in_buf, in_buffer_ID) - fpga_seq_num;
+            
+            fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
+            
+            INFO("\nIntegrate frame {:d}, total_lost_timesamples: {:d}...\n", frame + 1, total_lost_timesamples);
+            
+            if(total_lost_timesamples > _num_frames_to_integrate * _samples_per_data_set) 
+                FATAL_ERROR("No. of lost samples too large: {:d}, fpga_seq_num_end: {:d}, fpga_seq_num: {:d}", total_lost_timesamples, fpga_seq_num_end, fpga_seq_num);
+
+            // Integrates data from the input buffer to the output buffer.
+            for (uint beam = 0; beam < _num_frb_total_beams; beam++) {
+              for (uint freq = 0; freq < _num_sub_freqs; freq++) {
+                sum_data[beam * _num_sub_freqs + freq] += input_data[beam * _num_sub_freqs + freq];
+              }
+            }
+
+            // When all frames have been integrated output the result
+            if(get_fpga_seq_num(in_buf, in_buffer_ID) >= fpga_seq_num_end) {
+
+              INFO("\n2nd output integrated frame...\n");
+
+              INFO("Summed {:d} frames of data. buf size: {:d}, frame size: {:d}", _num_frames_to_integrate, out_buf->frame_size / 4 * out_buf->num_frames, out_buf->frame_size);
+              INFO("No. of lost samples: {:d}", total_lost_timesamples);
+
+              total_lost_timesamples += fpga_seq_num_end - fpga_seq_num;
+            
+              if(total_lost_timesamples > _num_frames_to_integrate * _samples_per_data_set) 
+                FATAL_ERROR("No. of lost samples too large: {:d}, fpga_seq_num_end: {:d}, fpga_seq_num: {:d}", total_lost_timesamples, fpga_seq_num_end, fpga_seq_num);
+
+              // Normalise data
+              const float normalise_frac = (float)total_timesamples / (total_timesamples - total_lost_timesamples);
+
+              for (uint beam = 0; beam < _num_frb_total_beams; beam++) {
+                for (uint freq = 0; freq < _num_sub_freqs; freq++) {
+                  sum_data[beam * _num_sub_freqs + freq] *= normalise_frac;
+                }
+              }
+
+              total_lost_timesamples = 0;
+              frame = 0;
+              mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
+
+              // Get a new output buffer
+              out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
+              out_frame =
+                wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
+              if (out_frame == NULL)
+                goto end_loop;
+
+              sum_data = (float*)out_buf->frames[out_buffer_ID];
+
+              fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
+              fpga_seq_num_start = fpga_seq_num;
+              fpga_seq_num_end = fpga_seq_num_start + (_num_frames_to_integrate - 1) * _samples_per_data_set;
+
             }
           }
-
         }
         // If there are large gaps in the data, discard integrated data and restart integration
         else {
+          INFO("\nRestarting integration...\n");
             
           total_lost_timesamples = 0;
           frame = 0;
@@ -102,39 +209,43 @@ void integrateHFBData::main_thread() {
         
           // Get the first FPGA sequence no. to check for missing frames
           fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
+          fpga_seq_num_start = fpga_seq_num;
+          fpga_seq_num_end = fpga_seq_num_start + (_num_frames_to_integrate - 1) * _samples_per_data_set;
 
         }
       }
 
-      frame++;
+      //frame++;
+
+      INFO("FPGA sequence number: {:d}", get_fpga_seq_num(in_buf, in_buffer_ID));
 
       // When all frames have been integrated output the result
-      if (frame == _num_frames_to_integrate && get_fpga_seq_num(in_buf, in_buffer_ID) % (_num_frames_to_integrate * _samples_per_data_set) == 0) {
+      //if ((get_fpga_seq_num(in_buf, in_buffer_ID) - fpga_seq_num_start + _samples_per_data_set) % (_num_frames_to_integrate * _samples_per_data_set) == 0) {
 
-        INFO("Summed %d frames of data. buf size: %d, frame size: %d", _num_frames_to_integrate, out_buf->frame_size / 4 * out_buf->num_frames, out_buf->frame_size);
-        INFO("No. of lost samples: %d", total_lost_timesamples);
+      //  INFO("Summed {:d} frames of data. buf size: {:d}, frame size: {:d}", _num_frames_to_integrate, out_buf->frame_size / 4 * out_buf->num_frames, out_buf->frame_size);
+      //  INFO("No. of lost samples: {:d}", total_lost_timesamples);
 
-        // Normalise data
-        const float normalise_frac = (float)total_timesamples / (total_timesamples - total_lost_timesamples);
+      //  // Normalise data
+      //  const float normalise_frac = (float)total_timesamples / (total_timesamples - total_lost_timesamples);
 
-        for (uint beam = 0; beam < _num_frb_total_beams; beam++) {
-          for (uint freq = 0; freq < _num_sub_freqs; freq++) {
-            sum_data[beam * _num_sub_freqs + freq] *= normalise_frac;
-          }
-        }
+      //  for (uint beam = 0; beam < _num_frb_total_beams; beam++) {
+      //    for (uint freq = 0; freq < _num_sub_freqs; freq++) {
+      //      sum_data[beam * _num_sub_freqs + freq] *= normalise_frac;
+      //    }
+      //  }
 
-        total_lost_timesamples = 0;
-        frame = 0;
-        mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
-        
-        // Get a new output buffer
-        out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
-        out_frame =
-          wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
-        if (out_frame == NULL)
-          goto end_loop;
+      //  total_lost_timesamples = 0;
+      //  frame = 0;
+      //  mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
+      //  
+      //  // Get a new output buffer
+      //  out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
+      //  out_frame =
+      //    wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
+      //  if (out_frame == NULL)
+      //    goto end_loop;
 
-      } // last frame
+      //} // last frame
 
       // Release the input buffers
       mark_frame_empty(in_buf, unique_name.c_str(), in_buffer_ID);
