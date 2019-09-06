@@ -9,8 +9,7 @@ pipeline {
       parallel {
         stage('Build kotekan without hardware specific options') {
           steps {
-            sh '''mkdir build_generic
-                  cd build_generic/
+            sh '''cd build/
                   cmake -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build/ -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
                   -DUSE_OMP=ON -DBOOST_TESTS=ON ..
