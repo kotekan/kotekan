@@ -9,7 +9,7 @@ Minimal Definition
 -------------------
 A minimalist stage is defined in SampleProcess.cpp and reproduced below. This should be considered a minimal stage.
 
-.. literalinclude:: ../../../lib/processes/SampleProcess.cpp
+.. literalinclude:: ../../../lib/stages/SampleProcess.cpp
     :language: c++
     :linenos:
 

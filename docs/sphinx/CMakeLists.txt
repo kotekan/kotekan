@@ -30,6 +30,7 @@ file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/_static")
 
 add_custom_target(sphinx ALL
     ${SPHINX_EXECUTABLE}
+        -W
         -q -b html
         -c "${BINARY_BUILD_DIR}"
         -d "${SPHINX_CACHE_DIR}"

@@ -10,6 +10,7 @@
 namespace kotekan {
 
 /**
+ * @class configUpdater
  * @brief Kotekan core component that creates endpoints defined in the config
  * that stages can subscribe to to receive updates.
  *
@@ -77,8 +78,9 @@ namespace kotekan {
  *
  * The stage must be ready to receive updates **before** it subscribes and it
  * has to apply save threading principles.
+ *
+ * @author Rick Nitsche
  */
-
 class configUpdater {
 public:
     /**

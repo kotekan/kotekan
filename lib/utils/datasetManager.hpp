@@ -150,6 +150,7 @@ private:
 
 
 /**
+ * @class datasetManager
  * @brief Manages sets of state changes applied to datasets.
  *
  * This is a singleton class. Use `datasetManager::instance()` to get a
