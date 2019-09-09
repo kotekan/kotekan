@@ -111,7 +111,7 @@ gen_ok:
     network_out_buf: lost_samples_buffer
 
 gpu:
-  kernel_path: "../lib/hsa/kernels/"
+  kernel_path: "../../build/lib/hsa/kernels/"
   gain_dir: "../../kotekan/"
   commands: &command_list
   - name: hsaInputData
@@ -238,6 +238,7 @@ check_data:
   real: [24576]
   imag: [0]
   const_data_check_0:
+    num_frames_to_test: 5
     kotekan_stage: constDataCheck
     in_buf: gpu_output_buffer_0
 
