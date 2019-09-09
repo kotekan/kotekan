@@ -423,10 +423,10 @@ uint8_t * swap_external_frame(struct Buffer * buf, int frame_id, uint8_t * exter
 /**
  * @brief Swaps frames between two buffers with identical size for the given frame_ids
  *
- * This function does not swap metadata.  That should be passed with the %c pass_metadata function
+ * This function does not swap metadata.  That should be passed with the @c pass_metadata function
  *
  * @warning This function should only be used with a single consumer @c from_buf, and given to a
- *          single producer @to_buf.
+ *          single producer @c to_buf.
  * @warning The buffer sizes must be identical.
  * @warning Take care with this function!
  *

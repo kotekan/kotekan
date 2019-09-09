@@ -20,7 +20,7 @@
  * @brief DPDK Packet handler which adds a final stage shuffle for systems larger than 512 elements
  *
  * @par REST Endpoints
- * @endpoint /<unique_name>/port_data ``[GET]`` Returns a large amount of stats about the port and
+ * @endpoint /\<unique_name\>/port_data ``[GET]`` Returns a large amount of stats about the port and
  * FPGA flags
  *
  * @par Buffers

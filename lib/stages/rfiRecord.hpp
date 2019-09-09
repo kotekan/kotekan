@@ -1,5 +1,5 @@
 /**
- * @file rfiRecorder.hpp
+ * @file rfiRecord.hpp
  * @brief Contains RFI data recorder for SK estimates in kotekan.
  *  - rfiRecord : public kotekan::Stage
  */

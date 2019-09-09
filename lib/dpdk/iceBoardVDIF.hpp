@@ -30,7 +30,7 @@
  * Only the frame lenght can be considered be correct.
  *
  * @par REST Endpoints
- * @endpoint /<unique_name>/port_data ``[GET]`` Returns stats about the PORT and the packets
+ * @endpoint /\<unique_name\>/port_data ``[GET]`` Returns stats about the PORT and the packets
  * received on it.
  *
  * @par Buffers
@@ -41,9 +41,9 @@
  *       @buffer_format unit8_t array of flags
  *       @buffer_metadata none
  *
- * @config station_id   Int   Default 0x4151 ('AQ') Interger stored ascii denoting the standard VDIF
+ * @conf station_id   Int   Default 0x4151 ('AQ') Interger stored ascii denoting the standard VDIF
  *                            Station ID.  AQ == ARO
- * @config offset       Int   Defailt 0.  The offset from the first element.  i.e. a value of 2
+ * @conf offset       Int   Defailt 0.  The offset from the first element.  i.e. a value of 2
  * would select the 3nd and 4rd element (one based), a value of 0 gives 1st and 2nd element
  *
  * @author Andre Renard

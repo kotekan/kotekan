@@ -65,7 +65,6 @@ public:
      * Sets a flag informing the main loop to produce a plot of the next available buffer frame.
      * @param conn         Connection object requesting the plot. Only used to reply
      * `HTTP_RESPONSE::OK`.
-     * @param json_request The contents of the REST json transmission. Ignored.
      *
      * @warning        Nobody should ever call this directly, it's only meant to service the
      *                 RESTful callback.

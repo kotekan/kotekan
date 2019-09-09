@@ -192,7 +192,7 @@ struct chimeFeed {
     /**
      * @brief Get the CHIME feed properties from an input.
      *
-     * @params input The input to calculate.
+     * @param input The input to calculate.
      *
      * @returns The feed definition.
      **/

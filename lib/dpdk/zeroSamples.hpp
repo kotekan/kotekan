@@ -8,7 +8,7 @@
 #include <vector>
 
 /**
- * @brief Zeros samples in the @c out_buf based on flags in the @lost_samples_buf
+ * @brief Zeros samples in the @c out_buf based on flags in the @c lost_samples_buf
  *
  * Note the synchronization is a little non-standard here.  We wait for the buffer
  * which contains the flags to be full and register as a consumer on that buffer.
@@ -18,25 +18,25 @@
  *
  * @par Buffers
  * @buffer out_buf Kotekan buffer with network data already filled
- *     @buffer_format Array with blocks of @C sample_size byte time samples
+ *     @buffer_format Array with blocks of @c sample_size byte time samples
  *     @buffer_metadata chimeMetadata
  * @buffer lost_samples_buf Array of flags which indicate if a sample in a given location is lost
  *     @buffer_format Array of flags uint8_t flags which are either 0 (unset) or 1 (set)
  *     @buffer_metadata chimeMetadata
  *
- * @config  sample_size               Int. Default 2048.  The size of the time samples in @c out_buf
+ * @conf  sample_size               Int. Default 2048.  The size of the time samples in @c out_buf
  *
- * @config  duplicate_ls_buffer       Bool. Default False. Whether or not to dupliate the lost
+ * @conf  duplicate_ls_buffer       Bool. Default False. Whether or not to dupliate the lost
  * samples buf
  *
- * @config  out_lost_sample_buffers   Buffers to hold the duplicated lost samples buffer. For
+ * @conf  out_lost_sample_buffers   Buffers to hold the duplicated lost samples buffer. For
  * example: out_lost_sample_buffers:
  *                                        - lost_samples_buffer_0
  *                                        - lost_samples_buffer_1
  *                                        - lost_samples_buffer_2
  *                                        - lost_samples_buffer_3
  *
- * @config  zero_value                Int Default 0x88  The 8-bit value to write overtop of bad data
+ * @conf  zero_value                Int Default 0x88  The 8-bit value to write overtop of bad data
  *                                    For offset encoded post PFB data this is 0x88
  *
  * @author Andre Renard

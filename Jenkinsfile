@@ -61,8 +61,8 @@ pipeline {
                   mkdir build-docs
                   cd build-docs/
                   cmake -DCOMPILE_DOCS=ON -DPLANTUML_PATH=/opt/plantuml/ ..
-                  cd docs/
-                  make -j 4'''
+                  make doc
+                  make sphinx'''
           }
         }
         stage('Check code formatting') {

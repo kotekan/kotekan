@@ -27,7 +27,7 @@
  *       memory which this handler did not fill because the packet was lost or invalide.
  *
  * @par REST Endpoints
- * @endpoint /<unique_name>/port_data ``[GET]`` Returns stats about the PORT and the packets
+ * @endpoint /\<unique_name\>/port_data ``[GET]`` Returns stats about the PORT and the packets
  * received on it.
  *
  * @par Buffers

@@ -19,7 +19,7 @@
  * @brief Receives gains and apply them to the output buffer.
  *
  * This stage registers as a subscriber to an updatable config block. The
- * full name of the block should be defined in the value <updatable_block>
+ * full name of the block should be defined in the value @c updatable_block
  *
  * @par Buffers
  * @buffer in_buf The input stream.
