@@ -47,17 +47,17 @@ def updatefig(*args):
     tmin=md.date2num(datetime.datetime.fromtimestamp(np.amin(times)))
     tmax=md.date2num(datetime.datetime.fromtimestamp(np.amax(times)))
     for i in np.arange(pkt_elems):
-		if medsub:
-			p[i].set_data(waterfall[:,:,i]-np.nanmedian(waterfall[:,:,i],axis=0)[np.newaxis,:])
-			tmpdata = 10*np.log10(waterfold[:,:,i]/countfold[:,:,i])
-			p[pkt_elems+i].set_data(tmpdata-np.median(tmpdata,axis=0)[np.newaxis,:])
-		else:
-			p[i].set_data(waterfall[:,:,i])
-			tmpdata = 10*np.log10(waterfold[:,:,i]/countfold[:,:,i])
-			p[pkt_elems+i].set_data(tmpdata)
-		p[i].set_extent([freqlist[0,0],freqlist[-1,-1], tmin,tmax])
-		p[i].set_clim(vmin=colorscale[0], vmax=colorscale[1])
-		p[pkt_elems+i].set_clim(vmin=colorscale[0]/10, vmax=colorscale[1]/10)
+                if medsub:
+                        p[i].set_data(waterfall[:,:,i]-np.nanmedian(waterfall[:,:,i],axis=0)[np.newaxis,:])
+                        tmpdata = 10*np.log10(waterfold[:,:,i]/countfold[:,:,i])
+                        p[pkt_elems+i].set_data(tmpdata-np.median(tmpdata,axis=0)[np.newaxis,:])
+                else:
+                        p[i].set_data(waterfall[:,:,i])
+                        tmpdata = 10*np.log10(waterfold[:,:,i]/countfold[:,:,i])
+                        p[pkt_elems+i].set_data(tmpdata)
+                p[i].set_extent([freqlist[0,0],freqlist[-1,-1], tmin,tmax])
+                p[i].set_clim(vmin=colorscale[0], vmax=colorscale[1])
+                p[pkt_elems+i].set_clim(vmin=colorscale[0]/10, vmax=colorscale[1]/10)
     return p,
 
 def receive(connection,length):
@@ -87,7 +87,7 @@ pkt_int_len = tcp_header[7] # samples_summed
 pkt_idx0	= tcp_header[8] # handshake_idx
 pkt_utc0	= tcp_header[9] # handshake_utc
 
-print tcp_header
+print(tcp_header)
 
 sec_per_pkt_frame = pkt_raw_cad * pkt_int_len
 
@@ -105,9 +105,9 @@ plot_phase=128
 total_integration=1024*8
 
 if (pkt_int_len > total_integration):
-	print "Pre-integrated to longer than desired time!"
-	print "{} vs {}".format(pkt_int_len, total_integration)
-	print "Resetting integration length to {}".format(pkt_int_len)
+	print("Pre-integrated to longer than desired time!")
+	print("{} vs {}".format(pkt_int_len, total_integration))
+	print("Resetting integration length to {}".format(pkt_int_len))
 	total_integration=pkt_int_len
 local_integration=total_integration / pkt_int_len
 
@@ -151,7 +151,7 @@ def data_listener():
 			waterfall = np.roll(waterfall,roll_idx,axis=0)
 			waterfall[0,:,:]=10*np.log10((d/n).reshape(-1,pkt_freqs / plot_freqs,pkt_elems).mean(axis=1))
 			if (np.mean(n)!= total_integration):
-				print np.mean(n),np.std(n)
+				print(np.mean(n),np.std(n))
 			last_idx = data_pkt_frame_idx
 #		except socket.error, exc:
 		except:

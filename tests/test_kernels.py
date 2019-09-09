@@ -24,7 +24,7 @@ def test_gpu_kernels():
 
     # Get list of config files in tests/ directory
     config_files = glob.glob(TEST_DIR + "/*.yaml")
-    print config_files
+    print(config_files)
 
     # Run each test in TEST_DIR
     for config in config_files:

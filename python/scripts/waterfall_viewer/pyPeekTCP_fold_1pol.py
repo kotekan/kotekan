@@ -56,17 +56,17 @@ def updatefig(*args):
     tmin=md.date2num(datetime.datetime.fromtimestamp(np.amin(times)))
     tmax=md.date2num(datetime.datetime.fromtimestamp(np.amax(times)))
     for i in np.arange(pkt_elems):
-		if medsub:
-			p[i].set_data(waterfall[:,:,i]-np.nanmedian(waterfall[:,:,i],axis=0)[np.newaxis,:])
-			tmpdata = 10*np.log10(waterfold[:,:,i]/countfold[:,:,i])
-			p[pkt_elems+i].set_data(tmpdata-np.median(tmpdata,axis=0)[np.newaxis,:])
-		else:
-			p[i].set_data(waterfall[:,:,i])
-			tmpdata = 10*np.log10(waterfold[:,:,i]/countfold[:,:,i])
-			p[pkt_elems+i].set_data(tmpdata)
-		p[i].set_extent([freqlist[0,0],freqlist[-1,-1], tmin,tmax])
-		p[i].set_clim(vmin=colorscale[0], vmax=colorscale[1])
-		p[pkt_elems+i].set_clim(vmin=colorscale[0], vmax=colorscale[1])
+                if medsub:
+                        p[i].set_data(waterfall[:,:,i]-np.nanmedian(waterfall[:,:,i],axis=0)[np.newaxis,:])
+                        tmpdata = 10*np.log10(waterfold[:,:,i]/countfold[:,:,i])
+                        p[pkt_elems+i].set_data(tmpdata-np.median(tmpdata,axis=0)[np.newaxis,:])
+                else:
+                        p[i].set_data(waterfall[:,:,i])
+                        tmpdata = 10*np.log10(waterfold[:,:,i]/countfold[:,:,i])
+                        p[pkt_elems+i].set_data(tmpdata)
+                p[i].set_extent([freqlist[0,0],freqlist[-1,-1], tmin,tmax])
+                p[i].set_clim(vmin=colorscale[0], vmax=colorscale[1])
+                p[pkt_elems+i].set_clim(vmin=colorscale[0], vmax=colorscale[1])
     return p,
 
 def receive(connection,length):
