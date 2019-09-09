@@ -40,11 +40,17 @@ def kotekan_output(tmpdir_factory):
         for ii in range(root_params["buffer_depth"]):
             frame_list.append(
                 visbuffer.VisBuffer.new_from_params(
-                    root_params["num_elements"], root_params["num_prod"], root_params["num_ev"]
+                    root_params["num_elements"],
+                    root_params["num_prod"],
+                    root_params["num_ev"],
                 )
             )
-            frame_list[ii].metadata.fpga_seq = counts_per_second * int(root_params["cadence"]) * ii
-            frame_list[ii].metadata.ctime.tv = int(start_time + int(root_params["cadence"]) * ii)
+            frame_list[ii].metadata.fpga_seq = (
+                counts_per_second * int(root_params["cadence"]) * ii
+            )
+            frame_list[ii].metadata.ctime.tv = int(
+                start_time + int(root_params["cadence"]) * ii
+            )
 
         if restartcount:
             # Have the last frame restart FPGA counts:

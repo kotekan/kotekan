@@ -115,7 +115,11 @@ def transpose(tmpdir_factory):
     outfile = tmpdir + "/transposed"
     transposer = runner.KotekanStageTester(
         "visTranspose",
-        {"outfile": outfile, "infile": infile, "chunk_size": writer_params["chunk_size"]},
+        {
+            "outfile": outfile,
+            "infile": infile,
+            "chunk_size": writer_params["chunk_size"],
+        },
         raw_buf,
         None,
         params,
@@ -169,7 +173,12 @@ def test_transpose(transpose):
     assert f_tr["vis"].shape == (n_f, n_prod, n_t)
     assert f_tr["flags/vis_weight"].shape == (n_f, n_prod, n_t)
     assert f_tr["eval"].shape == (n_f, writer_params["num_ev"], n_t)
-    assert f_tr["evec"].shape == (n_f, writer_params["num_ev"], writer_params["num_elements"], n_t)
+    assert f_tr["evec"].shape == (
+        n_f,
+        writer_params["num_ev"],
+        writer_params["num_elements"],
+        n_t,
+    )
     assert f_tr["erms"].shape == (n_f, n_t)
     assert f_tr["gain"].shape == (n_f, n_elems, n_t)
     assert f_tr["flags/inputs"].shape == (n_elems, n_t)
@@ -243,7 +252,11 @@ def transpose_stack(tmpdir_factory):
     outfile = tmpdir + "/transposed"
     transposer = runner.KotekanStageTester(
         "visTranspose",
-        {"outfile": outfile, "infile": infile, "chunk_size": writer_params["chunk_size"]},
+        {
+            "outfile": outfile,
+            "infile": infile,
+            "chunk_size": writer_params["chunk_size"],
+        },
         raw_buf,
         None,
         params,

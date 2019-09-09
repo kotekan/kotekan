@@ -71,7 +71,8 @@ pipeline {
                   cd build-check-format/
                   cmake ..
                   make clang-format
-                  git diff --exit-code'''
+                  git diff --exit-code
+                  black --check --exclude docs ..'''
           }
         }
       }

@@ -53,7 +53,9 @@ def updatefig(*args):
     tmin = md.date2num(datetime.datetime.fromtimestamp(np.amin(times)))
     tmax = md.date2num(datetime.datetime.fromtimestamp(np.amax(times)))
     if medsub:
-        p[0].set_data(waterfall[:, :, 0] - np.nanmedian(waterfall[:, :, 0], axis=0)[np.newaxis, :])
+        p[0].set_data(
+            waterfall[:, :, 0] - np.nanmedian(waterfall[:, :, 0], axis=0)[np.newaxis, :]
+        )
     else:
         p[0].set_data(waterfall[:, :, 0] - spec_baseline[np.newaxis, :])
     p[0].set_extent([freqlist[0, 0], freqlist[-1, -1], tmin, tmax])
@@ -65,7 +67,9 @@ def updatefig(*args):
     ax[0, 1].set_ylim([np.amin(times), np.amax(times)])
 
     d = np.nanmean(waterfall[:, :, 0], axis=0)
-    p[2].set_data(freqlist.reshape(plot_freqs, -1).mean(axis=1), d - spec_baseline[np.newaxis, :])
+    p[2].set_data(
+        freqlist.reshape(plot_freqs, -1).mean(axis=1), d - spec_baseline[np.newaxis, :]
+    )
     ax[1, 0].set_ylim(colorscale)
     return (p,)
 
@@ -149,7 +153,9 @@ def data_listener():
                 data_pkt_frame_idx, data_pkt_elem_idx, data_pkt_samples_summed = struct.unpack(
                     "III", data[:pkt_header]
                 )
-                d[:, data_pkt_elem_idx] += np.fromstring(data[pkt_header:], dtype=np.uint32) * 1.0
+                d[:, data_pkt_elem_idx] += (
+                    np.fromstring(data[pkt_header:], dtype=np.uint32) * 1.0
+                )
                 n[:, data_pkt_elem_idx] += data_pkt_samples_summed * 1.0
             roll_idx = (data_pkt_frame_idx - last_idx) // local_integration
             times = np.roll(times, roll_idx)
@@ -174,7 +180,9 @@ thread.daemon = True
 thread.start()
 
 time.sleep(1)
-f, ax = plt.subplots(2, 2, gridspec_kw={"height_ratios": [4, 1], "width_ratios": [4, 1]})
+f, ax = plt.subplots(
+    2, 2, gridspec_kw={"height_ratios": [4, 1], "width_ratios": [4, 1]}
+)
 f.subplots_adjust(right=0.8, top=0.95, wspace=0.0, hspace=0.0)
 ax[-1, -1].axis("off")
 
@@ -182,7 +190,9 @@ ax[-1, -1].axis("off")
 plt.ioff()
 p = []
 tmin = md.date2num(
-    datetime.datetime.fromtimestamp(pkt_utc0 - plot_times * local_integration * sec_per_pkt_frame)
+    datetime.datetime.fromtimestamp(
+        pkt_utc0 - plot_times * local_integration * sec_per_pkt_frame
+    )
 )
 tmax = md.date2num(datetime.datetime.fromtimestamp(pkt_utc0))
 times = pkt_utc0 - np.arange(plot_times) * local_integration * sec_per_pkt_frame
@@ -227,7 +237,9 @@ p.append(im)
 ax[1][0].set_xlim(freqlist[0, 0], freqlist[-1, -1])
 ax[1][0].set_ylim(colorscale)
 im, = ax[1][0].plot(
-    freqlist.reshape(plot_freqs, -1).mean(axis=1), np.nanmean(waterfall[:, :, 0], axis=0), "."
+    freqlist.reshape(plot_freqs, -1).mean(axis=1),
+    np.nanmean(waterfall[:, :, 0], axis=0),
+    ".",
 )
 p.append(im)
 ax[1][0].set_xlabel("Frequency (MHz)")

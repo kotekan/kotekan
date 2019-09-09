@@ -37,7 +37,11 @@ def written_data(tmpdir_factory):
     params["root_path"] = tmpdir
 
     test = runner.KotekanStageTester(
-        "visWriter", {"node_mode": False, "file_type": "raw"}, fakevis_buffer, None, params
+        "visWriter",
+        {"node_mode": False, "file_type": "raw"},
+        fakevis_buffer,
+        None,
+        params,
     )
 
     test.run()
@@ -133,6 +137,10 @@ def test_eigenvectors(written_data):
 
         # Check that the datasets have the correct values
         assert (evals == np.arange(ne)[np.newaxis, np.newaxis, :]).all()
-        assert (evecs.real == np.arange(ne)[np.newaxis, np.newaxis, :, np.newaxis]).all()
-        assert (evecs.imag == np.arange(ni)[np.newaxis, np.newaxis, np.newaxis, :]).all()
+        assert (
+            evecs.real == np.arange(ne)[np.newaxis, np.newaxis, :, np.newaxis]
+        ).all()
+        assert (
+            evecs.imag == np.arange(ni)[np.newaxis, np.newaxis, np.newaxis, :]
+        ).all()
         assert (erms == 1.0).all()

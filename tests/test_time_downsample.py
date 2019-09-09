@@ -78,7 +78,9 @@ def test_time(vis_data):
     ctime = np.array([timespec_to_float(v.metadata.ctime) for v in vis_data])
 
     # Check downsampled cadence
-    assert np.all(np.diff(ctime) == downsamp_params["cadence"] * downsamp_params["num_samples"])
+    assert np.all(
+        np.diff(ctime) == downsamp_params["cadence"] * downsamp_params["num_samples"]
+    )
 
 
 def test_contents(vis_data):

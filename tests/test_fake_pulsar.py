@@ -28,7 +28,9 @@ pulsar_params = {
 }
 
 accumulate_params = pulsar_params.copy()
-accumulate_params.update({"num_gpu_frames": 1, "dataset_manager": {"use_dataset_broker": False}})
+accumulate_params.update(
+    {"num_gpu_frames": 1, "dataset_manager": {"use_dataset_broker": False}}
+)
 
 
 @pytest.fixture(scope="module")

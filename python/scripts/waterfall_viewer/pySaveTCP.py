@@ -51,7 +51,8 @@ def updatefig(*args):
     for i in np.arange(pkt_elems):
         if medsub:
             p[i].set_data(
-                waterfall[:, :, i] - np.nanmedian(waterfall[:, :, i], axis=0)[np.newaxis, :]
+                waterfall[:, :, i]
+                - np.nanmedian(waterfall[:, :, i], axis=0)[np.newaxis, :]
             )
         else:
             p[i].set_data(waterfall[:, :, i])
@@ -142,7 +143,9 @@ def data_listener():
             )
         times = np.roll(times, (data_pkt_frame_idx - last_idx) // plot_integration)
         times[0] = sec_per_pkt_frame * (data_pkt_frame_idx - pkt_idx0) + pkt_utc0
-        waterfall = np.roll(waterfall, (data_pkt_frame_idx - last_idx) // plot_integration, axis=0)
+        waterfall = np.roll(
+            waterfall, (data_pkt_frame_idx - last_idx) // plot_integration, axis=0
+        )
         waterfall[0, :, :] = 10 * np.log10(
             d.reshape(-1, pkt_freqs // plot_freqs, pkt_elems).mean(axis=1)
         )
@@ -162,7 +165,9 @@ if pkt_elems == 1:
 plt.ioff()
 p = []
 tmin = md.date2num(
-    datetime.datetime.fromtimestamp(pkt_utc0 - plot_times * plot_integration * sec_per_pkt_frame)
+    datetime.datetime.fromtimestamp(
+        pkt_utc0 - plot_times * plot_integration * sec_per_pkt_frame
+    )
 )
 tmax = md.date2num(datetime.datetime.fromtimestamp(pkt_utc0))
 times = pkt_utc0 - np.arange(plot_times) * plot_integration * sec_per_pkt_frame

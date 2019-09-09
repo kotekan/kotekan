@@ -152,3 +152,10 @@ Disabling Code Formatting
 If you write a piece of code that you want to be excluded from auto-formatting,
 you can prepend ``// clang-format off`` or ``/* clang-format off */`` and append
 ``// clang-format on`` or ``/* clang-format on */``.
+
+Python Code Formatting
+----------------------
+
+All python code in this project should be formatted accoring to the `black code style
+<https://black.readthedocs.io/en/stable/the_black_code_style.html>_`. You can let black take care
+of that using `black -l 99 --exclude docs kotekan/root/dir` before you commit python code.

@@ -26,7 +26,11 @@ global_params = {
     "freq_ids": [250],
     "buffer_depth": 8,
     "updatable_config": "/gains",
-    "gains": {"kotekan_update_endpoint": "json", "start_time": old_tmstp, "tag": old_tag},
+    "gains": {
+        "kotekan_update_endpoint": "json",
+        "start_time": old_tmstp,
+        "tag": old_tag,
+    },
     "wait": True,
     "combine_gains_time": 10.0,
     "num_threads": 4,
@@ -35,7 +39,11 @@ global_params = {
 
 
 def gen_gains(
-    gains_dir, tag=None, mult_factor=1.0, nelem=global_params["num_elements"], nfreq=1024
+    gains_dir,
+    tag=None,
+    mult_factor=1.0,
+    nelem=global_params["num_elements"],
+    nfreq=1024,
 ):
 
     if tag is None:
@@ -44,7 +52,11 @@ def gen_gains(
     f = h5py.File(str(filepath), "w")
 
     dset = f.create_dataset("gain", (nfreq, nelem), dtype="c8")
-    gain = np.arange(nfreq, dtype="f2")[:, None] * 1j * np.arange(nelem, dtype="f2")[None, :]
+    gain = (
+        np.arange(nfreq, dtype="f2")[:, None]
+        * 1j
+        * np.arange(nelem, dtype="f2")[None, :]
+    )
     dset[...] = gain * mult_factor
 
     dset2 = f.create_dataset("weight", (nfreq, nelem), dtype="f")
@@ -148,7 +160,9 @@ def test_apply(tmpdir_factory):
         new_gains = load_gains(new_filepath, frqid)
         gain_weight = load_gain_weight(new_filepath, frqid)
         frame_tmstp = visutil.ts_to_double(frame.metadata.ctime)
-        gains = combine_gains(frame_tmstp, tcombine, new_tmstp, old_tmstp, new_gains, old_gains)
+        gains = combine_gains(
+            frame_tmstp, tcombine, new_tmstp, old_tmstp, new_gains, old_gains
+        )
 
         weight_factor = np.ones(n_el)
         for ii in range(len(gain_weight)):
@@ -170,8 +184,12 @@ def test_apply(tmpdir_factory):
                 * (gains[prod.input_a])
                 * np.conj((gains[prod.input_b]))
             )
-        assert (abs(frame.vis[:].real - expvis.real) <= 1e-5 * abs(frame.vis[:].real)).all()
-        assert (abs(frame.vis[:].imag - expvis.imag) <= 1e-5 * abs(frame.vis[:].imag)).all()
+        assert (
+            abs(frame.vis[:].real - expvis.real) <= 1e-5 * abs(frame.vis[:].real)
+        ).all()
+        assert (
+            abs(frame.vis[:].imag - expvis.imag) <= 1e-5 * abs(frame.vis[:].imag)
+        ).all()
 
         assert (frame.eval == np.arange(global_params["num_ev"])).all()
         evecs = (

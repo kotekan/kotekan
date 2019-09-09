@@ -28,7 +28,9 @@ data_type = header["type"]
 if data_type == "CORR_MATRIX":  # N^2
     num_elements = header["num_elements"]
     block_dims = header["block_dim"]
-    num_blocks = (num_elements // block_dims[0]) * (num_elements // block_dims[0] + 1) // 2
+    num_blocks = (
+        (num_elements // block_dims[0]) * (num_elements // block_dims[0] + 1) // 2
+    )
 
     target.write("Data Length: {}\n".format(data_length))
     target.write("Elements: {}\n".format(num_elements))
@@ -72,7 +74,9 @@ if data_type == "CORR_MATRIX":  # N^2
     vsize = ax1.get_position().size[1]  # fraction of figure occupied by axes
     axesdpi = int(2048 // (f.get_size_inches()[1] * ax1.get_position().size[1]))
 
-    plt.savefig("correlation_{}.pdf".format(time.time()), dpi=axesdpi, bbox_inches="tight")
+    plt.savefig(
+        "correlation_{}.pdf".format(time.time()), dpi=axesdpi, bbox_inches="tight"
+    )
 
 
 """

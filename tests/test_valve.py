@@ -54,7 +54,9 @@ def complete_data(tmpdir_factory):
 
     valve_params = {"out_buf": "compress_buffer"}
 
-    test = runner.KotekanStageTester("Valve", valve_params, fakevis_buffer, None, global_params)
+    test = runner.KotekanStageTester(
+        "Valve", valve_params, fakevis_buffer, None, global_params
+    )
 
     test.run()
 
@@ -85,7 +87,9 @@ def incomplete_data(tmpdir_factory):
 
     valve_params = {"out_buf": "compress_buffer"}
 
-    test = runner.KotekanStageTester("Valve", valve_params, fakevis_buffer, None, global_params)
+    test = runner.KotekanStageTester(
+        "Valve", valve_params, fakevis_buffer, None, global_params
+    )
 
     test.run()
 

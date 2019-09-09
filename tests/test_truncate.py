@@ -98,7 +98,10 @@ def vis_data_zero_weights(tmpdir_factory):
 
     test.run()
 
-    yield (out_dump_buffer.load(), visbuffer.VisBuffer.load_files("%s/*fakevis*.dump" % str(dir)))
+    yield (
+        out_dump_buffer.load(),
+        visbuffer.VisBuffer.load_files("%s/*fakevis*.dump" % str(dir)),
+    )
 
 
 def test_truncation(vis_data):
@@ -107,7 +110,8 @@ def test_truncation(vis_data):
     for frame_t, frame in zip(vis_data[0], vis_data[1]):
         assert np.any(frame.vis != frame_t.vis)
         assert np.all(
-            np.abs(frame.vis - frame_t.vis) <= np.sqrt(trunc_params["err_sq_lim"] / frame.weight)
+            np.abs(frame.vis - frame_t.vis)
+            <= np.sqrt(trunc_params["err_sq_lim"] / frame.weight)
         )
         assert np.any(frame.weight != frame_t.weight)
         assert np.all(
@@ -133,7 +137,9 @@ def test_truncation(vis_data):
 
         # test if RMSE of vis (normalised to variance) is within 5 sigma
         # of expected truncation error std deviation sqrt(err_sq_lim / 3)
-        rmse = np.sqrt(np.mean(np.abs((frame.vis - frame_t.vis)) ** 2 * np.abs(frame.weight)))
+        rmse = np.sqrt(
+            np.mean(np.abs((frame.vis - frame_t.vis)) ** 2 * np.abs(frame.weight))
+        )
         expected_rmse = np.sqrt(trunc_params["err_sq_lim"] / 3.0)
         five_sigma = 5 * expected_rmse / np.sqrt(len(frame.vis))
         assert np.all(np.abs(rmse - expected_rmse) < five_sigma)

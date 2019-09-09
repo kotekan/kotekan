@@ -25,7 +25,9 @@ __status__ = "Release Candidate"
 __developers__ = "Shiny Brar"
 
 
-def get_version(git_dir=None, python_package=None, release_branch="master", debug=False):
+def get_version(
+    git_dir=None, python_package=None, release_branch="master", debug=False
+):
     """
     Returns a version based on git tag,commits,hash and local changes.
 
@@ -155,7 +157,9 @@ def get_version(git_dir=None, python_package=None, release_branch="master", debu
                     print("branch : {}".format(branch))
             except Exception:
                 raise Exception(
-                    "Unable to use git_dir: {} to create release version.".format(git_dir)
+                    "Unable to use git_dir: {} to create release version.".format(
+                        git_dir
+                    )
                 )
 
         # Get git information based on the python_package

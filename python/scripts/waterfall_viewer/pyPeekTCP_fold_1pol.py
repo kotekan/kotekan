@@ -60,10 +60,13 @@ def updatefig(*args):
     for i in np.arange(pkt_elems):
         if medsub:
             p[i].set_data(
-                waterfall[:, :, i] - np.nanmedian(waterfall[:, :, i], axis=0)[np.newaxis, :]
+                waterfall[:, :, i]
+                - np.nanmedian(waterfall[:, :, i], axis=0)[np.newaxis, :]
             )
             tmpdata = 10 * np.log10(waterfold[:, :, i] / countfold[:, :, i])
-            p[pkt_elems + i].set_data(tmpdata - np.median(tmpdata, axis=0)[np.newaxis, :])
+            p[pkt_elems + i].set_data(
+                tmpdata - np.median(tmpdata, axis=0)[np.newaxis, :]
+            )
         else:
             p[i].set_data(waterfall[:, :, i])
             tmpdata = 10 * np.log10(waterfold[:, :, i] / countfold[:, :, i])
@@ -160,10 +163,15 @@ def data_listener():
                 data_pkt_frame_idx, data_pkt_elem_idx, data_pkt_samples_summed = struct.unpack(
                     "III", data[:pkt_header]
                 )
-                d[:, data_pkt_elem_idx] += np.fromstring(data[pkt_header:], dtype=np.uint32) * 1.0
+                d[:, data_pkt_elem_idx] += (
+                    np.fromstring(data[pkt_header:], dtype=np.uint32) * 1.0
+                )
                 n[:, data_pkt_elem_idx] += data_pkt_samples_summed * 1.0
                 fold_idx = np.array(
-                    ((sec_per_pkt_frame * data_pkt_frame_idx + 0.5 * fold_period) % fold_period)
+                    (
+                        (sec_per_pkt_frame * data_pkt_frame_idx + 0.5 * fold_period)
+                        % fold_period
+                    )
                     / fold_period
                     * plot_phase,
                     dtype=np.int32,
@@ -204,7 +212,9 @@ f.subplots_adjust(right=0.8)
 plt.ioff()
 p = []
 tmin = md.date2num(
-    datetime.datetime.fromtimestamp(pkt_utc0 - plot_times * local_integration * sec_per_pkt_frame)
+    datetime.datetime.fromtimestamp(
+        pkt_utc0 - plot_times * local_integration * sec_per_pkt_frame
+    )
 )
 tmax = md.date2num(datetime.datetime.fromtimestamp(pkt_utc0))
 times = pkt_utc0 - np.arange(plot_times) * local_integration * sec_per_pkt_frame

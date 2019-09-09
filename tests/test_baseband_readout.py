@@ -115,7 +115,10 @@ def test_io_errors_and_max_samples(tmpdir_factory):
     dump_files = run_baseband(tmpdir_factory, params, rest_commands)
     assert len(dump_files) == 1
     f = h5py.File(dump_files[0], "r")
-    assert f["baseband"].shape == (params["max_dump_samples"], default_params["num_elements"])
+    assert f["baseband"].shape == (
+        params["max_dump_samples"],
+        default_params["num_elements"],
+    )
 
 
 def test_negative_start_time(tmpdir_factory):
@@ -160,10 +163,16 @@ def test_basic(tmpdir_factory):
     for ii, f in enumerate(sorted(dump_files)):
         f = h5py.File(f, "r")
         shape = f["baseband"].shape
-        assert f.attrs["time0_fpga_count"] * 2560 == rest_commands[2 + ii][2]["start_unix_nano"]
+        assert (
+            f.attrs["time0_fpga_count"] * 2560
+            == rest_commands[2 + ii][2]["start_unix_nano"]
+        )
         assert f.attrs["event_id"] == rest_commands[2 + ii][2]["event_id"]
         assert f.attrs["freq_id"] == 0
-        assert shape == (rest_commands[2 + ii][2]["duration_nano"] // 2560, num_elements)
+        assert shape == (
+            rest_commands[2 + ii][2]["duration_nano"] // 2560,
+            num_elements,
+        )
         assert np.all(f["index_map/input"][:]["chan_id"] == np.arange(num_elements))
         edata = f.attrs["time0_fpga_count"] + np.arange(shape[0], dtype=np.int)
         edata = edata[:, None] + np.arange(shape[1], dtype=np.int)

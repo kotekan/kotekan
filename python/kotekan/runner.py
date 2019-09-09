@@ -86,7 +86,9 @@ class KotekanRunner(object):
             kotekan_cmd = "kotekan -c %s"
             wd = os.curdir
 
-        with tempfile.NamedTemporaryFile(mode="w") as fh, tempfile.NamedTemporaryFile() as f_out:
+        with tempfile.NamedTemporaryFile(
+            mode="w"
+        ) as fh, tempfile.NamedTemporaryFile() as f_out:
 
             yaml.safe_dump(config_dict, fh)
             print(yaml.safe_dump(config_dict))
@@ -114,7 +116,11 @@ class KotekanRunner(object):
                         raise ValueError("REST command not found")
 
                     try:
-                        command(rest_addr + endpoint, headers=rest_header, data=json.dumps(data))
+                        command(
+                            rest_addr + endpoint,
+                            headers=rest_header,
+                            data=json.dumps(data),
+                        )
                     except:
                         # print kotekan output if sending REST command fails
                         # (kotekan might have crashed and we want to know)
@@ -195,7 +201,8 @@ class FakeNetworkBuffer(InputBuffer):
                 "metadata_pool": "main_pool",
                 "num_frames": "buffer_depth",
                 "frame_size": (
-                    "samples_per_data_set * num_elements" "* num_local_freq * num_data_sets"
+                    "samples_per_data_set * num_elements"
+                    "* num_local_freq * num_data_sets"
                 ),
             }
         }
@@ -444,7 +451,9 @@ class DumpVisBuffer(OutputBuffer):
         dumps : list of VisBuffer
             The buffer output.
         """
-        return visbuffer.VisBuffer.load_files("%s/*%s*.dump" % (self.output_dir, self.name))
+        return visbuffer.VisBuffer.load_files(
+            "%s/*%s*.dump" % (self.output_dir, self.name)
+        )
 
 
 class ReadRawBuffer(InputBuffer):
@@ -574,14 +583,20 @@ class KotekanStageTester(KotekanRunner):
 
         if parallel_stage_type is not None:
             parallel_config["kotekan_stage"] = parallel_stage_type
-            stage_block.update({(parallel_stage_type + "_test_parallel"): parallel_config})
+            stage_block.update(
+                {(parallel_stage_type + "_test_parallel"): parallel_config}
+            )
 
         if noise:
             stage_block.update(noise_block)
             buffer_block.update(noise_buffer)
 
         super(KotekanStageTester, self).__init__(
-            buffer_block, stage_block, global_config, rest_commands, expect_failure=expect_failure
+            buffer_block,
+            stage_block,
+            global_config,
+            rest_commands,
+            expect_failure=expect_failure,
         )
 
 

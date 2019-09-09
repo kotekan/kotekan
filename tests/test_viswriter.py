@@ -40,7 +40,9 @@ def written_data_base(outdir, stage_extra=None, root_extra=None):
     if stage_extra is not None:
         stage_params.update(stage_extra)
 
-    test = runner.KotekanStageTester("visWriter", stage_params, fakevis_buffer, None, root_params)
+    test = runner.KotekanStageTester(
+        "visWriter", stage_params, fakevis_buffer, None, root_params
+    )
 
     test.run()
 
@@ -151,8 +153,12 @@ def test_eigenvectors(written_data_ev):
 
         # Check that the datasets have the correct values
         assert (evals == np.arange(ne)[np.newaxis, np.newaxis, :]).all()
-        assert (evecs.real == np.arange(ne)[np.newaxis, np.newaxis, :, np.newaxis]).all()
-        assert (evecs.imag == np.arange(ni)[np.newaxis, np.newaxis, np.newaxis, :]).all()
+        assert (
+            evecs.real == np.arange(ne)[np.newaxis, np.newaxis, :, np.newaxis]
+        ).all()
+        assert (
+            evecs.imag == np.arange(ni)[np.newaxis, np.newaxis, np.newaxis, :]
+        ).all()
         assert (erms == 1.0).all()
 
 

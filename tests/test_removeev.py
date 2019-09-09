@@ -27,7 +27,9 @@ def remove_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanStageTester("removeEv", {}, fakevis_buffer, dump_buffer, remove_params)
+    test = runner.KotekanStageTester(
+        "removeEv", {}, fakevis_buffer, dump_buffer, remove_params
+    )
 
     test.run()
 

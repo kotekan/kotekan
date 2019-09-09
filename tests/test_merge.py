@@ -36,7 +36,9 @@ def merge_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanStageTester("bufferMerge", {}, fakevis_buffers, dump_buffer, merge_params)
+    test = runner.KotekanStageTester(
+        "bufferMerge", {}, fakevis_buffers, dump_buffer, merge_params
+    )
 
     test.run()
 
@@ -51,9 +53,13 @@ def mergewait_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("mergewait")
 
-    fakevis_fast = runner.FakeVisBuffer(freq_ids=[0], cadence=0.3, wait=True, num_frames=5)
+    fakevis_fast = runner.FakeVisBuffer(
+        freq_ids=[0], cadence=0.3, wait=True, num_frames=5
+    )
 
-    fakevis_slow = runner.FakeVisBuffer(freq_ids=[1], cadence=5.0, wait=True, num_frames=10)
+    fakevis_slow = runner.FakeVisBuffer(
+        freq_ids=[1], cadence=5.0, wait=True, num_frames=10
+    )
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
@@ -77,7 +83,8 @@ def test_metadata(merge_data):
     # Check that they appeared in the right order (i.e. the timestamps occur
     # in blocks of num freq
     assert (
-        np.ptp(np.array(fpga_seq).reshape(merge_params["total_frames"], -1), axis=1) == 0.0
+        np.ptp(np.array(fpga_seq).reshape(merge_params["total_frames"], -1), axis=1)
+        == 0.0
     ).all()
 
 

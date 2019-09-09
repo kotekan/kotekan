@@ -103,11 +103,16 @@ def mjd(unixtime):
     help="Config format to print out.",
 )
 @click.option(
-    "--offset", type=float, default=0.0, help="Add an offset (s) to the polyco phase solution."
+    "--offset",
+    type=float,
+    default=0.0,
+    help="Add an offset (s) to the polyco phase solution.",
 )
 @click.option("--send-update", is_flag=True, help="Send the update to kotekan.")
 @click.option(
-    "--no-confirm", is_flag=True, help="Don't ask for confirmation before sending update."
+    "--no-confirm",
+    is_flag=True,
+    help="Don't ask for confirmation before sending update.",
 )
 @click.option(
     "--url",
@@ -116,7 +121,10 @@ def mjd(unixtime):
     help="URL of kotekan master pulsar gating endpoint.",
 )
 @click.option(
-    "--tempo-dir", type=str, default="/usr/local/tempo2/", help="TEMPO2 runtime directory"
+    "--tempo-dir",
+    type=str,
+    default="/usr/local/tempo2/",
+    help="TEMPO2 runtime directory",
 )
 def update_polyco(
     fname,
@@ -143,7 +151,9 @@ def update_polyco(
             end = start_time + 1.0
         else:
             end = end_time
-        pfile = PolycoFile.generate(start_time, end, fname, dm, segment, ncoeff, max_ha, tempo_dir)
+        pfile = PolycoFile.generate(
+            start_time, end, fname, dm, segment, ncoeff, max_ha, tempo_dir
+        )
         # Read DM and name from parfile since TEMPO mangles them
         parfile = parse_parfile(fname)
     else:
@@ -183,7 +193,9 @@ def update_polyco(
             p.phase_ref += offset * p.f0
 
     print("\nConfig update:\n")
-    formatter = yaml.dump if format == "yaml" else json.dumps if format == "json" else repr
+    formatter = (
+        yaml.dump if format == "yaml" else json.dumps if format == "json" else repr
+    )
     print(formatter(pfile.config_block(start_time, end_time)))
 
     if send_update:

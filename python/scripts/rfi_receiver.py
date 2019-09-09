@@ -58,7 +58,9 @@ class CommandLine(object):
 
         # TODO: Install this RFI script and version.py. Get the version at install time.
         try:
-            self.git_version = subprocess.check_output(["python2", VERSION_SCRIPT]).strip()
+            self.git_version = subprocess.check_output(
+                ["python2", VERSION_SCRIPT]
+            ).strip()
         except subprocess.CalledProcessError:
             print(
                 "Failure calling {}. Make sure you run this script from kotekan/python/scripts".format(
@@ -99,7 +101,11 @@ class CommandLine(object):
             "-H", "--Help", help="Example: Help argument", required=False, default=""
         )
         parser.add_argument(
-            "-r", "--receive", help="Example: 127.0.0.1:2900", required=False, default=""
+            "-r",
+            "--receive",
+            help="Example: 127.0.0.1:2900",
+            required=False,
+            default="",
         )
         parser.add_argument(
             "-s", "--send", help="Example: 10.10.10.2:41214", required=False, default=""
@@ -127,32 +133,52 @@ class CommandLine(object):
         status = False
 
         if argument.Help:
-            print("You have used '-H' or '--Help' with argument: {0}".format(argument.Help))
+            print(
+                "You have used '-H' or '--Help' with argument: {0}".format(
+                    argument.Help
+                )
+            )
             status = True
         if argument.debug:
             print("You have used '-d' , Enabling debug mode")
             self.debug = True
             status = True
         if argument.send:
-            print("You have used '-s' or '--send' with argument: {0}".format(argument.send))
+            print(
+                "You have used '-s' or '--send' with argument: {0}".format(
+                    argument.send
+                )
+            )
             self.TCP_IP = argument.send[: argument.send.index(":")]
             self.TCP_PORT = int(argument.send[argument.send.index(":") + 1 :])
             print("Setting TCP IP: %s PORT: %d" % (self.TCP_IP, self.TCP_PORT))
             status = True
         if argument.receive:
-            print("You have used '-r' or '--receive' with argument: {0}".format(argument.receive))
+            print(
+                "You have used '-r' or '--receive' with argument: {0}".format(
+                    argument.receive
+                )
+            )
             self.UDP_IP = argument.receive[: argument.receive.index(":")]
             self.UDP_PORT = int(argument.receive[argument.receive.index(":") + 1 :])
             print("Setting UDP IP: %s PORT: %d" % (self.UDP_IP, self.UDP_PORT))
             status = True
         if argument.config:
-            print("You have used '-c' or '--config' with argument: {0}".format(argument.config))
+            print(
+                "You have used '-c' or '--config' with argument: {0}".format(
+                    argument.config
+                )
+            )
             parse_dict(self, yaml.load(open(argument.config)))
             print(self.config)
             self.register_config(self.config)
             status = True
         if argument.mode:
-            print("You have used '-m' or '--mode' with argument: {0}".format(argument.mode))
+            print(
+                "You have used '-m' or '--mode' with argument: {0}".format(
+                    argument.mode
+                )
+            )
             if argument.mode in self.supportedModes:
                 self.mode = argument.mode
                 print("Setting mode to %s mode." % (argument.mode))
@@ -211,7 +237,10 @@ class Stream(object):
                 ]
             elif mode == "chime":
                 self.bins = [
-                    self.crate * 16 + self.slot_id + self.link_id * 32 + self.unused * 256
+                    self.crate * 16
+                    + self.slot_id
+                    + self.link_id * 32
+                    + self.unused * 256
                     for i in range(header["num_local_freq"])
                 ]
             elif mode == "vdif":
@@ -231,7 +260,10 @@ def HeaderCheck(header, app):
         print("Header Error: Only Combined RFI values are currently supported ")
         return False
     if header["sk_step"] != app.config["sk_step"]:
-        print("Header Error: SK Step does not match config; Got value %d" % (header["sk_step"]))
+        print(
+            "Header Error: SK Step does not match config; Got value %d"
+            % (header["sk_step"])
+        )
         return False
     if header["num_elements"] != app.config["num_elements"]:
         print(
@@ -259,7 +291,8 @@ def HeaderCheck(header, app):
         return False
     if header["fpga_seq_num"] < 0:
         print(
-            "Header Error: Invalid FPGA sequence Number; Got value %d" % (header["fpga_seq_num"])
+            "Header Error: Invalid FPGA sequence Number; Got value %d"
+            % (header["fpga_seq_num"])
         )
         return False
     if (
@@ -380,16 +413,22 @@ def data_listener(thread_id):
                         app.min_seq = header["fpga_seq_num"][0]
                         app.max_seq = (
                             app.min_seq
-                            + (waterfall.shape[1] - 1) * timesteps_per_frame * frames_per_packet
+                            + (waterfall.shape[1] - 1)
+                            * timesteps_per_frame
+                            * frames_per_packet
                         )
                     else:
                         # DO THE ROLL, Note: Roll Amount is negative
                         waterfall = np.roll(waterfall, roll_amount, axis=1)
                         waterfall[:, roll_amount:] = -1  # np.nan
-                        app.min_seq -= roll_amount * timesteps_per_frame * frames_per_packet
+                        app.min_seq -= (
+                            roll_amount * timesteps_per_frame * frames_per_packet
+                        )
                         app.max_seq = (
                             app.min_seq
-                            + (waterfall.shape[1] - 1) * timesteps_per_frame * frames_per_packet
+                            + (waterfall.shape[1] - 1)
+                            * timesteps_per_frame
+                            * frames_per_packet
                         )
                         # Adjust Time
                         t_min += datetime.timedelta(
@@ -546,7 +585,10 @@ def TCP_stream():
                 conn.send(waterfall.tostring())  # Send Watefall
             elif MESSAGE == "T":
                 if app.debug:
-                    print("Sending Time Data ...", len(t_min.strftime("%d-%m-%YT%H:%M:%S:%f")))
+                    print(
+                        "Sending Time Data ...",
+                        len(t_min.strftime("%d-%m-%YT%H:%M:%S:%f")),
+                    )
                 conn.send(t_min.strftime("%d-%m-%YT%H:%M:%S:%f").encode())
             elif MESSAGE == "w":
                 temp_bi_waterfall = (
@@ -582,7 +624,8 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
         np.warnings.filterwarnings("ignore", r"All-NaN (slice|axis) encountered")
         np.warnings.filterwarnings("ignore", r"Mean of empty slice")
         np.warnings.filterwarnings(
-            "ignore", r"invalid value encountered in (greater|true_divide|double_scalars)"
+            "ignore",
+            r"invalid value encountered in (greater|true_divide|double_scalars)",
         )
 
     # Bad Input Metrics
@@ -590,11 +633,15 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
         np.sum(bi_waterfall[:, :, :max_t_pos], axis=2)
         + np.count_nonzero(bi_waterfall[:, :, :max_t_pos] == -1, axis=2)
     ).astype(float)
-    mean_bi_waterfall /= max_t_pos - np.count_nonzero(bi_waterfall[:, :, :max_t_pos] == -1, axis=2)
+    mean_bi_waterfall /= max_t_pos - np.count_nonzero(
+        bi_waterfall[:, :, :max_t_pos] == -1, axis=2
+    )
     # mean_bi_waterfall = np.mean(bi_waterfall[:,:,:max_t_pos], axis = 2)
     mean_bi_waterfall[mean_bi_waterfall < 0] = np.nan
     bad_input_band = (
-        100.0 * np.nanmedian(mean_bi_waterfall, axis=0) / float(app.config["bi_frames_per_packet"])
+        100.0
+        * np.nanmedian(mean_bi_waterfall, axis=0)
+        / float(app.config["bi_frames_per_packet"])
     )
     bad_input_mask = []
     for i in range(bad_input_band.size):
@@ -620,7 +667,9 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
     else:
         max_pos = waterfall.shape[1]
     band = np.nanmedian(waterfall[:, :max_pos], axis=1)
-    med = np.nanmedian(band[band != -1])  # ((M+1)/(M-1))*(2.0*n**2/((n-2)*(n-1)) - 8.0/n - 1)
+    med = np.nanmedian(
+        band[band != -1]
+    )  # ((M+1)/(M-1))*(2.0*n**2/((n-2)*(n-1)) - 8.0/n - 1)
     std = 2.0 / np.sqrt(M)
     confidence = np.abs(waterfall[:, :max_pos] - med) / std
     rfi_mask = np.zeros_like(confidence)
@@ -628,7 +677,8 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
     rfi_mask[waterfall[:, :max_pos] == -1] = -1.0
     band_perc = 100.0 * np.sum(rfi_mask, axis=1) / float(rfi_mask.shape[1])
     fbins_mhz = np.round(
-        np.array([800.0 - float(b) * 400.0 / 1024.0 for b in np.arange(band.size)]), decimals=2
+        np.array([800.0 - float(b) * 400.0 / 1024.0 for b in np.arange(band.size)]),
+        decimals=2,
     )
     fbins = np.arange(band_perc.size)
     for i in range(band_perc.size):
@@ -659,7 +709,10 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
         print(np.where(bad_input_band > 10.0)[0])
         print(bad_input_band[np.where(bad_input_band > 10.0)])
         print("    - max_pos: %d" % (max_pos))
-        print("    - Band Computed: min %.2f max %.2f" % (np.nanmin(band), np.nanmax(band)))
+        print(
+            "    - Band Computed: min %.2f max %.2f"
+            % (np.nanmin(band), np.nanmax(band))
+        )
         print("    - Expectation of SK: %.5f Deviation of SK: %.5f" % (med, std))
         print(
             "    - Band Percent Computed: min %.2f max %.2f"
@@ -688,7 +741,9 @@ def metric_thread():
     metric_dict = dict()
     # Create Metrics:
     metric_dict["overall_rfi_sk"] = Gauge("overall_rfi_sk", "percent_masked")
-    metric_dict["overall_rfi_bad_input"] = Gauge("overall_rfi_bad_input", "number_of_bad_inputs")
+    metric_dict["overall_rfi_bad_input"] = Gauge(
+        "overall_rfi_bad_input", "number_of_bad_inputs"
+    )
     metric_dict["rfi_band"] = Gauge("rfi_band", "med_sk", ["freq", "freq_bin"])
     metric_dict["rfi_input_mask"] = Gauge(
         "rfi_input_mask", "defect_likelihood", ["input_nu", "input_num"]

@@ -452,7 +452,11 @@ def test_flags_wrong_type(tmpdir_factory):
         [
             "post",
             "dynamic_attributes/flagging",
-            {"bad_inputs": start_time, "start_time": start_time, "tag": "test_flag_update"},
+            {
+                "bad_inputs": start_time,
+                "start_time": start_time,
+                "tag": "test_flag_update",
+            },
         ]
     ]
 

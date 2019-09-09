@@ -83,7 +83,12 @@ def command_test_pattern(name, num_frames, test_pattern):
 
 
 def run_test(
-    write_dir, rest_commands=None, params=params, noise=False, name="simple", expect_failure=False
+    write_dir,
+    rest_commands=None,
+    params=params,
+    noise=False,
+    name="simple",
+    expect_failure=False,
 ):
     capo = ServerThread(app)
     capo.start()
@@ -205,7 +210,9 @@ def test_pattern_noise(tmpdir_factory):
 
     rest_commands = [command_test_pattern("simple", 3, simple_test_pattern)]
 
-    yield run_test(write_dir, rest_commands=rest_commands, noise=True, expect_failure=True)
+    yield run_test(
+        write_dir, rest_commands=rest_commands, noise=True, expect_failure=True
+    )
 
 
 def test_noise(test_pattern_noise):
@@ -340,7 +347,10 @@ def test_pattern_noise_freq(tmpdir_factory):
         freq_test_pattern[freq_params["frequencies"][i]] = freq_params["freq_values"][i]
 
     # a complex value for each frequency (30) and each input channel (3)
-    freq_test_pattern = {"dm_input_0": freq_test_pattern, "dm_input_1": freq_test_pattern}
+    freq_test_pattern = {
+        "dm_input_0": freq_test_pattern,
+        "dm_input_1": freq_test_pattern,
+    }
     rest_commands = [command_test_pattern("freq", 3, freq_test_pattern)]
 
     yield run_test(
@@ -383,7 +393,8 @@ def test_noise_freq(test_pattern_noise_freq):
             if freq_id in freq_params["frequencies"]:
                 i = freq_params["frequencies"].index(freq_id)
                 expected = np.complex64(
-                    freq_params["freq_values"][i][0] + freq_params["freq_values"][i][1] * (1j)
+                    freq_params["freq_values"][i][0]
+                    + freq_params["freq_values"][i][1] * (1j)
                 )
             else:
                 expected = np.complex64(128 + 0j)
@@ -415,9 +426,15 @@ def test_noise_freq(test_pattern_noise_freq):
                 avg_error /= num_bad
 
                 assert int(row["num_bad"]) == num_bad
-                assert float(row["avg_err"]) == pytest.approx(avg_error, abs=REPORT_PRECISION)
-                assert float(row["min_err"]) == pytest.approx(min_error, abs=REPORT_PRECISION)
-                assert float(row["max_err"]) == pytest.approx(max_error, abs=REPORT_PRECISION)
+                assert float(row["avg_err"]) == pytest.approx(
+                    avg_error, abs=REPORT_PRECISION
+                )
+                assert float(row["min_err"]) == pytest.approx(
+                    min_error, abs=REPORT_PRECISION
+                )
+                assert float(row["max_err"]) == pytest.approx(
+                    max_error, abs=REPORT_PRECISION
+                )
                 i_report += 1
             if num_to_compare == 0:
                 break
@@ -542,10 +559,12 @@ def test_noise_inputs(test_pattern_noise_inputs):
         for i in range(2):
             for j in range(i, 2):
                 expected = np.complex64(
-                    input_params["input_values"][i][0] + input_params["input_values"][i][1] * 1j
+                    input_params["input_values"][i][0]
+                    + input_params["input_values"][i][1] * 1j
                 )
                 expected *= np.complex64(
-                    input_params["input_values"][j][0] + input_params["input_values"][j][1] * 1j
+                    input_params["input_values"][j][0]
+                    + input_params["input_values"][j][1] * 1j
                 ).conj()
                 _errors.append(frame.vis[ind] - expected)
                 ind += 1

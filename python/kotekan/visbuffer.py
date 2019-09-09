@@ -107,7 +107,9 @@ class VisBuffer(object):
 
         for member in layout["members"]:
 
-            arr = np.frombuffer(_data[member["start"] : member["end"]], dtype=member["dtype"])
+            arr = np.frombuffer(
+                _data[member["start"] : member["end"]], dtype=member["dtype"]
+            )
             setattr(self, member["name"], arr)
 
     @classmethod
@@ -294,7 +296,10 @@ class VisRaw(object):
         # TODO: (Python 3) Used native_str for compatibility here
         self.time = np.array(
             [(t["fpga_count"], t["ctime"]) for t in self.index_map["time"]],
-            dtype=[(native_str("fpga_count"), np.uint64), (native_str("ctime"), np.float64)],
+            dtype=[
+                (native_str("fpga_count"), np.uint64),
+                (native_str("ctime"), np.float64),
+            ],
         )
 
         self.num_freq = metadata["structure"]["nfreq"]
@@ -317,7 +322,9 @@ class VisRaw(object):
             ("gain", np.complex64, self.num_elements),
         ]
         # TODO: Python 3 - Process dtype labels to ensure Python 2/3 compatibility
-        data_struct = np.dtype([(native_str(d[0]),) + d[1:] for d in data_struct], align=True)
+        data_struct = np.dtype(
+            [(native_str(d[0]),) + d[1:] for d in data_struct], align=True
+        )
         frame_struct = np.dtype(
             {
                 "names": ["valid", "metadata", "data"],
@@ -328,7 +335,10 @@ class VisRaw(object):
 
         # Load data into on-disk numpy array
         self.raw = np.memmap(
-            self.data_path, dtype=frame_struct, mode="r", shape=(self.num_time, self.num_freq)
+            self.data_path,
+            dtype=frame_struct,
+            mode="r",
+            shape=(self.num_time, self.num_freq),
         )
         self.data = self.raw["data"]
         self.metadata = self.raw["metadata"]

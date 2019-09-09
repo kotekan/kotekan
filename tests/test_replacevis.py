@@ -34,7 +34,9 @@ def replace_data(tmpdir_factory):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanStageTester("replaceVis", {}, fakevis_buffer, dump_buffer, replace_params)
+    test = runner.KotekanStageTester(
+        "replaceVis", {}, fakevis_buffer, dump_buffer, replace_params
+    )
 
     test.run()
 
@@ -49,5 +51,7 @@ def test_replace(replace_data):
 
     for frame in replace_data:
         assert (frame.vis.real[0::2] == frame.metadata.freq_id).all()
-        assert (frame.vis.real[1::2] == np.array(frame.metadata.fpga_seq).astype(np.float32)).all()
+        assert (
+            frame.vis.real[1::2] == np.array(frame.metadata.fpga_seq).astype(np.float32)
+        ).all()
         assert (frame.vis.imag == np.arange(frame.metadata.num_prod)).all()

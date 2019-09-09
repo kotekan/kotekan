@@ -134,7 +134,9 @@ def time_data(tmpdir_factory):
         "visAccumulate",
         {"num_ev": 4},
         runner.FakeGPUBuffer(
-            mode="accumulate", freq=time_params["freq"], num_frames=time_params["total_frames"]
+            mode="accumulate",
+            freq=time_params["freq"],
+            num_frames=time_params["total_frames"],
         ),
         dump_buffer,
         time_params,
@@ -223,7 +225,9 @@ def test_time(accumulate_data):
 
     t0 = timespec_to_float(accumulate_data[0].metadata.ctime)
 
-    delta_samp = accumulate_params["samples_per_data_set"] * accumulate_params["int_frames"]
+    delta_samp = (
+        accumulate_params["samples_per_data_set"] * accumulate_params["int_frames"]
+    )
 
     for ii, frame in enumerate(accumulate_data):
         assert frame.metadata.fpga_seq == ii * delta_samp
@@ -256,7 +260,9 @@ def test_gaussian(gaussian_data):
 
     assert np.allclose(vis_set.var(axis=0), 1e-6, rtol=1e-1, atol=0)
     assert np.allclose((1.0 / weight_set).mean(axis=0), 1e-6, rtol=1e-1, atol=0)
-    assert np.allclose(vis_set.mean(axis=0), np.identity(4)[np.triu_indices(4)], atol=1e-4, rtol=0)
+    assert np.allclose(
+        vis_set.mean(axis=0), np.identity(4)[np.triu_indices(4)], atol=1e-4, rtol=0
+    )
 
 
 def test_int_time(time_data):
@@ -298,7 +304,8 @@ def test_pulsar(pulsar_data):
         num_tot = pulsar_params["num_gpu_frames"]
     else:
         num_tot = int(
-            pulsar_params["integration_time"] / (pulsar_params["samples_per_data_set"] * 2.56e-6)
+            pulsar_params["integration_time"]
+            / (pulsar_params["samples_per_data_set"] * 2.56e-6)
         )
     actual_integration = num_tot * (pulsar_params["samples_per_data_set"] * 2.56e-6)
     # count number of pulses in an accumulation

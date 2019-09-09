@@ -36,7 +36,9 @@ def run_eigenvis(tdir_factory, params=None):
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    test = runner.KotekanStageTester("eigenVis", {}, fakevis_buffer, dump_buffer, params)
+    test = runner.KotekanStageTester(
+        "eigenVis", {}, fakevis_buffer, dump_buffer, params
+    )
 
     test.run()
     return dump_buffer.load()
@@ -72,7 +74,9 @@ def test_filled(tmpdir_factory):
         largest_eval = frame.eval[0]
         largest_evec = frame.evec[:num_elements]
         assert abs(largest_eval - num_elements) / num_elements < 1e-4
-        assert np.allclose(largest_evec / largest_evec[0], expected_evec_phase, rtol=1e-3)
+        assert np.allclose(
+            largest_evec / largest_evec[0], expected_evec_phase, rtol=1e-3
+        )
         assert np.allclose(abs(largest_evec), 1 / np.sqrt(num_elements), rtol=1e-3)
         assert frame.erms < 1e-3
 

@@ -59,13 +59,18 @@ def diagonal_data(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("diagonal")
 
     fakevis_buffer = runner.FakeVisBuffer(
-        freq_ids=diag_global_params["freq_ids"], num_frames=diag_global_params["total_frames"]
+        freq_ids=diag_global_params["freq_ids"],
+        num_frames=diag_global_params["total_frames"],
     )
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
     test = runner.KotekanStageTester(
-        "baselineCompression", diag_stage_params, fakevis_buffer, dump_buffer, diag_global_params
+        "baselineCompression",
+        diag_stage_params,
+        fakevis_buffer,
+        dump_buffer,
+        diag_global_params,
     )
 
     test.run()
@@ -87,7 +92,11 @@ def chime_data(tmpdir_factory):
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
     test = runner.KotekanStageTester(
-        "baselineCompression", chime_stage_params, fakevis_buffer, dump_buffer, chime_global_params
+        "baselineCompression",
+        chime_stage_params,
+        fakevis_buffer,
+        dump_buffer,
+        chime_global_params,
     )
 
     test.run()

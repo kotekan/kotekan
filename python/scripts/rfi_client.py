@@ -71,7 +71,11 @@ class CommandLine(object):
             "-H", "--Help", help="Example: Help argument", required=False, default=""
         )
         parser.add_argument(
-            "-r", "--receive", help="Example: 127.0.0.1:2900", required=False, default=""
+            "-r",
+            "--receive",
+            help="Example: 127.0.0.1:2900",
+            required=False,
+            default="",
         )
         parser.add_argument(
             "-c",
@@ -87,21 +91,37 @@ class CommandLine(object):
         status = False
 
         if argument.Help:
-            print("You have used '-H' or '--Help' with argument: {0}".format(argument.Help))
+            print(
+                "You have used '-H' or '--Help' with argument: {0}".format(
+                    argument.Help
+                )
+            )
             status = True
         if argument.receive:
-            print("You have used '-r' or '--receive' with argument: {0}".format(argument.receive))
+            print(
+                "You have used '-r' or '--receive' with argument: {0}".format(
+                    argument.receive
+                )
+            )
             self.TCP_IP = argument.receive[: argument.receive.index(":")]
             self.TCP_PORT = int(argument.receive[argument.receive.index(":") + 1 :])
             print("Setting TCP IP: %s PORT: %d" % (self.TCP_IP, self.TCP_PORT))
             status = True
         if argument.config:
-            print("You have used '-c' or '--config' with argument: {0}".format(argument.config))
+            print(
+                "You have used '-c' or '--config' with argument: {0}".format(
+                    argument.config
+                )
+            )
             parse_dict(self, yaml.load(open(argument.config)))
             print(self.config)
             status = True
         if argument.mode:
-            print("You have used '-m' or '--mode' with argument: {0}".format(argument.mode))
+            print(
+                "You have used '-m' or '--mode' with argument: {0}".format(
+                    argument.mode
+                )
+            )
             if argument.mode in self.supportedModes:
                 self.mode = argument.mode
                 print("Setting mode to %s mode." % (argument.mode))
@@ -119,7 +139,9 @@ def init():
     im.set_data(waterfall)
     if app.mode == "badinput":
         med_plot.set_ydata(
-            100.0 * np.nanmedian(waterfall, axis=0) / float(app.config["bi_frames_per_packet"])
+            100.0
+            * np.nanmedian(waterfall, axis=0)
+            / float(app.config["bi_frames_per_packet"])
         )
         med_plot_input.set_xdata(np.nanmean(waterfall, axis=1))
     else:
@@ -149,7 +171,9 @@ def animate(i):
         med_plot_input.set_xdata(np.nanmedian(waterfall, axis=1))
     else:
         med_plot.set_ydata(
-            100.0 * np.nanmedian(waterfall, axis=0) / float(app.config["bi_frames_per_packet"])
+            100.0
+            * np.nanmedian(waterfall, axis=0)
+            / float(app.config["bi_frames_per_packet"])
         )
         med_plot_input.set_xdata(np.nanmean(waterfall, axis=1))
     return im
@@ -256,13 +280,18 @@ if __name__ == "__main__":
     nx, ny = app.config["waterfallY"], app.config["waterfallX"]
     t_min = datetime.datetime.utcnow()
     if app.mode == "badinput":
-        waterfall = -1 * np.ones([app.config["num_global_freq"], app.config["num_elements"]])
+        waterfall = -1 * np.ones(
+            [app.config["num_global_freq"], app.config["num_elements"]]
+        )
     else:
         waterfall = -1 * np.ones([nx, ny])
 
     #    fig = plt.figure()
     fig, ax = plt.subplots(
-        2, 2, figsize=(12, 8), gridspec_kw={"height_ratios": [4, 1], "width_ratios": [4, 1]}
+        2,
+        2,
+        figsize=(12, 8),
+        gridspec_kw={"height_ratios": [4, 1], "width_ratios": [4, 1]},
     )
     if app.mode == "badinput":
         x_lims = [0, app.config["num_elements"]]
@@ -276,7 +305,9 @@ if __name__ == "__main__":
         )
         cbar_ax = fig.add_axes([0.915, 0.32, 0.03, 0.58])
         cbar = fig.colorbar(im, cax=cbar_ax, label="Median Faulty Frames")
-        med_plot, = ax[1, 0].plot(np.arange(waterfall.shape[1]), np.nanmedian(waterfall, axis=0))
+        med_plot, = ax[1, 0].plot(
+            np.arange(waterfall.shape[1]), np.nanmedian(waterfall, axis=0)
+        )
         med_plot_input, = ax[0, 1].plot(
             np.nanmean(waterfall, axis=1),
             800 - 400.0 / 1024.0 * np.arange(waterfall.shape[0]),
@@ -308,7 +339,9 @@ if __name__ == "__main__":
             vmin=1 - app.config["colorscale"],
             vmax=1 + app.config["colorscale"],
         )
-        ticks = np.linspace(1 - app.config["colorscale"], 1 + app.config["colorscale"], num=10)
+        ticks = np.linspace(
+            1 - app.config["colorscale"], 1 + app.config["colorscale"], num=10
+        )
         cbar_ax = fig.add_axes([0.913, 0.32, 0.03, 0.58])
         cbar = fig.colorbar(im, cax=cbar_ax, label="SK Value", ticks=ticks)
         # cbar = fig.colorbar(im, cax=cbar_ax, label = "Detection Confidence", ticks = ticks)
@@ -323,11 +356,14 @@ if __name__ == "__main__":
             np.nanmedian(waterfall, axis=0),
         )
         med_plot_input, = ax[0, 1].plot(
-            np.nanmean(waterfall, axis=1), 800 - 400.0 / 1024.0 * np.arange(waterfall.shape[0])
+            np.nanmean(waterfall, axis=1),
+            800 - 400.0 / 1024.0 * np.arange(waterfall.shape[0]),
         )
         ax[1, 0].set_xlabel("Time")
         ax[1, 0].set_xlim([x_lims[0], x_lims[1]])
-        ax[1, 0].set_ylim([1 - app.config["colorscale"] / 2.0, 1 + app.config["colorscale"] / 2.0])
+        ax[1, 0].set_ylim(
+            [1 - app.config["colorscale"] / 2.0, 1 + app.config["colorscale"] / 2.0]
+        )
         ax[1, 0].set_ylabel("Median SK Value")
         ax[0, 1].set_xlabel("Median SK Value")
         ax[0, 1].set_xlim([1 - app.config["colorscale"], 1 + app.config["colorscale"]])
@@ -358,7 +394,10 @@ if __name__ == "__main__":
             sock_tcp.connect(addr)
             Connected = True
         except:
-            print("Could not connect to %s:%s Trying again in 5 seconds" % (addr[0], addr[1]))
+            print(
+                "Could not connect to %s:%s Trying again in 5 seconds"
+                % (addr[0], addr[1])
+            )
             time.sleep(5)
 
     thread = threading.Thread(target=data_listener)

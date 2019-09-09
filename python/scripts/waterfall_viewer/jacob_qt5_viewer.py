@@ -123,7 +123,9 @@ class Settings(QDialog):
         self.kotekanStatus = QFrame(self)
         self.kotekanStatus.setFixedWidth(20)
         self.kotekanStatus.setFixedHeight(20)
-        self.kotekanStatus.setStyleSheet("QWidget { background-color: %s }" % self.col.name())
+        self.kotekanStatus.setStyleSheet(
+            "QWidget { background-color: %s }" % self.col.name()
+        )
         hbox.addWidget(self.kotekanStatus)
         self.layout.addLayout(hbox)
 
@@ -138,7 +140,9 @@ class Settings(QDialog):
 
         # Pulsar Info
         hbox = QHBoxLayout()
-        self.dm_text = QLabel("Dispersion Measure: " + str(self.main.psrdata["dmeasure"]))
+        self.dm_text = QLabel(
+            "Dispersion Measure: " + str(self.main.psrdata["dmeasure"])
+        )
         hbox.addWidget(self.dm_text)
         self.fold_text = QLabel("Folding Period: ")  # + str(self.main.fold_period))
         hbox.addWidget(self.fold_text)
@@ -233,11 +237,15 @@ class Settings(QDialog):
         if "./kotekan" in output.decode("utf-8"):
             self.col.setRed(0)
             self.col.setGreen(255)
-            self.kotekanStatus.setStyleSheet("QFrame { background-color: %s }" % self.col.name())
+            self.kotekanStatus.setStyleSheet(
+                "QFrame { background-color: %s }" % self.col.name()
+            )
         else:
             self.col.setRed(255)
             self.col.setGreen(0)
-            self.kotekanStatus.setStyleSheet("QFrame { background-color: %s }" % self.col.name())
+            self.kotekanStatus.setStyleSheet(
+                "QFrame { background-color: %s }" % self.col.name()
+            )
 
     def WriteGraphToDisk(self):
         self.WriteTrigger = True  # Toggle Trigger for Update Graph
@@ -251,7 +259,9 @@ class Settings(QDialog):
                     if i == 2:
                         self.BrightnessMeasures = []
                         self.BrightnessTimes = []
-                        self.t0 = datetime.datetime.fromtimestamp(np.amin(self.main.times))
+                        self.t0 = datetime.datetime.fromtimestamp(
+                            np.amin(self.main.times)
+                        )
                     break
 
     def ChangeDispersion(self):
@@ -276,7 +286,9 @@ class Settings(QDialog):
             self.main.fold_period = 1.0 / self.main.psrdata["frequency"]
         except:
             self.main.fold_period = self.main.psrdata["period"]
-        self.dm_text.setText("Dispersion Measure: " + str(self.main.psrdata["dmeasure"]))
+        self.dm_text.setText(
+            "Dispersion Measure: " + str(self.main.psrdata["dmeasure"])
+        )
         self.fold_edit.setText(str(self.main.fold_period))
         self.main.temp_target = ""
         self.main.UpdateLabel()
@@ -321,7 +333,10 @@ class Settings(QDialog):
         try:  # Is it a valid entry?
             print("TESTING VALIDITY")
             x = float(text)
-            if x + self.Bright_Freq > self.freq_upper or self.Bright_Freq - x < self.freq_lower:
+            if (
+                x + self.Bright_Freq > self.freq_upper
+                or self.Bright_Freq - x < self.freq_lower
+            ):
                 print(x, self.Bright_Freq, x + self.Bright_Freq, x - self.Bright_Freq)
                 return
         except:
@@ -352,7 +367,9 @@ class Settings(QDialog):
 
         self.settingsfigure.clear()  # Remove old graph
         if (self.WriteTrigger) and (not os.path.exists("ViewerGraphsAndData")):
-            os.makedirs("ViewerGraphsAndData")  # Insure Directory is made for Graph data
+            os.makedirs(
+                "ViewerGraphsAndData"
+            )  # Insure Directory is made for Graph data
             print("Directory Made")
 
         if self.GraphState == 0:  # Pulse Profile
@@ -380,11 +397,15 @@ class Settings(QDialog):
             )  # X axis, frequency
             y = np.array(
                 [
-                    np.median(self.main.waterfall[:, self.main.waterfall.shape[1] - t - 1, 0])
+                    np.median(
+                        self.main.waterfall[:, self.main.waterfall.shape[1] - t - 1, 0]
+                    )
                     for t in range(self.main.waterfall.shape[1])
                 ]
             )  # Compute Median Values for each freq
-            y_lower = np.round(np.median(y)) - 2 * self.GraphSlider.value()  # Y axis scale
+            y_lower = (
+                np.round(np.median(y)) - 2 * self.GraphSlider.value()
+            )  # Y axis scale
             y_upper = np.round(np.median(y)) + 2 * self.GraphSlider.value()
             plt.ylim([y_lower, y_upper])
             plt.title("Power vs Frequency")  # Labels
@@ -405,7 +426,9 @@ class Settings(QDialog):
                     datetime.datetime.fromtimestamp(np.amin(self.main.times)) - self.t0
                 ).total_seconds()
             )  # Record Time
-            x = np.array(self.BrightnessTimes)  # np.arange(len(self.BrightnessMeasures))
+            x = np.array(
+                self.BrightnessTimes
+            )  # np.arange(len(self.BrightnessMeasures))
             y = np.array(self.BrightnessMeasures)
             plt.title("Power vs Time (single freq)")  # Labels
             plt.xlabel("Time (s)")
@@ -481,7 +504,20 @@ class Window(QDialog):
 
         # Intialize Variables
         self.header_fmt = "=iiiidiiiId"  # Header Format
-        self.stokes_lookup = ["YX", "XY", "YY", "XX", "LR", "RL", "LL", "RR", "I", "Q", "U", "V"]
+        self.stokes_lookup = [
+            "YX",
+            "XY",
+            "YY",
+            "XX",
+            "LR",
+            "RL",
+            "LL",
+            "RR",
+            "I",
+            "Q",
+            "U",
+            "V",
+        ]
         self.curtime = 0  # Pointing Information
         self.curpoint = 0
         self.DeDisperse = True  # Toggles de-Dispersion
@@ -548,26 +584,31 @@ class Window(QDialog):
         # Intialize waterfall arrays
         self.waterfall = (
             np.zeros(
-                (self.plot_times, int(self.plot_freqs), int(self.pkt_elems)), dtype=np.float32
+                (self.plot_times, int(self.plot_freqs), int(self.pkt_elems)),
+                dtype=np.float32,
             )
             + np.nan
         )
         self.countfold = np.zeros(
-            (self.plot_phase, int(self.plot_freqs), int(self.pkt_elems)), dtype=np.float32
+            (self.plot_phase, int(self.plot_freqs), int(self.pkt_elems)),
+            dtype=np.float32,
         )
         try:
             self.fold_period = 1.0 / self.psrdata["frequency"]
         except:
             self.fold_period = self.psrdata["period"]
         self.waterfold = np.zeros(
-            (self.plot_phase, int(self.plot_freqs), int(self.pkt_elems)), dtype=np.float32
+            (self.plot_phase, int(self.plot_freqs), int(self.pkt_elems)),
+            dtype=np.float32,
         )
         self.times = np.zeros(self.plot_times)
 
         time.sleep(1)
 
         # Intialize plots
-        self.f, self.ax = plt.subplots(2, self.pkt_elems, gridspec_kw={"height_ratios": [2, 1]})
+        self.f, self.ax = plt.subplots(
+            2, self.pkt_elems, gridspec_kw={"height_ratios": [2, 1]}
+        )
         self.f.subplots_adjust(right=0.8)
         if self.pkt_elems == 1:
             self.ax = [self.ax]
@@ -578,13 +619,16 @@ class Window(QDialog):
         # Intialize Time information
         self.tmin = md.date2num(
             datetime.datetime.fromtimestamp(
-                self.pkt_utc0 - self.plot_times * self.local_integration * self.sec_per_pkt_frame
+                self.pkt_utc0
+                - self.plot_times * self.local_integration * self.sec_per_pkt_frame
             )
         )
         self.tmax = md.date2num(datetime.datetime.fromtimestamp(self.pkt_utc0))
         self.times = (
             self.pkt_utc0
-            - np.arange(self.plot_times) * self.local_integration * self.sec_per_pkt_frame
+            - np.arange(self.plot_times)
+            * self.local_integration
+            * self.sec_per_pkt_frame
         )
         self.date_format = md.DateFormatter("%H:%M:%S")
 
@@ -600,7 +644,12 @@ class Window(QDialog):
                     cmap="viridis",
                     vmin=self.colorscale[0],
                     vmax=self.colorscale[1],
-                    extent=[self.freqlist[0, 0], self.freqlist[-1, -1], self.tmin, self.tmax],
+                    extent=[
+                        self.freqlist[0, 0],
+                        self.freqlist[-1, -1],
+                        self.tmin,
+                        self.tmax,
+                    ],
                 )
             )
             self.ax[0, i].set_yticklabels([])
@@ -732,7 +781,9 @@ class Window(QDialog):
     def UpdateLabel(self):  # Handles Labels at top of Main window
 
         if self.curtime != 0:  # Calulate J2000 pointing
-            Pointing = self.curtime.isot + "        " + self.curpoint.altaz.to_string("dms")
+            Pointing = (
+                self.curtime.isot + "        " + self.curpoint.altaz.to_string("dms")
+            )
             c = SkyCoord(
                 self.curpoint.altaz.to_string("hmsdms").split(" ")[0],
                 self.curpoint.altaz.to_string("hmsdms").split(" ")[1],
@@ -766,12 +817,18 @@ class Window(QDialog):
         self.MedSubbed = np.zeros_like(self.dedispersed[:, :, 0])
         for i in np.arange(self.pkt_elems):  # For each polirization
             if self.DeDisperse:  # De-disperse
-                for j in range(self.dedispersed.shape[1]):  # Iterate through frequencies
+                for j in range(
+                    self.dedispersed.shape[1]
+                ):  # Iterate through frequencies
                     time = (
                         (4.148808 / 1000)
                         * (
                             (1 / 0.4) ** 2
-                            - (1 / (0.4 + (128 - j) * (0.4 / self.dedispersed.shape[1]))) ** 2
+                            - (
+                                1
+                                / (0.4 + (128 - j) * (0.4 / self.dedispersed.shape[1]))
+                            )
+                            ** 2
                         )
                         * self.psrdata["dmeasure"]
                     )  # Compute Time lag
@@ -794,10 +851,14 @@ class Window(QDialog):
                 )  # Update Folded Graph
                 if self.centerPulsar:
                     pulse_max = np.max(np.median(tmpdata, axis=1))
-                    pulse_max_index = np.where(np.median(tmpdata, axis=1) == pulse_max)[0]
+                    pulse_max_index = np.where(np.median(tmpdata, axis=1) == pulse_max)[
+                        0
+                    ]
                     if pulse_max_index.size > 0:
                         tmpdata = np.roll(
-                            tmpdata, int(np.abs(pulse_max_index - tmpdata.shape[0] // 2)), axis=0
+                            tmpdata,
+                            int(np.abs(pulse_max_index - tmpdata.shape[0] // 2)),
+                            axis=0,
                         )
                 self.p[self.pkt_elems + i].set_data(
                     tmpdata - np.median(tmpdata, axis=0)[np.newaxis, :]
@@ -811,9 +872,10 @@ class Window(QDialog):
                 self.p[self.pkt_elems + i].set_data(tmpdata)
             self.MedSubbed += (
                 (self.dedispersed[:, :, i] / self.dedispersed_count[:, :, i])
-                - np.median((self.dedispersed[:, :, i] / self.dedispersed_count[:, :, i]), axis=0)[
-                    np.newaxis, :
-                ]
+                - np.median(
+                    (self.dedispersed[:, :, i] / self.dedispersed_count[:, :, i]),
+                    axis=0,
+                )[np.newaxis, :]
             )
             self.p[i].set_extent(
                 [self.freqlist[0, 0], self.freqlist[-1, -1], self.tmin, self.tmax]
@@ -930,7 +992,10 @@ def data_listener():  # Listens to Data and updates
                 fold_idx = np.array(
                     int(
                         (
-                            (main.sec_per_pkt_frame * data_pkt_frame_idx + 0.5 * main.fold_period)
+                            (
+                                main.sec_per_pkt_frame * data_pkt_frame_idx
+                                + 0.5 * main.fold_period
+                            )
                             % main.fold_period
                         )
                         / main.fold_period
@@ -938,22 +1003,29 @@ def data_listener():  # Listens to Data and updates
                     ),
                     dtype=np.int32,
                 )
-                main.waterfold[int(fold_idx), :, int(data_pkt_elem_idx)] += data_array.reshape(
+                main.waterfold[
+                    int(fold_idx), :, int(data_pkt_elem_idx)
+                ] += data_array.reshape(
                     -1, int(main.pkt_freqs // main.plot_freqs)
                 ).mean(
                     axis=1
                 )  # Fold Waterfall
-                main.countfold[int(fold_idx), :, int(data_pkt_elem_idx)] += data_pkt_samples_summed
+                main.countfold[
+                    int(fold_idx), :, int(data_pkt_elem_idx)
+                ] += data_pkt_samples_summed
                 # main.countfold[:,15:70,:] = 0
             roll_idx = (data_pkt_frame_idx - last_idx) // main.local_integration
             main.times = np.roll(main.times, int(roll_idx))  # Roll times
             main.times[0] = (
-                main.sec_per_pkt_frame * (data_pkt_frame_idx - main.pkt_idx0) + main.pkt_utc0
+                main.sec_per_pkt_frame * (data_pkt_frame_idx - main.pkt_idx0)
+                + main.pkt_utc0
             )
             main.waterfall = np.roll(main.waterfall, int(roll_idx), axis=0)
             main.waterfall[0, :, :] = 10 * np.log10(
                 (d / n)
-                .reshape(-1, int(main.pkt_freqs // main.plot_freqs), int(main.pkt_elems))
+                .reshape(
+                    -1, int(main.pkt_freqs // main.plot_freqs), int(main.pkt_elems)
+                )
                 .mean(axis=1)
             )  # Add data to waterfall
             # main.waterfall[0,:,:] = (d/1000).reshape(-1,main.pkt_freqs / main.plot_freqs,main.pkt_elems).mean(axis=1)

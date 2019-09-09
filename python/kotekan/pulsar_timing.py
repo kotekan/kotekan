@@ -116,14 +116,18 @@ class PolycoFile(object):
                         line = fh.readline()
                         if self.head_type[i][0] == "bin_phase":
                             continue
-                        new_header[self.head_type[i][0]] = self.head_type[i][1](line.strip())
+                        new_header[self.head_type[i][0]] = self.head_type[i][1](
+                            line.strip()
+                        )
                     self.polyco_specs.append(new_header)
                     # read coeffecients
                     coeff = []
                     for i in range(new_header["num_coeff"]):
                         line = fh.readline()
                         coeff.append(float(line.strip()))
-                    params = [new_header[k] for k in ("TMID", "DM", "RPHASE", "F0")] + [coeff]
+                    params = [new_header[k] for k in ("TMID", "DM", "RPHASE", "F0")] + [
+                        coeff
+                    ]
                     params += [new_header["span"]]
                     self.polycos.append(Polyco(*params))
                 line = fh.readline()
@@ -131,11 +135,13 @@ class PolycoFile(object):
         for p in self.polyco_specs:
             if p["span"] != self.polyco_specs[0]["span"]:
                 raise Exception(
-                    "Polycos in file {} have segments of".format(fname) + " different lengths."
+                    "Polycos in file {} have segments of".format(fname)
+                    + " different lengths."
                 )
         self.spans = np.array(
             [
-                np.array((-0.5, 0.5)) * self.polyco_specs[i]["span"] / 60.0 / 24.0 + self.tmid[i]
+                np.array((-0.5, 0.5)) * self.polyco_specs[i]["span"] / 60.0 / 24.0
+                + self.tmid[i]
                 for i in range(len(self.tmid))
             ]
         )
@@ -158,14 +164,24 @@ class PolycoFile(object):
             "rot_freq": poly[0].f0,
             "dm": poly[0].dm if self.dm is None else self.dm,
             "segment": poly[0].seg * 60,
-            "pulsar_name": self.polyco_specs[0]["name"] if self.name is None else self.name,
+            "pulsar_name": self.polyco_specs[0]["name"]
+            if self.name is None
+            else self.name,
             "enabled": True,
             "pulse_width": self.width,
         }
 
     @classmethod
     def generate(
-        cls, start, end, parfile, dm=None, seg=300.0, ncoeff=12, max_ha=12.0, tempo_dir=None
+        cls,
+        start,
+        end,
+        parfile,
+        dm=None,
+        seg=300.0,
+        ncoeff=12,
+        max_ha=12.0,
+        tempo_dir=None,
     ):
         if tempo_dir is not None:
             env = os.environ.copy()
@@ -177,7 +193,9 @@ class PolycoFile(object):
             "-f",
             parfile,
             "-polyco",
-            '"{:f} {:f} {:d} {:d} {:f} chime inf"'.format(start, end, int(seg), ncoeff, max_ha),
+            '"{:f} {:f} {:d} {:d} {:f} chime inf"'.format(
+                start, end, int(seg), ncoeff, max_ha
+            ),
             "-tempo1",
         ]
         cmd = " ".join(cmd)
@@ -186,7 +204,9 @@ class PolycoFile(object):
         try:
             run(cmd, cwd=tmp_dir, shell=True, check=True, env=env)
         except CalledProcessError as e:
-            print("Command '{}' failed with return code {:d}.".format(e.cmd, e.returncode))
+            print(
+                "Command '{}' failed with return code {:d}.".format(e.cmd, e.returncode)
+            )
             print(e.output)
             rmtree(tmp_dir)
             return None
