@@ -26,6 +26,7 @@ testDataGenFloat::testDataGenFloat(Config& config, const string& unique_name,
     if (type == "ramp")
         value = config.get<float>(unique_name, "value");
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
+    _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
 }
 
 testDataGenFloat::~testDataGenFloat() {}
@@ -85,12 +86,12 @@ void testDataGenFloat::main_thread() {
             // Test PF seq_num increment.
             if (link_id == 7) {
                 link_id = 0;
-                seq_num += 32768;
+                seq_num += _samples_per_data_set;
             } else {
                 link_id++;
             }
         } else {
-            seq_num += 32768;
+            seq_num += _samples_per_data_set;
         }
         if (frame_id == 0)
             finished_seeding_consant = true;

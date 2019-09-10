@@ -17,6 +17,7 @@ private:
     struct Buffer* buf;
     std::string type;
     float value;
+    uint32_t _samples_per_data_set;
     bool _pathfinder_test_mode;
 };
 

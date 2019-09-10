@@ -23,6 +23,7 @@ num_frb_total_beams: 1024
 num_sub_freqs: 128
 num_frames_to_integrate: 80
 test_value: 2
+samples_per_data_set: 3840
 
 # Pool
 main_pool:
