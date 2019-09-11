@@ -46,7 +46,7 @@ void integrateHFBData::main_thread() {
     // 390625 / 49152 = 7.95 frames per second 
     const uint32_t max_frames_missing = 16;
     uint32_t total_lost_timesamples = 0;
-    int64_t fpga_seq_num = 0, fpga_seq_num_start = 0, fpga_seq_num_end = 0;
+    int64_t fpga_seq_num = 0, fpga_seq_num_start = 0, fpga_seq_num_end = fpga_seq_num_start + (_num_frames_to_integrate - 1) * _samples_per_data_set;
     
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t* out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
@@ -228,8 +228,6 @@ void integrateHFBData::main_thread() {
 
         }
       }
-
-      //frame++;
 
       INFO("FPGA sequence number: {:d}", get_fpga_seq_num(in_buf, in_buffer_ID));
       INFO("No. of lost samples: {:d}, fpga_seq_num_start: {:d}, fpga_seq_num_end: {:d}, fpga_seq_num: {:d}, get_fpga_seq_num: {:d}", total_lost_timesamples, fpga_seq_num_start, fpga_seq_num_end, fpga_seq_num, get_fpga_seq_num(in_buf, in_buffer_ID));
