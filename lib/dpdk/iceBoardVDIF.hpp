@@ -190,17 +190,19 @@ bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
     // Setup the VDIF time offsets from the seq number
     if (first_time && port == 0) {
 
-        // The time in unix seconds of the year 2000 epoch
-        const uint64_t year_2000_epoch = 946684800;
+        // TODO This reference epoch offset doesn't account for leap seconds after the epoch.
+        // So this will go wrong once the next leap second happens.  See: issue #498
+        // Unix time of the 2018 VDIF epoch, corresponds to 2018.01.01.0:0:0 in UTC
+        const uint64_t ref_epoch_offset = 1514764800;
         if (is_gps_global_time_set() == 1) {
             timespec gps_time = compute_gps_time(new_seq);
             // Compute the time at fpga_seq_num == 0 in nano seconds
             // relative to the year 2000 epoch
             vdif_base_time = gps_time.tv_sec * 1000000000 + gps_time.tv_nsec
-                             - new_seq * FPGA_PERIOD_NS - year_2000_epoch * 1000000000;
+                             - new_seq * FPGA_PERIOD_NS - ref_epoch_offset * 1000000000;
         } else {
             vdif_base_time = now.tv_sec * 1000000000 + now.tv_usec * 1000 - new_seq * FPGA_PERIOD_NS
-                             - year_2000_epoch * 1000000000;
+                             - ref_epoch_offset * 1000000000;
         }
     }
 
@@ -322,7 +324,8 @@ inline void iceBoardVDIF::set_vdif_header_options(int vdif_frame_location, uint6
             vdif_header->vdif_version = 1;
             vdif_header->data_type = 1;
             vdif_header->unused = 0;
-            vdif_header->ref_epoch = 0;
+            // First half of 2018, corresponds to 2018.01.01.0:0:0 in UTC
+            vdif_header->ref_epoch = 36;
             vdif_header->frame_len = 132;
             vdif_header->log_num_chan = 10;
             vdif_header->bits_depth = 3;
