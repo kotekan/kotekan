@@ -38,8 +38,10 @@ private:
 
     /// Number of time samples, should be a multiple of 3x128 for FRB, standard ops is 49152
     uint32_t _samples_per_data_set;
-    /// Index to create a missing frames 
-    uint32_t _missing_frame_index;
+    // Total no. of frames to integrate
+    uint32_t _num_frames_to_integrate;
+    // List of missing frames 
+    std::vector<uint32_t> _missing_frames;
 
 };
 
