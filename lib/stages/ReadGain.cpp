@@ -38,7 +38,8 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     
   gain_buf = get_buffer("gain_buf");
   register_producer(gain_buf, unique_name.c_str());
-    
+  gain_buf_precondition_id = 0;
+  
   update_gains = true;
 
   using namespace std::placeholders;
@@ -68,10 +69,10 @@ bool ReadGain::update_gains_callback(nlohmann::json& json) {
 
 void ReadGain::main_thread() {
 
-  float* out_frame = (float*)wait_for_empty_frame(gain_buf, unique_name.c_str(), 0);
+  float* out_frame = (float*)wait_for_empty_frame(gain_buf, unique_name.c_str(), gain_buf_precondition_id);
   if (out_frame == NULL)
     goto end_loop;
-
+  
   while (!stop_thread) {
 
       if (update_gains) {
@@ -100,12 +101,14 @@ void ReadGain::main_thread() {
 	    //return precede_signal;
 	  }
 	  fclose(ptr_myfile);
-	  mark_frame_full(gain_buf, unique_name.c_str(), 0);
+	  mark_frame_full(gain_buf, unique_name.c_str(), gain_buf_precondition_id);
+	  gain_buf_precondition_id = (gain_buf_precondition_id+1) % gain_buf->num_frames;
+
         }
 	INFO("Time required to load FRB gains: {:f}", current_time() - start_time);
 	INFO("[TEST] gain_buf: {:.2f} {:.2f} {:.2f} ", out_frame[0], out_frame[1], out_frame[2]);
 	update_gains = false;
-      }
+      } //end if update_gain
   }
 end_loop:;
 }

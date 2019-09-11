@@ -105,9 +105,6 @@ public:
     /// Endpoint for setting E-W beam sky angle
     void update_EW_beam_callback(kotekan::connectionInstance& conn, json& json_request);
 
-    hsa_signal_t async_copy_gain(float* out_frame, int gpu_frame_id, hsa_signal_t precede_signal);
-  
-
 private:
     /**
      * @brief  Calculate clamping index for the N-S beams
@@ -146,8 +143,6 @@ private:
     int32_t freq_idx;
     /// Freq in MHz
     float freq_MHz;
-
-    Buffer* gain_buf;
   
     /// Array of clamping index, int of size 256
     uint32_t* host_map;

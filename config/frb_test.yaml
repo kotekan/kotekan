@@ -97,6 +97,7 @@ gpu:
   commands:
   - name: hsaInputData
   - name: hsaOutputDataZero
+  - name: hsaAsyncCopyGain
   - name: hsaBarrier
   - name: hsaBeamformReorder
   - name: hsaBeamformKernel

@@ -68,9 +68,6 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string& unique_name,
     freq_idx = -1;
     freq_MHz = -1;
 
-    gain_buf = host_buffers.get_buffer("gain_buf");
-    register_consumer(gain_buf, unique_name.c_str());
-    
     update_NS_beam = true;
     update_EW_beam = true;
     first_pass = true;
@@ -182,14 +179,11 @@ void hsaBeamformKernel::calculate_ew_phase(float freq_now, float* host_coeff,
     }
 }
 
-hsa_signal_t hsaBeamformKernel::async_copy_gain(float* out_frame, int gpu_frame_id, hsa_signal_t precede_signal){
-  void* device_gain = device.get_gpu_memory_array("beamform_gain", gpu_frame_id, gain_len);
-  INFO("[CHECK] host_gain_tmp= {:.2f} {:.2f} {:.2f}", out_frame[0], out_frame[1], out_frame[2]);
-  device.async_copy_host_to_gpu(device_gain, out_frame, gain_len, precede_signal, signals[gpu_frame_id]);
-  return signals[gpu_frame_id];
-}
-
 hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
+
+    // Unused parameter, suppress warning
+    (void)precede_signal;  //why do i need this then?
+    
     if (first_pass) {
         first_pass = false;
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
@@ -198,22 +192,6 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_s
     }
     mark_frame_empty(metadata_buf, unique_name.c_str(), metadata_buffer_id);
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
-
-    // See if gain_buf has been filled, setting timeout to be 0
-    auto timeout = double_to_ts(0);
-    int status = wait_for_full_frame_timeout(gain_buf, unique_name.c_str(), 0, timeout);
-    INFO("[CHECK] status of gain_buf={:d} ==================", status);
-    /*if (status == 1)
-      continue; // Timed out, try next buffer
-    if (status == -1)
-      break; // Got shutdown signal
-    */
-    float* out_frame = (float*)wait_for_full_frame(gain_buf, unique_name.c_str() , 0);
-    INFO("[TEST in bf] gain_buf: {:.2f} {:.2f} {:.2f} ", out_frame[0], out_frame[1], out_frame[2]);
-    mark_frame_empty(gain_buf, unique_name.c_str(), 0);
-    
-    //Copy in every time
-    async_copy_gain(out_frame, gpu_frame_id, precede_signal);
 
     if (update_NS_beam) {
         calculate_cl_index(host_map, freq_MHz, freq_ref);

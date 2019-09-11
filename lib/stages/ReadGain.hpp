@@ -23,6 +23,7 @@ public:
 private:
 
     struct Buffer* gain_buf;
+    int32_t gain_buf_precondition_id;
   
     /// Directory path where gain files are
     string _gain_dir;
