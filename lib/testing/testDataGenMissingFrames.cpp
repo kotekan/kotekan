@@ -20,7 +20,6 @@ testDataGenMissingFrames::testDataGenMissingFrames(Config& config, const string&
           std::bind(&testDataGenMissingFrames::main_thread, this)) {
 
     // Apply config.
-    _num_elements = config.get<uint32_t>(unique_name, "num_elements");
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
     _missing_frame_index = config.get<uint32_t>(unique_name, "missing_frame_index");
 

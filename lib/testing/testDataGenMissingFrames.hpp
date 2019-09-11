@@ -36,8 +36,6 @@ private:
     struct Buffer* input_buf;
     struct Buffer* output_buf;
 
-    /// Number of elements, should be 2048
-    uint32_t _num_elements;
     /// Number of time samples, should be a multiple of 3x128 for FRB, standard ops is 49152
     uint32_t _samples_per_data_set;
     /// Index to create a missing frames 

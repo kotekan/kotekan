@@ -137,23 +137,36 @@ void integrateHFBData::main_thread() {
             
           }
           else { 
-        
-            fpga_seq_num += _samples_per_data_set;
-            total_lost_timesamples += get_fpga_seq_num(in_buf, in_buffer_ID) - fpga_seq_num;
-            
-            fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
-            
-            INFO("\nIntegrate frame {:d}, total_lost_timesamples: {:d}...\n", frame + 1, total_lost_timesamples);
-            
-            if(total_lost_timesamples > _num_frames_to_integrate * _samples_per_data_set) 
+ 
+            if(frame == 0) {
+
+              INFO("\n2nd Starting next integration... total_lost_timesamples: {:d}\n", total_lost_timesamples);
+              INFO("No. of lost samples: {:d}, fpga_seq_num_start: {:d}, fpga_seq_num_end: {:d}, fpga_seq_num: {:d}, get_fpga_seq_num: {:d}", total_lost_timesamples, fpga_seq_num_start, fpga_seq_num_end, fpga_seq_num, get_fpga_seq_num(in_buf, in_buffer_ID));
+
+              memcpy(&sum_data[0], &input_data[0], _num_frb_total_beams * _num_sub_freqs * sizeof(float));  
+              total_lost_timesamples += get_fpga_seq_num(in_buf, in_buffer_ID) - fpga_seq_num_start;
+              fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
+
+            }
+            else {
+              fpga_seq_num += _samples_per_data_set;
+              total_lost_timesamples += get_fpga_seq_num(in_buf, in_buffer_ID) - fpga_seq_num;
+
+              fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
+
+              INFO("\nIntegrate frame {:d}, total_lost_timesamples: {:d}...\n", frame + 1, total_lost_timesamples);
+
+              if(total_lost_timesamples > _num_frames_to_integrate * _samples_per_data_set) 
                 FATAL_ERROR("No. of lost samples too large: {:d}, fpga_seq_num_end: {:d}, fpga_seq_num: {:d}", total_lost_timesamples, fpga_seq_num_end, fpga_seq_num);
 
-            // Integrates data from the input buffer to the output buffer.
-            for (uint beam = 0; beam < _num_frb_total_beams; beam++) {
-              for (uint freq = 0; freq < _num_sub_freqs; freq++) {
-                sum_data[beam * _num_sub_freqs + freq] += input_data[beam * _num_sub_freqs + freq];
+              // Integrates data from the input buffer to the output buffer.
+              for (uint beam = 0; beam < _num_frb_total_beams; beam++) {
+                for (uint freq = 0; freq < _num_sub_freqs; freq++) {
+                  sum_data[beam * _num_sub_freqs + freq] += input_data[beam * _num_sub_freqs + freq];
+                }
               }
             }
+            frame++;
 
             // When all frames have been integrated output the result
             if(get_fpga_seq_num(in_buf, in_buffer_ID) >= fpga_seq_num_end) {
@@ -191,7 +204,7 @@ void integrateHFBData::main_thread() {
               sum_data = (float*)out_buf->frames[out_buffer_ID];
 
               fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
-              fpga_seq_num_start = fpga_seq_num;
+              fpga_seq_num_start = fpga_seq_num_end + _samples_per_data_set;
               fpga_seq_num_end = fpga_seq_num_start + (_num_frames_to_integrate - 1) * _samples_per_data_set;
 
             }
@@ -218,7 +231,10 @@ void integrateHFBData::main_thread() {
       //frame++;
 
       INFO("FPGA sequence number: {:d}", get_fpga_seq_num(in_buf, in_buffer_ID));
+      INFO("No. of lost samples: {:d}, fpga_seq_num_start: {:d}, fpga_seq_num_end: {:d}, fpga_seq_num: {:d}, get_fpga_seq_num: {:d}", total_lost_timesamples, fpga_seq_num_start, fpga_seq_num_end, fpga_seq_num, get_fpga_seq_num(in_buf, in_buffer_ID));
 
+      if(total_lost_timesamples >= 2 * _samples_per_data_set) 
+        FATAL_ERROR("No. of lost samples too large: {:d}, fpga_seq_num_end: {:d}, fpga_seq_num: {:d}", total_lost_timesamples, fpga_seq_num_end, fpga_seq_num);
       // When all frames have been integrated output the result
       //if ((get_fpga_seq_num(in_buf, in_buffer_ID) - fpga_seq_num_start + _samples_per_data_set) % (_num_frames_to_integrate * _samples_per_data_set) == 0) {
 
