@@ -21,7 +21,7 @@ using std::vector;
  *
  * This engine sums CHIME/HFB data from 1 GPU stream in each CHIME node,
  * which are stored in the output buffer.
- * Note: _num_frames_to_integrate cannot go below 16 frames as _num_frames_to_integrate be lower than the max_frames_missing
+ * Note: _num_frames_to_integrate cannot go below 16 frames as _num_frames_to_integrate cannot be lower than the max_frames_missing
  *
  * @par Buffers
  * @buffer hfb_input_buffer Kotekan buffer feeding data from any GPU.

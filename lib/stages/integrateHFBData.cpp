@@ -27,11 +27,12 @@ integrateHFBData::integrateHFBData(Config& config_, const string& unique_name,
     
     out_buf = get_buffer("hfb_output_buf");
     register_producer(out_buf, unique_name.c_str());
+ 
+    // Note: _num_frames_to_integrate cannot go below 16 frames as _num_frames_to_integrate be lower than the max_frames_missing
+    assert(_num_frames_to_integrate > 16);
 }
 
-integrateHFBData::~integrateHFBData() {
-    free(in_buf);
-}
+integrateHFBData::~integrateHFBData() {}
 
 void integrateHFBData::main_thread() {
 
@@ -233,8 +234,6 @@ void integrateHFBData::main_thread() {
       INFO("FPGA sequence number: {:d}", get_fpga_seq_num(in_buf, in_buffer_ID));
       INFO("No. of lost samples: {:d}, fpga_seq_num_start: {:d}, fpga_seq_num_end: {:d}, fpga_seq_num: {:d}, get_fpga_seq_num: {:d}", total_lost_timesamples, fpga_seq_num_start, fpga_seq_num_end, fpga_seq_num, get_fpga_seq_num(in_buf, in_buffer_ID));
 
-      if(total_lost_timesamples >= 2 * _samples_per_data_set) 
-        FATAL_ERROR("No. of lost samples too large: {:d}, fpga_seq_num_end: {:d}, fpga_seq_num: {:d}", total_lost_timesamples, fpga_seq_num_end, fpga_seq_num);
       // When all frames have been integrated output the result
       //if ((get_fpga_seq_num(in_buf, in_buffer_ID) - fpga_seq_num_start + _samples_per_data_set) % (_num_frames_to_integrate * _samples_per_data_set) == 0) {
 
