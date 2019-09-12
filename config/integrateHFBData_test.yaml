@@ -36,6 +36,7 @@ cpu_hfb_output_buffers:
     frame_size: num_data_sets * num_sub_freqs * num_frb_total_beams * sizeof_float
     metadata_pool: main_pool
     beamform_hfb_input_buffer_0:
+        num_frames: num_frames_to_integrate
         kotekan_buffer: standard
     beamform_hfb_output_buffer_0:
         kotekan_buffer: standard

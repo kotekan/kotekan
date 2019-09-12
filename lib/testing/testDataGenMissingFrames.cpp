@@ -21,7 +21,6 @@ testDataGenMissingFrames::testDataGenMissingFrames(Config& config, const string&
 
     // Apply config.
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
-    _num_frames_to_integrate = config.get<uint32_t>(unique_name, "num_frames_to_integrate");
     _missing_frames = config.get_default<std::vector<uint32_t>>(unique_name, "missing_frames", {});
     INFO("Dropping {:d} frames.", _missing_frames.size());
 
@@ -63,7 +62,7 @@ void testDataGenMissingFrames::main_thread() {
           INFO("\nAdded missing frame!!!\n");
         }
 
-        num_frames = (num_frames + 1) % _num_frames_to_integrate;
+        num_frames = (num_frames + 1) % input_buf->num_frames;
         mark_frame_empty(input_buf, unique_name.c_str(), input_buf_id);
         input_buf_id = (input_buf_id + 1) % input_buf->num_frames;
 
