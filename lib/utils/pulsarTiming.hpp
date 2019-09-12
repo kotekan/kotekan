@@ -72,12 +72,15 @@ class SegmentedPolyco {
 public:
     /**
      * @brief Constructor.
+     *
      * @param rot_freq   Rotation frequency (Hz), i.e. (period)^-1.
      * @param dm         Dispersion measure (cm^-3 pc).
-     * @param segment    Length in time (s) of polyco segments.
+     * @param seg    Length in time (s) of polyco segments.
      * @param tmid       Reference times in MJD (days). i.e. centres of segments.
      * @param phase_ref  Reference phases at tmid
      * @param coeff      Polynomial coefficients in Tempo format.
+     *
+     * @par Exceptions
      * @raises           std::runtime_error if parameter vectors have different lenghts.
      **/
     SegmentedPolyco(double rot_freq, float dm, float seg, std::vector<double> tmid,
@@ -89,6 +92,8 @@ public:
      * @brief Get the polyco that is valid at a given time.
      * @param t    Time to when polyco is required.
      * @returns    The corresponding Polyco object.
+     *
+     * @par Exceptions
      * @raises     std::runtime_error if no polyco is found.
      **/
     const Polyco& get_polyco(timespec t) const;
@@ -97,6 +102,8 @@ public:
      * @brief Get the polyco at the given index.
      * @param i    Index of polyco list. Negative values will index backwards.
      * @returns    The corresponding Polyco object.
+     *
+     * @par Exceptions
      * @raises     std::runtime_error if no polyco is found.
      **/
     const Polyco& get_polyco(int i) const;

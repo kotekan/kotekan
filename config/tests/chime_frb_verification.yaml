@@ -144,7 +144,7 @@ compress_lost_samples:
     compressed_lost_samples_buf: compressed_lost_samples_buffer
  
 gpu:
-  kernel_path: "../lib/hsa/kernels/"
+  kernel_path: "../../build/lib/hsa/kernels/"
   commands:
   - name: hsaInputData
   - name: hsaOutputDataZero
@@ -187,6 +187,7 @@ hyper_fine_beam:
       
 check_data:
   bf_data_check_0:
+    num_frames_to_test: 5
     kotekan_stage: testDataCheckFloat
     first_buf : gpu_beamform_output_buffer_0
     second_buf: cpu_output_buffer_0

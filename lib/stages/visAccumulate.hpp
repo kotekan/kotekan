@@ -98,6 +98,7 @@ private:
          *
          * @param out_buf   Buffer we will output into.
          * @param gate_spec Specification of how any gating is done.
+         * @param nprod     Number of products.
          **/
         internalState(Buffer* out_buf, std::unique_ptr<gateSpec> gate_spec, size_t nprod);
 
@@ -170,8 +171,8 @@ private:
     /**
      * @brief Reset the state when we restart an integration.
      *
-     * @param    internalState  State to reset.
-     * @param    timespec       Current time.
+     * @param    state  State to reset.
+     * @param    t      Current time.
      * @returns Return if this accumulation was enabled.
      **/
     bool reset_state(internalState& state, timespec t);

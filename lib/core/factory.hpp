@@ -76,8 +76,8 @@ public:
     /**
      * Create a new instance of the type.
      *
-     * @param  type     Label of type to create.
-     * @param  args...  Arguments for constructor.
+     * @param  type Label of type to create.
+     * @param  args Arguments for constructor.
      *
      * @return          Bare pointer to new object.
      **/
@@ -95,8 +95,8 @@ public:
     /**
      * Create a new instance of the type.
      *
-     * @param  type     Label of type to create.
-     * @param  args...  Arguments for constructor.
+     * @param  type Label of type to create.
+     * @param  args Arguments for constructor.
      *
      * @return          Unique pointer to new object.
      **/
@@ -108,8 +108,8 @@ public:
     /**
      * Create a new instance of the type.
      *
-     * @param  type     Label of type to create.
-     * @param  args...  Arguments for constructor.
+     * @param  type Label of type to create.
+     * @param  args Arguments for constructor.
      *
      * @return          Shared pointer to new object.
      **/
@@ -121,7 +121,7 @@ public:
     /**
      * Create a new instance of the type.
      *
-     * @param  U     Subtype to register.
+     * @tparam  U     Subtype to register.
      * @param  type  Label of type to register.
      **/
     template<typename U>
@@ -141,7 +141,7 @@ public:
     /**
      * Check that the type has been registered.
      *
-     * @param  name  Name of type.
+     * @param  type  Name of type.
      *
      * @return       Has type of name been registered.
      **/
@@ -153,7 +153,7 @@ public:
     /**
      * Get the type label corresponding to the object.
      *
-     * @param  ptr  Pointer to an instance of the base type.
+     * @param  obj  Pointer to an instance of the base type.
      *
      * @return      The string label the type was registered as.
      **/
@@ -218,8 +218,10 @@ private:
  *
  * Should be called in the header where the baseclass is defined.
  *
+//! @cond Doxygen_Suppress
  * @param class   Base class for factory.
- * @param args... Types of arguments for constructor to use.
+ * @param args Types of arguments for constructor to use.
+//! @endcond
  *
  * @note This will create an alias for the specialized factory class.
  **/

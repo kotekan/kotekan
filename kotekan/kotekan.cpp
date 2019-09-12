@@ -402,6 +402,8 @@ int main(int argc, char** argv) {
         }
     }
 
+    free(config_file_name);
+
     // Main REST callbacks.
     rest_server.register_post_callback("/start", [&](connectionInstance& conn, json& json_config) {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);

@@ -145,9 +145,8 @@ json& Config::get_full_config_json() {
 std::string Config::get_md5sum() {
     unsigned char md5sum[MD5_DIGEST_LENGTH];
 
-    string config_dump = _json.dump().c_str();
-
-    MD5((const unsigned char*)config_dump.c_str(), config_dump.size(), md5sum);
+    std::vector<std::uint8_t> v_msgpack = json::to_msgpack(_json);
+    MD5((const unsigned char*)v_msgpack.data(), v_msgpack.size(), md5sum);
 
     char md5str[33];
     for (int i = 0; i < 16; i++)

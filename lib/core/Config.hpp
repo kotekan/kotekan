@@ -175,7 +175,7 @@ public:
      *
      * @return      The values found or an empty list if nothing was found.
      **/
-    std::vector<json> get_value(const string& name) const;
+    std::vector<json> get_value(const std::string& name) const;
 
     /**
      * @brief Updates a config value at an existing config option
@@ -215,7 +215,7 @@ public:
 
     /**
      * @brief Returns the full json data structure (for internal framework use)
-     * @warn This shouldn't be called outside of the core framework
+     * @warning This shouldn't be called outside of the core framework
      * @return A reference to the full JSON
      */
     json& get_full_config_json();

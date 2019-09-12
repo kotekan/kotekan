@@ -29,7 +29,7 @@
  *       @buffer_format unit8_t array of packet contents
  *       @buffer_metadata none
  *
- * @config packet_size    Int.  The size of the packet must be divisible by 32.
+ * @conf packet_size    Int.  The size of the packet must be divisible by 32.
  *                              Includes Eth/IP/UDP headers.
  *
  * @author Andre Renard

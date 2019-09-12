@@ -162,6 +162,7 @@ void delete_buffer(struct Buffer* buf)
     free(buf->metadata);
     free(buf->producers_done);
     free(buf->consumers_done);
+    free(buf->buffer_name);
 
     // Free locks and cond vars
     CHECK_ERROR_F( pthread_mutex_destroy(&buf->lock) );

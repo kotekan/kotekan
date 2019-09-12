@@ -1,5 +1,7 @@
 #include "osxBindCPU.hpp"
 
+#include "kotekanLogging.hpp"
+
 int sched_getaffinity(pid_t pid, size_t cpu_size, cpu_set_t* cpu_set) {
     // Unused parameters, FIXME: can we remove them?
     (void)pid;
@@ -9,7 +11,7 @@ int sched_getaffinity(pid_t pid, size_t cpu_size, cpu_set_t* cpu_set) {
     size_t len = sizeof(core_count);
     int ret = sysctlbyname(SYSCTL_CORE_COUNT, &core_count, &len, 0, 0);
     if (ret) {
-        ERROR("error while get core count {:d}\n", ret);
+        ERROR_NON_OO("error while get core count {:d}\n", ret);
         return -1;
     }
     cpu_set->count = 0;

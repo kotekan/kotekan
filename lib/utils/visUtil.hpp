@@ -442,13 +442,13 @@ struct_layout<T> struct_alignment(std::vector<std::tuple<T, size_t, size_t>> mem
 
 
 /**
- * @brief Calculate the norm of a complex number (i.e. |z|^2).
+ * @brief Calculate the norm of a complex number (i.e. |x|^2).
  *
  * In theory std::norm should do this, but the version in libstdc++ is super
  * slow.
  *
- * @param z  Number to find the norm of.
- * @returns  Norm of z.
+ * @param x  Number to find the norm of.
+ * @returns  Norm of x.
  **/
 template<typename T>
 inline T fast_norm(const T& x) {
@@ -707,7 +707,7 @@ public:
     /**
      * @brief Create a frameID for a given buffer.
      *
-     * @param Buffer to use.
+     * @param buf   Buffer to use.
      * @returns frameID instance.
      **/
     frameID(const Buffer* buf) : modulo<int>(buf->num_frames) {}

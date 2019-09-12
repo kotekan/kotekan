@@ -5,11 +5,12 @@
 #include "Stage.hpp"
 #include "restServer.hpp"
 
-namespace kotekan {
-
 #include "json.hpp"
 
+namespace kotekan {
+
 /**
+ * @class configUpdater
  * @brief Kotekan core component that creates endpoints defined in the config
  * that stages can subscribe to to receive updates.
  *
@@ -77,8 +78,9 @@ namespace kotekan {
  *
  * The stage must be ready to receive updates **before** it subscribes and it
  * has to apply save threading principles.
+ *
+ * @author Rick Nitsche
  */
-
 class configUpdater {
 public:
     /**
@@ -149,7 +151,7 @@ public:
      * @param name       Name of the dynamic attribute.
      * @param callback   Callback function for attribute updates.
      */
-    void subscribe(const string& name, std::function<bool(json&)> callback);
+    void subscribe(const std::string& name, std::function<bool(json&)> callback);
 
     /// This should be called by restServer
     void rest_callback(connectionInstance& con, nlohmann::json& json);

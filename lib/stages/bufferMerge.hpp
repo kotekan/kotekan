@@ -20,7 +20,7 @@
  * if there is more than one comsumer on the input buffer then it
  * does a full memcpy of the frame.
  *
- * @warn The sizes of the frames must be the same in all buffers, and the
+ * @warning The sizes of the frames must be the same in all buffers, and the
  *       metadata types and underlying pools must also be the same.
  *
  *
@@ -29,9 +29,11 @@
  *                 This is a named array of input buffers in the format:
  *                 - internal_name_0: buffer_name_0
  *                 - internal_name_1: buffer_name_1
+ *                 .
  *                 Or it can be provided without internal names:
  *                 - buffer_name_0
  *                 - buffer_name_1
+ *                 .
  *                 The use of internal names is only needed if a subclass
  *                 of this function requires internal names to select frame.
  *        @buffer_format any, but all must be the same type.
@@ -40,7 +42,7 @@
  *        @buffer_format Matches the input buffers
  *        @buffer_metadata Matches the input buffers
  *
- * @config timeout       Double. Default -1.0   Timeout in seconds for waiting
+ * @conf timeout       Double. Default -1.0   Timeout in seconds for waiting
  *                       for a frame on any of the input buffers.
  *                       Set to a negative number for no timeout.
  *

@@ -16,10 +16,10 @@
  * Note at the moment this class requires the global log_level to be
  * set to INFO or highter for the buffer metrics to be output to the logs.
  *
- * @config time_delay    Int. Microseconds, default 1000000 (1 second)
+ * @conf time_delay    Int. Microseconds, default 1000000 (1 second)
  *                       The number of micro seconds between buffer print outs.
  *                       Will not output more frequently than 100ms.
- * @config print_status  Bool. Default true.
+ * @conf print_status  Bool. Default true.
  *                       If true buffer stats are send to the logs/stderr
  *
  * @par Metrics
