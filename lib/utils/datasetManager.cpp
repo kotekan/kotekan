@@ -325,7 +325,7 @@ bool datasetManager::register_state_parser(std::string& reply) {
             {
                 std::lock_guard<std::mutex> slck(_lock_states);
                 js_post["state"] = _states.at(state)->to_json();
-                //js_post["type"] =
+                // js_post["type"] =
                 //    datasetState::_registered_names[typeid(*_states.at(state)).hash_code()];
             }
 

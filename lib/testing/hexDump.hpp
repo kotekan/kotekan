@@ -26,6 +26,7 @@ public:
             kotekan::bufferContainer& buffer_container);
     ~hexDump();
     void main_thread() override;
+
 private:
     struct Buffer* in_buf;
     int32_t _len;

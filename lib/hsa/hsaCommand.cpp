@@ -30,8 +30,8 @@ hsaCommand::hsaCommand(Config& config_, const string& unique_name_, bufferContai
     }
 
     // Not everyone needs this, maybe move out of constructor
-    kernel_args = (void**)hsa_host_malloc(_gpu_buffer_depth * sizeof(void*),
-                                          device.get_gpu_numa_node());
+    kernel_args =
+        (void**)hsa_host_malloc(_gpu_buffer_depth * sizeof(void*), device.get_gpu_numa_node());
     assert(kernel_args != nullptr);
 
     // Load the kernel if there is one.

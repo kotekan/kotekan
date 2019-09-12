@@ -110,7 +110,8 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
         for (size_t j = 0; j < lcore_cpu_map.size(); ++j) {
             auto lcore_id = lcore_cpu_map.at(j);
             if (numa_node_of_cpu(lcore_id) == -1) {
-                throw std::runtime_error("lcore_id '" + to_string(lcore_id)
+                throw std::runtime_error(
+                    "lcore_id '" + to_string(lcore_id)
                     + "' failed to map to numa node, is this a valid CPU core id?");
             }
             if (numa_node_of_cpu(lcore_id) == node_id) {
@@ -118,10 +119,10 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
             }
         }
         DEBUG("Number of ports on numa node %d = %d", node_id, num_ports_on_node);
-        struct rte_mempool * pool = rte_mempool_create(("MBUF_POOL_" + to_string(node_id)).c_str(),
-                                    num_mbufs * num_ports_on_node, mbuf_size, mbuf_cache_size,
-                                    sizeof(struct rte_pktmbuf_pool_private), rte_pktmbuf_pool_init,
-                                    NULL, rte_pktmbuf_init, NULL, node_id, 0);
+        struct rte_mempool* pool = rte_mempool_create(
+            ("MBUF_POOL_" + to_string(node_id)).c_str(), num_mbufs * num_ports_on_node, mbuf_size,
+            mbuf_cache_size, sizeof(struct rte_pktmbuf_pool_private), rte_pktmbuf_pool_init, NULL,
+            rte_pktmbuf_init, NULL, node_id, 0);
         if (pool == NULL) {
             throw std::runtime_error("Cannot create DPDK mbuf pool.");
         }
@@ -200,7 +201,7 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
     char arg1[] = "-n";
     char* arg2 = (char*)malloc(std::to_string(num_mem_channels).length() + 1);
     strncpy(arg2, std::to_string(num_mem_channels).c_str(),
-        std::to_string(num_mem_channels).length() + 1);
+            std::to_string(num_mem_channels).length() + 1);
     // Lcore map
     char arg3[] = "--lcores";
     char* arg4 = (char*)malloc(dpdk_lcore_map.length() + 1);
@@ -209,7 +210,7 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
     char arg5[] = "-m";
     char* arg6 = (char*)malloc(std::to_string(init_mem_alloc).length() + 1);
     strncpy(arg6, std::to_string(init_mem_alloc).c_str(),
-        std::to_string(init_mem_alloc).length() + 1);
+            std::to_string(init_mem_alloc).length() + 1);
     // Generate final options string for EAL initialization
     char* argv2[] = {&arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], NULL};
     int argc2 = (int)(sizeof(argv2) / sizeof(argv2[0])) - 1;
@@ -254,7 +255,7 @@ dpdkCore::~dpdkCore() {
     // TODO Make sure DPDK is stopped
     // Requires an experimental feature not yet the version of DPDK used by kotekan
 
-    for (auto &pool : mbuf_pools) {
+    for (auto& pool : mbuf_pools) {
         rte_mempool_free(pool);
     }
 
@@ -345,7 +346,7 @@ int dpdkCore::lcore_rx(void* args) {
         if (core->handlers[port] == nullptr) {
             // This is the one place (static member function) where normal logging does work.
             fprintf(stderr, "No valid handler provided for port %d", port);
-            //raise(SIGINT);
+            // raise(SIGINT);
             return 0;
         }
     }

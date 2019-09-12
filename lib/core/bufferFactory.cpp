@@ -67,8 +67,8 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
     if (metadataPool_name != "none") {
         if (metadataPools.count(metadataPool_name) != 1) {
             throw std::runtime_error(fmt::format(
-                fmt("The buffer {:s} is requesting metadata pool named {:s} but no pool exists."), name,
-                metadataPool_name));
+                fmt("The buffer {:s} is requesting metadata pool named {:s} but no pool exists."),
+                name, metadataPool_name));
         }
         pool = metadataPools[metadataPool_name];
     }
