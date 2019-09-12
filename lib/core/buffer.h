@@ -210,6 +210,7 @@ struct Buffer {
  * @param[in] frame_size The length of each frame in bytes.
  * @param[in] pool The metadataPool, which may be shared between more than one buffer.
  * @param[in] buffer_name The unique name of this buffer.
+ * @param[in] numa_node The CPU NUMA memory region to allocate memory in.
  * @returns A buffer object.
  */
 struct Buffer * create_buffer(int num_frames, int frame_size,
