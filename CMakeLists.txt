@@ -209,7 +209,8 @@ set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrt " )
 endif ()
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
+# TODO: remove -Wno-unused-local-typedefs once fmt fixes that (looks like in the next release after 5.3.0)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wno-unused-local-typedefs -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
 
 # Warning about missing override is called differently in clang and gcc
 # TODO: enable once we are using a release version of HighFive
@@ -284,7 +285,7 @@ endif()
 # Enforce code formatting rules with clang-format.
 find_program(
     CLANG_FORMAT_PATH
-    NAMES "clang-format"
+    NAMES "clang-format-8"
     DOC "Path to clang-format executable"
     )
 if(NOT CLANG_FORMAT_PATH)

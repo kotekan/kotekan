@@ -321,7 +321,7 @@ void gpuBeamformSimulate::main_thread() {
 
         // TODO adjust to allow for more than one frequency.
         // TODO remove all the 32's in here with some kind of constant/define
-        INFO("Simulating GPU beamform processing for %s[%d] putting result in %s[%d]",
+        INFO("Simulating GPU beamform processing for {:s}[{:d}] putting result in {:s}[{:d}]",
              input_buf->buffer_name, input_buf_id, output_buf->buffer_name, output_buf_id);
 
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
@@ -346,7 +346,7 @@ void gpuBeamformSimulate::main_thread() {
         ptr_myfile = fopen(filename, "rb");
 
         if (ptr_myfile == NULL) {
-            ERROR("CPU verification code: Cannot open gain file %s", filename);
+            ERROR("CPU verification code: Cannot open gain file {:s}", filename);
             for (int i = 0; i < 2048; i++) {
                 cpu_gain[i * 2] = default_gains[0] * scaling;
                 cpu_gain[i * 2 + 1] = default_gains[1] * scaling;
@@ -493,7 +493,7 @@ void gpuBeamformSimulate::main_thread() {
 
         memcpy(output, cpu_final_output, output_buf->frame_size);
 
-        INFO("Simulating GPU beamform processing done for %s[%d] result is in %s[%d]",
+        INFO("Simulating GPU beamform processing done for {:s}[{:d}] result is in {:s}[{:d}]",
              input_buf->buffer_name, input_buf_id, output_buf->buffer_name, output_buf_id);
 
         pass_metadata(input_buf, input_buf_id, output_buf, output_buf_id);

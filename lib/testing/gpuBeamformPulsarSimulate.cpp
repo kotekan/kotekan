@@ -42,8 +42,7 @@ gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config, const strin
     _source_dec = config.get<std::vector<float>>(unique_name, "source_dec");
     _reorder_map = config.get<std::vector<int32_t>>(unique_name, "reorder_map");
     _gain_dir = config.get<std::vector<string>>(unique_name, "pulsar_gain/pulsar_gain_dir");
-    INFO("[PSR CPU] start with gain %s %s %s", _gain_dir[0].c_str(), _gain_dir[1].c_str(),
-         _gain_dir[2].c_str());
+    INFO("[PSR CPU] start with gain {:s} {:s} {:s}", _gain_dir[0], _gain_dir[1], _gain_dir[2]);
     vector<float> dg = {0.0, 0.0}; // re,im
     default_gains = config.get_default<std::vector<float>>(unique_name, "frb_missing_gains", dg);
 
@@ -221,14 +220,15 @@ void gpuBeamformPulsarSimulate::main_thread() {
             cpu_output[i] = 0;
         }
 
-        INFO("Simulating GPU pulsar beamform processing for %s[%d] putting result in %s[%d]",
+        INFO("Simulating GPU pulsar beamform processing for {:s}[{:d}] putting result in "
+             "{:s}[{:d}]",
              input_buf->buffer_name, input_buf_id, output_buf->buffer_name, output_buf_id);
 
         // Figure out which freq
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
         freq_now = bin_number_chime(&stream_id);
         freq_MHz = freq_from_bin(freq_now);
-        INFO("[CPU] freq_now=%d freq+MHz=%.2f metadat_buf_id=%d input_buf_id=%d", freq_now,
+        INFO("[CPU] freq_now={:d} freq+MHz={:.2f} metadat_buf_id={:d} input_buf_id={:d}", freq_now,
              freq_MHz, metadata_buffer_id, input_buf_id);
 
         // Load in gains (without dynamic update capability like in GPU, just get set once in the
@@ -240,7 +240,7 @@ void gpuBeamformPulsarSimulate::main_thread() {
                      _gain_dir[b].c_str(), freq_now);
             ptr_myfile = fopen(filename, "rb");
             if (ptr_myfile == NULL) {
-                ERROR("CPU verification code: Cannot open gain file %s", filename);
+                ERROR("CPU verification code: Cannot open gain file {:s}", filename);
                 for (uint i = 0; i < _num_elements; i++) {
                     cpu_gain[(b * _num_elements + i) * 2] = default_gains[0];
                     cpu_gain[(b * _num_elements + i) * 2 + 1] = default_gains[1];
@@ -254,7 +254,8 @@ void gpuBeamformPulsarSimulate::main_thread() {
                 fclose(ptr_myfile);
             }
         }
-        INFO("[CPU] gain %.2f %.2f %.2f %.2f", cpu_gain[0], cpu_gain[1], cpu_gain[2], cpu_gain[3]);
+        INFO("[CPU] gain {:.2f} {:.2f} {:.2f} {:.2f}", cpu_gain[0], cpu_gain[1], cpu_gain[2],
+             cpu_gain[3]);
 
         // Update phase every one second
         const uint64_t phase_update_period = 390625;
@@ -290,7 +291,8 @@ void gpuBeamformPulsarSimulate::main_thread() {
                             _num_pulsar, _num_pol);
         memcpy(output, cpu_output, output_buf->frame_size);
 
-        INFO("Simulating GPU pulsar beamform processing done for %s[%d] result is in %s[%d]",
+        INFO("Simulating GPU pulsar beamform processing done for {:s}[{:d}] result is in {:s}[{:d}"
+             "]",
              input_buf->buffer_name, input_buf_id, output_buf->buffer_name, output_buf_id);
 
         pass_metadata(input_buf, input_buf_id, output_buf, output_buf_id);

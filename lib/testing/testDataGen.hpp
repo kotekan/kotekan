@@ -30,7 +30,7 @@
  *                              data production.
  *
  * @par REST Endpoints
- * @endpoint <unique_name>/generate_test_data
+ * @endpoint /\<unique_name\>/generate_test_data
  *             ``POST`` Triggers the generation of data.
  *              Requires json values  `num_frames` (integer)
  *

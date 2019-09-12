@@ -2,6 +2,7 @@
 #define REST_SERVER_HPP
 
 #include "Config.hpp"
+#include "kotekanLogging.hpp"
 
 #include "json.hpp"
 
@@ -48,7 +49,7 @@ public:
      *        HTTP "Error:" header
      *
      * @param message The message to include in the HTTP header
-     * @param status_code The HTTP error code.
+     * @param status The HTTP error code.
      */
     void send_error(const std::string& message, const HTTP_RESPONSE& status);
 
@@ -70,7 +71,7 @@ public:
     /**
      * @brief Sents an empty reply with the given status code
      *
-     * @param status_code The HTTP status code to return
+     * @param status The HTTP status code to return
      */
     void send_empty_reply(const HTTP_RESPONSE& status);
 
@@ -204,7 +205,7 @@ public:
      * Note: does not check that the endpoint exists,
      * of if an alias for this endpoint already exists.
      *
-     * @TODO Should there be more error checking here?
+     * @todo Should there be more error checking here?
      *
      * @param alias The new endpoint
      * @param target The existing endpoint to map to
@@ -258,15 +259,15 @@ private:
     /**
      * @brief Internal callback function for the evhttp server.
      *
-     * @param evhttp_request The request object
-     * @param cb_data Expects a pointer to the REST server object
+     * @param request   The request object
+     * @param cb_data   Expects a pointer to the REST server object
      */
     static void handle_request(struct evhttp_request* request, void* cb_data);
 
     /**
      * @brief Callback which returns list of endpoints to caller.
      *
-     * @param conn The connection to return endpoints too.
+     * @param conn The connection to return endpoints to.
      */
     void endpoint_list_callback(connectionInstance& conn);
 

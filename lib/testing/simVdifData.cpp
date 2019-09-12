@@ -85,13 +85,13 @@ void simVdifData::main_thread() {
                 buf_ptr += freqs;
             }
         }
-        //        INFO("Generated a test data set in %s[%d]", buf.buffer_name, frame_id);
+        //        INFO("Generated a test data set in {:s}[{:d}]", buf.buffer_name, frame_id);
 
         mark_frame_full(buf, unique_name.c_str(), frame_id);
         frame_id = (frame_id + 1) % buf->num_frames;
         header.data_frame++;
 
-        INFO("%4.1f%% of %6.4fs available.\n", dt / time_available * 100, time_available);
+        INFO("{:4.1f}% of {:6.4f}s available.\n", 100 * dt / time_available, time_available);
         start_time = stop_time;
     }
 }

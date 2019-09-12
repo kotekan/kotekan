@@ -11,8 +11,6 @@
 #ifndef OSXBINDCPU_H
 #define OSXBINDCPU_H
 
-#include "errors.h"
-
 #include <mach/thread_act.h>
 #include <mach/thread_policy.h>
 #include <pthread.h>

@@ -24,7 +24,7 @@ using namespace std::string_literals;
 dset_id_t second_root_update;
 
 BOOST_FIXTURE_TEST_CASE(_ask_broker_for_ancestors, CompareCTypes) {
-    __log_level = 4;
+    _global_log_level = 4;
     __enable_syslog = 0;
 
     // We have to start the restServer here, because the datasetManager uses it.
@@ -87,7 +87,7 @@ BOOST_FIXTURE_TEST_CASE(_ask_broker_for_ancestors, CompareCTypes) {
 }
 
 BOOST_AUTO_TEST_CASE(_dataset_manager_second_root_update) {
-    __log_level = 5;
+    _global_log_level = 5;
     __enable_syslog = 0;
 
     json json_config;
@@ -127,7 +127,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_second_root_update) {
 }
 
 BOOST_FIXTURE_TEST_CASE(_ask_broker_for_second_root, CompareCTypes) {
-    __log_level = 4;
+    _global_log_level = 4;
     __enable_syslog = 0;
 
     json json_config;
@@ -186,7 +186,7 @@ BOOST_FIXTURE_TEST_CASE(_ask_broker_for_second_root, CompareCTypes) {
 }
 
 BOOST_FIXTURE_TEST_CASE(_ask_broker_for_second_root_update, CompareCTypes) {
-    __log_level = 4;
+    _global_log_level = 4;
     __enable_syslog = 0;
 
     json json_config;

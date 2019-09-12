@@ -23,10 +23,10 @@
 
 /** @brief parse the gethostname() return string to the IP address of the node
  *
- *  @reference my_rack rack number of the node
- *  @reference my_node node number on the rack
- *  @reference my_nos  north hut or south hut
- *  @reference my_node_id ID of the node derived from the rack, node and nos.
+ *  @param my_rack rack number of the node
+ *  @param my_node node number on the rack
+ *  @param my_nos  north hut or south hut
+ *  @param my_node_id ID of the node derived from the rack, node and nos.
  **/
 
 void parse_chime_host_name(int& my_rack, int& my_node, int& my_nos, int& my_node_id);

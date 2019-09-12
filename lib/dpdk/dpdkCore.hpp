@@ -142,12 +142,12 @@ protected:
  *                           `- dpdk_handler: none`.   The number of handlers much match the number
  *                           of ports in the system, even if they aren't being used by the current
  * config. There must be a valid handler for every port referenced in @c lcore_port_map
- * @config   master_lcore_cpu The CPU ID of the master lcore (which just handles simple things like
+ * @conf   master_lcore_cpu The CPU ID of the master lcore (which just handles simple things like
  *                            updating stats, and other low volume operatings)
  *
  * @par Optional config, don't change unless you know what you are doing.
- * @config   num_mbufs       Int. Default 1024  The size of the mbuf pool
- * @config   mbuf_cache_size Int. Default 250   The number of mbufs to cache
+ * @conf   num_mbufs       Int. Default 1024  The size of the mbuf pool
+ * @conf   mbuf_cache_size Int. Default 250   The number of mbufs to cache
  *                                              Basically this is to try and keep mbufs always in l3
  *                                              by reducing the number of mbufs used by default.
  * @config   burst_size      Int. Default 32    The maximum number of packets returned by

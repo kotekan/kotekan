@@ -10,10 +10,10 @@ struct metadataContainer * create_metadata(size_t object_size, struct metadataPo
 
     struct metadataContainer * metadata_container;
     metadata_container = malloc(sizeof(struct metadataContainer));
-    CHECK_MEM(metadata_container);
+    CHECK_MEM_F(metadata_container);
 
     metadata_container->metadata = malloc(object_size);
-    CHECK_MEM(metadata_container->metadata);
+    CHECK_MEM_F(metadata_container->metadata);
     metadata_container->metadata_size = object_size;
 
     metadata_container->ref_count = 0;
@@ -21,7 +21,7 @@ struct metadataContainer * create_metadata(size_t object_size, struct metadataPo
 
     reset_metadata_object(metadata_container);
 
-    CHECK_ERROR( pthread_mutex_init(&metadata_container->metadata_lock, NULL) );
+    CHECK_ERROR_F( pthread_mutex_init(&metadata_container->metadata_lock, NULL) );
 
     return metadata_container;
 }
@@ -32,7 +32,7 @@ void delete_metadata(struct metadataContainer * container) {
     // at least for now...
     //assert(container->ref_count == 0);
     free(container->metadata);
-    CHECK_ERROR( pthread_mutex_destroy(&container->metadata_lock) );
+    CHECK_ERROR_F( pthread_mutex_destroy(&container->metadata_lock) );
 }
 
 void reset_metadata_object(struct metadataContainer * container) {
@@ -41,11 +41,11 @@ void reset_metadata_object(struct metadataContainer * container) {
 }
 
 void lock_metadata(struct metadataContainer * container) {
-    CHECK_ERROR( pthread_mutex_lock(&container->metadata_lock) );
+    CHECK_ERROR_F( pthread_mutex_lock(&container->metadata_lock) );
 }
 
 void unlock_metadata(struct metadataContainer * container) {
-    CHECK_ERROR( pthread_mutex_unlock(&container->metadata_lock) );
+    CHECK_ERROR_F( pthread_mutex_unlock(&container->metadata_lock) );
 }
 
 void increment_metadata_ref_count(struct metadataContainer * container) {
@@ -76,16 +76,16 @@ void decrement_metadata_ref_count(struct metadataContainer * container) {
 struct metadataPool * create_metadata_pool(int num_metadata_objects, size_t object_size) {
     struct metadataPool * pool;
     pool = malloc(sizeof(struct metadataPool));
-    CHECK_MEM(pool);
+    CHECK_MEM_F(pool);
 
     pool->pool_size = num_metadata_objects;
     pool->metadata_object_size = object_size;
-    CHECK_ERROR( pthread_mutex_init(&pool->pool_lock, NULL) );
+    CHECK_ERROR_F( pthread_mutex_init(&pool->pool_lock, NULL) );
 
     pool->in_use = malloc(pool->pool_size * sizeof(int));
-    CHECK_MEM(pool->in_use);
+    CHECK_MEM_F(pool->in_use);
     pool->metadata_objects = malloc(pool->pool_size * sizeof(struct metadataContainer *));
-    CHECK_MEM(pool->metadata_objects);
+    CHECK_MEM_F(pool->metadata_objects);
 
     for (unsigned int i = 0; i < pool->pool_size; ++i) {
         pool->metadata_objects[i] = create_metadata(object_size, pool);
@@ -100,7 +100,7 @@ void delete_metadata_pool(struct metadataPool * pool) {
         delete_metadata(pool->metadata_objects[i]);
     }
 
-    CHECK_ERROR( pthread_mutex_destroy(&pool->pool_lock) );
+    CHECK_ERROR_F( pthread_mutex_destroy(&pool->pool_lock) );
     free(pool->metadata_objects);
     free(pool->in_use);
 }
@@ -108,12 +108,12 @@ void delete_metadata_pool(struct metadataPool * pool) {
 struct metadataContainer * request_metadata_object(struct metadataPool * pool) {
     struct metadataContainer * container = NULL;
 
-    CHECK_ERROR( pthread_mutex_lock(&pool->pool_lock) );
+    CHECK_ERROR_F( pthread_mutex_lock(&pool->pool_lock) );
 
     // TODO there are better data structures for this.
     for (unsigned int i = 0; i < pool->pool_size; ++i) {
         if (pool->in_use[i] == 0) {
-            //DEBUG("pool->metadata_objects[%d] == %p", i, pool->metadata_objects[i]);
+            //DEBUG_F("pool->metadata_objects[%d] == %p", i, pool->metadata_objects[i]);
             container = pool->metadata_objects[i];
             assert(container->ref_count == 0); // Shouldn't give an inuse object (!)
             container->ref_count = 1;
@@ -121,7 +121,7 @@ struct metadataContainer * request_metadata_object(struct metadataPool * pool) {
             break;
         }
     }
-    CHECK_ERROR( pthread_mutex_unlock(&pool->pool_lock) );
+    CHECK_ERROR_F( pthread_mutex_unlock(&pool->pool_lock) );
 
     // We will assume that we cannot use more containers than are in the pool.
     // If you hit this increase your pool size.
@@ -132,9 +132,9 @@ struct metadataContainer * request_metadata_object(struct metadataPool * pool) {
 
 void return_metadata_to_pool(struct metadataPool * pool, struct metadataContainer * info) {
 
-    CHECK_ERROR( pthread_mutex_lock(&pool->pool_lock) );
+    CHECK_ERROR_F( pthread_mutex_lock(&pool->pool_lock) );
 
-    //DEBUG("Called return_metadata_to_pool");
+    //DEBUG_F("Called return_metadata_to_pool");
     for (unsigned int i = 0; i < pool->pool_size; ++i) {
         // Pointer check
         if (pool->metadata_objects[i] == info) {
@@ -142,7 +142,7 @@ void return_metadata_to_pool(struct metadataPool * pool, struct metadataContaine
 
             reset_metadata_object(pool->metadata_objects[i]);
             pool->in_use[i] = 0;
-            CHECK_ERROR( pthread_mutex_unlock(&pool->pool_lock) );
+            CHECK_ERROR_F( pthread_mutex_unlock(&pool->pool_lock) );
             return;
         }
     }

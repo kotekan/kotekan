@@ -2,6 +2,8 @@
 
 #include "hsaBase.h"
 
+#include "fmt.hpp"
+
 #include <math.h>
 #include <mutex>
 
@@ -41,7 +43,7 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config, const string& unique_name,
     // Allocate memory for input mask
     input_mask = (uint8_t*)hsa_host_malloc(input_mask_len, device.get_gpu_numa_node());
 
-    config_base = "/gpu/gpu_" + std::to_string(device.get_gpu_id());
+    config_base = fmt::format(fmt("/gpu/gpu_{:d}"), device.get_gpu_id());
 
     // Register rest server endpoint
     using namespace std::placeholders;

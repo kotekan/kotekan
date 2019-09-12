@@ -1,5 +1,7 @@
 #include "hsaPresumZero.hpp"
 
+#include "fmt.hpp"
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 
@@ -23,7 +25,7 @@ hsaPresumZero::~hsaPresumZero() {
 hsa_signal_t hsaPresumZero::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
     void* gpu_memory_frame = device.get_gpu_memory_array(
-        "presum_" + std::to_string(_sub_frame_index), gpu_frame_id, presum_len);
+        fmt::format(fmt("presum_{:d}"), _sub_frame_index), gpu_frame_id, presum_len);
 
     device.async_copy_host_to_gpu(gpu_memory_frame, presum_zeros, presum_len, precede_signal,
                                   signals[gpu_frame_id]);

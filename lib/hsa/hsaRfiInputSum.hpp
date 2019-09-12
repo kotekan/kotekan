@@ -99,7 +99,7 @@ private:
     std::mutex rest_callback_mutex;
     /// Sring to hold endpoint name
     string endpoint;
-    /// Config base (@TODO this is a huge hack replace with updatable config)
+    /// Config base (@todo this is a huge hack replace with updatable config)
     string config_base;
 };
 

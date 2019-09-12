@@ -20,7 +20,7 @@
  * @brief DPDK Packet handler which adds a final stage shuffle for systems larger than 512 elements
  *
  * @par REST Endpoints
- * @endpoint /<unique_name>/port_data ``[GET]`` Returns a large amount of stats about the port and
+ * @endpoint /\<unique_name\>/port_data ``[GET]`` Returns a large amount of stats about the port and
  * FPGA flags
  *
  * @par Buffers
@@ -212,7 +212,7 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
         "kotekan_dpdk_shuffle_fpga_second_stage_fifo_overflow_errors_total", unique_name,
         {"port"})) {
 
-    DEBUG("iceBoardHandler: %s", unique_name.c_str());
+    DEBUG("iceBoardHandler: {:s}", unique_name);
 
     std::vector<std::string> buffer_names =
         config.get<std::vector<std::string>>(unique_name, "out_bufs");
@@ -388,7 +388,7 @@ inline bool iceBoardShuffle::handle_lost_samples(int64_t lost_samples) {
         // NOTE: This also introduces cache line contension since we are using one array
         // to for all 4 links, ideally we might use 4 arrays and a reduce operation to bring
         // it down to one on another core.
-        // WARN("port %d, adding lost packets at: %d", port, lost_sample_location);
+        // WARN("port {:d}, adding lost packets at: {:d}", port, lost_sample_location);
         lost_samples_frame[lost_sample_location] = 1;
         lost_sample_location += 1;
         lost_samples -= 1;

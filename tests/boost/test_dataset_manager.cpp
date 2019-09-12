@@ -21,7 +21,7 @@ using namespace std::string_literals;
 
 
 BOOST_FIXTURE_TEST_CASE(_general, CompareCTypes) {
-    __log_level = 5;
+    _global_log_level = 5;
     __enable_syslog = 0;
     json json_config;
     json json_config_dm;
@@ -91,7 +91,7 @@ BOOST_FIXTURE_TEST_CASE(_general, CompareCTypes) {
 }
 
 BOOST_AUTO_TEST_CASE(_serialization_input) {
-    __log_level = 4;
+    _global_log_level = 4;
     json json_config;
     json json_config_dm;
     json_config_dm["use_dataset_broker"] = false;
@@ -130,7 +130,7 @@ BOOST_AUTO_TEST_CASE(_serialization_input) {
 }
 
 BOOST_AUTO_TEST_CASE(_serialization_prod) {
-    __log_level = 4;
+    _global_log_level = 4;
     json json_config;
     json json_config_dm;
     json_config_dm["use_dataset_broker"] = false;
@@ -163,7 +163,7 @@ BOOST_AUTO_TEST_CASE(_serialization_prod) {
 }
 
 BOOST_AUTO_TEST_CASE(_serialization_freq) {
-    __log_level = 4;
+    _global_log_level = 4;
     json json_config;
     json json_config_dm;
     json_config_dm["use_dataset_broker"] = false;
@@ -197,7 +197,7 @@ BOOST_AUTO_TEST_CASE(_serialization_freq) {
 }
 
 BOOST_AUTO_TEST_CASE(_no_state_of_type_found) {
-    __log_level = 4;
+    _global_log_level = 4;
     json json_config;
     json json_config_dm;
     json_config_dm["use_dataset_broker"] = false;
@@ -218,7 +218,7 @@ BOOST_AUTO_TEST_CASE(_no_state_of_type_found) {
 }
 
 BOOST_FIXTURE_TEST_CASE(_equal_states, CompareCTypes) {
-    __log_level = 4;
+    _global_log_level = 4;
     json json_config;
     json json_config_dm;
     json_config_dm["use_dataset_broker"] = false;

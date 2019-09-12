@@ -50,7 +50,7 @@ static hsa_status_t get_device_memory_region(hsa_amd_memory_pool_t region, void*
     if ((flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_FINE_GRAINED) ||
         (flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED))
     {
-        INFO("Found device region, flags=%x", flags);
+        INFO_F("Found device region, flags=%x", flags);
         hsa_amd_memory_pool_t* ret = (hsa_amd_memory_pool_t*) data;
         *ret = region;
         return HSA_STATUS_INFO_BREAK;
@@ -95,7 +95,7 @@ void * hsa_host_malloc(size_t len, uint32_t numa_node) {
     HSA_CHECK(hsa_status);
 
     if ( mlock(ptr, len) != 0 ) {
-        ERROR("Error locking memory - check ulimit -a to check memlock limits");
+        ERROR_F("Error locking memory - check ulimit -a to check memlock limits");
         return NULL;
     }
 

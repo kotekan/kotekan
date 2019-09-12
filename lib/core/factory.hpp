@@ -42,6 +42,7 @@
 #define _FACTORY_HPP
 
 #include "errors.h"
+#include "kotekanLogging.hpp"
 
 #include "fmt.hpp"
 
@@ -75,8 +76,8 @@ public:
     /**
      * Create a new instance of the type.
      *
-     * @param  type     Label of type to create.
-     * @param  args...  Arguments for constructor.
+     * @param  type Label of type to create.
+     * @param  args Arguments for constructor.
      *
      * @return          Bare pointer to new object.
      **/
@@ -86,15 +87,15 @@ public:
         if (r.find(type) == r.end()) {
             throw std::runtime_error("Could not find subtype name within Factory");
         }
-        DEBUG(fmt::format("FACTORY({}): Creating {} instance.", typelabel(), type).c_str());
+        DEBUG_NON_OO("FACTORY({:s}): Creating {:s} instance.", typelabel(), type);
         return r.at(type)(std::forward<Args>(args)...);
     }
 
     /**
      * Create a new instance of the type.
      *
-     * @param  type     Label of type to create.
-     * @param  args...  Arguments for constructor.
+     * @param  type Label of type to create.
+     * @param  args Arguments for constructor.
      *
      * @return          Unique pointer to new object.
      **/
@@ -106,8 +107,8 @@ public:
     /**
      * Create a new instance of the type.
      *
-     * @param  type     Label of type to create.
-     * @param  args...  Arguments for constructor.
+     * @param  type Label of type to create.
+     * @param  args Arguments for constructor.
      *
      * @return          Shared pointer to new object.
      **/
@@ -119,13 +120,13 @@ public:
     /**
      * Create a new instance of the type.
      *
-     * @param  U     Subtype to register.
+     * @tparam  U     Subtype to register.
      * @param  type  Label of type to register.
      **/
     template<typename U>
     static int register_type(const std::string& type)
     {
-        DEBUG(fmt::format("FACTORY({}): Registering {}.", typelabel(), type).c_str());
+        DEBUG_NON_OO("FACTORY({:s}): Registering {:s}.", typelabel(), type);
         // Register the creation function
         type_registry()[type] = [](Args&&... args) -> T* {
             return new U(std::forward<Args>(args)...);
@@ -139,7 +140,7 @@ public:
     /**
      * Check that the type has been registered.
      *
-     * @param  name  Name of type.
+     * @param  type  Name of type.
      *
      * @return       Has type of name been registered.
      **/
@@ -151,7 +152,7 @@ public:
     /**
      * Get the type label corresponding to the object.
      *
-     * @param  ptr  Pointer to an instance of the base type.
+     * @param  obj  Pointer to an instance of the base type.
      *
      * @return      The string label the type was registered as.
      **/
@@ -216,8 +217,10 @@ private:
  *
  * Should be called in the header where the baseclass is defined.
  *
+//! @cond Doxygen_Suppress
  * @param class   Base class for factory.
- * @param args... Types of arguments for constructor to use.
+ * @param args Types of arguments for constructor to use.
+//! @endcond
  *
  * @note This will create an alias for the specialized factory class.
  **/
