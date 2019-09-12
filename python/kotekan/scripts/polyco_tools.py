@@ -89,6 +89,16 @@ def mjd(unixtime):
 
 
 @click.command()
+@click.argument('unixtime', required=False, default=None, type=float)
+def lst(unixtime):
+    """ Convert unix time to LST (in hours).
+        Will print LST now if no time is provided. """
+    if unixtime is None:
+        unixtime = time.time()
+    click.echo(ephem.unix_to_lsa(unixtime) * 24. / 360.)
+
+
+@click.command()
 @click.argument("fname", type=str)
 @click.argument("start-time", type=float)
 @click.option(
@@ -173,6 +183,12 @@ def mjd(unixtime):
     is_flag=True,
     help="Schedule enabling and disabling gating using specified start and end times. Will also enable writing of 26m_gated dataset.",
 )
+@click.option(
+    "--time-spec",
+    type=click.Choice(["MJD", "LST", "UNIX"]),
+    help="How to interpret start and end times. If non-absolute LST is used, will reference to the time the command is run.",
+    default="MJD",
+)
 def update_polyco(
     fname,
     start_time,
@@ -191,6 +207,7 @@ def update_polyco(
     url,
     tempo_dir,
     schedule,
+    time_spec,
 ):
     """Generate a gating polyco update from a parfile and send to kotekan.
     Required arguments are the path to the parfile and the start time for the polyco
@@ -198,26 +215,43 @@ def update_polyco(
     """
     url = url.strip("/")
     fname = path.abspath(fname)
-    if not load_polyco:
-        if start_time == "now":
-            start_time = unix2mjd(Timespec(time.time())) - 0.2
+
+    # parse times
+    def ensure_mjd(t):
+        if time_spec == "LST":
+            return unix2mjd(Timespec(ephem.lsa_to_unix(t / 24.0 * 360.0, time.time())))
+        elif time_spec == "UNIX":
+            return unix2mjd(Timespec(t))
         else:
-            start_time = float(start_time)
-        if end_time is None:
-            end_time = start_time + 1.0
-        elif end_time <= start_time:
-            raise ValueError("Cannot use end time before start time")
+            return t
+
+    if start_time == "now":
+        start_time = unix2mjd(Timespec(time.time())) - 0.2
+    else:
+        start_time = ensure_mjd(float(start_time))
+    if end_time is None:
+        end_time = start_time + 1.0
+    else:
+        end_time = ensure_mjd(end_time)
+    if end_time <= start_time:
+        raise ValueError("Cannot use end time before start time")
+
+    if not load_polyco:
         pfile = PolycoFile.generate(
-            start_time, end_time, fname, dm, segment, ncoeff, max_ha, tempo_dir
+            start_time,
+            end_time,
+            fname,
+            dm,
+            segment,
+            ncoeff,
+            max_ha,
+            tempo_dir,
         )
         # Read DM and name from parfile since TEMPO mangles them
         parfile = parse_parfile(fname)
     else:
         pfile = PolycoFile(fname)
         parfile = {}
-
-    # ensure time is a float
-    start_time = float(start_time)
 
     if pfile is None or len(pfile.polycos) == 0:
         print("\nCould not generate/read polyco file.")
@@ -343,6 +377,7 @@ def update_polyco(
 )
 @click.pass_context
 def import_schedule(ctx, fname, url, tempo_dir, parfile_dir, reference):
+    """NOT IMPLEMENTED YET"""
     if reference is None:
         cur_t = time.time()
     else:
@@ -401,6 +436,7 @@ cli.add_command(update_polyco)
 cli.add_command(disable_gating)
 cli.add_command(import_schedule)
 cli.add_command(mjd)
+cli.add_command(lst)
 
 if __name__ == "__main__":
     cli()
