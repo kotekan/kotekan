@@ -3,7 +3,9 @@
 #include "fmt.hpp"
 #include "json.hpp"
 
+#ifdef WITH_NUMA
 #include <numa.h>
+#endif
 #include <signal.h>
 #include <stdexcept>
 #include <unistd.h>
@@ -104,7 +106,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
             num_lcores, rte_lcore_count()));
     }
 
-    // Get the number of ports on each numa node an create an mbuf pool for that node.
+    // Get the number of ports on each numa node and create an mbuf pool for that node.
     for (int node_id = 0; node_id < numa_num_configured_nodes(); ++node_id) {
         int num_ports_on_node = 0;
         for (size_t j = 0; j < lcore_cpu_map.size(); ++j) {
@@ -118,7 +120,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
                 num_ports_on_node += lcore_port_list[j].num_ports;
             }
         }
-        DEBUG("Number of ports on numa node %d = %d", node_id, num_ports_on_node);
+        DEBUG("Number of ports on numa node {:d}: {:d}", node_id, num_ports_on_node);
         struct rte_mempool* pool = rte_mempool_create(
             ("MBUF_POOL_" + to_string(node_id)).c_str(), num_mbufs * num_ports_on_node, mbuf_size,
             mbuf_cache_size, sizeof(struct rte_pktmbuf_pool_private), rte_pktmbuf_pool_init, NULL,
@@ -313,7 +315,7 @@ int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
     // TODO record the MAC address for export to JSON
     struct ether_addr addr;
     rte_eth_macaddr_get(port, &addr);
-    INFO("Port {:d} MAC: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} memory assigned to numa_node {}",
+    INFO("Port {:d} MAC: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} memory assigned to numa_node {:d}",
          (unsigned)port, addr.addr_bytes[0], addr.addr_bytes[1], addr.addr_bytes[2],
          addr.addr_bytes[3], addr.addr_bytes[4], addr.addr_bytes[5], numa_node_of_cpu(lcore_id));
 

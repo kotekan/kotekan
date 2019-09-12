@@ -5,7 +5,7 @@
 # Example config for a simple DPDK setup, this config just captures packets from
 # one DPDK port (including all headers/footers), and puts them in a buffer
 # Nothing is done with the buffer other than printing the contents of the first
-# packet in each frame to scree.
+# packet in each frame to screen.
 #
 # Note all frames must be the same size, set by `packet_size`
 #
@@ -41,7 +41,7 @@ network_capture_buf:
 # on the options here.
 dpdk:
   kotekan_stage: dpdkCore
-  # Format is index = lcore, value = cpu core
+  # Format is index = lcore (logical core), value = cpu core
   lcore_cpu_map: [2]
   master_lcore_cpu: 3
   # Format is index = lcore, value = array of port IDs

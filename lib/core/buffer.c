@@ -814,11 +814,11 @@ uint8_t * buffer_malloc(ssize_t len, int numa_node) {
         CHECK_MEM_F(frame);
     #else
         (void)numa_node;
-        // Create a page alligned block of memory for the buffer
+        // Create a page aligned block of memory for the buffer
         err = posix_memalign((void **) &(frame), PAGESIZE_MEM, len);
         CHECK_MEM_F(frame);
         if ( err != 0 ) {
-            ERROR_F("Error creating alligned memory: %d", err);
+            ERROR_F("Error creating aligned memory: %d", err);
             return NULL;
         }
     #endif
