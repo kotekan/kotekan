@@ -95,7 +95,7 @@ gen_data:
   value: 153
   test_data_gen_0:
     kotekan_stage: testDataGen
-    network_out_buf: gpu_input_buffer_0
+    out_buf: gpu_input_buffer_0
 
 cpu_simulate:
   cpu_data_sim_0:

@@ -128,13 +128,13 @@ dpdk:
 #  value: 153
 #  test_data_gen_0:
 #    kotekan_stage: testDataGen
-#    network_out_buf: gpu_270_input_buffer_0
+#    out_buf: gpu_270_input_buffer_0
 #  test_data_gen_1:
 #    kotekan_stage: testDataGen
-#    network_out_buf: gpu_280_input_buffer_0
+#    out_buf: gpu_280_input_buffer_0
 #  test_data_gen_2:
 #    kotekan_stage: testDataGen
-#    network_out_buf: gpu_280_input_buffer_1
+#    out_buf: gpu_280_input_buffer_1
 
 gpu:
   commands:
