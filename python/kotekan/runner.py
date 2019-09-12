@@ -188,7 +188,7 @@ class FakeNetworkBuffer(InputBuffer):
 
         stage_config = {
             'kotekan_stage': 'testDataGen',
-            'network_out_buf': self.name,
+            'out_buf': self.name,
         }
         stage_config.update(kwargs)
 

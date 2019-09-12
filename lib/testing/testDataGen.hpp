@@ -14,7 +14,7 @@
  * @brief Generate test data as a standin for DPDK.
  *
  * @par Buffers
- * @buffer network_out_buf Buffer to fill
+ * @buffer out_buf Buffer to fill
  *         @buffer_format any format
  *         @buffer_metadata chimeMetadata
  *
