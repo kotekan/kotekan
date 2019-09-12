@@ -129,7 +129,7 @@ protected:
  *                          Note there is aways one handler per port, so that means
  *                          there can be more than one handler per lcore.
  * @conf   handlers         Array of json objections which each contain the config
- *                          line @c dpdk_handler:<handler_name> which names the hander
+ *                          line @c dpdk_handler:\<handler_name\> which names the hander
  *                          to use for the NIC port at its index in the handlers array.
  *                          Addational config for each handler can be given within each of
  *                          these objects.  For example:
