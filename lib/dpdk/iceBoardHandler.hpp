@@ -158,7 +158,9 @@ protected:
         if (unlikely(fpga_packet_size != cur_mbuf->pkt_len)) {
 
             // Checks the packet size matches the expect FPGA packet size.
-            ERROR("Got packet with incorrect length: {:d}, expected {:d}", cur_mbuf->pkt_len,
+            ERROR("Got packet with incorrect length: {:d}, expected {:d}",
+                  cur_mbuf->pkt_len, fpga_packet_size);
+
 
             rx_packet_len_errors_total += 1;
             rx_errors_total += 1;

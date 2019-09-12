@@ -72,7 +72,7 @@ void kotekan_hsa_start() {
     hsa_status = hsa_iterate_agents(get_cpu_agent, &num_numa_nodes);
     HSA_CHECK(hsa_status);
 
-    INFO("HSA Found: %d CPU memory agents (NUMA areas)", num_numa_nodes);
+    INFO_F("HSA Found: %d CPU memory agents (NUMA areas)", num_numa_nodes);
     assert(num_numa_nodes <= MAX_NUMA);
     // Get the CPU memory region
     for (uint32_t i = 0; i < num_numa_nodes; ++i) {
