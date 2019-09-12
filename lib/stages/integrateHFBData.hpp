@@ -47,6 +47,8 @@ public:
     /// Primary loop to wait for buffers, dig through data,
     /// stuff packets lather, rinse and repeat.
     void main_thread() override;
+    void initFirstFrame(float *input_data, float *sum_data, const uint32_t in_buffer_ID);
+    void integrateFrame(float *input_data, float *sum_data, const uint32_t in_buffer_ID);
 
 private:
     struct Buffer* in_buf;
@@ -57,7 +59,14 @@ private:
     uint32_t _num_frb_total_beams;
     uint32_t _num_sub_freqs;
     uint32_t _samples_per_data_set;
-    
+
+    /// Stage variables
+    uint32_t total_lost_timesamples;
+    uint32_t frame;
+    int64_t fpga_seq_num;
+    int64_t fpga_seq_num_start;
+    int64_t fpga_seq_num_end;
+
 };
 
 #endif
