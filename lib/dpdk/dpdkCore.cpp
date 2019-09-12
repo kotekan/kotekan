@@ -315,7 +315,8 @@ int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
     // TODO record the MAC address for export to JSON
     struct ether_addr addr;
     rte_eth_macaddr_get(port, &addr);
-    INFO("Port {:d} MAC: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} memory assigned to numa_node {:d}",
+    INFO("Port {:d} MAC: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} "
+         "memory assigned to numa_node {:d}",
          (unsigned)port, addr.addr_bytes[0], addr.addr_bytes[1], addr.addr_bytes[2],
          addr.addr_bytes[3], addr.addr_bytes[4], addr.addr_bytes[5], numa_node_of_cpu(lcore_id));
 

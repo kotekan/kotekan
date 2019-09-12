@@ -443,6 +443,7 @@ void swap_frames(struct Buffer * from_buf, int from_frame_id,
  * @brief Allocates a frame with the required malloc method
  *
  * @param len The size of the frame to allocate in bytes.
+ * @param numa_node The CPU NUMA region to allocate the memory in.
  * @return A pointer to the new memory, or @c NULL if allocation failed.
  */
 uint8_t * buffer_malloc(ssize_t len, int numa_node);

@@ -119,8 +119,8 @@ protected:
  * In the end anyone should be able to use this class with their own subclass of the
  * @c dpdkRXhandler without understanding all the details about setting up the DPDK framework.
  *
- * @config   lcore_cpu_map   Array of CPU IDs which should be used for lcores (DPDK threads locked to
- *                           CPU code) For example [0,6] would create 2 lcores mapped
+ * @config   lcore_cpu_map   Array of CPU IDs which should be used for lcores (DPDK threads locked
+ *                           to a CPU core).  For example [0,6] would create 2 lcores mapped
  *                           to the 1st and 7th CPU core.
  * @config   lcore_port_map  Array of arrays mapping ports to lcores (DPDK threads locked to CPU
  *                           code) Format is index = lcore, value = array of port IDs
