@@ -119,45 +119,46 @@ protected:
  * In the end anyone should be able to use this class with their own subclass of the
  * @c dpdkRXhandler without understanding all the details about setting up the DPDK framework.
  *
- * @config   lcore_cpu_map   Array of CPU IDs which should be used for lcores (DPDK threads locked
- *                           to a CPU core).  For example [0,6] would create 2 lcores mapped
- *                           to the 1st and 7th CPU core.
- * @config   lcore_port_map  Array of arrays mapping ports to lcores (DPDK threads locked to CPU
- *                           code) Format is index = lcore, value = array of port IDs
- *                           so @c [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
- *                           and lcore 1 to service ports 2 and 3.
- *                           Note there is aways one handler per port, so that means
- *                           there can be more than one handler per lcore.
- * @config   handlers        Array of json objections which each contain the config
- *                           line @c dpdk_handler:<handler_name> which names the hander
- *                           to use for the NIC port at its index in the handlers array.
- *                           Addational config for each handler can be given within each of
- *                           these objects.  For example:
- *                           handlers:
- *                               - dpdk_handler: myHandler # Handler for port 0
- *                                 in_buf: my_buf_0
- *                               - dpdk_handler: myHandler # Handler for port 1
- *                                 in_buf: my_buf_1
- *                           Note that if a port isn't being used it must be denoted by
- *                           `- dpdk_handler: none`.   The number of handlers much match the number
- *                           of ports in the system, even if they aren't being used by the current
- * config. There must be a valid handler for every port referenced in @c lcore_port_map
+ * @conf   lcore_cpu_map    Array of CPU IDs which should be used for lcores (DPDK threads locked
+ *                          to a CPU core).  For example [0,6] would create 2 lcores mapped
+ *                          to the 1st and 7th CPU core.
+ * @conf   lcore_port_map   Array of arrays mapping ports to lcores (DPDK threads locked to CPU
+ *                          code) Format is index = lcore, value = array of port IDs
+ *                          so @c [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
+ *                          and lcore 1 to service ports 2 and 3.
+ *                          Note there is aways one handler per port, so that means
+ *                          there can be more than one handler per lcore.
+ * @conf   handlers         Array of json objections which each contain the config
+ *                          line @c dpdk_handler:<handler_name> which names the hander
+ *                          to use for the NIC port at its index in the handlers array.
+ *                          Addational config for each handler can be given within each of
+ *                          these objects.  For example:
+ *                          handlers:
+ *                             - dpdk_handler: myHandler # Handler for port 0
+ *                                in_buf: my_buf_0
+ *                              - dpdk_handler: myHandler # Handler for port 1
+ *                                in_buf: my_buf_1
+ *                          Note that if a port isn't being used it must be denoted by
+ *                          `- dpdk_handler: none`.   The number of handlers much match the number
+ *                          of ports in the system, even if they aren't being used by the current
+ *                          config. There must be a valid handler for every port
+ *                          referenced in @c lcore_port_map
  * @conf   master_lcore_cpu The CPU ID of the master lcore (which just handles simple things like
- *                            updating stats, and other low volume operatings)
+ *                          updating stats, and other low volume operatings)
  *
  * @par Optional config, don't change unless you know what you are doing.
- * @conf   num_mbufs       Int. Default 1024  The size of the mbuf pool
- * @conf   mbuf_cache_size Int. Default 250   The number of mbufs to cache
- *                                              Basically this is to try and keep mbufs always in l3
- *                                              by reducing the number of mbufs used by default.
- * @config   burst_size      Int. Default 32    The maximum number of packets returned by
- *                                              @c rte_eth_rx_burst
- * @config   rx_ring_size    Int. Default 512   The size of the Receive ring
- * @config   tx_ring_size    Int. Default 512   The size of the Transmit ring
- * @config   max_rx_pkt_len  Int. Default 5000  The max packet size.
- * @config   jumbo_frame     Bool. Default true Enable support for Jumbo frames
- * @config   num_mem_channels Int. Default 4    The number of system memory channels
- * @config   init_mem_alloc  Int.  Default 256  The initial memory allocation in MB
+ * @conf   num_mbufs        Int. Default 1024  The size of the mbuf pool
+ * @conf   mbuf_cache_size  Int. Default 250   The number of mbufs to cache
+ *                                             Basically this is to try and keep mbufs always in l3
+ *                                             by reducing the number of mbufs used by default.
+ * @conf   burst_size       Int. Default 32    The maximum number of packets returned by
+ *                                             @c rte_eth_rx_burst
+ * @conf   rx_ring_size     Int. Default 512   The size of the Receive ring
+ * @conf   tx_ring_size     Int. Default 512   The size of the Transmit ring
+ * @conf   max_rx_pkt_len   Int. Default 5000  The max packet size.
+ * @conf   jumbo_frame      Bool. Default true Enable support for Jumbo frames
+ * @conf   num_mem_channels Int. Default 4     The number of system memory channels
+ * @conf   init_mem_alloc   Int.  Default 256  The initial memory allocation in MB
  *
  * @author Andre Renard
  */
