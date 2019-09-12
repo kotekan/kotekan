@@ -18,7 +18,7 @@ integrateHFBData::integrateHFBData(Config& config_, const string& unique_name,
 
     // Apply config.
     _num_frb_total_beams = config.get<uint32_t>(unique_name, "num_frb_total_beams");
-    _num_frames_to_integrate = config.get<uint32_t>(unique_name, "num_frames_to_integrate");
+    _num_frames_to_integrate = config.get_default<uint32_t>(unique_name, "num_frames_to_integrate", 80);
     _num_sub_freqs = config.get<uint32_t>(unique_name, "num_sub_freqs");
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
 
@@ -29,7 +29,8 @@ integrateHFBData::integrateHFBData(Config& config_, const string& unique_name,
     register_producer(out_buf, unique_name.c_str());
  
     // Note: _num_frames_to_integrate cannot go below 16 frames as _num_frames_to_integrate be lower than the max_frames_missing
-    assert(_num_frames_to_integrate > 16);
+    if(_num_frames_to_integrate < 16)
+      throw std::runtime_error(fmt::format(fmt("_num_frames_to_integrate: {:d} is too small, it has to be higher than 16 (maximum no. of missing frames between integrations)"), _num_frames_to_integrate));
 }
 
 integrateHFBData::~integrateHFBData() {}
