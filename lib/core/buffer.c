@@ -799,8 +799,10 @@ void swap_frames(struct Buffer * from_buf, int from_frame_id,
 uint8_t * buffer_malloc(ssize_t len, int numa_node) {
 
     uint8_t * frame = NULL;
+    int err;
 
 #ifdef WITH_HSA
+    (void)err;
     // Is this memory aligned?
     frame = hsa_host_malloc(len, numa_node);
     if (frame == NULL) {
@@ -822,7 +824,7 @@ uint8_t * buffer_malloc(ssize_t len, int numa_node) {
     #endif
 
     // Ask that all pages be kept in memory
-    int err = mlock((void *)frame, len);
+    err = mlock((void *)frame, len);
 
     if ( err == -1 ) {
         ERROR_F("Error locking memory: %d - check ulimit -a to check memlock limits", errno);
