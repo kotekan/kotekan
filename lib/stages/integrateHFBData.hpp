@@ -69,7 +69,6 @@ private:
     uint32_t total_lost_timesamples;
     uint32_t frame;
     int64_t fpga_seq_num;
-    int64_t fpga_seq_num_start;
     int64_t fpga_seq_num_end;
 
 };
