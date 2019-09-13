@@ -15,7 +15,9 @@
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <math.h>
-
+#ifdef WITH_NUMA
+#include <numa.h>
+#endif
 
 struct zero_frames_thread_args {
     struct Buffer * buf;
@@ -50,11 +52,10 @@ void private_reset_consumers(struct Buffer * buf, const int ID);
 
 
 struct Buffer* create_buffer(int num_frames, int len,
-                  struct metadataPool * pool, const char * buffer_name)
+                  struct metadataPool * pool, const char * buffer_name, int numa_node)
 {
 
     assert(num_frames > 0);
-    assert(pool != NULL);
 
     struct Buffer * buf = malloc(sizeof(struct Buffer));
     CHECK_MEM_F(buf);
@@ -141,7 +142,7 @@ struct Buffer* create_buffer(int num_frames, int len,
 
     // Create the frames.
     for (int i = 0; i < num_frames; ++i) {
-        buf->frames[i] = buffer_malloc(buf->aligned_frame_size);
+        buf->frames[i] = buffer_malloc(buf->aligned_frame_size, numa_node);
         if (buf->frames[i] == NULL)
             return NULL;
     }
@@ -152,7 +153,7 @@ struct Buffer* create_buffer(int num_frames, int len,
 void delete_buffer(struct Buffer* buf)
 {
     for (int i = 0; i < buf->num_frames; ++i) {
-        buffer_free(buf->frames[i]);
+        buffer_free(buf->frames[i], buf->aligned_frame_size);
         free(buf->producers_done[i]);
         free(buf->consumers_done[i]);
     }
@@ -721,7 +722,8 @@ void copy_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf
         goto unlock_exit;
     }
 
-    memcpy(to_metadata_container->metadata, from_metadata_container->metadata, from_metadata_container->metadata_size);
+    memcpy(to_metadata_container->metadata, from_metadata_container->metadata,
+           from_metadata_container->metadata_size);
 
     unlock_exit:
     CHECK_ERROR_F( pthread_mutex_unlock(&to_buf->lock) );
@@ -732,9 +734,14 @@ void allocate_new_metadata_object(struct Buffer * buf, int ID) {
     assert(ID >= 0);
     assert(ID < buf->num_frames);
 
-    CHECK_ERROR_F( pthread_mutex_lock(&buf->lock) );
+    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
 
-    //DEBUG_F("Called allocate_new_metadata_object, buf %p, %d", buf, ID);
+    if (buf->metadata_pool == NULL) {
+        FATAL_ERROR_F("No metadata pool on %s but metadata was needed by a producer",
+            buf->buffer_name);
+    }
+
+    DEBUG2_F("Called allocate_new_metadata_object, buf %p, %d", buf, ID);
 
     if (buf->metadata[ID] == NULL) {
         buf->metadata[ID] = request_metadata_object(buf->metadata_pool);
@@ -793,26 +800,32 @@ void swap_frames(struct Buffer * from_buf, int from_frame_id,
 
 }
 
-uint8_t * buffer_malloc(ssize_t len) {
+uint8_t * buffer_malloc(ssize_t len, int numa_node) {
 
     uint8_t * frame = NULL;
+    int err;
 
 #ifdef WITH_HSA
+    (void)err;
     // Is this memory aligned?
-    frame = hsa_host_malloc(len);
+    frame = hsa_host_malloc(len, numa_node);
     if (frame == NULL) {
         return NULL;
     }
-
 #else
-    // Create a page alligned block of memory for the buffer
-    int err = 0;
-    err = posix_memalign((void **) &(frame), PAGESIZE_MEM, len);
-    CHECK_MEM_F(frame);
-    if ( err != 0 ) {
-        ERROR_F("Error creating alligned memory: %d", err);
-        return NULL;
-    }
+    #ifdef WITH_NUMA
+        frame = (uint8_t *) numa_alloc_onnode(len, numa_node);
+        CHECK_MEM_F(frame);
+    #else
+        (void)numa_node;
+        // Create a page aligned block of memory for the buffer
+        err = posix_memalign((void **) &(frame), PAGESIZE_MEM, len);
+        CHECK_MEM_F(frame);
+        if ( err != 0 ) {
+            ERROR_F("Error creating aligned memory: %d", err);
+            return NULL;
+        }
+    #endif
 
     // Ask that all pages be kept in memory
     err = mlock((void *)frame, len);
@@ -823,18 +836,23 @@ uint8_t * buffer_malloc(ssize_t len) {
         return NULL;
     }
 #endif
-
     // Zero the new frame
     memset(frame, 0x0, len);
 
     return frame;
 }
 
-void buffer_free(uint8_t * frame_pointer) {
+void buffer_free(uint8_t * frame_pointer, size_t size) {
 #ifdef WITH_HSA
+    (void)size;
     hsa_host_free(frame_pointer);
 #else
-    free(frame_pointer);
+    #ifdef WITH_NUMA
+        numa_free(frame_pointer, size);
+    #else
+        (void)size;
+        free(frame_pointer);
+    #endif
 #endif
 }
 

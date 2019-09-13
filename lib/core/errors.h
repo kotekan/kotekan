@@ -16,7 +16,7 @@
 using std::strerror;
 #endif
 
-enum ReturnCode {CLEAN_EXIT = 0, FATAL_ERROR, TEST_PASSED, TEST_FAILED, RETURN_CODE_COUNT};
+enum ReturnCode {CLEAN_EXIT = 0, FATAL_ERROR = 1, TEST_PASSED, TEST_FAILED, RETURN_CODE_COUNT};
 
 #ifdef __cplusplus
 extern "C" {
@@ -113,7 +113,8 @@ void set_error_message_f(const char * format, ...);
 
 // Use this for fatal errors that kotekan can't recover from.
 // Prints an error message and raises a SIGINT.
-#define FATAL_ERROR_F(m, a...) { ERROR_F(m, ## a); set_error_message_f(m, ## a); exit_kotekan(ReturnCode::FATAL_ERROR);}
+// Since ReturnCode is defined as a C++ enum, we have to hard code the exit code to 1 here.
+#define FATAL_ERROR_F(m, a...) { ERROR_F(m, ## a); set_error_message_f(m, ## a); exit_kotekan(1);}
 
 // Exit kotekan after a successful test.
 #define TEST_PASSED() exit_kotekan(ReturnCode::TEST_PASSED);

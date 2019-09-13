@@ -86,16 +86,16 @@ gen_data:
   value: 153
   test_data_gen_0:
     kotekan_stage: testDataGen
-    network_out_buf: gpu_input_buffer_0
+    out_buf: gpu_input_buffer_0
 #  test_data_gen_1:
 #    kotekan_stage: testDataGen
-#    network_out_buf: gpu_input_buffer_1
+#    out_buf: gpu_input_buffer_1
 #  test_data_gen_2:
 #    kotekan_stage: testDataGen
-#    network_out_buf: gpu_input_buffer_2
+#    out_buf: gpu_input_buffer_2
 #  test_data_gen_3:
 #    kotekan_stage: testDataGen
-#    network_out_buf: gpu_input_buffer_3
+#    out_buf: gpu_input_buffer_3
 
 lost_samples_buffer:
     kotekan_buffer: standard
@@ -108,7 +108,7 @@ gen_ok:
   value: 0
   lost_zero:
     kotekan_stage: testDataGen
-    network_out_buf: lost_samples_buffer
+    out_buf: lost_samples_buffer
 
 gpu:
   kernel_path: "../../build/lib/hsa/kernels/"

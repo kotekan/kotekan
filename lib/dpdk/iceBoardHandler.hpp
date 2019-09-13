@@ -157,11 +157,10 @@ protected:
         }
         if (unlikely(fpga_packet_size != cur_mbuf->pkt_len)) {
 
-            // Getting a packet with the wrong length is almost always
-            // a configuration/FPGA problem that needs to be addressed.
-            // So for now we just exit kotekan with an error message.
-            FATAL_ERROR("Got packet with incorrect length: {:d}, expected {:d}", cur_mbuf->pkt_len,
-                        fpga_packet_size);
+            // Checks the packet size matches the expected FPGA packet size.
+            ERROR("Got packet with incorrect length: {:d}, expected {:d}", cur_mbuf->pkt_len,
+                  fpga_packet_size);
+
 
             rx_packet_len_errors_total += 1;
             rx_errors_total += 1;
@@ -397,6 +396,10 @@ json iceBoardHandler::get_json_port_info() {
     info["lost_packets"] = rx_lost_samples_total / samples_per_packet;
     info["lost_samples"] = rx_lost_samples_total;
 
+    info["rx_packets_total"] = rx_packets_total;
+    info["rx_samples_total"] = rx_packets_total;
+    info["rx_bytes_total"] = rx_bytes_total;
+
     info["ip_cksum_errors"] = rx_ip_cksum_errors_total;
     info["out_of_order_errors"] = rx_out_of_order_errors_total;
 
@@ -446,6 +449,7 @@ json iceBoardHandler::get_json_port_info() {
 }
 
 inline void iceBoardHandler::update_stats() {
+
     std::vector<std::string> port_label = {std::to_string(port)};
 
     rx_packets_total_metric.labels(port_label).set(rx_packets_total);
@@ -463,7 +467,7 @@ inline void iceBoardHandler::update_stats() {
 
     double time_now = e_time();
     if (status_cadence != 0 && (time_now - last_status_message_time) > (double)status_cadence) {
-        INFO("DPDK port {:d}, connected to (crate = {:d}, slot = {:d}, link = {:D}), total "
+        INFO("DPDK port {:d}, connected to (crate = {:d}, slot = {:d}, link = {:d}), total "
              "packets {:d} ",
              port, port_stream_id.crate_id, port_stream_id.slot_id, port_stream_id.link_id,
              rx_packets_total);

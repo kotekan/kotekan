@@ -1,8 +1,11 @@
 #include "hsaBase.h"
 #include <sys/mman.h>
 
-hsa_agent_t cpu_agent;
-hsa_amd_memory_pool_t host_region;
+#define MAX_NUMA 4
+
+hsa_agent_t cpu_agent[MAX_NUMA];
+hsa_amd_memory_pool_t host_region[MAX_NUMA];
+uint32_t num_numa_nodes;
 
 // Internal healer function.
 static hsa_status_t get_cpu_agent(hsa_agent_t agent, void* data) {
@@ -17,9 +20,18 @@ static hsa_status_t get_cpu_agent(hsa_agent_t agent, void* data) {
         return hsa_error_code;
     }
 
+    uint32_t numa_node = 255;
+    hsa_error_code =
+        hsa_agent_get_info(agent, HSA_AGENT_INFO_NODE, &numa_node);
+    if (hsa_error_code != HSA_STATUS_SUCCESS) {
+        return hsa_error_code;
+    }
+
     if (hsa_device_type == HSA_DEVICE_TYPE_CPU) {
-        *((hsa_agent_t*)data) = agent;
-        return HSA_STATUS_INFO_BREAK;
+        assert(numa_node < MAX_NUMA);
+        cpu_agent[numa_node] = agent;
+        *(uint32_t*)(data) += 1;
+        assert(*(uint32_t*)(data) <= MAX_NUMA);
     }
 
     return HSA_STATUS_SUCCESS;
@@ -54,26 +66,32 @@ void kotekan_hsa_start() {
     hsa_status = hsa_amd_profiling_async_copy_enable(1);
     HSA_CHECK(hsa_status);
 
+    num_numa_nodes = 0;
+
     // Get the CPU agent
-    hsa_status = hsa_iterate_agents(get_cpu_agent, &cpu_agent);
-    if(hsa_status == HSA_STATUS_INFO_BREAK) {
-        hsa_status = HSA_STATUS_SUCCESS;
-    }
+    hsa_status = hsa_iterate_agents(get_cpu_agent, &num_numa_nodes);
     HSA_CHECK(hsa_status);
 
+    INFO_F("HSA Found: %d CPU memory agents (NUMA areas)", num_numa_nodes);
+    assert(num_numa_nodes <= MAX_NUMA);
     // Get the CPU memory region
-    hsa_status = hsa_amd_agent_iterate_memory_pools(cpu_agent, get_device_memory_region, &host_region);
-    if (hsa_status == HSA_STATUS_INFO_BREAK) {
-        hsa_status = HSA_STATUS_SUCCESS;
+    for (uint32_t i = 0; i < num_numa_nodes; ++i) {
+        hsa_status = hsa_amd_agent_iterate_memory_pools(cpu_agent[i], get_device_memory_region,
+                                                        &host_region[i]);
+        if (hsa_status == HSA_STATUS_INFO_BREAK) {
+            hsa_status = HSA_STATUS_SUCCESS;
+        }
+        HSA_CHECK(hsa_status);
     }
-    HSA_CHECK(hsa_status);
 }
 
-void * hsa_host_malloc(size_t len) {
+void * hsa_host_malloc(size_t len, uint32_t numa_node) {
     void * ptr;
 
+    assert(numa_node < MAX_NUMA);
+
     hsa_status_t hsa_status;
-    hsa_status = hsa_amd_memory_pool_allocate(host_region, len, 0, &ptr);
+    hsa_status = hsa_amd_memory_pool_allocate(host_region[numa_node], len, 0, &ptr);
     HSA_CHECK(hsa_status);
 
     if ( mlock(ptr, len) != 0 ) {
