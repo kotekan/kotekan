@@ -467,7 +467,7 @@ inline void iceBoardHandler::update_stats() {
 
     double time_now = e_time();
     if (status_cadence != 0 && (time_now - last_status_message_time) > (double)status_cadence) {
-        INFO("DPDK port {:d}, connected to (crate = {:d}, slot = {:d}, link = {:D}), total "
+        INFO("DPDK port {:d}, connected to (crate = {:d}, slot = {:d}, link = {:d}), total "
              "packets {:d} ",
              port, port_stream_id.crate_id, port_stream_id.slot_id, port_stream_id.link_id,
              rx_packets_total);
