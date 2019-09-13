@@ -278,7 +278,6 @@ void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int 
                 CPU_ZERO(&cpuset);
                 // TODO: Move this to the config file (when buffers.c updated to C++11)
                 CPU_SET(5, &cpuset);
-                CPU_SET(14, &cpuset);
 
                 CHECK_ERROR_F( pthread_create(&zero_t, NULL, &private_zero_frames, (void *)zero_args) );
                 CHECK_ERROR_F( pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &cpuset) );
@@ -722,7 +721,8 @@ void copy_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf
         goto unlock_exit;
     }
 
-    memcpy(to_metadata_container->metadata, from_metadata_container->metadata, from_metadata_container->metadata_size);
+    memcpy(to_metadata_container->metadata, from_metadata_container->metadata,
+           from_metadata_container->metadata_size);
 
     unlock_exit:
     CHECK_ERROR_F( pthread_mutex_unlock(&to_buf->lock) );
@@ -733,11 +733,14 @@ void allocate_new_metadata_object(struct Buffer * buf, int ID) {
     assert(ID >= 0);
     assert(ID < buf->num_frames);
 
-    CHECK_ERROR_F( pthread_mutex_lock(&buf->lock) );
+    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
 
-    assert(buf->metadata_pool != NULL);
+    if (buf->metadata_pool == NULL) {
+        FATAL_ERROR_F("No metadata pool on %s but metadata was needed by a producer",
+            buf->buffer_name);
+    }
 
-    //DEBUG_F("Called allocate_new_metadata_object, buf %p, %d", buf, ID);
+    DEBUG2_F("Called allocate_new_metadata_object, buf %p, %d", buf, ID);
 
     if (buf->metadata[ID] == NULL) {
         buf->metadata[ID] = request_metadata_object(buf->metadata_pool);
