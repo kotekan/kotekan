@@ -47,8 +47,12 @@ public:
     /// Primary loop to wait for buffers, dig through data,
     /// stuff packets lather, rinse and repeat.
     void main_thread() override;
+    /// Copy the first frame of the integration
     void initFirstFrame(float *input_data, float *sum_data, const uint32_t in_buffer_ID);
+    /// Add a frame to the integration
     void integrateFrame(float *input_data, float *sum_data, const uint32_t in_buffer_ID);
+    /// Normalise frame after integration has been completed
+    void normaliseFrame(float *sum_data, const uint32_t in_buffer_ID);
 
 private:
     struct Buffer* in_buf;
@@ -61,6 +65,7 @@ private:
     uint32_t _samples_per_data_set;
 
     /// Stage variables
+    uint32_t total_timesamples;
     uint32_t total_lost_timesamples;
     uint32_t frame;
     int64_t fpga_seq_num;
