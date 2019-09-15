@@ -6,6 +6,8 @@
 #include "restServer.hpp"
 
 #include <vector>
+#include <mutex>
+#include <condition_variable>
 
 using std::vector;
 
@@ -21,9 +23,11 @@ public:
 
 
 private:
-
+    std::condition_variable cond_var;
+    std::mutex mux;
+  
     struct Buffer* gain_buf;
-    int32_t gain_buf_precondition_id;
+  //int32_t gain_buf_precondition_id;
   
     /// Directory path where gain files are
     string _gain_dir;
@@ -47,7 +51,9 @@ private:
 
     /// Flag to control gains to be only loaded on request.
     bool update_gains;
-
+    /// Flag to avoid re-calculating freq-specific params except at first pass
+    bool first_pass;
+  
     /// Number of elements, should be 2048
     uint32_t _num_elements;
 
