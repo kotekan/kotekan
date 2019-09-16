@@ -19,7 +19,7 @@ hsaBeamformHFBZeroData::hsaBeamformHFBZeroData(Config& config, const string& uni
                  //* (_samples_per_data_set / _downsample_time)
                  * sizeof(float);
 
-    output_zeros = hsa_host_malloc(output_len);
+    output_zeros = hsa_host_malloc(output_len, device.get_gpu_numa_node());
     INFO("hsaBeamformHFBZeroData gpu[%d], Creating the output zero buffer: %p, len: %d",
          device.get_gpu_id(), output_zeros, output_len);
 
