@@ -37,7 +37,7 @@ integrateHFBData::~integrateHFBData() {}
 
 void integrateHFBData::initFirstFrame(float *input_data, float *sum_data, const uint32_t in_buffer_ID) {
 
-   INFO("\nCopying first frame...\n");
+   INFO("\nInit first frame...\n");
 
    int64_t fpga_seq_num_start = fpga_seq_num_end - (_num_frames_to_integrate - 1) * _samples_per_data_set;
    memcpy(&sum_data[0], &input_data[0], _num_frb_total_beams * _num_sub_freqs * sizeof(float));
@@ -78,6 +78,8 @@ void integrateHFBData::normaliseFrame(float *sum_data, const uint32_t in_buffer_
       sum_data[beam * _num_sub_freqs + freq] *= normalise_frac;
     }
   }
+
+  INFO("Integration completed with {:d} lost samples", total_lost_timesamples);
 
   total_lost_timesamples = 0;
   frame = 0;
@@ -136,15 +138,10 @@ void integrateHFBData::main_thread() {
           // When all frames have been integrated output the result
           if(get_fpga_seq_num(in_buf, in_buffer_ID) >= fpga_seq_num_end + _samples_per_data_set) {
         
-            INFO("\n1st output integrated frame...\n");
-
             total_lost_timesamples += fpga_seq_num_end - fpga_seq_num;
          
             if(total_lost_timesamples > _num_frames_to_integrate * _samples_per_data_set) 
                 FATAL_ERROR("No. of lost samples too large: {:d}, fpga_seq_num_end: {:d}, fpga_seq_num: {:d}", total_lost_timesamples, fpga_seq_num_end, fpga_seq_num);
-
-            INFO("Summed {:d} frames of data. buf size: {:d}, frame size: {:d}", _num_frames_to_integrate, out_buf->frame_size / 4 * out_buf->num_frames, out_buf->frame_size);
-            INFO("No. of lost samples: {:d}", total_lost_timesamples);
 
             // Normalise data
             normaliseFrame(sum_data, in_buffer_ID);
@@ -161,23 +158,14 @@ void integrateHFBData::main_thread() {
             sum_data = (float*)out_buf->frames[out_buffer_ID];
 
             // Already started next integration
-            if(fpga_seq_num > fpga_seq_num_end) {
-           
-              INFO("\nStarting next integration...\n")
+            if(fpga_seq_num > fpga_seq_num_end)
               initFirstFrame(input_data, sum_data, in_buffer_ID);        
-
-            }
             
           }
           else { 
  
-            if(frame == 0) {
-
+            if(frame == 0)
               initFirstFrame(input_data, sum_data, in_buffer_ID);        
-              INFO("\n2nd Starting next integration... total_lost_timesamples: {:d}\n", total_lost_timesamples);
-              INFO("No. of lost samples: {:d}, fpga_seq_num_start: {:d}, fpga_seq_num_end: {:d}, fpga_seq_num: {:d}, get_fpga_seq_num: {:d}", total_lost_timesamples, fpga_seq_num_end - _num_frames_to_integrate * _samples_per_data_set, fpga_seq_num_end, fpga_seq_num, get_fpga_seq_num(in_buf, in_buffer_ID));
-
-            }
             else {
               integrateFrame(input_data, sum_data, in_buffer_ID);
               frame++;
@@ -185,14 +173,9 @@ void integrateHFBData::main_thread() {
 
             // When all frames have been integrated output the result
             if(get_fpga_seq_num(in_buf, in_buffer_ID) >= fpga_seq_num_end) {
-
-              INFO("\n2nd output integrated frame...\n");
-
-              INFO("Summed {:d} frames of data. buf size: {:d}, frame size: {:d}", _num_frames_to_integrate, out_buf->frame_size / 4 * out_buf->num_frames, out_buf->frame_size);
-              INFO("No. of lost samples: {:d}", total_lost_timesamples);
-
-              total_lost_timesamples += fpga_seq_num_end - fpga_seq_num;
             
+              total_lost_timesamples += fpga_seq_num_end - fpga_seq_num;
+              
               if(total_lost_timesamples > _num_frames_to_integrate * _samples_per_data_set) 
                 FATAL_ERROR("No. of lost samples too large: {:d}, fpga_seq_num_end: {:d}, fpga_seq_num: {:d}", total_lost_timesamples, fpga_seq_num_end, fpga_seq_num);
 
@@ -229,9 +212,6 @@ void integrateHFBData::main_thread() {
 
         }
       }
-
-      INFO("FPGA sequence number: {:d}", get_fpga_seq_num(in_buf, in_buffer_ID));
-      INFO("No. of lost samples: {:d}, fpga_seq_num_start: {:d}, fpga_seq_num_end: {:d}, fpga_seq_num: {:d}, get_fpga_seq_num: {:d}", total_lost_timesamples, fpga_seq_num_end - _num_frames_to_integrate * _samples_per_data_set, fpga_seq_num_end, fpga_seq_num, get_fpga_seq_num(in_buf, in_buffer_ID));
 
       // Release the input buffers
       mark_frame_empty(in_buf, unique_name.c_str(), in_buffer_ID);

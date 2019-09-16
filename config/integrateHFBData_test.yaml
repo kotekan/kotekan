@@ -64,7 +64,8 @@ gen_output_data:
     network_out_buf: beamform_hfb_sum_test_buffer_0
 
 gen_missing_frames:
-  missing_frames: [0, 2, 3, 7]
+  missing_frames: [0, 7]
+  #missing_frames: [0, 2, 3, 7]
   testDataGenMissingFrames:
     kotekan_stage: testDataGenMissingFrames
     log_level: debug
