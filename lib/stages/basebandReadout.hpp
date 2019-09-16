@@ -7,6 +7,7 @@
 #ifndef BASEBAND_READOUT_H
 #define BASEBAND_READOUT_H
 
+#include "BipBuffer.hpp"
 #include "Stage.hpp"
 #include "basebandReadoutManager.hpp"
 #include "buffer.h"
@@ -15,51 +16,14 @@
 #include "prometheusMetrics.hpp"
 #include "visUtil.hpp"
 
-#include "gsl-lite.hpp"
-
-#include <condition_variable>
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5DataSpace.hpp>
 #include <highfive/H5File.hpp>
 #include <mutex>
-#include <queue>
 #include <string>
-#include <tuple>
 
 
 constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
-
-
-/**
- * @struct basebandDumpData
- * @brief A container for baseband data and metadata.
- *
- * @note This class does not own the underlying data buffer, but provides a view
- *       (i.e., a `gsl::span`) to it. Users are responsible for managing the
- *       memory storage.
- *
- * @author Kiyoshi Masui
- */
-struct basebandDumpData {
-    /// Default constructor used to indicate error
-    basebandDumpData();
-    /// Initialize the container with all parameters but does not fill in the data.
-    basebandDumpData(uint64_t event_id_, uint32_t freq_id_, uint32_t num_elements_,
-                     int64_t data_start_fpga_, uint64_t data_length_fpga_,
-                     timespec data_start_ctime_, uint8_t* data_ref);
-
-    //@{
-    /// Metadata.
-    const uint64_t event_id;
-    const uint32_t freq_id;
-    const uint32_t num_elements;
-    const int64_t data_start_fpga;
-    const uint64_t data_length_fpga;
-    const timespec data_start_ctime;
-    //@}
-    /// Data access. Array has length `num_elements * data_length_fpga`.
-    const gsl::span<uint8_t> data;
-};
 
 
 /**
@@ -122,7 +86,7 @@ private:
 
     void listen_thread(const uint32_t freq_id, kotekan::basebandReadoutManager& readout_manager);
     void write_thread(kotekan::basebandReadoutManager& readout_manager);
-    void write_dump(basebandDumpData data, kotekan::basebandDumpStatus& dump_status,
+    void write_dump(kotekan::basebandDumpData data, kotekan::basebandDumpStatus& dump_status,
                     std::mutex& request_mtx);
     int add_replace_frame(int frame_id);
     void lock_range(int start_frame, int end_frame);
@@ -138,16 +102,11 @@ private:
      * @return A fully initialized `basebandDumpData` if the call succeeded, or
      * an empty one if the frame data was not availabe for the time requested
      */
-    basebandDumpData get_data(uint64_t event_id, int64_t trigger_start_fpga,
-                              int64_t trigger_length_fpga);
+    kotekan::basebandDumpData get_data(uint64_t event_id, int64_t trigger_start_fpga,
+                                       int64_t trigger_length_fpga);
 
     /// baseband data array
-    const std::unique_ptr<uint8_t[]> baseband_data;
-
-    // the next/current dump to write (reset to nullptr after done)
-    std::unique_ptr<basebandDumpData> dump_to_write;
-    std::condition_variable ready_to_write;
-    std::mutex dump_to_write_mtx;
+    BipBuffer data_buffer;
 
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& readout_counter;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& readout_in_progress_metric;

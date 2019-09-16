@@ -90,25 +90,42 @@ def run_baseband(tdir_factory, params=None, rest_commands=None, expect_a_failure
 
 
 def test_fails_nonwritable(tmpdir_factory):
-
+    """Using a non-existent `base_dir` parameter will cause immediate exit"""
     params = {"base_dir": "/not/an/actual/directory", "rest_mode": "none"}
-
-    import subprocess
 
     run_baseband(tmpdir_factory, params, expect_a_failure=True)
 
 
-def test_io_errors_and_max_samples(tmpdir_factory):
-
+def test_io_errors(tmpdir_factory):
+    """Writing with non-existent destination path but baseband continues to work"""
     rest_commands = [
         command_rest_frames(1),
         wait(0.5),
-        command_trigger(1437, 1839, 10, "doesnt_exist"),
-        command_trigger(10457, 3237, 31),
-        wait(0.1),
-        command_rest_frames(25),
+        command_trigger(437, 839, 10, "doesnt_exist"),
+        command_rest_frames(15),
+        command_trigger(2000, 837),
         # Give it some time to write the capture before shutdown.
-        wait(1.0),
+        wait(0.5),
+        command_rest_frames(5),
+    ]
+    params = {"total_frames": 20, "max_dump_samples": 2123}
+    dump_files = run_baseband(tmpdir_factory, params, rest_commands)
+    assert len(dump_files) == 1
+    f = h5py.File(dump_files[0], "r")
+    assert f["baseband"].shape == (837, default_params["num_elements"])
+
+
+def test_max_samples(tmpdir_factory):
+    """Test that the baseband dump length is truncated to max_dump_samples parameter"""
+    rest_commands = [
+        command_rest_frames(1),
+        wait(0.5),
+        command_rest_frames(5),
+        command_trigger(1000, 3237),
+        wait(0.1),
+        command_rest_frames(20),
+        # Give it some time to write the capture before shutdown.
+        wait(0.5),
         command_rest_frames(5),
     ]
     params = {"total_frames": 30, "max_dump_samples": 2123}
@@ -151,32 +168,37 @@ def test_basic(tmpdir_factory):
     rest_commands = [
         command_rest_frames(1),
         wait(0.5),
+        command_rest_frames(5),
         command_trigger(1437, 1839, 10),
-        command_trigger(20457, 3237, 17),
-        command_trigger(41039, 2091, 31),
+        wait(0.3),
+        command_rest_frames(5),
+        command_trigger(3457, 1237, 17),
+        wait(0.3),
+        command_rest_frames(5),
+        command_trigger(5039, 1091, 31),
         wait(0.1),
         command_rest_frames(60),
     ]
     dump_files = run_baseband(tmpdir_factory, {}, rest_commands)
     assert len(dump_files) == 3
 
+    baseband_requests = [
+        cmd for cmd in rest_commands if cmd[0] == "post" and cmd[1] == "baseband"
+    ]
     num_elements = default_params["num_elements"]
     for ii, f in enumerate(sorted(dump_files)):
         f = h5py.File(f, "r")
         shape = f["baseband"].shape
         assert (
             f.attrs["time0_fpga_count"] * 2560
-            == rest_commands[2 + ii][2]["start_unix_nano"]
+            == baseband_requests[ii][2]["start_unix_nano"]
         )
-        assert f.attrs["event_id"] == rest_commands[2 + ii][2]["event_id"]
+        assert f.attrs["event_id"] == baseband_requests[ii][2]["event_id"]
         assert f.attrs["freq_id"] == 0
-        assert shape == (
-            rest_commands[2 + ii][2]["duration_nano"] // 2560,
-            num_elements,
-        )
+        assert shape == (baseband_requests[ii][2]["duration_nano"] / 2560, num_elements)
         assert np.all(f["index_map/input"][:]["chan_id"] == np.arange(num_elements))
-        edata = f.attrs["time0_fpga_count"] + np.arange(shape[0], dtype=np.int)
-        edata = edata[:, None] + np.arange(shape[1], dtype=np.int)
+        edata = f.attrs["time0_fpga_count"] + np.arange(shape[0], dtype=int)
+        edata = edata[:, None] + np.arange(shape[1], dtype=int)
         edata = edata % 256
         assert np.all(f["baseband"][:] == edata)
 
@@ -206,24 +228,6 @@ def test_missed(tmpdir_factory):
     assert stime > good_trigger[0]
     assert stime < good_trigger[0] + good_trigger[1]
     assert f["baseband"].shape[0] == etime - stime
-
-
-@pytest.mark.xfail(reason="Fragile test.")
-def test_bigdump(tmpdir_factory):
-
-    rest_commands = [
-        command_rest_frames(1),
-        wait(0.5),
-        command_trigger(1000, 25423),  # Bigger than ring buffer.
-        command_rest_frames(60),
-    ]
-    dump_files = run_baseband(tmpdir_factory, {}, rest_commands)
-    assert len(dump_files) == 1
-    f = h5py.File(dump_files[0], "r")
-    assert f["baseband"].shape == (
-        default_params["max_dump_samples"],
-        default_params["num_elements"],
-    )
 
 
 def test_overload_no_crash(tmpdir_factory):
