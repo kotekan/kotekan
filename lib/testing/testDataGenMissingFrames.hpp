@@ -27,7 +27,7 @@ class testDataGenMissingFrames : public kotekan::Stage {
 public:
     /// Constructor
     testDataGenMissingFrames(kotekan::Config& config, const string& unique_name,
-                        kotekan::bufferContainer& buffer_container);
+                             kotekan::bufferContainer& buffer_container);
     ~testDataGenMissingFrames();
     void main_thread() override;
 
@@ -38,9 +38,8 @@ private:
 
     /// Number of time samples, should be a multiple of 3x128 for FRB, standard ops is 49152
     uint32_t _samples_per_data_set;
-    // List of missing frames 
+    // List of missing frames
     std::vector<uint32_t> _missing_frames;
-
 };
 
 #endif

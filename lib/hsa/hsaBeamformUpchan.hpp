@@ -21,9 +21,9 @@
  * averaged in order to downsample to fit the output bandwidth. The 2
  * polarizations are summed to produce a final output in float of
  * 1024 beams x 128 times x 16 freq.
- * 
- * Hyper fine beam data is also output at this stage. Before the FRB data is 
- * downsampled, both polarizations are summed over all time samples for every 
+ *
+ * Hyper fine beam data is also output at this stage. Before the FRB data is
+ * downsampled, both polarizations are summed over all time samples for every
  * frequency. A bandpass filter is applied and the final output is in float of
  * 1024 beams x 128 freqs x 10 samples
  *

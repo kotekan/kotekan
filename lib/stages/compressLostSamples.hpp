@@ -40,7 +40,7 @@ class compressLostSamples : public kotekan::Stage {
 public:
     /// Constructor.
     compressLostSamples(kotekan::Config& config_, const string& unique_name,
-                      kotekan::bufferContainer& buffer_container);
+                        kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~compressLostSamples();
     /// Primary loop to wait for buffers, dig through data,
@@ -48,17 +48,15 @@ public:
     void main_thread() override;
 
 private:
-    
     /// Lost samples buffer
     struct Buffer* in_buf;
-    
+
     /// Compressed lost samples buffer
     struct Buffer* out_buf;
 
     /// Config variables
     uint32_t _samples_per_data_set;
     uint32_t _num_sub_freqs;
-    
 };
 
 #endif

@@ -23,10 +23,8 @@ hsaBeamformUpchan::hsaBeamformUpchan(Config& config, const string& unique_name,
     output_frame_len = _num_frb_total_beams
                        * (_samples_per_data_set / _downsample_time / _downsample_freq)
                        * sizeof(float);
-    output_hfb_frame_len = _num_frb_total_beams
-                       * _num_sub_freqs
-                       * 10 // No. of samples per beam
-                       * sizeof(float);
+    output_hfb_frame_len = _num_frb_total_beams * _num_sub_freqs * 10 // No. of samples per beam
+                           * sizeof(float);
 }
 
 hsaBeamformUpchan::~hsaBeamformUpchan() {}

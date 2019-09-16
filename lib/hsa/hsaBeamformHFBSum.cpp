@@ -7,8 +7,7 @@ REGISTER_HSA_COMMAND(hsaBeamformHFBSum);
 
 hsaBeamformHFBSum::hsaBeamformHFBSum(Config& config, const string& unique_name,
                                      bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "sum_hfb" KERNEL_EXT,
-               "sum_hfb.hsaco") {
+    hsaCommand(config, unique_name, host_buffers, device, "sum_hfb" KERNEL_EXT, "sum_hfb.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
     // Read parameters from config file.
@@ -19,13 +18,10 @@ hsaBeamformHFBSum::hsaBeamformHFBSum(Config& config, const string& unique_name,
     uint32_t _downsample_time = config.get<uint32_t>(unique_name, "downsample_time");
     _num_samples = _samples_per_data_set / _factor_upchan / _downsample_time;
 
-    input_frame_len = _num_frb_total_beams
-                          * _num_sub_freqs
-                          * _num_samples // No. of samples per beam
-                          * sizeof(float);
-    output_frame_len = _num_frb_total_beams
-                       * _num_sub_freqs
-                       * sizeof(float);
+    input_frame_len = _num_frb_total_beams * _num_sub_freqs
+                      * _num_samples // No. of samples per beam
+                      * sizeof(float);
+    output_frame_len = _num_frb_total_beams * _num_sub_freqs * sizeof(float);
     lost_samples_frame_len = sizeof(uint8_t) * _samples_per_data_set / _num_sub_freqs;
 }
 
@@ -45,9 +41,10 @@ hsa_signal_t hsaBeamformHFBSum::execute(int gpu_frame_id, hsa_signal_t precede_s
     memset(&args, 0, sizeof(args));
 
     args.input_buffer = device.get_gpu_memory("hfb_output", input_frame_len);
-    args.output_buffer = device.get_gpu_memory_array("hfb_sum_output", gpu_frame_id, output_frame_len);
-    args.lost_samples_buffer = device.get_gpu_memory_array("lost_samples_buffer", gpu_frame_id,
-                                                           lost_samples_frame_len);
+    args.output_buffer =
+        device.get_gpu_memory_array("hfb_sum_output", gpu_frame_id, output_frame_len);
+    args.lost_samples_buffer =
+        device.get_gpu_memory_array("lost_samples_buffer", gpu_frame_id, lost_samples_frame_len);
     args.num_samples = _num_samples;
 
     // Allocate the kernel argument buffer from the correct region.
@@ -61,7 +58,8 @@ hsa_signal_t hsaBeamformHFBSum::execute(int gpu_frame_id, hsa_signal_t precede_s
     params.num_dims = 2;
 
     params.private_segment_size = 0;
-    params.group_segment_size = 128 * _num_samples * sizeof(float); // No. of frequencies x no. of samples
+    params.group_segment_size =
+        128 * _num_samples * sizeof(float); // No. of frequencies x no. of samples
 
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
 

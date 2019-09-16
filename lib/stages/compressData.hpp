@@ -9,8 +9,8 @@
 
 #include "Stage.hpp"
 
-#include <vector>
 #include <csignal>
+#include <vector>
 
 using std::vector;
 
@@ -41,7 +41,7 @@ class compressData : public kotekan::Stage {
 public:
     /// Constructor.
     compressData(kotekan::Config& config_, const string& unique_name,
-                      kotekan::bufferContainer& buffer_container);
+                 kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~compressData();
     /// Primary loop to wait for buffers, dig through data,
@@ -55,7 +55,7 @@ private:
     ssize_t huff_encode(const char* in, uint32_t* out, const ssize_t n_in);
     ssize_t huff_decompress_bound(const ssize_t size_in);
     ssize_t huff_decode(const uint32_t* in, uint8_t* out, const ssize_t n_in);
-    
+
     struct Buffer* in_buf;
     struct Buffer* out_buf;
 
@@ -63,22 +63,22 @@ private:
     uint32_t _num_frames_to_integrate;
     uint32_t _num_frb_total_beams;
     uint32_t _num_sub_freqs;
- 
+
     // the edges of the N=5 bin encoding scheme (determined in quantization.py)
     // -Inf and +Inf are implicit edges for the first and last bins
     const float edges5[4] = {-1.24435754, -0.38228386, 0.38228386, 1.24435754};
 
     const uint8_t codes[5] = {7, 2, 0, 1, 3}; // value of each huffman code
-    const uint32_t codes32[5] = {7, 2, 0, 1, 3}; // value of each code (32 bit dtype for internal use)
-    const ssize_t lens[5] = {3, 2, 2, 2, 3}; // bit length of each code
+    const uint32_t codes32[5] = {7, 2, 0, 1,
+                                 3};           // value of each code (32 bit dtype for internal use)
+    const ssize_t lens[5] = {3, 2, 2, 2, 3};   // bit length of each code
     const uint32_t check[5] = {7, 3, 3, 3, 7}; // used to match during decode
-    const ssize_t maxlen = 3; // maximum length of code, used for size bound
+    const ssize_t maxlen = 3;                  // maximum length of code, used for size bound
 
     // hard-coded, used to estimate encoding efficiency
     // we can compute the entropy of an encoding scheme (as a function of N) in quanztiaztion.py
     const float entropy5 = 2.202916387949746;
     const float bitsize = 2.321928094887362;
-
 };
 
 #endif

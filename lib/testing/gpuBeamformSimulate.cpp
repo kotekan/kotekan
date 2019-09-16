@@ -55,7 +55,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const string& unique_na
     register_consumer(input_buf, unique_name.c_str());
     output_buf = get_buffer("beam_out_buf");
     register_producer(output_buf, unique_name.c_str());
-    
+
     hfb_output_buf = get_buffer("hfb_out_buf");
     register_producer(hfb_output_buf, unique_name.c_str());
 
@@ -332,17 +332,19 @@ void gpuBeamformSimulate::main_thread() {
         for (int i = 0; i < output_len; i++) {
             cpu_final_output[i] = 0.0;
         }
-        
-        for (int i = 0; i < hfb_output_len; i++) cpu_hfb_final_output[i] = 0.f;
+
+        for (int i = 0; i < hfb_output_len; i++)
+            cpu_hfb_final_output[i] = 0.f;
 
         // TODO adjust to allow for more than one frequency.
         // TODO remove all the 32's in here with some kind of constant/define
         INFO("Simulating GPU beamform processing for {:s}[{:d}] putting result in {:s}[{:d}]",
              input_buf->buffer_name, input_buf_id, output_buf->buffer_name, output_buf_id);
 
-        INFO("Simulating GPU hyper fine beam processing for {:s}[{:d}] putting result in {:s}[{:d}]",
-             input_buf->buffer_name, input_buf_id, hfb_output_buf->buffer_name, output_buf_id);
-        
+        INFO(
+            "Simulating GPU hyper fine beam processing for {:s}[{:d}] putting result in {:s}[{:d}]",
+            input_buf->buffer_name, input_buf_id, hfb_output_buf->buffer_name, output_buf_id);
+
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
         freq_now = bin_number_chime(&stream_id);
         freq_MHz = freq_from_bin(freq_now);
@@ -472,40 +474,41 @@ void gpuBeamformSimulate::main_thread() {
         float BP[16]{0.52225748, 0.58330915, 0.6868705,  0.80121821, 0.89386546, 0.95477358,
                      0.98662733, 0.99942558, 0.99988676, 0.98905127, 0.95874124, 0.90094667,
                      0.81113021, 0.6999944,  0.59367968, 0.52614263};
-        float HFB_BP[16] = { 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
-       
+        float HFB_BP[16] = {1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,
+                            1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
+
         // Downsample
         int nfreq_out = _num_sub_freqs;
         int nsamp_out = _samples_per_data_set / _factor_upchan / _downsample_time;
-        
+
         // Loop over every beam
         for (int b = 0; b < 1024; b++) {
-          for (int f = 0; f < nfreq_out; f++) {
-            float total_sum = 0.0;
-            for (int t = 0; t < nsamp_out; t++) {
+            for (int f = 0; f < nfreq_out; f++) {
+                float total_sum = 0.0;
+                for (int t = 0; t < nsamp_out; t++) {
 
-              float tmp_real = 0.f, tmp_imag = 0.f, out_sq = 0.f;
-              for (int pp = 0; pp < npol; pp++) {
-                for (int tt = 0; tt < 3; tt++) {
-                  const int sample_offset = (pp * 1024 * _samples_per_data_set + 
-                                             b * _samples_per_data_set + 
-                                             (t * _downsample_time + tt) * _factor_upchan 
-                                             + f) * 2;
+                    float tmp_real = 0.f, tmp_imag = 0.f, out_sq = 0.f;
+                    for (int pp = 0; pp < npol; pp++) {
+                        for (int tt = 0; tt < 3; tt++) {
+                            const int sample_offset =
+                                (pp * 1024 * _samples_per_data_set + b * _samples_per_data_set
+                                 + (t * _downsample_time + tt) * _factor_upchan + f)
+                                * 2;
 
-                  tmp_real = cpu_beamform_output[sample_offset];
-                  tmp_imag = cpu_beamform_output[sample_offset + 1];
+                            tmp_real = cpu_beamform_output[sample_offset];
+                            tmp_imag = cpu_beamform_output[sample_offset + 1];
 
-                  out_sq += tmp_real * tmp_real + tmp_imag * tmp_imag;
-                } // end for tt
-              } // end for pol
-              total_sum += out_sq / 6.f / HFB_BP[int((f + 8) % 16)];
-            } // end for nsamp
+                            out_sq += tmp_real * tmp_real + tmp_imag * tmp_imag;
+                        } // end for tt
+                    }     // end for pol
+                    total_sum += out_sq / 6.f / HFB_BP[int((f + 8) % 16)];
+                } // end for nsamp
 
-            // JSW TODO: apply bandpass filter
-            const int output_offset = b * nfreq_out + f;
-            cpu_hfb_final_output[output_offset] = total_sum;
-          } // end for freq
-        } // end for beam
+                // JSW TODO: apply bandpass filter
+                const int output_offset = b * nfreq_out + f;
+                cpu_hfb_final_output[output_offset] = total_sum;
+            } // end for freq
+        }     // end for beam
 
         memcpy(hfb_output, cpu_hfb_final_output, hfb_output_buf->frame_size);
 

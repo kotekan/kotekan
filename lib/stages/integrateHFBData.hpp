@@ -21,7 +21,8 @@ using std::vector;
  *
  * This engine sums CHIME/HFB data from 1 GPU stream in each CHIME node,
  * which are stored in the output buffer.
- * Note: _num_frames_to_integrate cannot go below 16 frames as _num_frames_to_integrate cannot be lower than the max_frames_missing
+ * Note: _num_frames_to_integrate cannot go below 16 frames as _num_frames_to_integrate cannot be
+ * lower than the max_frames_missing
  *
  * @par Buffers
  * @buffer hfb_input_buffer Kotekan buffer feeding data from any GPU.
@@ -41,18 +42,18 @@ class integrateHFBData : public kotekan::Stage {
 public:
     /// Constructor.
     integrateHFBData(kotekan::Config& config_, const string& unique_name,
-                      kotekan::bufferContainer& buffer_container);
+                     kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~integrateHFBData();
     /// Primary loop to wait for buffers, dig through data,
     /// stuff packets lather, rinse and repeat.
     void main_thread() override;
     /// Copy the first frame of the integration
-    void initFirstFrame(float *input_data, float *sum_data, const uint32_t in_buffer_ID);
+    void initFirstFrame(float* input_data, float* sum_data, const uint32_t in_buffer_ID);
     /// Add a frame to the integration
-    void integrateFrame(float *input_data, float *sum_data, const uint32_t in_buffer_ID);
+    void integrateFrame(float* input_data, float* sum_data, const uint32_t in_buffer_ID);
     /// Normalise frame after integration has been completed
-    void normaliseFrame(float *sum_data, const uint32_t in_buffer_ID);
+    void normaliseFrame(float* sum_data, const uint32_t in_buffer_ID);
 
 private:
     struct Buffer* in_buf;
@@ -71,7 +72,6 @@ private:
     uint32_t frame;
     int64_t fpga_seq_num;
     int64_t fpga_seq_num_end;
-
 };
 
 #endif

@@ -6,7 +6,7 @@
 class hsaBeamformHFBZeroData : public hsaSubframeCommand {
 public:
     hsaBeamformHFBZeroData(kotekan::Config& config, const string& unique_name,
-                      kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
+                           kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaBeamformHFBZeroData();
 

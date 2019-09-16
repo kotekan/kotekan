@@ -6,7 +6,8 @@ using kotekan::Config;
 REGISTER_HSA_COMMAND(hsaBeamformHFBZeroData);
 
 hsaBeamformHFBZeroData::hsaBeamformHFBZeroData(Config& config, const string& unique_name,
-                                     bufferContainer& host_buffers, hsaDeviceInterface& device) :
+                                               bufferContainer& host_buffers,
+                                               hsaDeviceInterface& device) :
     hsaSubframeCommand(config, unique_name, host_buffers, device, "hsaBeamformHFBZeroData", "") {
     command_type = gpuCommandType::COPY_IN;
 
@@ -31,8 +32,7 @@ hsaBeamformHFBZeroData::~hsaBeamformHFBZeroData() {
 
 hsa_signal_t hsaBeamformHFBZeroData::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
-    void* gpu_output_ptr = device.get_gpu_memory_array("hfb_output",
-                                                       gpu_frame_id, output_len);
+    void* gpu_output_ptr = device.get_gpu_memory_array("hfb_output", gpu_frame_id, output_len);
 
     device.async_copy_host_to_gpu(gpu_output_ptr, output_zeros, output_len, precede_signal,
                                   signals[gpu_frame_id]);
