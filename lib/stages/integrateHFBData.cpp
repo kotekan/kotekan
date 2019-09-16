@@ -29,9 +29,6 @@ integrateHFBData::integrateHFBData(Config& config_, const string& unique_name,
     out_buf = get_buffer("hfb_output_buf");
     register_producer(out_buf, unique_name.c_str());
  
-    // Note: _num_frames_to_integrate cannot go below 16 frames as _num_frames_to_integrate be lower than the max_frames_missing
-    //if(_num_frames_to_integrate < 16)
-    //  throw std::runtime_error(fmt::format(fmt("_num_frames_to_integrate: {:d} is too small, it has to be higher than 16 (maximum no. of missing frames between integrations)"), _num_frames_to_integrate));
 }
 
 integrateHFBData::~integrateHFBData() {}
@@ -53,10 +50,7 @@ void integrateHFBData::integrateFrame(float *input_data, float *sum_data, const 
 
   fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
 
-  INFO("\nIntegrate frame {:d}, total_lost_timesamples: {:d}...\n", frame + 1, total_lost_timesamples);
-
-  if(total_lost_timesamples > _num_frames_to_integrate * _samples_per_data_set) 
-    FATAL_ERROR("No. of lost samples too large: {:d}, fpga_seq_num_end: {:d}, fpga_seq_num: {:d}", total_lost_timesamples, fpga_seq_num_end, fpga_seq_num);
+  DEBUG("\nIntegrate frame {:d}, total_lost_timesamples: {:d}...\n", frame + 1, total_lost_timesamples);
 
   // Integrates data from the input buffer to the output buffer.
   for (uint beam = 0; beam < _num_frb_total_beams; beam++) {
@@ -76,7 +70,7 @@ void integrateHFBData::normaliseFrame(float *sum_data, const uint32_t in_buffer_
     }
   }
 
-  INFO("Integration completed with {:d} lost samples", total_lost_timesamples);
+  DEBUG("Integration completed with {:d} lost samples", total_lost_timesamples);
 
   total_lost_timesamples = 0;
   frame = 0;
@@ -128,9 +122,6 @@ void integrateHFBData::main_thread() {
 
           total_lost_timesamples += fpga_seq_num_end - fpga_seq_num;
 
-          if(total_lost_timesamples > _num_frames_to_integrate * _samples_per_data_set) 
-            FATAL_ERROR("No. of lost samples too large: {:d}, fpga_seq_num_end: {:d}, fpga_seq_num: {:d}", total_lost_timesamples, fpga_seq_num_end, fpga_seq_num);
-
           const float good_samples_frac = (float)(total_timesamples - total_lost_timesamples) / total_timesamples;
 
           // Normalise data
@@ -171,9 +162,6 @@ void integrateHFBData::main_thread() {
 
             total_lost_timesamples += fpga_seq_num_end - fpga_seq_num;
 
-            if(total_lost_timesamples > _num_frames_to_integrate * _samples_per_data_set) 
-              FATAL_ERROR("No. of lost samples too large: {:d}, fpga_seq_num_end: {:d}, fpga_seq_num: {:d}", total_lost_timesamples, fpga_seq_num_end, fpga_seq_num);
-
             const float good_samples_frac = (float)(total_timesamples - total_lost_timesamples) / total_timesamples;
 
             // Normalise data
@@ -194,7 +182,6 @@ void integrateHFBData::main_thread() {
 
               sum_data = (float*)out_buf->frames[out_buffer_ID];
             }
-
           }
         }
       }
