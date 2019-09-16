@@ -63,6 +63,7 @@ private:
     uint32_t _num_frb_total_beams;
     uint32_t _num_sub_freqs;
     uint32_t _samples_per_data_set;
+    float _good_samples_threshold;
 
     /// Stage variables
     uint32_t total_timesamples;

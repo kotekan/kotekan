@@ -21,6 +21,7 @@ integrateHFBData::integrateHFBData(Config& config_, const string& unique_name,
     _num_frames_to_integrate = config.get_default<uint32_t>(unique_name, "num_frames_to_integrate", 80);
     _num_sub_freqs = config.get<uint32_t>(unique_name, "num_sub_freqs");
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
+    _good_samples_threshold = config.get<float>(unique_name, "good_samples_threshold");
 
     in_buf = get_buffer("hfb_input_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -130,19 +131,24 @@ void integrateHFBData::main_thread() {
           if(total_lost_timesamples > _num_frames_to_integrate * _samples_per_data_set) 
             FATAL_ERROR("No. of lost samples too large: {:d}, fpga_seq_num_end: {:d}, fpga_seq_num: {:d}", total_lost_timesamples, fpga_seq_num_end, fpga_seq_num);
 
+          const float good_samples_frac = (float)(total_timesamples - total_lost_timesamples) / total_timesamples;
+
           // Normalise data
           normaliseFrame(sum_data, in_buffer_ID);
 
-          mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
+          // Only output integration if there are enough good samples
+          if (good_samples_frac >= _good_samples_threshold) {
+            mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
 
-          // Get a new output buffer
-          out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
-          out_frame =
-            wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
-          if (out_frame == NULL)
-            goto end_loop;
+            // Get a new output buffer
+            out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
+            out_frame =
+              wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
+            if (out_frame == NULL)
+              goto end_loop;
 
-          sum_data = (float*)out_buf->frames[out_buffer_ID];
+            sum_data = (float*)out_buf->frames[out_buffer_ID];
+          }
 
           // Already started next integration
           if(fpga_seq_num > fpga_seq_num_end) {
@@ -168,21 +174,26 @@ void integrateHFBData::main_thread() {
             if(total_lost_timesamples > _num_frames_to_integrate * _samples_per_data_set) 
               FATAL_ERROR("No. of lost samples too large: {:d}, fpga_seq_num_end: {:d}, fpga_seq_num: {:d}", total_lost_timesamples, fpga_seq_num_end, fpga_seq_num);
 
+            const float good_samples_frac = (float)(total_timesamples - total_lost_timesamples) / total_timesamples;
+
             // Normalise data
             normaliseFrame(sum_data, in_buffer_ID);
 
             fpga_seq_num_end = fpga_seq_num_end + _num_frames_to_integrate * _samples_per_data_set;
 
-            mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
+            // Only output integration if there are enough good samples
+            if (good_samples_frac >= _good_samples_threshold) {
+              mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
 
-            // Get a new output buffer
-            out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
-            out_frame =
-              wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
-            if (out_frame == NULL)
-              goto end_loop;
+              // Get a new output buffer
+              out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
+              out_frame =
+                wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
+              if (out_frame == NULL)
+                goto end_loop;
 
-            sum_data = (float*)out_buf->frames[out_buffer_ID];
+              sum_data = (float*)out_buf->frames[out_buffer_ID];
+            }
 
           }
         }

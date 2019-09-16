@@ -22,6 +22,7 @@ sizeof_float: 4
 num_frb_total_beams: 1024
 num_sub_freqs: 128
 num_frames_to_integrate: 8
+good_samples_threshold: 0.75
 test_value: 2
 samples_per_data_set: 3840
 
