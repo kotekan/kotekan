@@ -178,6 +178,7 @@ gpu:
 
 hyper_fine_beam:
   num_frames_to_integrate: 80
+  good_samples_threshold: 0.95
   integrate_hfb_data:
     kotekan_stage: integrateHFBData
     log_level: debug
