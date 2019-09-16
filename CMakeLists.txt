@@ -95,6 +95,16 @@ find_package(LibEvent REQUIRED )
 include_directories(${LIBEVENT_INCLUDE_DIR}/../)
 link_libraries(${LIBEVENT_LIBRARIES})
 
+# Libnuma is optional for some setups
+find_package(NUMA)
+if (${NUMA_FOUND})
+    add_definitions(-DWITH_NUMA)
+    message("NUMA support enabled")
+    link_libraries(${NUMA_LIBRARY})
+else()
+    message("libnuma not found, NUMA support will be disabled")
+endif()
+
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   add_definitions(-DMAC_OSX)
 else()

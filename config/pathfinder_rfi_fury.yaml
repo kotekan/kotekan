@@ -101,7 +101,7 @@ dpdk:
 #  value: 153
 #  test_data_gen_0:
 #    kotekan_stage: testDataGen
-#    network_out_buf: gpu_fury_input_buffer_0
+#    out_buf: gpu_fury_input_buffer_0
 
 gpu:
   commands:

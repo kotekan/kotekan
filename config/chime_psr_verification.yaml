@@ -148,7 +148,7 @@ gen_data:
   value: 153
   test_data_gen_0:
     kotekan_stage: testDataGen
-    network_out_buf: gpu_input_buffer_0
+    out_buf: gpu_input_buffer_0
 
 #baseband:
 #  base_dir: /mnt/gong/cherry/CygA/July4/
