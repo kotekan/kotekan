@@ -122,9 +122,9 @@ void basebandReadout::main_thread() {
 
             INFO("Starting request-listening thread for freq_id: {:d}", freq_id);
             mgr = &basebandApiManager::instance().register_readout_stage(freq_id);
-            lt = std::make_unique<std::thread>([&] { this->listen_thread(freq_id, *mgr); });
+            lt = std::make_unique<std::thread>([&] { this->readout_thread(freq_id, *mgr); });
 
-            wt = std::make_unique<std::thread>([&] { this->write_thread(*mgr); });
+            wt = std::make_unique<std::thread>([&] { this->writeout_thread(*mgr); });
         }
 
         int done_frame = add_replace_frame(frame_id);
@@ -146,7 +146,7 @@ void basebandReadout::main_thread() {
     }
 }
 
-void basebandReadout::listen_thread(const uint32_t freq_id, basebandReadoutManager& mgr) {
+void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutManager& mgr) {
     auto& request_no_data_counter = readout_counter.labels({std::to_string(freq_id), "no_data"});
 
     while (!stop_thread) {
@@ -213,7 +213,7 @@ void basebandReadout::listen_thread(const uint32_t freq_id, basebandReadoutManag
     }
 }
 
-void basebandReadout::write_thread(basebandReadoutManager& mgr) {
+void basebandReadout::writeout_thread(basebandReadoutManager& mgr) {
 
     while (!stop_thread) {
         auto next_request = mgr.get_next_ready_request();
