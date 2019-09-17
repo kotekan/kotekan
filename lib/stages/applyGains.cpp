@@ -195,6 +195,7 @@ void applyGains::main_thread() {
 }
 
 void applyGains::apply_thread() {
+    using namespace std::complex_literals;
 
     int output_frame_id;
     int input_frame_id;
