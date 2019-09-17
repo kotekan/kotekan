@@ -22,7 +22,7 @@ sizeof_float: 4
 num_frb_total_beams: 1024
 num_sub_freqs: 128
 num_frames_to_integrate: 8
-good_samples_threshold: 0.75
+good_samples_threshold: 0.50
 test_value: 2
 samples_per_data_set: 3840
 
@@ -46,8 +46,6 @@ cpu_hfb_output_buffers:
     beamform_hfb_integrate_buffer_0:
         kotekan_buffer: standard
 
-cpu_affinity: [2,3,8,9]
-
 # Generate input data for integrateHFBData stage
 gen_input_data:
   type: const
@@ -65,7 +63,7 @@ gen_output_data:
     network_out_buf: beamform_hfb_sum_test_buffer_0
 
 gen_missing_frames:
-  missing_frames: [0, 7]
+  missing_frames: [0, 1, 4, 7]
   testDataGenMissingFrames:
     kotekan_stage: testDataGenMissingFrames
     log_level: debug
