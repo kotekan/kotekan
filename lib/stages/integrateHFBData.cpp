@@ -111,48 +111,49 @@ void integrateHFBData::main_thread() {
 
         // TODO:JSW Store the amount of renormalisation used in the frame
         // When all frames have been integrated output the result
-        if (get_fpga_seq_num(in_buf, in_buffer_ID)
-            >= fpga_seq_num_end + _samples_per_data_set) {
+        if (get_fpga_seq_num(in_buf, in_buffer_ID) >= fpga_seq_num_end + _samples_per_data_set) {
 
-          // Increment the no. of lost frames if there are missing frames
-          total_lost_timesamples += fpga_seq_num_end - fpga_seq_num;
+            // Increment the no. of lost frames if there are missing frames
+            total_lost_timesamples += fpga_seq_num_end - fpga_seq_num;
 
-          const float good_samples_frac =
-            (float)(total_timesamples - total_lost_timesamples) / total_timesamples;
+            const float good_samples_frac =
+                (float)(total_timesamples - total_lost_timesamples) / total_timesamples;
 
-          // Normalise data
-          normaliseFrame(sum_data, in_buffer_ID);
+            // Normalise data
+            normaliseFrame(sum_data, in_buffer_ID);
 
-          // Only output integration if there are enough good samples
-          if (good_samples_frac >= _good_samples_threshold) {
-            mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
+            // Only output integration if there are enough good samples
+            if (good_samples_frac >= _good_samples_threshold) {
+                mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
 
-            // Get a new output buffer
-            out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
-            out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
-            if (out_frame == NULL)
-              goto end_loop;
+                // Get a new output buffer
+                out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
+                out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
+                if (out_frame == NULL)
+                    goto end_loop;
 
-            sum_data = (float*)out_buf->frames[out_buffer_ID];
-          }
-          else DEBUG("Integration discarded. Too many lost samples.");
+                sum_data = (float*)out_buf->frames[out_buffer_ID];
+            } else
+                DEBUG("Integration discarded. Too many lost samples.");
 
-          // Already started next integration
-          if (fpga_seq_num > fpga_seq_num_end) {
-            fpga_seq_num_end =
-              fpga_seq_num_end + _num_frames_to_integrate * _samples_per_data_set;
-            initFirstFrame(input_data, sum_data, in_buffer_ID);
-          }
+            // Already started next integration
+            if (fpga_seq_num > fpga_seq_num_end) {
+                fpga_seq_num_end =
+                    fpga_seq_num_end + _num_frames_to_integrate * _samples_per_data_set;
+                initFirstFrame(input_data, sum_data, in_buffer_ID);
+            }
 
         } else {
-          // If we are on the first frame copy it directly into the
-          // output buffer frame so that we don't need to zero the frame
-          if (frame == 0 && fpga_seq_num_end - (_num_frames_to_integrate - 1) * _samples_per_data_set 
-              % (_num_frames_to_integrate * _samples_per_data_set)
-              == 0)
-            initFirstFrame(input_data, sum_data, in_buffer_ID);
-          else 
-            integrateFrame(input_data, sum_data, in_buffer_ID);
+            // If we are on the first frame copy it directly into the
+            // output buffer frame so that we don't need to zero the frame
+            if (frame == 0
+                && fpga_seq_num_end
+                           - (_num_frames_to_integrate - 1) * _samples_per_data_set
+                                 % (_num_frames_to_integrate * _samples_per_data_set)
+                       == 0)
+                initFirstFrame(input_data, sum_data, in_buffer_ID);
+            else
+                integrateFrame(input_data, sum_data, in_buffer_ID);
         }
 
         // Release the input buffers
