@@ -47,12 +47,12 @@ void integrateHFBData::initFirstFrame(float* input_data, float* sum_data,
 
 void integrateHFBData::integrateFrame(float* input_data, float* sum_data,
                                       const uint32_t in_buffer_ID) {
+    frame++;
     fpga_seq_num += _samples_per_data_set;
     total_lost_timesamples += get_fpga_seq_num(in_buf, in_buffer_ID) - fpga_seq_num;
-
     fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
 
-    DEBUG("\nIntegrate frame {:d}, total_lost_timesamples: {:d}...\n", frame + 1,
+    DEBUG("\nIntegrate frame {:d}, total_lost_timesamples: {:d}...\n", frame,
           total_lost_timesamples);
 
     // Integrates data from the input buffer to the output buffer.
@@ -110,11 +110,11 @@ void integrateHFBData::main_thread() {
         total_lost_timesamples += get_lost_timesamples(in_buf, in_buffer_ID);
 
         // TODO:JSW Store the amount of renormalisation used in the frame
-        // Increment the no. of lost frames if there are missing frames
         // When all frames have been integrated output the result
         if (get_fpga_seq_num(in_buf, in_buffer_ID)
             >= fpga_seq_num_end + _samples_per_data_set) {
 
+          // Increment the no. of lost frames if there are missing frames
           total_lost_timesamples += fpga_seq_num_end - fpga_seq_num;
 
           const float good_samples_frac =
@@ -151,10 +151,8 @@ void integrateHFBData::main_thread() {
               % (_num_frames_to_integrate * _samples_per_data_set)
               == 0)
             initFirstFrame(input_data, sum_data, in_buffer_ID);
-          else {
+          else 
             integrateFrame(input_data, sum_data, in_buffer_ID);
-            frame++;
-          }
         }
 
         // Release the input buffers
