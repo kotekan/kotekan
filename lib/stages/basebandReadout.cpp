@@ -47,8 +47,8 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
     next_frame(0),
     oldest_frame(-1),
     frame_locks(_num_frames_buffer),
-    // Over allocate so we can align the memory.
-    data_buffer(_num_elements * _max_dump_samples + 15),
+    // Over allocate so we can align the memory and can't get stuck halfway in BipBuffer
+    data_buffer(2 * (_num_elements * _max_dump_samples + 16)),
     readout_counter(kotekan::prometheus::Metrics::instance().add_counter(
         "kotekan_baseband_readout_total", unique_name, {"freq_id", "status"})),
     readout_in_progress_metric(kotekan::prometheus::Metrics::instance().add_gauge(
