@@ -14,9 +14,10 @@ basebandDumpData::basebandDumpData(uint64_t event_id_, uint32_t freq_id_, uint32
     data_length_fpga(data_length_fpga_),
     data_start_ctime(data_start_ctime_),
     data(span_from_length_aligned(data_)),
-    reservation_length(data_.size()) {}
+    reservation_length(data_.size()),
+    status(basebandDumpData::Status::Ok) {}
 
-basebandDumpData::basebandDumpData() :
+basebandDumpData::basebandDumpData(basebandDumpData::Status status_) :
     event_id(0),
     freq_id(0),
     num_elements(0),
@@ -24,7 +25,8 @@ basebandDumpData::basebandDumpData() :
     data_length_fpga(0),
     data_start_ctime({0, 0}),
     data(),
-    reservation_length(0) {}
+    reservation_length(0),
+    status(status_) {}
 
 gsl::span<uint8_t> basebandDumpData::span_from_length_aligned(const gsl::span<uint8_t>& span_) {
 

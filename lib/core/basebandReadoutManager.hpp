@@ -84,8 +84,11 @@ struct basebandDumpStatus {
  * @author Kiyoshi Masui
  */
 struct basebandDumpData {
-    /// Default constructor used to indicate error
-    basebandDumpData();
+    /// Indicates the reason why data could not be read, if it is not `Ok`
+    enum class Status { Ok, TooLong, Late, ReserveFailed, Cancelled };
+
+    /// Constructor used to indicate error
+    basebandDumpData(Status);
     /// Initialize the container with all parameters but does not fill in the data.
     basebandDumpData(uint64_t event_id_, uint32_t freq_id_, uint32_t num_elements_,
                      int64_t data_start_fpga_, uint64_t data_length_fpga_,
@@ -100,9 +103,14 @@ struct basebandDumpData {
     const uint64_t data_length_fpga;
     const timespec data_start_ctime;
     //@}
-    /// Data access. Array has length `num_elements * data_length_fpga`.
+    /// Data access. Array has length `num_elements * data_length_fpga` and is aligned on a 16-byte
+    /// boundary.
     const gsl::span<uint8_t> data;
+    /// Original size of the write reservation, regardless of the boundary
     const size_t reservation_length;
+
+    /// Status::Ok if the `data` is valid, or the reason why it was not read out
+    const Status status;
 
     /**
      * @brief Narrows the span to align it on a 16 byte boundary.

@@ -193,22 +193,38 @@ void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutMana
                 std::lock_guard<std::mutex> lock(request_mtx);
                 dump_status.bytes_total = data.num_elements * data.data_length_fpga;
                 dump_status.bytes_remaining = dump_status.bytes_total;
-                if (data.data_length_fpga == 0) {
+                if (data.status != basebandDumpData::Status::Ok) {
                     INFO("Captured no data for event {:d} and freq {:d}.", event_id, freq_id);
                     dump_status.state = basebandDumpStatus::State::ERROR;
                     dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
                         std::chrono::system_clock::now());
-                    dump_status.reason = "No data captured.";
-                    request_no_data_counter.inc();
-                    continue;
+                    switch (data.status) {
+                        case basebandDumpData::Status::TooLong:
+                            dump_status.reason = "Request length exceeds the configured limit.";
+                            break;
+                        case basebandDumpData::Status::Late:
+                            dump_status.reason = "No data captured.";
+                            request_no_data_counter.inc();
+                            break;
+                        case basebandDumpData::Status::ReserveFailed:
+                            dump_status.reason = "No free space in the baseband buffer";
+                            break;
+                        case basebandDumpData::Status::Cancelled:
+                            dump_status.reason = "Kotekan exiting.";
+                            break;
+                        default:
+                            INFO("Unknown dump status: {}", int(data.status));
+                            throw std::runtime_error(
+                                "Unhandled basebandDumpData::Status case in a switch statement.");
+                    }
                 } else {
                     INFO("Captured {:d} samples for event {:d} and freq {:d}.",
                          data.data_length_fpga, data.event_id, data.freq_id);
+
+                    // we are done copying the samples into the readout buffer
+                    mgr.ready({dump_status, data});
                 }
             }
-
-            // we are done copying the samples into the readout buffer
-            mgr.ready({dump_status, data});
         }
     }
 }
@@ -309,7 +325,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
 
     if (trigger_length_fpga > _samples_per_data_set * _num_frames_buffer / 2) {
         // Too long, I won't allow it.
-        return basebandDumpData();
+        return basebandDumpData(basebandDumpData::Status::TooLong);
     }
 
     while (!stop_thread) {
@@ -370,13 +386,13 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
         unlock_range(dump_start_frame, dump_end_frame);
     }
     if (stop_thread) {
-        return basebandDumpData();
+        return basebandDumpData(basebandDumpData::Status::Cancelled);
     }
 
     if (dump_start_frame >= dump_end_frame) {
         // Trigger was too late and missed the data. Return an empty dataset.
         INFO("Baseband dump trigger is too late: {:d} >= {:d}", dump_start_frame, dump_end_frame);
-        return basebandDumpData();
+        return basebandDumpData(basebandDumpData::Status::Late);
     }
 
     int buf_frame = dump_start_frame % buf->num_frames;
@@ -404,7 +420,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
         INFO("Write reservation failed: {}",
              _num_elements * (data_end_fpga - data_start_fpga) + 15);
         unlock_range(dump_start_frame, dump_end_frame);
-        return basebandDumpData();
+        return basebandDumpData(basebandDumpData::Status::ReserveFailed);
     }
 
     DEBUG("Write reservation: starting at {}, length {}", wr->data.data() - data_buffer.data.get(),
@@ -440,7 +456,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
     unlock_range(dump_start_frame, dump_end_frame);
 
     if (stop_thread)
-        return basebandDumpData();
+        return basebandDumpData(basebandDumpData::Status::Cancelled);
     return dump;
 }
 
