@@ -126,7 +126,7 @@ FOREACH(clfile ${inCLFiles})
                 "--no-undefined"
                 "-shared"
                 "-o" ${hsacofile}
-        DEPENDS "${hsacofile}" ${clfile}
+        DEPENDS ${clfile}
         COMMENT "Compiling hsaco file from ${clfile}: ${hsacofile}"
       )
   endif ()
