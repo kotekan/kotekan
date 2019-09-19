@@ -121,7 +121,7 @@ void ReadGain::main_thread() {
       }
       else {
 	if (_num_elements != fread(out_frame, sizeof(float) * 2, _num_elements, ptr_myfile)) {
-	  WARN("Gain file ({:s}) wasn't long enough! Something went wrong, breaking...", filename);
+	  WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default gains", filename);
 	  for (int i = 0; i < 2048; i++) {
 	    out_frame[i * 2] = default_gains[0] * scaling;
 	    out_frame[i * 2 + 1] = default_gains[1] * scaling;
