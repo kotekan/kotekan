@@ -255,6 +255,7 @@ bool set_gps_time(Config& config) {
  * @param config The config to generate the instance from
  * @param requires_gps_time If set to true, then the config must provide a valid time
  *                          otherwise an error is thrown.
+ * @param dump_config If set to true, then the config file is printed to stdout.
  */
 void start_new_kotekan_mode(Config& config, bool requires_gps_time, bool dump_config) {
 
