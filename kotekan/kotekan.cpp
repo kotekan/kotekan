@@ -257,8 +257,9 @@ bool set_gps_time(Config& config) {
  *                          otherwise an error is thrown.
  */
 void start_new_kotekan_mode(Config& config, bool requires_gps_time, bool dump_config) {
-    
-    if(dump_config) config.dump_config();
+
+    if (dump_config)
+        config.dump_config();
     update_log_levels(config);
     if (!set_gps_time(config)) {
         if (requires_gps_time) {
@@ -294,16 +295,12 @@ int main(int argc, char** argv) {
     __enable_syslog = 0;
 
     for (;;) {
-        static struct option long_options[] = {{"config", required_argument, 0, 'c'},
-                                               {"bind-address", required_argument, 0, 'b'},
-                                               {"gps-time", no_argument, 0, 'g'},
-                                               {"gps-time-source", required_argument, 0, 't'},
-                                               {"help", no_argument, 0, 'h'},
-                                               {"syslog", no_argument, 0, 's'},
-                                               {"no-stderr", no_argument, 0, 'n'},
-                                               {"version", no_argument, 0, 'v'},
-                                               {"print-config", no_argument, 0, 'p'},
-                                               {0, 0, 0, 0}};
+        static struct option long_options[] = {
+            {"config", required_argument, 0, 'c'}, {"bind-address", required_argument, 0, 'b'},
+            {"gps-time", no_argument, 0, 'g'},     {"gps-time-source", required_argument, 0, 't'},
+            {"help", no_argument, 0, 'h'},         {"syslog", no_argument, 0, 's'},
+            {"no-stderr", no_argument, 0, 'n'},    {"version", no_argument, 0, 'v'},
+            {"print-config", no_argument, 0, 'p'}, {0, 0, 0, 0}};
 
         int option_index = 0;
 
