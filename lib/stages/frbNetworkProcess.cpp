@@ -1,3 +1,13 @@
+#include "frbNetworkProcess.hpp"
+
+#include "Config.hpp"
+#include "buffer.h"
+#include "chimeMetadata.h"
+#include "errors.h"
+#include "fpga_header_functions.h"
+#include "tx_utils.hpp"
+#include "util.h"
+
 #include <arpa/inet.h>
 #include <assert.h>
 #include <chrono>
@@ -17,15 +27,6 @@
 #include <unistd.h>
 
 using std::string;
-
-#include "Config.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
-#include "frbNetworkProcess.hpp"
-#include "tx_utils.hpp"
-#include "util.h"
 
 // Update beam_offset parameter with:
 // curl localhost:12048/frb/update_beam_offset -X POST -H 'Content-Type: application/json' -d
@@ -58,21 +59,10 @@ frbNetworkProcess::frbNetworkProcess(Config& config_, const string& unique_name,
     time_interval = config.get_default<unsigned long>(unique_name, "time_interval", 125829120);
     column_mode = config.get_default<bool>(unique_name, "column_mode", false);
     samples_per_packet = config.get_default<int>(unique_name, "timesamples_per_frb_packet", 16);
-
-    my_host_name = (char*)malloc(sizeof(char) * 100);
-    CHECK_MEM(my_host_name);
 }
 
 frbNetworkProcess::~frbNetworkProcess() {
     restServer::instance().remove_json_callback("/frb/update_beam_offset");
-    free(my_host_name);
-    for (int i = 0; i < number_of_subnets; i++)
-        free(my_ip_address[i]);
-    free(my_ip_address);
-    free(ip_socket);
-    free(myaddr);
-    free(server_address);
-    free(sock_fd);
 }
 
 
@@ -90,86 +80,15 @@ void frbNetworkProcess::update_offset_callback(connectionInstance& conn, json& j
 }
 
 void frbNetworkProcess::main_thread() {
-    int rack, node, nos, my_node_id;
-    // reading the L1 ip addresses from the config file
-    std::vector<std::string> link_ip =
-        config.get<std::vector<std::string>>(unique_name, "L1_node_ips");
+    DEBUG("number of subnets {:d}\n", number_of_subnets);
 
-    int number_of_l1_links = link_ip.size();
+    int my_sequence_id = initialize_source_sockets();
+    // check for errors initializing
+    if (my_sequence_id < 0)
+        return;
+
+    int number_of_l1_links = initialize_destinations();
     INFO("number_of_l1_links: {:d}", number_of_l1_links);
-
-    // Allocating buffers
-    my_ip_address = (char**)malloc(sizeof(char*) * number_of_subnets);
-    for (int i = 0; i < number_of_subnets; i++)
-        my_ip_address[i] = (char*)malloc(sizeof(char) * 100);
-
-    // initializing sockets for all the subnets (in this case these are .6 .7 .8 .9
-    sock_fd = (int*)malloc(sizeof(int) * number_of_subnets);
-
-    server_address = (sockaddr_in*)malloc(sizeof(sockaddr_in) * number_of_l1_links);
-    myaddr = (sockaddr_in*)malloc(sizeof(sockaddr_in) * number_of_l1_links);
-    ip_socket = (int*)malloc(sizeof(int) * number_of_l1_links);
-
-
-    INFO("number of subnets {:d}\n", number_of_subnets);
-
-
-    // parsing the host name
-    parse_chime_host_name(rack, node, nos, my_node_id);
-    for (int i = 0; i < number_of_subnets; i++) {
-        if (std::snprintf(my_ip_address[i], 100, "10.%d.%d.1%d", i + 6, nos + rack, node) > 100) {
-            FATAL_ERROR("Network Thread: buffer spillover: {:s}", strerror(errno));
-            return;
-        }
-        INFO("{:s} ", my_ip_address[i]);
-    }
-
-    // declaring and initializing variables for the buffers
-    int frame_id = 0;
-    uint8_t* packet_buffer = NULL;
-
-
-    for (int i = 0; i < number_of_subnets; i++) {
-        sock_fd[i] = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-
-        if (sock_fd[i] < 0) {
-            FATAL_ERROR("Network Thread: socket() failed: {:s} ", strerror(errno));
-            return;
-        }
-    }
-
-
-    for (int i = 0; i < number_of_subnets; i++) {
-        std::memset((char*)&myaddr[i], 0, sizeof(myaddr[i]));
-
-        myaddr[i].sin_family = AF_INET;
-        inet_pton(AF_INET, my_ip_address[i], &myaddr[i].sin_addr);
-
-        myaddr[i].sin_port = htons(udp_frb_port_number);
-
-        // Binding port to the socket
-        if (bind(sock_fd[i], (struct sockaddr*)&myaddr[i], sizeof(myaddr[i])) < 0) {
-            FATAL_ERROR("port binding failed ");
-            return;
-        }
-    }
-
-
-    for (int i = 0; i < number_of_l1_links; i++) {
-        memset(&server_address[i], 0, sizeof(server_address[i]));
-        server_address[i].sin_family = AF_INET;
-        inet_pton(AF_INET, link_ip[i].c_str(), &server_address[i].sin_addr);
-        server_address[i].sin_port = htons(udp_frb_port_number);
-        ip_socket[i] = get_vlan_from_ip(link_ip[i].c_str()) - 6;
-    }
-
-    int n = 256 * 1024 * 1024;
-    for (int i = 0; i < number_of_subnets; i++) {
-        if (setsockopt(sock_fd[i], SOL_SOCKET, SO_SNDBUF, (void*)&n, sizeof(n)) < 0) {
-            FATAL_ERROR("Network Thread: setsockopt() failed: %s ", strerror(errno));
-            return;
-        }
-    }
 
     // rest server
     using namespace std::placeholders;
@@ -191,17 +110,10 @@ void frbNetworkProcess::main_thread() {
 
     long count = 0;
 
-    /* every node is introducing packets to the network. To achive load balancing a sequece_id is
-    computed for each node this will make sure none of the catalyst switches are overloaded with
-    traffic at a given point of time ofcourse this will be usefull when chrony is suffucuently
-    synchronized across all nodes..
-    */
 
-    int my_sequence_id =
-        (int)(my_node_id / 128) + 2 * ((my_node_id % 128) / 8) + 32 * (my_node_id % 8);
-
-    packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-    if (packet_buffer == NULL)
+    int frame_id = 0;
+    uint8_t* packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+    if (packet_buffer == nullptr)
         return;
 
     // waiting for atleast two frames for the buffer to fill up takes care of the random delay at
@@ -277,11 +189,12 @@ void frbNetworkProcess::main_thread() {
 
                 for (int link = 0; link < number_of_l1_links; link++) {
                     if (e_stream == local_beam_offset / 4 + link) {
-                        sendto(sock_fd[ip_socket[link]],
+                        auto dst = dst_sockets[link];
+                        sendto(src_sockets[dst.sending_socket],
                                &packet_buffer[(e_stream * packets_per_stream + frame)
                                               * udp_frb_packet_size],
-                               udp_frb_packet_size, 0, (struct sockaddr*)&server_address[link],
-                               sizeof(server_address[link]));
+                               udp_frb_packet_size, 0, (struct sockaddr*)&dst.addr,
+                               sizeof(dst.addr));
                     }
                 }
                 long wait_per_packet = (long)(50000);
@@ -299,4 +212,68 @@ void frbNetworkProcess::main_thread() {
         count++;
     }
     return;
+}
+
+int frbNetworkProcess::initialize_source_sockets() {
+    int rack, node, nos, my_node_id;
+    parse_chime_host_name(rack, node, nos, my_node_id);
+    for (int i = 0; i < number_of_subnets; i++) {
+        // construct an local address for each of the four VLANs 10.6.0.0/16..10.9.0.0/16
+        std::string ip_addr = fmt::format("10.{:d}.{:d}.1{:d}", i + 6, nos + rack, node);
+        DEBUG("{} ", ip_addr);
+
+        // parse the local address and port into a `sockaddr` struct
+        struct sockaddr_in addr;
+        std::memset((char*)&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET;
+        inet_pton(AF_INET, ip_addr.c_str(), &addr.sin_addr);
+        addr.sin_port = htons(udp_frb_port_number);
+
+        // bind a sending UDP socket to the local address and port
+        int sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+        if (sock_fd < 0) {
+            FATAL_ERROR("Network Thread: socket() failed: {:s} ", strerror(errno));
+            return -1;
+        }
+        if (bind(sock_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+            FATAL_ERROR("port binding failed ");
+            return -1;
+        }
+
+        // use a larger send buffer for the socket
+        const int n = 256 * 1024 * 1024;
+        if (setsockopt(sock_fd, SOL_SOCKET, SO_SNDBUF, (void*)&n, sizeof(n)) < 0) {
+            FATAL_ERROR("Network Thread: setsockopt() failed: %s ", strerror(errno));
+            return -1;
+        }
+
+        src_sockets.push_back(sock_fd);
+    }
+
+    /* every node is introducing packets to the network. To achive load balancing a sequece_id is
+       computed for each node this will make sure none of the catalyst switches are overloaded with
+       traffic at a given point of time ofcourse this will be usefull when chrony is sufficuently
+       synchronized across all nodes..
+    */
+
+    int my_sequence_id =
+        (int)(my_node_id / 128) + 2 * ((my_node_id % 128) / 8) + 32 * (my_node_id % 8);
+    return my_sequence_id;
+}
+
+
+int frbNetworkProcess::initialize_destinations() {
+    // reading the L1 ip addresses from the config file
+    const std::vector<std::string> link_ip =
+        config.get<std::vector<std::string>>(unique_name, "L1_node_ips");
+    for (size_t i = 0; i < link_ip.size(); i++) {
+        sockaddr_in addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET;
+        inet_pton(AF_INET, link_ip[i].c_str(), &addr.sin_addr);
+        addr.sin_port = htons(udp_frb_port_number);
+        int sending_socket = get_vlan_from_ip(link_ip[i].c_str()) - 6;
+        dst_sockets.push_back({addr, sending_socket});
+    }
+    return link_ip.size();
 }

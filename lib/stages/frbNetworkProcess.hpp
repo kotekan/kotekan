@@ -12,6 +12,7 @@
 #include "restServer.hpp"
 
 #include <string>
+#include <vector>
 
 /**
  * @class frbNetworkProcess
@@ -49,6 +50,10 @@
  *
  */
 
+struct DestIpSocket {
+    sockaddr_in addr;
+    int sending_socket;
+};
 
 class frbNetworkProcess : public kotekan::Stage {
 public:
@@ -75,9 +80,6 @@ private:
     /// port number
     int udp_frb_port_number;
 
-    /// node ip addresses
-    char** my_ip_address;
-
     /// number of L0 nodes
     int number_of_nodes;
 
@@ -86,9 +88,6 @@ private:
 
     /// number of packets to each L1 nodes
     int packets_per_stream;
-
-    /// host name from the gethosename()
-    char* my_host_name;
 
     /// beam offset for 8-node frb system
     int beam_offset;
@@ -102,17 +101,16 @@ private:
     // Beam kotekan::Configuration Mode
     bool column_mode;
 
-    /// array of local file descriptors
-    int* sock_fd;
+    /// array of sending socket descriptors
+    std::vector<int> src_sockets;
 
-    /// array of socket endpoint addresses for pulsar links
-    struct sockaddr_in* server_address;
+    /// destination addresses and associated sending sockets
+    std::vector<DestIpSocket> dst_sockets;
 
-    /// array of socket endpoint addresses for local links
-    struct sockaddr_in* myaddr;
+    int initialize_source_sockets();
 
-    /// array of socket ids
-    int* ip_socket;
+    /// construct destination addresses and determine the sending socket to use
+    int initialize_destinations();
 };
 
 #endif
