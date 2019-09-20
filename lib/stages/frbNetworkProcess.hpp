@@ -11,6 +11,8 @@
 #include "buffer.h"
 #include "restServer.hpp"
 
+#include <atomic>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -26,6 +28,8 @@
  *
  * @par REST Endpoints
  * @endpoint /frb/update_gains/``gpu_id`` Any contact here triggers a re-parse of the gains file.
+ * @endpoint /frb/update_destination Set the active status of param ``host`` to value of param
+ * ``active``. Data is sent only to active hosts.
  *
  * @par Buffers
  * @buffer in_buf The kotkean buffer to hold the packets to be transmitted to L1 nodes
@@ -44,15 +48,38 @@
  * @conf   beam_offset          Int (default 0). Offset the beam_id going to L1 Process
  * @conf   time_interval        Unsigned long (default 125829120). Time per buffer in ns.
  * @conf   column_mode          bool (default false) Send beams in a single CHIME cylinder.
+ * @conf   check_interval       Unsigned long (default 30s) Time in ms between sending a ping to
+ * check if a destination host is live.
  * @todo   Resolve the issue of NTP clock vs Monotonic clock.
  *
- * @author Arun Naidu
+ * @author Arun Naidu, Davor Cubranic
  *
  */
 
+struct SrcAddrSocket {
+    const sockaddr_in addr;
+    const int socket_fd;
+};
+
 struct DestIpSocket {
-    sockaddr_in addr;
-    int sending_socket;
+    DestIpSocket(std::string host, sockaddr_in addr, int s) :
+        host(std::move(host)),
+        addr(std::move(addr)),
+        sending_socket(std::move(s)),
+        active(true),
+        live(false) {}
+    /// Move constructor is necessary for inserting into standard containers
+    DestIpSocket(DestIpSocket&& other) :
+        host(std::move(other.host)),
+        addr(std::move(other.addr)),
+        sending_socket(other.sending_socket),
+        active(other.active.load()),
+        live(other.live.load()) {}
+    const std::string host;
+    const sockaddr_in addr;
+    const int sending_socket;
+    std::atomic_bool active;
+    std::atomic_bool live;
 };
 
 class frbNetworkProcess : public kotekan::Stage {
@@ -66,6 +93,9 @@ public:
 
     /// Callback to update the beam offset
     void update_offset_callback(kotekan::connectionInstance& conn, json& json_request);
+
+    /// Callback to change destination active status
+    void set_destination_active_callback(kotekan::connectionInstance& conn, json& json_request);
 
     /// main thread
     void main_thread() override;
@@ -101,16 +131,31 @@ private:
     // Beam kotekan::Configuration Mode
     bool column_mode;
 
+    /// Minimal interval between checks of a node's liveliness
+    const std::chrono::milliseconds live_check_frequency;
+
     /// array of sending socket descriptors
-    std::vector<int> src_sockets;
+    std::vector<SrcAddrSocket> src_sockets;
 
-    /// destination addresses and associated sending sockets
-    std::vector<DestIpSocket> dst_sockets;
+    /// destination addresses and associated sending sockets, indexed by IP `s_addr`
+    std::map<uint32_t, DestIpSocket> dest_sockets;
 
+    /// stream destinations (references to `dest_sockets`, because a single destination can be used
+    /// for multiple streams)
+    std::vector<std::reference_wrapper<DestIpSocket>> stream_dest;
+
+    /// initialize sockets used to send data to FRB nodes
     int initialize_source_sockets();
 
-    /// construct destination addresses and determine the sending socket to use
+    /// initialize destination addresses and determine the sending socket to use
     int initialize_destinations();
+
+    /// background thread that periodically pings destination hosts and updates their `live` status
+    void ping_destinations();
+
+    /// used by ping_destinations for periodic sleep interruptible by the main_thread on Kotekan
+    /// stop
+    std::condition_variable ping_cv;
 };
 
 #endif
