@@ -13,9 +13,11 @@ set ( KOTEKAN_UTIL_SOURCES
       time_tracking.c
       util.c
       visBuffer.cpp
+      hfbBuffer.cpp
       visUtil.cpp
       visFile.cpp
       visFileRaw.cpp
+      hfbFileRaw.cpp
       visFileRing.cpp
       tx_utils.cpp
       datasetManager.cpp

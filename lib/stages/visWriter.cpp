@@ -8,6 +8,7 @@
 #include "version.h"
 #include "visBuffer.hpp"
 #include "visCompression.hpp"
+#include "hfbBuffer.hpp"
 
 #include "fmt.hpp"
 #include "json.hpp"
