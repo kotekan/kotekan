@@ -145,6 +145,7 @@ void print_help() {
     printf("    --no-stderr (-n)               Disables output to std error if syslog (-s) is "
            "enabled.\n");
     printf("    --version (-v)                 Prints the kotekan version and build details.\n\n");
+    printf("    --print-config (-p)            Prints the config file being used.\n\n");
     printf("If no options are given then kotekan runs in daemon mode and\n");
     printf("expects to get it configuration via the REST endpoint '/start'.\n");
     printf("In daemon mode output is only sent to syslog.\n\n");
@@ -254,9 +255,12 @@ bool set_gps_time(Config& config) {
  * @param config The config to generate the instance from
  * @param requires_gps_time If set to true, then the config must provide a valid time
  *                          otherwise an error is thrown.
+ * @param dump_config If set to true, then the config file is printed to stdout.
  */
-void start_new_kotekan_mode(Config& config, bool requires_gps_time) {
-    config.dump_config();
+void start_new_kotekan_mode(Config& config, bool requires_gps_time, bool dump_config) {
+
+    if (dump_config)
+        config.dump_config();
     update_log_levels(config);
     if (!set_gps_time(config)) {
         if (requires_gps_time) {
@@ -281,6 +285,7 @@ int main(int argc, char** argv) {
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
     bool gps_time = false;
     bool enable_stderr = true;
+    bool dump_config = false;
     std::string gps_time_source = default_gps_source;
     std::string bind_address = "0.0.0.0:12048";
     // We disable syslog to start.
@@ -291,19 +296,16 @@ int main(int argc, char** argv) {
     __enable_syslog = 0;
 
     for (;;) {
-        static struct option long_options[] = {{"config", required_argument, 0, 'c'},
-                                               {"bind-address", required_argument, 0, 'b'},
-                                               {"gps-time", no_argument, 0, 'g'},
-                                               {"gps-time-source", required_argument, 0, 't'},
-                                               {"help", no_argument, 0, 'h'},
-                                               {"syslog", no_argument, 0, 's'},
-                                               {"no-stderr", no_argument, 0, 'n'},
-                                               {"version", no_argument, 0, 'v'},
-                                               {0, 0, 0, 0}};
+        static struct option long_options[] = {
+            {"config", required_argument, 0, 'c'}, {"bind-address", required_argument, 0, 'b'},
+            {"gps-time", no_argument, 0, 'g'},     {"gps-time-source", required_argument, 0, 't'},
+            {"help", no_argument, 0, 'h'},         {"syslog", no_argument, 0, 's'},
+            {"no-stderr", no_argument, 0, 'n'},    {"version", no_argument, 0, 'v'},
+            {"print-config", no_argument, 0, 'p'}, {0, 0, 0, 0}};
 
         int option_index = 0;
 
-        opt_val = getopt_long(argc, argv, "gt:hc:b:snv", long_options, &option_index);
+        opt_val = getopt_long(argc, argv, "gt:hc:b:snvp", long_options, &option_index);
 
         // End of args
         if (opt_val == -1) {
@@ -336,6 +338,9 @@ int main(int argc, char** argv) {
             case 'v':
                 print_version();
                 return 0;
+                break;
+            case 'p':
+                dump_config = true;
                 break;
             default:
                 printf("Invalid option, run with -h to see options");
@@ -393,7 +398,7 @@ int main(int argc, char** argv) {
         json config_json = json::parse(json_string.c_str());
         config.update_config(config_json);
         try {
-            start_new_kotekan_mode(config, gps_time);
+            start_new_kotekan_mode(config, gps_time, dump_config);
         } catch (const std::exception& ex) {
             ERROR_NON_OO("Failed to start kotekan with config file {:s}, error message: {:s}",
                          config_file_name, ex.what());
@@ -418,7 +423,7 @@ int main(int argc, char** argv) {
 
         try {
             INFO_NON_OO("Starting new kotekan mode using POSTed config.");
-            start_new_kotekan_mode(config, false);
+            start_new_kotekan_mode(config, false, dump_config);
         } catch (const std::out_of_range& ex) {
             delete kotekan_mode;
             kotekan_mode = nullptr;
