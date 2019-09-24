@@ -316,8 +316,8 @@ void gpuBeamformSimulate::main_thread() {
         if (output == NULL)
             break;
 
-        int* hfb_output =
-            (int*)wait_for_empty_frame(hfb_output_buf, unique_name.c_str(), output_buf_id);
+        float* hfb_output =
+            (float*)wait_for_empty_frame(hfb_output_buf, unique_name.c_str(), output_buf_id);
 
         if (hfb_output == NULL)
             break;
