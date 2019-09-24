@@ -125,7 +125,7 @@ class KotekanRunner(object):
                         # print kotekan output if sending REST command fails
                         # (kotekan might have crashed and we want to know)
                         p.wait()
-                        self.output = file(f_out.name).read()
+                        self.output = open(f_out.name, 'r')
 
                         # Print out the output from Kotekan for debugging
                         print(self.output)
