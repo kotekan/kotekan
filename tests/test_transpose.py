@@ -307,7 +307,7 @@ def test_transpose_stack(transpose_stack):
         [tuple(s.values()) for s in meta["index_map"]["stack"]],
         dtype=f["index_map"]["stack"].dtype,
     )
-    assert (f["index_map/stack"][:] == stack_im).all()
+    assert (f["index_map"]["stack"][:] == stack_im).all()
 
     stack_rm = np.array(
         [tuple(s.values()) for s in meta["reverse_map"]["stack"]],
