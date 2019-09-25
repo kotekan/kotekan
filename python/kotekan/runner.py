@@ -86,6 +86,8 @@ class KotekanRunner(object):
             kotekan_cmd = "kotekan -c %s"
             wd = os.curdir
 
+        config_dict = fix_strings(config_dict)
+
         with tempfile.NamedTemporaryFile(
             mode="w"
         ) as fh, tempfile.NamedTemporaryFile() as f_out:
@@ -622,3 +624,22 @@ vis_pool:
     kotekan_metadata_pool: visMetadata
     num_metadata_objects: 30 * buffer_depth
 """
+
+
+def fix_strings(d):
+
+    import future.utils
+
+    if isinstance(d, list):
+        return [fix_strings(x) for x in d]
+
+    if isinstance(d, dict):
+        return {fix_strings(k): fix_strings(v) for k, v in d.items()}
+
+    if isinstance(d, str):
+        return future.utils.native(d)
+
+    if isinstance(d, bytes):
+        return future.utils.native(d.decode())
+
+    return d
