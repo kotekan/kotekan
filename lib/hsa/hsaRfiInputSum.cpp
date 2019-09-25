@@ -37,14 +37,34 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config, const string& unique_name,
     input_mask_len = sizeof(uint8_t) * _num_elements;
     output_mask_len = sizeof(uint8_t) * _num_local_freq * _samples_per_data_set / _sk_step;
     correction_frame_len = sizeof(uint32_t) * _samples_per_data_set / _sk_step;
+
+    // Get buffers (for metadata)
+    _network_buf = host_buffers.get_buffer("network_buf");
+    register_consumer(_network_buf, unique_name.c_str());
 }
 
 hsaRfiInputSum::~hsaRfiInputSum() {}
+
+int hsaRfiInputSum::wait_on_precondition(int gpu_frame_id) {
+    (void)gpu_frame_id;
+
+    uint8_t* frame = wait_for_full_frame(_network_buf, unique_name.c_str(), _network_buf_precondition_id);
+    if (frame == nullptr)
+        return -1;
+
+    _network_buf_precondition_id =
+        (_network_buf_precondition_id + 1) % _network_buf->num_frames;
+    return 0;
+}
 
 hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
     // Unused parameter, suppress warning
     (void)precede_signal;
+
+    // Get the number of bad inputs from the metadata
+    uint32_t num_bad_inputs = get_rfi_num_bad_inputs(_network_buf, _network_buf_execute_id);
+    INFO("Number of bad inputs at execute in hsaRfiInputSum is: {:d}", num_bad_inputs);
 
     // Struct for hsa arguments
     struct __attribute__((aligned(16))) args_t {
@@ -69,7 +89,7 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
     // args.LostSampleCorrection = device.get_gpu_memory("lost_sample_correction",
     // correction_frame_len);
     args.num_elements = _num_elements;
-    args.num_bad_inputs = _bad_inputs.size();
+    args.num_bad_inputs = num_bad_inputs;
     args.sk_step = _sk_step;
     args.rfi_sigma_cut = _rfi_sigma_cut;
     // Allocate the kernel argument buffer from the correct region.
@@ -97,6 +117,16 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
         params.group_segment_size = 16384;*/
     // Execute kernel
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
+
+    _network_buf_execute_id =
+        (_network_buf_execute_id + 1) % _network_buf->num_frames;
+
     // Return signal
     return signals[gpu_frame_id];
+}
+
+void hsaRfiInputSum::finalize_frame(int frame_id) {
+    hsaCommand::finalize_frame(frame_id);
+    mark_frame_empty(_network_buf, unique_name.c_str(), _network_buf_finalize_id);
+    _network_buf_finalize_id = (_network_buf_finalize_id + 1) % _network_buf->num_frames;
 }

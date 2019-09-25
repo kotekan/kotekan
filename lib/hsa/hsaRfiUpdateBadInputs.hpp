@@ -13,6 +13,8 @@ public:
                           kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     virtual ~hsaRfiUpdateBadInputs();
 
+    int wait_on_precondition(int gpu_frame_id) override;
+
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
     void finalize_frame(int frame_id) override;
@@ -23,9 +25,12 @@ private:
     /// Main data input, used for metadata access
     Buffer* _network_buf;
 
-    /// ID for _network_buf
-    int32_t _network_buf_id;
+    /// IDs for _network_buf
+    int32_t _network_buf_finalize_id;
+    int32_t _network_buf_execute_id;
+    int32_t _network_buf_precondition_id;
 
+    /// State of the update
     bool update_bad_inputs;
     int frames_to_update;
     int frames_to_update_finalize;

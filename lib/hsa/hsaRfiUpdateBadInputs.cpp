@@ -7,7 +7,7 @@ using kotekan::Config;
 REGISTER_HSA_COMMAND(hsaRfiUpdateBadInputs);
 
 hsaRfiUpdateBadInputs::hsaRfiUpdateBadInputs(Config& config, const string& unique_name,
-                                             bufferContainer& host_buffers,
+                                             kotekan::bufferContainer& host_buffers,
                                              hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "hsaRfiUpdateBadInputs", "") {
     command_type = gpuCommandType::COPY_IN;
@@ -38,16 +38,33 @@ hsaRfiUpdateBadInputs::~hsaRfiUpdateBadInputs() {
     hsa_host_free(host_mask);
 }
 
+int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
+    (void)gpu_frame_id;
 
+    uint8_t* frame = wait_for_full_frame(_network_buf, unique_name.c_str(), _network_buf_precondition_id);
+    if (frame == nullptr)
+        return -1;
+
+    _network_buf_precondition_id =
+        (_network_buf_precondition_id + 1) % _network_buf->num_frames;
+    return 0;
+}
 
 hsa_signal_t hsaRfiUpdateBadInputs::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
     std::lock_guard<std::mutex> lock(update_mutex);
+
+    // We need to set the number of bad inputs used in this frame
+    set_rfi_num_bad_inputs(_network_buf, _network_buf_execute_id, bad_inputs_correlator.size());
+    _network_buf_execute_id =
+        (_network_buf_execute_id + 1) % _network_buf->num_frames;
+
     if (update_bad_inputs && frames_to_update > 0) {
         frames_to_update--;
 
         // Copy memory to GPU
         void * gpu_mem = device.get_gpu_memory_array("input_mask", gpu_frame_id, input_mask_len);
-        device.async_copy_host_to_gpu(gpu_mem, host_mask, input_mask_len, signals[gpu_frame_id]);
+        device.async_copy_host_to_gpu(gpu_mem, (void *)host_mask, input_mask_len,
+                                      precede_signal, signals[gpu_frame_id]);
 
         return signals[gpu_frame_id];
     } else {
@@ -65,6 +82,9 @@ void hsaRfiUpdateBadInputs::finalize_frame(int frame_id) {
             update_bad_inputs = false;
         }
     }
+
+    mark_frame_empty(_network_buf, unique_name.c_str(), _network_buf_finalize_id);
+    _network_buf_finalize_id = (_network_buf_finalize_id + 1) % _network_buf->num_frames;
 }
 
 bool hsaRfiUpdateBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
@@ -91,7 +111,7 @@ bool hsaRfiUpdateBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     }
 
     // Reorder list
-    bad_inputs_correlator.empty();
+    bad_inputs_correlator.clear();
     for (auto element : bad_inputs_cylinder)
         bad_inputs_correlator.push_back(input_remap[element]);
 
