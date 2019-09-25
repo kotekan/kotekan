@@ -27,9 +27,7 @@ compressLostSamples::compressLostSamples(Config& config_, const string& unique_n
     register_producer(out_buf, unique_name.c_str());
 }
 
-compressLostSamples::~compressLostSamples() {
-    free(in_buf);
-}
+compressLostSamples::~compressLostSamples() {}
 
 void compressLostSamples::main_thread() {
 
