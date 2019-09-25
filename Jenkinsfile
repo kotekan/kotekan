@@ -2,7 +2,6 @@ pipeline {
   agent any
   options {
     timeout(time: 1, unit: 'HOURS')
-    disableConcurrentBuilds()
   }
   stages {
     stage('Build') {
@@ -77,12 +76,20 @@ pipeline {
       }
     }
     stage('Unit Tests') {
-      steps {
-        sh '''cd tests/
-              PYTHONPATH=../python/ pytest -x -s -vvv
-              cd ../build/tests/
-              PYTHONPATH=../python/ pytest -x -s -vvv'''
-      }
-    }
+        parallel {
+            stage('Python Unit Tests') {
+              steps {
+                sh '''cd tests/
+                      PYTHONPATH=../python/ pytest -n 11 -x -s -vvv'''
+              }
+            }
+            stage('Boost Unit Tests') {
+              steps {
+                sh '''cd ../build/tests/
+                      PYTHONPATH=../python/ pytest -x -s -vvv'''
+              }
+            }
+         }
+     }
   }
 }
