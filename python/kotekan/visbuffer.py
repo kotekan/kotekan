@@ -333,16 +333,13 @@ class VisRaw(object):
             }
         )
 
+        # TODO: Python 3 - use native_str for compatibility
         # Load data into on-disk numpy array
-        self.raw = np.memmap(
-            self.data_path,
-            dtype=frame_struct,
-            mode="r",
-            shape=(self.num_time, self.num_freq),
-        )
-        self.data = self.raw["data"]
-        self.metadata = self.raw["metadata"]
-        self.valid_frames = self.raw["valid"]
+        self.raw = np.memmap(native_str(self.data_path), dtype=frame_struct, mode='r',
+                             shape=(self.num_time, self.num_freq))
+        self.data = self.raw['data']
+        self.metadata = self.raw['metadata']
+        self.valid_frames = self.raw['valid']
         self.file_metadata = metadata
 
     @staticmethod
