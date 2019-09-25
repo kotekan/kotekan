@@ -34,7 +34,7 @@ visNoise::visNoise(Config& config, const string& unique_name, bufferContainer& b
         INFO("visNoise: random seed used for init of noise generation.");
     }
 
-    INFO("visNoise: producing gaussian noise with standard deviation %f.", _standard_deviation);
+    INFO("visNoise: producing gaussian noise with standard deviation {:f}.", _standard_deviation);
 }
 
 void visNoise::main_thread() {

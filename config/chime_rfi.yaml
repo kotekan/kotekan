@@ -178,16 +178,16 @@ rfi_var_output_buffers:
 #  value: 255
 #  test_data_gen_0:
 #    kotekan_stage: testDataGen
-#    network_out_buf: network_buffer_0
+#    out_buf: network_buffer_0
 #  test_data_gen_1:
 #    kotekan_stage: testDataGen
-#    network_out_buf: network_buffer_1
+#    out_buf: network_buffer_1
 #  test_data_gen_2:
 #    kotekan_stage: testDataGen
-#    network_out_buf: network_buffer_2
+#    out_buf: network_buffer_2
 #  test_data_gen_3:
 #    kotekan_stage: testDataGen
-#    network_out_buf: network_buffer_3
+#    out_buf: network_buffer_3
 
 cpu_affinity: [2,3,8,9]
 dpdk:

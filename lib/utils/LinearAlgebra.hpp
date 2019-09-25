@@ -146,6 +146,7 @@ krylov(const DynamicHermitian<MT>& A, const blaze::DynamicMatrix<MT, blaze::colu
  *
  * @param  A  A Hermitian matrix to find eigenpairs of.
  * @param  V  The subspace to decompose. A set of *row* vectors.
+ * @param  p  The number of iterations performed.
  *
  * @return    Pair of evals and evecs (row vectors).
  **/

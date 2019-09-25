@@ -20,7 +20,8 @@ hsaCommand::hsaCommand(Config& config_, const string& unique_name_, bufferContai
     set_log_level(s_log_level);
     set_log_prefix(unique_name);
 
-    signals = (hsa_signal_t*)hsa_host_malloc(_gpu_buffer_depth * sizeof(hsa_signal_t));
+    signals = (hsa_signal_t*)hsa_host_malloc(_gpu_buffer_depth * sizeof(hsa_signal_t),
+                                             device.get_gpu_numa_node());
     assert(signals != nullptr);
     memset(signals, 0, _gpu_buffer_depth * sizeof(hsa_signal_t));
 
@@ -29,7 +30,8 @@ hsaCommand::hsaCommand(Config& config_, const string& unique_name_, bufferContai
     }
 
     // Not everyone needs this, maybe move out of constructor
-    kernel_args = (void**)hsa_host_malloc(_gpu_buffer_depth * sizeof(void*));
+    kernel_args =
+        (void**)hsa_host_malloc(_gpu_buffer_depth * sizeof(void*), device.get_gpu_numa_node());
     assert(kernel_args != nullptr);
 
     // Load the kernel if there is one.
@@ -106,7 +108,7 @@ uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {
     hsa_status_t hsa_status;
 
     // Open file.
-    INFO("Loading %s %s", file_name.c_str(), kernel_name.c_str());
+    INFO("Loading {:s} {:s}", file_name, kernel_name);
     std::ifstream file(file_name, std::ios::in | std::ios::binary);
     assert(file.is_open() && file.good());
 
@@ -162,14 +164,12 @@ uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {
     uint32_t group_segment_size;
     hsa_status = hsa_executable_symbol_get_info(
         kernelSymbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_GROUP_SEGMENT_SIZE, &group_segment_size);
-    INFO("Kernel %s:%s group_segment_size %i", file_name.c_str(), kernel_name.c_str(),
-         group_segment_size);
+    INFO("Kernel {:s}:{:s} group_segment_size {:d}", file_name, kernel_name, group_segment_size);
 
     uint32_t priv_segment_size;
     hsa_status = hsa_executable_symbol_get_info(
         kernelSymbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_PRIVATE_SEGMENT_SIZE, &priv_segment_size);
-    INFO("Kernel %s:%s group_segment_size %i", file_name.c_str(), kernel_name.c_str(),
-         priv_segment_size);
+    INFO("Kernel {:s}:{:s} group_segment_size {:d}", file_name, kernel_name, priv_segment_size);
 
     // Free raw code object memory.
     free((void*)raw_code_object);

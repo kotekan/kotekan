@@ -38,7 +38,8 @@ hsaRfiVdif::hsaRfiVdif(Config& config, const string& unique_name, bufferContaine
         (_num_elements * _num_local_freq * _samples_per_data_set / _sk_step) * sizeof(float);
     mean_len = _num_elements * _num_local_freq * sizeof(float);
 
-    Mean_Array = (float*)hsa_host_malloc(mean_len); // Allocates memory for Mean Array
+    // Allocates memory for Mean Array
+    Mean_Array = (float*)hsa_host_malloc(mean_len, device.get_gpu_numa_node());
 
     for (uint32_t b = 0; b < mean_len / sizeof(float); b++) {
         Mean_Array[b] = 0; /// Initialize

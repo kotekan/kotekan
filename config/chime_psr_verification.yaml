@@ -148,7 +148,7 @@ gen_data:
   value: 153
   test_data_gen_0:
     kotekan_stage: testDataGen
-    network_out_buf: gpu_input_buffer_0
+    out_buf: gpu_input_buffer_0
 
 #baseband:
 #  base_dir: /mnt/gong/cherry/CygA/July4/
@@ -159,7 +159,7 @@ gen_data:
 #    buf: gpu_input_buffer_0
 
 gpu:
-  kernel_path: "../lib/hsa/kernels/"
+  kernel_path: "../../build/lib/hsa/kernels/"
   commands:
   - name: hsaInputData
   - name: hsaPulsarUpdatePhase
@@ -187,6 +187,25 @@ gpu:
     out_buffers:
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_0
 
+# Updatable config for gating
+updatable_config:
+  frb_gain:
+    kotekan_update_endpoint: json
+    frb_gain_dir: /mnt/frb-baseband/GainFiles/Latest_FRB
+  pulsar_gain:
+    kotekan_update_endpoint: json
+    pulsar_gain_dir:
+      - /mnt/frb-baseband/GainFiles/Latest_PSR
+      - /mnt/frb-baseband/GainFiles/Latest_PSR
+      - /mnt/frb-baseband/GainFiles/Latest_PSR
+      - /mnt/frb-baseband/GainFiles/Latest_PSR
+      - /mnt/frb-baseband/GainFiles/Latest_PSR
+      - /mnt/frb-baseband/GainFiles/Latest_PSR
+      - /mnt/frb-baseband/GainFiles/Latest_PSR
+      - /mnt/frb-baseband/GainFiles/Latest_PSR
+      - /mnt/frb-baseband/GainFiles/Latest_PSR
+      - /mnt/frb-baseband/GainFiles/Latest_PSR
+
 cpu_simulate:
   cpu_data_sim_0:
       kotekan_stage: gpuBeamformPulsarSimulate
@@ -197,6 +216,8 @@ cpu_simulate:
 
 check_data:
   bf_data_check_0:
+    num_frames_to_test: 5
+    epsilon: 0.2
     kotekan_stage: testDataCheckFloat
     first_buf : beamform_pulsar_output_buffer_0
     second_buf: cpu_output_buffer_0

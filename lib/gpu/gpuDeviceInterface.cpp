@@ -26,7 +26,7 @@ void* gpuDeviceInterface::get_gpu_memory(const string& name, const uint32_t len)
     // Check if the memory isn't yet allocated
     if (gpu_memory.count(name) == 0) {
         void* ptr = alloc_gpu_memory(len);
-        INFO("Allocating GPU[%d] memory: %s, len: %d, ptr: %p", gpu_id, name.c_str(), len, ptr);
+        INFO("Allocating GPU[{:d}] memory: {:s}, len: {:d}, ptr: {:p}", gpu_id, name, len, ptr);
         gpu_memory[name].len = len;
         gpu_memory[name].gpu_pointers.push_back(ptr);
     }
@@ -44,7 +44,7 @@ void* gpuDeviceInterface::get_gpu_memory_array(const string& name, const uint32_
     if (gpu_memory.count(name) == 0) {
         for (uint32_t i = 0; i < gpu_buffer_depth; ++i) {
             void* ptr = alloc_gpu_memory(len);
-            INFO("Allocating GPU[%d] memory: %s, len: %d, ptr: %p", gpu_id, name.c_str(), len, ptr);
+            INFO("Allocating GPU[{:d}] memory: {:s}, len: {:d}, ptr: {:p}", gpu_id, name, len, ptr);
             gpu_memory[name].len = len;
             gpu_memory[name].gpu_pointers.push_back(ptr);
         }

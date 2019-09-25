@@ -188,7 +188,7 @@ class FakeNetworkBuffer(InputBuffer):
 
         stage_config = {
             'kotekan_stage': 'testDataGen',
-            'network_out_buf': self.name,
+            'out_buf': self.name,
         }
         stage_config.update(kwargs)
 
@@ -336,9 +336,6 @@ class VisWriterBuffer(OutputBuffer):
         # But visWriter creates the acquisition and file names on the flight
         flnm = glob.glob(self.output_dir+'/*/*.data')[0]
         return visbuffer.VisRaw(os.path.splitext(flnm)[0])
-
-#        return visbuffer.VisBuffer.load_files("%s/*%s*.dump" %
-#                                              (self.output_dir, self.name))
 
 
 class ReadVisBuffer(InputBuffer):

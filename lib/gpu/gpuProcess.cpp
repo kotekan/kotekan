@@ -3,6 +3,8 @@
 #include "unistd.h"
 #include "util.h"
 
+#include "fmt.hpp"
+
 #include <iostream>
 #include <sys/time.h>
 
@@ -45,7 +47,7 @@ gpuProcess::gpuProcess(Config& config_, const string& unique_name,
 }
 
 gpuProcess::~gpuProcess() {
-    restServer::instance().remove_get_callback("/gpu_profile/" + std::to_string(gpu_id));
+    restServer::instance().remove_get_callback(fmt::format(fmt("/gpu_profile/{:d}"), gpu_id));
     for (auto& command : commands)
         delete command;
     for (auto& event : final_signals)
@@ -63,12 +65,12 @@ void gpuProcess::init() {
     string s_log_level =
         config.get_default<string>(unique_name, "device_interface_log_level", g_log_level);
     dev->set_log_level(s_log_level);
-    dev->set_log_prefix("GPU[" + std::to_string(gpu_id) + "] device interface");
+    dev->set_log_prefix(fmt::format(fmt("GPU[{:d}] device interface"), gpu_id));
 
     vector<json> cmds = config.get<std::vector<json>>(unique_name, "commands");
     int i = 0;
     for (json cmd : cmds) {
-        std::string unique_path = unique_name + "/commands/" + std::to_string(i++);
+        std::string unique_path = fmt::format(fmt("{:s}/commands/{:d}"), unique_name, i++);
         std::string command_name = cmd["name"];
         commands.push_back(create_command(command_name, unique_path));
     }
@@ -123,7 +125,7 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
 void gpuProcess::main_thread() {
     restServer& rest_server = restServer::instance();
     rest_server.register_get_callback(
-        "/gpu_profile/" + std::to_string(gpu_id),
+        fmt::format(fmt("/gpu_profile/{:d}"), gpu_id),
         std::bind(&gpuProcess::profile_callback, this, std::placeholders::_1));
 
     // Start with the first GPU frame;
@@ -134,16 +136,16 @@ void gpuProcess::main_thread() {
         // Wait for all the required preconditions
         // This is things like waiting for the input buffer to have data
         // and for there to be free space in the output buffers.
-        // INFO("Waiting on preconditions for GPU[%d][%d]", gpu_id, gpu_frame_id);
+        // INFO("Waiting on preconditions for GPU[{:d}][{:d}]", gpu_id, gpu_frame_id);
         for (auto& command : commands) {
             if (command->wait_on_precondition(gpu_frame_id) != 0) {
-                INFO("Received exit in GPU command precondition! (Command '%s')",
-                     command->get_name().c_str());
+                INFO("Received exit in GPU command precondition! (Command '{:s}')",
+                     command->get_name());
                 goto exit_loop;
             }
         }
 
-        DEBUG("Waiting for free slot for GPU[%d][%d]", gpu_id, gpu_frame_id);
+        DEBUG("Waiting for free slot for GPU[{:d}][{:d}]", gpu_id, gpu_frame_id);
         // We make sure we aren't using a gpu frame that's currently in-flight.
         final_signals[gpu_frame_id]->wait_for_free_slot();
         queue_commands(gpu_frame_id);
@@ -179,14 +181,15 @@ void gpuProcess::results_thread() {
 
     while (true) {
         // Wait for a signal to be completed
-        DEBUG2("Waiting for signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id,
+        DEBUG2("Waiting for signal for gpu[{:d}], frame {:d}, time: {:f}", gpu_id, gpu_frame_id,
                e_time());
         if (final_signals[gpu_frame_id]->wait_for_signal() == -1) {
             // If wait_for_signal returns -1, then we don't have a signal to wait on,
             // but we have been given a shutdown request, so break this loop.
             break;
         }
-        DEBUG2("Got final signal for gpu[%d], frame %d, time: %f", gpu_id, gpu_frame_id, e_time());
+        DEBUG2("Got final signal for gpu[{:d}], frame {:d}, time: {:f}", gpu_id, gpu_frame_id,
+               e_time());
 
         for (auto& command : commands) {
             // Note the fact that we don't run `finalize_frame()` when the shutdown
@@ -199,15 +202,16 @@ void gpuProcess::results_thread() {
             if (!stop_thread)
                 command->finalize_frame(gpu_frame_id);
         }
-        DEBUG2("Finished finalizing frames for gpu[%d][%d]", gpu_id, gpu_frame_id);
+        DEBUG2("Finished finalizing frames for gpu[{:d}][{:d}]", gpu_id, gpu_frame_id);
 
         if (log_profiling) {
             string output = "";
             for (uint32_t i = 0; i < commands.size(); ++i) {
-                output += "kernel: " + commands[i]->get_name() + " time: "
-                          + std::to_string(commands[i]->get_last_gpu_execution_time()) + "; \n";
+                output = fmt::format(fmt("{:s}kernel: {:s} time: {:f}; \n"), output,
+                                     commands[i]->get_name(),
+                                     commands[i]->get_last_gpu_execution_time());
             }
-            INFO("GPU[%d] Profiling: %s", gpu_id, output.c_str());
+            INFO("GPU[{:d}] Profiling: {:s}", gpu_id, output);
         }
 
         final_signals[gpu_frame_id]->reset();

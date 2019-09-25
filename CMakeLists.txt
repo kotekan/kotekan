@@ -95,6 +95,16 @@ find_package(LibEvent REQUIRED )
 include_directories(${LIBEVENT_INCLUDE_DIR}/../)
 link_libraries(${LIBEVENT_LIBRARIES})
 
+# Libnuma is optional for some setups
+find_package(NUMA)
+if (${NUMA_FOUND})
+    add_definitions(-DWITH_NUMA)
+    message("NUMA support enabled")
+    link_libraries(${NUMA_LIBRARY})
+else()
+    message("libnuma not found, NUMA support will be disabled")
+endif()
+
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   add_definitions(-DMAC_OSX)
 else()
@@ -199,6 +209,7 @@ set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrt " )
 endif ()
+
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
 
 # Warning about missing override is called differently in clang and gcc
@@ -274,7 +285,7 @@ endif()
 # Enforce code formatting rules with clang-format.
 find_program(
     CLANG_FORMAT_PATH
-    NAMES "clang-format"
+    NAMES "clang-format-8"
     DOC "Path to clang-format executable"
     )
 if(NOT CLANG_FORMAT_PATH)

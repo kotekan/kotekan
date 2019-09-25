@@ -109,10 +109,9 @@ datasetManager& datasetManager::instance() {
     datasetManager& dm = private_instance();
 
     if (!dm._config_applied) {
-        ERROR("A part of kotekan that is configured to load uses the"
-              " datasetManager, but no block named '%s' was found in the "
-              "config.\nExiting...",
-              DS_UNIQUE_NAME);
+        ERROR_NON_OO("A part of kotekan that is configured to load uses the datasetManager, but "
+                     "no block named '{:s}' was found in the config.\nExiting...",
+                     DS_UNIQUE_NAME);
         exit(-1);
     }
 
@@ -134,8 +133,8 @@ datasetManager& datasetManager::instance(kotekan::Config& config) {
         dm._timeout_rest_client_s =
             config.get_default<int32_t>(DS_UNIQUE_NAME, "timeout_rest_client", 100);
 
-        DEBUG("datasetManager: expecting broker at %s:%d.", dm._ds_broker_host.c_str(),
-              dm._ds_broker_port);
+        DEBUG_NON_OO("datasetManager: expecting broker at {:s}:{:d}.", dm._ds_broker_host,
+                     dm._ds_broker_port);
     }
     dm._config_applied = true;
 
@@ -158,9 +157,9 @@ dset_id_t datasetManager::add_dataset(state_id_t state) {
         t = _states.at(state).get();
     } catch (std::exception& e) {
         // This must be a bug in the calling stage...
-        FATAL_ERROR("datasetManager: Failure registering root dataset : state "
-                    "0x%" PRIx64 " not found: %s",
-                    state, e.what());
+        FATAL_ERROR_NON_OO("datasetManager: Failure registering root dataset : state {:#x} not "
+                           "found: {:s}",
+                           state, e.what());
     }
     std::set<std::string> types = t->types();
     dataset ds(state, types);
@@ -174,9 +173,9 @@ dset_id_t datasetManager::add_dataset(dset_id_t base_dset, state_id_t state) {
         t = _states.at(state).get();
     } catch (std::exception& e) {
         // This must be a bug in the calling stage...
-        FATAL_ERROR("datasetManager: Failure registering dataset : state "
-                    "0x%" PRIx64 " not found (base dataset ID: 0x%" PRIx64 "): %s",
-                    state, base_dset, e.what());
+        FATAL_ERROR_NON_OO("datasetManager: Failure registering dataset : state {:#x} not found "
+                           "(base dataset ID: {:#x}): {:s}",
+                           state, base_dset, e.what());
     }
     std::set<std::string> types = t->types();
     dataset ds(state, base_dset, types);
@@ -200,12 +199,11 @@ dset_id_t datasetManager::add_dataset(dataset ds) {
                 // TODO: hash collision. make the value a vector and store same
                 // hash entries? This would mean the state/dset has to be sent
                 // when registering.
-                FATAL_ERROR("datasetManager: Hash collision!\n"
-                            "The following datasets have the same hash ("
-                            "0x%" PRIx64 ").\n\n%s\n\n%s\n\n"
-                            "datasetManager: Exiting...",
-                            new_dset_id, ds.to_json().dump().c_str(),
-                            find->second.to_json().dump().c_str());
+                FATAL_ERROR_NON_OO("datasetManager: Hash collision!\nThe following datasets have "
+                                   "the same hash ({:#x}).\n\n{:s}\n\n{:s}\n\ndatasetManager: "
+                                   "Exiting...",
+                                   new_dset_id, ds.to_json().dump(4),
+                                   find->second.to_json().dump(4));
             }
 
             if (ds.is_root())
@@ -277,17 +275,16 @@ void datasetManager::request_thread(const json&& request, const std::string&& en
         } else {
             // Complain and retry...
             error_counter.set(++_conn_error_count);
-            WARN("datasetManager: Failure in connection to broker: %s:"
-                 "%d/%s. Make sure the broker is "
-                 "running.",
-                 _ds_broker_host.c_str(), _ds_broker_port, endpoint.c_str());
+            WARN_NON_OO("datasetManager: Failure in connection to broker: {:s}:{:d}/{:s}. Make "
+                        "sure the broker is running.",
+                        _ds_broker_host, _ds_broker_port, endpoint);
         }
 
         // check if datasetManager destructor was called
         if (_stop_request_threads) {
-            INFO("datasetManager: Cancelling running request thread (endpoint "
-                 "/%s, message %s).",
-                 endpoint.c_str(), request.dump().c_str());
+            INFO_NON_OO("datasetManager: Cancelling running request thread (endpoint /{:s}, "
+                        "message {:s}).",
+                        endpoint, request.dump(4));
             std::unique_lock<std::mutex> lk(_lock_stop_request_threads);
             _n_request_threads--;
             std::notify_all_at_thread_exit(_cv_stop_request_threads, std::move(lk));
@@ -302,9 +299,9 @@ bool datasetManager::register_state_parser(std::string& reply) {
     try {
         js_reply = json::parse(reply);
     } catch (std::exception& e) {
-        WARN("datasetManager: failure parsing reply received from broker "
-             "after registering dataset state (reply: %s): %s",
-             reply.c_str(), e.what());
+        WARN_NON_OO("datasetManager: failure parsing reply received from broker after "
+                    "registering dataset state (reply: {:s}): {:s}",
+                    reply, e.what());
         error_counter.set(++_conn_error_count);
         return false;
     }
@@ -328,8 +325,13 @@ bool datasetManager::register_state_parser(std::string& reply) {
             {
                 std::lock_guard<std::mutex> slck(_lock_states);
                 js_post["state"] = _states.at(state)->to_json();
-                js_post["type"] =
-                    datasetState::_registered_names[typeid(*_states.at(state)).hash_code()];
+
+                // clang-format off
+                // Inlining s in the lines below causes clang to complain about
+                // potential side effects, unfortunately clang-format will try to undo it
+                auto s = _states.at(state).get();
+                // clang-format on
+                js_post["type"] = datasetState::_registered_names[typeid(*s).hash_code()];
             }
 
             std::lock_guard<std::mutex> lk(_lock_stop_request_threads);
@@ -341,15 +343,14 @@ bool datasetManager::register_state_parser(std::string& reply) {
             if (t.joinable())
                 t.detach();
         } else {
-            throw std::runtime_error("datasetManager: failure parsing reply received "
-                                     "from broker after registering dataset state "
-                                     "(reply: "
-                                     + reply + ").");
+            throw std::runtime_error(
+                fmt::format(fmt("datasetManager: failure parsing reply received "
+                                "from broker after registering dataset state (reply: {:s})."),
+                            reply));
         }
     } catch (std::exception& e) {
-        WARN("datasetManager: failure registering dataset state with "
-             "broker: %s",
-             e.what());
+        WARN_NON_OO("datasetManager: failure registering dataset state with broker: {:s}",
+                    e.what());
         error_counter.set(++_conn_error_count);
         return false;
     }
@@ -361,13 +362,14 @@ bool datasetManager::send_state_parser(std::string& reply) {
     try {
         js_reply = json::parse(reply);
         if (js_reply.at("result") != "success")
-            throw std::runtime_error("received error from broker: " + js_reply.at("result").dump());
+            throw std::runtime_error(fmt::format(fmt("received error from broker: {:s}"),
+                                                 js_reply.at("result").dump(4)));
 
         return true;
     } catch (std::exception& e) {
-        WARN("datasetManager: failure parsing reply received from broker "
-             "after sending dataset state (reply: %s): %s",
-             reply.c_str(), e.what());
+        WARN_NON_OO("datasetManager: failure parsing reply received from broker "
+                    "after sending dataset state (reply: {:s}): {:s}",
+                    reply, e.what());
         error_counter.set(++_conn_error_count);
         return false;
     }
@@ -398,12 +400,13 @@ bool datasetManager::register_dataset_parser(std::string& reply) {
     try {
         js_reply = json::parse(reply);
         if (js_reply.at("result") != "success")
-            throw std::runtime_error("received error from broker: " + js_reply.at("result").dump());
+            throw std::runtime_error(fmt::format(fmt("received error from broker: {:s}"),
+                                                 js_reply.at("result").dump(4)));
         return true;
     } catch (std::exception& e) {
-        WARN("datasetManager: failure parsing reply received from broker "
-             "after registering dataset (reply: %s): %s",
-             reply.c_str(), e.what());
+        WARN_NON_OO("datasetManager: failure parsing reply received from broker "
+                    "after registering dataset (reply: {:s}): {:s}",
+                    reply, e.what());
         error_counter.set(++_conn_error_count);
         return false;
     }
@@ -422,13 +425,12 @@ std::string datasetManager::summary() {
         try {
             datasetState* dt = _states.at(t.second.state()).get();
 
-            out += fmt::format("{:>30} : {:#x}\n", *dt, t.second.base_dset());
+            out += fmt::format(fmt("{:>30} : {:#x}\n"), *dt, t.second.base_dset());
             id++;
         } catch (std::out_of_range& e) {
-            WARN("datasetManager::summary(): This datasetManager instance "
-                 "does not know state "
-                 "0x%" PRIx64 ", referenced by dataset 0x%" PRIx64 ". (%s)",
-                 t.second.state(), t.first, e.what());
+            WARN_NON_OO("datasetManager::summary(): This datasetManager instance "
+                        "does not know state {:#x}, referenced by dataset {:#x}. ({:s})",
+                        t.second.state(), t.first, e.what());
         }
     }
     return out;
@@ -461,7 +463,7 @@ const std::vector<std::pair<dset_id_t, datasetState*>> datasetManager::ancestors
 
     // make sure we know this dataset before running into trouble
     if (_datasets.find(dset) == _datasets.end()) {
-        DEBUG("datasetManager: dataset 0x%" PRIx64 " was not found locally.", dset);
+        DEBUG_NON_OO("datasetManager: dataset {:#x} was not found locally.", dset);
         return a_list;
     }
 
@@ -524,9 +526,8 @@ void datasetManager::update_datasets(dset_id_t ds_id) {
 bool datasetManager::parse_reply_dataset_update(restReply reply) {
 
     if (!reply.first) {
-        WARN("datasetManager: Failure requesting update on datasets from "
-             "broker: %s",
-             reply.second.c_str());
+        WARN_NON_OO("datasetManager: Failure requesting update on datasets from broker: {:s}",
+                    reply.second);
         error_counter.set(++_conn_error_count);
         return false;
     }
@@ -536,7 +537,8 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
     try {
         js_reply = json::parse(reply.second);
         if (js_reply.at("result") != "success")
-            throw std::runtime_error("Broker answered with result=" + js_reply.at("result").dump());
+            throw std::runtime_error(fmt::format(fmt("Broker answered with result={:s}"),
+                                                 js_reply.at("result").dump(4)));
 
         std::lock_guard<std::mutex> dslock(_lock_dsets);
         for (json::iterator ds = js_reply.at("datasets").begin();
@@ -554,20 +556,19 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
                     _known_roots.insert(ds_id);
 
             } catch (std::exception& e) {
-                WARN("datasetManager: failure parsing reply received from"
-                     " broker after requesting dataset update: the following "
-                     " exception was thrown when parsing dataset %s with ID "
-                     "%s: %s",
-                     ds.value().dump().c_str(), ds.key().c_str(), e.what());
+                WARN_NON_OO("datasetManager: failure parsing reply received from broker after "
+                            "requesting dataset update: the following exception was thrown when "
+                            "parsing dataset {:s} with ID {:s}: {:s}",
+                            ds.value().dump(4), ds.key(), e.what());
                 error_counter.set(++_conn_error_count);
                 return false;
             }
         }
         timestamp = js_reply.at("ts");
     } catch (std::exception& e) {
-        WARN("datasetManager: failure parsing reply received from broker "
-             "after requesting dataset update (reply: %s): %s",
-             reply.second.c_str(), e.what());
+        WARN_NON_OO("datasetManager: failure parsing reply received from broker "
+                    "after requesting dataset update (reply: {:s}): {:s}",
+                    reply.second, e.what());
         error_counter.set(++_conn_error_count);
         return false;
     }
@@ -578,7 +579,7 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
 
 void datasetManager::force_update_callback(kotekan::connectionInstance& conn) {
 
-    INFO("Sending forced update to broker.");
+    INFO_NON_OO("Sending forced update to broker.");
 
     if (!_use_broker) {
         conn.send_error("This kotekan instance is not configured to use"

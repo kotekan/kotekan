@@ -184,7 +184,7 @@ void delete_metadata_pool(struct metadataPool * pool);
  * @brief Returns a metadata container with a reference count of 1.
  * @param[in] pool The pool to get the metadata object from.
  * @return A metadata container, or NULL if no containers are available.
- * @TODO For now this asserts when unable to return a container, that should be fixed.
+ * @todo For now this asserts when unable to return a container, that should be fixed.
  */
 struct metadataContainer * request_metadata_object(struct metadataPool * pool);
 

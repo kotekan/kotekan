@@ -2,6 +2,8 @@
 
 #include "configUpdater.hpp"
 
+#include "fmt.hpp"
+
 #include <signal.h>
 #include <utils/visUtil.hpp>
 
@@ -44,7 +46,7 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string& unique_name,
     freq_ref = (LIGHT_SPEED * (128) / (sin(_northmost_beam * PI / 180.) * FEED_SEP * 256)) / 1.e6;
 
     _ew_spacing = config.get<std::vector<float>>(unique_name, "ew_spacing");
-    _ew_spacing_c = (float*)hsa_host_malloc(4 * sizeof(float));
+    _ew_spacing_c = (float*)hsa_host_malloc(4 * sizeof(float), device.get_gpu_numa_node());
     for (int i = 0; i < 4; i++) {
         _ew_spacing_c[i] = _ew_spacing[i];
     }
@@ -54,13 +56,13 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string& unique_name,
 
 
     map_len = 256 * sizeof(int);
-    host_map = (uint32_t*)hsa_host_malloc(map_len);
+    host_map = (uint32_t*)hsa_host_malloc(map_len, device.get_gpu_numa_node());
 
     coeff_len = 32 * sizeof(float);
-    host_coeff = (float*)hsa_host_malloc(coeff_len);
+    host_coeff = (float*)hsa_host_malloc(coeff_len, device.get_gpu_numa_node());
 
     gain_len = 2 * 2048 * sizeof(float);
-    host_gain = (float*)hsa_host_malloc(gain_len);
+    host_gain = (float*)hsa_host_malloc(gain_len, device.get_gpu_numa_node());
 
     // Figure out which frequency, is there a better way that doesn't involve reading in the whole
     // thing? Check later
@@ -76,14 +78,16 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string& unique_name,
     update_EW_beam = true;
     first_pass = true;
 
-    config_base = "/gpu/gpu_" + std::to_string(device.get_gpu_id());
+    config_base = fmt::format(fmt("/gpu/gpu_{:d}"), device.get_gpu_id());
 
     using namespace std::placeholders;
     restServer& rest_server = restServer::instance();
-    endpoint_NS_beam = config_base + "/frb/update_NS_beam/" + std::to_string(device.get_gpu_id());
+    endpoint_NS_beam =
+        fmt::format(fmt("{:s}/frb/update_NS_beam/{:d}"), config_base, device.get_gpu_id());
     rest_server.register_post_callback(
         endpoint_NS_beam, std::bind(&hsaBeamformKernel::update_NS_beam_callback, this, _1, _2));
-    endpoint_EW_beam = config_base + "/frb/update_EW_beam/" + std::to_string(device.get_gpu_id());
+    endpoint_EW_beam =
+        fmt::format(fmt("{:s}/frb/update_EW_beam/{:d}"), config_base, device.get_gpu_id());
 
     rest_server.register_post_callback(
         endpoint_EW_beam, std::bind(&hsaBeamformKernel::update_EW_beam_callback, this, _1, _2));
@@ -112,10 +116,10 @@ bool hsaBeamformKernel::update_gains_callback(nlohmann::json& json) {
     try {
         _gain_dir = json.at("frb_gain_dir");
     } catch (std::exception& e) {
-        WARN("[FRB] Fail to read gain_dir %s", e.what());
+        WARN("[FRB] Fail to read gain_dir {:s}", e.what());
         return false;
     }
-    INFO("[FRB] updated gain with %s", _gain_dir.c_str());
+    INFO("[FRB] updated gain with {:s}", _gain_dir);
     return true;
 }
 
@@ -129,7 +133,7 @@ void hsaBeamformKernel::update_EW_beam_callback(connectionInstance& conn, json& 
     }
     _ew_spacing_c[ew_id] = json_request["ew_beam"];
     update_EW_beam = true;
-    config.update_value(config_base, "ew_spacing/" + std::to_string(ew_id),
+    config.update_value(config_base, fmt::format(fmt("ew_spacing/{:d}"), ew_id),
                         json_request["ew_beam"]);
     conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
@@ -226,18 +230,19 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_s
         char filename[256];
         snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin", _gain_dir.c_str(),
                  freq_idx);
-        INFO("Loading gains from %s", filename);
+        INFO("Loading gains from {:s}", filename);
         ptr_myfile = fopen(filename, "rb");
         if (ptr_myfile == NULL) {
-            ERROR("GPU Cannot open gain file %s", filename);
+            ERROR("GPU Cannot open gain file {:s}", filename);
             for (int i = 0; i < 2048; i++) {
                 host_gain[i * 2] = default_gains[0] * scaling;
                 host_gain[i * 2 + 1] = default_gains[1] * scaling;
             }
         } else {
             if (_num_elements != fread(host_gain, sizeof(float) * 2, _num_elements, ptr_myfile)) {
-                FATAL_ERROR("Gain file (%s) wasn't long enough! Something went wrong, breaking...",
-                            filename);
+                FATAL_ERROR(
+                    "Gain file ({:s}) wasn't long enough! Something went wrong, breaking...",
+                    filename);
                 return precede_signal;
             }
             fclose(ptr_myfile);
@@ -248,7 +253,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_s
         }
         void* device_gain = device.get_gpu_memory("beamform_gain", gain_len);
         device.sync_copy_host_to_gpu(device_gain, (void*)host_gain, gain_len);
-        INFO("Time required to load FRB gains: %f", current_time() - start_time);
+        INFO("Time required to load FRB gains: {:f}", current_time() - start_time);
     }
 
     if (update_NS_beam) {

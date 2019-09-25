@@ -69,7 +69,7 @@ void gpuSimulate::main_thread() {
 
         // TODO adjust to allow for more than one frequency.
         // TODO remove all the 32's in here with some kind of constant/define
-        INFO("Simulating GPU processing for %s[%d] putting result in %s[%d]",
+        INFO("Simulating GPU processing for {:s}[{:d}] putting result in {:s}[{:d}]",
              input_buf->buffer_name, input_frame_id, output_buf->buffer_name, output_frame_id);
 
 
@@ -96,10 +96,10 @@ void gpuSimulate::main_thread() {
                                    + y * _block_size * 2 + 0] = imag;
                             output[(f * _num_blocks + b) * _block_size * _block_size * 2 + x * 2
                                    + y * _block_size * 2 + 1] = real;
-                            // INFO("real: %d, imag: %d", real, imag);
+                            // INFO("real: {:d}, imag: {:d}", real, imag);
                         }
                     }
-                    DEBUG("Done block %d of %d (freq %d of %d)...", b, _num_blocks, f,
+                    DEBUG("Done block {:d} of {:d} (freq {:d} of {:d})...", b, _num_blocks, f,
                           _num_local_freq);
                 }
             }
@@ -127,16 +127,16 @@ void gpuSimulate::main_thread() {
                                    + y * _block_size * 2 + 0] = imag;
                             output[(f * _num_blocks + b) * _block_size * _block_size * 2 + x * 2
                                    + y * _block_size * 2 + 1] = real;
-                            // INFO("real: %d, imag: %d", real, imag);
+                            // INFO("real: {:d}, imag: {:d}", real, imag);
                         }
                     }
-                    DEBUG("Done block %d of %d (freq %d of %d)...", b, _num_blocks, f,
+                    DEBUG("Done block {:d} of {:d} (freq {:d} of {:d})...", b, _num_blocks, f,
                           _num_local_freq);
                 }
             }
         }
 
-        INFO("Simulating GPU processing done for %s[%d] result is in %s[%d]",
+        INFO("Simulating GPU processing done for {:s}[{:d}] result is in {:s}[{:d}]",
              input_buf->buffer_name, input_frame_id, output_buf->buffer_name, output_frame_id);
 
         pass_metadata(input_buf, input_frame_id, output_buf, output_frame_id);
