@@ -199,8 +199,8 @@ void visTestPattern::main_thread() {
                                "{:f}j in frame {:d} with freq_id {:d}.",
                                i, (float)expected.at(frame.freq_id).at(i).real(),
                                (float)expected.at(frame.freq_id).at(i).imag(),
-                               (float)frame.vis[i].real(), (float)frame.vis[i].imag(),
-                               (int)frame_id, frame.freq_id);
+                               (float)frame.vis[i].real(), (float)frame.vis[i].imag(), frame_id,
+                               frame.freq_id);
                         num_bad++;
 
                         // Calculate the error here, this square root is then
