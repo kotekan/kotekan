@@ -21,6 +21,13 @@ class time_spec(ctypes.Structure):
 
     _fields_ = [("tv", ctypes.c_int64), ("tv_nsec", ctypes.c_uint64)]
 
+    @classmethod
+    def from_float(cls, v):
+        ts = cls()
+        ts.tv = np.floor(v).astype(np.int64)
+        ts.tv_nsec = ((v % 1.0) * 1e9).astype(np.int64)
+        return ts
+
 
 class timeval(ctypes.Structure):
     """Struct repr of a timeval type."""
@@ -262,6 +269,8 @@ class VisRaw(object):
     ----------
     filename : str
         Name of file to open.
+    mode : str, optional
+        Mode to open file in. Defaults to read only.
     mmap : bool, optional
         Use an mmap to open the file to avoid loading it all into memory.
 
@@ -278,7 +287,7 @@ class VisRaw(object):
         Is the array of times, in the usual correlator file format.
     """
 
-    def __init__(self, filename, mmap=False):
+    def __init__(self, filename, mode="r", mmap=False):
 
         import msgpack
 
@@ -353,7 +362,7 @@ class VisRaw(object):
         self.raw = np.memmap(
             native_str(self.data_path),
             dtype=frame_struct,
-            mode="r",
+            mode=mode,
             shape=(self.num_time, self.num_freq),
         )
         self.data = self.raw["data"]
@@ -364,6 +373,160 @@ class VisRaw(object):
     @staticmethod
     def _parse_filename(fname):
         return os.path.splitext(fname)[0]
+
+    @classmethod
+    def create(cls, name, time, freq, input_, prod, nev, stack=None):
+        """Create a VisRaw file that can be written into.
+
+        Parameters
+        ----------
+        name : str
+            Base name of files to write.
+        time : list
+            Must be a list of dicts with `fpga_count` and `ctime` keys.
+        freq, input_, prod : list
+            Definitions of other axes. Must be lists, but exact subtypes are not checked.
+        nev : int
+            Number of eigenvalues/vectors saved.
+        stack : list, optional
+            Optional definition of a stack axis.
+        """
+        import msgpack
+
+        # Validate and create the index maps
+        if (
+            not isinstance(time, list)
+            or "fpga_count" not in time[0]
+            or "ctime" not in time[0]
+        ):
+            raise ValueError("Incorrect format for time axis")
+
+        if not isinstance(freq, list):
+            raise ValueError("Incorrect format for freq axis")
+
+        if not isinstance(input_, list):
+            raise ValueError("Incorrect format for input axis")
+
+        if not isinstance(prod, list):
+            raise ValueError("Incorrect format for prod axis")
+
+        index_map = {
+            "time": time,
+            "freq": freq,
+            "input": input_,
+            "prod": prod,
+            "ev": list(range(nev)),
+        }
+
+        if stack is not None:
+            if not isinstance(stack, list):
+                raise ValueError("Incorrect format for stack axis")
+            index_map["stack"] = stack
+
+        # Calculate the structural metadata
+        ninput = len(input_)
+        nstack = len(stack) if stack is not None else len(prod)
+        nfreq = len(freq)
+        ntime = len(time)
+
+        msize = ctypes.sizeof(VisMetadata)
+        dsize = VisBuffer._calculate_layout(ninput, nstack, nev)["size"]
+
+        structure = {
+            "nfreq": nfreq,
+            "ntime": ntime,
+            "metadata_size": msize,
+            "data_size": dsize,
+            "frame_size": _offset(
+                1 + msize + dsize, 4 * 1024
+            ),  # Align to 4kb boundaries
+        }
+
+        attributes = {
+            "git_version_tag": "hello",
+            "weight_type": "inverse_variance",
+            "instrument_name": "chime",
+        }
+
+        metadata = {
+            "index_map": index_map,
+            "structure": structure,
+            "attributes": attributes,
+        }
+
+        # Write metadata to file
+        with open(name + ".meta", "wb") as fh:
+            msgpack.dump(metadata, fh)
+
+        # Open the rawfile
+        rawfile = cls(name, mode="w+")
+
+        # Set the metadata on the frames that we already have
+        rawfile.valid_frames[:] = 1
+        rawfile.metadata["num_elements"][:] = ninput
+        rawfile.metadata["num_prod"][:] = nstack
+        rawfile.metadata["num_ev"][:] = nev
+        rawfile.metadata["freq_id"][:] = np.arange(nfreq)[np.newaxis, :]
+
+        fpga = np.array([t["fpga_count"] for t in time])
+        ctime = np.array(
+            [(int(np.floor(t["ctime"])), int((t["ctime"] % 1.0) * 1e9)) for t in time],
+            dtype=[("tv", np.int64), ("tv_nsec", np.uint64)],
+        )
+        rawfile.metadata["fpga_seq"][:] = fpga[:, np.newaxis]
+        rawfile.metadata["ctime"][:] = ctime[:, np.newaxis]
+
+        return rawfile
+
+    def flush(self):
+        """Ensure the data is flushed to disk."""
+        self.raw.flush()
+
+
+def simple_visraw_data(filename, ntime, nfreq, ninput):
+    """Create a simple VisRaw test file that kotekan can read.
+
+    Parameters
+    ----------
+    filename : str
+        Base name of files that will be written.
+    ninput, nfreq, ntime : int
+        Number of inputs, frequencies and times to use. These axes are given
+        dummy values.
+
+    Returns
+    -------
+    raw : VisRaw
+        A readonly view of the VisRaw file.
+    """
+
+    nprod = ninput * (ninput + 1) // 2
+    nev = 4
+
+    time = [{"ctime": (10.0 * i), "fpga_count": i} for i in range(ntime)]
+
+    freq = [{"centre": (800 - i * 10.0), "width": 10.0} for i in range(10)]
+
+    input_ = [(i, f"test{i:04}") for i in range(ninput)]
+
+    prod = [(i, j) for i in range(ninput) for j in range(i, ninput)]
+
+    raw = VisRaw.create(filename, time, freq, input_, prod, nev)
+
+    # Set vis data
+    raw.data["vis"].real = np.arange(nprod)[np.newaxis, np.newaxis, :]
+    raw.data["vis"].imag = np.arange(ntime)[:, np.newaxis, np.newaxis]
+
+    # Set weight data
+    raw.data["weight"] = np.arange(nfreq)[np.newaxis, :, np.newaxis]
+
+    # Set eigendata
+    raw.data["eval"] = np.arange(nev)[np.newaxis, np.newaxis, :]
+    raw.data["evec"] = np.arange(ninput * nev)[np.newaxis, np.newaxis, :]
+
+    # Return read only view
+    del raw
+    return VisRaw(filename, mode="r")
 
 
 def freq_id_to_stream_id(f_id):
