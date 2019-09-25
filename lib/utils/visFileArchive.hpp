@@ -71,7 +71,7 @@ public:
     /**
      * @brief Destructor.
      **/
-    ~visFileArchive();
+    virtual ~visFileArchive();
 
     /**
      * @brief Write a block in time/freq.
