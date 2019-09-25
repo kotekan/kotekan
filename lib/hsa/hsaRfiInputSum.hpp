@@ -77,8 +77,6 @@ private:
     uint32_t output_mask_len;
     /// Length of lost sample correction frame
     uint32_t correction_frame_len;
-    /// Array to hold the input mask (which inputs are currently functioning)
-    uint8_t* input_mask;
     /// Number of elements (2048 for CHIME or 256 for Pathfinder)
     uint32_t _num_elements;
     /// Number of frequencies per GPU (1 for CHIME or 8 for Pathfinder)
@@ -87,20 +85,8 @@ private:
     uint32_t _samples_per_data_set;
     /// Integration length of spectral kurtosis estimate in time
     uint32_t _sk_step;
-    /// The total number of faulty inputs
-    uint32_t _num_bad_inputs;
     /// The number of standard deviations in SK which constitute RFI
     uint32_t _rfi_sigma_cut;
-    /// Vector to hold a list of inputs which are currently malfunctioning
-    vector<int32_t> _bad_inputs;
-    /// Boolean to hold whether or not the current kernel execution is the first or not.
-    bool rebuild_input_mask;
-    /// Rest server callback mutex
-    std::mutex rest_callback_mutex;
-    /// Sring to hold endpoint name
-    string endpoint;
-    /// Config base (@todo this is a huge hack replace with updatable config)
-    string config_base;
 };
 
 #endif
