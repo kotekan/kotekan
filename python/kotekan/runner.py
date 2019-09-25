@@ -64,7 +64,7 @@ class KotekanRunner(object):
         rest_header = {"content-type": "application/json"}
         rest_addr = "http://localhost:12048/"
 
-        config_dict = yaml.load(default_config)
+        config_dict = yaml.safe_load(default_config)
         config_dict.update(self._config)
 
         # At somepoint maybe do more specialised parsing and validation here
