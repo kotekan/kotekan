@@ -27,8 +27,7 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config, const string& unique_name,
     input_frame_len = sizeof(uint8_t) * _num_elements * _num_local_freq * _samples_per_data_set;
     output_frame_len =
         sizeof(float) * _num_local_freq * _num_elements * _samples_per_data_set / _sk_step;
-    output_var_frame_len =
-        sizeof(float) * _num_local_freq * _samples_per_data_set / _sk_step;
+    output_var_frame_len = sizeof(float) * _num_local_freq * _samples_per_data_set / _sk_step;
     lost_samples_frame_len = sizeof(uint8_t) * _samples_per_data_set;
     lost_samples_correction_len = sizeof(uint32_t) * _samples_per_data_set / _sk_step;
     // Local Parameters
@@ -57,7 +56,8 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, hsa_signal_t precede_signa
     // Set argumnets to correct values
     args.input = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
     args.output = device.get_gpu_memory("timesum", output_frame_len);
-    args.output_var = device.get_gpu_memory_array("rfi_output_var", gpu_frame_id, output_var_frame_len);
+    args.output_var =
+        device.get_gpu_memory_array("rfi_output_var", gpu_frame_id, output_var_frame_len);
     //    args.LostSamples = device.get_gpu_memory_array("lost_samples", gpu_frame_id,
     //    lost_samples_frame_len); args.LostSamplesCorrection =
     //    device.get_gpu_memory("lost_sample_correction", lost_samples_correction_len);

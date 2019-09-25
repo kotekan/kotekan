@@ -1,4 +1,5 @@
 #include "hsaRfiUpdateBadInputs.hpp"
+
 #include "configUpdater.hpp"
 #include "visUtil.hpp"
 
@@ -30,8 +31,7 @@ hsaRfiUpdateBadInputs::hsaRfiUpdateBadInputs(Config& config, const string& uniqu
 
     kotekan::configUpdater::instance().subscribe(
         config.get<std::string>(unique_name, "updatable_config/gain_psr"),
-            std::bind(&hsaRfiUpdateBadInputs::update_bad_inputs_callback, this,
-                      std::placeholders::_1));
+        std::bind(&hsaRfiUpdateBadInputs::update_bad_inputs_callback, this, std::placeholders::_1));
 }
 
 hsaRfiUpdateBadInputs::~hsaRfiUpdateBadInputs() {
@@ -41,12 +41,12 @@ hsaRfiUpdateBadInputs::~hsaRfiUpdateBadInputs() {
 int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
 
-    uint8_t* frame = wait_for_full_frame(_network_buf, unique_name.c_str(), _network_buf_precondition_id);
+    uint8_t* frame =
+        wait_for_full_frame(_network_buf, unique_name.c_str(), _network_buf_precondition_id);
     if (frame == nullptr)
         return -1;
 
-    _network_buf_precondition_id =
-        (_network_buf_precondition_id + 1) % _network_buf->num_frames;
+    _network_buf_precondition_id = (_network_buf_precondition_id + 1) % _network_buf->num_frames;
     return 0;
 }
 
@@ -55,16 +55,15 @@ hsa_signal_t hsaRfiUpdateBadInputs::execute(int gpu_frame_id, hsa_signal_t prece
 
     // We need to set the number of bad inputs used in this frame
     set_rfi_num_bad_inputs(_network_buf, _network_buf_execute_id, bad_inputs_correlator.size());
-    _network_buf_execute_id =
-        (_network_buf_execute_id + 1) % _network_buf->num_frames;
+    _network_buf_execute_id = (_network_buf_execute_id + 1) % _network_buf->num_frames;
 
     if (update_bad_inputs && frames_to_update > 0) {
         frames_to_update--;
 
         // Copy memory to GPU
-        void * gpu_mem = device.get_gpu_memory_array("input_mask", gpu_frame_id, input_mask_len);
-        device.async_copy_host_to_gpu(gpu_mem, (void *)host_mask, input_mask_len,
-                                      precede_signal, signals[gpu_frame_id]);
+        void* gpu_mem = device.get_gpu_memory_array("input_mask", gpu_frame_id, input_mask_len);
+        device.async_copy_host_to_gpu(gpu_mem, (void*)host_mask, input_mask_len, precede_signal,
+                                      signals[gpu_frame_id]);
 
         return signals[gpu_frame_id];
     } else {

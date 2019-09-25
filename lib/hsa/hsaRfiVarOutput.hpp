@@ -20,7 +20,8 @@
  * side is already marking network buffer empty.
  *
  * @par GPU Memory
- * @gpu_mem  rfi_output_var  Output of SK variances estimates, size: sizeof_float x nfreqs x nsamps / sk_step
+ * @gpu_mem  rfi_output_var  Output of SK variances estimates, size: sizeof_float x nfreqs x nsamps
+ * / sk_step
  *     @gpu_mem_type         staging
  *     @gpu_mem_format       Array of @c float
  *     @gpu_mem_metadata     chimeMetadata
@@ -31,7 +32,7 @@ class hsaRfiVarOutput : public hsaCommand {
 public:
     /// Constructor
     hsaRfiVarOutput(kotekan::Config& config, const string& unique_name,
-                 kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
+                    kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor
     virtual ~hsaRfiVarOutput();
     /// Wait for output buffer to be empty, keep track of _rfi_output_buf_precondition_id

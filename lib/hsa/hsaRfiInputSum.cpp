@@ -48,12 +48,12 @@ hsaRfiInputSum::~hsaRfiInputSum() {}
 int hsaRfiInputSum::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
 
-    uint8_t* frame = wait_for_full_frame(_network_buf, unique_name.c_str(), _network_buf_precondition_id);
+    uint8_t* frame =
+        wait_for_full_frame(_network_buf, unique_name.c_str(), _network_buf_precondition_id);
     if (frame == nullptr)
         return -1;
 
-    _network_buf_precondition_id =
-        (_network_buf_precondition_id + 1) % _network_buf->num_frames;
+    _network_buf_precondition_id = (_network_buf_precondition_id + 1) % _network_buf->num_frames;
     return 0;
 }
 
@@ -118,8 +118,7 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
     // Execute kernel
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
 
-    _network_buf_execute_id =
-        (_network_buf_execute_id + 1) % _network_buf->num_frames;
+    _network_buf_execute_id = (_network_buf_execute_id + 1) % _network_buf->num_frames;
 
     // Return signal
     return signals[gpu_frame_id];

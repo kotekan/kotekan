@@ -56,7 +56,6 @@ private:
     int32_t _rfi_output_buf_precondition_id;
     /// ID for _rfi_output_buf_execute
     int32_t _rfi_output_buf_execute_id;
-    
 };
 
 #endif

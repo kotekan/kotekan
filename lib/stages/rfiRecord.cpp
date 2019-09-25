@@ -135,7 +135,8 @@ void rfiRecord::main_thread() {
                 INFO("Opening file: %s", file_name);
                 fd = open(file_name, O_WRONLY | O_APPEND | O_CREAT, 0666);
                 if (fd < 0) {
-                    ERROR("Cannot open file {:s}, error {:d} ({:s}})", file_name, errno, strerror(errno));
+                    ERROR("Cannot open file {:s}, error {:d} ({:s}})", file_name, errno,
+                          strerror(errno));
                 }
                 // Write seq number into the start of the file
                 ssize_t bytes_writen = write(fd, &fpga_seq_num, sizeof(int64_t));

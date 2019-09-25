@@ -40,8 +40,7 @@ int hsaRfiBadInputOutput::wait_on_precondition(int gpu_frame_id) {
     // Update precondition ID
     _rfi_output_buf_precondition_id =
         (_rfi_output_buf_precondition_id + 1) % _rfi_output_buf->num_frames;
-    _network_buf_precondition_id =
-        (_network_buf_precondition_id + 1) % _network_buf->num_frames;
+    _network_buf_precondition_id = (_network_buf_precondition_id + 1) % _network_buf->num_frames;
     return 0;
 }
 
