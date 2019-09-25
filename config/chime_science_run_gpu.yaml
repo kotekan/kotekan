@@ -447,9 +447,9 @@ gpu:
       gain_psr: /updatable_config/pulsar_gain
       gain_frb: /updatable_config/frb_gain
       psr_pt: /updatable_config/pulsar_pointing
+      bad_inputs: /updatable_config/bad_inputs
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
-    bad_inputs: [53, 144, 145, 206, 255, 258, 319, 420, 431, 444, 457, 459, 498, 508, 550, 551, 567, 592, 624, 625, 656, 659, 682, 759, 764, 782, 797, 855, 867, 908, 924, 1026, 1240, 1285, 1405, 1407, 1433, 1436, 1437, 1486, 1502, 1639, 1648, 1650, 1694, 1735, 1751, 1753, 1815, 1816, 1834, 1936, 1938, 1998, 2026, 2032, 2035]
     updatable_rfi_zeroing: /rfi_masking/toggle
     commands: *command_list
     in_buffers:
@@ -470,9 +470,9 @@ gpu:
       gain_psr: /updatable_config/pulsar_gain
       gain_frb: /updatable_config/frb_gain
       psr_pt: /updatable_config/pulsar_pointing
+      bad_inputs: /updatable_config/bad_inputs
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
-    bad_inputs: [53, 144, 145, 206, 255, 258, 319, 420, 431, 444, 457, 459, 498, 508, 550, 551, 567, 592, 624, 625, 656, 659, 682, 759, 764, 782, 797, 855, 867, 908, 924, 1026, 1240, 1285, 1405, 1407, 1433, 1436, 1437, 1486, 1502, 1639, 1648, 1650, 1694, 1735, 1751, 1753, 1815, 1816, 1834, 1936, 1938, 1998, 2026, 2032, 2035]
     updatable_rfi_zeroing: /rfi_masking/toggle
     commands: *command_list
     in_buffers:
@@ -493,9 +493,9 @@ gpu:
       gain_psr: /updatable_config/pulsar_gain
       gain_frb: /updatable_config/frb_gain
       psr_pt: /updatable_config/pulsar_pointing
+      bad_inputs: /updatable_config/bad_inputs
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
-    bad_inputs: [53, 144, 145, 206, 255, 258, 319, 420, 431, 444, 457, 459, 498, 508, 550, 551, 567, 592, 624, 625, 656, 659, 682, 759, 764, 782, 797, 855, 867, 908, 924, 1026, 1240, 1285, 1405, 1407, 1433, 1436, 1437, 1486, 1502, 1639, 1648, 1650, 1694, 1735, 1751, 1753, 1815, 1816, 1834, 1936, 1938, 1998, 2026, 2032, 2035]
     updatable_rfi_zeroing: /rfi_masking/toggle
     commands: *command_list
     in_buffers:
@@ -516,9 +516,9 @@ gpu:
       gain_psr: /updatable_config/pulsar_gain
       gain_frb: /updatable_config/frb_gain
       psr_pt: /updatable_config/pulsar_pointing
+      bad_inputs: /updatable_config/bad_inputs
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
-    bad_inputs: [53, 144, 145, 206, 255, 258, 319, 420, 431, 444, 457, 459, 498, 508, 550, 551, 567, 592, 624, 625, 656, 659, 682, 759, 764, 782, 797, 855, 867, 908, 924, 1026, 1240, 1285, 1405, 1407, 1433, 1436, 1437, 1486, 1502, 1639, 1648, 1650, 1694, 1735, 1751, 1753, 1815, 1816, 1834, 1936, 1938, 1998, 2026, 2032, 2035]
     updatable_rfi_zeroing: /rfi_masking/toggle
     commands: *command_list
     in_buffers:
@@ -979,6 +979,9 @@ updatable_config:
       ra: 53.6197236741
       dec: 54.6433973569
       scaling: 48
+  bad_inputs:
+    # These inputs are assumed to be in cylinder order
+    bad_inputs: []
 
   gating:
     psr0_config:
