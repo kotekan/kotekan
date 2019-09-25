@@ -113,9 +113,6 @@ private:
     std::vector<stack_ctype> stack;
     json metadata;
 
-    /// A unique ID for the chunk (i.e. frequency set)
-    uint32_t chunk_id;
-
     /// Number of products to write
     size_t num_prod;
     size_t num_input;
@@ -134,8 +131,6 @@ private:
 
     size_t f_ind = 0;
     size_t t_ind = 0;
-
-    const size_t BLOCK_SIZE = 32;
 };
 
 template<typename T>
