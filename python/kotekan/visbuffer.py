@@ -311,20 +311,35 @@ class VisRaw(object):
         self.num_elements = len(self.index_map["input"])
         self.num_ev = len(self.index_map["ev"])
 
-        # Packing of the data on disk. First byte indicates if data is present.
-        data_struct = [
-            ("vis", np.complex64, self.num_stack),
-            ("weight", np.float32, self.num_stack),
-            ("flags", np.float32, self.num_elements),
-            ("eval", np.float32, self.num_ev),
-            ("evec", np.complex64, self.num_ev * self.num_elements),
-            ("erms", np.float32, 1),
-            ("gain", np.complex64, self.num_elements),
-        ]
-        # TODO: Python 3 - Process dtype labels to ensure Python 2/3 compatibility
-        data_struct = np.dtype(
-            [(native_str(d[0]),) + d[1:] for d in data_struct], align=True
+        # TODO: this doesn't work at the moment because kotekan and numpy
+        # disagree on how the struct should be aligned. It turns out (as of
+        # v1.16) that numpy is correct, so we should switch back, but in the
+        # near term we need to force numpy to use the same alignment.
+
+        # data_struct = [
+        #     ("vis", np.complex64, self.num_stack),
+        #     ("weight", np.float32, self.num_stack),
+        #     ("flags", np.float32, self.num_elements),
+        #     ("eval", np.float32,  self.num_ev),
+        #     ("evec", np.complex64, self.num_ev * self.num_elements),
+        #     ("erms", np.float32,  1),
+        #     ("gain", np.complex64, self.num_elements),
+        # ]
+        # data_struct = np.dtype([(native_str(d[0]),) + d[1:] for d in data_struct], align=True)
+
+        layout = VisBuffer._calculate_layout(
+            self.num_elements, self.num_stack, self.num_ev
         )
+        dtype_layout = {"names": [], "formats": [], "offsets": []}
+
+        # TODO: remove this when we have fixed the alignment issue in kotekan
+        for member in layout["members"]:
+            dtype_layout["names"].append(member["name"])
+            dtype_layout["offsets"].append(member["start"])
+            dtype_layout["formats"].append((member["dtype"], member["num"]))
+        dtype_layout["itemsize"] = layout["size"]
+        data_struct = np.dtype(dtype_layout)
+
         frame_struct = np.dtype(
             {
                 "names": ["valid", "metadata", "data"],
@@ -335,11 +350,15 @@ class VisRaw(object):
 
         # TODO: Python 3 - use native_str for compatibility
         # Load data into on-disk numpy array
-        self.raw = np.memmap(native_str(self.data_path), dtype=frame_struct, mode='r',
-                             shape=(self.num_time, self.num_freq))
-        self.data = self.raw['data']
-        self.metadata = self.raw['metadata']
-        self.valid_frames = self.raw['valid']
+        self.raw = np.memmap(
+            native_str(self.data_path),
+            dtype=frame_struct,
+            mode="r",
+            shape=(self.num_time, self.num_freq),
+        )
+        self.data = self.raw["data"]
+        self.metadata = self.raw["metadata"]
+        self.valid_frames = self.raw["valid"]
         self.file_metadata = metadata
 
     @staticmethod

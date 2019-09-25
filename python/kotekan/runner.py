@@ -127,7 +127,7 @@ class KotekanRunner(object):
                         # print kotekan output if sending REST command fails
                         # (kotekan might have crashed and we want to know)
                         p.wait()
-                        self.output = open(f_out.name, 'r')
+                        self.output = open(f_out.name, "r")
 
                         # Print out the output from Kotekan for debugging
                         print(self.output)
@@ -209,10 +209,7 @@ class FakeNetworkBuffer(InputBuffer):
             }
         }
 
-        stage_config = {
-            'kotekan_stage': 'testDataGen',
-            'out_buf': self.name,
-        }
+        stage_config = {"kotekan_stage": "testDataGen", "out_buf": self.name}
         stage_config.update(kwargs)
 
         self.stage_block = {stage_name: stage_config}
