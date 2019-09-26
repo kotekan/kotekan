@@ -19,6 +19,7 @@ import sys
 import time
 import argparse
 
+
 class Port(object):
     def __init__(self, hostname, port_number):
         """Return a Customer object whose name is *name* and starting
@@ -31,8 +32,13 @@ class Port(object):
         self.last_update = -1
 
     def update(self):
-        resp = requests.get("http://" + self.hostname
-                            + ":12048/dpdk/handlers/" + str(self.port_number) + "/port_data")
+        resp = requests.get(
+            "http://"
+            + self.hostname
+            + ":12048/dpdk/handlers/"
+            + str(self.port_number)
+            + "/port_data"
+        )
         json_data = json.loads(resp.text)
         cur_rx_bytes = json_data["rx_bytes_total"]
         cur_rx_packets = json_data["rx_packets_total"]
@@ -46,10 +52,13 @@ class Port(object):
         rx_lost_packets_diff = cur_rx_lost_packets - self.rx_lost_packets
 
         ret = {}
-        ret["Gbps"] = 8*rx_bytes_diff/time_diff/(1000*1000*1000)
-        ret["loss_percent"] = (100.0 * float(rx_lost_packets_diff)
-                              / float(rx_packets_diff + rx_lost_packets_diff))
-        ret["pps"] = rx_packets_diff/time_diff
+        ret["Gbps"] = 8 * rx_bytes_diff / time_diff / (1000 * 1000 * 1000)
+        ret["loss_percent"] = (
+            100.0
+            * float(rx_lost_packets_diff)
+            / float(rx_packets_diff + rx_lost_packets_diff)
+        )
+        ret["pps"] = rx_packets_diff / time_diff
 
         self.rx_bytes = cur_rx_bytes
         self.rx_packets = cur_rx_packets
@@ -60,8 +69,10 @@ class Port(object):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("host", help = "The host name of the system you want to get stats from.")
-parser.add_argument("num_ports", help = "The number of ports on the system")
+parser.add_argument(
+    "host", help="The host name of the system you want to get stats from."
+)
+parser.add_argument("num_ports", help="The number of ports on the system")
 args = parser.parse_args()
 
 hostname = str(args.host)
@@ -78,11 +89,18 @@ while True:
     for i in range(num_ports):
         stats = ports[i].update()
         if first_time == False:
-            print("Port: " + str(i) + "; RX Rate: " + "{:6.4f}".format(stats["Gbps"])
-                  + " Gbps; pps: " + "{:8.1f}".format(stats["pps"]) + "; loss: "
-                  + "{:3.6f}".format(stats["loss_percent"]) + "%" )
+            print(
+                "Port: "
+                + str(i)
+                + "; RX Rate: "
+                + "{:6.4f}".format(stats["Gbps"])
+                + " Gbps; pps: "
+                + "{:8.1f}".format(stats["pps"])
+                + "; loss: "
+                + "{:3.6f}".format(stats["loss_percent"])
+                + "%"
+            )
 
     first_time = False
     print("-------------------------------------------------------------")
     time.sleep(2)
-
