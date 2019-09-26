@@ -155,10 +155,10 @@ def get_version(
                     print("Using git_dirt to create release version.")
                     print("git dir: {}".format(git_dir))
                     print("branch : {}".format(branch))
-            except Exception:
+            except Exception as e:
                 raise Exception(
-                    "Unable to use git_dir: {} to create release version.".format(
-                        git_dir
+                    "Unable to use git_dir: {} to create release version: {}".format(
+                        git_dir, e
                     )
                 )
 
@@ -188,11 +188,11 @@ def get_version(
                     if debug:
                         print("python package setup ver: {}".format(pkg_version))
                     return pkg_version
-            except Exception:
+            except Exception as e:
                 raise Exception(
                     "Unable to use git or setup info to create release version\
-                    for python_package: {}".format(
-                        python_package
+                    for python_package {}: {}".format(
+                        python_package, e
                     )
                 )
 
@@ -206,8 +206,8 @@ def get_version(
                     git_info = git_info[0].decode("utf-8").strip()
                     branch = branch[0].decode("utf-8").strip()
                     cwd_release = True
-            except Exception:
-                raise Exception("Unable to use cwd to create version")
+            except Exception as e:
+                raise Exception("Unable to use cwd to create version: {}".format(e))
 
     except Exception as error:
         raise error
@@ -260,8 +260,8 @@ def get_version(
                                 print("Matching Remote Tag: {}".format(tag))
                                 print("Making a clean tagged release.")
                             clean_release = True
-            except Exception:
-                print("Unable to fetch remote tags.")
+            except Exception as e:
+                print("Unable to fetch remote tags: {}".format(e))
 
         # Format the release version based on branch and clean status.
         release_format = branch_formatting
@@ -273,8 +273,8 @@ def get_version(
         return release_format.format(
             branch=branch, tag=tag, commits_ahead=commits_ahead, sha=git_sha.lstrip("g")
         )
-    except Exception:
-        raise Exception("Unable to create release version")
+    except Exception as e:
+        raise Exception("Unable to create release version: {}".format(e))
 
 
 if __name__ == "__main__":
