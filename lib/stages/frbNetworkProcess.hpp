@@ -48,8 +48,11 @@
  * @conf   beam_offset          Int (default 0). Offset the beam_id going to L1 Process
  * @conf   time_interval        Unsigned long (default 125829120). Time per buffer in ns.
  * @conf   column_mode          bool (default false) Send beams in a single CHIME cylinder.
- * @conf   check_interval       Unsigned long (default 30s) Time in ms between sending a ping to
+ * @conf   live_check_frequency Unsigned long (default 30s) Time in ms between sending a ping to
  * check if a destination host is live.
+ * @conf   node_dead_interval   Unsigned long (default 2*live_check_frequency) Time in ms after
+ * which the host is marked dead if it hasn't sent a ping reply. check if a destination host is
+ * live.
  * @todo   Resolve the issue of NTP clock vs Monotonic clock.
  *
  * @author Arun Naidu, Davor Cubranic
@@ -133,6 +136,9 @@ private:
 
     /// Minimal interval between checks of a node's liveliness
     const std::chrono::milliseconds live_check_frequency;
+
+    /// Minimal interval without a ping response before a node is declared dead
+    const std::chrono::milliseconds node_dead_interval;
 
     /// array of sending socket descriptors
     std::vector<SrcAddrSocket> src_sockets;

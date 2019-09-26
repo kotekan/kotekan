@@ -51,7 +51,9 @@ frbNetworkProcess::frbNetworkProcess(Config& config_, const string& unique_name,
                                      bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&frbNetworkProcess::main_thread, this)),
     live_check_frequency{std::chrono::milliseconds(
-        config_.get_default<unsigned long>(unique_name, "check_interval", 30000))} {
+        config_.get_default<unsigned long>(unique_name, "check_interval", 30000))},
+    node_dead_interval{std::chrono::milliseconds(config_.get_default<unsigned long>(
+        unique_name, "node_dead_interval", 2 * live_check_frequency.count()))} {
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -403,7 +405,7 @@ void frbNetworkProcess::ping_destinations() {
         DEBUG("Last checked: {}s ago. Last responded: {}s ago",
               std::chrono::duration_cast<std::chrono::seconds>(time_since_last_check).count(),
               std::chrono::duration_cast<std::chrono::seconds>(time_since_last_live).count());
-        if (time_since_last_live > live_check_frequency && dst->live) {
+        if (time_since_last_live > node_dead_interval && dst->live) {
             INFO("Too long since last ping response, mark host {} dead.", dst->host);
             dst->live = false;
         }
