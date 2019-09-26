@@ -982,6 +982,14 @@ updatable_config:
   rfi_zeroing_toggle:
     kotekan_update_endpoint: "json"
     rfi_zeroing: False
+  rfi_sk_record:
+    kotekan_update_endpoint: "json"
+    write_to: /mnt/gong/RFI/test_sk/
+    write_to_disk: false
+  rfi_var_record:
+    kotekan_update_endpoint: "json"
+    write_to: /mnt/gong/RFI/test_var/
+    write_to_disk: false
 
   gating:
     psr0_config:
@@ -1245,51 +1253,43 @@ rfi_bad_input_finder:
     kotekan_stage: rfiBadInputFinder
     rfi_in: gpu_rfi_bad_input_buffer_3
 
-rfi_record:
+rfi_sk_record:
   total_links: 1
   gpu_0:
     kotekan_stage: rfiRecord
-    write_to: /mnt/gong/RFI/20190829_test_sk/
-    write_to_disk: true
     rfi_in: gpu_rfi_output_buffer_0
+    updatable_config: "/updatable_config/rfi_sk_record"
   gpu_1:
     kotekan_stage: rfiRecord
-    write_to: /mnt/gong/RFI/20190829_test_sk/
-    write_to_disk: true
     rfi_in: gpu_rfi_output_buffer_1
+    updatable_config: "/updatable_config/rfi_sk_record"
   gpu_2:
     kotekan_stage: rfiRecord
-    write_to: /mnt/gong/RFI/20190829_test_sk/
-    write_to_disk: true
     rfi_in: gpu_rfi_output_buffer_2
+    updatable_config: "/updatable_config/rfi_sk_record"
   gpu_3:
     kotekan_stage: rfiRecord
-    write_to: /mnt/gong/RFI/20190829_test_sk/
-    write_to_disk: true
     rfi_in: gpu_rfi_output_buffer_3
+    updatable_config: "/updatable_config/rfi_sk_record"
 
 rfi_var_record:
   total_links: 1
   gpu_0:
     kotekan_stage: rfiRecord
-    write_to: /mnt/gong/RFI/20190829_test_var/
-    write_to_disk: false
     rfi_in: gpu_rfi_var_output_buffer_0
+    updatable_config: "/updatable_config/rfi_var_record"
   gpu_1:
     kotekan_stage: rfiRecord
-    write_to: /mnt/gong/RFI/20190829_test_var/
-    write_to_disk: false
     rfi_in: gpu_rfi_var_output_buffer_1
+    updatable_config: "/updatable_config/rfi_var_record"
   gpu_2:
     kotekan_stage: rfiRecord
-    write_to: /mnt/gong/RFI/20190829_test_var/
-    write_to_disk: false
     rfi_in: gpu_rfi_var_output_buffer_2
+    updatable_config: "/updatable_config/rfi_var_record"
   gpu_3:
     kotekan_stage: rfiRecord
-    write_to: /mnt/gong/RFI/20190829_test_var/
-    write_to_disk: false
     rfi_in: gpu_rfi_var_output_buffer_3
+    updatable_config: "/updatable_config/rfi_var_record"
 
 # Information for input reordering, packed as
 #   (adc_id, chan_id, correlator_input)
