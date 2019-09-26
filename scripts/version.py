@@ -276,8 +276,11 @@ def get_version(
             branch=branch, tag=tag, commits_ahead=commits_ahead, sha=git_sha.lstrip("g")
         )
     except Exception as e:
-        print("git_info is {} and branch is {}".format(git_info, branch))
-        raise Exception("Unable to create release version: {}".format(e))
+        raise Exception(
+            "git_info is {} and branch is {}.\nUnable to create release version: {}".format(
+                git_info, branch, e
+            )
+        )
 
 
 if __name__ == "__main__":
