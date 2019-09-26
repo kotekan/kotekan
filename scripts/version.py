@@ -206,6 +206,8 @@ def get_version(
                     git_info = git_info[0].decode("utf-8").strip()
                     branch = branch[0].decode("utf-8").strip()
                     cwd_release = True
+                else:
+                    print("git_info is {} and branch is {}".format(git_info, branch))
             except Exception as e:
                 raise Exception("Unable to use cwd to create version: {}".format(e))
 
