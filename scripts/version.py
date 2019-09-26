@@ -201,13 +201,22 @@ def get_version(
             try:
                 git_info = _run_cmd(cmd=git_describe_cmd)
                 branch = _run_cmd(cmd=git_branch_cmd)
-                if (len(git_info) and len(branch)) != 0:
-                    # Sanitize git_info and branch
-                    git_info = git_info[0].decode("utf-8").strip()
-                    branch = branch[0].decode("utf-8").strip()
-                    cwd_release = True
-                else:
-                    print("git_info is {} and branch is {}".format(git_info, branch))
+                if len(git_info) == 0:
+                    raise RuntimeError(
+                        "Failure getting git info: {} returned {}".format(
+                            git_describe_cmd, git_info
+                        )
+                    )
+                if len(branch) == 0:
+                    raise RuntimeError(
+                        "Failure getting branch info: {} returned {}".format(
+                            git_branch_cmd, branch
+                        )
+                    )
+                # Sanitize git_info and branch
+                git_info = git_info[0].decode("utf-8").strip()
+                branch = branch[0].decode("utf-8").strip()
+                cwd_release = True
             except Exception as e:
                 raise Exception("Unable to use cwd to create version: {}".format(e))
 
