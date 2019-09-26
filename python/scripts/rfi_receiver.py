@@ -55,7 +55,7 @@ class CommandLine(object):
         # TODO: Install this RFI script and version.py. Get the version at install time.
         try:
             self.git_version = subprocess.check_output(
-                ["python2", VERSION_SCRIPT]
+                ["python3", VERSION_SCRIPT]
             ).strip()
         except subprocess.CalledProcessError:
             print(
