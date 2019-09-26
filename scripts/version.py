@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # === Start Python 2/3 compatibility
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
+
 try:
     from future_builtins import *  # noqa  pylint: disable=W0401, W0614
     from future_builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
@@ -25,8 +25,9 @@ __status__ = "Release Candidate"
 __developers__ = "Shiny Brar"
 
 
-def get_version(git_dir=None, python_package=None,
-                release_branch='master', debug=False):
+def get_version(
+    git_dir=None, python_package=None, release_branch="master", debug=False
+):
     """
     Returns a version based on git tag,commits,hash and local changes.
 
@@ -83,14 +84,14 @@ def get_version(git_dir=None, python_package=None,
     """
 
     # Commands to get git information.
-    git_describe_cmd = ['git', 'describe', '--tags', '--long', '--dirty']
-    git_remote_cmd = ['git', 'ls-remote', '--tags']
-    git_branch_cmd = ['git', 'rev-parse', '--abbrev-ref', 'HEAD']
+    git_describe_cmd = ["git", "describe", "--tags", "--long", "--dirty"]
+    git_remote_cmd = ["git", "ls-remote", "--tags"]
+    git_branch_cmd = ["git", "rev-parse", "--abbrev-ref", "HEAD"]
 
     # Release formatting.
-    release_branch_formatting = '{tag}.{commits_ahead}-{sha}'
-    branch_formatting = '{branch}.{tag}.{commits_ahead}-{sha}'
-    clean_formatting = '{tag}'
+    release_branch_formatting = "{tag}.{commits_ahead}-{sha}"
+    branch_formatting = "{branch}.{tag}.{commits_ahead}-{sha}"
+    clean_formatting = "{tag}"
 
     # Defaults for different types of release states
     dirty = False
@@ -145,8 +146,8 @@ def get_version(git_dir=None, python_package=None,
 
                 if (len(git_info) and len(branch)) != 0:
                     # Sanitize git_info and branch
-                    branch = branch[0].decode('utf-8').strip()
-                    git_info = git_info[0].decode('utf-8').strip()
+                    branch = branch[0].decode("utf-8").strip()
+                    git_info = git_info[0].decode("utf-8").strip()
                     # Create release based on git_dir
                     git_dir_release = True
 
@@ -156,8 +157,10 @@ def get_version(git_dir=None, python_package=None,
                     print("branch : {}".format(branch))
             except Exception:
                 raise Exception(
-                    "Unable to use git_dir: {} to create release version.".
-                    format(git_dir))
+                    "Unable to use git_dir: {} to create release version.".format(
+                        git_dir
+                    )
+                )
 
         # Get git information based on the python_package
         if python_package is not None and git_dir is None:
@@ -165,10 +168,8 @@ def get_version(git_dir=None, python_package=None,
                 # Check if the python_package is currently running from a
                 # folder under git revision.
                 package_dir = get_loader(python_package).filename
-                git_info = _run_cmd(cmd=git_describe_cmd,
-                                    directory=package_dir)
-                branch = _run_cmd(cmd=git_branch_cmd,
-                                  directory=package_dir)
+                git_info = _run_cmd(cmd=git_describe_cmd, directory=package_dir)
+                branch = _run_cmd(cmd=git_branch_cmd, directory=package_dir)
                 if debug:
                     print("python package dir      : {}".format(package_dir))
                     print("python package git info : {}".format(git_info))
@@ -176,8 +177,8 @@ def get_version(git_dir=None, python_package=None,
 
                 if (len(git_info) and len(branch)) != 0:
                     # Sanitize git_info and branch
-                    git_info = git_info[0].decode('utf-8').strip()
-                    branch = branch[0].decode('utf-8').strip()
+                    git_info = git_info[0].decode("utf-8").strip()
+                    branch = branch[0].decode("utf-8").strip()
                     python_package_release = True
                 else:
                     # If the python module is not running from a git
@@ -185,13 +186,15 @@ def get_version(git_dir=None, python_package=None,
                     # by setuptools.
                     pkg_version = get_distribution(python_package).version
                     if debug:
-                        print("python package setup ver: {}".format(
-                            pkg_version))
+                        print("python package setup ver: {}".format(pkg_version))
                     return pkg_version
             except Exception:
                 raise Exception(
                     "Unable to use git or setup info to create release version\
-                    for python_package: {}".format(python_package))
+                    for python_package: {}".format(
+                        python_package
+                    )
+                )
 
         # If no git_dir or python_package is provided, use current directory.
         if git_dir is None and python_package is None:
@@ -200,8 +203,8 @@ def get_version(git_dir=None, python_package=None,
                 branch = _run_cmd(cmd=git_branch_cmd)
                 if (len(git_info) and len(branch)) != 0:
                     # Sanitize git_info and branch
-                    git_info = git_info[0].decode('utf-8').strip()
-                    branch = branch[0].decode('utf-8').strip()
+                    git_info = git_info[0].decode("utf-8").strip()
+                    branch = branch[0].decode("utf-8").strip()
                     cwd_release = True
             except Exception:
                 raise Exception("Unable to use cwd to create version")
@@ -211,7 +214,7 @@ def get_version(git_dir=None, python_package=None,
 
     # Create version based on git_info and branch
     try:
-        version_parts = git_info.split('-')
+        version_parts = git_info.split("-")
         # Assert that the git tag conforms to the CHIME/FRB Versioning Standard
         assert len(version_parts) in (3, 4)
         # Assign tag, commits, and git_sha variables
@@ -219,7 +222,7 @@ def get_version(git_dir=None, python_package=None,
         # Find if the commit is dirty
         dirty = len(version_parts) == 4
         if dirty:
-            git_sha = 'dirty'
+            git_sha = "dirty"
         # Check if we are working on the release branch
         # Default is master
         if branch == release_branch:
@@ -240,9 +243,8 @@ def get_version(git_dir=None, python_package=None,
                 elif python_package_release:
                     remote_tags_dir = package_dir
                 elif cwd_release:
-                    remote_tags_dir = '.'
-                remote_tags = _run_cmd(cmd=git_remote_cmd,
-                                       directory=remote_tags_dir)
+                    remote_tags_dir = "."
+                remote_tags = _run_cmd(cmd=git_remote_cmd, directory=remote_tags_dir)
 
                 if debug:
                     print("tags_dir   : {}".format(remote_tags_dir))
@@ -268,12 +270,12 @@ def get_version(git_dir=None, python_package=None,
         if on_release_branch and clean_release:
             release_format = clean_formatting
 
-        return release_format.format(branch=branch, tag=tag,
-                                     commits_ahead=commits_ahead,
-                                     sha=git_sha.lstrip('g'))
+        return release_format.format(
+            branch=branch, tag=tag, commits_ahead=commits_ahead, sha=git_sha.lstrip("g")
+        )
     except Exception:
         raise Exception("Unable to create release version")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print(get_version())
