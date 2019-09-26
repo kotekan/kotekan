@@ -147,23 +147,6 @@ def test_transpose(transpose):
     n_f = len(writer_params["freq"])
     n_elems = writer_params["num_elements"]
     n_prod = n_elems * (n_elems + 1) // 2
-    n_ev = writer_params["num_ev"]
-
-    # get all the data
-    vis = f["vis"].value
-    vis_tr = f_tr["vis"].value
-
-    weight = f["flags/vis_weight"].value
-    weight_tr = f_tr["flags/vis_weight"].value
-
-    eigenval = f["eval"].value
-    eigenval_tr = f_tr["eval"].value
-
-    evec = f["evec"].value
-    evec_tr = f_tr["evec"].value
-
-    erms = f["erms"].value
-    erms_tr = f_tr["erms"].value
 
     # check if shapes are correct
     assert f_tr["index_map/time"].shape[0] == n_t
@@ -304,13 +287,13 @@ def test_transpose_stack(transpose_stack):
         meta = msgpack.load(f_meta, raw=False)
 
     stack_im = np.array(
-        [tuple(s.values()) for s in meta["index_map"]["stack"]],
+        [(s["prod"], s["conjugate"]) for s in meta["index_map"]["stack"]],
         dtype=f["index_map"]["stack"].dtype,
     )
     assert (f["index_map"]["stack"][:] == stack_im).all()
 
     stack_rm = np.array(
-        [tuple(s.values()) for s in meta["reverse_map"]["stack"]],
+        [(s["stack"], s["conjugate"]) for s in meta["reverse_map"]["stack"]],
         dtype=f["reverse_map/stack"].dtype,
     )
     assert (f["reverse_map/stack"][:] == stack_rm).all()
