@@ -81,13 +81,20 @@ pipeline {
             stage('Python Unit Tests') {
               steps {
                 sh '''cd tests/
-                      PYTHONPATH=../python/ python3 -m pytest -n 6 -x -s -vvv'''
+                      PYTHONPATH=../python/ python3 -m pytest -n 6 -x -vvv --ignore test_vistestpattern.py'''
+              }
+            }
+            // The test in here can not be run in parallel
+            stage('visTestpattern Unit Tests') {
+              steps {
+                sh '''cd tests/
+                      PYTHONPATH=../python/ python3 -m pytest -x -vvv test_vistestpattern.py'''
               }
             }
             stage('Boost Unit Tests') {
               steps {
                 sh '''cd build/tests/
-                      python3 -m pytest -x -s -vvv'''
+                      python3 -m pytest -x -vvv'''
               }
             }
          }

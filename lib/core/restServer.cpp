@@ -383,6 +383,7 @@ void restServer::http_server_thread() {
         }
         port = ntohs(sin.sin_port);
     }
+    // This INFO line is parsed by the python runner to get the RESTserver port. Don't edit.
     INFO_NON_OO("restServer: started server on address:port {:s}:{:d}", bind_address, port);
 
     // Create a timer to check for the exit condition
