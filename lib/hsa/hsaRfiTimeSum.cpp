@@ -1,7 +1,7 @@
 #include "hsaRfiTimeSum.hpp"
 
-#include "hsaBase.h"
 #include "configUpdater.hpp"
+#include "hsaBase.h"
 #include "visUtil.hpp"
 
 #include <math.h>

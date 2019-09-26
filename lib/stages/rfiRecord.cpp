@@ -36,8 +36,8 @@ rfiRecord::rfiRecord(Config& config, const string& unique_name, bufferContainer&
 
     // Initialize rest server endpoint
     using namespace std::placeholders;
-    kotekan::configUpdater::instance().subscribe(
-        this, std::bind(&rfiRecord::config_callback, this, _1));
+    kotekan::configUpdater::instance().subscribe(this,
+                                                 std::bind(&rfiRecord::config_callback, this, _1));
 }
 
 rfiRecord::~rfiRecord() {}
@@ -50,8 +50,7 @@ bool rfiRecord::config_callback(json& json) {
         output_dir = json["output_dir"].get<string>();
         write_to_disk = json["write_to_disk"].get<bool>();
     } catch (std::exception& e) {
-        ERROR("Failure parsing message. Error: {:s}, Request JSON: {:s}", e.what(),
-              json.dump());
+        ERROR("Failure parsing message. Error: {:s}, Request JSON: {:s}", e.what(), json.dump());
         return false;
     }
     rest_callback_mutex.lock();

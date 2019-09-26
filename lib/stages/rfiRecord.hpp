@@ -61,7 +61,6 @@ private:
     string _output_dir;
     /// Whether or not the stage should write to the disk
     bool _write_to_disk;
-
 };
 
 #endif
