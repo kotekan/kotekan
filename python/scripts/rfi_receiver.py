@@ -3,7 +3,7 @@
 * RFI Documentation Header Block
 * File: rfi_receiver.py
 * Purpose: A server to receive real-time rfi data from kotekan and send to rfi_client.py
-* Python Version: 3.6 
+* Python Version: 3.6
 * Dependencies: yaml, numpy, argparse
 * Help: Run "python3 rfi_receiver.py" -H (or --Help) for how to use.
 *********************************************************************************/
@@ -27,14 +27,10 @@ import socket
 import numpy as np
 import datetime
 import os
-import random
 import time
 import argparse
 import yaml
-import json
 import subprocess
-import sys
-import requests
 
 VERSION_SCRIPT = "../../scripts/version.py"
 
