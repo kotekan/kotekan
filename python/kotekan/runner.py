@@ -85,10 +85,10 @@ class KotekanRunner(object):
         # kotekan python packages. If so we want to run the local kotekan
         # binary
         if os.path.exists(build_dir):
-            kotekan_cmd = './kotekan -b %s -c %s'
+            kotekan_cmd = "./kotekan -b %s -c %s"
             wd = build_dir
         else:
-            kotekan_cmd = 'kotekan -b %s -c %s'
+            kotekan_cmd = "kotekan -b %s -c %s"
             wd = os.curdir
 
         config_dict = fix_strings(config_dict)
@@ -103,8 +103,7 @@ class KotekanRunner(object):
 
             print(kotekan_cmd % (rest_addr, fh.name), build_dir)
             cmd = (kotekan_cmd % (rest_addr, fh.name)).split()
-            p = subprocess.Popen(cmd, cwd=wd,
-                                 stdout=f_out, stderr=f_out)
+            p = subprocess.Popen(cmd, cwd=wd, stdout=f_out, stderr=f_out)
 
             # Run any requested REST commands
             if self._rest_commands:
@@ -121,9 +120,11 @@ class KotekanRunner(object):
                     rest_addr = None
                     for line in log:
                         if line[:43] == "restServer: started server on address:port ":
-                                rest_addr = line[43:]
+                            rest_addr = line[43:]
                     if rest_addr:
-                        print("Found REST server address in kotekan log: %s" % rest_addr)
+                        print(
+                            "Found REST server address in kotekan log: %s" % rest_addr
+                        )
                     else:
                         print("Could not find kotekan REST server address in logs.")
                         exit(1)
