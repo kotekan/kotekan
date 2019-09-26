@@ -154,7 +154,7 @@ def run_test(
 
     capo.shutdown()
     print("Removed fake capo endpoint.")
-    time.sleep(1)
+    time.sleep(4)
 
     return (out_data, in_data, dump_buffer.load())
 
