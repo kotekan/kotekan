@@ -87,11 +87,6 @@ rfi_var_feed_index: 840
 # colorscale: 0.028
 # waterfall_request_delay: 60
 
-rfi_masking:
-  toggle:
-    kotekan_update_endpoint: "json"
-    rfi_zeroing: False
-
 # Pool
 main_pool:
   kotekan_metadata_pool: chimeMetadata
@@ -449,9 +444,9 @@ gpu:
       gain_frb: /updatable_config/frb_gain
       psr_pt: /updatable_config/pulsar_pointing
       bad_inputs: /updatable_config/bad_inputs
+      rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
-    updatable_rfi_zeroing: /rfi_masking/toggle
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_0
@@ -472,9 +467,9 @@ gpu:
       gain_frb: /updatable_config/frb_gain
       psr_pt: /updatable_config/pulsar_pointing
       bad_inputs: /updatable_config/bad_inputs
+      rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
-    updatable_rfi_zeroing: /rfi_masking/toggle
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_1
@@ -495,9 +490,9 @@ gpu:
       gain_frb: /updatable_config/frb_gain
       psr_pt: /updatable_config/pulsar_pointing
       bad_inputs: /updatable_config/bad_inputs
+      rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
-    updatable_rfi_zeroing: /rfi_masking/toggle
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_2
@@ -518,9 +513,9 @@ gpu:
       gain_frb: /updatable_config/frb_gain
       psr_pt: /updatable_config/pulsar_pointing
       bad_inputs: /updatable_config/bad_inputs
+      rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
-    updatable_rfi_zeroing: /rfi_masking/toggle
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_3
@@ -981,8 +976,12 @@ updatable_config:
       dec: 54.6433973569
       scaling: 48
   bad_inputs:
+    kotekan_update_endpoint: "json"
     # These inputs are assumed to be in cylinder order
     bad_inputs: []
+  rfi_zeroing_toggle:
+    kotekan_update_endpoint: "json"
+    rfi_zeroing: False
 
   gating:
     psr0_config:

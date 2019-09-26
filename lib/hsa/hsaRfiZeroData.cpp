@@ -29,7 +29,7 @@ hsaRfiZeroData::hsaRfiZeroData(Config& config, const string& unique_name,
     mask_len = sizeof(uint8_t) * _num_local_freq * _samples_per_data_set / _sk_step;
     using namespace std::placeholders;
     configUpdater::instance().subscribe(
-        config.get<std::string>(unique_name, "updatable_rfi_zeroing"),
+        config.get<std::string>(unique_name, "updatable_config/rfi_zeroing_toggle"),
         std::bind(&hsaRfiZeroData::update_rfi_zero_flag, this, _1));
     network_buf = host_buffers.get_buffer("network_buf");
     network_buffer_id = 0;
