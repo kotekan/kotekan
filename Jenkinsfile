@@ -81,7 +81,7 @@ pipeline {
             stage('Python Unit Tests') {
               steps {
                 sh '''cd tests/
-                      PYTHONPATH=../python/ python3 -m pytest -n 6 -x -vvv --ignore test_vistestpattern.py'''
+                      PYTHONPATH=../python/ python3 -m pytest -n 4 -x -vvv --ignore test_vistestpattern.py'''
               }
             }
             // The test in here can not be run in parallel
