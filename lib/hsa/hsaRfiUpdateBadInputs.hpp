@@ -41,7 +41,7 @@ private:
 
     uint32_t input_mask_len;
 
-    // The mapping from buffer element order to output file element ordering
+    /// The mapping from correlator to cylinder element indexing.
     std::vector<uint32_t> input_remap;
 
     uint8_t* host_mask;

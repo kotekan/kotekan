@@ -17,7 +17,7 @@ rfi_chime_timesum(
 //     __global uint *LostSamplesCorrection,
      const uint sk_step,
      const uint num_elements,
-     const uint feed_index
+     const uint element_index
 )
 {
     //Get work id's
@@ -74,6 +74,6 @@ rfi_chime_timesum(
     output[3 + address] = tmp.s3;
 
     //Output the variance for the selected feed
-    if(gx == feed_index / 4)
-        output_var[gy] = power_across_time[feed_index % 4];
+    if(gx == element_index / 4)
+        output_var[gy] = power_across_time[element_index % 4];
 }

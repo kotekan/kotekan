@@ -1,6 +1,8 @@
 #include "hsaRfiTimeSum.hpp"
 
 #include "hsaBase.h"
+#include "configUpdater.hpp"
+#include "visUtil.hpp"
 
 #include <math.h>
 #include <mutex>
@@ -22,7 +24,6 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config, const string& unique_name,
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
     // RFI Config Parameters
     _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
-    _feed_index = config.get_default<uint32_t>(unique_name, "rfi_var_feed_index", 0);
     // Compute Buffer lengths
     input_frame_len = sizeof(uint8_t) * _num_elements * _num_local_freq * _samples_per_data_set;
     output_frame_len =
@@ -30,10 +31,28 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config, const string& unique_name,
     output_var_frame_len = sizeof(float) * _num_local_freq * _samples_per_data_set / _sk_step;
     lost_samples_frame_len = sizeof(uint8_t) * _samples_per_data_set;
     lost_samples_correction_len = sizeof(uint32_t) * _samples_per_data_set / _sk_step;
-    // Local Parameters
+
+    auto input_reorder = parse_reorder_default(config, unique_name);
+    input_remap = std::get<0>(input_reorder);
+
+    kotekan::configUpdater::instance().subscribe(
+        config.get<std::string>(unique_name, "updatable_config/rfi_zeroing_toggle"),
+        std::bind(&hsaRfiTimeSum::update_element_index, this, std::placeholders::_1));
 }
 
 hsaRfiTimeSum::~hsaRfiTimeSum() {}
+
+bool hsaRfiTimeSum::update_element_index(nlohmann::json& json) {
+    int element_index_cyinder_order = 0;
+    try {
+        element_index_cyinder_order = json["element_index"].get<int>();
+    } catch (std::exception& e) {
+        WARN("Failed to set RFI zeroing flag {:s}", e.what());
+        return false;
+    }
+    _element_index = input_remap[element_index_cyinder_order];
+    return true;
+}
 
 hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
@@ -49,7 +68,7 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, hsa_signal_t precede_signa
         //        void *LostSamplesCorrection;
         uint32_t sk_step;
         uint32_t num_elements;
-        uint32_t feed_index;
+        uint32_t element_index;
     } args;
     // Initialize arguments
     memset(&args, 0, sizeof(args));
@@ -63,7 +82,7 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, hsa_signal_t precede_signa
     //    device.get_gpu_memory("lost_sample_correction", lost_samples_correction_len);
     args.sk_step = _sk_step;
     args.num_elements = _num_elements;
-    args.feed_index = _feed_index;
+    args.element_index = _element_index;
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
     // Apply correct kernel parameters
