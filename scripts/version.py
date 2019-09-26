@@ -152,7 +152,7 @@ def get_version(
                     git_dir_release = True
 
                 if debug:
-                    print("Using git_dirt to create release version.")
+                    print("Using git_dir to create release version.")
                     print("git dir: {}".format(git_dir))
                     print("branch : {}".format(branch))
             except Exception as e:
