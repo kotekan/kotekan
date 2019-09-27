@@ -35,6 +35,7 @@ import subprocess
 # TODO: this can be a different python kotekan installation in some cases
 from kotekan import __version__
 
+
 def parse_dict(cmd, _dict):
     for key, value in _dict.items():
         if type(value) == dict:
@@ -154,7 +155,7 @@ class CommandLine(object):
                     argument.config
                 )
             )
-            parse_dict(self, yaml.load(open(argument.config)))
+            parse_dict(self, yaml.safe_load(open(argument.config)))
             print(self.config)
             self.register_config(self.config)
             status = True
