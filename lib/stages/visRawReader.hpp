@@ -43,6 +43,9 @@ using json = nlohmann::json;
  * @conf    infile              String. Path to the (data-meta-pair of) files to
  *                              read (e.g. "/path/to/0000_000", without .data or
  *                              .meta).
+ * @conf    max_read_rate       Float. Maximum read rate for the process in MB/s.
+ *                              If the value is zero (default), then no rate
+ *                              limiting is applied.
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte, Rick Nitsche
  */
@@ -178,6 +181,9 @@ private:
 
     // The ID for the data coming from the file that is read.
     dset_id_t _dataset_id;
+
+    // The read rate
+    double max_read_rate;
 };
 
 #endif
