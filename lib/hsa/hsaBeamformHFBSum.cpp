@@ -58,8 +58,6 @@ hsa_signal_t hsaBeamformHFBSum::execute(int gpu_frame_id, hsa_signal_t precede_s
     params.num_dims = 2;
 
     params.private_segment_size = 0;
-    params.group_segment_size =
-        128 * _num_samples * sizeof(float); // No. of frequencies x no. of samples
 
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
 
