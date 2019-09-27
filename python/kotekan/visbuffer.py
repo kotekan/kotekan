@@ -23,6 +23,17 @@ class time_spec(ctypes.Structure):
 
     @classmethod
     def from_float(cls, v):
+        """Create a time_spec from a float.
+
+        Parameters
+        ----------------
+        v : float
+            The interval in seconds.
+
+        Returns
+        -------
+        ts : time_spec
+        """
         ts = cls()
         ts.tv = np.floor(v).astype(np.int64)
         ts.tv_nsec = ((v % 1.0) * 1e9).astype(np.int64)
@@ -507,7 +518,7 @@ def simple_visraw_data(filename, ntime, nfreq, ninput):
 
     freq = [{"centre": (800 - i * 10.0), "width": 10.0} for i in range(10)]
 
-    input_ = [(i, f"test{i:04}") for i in range(ninput)]
+    input_ = [(i, "test%04i" % i) for i in range(ninput)]
 
     prod = [(i, j) for i in range(ninput) for j in range(i, ninput)]
 
