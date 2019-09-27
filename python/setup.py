@@ -35,4 +35,5 @@ setup(
         kotekan-ctl=kotekan.scripts.ctl:cli
         polyco-tools=kotekan.scripts.polyco_tools:cli
     """,
+    scripts=["scripts/rfi_receiver.py"],
 )
