@@ -44,6 +44,7 @@ hsaRfiTimeSum::~hsaRfiTimeSum() {}
 
 bool hsaRfiTimeSum::update_element_index(nlohmann::json& json) {
     uint32_t element_index_cyinder_order = 0;
+    WARN("Current JSON: {:s}", json.dump());
     try {
         element_index_cyinder_order = json["element_index"].get<uint32_t>();
     } catch (std::exception& e) {

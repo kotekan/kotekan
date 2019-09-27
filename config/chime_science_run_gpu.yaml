@@ -444,6 +444,7 @@ gpu:
       psr_pt: /updatable_config/pulsar_pointing
       bad_inputs: /updatable_config/bad_inputs
       rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
+      rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     commands: *command_list
@@ -467,6 +468,7 @@ gpu:
       psr_pt: /updatable_config/pulsar_pointing
       bad_inputs: /updatable_config/bad_inputs
       rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
+      rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     commands: *command_list
@@ -490,6 +492,7 @@ gpu:
       psr_pt: /updatable_config/pulsar_pointing
       bad_inputs: /updatable_config/bad_inputs
       rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
+      rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     commands: *command_list
@@ -513,6 +516,7 @@ gpu:
       psr_pt: /updatable_config/pulsar_pointing
       bad_inputs: /updatable_config/bad_inputs
       rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
+      rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     commands: *command_list
@@ -975,25 +979,25 @@ updatable_config:
       dec: 54.6433973569
       scaling: 48
   bad_inputs:
-    kotekan_update_endpoint: "json"
+    kotekan_update_endpoint: json
     # These inputs are assumed to be in cylinder order
     bad_inputs: []
   rfi_zeroing_toggle:
-    kotekan_update_endpoint: "json"
+    kotekan_update_endpoint: json
     rfi_zeroing: False
   rfi_sk_record:
-    kotekan_update_endpoint: "json"
-    write_to: /mnt/gong/RFI/test_sk/
+    kotekan_update_endpoint: json
+    output_dir: /mnt/gong/RFI/test_sk/
     write_to_disk: false
   rfi_var_record:
-    kotekan_update_endpoint: "json"
-    write_to: /mnt/gong/RFI/test_var/
+    kotekan_update_endpoint: json
+    output_dir: /mnt/gong/RFI/test_var/
     write_to_disk: false
   rfi_var_element_index:
-    kotekan_update_endpoint: "json"
+    kotekan_update_endpoint: json
     # This element should be given in cylinder input order,
     # not correlator/FPGA input order.
-    element_index: 840
+    element_index: 500
 
   gating:
     psr0_config:

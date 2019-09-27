@@ -41,6 +41,10 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config, const string& unique_name,
     // Get buffers (for metadata)
     _network_buf = host_buffers.get_buffer("network_buf");
     register_consumer(_network_buf, unique_name.c_str());
+
+    _network_buf_precondition_id = 0;
+    _network_buf_execute_id = 0;
+    _network_buf_finalize_id = 0;
 }
 
 hsaRfiInputSum::~hsaRfiInputSum() {}

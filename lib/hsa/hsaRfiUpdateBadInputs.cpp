@@ -26,6 +26,10 @@ hsaRfiUpdateBadInputs::hsaRfiUpdateBadInputs(Config& config, const string& uniqu
     _network_buf = host_buffers.get_buffer("network_buf");
     register_consumer(_network_buf, unique_name.c_str());
 
+    _network_buf_precondition_id = 0;
+    _network_buf_execute_id = 0;
+    _network_buf_finalize_id = 0;
+
     // Alloc memory on GPU
     device.get_gpu_memory_array("input_mask", 0, input_mask_len);
 
