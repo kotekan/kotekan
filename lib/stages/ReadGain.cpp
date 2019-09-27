@@ -36,8 +36,8 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
   freq_MHz = -1;
     
   gain_buf = get_buffer("gain_buf");
+  gain_buf_id = 0;
   register_producer(gain_buf, unique_name.c_str());
-  //gain_buf_precondition_id = 0;
   
   update_gains = true;
   first_pass = true;
@@ -86,6 +86,7 @@ void ReadGain::main_thread() {
   }
   mark_frame_empty(metadata_buf, unique_name.c_str(), metadata_buffer_id);
   metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
+  //unregister_consumer(metadata_buf, unique_name.c_str());
     
   while (!stop_thread) {
     INFO("[ReadGain] update_gains={:d}-(0=false 1=true)-------------", update_gains);
@@ -97,44 +98,40 @@ void ReadGain::main_thread() {
     }
     INFO("[ReadGain] Going to update gain+++++++++++++++++update_gains={:d}", update_gains);
 
-    //Need to read it in to all gpu frames.
-    for (int f = 0; f < gain_buf->num_frames; f++) {
-      INFO("[ReadGain] start of main_thread: frame now={:d} total nframe={:d}", f, gain_buf->num_frames);
-      float* out_frame = (float*)wait_for_empty_frame(gain_buf, unique_name.c_str(), f);
-      if (out_frame == NULL) {
-	INFO("[ReadGain] waiting for frame={:d} but it is not empty", f);
-	goto end_loop;
-      }
+    float* out_frame = (float*)wait_for_empty_frame(gain_buf, unique_name.c_str(), gain_buf_id);
+    if (out_frame == NULL) {
+      INFO("[ReadGain] waiting for frame={:d} but it is not empty", gain_buf_id);
+      goto end_loop;
+    }
 
-      double start_time = current_time();
-      FILE* ptr_myfile;
-      char filename[256];
-      snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin", _gain_dir.c_str(), freq_idx);
-      INFO("[ReadGain] Loading gains from {:s}", filename);
-      ptr_myfile = fopen(filename, "rb");
-      if (ptr_myfile == NULL) {
-	WARN("GPU Cannot open gain file {:s}", filename);
+    double start_time = current_time();
+    FILE* ptr_myfile;
+    char filename[256];
+    snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin", _gain_dir.c_str(), freq_idx);
+    INFO("[ReadGain] Loading gains from {:s}", filename);
+    ptr_myfile = fopen(filename, "rb");
+    if (ptr_myfile == NULL) {
+      WARN("GPU Cannot open gain file {:s}", filename);
+      for (int i = 0; i < 2048; i++) {
+	out_frame[i * 2] = default_gains[0] * scaling;
+	out_frame[i * 2 + 1] = default_gains[1] * scaling;
+      }
+    }
+    else {
+      if (_num_elements != fread(out_frame, sizeof(float) * 2, _num_elements, ptr_myfile)) {
+	WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default gains", filename);
 	for (int i = 0; i < 2048; i++) {
 	  out_frame[i * 2] = default_gains[0] * scaling;
 	  out_frame[i * 2 + 1] = default_gains[1] * scaling;
 	}
       }
-      else {
-	if (_num_elements != fread(out_frame, sizeof(float) * 2, _num_elements, ptr_myfile)) {
-	  WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default gains", filename);
-	  for (int i = 0; i < 2048; i++) {
-	    out_frame[i * 2] = default_gains[0] * scaling;
-	    out_frame[i * 2 + 1] = default_gains[1] * scaling;
-	  }
-	}
-	fclose(ptr_myfile);
-      }
-      mark_frame_full(gain_buf, unique_name.c_str(), f);
-      INFO("[ReadGain] maked gain_buf frame {:d} full", f);
-      INFO("[ReadGain] Time required to load FRB gains: {:f}", current_time() - start_time);
-      INFO("[ReadGain] gain_buf: {:.2f} {:.2f} {:.2f} ", out_frame[0], out_frame[1], out_frame[2]);
+      fclose(ptr_myfile);
     }
-
+    mark_frame_full(gain_buf, unique_name.c_str(), gain_buf_id);
+    INFO("[ReadGain] maked gain_buf frame {:d} full", gain_buf_id);
+    INFO("[ReadGain] Time required to load FRB gains: {:f}", current_time() - start_time);
+    INFO("[ReadGain] gain_buf: {:.2f} {:.2f} {:.2f} ", out_frame[0], out_frame[1], out_frame[2]);
+    gain_buf_id = (gain_buf_id + 1) % gain_buf->num_frames;
     update_gains = false;
   } //end stop thread
  end_loop:;
