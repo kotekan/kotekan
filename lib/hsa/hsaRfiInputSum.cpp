@@ -68,7 +68,7 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
 
     // Get the number of bad inputs from the metadata
     uint32_t num_bad_inputs = get_rfi_num_bad_inputs(_network_buf, _network_buf_execute_id);
-    INFO("Number of bad inputs at execute in hsaRfiInputSum is: {:d}", num_bad_inputs);
+    DEBUG("Number of bad inputs at execute in hsaRfiInputSum is: {:d}", num_bad_inputs);
 
     // Struct for hsa arguments
     struct __attribute__((aligned(16))) args_t {
