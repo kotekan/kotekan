@@ -2,6 +2,7 @@
 
 #include "configUpdater.hpp"
 #include "visUtil.hpp"
+#include "fmt/ranges.h"
 
 using kotekan::Config;
 
@@ -30,11 +31,15 @@ hsaRfiUpdateBadInputs::hsaRfiUpdateBadInputs(Config& config, const string& uniqu
     _network_buf_execute_id = 0;
     _network_buf_finalize_id = 0;
 
+    update_bad_inputs = false;
+    frames_to_update = 0;
+    frames_to_update_finalize = 0;
+
     // Alloc memory on GPU
     device.get_gpu_memory_array("input_mask", 0, input_mask_len);
 
     kotekan::configUpdater::instance().subscribe(
-        config.get<std::string>(unique_name, "updatable_config/gain_psr"),
+        config.get<std::string>(unique_name, "updatable_config/bad_inputs"),
         std::bind(&hsaRfiUpdateBadInputs::update_bad_inputs_callback, this, std::placeholders::_1));
 }
 
@@ -65,6 +70,8 @@ hsa_signal_t hsaRfiUpdateBadInputs::execute(int gpu_frame_id, hsa_signal_t prece
         frames_to_update--;
 
         // Copy memory to GPU
+        INFO("Coping bad input list to GPU[{:d}], frames to update: {:d}, update: {}, cylinder order: {}, correlator order: {}",
+            device.get_gpu_id(), frames_to_update, update_bad_inputs, bad_inputs_cylinder, bad_inputs_correlator);
         void* gpu_mem = device.get_gpu_memory_array("input_mask", gpu_frame_id, input_mask_len);
         device.async_copy_host_to_gpu(gpu_mem, (void*)host_mask, input_mask_len, precede_signal,
                                       signals[gpu_frame_id]);
