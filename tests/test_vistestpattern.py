@@ -9,7 +9,6 @@ from flask import Flask, request
 import pytest
 import numpy as np
 import csv
-import math
 import random
 import threading
 import time
