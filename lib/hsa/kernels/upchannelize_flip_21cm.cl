@@ -299,10 +299,11 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array,
   hfb_output_array[(get_group_id(0) * 1024 * 128) + get_group_id(1) * 128 + work_offset] = time_sum_1 / 6.f / HFB_BP[((get_local_id(0)+8)%16)];
   hfb_output_array[(get_group_id(0) * 1024 * 128) + get_group_id(1) * 128 + work_offset + 1] = time_sum_2 / 6.f / HFB_BP[((get_local_id(0)+8)%16)];
   
-  outtmp = outtmp/48.; // Divide by 48 as we want the average of 48 summed elements
-  //FFT shift by (id+8)%16
-  results_array[get_global_id(1)*nsamp_out*16+get_group_id(0)*16+ ((get_local_id(0)+8)%16) ] = outtmp/BP[((get_local_id(0)+8)%16)] ;
-
+  if (get_local_id(0) < 16){ //currently only 16 out of 64 has work to do. not ideal
+      outtmp = outtmp/48.; // Divide by 48 as we want the average of 48 summed elements
+      //FFT shift by (id+8)%16
+      results_array[get_global_id(1)*nsamp_out*16+get_group_id(0)*16+ ((get_local_id(0)+8)%16) ] = outtmp/BP[((get_local_id(0)+8)%16)] ;
+  }
 }
 
 
