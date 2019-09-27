@@ -32,8 +32,8 @@ import argparse
 import yaml
 import subprocess
 
-VERSION_SCRIPT = "../../scripts/version.py"
-
+# TODO: this can be a different python kotekan installation in some cases
+from kotekan import __version__
 
 def parse_dict(cmd, _dict):
     for key, value in _dict.items():
@@ -52,18 +52,7 @@ class CommandLine(object):
         # Defaults
         self.startup_time = datetime.datetime.utcnow()
 
-        # TODO: Install this RFI script and version.py. Get the version at install time.
-        try:
-            self.git_version = subprocess.check_output(
-                ["python3", VERSION_SCRIPT]
-            ).strip()
-        except subprocess.CalledProcessError:
-            print(
-                "Failure calling {}. Make sure you run this script from kotekan/python/scripts".format(
-                    VERSION_SCRIPT
-                )
-            )
-            raise
+        self.git_version = __version__
 
         self.UDP_IP = "0.0.0.0"
         self.UDP_PORT = 2900
