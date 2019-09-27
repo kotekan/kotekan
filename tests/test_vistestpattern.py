@@ -5,16 +5,11 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 
 # === End Python 2/3 compatibility
 
-from flask import Flask, request
 import pytest
 import numpy as np
 import csv
 import random
-import requests
-import threading
-import time
 import copy
-from werkzeug.serving import make_server
 
 from kotekan import visbuffer
 from kotekan import runner
@@ -44,65 +39,21 @@ params = {
 STAGE_NAME = "testpattern_stage"
 
 
-app = Flask(__name__)
-
-
-@app.route("/reply_endpoint", methods=["POST"])
-def reply_endpoint():
-    """
-    This does nothing.
-
-    It is just here because kotekan visTestpattern needs something to talk to...
-    """
-    print("/reply_endpoint received {}".format(request.json))
-    return "Yey"
-
-
-def shutdown_server():
-    """
-    Shut down the Flask server.
-
-    This does the actual work.
-    """
-    func = request.environ.get('werkzeug.server.shutdown')
-    if func is None:
-        raise RuntimeError('Not running with the Werkzeug Server')
-    func()
-
-
-@app.route('/shutdown', methods=['POST'])
-def shutdown():
-    """
-    Shut down the Flask server.
-
-    Endpoint to shut down server.
-    """
-    shutdown_server()
-    return 'Server shutting down...'
-
-
-def send_server_shutdown():
-    """
-    Shut down the Flask server.
-
-    Send a request to the shutdown endpoint.
-    """
-    requests.post(url="http://localhost:5050/shutdown")
-
-
 def command_test_pattern(name, num_frames, test_pattern):
-    return (
-        "post",
-        ENDPOINT_NAME,
-        {
-            "reply_host": "127.0.0.1",
-            "reply_port": 5050,
-            "reply_path": "reply_endpoint",
-            "num_frames": num_frames,
-            "test_pattern": test_pattern,
-            "name": name,
-        },
-    )
+    return [
+        (
+            "post",
+            ENDPOINT_NAME,
+            {
+                "reply_host": "none",
+                "reply_port": 0,
+                "reply_path": "none",
+                "num_frames": num_frames,
+                "test_pattern": test_pattern,
+                "name": name,
+            },
+        )
+    ]
 
 
 def run_test(
@@ -113,10 +64,6 @@ def run_test(
     name="simple",
     expect_failure=False,
 ):
-    threading.Thread(target=app.run, kwargs={"port": 5050}).start()
-    print("Started fake capo endoint.")
-    time.sleep(1)
-
     params["write_dir"] = write_dir
 
     fakevis_buffer = runner.FakeVisBuffer(
@@ -175,10 +122,6 @@ def run_test(
     else:
         in_data = None
 
-    send_server_shutdown()
-    print("Removed fake capo endpoint.")
-    time.sleep(2)
-
     return out_data, in_data, dump_buffer.load()
 
 
@@ -207,7 +150,7 @@ def test_pattern(tmpdir_factory):
     }
 
     # Test 3 frames, to get one of each frequency
-    rest_commands = [command_test_pattern("simple", 3, simple_test_pattern)]
+    rest_commands = command_test_pattern("simple", 3, simple_test_pattern)
 
     yield run_test(write_dir, rest_commands, expect_failure=False)
 
@@ -231,7 +174,7 @@ def test_pattern_noise(tmpdir_factory):
         "dm_input_1": [[1, 0], [1, 0], [1, 0]],
     }
 
-    rest_commands = [command_test_pattern("simple", 3, simple_test_pattern)]
+    rest_commands = command_test_pattern("simple", 3, simple_test_pattern)
 
     yield run_test(
         write_dir, rest_commands=rest_commands, noise=True, expect_failure=False
@@ -302,7 +245,7 @@ def test_pattern_no_noise_freq(tmpdir_factory):
     freq_params["frequencies"] = [0, 1, 2]
     freq_params["freq_values"] = [[0, 0], [1, 1], [2, -2]]
     freq_params["freq_ids"] = [0, 1, 2, 3]
-    freq_params["total_frames"] = 16
+    freq_params["total_frames"] = 12
 
     random.seed()
     for i in range(2):
@@ -317,7 +260,7 @@ def test_pattern_no_noise_freq(tmpdir_factory):
         "dm_input_0": freq_params["freq_values"] + [[128, 0]],
         "dm_input_1": freq_params["freq_values"] + [[128, 0]],
     }
-    rest_commands = [command_test_pattern("freq", 4, freq_test_pattern)]
+    rest_commands = command_test_pattern("freq", 4, freq_test_pattern)
 
     yield run_test(
         write_dir=write_dir,
@@ -374,7 +317,7 @@ def test_pattern_noise_freq(tmpdir_factory):
         "dm_input_0": freq_test_pattern,
         "dm_input_1": freq_test_pattern,
     }
-    rest_commands = [command_test_pattern("freq", 3, freq_test_pattern)]
+    rest_commands = command_test_pattern("freq", 3, freq_test_pattern)
 
     yield run_test(
         write_dir=write_dir,
@@ -473,7 +416,7 @@ input_params = freq_params.copy()
 def test_pattern_no_noise_inputs(tmpdir_factory):
     input_params["mode"] = "test_pattern_inputs"
     input_params["input_values"] = [[0, 0], [1, 1]]
-    input_params["total_frames"] = 16
+    input_params["total_frames"] = 12
 
     random.seed()
     for i in range(2):
@@ -496,7 +439,7 @@ def test_pattern_no_noise_inputs(tmpdir_factory):
             input_params["input_values"][1],
         ],
     }
-    rest_commands = [command_test_pattern("inputs", 2, inputs_test_pattern)]
+    rest_commands = command_test_pattern("inputs", 2, inputs_test_pattern)
 
     yield run_test(
         write_dir=write_dir,
@@ -543,7 +486,7 @@ def test_pattern_noise_inputs(tmpdir_factory):
             input_params["input_values"][1],
         ],
     }
-    rest_commands = [command_test_pattern("inputs", 2, inputs_test_pattern)]
+    rest_commands = command_test_pattern("inputs", 2, inputs_test_pattern)
 
     yield run_test(
         write_dir=write_dir,
