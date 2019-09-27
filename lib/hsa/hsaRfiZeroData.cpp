@@ -40,7 +40,7 @@ hsaRfiZeroData::~hsaRfiZeroData() {}
 bool hsaRfiZeroData::update_rfi_zero_flag(nlohmann::json& json) {
     std::lock_guard<std::mutex> lock(rest_callback_mutex);
     try {
-        _rfi_zeroing = json.at("rfi_zeroing");
+        _rfi_zeroing = json["rfi_zeroing"].get<bool>();
     } catch (std::exception& e) {
         WARN("Failed to set RFI zeroing flag {:s}", e.what());
         return false;

@@ -36,18 +36,18 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config, const string& unique_name,
     input_remap = std::get<0>(input_reorder);
 
     kotekan::configUpdater::instance().subscribe(
-        config.get<std::string>(unique_name, "updatable_config/rfi_zeroing_toggle"),
+        config.get<std::string>(unique_name, "updatable_config/rfi_var_element_index"),
         std::bind(&hsaRfiTimeSum::update_element_index, this, std::placeholders::_1));
 }
 
 hsaRfiTimeSum::~hsaRfiTimeSum() {}
 
 bool hsaRfiTimeSum::update_element_index(nlohmann::json& json) {
-    int element_index_cyinder_order = 0;
+    uint32_t element_index_cyinder_order = 0;
     try {
-        element_index_cyinder_order = json["element_index"].get<int>();
+        element_index_cyinder_order = json["element_index"].get<uint32_t>();
     } catch (std::exception& e) {
-        WARN("Failed to set RFI zeroing flag {:s}", e.what());
+        WARN("Failed to set element index {:s}, json {:s}", e.what(), json.dump());
         return false;
     }
     _element_index = input_remap[element_index_cyinder_order];
