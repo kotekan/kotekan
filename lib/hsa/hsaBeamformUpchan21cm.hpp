@@ -87,6 +87,8 @@ private:
     int32_t _num_frb_total_beams;
     /// Total number of sub frequencies, should be 128
     int32_t _num_sub_freqs;
+    /// Upchannelize factor, should be 128
+    int32_t _factor_upchan;
 };
 
 #endif

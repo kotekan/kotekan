@@ -18,12 +18,13 @@ hsaBeamformUpchan21cm::hsaBeamformUpchan21cm(Config& config, const string& uniqu
     _downsample_freq = config.get<int32_t>(unique_name, "downsample_freq");
     _num_frb_total_beams = config.get<int32_t>(unique_name, "num_frb_total_beams");
     _num_sub_freqs = config.get<uint32_t>(unique_name, "num_sub_freqs");
+    _factor_upchan = config.get<int32_t>(unique_name, "factor_upchan");
 
     input_frame_len = _num_elements * (_samples_per_data_set + 32) * 2 * sizeof(float);
     output_frame_len = _num_frb_total_beams
                        * (_samples_per_data_set / _downsample_time / _downsample_freq)
                        * sizeof(float);
-    output_hfb_frame_len = _num_frb_total_beams * _num_sub_freqs * 10 // No. of samples per beam
+    output_hfb_frame_len = _num_frb_total_beams * _num_sub_freqs * (_samples_per_data_set / _factor_upchan / _downsample_time) // No. of samples per beam
                            * sizeof(float);
 }
 
