@@ -38,7 +38,7 @@ void hexDump::main_thread() {
         if (frame == NULL)
             break;
 
-        DEBUG("hexDump: Got buffer {:s}[{:d}]", in_buf->buffer_name, (int)frame_id);
+        DEBUG("hexDump: Got buffer {:s}[{:d}]", in_buf->buffer_name, frame_id);
 
         // Prints the hex data to screen
         hex_dump(16, (void*)&frame[_offset], _len);

@@ -151,7 +151,7 @@ void receiveFlags::main_thread() {
             // --> Use the last update we have
             WARN("receiveFlags: Flags for frame {:d} with timestamp {:f} are not in memory. "
                  "Applying oldest flags found ({:f}). Concider increasing num_kept_updates.",
-                 (int)frame_id_in, ts_to_double(ts_frame), ts_to_double(update.first));
+                 frame_id_in, ts_to_double(ts_frame), ts_to_double(update.first));
             receiveflags_late_frame_counter.inc();
         }
         // actually copy the new flags and apply them from now

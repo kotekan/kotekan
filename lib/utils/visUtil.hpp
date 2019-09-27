@@ -713,5 +713,17 @@ public:
     frameID(const Buffer* buf) : modulo<int>(buf->num_frames) {}
 };
 
+/**
+ *@brief FMT formatter that casts frameIDs to int so that `format("{:d}", frame_id)` works.
+ */
+namespace fmt {
+template<>
+struct formatter<frameID> : formatter<int> {
+    auto format(const frameID id, format_context& ctx) {
+        return formatter<int>::format((int)id, ctx);
+    }
+};
+} // namespace fmt
+
 
 #endif

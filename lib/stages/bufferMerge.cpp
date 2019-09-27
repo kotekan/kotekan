@@ -85,7 +85,7 @@ void bufferMerge::main_thread() {
 
             /// Wait for an input frame
             if (_timeout < 0) {
-                DEBUG2("Waiting for {:s}[{:d}]", in_buf->buffer_name, (int)in_frame_id);
+                DEBUG2("Waiting for {:s}[{:d}]", in_buf->buffer_name, in_frame_id);
                 uint8_t* input_frame =
                     wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
                 if (input_frame == NULL)
