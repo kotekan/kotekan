@@ -5,16 +5,11 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 
 # === End Python 2/3 compatibility
 
-from flask import Flask, request
 import pytest
 import numpy as np
 import csv
-import math
 import random
-import threading
-import time
 import copy
-from werkzeug.serving import make_server
 
 from kotekan import visbuffer
 from kotekan import runner
@@ -44,42 +39,21 @@ params = {
 STAGE_NAME = "testpattern_stage"
 
 
-class ServerThread(threading.Thread):
-    def __init__(self, app):
-        threading.Thread.__init__(self)
-        self.srv = make_server("127.0.0.1", 5050, app)
-        self.ctx = app.app_context()
-        self.ctx.push()
-
-    def run(self):
-        self.srv.serve_forever()
-
-    def shutdown(self):
-        self.srv.shutdown()
-
-
-app = Flask(__name__)
-
-
-@app.route("/reply_endpoint", methods=["POST"])
-def reply_endpoint():
-    print("/reply_endpoint received {}".format(request.json))
-    return "Yey"
-
-
 def command_test_pattern(name, num_frames, test_pattern):
-    return (
-        "post",
-        ENDPOINT_NAME,
-        {
-            "reply_host": "127.0.0.1",
-            "reply_port": 5050,
-            "reply_path": "reply_endpoint",
-            "num_frames": num_frames,
-            "test_pattern": test_pattern,
-            "name": name,
-        },
-    )
+    return [
+        (
+            "post",
+            ENDPOINT_NAME,
+            {
+                "reply_host": "none",
+                "reply_port": 0,
+                "reply_path": "none",
+                "num_frames": num_frames,
+                "test_pattern": test_pattern,
+                "name": name,
+            },
+        )
+    ]
 
 
 def run_test(
@@ -90,10 +64,6 @@ def run_test(
     name="simple",
     expect_failure=False,
 ):
-    capo = ServerThread(app)
-    capo.start()
-    print("Started fake capo endoint.")
-
     params["write_dir"] = write_dir
 
     fakevis_buffer = runner.FakeVisBuffer(
@@ -152,11 +122,7 @@ def run_test(
     else:
         in_data = None
 
-    capo.shutdown()
-    print("Removed fake capo endpoint.")
-    time.sleep(1)
-
-    return (out_data, in_data, dump_buffer.load())
+    return out_data, in_data, dump_buffer.load()
 
 
 @pytest.fixture(scope="module")
@@ -184,9 +150,9 @@ def test_pattern(tmpdir_factory):
     }
 
     # Test 3 frames, to get one of each frequency
-    rest_commands = [command_test_pattern("simple", 3, simple_test_pattern)]
+    rest_commands = command_test_pattern("simple", 3, simple_test_pattern)
 
-    yield run_test(write_dir, rest_commands, expect_failure=True)
+    yield run_test(write_dir, rest_commands, expect_failure=False)
 
 
 def test_no_noise(test_pattern):
@@ -208,10 +174,10 @@ def test_pattern_noise(tmpdir_factory):
         "dm_input_1": [[1, 0], [1, 0], [1, 0]],
     }
 
-    rest_commands = [command_test_pattern("simple", 3, simple_test_pattern)]
+    rest_commands = command_test_pattern("simple", 3, simple_test_pattern)
 
     yield run_test(
-        write_dir, rest_commands=rest_commands, noise=True, expect_failure=True
+        write_dir, rest_commands=rest_commands, noise=True, expect_failure=False
     )
 
 
@@ -279,7 +245,7 @@ def test_pattern_no_noise_freq(tmpdir_factory):
     freq_params["frequencies"] = [0, 1, 2]
     freq_params["freq_values"] = [[0, 0], [1, 1], [2, -2]]
     freq_params["freq_ids"] = [0, 1, 2, 3]
-    freq_params["total_frames"] = 16
+    freq_params["total_frames"] = 12
 
     random.seed()
     for i in range(2):
@@ -294,7 +260,7 @@ def test_pattern_no_noise_freq(tmpdir_factory):
         "dm_input_0": freq_params["freq_values"] + [[128, 0]],
         "dm_input_1": freq_params["freq_values"] + [[128, 0]],
     }
-    rest_commands = [command_test_pattern("freq", 4, freq_test_pattern)]
+    rest_commands = command_test_pattern("freq", 4, freq_test_pattern)
 
     yield run_test(
         write_dir=write_dir,
@@ -302,7 +268,7 @@ def test_pattern_no_noise_freq(tmpdir_factory):
         rest_commands=rest_commands,
         noise=False,
         name="freq",
-        expect_failure=True,
+        expect_failure=False,
     )
 
 
@@ -351,7 +317,7 @@ def test_pattern_noise_freq(tmpdir_factory):
         "dm_input_0": freq_test_pattern,
         "dm_input_1": freq_test_pattern,
     }
-    rest_commands = [command_test_pattern("freq", 3, freq_test_pattern)]
+    rest_commands = command_test_pattern("freq", 3, freq_test_pattern)
 
     yield run_test(
         write_dir=write_dir,
@@ -359,7 +325,7 @@ def test_pattern_noise_freq(tmpdir_factory):
         rest_commands=rest_commands,
         noise=True,
         name="freq",
-        expect_failure=True,
+        expect_failure=False,
     )
 
 
@@ -450,7 +416,7 @@ input_params = freq_params.copy()
 def test_pattern_no_noise_inputs(tmpdir_factory):
     input_params["mode"] = "test_pattern_inputs"
     input_params["input_values"] = [[0, 0], [1, 1]]
-    input_params["total_frames"] = 16
+    input_params["total_frames"] = 12
 
     random.seed()
     for i in range(2):
@@ -473,7 +439,7 @@ def test_pattern_no_noise_inputs(tmpdir_factory):
             input_params["input_values"][1],
         ],
     }
-    rest_commands = [command_test_pattern("inputs", 2, inputs_test_pattern)]
+    rest_commands = command_test_pattern("inputs", 2, inputs_test_pattern)
 
     yield run_test(
         write_dir=write_dir,
@@ -481,7 +447,7 @@ def test_pattern_no_noise_inputs(tmpdir_factory):
         rest_commands=rest_commands,
         noise=False,
         name="inputs",
-        expect_failure=True,
+        expect_failure=False,
     )
 
 
@@ -520,7 +486,7 @@ def test_pattern_noise_inputs(tmpdir_factory):
             input_params["input_values"][1],
         ],
     }
-    rest_commands = [command_test_pattern("inputs", 2, inputs_test_pattern)]
+    rest_commands = command_test_pattern("inputs", 2, inputs_test_pattern)
 
     yield run_test(
         write_dir=write_dir,
@@ -528,7 +494,7 @@ def test_pattern_noise_inputs(tmpdir_factory):
         rest_commands=rest_commands,
         noise=True,
         name="inputs",
-        expect_failure=True,
+        expect_failure=False,
     )
 
 

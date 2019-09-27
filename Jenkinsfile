@@ -2,7 +2,7 @@ pipeline {
   agent any
   options {
     timeout(time: 1, unit: 'HOURS')
-    disableConcurrentBuilds()
+    parallelsAlwaysFailFast()
   }
   stages {
     stage('Build') {
@@ -19,7 +19,7 @@ pipeline {
         stage('Build CHIME kotekan') {
           steps {
             sh '''mkdir build_chime
-                  cd build_chime/
+                  cd build_chime
                   cmake -DRTE_SDK=/opt/dpdk-stable-16.11.4/ \
                   -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON \
                   -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
@@ -78,12 +78,20 @@ pipeline {
       }
     }
     stage('Unit Tests') {
-      steps {
-        sh '''cd tests/
-              PYTHONPATH=../python/ python3 -m pytest -x -s -vvv
-              cd ../build/tests/
-              PYTHONPATH=../../python/ python3 -m pytest -x -s -vvv'''
-      }
-    }
+        parallel {
+            stage('Python Unit Tests') {
+              steps {
+                sh '''cd tests/
+                      PYTHONPATH=../python/ python3 -m pytest -n 4 -x -vvv'''
+              }
+            }
+            stage('Boost Unit Tests') {
+              steps {
+                sh '''cd build/tests/
+                      python3 -m pytest -x -vvv'''
+              }
+            }
+         }
+     }
   }
 }

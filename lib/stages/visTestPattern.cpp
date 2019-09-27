@@ -312,13 +312,16 @@ void visTestPattern::main_thread() {
                     expected_data_ready = false;
 
                     // Report back.
-                    json data;
-                    data["result"] = "OK";
-                    data["name"] = test_name;
-                    restReply reply = restClient::instance().make_request_blocking(
-                        test_done_path, data, test_done_host, test_done_port);
-                    if (!reply.first) {
-                        FATAL_ERROR("Failed to report back test completion: {:s}", reply.second);
+                    if (test_done_host != "none") {
+                        json data;
+                        data["result"] = "OK";
+                        data["name"] = test_name;
+                        restReply reply = restClient::instance().make_request_blocking(
+                            test_done_path, data, test_done_host, test_done_port);
+                        if (!reply.first) {
+                            FATAL_ERROR("Failed to report back test completion: {:s}",
+                                        reply.second);
+                        }
                     }
 
                     INFO("Test '{:s}' done.", test_name);

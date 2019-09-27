@@ -406,16 +406,19 @@ def test_start_time_new_update(tmpdir_factory):
             "dynamic_attributes/flagging",
             {"bad_inputs": flags[1], "start_time": ts[0], "tag": "test_flag_update1"},
         ],
+        ["wait", 0.1, None],
         [
             "post",
             "dynamic_attributes/flagging",
             {"bad_inputs": flags[2], "start_time": ts[1], "tag": "test_flag_update2"},
         ],
+        ["wait", 0.1, None],
         [
             "post",
             "dynamic_attributes/flagging",
             {"bad_inputs": flags[3], "start_time": ts[2], "tag": "test_flag_update3"},
         ],
+        ["wait", 0.1, None],
         [
             "post",
             "dynamic_attributes/flagging",
@@ -442,6 +445,7 @@ def test_flags_wrong_type(tmpdir_factory):
     params["total_frames"] = 20
     params["cadence"] = 0.1
     params["dynamic_attributes"]["flagging"]["bad_inputs"] = [1, 4]
+    params["num_elements"] = 5
     n = params["num_elements"]
     num_prod = n * (n + 1) // 2
     flags_set = False

@@ -33,6 +33,9 @@ class KotekanRunner(object):
         REST commands to run packed as `(request_type, endpoint, json_data)`.
     debug: bool
         Shows kotekan stdout and stderr before exit.
+    rest_port: int
+        Port to use for kotekan REST server. Set it to 0 to get a random free port.
+        Default: 0.
     """
 
     def __init__(
@@ -43,6 +46,7 @@ class KotekanRunner(object):
         rest_commands=None,
         debug=False,
         expect_failure=False,
+        rest_port=0,
     ):
 
         self._buffers = buffers if buffers is not None else {}
@@ -51,6 +55,7 @@ class KotekanRunner(object):
         self._rest_commands = rest_commands if rest_commands is not None else []
         self.debug = debug
         self.expect_failure = expect_failure
+        self.rest_port = rest_port
         self.return_code = 0
 
     def run(self):
@@ -62,7 +67,7 @@ class KotekanRunner(object):
         import yaml
 
         rest_header = {"content-type": "application/json"}
-        rest_addr = "http://localhost:12048/"
+        rest_addr = "localhost:%d" % self.rest_port
 
         config_dict = yaml.safe_load(default_config)
         config_dict.update(self._config)
@@ -80,10 +85,10 @@ class KotekanRunner(object):
         # kotekan python packages. If so we want to run the local kotekan
         # binary
         if os.path.exists(build_dir):
-            kotekan_cmd = "./kotekan -c %s"
+            kotekan_cmd = "./kotekan -b %s -c %s"
             wd = build_dir
         else:
-            kotekan_cmd = "kotekan -c %s"
+            kotekan_cmd = "kotekan -b %s -c %s"
             wd = os.curdir
 
         config_dict = fix_strings(config_dict)
@@ -96,8 +101,8 @@ class KotekanRunner(object):
             print(yaml.safe_dump(config_dict))
             fh.flush()
 
-            print(kotekan_cmd, fh.name, build_dir)
-            cmd = (kotekan_cmd % fh.name).split()
+            print(kotekan_cmd % (rest_addr, fh.name), build_dir)
+            cmd = (kotekan_cmd % (rest_addr, fh.name)).split()
             p = subprocess.Popen(cmd, cwd=wd, stdout=f_out, stderr=f_out)
 
             # Run any requested REST commands
@@ -106,7 +111,27 @@ class KotekanRunner(object):
                 import json
 
                 # Wait a moment for rest servers to start up.
-                time.sleep(1.0)
+                time.sleep(1)
+
+                # If kotekan's REST server was started with a random port (0), we have to find out
+                # what that is from the logs
+                if self.rest_port == 0:
+                    log = open(f_out.name, "r").read().split("\n")
+                    rest_addr = None
+                    for line in log:
+                        if line[:43] == "restServer: started server on address:port ":
+                            rest_addr = line[43:]
+                    if rest_addr:
+                        print(
+                            "Found REST server address in kotekan log: %s" % rest_addr
+                        )
+                    else:
+                        print("Could not find kotekan REST server address in logs.")
+                        exit(1)
+
+                # the requests module needs the address wrapped in http://*/
+                rest_addr = "http://" + rest_addr + "/"
+
                 for rtype, endpoint, data in self._rest_commands:
                     if rtype == "wait":
                         time.sleep(endpoint)
@@ -130,7 +155,7 @@ class KotekanRunner(object):
                         self.output = open(f_out.name, "r")
 
                         # Print out the output from Kotekan for debugging
-                        print(self.output)
+                        print(self.output.read())
 
                         # Throw an exception if we don't exit cleanly
                         if p.returncode:
