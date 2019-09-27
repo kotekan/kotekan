@@ -2,6 +2,7 @@
 
 #include "configUpdater.hpp"
 #include "visUtil.hpp"
+
 #include "fmt/ranges.h"
 
 using kotekan::Config;
@@ -70,8 +71,10 @@ hsa_signal_t hsaRfiUpdateBadInputs::execute(int gpu_frame_id, hsa_signal_t prece
         frames_to_update--;
 
         // Copy memory to GPU
-        DEBUG("Coping bad input list to GPU[{:d}], frames to update: {:d}, update: {}, cylinder order: {}, correlator order: {}",
-            device.get_gpu_id(), frames_to_update, update_bad_inputs, bad_inputs_cylinder, bad_inputs_correlator);
+        DEBUG("Coping bad input list to GPU[{:d}], frames to update: {:d}, update: {}, cylinder "
+              "order: {}, correlator order: {}",
+              device.get_gpu_id(), frames_to_update, update_bad_inputs, bad_inputs_cylinder,
+              bad_inputs_correlator);
         void* gpu_mem = device.get_gpu_memory_array("input_mask", gpu_frame_id, input_mask_len);
         device.async_copy_host_to_gpu(gpu_mem, (void*)host_mask, input_mask_len, precede_signal,
                                       signals[gpu_frame_id]);
