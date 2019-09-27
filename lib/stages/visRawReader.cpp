@@ -28,6 +28,7 @@
 #include <stdexcept>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 
@@ -43,6 +44,7 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
 
     filename = config.get<std::string>(unique_name, "infile");
     readahead_blocks = config.get<size_t>(unique_name, "readahead_blocks");
+    max_read_rate = config.get_default<double>(unique_name, "max_read_rate", 0.0);
 
     chunked = config.exists(unique_name, "chunk_size");
     if (chunked) {
@@ -226,6 +228,7 @@ int visRawReader::position_map(int ind) {
 
 void visRawReader::main_thread() {
 
+    double start_time, end_time;
     size_t frame_id = 0;
     uint8_t* frame;
 
@@ -233,12 +236,21 @@ void visRawReader::main_thread() {
 
     size_t nframe = nfreq * ntime;
 
+    // Calculate the minimum time we should take to read the data to satisfy the
+    // rate limiting
+    double min_read_time =
+        (max_read_rate > 0 ? file_frame_size / (max_read_rate * 1024 * 1024) : 0.0);
+    DEBUG("Minimum read time per frame {}s", min_read_time);
+
     // Initial readahead for frames
     for (read_ind = 0; read_ind < readahead_blocks; read_ind++) {
         read_ahead(read_ind);
     }
 
     while (!stop_thread && ind < nframe) {
+
+        // Get the start time of the loop for rate limiting
+        start_time = current_time();
 
         // Wait for an empty frame in the output buffer
         if ((frame = wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id)) == nullptr) {
@@ -296,5 +308,15 @@ void visRawReader::main_thread() {
         frame_id = (frame_id + 1) % out_buf->num_frames;
         read_ind++;
         ind++;
+
+        // Get the end time for the loop and sleep for long enough to satisfy
+        // the max rate
+        end_time = current_time();
+        double sleep_time = min_read_time - (end_time - start_time);
+        DEBUG("Sleep time {}", sleep_time);
+        if (sleep_time > 0) {
+            auto ts = double_to_ts(sleep_time);
+            nanosleep(&ts, NULL);
+        }
     }
 }
