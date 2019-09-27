@@ -5,6 +5,7 @@
 #include "chimeMetadata.h"
 #include "errors.h"
 #include "fpga_header_functions.h"
+#include "network_functions.hpp"
 #include "tx_utils.hpp"
 #include "util.h"
 
@@ -18,8 +19,6 @@
 #include <iostream>
 #include <map>
 #include <math.h>
-#include <netinet/ip.h>
-#include <netinet/ip_icmp.h>
 #include <queue>
 #include <random>
 #include <signal.h>
@@ -28,7 +27,6 @@
 #include <string>
 #include <sys/socket.h>
 #include <thread>
-#include <unistd.h>
 
 
 using std::string;
@@ -101,6 +99,12 @@ void frbNetworkProcess::main_thread() {
     INFO("number_of_l1_links: {:d}", number_of_l1_links);
 
     auto ping_thread = std::thread([&] { this->ping_destinations(); });
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    for (auto& i : config.get<std::vector<int>>(unique_name, "cpu_affinity"))
+        CPU_SET(i, &cpuset);
+
+    pthread_setaffinity_np(ping_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
 
     // rest server
     using namespace std::placeholders;
@@ -329,15 +333,6 @@ void frbNetworkProcess::set_destination_active_callback(connectionInstance& conn
     }
 }
 
-// internal utility functions for dealing with low-level sockets APIs
-/// Send a ping packet to the destination using source socket `s`
-static bool send_ping(int s, const DestIpSocket& dst);
-/// Receive a ping response on socket `s`, returning `true` if all OK and putting its sender in
-/// `from`
-static bool receive_ping(int s, /* out */ sockaddr_in& from);
-/// Calculate internet packet checksum (based on BSD networking code)
-static int in_cksum(uint16_t*, int);
-
 // internal data type for keeping track of host checks and replies
 struct DestIpSocketTime {
     DestIpSocket* dst;
@@ -416,7 +411,7 @@ void frbNetworkProcess::ping_destinations() {
                 return;
         }
         // NOTE: we don't ping if the host is not active, but mark it checked
-        if (!dst->active || send_ping(ping_src_fd[dst->sending_socket], *dst)) {
+        if (!dst->active || send_ping(ping_src_fd[dst->sending_socket], dst->addr)) {
             dest_by_time.pop();
             lru_dest.last_checked = std::chrono::steady_clock::now();
             dest_by_time.push(lru_dest);
@@ -483,80 +478,4 @@ void frbNetworkProcess::ping_destinations() {
         if (stop_thread)
             return;
     }
-}
-
-bool send_ping(int s, const DestIpSocket& dst) {
-    uint8_t outpackhdr[IP_MAXPACKET];
-    uint8_t* outpack = outpackhdr + sizeof(struct ip);
-    int cc = (64 - 8); // data length - icmp echo header len, excluding time
-    struct icmp* icp = (struct icmp*)outpack;
-    icp->icmp_type = ICMP_ECHO;
-    icp->icmp_code = 0;
-    icp->icmp_cksum = 0;
-    icp->icmp_id = getpid();
-
-    uint16_t seq = 12345;
-    icp->icmp_seq = htons(seq);
-    icp->icmp_cksum = in_cksum((uint16_t*)icp, cc);
-    int rc =
-        sendto(s, (char*)outpack, cc, 0, (struct sockaddr*)&dst.addr, sizeof(struct sockaddr_in));
-    return rc == cc;
-}
-
-bool receive_ping(int s, sockaddr_in& from) {
-    socklen_t from_length = sizeof(from);
-    uint8_t packet[4096];
-    int packet_length = sizeof(packet);
-    int rc = recvfrom(s, packet, packet_length, 0, (sockaddr*)&from, &from_length);
-
-    // Check the IP header
-    int hlen = sizeof(struct ip);
-    if (rc < (hlen + ICMP_MINLEN)) {
-        DEBUG_NON_OO("Packet too short. Ignoring.");
-        return false;
-    }
-    // Now the icmp part
-    struct icmp* icp = (struct icmp*)(packet + hlen);
-    if (icp->icmp_type == ICMP_ECHOREPLY) {
-        if (ntohs(icp->icmp_seq) != 12345) {
-            DEBUG_NON_OO("Wrong ICMP seq: {} vs {}", ntohs(icp->icmp_id), 12345);
-            return false;
-        }
-        if (icp->icmp_id != getpid()) {
-            DEBUG_NON_OO("Wrong ICMP id: {}", icp->icmp_id);
-            return false;
-        }
-    }
-    return true;
-}
-
-
-// source: https://github.com/openbsd/src/blob/master/sbin/ping/ping.c
-int in_cksum(uint16_t* addr, int len) {
-    int nleft = len;
-    uint16_t* w = addr;
-    int sum = 0;
-    uint16_t answer = 0;
-
-    /*
-     * Our algorithm is simple, using a 32 bit accumulator (sum), we add
-     * sequential 16 bit words to it, and at the end, fold back all the
-     * carry bits from the top 16 bits into the lower 16 bits.
-     */
-    while (nleft > 1) {
-        sum += *w++;
-        nleft -= 2;
-    }
-
-    /* mop up an odd byte, if necessary */
-    if (nleft == 1) {
-        *(uint8_t*)(&answer) = *(uint8_t*)w;
-        sum += answer;
-    }
-
-    /* add back carry outs from top 16 bits to low 16 bits */
-    sum = (sum >> 16) + (sum & 0xffff); /* add hi 16 to low 16 */
-    sum += (sum >> 16);                 /* add carry */
-    answer = ~sum;                      /* truncate to 16 bits */
-    return answer;
 }

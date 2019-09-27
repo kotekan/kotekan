@@ -143,10 +143,10 @@ private:
     /// array of sending socket descriptors
     std::vector<SrcAddrSocket> src_sockets;
 
-    /// destination addresses and associated sending sockets, indexed by IP `s_addr`
+    /// destination addresses and associated sending sockets, indexed by IP @c s_addr
     std::map<uint32_t, DestIpSocket> dest_sockets;
 
-    /// stream destinations (references to `dest_sockets`, because a single destination can be used
+    /// stream destinations (references to @p dest_sockets, because a single destination can be used
     /// for multiple streams)
     std::vector<std::reference_wrapper<DestIpSocket>> stream_dest;
 
@@ -156,11 +156,11 @@ private:
     /// initialize destination addresses and determine the sending socket to use
     int initialize_destinations();
 
-    /// background thread that periodically pings destination hosts and updates their `live` status
+    /// background thread that periodically pings destination hosts and updates their @c live status
     void ping_destinations();
 
-    /// used by ping_destinations for periodic sleep interruptible by the main_thread on Kotekan
-    /// stop
+    /// used by @p ping_destinations for periodic sleep interruptible by the @p main_thread on
+    /// Kotekan stop
     std::condition_variable ping_cv;
 };
 
