@@ -10,6 +10,7 @@ import pytest
 import numpy as np
 import csv
 import random
+import requests
 import threading
 import time
 import copy
@@ -43,27 +44,50 @@ params = {
 STAGE_NAME = "testpattern_stage"
 
 
-class ServerThread(threading.Thread):
-    def __init__(self, app):
-        threading.Thread.__init__(self)
-        self.srv = make_server("127.0.0.1", 5050, app)
-        self.ctx = app.app_context()
-        self.ctx.push()
-
-    def run(self):
-        self.srv.serve_forever()
-
-    def shutdown(self):
-        self.srv.shutdown()
-
-
 app = Flask(__name__)
 
 
 @app.route("/reply_endpoint", methods=["POST"])
 def reply_endpoint():
+    """
+    This does nothing.
+
+    It is just here because kotekan visTestpattern needs something to talk to...
+    """
     print("/reply_endpoint received {}".format(request.json))
     return "Yey"
+
+
+def shutdown_server():
+    """
+    Shut down the Flask server.
+
+    This does the actual work.
+    """
+    func = request.environ.get('werkzeug.server.shutdown')
+    if func is None:
+        raise RuntimeError('Not running with the Werkzeug Server')
+    func()
+
+
+@app.route('/shutdown', methods=['POST'])
+def shutdown():
+    """
+    Shut down the Flask server.
+
+    Endpoint to shut down server.
+    """
+    shutdown_server()
+    return 'Server shutting down...'
+
+
+def send_server_shutdown():
+    """
+    Shut down the Flask server.
+
+    Send a request to the shutdown endpoint.
+    """
+    requests.post(url="http://localhost:5050/shutdown")
 
 
 def command_test_pattern(name, num_frames, test_pattern):
@@ -89,9 +113,9 @@ def run_test(
     name="simple",
     expect_failure=False,
 ):
-    capo = ServerThread(app)
-    capo.start()
+    threading.Thread(target=app.run, kwargs={"port": 5050}).start()
     print("Started fake capo endoint.")
+    time.sleep(1)
 
     params["write_dir"] = write_dir
 
@@ -151,11 +175,11 @@ def run_test(
     else:
         in_data = None
 
-    capo.shutdown()
+    send_server_shutdown()
     print("Removed fake capo endpoint.")
-    time.sleep(4)
+    time.sleep(2)
 
-    return (out_data, in_data, dump_buffer.load())
+    return out_data, in_data, dump_buffer.load()
 
 
 @pytest.fixture(scope="module")
@@ -185,7 +209,7 @@ def test_pattern(tmpdir_factory):
     # Test 3 frames, to get one of each frequency
     rest_commands = [command_test_pattern("simple", 3, simple_test_pattern)]
 
-    yield run_test(write_dir, rest_commands, expect_failure=True)
+    yield run_test(write_dir, rest_commands, expect_failure=False)
 
 
 def test_no_noise(test_pattern):
@@ -210,7 +234,7 @@ def test_pattern_noise(tmpdir_factory):
     rest_commands = [command_test_pattern("simple", 3, simple_test_pattern)]
 
     yield run_test(
-        write_dir, rest_commands=rest_commands, noise=True, expect_failure=True
+        write_dir, rest_commands=rest_commands, noise=True, expect_failure=False
     )
 
 
@@ -301,7 +325,7 @@ def test_pattern_no_noise_freq(tmpdir_factory):
         rest_commands=rest_commands,
         noise=False,
         name="freq",
-        expect_failure=True,
+        expect_failure=False,
     )
 
 
@@ -358,7 +382,7 @@ def test_pattern_noise_freq(tmpdir_factory):
         rest_commands=rest_commands,
         noise=True,
         name="freq",
-        expect_failure=True,
+        expect_failure=False,
     )
 
 
@@ -480,7 +504,7 @@ def test_pattern_no_noise_inputs(tmpdir_factory):
         rest_commands=rest_commands,
         noise=False,
         name="inputs",
-        expect_failure=True,
+        expect_failure=False,
     )
 
 
@@ -527,7 +551,7 @@ def test_pattern_noise_inputs(tmpdir_factory):
         rest_commands=rest_commands,
         noise=True,
         name="inputs",
-        expect_failure=True,
+        expect_failure=False,
     )
 
 
