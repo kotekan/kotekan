@@ -42,7 +42,7 @@ struct visMetadata {
     timespec ctime;
     /// Nominal length of the frame in FPGA ticks
     uint64_t fpga_seq_length;
-    // Amount of data that actually went into the frame (in FPGA ticks)
+    /// Amount of data that actually went into the frame (in FPGA ticks)
     uint64_t fpga_seq_total;
 
     /// ID of the frequency bin
@@ -56,6 +56,13 @@ struct visMetadata {
     uint32_t num_prod;
     /// Number of eigenvectors and values calculated
     uint32_t num_ev;
+
+    /// The number of 2.56us samples flaged as containg RFI.
+    /// NOTE: This value might contain overlap with lost samples, so it can count
+    /// missing samples as samples with RFI.  For renormalization this value
+    /// should NOT be used, use lost samples (= @c fpga_seq_length - @c fpga_seq_total)
+    /// instead. This value will be filled even if RFI zeroing is disabled.
+    int32_t rfi_flagged_samples;
 };
 
 
@@ -264,6 +271,9 @@ public:
     uint64_t& fpga_seq_length;
     /// The actual amount of data accumulated in FPGA ticks
     uint64_t& fpga_seq_total;
+
+    /// The number of lost samples due to RFI
+    int32_t rfi_flagged_samples;
 
     /// A reference to the frequency ID.
     uint32_t& freq_id;

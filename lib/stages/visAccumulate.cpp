@@ -457,6 +457,7 @@ void visAccumulate::initialise_output(visAccumulate::internalState& state, int i
     std::fill(frame.eval.begin(), frame.eval.end(), 0.0);
     frame.erms = 0;
     std::fill(frame.gain.begin(), frame.gain.end(), 1.0);
+    frame.rfi_flagged_samples = 0;
 }
 
 
