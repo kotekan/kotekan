@@ -11,8 +11,9 @@ Naming
 - Type names in kotekan should be nouns, use *CamelCase* formatting and begin
   with a capital letter, e.g. ``MyFavouriteStage``. This includes classes,
   enums, structs and typedefs.
-- With the exception of class constructors & destructors, function names should
-  use underscore notation and begin with a lower case letter, e.g. ``my_func``.
+- With the exception of class constructors & destructors, names of class members
+  and standalone functions should use underscore notation and begin with a lower
+  case letter, e.g. ``my_func``.
 
 Variables
 ^^^^^^^^^^
@@ -35,8 +36,13 @@ Namespaces
 
 Header files
 ^^^^^^^^^^^^^
+
 C++ header files should be named after the class they describe and use the
-ending `.hpp`. They should begin with a header file commit like
+ending ``.hpp``, i.e., ``MyClass.hpp``. If the file contains only standalone
+functions (e.g., utilities), name it using ``snake_case``, for example:
+``networking_functions.hpp``.
+
+Header files should begin with a header file commit like
 
 .. code-block:: c++
 
