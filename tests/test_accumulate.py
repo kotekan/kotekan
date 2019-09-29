@@ -277,6 +277,8 @@ def test_accumulate(accumulate_data):
         assert (frame.gain == 1.0).all()
 
 
+# Test that we are calculating the weights correctly in the presence of lost
+# data.
 def test_lostweights(lostweights_data):
 
     row, col = np.triu_indices(accumulate_params["num_elements"])
@@ -292,6 +294,19 @@ def test_lostweights(lostweights_data):
 
         assert (frame.vis == pat).all()
         assert (frame.weight == weight).all()
+
+
+# Test that we are accumulating the RFI flagged count correctly
+def test_rfi_total(lostweights_data):
+
+    ns = accumulate_params["samples_per_data_set"]
+    nf = accumulate_params["num_gpu_frames"]
+
+    b, data = lostweights_data
+
+    for frame in data:
+        assert frame.metadata.rfi_total == ((nf // 2) * b)
+        assert frame.metadata.fpga_total == ((nf // 2) * (2 * ns - b))
 
 
 # Test the the statistics are being calculated correctly

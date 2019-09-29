@@ -99,6 +99,7 @@ void LostWeightsGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metada
     }
 
     metadata->lost_timesamples = lost;
+    metadata->rfi_flagged_samples = lost;
 }
 
 AccumulateGpuPattern::AccumulateGpuPattern(kotekan::Config& config, const std::string& path) :
