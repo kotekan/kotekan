@@ -8,7 +8,7 @@ project.
 
 Naming
 ^^^^^^^^^^
-- Type names in kotekan should be nouns, use *CamelCase* formatting and begin
+- Type names in kotekan should be nouns, use *PascalCase* formatting and begin
   with a capital letter, e.g. ``MyFavouriteStage``. This includes classes,
   enums, structs and typedefs.
 - With the exception of class constructors & destructors, names of class members
