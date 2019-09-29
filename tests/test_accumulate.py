@@ -16,6 +16,7 @@ accumulate_params = {
     "num_ev": 4,
     "samples_per_data_set": 32768,
     "int_frames": 64,
+    "num_gpu_frames": 64,
     "total_frames": 257,  # One extra sample to ensure we actually get 256
     "block_size": 1,
     "freq": 777,
@@ -122,6 +123,30 @@ def lostsamples_data(tmpdir_factory):
 
     yield dump_buffer.load()
 
+
+@pytest.fixture(scope="module", params=[0, 1, 4])
+def lostweights_data(tmpdir_factory, request):
+
+    tmpdir = tmpdir_factory.mktemp("lostweights")
+
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
+
+    test = runner.KotekanStageTester(
+        "visAccumulate",
+        {"num_ev": 4},
+        runner.FakeGPUBuffer(
+            pattern="lostweights",
+            freq=accumulate_params["freq"],
+            num_frames=accumulate_params["total_frames"],
+            b=request.param,
+        ),
+        dump_buffer,
+        accumulate_params,
+    )
+
+    test.run()
+
+    yield (request.param, dump_buffer.load())
 
 @pytest.fixture(scope="module")
 def time_data(tmpdir_factory):
@@ -250,6 +275,23 @@ def test_accumulate(accumulate_data):
         assert (frame.weight == 8.0).all()
         assert (frame.flags == 1.0).all()
         assert (frame.gain == 1.0).all()
+
+
+def test_lostweights(lostweights_data):
+
+    row, col = np.triu_indices(accumulate_params["num_elements"])
+    ns = accumulate_params["samples_per_data_set"]
+    nf = accumulate_params["num_gpu_frames"]
+    pat = (row + 1.0j * col).astype(np.complex64)
+
+    b, data = lostweights_data
+
+    weight = (2 * ns - b)**2 * nf / 16.0
+
+    for frame in data:
+
+        assert (frame.vis == pat).all()
+        assert (frame.weight == weight).all()
 
 
 # Test the the statistics are being calculated correctly

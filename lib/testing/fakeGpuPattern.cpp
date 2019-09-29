@@ -7,6 +7,7 @@
 // Register test patterns
 REGISTER_FAKE_GPU_PATTERN(BlockGpuPattern, "block");
 REGISTER_FAKE_GPU_PATTERN(LostSamplesGpuPattern, "lostsamples");
+REGISTER_FAKE_GPU_PATTERN(LostWeightsGpuPattern, "lostweights");
 REGISTER_FAKE_GPU_PATTERN(AccumulateGpuPattern, "accumulate");
 REGISTER_FAKE_GPU_PATTERN(GaussianGpuPattern, "gaussian");
 REGISTER_FAKE_GPU_PATTERN(PulsarGpuPattern, "pulsar");
@@ -72,6 +73,33 @@ void LostSamplesGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metada
     metadata->lost_timesamples = frame_number;
 }
 
+
+LostWeightsGpuPattern::LostWeightsGpuPattern(kotekan::Config& config, const std::string& path) :
+    FakeGpuPattern(config, path),
+    _b(config.get_default<uint32_t>(path, "b", 1)) {}
+
+void LostWeightsGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata,
+                                 int frame_number, int freq_id) {
+    (void)freq_id;
+
+    int32_t lost = ((frame_number + 1) % 4 < 2) ? _b : 0;
+    uint32_t norm = (uint32_t)(_samples_per_data_set - lost);
+    int32_t noise = (frame_number % 2) ? 1 : -1;
+
+    // Every frame has one more lost packet than the last
+    for (size_t i = 0; i < _num_elements; i++) {
+        for (size_t j = i; j < _num_elements; j++) {
+            uint32_t bi = prod_index(i, j, _block_size, _num_elements);
+
+            // The visibilities are row + 1j * col, scaled by the total number
+            // of frames.
+            data[2 * bi] = j * norm + noise;     // Imag
+            data[2 * bi + 1] = i * norm + noise; // Real
+        }
+    }
+
+    metadata->lost_timesamples = lost;
+}
 
 AccumulateGpuPattern::AccumulateGpuPattern(kotekan::Config& config, const std::string& path) :
     FakeGpuPattern(config, path) {}

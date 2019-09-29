@@ -110,6 +110,37 @@ public:
               const int freq_id) override;
 };
 
+
+/**
+ * @brief A pattern for testing the weight calculation with lost samples
+ *
+ * The model is that each frame is produced with a value
+ *     x_i = alpha_i x + n_i
+ * where i is the frame index. If we have a four iteration cycle where
+ *     alpha_i = (a, a - b, a - b, a) and,
+ *     n_i = (1, -1, 1, -1)
+ * we can exactly calculate the expected the visibilities and the weights,
+ * which should be
+ *     V = x
+ *     W = N (2a - b)^2 / 16.
+ *
+ * @conf  b  Int. Number of samples to "drop" on the 2nd and 3rd frames above.
+ *                Default is 1.
+ **/
+class LostWeightsGpuPattern : public FakeGpuPattern {
+public:
+    /// @sa fakeGpuPattern::fakeGpuPattern
+    LostWeightsGpuPattern(kotekan::Config& config, const std::string& path);
+
+    /// @sa fakeGpuPattern::fill
+    void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
+              const int freq_id) override;
+
+private:
+    uint32_t _b;
+};
+
+
 /**
  * @brief Fill with a pattern for debugging the accumulation.
  *
