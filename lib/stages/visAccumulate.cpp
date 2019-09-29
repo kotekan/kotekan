@@ -420,7 +420,7 @@ void visAccumulate::main_thread() {
 
             DEBUG("Lost samples {:d}, RFI flagged samples {:d}, total_samples: {:d}",
                   get_lost_timesamples(in_buf, in_frame_id),
-                  get_rfi_flaged_samples(in_buf, in_frame_id), total_samples);
+                  get_rfi_flagged_samples(in_buf, in_frame_id), total_samples);
         }
 
         // Move the input buffer on one step
