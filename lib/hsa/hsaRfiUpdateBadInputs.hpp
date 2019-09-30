@@ -82,6 +82,7 @@ private:
     uint32_t input_mask_len;
 
     /// The host memory region which holds the input mask
+    /// Note 1 means the element is good, 0 means flagged.
     uint8_t* host_mask;
 
     /// The mapping from correlator to cylinder element indexing.

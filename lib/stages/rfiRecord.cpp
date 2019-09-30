@@ -58,6 +58,9 @@ bool rfiRecord::config_callback(json& json) {
     _write_to_disk = write_to_disk;
     rest_callback_mutex.unlock();
 
+    INFO("Updated RFI record parameters to: output_dir: {:s}, write_to_disk: {}", _output_dir,
+         _write_to_disk);
+
     return true;
 }
 
@@ -121,10 +124,10 @@ void rfiRecord::main_thread() {
                 rest_callback_mutex.unlock();
 
                 // Open the new file
-                INFO("Opening file: %s", file_name);
+                INFO("Opening file: {:s}", file_name);
                 fd = open(file_name, O_WRONLY | O_APPEND | O_CREAT, 0666);
                 if (fd < 0) {
-                    ERROR("Cannot open file {:s}, error {:d} ({:s}})", file_name, errno,
+                    ERROR("Cannot open file {:s}, error {:d} ({:s})", file_name, errno,
                           strerror(errno));
                 }
                 // Write seq number into the start of the file
