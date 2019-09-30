@@ -14,6 +14,7 @@
 #include "Config.hpp"
 #include "chimeMetadata.h"
 #include "factory.hpp"
+#include "kotekanLogging.hpp"
 #include "pulsarTiming.hpp"
 
 #include "gsl-lite.hpp"
@@ -33,7 +34,7 @@
  * @conf  num_freq_in_frame     Int. Number of frequencies packed into each GPU
  *                              frame.
  **/
-class FakeGpuPattern {
+class FakeGpuPattern : public kotekan::kotekanLogging {
 public:
     /**
      * @brief Create a class that makes a fakeGpu test mode.
