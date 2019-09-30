@@ -132,7 +132,7 @@ void ReadGain::main_thread() {
     }
     mark_frame_empty(metadata_buf, unique_name.c_str(), metadata_buffer_id);
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
-    // unregister_consumer(metadata_buf, unique_name.c_str());
+    unregister_consumer(metadata_buf, unique_name.c_str());
 
     while (!stop_thread) {
         DEBUG("update_frb_gains={:d} update_psr_gains={:d} (0=false 1=true)", update_gains_frb,
