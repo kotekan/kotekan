@@ -182,8 +182,8 @@ void hsaBeamformKernel::calculate_ew_phase(float freq_now, float* host_coeff,
 hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
     // Unused parameter, suppress warning
-    (void)precede_signal;  //why do i need this then?
-    
+    (void)precede_signal;      
+
     if (first_pass) {
         first_pass = false;
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
