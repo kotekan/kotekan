@@ -18,7 +18,7 @@ hsaAsyncCopyGain::hsaAsyncCopyGain(Config& config, const string& unique_name,
     command_type = gpuCommandType::COPY_IN;
 
     gain_len = 2 * 2048 * sizeof(float);
-    gain_buf = host_buffers.get_buffer("gain_buf");
+    gain_buf = host_buffers.get_buffer("gain_frb_buf");
     register_consumer(gain_buf, unique_name.c_str());
     gain_buf_id = 0;
     gain_buf_finalize_id = 0;
