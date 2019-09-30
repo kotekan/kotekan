@@ -62,6 +62,9 @@
  * @conf  dataset_id        Int. Use a fixed dataset ID and don't register
  *                          states. If not set, the dataset manager will create
  *                          the dataset ID.
+ * @conf  sleep_time        Float. Sleep for this number of seconds before
+ *                          shutting down. Useful for allowing other processes
+ *                          to finish. Default is 1s.
  *
  * @todo  It might be useful eventually to produce realistic looking mock
  *        visibilities.
@@ -173,6 +176,9 @@ private:
 
     bool wait;
     int32_t num_frames;
+
+    // How long to sleep before exiting.
+    double sleep_time;
 
     // Alias for the type of a function that will fill a frame.
     using fill_func = std::function<void(visFrameView& frame)>;
