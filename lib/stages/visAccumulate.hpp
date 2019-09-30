@@ -122,11 +122,9 @@ private:
         /// integration period.
         float sample_weight_total;
 
-        /// The number of actual samples accumulated.
-        uint32_t sample_total;
-
-        /// The number of samples flagged out due to RFI.
-        uint32_t rfi_total;
+        /// The sum of the squared weight difference. This is needed for
+        /// de-biasing the weight calculation
+        float weight_diff_sum;
 
         /// Function for applying the weighting. While this can essentially be
         /// derived from the gateSpec we need to cache it so the gating can be

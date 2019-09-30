@@ -264,6 +264,7 @@ void visAccumulate::main_thread() {
 
     // Temporary arrays for storing intermediates
     std::vector<int32_t> vis_even(2 * num_prod_gpu);
+    int32_t samples_even = 0;
 
     // Have we initialised a frame for writing yet
     bool init = false;
@@ -291,10 +292,20 @@ void visAccumulate::main_thread() {
 
         if (init && wrapped) {
 
+            internalState& d0 = enabled_gated_datasets.at(0);
+
+            // Debias the weights estimate, by subtracting out the bias estimation
+            float w = d0.weight_diff_sum / pow(d0.sample_weight_total, 2);
+            for (size_t i = 0; i < num_prod_gpu; i++) {
+                float di = d0.vis1[2 * i];
+                float dr = d0.vis1[2 * i + 1];
+                d0.vis2[i] -= w * (dr * dr + di * di);
+            }
+
             // Iterate over *only* the gated datasets (remember that element
             // zero is the vis), and remove the bias and copy in the variance
             for (size_t i = 1; i < enabled_gated_datasets.size(); i++) {
-                combine_gated(enabled_gated_datasets.at(i), enabled_gated_datasets.at(0));
+                combine_gated(enabled_gated_datasets.at(i), d0);
             }
 
             // Finalise the output and release the frames
@@ -384,6 +395,7 @@ void visAccumulate::main_thread() {
             // Every even sample we save the set of visibilities...
             if (frame_count % 2 == 0) {
                 std::memcpy(vis_even.data(), input, 8 * num_prod_gpu);
+                samples_even = samples_in_frame;
             }
             // ... every odd sample we accumulate the squared differences into the weight dataset
             // NOTE: this incrementally calculates the variance, but eventually
@@ -398,6 +410,11 @@ void visAccumulate::main_thread() {
                     float dr = input[2 * i + 1] - vis_even[2 * i + 1];
                     d0.vis2[i] += (dr * dr + di * di);
                 }
+
+                // Accumulate the squared samples difference which we need for
+                // debiasing the variance estimate
+                float samples_diff = samples_in_frame - samples_even;
+                d0.weight_diff_sum += samples_diff * samples_diff;
             }
         }
 
@@ -541,7 +558,7 @@ bool visAccumulate::reset_state(visAccumulate::internalState& state, timespec t)
 
     // Reset the internal counters
     state.sample_weight_total = 0;
-    // ... zero out the accumulation array
+    state.weight_diff_sum = 0;
 
     // Acquire the lock so we don't get confused by any changes made via the
     // REST callback
