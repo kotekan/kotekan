@@ -64,12 +64,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_
     gain_buf = host_buffers.get_buffer("gain_psr_buf");
     register_consumer(gain_buf, unique_name.c_str());
     gain_buf_id = 0;
-    gain_buf_finalize_id = 0;
-    gain_buf_precondition_id = 0;
-    frame_to_fill = 0;
-    frame_to_fill_finalize = 0;
-    filling_frame = false;
-
+ 
     // Phase here
     phase_frame_len = _num_elements * _num_beams * 2 * sizeof(float);
     // Two alternating banks
@@ -117,38 +112,33 @@ int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id) {
 
 
     // Wait for new gain
-    DEBUG("Waiting for gain_buf_id={:d} to be full; gpu_frame_id={:d}", gain_buf_precondition_id,
+    DEBUG("Waiting for gain_buf_id={:d} to be full; gpu_frame_id={:d}", gain_buf_id,
           gpu_frame_id);
     if (first_pass) {
         uint8_t* frame =
-            wait_for_full_frame(gain_buf, unique_name.c_str(), gain_buf_precondition_id);
-        gain_buf_precondition_id = (gain_buf_precondition_id + 1) % gain_buf->num_frames;
-        first_pass = false;
-        frame_to_fill = gain_buf->num_frames;
-        frame_to_fill_finalize = frame_to_fill;
-        filling_frame = true;
+	  wait_for_full_frame(gain_buf, unique_name.c_str(), gain_buf_id);
+        host_gain = (float*)gain_buf->frames[gain_buf_id];
+	update_phase = true;
+        mark_frame_empty(gain_buf, unique_name.c_str(), gain_buf_id);
+	gain_buf_id = (gain_buf_id + 1) % gain_buf->num_frames;		
         if (frame == NULL)
             return -1;
     } else {
-        // Check for new gains only if filled all gpu frames (not currently filling frame)
-        if (!filling_frame) {
-            auto timeout = double_to_ts(0);
-            int status = wait_for_full_frame_timeout(gain_buf, unique_name.c_str(),
-                                                     gain_buf_precondition_id, timeout);
-            DEBUG("status of gain_buf_precondition_id[{:d}]={:d} ==(0=ready 1=not)",
-                  gain_buf_precondition_id, status);
-            if (status == 0) {
-                filling_frame = true;
-                frame_to_fill = gain_buf->num_frames;
-                frame_to_fill_finalize = frame_to_fill;
-                gain_buf_precondition_id = (gain_buf_precondition_id + 1) % gain_buf->num_frames;
-            }
-            if (status == -1)
-                return -1;
-        }
+      auto timeout = double_to_ts(0);
+      int status = wait_for_full_frame_timeout(gain_buf, unique_name.c_str(),
+					       gain_buf_id, timeout);
+      DEBUG("status of gain_buf_id[{:d}]={:d} ==(0=ready 1=not)",
+	    gain_buf_id, status);
+      if (status == 0) {
+	host_gain = (float*)gain_buf->frames[gain_buf_id];
+	update_phase = true;
+        mark_frame_empty(gain_buf, unique_name.c_str(), gain_buf_id);
+	gain_buf_id = (gain_buf_id + 1) % gain_buf->num_frames;	
+      }
+      if (status == -1)
+	return -1;
     }
-    DEBUG("leaving with gain_buf_precondition_id={:d} frame_to_fill={:d}", gain_buf_precondition_id,
-          frame_to_fill);
+    DEBUG("leaving with gain_buf_precondition_id={:d}", gain_buf_id);
     return 0;
 }
 
@@ -235,16 +225,9 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, hsa_signal_t preced
         update_phase = true;
     }
 
-    // Get gain
-    if (filling_frame && frame_to_fill > 0) {
-        host_gain = (float*)gain_buf->frames[gain_buf_id];
-        gain_buf_id = (gain_buf_id + 1) % gain_buf->num_frames;
-        frame_to_fill--;
-        return signals[gpu_frame_id];
-    }
-
     if (update_phase) {
         // GPS time, need ch_master
+        INFO("updating phase gain={:f} {:f}", host_gain[0], host_gain[1]);
         time_now_gps = get_gps_time(metadata_buf, metadata_buffer_id);
         if (time_now_gps.tv_sec == 0) {
             ERROR("GPS time appears to be zero, bad news for pulsar timing!");
@@ -301,19 +284,6 @@ void hsaPulsarUpdatePhase::finalize_frame(int frame_id) {
         bank_use_0 = bank_use_0 - 1;
     }
 
-    if (frame_to_fill_finalize > 0 && filling_frame) { // only mark input empty if filling frame and
-        // no more frames to finalize.
-        DEBUG("finalize_frame for frame_id={:d} mark gain_buf_finaliz_id={:d} empty", frame_id,
-              gain_buf_finalize_id);
-        mark_frame_empty(gain_buf, unique_name.c_str(), gain_buf_finalize_id);
-        gain_buf_finalize_id = (gain_buf_finalize_id + 1) % gain_buf->num_frames;
-        frame_to_fill_finalize--;
-        if (frame_to_fill_finalize == 0) {
-            filling_frame = false;
-        }
-    }
-    DEBUG("frame left to be filled={:d} gain_buf_finalize_id={:d}", frame_to_fill,
-          gain_buf_finalize_id);
 }
 
 bool hsaPulsarUpdatePhase::pulsar_grab_callback(nlohmann::json& json, const uint8_t beam_id) {

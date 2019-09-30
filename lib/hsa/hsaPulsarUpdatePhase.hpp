@@ -89,11 +89,6 @@ private:
     struct Buffer* gain_buf;
     int32_t gain_len;
     int32_t gain_buf_id;
-    int32_t gain_buf_finalize_id;
-    int32_t gain_buf_precondition_id;
-    int32_t frame_to_fill;
-    int32_t frame_to_fill_finalize;
-    bool filling_frame;
     /// Array of gains, float size of 2048*2*10
     float* host_gain;
 
