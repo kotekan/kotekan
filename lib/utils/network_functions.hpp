@@ -9,7 +9,7 @@
 *****************************************/
 
 /**
- * @brief Send a ping packet to the destination using source socket @a
+ * @brief Send a ping packet to the destination using source socket @a s
  *
  * @param s socket to use for communication
  * @param dst destination address to which to send
@@ -22,8 +22,8 @@ bool send_ping(int s, const sockaddr_in& dst);
  * @brief Receive a ping response on socket @p s, returning `true` if all OK and putting the
  * sender's address into @a from
  *
- * @param s[in] socket to use for communication
- * @param from[out] the response sender's address
+ * @param[in] s socket to use for communication
+ * @param[out] from the response sender's address
  *
  * @return @c true if a ping response was received successfully
  */
