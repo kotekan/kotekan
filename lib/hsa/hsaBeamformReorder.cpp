@@ -20,7 +20,7 @@ hsaBeamformReorder::hsaBeamformReorder(Config& config, const string& unique_name
 
     // Create a C style array for backwards compatibility.
     map_len = 512 * sizeof(int);
-    _reorder_map_c = (int*)hsa_host_malloc(map_len);
+    _reorder_map_c = (int*)hsa_host_malloc(map_len, device.get_gpu_numa_node());
     for (uint i = 0; i < 512; ++i) {
         _reorder_map_c[i] = _reorder_map[i];
     }

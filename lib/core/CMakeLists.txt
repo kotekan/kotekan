@@ -30,6 +30,10 @@ target_link_libraries( kotekan_core ${CMAKE_THREAD_LIBS_INIT} )
 #target_link_libraries( kotekan_core event )
 #target_link_libraries( kotekan_core event_pthreads )
 
+if (${NUMA_FOUND})
+    target_link_libraries( kotekan_core numa )
+endif()
+
 if( OPENSSL_FOUND )
     target_link_libraries(kotekan_core ${OPENSSL_LIBRARIES})
 endif()

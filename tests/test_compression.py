@@ -1,3 +1,9 @@
+# === Start Python 2/3 compatibility
+from __future__ import absolute_import, division, print_function, unicode_literals
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+
+# === End Python 2/3 compatibility
 
 import pytest
 import numpy as np
@@ -6,39 +12,31 @@ from kotekan import runner
 
 
 diag_global_params = {
-    'num_elements': 16,
-    'num_ev': 2,
-    'total_frames': 128,
-    'cadence': 2048.0,
-    'mode': 'phase_ij',
-    'freq_ids': [0, 250],
-    'buffer_depth': 5,
-    'dataset_manager': {
-        'use_dataset_broker': False
-    }
+    "num_elements": 16,
+    "num_ev": 2,
+    "total_frames": 128,
+    "cadence": 2048.0,
+    "mode": "phase_ij",
+    "freq_ids": [0, 250],
+    "buffer_depth": 5,
+    "dataset_manager": {"use_dataset_broker": False},
 }
 
-diag_stage_params = {
-    'stack_type': 'diagonal'
-}
+diag_stage_params = {"stack_type": "diagonal"}
 
 chime_global_params = {
-    'num_elements': 2048,
-    'num_ev': 2,
-    'total_frames': 10,
-    'wait': True,
-    'cadence': 2.0,
-    'mode': 'chime',
-    'freq_ids': [0, 250, 500],
-    'buffer_depth': 100,
-    'dataset_manager': {
-        'use_dataset_broker': False
-    }
+    "num_elements": 2048,
+    "num_ev": 2,
+    "total_frames": 10,
+    "wait": True,
+    "cadence": 2.0,
+    "mode": "chime",
+    "freq_ids": [0, 250, 500],
+    "buffer_depth": 100,
+    "dataset_manager": {"use_dataset_broker": False},
 }
 
-chime_stage_params = {
-    'stack_type': 'chime_in_cyl'
-}
+chime_stage_params = {"stack_type": "chime_in_cyl"}
 
 
 def float_allclose(a, b):
@@ -61,17 +59,18 @@ def diagonal_data(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("diagonal")
 
     fakevis_buffer = runner.FakeVisBuffer(
-        freq_ids=diag_global_params['freq_ids'],
-        num_frames=diag_global_params['total_frames']
+        freq_ids=diag_global_params["freq_ids"],
+        num_frames=diag_global_params["total_frames"],
     )
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
     test = runner.KotekanStageTester(
-        'baselineCompression', diag_stage_params,
+        "baselineCompression",
+        diag_stage_params,
         fakevis_buffer,
         dump_buffer,
-        diag_global_params
+        diag_global_params,
     )
 
     test.run()
@@ -85,18 +84,19 @@ def chime_data(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("chime")
 
     fakevis_buffer = runner.FakeVisBuffer(
-        freq_ids=chime_global_params['freq_ids'],
-        num_frames=chime_global_params['total_frames'],
-        wait=True
+        freq_ids=chime_global_params["freq_ids"],
+        num_frames=chime_global_params["total_frames"],
+        wait=True,
     )
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
     test = runner.KotekanStageTester(
-        'baselineCompression', chime_stage_params,
+        "baselineCompression",
+        chime_stage_params,
         fakevis_buffer,
         dump_buffer,
-        chime_global_params
+        chime_global_params,
     )
 
     test.run()
@@ -112,9 +112,11 @@ def test_metadata(diagonal_data):
     nprod = np.array([frame.metadata.num_prod for frame in diagonal_data])
 
     assert (freq_ids.reshape((-1, 2)) == np.array([[0, 250]])).all()
-    assert ((fpga_seqs.reshape((-1, 2)) / 800e6) ==
-            (np.arange(diag_global_params['total_frames']))[:, np.newaxis]).all()
-    assert (nprod == diag_global_params['num_elements']).all()
+    assert (
+        (fpga_seqs.reshape((-1, 2)) / 800e6)
+        == (np.arange(diag_global_params["total_frames"]))[:, np.newaxis]
+    ).all()
+    assert (nprod == diag_global_params["num_elements"]).all()
 
 
 def test_chime(chime_data):
@@ -128,7 +130,7 @@ def test_chime(chime_data):
         assert frame.vis.shape[0] == nvis_chime
 
         # Check that the entries in XX and XY are the same
-        assert float_allclose(frame.vis[:np1], frame.vis[np1:(2 * np1)])
+        assert float_allclose(frame.vis[:np1], frame.vis[np1 : (2 * np1)])
 
         v1 = frame.vis[:np1]
         w1 = frame.weight[:np1]

@@ -15,7 +15,9 @@
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <math.h>
-
+#ifdef WITH_NUMA
+#include <numa.h>
+#endif
 
 struct zero_frames_thread_args {
     struct Buffer * buf;
@@ -48,13 +50,20 @@ void private_reset_producers(struct Buffer * buf, const int ID);
 // Resets the list of consumers for the given ID
 void private_reset_consumers(struct Buffer * buf, const int ID);
 
+/**
+ * @brief Marks a frame as empty and if the buffer requires zeroing then it starts
+ *        the zeroing thread and delays marking it as empty until the zeroing is done.
+ * @param buf The buffer the frame to empty is in.
+ * @param id The id of the frame to mark as empty.
+ * @return 1 if the frame was marked as empty, 0 if it is being zeroed.
+ */
+int private_mark_frame_empty(struct Buffer* buf, const int id);
 
 struct Buffer* create_buffer(int num_frames, int len,
-                  struct metadataPool * pool, const char * buffer_name)
+                  struct metadataPool * pool, const char * buffer_name, int numa_node)
 {
 
     assert(num_frames > 0);
-    assert(pool != NULL);
 
     struct Buffer * buf = malloc(sizeof(struct Buffer));
     CHECK_MEM_F(buf);
@@ -141,7 +150,7 @@ struct Buffer* create_buffer(int num_frames, int len,
 
     // Create the frames.
     for (int i = 0; i < num_frames; ++i) {
-        buf->frames[i] = buffer_malloc(buf->aligned_frame_size);
+        buf->frames[i] = buffer_malloc(buf->aligned_frame_size, numa_node);
         if (buf->frames[i] == NULL)
             return NULL;
     }
@@ -152,7 +161,7 @@ struct Buffer* create_buffer(int num_frames, int len,
 void delete_buffer(struct Buffer* buf)
 {
     for (int i = 0; i < buf->num_frames; ++i) {
-        buffer_free(buf->frames[i]);
+        buffer_free(buf->frames[i], buf->aligned_frame_size);
         free(buf->producers_done[i]);
         free(buf->consumers_done[i]);
     }
@@ -162,6 +171,7 @@ void delete_buffer(struct Buffer* buf)
     free(buf->metadata);
     free(buf->producers_done);
     free(buf->consumers_done);
+    free(buf->buffer_name);
 
     // Free locks and cond vars
     CHECK_ERROR_F( pthread_mutex_destroy(&buf->lock) );
@@ -266,30 +276,7 @@ void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int 
         private_mark_consumer_done(buf, consumer_name, ID);
 
         if (private_consumers_done(buf, ID) == 1) {
-
-            if (buf->zero_frames == 1) {
-                pthread_t zero_t;
-                struct zero_frames_thread_args * zero_args = malloc(sizeof(struct zero_frames_thread_args));
-                zero_args->ID = ID;
-                zero_args->buf = buf;
-
-                cpu_set_t cpuset;
-                CPU_ZERO(&cpuset);
-                // TODO: Move this to the config file (when buffers.c updated to C++11)
-                CPU_SET(5, &cpuset);
-
-                CHECK_ERROR_F( pthread_create(&zero_t, NULL, &private_zero_frames, (void *)zero_args) );
-                CHECK_ERROR_F( pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &cpuset) );
-                CHECK_ERROR_F( pthread_detach(zero_t) );
-            } else {
-                buf->is_full[ID] = 0;
-                private_reset_consumers(buf, ID);
-                broadcast = 1;
-            }
-            if (buf->metadata[ID] != NULL) {
-                decrement_metadata_ref_count(buf->metadata[ID]);
-                buf->metadata[ID] = NULL;
-            }
+            broadcast = private_mark_frame_empty(buf, ID);
         }
 
     CHECK_ERROR_F( pthread_mutex_unlock(&buf->lock) );
@@ -298,6 +285,34 @@ void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int 
     if (broadcast == 1) {
         CHECK_ERROR_F( pthread_cond_broadcast(&buf->empty_cond) );
     }
+}
+
+int private_mark_frame_empty(struct Buffer* buf, const int id) {
+    int broadcast = 0;
+    if (buf->zero_frames == 1) {
+        pthread_t zero_t;
+        struct zero_frames_thread_args * zero_args = malloc(sizeof(struct zero_frames_thread_args));
+        zero_args->ID = id;
+        zero_args->buf = buf;
+
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        // TODO: Move this to the config file (when buffers.c updated to C++11)
+        CPU_SET(5, &cpuset);
+
+        CHECK_ERROR_F( pthread_create(&zero_t, NULL, &private_zero_frames, (void *)zero_args) );
+        CHECK_ERROR_F( pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &cpuset) );
+        CHECK_ERROR_F( pthread_detach(zero_t) );
+    } else {
+        buf->is_full[id] = 0;
+        private_reset_consumers(buf, id);
+        broadcast = 1;
+    }
+    if (buf->metadata[id] != NULL) {
+        decrement_metadata_ref_count(buf->metadata[id]);
+        buf->metadata[id] = NULL;
+    }
+    return broadcast;
 }
 
 uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, const int ID)
@@ -370,6 +385,41 @@ void register_consumer(struct Buffer * buf, const char *name) {
 
     CHECK_ERROR_F( pthread_mutex_unlock(&buf->lock) );
 }
+
+void unregister_consumer(struct Buffer * buf, const char *name) {
+
+    int broadcast = 0;
+
+    CHECK_ERROR_F( pthread_mutex_lock(&buf->lock) );
+
+    DEBUG_F("Unregistering consumer %s for buffer %s", name, buf->buffer_name);
+
+    int consumer_id = private_get_consumer_id(buf, name);
+    if (consumer_id == -1) {
+        ERROR_F("The consumer %s hasn't been registered, cannot unregister!", name);
+    }
+
+    buf->consumers[consumer_id].in_use = 0;
+    snprintf(buf->consumers[consumer_id].name, MAX_STAGE_NAME_LEN, "unregistered");
+
+    // Check if removing this consumer would cause any of the frames
+    // which are currently full to become empty.
+    for (int id = 0; id < buf->num_frames; ++id) {
+        if (private_consumers_done(buf, id) == 1) {
+            broadcast |= private_mark_frame_empty(buf, id);
+        }
+    }
+
+    CHECK_ERROR_F( pthread_mutex_unlock(&buf->lock) );
+
+    // Signal producers if we found something could be empty after
+    // removal of this consumer.
+    if (broadcast == 1) {
+        CHECK_ERROR_F( pthread_cond_broadcast(&buf->empty_cond) );
+    }
+}
+
+
 
 void register_producer(struct Buffer * buf, const char *name) {
     CHECK_ERROR_F( pthread_mutex_lock(&buf->lock) );
@@ -720,7 +770,8 @@ void copy_metadata(struct Buffer * from_buf, int from_ID, struct Buffer * to_buf
         goto unlock_exit;
     }
 
-    memcpy(to_metadata_container->metadata, from_metadata_container->metadata, from_metadata_container->metadata_size);
+    memcpy(to_metadata_container->metadata, from_metadata_container->metadata,
+           from_metadata_container->metadata_size);
 
     unlock_exit:
     CHECK_ERROR_F( pthread_mutex_unlock(&to_buf->lock) );
@@ -731,9 +782,14 @@ void allocate_new_metadata_object(struct Buffer * buf, int ID) {
     assert(ID >= 0);
     assert(ID < buf->num_frames);
 
-    CHECK_ERROR_F( pthread_mutex_lock(&buf->lock) );
+    CHECK_ERROR_F(pthread_mutex_lock(&buf->lock));
 
-    //DEBUG_F("Called allocate_new_metadata_object, buf %p, %d", buf, ID);
+    if (buf->metadata_pool == NULL) {
+        FATAL_ERROR_F("No metadata pool on %s but metadata was needed by a producer",
+            buf->buffer_name);
+    }
+
+    DEBUG2_F("Called allocate_new_metadata_object, buf %p, %d", buf, ID);
 
     if (buf->metadata[ID] == NULL) {
         buf->metadata[ID] = request_metadata_object(buf->metadata_pool);
@@ -792,26 +848,32 @@ void swap_frames(struct Buffer * from_buf, int from_frame_id,
 
 }
 
-uint8_t * buffer_malloc(ssize_t len) {
+uint8_t * buffer_malloc(ssize_t len, int numa_node) {
 
     uint8_t * frame = NULL;
+    int err;
 
 #ifdef WITH_HSA
+    (void)err;
     // Is this memory aligned?
-    frame = hsa_host_malloc(len);
+    frame = hsa_host_malloc(len, numa_node);
     if (frame == NULL) {
         return NULL;
     }
-
 #else
-    // Create a page alligned block of memory for the buffer
-    int err = 0;
-    err = posix_memalign((void **) &(frame), PAGESIZE_MEM, len);
-    CHECK_MEM_F(frame);
-    if ( err != 0 ) {
-        ERROR_F("Error creating alligned memory: %d", err);
-        return NULL;
-    }
+    #ifdef WITH_NUMA
+        frame = (uint8_t *) numa_alloc_onnode(len, numa_node);
+        CHECK_MEM_F(frame);
+    #else
+        (void)numa_node;
+        // Create a page aligned block of memory for the buffer
+        err = posix_memalign((void **) &(frame), PAGESIZE_MEM, len);
+        CHECK_MEM_F(frame);
+        if ( err != 0 ) {
+            ERROR_F("Error creating aligned memory: %d", err);
+            return NULL;
+        }
+    #endif
 
     // Ask that all pages be kept in memory
     err = mlock((void *)frame, len);
@@ -822,18 +884,23 @@ uint8_t * buffer_malloc(ssize_t len) {
         return NULL;
     }
 #endif
-
     // Zero the new frame
     memset(frame, 0x0, len);
 
     return frame;
 }
 
-void buffer_free(uint8_t * frame_pointer) {
+void buffer_free(uint8_t * frame_pointer, size_t size) {
 #ifdef WITH_HSA
+    (void)size;
     hsa_host_free(frame_pointer);
 #else
-    free(frame_pointer);
+    #ifdef WITH_NUMA
+        numa_free(frame_pointer, size);
+    #else
+        (void)size;
+        free(frame_pointer);
+    #endif
 #endif
 }
 

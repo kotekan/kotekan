@@ -73,15 +73,15 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_
     // Phase here
     phase_frame_len = _num_elements * _num_beams * 2 * sizeof(float);
     // Two alternating banks
-    host_phase_0 = (float*)hsa_host_malloc(phase_frame_len);
-    host_phase_1 = (float*)hsa_host_malloc(phase_frame_len);
+    host_phase_0 = (float*)hsa_host_malloc(phase_frame_len, device.get_gpu_numa_node());
+    host_phase_1 = (float*)hsa_host_malloc(phase_frame_len, device.get_gpu_numa_node());
     int index = 0;
     for (uint b = 0; b < _num_beams * _num_elements; b++) {
         host_phase_0[index++] = 0;
         host_phase_0[index++] = 0;
     }
 
-    bankID = (uint*)hsa_host_malloc(device.get_gpu_buffer_depth());
+    bankID = (uint*)hsa_host_malloc(device.get_gpu_buffer_depth(), device.get_gpu_numa_node());
     bank_use_0 = 0;
     bank_use_1 = 0;
     second_last = 0;

@@ -121,7 +121,7 @@ bool applyGains::receive_update(nlohmann::json& json) {
         if (!json.at("tag").is_string())
             throw std::invalid_argument(fmt::format(fmt("applyGains: received bad gains tag: {:s}"),
                                                     json.at("tag").dump()));
-        gtag = json.at("tag");
+        gtag = json.at("tag").get<std::string>();
     } catch (std::exception& e) {
         WARN("Failure reading 'tag' from update: {:s}", e.what());
         return false;
@@ -195,6 +195,7 @@ void applyGains::main_thread() {
 }
 
 void applyGains::apply_thread() {
+    using namespace std::complex_literals;
 
     int output_frame_id;
     int input_frame_id;

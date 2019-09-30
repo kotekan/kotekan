@@ -20,7 +20,8 @@ hsaCommand::hsaCommand(Config& config_, const string& unique_name_, bufferContai
     set_log_level(s_log_level);
     set_log_prefix(unique_name);
 
-    signals = (hsa_signal_t*)hsa_host_malloc(_gpu_buffer_depth * sizeof(hsa_signal_t));
+    signals = (hsa_signal_t*)hsa_host_malloc(_gpu_buffer_depth * sizeof(hsa_signal_t),
+                                             device.get_gpu_numa_node());
     assert(signals != nullptr);
     memset(signals, 0, _gpu_buffer_depth * sizeof(hsa_signal_t));
 
@@ -29,7 +30,8 @@ hsaCommand::hsaCommand(Config& config_, const string& unique_name_, bufferContai
     }
 
     // Not everyone needs this, maybe move out of constructor
-    kernel_args = (void**)hsa_host_malloc(_gpu_buffer_depth * sizeof(void*));
+    kernel_args =
+        (void**)hsa_host_malloc(_gpu_buffer_depth * sizeof(void*), device.get_gpu_numa_node());
     assert(kernel_args != nullptr);
 
     // Load the kernel if there is one.

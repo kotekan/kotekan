@@ -325,8 +325,13 @@ bool datasetManager::register_state_parser(std::string& reply) {
             {
                 std::lock_guard<std::mutex> slck(_lock_states);
                 js_post["state"] = _states.at(state)->to_json();
-                js_post["type"] =
-                    datasetState::_registered_names[typeid(*_states.at(state)).hash_code()];
+
+                // clang-format off
+                // Inlining s in the lines below causes clang to complain about
+                // potential side effects, unfortunately clang-format will try to undo it
+                auto s = _states.at(state).get();
+                // clang-format on
+                js_post["type"] = datasetState::_registered_names[typeid(*s).hash_code()];
             }
 
             std::lock_guard<std::mutex> lk(_lock_stop_request_threads);

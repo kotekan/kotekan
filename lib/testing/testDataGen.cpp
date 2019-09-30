@@ -27,7 +27,7 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&testDataGen::main_thread, this)) {
 
-    buf = get_buffer("network_out_buf");
+    buf = get_buffer("out_buf");
     register_producer(buf, unique_name.c_str());
     type = config.get<std::string>(unique_name, "type");
     assert(type == "const" || type == "random" || type == "ramp" || type == "tpluse");

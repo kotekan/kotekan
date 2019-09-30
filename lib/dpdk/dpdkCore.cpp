@@ -3,6 +3,9 @@
 #include "fmt.hpp"
 #include "json.hpp"
 
+#ifdef WITH_NUMA
+#include <numa.h>
+#endif
 #include <signal.h>
 #include <stdexcept>
 #include <unistd.h>
@@ -36,6 +39,9 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     burst_size = config.get_default<uint32_t>(unique_name, "burst_size", 32);
     rx_ring_size = config.get_default<uint32_t>(unique_name, "rx_ring_size", 512);
     tx_ring_size = config.get_default<uint32_t>(unique_name, "tx_ring_size", 512);
+
+    num_mem_channels = config.get_default<uint32_t>(unique_name, "num_mem_channels", 4);
+    init_mem_alloc = config.get_default<uint32_t>(unique_name, "init_mem_alloc", 256);
 
     // Setup the lcore mappings
     // Basically this is mapping the DPDK EAL framework way of assigning threads
@@ -100,23 +106,42 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
             num_lcores, rte_lcore_count()));
     }
 
-    mbuf_pool = rte_mempool_create("MBUF_POOL", num_mbufs * num_ports, mbuf_size, mbuf_cache_size,
-                                   sizeof(struct rte_pktmbuf_pool_private), rte_pktmbuf_pool_init,
-                                   NULL, rte_pktmbuf_init, NULL, rte_socket_id(), 0);
-
-    if (mbuf_pool == NULL) {
-        throw std::runtime_error("Cannot create DPDK mbuf pool.");
+    // Get the number of ports on each numa node and create an mbuf pool for that node.
+    for (int node_id = 0; node_id < numa_num_configured_nodes(); ++node_id) {
+        int num_ports_on_node = 0;
+        for (size_t j = 0; j < lcore_cpu_map.size(); ++j) {
+            auto lcore_id = lcore_cpu_map.at(j);
+            if (numa_node_of_cpu(lcore_id) == -1) {
+                throw std::runtime_error(
+                    "lcore_id '" + to_string(lcore_id)
+                    + "' failed to map to numa node, is this a valid CPU core id?");
+            }
+            if (numa_node_of_cpu(lcore_id) == node_id) {
+                num_ports_on_node += lcore_port_list[j].num_ports;
+            }
+        }
+        DEBUG("Number of ports on numa node {:d}: {:d}", node_id, num_ports_on_node);
+        struct rte_mempool* pool = rte_mempool_create(
+            ("MBUF_POOL_" + to_string(node_id)).c_str(), num_mbufs * num_ports_on_node, mbuf_size,
+            mbuf_cache_size, sizeof(struct rte_pktmbuf_pool_private), rte_pktmbuf_pool_init, NULL,
+            rte_pktmbuf_init, NULL, node_id, 0);
+        if (pool == NULL) {
+            throw std::runtime_error("Cannot create DPDK mbuf pool.");
+        }
+        mbuf_pools.push_back(pool);
     }
 
     // Init ports referenced in the lcore port mapping
+    int i = 0; // Index into lcore_cpu_map
     for (vector<int> ports : lcore_port_map) {
         for (uint32_t port : ports) {
             // TODO This will fail in a strange way if a port is listed more than once in the
             // config. We should have a check that each port assignment is unique.
-            if (port_init(port) != 0) {
+            if (port_init(port, lcore_cpu_map.at(i)) != 0) {
                 throw std::runtime_error(fmt::format(fmt("DPDK Cannot init port: {:d}"), port));
             }
         }
+        i++;
     }
 }
 
@@ -172,14 +197,23 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
 
     DEBUG("Using DPDK lcore map: {:s}", dpdk_lcore_map);
 
-    char arg0[] = "./kotekan";
+    // App name, this can be anything.
+    char arg0[] = "kotekan";
+    // Number of memory channels
     char arg1[] = "-n";
-    char arg2[] = "4";
+    char* arg2 = (char*)malloc(std::to_string(num_mem_channels).length() + 1);
+    strncpy(arg2, std::to_string(num_mem_channels).c_str(),
+            std::to_string(num_mem_channels).length() + 1);
+    // Lcore map
     char arg3[] = "--lcores";
     char* arg4 = (char*)malloc(dpdk_lcore_map.length() + 1);
     strncpy(arg4, dpdk_lcore_map.c_str(), dpdk_lcore_map.length() + 1);
+    // Initial memory allocation
     char arg5[] = "-m";
-    char arg6[] = "256";
+    char* arg6 = (char*)malloc(std::to_string(init_mem_alloc).length() + 1);
+    strncpy(arg6, std::to_string(init_mem_alloc).c_str(),
+            std::to_string(init_mem_alloc).length() + 1);
+    // Generate final options string for EAL initialization
     char* argv2[] = {&arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], NULL};
     int argc2 = (int)(sizeof(argv2) / sizeof(argv2[0])) - 1;
 
@@ -223,7 +257,9 @@ dpdkCore::~dpdkCore() {
     // TODO Make sure DPDK is stopped
     // Requires an experimental feature not yet the version of DPDK used by kotekan
 
-    rte_mempool_free(mbuf_pool);
+    for (auto& pool : mbuf_pools) {
+        rte_mempool_free(pool);
+    }
 
     // Free the handlers
     for (uint32_t i = 0; i < num_system_ports; ++i) {
@@ -233,7 +269,7 @@ dpdkCore::~dpdkCore() {
     free(handlers);
 }
 
-int32_t dpdkCore::port_init(uint8_t port) {
+int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
     const uint16_t rx_rings = 1, tx_rings = 1;
     int retval;
     uint16_t q;
@@ -251,7 +287,7 @@ int32_t dpdkCore::port_init(uint8_t port) {
     // Allocate and set up 1 RX queue per Ethernet port.
     for (q = 0; q < rx_rings; q++) {
         retval = rte_eth_rx_queue_setup(port, q, rx_ring_size, rte_eth_dev_socket_id(port), NULL,
-                                        mbuf_pool);
+                                        mbuf_pools.at(numa_node_of_cpu(lcore_id)));
         if (retval < 0) {
             ERROR("Failed to setupt RX queue for port {:d}, error: {:d}", port, retval);
             return retval;
@@ -279,9 +315,10 @@ int32_t dpdkCore::port_init(uint8_t port) {
     // TODO record the MAC address for export to JSON
     struct ether_addr addr;
     rte_eth_macaddr_get(port, &addr);
-    INFO("Port {:d} MAC: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}", (unsigned)port,
-         addr.addr_bytes[0], addr.addr_bytes[1], addr.addr_bytes[2], addr.addr_bytes[3],
-         addr.addr_bytes[4], addr.addr_bytes[5]);
+    INFO("Port {:d} MAC: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} "
+         "memory assigned to numa_node {:d}",
+         (unsigned)port, addr.addr_bytes[0], addr.addr_bytes[1], addr.addr_bytes[2],
+         addr.addr_bytes[3], addr.addr_bytes[4], addr.addr_bytes[5], numa_node_of_cpu(lcore_id));
 
     // Enable promiscuous mode.
     rte_eth_promiscuous_enable(port);
@@ -310,9 +347,7 @@ int dpdkCore::lcore_rx(void* args) {
     for (uint32_t i = 0; i < num_local_ports; ++i) {
         uint32_t port = ports[i];
         if (core->handlers[port] == nullptr) {
-            // This is the one place (static member function) where normal logging does work.
-            fprintf(stderr, "No valid handler provided for port %d", port);
-            raise(SIGINT);
+            WARN_NON_OO("No valid handler provided for port {:d}", port);
             return 0;
         }
     }

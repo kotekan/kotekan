@@ -2,7 +2,7 @@ pipeline {
   agent any
   options {
     timeout(time: 1, unit: 'HOURS')
-    disableConcurrentBuilds()
+    parallelsAlwaysFailFast()
   }
   stages {
     stage('Build') {
@@ -71,18 +71,27 @@ pipeline {
                   cd build-check-format/
                   cmake ..
                   make clang-format
-                  git diff --exit-code'''
+                  git diff --exit-code
+                  black --check --exclude docs ..'''
           }
         }
       }
     }
     stage('Unit Tests') {
-      steps {
-        sh '''cd tests/
-              PYTHONPATH=../python/ pytest -x -s -vvv
-              cd ../build/tests/
-              PYTHONPATH=../python/ pytest -x -s -vvv'''
-      }
-    }
+        parallel {
+            stage('Python Unit Tests') {
+              steps {
+                sh '''cd tests/
+                      PYTHONPATH=../python/ python3 -m pytest -n 4 -x -vvv'''
+              }
+            }
+            stage('Boost Unit Tests') {
+              steps {
+                sh '''cd build/tests/
+                      python3 -m pytest -x -vvv'''
+              }
+            }
+         }
+     }
   }
 }

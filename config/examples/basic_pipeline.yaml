@@ -1,0 +1,24 @@
+---
+type: config
+log_level: DEBUG
+cpu_affinity: [0,1,2,3]
+
+main_pool:
+  kotekan_metadata_pool: chimeMetadata
+  num_metadata_objects: 30
+
+data_gen:
+  kotekan_stage: testDataGen
+  out_buf: example_buffer
+  type: const
+  value: 0x42
+
+example_buffer:
+  kotekan_buffer: standard
+  num_frames: 10
+  frame_size: 128
+  metadata_pool: main_pool
+
+screen_dump:
+  kotekan_stage: hexDump
+  in_buf: example_buffer

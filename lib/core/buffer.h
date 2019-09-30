@@ -210,10 +210,11 @@ struct Buffer {
  * @param[in] frame_size The length of each frame in bytes.
  * @param[in] pool The metadataPool, which may be shared between more than one buffer.
  * @param[in] buffer_name The unique name of this buffer.
+ * @param[in] numa_node The CPU NUMA memory region to allocate memory in.
  * @returns A buffer object.
  */
 struct Buffer * create_buffer(int num_frames, int frame_size,
-                  struct metadataPool * pool, const char * buffer_name);
+                  struct metadataPool * pool, const char * buffer_name, int numa_node);
 
 /**
  * @brief Deletes a buffer object and frees all frame memory
@@ -239,6 +240,19 @@ void zero_frames(struct Buffer * buf);
  * @param[in] name The name of the consumer.
  */
 void register_consumer(struct Buffer * buf, const char *name);
+
+/**
+ * @brief Removes the consumer with the given name
+ *
+ * In some cases it may make sense to stop being a consumer of a given
+ * buffer while the pipeline is running.  However this is likely an edge
+ * case for most pipelines.  In general it is not expected for stages
+ * to unregister when they close.
+ *
+ * @param buf The buffer to unregister from
+ * @param name The name of the consumer to unregister
+ */
+void unregister_consumer(struct Buffer * buf, const char *name);
 
 /**
  * @brief Register a producer with a given name.
@@ -442,16 +456,18 @@ void swap_frames(struct Buffer * from_buf, int from_frame_id,
  * @brief Allocates a frame with the required malloc method
  *
  * @param len The size of the frame to allocate in bytes.
+ * @param numa_node The CPU NUMA region to allocate the memory in.
  * @return A pointer to the new memory, or @c NULL if allocation failed.
  */
-uint8_t * buffer_malloc(ssize_t len);
+uint8_t * buffer_malloc(ssize_t len, int numa_node);
 
 /**
  * @brief Deallocate a frame of memory with the required free method.
  *
  * @param frame_pointer The pointer to the memory to free.
+ * @param size The size of the memory space to free (needed for NUMA)
  */
-void buffer_free(uint8_t * frame_pointer);
+void buffer_free(uint8_t * frame_pointer, size_t size);
 
 /**
  * @brief Gets the raw metadata block for the given frame

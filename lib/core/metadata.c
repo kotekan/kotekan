@@ -33,6 +33,7 @@ void delete_metadata(struct metadataContainer * container) {
     //assert(container->ref_count == 0);
     free(container->metadata);
     CHECK_ERROR_F( pthread_mutex_destroy(&container->metadata_lock) );
+    free(container);
 }
 
 void reset_metadata_object(struct metadataContainer * container) {

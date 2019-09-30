@@ -30,7 +30,7 @@ hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const string& unique_na
 
 
     // Allocate and copy the block map
-    host_block_map = (uint32_t*)hsa_host_malloc(block_map_len);
+    host_block_map = (uint32_t*)hsa_host_malloc(block_map_len, device.get_gpu_numa_node());
     int block_id = 0;
     for (int y = 0; block_id < _num_blocks; y++) {
         for (int x = y; x < _num_elements / block_size; x++) {
@@ -45,7 +45,8 @@ hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const string& unique_na
     device.sync_copy_host_to_gpu(device_block_map, host_block_map, block_map_len);
 
     // Create the extra kernel args object.
-    host_kernel_args = (corr_kernel_config_t*)hsa_host_malloc(sizeof(corr_kernel_config_t));
+    host_kernel_args = (corr_kernel_config_t*)hsa_host_malloc(sizeof(corr_kernel_config_t),
+                                                              device.get_gpu_numa_node());
     host_kernel_args->n_elem = _num_elements;
     host_kernel_args->n_intg = _n_intg;
     host_kernel_args->n_iter = _sub_frame_samples;
