@@ -21,11 +21,15 @@ using std::vector;
  * @brief read in new gain files for FRB/PSR when available
  *
  * @par Buffers
- * @buffer gain_buf Array of gains size 2048*
+ * @buffer gain_frb_buf Array of gains size 2048*2
+ *     @buffer_format Array of @c floats
+ *     @buffer_metadata none
+ * @buffer gain_psr_buf Array of gains size 2048*2*nbeam
  *     @buffer_format Array of @c floats
  *     @buffer_metadata none
  *
  * @conf   num_elements         Int (default 2048). Number of elements
+ * @conf   num_pulsar           Int (default 10). Number of pulsar beams to be formed
  * @conf   scaling              Float (default 1.0). Scaling factor on gains
  * @conf   default_gains        Float array (default 1+1j). Default gain value if gain file is
  * missing
@@ -44,7 +48,11 @@ public:
 
     void main_thread() override;
 
-    bool update_gains_callback(nlohmann::json& json);
+    /// Endpoint for providing new directory path for FRB gain updates
+    bool update_gains_frb_callback(nlohmann::json& json);
+
+    /// Endpoint for providing new directory path for PSR gain updates
+    bool update_gains_psr_callback(nlohmann::json& json);
 
 
 private:
@@ -52,11 +60,14 @@ private:
     /// Lock when change status of update_gains
     std::mutex mux;
 
-    struct Buffer* gain_buf;
-    int32_t gain_buf_id;
+    struct Buffer* gain_frb_buf;
+    int32_t gain_frb_buf_id;
+    struct Buffer* gain_psr_buf;
+    int32_t gain_psr_buf_id;
 
     /// Directory path where gain files are
-    string _gain_dir;
+    string _gain_dir_frb;
+    vector<string> _gain_dir_psr;
     /// Default gain values if gain file is missing for this freq, currently set to 1+1j
     vector<float> default_gains;
 
@@ -76,12 +87,15 @@ private:
     float scaling;
 
     /// Flag to control gains to be only loaded on request.
-    bool update_gains;
+    bool update_gains_frb;
+    bool update_gains_psr;
     /// Flag to avoid re-calculating freq-specific params except at first pass
     bool first_pass;
 
     /// Number of elements, should be 2048
     uint32_t _num_elements;
+    /// Number of pulsar beams, should be 10
+    int16_t _num_beams;
 };
 
 
