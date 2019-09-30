@@ -1,4 +1,5 @@
 #include "visAccumulate.hpp"
+
 #include "StageFactory.hpp"
 #include "chimeMetadata.h"
 #include "configUpdater.hpp"
@@ -48,9 +49,7 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
                              bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&visAccumulate::main_thread, this)),
     skipped_frame_counter(Metrics::instance().add_counter(
-        "kotekan_visaccumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})
-    )
-{
+        "kotekan_visaccumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})) {
 
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");
@@ -335,7 +334,8 @@ void visAccumulate::main_thread() {
         if (init) {
 
             // Get the amount of data in the frame
-            // TODO: for the multifrequency support this probably needs to become frequency dependent
+            // TODO: for the multifrequency support this probably needs to become frequency
+            // dependent
             int32_t lost_in_frame = get_lost_timesamples(in_buf, in_frame_id);
             int32_t rfi_in_frame = get_rfi_flagged_samples(in_buf, in_frame_id);
 
@@ -409,14 +409,14 @@ void visAccumulate::main_thread() {
 }
 
 
-bool visAccumulate::initialise_output(visAccumulate::internalState& state, int in_frame_id)
-{
+bool visAccumulate::initialise_output(visAccumulate::internalState& state, int in_frame_id) {
     // TODO: CHIME
     auto metadata = (const chimeMetadata*)in_buf->metadata[in_frame_id]->metadata;
 
     for (size_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
 
-        if (wait_for_empty_frame(state.buf, unique_name.c_str(), state.frame_id + freq_ind) == nullptr) {
+        if (wait_for_empty_frame(state.buf, unique_name.c_str(), state.frame_id + freq_ind)
+            == nullptr) {
             return true;
         }
 
@@ -451,7 +451,6 @@ bool visAccumulate::initialise_output(visAccumulate::internalState& state, int i
     }
 
     return false;
-
 }
 
 
@@ -477,8 +476,8 @@ void visAccumulate::combine_gated(visAccumulate::internalState& gate,
 }
 
 
-void visAccumulate::finalise_output(visAccumulate::internalState& state, timespec newest_frame_time)
-{
+void visAccumulate::finalise_output(visAccumulate::internalState& state,
+                                    timespec newest_frame_time) {
 
     // Determine the weighting factors (if weight is zero we should just
     // multiply the visibilities by zero so as not to generate Infs)
@@ -519,11 +518,11 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state, timespe
 
         // Copy the visibilities into place
         map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
-                        [&](int32_t pi, int32_t bi, bool conj) {
-                            cfloat t = {(float)state.vis1[2 * bi + 1], (float)state.vis1[2 * bi]};
-                            t = !conj ? t : std::conj(t);
-                            output_frame.vis[pi] = iw * t;
-                        });
+                         [&](int32_t pi, int32_t bi, bool conj) {
+                             cfloat t = {(float)state.vis1[2 * bi + 1], (float)state.vis1[2 * bi]};
+                             t = !conj ? t : std::conj(t);
+                             output_frame.vis[pi] = iw * t;
+                         });
 
         // Unpack and invert the weights
         map_vis_triangle(input_remap, block_size, num_elements, freq_ind,

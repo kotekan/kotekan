@@ -35,7 +35,6 @@
  **/
 class FakeGpuPattern {
 public:
-
     /**
      * @brief Create a class that makes a fakeGpu test mode.
      *
@@ -85,7 +84,6 @@ CREATE_FACTORY(FakeGpuPattern, kotekan::Config&, const std::string&);
  **/
 class BlockGpuPattern : public FakeGpuPattern {
 public:
-
     /// @sa fakeGpuPattern::fakeGpuPattern
     BlockGpuPattern(kotekan::Config& config, const std::string& path);
 
@@ -223,12 +221,11 @@ private:
  **/
 class MultiFreqGpuPattern : public FakeGpuPattern {
 public:
-
     /// @sa fakeGpuPattern::fakeGpuPattern
     MultiFreqGpuPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa fakeGpuPattern::fill
-    void fill(gsl::span<int32_t>& data, chimeMetadata* metadata,
-              const int frame_num, const int freq_id) override;
+    void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
+              const int freq_id) override;
 };
-#endif  // FAKE_GPU_PATTERN
+#endif // FAKE_GPU_PATTERN

@@ -13,9 +13,9 @@
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
 #include "gateSpec.hpp"
+#include "prometheusMetrics.hpp"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
-#include "prometheusMetrics.hpp"
 
 #include <cstdint>
 #include <deque>
@@ -61,9 +61,9 @@ using namespace kotekan::prometheus;
  * @conf  num_freq_in_frame     Int. Number of frequencies in each GPU frame.
  * @conf  block_size            Int. The block size of the packed data.
  * @conf  input_reorder         Array of [int, int, string]. The reordering mapping.
- *                              Only the first element of each sub-array is used and it is the the index of
- *                              the input to move into this new location. The remaining elements of the
- *                              subarray are for correctly labelling the input in ``visWriter``.
+ *                              Only the first element of each sub-array is used and it is the the
+ * index of the input to move into this new location. The remaining elements of the subarray are for
+ * correctly labelling the input in ``visWriter``.
  * @conf  low_sample_fraction   If a frames has less than this fraction of the
  *                              data expected, skip it. This is set to 1% by default.
  * @conf  instrument_name       String. Name of the instrument. Default "chime".

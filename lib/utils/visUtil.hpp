@@ -646,30 +646,26 @@ public:
         return t;
     }
 
-    template<typename V,
-             typename std::enable_if_t<std::is_integral<V>::value>* = nullptr>
+    template<typename V, typename std::enable_if_t<std::is_integral<V>::value>* = nullptr>
     modulo<T>& operator+=(const V& rhs) {
         _i += rhs;
         return *this;
     }
 
-    template<typename V,
-             typename std::enable_if_t<std::is_integral<V>::value>* = nullptr>
+    template<typename V, typename std::enable_if_t<std::is_integral<V>::value>* = nullptr>
     modulo<T>& operator-=(const V& rhs) {
         _i -= rhs;
         return *this;
     }
 
     // Add and subtract are *asymmetric*. Must be always be modulo<T> +/- T
-    template<typename V,
-             typename std::enable_if_t<std::is_integral<V>::value>* = nullptr>
+    template<typename V, typename std::enable_if_t<std::is_integral<V>::value>* = nullptr>
     friend modulo<T> operator+(modulo<T> lhs, const V& rhs) {
         modulo<T> t(lhs);
         t += rhs;
         return t;
     }
-    template<typename V,
-             typename std::enable_if_t<std::is_integral<V>::value>* = nullptr>
+    template<typename V, typename std::enable_if_t<std::is_integral<V>::value>* = nullptr>
     friend modulo<T> operator-(modulo<T> lhs, const V& rhs) {
         modulo<T> t(lhs);
         t -= rhs;

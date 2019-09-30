@@ -148,6 +148,7 @@ def lostweights_data(tmpdir_factory, request):
 
     yield (request.param, dump_buffer.load())
 
+
 @pytest.fixture(scope="module")
 def time_data(tmpdir_factory):
 
@@ -289,7 +290,7 @@ def test_lostweights(lostweights_data):
 
     b, data = lostweights_data
 
-    weight = (2 * ns - b)**2 * nf / 16.0
+    weight = (2 * ns - b) ** 2 * nf / 16.0
 
     for frame in data:
 
