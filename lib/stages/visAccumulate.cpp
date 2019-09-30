@@ -1,5 +1,4 @@
 #include "visAccumulate.hpp"
-
 #include "StageFactory.hpp"
 #include "chimeMetadata.h"
 #include "configUpdater.hpp"
@@ -47,7 +46,11 @@ REGISTER_KOTEKAN_STAGE(visAccumulate);
 
 visAccumulate::visAccumulate(Config& config, const string& unique_name,
                              bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&visAccumulate::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&visAccumulate::main_thread, this)),
+    skipped_frame_counter(Metrics::instance().add_counter(
+        "kotekan_visaccumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})
+    )
+{
 
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");
@@ -55,6 +58,7 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     block_size = config.get<size_t>(unique_name, "block_size");
     samples_per_data_set = config.get<size_t>(unique_name, "samples_per_data_set");
     low_sample_fraction = config.get_default<float>(unique_name, "low_sample_fraction", 0.01);
+    timeout = config.get_default<float>(unique_name, "timeout", 60.0);
 
     // Get the indices for reordering
     auto input_reorder = parse_reorder_default(config, unique_name);
@@ -258,10 +262,6 @@ void visAccumulate::main_thread() {
 
     uint32_t last_frame_count = 0;
     uint32_t frames_in_this_cycle = 0;
-    uint32_t total_samples = 0;
-
-    // We will skip data that has fewer than this number of samples in it.
-    uint32_t low_sample_cut = low_sample_fraction * num_gpu_frames * samples_per_data_set;
 
     // Temporary arrays for storing intermediates
     std::vector<int32_t> vis_even(2 * num_prod_gpu);
@@ -269,8 +269,6 @@ void visAccumulate::main_thread() {
     // Have we initialised a frame for writing yet
     bool init = false;
 
-    auto& skipped_frame_counter = Metrics::instance().add_counter(
-        "kotekan_visaccumulate_skipped_frame_total", unique_name, {"freq_id"});
     while (!stop_thread) {
 
         // Fetch a new frame and get its sequence id
@@ -279,7 +277,8 @@ void visAccumulate::main_thread() {
             break;
 
         int32_t* input = (int32_t*)in_frame;
-        uint32_t frame_count = get_fpga_seq_num(in_buf, in_frame_id) / samples_per_data_set;
+        uint32_t frame_fpga = get_fpga_seq_num(in_buf, in_frame_id);
+        uint32_t frame_count = frame_fpga / samples_per_data_set;
 
         // Start and end times of this frame
         // TODO: CHIME specific
@@ -290,9 +289,8 @@ void visAccumulate::main_thread() {
         // been filled in previous iterations. In here we need to reorder the
         // accumulates and do any final manipulations.
         bool wrapped = (last_frame_count / num_gpu_frames) < (frame_count / num_gpu_frames);
-        if (init && wrapped) {
 
-            DEBUG("Total samples accumulate {:d}", total_samples);
+        if (init && wrapped) {
 
             // Iterate over *only* the gated datasets (remember that element
             // zero is the vis), and remove the bias and copy in the variance
@@ -300,30 +298,13 @@ void visAccumulate::main_thread() {
                 combine_gated(enabled_gated_datasets.at(i), enabled_gated_datasets.at(0));
             }
 
+            // Finalise the output and release the frames
             for (internalState& dset : enabled_gated_datasets) {
-                // Loop over the frequencies in the frame and unpack the accumulates
-                // into the output frame...
-                for (uint32_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
-
-                    // Skip the frame if we too much had been flagged out.
-                    if (total_samples < low_sample_cut) {
-
-                        if (freq_ind == 0) {
-                            auto frame = visFrameView(dset.buf, dset.frame_id);
-                            skipped_frame_counter.labels({std::to_string(frame.freq_id)}).inc();
-                        }
-                        continue;
-                    }
-
-                    finalise_output(dset, freq_ind, total_samples);
-
-                    mark_frame_full(dset.buf, unique_name.c_str(), dset.frame_id++);
-                }
+                finalise_output(dset, t_s);
             }
 
             init = false;
             frames_in_this_cycle = 0;
-            total_samples = 0;
         }
 
         // We've started accumulating a new frame. Initialise the output and
@@ -340,18 +321,10 @@ void visAccumulate::main_thread() {
 
             // For each dataset and frequency, claim an empty frame and initialise it...
             for (internalState& dset : enabled_gated_datasets) {
-
-                // Copy the frame ID so we don't change the actual state
-                frameID frame_id = dset.frame_id;
-
-                for (uint32_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
-
-                    if (wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id) == nullptr) {
-                        break;
-                    }
-                    frame_id++;
-
-                    initialise_output(dset, in_frame_id, freq_ind);
+                // Initialise the output, if true is returned we need to exit
+                // the process as kotekan is shutting down
+                if (initialise_output(dset, in_frame_id)) {
+                    return;
                 }
             }
 
@@ -361,19 +334,26 @@ void visAccumulate::main_thread() {
         // If we've got to here and we've not initialised we need to skip this frame.
         if (init) {
 
-            // Now the main accumulation work starts...
+            // Get the amount of data in the frame
+            // TODO: for the multifrequency support this probably needs to become frequency dependent
+            int32_t lost_in_frame = get_lost_timesamples(in_buf, in_frame_id);
+            int32_t rfi_in_frame = get_rfi_flagged_samples(in_buf, in_frame_id);
 
-            internalState& state = enabled_gated_datasets[0];
-            auto frame = visFrameView(state.buf, state.frame_id);
-            float freq_in_MHz = 800.0 - 400.0 * frame.freq_id / 1024.0;
+            // Assert that we haven't got an issue calculating the lost data
+            // This did happen when the RFI system was messing up.
+            assert(lost_in_frame >= 0);
+            assert(rfi_in_frame >= 0);
+            assert(samples_per_data_set >= (size_t)lost_in_frame);
+            assert(samples_per_data_set >= (size_t)rfi_in_frame);
 
-            long samples_in_frame =
-                samples_per_data_set - get_lost_timesamples(in_buf, in_frame_id);
+            int32_t samples_in_frame = samples_per_data_set - lost_in_frame;
 
             // Accumulate the weighted data into each dataset. At the moment this
             // doesn't really work if there are multiple frequencies in the same buffer..
             for (internalState& dset : enabled_gated_datasets) {
 
+                // TODO: CHIME specific frequency decoding
+                float freq_in_MHz = 800.0 - 400.0 * dset.frames[0].freq_id / 1024.0;
                 float w = dset.calculate_weight(t_s, t_e, freq_in_MHz);
 
                 // Don't bother to accumulate if weight is zero
@@ -388,8 +368,16 @@ void visAccumulate::main_thread() {
                     dset.vis1[i] += input[i];
                 }
 
-                // Accumulate the weights
                 dset.sample_weight_total += samples_in_frame;
+
+                for (auto& frame : dset.frames) {
+                    // Accumulate the samples/RFI
+                    frame.fpga_seq_total += (uint32_t)samples_in_frame;
+                    frame.rfi_total += (uint32_t)rfi_in_frame;
+
+                    DEBUG("Lost samples {:d}, RFI flagged samples {:d}, total_samples: {:d}",
+                          lost_in_frame, rfi_in_frame, frame.fpga_seq_total);
+                }
             }
 
             // We are calculating the weights by differencing even and odd samples.
@@ -411,16 +399,6 @@ void visAccumulate::main_thread() {
                     d0.vis2[i] += (dr * dr + di * di);
                 }
             }
-
-            // Accumulate the total number of samples, accounting for lost ones
-            assert((int64_t)samples_per_data_set
-                       - (int64_t)get_lost_timesamples(in_buf, in_frame_id)
-                   >= 0);
-            total_samples += samples_per_data_set - get_lost_timesamples(in_buf, in_frame_id);
-
-            DEBUG("Lost samples {:d}, RFI flagged samples {:d}, total_samples: {:d}",
-                  get_lost_timesamples(in_buf, in_frame_id),
-                  get_rfi_flagged_samples(in_buf, in_frame_id), total_samples);
         }
 
         // Move the input buffer on one step
@@ -431,33 +409,49 @@ void visAccumulate::main_thread() {
 }
 
 
-void visAccumulate::initialise_output(visAccumulate::internalState& state, int in_frame_id,
-                                      int freq_ind) {
-
-    allocate_new_metadata_object(state.buf, state.frame_id + freq_ind);
-    auto frame = visFrameView(state.buf, state.frame_id + freq_ind, num_elements, 0);
-
-    // Copy over the metadata
+bool visAccumulate::initialise_output(visAccumulate::internalState& state, int in_frame_id)
+{
     // TODO: CHIME
-    frame.fill_chime_metadata((const chimeMetadata*)in_buf->metadata[in_frame_id]->metadata);
+    auto metadata = (const chimeMetadata*)in_buf->metadata[in_frame_id]->metadata;
 
-    // TODO: set frequency id in some sensible generic manner
-    frame.freq_id += freq_ind;
+    for (size_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
 
-    // Set dataset ID produced by the dM
-    // TODO: this should be different for different gated streams
-    frame.dataset_id = state.output_dataset_id;
+        if (wait_for_empty_frame(state.buf, unique_name.c_str(), state.frame_id + freq_ind) == nullptr) {
+            return true;
+        }
 
-    // Set the length of time this frame will cover
-    frame.fpga_seq_length = samples_per_data_set * num_gpu_frames;
+        allocate_new_metadata_object(state.buf, state.frame_id + freq_ind);
+        state.frames.emplace_back(state.buf, state.frame_id + freq_ind, num_elements, 0);
+        auto& frame = state.frames[freq_ind];
 
-    // Fill other datasets with reasonable values
-    std::fill(frame.flags.begin(), frame.flags.end(), 1.0);
-    std::fill(frame.evec.begin(), frame.evec.end(), 0.0);
-    std::fill(frame.eval.begin(), frame.eval.end(), 0.0);
-    frame.erms = 0;
-    std::fill(frame.gain.begin(), frame.gain.end(), 1.0);
-    frame.rfi_total = 0;
+        // Copy over the metadata
+        // TODO: CHIME
+        frame.fill_chime_metadata(metadata);
+
+        // TODO: set frequency id in some sensible generic manner
+        frame.freq_id += freq_ind;
+
+        // Set dataset ID produced by the dM
+        // TODO: this should be different for different gated streams
+        frame.dataset_id = state.output_dataset_id;
+
+        // Set the length of time this frame will cover
+        frame.fpga_seq_length = samples_per_data_set * num_gpu_frames;
+
+        // Reset the total accumulated and RFI flagged samples
+        frame.fpga_seq_total = 0;
+        frame.rfi_total = 0;
+
+        // Fill other datasets with reasonable values
+        std::fill(frame.flags.begin(), frame.flags.end(), 1.0);
+        std::fill(frame.evec.begin(), frame.evec.end(), 0.0);
+        std::fill(frame.eval.begin(), frame.eval.end(), 0.0);
+        frame.erms = 0;
+        std::fill(frame.gain.begin(), frame.gain.end(), 1.0);
+    }
+
+    return false;
+
 }
 
 
@@ -483,33 +477,64 @@ void visAccumulate::combine_gated(visAccumulate::internalState& gate,
 }
 
 
-void visAccumulate::finalise_output(visAccumulate::internalState& state, int freq_ind,
-                                    uint32_t total_samples) {
+void visAccumulate::finalise_output(visAccumulate::internalState& state, timespec newest_frame_time)
+{
+
     // Determine the weighting factors (if weight is zero we should just
     // multiply the visibilities by zero so as not to generate Infs)
     float w = state.sample_weight_total;
     float iw = (w != 0.0) ? (1.0 / w) : 0.0;
 
-    auto output_frame = visFrameView(state.buf, state.frame_id + freq_ind);
+    uint32_t low_sample_cut = low_sample_fraction * num_gpu_frames * samples_per_data_set;
 
-    // Copy the visibilities into place
-    map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
-                     [&](int32_t pi, int32_t bi, bool conj) {
-                         cfloat t = {(float)state.vis1[2 * bi + 1], (float)state.vis1[2 * bi]};
-                         t = !conj ? t : std::conj(t);
-                         output_frame.vis[pi] = iw * t;
-                     });
+    bool blocked = false;
 
-    // Unpack and invert the weights
-    map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
-                     [&](int32_t pi, int32_t bi, bool conj) {
-                         (void)conj;
-                         float t = state.vis2[bi];
-                         output_frame.weight[pi] = w * w / t;
-                     });
+    // Loop over the frequencies in the frame and unpack the accumulates
+    // into the output frame...
+    for (size_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
+        auto output_frame = state.frames[freq_ind];
 
-    // Set the actual amount of time we accumulated for
-    output_frame.fpga_seq_total = total_samples;
+
+        // Check if we need to skip the frame.
+        //
+        // TODO: if we have multifrequencies, if any need to be skipped all of
+        // the following ones must be too. I think this requires the buffer
+        // mechanism being rewritten to fix this one.
+        if (ts_to_double(std::get<1>(output_frame.time) - newest_frame_time) > timeout) {
+            skipped_frame_counter.labels({std::to_string(output_frame.freq_id), "timeout"}).inc();
+            blocked = true;
+            continue;
+        }
+        if (output_frame.fpga_seq_total < low_sample_cut) {
+            skipped_frame_counter.labels({std::to_string(output_frame.freq_id), "flagged"}).inc();
+            blocked = true;
+            continue;
+        } else if (blocked) {
+            // If we are here, an earlier frame was skipped and thus we have to
+            // throw this one away too. Mark it as skipped because it was
+            // blocked.
+            skipped_frame_counter.labels({std::to_string(output_frame.freq_id), "blocked"}).inc();
+            continue;
+        }
+
+        // Copy the visibilities into place
+        map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
+                        [&](int32_t pi, int32_t bi, bool conj) {
+                            cfloat t = {(float)state.vis1[2 * bi + 1], (float)state.vis1[2 * bi]};
+                            t = !conj ? t : std::conj(t);
+                            output_frame.vis[pi] = iw * t;
+                        });
+
+        // Unpack and invert the weights
+        map_vis_triangle(input_remap, block_size, num_elements, freq_ind,
+                         [&](int32_t pi, int32_t bi, bool conj) {
+                             (void)conj;
+                             float t = state.vis2[bi];
+                             output_frame.weight[pi] = w * w / t;
+                         });
+
+        mark_frame_full(state.buf, unique_name.c_str(), state.frame_id++);
+    }
 }
 
 
@@ -545,6 +570,9 @@ bool visAccumulate::reset_state(visAccumulate::internalState& state, timespec t)
     std::fill(state.vis1.begin(), state.vis1.end(), 0.0);
     std::fill(state.vis2.begin(), state.vis2.end(), 0.0);
 
+    // Remove all the old frame views
+    state.frames.clear();
+
     return true;
 }
 
@@ -557,3 +585,17 @@ visAccumulate::internalState::internalState(Buffer* out_buf, std::unique_ptr<gat
     changed(true),
     vis1(2 * nprod),
     vis2(nprod) {}
+
+
+/*
+visMetadata& visAccumulate::internalState::metadata(size_t freq_ind)
+{
+    return *(visMetadata*)get_metadata(buf, frame_id + freq_ind);
+}
+
+
+visFrameView visAccumulate::internalState::view(size_t freq_ind)
+{
+    return visFrameView(buf, frame_id + freq_ind);
+}
+*/

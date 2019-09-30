@@ -13,7 +13,9 @@
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
 #include "gateSpec.hpp"
+#include "visBuffer.hpp"
 #include "visUtil.hpp"
+#include "prometheusMetrics.hpp"
 
 #include <cstdint>
 #include <deque>
@@ -26,6 +28,7 @@
 #include <utility>
 #include <vector>
 
+using namespace kotekan::prometheus;
 
 /**
  * @class visAccumulate
@@ -58,14 +61,15 @@
  * @conf  num_freq_in_frame     Int. Number of frequencies in each GPU frame.
  * @conf  block_size            Int. The block size of the packed data.
  * @conf  input_reorder         Array of [int, int, string]. The reordering mapping.
- *                              Only the first element of each sub-array is used and it is the the
- * index of the input to move into this new location. The remaining elements of the subarray are for
- * correctly labelling the input in ``visWriter``.
+ *                              Only the first element of each sub-array is used and it is the the index of
+ *                              the input to move into this new location. The remaining elements of the
+ *                              subarray are for correctly labelling the input in ``visWriter``.
  * @conf  low_sample_fraction   If a frames has less than this fraction of the
  *                              data expected, skip it. This is set to 1% by default.
  * @conf  instrument_name       String. Name of the instrument. Default "chime".
  * @conf  freq_ids              Vector of UInt32. Frequency IDs on the stream.
  *                              Default 0..1023.
+ * @conf  timeout               Float. Drop frames later than this number of seconds.
  *
  * @par Metrics
  * @metric  kotekan_vis_accumulate_skipped_frame_total
@@ -96,11 +100,14 @@ private:
          * Everything else will be set by the reset_state call during
          * initialisation.
          *
-         * @param out_buf   Buffer we will output into.
-         * @param gate_spec Specification of how any gating is done.
-         * @param nprod     Number of products.
+         * @param  out_buf    Buffer we will output into.
+         * @param  gate_spec  Specification of how any gating is done.
+         * @param  nprod      Number of products.
          **/
         internalState(Buffer* out_buf, std::unique_ptr<gateSpec> gate_spec, size_t nprod);
+
+        /// View of the data accessed by their freq_ind
+        std::vector<visFrameView> frames;
 
         /// The buffer we are outputting too
         Buffer* buf;
@@ -114,6 +121,12 @@ private:
         /// The weighted number of total samples accumulated. Must be reset every
         /// integration period.
         float sample_weight_total;
+
+        /// The number of actual samples accumulated.
+        uint32_t sample_total;
+
+        /// The number of samples flagged out due to RFI.
+        uint32_t rfi_total;
 
         /// Function for applying the weighting. While this can essentially be
         /// derived from the gateSpec we need to cache it so the gating can be
@@ -146,6 +159,7 @@ private:
     size_t samples_per_data_set;
     size_t num_gpu_frames;
     float low_sample_fraction;
+    float timeout;
 
     // Derived from config
     size_t num_prod_gpu;
@@ -155,27 +169,48 @@ private:
 
     // Helper methods to make code clearer
 
-    // Combine the gated dataset with the vis dataset to subtract out the bias
-    // and have a scaled variance estimate.
+    /**
+     * @brief Construct the correct gated visibilities from the gated an
+     *        ungated dataset.
+     *
+     * @param  gate  The gated dataset.
+     * @param  vis   The ungated dataset.
+     **/
     void combine_gated(internalState& gate, internalState& vis);
 
-    // Set initial values of visBuffer
-    void initialise_output(internalState& state, int in_frame_id, int freq_ind);
+    /**
+     * @brief Allocate the frame and initialise the visBuffer's for each freq.
+     *
+     * This routine will wait on an empty frame to become available on the output buffer.
+     *
+     * @param  state        The dataset to proces.
+     * @param  in_frame_id  The position of the input frame. Needed to get the
+     *                      metadata.
+     * @returns             True if kotekan was stopped while waiting for the
+     *                      buffer.
+     **/
+    bool initialise_output(internalState& state, int in_frame_id);
 
-    // Fill in data sections of visBuffer
-    void finalise_output(internalState& state, int freq_ind, uint32_t total_samples);
-
-    // List of gating specifications
-    std::map<std::string, gateSpec*> gating_specs;
+    /**
+     * @brief Fill in the data sections of visBuffer and release the frame.
+     *
+     * @param  state              Dataset to process.
+     * @param  newest_frame_time  Used for deciding how late a frame is. A UNIX
+     *                            time in seconds.
+     **/
+    void finalise_output(internalState& state, timespec newest_frame_time);
 
     /**
      * @brief Reset the state when we restart an integration.
      *
      * @param    state  State to reset.
      * @param    t      Current time.
-     * @returns Return if this accumulation was enabled.
+     * @returns         Return if this accumulation was enabled.
      **/
     bool reset_state(internalState& state, timespec t);
+
+    // List of gating specifications
+    std::map<std::string, gateSpec*> gating_specs;
 
     // Hold the state for any gated data
     std::deque<internalState> gated_datasets;
@@ -193,6 +228,10 @@ private:
 
     /// Register a new state with the gating params
     dset_id_t gate_dataset_state(const gateSpec& spec);
+
+    // Reference to the prometheus metric that we will use for counting skipped
+    // frames
+    MetricFamily<Counter>& skipped_frame_counter;
 };
 
 #endif
