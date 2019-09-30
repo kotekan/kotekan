@@ -294,7 +294,7 @@ def test_lostweights(lostweights_data):
     for frame in data:
 
         assert (frame.vis == pat).all()
-        assert (frame.weight == weight)
+        assert frame.weight == weight
 
 
 # Test that we are accumulating the RFI flagged count correctly
