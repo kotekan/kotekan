@@ -289,12 +289,12 @@ def test_lostweights(lostweights_data):
 
     b, data = lostweights_data
 
-    weight = (2 * ns - b) ** 2 * nf / 16.0
+    weight = pytest.approx((2 * ns - b) ** 2 * nf / 16.0, rel=1e-5)
 
     for frame in data:
 
         assert (frame.vis == pat).all()
-        assert (frame.weight == weight).all()
+        assert (frame.weight == weight)
 
 
 # Test that we are accumulating the RFI flagged count correctly
