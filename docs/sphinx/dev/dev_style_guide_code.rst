@@ -38,9 +38,9 @@ Header files
 ^^^^^^^^^^^^^
 
 C++ header files should be named after the class they describe and use the
-ending ``.hpp``, i.e., ``MyClass.hpp``. If the file contains only standalone
-functions (e.g., utilities), name it using ``snake_case``, for example:
-``networking_functions.hpp``.
+ending ``.hpp``, i.e., ``MyClass.hpp``. If the file contains mainly standalone
+functions with maybe a grab bag of useful small/utility classes, name it using
+``snake_case``, for example: ``networking_functions.hpp``.
 
 Header files should begin with a header file commit like
 
