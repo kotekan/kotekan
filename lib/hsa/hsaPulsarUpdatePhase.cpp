@@ -59,6 +59,8 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_
     first_pass = true;
 
     // Gain stuff here
+    gain_len = 2 * 2048 * _num_beams * sizeof(float);
+    host_gain = (float*)hsa_host_malloc(gain_len);
     gain_buf = host_buffers.get_buffer("gain_psr_buf");
     register_consumer(gain_buf, unique_name.c_str());
     gain_buf_id = 0;
@@ -101,6 +103,7 @@ hsaPulsarUpdatePhase::~hsaPulsarUpdatePhase() {
     hsa_host_free(host_phase_0);
     hsa_host_free(host_phase_1);
     hsa_host_free(bankID);
+    hsa_host_free(host_gain);
 }
 
 int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id) {
@@ -234,7 +237,7 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, hsa_signal_t preced
 
     // Get gain
     if (filling_frame && frame_to_fill > 0) {
-        void* host_gain = (void*)gain_buf->frames[gain_buf_id];
+        host_gain = (float*)gain_buf->frames[gain_buf_id];
         gain_buf_id = (gain_buf_id + 1) % gain_buf->num_frames;
         frame_to_fill--;
         return signals[gpu_frame_id];

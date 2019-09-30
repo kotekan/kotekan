@@ -94,6 +94,8 @@ private:
     int32_t frame_to_fill;
     int32_t frame_to_fill_finalize;
     bool filling_frame;
+    /// Array of gains, float size of 2048*2*10
+    float* host_gain;
 
     /// Number of elements, should be 2048
     uint32_t _num_elements;
