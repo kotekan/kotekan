@@ -280,7 +280,6 @@ def test_accumulate(accumulate_data):
 
 # Test that we are calculating the weights correctly in the presence of lost
 # data.
-#@pytest.mark.xfail(reason="Weight de-biasing not yet implemented.")
 def test_lostweights(lostweights_data):
 
     row, col = np.triu_indices(accumulate_params["num_elements"])
