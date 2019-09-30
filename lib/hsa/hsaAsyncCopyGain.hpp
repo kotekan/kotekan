@@ -6,7 +6,7 @@
 class hsaAsyncCopyGain : public hsaCommand {
 public:
     hsaAsyncCopyGain(kotekan::Config& config, const string& unique_name,
-                 kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
+                     kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaAsyncCopyGain();
 
@@ -24,7 +24,7 @@ private:
     int32_t gain_buf_precondition_id;
     int32_t frame_to_fill;
     int32_t frame_to_fill_finalize;
-    bool filling_frame; 
+    bool filling_frame;
     bool first_pass;
 };
 
