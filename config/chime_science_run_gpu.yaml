@@ -376,6 +376,7 @@ gpu:
     sub_frame_index: 2
   - name: hsaOutputDataZero
     sub_frame_index: 3
+  - name: hsaAsyncCopyGain
   - name: hsaPulsarUpdatePhase
   # Barrier between copy in and kernels
   - name: hsaBarrier
@@ -432,7 +433,6 @@ gpu:
     gpu_id: 0
     updatable_config:
       gain_psr: /updatable_config/pulsar_gain
-      gain_frb: /updatable_config/frb_gain
       psr_pt: /updatable_config/pulsar_pointing
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
@@ -441,6 +441,7 @@ gpu:
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_0
+      gain_buf: gain_buffer
       lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_0
@@ -454,7 +455,6 @@ gpu:
     gpu_id: 1
     updatable_config:
       gain_psr: /updatable_config/pulsar_gain
-      gain_frb: /updatable_config/frb_gain
       psr_pt: /updatable_config/pulsar_pointing
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
@@ -463,6 +463,7 @@ gpu:
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_1
+      gain_buf: gain_buffer
       lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_1
@@ -476,7 +477,6 @@ gpu:
     gpu_id: 2
     updatable_config:
       gain_psr: /updatable_config/pulsar_gain
-      gain_frb: /updatable_config/frb_gain
       psr_pt: /updatable_config/pulsar_pointing
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
@@ -485,6 +485,7 @@ gpu:
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_2
+      gain_buf: gain_buffer
       lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_2
@@ -498,7 +499,6 @@ gpu:
     gpu_id: 3
     updatable_config:
       gain_psr: /updatable_config/pulsar_gain
-      gain_frb: /updatable_config/frb_gain
       psr_pt: /updatable_config/pulsar_pointing
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
@@ -507,6 +507,7 @@ gpu:
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_3
+      gain_buf: gain_buffer
       lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_3
@@ -515,6 +516,13 @@ gpu:
       # rfi_bad_input_buf: gpu_rfi_bad_input_buffer_3
       # rfi_output_buf: gpu_rfi_output_buffer_3
       # rfi_mask_output_buf: gpu_rfi_mask_output_buffer_3
+
+read_gain:
+    kotekan_stage: ReadGain
+    updatable_config:
+      gain_frb: /updatable_config/frb_gain
+    in_buf: network_buffer_0
+    gain_buf: gain_buffer
 
 # This set of stages takes information from the packet loss mask
 # and RFI mask and updates the metadata in the output N2 buffers
