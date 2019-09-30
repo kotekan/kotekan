@@ -530,6 +530,7 @@ gpu:
       # rfi_mask_output_buf: gpu_rfi_mask_output_buffer_3
 
 read_gain:
+    num_beams: 10
     kotekan_stage: ReadGain
     updatable_config:
       gain_frb: /updatable_config/frb_gain
