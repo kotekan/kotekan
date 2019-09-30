@@ -147,6 +147,18 @@ gpu_beamform_output_buffers:
   gpu_beamform_output_buffer_3:
     kotekan_buffer: standard
 
+gain_frb_buffer:
+  num_frames: buffer_depth
+  frame_size: 2048 * 2 * sizeof_float
+  metadata_pool: main_pool
+  kotekan_buffer: standard
+
+gain_psr_buffer:
+  num_frames: buffer_depth
+  frame_size: 2048 * 2 * _num_beams * sizeof_float
+  metadata_pool: main_pool
+  kotekan_buffer: standard
+
 pulsar_output_buffers:
     num_frames: buffer_depth
     frame_size: _samples_per_data_set * _num_beams * _num_pol * sizeof_float *2
@@ -432,7 +444,6 @@ gpu:
     kotekan_stage: hsaProcess
     gpu_id: 0
     updatable_config:
-      gain_psr: /updatable_config/pulsar_gain
       psr_pt: /updatable_config/pulsar_pointing
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
@@ -441,7 +452,8 @@ gpu:
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_0
-      gain_buf: gain_buffer
+      gain_frb_buf: gain_frb_buffer
+      gain_psr_buf: gain_psr_buffer
       lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_0
@@ -454,7 +466,6 @@ gpu:
     kotekan_stage: hsaProcess
     gpu_id: 1
     updatable_config:
-      gain_psr: /updatable_config/pulsar_gain
       psr_pt: /updatable_config/pulsar_pointing
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
@@ -463,7 +474,8 @@ gpu:
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_1
-      gain_buf: gain_buffer
+      gain_frb_buf: gain_frb_buffer
+      gain_psr_buf: gain_psr_buffer
       lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_1
@@ -476,7 +488,6 @@ gpu:
     kotekan_stage: hsaProcess
     gpu_id: 2
     updatable_config:
-      gain_psr: /updatable_config/pulsar_gain
       psr_pt: /updatable_config/pulsar_pointing
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
@@ -485,7 +496,8 @@ gpu:
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_2
-      gain_buf: gain_buffer
+      gain_frb_buf: gain_frb_buffer
+      gain_psr_buf: gain_psr_buffer
       lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_2
@@ -498,7 +510,6 @@ gpu:
     kotekan_stage: hsaProcess
     gpu_id: 3
     updatable_config:
-      gain_psr: /updatable_config/pulsar_gain
       psr_pt: /updatable_config/pulsar_pointing
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
@@ -507,7 +518,8 @@ gpu:
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_3
-      gain_buf: gain_buffer
+      gain_frb_buf: gain_frb_buffer
+      gain_psr_buf: gain_psr_buffer
       lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_3
@@ -521,8 +533,10 @@ read_gain:
     kotekan_stage: ReadGain
     updatable_config:
       gain_frb: /updatable_config/frb_gain
+      gain_psr: /updatable_config/pulsar_gain
     in_buf: network_buffer_0
-    gain_buf: gain_buffer
+    gain_frb_buf: gain_frb_buffer
+    gain_psr_buf: gain_psr_buffer
 
 # This set of stages takes information from the packet loss mask
 # and RFI mask and updates the metadata in the output N2 buffers
