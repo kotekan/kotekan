@@ -7,6 +7,7 @@
 #define HSA_RFI_UPDATE_BAD_INPUTS_HPP
 
 #include "hsaCommand.hpp"
+
 #include "json.hpp"
 
 #include <vector>
