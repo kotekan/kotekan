@@ -23,6 +23,7 @@
 #include <string>
 #include <sys/time.h>
 #include <time.h>
+#include <type_traits>
 #include <vector>
 
 using json = nlohmann::json;
@@ -655,13 +656,20 @@ public:
     }
 
     // Add and subtract are *asymmetric*. Must be always be modulo<T> +/- T
-    friend modulo<T> operator+(modulo<T> lhs, const T& rhs) {
-        lhs += rhs;
-        return lhs;
+    template<typename V,
+             typename std::enable_if_t<std::is_integral<V>::value>* = nullptr>
+    friend modulo<T> operator+(modulo<T> lhs, const V& rhs) {
+        modulo<T> t(lhs);
+        t += rhs;
+        return t;
     }
-    friend modulo<T> operator-(modulo<T> lhs, const T& rhs) {
-        lhs -= rhs;
-        return lhs;
+
+    template<typename V,
+             typename std::enable_if_t<std::is_integral<V>::value>* = nullptr>
+    friend modulo<T> operator-(modulo<T> lhs, const V& rhs) {
+        modulo<T> t(lhs);
+        t -= rhs;
+        return t;
     }
 
     // Comparisons are always false if the bases don't match
