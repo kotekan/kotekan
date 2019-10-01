@@ -79,8 +79,8 @@ std::array<dset_id_t, 2> freqSplit::change_dataset_state(dset_id_t input_dset_id
     state_id_t freq_state_id_lower = dm.add_state(std::move(fstate_lower)).first;
     state_id_t freq_state_id_higher = dm.add_state(std::move(fstate_higher)).first;
 
-    return {{dm.add_dataset(input_dset_id, freq_state_id_lower),
-             dm.add_dataset(input_dset_id, freq_state_id_higher)}};
+    return {{dm.add_dataset(freq_state_id_lower, input_dset_id),
+             dm.add_dataset(freq_state_id_higher, input_dset_id)}};
 }
 
 void freqSplit::main_thread() {

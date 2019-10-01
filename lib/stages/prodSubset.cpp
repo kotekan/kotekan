@@ -95,7 +95,7 @@ dset_id_t prodSubset::change_dataset_state(dset_id_t ds_id, std::vector<prod_cty
 
     state_uptr pstate = std::make_unique<prodState>(prod_subset);
     state_id_t prod_state_id = dm.add_state(std::move(pstate)).first;
-    return dm.add_dataset(ds_id, prod_state_id);
+    return dm.add_dataset(prod_state_id, ds_id);
 }
 
 void prodSubset::main_thread() {

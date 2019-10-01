@@ -65,7 +65,7 @@ EigenVisIter::EigenVisIter(Config& config, const string& unique_name,
 
 dset_id_t EigenVisIter::change_dataset_state(dset_id_t input_dset_id) const {
     auto& dm = datasetManager::instance();
-    return dm.add_dataset(input_dset_id, ev_state_id);
+    return dm.add_dataset(ev_state_id, input_dset_id);
 }
 
 void EigenVisIter::main_thread() {
