@@ -350,16 +350,16 @@ inline bool iceBoardShuffle::check_stream_id() {
             return false;
         }
 
-        // Check that we don't have the same create ID as another link
+        // Check that we don't have the same crate ID as another link
         // This should be impossible unless there is an FPGA problem
         if (all_stream_ids[i].crate_id == crate_id) {
             FATAL_ERROR("Two of the crate_ids are the same! There is a cabling problem.");
             return false;
         }
 
-        // Check that all the creates are from the same group (all even/odd)
+        // Check that all the crates are from the same group (all even/odd)
         if (even != ((all_stream_ids[i].crate_id % 2) == 0)) {
-            FATAL_ERROR("The create IDs are not all even or all odd. There is a cabling problem.");
+            FATAL_ERROR("The crate IDs are not all even or all odd. There is a cabling problem.");
             return false;
         }
     }
