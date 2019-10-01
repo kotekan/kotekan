@@ -147,17 +147,31 @@ gpu_beamform_output_buffers:
   gpu_beamform_output_buffer_3:
     kotekan_buffer: standard
 
-gain_frb_buffer:
+gain_frb_buffers:
   num_frames: buffer_depth
   frame_size: 2048 * 2 * sizeof_float
   metadata_pool: main_pool
-  kotekan_buffer: standard
+  gain_frb_buffer_0:
+    kotekan_buffer: standard
+  gain_frb_buffer_1:
+    kotekan_buffer: standard
+  gain_frb_buffer_2:
+    kotekan_buffer: standard
+  gain_frb_buffer_3:
+    kotekan_buffer: standard
 
-gain_psr_buffer:
+gain_psr_buffers:
   num_frames: buffer_depth
   frame_size: 2048 * 2 * _num_beams * sizeof_float
   metadata_pool: main_pool
-  kotekan_buffer: standard
+  gain_psr_buffer_0:
+    kotekan_buffer: standard
+  gain_psr_buffer_1:
+    kotekan_buffer: standard
+  gain_psr_buffer_2:
+    kotekan_buffer: standard
+  gain_psr_buffer_3:
+    kotekan_buffer: standard
 
 pulsar_output_buffers:
     num_frames: buffer_depth
@@ -452,8 +466,8 @@ gpu:
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_0
-      gain_frb_buf: gain_frb_buffer
-      gain_psr_buf: gain_psr_buffer
+      gain_frb_buf: gain_frb_buffer_0
+      gain_psr_buf: gain_psr_buffer_0
       lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_0
@@ -474,8 +488,8 @@ gpu:
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_1
-      gain_frb_buf: gain_frb_buffer
-      gain_psr_buf: gain_psr_buffer
+      gain_frb_buf: gain_frb_buffer_1
+      gain_psr_buf: gain_psr_buffer_1
       lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_1
@@ -496,8 +510,8 @@ gpu:
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_2
-      gain_frb_buf: gain_frb_buffer
-      gain_psr_buf: gain_psr_buffer
+      gain_frb_buf: gain_frb_buffer_2
+      gain_psr_buf: gain_psr_buffer_2
       lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_2
@@ -518,8 +532,8 @@ gpu:
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_3
-      gain_frb_buf: gain_frb_buffer
-      gain_psr_buf: gain_psr_buffer
+      gain_frb_buf: gain_frb_buffer_3
+      gain_psr_buf: gain_psr_buffer_3
       lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_3
