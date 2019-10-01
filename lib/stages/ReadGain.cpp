@@ -64,41 +64,44 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     using namespace std::placeholders;
 
     // listen for gain updates FRB
-    _gain_dir_frb = config.get_default<std::string>(unique_name, "updatable_config/gain_frb", "");
-    if (_gain_dir_frb.length() > 0)
+    string gainfrb = config.get_default<std::string>(unique_name, "updatable_config/gain_frb", "");
+    if (gainfrb.length() > 0)
         configUpdater::instance().subscribe(
-            config.get<std::string>(unique_name, "updatable_config/gain_frb"),
-            std::bind(&ReadGain::update_gains_frb_callback, this, _1));
+            gainfrb, std::bind(&ReadGain::update_gains_frb_callback, this, _1));
 
     // listen for gain updates PSR
-    configUpdater::instance().subscribe(
-        config.get<std::string>(unique_name, "updatable_config/gain_psr"),
-        std::bind(&ReadGain::update_gains_psr_callback, this, _1));
+    string gainpsr = config.get<std::string>(unique_name, "updatable_config/gain_psr");
+    if (gainpsr.length() > 0)
+        configUpdater::instance().subscribe(
+            gainpsr, std::bind(&ReadGain::update_gains_psr_callback, this, _1));
 }
 
 bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
-    {
-        std::lock_guard<std::mutex> lock(mux);
-        update_gains_frb = true;
+    if (update_gains_frb) {
+        WARN("[FRB] cannot handle two back-to-back gain updates, rejecting the latter");
+        return false;
     }
-    cond_var.notify_all();
-
     try {
         _gain_dir_frb = json.at("frb_gain_dir");
     } catch (std::exception& e) {
         WARN("[FRB] Fail to read gain_dir {:s}", e.what());
         return false;
     }
+    {
+        std::lock_guard<std::mutex> lock(mux);
+        update_gains_frb = true;
+    }
+    cond_var.notify_all();
+
+
     return true;
 }
 
 bool ReadGain::update_gains_psr_callback(nlohmann::json& json) {
-    {
-        std::lock_guard<std::mutex> lock(mux);
-        update_gains_psr = true;
+    if (update_gains_psr) {
+        WARN("[PSR] cannot handle two back-to-back gain updates, rejecting the latter");
+        return false;
     }
-    cond_var.notify_all();
-
     try {
         _gain_dir_psr = json.at("pulsar_gain_dir").get<std::vector<string>>();
         INFO("[PSR] Updating gains from {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s}",
@@ -110,6 +113,13 @@ bool ReadGain::update_gains_psr_callback(nlohmann::json& json) {
         WARN("[PSR] Fail to read gain_dir {:s}", e.what());
         return false;
     }
+    {
+        std::lock_guard<std::mutex> lock(mux);
+        update_gains_psr = true;
+    }
+    cond_var.notify_all();
+
+
     return true;
 }
 
