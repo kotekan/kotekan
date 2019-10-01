@@ -64,7 +64,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_
     gain_buf = host_buffers.get_buffer("gain_psr_buf");
     register_consumer(gain_buf, unique_name.c_str());
     gain_buf_id = 0;
- 
+
     // Phase here
     phase_frame_len = _num_elements * _num_beams * 2 * sizeof(float);
     // Two alternating banks
@@ -112,31 +112,30 @@ int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id) {
 
 
     // Wait for new gain
-    DEBUG("Waiting for gain_buf_id={:d} to be full; gpu_frame_id={:d}", gain_buf_id,
-          gpu_frame_id);
+    DEBUG("Waiting for gain_buf_id={:d} to be full; gpu_frame_id={:d}", gain_buf_id, gpu_frame_id);
     if (first_pass) {
-        uint8_t* frame =
-	  wait_for_full_frame(gain_buf, unique_name.c_str(), gain_buf_id);
-        host_gain = (float*)gain_buf->frames[gain_buf_id];
-	update_phase = true;
-        mark_frame_empty(gain_buf, unique_name.c_str(), gain_buf_id);
-	gain_buf_id = (gain_buf_id + 1) % gain_buf->num_frames;		
+        uint8_t* frame = wait_for_full_frame(gain_buf, unique_name.c_str(), gain_buf_id);
         if (frame == NULL)
             return -1;
-    } else {
-      auto timeout = double_to_ts(0);
-      int status = wait_for_full_frame_timeout(gain_buf, unique_name.c_str(),
-					       gain_buf_id, timeout);
-      DEBUG("status of gain_buf_id[{:d}]={:d} ==(0=ready 1=not)",
-	    gain_buf_id, status);
-      if (status == 0) {
-	host_gain = (float*)gain_buf->frames[gain_buf_id];
-	update_phase = true;
+        std::lock_guard<std::mutex> lock(_pulsar_lock);
+        memcpy(host_gain, (float*)gain_buf->frames[gain_buf_id], gain_len);
+        update_phase = true;
         mark_frame_empty(gain_buf, unique_name.c_str(), gain_buf_id);
-	gain_buf_id = (gain_buf_id + 1) % gain_buf->num_frames;	
-      }
-      if (status == -1)
-	return -1;
+        gain_buf_id = (gain_buf_id + 1) % gain_buf->num_frames;
+    } else {
+        auto timeout = double_to_ts(0);
+        int status =
+            wait_for_full_frame_timeout(gain_buf, unique_name.c_str(), gain_buf_id, timeout);
+        DEBUG("status of gain_buf_id[{:d}]={:d} ==(0=ready 1=not)", gain_buf_id, status);
+        if (status == 0) {
+            std::lock_guard<std::mutex> lock(_pulsar_lock);
+            memcpy(host_gain, (float*)gain_buf->frames[gain_buf_id], gain_len);
+            update_phase = true;
+            mark_frame_empty(gain_buf, unique_name.c_str(), gain_buf_id);
+            gain_buf_id = (gain_buf_id + 1) % gain_buf->num_frames;
+        }
+        if (status == -1)
+            return -1;
     }
     DEBUG("leaving with gain_buf_precondition_id={:d}", gain_buf_id);
     return 0;
@@ -283,7 +282,6 @@ void hsaPulsarUpdatePhase::finalize_frame(int frame_id) {
     if (bankID[frame_id] == 0) {
         bank_use_0 = bank_use_0 - 1;
     }
-
 }
 
 bool hsaPulsarUpdatePhase::pulsar_grab_callback(nlohmann::json& json, const uint8_t beam_id) {
