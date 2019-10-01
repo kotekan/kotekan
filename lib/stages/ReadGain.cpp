@@ -79,7 +79,7 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
 bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
     if (update_gains_frb) {
         WARN("[FRB] cannot handle two back-to-back gain updates, rejecting the latter");
-        return false;
+        return true;
     }
     try {
         _gain_dir_frb = json.at("frb_gain_dir");
@@ -100,7 +100,7 @@ bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
 bool ReadGain::update_gains_psr_callback(nlohmann::json& json) {
     if (update_gains_psr) {
         WARN("[PSR] cannot handle two back-to-back gain updates, rejecting the latter");
-        return false;
+        return true;
     }
     try {
         _gain_dir_psr = json.at("pulsar_gain_dir").get<std::vector<string>>();
@@ -224,7 +224,7 @@ void ReadGain::main_thread() {
 
         {
             std::unique_lock<std::mutex> lock(mux);
-            while (!update_gains_frb and !update_gains_psr) {
+            while (!update_gains_frb && !update_gains_psr) {
                 cond_var.wait(lock);
             }
         }
