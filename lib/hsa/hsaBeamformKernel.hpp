@@ -132,7 +132,7 @@ private:
     int32_t coeff_len;
     /// 2048 elements x 2 for complex
     int32_t gain_len;
-  
+
     /// Buffer for accessing metadata
     Buffer* metadata_buf;
     /// Metadata buffer ID
@@ -143,12 +143,12 @@ private:
     int32_t freq_idx;
     /// Freq in MHz
     float freq_MHz;
-  
+
     /// Array of clamping index, int of size 256
     uint32_t* host_map;
     /// Array of phase delays for E-W brute force beamform, float of size 32
     float* host_coeff;
-  
+
     /// Number of elements, should be 2048
     uint32_t _num_elements;
     /// Number of local freq, should be 1
