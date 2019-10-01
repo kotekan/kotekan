@@ -49,18 +49,21 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
     BOOST_CHECK(reply.first == true);
     BOOST_CHECK(reply.second == "");
 
-    std::pair<state_id_t, const inputState*> input_state =
-        dm.add_state(std::make_unique<inputState>(
-            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
+    std::vector<state_id_t> states1;
+    states1.push_back(dm.create_state<freqState>(freqs).first);
+    states1.push_back(dm.create_state<prodState>(prods).first);
+    states1.push_back(dm.create_state<inputState>(inputs).first);
 
-    dset_id_t init_ds_id = dm.add_dataset(input_state.first);
+    dset_id_t init_ds_id = dm.add_dataset(states1);
 
     // register same state
-    std::pair<state_id_t, const inputState*> input_state2 =
-        dm.add_state(std::make_unique<inputState>(
-            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
+    std::vector<state_id_t> states2;
+    states2.push_back(dm.create_state<freqState>(freqs).first);
+    states2.push_back(dm.create_state<prodState>(prods).first);
+    states2.push_back(dm.create_state<inputState>(inputs).first);
+
     // register new dataset with the twin state
-    dset_id_t ds_id = dm.add_dataset(init_ds_id, input_state2.first);
+    dset_id_t ds_id = dm.add_dataset(states2, init_ds_id);
 
     // write ID to disk for producer2
     std::ofstream o("DS_ID.txt");
@@ -97,11 +100,12 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_state_known_to_broker) {
     std::vector<std::pair<uint32_t, freq_ctype>> freqs = {
         {1, {1.1, 1}}, {2, {2, 2.2}}, {3, {3, 3}}};
 
-    std::pair<state_id_t, const inputState*> input_state =
-        dm.add_state(std::make_unique<inputState>(
-            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
+    std::vector<state_id_t> states1;
+    states1.push_back(dm.create_state<freqState>(freqs).first);
+    states1.push_back(dm.create_state<prodState>(prods).first);
+    states1.push_back(dm.create_state<inputState>(inputs).first);
 
-    dm.add_dataset(input_state.first);
+    dm.add_dataset(states1);
 
     // wait a bit, to make sure we see errors in any late callbacks
     usleep(500000);
@@ -125,11 +129,12 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_second_root) {
     std::vector<prod_ctype> prods = {{4, 1}, {2, 2}, {3, 3}};
     std::vector<std::pair<uint32_t, freq_ctype>> freqs = {{4, {1.1, 1}}, {3, {3, 3}}};
 
-    std::pair<state_id_t, const inputState*> input_state =
-        dm.add_state(std::make_unique<inputState>(
-            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
+    std::vector<state_id_t> states1;
+    states1.push_back(dm.create_state<freqState>(freqs).first);
+    states1.push_back(dm.create_state<prodState>(prods).first);
+    states1.push_back(dm.create_state<inputState>(inputs).first);
 
-    dset_id_t second_root = dm.add_dataset(input_state.first);
+    dset_id_t second_root = dm.add_dataset(states1);
 
     // write ID to disk for consumer
     std::ofstream o("SECOND_ROOT.txt");

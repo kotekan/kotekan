@@ -25,7 +25,7 @@ dataset::dataset(json& js) {
         _base_dset = 0;
     else
         _base_dset = js["base_dset"];
-    _types = js["types"].get<std::set<std::string>>();
+    _type = js["type"].get<std::string>();
 }
 
 bool dataset::is_root() const {
@@ -40,8 +40,8 @@ dset_id_t dataset::base_dset() const {
     return _base_dset;
 }
 
-const std::set<std::string>& dataset::types() const {
-    return _types;
+const std::string& dataset::type() const {
+    return _type;
 }
 
 json dataset::to_json() const {
@@ -50,7 +50,7 @@ json dataset::to_json() const {
     j["state"] = _state;
     if (!_is_root)
         j["base_dset"] = _base_dset;
-    j["types"] = _types;
+    j["type"] = _type;
     return j;
 }
 
@@ -58,9 +58,9 @@ bool dataset::equals(dataset& ds) const {
     if (_is_root != ds.is_root())
         return false;
     if (_is_root) {
-        return _state == ds.state() && _types == ds.types();
+        return _state == ds.state() && _type == ds.type();
     }
-    return _state == ds.state() && _base_dset == ds.base_dset() && _types == ds.types();
+    return _state == ds.state() && _base_dset == ds.base_dset() && _type == ds.type();
 }
 
 
@@ -70,19 +70,6 @@ std::ostream& operator<<(std::ostream& out, const datasetState& dt) {
     return out;
 }
 
-
-std::vector<stack_ctype> invert_stack(uint32_t num_stack,
-                                      const std::vector<rstack_ctype>& stack_map) {
-    std::vector<stack_ctype> res(num_stack);
-    size_t num_prod = stack_map.size();
-
-    for (uint32_t i = 0; i < num_prod; i++) {
-        uint32_t j = num_prod - i - 1;
-        res[stack_map[j].stack] = {j, stack_map[j].conjugate};
-    }
-
-    return res;
-}
 
 datasetManager::datasetManager() :
     _conn_error_count(0),
@@ -151,35 +138,43 @@ datasetManager::~datasetManager() {
     _cv_stop_request_threads.wait(lk, [this] { return _n_request_threads == 0; });
 }
 
-dset_id_t datasetManager::add_dataset(state_id_t state) {
-    datasetState* t = nullptr;
-    try {
-        t = _states.at(state).get();
-    } catch (std::exception& e) {
-        // This must be a bug in the calling stage...
-        FATAL_ERROR_NON_OO("datasetManager: Failure registering root dataset : state {:#x} not "
-                           "found: {:s}",
-                           state, e.what());
-    }
-    std::set<std::string> types = t->types();
-    dataset ds(state, types);
-    return add_dataset(ds);
-}
 
-dset_id_t datasetManager::add_dataset(dset_id_t base_dset, state_id_t state) {
+// TODO: 0 is not a good sentinel value. Move to std::optional typing when we use C++17
+dset_id_t datasetManager::add_dataset(state_id_t state, dset_id_t base_dset) {
     datasetState* t = nullptr;
     try {
         std::lock_guard<std::mutex> slck(_lock_states);
         t = _states.at(state).get();
     } catch (std::exception& e) {
         // This must be a bug in the calling stage...
-        FATAL_ERROR_NON_OO("datasetManager: Failure registering dataset : state {:#x} not found "
-                           "(base dataset ID: {:#x}): {:s}",
-                           state, base_dset, e.what());
+        if (base_dset == 0) {
+            FATAL_ERROR_NON_OO("datasetManager: Failure registering root dataset : state {:#x} not "
+                               "found: {:s}",
+                               state, e.what());
+        } else {
+            FATAL_ERROR_NON_OO(
+                "datasetManager: Failure registering dataset : state {:#x} not found "
+                "(base dataset ID: {:#x}): {:s}",
+                state, base_dset, e.what());
+        }
     }
-    std::set<std::string> types = t->types();
-    dataset ds(state, base_dset, types);
+    std::string type = t->type();
+    dataset ds(state, type, base_dset);
     return add_dataset(ds);
+}
+
+
+dset_id_t datasetManager::add_dataset(const std::vector<state_id_t>& states, dset_id_t base_dset) {
+
+    dset_id_t id = base_dset;
+
+    for (const auto& state : states) {
+        auto new_id = add_dataset(state, id);
+        DEBUG_NON_OO("Added dataset {:#x} with state {:#x} and base dataset {:#x}", new_id, state,
+                     id);
+        id = new_id;
+    }
+    return id;
 }
 
 // Private.
@@ -474,15 +469,10 @@ const std::vector<std::pair<dset_id_t, datasetState*>> datasetManager::ancestors
         datasetState* t;
         try {
             t = _states.at(_datasets.at(dset).state()).get();
+            a_list.emplace_back(dset, t);
         } catch (...) {
             // we don't have the base dataset
             break;
-        }
-
-        // Walk over the inner states, given them all the same dataset id.
-        while (t != nullptr) {
-            a_list.emplace_back(dset, t);
-            t = t->_inner_state.get();
         }
 
         // if this is the root dataset, we are done

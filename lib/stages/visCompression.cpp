@@ -132,7 +132,7 @@ dset_id_t baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
 
     std::tie(stack_state_id, stack_state_ptr) = dm.add_state(std::move(sstate));
 
-    return dm.add_dataset(input_ds_id, stack_state_id);
+    return dm.add_dataset(stack_state_id, input_ds_id);
 }
 
 void baselineCompression::compress_thread(uint32_t thread_id) {
