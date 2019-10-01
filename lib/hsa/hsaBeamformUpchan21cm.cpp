@@ -6,7 +6,8 @@ using kotekan::Config;
 REGISTER_HSA_COMMAND(hsaBeamformUpchan21cm);
 
 hsaBeamformUpchan21cm::hsaBeamformUpchan21cm(Config& config, const string& unique_name,
-                                     bufferContainer& host_buffers, hsaDeviceInterface& device) :
+                                             bufferContainer& host_buffers,
+                                             hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "upchannelize" KERNEL_EXT,
                "upchannelize_flip_21cm.hsaco") {
     command_type = gpuCommandType::KERNEL;
@@ -24,8 +25,10 @@ hsaBeamformUpchan21cm::hsaBeamformUpchan21cm(Config& config, const string& uniqu
     output_frame_len = _num_frb_total_beams
                        * (_samples_per_data_set / _downsample_time / _downsample_freq)
                        * sizeof(float);
-    output_hfb_frame_len = _num_frb_total_beams * _num_sub_freqs * (_samples_per_data_set / _factor_upchan / _downsample_time) // No. of samples per beam
-                           * sizeof(float);
+    output_hfb_frame_len =
+        _num_frb_total_beams * _num_sub_freqs
+        * (_samples_per_data_set / _factor_upchan / _downsample_time) // No. of samples per beam
+        * sizeof(float);
 }
 
 hsaBeamformUpchan21cm::~hsaBeamformUpchan21cm() {}
