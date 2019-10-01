@@ -60,7 +60,6 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     register_producer(gain_psr_buf, unique_name.c_str());
     update_gains_psr = true;
 
-    first_pass = true;
 
     using namespace std::placeholders;
 
@@ -90,8 +89,6 @@ bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
         WARN("[FRB] Fail to read gain_dir {:s}", e.what());
         return false;
     }
-    INFO("[ReadGain] updated gain with {:s}============update_gains={:d}", _gain_dir_frb,
-         update_gains_frb);
     return true;
 }
 
@@ -116,125 +113,118 @@ bool ReadGain::update_gains_psr_callback(nlohmann::json& json) {
     return true;
 }
 
+void ReadGain::read_gain_frb() {
+    float* out_frame_frb =
+        (float*)wait_for_empty_frame(gain_frb_buf, unique_name.c_str(), gain_frb_buf_id);
+    if (out_frame_frb == NULL) {
+        return;
+    }
+    double start_time = current_time();
+    FILE* ptr_myfile;
+    char filename[256];
+    snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin", _gain_dir_frb.c_str(),
+             freq_idx);
+    INFO("FRB Loading gains from {:s}", filename);
+    ptr_myfile = fopen(filename, "rb");
+    if (ptr_myfile == NULL) {
+        WARN("GPU Cannot open gain file {:s}", filename);
+        for (int i = 0; i < 2048; i++) {
+            out_frame_frb[i * 2] = default_gains[0] * scaling;
+            out_frame_frb[i * 2 + 1] = default_gains[1] * scaling;
+        }
+    } else {
+        if (_num_elements != fread(out_frame_frb, sizeof(float) * 2, _num_elements, ptr_myfile)) {
+            WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
+                 "gains",
+                 filename);
+            for (int i = 0; i < 2048; i++) {
+                out_frame_frb[i * 2] = default_gains[0] * scaling;
+                out_frame_frb[i * 2 + 1] = default_gains[1] * scaling;
+            }
+        }
+        fclose(ptr_myfile);
+    }
+    mark_frame_full(gain_frb_buf, unique_name.c_str(), gain_frb_buf_id);
+    DEBUG("Maked gain_frb_buf frame {:d} full", gain_frb_buf_id);
+    DEBUG("Time required to load FRB gains: {:f}", current_time() - start_time);
+    DEBUG("Gain_frb_buf: {:.2f} {:.2f} {:.2f} ", out_frame_frb[0], out_frame_frb[1],
+          out_frame_frb[2]);
+    gain_frb_buf_id = (gain_frb_buf_id + 1) % gain_frb_buf->num_frames;
+}
+
+void ReadGain::read_gain_psr() {
+    float* out_frame_psr =
+        (float*)wait_for_empty_frame(gain_psr_buf, unique_name.c_str(), gain_psr_buf_id);
+    if (out_frame_psr == NULL) {
+        return;
+    }
+    double start_time = current_time();
+    FILE* ptr_myfile;
+    char filename[256];
+    for (int b = 0; b < _num_beams; b++) {
+        snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",
+                 _gain_dir_psr[b].c_str(), freq_idx);
+        INFO("PSR Loading gains from {:s}", filename);
+        ptr_myfile = fopen(filename, "rb");
+        if (ptr_myfile == NULL) {
+            WARN("GPU Cannot open gain file {:s}", filename);
+            for (int i = 0; i < 2048; i++) {
+                out_frame_psr[(b * 2048 + i) * 2] = default_gains[0];
+                out_frame_psr[(b * 2048 + i) * 2 + 1] = default_gains[1];
+            }
+        } else {
+            if (_num_elements
+                != fread(out_frame_psr, sizeof(float) * 2, _num_elements, ptr_myfile)) {
+                WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
+                     "gains",
+                     filename);
+                for (int i = 0; i < 2048; i++) {
+                    out_frame_psr[(b * 2048 + i) * 2] = default_gains[0];
+                    out_frame_psr[(b * 2048 + i) * 2 + 1] = default_gains[1];
+                }
+            }
+            fclose(ptr_myfile);
+        }
+    } // end beam
+    mark_frame_full(gain_psr_buf, unique_name.c_str(), gain_psr_buf_id);
+    DEBUG("Maked gain_psr_buf frame {:d} full", gain_psr_buf_id);
+    DEBUG("Time required to load PSR gains: {:f}", current_time() - start_time);
+    DEBUG("Gain_psr_buf: {:.2f} {:.2f} {:.2f} ", out_frame_psr[0], out_frame_psr[1],
+          out_frame_psr[2]);
+    gain_psr_buf_id = (gain_psr_buf_id + 1) % gain_psr_buf->num_frames;
+}
+
 void ReadGain::main_thread() {
 
-    if (first_pass) {
-        first_pass = false;
-        uint8_t* frame =
-            wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
-        if (frame == NULL)
-            goto end_loop;
-        stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
-        freq_idx = bin_number_chime(&stream_id);
-        freq_MHz = freq_from_bin(freq_idx);
-        metadata_buffer_precondition_id =
-            (metadata_buffer_precondition_id + 1) % metadata_buf->num_frames;
-    }
+    uint8_t* frame =
+        wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
+    if (frame == NULL)
+        return;
+    stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
+    freq_idx = bin_number_chime(&stream_id);
+    freq_MHz = freq_from_bin(freq_idx);
+    metadata_buffer_precondition_id =
+        (metadata_buffer_precondition_id + 1) % metadata_buf->num_frames;
+
     mark_frame_empty(metadata_buf, unique_name.c_str(), metadata_buffer_id);
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
     unregister_consumer(metadata_buf, unique_name.c_str());
 
     while (!stop_thread) {
-        DEBUG("update_frb_gains={:d} update_psr_gains={:d} (0=false 1=true)", update_gains_frb,
-              update_gains_psr);
 
-        // FRB================================================
         {
             std::unique_lock<std::mutex> lock(mux);
-            while (!update_gains_frb) {
+            while (!update_gains_frb and !update_gains_psr) {
                 cond_var.wait(lock);
             }
         }
-        DEBUG("Going to update frb gain update_gains={:d}", update_gains_frb);
-
-        float* out_frame_frb =
-            (float*)wait_for_empty_frame(gain_frb_buf, unique_name.c_str(), gain_frb_buf_id);
-        if (out_frame_frb == NULL) {
-            goto end_loop;
+        if (update_gains_frb) {
+            read_gain_frb();
+            update_gains_frb = false;
         }
-
-        double start_time = current_time();
-        FILE* ptr_myfile;
-        char filename[256];
-        snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",
-                 _gain_dir_frb.c_str(), freq_idx);
-        INFO("[ReadGain] Loading gains from {:s}", filename);
-        ptr_myfile = fopen(filename, "rb");
-        if (ptr_myfile == NULL) {
-            WARN("GPU Cannot open gain file {:s}", filename);
-            for (int i = 0; i < 2048; i++) {
-                out_frame_frb[i * 2] = default_gains[0] * scaling;
-                out_frame_frb[i * 2 + 1] = default_gains[1] * scaling;
-            }
-        } else {
-            if (_num_elements
-                != fread(out_frame_frb, sizeof(float) * 2, _num_elements, ptr_myfile)) {
-                WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
-                     "gains",
-                     filename);
-                for (int i = 0; i < 2048; i++) {
-                    out_frame_frb[i * 2] = default_gains[0] * scaling;
-                    out_frame_frb[i * 2 + 1] = default_gains[1] * scaling;
-                }
-            }
-            fclose(ptr_myfile);
+        if (update_gains_psr) {
+            read_gain_psr();
+            update_gains_psr = false;
         }
-        mark_frame_full(gain_frb_buf, unique_name.c_str(), gain_frb_buf_id);
-        DEBUG("Maked gain_frb_buf frame {:d} full", gain_frb_buf_id);
-        DEBUG("Time required to load FRB gains: {:f}", current_time() - start_time);
-        DEBUG("Gain_frb_buf: {:.2f} {:.2f} {:.2f} ", out_frame_frb[0], out_frame_frb[1],
-              out_frame_frb[2]);
-        gain_frb_buf_id = (gain_frb_buf_id + 1) % gain_frb_buf->num_frames;
-        update_gains_frb = false;
-
-        // PSR============================================
-        {
-            std::unique_lock<std::mutex> lock(mux);
-            while (!update_gains_psr) {
-                cond_var.wait(lock);
-            }
-        }
-        DEBUG("Going to update psr gain update_gains={:d}", update_gains_psr);
-
-        float* out_frame_psr =
-            (float*)wait_for_empty_frame(gain_psr_buf, unique_name.c_str(), gain_psr_buf_id);
-        if (out_frame_psr == NULL) {
-            goto end_loop;
-        }
-
-        start_time = current_time();
-        for (int b = 0; b < _num_beams; b++) {
-            snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",
-                     _gain_dir_psr[b].c_str(), freq_idx);
-            INFO("Loading gains from {:s}", filename);
-            ptr_myfile = fopen(filename, "rb");
-            if (ptr_myfile == NULL) {
-                WARN("GPU Cannot open gain file {:s}", filename);
-                for (int i = 0; i < 2048; i++) {
-                    out_frame_psr[(b * 2048 + i) * 2] = default_gains[0];
-                    out_frame_psr[(b * 2048 + i) * 2 + 1] = default_gains[1];
-                }
-            } else {
-                if (_num_elements
-                    != fread(out_frame_psr, sizeof(float) * 2, _num_elements, ptr_myfile)) {
-                    WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
-                         "gains",
-                         filename);
-                    for (int i = 0; i < 2048; i++) {
-                        out_frame_psr[(b * 2048 + i) * 2] = default_gains[0];
-                        out_frame_psr[(b * 2048 + i) * 2 + 1] = default_gains[1];
-                    }
-                }
-                fclose(ptr_myfile);
-            }
-        } // end beam
-        mark_frame_full(gain_psr_buf, unique_name.c_str(), gain_psr_buf_id);
-        DEBUG("Maked gain_psr_buf frame {:d} full", gain_psr_buf_id);
-        DEBUG("Time required to load PSR gains: {:f}", current_time() - start_time);
-        DEBUG("Gain_psr_buf: {:.2f} {:.2f} {:.2f} ", out_frame_psr[0], out_frame_psr[1],
-              out_frame_psr[2]);
-        gain_psr_buf_id = (gain_psr_buf_id + 1) % gain_psr_buf->num_frames;
-        update_gains_psr = false;
     } // end stop thread
-end_loop:;
 }

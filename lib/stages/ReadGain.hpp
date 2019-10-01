@@ -54,6 +54,10 @@ public:
     /// Endpoint for providing new directory path for PSR gain updates
     bool update_gains_psr_callback(nlohmann::json& json);
 
+    /// Read gain file for frb
+    void read_gain_frb();
+    /// Read gain file for psr
+    void read_gain_psr();
 
 private:
     std::condition_variable cond_var;
@@ -89,8 +93,6 @@ private:
     /// Flag to control gains to be only loaded on request.
     bool update_gains_frb;
     bool update_gains_psr;
-    /// Flag to avoid re-calculating freq-specific params except at first pass
-    bool first_pass;
 
     /// Number of elements, should be 2048
     uint32_t _num_elements;
