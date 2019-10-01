@@ -4,7 +4,8 @@ project( libkotekan_testing )
 set ( KOTEKAN_TESTING_SOURCES
       chimeMetadataDump.cpp
       constDataCheck.cpp
-      fakeGpuBuffer.cpp
+      fakeGpu.cpp
+      fakeGpuPattern.cpp
       fakeVis.cpp
       gpuBeamformSimulate.cpp
       gpuBeamformPulsarSimulate.cpp

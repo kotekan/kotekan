@@ -52,10 +52,11 @@ visFrameView::visFrameView(Buffer* buf, int frame_id, uint32_t n_elements, uint3
     time(std::tie(_metadata->fpga_seq_start, _metadata->ctime)),
     fpga_seq_length(_metadata->fpga_seq_length),
     fpga_seq_total(_metadata->fpga_seq_total),
+    rfi_total(_metadata->rfi_total),
     freq_id(_metadata->freq_id),
     dataset_id(_metadata->dataset_id),
 
-    // Bind the regions of the buffer to spans and refernces on the view
+    // Bind the regions of the buffer to spans and references on the view
     vis(bind_span<cfloat>(_frame, buffer_layout.second[visField::vis])),
     weight(bind_span<float>(_frame, buffer_layout.second[visField::weight])),
     flags(bind_span<float>(_frame, buffer_layout.second[visField::flags])),
@@ -167,6 +168,7 @@ void visFrameView::copy_metadata(visFrameView frame_to_copy) {
     _metadata->fpga_seq_start = frame_to_copy.metadata()->fpga_seq_start;
     _metadata->fpga_seq_length = frame_to_copy.metadata()->fpga_seq_length;
     _metadata->fpga_seq_total = frame_to_copy.metadata()->fpga_seq_total;
+    _metadata->rfi_total = frame_to_copy.metadata()->rfi_total;
     _metadata->ctime = frame_to_copy.metadata()->ctime;
     _metadata->freq_id = frame_to_copy.metadata()->freq_id;
     _metadata->dataset_id = frame_to_copy.metadata()->dataset_id;

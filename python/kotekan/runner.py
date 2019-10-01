@@ -272,7 +272,7 @@ class FakeGPUBuffer(InputBuffer):
         }
 
         stage_config = {
-            "kotekan_stage": "fakeGpuBuffer",
+            "kotekan_stage": "FakeGpu",
             "out_buf": self.name,
             "freq": 0,
             "pre_accumulate": True,
@@ -645,6 +645,7 @@ main_pool:
 vis_pool:
     kotekan_metadata_pool: visMetadata
     num_metadata_objects: 30 * buffer_depth
+    "int_frames": 64,
 """
 
 
