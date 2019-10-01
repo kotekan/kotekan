@@ -70,7 +70,6 @@ frbNetworkProcess::frbNetworkProcess(Config& config_, const string& unique_name,
 
 frbNetworkProcess::~frbNetworkProcess() {
     restServer::instance().remove_json_callback("/frb/update_beam_offset");
-    restServer::instance().remove_json_callback("/frb/update_destination");
 }
 
 
@@ -112,9 +111,6 @@ void frbNetworkProcess::main_thread() {
     string endpoint = "/frb/update_beam_offset";
     rest_server.register_post_callback(
         endpoint, std::bind(&frbNetworkProcess::update_offset_callback, this, _1, _2));
-    rest_server.register_post_callback(
-        "/frb/update_destination",
-        std::bind(&frbNetworkProcess::set_destination_active_callback, this, _1, _2));
 
     // config.update_value(unique_name, "beam_offset", beam_offset);
 
@@ -305,33 +301,6 @@ int frbNetworkProcess::initialize_destinations() {
     return link_ip.size();
 }
 
-void frbNetworkProcess::set_destination_active_callback(connectionInstance& conn,
-                                                        json& json_request) {
-    string host;
-    bool active;
-    try {
-        host = json_request["host"];
-        active = json_request["active"];
-    } catch (...) {
-        conn.send_error("Couldn't parse the request.", HTTP_RESPONSE::BAD_REQUEST);
-        return;
-    }
-    bool found = false;
-    for (auto& ip_dst : dest_sockets) {
-        auto& dst = std::get<1>(ip_dst);
-        if (dst.host == host) {
-            dst.active = active;
-            found = true;
-        }
-    }
-    if (found) {
-        INFO("Set destination {} active flag to {}", host, active);
-        conn.send_empty_reply(HTTP_RESPONSE::OK);
-    } else {
-        WARN("No such destination: {}", host);
-        conn.send_error("Couldn't parse the request.", HTTP_RESPONSE::BAD_REQUEST);
-    }
-}
 
 // internal data type for keeping track of host checks and replies
 struct DestIpSocketTime {
