@@ -56,7 +56,6 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     num_freq_in_frame = config.get_default<size_t>(unique_name, "num_freq_in_frame", 1);
     block_size = config.get<size_t>(unique_name, "block_size");
     samples_per_data_set = config.get<size_t>(unique_name, "samples_per_data_set");
-    low_sample_fraction = config.get_default<float>(unique_name, "low_sample_fraction", 0.01);
     timeout = config.get_default<float>(unique_name, "timeout", 60.0);
 
     // Get the indices for reordering
@@ -81,6 +80,10 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
         num_gpu_frames = config.get<size_t>(unique_name, "num_gpu_frames");
         INFO("Integrating for {:d} gpu frames.", num_gpu_frames);
     }
+
+    // Get the minimum number of samples for an output frame
+    float low_sample_fraction = config.get_default<float>(unique_name, "low_sample_fraction", 0.01);
+    minimum_samples = (size_t)(low_sample_fraction * num_gpu_frames * samples_per_data_set);
 
     size_t nb = num_elements / block_size;
     num_prod_gpu = num_freq_in_frame * nb * (nb + 1) * block_size * block_size / 2;
@@ -364,7 +367,7 @@ void visAccumulate::main_thread() {
             for (internalState& dset : enabled_gated_datasets) {
 
                 // TODO: CHIME specific frequency decoding
-                float freq_in_MHz = 800.0 - 400.0 * dset.frames[0].freq_id / 1024.0;
+                float freq_in_MHz = freq_from_bin(dset.frames[0].freq_id);
                 float w = dset.calculate_weight(t_s, t_e, freq_in_MHz);
 
                 // Don't bother to accumulate if weight is zero
@@ -445,7 +448,8 @@ bool visAccumulate::initialise_output(visAccumulate::internalState& state, int i
         // TODO: CHIME
         frame.fill_chime_metadata(metadata);
 
-        // TODO: set frequency id in some sensible generic manner
+        // TODO: set frequency id in some sensible generic manner. This doesn't
+        // actually work for ICEboard based multifrequency systems
         frame.freq_id += freq_ind;
 
         // Set dataset ID produced by the dM
@@ -501,15 +505,12 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
     float w = state.sample_weight_total;
     float iw = (w != 0.0) ? (1.0 / w) : 0.0;
 
-    uint32_t low_sample_cut = low_sample_fraction * num_gpu_frames * samples_per_data_set;
-
     bool blocked = false;
 
     // Loop over the frequencies in the frame and unpack the accumulates
     // into the output frame...
     for (size_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
         auto output_frame = state.frames[freq_ind];
-
 
         // Check if we need to skip the frame.
         //
@@ -521,7 +522,7 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
             blocked = true;
             continue;
         }
-        if (output_frame.fpga_seq_total < low_sample_cut) {
+        if (output_frame.fpga_seq_total < minimum_samples) {
             skipped_frame_counter.labels({std::to_string(output_frame.freq_id), "flagged"}).inc();
             blocked = true;
             continue;

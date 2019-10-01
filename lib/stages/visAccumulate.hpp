@@ -156,7 +156,7 @@ private:
     size_t block_size;
     size_t samples_per_data_set;
     size_t num_gpu_frames;
-    float low_sample_fraction;
+    size_t minimum_samples;
     float timeout;
 
     // Derived from config

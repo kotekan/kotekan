@@ -20,6 +20,7 @@ FakeGpuPattern::FakeGpuPattern(kotekan::Config& config, const std::string& path)
     _samples_per_data_set = config.get<int>(path, "samples_per_data_set");
     _num_freq_in_frame = config.get_default<int>(path, "num_freq_in_frame", 1);
     set_log_level(config.get<std::string>(path, "log_level"));
+    set_log_prefix(path);
 }
 
 
