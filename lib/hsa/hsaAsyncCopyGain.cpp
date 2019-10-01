@@ -29,7 +29,6 @@ hsaAsyncCopyGain::hsaAsyncCopyGain(Config& config, const string& unique_name,
     first_pass = true;
 }
 
-
 hsaAsyncCopyGain::~hsaAsyncCopyGain() {}
 
 int hsaAsyncCopyGain::wait_on_precondition(int gpu_frame_id) {
@@ -41,24 +40,24 @@ int hsaAsyncCopyGain::wait_on_precondition(int gpu_frame_id) {
     if (first_pass) {
         uint8_t* frame =
             wait_for_full_frame(gain_buf, unique_name.c_str(), gain_buf_precondition_id);
-        gain_buf_precondition_id = (gain_buf_precondition_id + 1) % gain_buf->num_frames;
-        first_pass = false;
-        frame_to_fill = gain_buf->num_frames;
-        frame_to_fill_finalize = frame_to_fill;
-        filling_frame = true;
         if (frame == NULL)
             return -1;
+        gain_buf_precondition_id = (gain_buf_precondition_id + 1) % gain_buf->num_frames;
+        first_pass = false;
+        frame_to_fill = device.get_gpu_buffer_depth();
+        frame_to_fill_finalize = frame_to_fill;
+        filling_frame = true;
     } else {
         // Check for new gains only if filled all gpu frames (not currently filling frame)
         if (!filling_frame) {
             auto timeout = double_to_ts(0);
             int status = wait_for_full_frame_timeout(gain_buf, unique_name.c_str(),
                                                      gain_buf_precondition_id, timeout);
-            DEBUG("status of gain_buf_precondition_id[{:d}]={:d} ==(0=ready 1=not)================",
+            DEBUG("status of gain_buf_precondition_id[{:d}]={:d} (0=ready 1=not)",
                   gain_buf_precondition_id, status);
             if (status == 0) {
                 filling_frame = true;
-                frame_to_fill = gain_buf->num_frames;
+                frame_to_fill = device.get_gpu_buffer_depth();
                 frame_to_fill_finalize = frame_to_fill;
                 gain_buf_precondition_id = (gain_buf_precondition_id + 1) % gain_buf->num_frames;
             }
