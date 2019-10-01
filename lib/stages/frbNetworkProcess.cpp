@@ -70,6 +70,10 @@ frbNetworkProcess::frbNetworkProcess(Config& config_, const string& unique_name,
 
 frbNetworkProcess::~frbNetworkProcess() {
     restServer::instance().remove_json_callback("/frb/update_beam_offset");
+
+    for (auto src : src_sockets) {
+        close(src.socket_fd);
+    }
 }
 
 
@@ -328,19 +332,34 @@ void frbNetworkProcess::ping_destinations() {
 
     // raw sockets used as sources for outgoing pings
     std::vector<int> ping_src_fd;
-    for (auto& src : src_sockets) {
-        int s = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
-        if (s < 0) {
-            ERROR("Cannot create source socket for FRB host pings (requires root). Stopping the "
-                  "pings.");
+
+    // initialize pinging sockets
+    {
+        bool err = false;
+
+        for (auto& src : src_sockets) {
+            int s = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+            if (s < 0) {
+                ERROR(
+                    "Cannot create source socket for FRB host pings (requires root). Stopping the "
+                    "pings.");
+                return;
+            }
+            if (bind(s, (struct sockaddr*)&src.addr, sizeof(src.addr)) < 0) {
+                ERROR("Cannot bind source socket for FRB host pings (requires root). Stopping the "
+                      "pings.");
+                return;
+            }
+            ping_src_fd.push_back(s);
+        }
+
+        if (err) {
+            // close any pinging sockets that were already created
+            for (auto fd : ping_src_fd) {
+                close(fd);
+            }
             return;
         }
-        if (bind(s, (struct sockaddr*)&src.addr, sizeof(src.addr)) < 0) {
-            ERROR("Cannot bind source socket for FRB host pings (requires root). Stopping the "
-                  "pings.");
-            return;
-        }
-        ping_src_fd.push_back(s);
     }
     const int max_ping_src_fd = *std::max_element(ping_src_fd.begin(), ping_src_fd.end());
 
@@ -383,7 +402,7 @@ void frbNetworkProcess::ping_destinations() {
             DEBUG("Need to sleep before pinging {}", dst->host);
             ping_cv.wait_for(lock, live_check_frequency - time_since_last_check);
             if (stop_thread)
-                return;
+                break;
         }
         // NOTE: we don't ping if the host is not active, but mark it checked
         if (!dst->active || send_ping(ping_src_fd[dst->sending_socket], dst->addr)) {
@@ -408,7 +427,7 @@ void frbNetworkProcess::ping_destinations() {
         struct timeval tv = {0, 200000}; // Don't wait more than 0.2s for a socket to be ready
         while (int rc = select(max_ping_src_fd + 1, &rfds, nullptr, nullptr, &tv) != 0) {
             if (stop_thread)
-                return;
+                break;
             if (rc < 0) {
                 if (errno == EINTR) {
                     DEBUG("Select interrupted, try again");
@@ -451,7 +470,12 @@ void frbNetworkProcess::ping_destinations() {
         INFO("Sleep for {} before checking the next host", sleep_time);
         ping_cv.wait_for(lock, sleep_time);
         if (stop_thread)
-            return;
+            break;
+    }
+
+    // close pinging sockets
+    for (auto fd : ping_src_fd) {
+        close(fd);
     }
 }
 
