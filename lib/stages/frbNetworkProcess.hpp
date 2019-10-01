@@ -65,23 +65,24 @@ struct SrcAddrSocket {
 };
 
 struct DestIpSocket {
-    DestIpSocket(std::string host, sockaddr_in addr, int s) :
+    /// Regular constructor used with data from the config file
+    DestIpSocket(std::string host, sockaddr_in addr, int s, bool active = true) :
         host(std::move(host)),
         addr(std::move(addr)),
-        sending_socket(std::move(s)),
-        active(true),
+        sending_socket(s),
+        active(active),
         live(false) {}
     /// Move constructor is necessary for inserting into standard containers
     DestIpSocket(DestIpSocket&& other) :
         host(std::move(other.host)),
         addr(std::move(other.addr)),
         sending_socket(other.sending_socket),
-        active(other.active.load()),
+        active(other.active),
         live(other.live.load()) {}
     const std::string host;
     const sockaddr_in addr;
     const int sending_socket;
-    std::atomic_bool active;
+    const bool active;
     std::atomic_bool live;
 };
 

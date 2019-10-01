@@ -287,14 +287,20 @@ int frbNetworkProcess::initialize_destinations() {
     for (size_t i = 0; i < link_ip.size(); i++) {
         sockaddr_in addr;
         memset(&addr, 0, sizeof(addr));
-        addr.sin_family = AF_INET;
-        inet_pton(AF_INET, link_ip[i].c_str(), &addr.sin_addr);
-        if (!dest_sockets.count(addr.sin_addr.s_addr)) {
-            // new destination, initialize the entry in `dest_sockets`
-            addr.sin_port = htons(udp_frb_port_number);
-            int sending_socket = get_vlan_from_ip(link_ip[i].c_str()) - 6;
-            dest_sockets.insert(
-                {addr.sin_addr.s_addr, DestIpSocket{link_ip[i], addr, sending_socket}});
+        if (!link_ip[i].empty()) {
+            addr.sin_family = AF_INET;
+            inet_pton(AF_INET, link_ip[i].c_str(), &addr.sin_addr);
+            if (!dest_sockets.count(addr.sin_addr.s_addr)) {
+                // new destination, initialize the entry in `dest_sockets`
+                addr.sin_port = htons(udp_frb_port_number);
+                int sending_socket = get_vlan_from_ip(link_ip[i].c_str()) - 6;
+                dest_sockets.insert(
+                    {addr.sin_addr.s_addr, DestIpSocket{link_ip[i], addr, sending_socket}});
+            }
+        } else {
+            if (!dest_sockets.count(0)) {
+                dest_sockets.insert({0, DestIpSocket{link_ip[i], addr, -1, false}});
+            }
         }
         stream_dest.push_back(std::ref(dest_sockets.at(addr.sin_addr.s_addr)));
     }
