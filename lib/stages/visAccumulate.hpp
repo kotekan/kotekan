@@ -69,7 +69,7 @@ using namespace kotekan::prometheus;
  * @conf  instrument_name       String. Name of the instrument. Default "chime".
  * @conf  freq_ids              Vector of UInt32. Frequency IDs on the stream.
  *                              Default 0..1023.
- * @conf  timeout               Float. Drop frames later than this number of seconds.
+ * @conf  timeout               Float. Drop frames later than this number of seconds. Default 60.0
  *
  * @par Metrics
  * @metric  kotekan_vis_accumulate_skipped_frame_total
@@ -168,7 +168,7 @@ private:
     // Helper methods to make code clearer
 
     /**
-     * @brief Construct the correct gated visibilities from the gated an
+     * @brief Construct the correct gated visibilities from the gated and
      *        ungated dataset.
      *
      * @param  gate  The gated dataset.
@@ -203,7 +203,7 @@ private:
      *
      * @param    state  State to reset.
      * @param    t      Current time.
-     * @returns         Return if this accumulation was enabled.
+     * @returns         True if this accumulation was enabled.
      **/
     bool reset_state(internalState& state, timespec t);
 
