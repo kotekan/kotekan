@@ -64,25 +64,30 @@ struct SrcAddrSocket {
     const int socket_fd;
 };
 
+
+/**
+ * @brief Convenience struct used to hold all relevant information about an FRB L1 destination
+ */
 struct DestIpSocket {
     /// Regular constructor used with data from the config file
-    DestIpSocket(std::string host, sockaddr_in addr, int s, bool active = true) :
-        host(std::move(host)),
-        addr(std::move(addr)),
-        sending_socket(s),
-        active(active),
-        live(false) {}
+    DestIpSocket(std::string host, sockaddr_in addr, int s, bool active = true);
+
     /// Move constructor is necessary for inserting into standard containers
-    DestIpSocket(DestIpSocket&& other) :
-        host(std::move(other.host)),
-        addr(std::move(other.addr)),
-        sending_socket(other.sending_socket),
-        active(other.active),
-        live(other.live.load()) {}
+    DestIpSocket(DestIpSocket&& other);
+
+    //@{
+    /// host address as a string and a `sockaddr` structure
     const std::string host;
     const sockaddr_in addr;
+    //@}
+
+    /// index of the entry in @p src_sockets used to communicate with the destination
     const int sending_socket;
+
+    /// flag to indicate if the destination is a "dummy" placeholder
     const bool active;
+
+    /// flag to indicate if the host has been responding to pings
     std::atomic_bool live;
 };
 
