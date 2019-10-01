@@ -45,6 +45,7 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
     filename = config.get<std::string>(unique_name, "infile");
     readahead_blocks = config.get<size_t>(unique_name, "readahead_blocks");
     max_read_rate = config.get_default<double>(unique_name, "max_read_rate", 0.0);
+    sleep_time = config.get_default<float>(unique_name, "sleep_time", -1);
 
     chunked = config.exists(unique_name, "chunk_size");
     if (chunked) {
@@ -318,5 +319,14 @@ void visRawReader::main_thread() {
             auto ts = double_to_ts(sleep_time);
             nanosleep(&ts, NULL);
         }
+    }
+
+    if (sleep_time > 0) {
+        INFO("Read all data. Sleeping and then exiting kotekan...");
+        timespec ts = double_to_ts(sleep_time);
+        nanosleep(&ts, nullptr);
+        exit_kotekan(ReturnCode::CLEAN_EXIT);
+    } else {
+        INFO("Read all data. Exiting stage, but keeping kotekan alive.");
     }
 }

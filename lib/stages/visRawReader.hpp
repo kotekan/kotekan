@@ -46,6 +46,9 @@ using json = nlohmann::json;
  * @conf    max_read_rate       Float. Maximum read rate for the process in MB/s.
  *                              If the value is zero (default), then no rate
  *                              limiting is applied.
+ * @conf    sleep_time          Float. After the data is read pause this long in
+ *                              seconds before sending shutdown. If < 0, never
+ *                              send a shutdown signal. Default is -1.
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte, Rick Nitsche
  */
@@ -184,6 +187,9 @@ private:
 
     // The read rate
     double max_read_rate;
+
+    // Sleep time after reading
+    double sleep_time;
 };
 
 #endif

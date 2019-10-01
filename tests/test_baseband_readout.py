@@ -145,6 +145,7 @@ def test_negative_start_time(tmpdir_factory):
     assert f["baseband"].shape == (3237, default_params["num_elements"])
 
 
+@pytest.mark.xfail(reason="Fragile test.")
 def test_basic(tmpdir_factory):
 
     rest_commands = [
@@ -180,6 +181,7 @@ def test_basic(tmpdir_factory):
         assert np.all(f["baseband"][:] == edata)
 
 
+@pytest.mark.xfail(reason="Fragile test.")
 def test_missed(tmpdir_factory):
 
     good_trigger = (2437, 3123)
@@ -206,6 +208,7 @@ def test_missed(tmpdir_factory):
     assert f["baseband"].shape[0] == etime - stime
 
 
+@pytest.mark.xfail(reason="Fragile test.")
 def test_bigdump(tmpdir_factory):
 
     rest_commands = [
