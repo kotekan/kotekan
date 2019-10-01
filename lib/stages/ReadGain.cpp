@@ -116,7 +116,7 @@ bool ReadGain::update_gains_psr_callback(nlohmann::json& json) {
 void ReadGain::read_gain_frb() {
     float* out_frame_frb =
         (float*)wait_for_empty_frame(gain_frb_buf, unique_name.c_str(), gain_frb_buf_id);
-    if (out_frame_frb == NULL) {
+    if (out_frame_frb == nullptr) {
         return;
     }
     double start_time = current_time();
@@ -126,7 +126,7 @@ void ReadGain::read_gain_frb() {
              freq_idx);
     INFO("FRB Loading gains from {:s}", filename);
     ptr_myfile = fopen(filename, "rb");
-    if (ptr_myfile == NULL) {
+    if (ptr_myfile == nullptr) {
         WARN("GPU Cannot open gain file {:s}", filename);
         for (int i = 0; i < 2048; i++) {
             out_frame_frb[i * 2] = default_gains[0] * scaling;
@@ -155,7 +155,7 @@ void ReadGain::read_gain_frb() {
 void ReadGain::read_gain_psr() {
     float* out_frame_psr =
         (float*)wait_for_empty_frame(gain_psr_buf, unique_name.c_str(), gain_psr_buf_id);
-    if (out_frame_psr == NULL) {
+    if (out_frame_psr == nullptr) {
         return;
     }
     double start_time = current_time();
@@ -166,7 +166,7 @@ void ReadGain::read_gain_psr() {
                  _gain_dir_psr[b].c_str(), freq_idx);
         INFO("PSR Loading gains from {:s}", filename);
         ptr_myfile = fopen(filename, "rb");
-        if (ptr_myfile == NULL) {
+        if (ptr_myfile == nullptr) {
             WARN("GPU Cannot open gain file {:s}", filename);
             for (int i = 0; i < 2048; i++) {
                 out_frame_psr[(b * 2048 + i) * 2] = default_gains[0];
@@ -198,7 +198,7 @@ void ReadGain::main_thread() {
 
     uint8_t* frame =
         wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
-    if (frame == NULL)
+    if (frame == nullptr)
         return;
     stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
     freq_idx = bin_number_chime(&stream_id);
