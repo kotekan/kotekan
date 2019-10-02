@@ -314,15 +314,18 @@ int frbNetworkProcess::initialize_destinations() {
 
 // internal data type for keeping track of host checks and replies
 struct DestIpSocketTime {
+    enum class CheckState { UNKNOWN, OK, FAIL };
     DestIpSocket* dst;
-    std::chrono::steady_clock::time_point last_checked;
     std::chrono::steady_clock::time_point last_responded;
+    std::chrono::steady_clock::time_point next_check;
+    CheckState state = CheckState::UNKNOWN;
+    uint16_t check_delay = 5;
     friend bool operator<(const DestIpSocketTime& l, const DestIpSocketTime& r) {
-        if (l.last_checked == r.last_checked) {
+        if (l.next_check == r.next_check) {
             // break check time ties by host address
             return l.dst->addr.sin_addr.s_addr > r.dst->addr.sin_addr.s_addr;
         } else
-            return l.last_checked > r.last_checked;
+            return l.next_check > r.next_check;
     }
 };
 
@@ -365,20 +368,14 @@ void frbNetworkProcess::ping_destinations() {
 
     // quick destination lookup by IP address
     std::map<uint32_t, DestIpSocketTime> dest_by_ip;
-    // quick destination lookup by least-recently checked time
-    // std::priority_queue<RefDestIpSocketTime, std::vector<RefDestIpSocketTime>,
-    // decltype(cmp_by_last_checked)> dest_by_time(cmp_by_last_checked);
+    // quick destination lookup by next scheduled check time
     std::priority_queue<RefDestIpSocketTime> dest_by_time;
+    auto now = std::chrono::steady_clock::now();
     for (auto& dst : dest_sockets) {
         DestIpSocketTime& dest_ping_info =
-            dest_by_ip[std::get<0>(dst)] = {&std::get<1>(dst), {}, {}};
+            dest_by_ip[std::get<0>(dst)] = {&std::get<1>(dst), now, now};
         dest_by_time.push(std::ref(dest_ping_info));
     }
-
-    // Random number generators to jitter the ping time between hosts (0.3-5 s)
-    std::random_device rd;  // Will be used to obtain a seed for the random number engine
-    std::mt19937 gen(rd()); // Standard mersenne_twister_engine seeded with rd()
-    std::uniform_int_distribution<> dis(300, 5000);
 
     // it's silly to have a mutex local to a thread, but we need it for the condition variable used
     // by the main_thread to interrupt this thread's sleep to notify of Kotekan stopping
@@ -386,33 +383,19 @@ void frbNetworkProcess::ping_destinations() {
     std::unique_lock<std::mutex> lock(mtx);
     while (!stop_thread) {
         DestIpSocketTime& lru_dest = dest_by_time.top();
-        DestIpSocket* dst = lru_dest.dst;
-        auto time_since_last_check = std::chrono::steady_clock::now() - lru_dest.last_checked;
         auto time_since_last_live = std::chrono::steady_clock::now() - lru_dest.last_responded;
 
-        DEBUG("Checking: {}", dst->host);
-        DEBUG("Last checked: {}s ago. Last responded: {}s ago",
-              std::chrono::duration_cast<std::chrono::seconds>(time_since_last_check).count(),
+        DEBUG("Checking: {}", lru_dest.dst->host);
+        DEBUG("Last responded: {}s ago",
               std::chrono::duration_cast<std::chrono::seconds>(time_since_last_live).count());
-        if (time_since_last_live > node_dead_interval && dst->live) {
-            INFO("Too long since last ping response, mark host {} dead.", dst->host);
-            dst->live = false;
-        }
-        if (time_since_last_check < live_check_frequency) {
-            DEBUG("Need to sleep before pinging {}", dst->host);
-            ping_cv.wait_for(lock, live_check_frequency - time_since_last_check);
-            if (stop_thread)
-                break;
-        }
-        // NOTE: we don't ping if the host is not active, but mark it checked
-        if (!dst->active || send_ping(ping_src_fd[dst->sending_socket], dst->addr)) {
-            dest_by_time.pop();
-            lru_dest.last_checked = std::chrono::steady_clock::now();
-            dest_by_time.push(lru_dest);
-#ifdef DEBUGGING
-            DestIpSocketTime& next_lru_dest = dest_by_time.top();
-            DEBUG("Pinged. Next host: {}", next_lru_dest.dst->host);
-#endif // DEBUGGING
+
+        // NOTE: we don't ping if the host is not active, but behave as if it were checked
+        if (!lru_dest.dst->active
+            || send_ping(ping_src_fd[lru_dest.dst->sending_socket], lru_dest.dst->addr)) {
+            // Back off unless the host is in the OK state, in which case we back off on reception
+            if (lru_dest.state != DestIpSocketTime::CheckState::OK && lru_dest.check_delay < 600) {
+                lru_dest.check_delay *= 2;
+            }
         }
 
         // initialize the listening set of sockets for `select`
@@ -452,9 +435,22 @@ void frbNetworkProcess::ping_destinations() {
                             DEBUG("Received ping response from: {}. Update `last_responded`.",
                                   inet_ntop(AF_INET, &from.sin_addr, src_addr_str,
                                             INET_ADDRSTRLEN + 1));
-                            if (!dst->live) {
-                                INFO("Host {} is responding to pings again, mark live.", dst->host);
-                                dst->live = true;
+                            if (!src.dst->live) {
+                                INFO("Host {} is responding to pings again, mark live.",
+                                     src.dst->host);
+                                src.dst->live = true;
+                            }
+                            switch (src.state) {
+                                case DestIpSocketTime::CheckState::UNKNOWN:
+                                case DestIpSocketTime::CheckState::FAIL:
+                                    src.state = DestIpSocketTime::CheckState::OK;
+                                    src.check_delay = 5;
+                                    break;
+                                case DestIpSocketTime::CheckState::OK:
+                                    if (src.check_delay < 600) {
+                                        src.check_delay *= 2;
+                                    }
+                                    break;
                             }
                         } else {
                             DEBUG("Received ping response from unknown host: {}. Ignored.",
@@ -465,12 +461,35 @@ void frbNetworkProcess::ping_destinations() {
                 }
             }
         };
-        // now sleep for a bit (0.3-5 s) before checking the next host
-        std::chrono::milliseconds sleep_time(dis(gen));
-        INFO("Sleep for {} before checking the next host", sleep_time);
-        ping_cv.wait_for(lock, sleep_time);
-        if (stop_thread)
-            break;
+
+        // Mark node as dead if it's been too long since last response
+        if (lru_dest.state != DestIpSocketTime::CheckState::FAIL) {
+            if (time_since_last_live > node_dead_interval) {
+                INFO("Too long since last ping response, mark host {} dead.", lru_dest.dst->host);
+                lru_dest.dst->live = false;
+                lru_dest.state = DestIpSocketTime::CheckState::FAIL;
+                // NOTE: lru_dest.check_delay is left at its current value at this point, i.e.,
+                // prob. maximum
+            }
+        }
+
+        // Schedule the next check for the node
+        dest_by_time.pop();
+        lru_dest.next_check =
+            std::chrono::steady_clock::now() + std::chrono::seconds(lru_dest.check_delay);
+        // could add another `std::chrono::milliseconds(dis(gen))` random delay to next_check
+        dest_by_time.push(lru_dest);
+
+        // sleep until the next host is due
+        DestIpSocketTime& next_lru_dest = dest_by_time.top();
+        auto time_to_next_check = next_lru_dest.next_check - std::chrono::steady_clock::now();
+        INFO("Sleep for {} before checking the next host",
+             std::chrono::duration_cast<std::chrono::seconds>(time_since_last_live).count());
+        // continue sleeping if received a spurious wakeup, i.e., neither the stage was stopped nor
+        // timeout occurred
+        while (ping_cv.wait_until(lock, next_lru_dest.next_check) != std::cv_status::timeout
+               && !stop_thread)
+            ;
     }
 
     // close pinging sockets
