@@ -34,7 +34,7 @@ bufferMerge::bufferMerge(Config& config, const string& unique_name,
             // Assuming each array entry has only one key.
             json::iterator it = buffer.begin();
             internal_name = it.key();
-            buffer_name = in.value().get<std::string>();
+            buffer_name = it.value().get<std::string>();
             in_buf = buffer_container.get_buffer(buffer_name);
             assert(in_buf != nullptr);
         } else if (buffer.is_string()) {
