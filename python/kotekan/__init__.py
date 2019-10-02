@@ -5,7 +5,5 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 
 # === End Python 2/3 compatibility
 
-from .version import get_version
-
 # Should probably set this from the overall kotekan version
-__version__ = get_version()
+__version__ = "2019.10"

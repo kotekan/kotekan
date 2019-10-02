@@ -8,7 +8,6 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 from os import path
 from setuptools import setup, find_packages
 
-from kotekan.version import get_version
 
 here = path.abspath(path.dirname(__file__))
 
@@ -22,7 +21,7 @@ with open(path.join(here, "requirements.txt"), "r") as f:
 
 setup(
     name="kotekan",
-    version=get_version(),
+    version="2019.10",
     license="MIT",
     author="Kotekan Developers",
     description="Python support code for kotekan",
