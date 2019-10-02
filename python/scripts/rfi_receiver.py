@@ -22,6 +22,7 @@ standard_library.install_aliases()
 from comet import Manager, CometError
 from prometheus_client import start_http_server, Gauge
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import logging
 import threading
 import socket
 import numpy as np
@@ -35,6 +36,9 @@ import subprocess
 # TODO: this can be a different python kotekan installation in some cases
 from kotekan import __version__
 
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
 
 def parse_dict(cmd, _dict):
     for key, value in _dict.items():
@@ -43,7 +47,9 @@ def parse_dict(cmd, _dict):
         else:
             if key in cmd.config:
                 if type(cmd.config[key]) == type(value):
-                    print("Setting Config Parameter %s to %s" % (key, str(value)))
+                    logger.debug(
+                        "Setting Config Parameter %s to %s" % (key, str(value))
+                    )
                     cmd.config[key] = value
 
 
@@ -119,63 +125,68 @@ class CommandLine(object):
         status = False
 
         if argument.Help:
-            print(
+            logger.debug(
                 "You have used '-H' or '--Help' with argument: {0}".format(
                     argument.Help
                 )
             )
             status = True
         if argument.debug:
-            print("You have used '-d' , Enabling debug mode")
+            logger.info("You have used '-d' , Enabling debug mode")
             self.debug = True
             status = True
+            logging.basicConfig(level=logging.DEBUG)
         if argument.send:
-            print(
+            logger.debug(
                 "You have used '-s' or '--send' with argument: {0}".format(
                     argument.send
                 )
             )
             self.TCP_IP = argument.send[: argument.send.index(":")]
             self.TCP_PORT = int(argument.send[argument.send.index(":") + 1 :])
-            print("Setting TCP IP: %s PORT: %d" % (self.TCP_IP, self.TCP_PORT))
+            logger.info("Setting TCP IP: %s PORT: %d" % (self.TCP_IP, self.TCP_PORT))
             status = True
         if argument.receive:
-            print(
+            logger.debug(
                 "You have used '-r' or '--receive' with argument: {0}".format(
                     argument.receive
                 )
             )
             self.UDP_IP = argument.receive[: argument.receive.index(":")]
             self.UDP_PORT = int(argument.receive[argument.receive.index(":") + 1 :])
-            print("Setting UDP IP: %s PORT: %d" % (self.UDP_IP, self.UDP_PORT))
+            logger.info("Setting UDP IP: %s PORT: %d" % (self.UDP_IP, self.UDP_PORT))
             status = True
         if argument.config:
-            print(
+            logger.debug(
                 "You have used '-c' or '--config' with argument: {0}".format(
                     argument.config
                 )
             )
             parse_dict(self, yaml.safe_load(open(argument.config)))
-            print(self.config)
+            logger.info(self.config)
             self.register_config(self.config)
             status = True
         if argument.mode:
-            print(
+            logger.debug(
                 "You have used '-m' or '--mode' with argument: {0}".format(
                     argument.mode
                 )
             )
             if argument.mode in self.supportedModes:
                 self.mode = argument.mode
-                print("Setting mode to %s mode." % (argument.mode))
+                logger.info("Setting mode to %s mode." % (argument.mode))
             else:
-                print("This mode in currently not supported, reverting to default")
-                print("Supported Modes Include:")
+                logger.warning(
+                    "This mode in currently not supported, reverting to default"
+                )
+                logger.warning("Supported Modes Include:")
                 for mode in self.supportedModes:
-                    print("- ", mode)
+                    logger.warning("- ", mode)
             status = True
         if not status:
-            print("Remember: You can use -H or - Help to see configuration options")
+            logger.info(
+                "Remember: You can use -H or - Help to see configuration options"
+            )
         self.bad_input_mask = [0] * self.config["num_elements"]
 
     def register_config(self, config):
@@ -183,14 +194,14 @@ class CommandLine(object):
         try:
             enable_comet = config["use_dataset_broker"]
         except KeyError:
-            print("Missing config value 'dataset_manager/use_dataset_broker'.")
+            logger.error("Missing config value 'dataset_manager/use_dataset_broker'.")
             exit(1)
         if enable_comet:
             try:
                 comet_host = config["ds_broker_host"]
                 comet_port = config["ds_broker_port"]
             except KeyError as exc:
-                print(
+                logger.error(
                     "Failure registering initial config with comet broker: '{}' not defined in "
                     "config.".format(exc[0])
                 )
@@ -200,10 +211,10 @@ class CommandLine(object):
                 comet.register_start(self.startup_time, self.git_version)
                 comet.register_config(config)
             except CometError as exc:
-                print("Comet failed registering initial config: {}".format(exc))
+                logger.error("Comet failed registering initial config: {}".format(exc))
                 exit(1)
         else:
-            print("Config registration DISABLED. This is only OK for testing.")
+            logger.warning("Config registration DISABLED. This is only OK for testing.")
 
 
 class Stream(object):
@@ -234,49 +245,49 @@ class Stream(object):
             self.freqs = [800.0 - float(b) * 400.0 / 1024.0 for b in self.bins]
             self.bins = np.array(self.bins).astype(np.int)
             self.freqs = np.array(self.freqs)
-            # print("Thread id %d Stream Created %d %d %d %d %d"%(thread_id, encoded_stream_id, self.slot_id, self.link_id, self.crate, self.unused))
-            # print(self.bins, self.freqs)
+            # logger.debug("Thread id %d Stream Created %d %d %d %d %d"%(thread_id, encoded_stream_id, self.slot_id, self.link_id, self.crate, self.unused))
+            # logger.debug(self.bins, self.freqs)
         else:
-            print("Stream Creation Warning: Known Stream Creation Attempt")
+            logger.warning("Stream Creation Warning: Known Stream Creation Attempt")
 
 
 def HeaderCheck(header, app):
 
     if header["combined_flag"] != 1:
-        print("Header Error: Only Combined RFI values are currently supported ")
+        logger.error("Header Error: Only Combined RFI values are currently supported ")
         return False
     if header["sk_step"] != app.config["sk_step"]:
-        print(
+        logger.error(
             "Header Error: SK Step does not match config; Got value %d"
             % (header["sk_step"])
         )
         return False
     if header["num_elements"] != app.config["num_elements"]:
-        print(
+        logger.error(
             "Header Error: Number of Elements does not match config; Got value %d"
             % (header["num_elements"])
         )
         return False
     if header["num_timesteps"] != app.config["samples_per_data_set"]:
-        print(
+        logger.error(
             "Header Error: Samples per Dataset does not match config; Got value %d"
             % (header["num_timesteps"])
         )
         return False
     if header["num_global_freq"] != app.config["num_global_freq"]:
-        print(
+        logger.error(
             "Header Error: Number of Global Frequencies does not match config; Got value %d"
             % (header["num_global_freq"])
         )
         return False
     if header["num_local_freq"] != app.config["num_local_freq"]:
-        print(
+        logger.error(
             "Header Error: Number of Local Frequencies does not match config; Got value %d"
             % (header["num_local_freq"])
         )
         return False
     if header["fpga_seq_num"] < 0:
-        print(
+        logger.error(
             "Header Error: Invalid FPGA sequence Number; Got value %d"
             % (header["fpga_seq_num"])
         )
@@ -285,13 +296,13 @@ def HeaderCheck(header, app):
         header["frames_per_packet"] != app.config["frames_per_packet"]
         and header["frames_per_packet"] != app.config["bi_frames_per_packet"]
     ):
-        print(
+        logger.error(
             "Header Error: Frames per Packet does not match config; Got value %d"
             % (header["frames_per_packet"])
         )
         return False
 
-    # print("First Packet Received, Valid Chime Header Confirmed.")
+    # logger.debug("First Packet Received, Valid Chime Header Confirmed.")
     return True
 
 
@@ -343,12 +354,12 @@ def data_listener(thread_id):
         if not InitialKotekanConnection:
             sk_receive_watchdogs[thread_id] = datetime.datetime.now()
             InitialKotekanConnection = True
-            print("Connected to Kotekan")
+            logger.info("Connected to Kotekan")
 
         if packet != "":
 
             if packetCounter % (50 * len(stream_dict) + 1) == 0:
-                print(
+                logger.info(
                     "Thread id %d: Receiving Packets from %d Streams"
                     % (thread_id, len(stream_dict))
                 )
@@ -425,7 +436,7 @@ def data_listener(thread_id):
                             * frames_per_packet
                         )
             # if(thread_id == 1):
-            # print(header['fpga_seq_num'][0],min_seq,timesteps_per_frame,frames_per_packet, (header['fpga_seq_num'][0]-min_seq)/(float(timesteps_per_frame)*frames_per_packet), np.median(data))
+            # logger.debug(header['fpga_seq_num'][0],min_seq,timesteps_per_frame,frames_per_packet, (header['fpga_seq_num'][0]-min_seq)/(float(timesteps_per_frame)*frames_per_packet), np.median(data))
             idx = int(
                 (header["fpga_seq_num"][0] - app.min_seq)
                 // (timesteps_per_frame * frames_per_packet)
@@ -434,9 +445,9 @@ def data_listener(thread_id):
                 waterfall[stream_dict[header["encoded_stream_ID"][0]].bins, idx] = data
                 sk_receive_watchdogs[thread_id] = datetime.datetime.now()
             elif app.debug:
-                print("Invalid Packet Location (Ignore on Startup)")
-                print(datetime.datetime.utcnow())
-                print(
+                logger.warning("Invalid Packet Location (Ignore on Startup)")
+                logger.warning(datetime.datetime.utcnow())
+                logger.warning(
                     "- IDX %d Header Seq %d Min Seq %d Max Seq %d Timesteps Per Frame %d Frames Per Packet %d"
                     % (
                         idx,
@@ -494,13 +505,13 @@ def bad_input_listener(thread_id):
         if not InitialKotekanConnection:
             bi_receive_watchdog = datetime.datetime.now()
             InitialKotekanConnection = True
-            print("Connected to Kotekan")
+            logger.info("Connected to Kotekan")
 
         # If we get something not empty
         if packet != "":
             # Every so often print that we are receiving packets
             if packetCounter % (25 * len(stream_dict) + 1) == 0:
-                print(
+                logger.warning(
                     "Bad Input Thread (id %d): Receiving Packets from %d Streams"
                     % (thread_id, len(stream_dict))
                 )
@@ -511,7 +522,7 @@ def bad_input_listener(thread_id):
             data = np.fromstring(packet[RFIHeaderSize:], dtype=np.uint8)
             # Create a new stream object each time a new stream connects
             if header["encoded_stream_ID"][0] not in known_streams:
-                # print("New Stream Detected")
+                # logger.debug("New Stream Detected")
                 # Check that the new stream is providing the correct data
                 if HeaderCheck(header, app) == False:
                     break
@@ -539,7 +550,7 @@ def bad_input_listener(thread_id):
             bi_waterfall[fq, :, t] = data
             bi_receive_watchdog = datetime.datetime.now()
             # if(223 in stream_dict[header['encoded_stream_ID'][0]].bins):
-            #    print(np.where(data == 10)[0].size, t, fq)
+            #    logger.debug(np.where(data == 10)[0].size, t, fq)
 
 
 def TCP_stream():
@@ -555,7 +566,7 @@ def TCP_stream():
     while True:
 
         conn, addr = sock_tcp.accept()
-        print("Established Connection to %s:%s" % (addr[0], addr[1]))
+        logger.info("Established Connection to %s:%s" % (addr[0], addr[1]))
         tcp_connected = True
 
         while True:
@@ -566,15 +577,14 @@ def TCP_stream():
                 break
 
             elif MESSAGE == "W":
-                if app.debug:
-                    print("Sending Watefall Data %d ..." % (len(waterfall.tostring())))
+                logger.debug(
+                    "Sending Watefall Data %d ..." % (len(waterfall.tostring()))
+                )
                 conn.send(waterfall.tostring())  # Send Watefall
             elif MESSAGE == "T":
-                if app.debug:
-                    print(
-                        "Sending Time Data ...",
-                        len(t_min.strftime("%d-%m-%YT%H:%M:%S:%f")),
-                    )
+                logger.debug(
+                    "Sending Time Data ...", len(t_min.strftime("%d-%m-%YT%H:%M:%S:%f"))
+                )
                 conn.send(t_min.strftime("%d-%m-%YT%H:%M:%S:%f").encode())
             elif MESSAGE == "w":
                 temp_bi_waterfall = (
@@ -584,23 +594,21 @@ def TCP_stream():
                 temp_bi_waterfall /= max_t_pos - np.count_nonzero(
                     bi_waterfall[:, :, :max_t_pos] == -1, axis=2
                 )
-                # print(np.count_nonzero(bi_waterfall[:,:,:max_t_pos]==-1, axis = 2).shape, np.min(np.count_nonzero(bi_waterfall[:,:,:max_t_pos]==-1, axis = 2)), np.max(np.count_nonzero(bi_waterfall[:,:,:max_t_pos]==-1, axis = 2)))
-                # print(np.nanmin(temp_bi_waterfall), np.nanmax(temp_bi_waterfall), np.nanmean(temp_bi_waterfall))
-                # print(np.where(temp_bi_waterfall[223,:] > 2)[0].size, temp_bi_waterfall[223,143], np.nanmax(temp_bi_waterfall[223,:]), np.nanmin(temp_bi_waterfall[223,:]))
-                if app.debug:
-                    print(
-                        "Sending Bad Input Watefall Data %d ..."
-                        % (len(temp_bi_waterfall.tostring()))
-                    )
+                # logger.debug(np.count_nonzero(bi_waterfall[:,:,:max_t_pos]==-1, axis = 2).shape, np.min(np.count_nonzero(bi_waterfall[:,:,:max_t_pos]==-1, axis = 2)), np.max(np.count_nonzero(bi_waterfall[:,:,:max_t_pos]==-1, axis = 2)))
+                # logger.debug(np.nanmin(temp_bi_waterfall), np.nanmax(temp_bi_waterfall), np.nanmean(temp_bi_waterfall))
+                # logger.debug(np.where(temp_bi_waterfall[223,:] > 2)[0].size, temp_bi_waterfall[223,143], np.nanmax(temp_bi_waterfall[223,:]), np.nanmin(temp_bi_waterfall[223,:]))
+                logger.debug(
+                    "Sending Bad Input Watefall Data %d ..."
+                    % (len(temp_bi_waterfall.tostring()))
+                )
                 conn.send(temp_bi_waterfall.tostring())  # Send Watefall
             elif MESSAGE == "t":
-                if app.debug:
-                    print(
-                        "Sending Bad Input Time Data ...",
-                        len(bi_t_min.strftime("%d-%m-%YT%H:%M:%S:%f")),
-                    )
+                logger.debug(
+                    "Sending Bad Input Time Data ...",
+                    len(bi_t_min.strftime("%d-%m-%YT%H:%M:%S:%f")),
+                )
                 conn.send(bi_t_min.strftime("%d-%m-%YT%H:%M:%S:%f").encode())
-        print("Closing Connection to %s:%s ..." % (addr[0], str(addr[1])))
+        logger.info("Closing Connection to %s:%s ..." % (addr[0], str(addr[1])))
         conn.close()
 
 
@@ -681,30 +689,28 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
         overall_rfi = -1
     metric_dict["overall_rfi_sk"].set(overall_rfi)
 
-    if app.debug:
-        print("Metrics Log:")
-        print(
-            "    - mean_bi_waterfall: min %.2f max %.2f"
-            % (np.nanmin(mean_bi_waterfall), np.nanmax(mean_bi_waterfall))
-        )
-        print(
-            "    - Bad Input Band Computed: min %.2f max %.2f"
-            % (np.nanmin(bad_input_band), np.nanmax(bad_input_band))
-        )
-        print("    - num_bad_inputs: %d" % (num_bad_inputs))
-        print(np.where(bad_input_band > 10.0)[0])
-        print(bad_input_band[np.where(bad_input_band > 10.0)])
-        print("    - max_pos: %d" % (max_pos))
-        print(
-            "    - Band Computed: min %.2f max %.2f"
-            % (np.nanmin(band), np.nanmax(band))
-        )
-        print("    - Expectation of SK: %.5f Deviation of SK: %.5f" % (med, std))
-        print(
-            "    - Band Percent Computed: min %.2f max %.2f"
-            % (np.nanmin(band_perc), np.nanmax(band_perc))
-        )
-        print("    - Overall RFI: %.2f" % (overall_rfi))
+    logger.debug("Metrics Log:")
+    logger.debug(
+        "    - mean_bi_waterfall: min %.2f max %.2f"
+        % (np.nanmin(mean_bi_waterfall), np.nanmax(mean_bi_waterfall))
+    )
+    logger.debug(
+        "    - Bad Input Band Computed: min %.2f max %.2f"
+        % (np.nanmin(bad_input_band), np.nanmax(bad_input_band))
+    )
+    logger.debug("    - num_bad_inputs: %d" % (num_bad_inputs))
+    logger.debug(np.where(bad_input_band > 10.0)[0])
+    logger.debug(bad_input_band[np.where(bad_input_band > 10.0)])
+    logger.debug("    - max_pos: %d" % (max_pos))
+    logger.debug(
+        "    - Band Computed: min %.2f max %.2f" % (np.nanmin(band), np.nanmax(band))
+    )
+    logger.debug("    - Expectation of SK: %.5f Deviation of SK: %.5f" % (med, std))
+    logger.debug(
+        "    - Band Percent Computed: min %.2f max %.2f"
+        % (np.nanmin(band_perc), np.nanmax(band_perc))
+    )
+    logger.debug("    - Overall RFI: %.2f" % (overall_rfi))
 
 
 class S(BaseHTTPRequestHandler):
@@ -723,7 +729,7 @@ class S(BaseHTTPRequestHandler):
 def metric_thread():
 
     global bi_waterfall, waterfall, max_t_pos, app, InitialKotekanConnection
-    print("Starting Metrics Thread")
+    logger.info("Starting Metrics Thread")
     metric_dict = dict()
     # Create Metrics:
     metric_dict["overall_rfi_sk"] = Gauge("overall_rfi_sk", "percent_masked")
@@ -736,7 +742,7 @@ def metric_thread():
     )
     while not InitialKotekanConnection:
         time.sleep(1)
-    print("Starting HTTP Server")
+    logger.info("Starting HTTP Server")
     # Start up the server to expose the metrics.
     start_http_server(7341)  # RFI1
     # Generate some requests.
@@ -749,17 +755,17 @@ def metric_thread():
 def watchdog_thread():
 
     global sk_receive_watchdogs, bi_receive_watchdog, EXIT, InitialKotekanConnection
-    print("Starting Watchdog Thread")
+    logger.info("Starting Watchdog Thread")
     while not InitialKotekanConnection:
         time.sleep(1)
     while True:
-        # print((datetime.datetime.now() - sk_receive_watchdog).total_seconds())
+        # logger.debug((datetime.datetime.now() - sk_receive_watchdog).total_seconds())
         for i in range(len(sk_receive_watchdogs)):
             if (datetime.datetime.now() - sk_receive_watchdogs[i]).total_seconds() > 10:
-                print("Watchdog Failed: Is kotekan running?")
+                logger.error("Watchdog Failed: Is kotekan running?")
                 EXIT = True
         if (datetime.datetime.now() - bi_receive_watchdog).total_seconds() > 10:
-            print("Bad Input Watchdog Failed: Is kotekan running?")
+            logger.error("Bad Input Watchdog Failed: Is kotekan running?")
             EXIT = True
         time.sleep(1)
 
@@ -768,7 +774,7 @@ def http_server2():
 
     server_address = ("", 7342)  # RFI2
     httpd = HTTPServer(server_address, S)
-    print("Starting HTTP Server 2")
+    logger.info("Starting HTTP Server 2")
     httpd.serve_forever()
 
 
