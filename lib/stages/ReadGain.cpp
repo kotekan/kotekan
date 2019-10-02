@@ -48,6 +48,8 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     freq_idx = -1;
     freq_MHz = -1;
 
+    first_pass = true;
+
     // Gain for FRB
     gain_frb_buf = get_buffer("gain_frb_buf");
     gain_frb_buf_id = 0;
@@ -77,7 +79,7 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
 }
 
 bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
-    if (update_gains_frb) {
+    if (!first_pass && update_gains_frb) {
         WARN("[FRB] cannot handle two back-to-back gain updates, rejecting the latter");
         return true;
     }
@@ -98,7 +100,7 @@ bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
 }
 
 bool ReadGain::update_gains_psr_callback(nlohmann::json& json) {
-    if (update_gains_psr) {
+    if (!first_pass && update_gains_psr) {
         WARN("[PSR] cannot handle two back-to-back gain updates, rejecting the latter");
         return true;
     }
@@ -220,6 +222,7 @@ void ReadGain::main_thread() {
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
     unregister_consumer(metadata_buf, unique_name.c_str());
 
+    first_pass = false;
     while (!stop_thread) {
 
         {
