@@ -157,6 +157,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     erms.resize(chunk_t * chunk_f);
     gain.resize(chunk_t * chunk_f * num_input);
     frac_lost.resize(chunk_t * chunk_f);
+    frac_rfi.resize(chunk_t * chunk_f);
     input_flags.resize(chunk_t * num_input);
     std::fill(input_flags.begin(), input_flags.end(), 0.);
 
@@ -238,6 +239,9 @@ void visTranspose::main_thread() {
         frac_lost[offset + ti] = frame.fpga_seq_length == 0
                                      ? 1.
                                      : 1. - float(frame.fpga_seq_total) / frame.fpga_seq_length;
+        frac_rfi[offset + ti] = frame.fpga_seq_length == 0
+                                     ? 0.
+                                     : float(frame.rfi_total) / frame.fpga_seq_length;
         strided_copy(frame.gain.data(), gain.data(), offset * num_input + ti, write_t, num_input);
 
         // Only copy flags if we haven't already
@@ -304,6 +308,8 @@ void visTranspose::write() {
     file->write_block("gain", f_ind, t_ind, write_f, write_t, gain.data());
 
     file->write_block("flags/frac_lost", f_ind, t_ind, write_f, write_t, frac_lost.data());
+
+    file->write_block("flags/frac_rfi", f_ind, t_ind, write_f, write_t, frac_rfi.data());
 
     file->write_block("flags/inputs", f_ind, t_ind, write_f, write_t, input_flags.data());
 }
