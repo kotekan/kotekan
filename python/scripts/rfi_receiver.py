@@ -723,7 +723,9 @@ class S(BaseHTTPRequestHandler):
 
         global app, logger
         self._set_headers()
-        self.wfile.write("rfi_bad_input_mask = %s\n" % (str(app.bad_input_mask)))
+        self.wfile.write(
+            str.encode("rfi_bad_input_mask = %s\n" % (str(app.bad_input_mask)))
+        )
 
 
 def metric_thread():
