@@ -85,7 +85,7 @@ public:
     {
         auto& r = type_registry();
         if (r.find(type) == r.end()) {
-            throw std::runtime_error("Could not find subtype name within Factory");
+            throw std::runtime_error(fmt::format(fmt("Could not find subtype name within Factory: {:s}"), type));
         }
         DEBUG_NON_OO("FACTORY({:s}): Creating {:s} instance.", typelabel(), type);
         return r.at(type)(std::forward<Args>(args)...);
