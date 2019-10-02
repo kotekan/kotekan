@@ -70,11 +70,11 @@ class CommandLine(object):
         self.min_seq = -1
         self.max_seq = -1
         self.config = {
-            "frames_per_packet": 4,
+            "frames_per_packet": 1,
             "num_global_freq": 1024,
             "num_local_freq": 8,
-            "samples_per_data_set": 32768,
-            "num_elements": 2,
+            "samples_per_data_set": 49152,
+            "num_elements": 2048,
             "timestep": 2.56e-6,
             "bytes_per_freq": 16,
             "waterfallX": 1024,
