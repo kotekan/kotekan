@@ -13,9 +13,10 @@ from kotekan import runner
 
 accumulate_params = {
     "num_elements": 4,
-    "num_ev": 4,
+    "num_ev": 0,
     "samples_per_data_set": 32768,
     "int_frames": 64,
+    "num_gpu_frames": 64,
     "total_frames": 257,  # One extra sample to ensure we actually get 256
     "block_size": 1,
     "freq": 777,
@@ -33,7 +34,7 @@ time_params.update({"integration_time": 5.0})
 pulsar_params = gaussian_params.copy()
 pulsar_params.update(
     {
-        "mode": "pulsar",
+        "pattern": "pulsar",
         "gaussian_bgnd": False,
         "wait": True,
         "samples_per_data_set": 4000,  # ~10. ms frames
@@ -60,9 +61,9 @@ def accumulate_data(tmpdir_factory):
 
     test = runner.KotekanStageTester(
         "visAccumulate",
-        {"num_ev": 4},
+        {},
         runner.FakeGPUBuffer(
-            mode="accumulate",
+            pattern="accumulate",
             freq=accumulate_params["freq"],
             num_frames=accumulate_params["total_frames"],
         ),
@@ -84,9 +85,9 @@ def gaussian_data(tmpdir_factory):
 
     test = runner.KotekanStageTester(
         "visAccumulate",
-        {"num_ev": 4},
+        {},
         runner.FakeGPUBuffer(
-            mode="gaussian",
+            pattern="gaussian",
             freq=gaussian_params["freq"],
             num_frames=gaussian_params["total_frames"],
         ),
@@ -108,9 +109,9 @@ def lostsamples_data(tmpdir_factory):
 
     test = runner.KotekanStageTester(
         "visAccumulate",
-        {"num_ev": 4},
+        {},
         runner.FakeGPUBuffer(
-            mode="lostsamples",
+            pattern="lostsamples",
             freq=accumulate_params["freq"],
             num_frames=accumulate_params["total_frames"],
         ),
@@ -123,6 +124,31 @@ def lostsamples_data(tmpdir_factory):
     yield dump_buffer.load()
 
 
+@pytest.fixture(scope="module", params=[0, 1, 4])
+def lostweights_data(tmpdir_factory, request):
+
+    tmpdir = tmpdir_factory.mktemp("lostweights")
+
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
+
+    test = runner.KotekanStageTester(
+        "visAccumulate",
+        {},
+        runner.FakeGPUBuffer(
+            pattern="lostweights",
+            freq=accumulate_params["freq"],
+            num_frames=accumulate_params["total_frames"],
+            b=request.param,
+        ),
+        dump_buffer,
+        accumulate_params,
+    )
+
+    test.run()
+
+    yield (request.param, dump_buffer.load())
+
+
 @pytest.fixture(scope="module")
 def time_data(tmpdir_factory):
 
@@ -132,9 +158,9 @@ def time_data(tmpdir_factory):
 
     test = runner.KotekanStageTester(
         "visAccumulate",
-        {"num_ev": 4},
+        {},
         runner.FakeGPUBuffer(
-            mode="accumulate",
+            pattern="accumulate",
             freq=time_params["freq"],
             num_frames=time_params["total_frames"],
         ),
@@ -250,6 +276,38 @@ def test_accumulate(accumulate_data):
         assert (frame.weight == 8.0).all()
         assert (frame.flags == 1.0).all()
         assert (frame.gain == 1.0).all()
+
+
+# Test that we are calculating the weights correctly in the presence of lost
+# data.
+def test_lostweights(lostweights_data):
+
+    row, col = np.triu_indices(accumulate_params["num_elements"])
+    ns = accumulate_params["samples_per_data_set"]
+    nf = accumulate_params["num_gpu_frames"]
+    pat = (row + 1.0j * col).astype(np.complex64)
+
+    b, data = lostweights_data
+
+    weight = pytest.approx((2 * ns - b) ** 2 * nf / 16.0, rel=1e-5)
+
+    for frame in data:
+
+        assert (frame.vis == pat).all()
+        assert frame.weight == weight
+
+
+# Test that we are accumulating the RFI flagged count correctly
+def test_rfi_total(lostweights_data):
+
+    ns = accumulate_params["samples_per_data_set"]
+    nf = accumulate_params["num_gpu_frames"]
+
+    b, data = lostweights_data
+
+    for frame in data:
+        assert frame.metadata.rfi_total == ((nf // 2) * b)
+        assert frame.metadata.fpga_total == ((nf // 2) * (2 * ns - b))
 
 
 # Test the the statistics are being calculated correctly

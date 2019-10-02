@@ -405,9 +405,9 @@ int main(int argc, char** argv) {
             ERROR_NON_OO("Exiting...");
             exit(-1);
         }
+        free(config_file_name);
+        config_file_name = nullptr;
     }
-
-    free(config_file_name);
 
     // Main REST callbacks.
     rest_server.register_post_callback("/start", [&](connectionInstance& conn, json& json_config) {
