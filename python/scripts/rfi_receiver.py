@@ -237,7 +237,7 @@ class Stream(object):
             if mode == "pathfinder":
                 self.bins = [
                     self.slot_id + self.link_id * 16 + i * 128
-                    for i in range(header["num_local_freq"])
+                    for i in range(header["num_local_freq"][0])
                 ]
             elif mode == "chime":
                 self.bins = [
@@ -245,10 +245,10 @@ class Stream(object):
                     + self.slot_id
                     + self.link_id * 32
                     + self.unused * 256
-                    for i in range(header["num_local_freq"])
+                    for i in range(header["num_local_freq"][0])
                 ]
             elif mode == "vdif":
-                self.bins = list(range(header["num_local_freq"]))
+                self.bins = list(range(header["num_local_freq"][0]))
             self.freqs = [800.0 - float(b) * 400.0 / 1024.0 for b in self.bins]
             self.bins = np.array(self.bins).astype(np.int)
             self.freqs = np.array(self.freqs)
@@ -287,10 +287,10 @@ def HeaderCheck(header, app):
             % (header["num_global_freq"])
         )
         return False
-    if header["num_local_freq"] != app.config["num_local_freq"]:
+    if header["num_local_freq"][0] != app.config["num_local_freq"]:
         logger.error(
             "Header Error: Number of Local Frequencies does not match config; Got value %d"
-            % (header["num_local_freq"])
+            % (header["num_local_freq"][0])
         )
         return False
     if header["fpga_seq_num"] < 0:
