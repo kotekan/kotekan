@@ -50,8 +50,6 @@
  * @author Cherry Ng
  *
  */
-
-
 class hsaPulsarUpdatePhase : public hsaCommand {
 public:
     /// Constructor, also initializes internal variables from config, allocates

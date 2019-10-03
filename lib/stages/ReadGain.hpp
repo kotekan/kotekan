@@ -96,8 +96,6 @@ private:
     bool update_gains_frb;
     bool update_gains_psr;
 
-    bool first_pass;
-
     /// Number of elements, should be 2048
     uint32_t _num_elements;
     /// Number of pulsar beams, should be 10

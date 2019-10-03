@@ -1,11 +1,10 @@
 #include "hsaAsyncCopyGain.hpp"
 
-#include "utils/util.h"
-
+#include "util.h"
 #include "fmt.hpp"
+#include "visUtil.hpp"
 
 #include <random>
-#include <utils/visUtil.hpp>
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -65,7 +64,7 @@ int hsaAsyncCopyGain::wait_on_precondition(int gpu_frame_id) {
                 return -1;
         }
     }
-    DEBUG("leaving with gain_buf_precondition_id={:d} frame_to_fill={:d}", gain_buf_precondition_id,
+    DEBUG2("leaving with gain_buf_precondition_id={:d} frame_to_fill={:d}", gain_buf_precondition_id,
           frame_to_fill);
     return 0;
 }
@@ -99,6 +98,6 @@ void hsaAsyncCopyGain::finalize_frame(int frame_id) {
             filling_frame = false;
         }
     }
-    DEBUG("frame left to be filled={:d} gain_buf_finalize_id={:d}", frame_to_fill,
+    DEBUG2("frame left to be filled={:d} gain_buf_finalize_id={:d}", frame_to_fill,
           gain_buf_finalize_id);
 }

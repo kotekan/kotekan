@@ -5,9 +5,10 @@
 #include "chimeMetadata.h"
 #include "configUpdater.hpp"
 #include "errors.h"
+#include "visUtil.hpp"
 
+#include <chrono>
 #include <functional>
-#include <utils/visUtil.hpp>
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -48,20 +49,17 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     freq_idx = -1;
     freq_MHz = -1;
 
-    first_pass = true;
-
     // Gain for FRB
     gain_frb_buf = get_buffer("gain_frb_buf");
     gain_frb_buf_id = 0;
     register_producer(gain_frb_buf, unique_name.c_str());
-    update_gains_frb = true;
+    update_gains_frb = false;
 
     // Gain for PSR
     gain_psr_buf = get_buffer("gain_psr_buf");
     gain_psr_buf_id = 0;
     register_producer(gain_psr_buf, unique_name.c_str());
-    update_gains_psr = true;
-
+    update_gains_psr = false;
 
     using namespace std::placeholders;
 
@@ -79,7 +77,7 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
 }
 
 bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
-    if (!first_pass && update_gains_frb) {
+    if (update_gains_frb) {
         WARN("[FRB] cannot handle two back-to-back gain updates, rejecting the latter");
         return true;
     }
@@ -95,12 +93,11 @@ bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
     }
     cond_var.notify_all();
 
-
     return true;
 }
 
 bool ReadGain::update_gains_psr_callback(nlohmann::json& json) {
-    if (!first_pass && update_gains_psr) {
+    if (update_gains_psr) {
         WARN("[PSR] cannot handle two back-to-back gain updates, rejecting the latter");
         return true;
     }
@@ -120,7 +117,6 @@ bool ReadGain::update_gains_psr_callback(nlohmann::json& json) {
         update_gains_psr = true;
     }
     cond_var.notify_all();
-
 
     return true;
 }
@@ -222,15 +218,15 @@ void ReadGain::main_thread() {
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
     unregister_consumer(metadata_buf, unique_name.c_str());
 
-    first_pass = false;
     while (!stop_thread) {
-
         {
             std::unique_lock<std::mutex> lock(mux);
-            while (!update_gains_frb && !update_gains_psr) {
-                cond_var.wait(lock);
+            while (!update_gains_frb && !update_gains_psr && !stop_thread) {
+                cond_var.wait_for(lock, std::chrono::seconds(5));
             }
         }
+        if (stop_thread)
+            break;
         if (update_gains_frb) {
             read_gain_frb();
             update_gains_frb = false;
@@ -239,5 +235,5 @@ void ReadGain::main_thread() {
             read_gain_psr();
             update_gains_psr = false;
         }
-    } // end stop thread
+    }
 }

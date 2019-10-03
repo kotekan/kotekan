@@ -112,7 +112,7 @@ int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id) {
 
 
     // Wait for new gain
-    DEBUG("Waiting for gain_buf_id={:d} to be full; gpu_frame_id={:d}", gain_buf_id, gpu_frame_id);
+    DEBUG2("Waiting for gain_buf_id={:d} to be full; gpu_frame_id={:d}", gain_buf_id, gpu_frame_id);
     if (first_pass) {
         uint8_t* frame = wait_for_full_frame(gain_buf, unique_name.c_str(), gain_buf_id);
         if (frame == NULL)
@@ -126,7 +126,7 @@ int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id) {
         auto timeout = double_to_ts(0);
         int status =
             wait_for_full_frame_timeout(gain_buf, unique_name.c_str(), gain_buf_id, timeout);
-        DEBUG("status of gain_buf_id[{:d}]={:d} ==(0=ready 1=not)", gain_buf_id, status);
+        DEBUG2("status of gain_buf_id[{:d}]={:d} ==(0=ready 1=not)", gain_buf_id, status);
         if (status == 0) {
             std::lock_guard<std::mutex> lock(_pulsar_lock);
             memcpy(host_gain, (float*)gain_buf->frames[gain_buf_id], gain_len);
@@ -137,7 +137,7 @@ int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id) {
         if (status == -1)
             return -1;
     }
-    DEBUG("leaving with gain_buf_precondition_id={:d}", gain_buf_id);
+    DEBUG2("leaving with gain_buf_precondition_id={:d}", gain_buf_id);
     return 0;
 }
 
@@ -226,7 +226,7 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, hsa_signal_t preced
 
     if (update_phase) {
         // GPS time, need ch_master
-        INFO("updating phase gain={:f} {:f}", host_gain[0], host_gain[1]);
+        DEBUG("updating phase gain={:f} {:f}", host_gain[0], host_gain[1]);
         time_now_gps = get_gps_time(metadata_buf, metadata_buffer_id);
         if (time_now_gps.tv_sec == 0) {
             ERROR("GPS time appears to be zero, bad news for pulsar timing!");
