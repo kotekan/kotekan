@@ -314,11 +314,9 @@ int frbNetworkProcess::initialize_destinations() {
 
 // internal data type for keeping track of host checks and replies
 struct DestIpSocketTime {
-    enum class CheckState { UNKNOWN, OK, FAIL };
     DestIpSocket* dst;
     std::chrono::steady_clock::time_point last_responded;
     std::chrono::steady_clock::time_point next_check;
-    CheckState state = CheckState::UNKNOWN;
     uint16_t check_delay = 20;
     friend bool operator<(const DestIpSocketTime& l, const DestIpSocketTime& r) {
         if (l.next_check == r.next_check) {
@@ -408,7 +406,7 @@ void frbNetworkProcess::ping_destinations() {
         // NOTE: we don't ping if the host is not active, but behave as if it were checked
         if (send_ping(ping_src_fd[lru_dest.dst->sending_socket], lru_dest.dst->addr)) {
             // Back off unless the host is in the OK state, in which case we back off on reception
-            if (lru_dest.state != DestIpSocketTime::CheckState::OK && lru_dest.check_delay < 600) {
+            if (!lru_dest.dst->live  && lru_dest.check_delay < 600) {
                 lru_dest.check_delay *= 2;
             }
         }
@@ -454,18 +452,12 @@ void frbNetworkProcess::ping_destinations() {
                                 INFO("Host {} is responding to pings again, mark live.",
                                      src.dst->host);
                                 src.dst->live = true;
-                            }
-                            switch (src.state) {
-                                case DestIpSocketTime::CheckState::UNKNOWN:
-                                case DestIpSocketTime::CheckState::FAIL:
-                                    src.state = DestIpSocketTime::CheckState::OK;
-                                    src.check_delay = 5;
-                                    break;
-                                case DestIpSocketTime::CheckState::OK:
-                                    if (src.check_delay < 600) {
-                                        src.check_delay *= 2;
-                                    }
-                                    break;
+                                src.check_delay = 5;
+                            } else {
+                                // a live host was pinged successfully, back off the next check
+                                if (src.check_delay < 600) {
+                                    src.check_delay *= 2;
+                                }
                             }
                         } else {
                             DEBUG("Received ping response from unknown host: {}. Ignored.",
@@ -478,11 +470,10 @@ void frbNetworkProcess::ping_destinations() {
         };
 
         // Mark node as dead if it's been too long since last response
-        if (lru_dest.state != DestIpSocketTime::CheckState::FAIL) {
+        if (lru_dest.dst->live) {
             if (time_since_last_live > node_dead_interval) {
                 INFO("Too long since last ping response, mark host {} dead.", lru_dest.dst->host);
                 lru_dest.dst->live = false;
-                lru_dest.state = DestIpSocketTime::CheckState::FAIL;
                 // NOTE: lru_dest.check_delay is left at its current value at this point, i.e.,
                 // prob. maximum
             }
