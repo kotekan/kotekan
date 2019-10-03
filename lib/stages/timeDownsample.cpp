@@ -145,7 +145,7 @@ void timeDownsample::main_thread() {
 
         } else {
 
-            timespec output_age = std::get<1>(output_frame.time) - std::get<1>(frame.time);
+            timespec output_age = std::get<1>(frame.time) - std::get<1>(output_frame.time);
             if (ts_to_double(output_age) > max_age) {
                 skipped_frame_counter.labels({std::to_string(output_frame.freq_id), "age"}).inc();
                 continue;
