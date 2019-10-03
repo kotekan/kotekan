@@ -265,7 +265,7 @@ class FakeGPUBuffer(InputBuffer):
                 "num_frames": "buffer_depth",
                 "sizeof_int": 4,
                 "frame_size": (
-                    "sizeof_int * num_local_freq * ((num_elements *"
+                    "sizeof_int * num_freq_in_frame * ((num_elements *"
                     " num_elements) + (num_elements * block_size))"
                 ),
             }
@@ -629,7 +629,7 @@ default_config = """
 type: config
 log_level: info
 num_elements: 10
-num_local_freq: 1
+num_freq_in_frame: 1
 num_data_sets: 1
 samples_per_data_set: 32768
 buffer_depth: 4
