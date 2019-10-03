@@ -29,7 +29,12 @@
  *     @buffer_format visBuffer structured
  *     @buffer_metadata visMetadata
  *
- * @conf  num_samples       Int. The number of time frames to average.
+ * @conf  num_samples  Int. The number of time frames to average.
+ * @conf  max_age      Float. How old can a frame be in seconds before it is dropped.
+ *                     Default is 120 (i.e. two minutes).
+ *
+ * @metric  kotekan_timedownsample_skipped_frame_total
+ *      The number of frames skipped entirely because they were too old.
  *
  * @warning There is not mechanism in place to verify or enforce that frames being
  *          averaged are concurrent in time. Since this stage is run for a single
@@ -56,6 +61,9 @@ private:
 
     // Number of samples to combine
     int nsamp;
+
+    // Maximum age of data
+    float max_age;
 
     // Buffers
     Buffer* in_buf;

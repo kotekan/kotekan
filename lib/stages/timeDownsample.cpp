@@ -2,12 +2,17 @@
 
 #include "chimeMetadata.h"
 #include "errors.h"
+#include "prometheusMetrics.hpp"
 #include "visBuffer.hpp"
 #include "visUtil.hpp"
+
+#include <time.h>
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(timeDownsample);
 
@@ -23,6 +28,7 @@ timeDownsample::timeDownsample(Config& config, const string& unique_name,
 
     // Get the number of time samples to combine
     nsamp = config.get_default<int>(unique_name, "num_samples", 2);
+    max_age = config.get_default<float>(unique_name, "max_age", 120.0);
 
     nprod = num_elements * (num_elements + 1) / 2;
 }
@@ -37,6 +43,9 @@ void timeDownsample::main_thread() {
     uint64_t fpga_seq_start = 0;
     unsigned int output_frame_id = 0;
     int32_t freq_id = -1; // needs to be set by first frame
+
+    auto& skipped_frame_counter = Metrics::instance().add_counter(
+        "kotekan_timedownsample_skipped_frame_total", unique_name, {"freq_id", "reason"});
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
@@ -135,6 +144,13 @@ void timeDownsample::main_thread() {
             frame_id = (frame_id + 1) % in_buf->num_frames;
 
         } else {
+
+            timespec output_age = std::get<1>(output_frame.time) - std::get<1>(frame.time);
+            if (ts_to_double(output_age) > max_age) {
+                skipped_frame_counter.labels({std::to_string(output_frame.freq_id), "age"}).inc();
+                continue;
+            }
+
             // Otherwise, stop accumulating
             for (size_t i = 0; i < nprod; i++) {
                 output_frame.vis[i] /= nframes;
