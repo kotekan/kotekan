@@ -382,7 +382,7 @@ void frbNetworkProcess::ping_destinations() {
         // jitter the initial check by a random amount 3-10 s
         auto now = std::chrono::steady_clock::now();
         auto next_check = now + std::chrono::milliseconds(dis(gen));
-        DEBUG("Check host {} at {}", dst.host, next_check.time_since_epoch());
+        DEBUG("Check host {} at {:%H:%M:%S}", dst.host, next_check.time_since_epoch());
         DestIpSocketTime& dest_ping_info = dest_by_ip[ipaddr] = {&dst, now, next_check};
         dest_by_time.push(dest_ping_info);
     }
@@ -396,8 +396,7 @@ void frbNetworkProcess::ping_destinations() {
         auto time_since_last_live = std::chrono::steady_clock::now() - lru_dest.last_responded;
 
         DEBUG("Checking: {}", lru_dest.dst->host);
-        DEBUG("Last responded: {}s ago",
-              std::chrono::duration_cast<std::chrono::seconds>(time_since_last_live).count());
+        DEBUG("Last responded: {:%S} ago", time_since_last_live);
 
         // NOTE: we don't ping if the host is not active, but behave as if it were checked
         if (send_ping(ping_src_fd[lru_dest.dst->sending_socket], lru_dest.dst->addr)) {
@@ -481,12 +480,12 @@ void frbNetworkProcess::ping_destinations() {
             std::chrono::steady_clock::now() + std::chrono::seconds(lru_dest.check_delay);
         // could add another `std::chrono::milliseconds(dis(gen))` random delay to next_check
         dest_by_time.push(lru_dest);
-        DEBUG("Check {} again in {}s", lru_dest.dst->host,
+        DEBUG("Check {} again in {:%S}", lru_dest.dst->host,
               lru_dest.next_check - std::chrono::steady_clock::now());
 
         // sleep until the next host is due
         DestIpSocketTime& next_lru_dest = dest_by_time.top();
-        DEBUG("Sleep until {} before checking the next host {}",
+        DEBUG("Sleep until {:%H:%M:%S} before checking the next host {}",
               next_lru_dest.next_check.time_since_epoch(), next_lru_dest.dst->host);
 
         // continue sleeping if received a spurious wakeup, i.e., neither the stage was stopped nor
