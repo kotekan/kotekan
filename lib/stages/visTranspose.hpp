@@ -89,6 +89,7 @@ private:
     std::vector<float> erms;
     std::vector<cfloat> gain;
     std::vector<float> frac_lost;
+    std::vector<float> frac_rfi;
     std::vector<float> input_flags;
     std::vector<rstack_ctype> reverse_stack;
 
