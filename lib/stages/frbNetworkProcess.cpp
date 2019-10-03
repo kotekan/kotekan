@@ -319,7 +319,7 @@ struct DestIpSocketTime {
     std::chrono::steady_clock::time_point last_responded;
     std::chrono::steady_clock::time_point next_check;
     CheckState state = CheckState::UNKNOWN;
-    uint16_t check_delay = 5;
+    uint16_t check_delay = 20;
     friend bool operator<(const DestIpSocketTime& l, const DestIpSocketTime& r) {
         if (l.next_check == r.next_check) {
             // break check time ties by host address
@@ -365,25 +365,28 @@ void frbNetworkProcess::ping_destinations() {
         }
     }
     const int max_ping_src_fd = *std::max_element(ping_src_fd.begin(), ping_src_fd.end());
-    // Random number generators to jitter the ping time between hosts (0.3-0.8 s)
+    // Random number generators to jitter the first ping time between hosts (3-10 s)
     std::random_device rd;  // Will be used to obtain a seed for the random number engine
     std::mt19937 gen(rd()); // Standard mersenne_twister_engine seeded with rd()
-    std::uniform_int_distribution<> dis(300, 800);
+    std::uniform_int_distribution<> dis(3000, 10000);
 
     // quick destination lookup by IP address
     std::map<uint32_t, DestIpSocketTime> dest_by_ip;
     // quick destination lookup by next scheduled check time
     std::priority_queue<RefDestIpSocketTime> dest_by_time;
     auto now = std::chrono::steady_clock::now();
-    for (auto& dst : dest_sockets) {
+    for (auto& ipaddr_dst : dest_sockets) {
         // don't even check the inactive destinations
-        if (!std::get<1>(dst).active) {
+        DestIpSocket& dst = std::get<1>(ipaddr_dst);
+        if (!dst.active) {
             continue;
         }
+        uint32_t ipaddr = std::get<0>(ipaddr_dst);
+        // jitter the initial check by a random amount 3-10 s
         auto next_check = now + std::chrono::milliseconds(dis(gen));
         DestIpSocketTime& dest_ping_info =
-            dest_by_ip[std::get<0>(dst)] = {&std::get<1>(dst), now, next_check};
-        dest_by_time.push(std::ref(dest_ping_info));
+            dest_by_ip[ipaddr] = {&dst, now, next_check};
+        dest_by_time.push(dest_ping_info);
     }
 
     // it's silly to have a mutex local to a thread, but we need it for the condition variable used
@@ -492,7 +495,7 @@ void frbNetworkProcess::ping_destinations() {
         DestIpSocketTime& next_lru_dest = dest_by_time.top();
         auto time_to_next_check = next_lru_dest.next_check - std::chrono::steady_clock::now();
         INFO("Sleep for {}s before checking the next host {}",
-             std::chrono::duration_cast<std::chrono::seconds>(time_to_next_check).count(),
+             std::chrono::duration_cast<std::chrono::milliseconds>(time_to_next_check).count()/1000.0,
             next_lru_dest.dst->host);
         // continue sleeping if received a spurious wakeup, i.e., neither the stage was stopped nor
         // timeout occurred
