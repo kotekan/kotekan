@@ -154,7 +154,7 @@ void ReadGain::read_gain_frb() {
     }
     mark_frame_full(gain_frb_buf, unique_name.c_str(), gain_frb_buf_id);
     DEBUG("Maked gain_frb_buf frame {:d} full", gain_frb_buf_id);
-    DEBUG("Time required to load FRB gains: {:f}", current_time() - start_time);
+    INFO("Time required to load FRB gains: {:f}", current_time() - start_time);
     DEBUG("Gain_frb_buf: {:.2f} {:.2f} {:.2f} ", out_frame_frb[0], out_frame_frb[1],
           out_frame_frb[2]);
     gain_frb_buf_id = (gain_frb_buf_id + 1) % gain_frb_buf->num_frames;
@@ -196,7 +196,7 @@ void ReadGain::read_gain_psr() {
     } // end beam
     mark_frame_full(gain_psr_buf, unique_name.c_str(), gain_psr_buf_id);
     DEBUG("Maked gain_psr_buf frame {:d} full", gain_psr_buf_id);
-    DEBUG("Time required to load PSR gains: {:f}", current_time() - start_time);
+    INFO("Time required to load PSR gains: {:f}", current_time() - start_time);
     DEBUG("Gain_psr_buf: {:.2f} {:.2f} {:.2f} ", out_frame_psr[0], out_frame_psr[1],
           out_frame_psr[2]);
     gain_psr_buf_id = (gain_psr_buf_id + 1) % gain_psr_buf->num_frames;
