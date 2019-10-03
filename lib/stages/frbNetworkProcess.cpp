@@ -365,6 +365,10 @@ void frbNetworkProcess::ping_destinations() {
         }
     }
     const int max_ping_src_fd = *std::max_element(ping_src_fd.begin(), ping_src_fd.end());
+    // Random number generators to jitter the ping time between hosts (0.3-0.8 s)
+    std::random_device rd;  // Will be used to obtain a seed for the random number engine
+    std::mt19937 gen(rd()); // Standard mersenne_twister_engine seeded with rd()
+    std::uniform_int_distribution<> dis(300, 800);
 
     // quick destination lookup by IP address
     std::map<uint32_t, DestIpSocketTime> dest_by_ip;
@@ -372,8 +376,10 @@ void frbNetworkProcess::ping_destinations() {
     std::priority_queue<RefDestIpSocketTime> dest_by_time;
     auto now = std::chrono::steady_clock::now();
     for (auto& dst : dest_sockets) {
+        // jitter the initial check by a random amount 0.3-0.8 s
+        auto next_check = now + std::chrono::milliseconds(dis(gen));
         DestIpSocketTime& dest_ping_info =
-            dest_by_ip[std::get<0>(dst)] = {&std::get<1>(dst), now, now};
+            dest_by_ip[std::get<0>(dst)] = {&std::get<1>(dst), now, next_check};
         dest_by_time.push(std::ref(dest_ping_info));
     }
 
@@ -483,13 +489,16 @@ void frbNetworkProcess::ping_destinations() {
         // sleep until the next host is due
         DestIpSocketTime& next_lru_dest = dest_by_time.top();
         auto time_to_next_check = next_lru_dest.next_check - std::chrono::steady_clock::now();
-        INFO("Sleep for {} before checking the next host",
-             std::chrono::duration_cast<std::chrono::seconds>(time_since_last_live).count());
+        INFO("Sleep for {}s before checking the next host {}",
+             std::chrono::duration_cast<std::chrono::seconds>(time_to_next_check).count(),
+            next_lru_dest.dst->host);
         // continue sleeping if received a spurious wakeup, i.e., neither the stage was stopped nor
         // timeout occurred
-        while (ping_cv.wait_until(lock, next_lru_dest.next_check) != std::cv_status::timeout
-               && !stop_thread)
-            ;
+        while (!stop_thread) {
+            if (ping_cv.wait_until(lock, next_lru_dest.next_check) == std::cv_status::timeout) {
+                break;
+            }
+        }
     }
 
     // close pinging sockets
