@@ -489,15 +489,17 @@ void frbNetworkProcess::ping_destinations() {
 
         // sleep until the next host is due
         DestIpSocketTime& next_lru_dest = dest_by_time.top();
-        DEBUG("Sleep for {:%S}s before checking the next host {}",
-              next_lru_dest.next_check - std::chrono::steady_clock::now(), next_lru_dest.dst->host);
+        auto now = std::chrono::steady_clock::now();
+        while (!stop_thread && next_lru_dest.next_check > now) {
+            DEBUG("Sleep for {:%S}s before checking the next host {}",
+                  next_lru_dest.next_check - now, next_lru_dest.dst->host);
 
-        // continue sleeping if received a spurious wakeup, i.e., neither the stage was stopped nor
-        // timeout occurred
-        while (!stop_thread) {
-            if (ping_cv.wait_until(lock, next_lru_dest.next_check) == std::cv_status::timeout) {
+            // continue sleeping if received a spurious wakeup, i.e., neither the stage was stopped
+            // nor timeout occurred
+            if (ping_cv.wait_for(lock, next_lru_dest.next_check - now) == std::cv_status::timeout) {
                 break;
             }
+            now = std::chrono::steady_clock::now();
         }
     }
 
