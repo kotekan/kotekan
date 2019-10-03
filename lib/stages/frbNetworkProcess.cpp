@@ -439,7 +439,7 @@ void frbNetworkProcess::ping_destinations() {
                     if (receive_ping(s, from)) {
                         if (dest_by_ip.count(from.sin_addr.s_addr)) {
                             DestIpSocketTime& src = dest_by_ip[from.sin_addr.s_addr];
-                            src.last_responded = std::chrono::steady_clock::now();
+                            auto now = std::chrono::steady_clock::now();
                             DEBUG("Received ping response from: {}. Update `last_responded`.",
                                   inet_ntop(AF_INET, &from.sin_addr, src_addr_str,
                                             INET_ADDRSTRLEN + 1));
@@ -449,11 +449,14 @@ void frbNetworkProcess::ping_destinations() {
                                 src.dst->live = true;
                                 src.check_delay = 5;
                             } else {
-                                // a live host was pinged successfully, back off the next check
-                                if (src.check_delay < 600) {
+                                // a live host was pinged successfully, back off
+                                // the next check (but guard against repeated ping replies)
+                                if (now - src.last_responded > std::chrono::seconds(1)
+                                    && src.check_delay < 600) {
                                     src.check_delay *= 2;
                                 }
                             }
+                            src.last_responded = now;
                         } else {
                             DEBUG("Received ping response from unknown host: {}. Ignored.",
                                   inet_ntop(AF_INET, &from.sin_addr, src_addr_str,
