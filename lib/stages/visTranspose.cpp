@@ -7,6 +7,7 @@
 #include "prometheusMetrics.hpp"
 #include "version.h"
 #include "visBuffer.hpp"
+#include "visRawReader.hpp"
 #include "visUtil.hpp"
 
 #include "gsl-lite.hpp"
@@ -83,6 +84,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     auto evstate_fut = std::async(&datasetManager::dataset_state<eigenvalueState>, &dm, ds_id);
     auto mstate_fut = std::async(&datasetManager::dataset_state<metadataState>, &dm, ds_id);
     auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>, &dm, ds_id);
+    auto idstate_fut = std::async(&datasetManager::dataset_state<acqDatasetIdState>, &dm, ds_id);
 
     const stackState* sstate = sstate_fut.get();
     const metadataState* mstate = mstate_fut.get();
@@ -91,10 +93,11 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     const prodState* pstate = pstate_fut.get();
     const freqState* fstate = fstate_fut.get();
     const inputState* istate = istate_fut.get();
+    const acqDatasetIdState* idstate = idstate_fut.get();
 
 
     if (mstate == nullptr || tstate == nullptr || pstate == nullptr || fstate == nullptr
-        || istate == nullptr || evstate == nullptr)
+        || istate == nullptr || evstate == nullptr || idstate == nullptr)
         return false;
 
     // TODO split instrument_name up into the real instrument name,
@@ -102,6 +105,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     // data is written to file the first time
     metadata["instrument_name"] = mstate->get_instrument_name();
     metadata["weight_type"] = mstate->get_weight_type();
+    metadata["dataset_id"] = fmt::format("{:d}", idstate->get_id());
 
     std::string git_commit_hash_dataset = mstate->get_git_version_tag();
 
