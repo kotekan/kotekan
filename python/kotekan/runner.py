@@ -630,6 +630,7 @@ type: config
 log_level: info
 num_elements: 10
 num_freq_in_frame: 1
+num_local_freq: 1
 num_data_sets: 1
 samples_per_data_set: 32768
 buffer_depth: 4
