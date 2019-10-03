@@ -376,7 +376,10 @@ void frbNetworkProcess::ping_destinations() {
     std::priority_queue<RefDestIpSocketTime> dest_by_time;
     auto now = std::chrono::steady_clock::now();
     for (auto& dst : dest_sockets) {
-        // jitter the initial check by a random amount 0.3-0.8 s
+        // don't even check the inactive destinations
+        if (!std::get<1>(dst).active) {
+            continue;
+        }
         auto next_check = now + std::chrono::milliseconds(dis(gen));
         DestIpSocketTime& dest_ping_info =
             dest_by_ip[std::get<0>(dst)] = {&std::get<1>(dst), now, next_check};
@@ -396,8 +399,7 @@ void frbNetworkProcess::ping_destinations() {
               std::chrono::duration_cast<std::chrono::seconds>(time_since_last_live).count());
 
         // NOTE: we don't ping if the host is not active, but behave as if it were checked
-        if (!lru_dest.dst->active
-            || send_ping(ping_src_fd[lru_dest.dst->sending_socket], lru_dest.dst->addr)) {
+        if (send_ping(ping_src_fd[lru_dest.dst->sending_socket], lru_dest.dst->addr)) {
             // Back off unless the host is in the OK state, in which case we back off on reception
             if (lru_dest.state != DestIpSocketTime::CheckState::OK && lru_dest.check_delay < 600) {
                 lru_dest.check_delay *= 2;
