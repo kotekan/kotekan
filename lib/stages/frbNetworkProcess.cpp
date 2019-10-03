@@ -382,12 +382,13 @@ void frbNetworkProcess::ping_destinations() {
         // jitter the initial check by a random amount 3-10 s
         auto now = std::chrono::steady_clock::now();
         auto next_check = now + std::chrono::milliseconds(dis(gen));
+#ifdef DEBUGGING
         auto time_to_next_check = next_check - now;
-        INFO("Check host {} in {}s",
-             dst.host,
-             std::chrono::duration_cast<std::chrono::milliseconds>(time_to_next_check).count()/1000.0);
-        DestIpSocketTime& dest_ping_info =
-            dest_by_ip[ipaddr] = {&dst, now, next_check};
+        DEBUG("Check host {} in {}s", dst.host,
+              std::chrono::duration_cast<std::chrono::milliseconds>(time_to_next_check).count()
+                  / 1000.0);
+#endif
+        DestIpSocketTime& dest_ping_info = dest_by_ip[ipaddr] = {&dst, now, next_check};
         dest_by_time.push(dest_ping_info);
     }
 
@@ -406,7 +407,7 @@ void frbNetworkProcess::ping_destinations() {
         // NOTE: we don't ping if the host is not active, but behave as if it were checked
         if (send_ping(ping_src_fd[lru_dest.dst->sending_socket], lru_dest.dst->addr)) {
             // Back off unless the host is in the OK state, in which case we back off on reception
-            if (!lru_dest.dst->live  && lru_dest.check_delay < 600) {
+            if (!lru_dest.dst->live && lru_dest.check_delay < 600) {
                 lru_dest.check_delay *= 2;
             }
         }
@@ -485,17 +486,22 @@ void frbNetworkProcess::ping_destinations() {
             std::chrono::steady_clock::now() + std::chrono::seconds(lru_dest.check_delay);
         // could add another `std::chrono::milliseconds(dis(gen))` random delay to next_check
         dest_by_time.push(lru_dest);
+#ifdef DEBUGGING
         auto time_to_next_check = lru_dest.next_check - std::chrono::steady_clock::now();
-        INFO("Check {} again in {}s",
-             lru_dest.dst->host,
-             std::chrono::duration_cast<std::chrono::milliseconds>(time_to_next_check).count()/1000.0);
+        DEBUG("Check {} again in {}s", lru_dest.dst->host,
+              std::chrono::duration_cast<std::chrono::milliseconds>(time_to_next_check).count()
+                  / 1000.0);
+#endif
 
         // sleep until the next host is due
         DestIpSocketTime& next_lru_dest = dest_by_time.top();
+#ifdef DEBUGGING
         time_to_next_check = next_lru_dest.next_check - std::chrono::steady_clock::now();
-        INFO("Sleep for {}s before checking the next host {}",
-             std::chrono::duration_cast<std::chrono::milliseconds>(time_to_next_check).count()/1000.0,
-            next_lru_dest.dst->host);
+        DEBUG("Sleep for {}s before checking the next host {}",
+              std::chrono::duration_cast<std::chrono::milliseconds>(time_to_next_check).count()
+                  / 1000.0,
+              next_lru_dest.dst->host);
+#endif
         // continue sleeping if received a spurious wakeup, i.e., neither the stage was stopped nor
         // timeout occurred
         while (!stop_thread) {
