@@ -148,7 +148,7 @@ gpu_beamform_output_buffers:
     kotekan_buffer: standard
 
 gain_frb_buffers:
-  num_frames: buffer_depth
+  num_frames: 5
   frame_size: 2048 * 2 * sizeof_float
   metadata_pool: main_pool
   gain_frb_buffer_0:
@@ -161,8 +161,8 @@ gain_frb_buffers:
     kotekan_buffer: standard
 
 gain_psr_buffers:
-  num_frames: buffer_depth
-  frame_size: 2048 * 2 * _num_beams * sizeof_float
+  num_frames: 5
+  frame_size: 2048 * 2 * num_beams * sizeof_float
   metadata_pool: main_pool
   gain_psr_buffer_0:
     kotekan_buffer: standard
@@ -175,7 +175,7 @@ gain_psr_buffers:
 
 pulsar_output_buffers:
     num_frames: buffer_depth
-    frame_size: _samples_per_data_set * _num_beams * _num_pol * sizeof_float *2
+    frame_size: samples_per_data_set * num_beams * num_pol * sizeof_float *2
     metadata_pool: main_pool
     beamform_pulsar_output_buffer_0:
         kotekan_buffer: standard
@@ -544,39 +544,26 @@ gpu:
       # rfi_mask_output_buf: gpu_rfi_mask_output_buffer_3
 
 read_gain:
-  read_gain0:  
-    num_beams: 10
+  updatable_config:
+    gain_frb: /updatable_config/frb_gain
+    gain_psr: /updatable_config/pulsar_gain
+  read_gain0:
     kotekan_stage: ReadGain
-    updatable_config:
-      gain_frb: /updatable_config/frb_gain
-      gain_psr: /updatable_config/pulsar_gain
     in_buf: network_buffer_0
     gain_frb_buf: gain_frb_buffer_0
     gain_psr_buf: gain_psr_buffer_0
-  read_gain1:  
-    num_beams: 10
+  read_gain1:
     kotekan_stage: ReadGain
-    updatable_config:
-      gain_frb: /updatable_config/frb_gain
-      gain_psr: /updatable_config/pulsar_gain
     in_buf: network_buffer_1
     gain_frb_buf: gain_frb_buffer_1
     gain_psr_buf: gain_psr_buffer_1
-  read_gain2:  
-    num_beams: 10
+  read_gain2:
     kotekan_stage: ReadGain
-    updatable_config:
-      gain_frb: /updatable_config/frb_gain
-      gain_psr: /updatable_config/pulsar_gain
     in_buf: network_buffer_2
     gain_frb_buf: gain_frb_buffer_2
     gain_psr_buf: gain_psr_buffer_2
-  read_gain3:  
-    num_beams: 10
+  read_gain3:
     kotekan_stage: ReadGain
-    updatable_config:
-      gain_frb: /updatable_config/frb_gain
-      gain_psr: /updatable_config/pulsar_gain
     in_buf: network_buffer_3
     gain_frb_buf: gain_frb_buffer_3
     gain_psr_buf: gain_psr_buffer_3

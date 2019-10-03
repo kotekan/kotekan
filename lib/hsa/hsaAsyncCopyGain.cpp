@@ -35,8 +35,6 @@ int hsaAsyncCopyGain::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
 
     // Check for new gains
-    DEBUG("Waiting for gain_buf_id={:d} to be full; gpu_frame_id={:d}", gain_buf_precondition_id,
-          gpu_frame_id);
     if (first_pass) {
         uint8_t* frame =
             wait_for_full_frame(gain_buf, unique_name.c_str(), gain_buf_precondition_id);
@@ -65,8 +63,6 @@ int hsaAsyncCopyGain::wait_on_precondition(int gpu_frame_id) {
                 return -1;
         }
     }
-    DEBUG2("leaving with gain_buf_precondition_id={:d} frame_to_fill={:d}",
-           gain_buf_precondition_id, frame_to_fill);
     return 0;
 }
 
@@ -93,7 +89,7 @@ void hsaAsyncCopyGain::finalize_frame(int frame_id) {
     if (frame_to_fill_finalize > 0 && filling_frame) { // only mark input empty if filling frame and
                                                        // no more frames to finalize.
         hsaCommand::finalize_frame(frame_id);
-        DEBUG("finalize_frame for frame_id={:d} mark gain_buf_finaliz_id={:d} empty", frame_id,
+        DEBUG("finalize_frame for gpu_frame_id={:d} using gain_buf_finaliz_id={:d}", frame_id,
               gain_buf_finalize_id);
         frame_to_fill_finalize--;
         if (frame_to_fill_finalize == 0) {
@@ -102,6 +98,4 @@ void hsaAsyncCopyGain::finalize_frame(int frame_id) {
             filling_frame = false;
         }
     }
-    DEBUG2("frame left to be filled={:d} gain_buf_finalize_id={:d}", frame_to_fill,
-           gain_buf_finalize_id);
 }

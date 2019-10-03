@@ -112,11 +112,11 @@ int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id) {
 
 
     // Wait for new gain
-    DEBUG2("Waiting for gain_buf_id={:d} to be full; gpu_frame_id={:d}", gain_buf_id, gpu_frame_id);
     if (first_pass) {
         uint8_t* frame = wait_for_full_frame(gain_buf, unique_name.c_str(), gain_buf_id);
         if (frame == NULL)
             return -1;
+        DEBUG("Applying inital host gains from {:s}[{:d}]", gain_buf->buffer_name, gain_buf_id);
         std::lock_guard<std::mutex> lock(_pulsar_lock);
         memcpy(host_gain, (float*)gain_buf->frames[gain_buf_id], gain_len);
         update_phase = true;
@@ -126,8 +126,8 @@ int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id) {
         auto timeout = double_to_ts(0);
         int status =
             wait_for_full_frame_timeout(gain_buf, unique_name.c_str(), gain_buf_id, timeout);
-        DEBUG2("status of gain_buf_id[{:d}]={:d} ==(0=ready 1=not)", gain_buf_id, status);
         if (status == 0) {
+            DEBUG("Applying new host gains from {:s}[{:d}]", gain_buf->buffer_name, gain_buf_id);
             std::lock_guard<std::mutex> lock(_pulsar_lock);
             memcpy(host_gain, (float*)gain_buf->frames[gain_buf_id], gain_len);
             update_phase = true;
@@ -137,7 +137,6 @@ int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id) {
         if (status == -1)
             return -1;
     }
-    DEBUG2("leaving with gain_buf_precondition_id={:d}", gain_buf_id);
     return 0;
 }
 
