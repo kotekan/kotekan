@@ -1,8 +1,9 @@
 #include "hsaAsyncCopyGain.hpp"
 
 #include "util.h"
-#include "fmt.hpp"
 #include "visUtil.hpp"
+
+#include "fmt.hpp"
 
 #include <random>
 
@@ -64,8 +65,8 @@ int hsaAsyncCopyGain::wait_on_precondition(int gpu_frame_id) {
                 return -1;
         }
     }
-    DEBUG2("leaving with gain_buf_precondition_id={:d} frame_to_fill={:d}", gain_buf_precondition_id,
-          frame_to_fill);
+    DEBUG2("leaving with gain_buf_precondition_id={:d} frame_to_fill={:d}",
+           gain_buf_precondition_id, frame_to_fill);
     return 0;
 }
 
@@ -99,5 +100,5 @@ void hsaAsyncCopyGain::finalize_frame(int frame_id) {
         }
     }
     DEBUG2("frame left to be filled={:d} gain_buf_finalize_id={:d}", frame_to_fill,
-          gain_buf_finalize_id);
+           gain_buf_finalize_id);
 }

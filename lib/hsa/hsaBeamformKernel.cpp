@@ -123,8 +123,6 @@ void hsaBeamformKernel::update_NS_beam_callback(connectionInstance& conn, json& 
 
     config.update_value(config_base, "northmost_beam", json_request["northmost_beam"]);
     conn.send_empty_reply(HTTP_RESPONSE::OK);
-    // AR Commended this out because it doesn't make sense to be here...
-    // config.update_value(unique_name, "gain_dir", _gain_dir);
 }
 
 int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {
@@ -181,9 +179,9 @@ void hsaBeamformKernel::calculate_ew_phase(float freq_now, float* host_coeff,
 
 hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
-    // Unused parameter, suppress warning
-    (void)precede_signal;  //why do i need this then?
-    
+    // Unused parameter, HSA kernel packets don't have precede_signals.
+    (void)precede_signal;
+
     if (first_pass) {
         first_pass = false;
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
