@@ -239,9 +239,8 @@ void visTranspose::main_thread() {
         frac_lost[offset + ti] = frame.fpga_seq_length == 0
                                      ? 1.
                                      : 1. - float(frame.fpga_seq_total) / frame.fpga_seq_length;
-        frac_rfi[offset + ti] = frame.fpga_seq_length == 0
-                                     ? 0.
-                                     : float(frame.rfi_total) / frame.fpga_seq_length;
+        frac_rfi[offset + ti] =
+            frame.fpga_seq_length == 0 ? 0. : float(frame.rfi_total) / frame.fpga_seq_length;
         strided_copy(frame.gain.data(), gain.data(), offset * num_input + ti, write_t, num_input);
 
         // Only copy flags if we haven't already

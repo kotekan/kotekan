@@ -52,10 +52,11 @@ void visDrop::main_thread() {
 
         // Check if this frame should be dropped because of its freq_id.
         if (std::find(drop_freqs.begin(), drop_freqs.end(), frame.freq_id) != drop_freqs.end()) {
-            if (frac_lost != 0.){
-                DEBUG("Setting lost samples for frame {:d} with frequency ID {:d}.", frame_id_in, frame.freq_id);
-                frame.fpga_seq_total = (uint64_t) (frame.fpga_seq_length * (1 - frac_lost));
-                frame.rfi_total = (uint64_t) (frame.fpga_seq_length * frac_rfi);
+            if (frac_lost != 0.) {
+                DEBUG("Setting lost samples for frame {:d} with frequency ID {:d}.", frame_id_in,
+                      frame.freq_id);
+                frame.fpga_seq_total = (uint64_t)(frame.fpga_seq_length * (1 - frac_lost));
+                frame.rfi_total = (uint64_t)(frame.fpga_seq_length * frac_rfi);
             } else {
                 DEBUG("Dropping frame {:d} with frequency ID {:d}.", frame_id_in, frame.freq_id);
                 mark_frame_empty(buf_in, unique_name.c_str(), frame_id_in);
