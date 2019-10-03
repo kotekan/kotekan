@@ -36,11 +36,6 @@
  * @metric  kotekan_timedownsample_skipped_frame_total
  *      The number of frames skipped entirely because they were too old.
  *
- * @warning There is not mechanism in place to verify or enforce that frames being
- *          averaged are concurrent in time. Since this stage is run for a single
- *          frequency stream, there is no guarantee that independent streams will have
- *          consistent timestamps.
- *
  * @author  Tristan Pinsonneault-Marotte
  *
  */
