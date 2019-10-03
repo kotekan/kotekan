@@ -127,6 +127,7 @@ void timeDownsample::main_thread() {
 
             // Accumulate integration totals
             output_frame.fpga_seq_total += frame.fpga_seq_total;
+            output_frame.rfi_total += frame.rfi_total;
 
             // Move to next frame
             nframes += 1;
