@@ -1,9 +1,9 @@
 #include "type.hpp"
-#ifdef __GNUG__
 #include <cstdlib>
 #include <cxxabi.h>
 #include <memory>
 
+// NOTE: this works on GCC and clang, but might be fragile elsewhere
 std::string demangle(const char* name) {
 
     int status = -4; // some arbitrary value to eliminate the compiler warning
@@ -14,12 +14,3 @@ std::string demangle(const char* name) {
 
     return (status == 0) ? res.get() : name;
 }
-
-#else
-
-// does nothing if not g++
-std::string demangle(const char* name) {
-    return name;
-}
-
-#endif
