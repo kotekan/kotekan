@@ -21,6 +21,8 @@ using std::vector;
 #include "iceBoardStandard.hpp"
 #include "iceBoardVDIF.hpp"
 
+/// TODO move this to an inline static once we go to C++17
+stream_id_t iceBoardShuffle::all_stream_ids[iceBoardShuffle::shuffle_size];
 
 using kotekan::bufferContainer;
 using kotekan::Config;
