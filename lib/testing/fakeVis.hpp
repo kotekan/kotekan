@@ -105,6 +105,17 @@ public:
     void fill_mode_fill_ij(visFrameView& frame);
 
     /**
+     * @brief Default fill pattern.
+     *
+     * Fill the real part with the index of feed i and the imaginary part with
+     * the index of j. Each frame is marked as missing two samples of data, one
+     * of which is RFI.
+     *
+     * @param frame Frame to fill.
+     **/
+    void fill_mode_fill_ij_missing(visFrameView& frame);
+
+    /**
      * @brief Fill with a factorisable pattern.
      *
      * Fill with unit amplitude numbers with phase ``i - j``
