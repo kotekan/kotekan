@@ -11,6 +11,7 @@ set ( KOTEKAN_UTIL_SOURCES
       nt_memset.c
       output_formating.c
       time_tracking.c
+      type.cpp
       util.c
       visBuffer.cpp
       visUtil.cpp
