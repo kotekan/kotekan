@@ -79,8 +79,11 @@ hsa_signal_t hsaAsyncCopyGain::execute(int gpu_frame_id, hsa_signal_t precede_si
         void* host_gain = (void*)gain_buf->frames[gain_buf_id];
         device.async_copy_host_to_gpu(device_gain, host_gain, gain_len, precede_signal,
                                       signals[gpu_frame_id]);
-        gain_buf_id = (gain_buf_id + 1) % gain_buf->num_frames;
+
         frame_to_fill--;
+        if (frame_to_fill == 0) {
+            gain_buf_id = (gain_buf_id + 1) % gain_buf->num_frames;
+        }
         return signals[gpu_frame_id];
     }
     return precede_signal;
@@ -92,10 +95,10 @@ void hsaAsyncCopyGain::finalize_frame(int frame_id) {
         hsaCommand::finalize_frame(frame_id);
         DEBUG("finalize_frame for frame_id={:d} mark gain_buf_finaliz_id={:d} empty", frame_id,
               gain_buf_finalize_id);
-        mark_frame_empty(gain_buf, unique_name.c_str(), gain_buf_finalize_id);
-        gain_buf_finalize_id = (gain_buf_finalize_id + 1) % gain_buf->num_frames;
         frame_to_fill_finalize--;
         if (frame_to_fill_finalize == 0) {
+            mark_frame_empty(gain_buf, unique_name.c_str(), gain_buf_finalize_id);
+            gain_buf_finalize_id = (gain_buf_finalize_id + 1) % gain_buf->num_frames;
             filling_frame = false;
         }
     }
