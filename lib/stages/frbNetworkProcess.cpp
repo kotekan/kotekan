@@ -374,7 +374,6 @@ void frbNetworkProcess::ping_destinations() {
     std::map<uint32_t, DestIpSocketTime> dest_by_ip;
     // quick destination lookup by next scheduled check time
     std::priority_queue<RefDestIpSocketTime> dest_by_time;
-    auto now = std::chrono::steady_clock::now();
     for (auto& ipaddr_dst : dest_sockets) {
         // don't even check the inactive destinations
         DestIpSocket& dst = std::get<1>(ipaddr_dst);
@@ -383,7 +382,12 @@ void frbNetworkProcess::ping_destinations() {
         }
         uint32_t ipaddr = std::get<0>(ipaddr_dst);
         // jitter the initial check by a random amount 3-10 s
+        auto now = std::chrono::steady_clock::now();
         auto next_check = now + std::chrono::milliseconds(dis(gen));
+        auto time_to_next_check = next_check - now;
+        INFO("Check host {} in {}s",
+             dst.host,
+             std::chrono::duration_cast<std::chrono::milliseconds>(time_to_next_check).count()/1000.0);
         DestIpSocketTime& dest_ping_info =
             dest_by_ip[ipaddr] = {&dst, now, next_check};
         dest_by_time.push(dest_ping_info);
@@ -490,10 +494,14 @@ void frbNetworkProcess::ping_destinations() {
             std::chrono::steady_clock::now() + std::chrono::seconds(lru_dest.check_delay);
         // could add another `std::chrono::milliseconds(dis(gen))` random delay to next_check
         dest_by_time.push(lru_dest);
+        auto time_to_next_check = lru_dest.next_check - std::chrono::steady_clock::now();
+        INFO("Check {} again in {}s",
+             lru_dest.dst->host,
+             std::chrono::duration_cast<std::chrono::milliseconds>(time_to_next_check).count()/1000.0);
 
         // sleep until the next host is due
         DestIpSocketTime& next_lru_dest = dest_by_time.top();
-        auto time_to_next_check = next_lru_dest.next_check - std::chrono::steady_clock::now();
+        time_to_next_check = next_lru_dest.next_check - std::chrono::steady_clock::now();
         INFO("Sleep for {}s before checking the next host {}",
              std::chrono::duration_cast<std::chrono::milliseconds>(time_to_next_check).count()/1000.0,
             next_lru_dest.dst->host);
