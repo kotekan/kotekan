@@ -318,6 +318,7 @@ struct DestIpSocketTime {
     std::chrono::steady_clock::time_point last_responded;
     std::chrono::steady_clock::time_point next_check;
     std::chrono::seconds check_delay{20};
+    uint16_t ping_seq = 0;
     friend bool operator<(const DestIpSocketTime& l, const DestIpSocketTime& r) {
         if (l.next_check == r.next_check) {
             // break check time ties by host address
@@ -391,6 +392,7 @@ void frbNetworkProcess::ping_destinations() {
     // by the main_thread to interrupt this thread's sleep to notify of Kotekan stopping
     std::mutex mtx;
     std::unique_lock<std::mutex> lock(mtx);
+    uint16_t ping_seq = 0;
     while (!stop_thread) {
         DestIpSocketTime& lru_dest = dest_by_time.top();
         auto time_since_last_live = std::chrono::steady_clock::now() - lru_dest.last_responded;
@@ -399,7 +401,9 @@ void frbNetworkProcess::ping_destinations() {
         DEBUG("Last responded: {:%S}s ago", time_since_last_live);
 
         // NOTE: we don't ping if the host is not active, but behave as if it were checked
-        if (send_ping(ping_src_fd[lru_dest.dst->sending_socket], lru_dest.dst->addr)) {
+        if (send_ping(ping_src_fd[lru_dest.dst->sending_socket], lru_dest.dst->addr, ping_seq)) {
+            lru_dest.ping_seq = ping_seq;
+            ping_seq++;
             // Back off unless the host is in the OK state, in which case we back off on reception
             if (!lru_dest.dst->live && 2 * lru_dest.check_delay <= max_ping_frequency_) {
                 lru_dest.check_delay *= 2;
@@ -436,27 +440,33 @@ void frbNetworkProcess::ping_destinations() {
 #endif                                  // DEBUGGING
                 if (FD_ISSET(s, &rfds)) {
                     sockaddr_in from; // out-param for `recv_from(2)`
-                    if (receive_ping(s, from)) {
+                    int reply_ping_seq = receive_ping(s, from);
+                    if (reply_ping_seq >= 0) {
                         if (dest_by_ip.count(from.sin_addr.s_addr)) {
                             DestIpSocketTime& src = dest_by_ip[from.sin_addr.s_addr];
-                            auto now = std::chrono::steady_clock::now();
-                            DEBUG("Received ping response from: {}. Update `last_responded`.",
-                                  inet_ntop(AF_INET, &from.sin_addr, src_addr_str,
-                                            INET_ADDRSTRLEN + 1));
-                            if (!src.dst->live) {
-                                INFO("Host {} is responding to pings again, mark live.",
-                                     src.dst->host);
-                                src.dst->live = true;
-                                src.check_delay = min_ping_frequency_;
-                            } else {
-                                // a live host was pinged successfully, back off
-                                // the next check (but guard against repeated ping replies)
-                                if (now - src.last_responded > std::chrono::seconds(1)
-                                    && 2 * src.check_delay <= max_ping_frequency_) {
-                                    src.check_delay *= 2;
+                            if (reply_ping_seq == src.ping_seq) {
+                                auto now = std::chrono::steady_clock::now();
+                                DEBUG("Received ping response from: {}. Update `last_responded`.",
+                                      inet_ntop(AF_INET, &from.sin_addr, src_addr_str,
+                                                INET_ADDRSTRLEN + 1));
+                                src.last_responded = now;
+                                if (!src.dst->live) {
+                                    INFO("Host {} is responding to pings again, mark live.",
+                                         src.dst->host);
+                                    src.dst->live = true;
+                                    src.check_delay = min_ping_frequency_;
+                                } else {
+                                    // a live host was pinged successfully, back off
+                                    // the next check
+                                    if (2 * src.check_delay <= max_ping_frequency_) {
+                                        src.check_delay *= 2;
+                                    }
                                 }
+                            } else {
+                                DEBUG(
+                                    "Ignore ping reply with old sequence number ({}) from host {}",
+                                    reply_ping_seq, src.dst->host);
                             }
-                            src.last_responded = now;
                         } else {
                             DEBUG("Received ping response from unknown host: {}. Ignored.",
                                   inet_ntop(AF_INET, &from.sin_addr, src_addr_str,

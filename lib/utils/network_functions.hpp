@@ -13,10 +13,11 @@
  *
  * @param s socket to use for communication
  * @param dst destination address to which to send
+ * @param seq_no sequence number to use in the packet
  *
  * @return @c true if ping was sent successfully
  */
-bool send_ping(int s, const sockaddr_in& dst);
+bool send_ping(int s, const sockaddr_in& dst, const uint16_t seq_no);
 
 /**
  * @brief Receive a ping response on socket @p s, returning `true` if all OK and putting the
@@ -25,9 +26,9 @@ bool send_ping(int s, const sockaddr_in& dst);
  * @param[in] s socket to use for communication
  * @param[out] from the response sender's address
  *
- * @return @c true if a ping response was received successfully
+ * @return sequence number of the ping response if it was received successfully, -1 otherwise
  */
-bool receive_ping(int s, sockaddr_in& from);
+int receive_ping(int s, sockaddr_in& from);
 
 /**
  * @brief Calculate internet packet checksum (based on BSD networking code)

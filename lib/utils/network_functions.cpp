@@ -6,7 +6,7 @@
 #include <unistd.h>
 
 
-bool send_ping(int s, const sockaddr_in& dst) {
+bool send_ping(int s, const sockaddr_in& dst, const uint16_t seq_no) {
     uint8_t outpackhdr[IP_MAXPACKET];
     uint8_t* outpack = outpackhdr + sizeof(struct ip);
     int cc = (64 - 8); // data length - icmp echo header len, excluding time
@@ -16,15 +16,14 @@ bool send_ping(int s, const sockaddr_in& dst) {
     icp->icmp_cksum = 0;
     icp->icmp_id = getpid();
 
-    uint16_t seq = 12345;
-    icp->icmp_seq = htons(seq);
+    icp->icmp_seq = htons(seq_no);
     icp->icmp_cksum = in_cksum((uint16_t*)icp, cc);
     int rc = sendto(s, (char*)outpack, cc, 0, (struct sockaddr*)&dst, sizeof(struct sockaddr_in));
     return rc == cc;
 }
 
 
-bool receive_ping(int s, sockaddr_in& from) {
+int receive_ping(int s, sockaddr_in& from) {
     socklen_t from_length = sizeof(from);
     uint8_t packet[4096];
     int packet_length = sizeof(packet);
@@ -34,21 +33,18 @@ bool receive_ping(int s, sockaddr_in& from) {
     int hlen = sizeof(struct ip);
     if (rc < (hlen + ICMP_MINLEN)) {
         DEBUG_NON_OO("Packet too short. Ignoring.");
-        return false;
+        return -1;
     }
     // Now the icmp part
     struct icmp* icp = (struct icmp*)(packet + hlen);
     if (icp->icmp_type == ICMP_ECHOREPLY) {
-        if (ntohs(icp->icmp_seq) != 12345) {
-            DEBUG_NON_OO("Wrong ICMP seq: {} vs {}", ntohs(icp->icmp_id), 12345);
-            return false;
-        }
         if (icp->icmp_id != getpid()) {
             DEBUG_NON_OO("Wrong ICMP id: {}", icp->icmp_id);
-            return false;
+            return -1;
         }
+        return ntohs(icp->icmp_seq);
     }
-    return true;
+    return -1;
 }
 
 
