@@ -147,9 +147,35 @@ gpu_beamform_output_buffers:
   gpu_beamform_output_buffer_3:
     kotekan_buffer: standard
 
+gain_frb_buffers:
+  num_frames: 5
+  frame_size: 2048 * 2 * sizeof_float
+  metadata_pool: main_pool
+  gain_frb_buffer_0:
+    kotekan_buffer: standard
+  gain_frb_buffer_1:
+    kotekan_buffer: standard
+  gain_frb_buffer_2:
+    kotekan_buffer: standard
+  gain_frb_buffer_3:
+    kotekan_buffer: standard
+
+gain_psr_buffers:
+  num_frames: 5
+  frame_size: 2048 * 2 * num_beams * sizeof_float
+  metadata_pool: main_pool
+  gain_psr_buffer_0:
+    kotekan_buffer: standard
+  gain_psr_buffer_1:
+    kotekan_buffer: standard
+  gain_psr_buffer_2:
+    kotekan_buffer: standard
+  gain_psr_buffer_3:
+    kotekan_buffer: standard
+
 pulsar_output_buffers:
     num_frames: buffer_depth
-    frame_size: _samples_per_data_set * _num_beams * _num_pol * sizeof_float *2
+    frame_size: samples_per_data_set * num_beams * num_pol * sizeof_float *2
     metadata_pool: main_pool
     beamform_pulsar_output_buffer_0:
         kotekan_buffer: standard
@@ -376,6 +402,7 @@ gpu:
     sub_frame_index: 2
   - name: hsaOutputDataZero
     sub_frame_index: 3
+  - name: hsaAsyncCopyGain
   - name: hsaPulsarUpdatePhase
   # Barrier between copy in and kernels
   - name: hsaBarrier
@@ -431,8 +458,6 @@ gpu:
     kotekan_stage: hsaProcess
     gpu_id: 0
     updatable_config:
-      gain_psr: /updatable_config/pulsar_gain
-      gain_frb: /updatable_config/frb_gain
       psr_pt: /updatable_config/pulsar_pointing
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
@@ -441,6 +466,8 @@ gpu:
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_0
+      gain_frb_buf: gain_frb_buffer_0
+      gain_psr_buf: gain_psr_buffer_0
       lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_0
@@ -453,8 +480,6 @@ gpu:
     kotekan_stage: hsaProcess
     gpu_id: 1
     updatable_config:
-      gain_psr: /updatable_config/pulsar_gain
-      gain_frb: /updatable_config/frb_gain
       psr_pt: /updatable_config/pulsar_pointing
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
@@ -463,6 +488,8 @@ gpu:
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_1
+      gain_frb_buf: gain_frb_buffer_1
+      gain_psr_buf: gain_psr_buffer_1
       lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_1
@@ -475,8 +502,6 @@ gpu:
     kotekan_stage: hsaProcess
     gpu_id: 2
     updatable_config:
-      gain_psr: /updatable_config/pulsar_gain
-      gain_frb: /updatable_config/frb_gain
       psr_pt: /updatable_config/pulsar_pointing
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
@@ -485,6 +510,8 @@ gpu:
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_2
+      gain_frb_buf: gain_frb_buffer_2
+      gain_psr_buf: gain_psr_buffer_2
       lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_2
@@ -497,8 +524,6 @@ gpu:
     kotekan_stage: hsaProcess
     gpu_id: 3
     updatable_config:
-      gain_psr: /updatable_config/pulsar_gain
-      gain_frb: /updatable_config/frb_gain
       psr_pt: /updatable_config/pulsar_pointing
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
@@ -507,6 +532,8 @@ gpu:
     commands: *command_list
     in_buffers:
       network_buf: network_buffer_3
+      gain_frb_buf: gain_frb_buffer_3
+      gain_psr_buf: gain_psr_buffer_3
       lost_samples_buf: lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_3
@@ -515,6 +542,31 @@ gpu:
       # rfi_bad_input_buf: gpu_rfi_bad_input_buffer_3
       # rfi_output_buf: gpu_rfi_output_buffer_3
       # rfi_mask_output_buf: gpu_rfi_mask_output_buffer_3
+
+read_gain:
+  updatable_config:
+    gain_frb: /updatable_config/frb_gain
+    gain_psr: /updatable_config/pulsar_gain
+  read_gain0:
+    kotekan_stage: ReadGain
+    in_buf: network_buffer_0
+    gain_frb_buf: gain_frb_buffer_0
+    gain_psr_buf: gain_psr_buffer_0
+  read_gain1:
+    kotekan_stage: ReadGain
+    in_buf: network_buffer_1
+    gain_frb_buf: gain_frb_buffer_1
+    gain_psr_buf: gain_psr_buffer_1
+  read_gain2:
+    kotekan_stage: ReadGain
+    in_buf: network_buffer_2
+    gain_frb_buf: gain_frb_buffer_2
+    gain_psr_buf: gain_psr_buffer_2
+  read_gain3:
+    kotekan_stage: ReadGain
+    in_buf: network_buffer_3
+    gain_frb_buf: gain_frb_buffer_3
+    gain_psr_buf: gain_psr_buffer_3
 
 # This set of stages takes information from the packet loss mask
 # and RFI mask and updates the metadata in the output N2 buffers
@@ -962,6 +1014,28 @@ updatable_config:
       ra: 53.6197236741
       dec: 54.6433973569
       scaling: 48
+  bad_inputs:
+    kotekan_update_endpoint: json
+    # These inputs are assumed to be in cylinder order
+    bad_inputs: []
+    start_time: 1535048997.
+    tag: "initial_flags"
+  rfi_zeroing_toggle:
+    kotekan_update_endpoint: json
+    rfi_zeroing: False
+  rfi_sk_record:
+    kotekan_update_endpoint: json
+    output_dir: /mnt/gong/RFI/test_sk/
+    write_to_disk: false
+  rfi_var_record:
+    kotekan_update_endpoint: json
+    output_dir: /mnt/gong/RFI/test_var/
+    write_to_disk: false
+  rfi_var_element_index:
+    kotekan_update_endpoint: json
+    # This element should be given in cylinder input order,
+    # not correlator/FPGA input order.
+    element_index: 500
 
   gating:
     psr0_config:
