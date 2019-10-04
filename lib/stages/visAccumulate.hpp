@@ -69,12 +69,12 @@ using namespace kotekan::prometheus;
  * @conf  instrument_name       String. Name of the instrument. Default "chime".
  * @conf  freq_ids              Vector of UInt32. Frequency IDs on the stream.
  *                              Default 0..1023.
- * @conf  timeout               Float. Drop frames later than this number of seconds. Default 60.0
+ * @conf  max_age               Float. Drop frames later than this number of seconds. Default 60.0
  *
  * @par Metrics
- * @metric  kotekan_vis_accumulate_skipped_frame_total
+ * @metric  kotekan_visaccumulate_skipped_frame_total
  *      The number of frames skipped entirely because they were under the
- *      low_sample_fraction.
+ *      low_sample_fraction, or too old.
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte
  */
@@ -157,7 +157,7 @@ private:
     size_t samples_per_data_set;
     size_t num_gpu_frames;
     size_t minimum_samples;
-    float timeout;
+    float max_age;
 
     // Derived from config
     size_t num_prod_gpu;

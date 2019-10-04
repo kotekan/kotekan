@@ -70,6 +70,7 @@ fakeVis::fakeVis(Config& config, const string& unique_name, bufferContainer& buf
     // Get fill type
     fill_map["default"] = std::bind(&fakeVis::fill_mode_default, this, _1);
     fill_map["fill_ij"] = std::bind(&fakeVis::fill_mode_fill_ij, this, _1);
+    fill_map["fill_ij_missing"] = std::bind(&fakeVis::fill_mode_fill_ij_missing, this, _1);
     fill_map["phase_ij"] = std::bind(&fakeVis::fill_mode_phase_ij, this, _1);
     fill_map["chime"] = std::bind(&fakeVis::fill_mode_chime, this, _1);
     fill_map["test_pattern_simple"] = std::bind(&fakeVis::fill_mode_test_pattern_simple, this, _1);
@@ -304,6 +305,12 @@ void fakeVis::fill_mode_fill_ij(visFrameView& frame) {
         }
     }
     fill_non_vis(frame);
+}
+
+void fakeVis::fill_mode_fill_ij_missing(visFrameView& frame) {
+    fill_mode_fill_ij(frame);
+    frame.fpga_seq_total = frame.fpga_seq_length - 2;
+    frame.rfi_total = 1;
 }
 
 void fakeVis::fill_mode_phase_ij(visFrameView& frame) {
