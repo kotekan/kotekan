@@ -189,6 +189,16 @@ void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutMa
                      " samples starting at count %" PRIi64 ". (next_frame: %d)",
                      request.event_id, request.length_fpga, request.start_fpga, next_frame);
             }//end loopify
+            
+            //for(int freqidx = 0; freqidx < _num_local_freq; freqidx++){
+            //
+            //    basebandRequest request = basebandDumpStatuses[freqidx]->request;
+            //    // std::time_t tt = std::chrono::system_clock::to_time_t(request.received);
+            //    INFO("Received baseband dump request for event %" PRIu64 ": %" PRIi64
+            //         " samples starting at count %" PRIi64 ". (next_frame: %d)",
+            //         request.event_id, request.length_fpga, request.start_fpga, next_frame);
+            //}//end loopify
+
             //XXX Assume that all eight dumps have the same event ID.
             //const uint64_t event_id = basebandRequests[0]->event_id;
             
@@ -218,6 +228,12 @@ void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutMa
                     //loopify
                     std::lock_guard<std::mutex> lock(*request_mtxs[freqidx]);
                     basebandDumpStatuses[freqidx]->state = basebandDumpStatus::State::INPROGRESS;
+                    
+                    basebandRequest request = basebandDumpStatuses[freqidx]->request;
+                    // std::time_t tt = std::chrono::system_clock::to_time_t(request.received);
+                    INFO("before get_data(): Received baseband dump request for event %" PRIu64 ": %" PRIi64
+                         " samples starting at count %" PRIi64 ". (next_frame: %d)",
+                         request.event_id, request.length_fpga, request.start_fpga, next_frame);
                     // Note: the length of the dump still needs to be set with
                     // actual sizes. This is done in `get_data` as it verifies what
                     // is available in the current buffers.
@@ -228,7 +244,11 @@ void basebandReadout::listen_thread(const uint32_t freq_ids[], basebandReadoutMa
                 // out is done by another thread. This keeps the number of threads that can lock out
                 // the main buffer limited to 2 (listen and main).
                 // loopify function call,
-                dumps_to_write_vec.push_back(get_data(basebandRequests[freqidx]->event_id, basebandRequests[freqidx]->start_fpga,                             std::min((int64_t)basebandRequests[freqidx]->length_fpga, _max_dump_samples),freqidx));
+                //dumps_to_write_vec.push_back(get_data(basebandRequests[freqidx]->event_id, basebandRequests[freqidx]->start_fpga,                             std::min((int64_t)basebandRequests[freqidx]->length_fpga, _max_dump_samples),freqidx));
+                dumps_to_write_vec.push_back(get_data((basebandDumpStatuses[freqidx]->request).event_id, 
+                                                       (basebandDumpStatuses[freqidx]->request).start_fpga,                             
+                                                       std::min((int64_t)(basebandDumpStatuses[freqidx]->request).length_fpga, _max_dump_samples),
+                                                       freqidx));
                 auto currentData = dumps_to_write_vec.back();
                 // At this point we know how much of the requested data we managed to read from the
                 // buffer (which may be nothing if the request as recieved too late).
