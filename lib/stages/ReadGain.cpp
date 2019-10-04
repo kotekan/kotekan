@@ -151,6 +151,10 @@ void ReadGain::read_gain_frb() {
             }
         }
         fclose(ptr_myfile);
+        for (uint i = 0; i < _num_elements; i++) {
+            out_frame_frb[i * 2] = out_frame_frb[i * 2] * scaling;
+            out_frame_frb[i * 2 + 1] = out_frame_frb[i * 2 + 1] * scaling;
+        }
     }
     mark_frame_full(gain_frb_buf, unique_name.c_str(), gain_frb_buf_id);
     DEBUG("Maked gain_frb_buf frame {:d} full", gain_frb_buf_id);
