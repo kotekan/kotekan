@@ -169,7 +169,7 @@ gain_psr_buffers:
 
 pulsar_output_buffers:
   num_frames: buffer_depth
-  frame_size: _samples_per_data_set * _num_beams * _num_pol * sizeof_float *2
+  frame_size: samples_per_data_set * num_beams * num_pol * sizeof_float *2
   metadata_pool: main_pool
   beamform_pulsar_output_buffer_0:
     kotekan_buffer: standard
