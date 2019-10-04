@@ -684,8 +684,8 @@ public:
 
     /**
      * @brief Constructor
-     * @param id    The dataset ID for the acquisition.
-     * @param inner An inner state (optional).
+     * @param ds_id    The dataset ID for the acquisition.
+     * @param inner    An inner state (optional).
      */
     acqDatasetIdState(dset_id_t ds_id, state_uptr inner = nullptr) :
         datasetState(move(inner)),
