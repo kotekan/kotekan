@@ -38,10 +38,6 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string& unique_name,
     _num_local_freq = config.get<int32_t>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
 
-    scaling = config.get_default<float>(unique_name, "frb_scaling", 1.0);
-    vector<float> dg = {0.0, 0.0}; // re,im
-    default_gains = config.get_default<std::vector<float>>(unique_name, "frb_missing_gains", dg);
-
     _northmost_beam = config.get<float>(unique_name, "northmost_beam");
     freq_ref = (LIGHT_SPEED * (128) / (sin(_northmost_beam * PI / 180.) * FEED_SEP * 256)) / 1.e6;
 
@@ -62,7 +58,6 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string& unique_name,
     host_coeff = (float*)hsa_host_malloc(coeff_len, device.get_gpu_numa_node());
 
     gain_len = 2 * 2048 * sizeof(float);
-    host_gain = (float*)hsa_host_malloc(gain_len, device.get_gpu_numa_node());
 
     // Figure out which frequency, is there a better way that doesn't involve reading in the whole
     // thing? Check later
@@ -73,7 +68,6 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string& unique_name,
     freq_idx = -1;
     freq_MHz = -1;
 
-    update_gains = true;
     update_NS_beam = true;
     update_EW_beam = true;
     first_pass = true;
@@ -91,12 +85,6 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const string& unique_name,
 
     rest_server.register_post_callback(
         endpoint_EW_beam, std::bind(&hsaBeamformKernel::update_EW_beam_callback, this, _1, _2));
-    // listen for gain updates
-    _gain_dir = config.get_default<std::string>(unique_name, "updatable_config/gain_frb", "");
-    if (_gain_dir.length() > 0)
-        configUpdater::instance().subscribe(
-            config.get<std::string>(unique_name, "updatable_config/gain_frb"),
-            std::bind(&hsaBeamformKernel::update_gains_callback, this, _1));
 }
 
 hsaBeamformKernel::~hsaBeamformKernel() {
@@ -104,23 +92,8 @@ hsaBeamformKernel::~hsaBeamformKernel() {
     restServer::instance().remove_json_callback(endpoint_EW_beam);
     hsa_host_free(host_map);
     hsa_host_free(host_coeff);
-    hsa_host_free(host_gain);
     hsa_host_free(_ew_spacing_c);
     // TODO Free device memory allocations.
-}
-
-
-bool hsaBeamformKernel::update_gains_callback(nlohmann::json& json) {
-    // we're not fussy about exactly when the gains update, so no need for a lock here
-    update_gains = true;
-    try {
-        _gain_dir = json.at("frb_gain_dir");
-    } catch (std::exception& e) {
-        WARN("[FRB] Fail to read gain_dir {:s}", e.what());
-        return false;
-    }
-    INFO("[FRB] updated gain with {:s}", _gain_dir);
-    return true;
 }
 
 void hsaBeamformKernel::update_EW_beam_callback(connectionInstance& conn, json& json_request) {
@@ -150,8 +123,6 @@ void hsaBeamformKernel::update_NS_beam_callback(connectionInstance& conn, json& 
 
     config.update_value(config_base, "northmost_beam", json_request["northmost_beam"]);
     conn.send_empty_reply(HTTP_RESPONSE::OK);
-    // AR Commended this out because it doesn't make sense to be here...
-    // config.update_value(unique_name, "gain_dir", _gain_dir);
 }
 
 int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {
@@ -206,8 +177,11 @@ void hsaBeamformKernel::calculate_ew_phase(float freq_now, float* host_coeff,
     }
 }
 
-
 hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
+
+    // Unused parameter, HSA kernel packets don't have precede_signals.
+    (void)precede_signal;
+
     if (first_pass) {
         first_pass = false;
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
@@ -216,45 +190,6 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_s
     }
     mark_frame_empty(metadata_buf, unique_name.c_str(), metadata_buffer_id);
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
-
-    if (update_gains) {
-        double start_time = current_time();
-        // brute force wait to make sure we don't clobber memory
-        if (hsa_signal_wait_scacquire(precede_signal, HSA_SIGNAL_CONDITION_LT, 1, UINT64_MAX,
-                                      HSA_WAIT_STATE_BLOCKED)
-            != 0) {
-            ERROR("***** ERROR **** Unexpected signal value **** ERROR **** ");
-        }
-        update_gains = false;
-        FILE* ptr_myfile;
-        char filename[256];
-        snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin", _gain_dir.c_str(),
-                 freq_idx);
-        INFO("Loading gains from {:s}", filename);
-        ptr_myfile = fopen(filename, "rb");
-        if (ptr_myfile == NULL) {
-            ERROR("GPU Cannot open gain file {:s}", filename);
-            for (int i = 0; i < 2048; i++) {
-                host_gain[i * 2] = default_gains[0] * scaling;
-                host_gain[i * 2 + 1] = default_gains[1] * scaling;
-            }
-        } else {
-            if (_num_elements != fread(host_gain, sizeof(float) * 2, _num_elements, ptr_myfile)) {
-                FATAL_ERROR(
-                    "Gain file ({:s}) wasn't long enough! Something went wrong, breaking...",
-                    filename);
-                return precede_signal;
-            }
-            fclose(ptr_myfile);
-            for (uint32_t i = 0; i < 2048; i++) {
-                host_gain[i * 2] = host_gain[i * 2] * scaling;
-                host_gain[i * 2 + 1] = host_gain[i * 2 + 1] * scaling;
-            }
-        }
-        void* device_gain = device.get_gpu_memory("beamform_gain", gain_len);
-        device.sync_copy_host_to_gpu(device_gain, (void*)host_gain, gain_len);
-        INFO("Time required to load FRB gains: {:f}", current_time() - start_time);
-    }
 
     if (update_NS_beam) {
         calculate_cl_index(host_map, freq_MHz, freq_ref);
@@ -282,7 +217,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_s
     args.map_buffer = device.get_gpu_memory("beamform_map", map_len);
     args.coeff_buffer = device.get_gpu_memory("beamform_coeff_map", coeff_len);
     args.output_buffer = device.get_gpu_memory("beamform_output", output_frame_len);
-    args.gain_buffer = device.get_gpu_memory("beamform_gain", gain_len);
+    args.gain_buffer = device.get_gpu_memory_array("beamform_gain", gpu_frame_id, gain_len);
 
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
