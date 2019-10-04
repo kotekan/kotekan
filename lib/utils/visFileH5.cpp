@@ -59,7 +59,7 @@ void visFileH5::create_file(const std::string& name, const kotekan::logLevel log
     const eigenvalueState* evstate = evstate_fut.get();
 
     if (!istate || !pstate || !fstate) {
-        ERROR("Required datasetState not found for dataset ID {:#x}\nThe following required states "
+        ERROR("Required datasetState not found for dataset ID {}\nThe following required states "
               "were found:\ninputState - {:p}\nprodState - {:p}\nfreqState - {:p}\n",
               dataset, (void*)istate, (void*)pstate, (void*)fstate);
         throw std::runtime_error("Could not create file.");

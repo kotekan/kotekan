@@ -4,6 +4,7 @@
 #include "Config.hpp"
 #include "errors.h"
 #include "gateSpec.hpp"
+#include "Hash.hpp"
 #include "visUtil.hpp"
 
 #include "fmt.hpp"
@@ -29,6 +30,7 @@ class datasetState;
 class datasetManager;
 
 using state_uptr = std::unique_ptr<datasetState>;
+using dset_id_t = Hash;
 
 /**
  * @brief A base class for representing state changes done to datasets.
@@ -606,8 +608,6 @@ public:
 };
 
 
-// TODO: Remove this and integrate gossec into dataset broker
-using dset_id_t = size_t;
 /**
  * @brief A dataset state used to communicate the dataset ID of data stored
  *        in a raw file. This is a hack until we figure out how to propagate

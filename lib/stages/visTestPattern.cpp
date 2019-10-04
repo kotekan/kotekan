@@ -155,7 +155,7 @@ void visTestPattern::main_thread() {
         // Check if the dataset ID changed.
         auto frame = visFrameView(in_buf, frame_id);
         if (frame.dataset_id != ds_id) {
-            std::string error_msg = fmt::format(fmt("Expected dataset id {:#x}, got {:#x}.\nNot "
+            std::string error_msg = fmt::format(fmt("Expected dataset id {}, got {}.\nNot "
                                                     "supported. Exiting..."),
                                                 ds_id, frame.dataset_id);
             std::lock_guard<std::mutex> thread_lck(mtx_update);
@@ -479,7 +479,7 @@ void visTestPattern::get_dataset_state(dset_id_t ds_id) {
     if (fstate == nullptr || istate == nullptr || pstate == nullptr) {
         if (outfile.is_open())
             outfile.close();
-        FATAL_ERROR("Could not find all required states of dataset with ID {:#x}.\nExiting...",
+        FATAL_ERROR("Could not find all required states of dataset with ID {}.\nExiting...",
                     ds_id);
     }
 

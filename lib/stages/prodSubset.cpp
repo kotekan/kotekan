@@ -59,7 +59,7 @@ dset_id_t prodSubset::change_dataset_state(dset_id_t ds_id, std::vector<prod_cty
     const prodState* prod_state_ptr = dm.dataset_state<prodState>(ds_id);
     if (prod_state_ptr == nullptr) {
         FATAL_ERROR("Set to not use dataset_broker and couldn't find freqState ancestor of dataset "
-                    "{:#x}. Make sure there is a stage upstream in the config, that adds a "
+                    "{}. Make sure there is a stage upstream in the config, that adds a "
                     "freqState.\nExiting...",
                     ds_id);
     }
@@ -83,7 +83,7 @@ dset_id_t prodSubset::change_dataset_state(dset_id_t ds_id, std::vector<prod_cty
         if (!std::binary_search(input_prods_copy.begin(), input_prods_copy.end(), prod_subset.at(i),
                                 compare_prods)) {
             WARN("prodSubset: Product ID {:d} is configured to be in the subset, but is missing in "
-                 "dataset {:#x}. Deleting it from subset.",
+                 "dataset {}. Deleting it from subset.",
                  prod_ind.at(i), ds_id);
             prod_subset.erase(prod_subset.cbegin() + i);
             prod_ind.erase(prod_ind.cbegin() + i);
@@ -104,7 +104,7 @@ void prodSubset::main_thread() {
     unsigned int input_frame_id = 0;
 
     dset_id_t input_dset_id;
-    dset_id_t output_dset_id = 0;
+    dset_id_t output_dset_id = dset_id_t::null;
 
     // Wait for a frame in the input buffer in order to get the dataset ID
     if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {

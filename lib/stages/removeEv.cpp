@@ -38,7 +38,7 @@ void removeEv::main_thread() {
     frameID in_frame_id(in_buf);
     frameID out_frame_id(out_buf);
 
-    dset_id_t _output_dset_id = 0;
+    dset_id_t _output_dset_id = dset_id_t::null;
 
     while (!stop_thread) {
 

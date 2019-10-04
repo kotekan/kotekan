@@ -9,6 +9,7 @@
 #include "restClient.hpp"
 #include "restServer.hpp"
 #include "signal.h"
+#include "Hash.hpp"
 
 #include "json.hpp"
 
@@ -46,8 +47,8 @@ const std::string PATH_REQUEST_STATE = "/request-state";
 // Alias certain types to give semantic meaning to the IDs
 // This is the output format of a std::hash
 // (64bit so we shouldn't have collisions)
-using dset_id_t = size_t;
-using state_id_t = size_t;
+using dset_id_t = Hash;
+using state_id_t = Hash;
 
 
 /**
@@ -66,10 +67,10 @@ public:
      * @param type       The name of the dataset state type.
      * @param base_dset  The ID of the base datset. Omit to create a root dataset.
      */
-    dataset(state_id_t state, std::string type, dset_id_t base_dset = 0) :
+    dataset(state_id_t state, std::string type, dset_id_t base_dset = dset_id_t::null) :
         _state(state),
         _base_dset(base_dset),
-        _is_root(base_dset == 0),
+        _is_root(base_dset == dset_id_t::null),
         _type(type) {}
 
     /**
@@ -227,7 +228,7 @@ public:
      *                      Omit to create a root dataset.
      * @returns The ID assigned to the new dataset.
      **/
-    dset_id_t add_dataset(state_id_t state, dset_id_t base_dset = 0);
+    dset_id_t add_dataset(state_id_t state, dset_id_t base_dset = dset_id_t::null);
 
     /**
      * @brief Register a new dataset with multiple states.
@@ -241,7 +242,7 @@ public:
      *                      Omit to create a root dataset.
      * @returns The ID assigned to the new dataset.
      **/
-    dset_id_t add_dataset(const std::vector<state_id_t>& states, dset_id_t base_dset = 0);
+    dset_id_t add_dataset(const std::vector<state_id_t>& states, dset_id_t base_dset = dset_id_t::null);
 
     /**
      * @brief Create *and* register a state with the manager.
@@ -537,14 +538,14 @@ datasetManager::add_state(std::unique_ptr<T>&& state,
             // hash entries? This would mean the state/dset has to be sent
             // when registering.
             FATAL_ERROR_NON_OO("datasetManager: Hash collision!\nThe following states have the "
-                               "same hash {:#x}.\n\n{:s}\n\n{:s}\n\ndatasetManager: Exiting...",
+                               "same hash {}.\n\n{:s}\n\n{:s}\n\ndatasetManager: Exiting...",
                                hash, state->to_json().dump(4), find->second->to_json().dump(4));
         }
     } else {
         // insert the new state
         std::lock_guard<std::mutex> slock(_lock_states);
         if (!_states.insert(std::pair<state_id_t, std::unique_ptr<T>>(hash, move(state))).second) {
-            DEBUG_NON_OO("datasetManager: a state with hash {:#x} is already registered locally.",
+            DEBUG_NON_OO("datasetManager: a state with hash {} is already registered locally.",
                          hash);
         }
 
@@ -595,14 +596,14 @@ inline const T* datasetManager::get_closest_ancestor(dset_id_t dset) {
             state = _states.at(ancestor).get();
             return (const T*)state;
         } catch (std::out_of_range& e) {
-            DEBUG_NON_OO("datasetManager: requested state {:#x} not known locally.", ancestor);
+            DEBUG_NON_OO("datasetManager: requested state {} not known locally.", ancestor);
         }
         if (_use_broker) {
             // Request the state from the broker.
             state = request_state<T>(ancestor);
             while (!state) {
                 WARN_NON_OO(
-                    "datasetManager: Failure requesting state {:#x} from broker.\nRetrying...",
+                    "datasetManager: Failure requesting state {} from broker.\nRetrying...",
                     ancestor);
                 std::this_thread::sleep_for(std::chrono::milliseconds(_retry_wait_time_ms));
                 state = request_state<T>(ancestor);
@@ -674,7 +675,7 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
 
         // hash collisions are checked for by the broker
         if (!new_state.second)
-            INFO_NON_OO("datasetManager::request_state: received a state (with hash {:#x}) that "
+            INFO_NON_OO("datasetManager::request_state: received a state (with hash {}) that "
                         "is already registered locally.",
                         s_id);
 
