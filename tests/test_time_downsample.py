@@ -15,7 +15,7 @@ downsamp_params = {
     "num_ev": 4,
     "num_samples": 2,
     "total_frames": 11,
-    "fakevis_mode": "fill_ij",
+    "fakevis_mode": "fill_ij_missing",
     "cadence": 2.0,
     "dataset_manager": {"use_dataset_broker": False},
 }
@@ -64,11 +64,14 @@ def test_metadata(vis_data):
 
     input_frame_length = int(800e6 / 2048 * downsamp_params["cadence"])
     frame_length = input_frame_length * downsamp_params["num_samples"]
+    frame_total = (input_frame_length - 2) * downsamp_params["num_samples"]
+    rfi_total = downsamp_params["num_samples"]
 
     for frame in vis_data:
         assert frame.metadata.freq_id == 0
         assert frame.metadata.fpga_length == frame_length
-        assert frame.metadata.fpga_total == frame_length
+        assert frame.metadata.fpga_total == frame_total
+        assert frame.metadata.rfi_total == rfi_total
 
 
 def test_time(vis_data):

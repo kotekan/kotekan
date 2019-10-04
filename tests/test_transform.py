@@ -34,7 +34,7 @@ def transform_data(tmpdir_factory):
         {"num_ev": 4},
         [
             runner.FakeGPUBuffer(
-                mode="accumulate",
+                pattern="accumulate",
                 freq=params["freq"],
                 num_frames=params["total_frames"],
             )
@@ -61,7 +61,7 @@ def lostsamples_data(tmpdir_factory):
         {"num_ev": 4},
         [
             runner.FakeGPUBuffer(
-                mode="lostsamples",
+                pattern="lostsamples",
                 freq=params["freq"],
                 num_frames=params["total_frames"],
             )

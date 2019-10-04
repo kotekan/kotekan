@@ -24,6 +24,10 @@
  *
  * @conf  freq           Vector of Uint32. Frequency IDs of frames that should be
  *                       dropped. By default none.
+ * @conf  frac_lost      Float. If > 0, instead of dropping the frame, subtract
+ *                       this fraction of FPGA samples from total.
+ * @conf  frac_rfi       Float. Set `VisFrameView.rfi_total` to this value.
+ *                       Must be <= `frac_lost`.
  **/
 class visDrop : public kotekan::Stage {
 public:
@@ -37,6 +41,8 @@ public:
 private:
     // config parameters
     std::vector<uint32_t> drop_freqs;
+    float frac_rfi;
+    float frac_lost;
 
     // Buffers
     Buffer* buf_out;

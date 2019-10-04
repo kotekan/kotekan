@@ -75,6 +75,13 @@ protected:
     bool advance_frames(uint64_t new_seq, bool first_time = false);
 
     /**
+     * @brief Checks that the rules for streamIDs are met.  i.e. correct cabling.
+     *
+     * @return True if cable/streamID rules are met, False otherwise.
+     */
+    bool check_stream_id();
+
+    /**
      * @brief Copies the given packet accounting for the last stage suffle.
      *
      * This means it copies the packet into 4 buffer frames, and can advance
@@ -125,6 +132,11 @@ protected:
 
     /// Frame IDs
     int out_buf_frame_ids[shuffle_size] = {0};
+
+    /// The stream_ids for all iceBoardShuffle objects.
+    /// This might be an issue in the case of multiple indepdent
+    /// shuffle operations. In that case this will need to be factored out.
+    static stream_id_t all_stream_ids[shuffle_size];
 
     // ** FPGA Second stage error counters **
 
@@ -214,6 +226,8 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
 
     DEBUG("iceBoardHandler: {:s}", unique_name);
 
+    all_stream_ids[port] = {255, 255, 255, 255};
+
     std::vector<std::string> buffer_names =
         config.get<std::vector<std::string>>(unique_name, "out_bufs");
     if (shuffle_size != buffer_names.size()) {
@@ -268,6 +282,10 @@ inline int iceBoardShuffle::handle_packet(struct rte_mbuf* mbuf) {
         if (unlikely(!iceBoardHandler::align_first_packet(mbuf))) {
             return 0;
         } else {
+            // Check that the set of streamIDs matches the shuffle rules.
+            if (!check_stream_id())
+                return -1; // Exit if check_stream_id is false.
+
             // Get the first set of buffer frames to write into.
             // We use last seq in case there are missing frames,
             // we want to start at the alignment point.
@@ -306,6 +324,46 @@ inline int iceBoardShuffle::handle_packet(struct rte_mbuf* mbuf) {
     last_seq = cur_seq;
 
     return 0;
+}
+
+inline bool iceBoardShuffle::check_stream_id() {
+
+    // Lock this to only one thread at a time.
+    static std::mutex alignment_mutex;
+    std::lock_guard<std::mutex> alignment_lock(alignment_mutex);
+
+    all_stream_ids[port] = port_stream_id;
+
+    uint8_t crate_id = port_stream_id.crate_id;
+    uint8_t slot_id = port_stream_id.slot_id;
+    uint8_t link_id = port_stream_id.link_id;
+    bool even = crate_id % 2 == 0;
+
+    for (uint32_t i = 0; i < shuffle_size; ++i) {
+        // No need to check the current port, or if the link hasn't been initialized
+        if (i == port || all_stream_ids[i].crate_id == 255)
+            continue;
+
+        // Check that all the slots and links are the same.
+        if (all_stream_ids[i].slot_id != slot_id || all_stream_ids[i].link_id != link_id) {
+            FATAL_ERROR("One of the link_ids or slot_ids don't match! There is a cabling problem.");
+            return false;
+        }
+
+        // Check that we don't have the same crate ID as another link
+        // This should be impossible unless there is an FPGA problem
+        if (all_stream_ids[i].crate_id == crate_id) {
+            FATAL_ERROR("Two of the crate_ids are the same! There is a cabling problem.");
+            return false;
+        }
+
+        // Check that all the crates are from the same group (all even/odd)
+        if (even != ((all_stream_ids[i].crate_id % 2) == 0)) {
+            FATAL_ERROR("The crate IDs are not all even or all odd. There is a cabling problem.");
+            return false;
+        }
+    }
+    return true;
 }
 
 inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
@@ -365,7 +423,7 @@ inline bool iceBoardShuffle::handle_lost_samples(int64_t lost_samples) {
         last_seq + samples_per_packet - get_fpga_seq_num(out_bufs[0], out_buf_frame_ids[0]);
     uint64_t temp_seq = last_seq + samples_per_packet;
 
-    // TODO this could be made more efficent by breaking it down into blocks of memsets.
+    // TODO this could be made more efficient by breaking it down into blocks of memsets.
     while (lost_samples > 0) {
         // TODO this assumes the frame size of all the output buffers are the
         // same, which should be true in all cases, but should still be tested

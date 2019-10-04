@@ -45,6 +45,7 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
     filename = config.get<std::string>(unique_name, "infile");
     readahead_blocks = config.get<size_t>(unique_name, "readahead_blocks");
     max_read_rate = config.get_default<double>(unique_name, "max_read_rate", 0.0);
+    sleep_time = config.get_default<float>(unique_name, "sleep_time", -1);
 
     chunked = config.exists(unique_name, "chunk_size");
     if (chunked) {
@@ -159,10 +160,6 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
     if (mapped_file == MAP_FAILED)
         throw std::runtime_error(fmt::format(fmt("Failed to map file {:s}.data to memory: {:s}."),
                                              filename, strerror(errno)));
-
-    // tell the dataset manager and get a dataset ID for the data coming from
-    // this file
-    change_dataset_state();
 }
 
 visRawReader::~visRawReader() {
@@ -174,7 +171,7 @@ visRawReader::~visRawReader() {
     close(fd);
 }
 
-void visRawReader::change_dataset_state() {
+void visRawReader::change_dataset_state(dset_id_t ds_id) {
     datasetManager& dm = datasetManager::instance();
 
     // Add the states: metadata, time, prod, freq, input, eigenvalue and stack.
@@ -186,11 +183,12 @@ void visRawReader::change_dataset_state() {
     state_uptr fstate = std::make_unique<freqState>(_freqs, std::move(evstate));
     state_uptr pstate = std::make_unique<prodState>(_prods, std::move(fstate));
     state_uptr tstate = std::make_unique<timeState>(_times, std::move(pstate));
+    state_uptr idstate = std::make_unique<acqDatasetIdState>(ds_id, std::move(tstate));
 
     state_id_t mstate_id =
         dm.add_state(std::make_unique<metadataState>(
                          _metadata.at("weight_type"), _metadata.at("instrument_name"),
-                         _metadata.at("git_version_tag"), std::move(tstate)))
+                         _metadata.at("git_version_tag"), std::move(idstate)))
             .first;
 
     // register it as root dataset
@@ -296,7 +294,13 @@ void visRawReader::main_thread() {
             DEBUG("visRawReader: Reading empty frame: {:d}", frame_id);
         }
 
-        // Set the dataset ID
+        // Read first frame to get true dataset ID
+        if (ind == 0) {
+            change_dataset_state(
+                ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id);
+        }
+
+        // Set the dataset ID to one associated with this file
         ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id = _dataset_id;
 
         // Try and clear out the cached data as we don't need it again
@@ -318,5 +322,14 @@ void visRawReader::main_thread() {
             auto ts = double_to_ts(sleep_time);
             nanosleep(&ts, NULL);
         }
+    }
+
+    if (sleep_time > 0) {
+        INFO("Read all data. Sleeping and then exiting kotekan...");
+        timespec ts = double_to_ts(sleep_time);
+        nanosleep(&ts, nullptr);
+        exit_kotekan(ReturnCode::CLEAN_EXIT);
+    } else {
+        INFO("Read all data. Exiting stage, but keeping kotekan alive.");
     }
 }

@@ -38,6 +38,9 @@ stack_params = {
     "dataset_manager": {"use_dataset_broker": False},
 }
 
+frac_lost = 0.8
+frac_rfi = 0.3
+
 
 @pytest.fixture(scope="module")
 def transpose(tmpdir_factory):
@@ -71,6 +74,8 @@ def transpose(tmpdir_factory):
                 "in_buf": fakevis_buffer.name,
                 "out_buf": fsel_buf_name,
                 "freq": [writer_params["freq"][-1]],
+                "frac_lost": frac_lost,
+                "frac_rfi": frac_rfi,
                 "log_level": "debug",
             }
         }
@@ -166,9 +171,11 @@ def test_transpose(transpose):
     assert f_tr["gain"].shape == (n_f, n_elems, n_t)
     assert f_tr["flags/inputs"].shape == (n_elems, n_t)
     assert f_tr["flags/frac_lost"].shape == (n_f, n_t)
+    assert f_tr["flags/frac_rfi"].shape == (n_f, n_t)
 
     assert (f_tr["flags/frac_lost"][: n_f - 1, :] == 0.0).all()
-    assert (f_tr["flags/frac_lost"][-1:, :] == 1.0).all()
+    assert np.allclose(f_tr["flags/frac_lost"][-1:, :], frac_lost, rtol=1e-3)
+    assert np.allclose(f_tr["flags/frac_rfi"][-1:, :], frac_rfi, rtol=1e-3)
 
     # transpose with numpy and see if data is the same
     dsets = ["vis", "flags/vis_weight", "eval", "evec", "erms"]
