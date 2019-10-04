@@ -111,7 +111,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
 
     // TODO: enforce this if build type == release?
     if (git_commit_hash_dataset != metadata["git_version_tag"].get<std::string>())
-        INFO("Git version tags don't match: dataset {:#x} has tag {:s},"
+        INFO("Git version tags don't match: dataset {} has tag {:s},"
              "while the local git version tag is {:s}",
              ds_id, git_commit_hash_dataset, metadata["git_version_tag"].get<std::string>());
 
@@ -189,7 +189,7 @@ void visTranspose::main_thread() {
     auto future_ds_state = std::async(&visTranspose::get_dataset_state, this, ds_id);
 
     if (!future_ds_state.get()) {
-        FATAL_ERROR("Set to not use dataset_broker and couldn't find ancestor of dataset {:#x}. "
+        FATAL_ERROR("Set to not use dataset_broker and couldn't find ancestor of dataset {}. "
                     "Make sure there is a stage upstream in the config, that adds the dataset "
                     "states.\nExiting...",
                     ds_id);
@@ -223,7 +223,7 @@ void visTranspose::main_thread() {
         auto frame = visFrameView(in_buf, frame_id);
 
         if (frame.dataset_id != ds_id) {
-            FATAL_ERROR("Dataset ID of incoming frames changed from {:#x} to {:#x}. Changing  ID "
+            FATAL_ERROR("Dataset ID of incoming frames changed from {} to {}. Changing  ID "
                         "not supported, exiting...",
                         ds_id, frame.dataset_id);
         }

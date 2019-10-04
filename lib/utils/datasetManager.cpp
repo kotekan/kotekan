@@ -1,5 +1,6 @@
 #include "datasetManager.hpp"
 
+#include "Hash.hpp"
 #include "restClient.hpp"
 #include "restServer.hpp"
 #include "visUtil.hpp"
@@ -22,9 +23,9 @@ dataset::dataset(json& js) {
     _state = js["state"];
     _is_root = js["is_root"];
     if (_is_root)
-        _base_dset = 0;
+        _base_dset = dset_id_t::null;
     else
-        _base_dset = js["base_dset"];
+        _base_dset = js["base_dset"].get<dset_id_t>();
     _type = js["type"].get<std::string>();
 }
 
@@ -147,14 +148,14 @@ dset_id_t datasetManager::add_dataset(state_id_t state, dset_id_t base_dset) {
         t = _states.at(state).get();
     } catch (std::exception& e) {
         // This must be a bug in the calling stage...
-        if (base_dset == 0) {
-            FATAL_ERROR_NON_OO("datasetManager: Failure registering root dataset : state {:#x} not "
+        if (base_dset == dset_id_t::null) {
+            FATAL_ERROR_NON_OO("datasetManager: Failure registering root dataset : state {} not "
                                "found: {:s}",
                                state, e.what());
         } else {
             FATAL_ERROR_NON_OO(
-                "datasetManager: Failure registering dataset : state {:#x} not found "
-                "(base dataset ID: {:#x}): {:s}",
+                "datasetManager: Failure registering dataset : state {} not found "
+                "(base dataset ID: {}): {:s}",
                 state, base_dset, e.what());
         }
     }
@@ -170,7 +171,7 @@ dset_id_t datasetManager::add_dataset(const std::vector<state_id_t>& states, dse
 
     for (const auto& state : states) {
         auto new_id = add_dataset(state, id);
-        DEBUG_NON_OO("Added dataset {:#x} with state {:#x} and base dataset {:#x}", new_id, state,
+        DEBUG_NON_OO("Added dataset {} with state {} and base dataset {}", new_id, state,
                      id);
         id = new_id;
     }
@@ -195,7 +196,7 @@ dset_id_t datasetManager::add_dataset(dataset ds) {
                 // hash entries? This would mean the state/dset has to be sent
                 // when registering.
                 FATAL_ERROR_NON_OO("datasetManager: Hash collision!\nThe following datasets have "
-                                   "the same hash ({:#x}).\n\n{:s}\n\n{:s}\n\ndatasetManager: "
+                                   "the same hash ({}).\n\n{:s}\n\n{:s}\n\ndatasetManager: "
                                    "Exiting...",
                                    new_dset_id, ds.to_json().dump(4),
                                    find->second.to_json().dump(4));
@@ -221,15 +222,11 @@ dset_id_t datasetManager::add_dataset(dataset ds) {
 // practice nlohmann::json ensures they are alphabetical by default. It
 // might also be a little slow as it requires full serialisation.
 state_id_t datasetManager::hash_state(datasetState& state) const {
-    static std::hash<std::string> hash_function;
-
-    return hash_function(state.to_json().dump());
+    return hash(state.to_json().dump());
 }
 
 state_id_t datasetManager::hash_dataset(dataset& ds) const {
-    static std::hash<std::string> hash_function;
-
-    return hash_function(ds.to_json().dump());
+    return hash(ds.to_json().dump());
 }
 
 void datasetManager::register_state(state_id_t state) {
@@ -420,11 +417,11 @@ std::string datasetManager::summary() {
         try {
             datasetState* dt = _states.at(t.second.state()).get();
 
-            out += fmt::format(fmt("{:>30} : {:#x}\n"), *dt, t.second.base_dset());
+            out += fmt::format(fmt("{:>30} : {}\n"), *dt, t.second.base_dset());
             id++;
         } catch (std::out_of_range& e) {
             WARN_NON_OO("datasetManager::summary(): This datasetManager instance "
-                        "does not know state {:#x}, referenced by dataset {:#x}. ({:s})",
+                        "does not know state {}, referenced by dataset {}. ({:s})",
                         t.second.state(), t.first, e.what());
         }
     }
@@ -458,7 +455,7 @@ const std::vector<std::pair<dset_id_t, datasetState*>> datasetManager::ancestors
 
     // make sure we know this dataset before running into trouble
     if (_datasets.find(dset) == _datasets.end()) {
-        DEBUG_NON_OO("datasetManager: dataset {:#x} was not found locally.", dset);
+        DEBUG_NON_OO("datasetManager: dataset {} was not found locally.", dset);
         return a_list;
     }
 
@@ -535,8 +532,7 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
              ds != js_reply.at("datasets").end(); ds++) {
 
             try {
-                dset_id_t ds_id;
-                sscanf(ds.key().c_str(), "%zu", &ds_id);
+                dset_id_t ds_id = dset_id_t::from_string(ds.key());
                 dataset new_dset = dataset(ds.value());
 
                 // insert the new dataset

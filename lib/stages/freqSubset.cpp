@@ -53,7 +53,7 @@ dset_id_t freqSubset::change_dataset_state(dset_id_t input_dset_id,
     const freqState* freq_state_ptr = dm.dataset_state<freqState>(input_dset_id);
     if (freq_state_ptr == nullptr) {
         FATAL_ERROR("Set to not use dataset_broker and couldn't find freqState ancestor of dataset "
-                    "{:#x}. Make sure there is a stage upstream in the config, that adds a "
+                    "{}. Make sure there is a stage upstream in the config, that adds a "
                     "freqState.\nExiting...",
                     input_dset_id);
     }
@@ -84,7 +84,7 @@ void freqSubset::main_thread() {
     unsigned int output_frame_id = 0;
     unsigned int input_frame_id = 0;
     unsigned int freq;
-    dset_id_t output_dset_id = 0;
+    dset_id_t output_dset_id = dset_id_t::null;
     dset_id_t input_dset_id;
 
     // Wait for a frame in the input buffer in order to get the dataset ID

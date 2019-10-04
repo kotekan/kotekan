@@ -23,6 +23,8 @@ set ( KOTEKAN_UTIL_SOURCES
       datasetState.cpp
       restClient.cpp
       BipBuffer.cpp
+      Hash.cpp
+      MurmurHash3.cpp
     )
 
 if (${USE_HDF5})

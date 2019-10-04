@@ -166,7 +166,7 @@ void fakeVis::main_thread() {
     uint64_t delta_ns = (uint64_t)(cadence * 1000000000);
 
     // Register datasetStates to describe the properties of the created stream
-    dset_id_t ds_id = 0;
+    dset_id_t ds_id = dset_id_t::null;
     auto& dm = datasetManager::instance();
 
     if (_fixed_dset_id) {

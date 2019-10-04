@@ -109,7 +109,7 @@ private:
     std::map<std::pair<uint32_t, dset_id_t>, movingAverage> calc_time_map;
 
     state_id_t ev_state_id;
-    dset_id_t input_dset_id = 0;
+    dset_id_t input_dset_id = dset_id_t::null;
 
     kotekan::prometheus::Gauge& comp_time_seconds_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& eigenvalue_metric;
