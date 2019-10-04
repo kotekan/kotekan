@@ -56,7 +56,7 @@ visAccumulate::visAccumulate(Config& config, const string& unique_name,
     num_freq_in_frame = config.get_default<size_t>(unique_name, "num_freq_in_frame", 1);
     block_size = config.get<size_t>(unique_name, "block_size");
     samples_per_data_set = config.get<size_t>(unique_name, "samples_per_data_set");
-    timeout = config.get_default<float>(unique_name, "timeout", 60.0);
+    max_age = config.get_default<float>(unique_name, "max_age", 60.0);
 
     // Get the indices for reordering
     auto input_reorder = parse_reorder_default(config, unique_name);
@@ -517,8 +517,8 @@ void visAccumulate::finalise_output(visAccumulate::internalState& state,
         // TODO: if we have multifrequencies, if any need to be skipped all of
         // the following ones must be too. I think this requires the buffer
         // mechanism being rewritten to fix this one.
-        if (ts_to_double(std::get<1>(output_frame.time) - newest_frame_time) > timeout) {
-            skipped_frame_counter.labels({std::to_string(output_frame.freq_id), "timeout"}).inc();
+        if (ts_to_double(std::get<1>(output_frame.time) - newest_frame_time) > max_age) {
+            skipped_frame_counter.labels({std::to_string(output_frame.freq_id), "age"}).inc();
             blocked = true;
             continue;
         }

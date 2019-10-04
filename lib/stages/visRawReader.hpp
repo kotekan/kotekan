@@ -123,7 +123,7 @@ private:
      * Sets the dataset ID that should be given to the dataset coming from
      * the file that is read.
      */
-    void change_dataset_state();
+    void change_dataset_state(dset_id_t ds_id);
 
     /**
      * @brief Read the next frame.
