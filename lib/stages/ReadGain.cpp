@@ -136,7 +136,7 @@ void ReadGain::read_gain_frb() {
     ptr_myfile = fopen(filename, "rb");
     if (ptr_myfile == nullptr) {
         WARN("GPU Cannot open gain file {:s}", filename);
-        for (int i = 0; i < 2048; i++) {
+        for (uint i = 0; i < _num_elements; i++) {
             out_frame_frb[i * 2] = default_gains[0] * scaling;
             out_frame_frb[i * 2 + 1] = default_gains[1] * scaling;
         }
@@ -145,7 +145,7 @@ void ReadGain::read_gain_frb() {
             WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
                  "gains",
                  filename);
-            for (int i = 0; i < 2048; i++) {
+            for (uint i = 0; i < _num_elements; i++) {
                 out_frame_frb[i * 2] = default_gains[0] * scaling;
                 out_frame_frb[i * 2 + 1] = default_gains[1] * scaling;
             }
@@ -176,19 +176,20 @@ void ReadGain::read_gain_psr() {
         ptr_myfile = fopen(filename, "rb");
         if (ptr_myfile == nullptr) {
             WARN("GPU Cannot open gain file {:s}", filename);
-            for (int i = 0; i < 2048; i++) {
-                out_frame_psr[(b * 2048 + i) * 2] = default_gains[0];
-                out_frame_psr[(b * 2048 + i) * 2 + 1] = default_gains[1];
+            for (uint i = 0; i < _num_elements; i++) {
+                out_frame_psr[(b * _num_elements + i) * 2] = default_gains[0];
+                out_frame_psr[(b * _num_elements + i) * 2 + 1] = default_gains[1];
             }
         } else {
             if (_num_elements
-                != fread(out_frame_psr, sizeof(float) * 2, _num_elements, ptr_myfile)) {
+                != fread(&out_frame_psr[b * _num_elements * 2], sizeof(float) * 2, _num_elements,
+                         ptr_myfile)) {
                 WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
                      "gains",
                      filename);
-                for (int i = 0; i < 2048; i++) {
-                    out_frame_psr[(b * 2048 + i) * 2] = default_gains[0];
-                    out_frame_psr[(b * 2048 + i) * 2 + 1] = default_gains[1];
+                for (uint i = 0; i < _num_elements; i++) {
+                    out_frame_psr[(b * _num_elements + i) * 2] = default_gains[0];
+                    out_frame_psr[(b * _num_elements + i) * 2 + 1] = default_gains[1];
                 }
             }
             fclose(ptr_myfile);
