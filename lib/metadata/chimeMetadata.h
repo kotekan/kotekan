@@ -80,7 +80,7 @@ inline int32_t get_lost_timesamples(struct Buffer * buf, int ID) {
  * @param ID The frame to get metadata from
  * @return The number of RFI flagged samples
  */
-inline int32_t get_rfi_flaged_samples(struct Buffer * buf, int ID) {
+inline int32_t get_rfi_flagged_samples(struct Buffer * buf, int ID) {
     struct chimeMetadata * chime_metadata =
      (struct chimeMetadata *) buf->metadata[ID]->metadata;
     return chime_metadata->rfi_flagged_samples;

@@ -242,6 +242,19 @@ void zero_frames(struct Buffer * buf);
 void register_consumer(struct Buffer * buf, const char *name);
 
 /**
+ * @brief Removes the consumer with the given name
+ *
+ * In some cases it may make sense to stop being a consumer of a given
+ * buffer while the pipeline is running.  However this is likely an edge
+ * case for most pipelines.  In general it is not expected for stages
+ * to unregister when they close.
+ *
+ * @param buf The buffer to unregister from
+ * @param name The name of the consumer to unregister
+ */
+void unregister_consumer(struct Buffer * buf, const char *name);
+
+/**
  * @brief Register a producer with a given name.
  *
  * In order to use a buffer a producer must first register its name so that

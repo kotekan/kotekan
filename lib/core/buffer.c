@@ -50,6 +50,14 @@ void private_reset_producers(struct Buffer * buf, const int ID);
 // Resets the list of consumers for the given ID
 void private_reset_consumers(struct Buffer * buf, const int ID);
 
+/**
+ * @brief Marks a frame as empty and if the buffer requires zeroing then it starts
+ *        the zeroing thread and delays marking it as empty until the zeroing is done.
+ * @param buf The buffer the frame to empty is in.
+ * @param id The id of the frame to mark as empty.
+ * @return 1 if the frame was marked as empty, 0 if it is being zeroed.
+ */
+int private_mark_frame_empty(struct Buffer* buf, const int id);
 
 struct Buffer* create_buffer(int num_frames, int len,
                   struct metadataPool * pool, const char * buffer_name, int numa_node)
@@ -268,30 +276,7 @@ void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int 
         private_mark_consumer_done(buf, consumer_name, ID);
 
         if (private_consumers_done(buf, ID) == 1) {
-
-            if (buf->zero_frames == 1) {
-                pthread_t zero_t;
-                struct zero_frames_thread_args * zero_args = malloc(sizeof(struct zero_frames_thread_args));
-                zero_args->ID = ID;
-                zero_args->buf = buf;
-
-                cpu_set_t cpuset;
-                CPU_ZERO(&cpuset);
-                // TODO: Move this to the config file (when buffers.c updated to C++11)
-                CPU_SET(5, &cpuset);
-
-                CHECK_ERROR_F( pthread_create(&zero_t, NULL, &private_zero_frames, (void *)zero_args) );
-                CHECK_ERROR_F( pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &cpuset) );
-                CHECK_ERROR_F( pthread_detach(zero_t) );
-            } else {
-                buf->is_full[ID] = 0;
-                private_reset_consumers(buf, ID);
-                broadcast = 1;
-            }
-            if (buf->metadata[ID] != NULL) {
-                decrement_metadata_ref_count(buf->metadata[ID]);
-                buf->metadata[ID] = NULL;
-            }
+            broadcast = private_mark_frame_empty(buf, ID);
         }
 
     CHECK_ERROR_F( pthread_mutex_unlock(&buf->lock) );
@@ -300,6 +285,34 @@ void mark_frame_empty(struct Buffer* buf, const char * consumer_name, const int 
     if (broadcast == 1) {
         CHECK_ERROR_F( pthread_cond_broadcast(&buf->empty_cond) );
     }
+}
+
+int private_mark_frame_empty(struct Buffer* buf, const int id) {
+    int broadcast = 0;
+    if (buf->zero_frames == 1) {
+        pthread_t zero_t;
+        struct zero_frames_thread_args * zero_args = malloc(sizeof(struct zero_frames_thread_args));
+        zero_args->ID = id;
+        zero_args->buf = buf;
+
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        // TODO: Move this to the config file (when buffers.c updated to C++11)
+        CPU_SET(5, &cpuset);
+
+        CHECK_ERROR_F( pthread_create(&zero_t, NULL, &private_zero_frames, (void *)zero_args) );
+        CHECK_ERROR_F( pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &cpuset) );
+        CHECK_ERROR_F( pthread_detach(zero_t) );
+    } else {
+        buf->is_full[id] = 0;
+        private_reset_consumers(buf, id);
+        broadcast = 1;
+    }
+    if (buf->metadata[id] != NULL) {
+        decrement_metadata_ref_count(buf->metadata[id]);
+        buf->metadata[id] = NULL;
+    }
+    return broadcast;
 }
 
 uint8_t * wait_for_empty_frame(struct Buffer* buf, const char * producer_name, const int ID)
@@ -372,6 +385,41 @@ void register_consumer(struct Buffer * buf, const char *name) {
 
     CHECK_ERROR_F( pthread_mutex_unlock(&buf->lock) );
 }
+
+void unregister_consumer(struct Buffer * buf, const char *name) {
+
+    int broadcast = 0;
+
+    CHECK_ERROR_F( pthread_mutex_lock(&buf->lock) );
+
+    DEBUG_F("Unregistering consumer %s for buffer %s", name, buf->buffer_name);
+
+    int consumer_id = private_get_consumer_id(buf, name);
+    if (consumer_id == -1) {
+        ERROR_F("The consumer %s hasn't been registered, cannot unregister!", name);
+    }
+
+    buf->consumers[consumer_id].in_use = 0;
+    snprintf(buf->consumers[consumer_id].name, MAX_STAGE_NAME_LEN, "unregistered");
+
+    // Check if removing this consumer would cause any of the frames
+    // which are currently full to become empty.
+    for (int id = 0; id < buf->num_frames; ++id) {
+        if (private_consumers_done(buf, id) == 1) {
+            broadcast |= private_mark_frame_empty(buf, id);
+        }
+    }
+
+    CHECK_ERROR_F( pthread_mutex_unlock(&buf->lock) );
+
+    // Signal producers if we found something could be empty after
+    // removal of this consumer.
+    if (broadcast == 1) {
+        CHECK_ERROR_F( pthread_cond_broadcast(&buf->empty_cond) );
+    }
+}
+
+
 
 void register_producer(struct Buffer * buf, const char *name) {
     CHECK_ERROR_F( pthread_mutex_lock(&buf->lock) );

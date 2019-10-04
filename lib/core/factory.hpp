@@ -43,6 +43,7 @@
 
 #include "errors.h"
 #include "kotekanLogging.hpp"
+#include "type.hpp"
 
 #include "fmt.hpp"
 
@@ -85,8 +86,7 @@ public:
     {
         auto& r = type_registry();
         if (r.find(type) == r.end()) {
-            std::string msg = std::string("Could not find '") + type + "' subtype name within Factory";
-            throw std::runtime_error(msg);
+            throw std::runtime_error(fmt::format(fmt("Could not find subtype name {:s} within {:s} Factory."), type, type_demangle<T>()));
         }
         DEBUG_NON_OO("FACTORY({:s}): Creating {:s} instance.", typelabel(), type);
         return r.at(type)(std::forward<Args>(args)...);

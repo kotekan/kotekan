@@ -27,6 +27,8 @@ visDebug::visDebug(Config& config, const string& unique_name, bufferContainer& b
     // Setup the input vector
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
+
+    _output_period = config.get_default<int>(unique_name, "output_period", 1000);
 }
 
 void visDebug::main_thread() {
@@ -45,7 +47,7 @@ void visDebug::main_thread() {
         }
 
         // Print out debug information from the buffer
-        if ((num_frames % 1000) == 0)
+        if ((num_frames % _output_period) == 0)
             INFO("Got frame number {:d}", num_frames);
         auto frame = visFrameView(in_buf, frame_id);
         DEBUG("{:s}", frame.summary());

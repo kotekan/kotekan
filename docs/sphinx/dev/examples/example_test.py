@@ -2,12 +2,7 @@ import pytest
 from kotekan import runner
 
 # this is the equivalent of the config file for kotekan to run your test
-params = {
-    'num_elements': 7,
-    'num_ev': 0,
-    'total_frames': 128,
-    'variable_my_stage_needs': -1
-}
+params = {"num_elements": 7, "num_ev": 0, "total_frames": 128, "variable_my_stage_needs": -1}
 
 # this runs kotekan and yields the data you want to inspect
 @pytest.fixture(scope="module")
@@ -17,21 +12,14 @@ def data(tmpdir_factory):
     tmpdir = tmpdir_factory.mktemp("name_of_the_test_case")
 
     # you can use FakeVisBuffer to produce fake data
-    fakevis_buffer = runner.FakeVisBuffer(
-        num_frames=params['total_frames'],
-        mode='gaussian',
-    )
+    fakevis_buffer = runner.FakeVisBuffer(num_frames=params["total_frames"], mode="gaussian")
 
     # DumpVisBuffer can be used to dump data for testing
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
     # KotekanStageTester is used to run kotekan with your config
-    test = runner.KotekanStageTester(
-        'stageUnderTest', {},
-        fakevis_buffer,
-        dump_buffer,
-        params
-)
+    test = runner.KotekanStageTester("stageUnderTest", {}, fakevis_buffer, dump_buffer, params)
+
 
 test.run()
 
@@ -42,4 +30,4 @@ yield dump_buffer.load()
 def test_<name>(data):
 
     for frame in data:
-        assert (frame.vis == {1,0})
+        assert frame.vis == {1, 0}

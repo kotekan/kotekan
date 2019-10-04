@@ -363,12 +363,27 @@ void restServer::http_server_thread() {
     evhttp_set_gencb(ev_server, handle_request, (void*)this);
 
     // Bind to the IP and port
-    if (evhttp_bind_socket(ev_server, bind_address.c_str(), port) != 0) {
+    struct evhttp_bound_socket* ev_sock =
+        evhttp_bind_socket_with_handle(ev_server, bind_address.c_str(), port);
+    if (ev_sock == nullptr) {
         ERROR_NON_OO("restServer: Failed to bind to {:s}:{:d}", bind_address, port);
         exit(1);
         return;
     }
 
+    // if port was set to random, find port socket is listening on
+    if (port == 0) {
+        evutil_socket_t sock = evhttp_bound_socket_get_fd(ev_sock);
+        struct sockaddr_in sin;
+        socklen_t len = sizeof(sin);
+        if (getsockname(sock, (struct sockaddr*)&sin, &len) == -1) {
+            ERROR_NON_OO("restServer: Failed getting socket name ({:s}:{:d})", bind_address, port);
+            exit(1);
+            return;
+        }
+        port = ntohs(sin.sin_port);
+    }
+    // This INFO line is parsed by the python runner to get the RESTserver port. Don't edit.
     INFO_NON_OO("restServer: started server on address:port {:s}:{:d}", bind_address, port);
 
     // Create a timer to check for the exit condition

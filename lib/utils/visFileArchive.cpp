@@ -140,7 +140,7 @@ void visFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, s
         dset(name)
             .select({f_ind, 0, 0, t_ind}, {chunk_f, length("ev"), length("input"), chunk_t})
             .write(data);
-    } else if (name == "erms" || name == "flags/frac_lost") {
+    } else if (name == "erms" || name == "flags/frac_lost" || name == "flags/frac_rfi") {
         dset(name).select({f_ind, t_ind}, {chunk_f, chunk_t}).write(data);
     } else {
         size_t last_dim = dset(name).getSpace().getDimensions().at(1);
@@ -221,6 +221,7 @@ void visFileArchive::create_datasets() {
     create_dataset("flags/inputs", {"input", "time"}, create_datatype<float>(), no_compress);
     create_dataset("gain", {"freq", "input", "time"}, create_datatype<cfloat>(), compress);
     create_dataset("flags/frac_lost", {"freq", "time"}, create_datatype<float>(), no_compress);
+    create_dataset("flags/frac_rfi", {"freq", "time"}, create_datatype<float>(), no_compress);
 
     // Only write the eigenvector datasets if there's going to be anything in them
     if (write_ev) {

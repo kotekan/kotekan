@@ -1,3 +1,10 @@
+# === Start Python 2/3 compatibility
+from __future__ import absolute_import, division, print_function, unicode_literals
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+
+# === End Python 2/3 compatibility
+
 import pytest
 import os.path
 import time
@@ -10,10 +17,13 @@ producer2_path = "../build/tests/boost/dataset_broker_producer2"
 consumer_path = "../build/tests/boost/dataset_broker_consumer"
 broker_path = "../build/ext/src/ch_acq/dataset_broker.py"
 
+
 def test_produce_consume():
-    if not os.path.isfile(producer_path) or \
-      not os.path.isfile(consumer_path) or \
-      not os.path.isfile(producer2_path):
+    if (
+        not os.path.isfile(producer_path)
+        or not os.path.isfile(consumer_path)
+        or not os.path.isfile(producer2_path)
+    ):
         print("Deactivated! Build with -DBOOST_TESTS=ON to activate this test")
         return
     if not os.path.isfile(broker_path):
@@ -24,10 +34,10 @@ def test_produce_consume():
     time.sleep(2)
 
     try:
-      assert call([producer_path]) == 0
-      assert call([producer2_path]) == 0
-      assert call([consumer_path]) == 0
+        assert call([producer_path]) == 0
+        assert call([producer2_path]) == 0
+        assert call([consumer_path]) == 0
     finally:
-      pid = broker.pid
-      os.kill(pid, signal.SIGINT)
-      broker.terminate()
+        pid = broker.pid
+        os.kill(pid, signal.SIGINT)
+        broker.terminate()
