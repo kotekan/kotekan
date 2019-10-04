@@ -1,3 +1,8 @@
+/**
+ * @file
+ * @brief A generic queue with synchronized access
+ * - SynchronizedQueue
+ */
 #ifndef SYNCHRONIZED_QUEUE_HPP
 #define SYNCHRONIZED_QUEUE_HPP
 
