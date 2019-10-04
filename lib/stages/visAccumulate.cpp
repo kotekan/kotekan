@@ -280,7 +280,7 @@ void visAccumulate::main_thread() {
             break;
 
         int32_t* input = (int32_t*)in_frame;
-        uint32_t frame_count = (get_fpga_seq_num(in_buf, in_frame_id) / samples_per_data_set);
+        uint64_t frame_count = (get_fpga_seq_num(in_buf, in_frame_id) / samples_per_data_set);
 
         // Start and end times of this frame
         // TODO: CHIME specific
