@@ -16,7 +16,6 @@ set(RTE_SDK "@RTE_SDK@")
 set(RTE_TARGET "@RTE_TARGET@")
 set(USE_HSA "@USE_HSA@")
 set(USE_CLOC "@USE_CLOC@")
-set(USE_PRECOMPILED_OPENCL "@USE_PRECOMPILED_OPENCL@")
 set(USE_OPENCL "@USE_OPENCL@")
 set(USE_HCC "@USE_HCC@")
 set(USE_HDF5 "@USE_HDF5@")
@@ -45,7 +44,7 @@ execute_process(
 )
 
 execute_process(
-  COMMAND python ${SOURCE_DIR}/scripts/version.py
+  COMMAND python3 ${SOURCE_DIR}/scripts/version.py
   WORKING_DIRECTORY ${SOURCE_DIR}
   OUTPUT_VARIABLE KOTEKAN_VERSION
   OUTPUT_STRIP_TRAILING_WHITESPACE

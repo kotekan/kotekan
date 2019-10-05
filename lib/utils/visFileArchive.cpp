@@ -4,6 +4,8 @@
 #include "visFile.hpp"
 #include "visFileH5.hpp"
 
+#include "fmt.hpp"
+
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -34,7 +36,9 @@ visFileArchive::visFileArchive(const std::string& name,
                                const std::vector<freq_ctype>& freqs,
                                const std::vector<input_ctype>& inputs,
                                const std::vector<prod_ctype>& prods, size_t num_ev,
-                               std::vector<int> chunk_size) {
+                               std::vector<int> chunk_size, const kotekan::logLevel log_level) {
+
+    set_log_level(log_level);
 
     // Check axes and create file
     setup_file(name, metadata, times, freqs, prods, num_ev, chunk_size);
@@ -51,7 +55,9 @@ visFileArchive::visFileArchive(
     const std::vector<time_ctype>& times, const std::vector<freq_ctype>& freqs,
     const std::vector<input_ctype>& inputs, const std::vector<prod_ctype>& prods,
     const std::vector<stack_ctype>& stack, std::vector<rstack_ctype>& reverse_stack, size_t num_ev,
-    std::vector<int> chunk_size) {
+    std::vector<int> chunk_size, const kotekan::logLevel log_level) {
+
+    set_log_level(log_level);
 
     // Check axes and create file
     setup_file(name, metadata, times, freqs, prods, num_ev, chunk_size);
@@ -78,7 +84,7 @@ void visFileArchive::setup_file(const std::string& name,
                                 const std::vector<prod_ctype>& prods, size_t num_ev,
                                 std::vector<int> chunk_size) {
 
-    std::string data_filename = name + ".h5";
+    std::string data_filename = fmt::format(fmt("{:s}.h5"), name);
 
     lock_filename = create_lockfile(data_filename);
 
@@ -90,10 +96,10 @@ void visFileArchive::setup_file(const std::string& name,
     // Check chunk size
     // Check chunk size
     if (chunk[0] < 1 || chunk[1] < 1 || chunk[2] < 1)
-        throw std::invalid_argument("visFileArchive: config: Chunk size "
-                                    "needs to be greater or equal to (1,1,1) (is ("
-                                    + std::to_string(chunk[0]) + "," + std::to_string(chunk[1])
-                                    + "," + std::to_string(chunk[2]) + ")).");
+        throw std::invalid_argument(fmt::format(fmt("visFileArchive: config: Chunk size needs to "
+                                                    "be greater or equal to (1,1,1) (is ({:d},{:d},"
+                                                    "{:d}))."),
+                                                chunk[0], chunk[1], chunk[2]));
     if (chunk[0] > (int)freqs.size()) {
         chunk[0] = freqs.size();
         INFO("visFileArchive: Chunk frequency dimension greater than axes. Will use a smaller "
@@ -108,7 +114,7 @@ void visFileArchive::setup_file(const std::string& name,
         INFO("visFileArchive: Chunk time dimension greater than axes. Will use a smaller chunk.")
     }
 
-    INFO("Creating new archive file %s", name.c_str());
+    INFO("Creating new archive file {:s}", name);
 
     file = std::unique_ptr<File>(
         new File(data_filename, File::ReadWrite | File::Create | File::Truncate));
@@ -127,14 +133,14 @@ void visFileArchive::setup_file(const std::string& name,
 template<typename T>
 void visFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f,
                                  size_t chunk_t, const T* data) {
-    // DEBUG("writing %d freq, %d times, at (%d,%d).", chunk_f, chunk_t, f_ind, t_ind);
+    // DEBUG("writing {:d} freq, {:d} times, at ({:d},{:d}).", chunk_f, chunk_t, f_ind, t_ind);
     if (name == "flags/inputs") {
         dset(name).select({0, t_ind}, {length("input"), chunk_t}).write(data);
     } else if (name == "evec") {
         dset(name)
             .select({f_ind, 0, 0, t_ind}, {chunk_f, length("ev"), length("input"), chunk_t})
             .write(data);
-    } else if (name == "erms" || name == "flags/frac_lost") {
+    } else if (name == "erms" || name == "flags/frac_lost" || name == "flags/frac_rfi") {
         dset(name).select({f_ind, t_ind}, {chunk_f, chunk_t}).write(data);
     } else {
         size_t last_dim = dset(name).getSpace().getDimensions().at(1);
@@ -215,6 +221,7 @@ void visFileArchive::create_datasets() {
     create_dataset("flags/inputs", {"input", "time"}, create_datatype<float>(), no_compress);
     create_dataset("gain", {"freq", "input", "time"}, create_datatype<cfloat>(), compress);
     create_dataset("flags/frac_lost", {"freq", "time"}, create_datatype<float>(), no_compress);
+    create_dataset("flags/frac_rfi", {"freq", "time"}, create_datatype<float>(), no_compress);
 
     // Only write the eigenvector datasets if there's going to be anything in them
     if (write_ev) {
@@ -296,7 +303,7 @@ DataSet visFileArchive::dset(const std::string& name) {
 size_t visFileArchive::length(const std::string& axis_name) {
     if (!write_ev && axis_name == "ev")
         return 0;
-    return dset("index_map/" + axis_name).getSpace().getDimensions()[0];
+    return dset(fmt::format(fmt("index_map/{:s}"), axis_name)).getSpace().getDimensions()[0];
 }
 
 
@@ -308,7 +315,7 @@ inline DataType HighFive::create_datatype<freq_ctype>() {
     f.addMember("centre", H5T_IEEE_F64LE);
     f.addMember("width", H5T_IEEE_F64LE);
     f.autoCreate();
-    return f;
+    return std::move(f);
 }
 
 template<>
@@ -317,7 +324,7 @@ inline DataType HighFive::create_datatype<time_ctype>() {
     t.addMember("fpga_count", H5T_STD_U64LE);
     t.addMember("ctime", H5T_IEEE_F64LE);
     t.autoCreate();
-    return t;
+    return std::move(t);
 }
 
 template<>
@@ -331,7 +338,7 @@ inline DataType HighFive::create_datatype<input_ctype>() {
     i.addMember("correlator_input", s32, 2);
     i.manualCreate(34);
 
-    return i;
+    return std::move(i);
 }
 
 template<>
@@ -341,7 +348,7 @@ inline DataType HighFive::create_datatype<prod_ctype>() {
     p.addMember("input_a", H5T_STD_U16LE);
     p.addMember("input_b", H5T_STD_U16LE);
     p.autoCreate();
-    return p;
+    return std::move(p);
 }
 
 template<>
@@ -350,7 +357,7 @@ inline DataType HighFive::create_datatype<cfloat>() {
     c.addMember("r", H5T_IEEE_F32LE);
     c.addMember("i", H5T_IEEE_F32LE);
     c.autoCreate();
-    return c;
+    return std::move(c);
 }
 
 template<>
@@ -359,7 +366,7 @@ inline DataType HighFive::create_datatype<rstack_ctype>() {
     c.addMember("stack", H5T_STD_U32LE);
     c.addMember("conjugate", H5T_STD_U8LE);
     c.autoCreate();
-    return c;
+    return std::move(c);
 }
 
 template<>
@@ -368,5 +375,5 @@ inline DataType HighFive::create_datatype<stack_ctype>() {
     c.addMember("prod", H5T_STD_U32LE);
     c.addMember("conjugate", H5T_STD_U8LE);
     c.autoCreate();
-    return c;
+    return std::move(c);
 }

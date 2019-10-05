@@ -2,6 +2,8 @@
 
 #include "hsaBase.h"
 
+#include "fmt.hpp"
+
 #include <math.h>
 #include <mutex>
 
@@ -17,7 +19,7 @@ REGISTER_HSA_COMMAND(hsaRfiInputSum);
 hsaRfiInputSum::hsaRfiInputSum(Config& config, const string& unique_name,
                                bufferContainer& host_buffers, hsaDeviceInterface& device) :
     // Note, the rfi_chime_inputsum_private.hsaco kernel may be used in the future.
-    hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_inputsum",
+    hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_inputsum" KERNEL_EXT,
                "rfi_chime_inputsum.hsaco") {
     command_type = gpuCommandType::KERNEL;
     // Retrieve parameters from kotekan config
@@ -39,9 +41,9 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config, const string& unique_name,
     // Local Parameters
     rebuild_input_mask = true;
     // Allocate memory for input mask
-    input_mask = (uint8_t*)hsa_host_malloc(input_mask_len);
+    input_mask = (uint8_t*)hsa_host_malloc(input_mask_len, device.get_gpu_numa_node());
 
-    config_base = "/gpu/gpu_" + std::to_string(device.get_gpu_id());
+    config_base = fmt::format(fmt("/gpu/gpu_{:d}"), device.get_gpu_id());
 
     // Register rest server endpoint
     using namespace std::placeholders;

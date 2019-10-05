@@ -48,6 +48,7 @@ private:
     struct Buffer* buf;
     vector<int32_t> ref_real;
     vector<int32_t> ref_imag;
+    int num_frames_to_test;
 };
 
 #endif

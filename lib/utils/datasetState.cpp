@@ -18,7 +18,7 @@ state_uptr datasetState::_create(std::string name, json& data, state_uptr inner)
     try {
         return _registered_types()[name](data, std::move(inner));
     } catch (std::bad_function_call& e) {
-        WARN("datasetManager: no state of type %s is registered.", name.c_str());
+        WARN_NON_OO("datasetManager: no state of type {:s} is registered.", name);
         return nullptr;
     }
 }
@@ -83,3 +83,4 @@ REGISTER_DATASET_STATE(eigenvalueState, "eigenvalues");
 REGISTER_DATASET_STATE(timeState, "time");
 REGISTER_DATASET_STATE(metadataState, "metadata");
 REGISTER_DATASET_STATE(gatingState, "gating");
+REGISTER_DATASET_STATE(acqDatasetIdState, "acq_dataset_id");

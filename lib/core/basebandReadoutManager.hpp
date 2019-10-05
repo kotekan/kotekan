@@ -65,6 +65,10 @@ struct basebandDumpStatus {
     basebandDumpStatus::State state = State::WAITING;
     /// Description of the failure, when the state is ERROR
     std::string reason = "";
+    /// Time when the processing started (null if ``state`` is still WAITING)
+    std::shared_ptr<std::chrono::system_clock::time_point> started = 0;
+    /// Time when the processing finished (null if ``state`` is not DONE or ERROR)
+    std::shared_ptr<std::chrono::system_clock::time_point> finished = 0;
 };
 
 

@@ -40,6 +40,7 @@ extern "C" {
 
 #include <emmintrin.h>
 #include <string>
+#include <vector>
 
 /**
  * @brief Abstract object for processing packets that come from a given NIC port
@@ -118,40 +119,46 @@ protected:
  * In the end anyone should be able to use this class with their own subclass of the
  * @c dpdkRXhandler without understanding all the details about setting up the DPDK framework.
  *
- * @config   lcore_cpu_map   Array of CPU IDs which should be used for lcores (DPDK theads locked to
- * CPU code) For example [0,6] would create 2 lcores mapped to the 1st and 7th CPU core.
- * @config   lcore_port_map  Array of arrays mapping ports to lcores (DPDK theads locked to CPU
- * code) Format is index = lcore, value = array of port IDs so @c [[0,1],[2,3]] maps lcore 0 to
- * service ports 0 and 1, and lcore 1 to service ports 2 and 3. Note there is aways one handler per
- * port, so that means there can be more than one handler per lcore.
- * @config   handlers        Array of json objections which each contain the config
- *                           line @c dpdk_handler:<handler_name> which names the hander
- *                           to use for the NIC port at its index in the handlers array.
- *                           Addational config for each handler can be given within each of
- *                           these objects.  For example:
- *                           handlers:
- *                               - dpdk_handler: myHandler # Handler for port 0
- *                                 in_buf: my_buf_0
- *                               - dpdk_handler: myHandler # Handler for port 1
- *                                 in_buf: my_buf_1
- *                           Note that if a port isn't being used it must be denoted by
- *                           `- dpdk_handler: none`.   The number of handlers much match the number
- *                           of ports in the system, even if they aren't being used by the current
- * config. There must be a valid handler for every port referenced in @c lcore_port_map
- * @config   master_lcore_cpu The CPU ID of the master lcore (which just handles simple things like
- *                            updating stats, and other low volume operatings)
+ * @conf   lcore_cpu_map    Array of CPU IDs which should be used for lcores (DPDK threads locked
+ *                          to a CPU core).  For example [0,6] would create 2 lcores mapped
+ *                          to the 1st and 7th CPU core.
+ * @conf   lcore_port_map   Array of arrays mapping ports to lcores (DPDK threads locked to CPU
+ *                          code) Format is index = lcore, value = array of port IDs
+ *                          so @c [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
+ *                          and lcore 1 to service ports 2 and 3.
+ *                          Note there is aways one handler per port, so that means
+ *                          there can be more than one handler per lcore.
+ * @conf   handlers         Array of json objections which each contain the config
+ *                          line @c dpdk_handler:\<handler_name\> which names the hander
+ *                          to use for the NIC port at its index in the handlers array.
+ *                          Addational config for each handler can be given within each of
+ *                          these objects.  For example:
+ *                          handlers:
+ *                             - dpdk_handler: myHandler # Handler for port 0
+ *                                in_buf: my_buf_0
+ *                              - dpdk_handler: myHandler # Handler for port 1
+ *                                in_buf: my_buf_1
+ *                          Note that if a port isn't being used it must be denoted by
+ *                          `- dpdk_handler: none`.   The number of handlers much match the number
+ *                          of ports in the system, even if they aren't being used by the current
+ *                          config. There must be a valid handler for every port
+ *                          referenced in @c lcore_port_map
+ * @conf   master_lcore_cpu The CPU ID of the master lcore (which just handles simple things like
+ *                          updating stats, and other low volume operatings)
  *
  * @par Optional config, don't change unless you know what you are doing.
- * @config   num_mbufs       Int. Default 1024  The size of the mbuf pool
- * @config   mbuf_cache_size Int. Default 250   The number of mbufs to cache
- *                                              Basically this is to try and keep mbufs always in l3
- * by reducing the number of mbufs used by default.
- * @config   burst_size      Int. Default 32    The maximum number of packets returned by @c
- * rte_eth_rx_burst
- * @config   rx_ring_size    Int. Default 512   The size of the Receive ring
- * @config   tx_ring_size    Int. Default 512   The size of the Transmit ring
- * @config   max_rx_pkt_len  Int. Default 5000  The max packet size.
- * @config   jumbo_frame     Bool. Default true Enable support for Jumbo frames
+ * @conf   num_mbufs        Int. Default 1024  The size of the mbuf pool
+ * @conf   mbuf_cache_size  Int. Default 250   The number of mbufs to cache
+ *                                             Basically this is to try and keep mbufs always in l3
+ *                                             by reducing the number of mbufs used by default.
+ * @conf   burst_size       Int. Default 32    The maximum number of packets returned by
+ *                                             @c rte_eth_rx_burst
+ * @conf   rx_ring_size     Int. Default 512   The size of the Receive ring
+ * @conf   tx_ring_size     Int. Default 512   The size of the Transmit ring
+ * @conf   max_rx_pkt_len   Int. Default 5000  The max packet size.
+ * @conf   jumbo_frame      Bool. Default true Enable support for Jumbo frames
+ * @conf   num_mem_channels Int. Default 4     The number of system memory channels
+ * @conf   init_mem_alloc   Int.  Default 256  The initial memory allocation in MB
  *
  * @author Andre Renard
  */
@@ -178,15 +185,16 @@ private:
      * @param lcore_cpu_map The mapping of lcores to CPU cores
      * @param master_lcore_cpu The master core CPU ID to bind too
      */
-    void dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu);
+    void dpdk_init(std::vector<int> lcore_cpu_map, uint32_t master_lcore_cpu);
 
     /**
      * @brief Sets up a port for use with DPDK
      *
-     * @param port The port ID to setup
+     * @param port The port ID to setup.
+     * @param lcore_id The lcore which the port is being handled by.
      * @return  0 if it worked, and an error value if it failed.
      */
-    int32_t port_init(uint8_t port);
+    int32_t port_init(uint8_t port, uint32_t lcore_id);
 
     /**
      * @brief Creates the handers for the ports
@@ -195,8 +203,8 @@ private:
      */
     void create_handlers(kotekan::bufferContainer& buffer_container);
 
-    /// The pool of DPDK mbufs
-    struct rte_mempool* mbuf_pool;
+    /// The pool of DPDK mbufs, one per numa node
+    std::vector<struct rte_mempool*> mbuf_pools;
 
     /// Internal DPDK configuration struct
     struct rte_eth_conf port_conf;
@@ -227,6 +235,12 @@ private:
 
     /// One of these port list structs exists per lcore
     struct portList* lcore_port_list;
+
+    /// Number of memory channels
+    uint32_t num_mem_channels;
+
+    /// Initial memory allocation in MB
+    uint32_t init_mem_alloc;
 
     /// One of these exists per system port
     dpdkRXhandler** handlers;

@@ -17,12 +17,12 @@ option(USE_FFTW "Build with FFTW F-engine" OFF)
 option(USE_LAPACK "Build with LAPACK Linear Algebra (OpenBLAS)" OFF)
 option(USE_HCC "Build HCC GPU Framework" OFF)
 option(USE_HSA "Build HSA GPU Framework" OFF)
-option(USE_PRECOMPILED_OPENCL "Use precompiled OpenCL binaries" OFF)
 option(USE_CLOC "Use the CL offline compiler" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 option(USE_DPDK "Enable DPDK Framework" OFF)
 option(USE_HDF5 "Build HDF5 output stages" OFF)
 option(USE_OMP "Enable OpenMP" OFF)
+option(USE_OLD_ROCM "Build for ROCm versions 2.3 or older" OFF)
 option(SUPERDEBUG "Enable extra debugging with no optimisation" OFF)
 option(SANITIZE "Enable clang sanitizers for testing" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
@@ -45,6 +45,9 @@ if (${USE_HSA})
   find_package( HSA REQUIRED )
   set(USE_HSA ${HSA_FOUND})
   find_library( hsa-runtime64 /opt/rocm/hsa/lib/ )
+  if (${USE_OLD_ROCM})
+    add_definitions(-DUSE_OLD_ROCM)
+  endif()
 endif ()
 
 if (${USE_OPENCL})
@@ -91,6 +94,16 @@ endif()
 find_package(LibEvent REQUIRED )
 include_directories(${LIBEVENT_INCLUDE_DIR}/../)
 link_libraries(${LIBEVENT_LIBRARIES})
+
+# Libnuma is optional for some setups
+find_package(NUMA)
+if (${NUMA_FOUND})
+    add_definitions(-DWITH_NUMA)
+    message("NUMA support enabled")
+    link_libraries(${NUMA_LIBRARY})
+else()
+    message("libnuma not found, NUMA support will be disabled")
+endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   add_definitions(-DMAC_OSX)
@@ -196,6 +209,7 @@ set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrt " )
 endif ()
+
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
 
 # Warning about missing override is called differently in clang and gcc
@@ -271,7 +285,7 @@ endif()
 # Enforce code formatting rules with clang-format.
 find_program(
     CLANG_FORMAT_PATH
-    NAMES "clang-format"
+    NAMES "clang-format-8"
     DOC "Path to clang-format executable"
     )
 if(NOT CLANG_FORMAT_PATH)

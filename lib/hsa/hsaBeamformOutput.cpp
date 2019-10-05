@@ -17,6 +17,8 @@ hsaBeamformOutputData::hsaBeamformOutputData(Config& config, const string& uniqu
     register_producer(output_buffer, unique_name.c_str());
 
     network_buffer_id = 0;
+    network_buffer_precondition_id = 0;
+
     output_buffer_id = 0;
     output_buffer_execute_id = 0;
     output_buffer_precondition_id = 0;
@@ -31,6 +33,14 @@ int hsaBeamformOutputData::wait_on_precondition(int gpu_frame_id) {
     if (frame == NULL)
         return -1;
     output_buffer_precondition_id = (output_buffer_precondition_id + 1) % output_buffer->num_frames;
+
+    frame =
+        wait_for_full_frame(network_buffer, unique_name.c_str(), network_buffer_precondition_id);
+    if (frame == NULL)
+        return -1;
+    network_buffer_precondition_id =
+        (network_buffer_precondition_id + 1) % network_buffer->num_frames;
+
     return 0;
 }
 

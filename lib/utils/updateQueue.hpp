@@ -5,8 +5,6 @@
 
 #include <deque>
 
-using namespace std;
-
 /**
  * @class updateQueue
  * @brief Class that keeps track of updates with timestamps in a FIFO
@@ -57,7 +55,7 @@ public:
     void insert(timespec timestamp, T&& update) {
         // usually just push update to the back of the queue
         if (!values.size() || timestamp > values.crbegin()->first)
-            values.push_back(pair<timespec, T>(timestamp, move(update)));
+            values.push_back(std::pair<timespec, T>(timestamp, std::move(update)));
         else { // this is more complicated...
             auto u = values.rbegin();
             while (u->first > timestamp) {
@@ -68,10 +66,10 @@ public:
             // check if timestamp is identical -> replace update
 
             if (u != values.crend() && u->first == timestamp)
-                u->second = move(update);
+                u->second = std::move(update);
             else
                 // insert the new update where it belongs in the queue
-                values.insert(u.base(), pair<timespec, T>(timestamp, move(update)));
+                values.insert(u.base(), std::pair<timespec, T>(timestamp, std::move(update)));
         }
 
         if (values.size() > _len)
@@ -111,7 +109,7 @@ public:
 private:
     // The updates with their timestamps ("use this value for frames with
     // timestamps later than this").
-    deque<pair<timespec, T>> values;
+    std::deque<std::pair<timespec, T>> values;
 
     // Length of the queue.
     size_t _len;

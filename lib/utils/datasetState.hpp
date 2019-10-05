@@ -6,6 +6,7 @@
 #include "gateSpec.hpp"
 #include "visUtil.hpp"
 
+#include "fmt.hpp"
 #include "json.hpp"
 
 #include <cstdint>
@@ -139,7 +140,7 @@ std::ostream& operator<<(std::ostream&, const datasetState&);
 template<typename T>
 inline int datasetState::_register_state_type(std::string name) {
 
-    DEBUG("Registering state type: %s", name.c_str());
+    DEBUG_NON_OO("Registering state type: {:s}", name);
 
     // Generate a lambda function that creates an instance of the type
     datasetState::_registered_types()[name] = [](json& data, state_uptr inner) -> state_uptr {
@@ -167,8 +168,8 @@ public:
         try {
             _freqs = data.get<std::vector<std::pair<uint32_t, freq_ctype>>>();
         } catch (std::exception& e) {
-            throw std::runtime_error("freqState: Failure parsing json data (" + data.dump()
-                                     + "): " + e.what());
+            throw std::runtime_error(fmt::format(
+                fmt("freqState: Failure parsing json data ({:s}): {:s}"), data.dump(4), e.what()));
         }
     };
 
@@ -221,8 +222,8 @@ public:
         try {
             _inputs = data.get<std::vector<input_ctype>>();
         } catch (std::exception& e) {
-            throw std::runtime_error("inputState: Failure parsing json data (" + data.dump()
-                                     + "): " + e.what());
+            throw std::runtime_error(fmt::format(
+                fmt("inputState: Failure parsing json data ({:s}): {:s}"), data.dump(4), e.what()));
         }
     };
 
@@ -274,8 +275,8 @@ public:
         try {
             _prods = data.get<std::vector<prod_ctype>>();
         } catch (std::exception& e) {
-            throw std::runtime_error("prodState: Failure parsing json data (" + data.dump()
-                                     + "): " + e.what());
+            throw std::runtime_error(fmt::format(
+                fmt("prodState: Failure parsing json data ({:s}): {:s}"), data.dump(4), e.what()));
         }
     };
 
@@ -327,8 +328,8 @@ public:
         try {
             _times = data.get<std::vector<time_ctype>>();
         } catch (std::exception& e) {
-            throw std::runtime_error("timeState: Failure parsing json data (" + data.dump()
-                                     + "): " + e.what());
+            throw std::runtime_error(fmt::format(
+                fmt("timeState: Failure parsing json data ({:s}): {:s}"), data.dump(4), e.what()));
         }
     };
 
@@ -379,9 +380,9 @@ public:
         try {
             _ev = data.get<std::vector<uint32_t>>();
         } catch (std::exception& e) {
-            throw std::runtime_error("eigenvectorState: Failure parsing json "
-                                     "data ("
-                                     + data.dump() + "): " + e.what());
+            throw std::runtime_error(fmt::format(fmt("eigenvectorState: Failure parsing json "
+                                                     "data ({:s}): {:s}"),
+                                                 data.dump(4), e.what()));
         }
     };
 
@@ -458,8 +459,8 @@ public:
             _rstack_map = data["rstack"].get<std::vector<rstack_ctype>>();
             _num_stack = data["num_stack"].get<uint32_t>();
         } catch (std::exception& e) {
-            throw std::runtime_error("stackState: Failure parsing json data: "
-                                     + std::string(e.what()));
+            throw std::runtime_error(
+                fmt::format(fmt("stackState: Failure parsing json data: {:s}"), e.what()));
         }
     };
 
@@ -545,9 +546,9 @@ public:
             _instrument_name = data.at("instrument_name").get<std::string>();
             _git_version_tag = data.at("git_version_tag").get<std::string>();
         } catch (std::exception& e) {
-            throw std::runtime_error("metadataState: Failure parsing json "
-                                     "data ("
-                                     + data.dump() + "): " + e.what());
+            throw std::runtime_error(fmt::format(fmt("metadataState: Failure parsing json "
+                                                     "data ({:s}): {:s}"),
+                                                 data.dump(4), e.what()));
         }
     }
 
@@ -580,7 +581,6 @@ public:
      * @return The instrument name.
      */
     const std::string& get_instrument_name() const {
-        INFO("instrument name: %s", _instrument_name.c_str());
         return _instrument_name;
     }
 
@@ -618,9 +618,8 @@ public:
     /**
      * @brief Construct a gating state
      *
-     * @param  type   A string labelling the type of the gating.
-     * @param  data   Arbitrary type specific data to describe what's happening.
-     * @param  inner  Inner state.
+     * @param  spec  gateSpec to describe what's happening.
+     * @param  inner Inner state.
      **/
     gatingState(const gateSpec& spec, state_uptr inner = nullptr) :
         datasetState(std::move(inner)),
@@ -653,6 +652,62 @@ public:
 
     /// Type specific data
     const json gating_data;
+};
+
+
+// TODO: Remove this and integrate gossec into dataset broker
+using dset_id_t = size_t;
+/**
+ * @brief A dataset state used to communicate the dataset ID of data stored
+ *        in a raw file. This is a hack until we figure out how to propagate
+ *        dataset ID's to archive files.
+ *
+ * @author Tristan Pinsonneault-Marotte
+ */
+class acqDatasetIdState : public datasetState {
+public:
+    /**
+     * @brief Constructor
+     * @param data  The dataset ID as serialized by
+     *              acqDatasetIdState::to_json().
+     * @param inner An inner state or a nullptr.
+     */
+    acqDatasetIdState(json& data, state_uptr inner) : datasetState(move(inner)) {
+        try {
+            _ds_id = data.get<dset_id_t>();
+        } catch (std::exception& e) {
+            throw std::runtime_error(
+                fmt::format(fmt("acqDatasetIdState: Failure parsing json data ({:s}): {:s}"),
+                            data.dump(4), e.what()));
+        }
+    };
+
+    /**
+     * @brief Constructor
+     * @param ds_id    The dataset ID for the acquisition.
+     * @param inner    An inner state (optional).
+     */
+    acqDatasetIdState(dset_id_t ds_id, state_uptr inner = nullptr) :
+        datasetState(move(inner)),
+        _ds_id(ds_id){};
+
+    /**
+     * @brief Get dataset ID (read only).
+     *
+     * @return Dataset ID as a `dset_id_t`.
+     */
+    dset_id_t get_id() const {
+        return _ds_id;
+    }
+
+private:
+    dset_id_t _ds_id;
+
+    /// Serialize the data of this state in a json object
+    json data_to_json() const override {
+        json j(_ds_id);
+        return j;
+    }
 };
 
 #endif // DATASETSTATE_HPP

@@ -37,6 +37,7 @@ kotekanMode::~kotekanMode() {
     for (auto const& stage : stages) {
         if (stage.second != nullptr) {
             delete stage.second;
+            prometheus::Metrics::instance().remove_stage_metrics(stage.first);
         }
     }
 
@@ -84,14 +85,14 @@ void kotekanMode::initalize_stages() {
 
 void kotekanMode::join() {
     for (auto const& stage : stages) {
-        INFO("Joining kotekan_stage: %s...", stage.first.c_str());
+        INFO_NON_OO("Joining kotekan_stage: {:s}...", stage.first);
         stage.second->join();
     }
 }
 
 void kotekanMode::start_stages() {
     for (auto const& stage : stages) {
-        INFO("Starting kotekan_stage: %s...", stage.first.c_str());
+        INFO_NON_OO("Starting kotekan_stage: {:s}...", stage.first);
         stage.second->start();
     }
 }
@@ -104,7 +105,7 @@ void kotekanMode::stop_stages() {
     // Then send shutdown signal to buffers which
     // should wake up stages which are blocked.
     for (auto const& buf : buffers) {
-        INFO("Sending shutdown signal to buffer: %s", buf.first.c_str());
+        INFO_NON_OO("Sending shutdown signal to buffer: {:s}", buf.first);
         send_shutdown_signal(buf.second);
     }
 }

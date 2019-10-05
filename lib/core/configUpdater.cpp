@@ -31,7 +31,7 @@ void configUpdater::apply_config(Config& config) {
 void configUpdater::reset() {
     // unsubscribe from all REST endpoints
     for (auto it = _endpoints.cbegin(); it != _endpoints.cend(); it++) {
-        INFO("configUpdater: Removing endpoint %s", it->c_str());
+        INFO_NON_OO("configUpdater: Removing endpoint {:s}", *it);
         restServer::instance().remove_json_callback(*it);
     }
 
@@ -52,16 +52,14 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path) {
         // Check if this is a kotekan_update_endpoint block, and if so create
         // the endpoint
         string endpoint_type = it.value().value("kotekan_update_endpoint", "none");
-        string unique_name = path + "/" + it.key();
+        string unique_name = fmt::format(fmt("{:s}/{:s}"), path, it.key());
         if (endpoint_type == "json") {
             if (std::count(_endpoints.begin(), _endpoints.end(), unique_name) != 0) {
-                throw std::runtime_error("configUpdater: An endpoint with the"
-                                         "path "
-                                         + unique_name
-                                         + " has been "
-                                           "defined more than once.");
+                throw std::runtime_error(fmt::format(fmt("configUpdater: An endpoint with the path "
+                                                         "{:s} has been defined more than once."),
+                                                     unique_name));
             }
-            INFO("configUpdater: creating endpoint: %s", unique_name.c_str());
+            INFO_NON_OO("configUpdater: creating endpoint: {:s}", unique_name);
             create_endpoint(unique_name);
 
             // Store initial values for a first update on subscription
@@ -102,9 +100,9 @@ void configUpdater::subscribe(const Stage* subscriber,
                               std::map<std::string, std::function<bool(json&)>> callbacks) {
     for (auto callback : callbacks) {
         if (!_config->exists(subscriber->get_unique_name() + "/updatable_config", callback.first))
-            throw std::runtime_error("configUpdater: key '" + callback.first
-                                     + "' was not found in '" + subscriber->get_unique_name()
-                                     + "/updatable_config' in the config file.");
+            throw std::runtime_error(fmt::format(fmt("configUpdater: key '{:s}' was not found in "
+                                                     "'{:s}/updatable_config' in the config file."),
+                                                 callback.first, subscriber->get_unique_name()));
         subscribe(_config->get<std::string>(subscriber->get_unique_name() + "/updatable_config/",
                                             callback.first),
                   callback.second);
@@ -119,7 +117,7 @@ void configUpdater::subscribe(const std::string& name, std::function<bool(json&)
                                  + "', that "
                                    "does not exist.");
     _callbacks.insert(std::pair<std::string, std::function<bool(nlohmann::json&)>>(name, callback));
-    DEBUG("New subscription to %s", name.c_str());
+    DEBUG_NON_OO("New subscription to {:s}", name);
 
     // First call to subscriber with initial value from the config
     if (!callback(_init_values[name]))
@@ -140,18 +138,17 @@ void configUpdater::create_endpoint(const string& name) {
 
 void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json) {
     std::string uri = con.get_uri();
-    DEBUG("configUpdater: received message on endpoint: %s", uri.c_str());
+    DEBUG_NON_OO("configUpdater: received message on endpoint: {:s}", uri);
 
     // Check the incoming json for extra values
     for (nlohmann::json::iterator it = json.begin(); it != json.end(); it++) {
         if (std::find(_keys[uri].begin(), _keys[uri].end(), it.key()) == _keys[uri].end()) {
             // this key is not in the config file
-            std::string msg = fmt::format("configUpdater: Update to endpoint "
-                                          "'{}' contained value '{}' not "
-                                          "defined in the updatable config "
-                                          "block.",
-                                          uri.c_str(), it.key().c_str());
-            WARN(msg.c_str());
+            std::string msg = fmt::format(fmt("configUpdater: Update to endpoint '{:s}' contained "
+                                              "value '{:s}' not defined in the updatable config "
+                                              "block."),
+                                          uri, it.key());
+            WARN_NON_OO("{:s}", msg);
             con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
             return;
         } else {
@@ -162,13 +159,13 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
                 || ((it.value().type() == nlohmann::json::value_t::number_float)
                     ^ (_init_values[uri].at(it.key()).type()
                        == nlohmann::json::value_t::number_float))) {
-                std::string msg =
-                    fmt::format("configUpdater: Update to endpoint '{}' contained"
-                                " value '{}' of type {} (expected type {}).",
-                                uri.c_str(), it.key().c_str(), json_type_name(it.value()),
-                                json_type_name(_init_values[uri].at(it.key())));
+                std::string msg = fmt::format(fmt("configUpdater: Update to endpoint '{:s}' "
+                                                  "contained value '{:s}' of type {:s} (expected "
+                                                  "type {:s})."),
+                                              uri, it.key(), json_type_name(it.value()),
+                                              json_type_name(_init_values[uri].at(it.key())));
 
-                WARN(msg.c_str());
+                WARN_NON_OO("{:s}", msg);
                 con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
                 return;
             }
@@ -178,11 +175,11 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
     for (auto it = _keys[uri].begin(); it != _keys[uri].end(); it++) {
         if (*it != "kotekan_update_endpoint" && json.find(*it) == json.end()) {
             // this key is in the config file, but missing in the update
-            std::string msg = fmt::format("configUpdater: Update to endpoint "
-                                          "'{}' is missing value '{}' that is"
-                                          " defined in the config file.",
-                                          uri.c_str(), it->c_str());
-            WARN(msg.c_str());
+            std::string msg = fmt::format(fmt("configUpdater: Update to endpoint '{:s}' is "
+                                              "missing value '{:s}' that is defined in the config "
+                                              "file."),
+                                          uri, *it);
+            WARN_NON_OO("{:s}", msg);
             con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
             return;
         }
@@ -191,15 +188,15 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
     // Call subscriber callbacks
     auto search = _callbacks.equal_range(uri);
     if (search.first == _callbacks.end()) {
-        INFO("configUpdater: Received a POST command to endpoint %s, but "
-             "there are no subscribers to the endpoint.",
-             uri.c_str());
+        INFO_NON_OO("configUpdater: Received a POST command to endpoint {:s}, but "
+                    "there are no subscribers to the endpoint.",
+                    uri);
         if (std::find(_endpoints.begin(), _endpoints.end(), uri) == _endpoints.end()) {
-            std::string msg = fmt::format("configUpdater: Received POST "
-                                          "command to non-existend endpoint: "
-                                          "%s. This should never happen.",
-                                          uri.c_str());
-            WARN(msg.c_str());
+            std::string msg = fmt::format(fmt("configUpdater: Received POST command to "
+                                              "non-existend endpoint: {:s}. This should never "
+                                              "happen."),
+                                          uri);
+            WARN_NON_OO("{:s}", msg);
             con.send_error(msg, HTTP_RESPONSE::BAD_REQUEST);
             return;
         }
@@ -207,13 +204,12 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
     while (search.first != search.second) {
         // subscriber callback
         if (!search.first->second(json)) {
-            std::string msg = fmt::format("configUpdater: Failed updating {} "
-                                          "with new values: {}.",
-                                          uri.c_str(), json.dump().c_str());
-            ERROR(msg.c_str());
+            std::string msg = fmt::format(fmt("configUpdater: Failed updating {:s} with new "
+                                              "values: {:s}."),
+                                          uri, json.dump());
+            ERROR_NON_OO("{:s}", msg);
             con.send_error(msg, HTTP_RESPONSE::INTERNAL_ERROR);
-            ERROR("configUpdater: Stopping Kotekan.");
-            raise(SIGINT);
+            FATAL_ERROR_NON_OO("configUpdater: Stopping Kotekan.");
             return;
         }
         search.first++;
@@ -221,21 +217,20 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
 
     // update active config with all values in this update
     for (nlohmann::json::iterator it = json.begin(); it != json.end(); it++) {
-        DEBUG("configUpdater: Updating value %s with %s", std::string(uri + "/" + it.key()).c_str(),
-              it.value().dump().c_str());
+        DEBUG_NON_OO("configUpdater: Updating value {:s}/{:s} with {:s}", uri, it.key(),
+                     it.value().dump());
 
         try {
             // this ignores the data type,
             // should be checked in stages' callbacks
             _config->update_value(uri, it.key(), it.value());
         } catch (const std::exception& e) {
-            std::string msg = fmt::format("configUpdater: Failed applying "
-                                          "update to endpoint {}: {}",
-                                          uri.c_str(), e.what());
-            ERROR(msg.c_str());
+            std::string msg = fmt::format(fmt("configUpdater: Failed applying update to endpoint "
+                                              "{:s}: {:s}"),
+                                          uri, e.what());
+            ERROR_NON_OO("{:s}", msg);
             con.send_error(msg, HTTP_RESPONSE::INTERNAL_ERROR);
-            ERROR("configUpdater: Stopping Kotekan.");
-            raise(SIGINT);
+            FATAL_ERROR_NON_OO("configUpdater: Stopping Kotekan.");
             return;
         }
     }

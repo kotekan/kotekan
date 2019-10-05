@@ -15,7 +15,7 @@ REGISTER_HSA_COMMAND(hsaRfiZeroData);
 
 hsaRfiZeroData::hsaRfiZeroData(Config& config, const string& unique_name,
                                bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_zero",
+    hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_zero" KERNEL_EXT,
                "rfi_chime_zero.hsaco") {
     command_type = gpuCommandType::KERNEL;
     // Retrieve parameters from kotekan config
@@ -42,10 +42,10 @@ bool hsaRfiZeroData::update_rfi_zero_flag(nlohmann::json& json) {
     try {
         _rfi_zeroing = json.at("rfi_zeroing");
     } catch (std::exception& e) {
-        WARN("Failed to set RFI zeroing flag %s", e.what());
+        WARN("Failed to set RFI zeroing flag {:s}", e.what());
         return false;
     }
-    INFO("Changing RFI zero flag to %d", _rfi_zeroing);
+    INFO("Changing RFI zero flag to {:d}", _rfi_zeroing);
     return true;
 }
 

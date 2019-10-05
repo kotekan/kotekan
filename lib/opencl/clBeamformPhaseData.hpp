@@ -1,5 +1,5 @@
 /**
- * @file clBeamformPhaseData.h
+ * @file clBeamformPhaseData.hpp
  * @brief class to calculate phase data for beamforming.
  *  - clBeamformPhaseData: public clCommand
  */

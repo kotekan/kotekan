@@ -4,7 +4,7 @@ project( kotekan_boost_tests )
 find_package(Boost COMPONENTS unit_test_framework REQUIRED)
 include_directories (${Boost_INCLUDE_DIRS} $BOOST_TESTS_DIR)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/utils)
-include_directories (${KOTEKAN_SOURCE_DIR}/lib/processes)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/stages)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/core)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/metadata)
@@ -19,6 +19,7 @@ set ( KOTEKAN_BOOST_TEST_SOURCES
       test_restclient.cpp
       test_chime_stacking.cpp
       test_config.cpp
+      test_prometheus_metrics.cpp
     )
 
 # source files for broker test
