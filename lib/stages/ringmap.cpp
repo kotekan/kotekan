@@ -13,7 +13,7 @@ using namespace std::placeholders;
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::HTTP_RESPONSE;
-using kotekan::prometheusMetrics;
+using kotekan::prometheus::Metrics;
 using kotekan::restServer;
 using kotekan::Stage;
 
