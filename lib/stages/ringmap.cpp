@@ -13,9 +13,9 @@ using namespace std::placeholders;
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::HTTP_RESPONSE;
-using kotekan::prometheus::Metrics;
 using kotekan::restServer;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 const float pi = std::acos(-1);
 
