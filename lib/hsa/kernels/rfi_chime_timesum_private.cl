@@ -73,10 +73,10 @@ rfi_chime_timesum(
     output[2 + address] = tmp.s2;
     output[3 + address] = tmp.s3;
 
-    const uint vector_index = element_index / 4;
+    const uint vector_index = element_index % 4;
 
     //Output the variance for the selected feed
-    if(gx == vector_index) {
+    if(gx == element_index / 4) {
         switch(vector_index) {
             case 0:
                 output_var[gy] = power_across_time.s0;
