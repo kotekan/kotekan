@@ -141,10 +141,10 @@ private:
     bool column_mode;
 
     /// Minimal interval between checks of a node's liveliness
-    const std::chrono::seconds min_ping_frequency_;
+    const std::chrono::seconds _min_ping_interval;
 
     /// Maximal interval between checks of a node's liveliness, and before a node is declared dead
-    const std::chrono::seconds max_ping_frequency_;
+    const std::chrono::seconds _max_ping_interval;
 
     /// array of sending socket descriptors
     std::vector<SrcAddrSocket> src_sockets;

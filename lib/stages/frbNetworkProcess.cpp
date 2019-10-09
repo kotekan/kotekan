@@ -48,10 +48,10 @@ REGISTER_KOTEKAN_STAGE(frbNetworkProcess);
 frbNetworkProcess::frbNetworkProcess(Config& config_, const string& unique_name,
                                      bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&frbNetworkProcess::main_thread, this)),
-    min_ping_frequency_{
-        std::chrono::seconds(config_.get_default<long>(unique_name, "max_ping_frequency", 5))},
-    max_ping_frequency_{
-        std::chrono::seconds(config_.get_default<long>(unique_name, "max_ping_frequency", 600))} {
+    _min_ping_interval{
+        std::chrono::seconds(config_.get_default<long>(unique_name, "min_ping_interval", 5))},
+    _max_ping_interval{
+        std::chrono::seconds(config_.get_default<long>(unique_name, "max_ping_interval", 600))} {
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -66,6 +66,7 @@ frbNetworkProcess::frbNetworkProcess(Config& config_, const string& unique_name,
     time_interval = config.get_default<unsigned long>(unique_name, "time_interval", 125829120);
     column_mode = config.get_default<bool>(unique_name, "column_mode", false);
     samples_per_packet = config.get_default<int>(unique_name, "timesamples_per_frb_packet", 16);
+    INFO("Pinging every from {} to {}s", _min_ping_interval, _max_ping_interval);
 }
 
 frbNetworkProcess::~frbNetworkProcess() {
@@ -405,7 +406,7 @@ void frbNetworkProcess::ping_destinations() {
             lru_dest.ping_seq = ping_seq;
             ping_seq++;
             // Back off unless the host is in the OK state, in which case we back off on reception
-            if (!lru_dest.dst->live && 2 * lru_dest.check_delay <= max_ping_frequency_) {
+            if (!lru_dest.dst->live && 2 * lru_dest.check_delay <= _max_ping_interval) {
                 lru_dest.check_delay *= 2;
             }
         }
@@ -454,11 +455,11 @@ void frbNetworkProcess::ping_destinations() {
                                     INFO("Host {} is responding to pings again, mark live.",
                                          src.dst->host);
                                     src.dst->live = true;
-                                    src.check_delay = min_ping_frequency_;
+                                    src.check_delay = _min_ping_interval;
                                 } else {
                                     // a live host was pinged successfully, back off
                                     // the next check
-                                    if (2 * src.check_delay <= max_ping_frequency_) {
+                                    if (2 * src.check_delay <= _max_ping_interval) {
                                         src.check_delay *= 2;
                                     }
                                 }
@@ -480,7 +481,7 @@ void frbNetworkProcess::ping_destinations() {
         // Mark node as dead if it's been too long since last response
         if (lru_dest.dst->live) {
             auto time_since_last_live = std::chrono::steady_clock::now() - lru_dest.last_responded;
-            if (time_since_last_live > max_ping_frequency_) {
+            if (time_since_last_live > _max_ping_interval) {
                 INFO("Too long since last ping response ({:%S}s), mark host {} dead.",
                      time_since_last_live, lru_dest.dst->host);
                 lru_dest.dst->live = false;
