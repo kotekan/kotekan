@@ -418,10 +418,13 @@ void frbNetworkProcess::ping_destinations() {
             FD_SET(s, &rfds);
         }
         /*
-         * Non-blocking check for ping responses received on any of the `ping_src_fd` sockets.
+         * Minimally-blocking check for ping responses received on any of the `ping_src_fd` sockets:
+         * wait for a response for no more than 0.7 s, which should be enough to receive replies
+         * from nodes on the cluster, and then process all sockets that `select` marked as ready to
+         * be read.
          */
-        struct timeval tv = {0, 200000}; // Don't wait more than 0.2s for a socket to be ready
-        while (int rc = select(max_ping_src_fd + 1, &rfds, nullptr, nullptr, &tv) != 0) {
+        struct timeval tv = {0, 700'000}; // Don't wait more than 0.7s for a socket to be ready
+        if (int rc = select(max_ping_src_fd + 1, &rfds, nullptr, nullptr, &tv) != 0) {
             if (stop_thread)
                 break;
             if (rc < 0) {
