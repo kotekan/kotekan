@@ -14,7 +14,7 @@ url = 'http://csBfs:54323/toggle-rfi-zeroing'
 headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8'}
 
 #Payload
-payload = dict()
+payload = {'rfi_zeroing': False}
 payload['rfi_zeroing'] = False
 
 #Turn Off
