@@ -11,13 +11,13 @@ __kernel void
 rfi_chime_timesum(
      __global uint *input,
      __global float *output,
-     __global float *output_var,
+     //__global float *output_var,
 //     __constant uchar *InputMask,
 //     __constant uchar *LostSamples,
 //     __global uint *LostSamplesCorrection,
      const uint sk_step,
-     const uint num_elements,
-     const uint element_index
+     const uint num_elements
+     //const uint element_index
 )
 {
     //Get work id's
@@ -73,24 +73,24 @@ rfi_chime_timesum(
     output[2 + address] = tmp.s2;
     output[3 + address] = tmp.s3;
 
-    const uint vector_index = element_index % 4;
+    //const uint vector_index = element_index % 4;
 
     //Output the variance for the selected feed
-    if(gx == element_index / 4) {
-        switch(vector_index) {
-            case 0:
-                output_var[gy] = power_across_time.s0;
-                break;
-            case 1:
-                output_var[gy] = power_across_time.s1;
-                break;
-            case 2:
-                output_var[gy] = power_across_time.s2;
-                break;
-            case 3:
-                output_var[gy] = power_across_time.s3;
-                break;
-        }
-    }
+    //if(gx == element_index / 4) {
+    //    switch(vector_index) {
+    //        case 0:
+    //            output_var[gy] = power_across_time.s0;
+    //            break;
+    //        case 1:
+    //            output_var[gy] = power_across_time.s1;
+    //            break;
+    //        case 2:
+    //            output_var[gy] = power_across_time.s2;
+    //            break;
+    //        case 3:
+    //            output_var[gy] = power_across_time.s3;
+    //            break;
+    //    }
+    //}
 
 }
