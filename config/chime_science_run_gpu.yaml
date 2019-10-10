@@ -271,18 +271,18 @@ gpu_rfi_bad_input_buffers:
   gpu_rfi_bad_input_buffer_3:
     kotekan_buffer: standard
 
-#rfi_var_output_buffers:
-#  num_frames: buffer_depth * 100
-#  frame_size: num_local_freq * samples_per_data_set / sk_step * sizeof_float
-#  metadata_pool: main_pool
-#  gpu_rfi_var_output_buffer_0:
-#    kotekan_buffer: standard
-#  gpu_rfi_var_output_buffer_1:
-#    kotekan_buffer: standard
-#  gpu_rfi_var_output_buffer_2:
-#    kotekan_buffer: standard
-#  gpu_rfi_var_output_buffer_3:
-#    kotekan_buffer: standard
+rfi_var_output_buffers:
+  num_frames: buffer_depth * 100
+  frame_size: num_local_freq * samples_per_data_set / sk_step * sizeof_float
+  metadata_pool: main_pool
+  gpu_rfi_var_output_buffer_0:
+    kotekan_buffer: standard
+  gpu_rfi_var_output_buffer_1:
+    kotekan_buffer: standard
+  gpu_rfi_var_output_buffer_2:
+    kotekan_buffer: standard
+  gpu_rfi_var_output_buffer_3:
+    kotekan_buffer: standard
 
 lost_samples_buffer:
   kotekan_buffer: standard
@@ -442,7 +442,7 @@ gpu:
     #Copy out queue
     - name: hsaRfiBadInputOutput
     - name: hsaRfiOutput
-    #- name: hsaRfiVarOutput
+    - name: hsaRfiVarOutput
     - name: hsaBeamformPulsarOutput
     - name: hsaBeamformOutputData
     - name: hsaOutputData
@@ -485,7 +485,7 @@ gpu:
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_0
       rfi_output_buf: gpu_rfi_output_buffer_0
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_0
-#      rfi_var_output_buf: gpu_rfi_var_output_buffer_0
+      rfi_var_output_buf: gpu_rfi_var_output_buffer_0
   gpu_1:
     kotekan_stage: hsaProcess
     gpu_id: 1
@@ -509,7 +509,7 @@ gpu:
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_1
       rfi_output_buf: gpu_rfi_output_buffer_1
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_1
-#      rfi_var_output_buf: gpu_rfi_var_output_buffer_1
+      rfi_var_output_buf: gpu_rfi_var_output_buffer_1
   gpu_2:
     kotekan_stage: hsaProcess
     gpu_id: 2
@@ -533,7 +533,7 @@ gpu:
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_2
       rfi_output_buf: gpu_rfi_output_buffer_2
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_2
-#      rfi_var_output_buf: gpu_rfi_var_output_buffer_2
+      rfi_var_output_buf: gpu_rfi_var_output_buffer_2
   gpu_3:
     kotekan_stage: hsaProcess
     gpu_id: 3
@@ -557,7 +557,7 @@ gpu:
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_3
       rfi_output_buf: gpu_rfi_output_buffer_3
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_3
-#      rfi_var_output_buf: gpu_rfi_var_output_buffer_3
+      rfi_var_output_buf: gpu_rfi_var_output_buffer_3
 
 read_gain:
   updatable_config:
@@ -1334,24 +1334,24 @@ rfi_sk_record:
     rfi_in: gpu_rfi_output_buffer_3
     updatable_config: "/updatable_config/rfi_sk_record"
 
-#rfi_var_record:
-#  total_links: 1
-#  gpu_0:
-#    kotekan_stage: rfiRecord
-#    rfi_in: gpu_rfi_var_output_buffer_0
-#    updatable_config: "/updatable_config/rfi_var_record"
-#  gpu_1:
-#    kotekan_stage: rfiRecord
-#    rfi_in: gpu_rfi_var_output_buffer_1
-#    updatable_config: "/updatable_config/rfi_var_record"
-#  gpu_2:
-#    kotekan_stage: rfiRecord
-#    rfi_in: gpu_rfi_var_output_buffer_2
-#    updatable_config: "/updatable_config/rfi_var_record"
-#  gpu_3:
-#    kotekan_stage: rfiRecord
-#    rfi_in: gpu_rfi_var_output_buffer_3
-#    updatable_config: "/updatable_config/rfi_var_record"
+rfi_var_record:
+  total_links: 1
+  gpu_0:
+    kotekan_stage: rfiRecord
+    rfi_in: gpu_rfi_var_output_buffer_0
+    updatable_config: "/updatable_config/rfi_var_record"
+  gpu_1:
+    kotekan_stage: rfiRecord
+    rfi_in: gpu_rfi_var_output_buffer_1
+    updatable_config: "/updatable_config/rfi_var_record"
+  gpu_2:
+    kotekan_stage: rfiRecord
+    rfi_in: gpu_rfi_var_output_buffer_2
+    updatable_config: "/updatable_config/rfi_var_record"
+  gpu_3:
+    kotekan_stage: rfiRecord
+    rfi_in: gpu_rfi_var_output_buffer_3
+    updatable_config: "/updatable_config/rfi_var_record"
 
 # Information for input reordering, packed as
 #   (adc_id, chan_id, correlator_input)
