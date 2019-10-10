@@ -48,10 +48,10 @@ REGISTER_KOTEKAN_STAGE(frbNetworkProcess);
 frbNetworkProcess::frbNetworkProcess(Config& config_, const string& unique_name,
                                      bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&frbNetworkProcess::main_thread, this)),
-    _min_ping_interval{
-        std::chrono::seconds(config_.get_default<long>(unique_name, "min_ping_interval", 5))},
-    _max_ping_interval{
-        std::chrono::seconds(config_.get_default<long>(unique_name, "max_ping_interval", 600))},
+    _ping_interval{
+        std::chrono::seconds(config_.get_default<long>(unique_name, "ping_interval", 360))},
+    _quick_ping_interval{
+        std::chrono::seconds(config_.get_default<long>(unique_name, "quick_ping_interval", 5))},
     _ping_dead_threshold{
         std::chrono::seconds(config_.get_default<long>(unique_name, "ping_dead_threshold", 30))} {
 
@@ -68,7 +68,7 @@ frbNetworkProcess::frbNetworkProcess(Config& config_, const string& unique_name,
     time_interval = config.get_default<unsigned long>(unique_name, "time_interval", 125829120);
     column_mode = config.get_default<bool>(unique_name, "column_mode", false);
     samples_per_packet = config.get_default<int>(unique_name, "timesamples_per_frb_packet", 16);
-    INFO("Pinging every from {} to {}s", _min_ping_interval, _max_ping_interval);
+    INFO("Pinging every {} / {}", _quick_ping_interval, _ping_interval);
 }
 
 frbNetworkProcess::~frbNetworkProcess() {
@@ -320,7 +320,6 @@ struct DestIpSocketTime {
     DestIpSocket* dst;
     std::chrono::steady_clock::time_point last_responded;
     std::chrono::steady_clock::time_point next_check;
-    std::chrono::seconds check_delay{20};
     uint16_t ping_seq = 0;
     friend bool operator<(const DestIpSocketTime& l, const DestIpSocketTime& r) {
         if (l.next_check == r.next_check) {
@@ -407,10 +406,6 @@ void frbNetworkProcess::ping_destinations() {
         if (send_ping(ping_src_fd[lru_dest.dst->sending_socket], lru_dest.dst->addr, ping_seq)) {
             lru_dest.ping_seq = ping_seq;
             ping_seq++;
-            // Back off unless the host is in the OK state, in which case we back off on reception
-            if (!lru_dest.dst->live && 2 * lru_dest.check_delay <= _max_ping_interval) {
-                lru_dest.check_delay *= 2;
-            }
         }
 
         // initialize the listening set of sockets for `select`
@@ -419,6 +414,7 @@ void frbNetworkProcess::ping_destinations() {
         for (int s : ping_src_fd) {
             FD_SET(s, &rfds);
         }
+        bool lru_dest_responded = false;
         /*
          * Minimally-blocking check for ping responses received on any of the `ping_src_fd` sockets:
          * wait for a response for no more than 0.7 s, which should be enough to receive replies
@@ -460,13 +456,9 @@ void frbNetworkProcess::ping_destinations() {
                                     INFO("Host {} is responding to pings again, mark live.",
                                          src.dst->host);
                                     src.dst->live = true;
-                                    src.check_delay = _min_ping_interval;
-                                } else {
-                                    // a live host was pinged successfully, back off
-                                    // the next check
-                                    if (2 * src.check_delay <= _max_ping_interval) {
-                                        src.check_delay *= 2;
-                                    }
+                                }
+                                if (from.sin_addr.s_addr == lru_dest.dst->addr.sin_addr.s_addr) {
+                                    lru_dest_responded = true;
                                 }
                             } else {
                                 DEBUG(
@@ -490,18 +482,22 @@ void frbNetworkProcess::ping_destinations() {
                 INFO("Too long since last ping response ({:%M:%S}), mark host {} dead.",
                      time_since_last_live, lru_dest.dst->host);
                 lru_dest.dst->live = false;
-                // NOTE: lru_dest.check_delay is left at its current value at this point, i.e.,
-                // prob. maximum
             }
         }
 
         // Schedule the next check for the node
         dest_by_time.pop();
-        lru_dest.next_check = std::chrono::steady_clock::now() + lru_dest.check_delay;
+        if (!lru_dest_responded && lru_dest.dst->live) {
+            DEBUG("Live host {} has not responded, schedule a backup check in {}",
+                  lru_dest.dst->host, _quick_ping_interval);
+            lru_dest.next_check = std::chrono::steady_clock::now() + _quick_ping_interval;
+        } else {
+            DEBUG("Host {} state hasn't changed, schedule a normal check in {}", lru_dest.dst->host,
+                  _ping_interval);
+            lru_dest.next_check = std::chrono::steady_clock::now() + _ping_interval;
+        }
         // could add another `std::chrono::milliseconds(dis(gen))` random delay to next_check
         dest_by_time.push(lru_dest);
-        DEBUG("Check {} again in {:%M:%S}", lru_dest.dst->host,
-              lru_dest.next_check - std::chrono::steady_clock::now());
 
         // sleep until the next host is due
         DestIpSocketTime& next_lru_dest = dest_by_time.top();

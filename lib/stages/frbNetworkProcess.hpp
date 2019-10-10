@@ -140,11 +140,12 @@ private:
     // Beam kotekan::Configuration Mode
     bool column_mode;
 
-    /// Minimal interval between checks of a node's liveliness
-    const std::chrono::seconds _min_ping_interval;
+    /// Interval between checks of a node's liveliness
+    const std::chrono::seconds _ping_interval;
 
-    /// Maximal interval between checks of a node's liveliness
-    const std::chrono::seconds _max_ping_interval;
+    /// Accelerated interval between checks of a node's liveliness, used when a live node stops
+    /// responding
+    const std::chrono::seconds _quick_ping_interval;
 
     /// Duration at which a node is declared dead if it hasn't responded to pings
     const std::chrono::seconds _ping_dead_threshold;
