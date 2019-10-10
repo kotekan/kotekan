@@ -143,8 +143,11 @@ private:
     /// Minimal interval between checks of a node's liveliness
     const std::chrono::seconds _min_ping_interval;
 
-    /// Maximal interval between checks of a node's liveliness, and before a node is declared dead
+    /// Maximal interval between checks of a node's liveliness
     const std::chrono::seconds _max_ping_interval;
+
+    /// Duration at which a node is declared dead if it hasn't responded to pings
+    const std::chrono::seconds _ping_dead_threshold;
 
     /// array of sending socket descriptors
     std::vector<SrcAddrSocket> src_sockets;

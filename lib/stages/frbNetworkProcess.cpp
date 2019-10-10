@@ -51,7 +51,9 @@ frbNetworkProcess::frbNetworkProcess(Config& config_, const string& unique_name,
     _min_ping_interval{
         std::chrono::seconds(config_.get_default<long>(unique_name, "min_ping_interval", 5))},
     _max_ping_interval{
-        std::chrono::seconds(config_.get_default<long>(unique_name, "max_ping_interval", 600))} {
+        std::chrono::seconds(config_.get_default<long>(unique_name, "max_ping_interval", 600))},
+    _ping_dead_threshold{
+        std::chrono::seconds(config_.get_default<long>(unique_name, "ping_dead_threshold", 30))} {
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -484,7 +486,7 @@ void frbNetworkProcess::ping_destinations() {
         // Mark node as dead if it's been too long since last response
         if (lru_dest.dst->live) {
             auto time_since_last_live = std::chrono::steady_clock::now() - lru_dest.last_responded;
-            if (time_since_last_live > _max_ping_interval) {
+            if (time_since_last_live > _ping_dead_threshold) {
                 INFO("Too long since last ping response ({:%M:%S}), mark host {} dead.",
                      time_since_last_live, lru_dest.dst->host);
                 lru_dest.dst->live = false;
