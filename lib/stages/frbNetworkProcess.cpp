@@ -320,6 +320,7 @@ struct DestIpSocketTime {
     DestIpSocket* dst;
     std::chrono::steady_clock::time_point last_responded;
     std::chrono::steady_clock::time_point next_check;
+    std::chrono::steady_clock::time_point last_checked = last_responded;
     uint16_t ping_seq = 0;
     friend bool operator<(const DestIpSocketTime& l, const DestIpSocketTime& r) {
         if (l.next_check == r.next_check) {
@@ -404,6 +405,7 @@ void frbNetworkProcess::ping_destinations() {
 
         // NOTE: we don't ping if the host is not active, but behave as if it were checked
         if (send_ping(ping_src_fd[lru_dest.dst->sending_socket], lru_dest.dst->addr, ping_seq)) {
+            lru_dest.last_checked = std::chrono::steady_clock::now();
             lru_dest.ping_seq = ping_seq;
             ping_seq++;
         }
@@ -422,7 +424,7 @@ void frbNetworkProcess::ping_destinations() {
          * be read.
          */
         struct timeval tv = {0, 700'000}; // Don't wait more than 0.7s for a socket to be ready
-        if (int rc = select(max_ping_src_fd + 1, &rfds, nullptr, nullptr, &tv) != 0) {
+        while (int rc = select(max_ping_src_fd + 1, &rfds, nullptr, nullptr, &tv) != 0) {
             if (stop_thread)
                 break;
             if (rc < 0) {
@@ -473,27 +475,33 @@ void frbNetworkProcess::ping_destinations() {
                     }
                 }
             }
-        }
-
-        // Mark node as dead if it's been too long since last response
-        if (lru_dest.dst->live) {
-            auto time_since_last_live = std::chrono::steady_clock::now() - lru_dest.last_responded;
-            if (time_since_last_live > _ping_dead_threshold) {
-                INFO("Too long since last ping response ({:%M:%S}), mark host {} dead.",
-                     time_since_last_live, lru_dest.dst->host);
-                lru_dest.dst->live = false;
+            tv = {0, 300'000}; // reduce the wait for additional replies
+            FD_ZERO(&rfds);
+            for (int s : ping_src_fd) {
+                FD_SET(s, &rfds);
             }
         }
 
         // Schedule the next check for the node
         dest_by_time.pop();
         if (!lru_dest_responded && lru_dest.dst->live) {
-            DEBUG("Live host {} has not responded, schedule a backup check in {}",
-                  lru_dest.dst->host, _quick_ping_interval);
-            lru_dest.next_check = std::chrono::steady_clock::now() + _quick_ping_interval;
+            /*
+             * If a node has stopped responding recently, we switch to an accelerated check
+             * schedule. Otherwise, give up and mark it dead.
+             */
+            auto time_since_last_live = std::chrono::steady_clock::now() - lru_dest.last_responded;
+            if (time_since_last_live < _ping_interval + _ping_dead_threshold) {
+                DEBUG("Live host {} has not responded, schedule a backup check in {}",
+                      lru_dest.dst->host, _quick_ping_interval);
+                lru_dest.next_check = std::chrono::steady_clock::now() + _quick_ping_interval;
+            } else {
+                INFO("Too long since last ping response ({:%M:%S}), mark host {} dead.",
+                     time_since_last_live, lru_dest.dst->host);
+                lru_dest.dst->live = false;
+                lru_dest.next_check = std::chrono::steady_clock::now() + _ping_interval;
+            }
         } else {
-            DEBUG("Host {} state hasn't changed, schedule a normal check in {}", lru_dest.dst->host,
-                  _ping_interval);
+            DEBUG("Schedule a regular check for host {} in {}", lru_dest.dst->host, _ping_interval);
             lru_dest.next_check = std::chrono::steady_clock::now() + _ping_interval;
         }
         // could add another `std::chrono::milliseconds(dis(gen))` random delay to next_check
