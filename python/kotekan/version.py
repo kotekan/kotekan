@@ -127,7 +127,7 @@ def get_version(
                 git information for the passed directory.
         """
         try:
-            p = Popen(cmd, stdout=PIPE, stderr=PIPE, cwd=directory, encoding='utf8')
+            p = Popen(cmd, stdout=PIPE, stderr=PIPE, cwd=directory, encoding="utf8")
             p.wait()
             p.stderr.close()
             cmd_output = p.stdout.readlines()
