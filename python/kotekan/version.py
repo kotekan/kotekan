@@ -127,7 +127,7 @@ def get_version(
                 git information for the passed directory.
         """
         try:
-            p = Popen(cmd, stdout=PIPE, stderr=PIPE, cwd=directory)
+            p = Popen(cmd, stdout=PIPE, stderr=PIPE, cwd=directory, encoding='utf8')
             p.wait()
             p.stderr.close()
             cmd_output = p.stdout.readlines()
@@ -146,8 +146,8 @@ def get_version(
 
                 if (len(git_info) and len(branch)) != 0:
                     # Sanitize git_info and branch
-                    branch = branch[0].decode("utf-8").strip()
-                    git_info = git_info[0].decode("utf-8").strip()
+                    branch = branch[0].strip()
+                    git_info = git_info[0].strip()
                     # Create release based on git_dir
                     git_dir_release = True
 
@@ -177,8 +177,8 @@ def get_version(
 
                 if (len(git_info) and len(branch)) != 0:
                     # Sanitize git_info and branch
-                    git_info = git_info[0].decode("utf-8").strip()
-                    branch = branch[0].decode("utf-8").strip()
+                    git_info = git_info[0].strip()
+                    branch = branch[0].strip()
                     python_package_release = True
                 else:
                     # If the python module is not running from a git
@@ -214,8 +214,8 @@ def get_version(
                         )
                     )
                 # Sanitize git_info and branch
-                git_info = git_info[0].decode("utf-8").strip()
-                branch = branch[0].decode("utf-8").strip()
+                git_info = git_info[0].strip()
+                branch = branch[0].strip()
                 cwd_release = True
             except Exception as e:
                 raise Exception("Unable to use cwd to create version: {}".format(e))
