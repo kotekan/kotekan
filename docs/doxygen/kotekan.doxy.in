@@ -248,7 +248,9 @@ ALIASES                = conf="@param" \
                          gpu_mem_format="  -  @b Format:" \
                          gpu_mem_metadata="  -  @b Metadata:  @c" \
                          requires_kernel="@b Required @b Kernel @arg @c" \
-                         metric="- @c"
+                         metric="- @c" \
+                         endpoint="- @c" \
+                         raises=="- @c" \
 
 # This tag can be used to specify a number of word-keyword mappings (TCL only).
 # A mapping has the form "name=value". For example adding "class=itcl::class"
@@ -766,13 +768,13 @@ WARN_IF_DOC_ERROR      = YES
 # parameter documentation, but not about the absence of documentation.
 # The default value is: NO.
 
-WARN_NO_PARAMDOC       = NO
+WARN_NO_PARAMDOC       = YES
 
 # If the WARN_AS_ERROR tag is set to YES then doxygen will immediately stop when
 # a warning is encountered.
 # The default value is: NO.
 
-#WARN_AS_ERROR          = NO
+WARN_AS_ERROR          = YES
 
 # The WARN_FORMAT tag determines the format of the warning messages that doxygen
 # can produce. The string should contain the $file, $line, and $text tags, which

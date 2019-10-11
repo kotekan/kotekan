@@ -56,11 +56,16 @@ public:
     /// array.
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
+    /// Updates the element to export variance from.
+    bool update_element_index(nlohmann::json& json);
+
 private:
     /// Length of the input frame, should be sizeof_uchar x n_elem x n_freq x nsamp
     uint32_t input_frame_len;
     /// Length of the output frame, should be sizeof_float x n_elem x n_freq x nsamp / sk_step
     uint32_t output_frame_len;
+    /// Length of the output_var frame, should be sizeof_float x n_freq x nsamp / sk_step
+    uint32_t output_var_frame_len;
     /// Length of the lost sample frame
     uint32_t lost_samples_frame_len;
     /// Length of the lost sample correction frame
@@ -73,6 +78,10 @@ private:
     uint32_t _samples_per_data_set;
     /// Integration length of spectral kurtosis estimate in time
     uint32_t _sk_step;
+    /// Element to extract the variance from recorded in correlator order.
+    uint32_t _element_index;
+    /// The mapping from correlator to cylinder element indexing.
+    std::vector<uint32_t> input_remap;
 };
 
 #endif

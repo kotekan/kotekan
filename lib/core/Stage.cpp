@@ -71,13 +71,13 @@ void Stage::apply_cpu_affinity() {
     // Set affinity
     err = pthread_setaffinity_np(this_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
     if (err)
-        ERROR("Failed to set thread affinity for %s, error code %d", unique_name.c_str(), err);
+        ERROR("Failed to set thread affinity for {:s}, error code {:d}", unique_name, err);
 
     // Set debug name as last 15 chars of the config unique_name
     std::string short_name = string_tail(unique_name, 15);
     pthread_setname_np(this_thread.native_handle(), short_name.c_str());
     if (err)
-        ERROR("Failed to set thread name for %s, error code %d", unique_name.c_str(), err);
+        ERROR("Failed to set thread name for {:s}, error code {:d}", unique_name, err);
 #endif
 }
 
@@ -106,11 +106,10 @@ void Stage::join() {
         auto thread_joiner = std::async(std::launch::async, &std::thread::join, &this_thread);
         if (thread_joiner.wait_for(std::chrono::seconds(join_timeout))
             == std::future_status::timeout) {
-            ERROR("*** EXIT_FAILURE *** The stage %s failed to exit (join thread timeout) after "
-                  "%d seconds.",
-                  unique_name.c_str(), join_timeout);
-            ERROR("If the stage needs more time to exit, please set the config value "
-                  "`join_timeout` for that kotekan_stage");
+            ERROR("*** EXIT_FAILURE *** The stage {:s} failed to exit (join thread timeout) after "
+                  "{:d} seconds. If the stage needs more time to exit, please set the config value "
+                  "`join_timeout` for that kotekan_stage.",
+                  unique_name, join_timeout);
             std::abort();
         }
     }

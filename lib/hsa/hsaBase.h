@@ -7,7 +7,7 @@
     if(hsa_status != HSA_STATUS_SUCCESS) {      \
       const char *_status;                       \
       hsa_status_string(hsa_status, &_status);   \
-      ERROR("HSA_STATUS: %s", _status);          \
+      ERROR_F("HSA_STATUS: %s", _status);        \
       assert(HSA_STATUS_SUCCESS == hsa_status); \
     }                                           \
 }
@@ -27,7 +27,7 @@ extern "C" {
 
 void kotekan_hsa_start();
 
-void * hsa_host_malloc(size_t len);
+void * hsa_host_malloc(size_t len, uint32_t numa_node);
 
 void hsa_host_free(void *ptr);
 

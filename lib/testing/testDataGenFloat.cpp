@@ -21,10 +21,8 @@ testDataGenFloat::testDataGenFloat(Config& config, const string& unique_name,
     register_producer(buf, unique_name.c_str());
     type = config.get<std::string>(unique_name, "type");
     assert(type == "const" || type == "random" || type == "ramp");
-    if (type == "const")
+    if (type == "const" || type == "random" || type == "ramp")
         value = config.get<int>(unique_name, "value");
-    if (type == "ramp")
-        value = config.get<float>(unique_name, "value");
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
 }
 
@@ -56,7 +54,8 @@ void testDataGenFloat::main_thread() {
         // std::random_device rd;
         // std::mt19937 gen(rd());
         // std::uniform_int_distribution<> dis(0, 255);
-        srand(42);
+        if (type == "random")
+            srand(value);
         unsigned char temp_output;
         for (uint j = 0; j < buf->frame_size / sizeof(float); ++j) {
             if (type == "const") {
@@ -75,7 +74,7 @@ void testDataGenFloat::main_thread() {
             }
         }
         usleep(83000);
-        DEBUG("Generated a %s test data set in %s[%d]", type.c_str(), buf->buffer_name, frame_id);
+        DEBUG("Generated a {:s} test data set in {:s}[{:d}]", type, buf->buffer_name, frame_id);
 
         mark_frame_full(buf, unique_name.c_str(), frame_id);
 
