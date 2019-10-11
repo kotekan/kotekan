@@ -40,7 +40,7 @@ link_map: [0,1,2,3]
 
 dataset_manager:
   # This enables the dataset broker use in GPU kotekan and the RFI server.
-  use_dataset_broker: True
+  use_dataset_broker: False
   ds_broker_host: "10.1.50.11" # recv1
   ds_broker_port: 12050
 
@@ -1249,15 +1249,15 @@ buffer_send:
   reconnect_time: 20
   log_level: warn
   n2:
-    kotekan_stage: bufferSend
+    #kotekan_stage: bufferSend
     buf: visbuf_eig_10s_merge
     server_port: 11024
   26m:
-    kotekan_stage: bufferSend
+    #kotekan_stage: bufferSend
     buf: visbuf_5s_26m
     server_port: 11025
   26m_psr0:
-    kotekan_stage: bufferSend
+    #kotekan_stage: bufferSend
     buf: visbuf_psr0_5s_26m
     server_port: 11026
 
