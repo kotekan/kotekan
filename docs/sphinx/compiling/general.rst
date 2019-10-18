@@ -33,17 +33,32 @@ Required for some options
 
 * `libevent <http://libevent.org/>`_
 * `DPDK dpdk-16.11.9 <http://dpdk.org/>`_ (see :ref:`dpdk`), requires hugepage support
-* `AMD OpenCL drivers <http://support.amd.com/en-us/download/linux>`_ and `SDK <http://developer.amd.com/amd-accelerated-parallel-processing-app-sdk/>`_
-* `AMD ROCm <https://github.com/RadeonOpenCompute/ROCm>`_
-* `HDF5 <https://www.hdfgroup.org/HDF5/>`_ and branch ``extensible-datasets`` of jrs65's fork of `HighFive <https://github.com/jrs65/HighFive>`_
+* `AMD ROCm <https://github.com/RadeonOpenCompute/ROCm>`_ (this also installs AMD OpenCL drivers and SDK)
+* `HDF5 <https://www.hdfgroup.org/HDF5/>`_ 
+ * ``sudo apt-get install libhdf5-serial-dev`` 
+* Branch ``extensible-datasets`` of jrs65's fork of `HighFive <https://github.com/jrs65/HighFive>`_
+  * Clone HighFive in ``/opt`` with: ``sudo git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git``
 * `Bitshuffle <https://github.com/kiyo-masui/bitshuffle>`_
 * `h5py <http://docs.h5py.org/en/latest/build.html#source-installation>`_
 * `fftw3 <http://www.fftw.org/>`_
 * `libairspy <https://github.com/airspy/airspyone_host/tree/master/libairspy>`_
 * `OpenBLAS <http://www.openblas.net/>`_ (see :ref:`openblas`)
+* `LAPACK <http://www.netlib.org/lapack/>`_ (Should automatically be installed with OpenBLAS if a Fortran compiler is present on your system)
+* `Blaze <https://bitbucket.org/blaze-lib/blaze/src/master/>`_
+  * Download and unpack into `/opt`
 * OpenSSL (Package is called ``libssl-dev`` on Ubuntu).
 * `pytest-cpp <https://github.com/pytest-dev/pytest-cpp>`_
-
+* `BOOST`_
+  * ``sudo apt-get install libboost-all-dev``
+* `Clang format 8 <https://apt.llvm.org/>` For Ubuntu 18.04:
+  * Copy these two lines to /etc/apt/sources.list: 
+    deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-8 main    
+    deb-src http://apt.llvm.org/bionic/ llvm-toolchain-bionic-8 main 
+  * Add the key:
+    wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
+  * Install clang-format-8: 
+    sudo apt update
+    sudo apt install clang-format-8
 Hardware
 =========
 
