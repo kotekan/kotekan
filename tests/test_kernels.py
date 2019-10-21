@@ -25,7 +25,6 @@ def print_msg(msg):
     print("#########################################################\n")
 
 
-@pytest.mark.skip(reason="Need to update CI server first")
 def test_gpu_kernels():
 
     # Change to kotekan bin directory
