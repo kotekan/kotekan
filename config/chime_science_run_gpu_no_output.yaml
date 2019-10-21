@@ -1052,7 +1052,7 @@ pulsar:
     network_input_buffer_2: beamform_pulsar_output_buffer_2
     network_input_buffer_3: beamform_pulsar_output_buffer_3
     pulsar_out_buf: pulsar_output_buffer
-  network_process:
+  network_send:
     #kotekan_stage: pulsarNetworkProcess
     pulsar_out_buf: pulsar_output_buffer
     udp_pulsar_port_number: 1414
