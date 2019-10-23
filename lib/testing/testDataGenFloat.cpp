@@ -25,6 +25,7 @@ testDataGenFloat::testDataGenFloat(Config& config, const string& unique_name,
         value = config.get<int>(unique_name, "value");
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
+    _first_frame_index = config.get_default<uint32_t>(unique_name, "first_frame_index", 0);
 }
 
 testDataGenFloat::~testDataGenFloat() {}
@@ -33,7 +34,7 @@ void testDataGenFloat::main_thread() {
 
     int frame_id = 0;
     float* frame = NULL;
-    uint64_t seq_num = 0;
+    uint64_t seq_num = _samples_per_data_set * _first_frame_index;
     bool finished_seeding_consant = false;
     static struct timeval now;
 
