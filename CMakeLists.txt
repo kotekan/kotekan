@@ -212,6 +212,10 @@ endif ()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
 
+# dpdk uses the register keyword that got removed in C++17 because it wasn't doing anything
+#TODO remove this line when dpdk people fix this: https://mails.dpdk.org/archives/dev/2018-July/107950.html
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-register")
+
 # Warning about missing override is called differently in clang and gcc
 # TODO: enable once we are using a release version of HighFive
 #if (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
