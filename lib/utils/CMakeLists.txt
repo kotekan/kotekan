@@ -23,6 +23,7 @@ set ( KOTEKAN_UTIL_SOURCES
       pulsarTiming.cpp
       datasetState.cpp
       restClient.cpp
+      BipBuffer.cpp
     )
 
 if (${USE_HDF5})

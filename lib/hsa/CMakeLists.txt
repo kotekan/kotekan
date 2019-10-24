@@ -20,6 +20,7 @@ set ( KOTEKAN_HSA_SOURCES
       hsaInputData.cpp
       hsaInputLostSamples.cpp
       hsaBarrier.cpp
+      hsaAsyncCopyGain.cpp
 
 # RFI Kernels & copy-out:
       hsaRfiVdif.cpp
@@ -30,6 +31,8 @@ set ( KOTEKAN_HSA_SOURCES
       hsaRfiBadInputOutput.cpp
       hsaRfiMaskOutput.cpp
       hsaRfiOutput.cpp
+      hsaRfiVarOutput.cpp
+      hsaRfiUpdateBadInputs.cpp
 
 # CHIME N2 Kernels & copy-out:
       hsaOutputDataZero.cpp

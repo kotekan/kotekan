@@ -1,6 +1,3 @@
-// curl localhost:12048/updatable_config/pulsar_gain -X POST -H 'Content-Type: application/json' -d
-// '{"pulsar_gain_dir":["path0","path1","path2","path3","path4","path5","path6","path7","path8","path9"]}'
-
 // curl localhost:12048/updatable_config/pulsar_pointing/0  -X POST -H 'Content-Type:
 // application/json' -d '{"ra":100.3, "dec":34.23, "scaling":99.0}'
 
@@ -51,9 +48,6 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_
     _feed_sep_NS = config.get<float>(unique_name, "feed_sep_NS");
     _feed_sep_EW = config.get<int32_t>(unique_name, "feed_sep_EW");
 
-    vector<float> dg = {0.0, 0.0}; // re,im
-    default_gains = config.get_default<std::vector<float>>(unique_name, "frb_missing_gains", dg);
-
     // Just for metadata manipulation
     metadata_buf = host_buffers.get_buffer("network_buf");
     metadata_buffer_id = 0;
@@ -62,11 +56,16 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_
     freq_idx = -1;
     freq_MHz = -1;
 
-    update_gains = true;
     first_pass = true;
-    gain_len = 2 * _num_beams * _num_elements * sizeof(float);
-    host_gain = (float*)hsa_host_malloc(gain_len, device.get_gpu_numa_node());
 
+    // Gain stuff here
+    gain_len = 2 * 2048 * _num_beams * sizeof(float);
+    host_gain = (float*)hsa_host_malloc(gain_len, device.get_gpu_numa_node());
+    gain_buf = host_buffers.get_buffer("gain_psr_buf");
+    register_consumer(gain_buf, unique_name.c_str());
+    gain_buf_id = 0;
+
+    // Phase here
     phase_frame_len = _num_elements * _num_beams * 2 * sizeof(float);
     // Two alternating banks
     host_phase_0 = (float*)hsa_host_malloc(phase_frame_len, device.get_gpu_numa_node());
@@ -92,11 +91,6 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_
                 return pulsar_grab_callback(json_msg, beam_id);
             });
     }
-
-    // listen for gain updates
-    configUpdater::instance().subscribe(
-        config.get<std::string>(unique_name, "updatable_config/gain_psr"),
-        std::bind(&hsaPulsarUpdatePhase::update_gains_callback, this, _1));
 }
 
 hsaPulsarUpdatePhase::~hsaPulsarUpdatePhase() {
@@ -107,20 +101,6 @@ hsaPulsarUpdatePhase::~hsaPulsarUpdatePhase() {
     hsa_host_free(host_gain);
 }
 
-bool hsaPulsarUpdatePhase::update_gains_callback(nlohmann::json& json) {
-    update_gains = true;
-    try {
-        _gain_dir = json.at("pulsar_gain_dir").get<std::vector<string>>();
-        INFO("[PSR] Updating gains from {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s}",
-             _gain_dir[0], _gain_dir[1], _gain_dir[2], _gain_dir[3], _gain_dir[4], _gain_dir[5],
-             _gain_dir[6], _gain_dir[7], _gain_dir[8], _gain_dir[9]);
-    } catch (std::exception const& e) {
-        WARN("[PSR] Fail to read gain_dir {:s}", e.what());
-        return false;
-    }
-    return true;
-}
-
 int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
     uint8_t* frame =
@@ -129,6 +109,34 @@ int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id) {
         return -1;
     metadata_buffer_precondition_id =
         (metadata_buffer_precondition_id + 1) % metadata_buf->num_frames;
+
+
+    // Wait for new gain
+    if (first_pass) {
+        uint8_t* frame = wait_for_full_frame(gain_buf, unique_name.c_str(), gain_buf_id);
+        if (frame == NULL)
+            return -1;
+        DEBUG("Applying inital host gains from {:s}[{:d}]", gain_buf->buffer_name, gain_buf_id);
+        std::lock_guard<std::mutex> lock(_pulsar_lock);
+        memcpy(host_gain, (float*)gain_buf->frames[gain_buf_id], gain_len);
+        update_phase = true;
+        mark_frame_empty(gain_buf, unique_name.c_str(), gain_buf_id);
+        gain_buf_id = (gain_buf_id + 1) % gain_buf->num_frames;
+    } else {
+        auto timeout = double_to_ts(0);
+        int status =
+            wait_for_full_frame_timeout(gain_buf, unique_name.c_str(), gain_buf_id, timeout);
+        if (status == 0) {
+            DEBUG("Applying new host gains from {:s}[{:d}]", gain_buf->buffer_name, gain_buf_id);
+            std::lock_guard<std::mutex> lock(_pulsar_lock);
+            memcpy(host_gain, (float*)gain_buf->frames[gain_buf_id], gain_len);
+            update_phase = true;
+            mark_frame_empty(gain_buf, unique_name.c_str(), gain_buf_id);
+            gain_buf_id = (gain_buf_id + 1) % gain_buf->num_frames;
+        }
+        if (status == -1)
+            return -1;
+    }
     return 0;
 }
 
@@ -215,38 +223,9 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, hsa_signal_t preced
         update_phase = true;
     }
 
-    if (update_gains) {
-        double start_time = current_time();
-        update_gains = false;
-        FILE* ptr_myfile;
-        char filename[256];
-        for (int b = 0; b < _num_beams; b++) {
-            snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",
-                     _gain_dir[b].c_str(), freq_idx);
-            INFO("Loading gains from {:s}", filename);
-            ptr_myfile = fopen(filename, "rb");
-            if (ptr_myfile == NULL) {
-                ERROR("GPU Cannot open gain file {:s}", filename);
-                for (int i = 0; i < 2048; i++) {
-                    host_gain[(b * 2048 + i) * 2] = default_gains[0];
-                    host_gain[(b * 2048 + i) * 2 + 1] = default_gains[1];
-                }
-            } else {
-                if (_num_elements
-                    != fread(&host_gain[b * 2048 * 2], sizeof(float) * 2, _num_elements,
-                             ptr_myfile)) {
-                    FATAL_ERROR(
-                        "Gain file ({:s}) wasn't long enough! Something went wrong, breaking...",
-                        filename);
-                    return precede_signal;
-                }
-                fclose(ptr_myfile);
-            }
-        } // end beam
-        INFO("Time required to load Pulsar gains: {:f}", current_time() - start_time);
-    }
     if (update_phase) {
         // GPS time, need ch_master
+        DEBUG("updating phase gain={:f} {:f}", host_gain[0], host_gain[1]);
         time_now_gps = get_gps_time(metadata_buf, metadata_buffer_id);
         if (time_now_gps.tv_sec == 0) {
             ERROR("GPS time appears to be zero, bad news for pulsar timing!");
