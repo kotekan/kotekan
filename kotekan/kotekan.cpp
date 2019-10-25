@@ -394,7 +394,7 @@ int main(int argc, char** argv) {
                 fmt::format(fmt("python -c '{:s}' {:s}"), yaml_to_json, config_file_name);
         }
         std::string json_string = exec(exec_command.c_str());
-        json config_json = json::parse(json_string.c_str());
+        json config_json = json::parse(json_string);
         config.update_config(config_json);
         try {
             start_new_kotekan_mode(config, gps_time, dump_config);
