@@ -17,20 +17,25 @@ from subprocess import call, Popen
 producer_path = "../build/tests/boost/dataset_broker_producer"
 producer2_path = "../build/tests/boost/dataset_broker_producer2"
 consumer_path = "../build/tests/boost/dataset_broker_consumer"
-broker_path = "../build/ext/src/ch_acq/dataset_broker.py"
 
 
 def test_produce_consume():
+    broker_path = [
+        "/usr/local/bin/comet",
+        os.path.join(os.path.expanduser("~"), ".local/bin/comet"),
+    ]
     if (
         not os.path.isfile(producer_path)
         or not os.path.isfile(consumer_path)
         or not os.path.isfile(producer2_path)
     ):
-        print("Deactivated! Build with -DBOOST_TESTS=ON to activate this test")
-        return
-    if not os.path.isfile(broker_path):
-        print("Deactivated! Make sure the dataset_broker is at {}".format(broker_path))
-        return
+        pytest.skip("Build with -DBOOST_TESTS=ON to activate this test")
+    if not os.path.isfile(broker_path[0]):
+        if not os.path.isfile(broker_path[1]):
+            pytest.skip("Make sure the dataset_broker is at {}".format(broker_path))
+        broker_path = broker_path[1]
+    else:
+        broker_path = broker_path[0]
 
     with tempfile.NamedTemporaryFile(mode="w") as f_out:
         # Start comet with a random port

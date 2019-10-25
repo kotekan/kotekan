@@ -75,6 +75,11 @@ pipeline {
                   black --check --exclude docs ..'''
           }
         }
+        stage('Install comet') {
+          steps {
+            sh '''python3.7 -m pip install --user git+https://github.com/chime-experiment/comet.git@master'''
+          }
+        }
       }
     }
     stage('Unit Tests') {
