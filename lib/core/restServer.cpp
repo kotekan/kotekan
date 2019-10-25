@@ -345,7 +345,6 @@ void restServer::http_server_thread() {
         // Use exit() not raise() since this happens early in startup before
         // the signal handlers are all in place.
         exit(1);
-        return;
     }
 
     // Create the server
@@ -353,7 +352,6 @@ void restServer::http_server_thread() {
     if (ev_server == nullptr) {
         ERROR_NON_OO("restServer: Failed to create libevent base");
         exit(1);
-        return;
     }
 
     // Currently allow only GET and POST requests
@@ -368,7 +366,6 @@ void restServer::http_server_thread() {
     if (ev_sock == nullptr) {
         ERROR_NON_OO("restServer: Failed to bind to {:s}:{:d}", bind_address, port);
         exit(1);
-        return;
     }
 
     // if port was set to random, find port socket is listening on
@@ -379,7 +376,6 @@ void restServer::http_server_thread() {
         if (getsockname(sock, (struct sockaddr*)&sin, &len) == -1) {
             ERROR_NON_OO("restServer: Failed getting socket name ({:s}:{:d})", bind_address, port);
             exit(1);
-            return;
         }
         port = ntohs(sin.sin_port);
     }
