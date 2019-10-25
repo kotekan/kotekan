@@ -24,7 +24,8 @@ def print_msg(msg):
     print("{}".format(msg))
     print("#########################################################\n")
 
-@pytest.mark.xfail
+
+@pytest.mark.xfail()
 def test_gpu_kernels():
 
     # Change to kotekan bin directory
