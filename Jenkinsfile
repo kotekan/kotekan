@@ -87,7 +87,7 @@ pipeline {
             }
             stage('Boost Unit Tests') {
               steps {
-                sh '''cd build/tests/
+                sh '''cd build_no_hardware/tests/
                       python3 -m pytest -x -vvv'''
               }
             }
