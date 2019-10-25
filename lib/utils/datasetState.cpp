@@ -75,6 +75,19 @@ std::set<std::string> datasetState::types() const {
     return types;
 }
 
+std::vector<stack_ctype> invert_stack(uint32_t num_stack,
+                                      const std::vector<rstack_ctype>& stack_map) {
+    std::vector<stack_ctype> res(num_stack);
+    size_t num_prod = stack_map.size();
+
+    for (uint32_t i = 0; i < num_prod; i++) {
+        uint32_t j = num_prod - i - 1;
+        res[stack_map[j].stack] = {j, stack_map[j].conjugate};
+    }
+
+    return res;
+}
+
 REGISTER_DATASET_STATE(freqState, "frequencies");
 REGISTER_DATASET_STATE(inputState, "inputs");
 REGISTER_DATASET_STATE(prodState, "products");

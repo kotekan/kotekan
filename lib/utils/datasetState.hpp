@@ -437,6 +437,14 @@ private:
 };
 
 
+/**
+ * @brief Take an a rstack map and generate a stack->prod mapping.
+ *
+ * @param num_stack Total number of stacks.
+ * @param stack_map The prod->stack mapping.
+ *
+ * @returns The stack->prod mapping.
+ **/
 std::vector<stack_ctype> invert_stack(uint32_t num_stack,
                                       const std::vector<rstack_ctype>& stack_map);
 
