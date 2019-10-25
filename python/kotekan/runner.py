@@ -232,6 +232,35 @@ class OutputBuffer(object):
     name = None
 
 
+class FakeLostSamplesBuffer(InputBuffer):
+    """Provide an input buffer for the `lost_samples_buf` config parameter."""
+
+    def __init__(self, **kwargs):
+        self.name = "lost_samples_buffer"
+        self.buffer_block = {
+            self.name: {
+                "kotekan_buffer": "standard",
+                "sizeof_int": 4,
+                "num_frames": "buffer_depth",
+                "frame_size": "sizeof_int * num_freq_in_frame * ((num_elements * num_elements) + (num_elements * block_size))",
+                "metadata_pool": "main_pool",
+            }
+        }
+        stage_name = kwargs.get("stage_name", "fake_lost_samples")
+        stage_config = {
+            "kotekan_stage": "FakeGpu",
+            "out_buf": self.name,
+            "pattern": "lostsamples",
+            "num_frames": 4,
+            "wait": "false",
+            "freq": 0,
+            "pre_accumulate": "true",
+        }
+        stage_config.update(kwargs)
+
+        self.stage_block = {stage_name: stage_config}
+
+
 class FakeNetworkBuffer(InputBuffer):
     """Create an input network format buffer and fill it using `testDataGen`.
 
@@ -509,6 +538,48 @@ class DumpVisBuffer(OutputBuffer):
         return visbuffer.VisBuffer.load_files(
             "%s/*%s*.dump" % (self.output_dir, self.name)
         )
+
+
+class ReadRawBeamformBuffer(InputBuffer):
+    """Read a beamformed buffer saved to a file and stream it as an input
+
+    Parameters
+    ----------
+    input_dir : string
+        Directory to read the input files from.
+    """
+
+    _buf_ind = 0
+
+    def __init__(self, input_dir, **kwargs):
+
+        self.name = "rawfileread_buf%i" % self._buf_ind
+        stage_name = "rawfileread%i" % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.input_dir = input_dir
+
+        self.buffer_block = {
+            self.name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "main_pool",
+                "sizeof_float": 4,
+                "frame_size": (
+                    "num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float"
+                ),
+            }
+        }
+
+        stage_config = {
+            "kotekan_stage": "rawFileRead",
+            "buf": self.name,
+            "base_dir": input_dir,
+            "file_name": self.name,
+            "file_ext": "dump",
+        }
+        stage_config.update(kwargs)
+
+        self.stage_block = {stage_name: stage_config}
 
 
 class ReadRawBuffer(InputBuffer):
