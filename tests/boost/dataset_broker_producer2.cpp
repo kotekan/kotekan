@@ -22,15 +22,20 @@ using json = nlohmann::json;
 using namespace std::string_literals;
 
 BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, CompareCTypes) {
+    BOOST_CHECK(boost::unit_test::framework::master_test_suite().argc == 2);
+    int broker_port = atoi(boost::unit_test::framework::master_test_suite().argv[1]);
+    BOOST_CHECK(broker_port);
+
     _global_log_level = 5;
     __enable_syslog = 0;
 
     // We have to start the restServer here, because the datasetManager uses it.
-    kotekan::restServer::instance().start("127.0.0.1");
+    kotekan::restServer::instance().start("127.0.0.1", 0);
 
     json json_config;
     json json_config_dm;
     json_config_dm["use_dataset_broker"] = true;
+    json_config_dm["ds_broker_port"] = broker_port;
     json_config["dataset_manager"] = json_config_dm;
 
     Config conf;
