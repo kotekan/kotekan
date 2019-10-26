@@ -107,10 +107,9 @@ struct TestContext {
         cb_called_count++;
         INFO_NON_OO("test_restclient: json callback received json: {:s}", json_request.dump(4));
         std::vector<uint32_t> array;
-        bool flag;
         try {
             array = json_request["array"].get<std::vector<uint32_t>>();
-            flag = json_request["flag"].get<bool>();
+            bool flag = json_request["flag"].get<bool>();
             INFO_NON_OO("test: Received array with size {:d} and flag {:d}", array.size(), flag);
         } catch (...) {
             INFO_NON_OO("test: Couldn't parse array parameter.");
@@ -159,12 +158,13 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_send_json, TestContext) {
 
     TestContext::init(
         std::bind(&TestContext::callback, this, std::placeholders::_1, std::placeholders::_2));
-    restServer::instance().start("127.0.0.1");
+    restServer::instance().start("127.0.0.1", 0);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    int port = restServer::instance().port;
 
     std::function<void(restReply)> fun = TestContext::rq_callback;
-    ret = restClient::instance().make_request("/test_restclient", fun, request);
+    ret = restClient::instance().make_request("/test_restclient", fun, request, "127.0.0.1", port);
     BOOST_CHECK(ret == true);
 
 
@@ -173,22 +173,23 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_send_json, TestContext) {
     json bad_request;
     bad_request["bla"] = 0;
     std::function<void(restReply)> fun_fail = TestContext::rq_callback_fail;
-    ret = restClient::instance().make_request("/test_restclient", fun_fail, bad_request);
+    ret = restClient::instance().make_request("/test_restclient", fun_fail, bad_request,
+                                              "127.0.0.1", port);
     BOOST_CHECK(ret == true);
 
     bad_request["array"] = 0;
-    ret = restClient::instance().make_request("/test_restclient", fun_fail, bad_request);
+    ret = restClient::instance().make_request("/test_restclient", fun_fail, bad_request,
+                                              "127.0.0.1", port);
     BOOST_CHECK(ret == true);
 
 
     /* Test with bad URL */
 
-    ret = restClient::instance().make_request("/doesntexist", fun_fail, request);
+    ret = restClient::instance().make_request("/doesntexist", fun_fail, request, "127.0.0.1", port);
     BOOST_CHECK(ret == true);
 
 
-    ret =
-        restClient::instance().make_request("/test_restclient", fun_fail, request, "localhost", 1);
+    restClient::instance().make_request("/test_restclient", fun_fail, request, "localhost", 1);
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     BOOST_CHECK_MESSAGE(error == false, "Run pytest with -s to see where the error is.");
     std::string fail_msg = fmt::format(
@@ -201,6 +202,9 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_send_json, TestContext) {
 BOOST_FIXTURE_TEST_CASE(_test_restclient_text_reply, TestContext) {
     _global_log_level = 4;
     __enable_syslog = 0;
+
+    int port = restServer::instance().port;
+
     bool ret;
     json request, bad_request;
     request["array"] = {1, 2, 3};
@@ -216,7 +220,8 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_text_reply, TestContext) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     std::function<void(restReply)> fun_test = TestContext::rq_callback_thisisatest;
-    ret = restClient::instance().make_request("/test_restclient_json", fun_test, request);
+    ret = restClient::instance().make_request("/test_restclient_json", fun_test, request,
+                                              "127.0.0.1", port);
     BOOST_CHECK(ret == true);
 
 
@@ -227,7 +232,8 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_text_reply, TestContext) {
 
     INFO_NON_OO("sending bad json to callback_test");
     std::function<void(restReply)> fun_json = TestContext::rq_callback_json;
-    ret = restClient::instance().make_request("/test_restclient_json", fun_json, bad_request);
+    restClient::instance().make_request("/test_restclient_json", fun_json, bad_request,
+                                              "127.0.0.1", port);
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     BOOST_CHECK_MESSAGE(error == false, "Run pytest with -s to see where the error is.");
     std::string fail_msg = fmt::format(
@@ -240,6 +246,9 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_text_reply, TestContext) {
 BOOST_FIXTURE_TEST_CASE(_test_restclient_text_reply_blocking, TestContext) {
     _global_log_level = 4;
     __enable_syslog = 0;
+
+    int port = restServer::instance().port;
+
     restReply reply;
     json request, bad_request;
     request["array"] = {1, 2, 3};
@@ -254,7 +263,8 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_text_reply_blocking, TestContext) {
         "/test_restclient_json");
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    reply = restClient::instance().make_request_blocking("/test_restclient_json", request);
+    reply = restClient::instance().make_request_blocking("/test_restclient_json", request,
+                                                         "127.0.0.1", port);
     BOOST_CHECK(reply.first == true);
     BOOST_CHECK(reply.second == "this is a test");
 
@@ -264,7 +274,8 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_text_reply_blocking, TestContext) {
     bad_request["flag"] = false;
     bad_request["array"] = {4, 5, 6};
 
-    reply = restClient::instance().make_request_blocking("/test_restclient_json", bad_request);
+    reply = restClient::instance().make_request_blocking("/test_restclient_json", bad_request,
+                                                         "127.0.0.1", port);
     BOOST_CHECK(reply.first == true);
     json js = json::parse(reply.second);
     BOOST_CHECK(js["test"] == "failed");
