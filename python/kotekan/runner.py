@@ -116,10 +116,10 @@ class KotekanRunner(object):
                 # Wait for REST server to start
                 while attempt < 10:
 
-                    if(attempt == 9):
+                    if attempt == 9:
                         print("Could not find kotekan REST server address in logs")
                         exit(1)
-                    
+
                     attempt += 1
 
                     # Wait a moment for rest servers to start up.
@@ -131,15 +131,21 @@ class KotekanRunner(object):
                         log = open(f_out.name, "r").read().split("\n")
                         rest_addr = None
                         for line in log:
-                            if line[:43] == "restServer: started server on address:port ":
+                            if (
+                                line[:43]
+                                == "restServer: started server on address:port "
+                            ):
                                 rest_addr = line[43:]
                         if rest_addr:
                             print(
-                                "Found REST server address in kotekan log: %s" % rest_addr
+                                "Found REST server address in kotekan log: %s"
+                                % rest_addr
                             )
                             break
                         else:
-                            print("Could not find kotekan REST server address in logs. Increasing wait time...")
+                            print(
+                                "Could not find kotekan REST server address in logs. Increasing wait time..."
+                            )
                             wait += 1
 
                 # the requests module needs the address wrapped in http://*/
