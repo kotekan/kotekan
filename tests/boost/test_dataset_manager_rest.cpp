@@ -1,6 +1,7 @@
 
 #define BOOST_TEST_MODULE "test_datasetManager_REST"
 
+#include "Config.hpp"
 #include "restClient.hpp"
 #include "restServer.hpp"
 #include "visUtil.hpp"
@@ -47,8 +48,7 @@ struct TestContext {
             js.at("hash");
         } catch (std::exception& e) {
             std::string error =
-                fmt::format("Failure parsing register state message from datasetManager: "
-                            "{}\n{}.",
+                fmt::format("Failure parsing register state message from datasetManager: {}\n{}.",
                             js.dump(), e.what());
             reply["result"] = error;
             con.send_json_reply(reply);
@@ -144,13 +144,16 @@ BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, TestContext) {
     json json_config;
     json_config["use_dataset_broker"] = true;
 
-    // kotekan restServer endpoints defined above
-    json_config["ds_broker_port"] = 12048;
-    restServer::instance().start("127.0.0.1");
+    // kotekan restServer endpoints defined above. Start with random free port.
+    restServer::instance().start("127.0.0.1", 0);
+    usleep(2000);
+    json_config["ds_broker_port"] = restServer::instance().port;
+    std::cout << "Running RESTserver on port " << json_config["ds_broker_port"] << " for dM test."
+              << std::endl;
 
     TestContext::init();
 
-    Config conf;
+    kotekan::Config conf;
     conf.update_config(json_config);
     datasetManager& dm = datasetManager::instance(conf);
 
