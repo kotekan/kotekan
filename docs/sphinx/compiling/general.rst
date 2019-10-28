@@ -34,12 +34,25 @@ Required for some options
 * `libevent <http://libevent.org/>`_
 * `DPDK dpdk-16.11.9 <http://dpdk.org/>`_ (see :ref:`dpdk`), requires hugepage support
 * `AMD ROCm <https://github.com/RadeonOpenCompute/ROCm>`_ (this also installs AMD OpenCL drivers and SDK)
-* `HDF5 <https://www.hdfgroup.org/HDF5/>`_ 
- * ``sudo apt-get install libhdf5-serial-dev`` 
+* `HDF5 <https://www.hdfgroup.org/HDF5/>`_:: 
+
+    sudo apt-get install libhdf5-serial-dev
+
 * Branch ``extensible-datasets`` of jrs65's fork of `HighFive <https://github.com/jrs65/HighFive>`_
-  * Clone HighFive in ``/opt`` with: ``sudo git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git``
-* `Bitshuffle <https://github.com/kiyo-masui/bitshuffle>`_
-* `h5py <http://docs.h5py.org/en/latest/build.html#source-installation>`_
+* Clone HighFive in ``/opt`` with::
+
+    git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git
+
+* `h5py <http://docs.h5py.org/en/latest/build.html#source-installation>`_ (Install from source for bitshuffle)::
+
+    python setup.py configure --hdf5=/usr/lib/x86_64-linux-gnu/hdf5/serial/ --hdf5-version=1.10.0
+    python setup.py install
+
+* `Bitshuffle <https://github.com/kiyo-masui/bitshuffle>`_ (Needs to be installed after h5py)::
+
+    export HDF5_PLUGIN_PATH=/usr/local/hdf5/lib/plugin
+    python setup.py install --h5plugin --h5plugin-dir=/usr/local/hdf5/lib/plugin
+
 * `fftw3 <http://www.fftw.org/>`_
 * `libairspy <https://github.com/airspy/airspyone_host/tree/master/libairspy>`_
 * `OpenBLAS <http://www.openblas.net/>`_ (see :ref:`openblas`)
@@ -47,18 +60,73 @@ Required for some options
 * `Blaze <https://bitbucket.org/blaze-lib/blaze/src/master/>`_
   * Download and unpack into `/opt`
 * OpenSSL (Package is called ``libssl-dev`` on Ubuntu).
-* `pytest-cpp <https://github.com/pytest-dev/pytest-cpp>`_
-* `BOOST`_
-  * ``sudo apt-get install libboost-all-dev``
-* `Clang format 8 <https://apt.llvm.org/>` For Ubuntu 18.04:
-  * Copy these two lines to /etc/apt/sources.list: 
-    deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-8 main    
-    deb-src http://apt.llvm.org/bionic/ llvm-toolchain-bionic-8 main 
-  * Add the key:
-    wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
-  * Install clang-format-8: 
-    sudo apt update
-    sudo apt install clang-format-8
+* For python packages to be installed for all::
+
+    sudo su
+    cd ~
+    pip3 install python-module
+
+Unit tests:
+-----------
+* `pytest-cpp <https://github.com/pytest-dev/pytest-cpp>`_::
+
+    sudo pip3 install pytest-cpp pytest-xdist
+    sudo pip3 install atomicwrites pluggy py packaging numpy
+
+* `future <https://pypi.org/project/future/>`_
+* `msgpack <https://pypi.org/project/msgpack/>`_
+* `requests <https://pypi.org/project/requests/>`_
+
+* `BOOST <https://www.boost.org/>`_::
+
+    sudo apt-get install libboost-all-dev
+
+Code Formatting:
+----------------
+* `Clang format 8 <https://apt.llvm.org/>`_. For Ubuntu 18.04:
+
+    - Copy these two lines to ``/etc/apt/sources.list``:: 
+
+        deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-8 main    
+        deb-src http://apt.llvm.org/bionic/ llvm-toolchain-bionic-8 main
+
+    - Add the key::
+
+        wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+
+    - Install clang-format-8::
+
+        sudo apt update
+        sudo apt install clang-format-8
+
+Documentation:
+--------------
+* Doxygen::
+
+    sudo apt-get install doxygen
+
+* Dot:: 
+
+    sudo apt-get install graphviz
+
+* Sphinx::
+
+    sudo apt-get install python-sphinx
+    sudo pip install sphinx_rtd_theme sphinxcontrib-plantuml
+
+* PlantUml::
+
+    sudo wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar
+    sudo mkdir /opt/plantuml; sudo mv plantuml.jar /opt/plantuml
+
+* Breathe::
+
+    sudo apt-get install -y python-breathe
+
+* Black::
+
+    sudo pip3 install black
+
 Hardware
 =========
 
