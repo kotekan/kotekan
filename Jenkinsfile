@@ -82,7 +82,7 @@ pipeline {
             stage('Python Unit Tests') {
               steps {
                 sh '''cd tests/
-                      PYTHONPATH=../python/ python3 -m pytest -n 4 -x -vvv --runxfail'''
+                      PYTHONPATH=../python/ python3 -m pytest -n 4 -x -vvv -E run_amd_gpu_tests'''
               }
             }
             stage('Boost Unit Tests') {
