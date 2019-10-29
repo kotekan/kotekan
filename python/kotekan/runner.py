@@ -110,24 +110,43 @@ class KotekanRunner(object):
                 import requests
                 import json
 
-                # Wait a moment for rest servers to start up.
-                time.sleep(1)
+                attempt = 0
+                wait = 1
 
-                # If kotekan's REST server was started with a random port (0), we have to find out
-                # what that is from the logs
-                if self.rest_port == 0:
-                    log = open(f_out.name, "r").read().split("\n")
-                    rest_addr = None
-                    for line in log:
-                        if line[:43] == "restServer: started server on address:port ":
-                            rest_addr = line[43:]
-                    if rest_addr:
-                        print(
-                            "Found REST server address in kotekan log: %s" % rest_addr
-                        )
-                    else:
-                        print("Could not find kotekan REST server address in logs.")
+                # Wait for REST server to start
+                while attempt < 10:
+
+                    if attempt == 9:
+                        print("Could not find kotekan REST server address in logs")
                         exit(1)
+
+                    attempt += 1
+
+                    # Wait a moment for rest servers to start up.
+                    time.sleep(wait)
+
+                    # If kotekan's REST server was started with a random port (0), we have to find out
+                    # what that is from the logs
+                    if self.rest_port == 0:
+                        log = open(f_out.name, "r").read().split("\n")
+                        rest_addr = None
+                        for line in log:
+                            if (
+                                line[:43]
+                                == "restServer: started server on address:port "
+                            ):
+                                rest_addr = line[43:]
+                        if rest_addr:
+                            print(
+                                "Found REST server address in kotekan log: %s"
+                                % rest_addr
+                            )
+                            break
+                        else:
+                            print(
+                                "Could not find kotekan REST server address in logs. Increasing wait time..."
+                            )
+                            wait += 1
 
                 # the requests module needs the address wrapped in http://*/
                 rest_addr = "http://" + rest_addr + "/"
