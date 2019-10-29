@@ -25,7 +25,7 @@ def print_msg(msg):
     print("#########################################################\n")
 
 
-# Test is only run if "-E run_amd_gpu_tests" is passed to 
+# Test is only run if "-E run_amd_gpu_tests" is passed to
 # pytest as a command line argument
 @pytest.mark.env("run_amd_gpu_tests")
 def test_gpu_kernels():
