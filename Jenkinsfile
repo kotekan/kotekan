@@ -12,7 +12,7 @@ pipeline {
             sh '''mkdir build_no_hardware
                   cd build_no_hardware/
                   cmake -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
-                  -DOPENBLAS_PATH=/opt/OpenBLAS/build/ -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze-3.5 \
+                  -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
                   -DUSE_OMP=ON -DBOOST_TESTS=ON ..
                   make -j 4'''
           }
@@ -20,10 +20,10 @@ pipeline {
         stage('Build CHIME kotekan') {
           steps {
             sh '''cd build
-                  cmake -DRTE_SDK=/opt/dpdk-stable-16.11.9/ \
+                  cmake -DRTE_SDK=/opt/dpdk \
                   -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON \
                   -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
-                  -DOPENBLAS_PATH=/opt/OpenBLAS/build/ -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze-3.5 \
+                  -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
                   -DUSE_OMP=ON -DBOOST_TESTS=ON ..
                   make -j 4'''
           }
@@ -60,7 +60,7 @@ pipeline {
             sh '''export PATH=${PATH}:/var/lib/jenkins/.local/bin/
                   mkdir build-docs
                   cd build-docs/
-                  cmake -DCOMPILE_DOCS=ON -DPLANTUML_PATH=/opt/plantuml/ ..
+                  cmake -DCOMPILE_DOCS=ON -DPLANTUML_PATH=/opt/plantuml ..
                   make doc
                   make sphinx'''
           }
