@@ -58,9 +58,8 @@ public:
      * @param retries   Max. retries to send message (default: 0).
      * @param timeout   Timeout in seconds. If -1 is passed, the default value
      * (of 50 seconds) is set (default: -1).
-     * @return          `true` if successfull, otherwise `false`.
      */
-    bool make_request(const std::string& path, std::function<void(restReply)> request_done_cb,
+    void make_request(const std::string& path, std::function<void(restReply)> request_done_cb,
                       const nlohmann::json& data = {}, const std::string& host = "127.0.0.1",
                       const unsigned short port = PORT_REST_SERVER, const int retries = 0,
                       const int timeout = -1);
@@ -91,6 +90,34 @@ public:
                                     const int retries = 0, const int timeout = -1);
 
 private:
+    /// A structure to pass requests around inside the restClient
+    struct restRequest {
+        std::string const* path;
+        std::function<void(restReply)> request_done_cb;
+        nlohmann::json const* data;
+        std::string const* host;
+        unsigned short port;
+        int retries;
+        int timeout;
+
+        restRequest(const std::string& path, std::function<void(restReply)> request_done_cb,
+                    const nlohmann::json& data, const std::string& host, const unsigned short port,
+                    const int retries, const int timeout) :
+            path(new std::string(path)),
+            request_done_cb(request_done_cb),
+            data(new nlohmann::json(data)),
+            host(new std::string(host)),
+            port(port),
+            retries(retries),
+            timeout(timeout) {}
+
+        ~restRequest() {
+            delete path;
+            delete data;
+            delete host;
+        }
+    };
+
     /// Private constuctor
     restClient();
 
@@ -113,6 +140,13 @@ private:
     /// cleanup function that deletes evcon and the argument pair
     static void cleanup(std::pair<std::function<void(restReply)>, struct evhttp_connection*>* pair);
 
+    /// Only to be called inside event thread
+    bool _make_request(const restRequest* request);
+
+    /// Read callback for the request scheduling thread. Called when the socket holding request
+    /// pointers has new data.
+    static void _bev_req_readcb(struct bufferevent* bev, void* arg);
+
     /// Main event thread handle
     std::thread _main_thread;
 
@@ -130,6 +164,12 @@ private:
     std::condition_variable _cv_start;
     bool _event_thread_started;
     std::mutex _mtx_start;
+
+    /// Writing socket event to pass requests to the event thread
+    struct bufferevent* bev_req_write;
+
+    /// Reading socket event to pass requests to the event thread
+    struct bufferevent* bev_req_read;
 };
 
 #endif // RESTCLIENT_HPP

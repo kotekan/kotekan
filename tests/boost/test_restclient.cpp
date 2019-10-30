@@ -151,7 +151,6 @@ struct TestContext {
 BOOST_FIXTURE_TEST_CASE(_test_restclient_send_json, TestContext) {
     _global_log_level = 4;
     __enable_syslog = 0;
-    bool ret;
     json request;
     request["array"] = {1, 2, 3};
     request["flag"] = true;
@@ -164,8 +163,7 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_send_json, TestContext) {
     int port = restServer::instance().port;
 
     std::function<void(restReply)> fun = TestContext::rq_callback;
-    ret = restClient::instance().make_request("/test_restclient", fun, request, "127.0.0.1", port);
-    BOOST_CHECK(ret == true);
+    restClient::instance().make_request("/test_restclient", fun, request, "127.0.0.1", port);
 
 
     /* Test send a bad json */
@@ -173,24 +171,19 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_send_json, TestContext) {
     json bad_request;
     bad_request["bla"] = 0;
     std::function<void(restReply)> fun_fail = TestContext::rq_callback_fail;
-    ret = restClient::instance().make_request("/test_restclient", fun_fail, bad_request,
-                                              "127.0.0.1", port);
-    BOOST_CHECK(ret == true);
+    restClient::instance().make_request("/test_restclient", fun_fail, bad_request, "127.0.0.1",
+                                        port);
 
     bad_request["array"] = 0;
-    ret = restClient::instance().make_request("/test_restclient", fun_fail, bad_request,
-                                              "127.0.0.1", port);
-    BOOST_CHECK(ret == true);
-
+    restClient::instance().make_request("/test_restclient", fun_fail, bad_request, "127.0.0.1",
+                                        port);
 
     /* Test with bad URL */
 
-    ret = restClient::instance().make_request("/doesntexist", fun_fail, request, "127.0.0.1", port);
-    BOOST_CHECK(ret == true);
-
+    restClient::instance().make_request("/doesntexist", fun_fail, request, "127.0.0.1", port);
 
     restClient::instance().make_request("/test_restclient", fun_fail, request, "localhost", 1);
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    std::this_thread::sleep_for(std::chrono::milliseconds(750));
     BOOST_CHECK_MESSAGE(error == false, "Run pytest with -s to see where the error is.");
     std::string fail_msg = fmt::format(
         fmt("Only {:d} callback functions where called (expected 3). This suggests some requests "
@@ -205,7 +198,6 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_text_reply, TestContext) {
 
     int port = restServer::instance().port;
 
-    bool ret;
     json request, bad_request;
     request["array"] = {1, 2, 3};
     request["flag"] = true;
@@ -217,13 +209,11 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_text_reply, TestContext) {
     TestContext::init(
         std::bind(&TestContext::callback_text, this, std::placeholders::_1, std::placeholders::_2),
         "/test_restclient_json");
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
     std::function<void(restReply)> fun_test = TestContext::rq_callback_thisisatest;
-    ret = restClient::instance().make_request("/test_restclient_json", fun_test, request,
-                                              "127.0.0.1", port);
-    BOOST_CHECK(ret == true);
-
+    restClient::instance().make_request("/test_restclient_json", fun_test, request, "127.0.0.1",
+                                        port);
 
     /* Test with json in reply */
 
@@ -232,8 +222,8 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_text_reply, TestContext) {
 
     INFO_NON_OO("sending bad json to callback_test");
     std::function<void(restReply)> fun_json = TestContext::rq_callback_json;
-    restClient::instance().make_request("/test_restclient_json", fun_json, bad_request,
-                                              "127.0.0.1", port);
+    restClient::instance().make_request("/test_restclient_json", fun_json, bad_request, "127.0.0.1",
+                                        port);
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     BOOST_CHECK_MESSAGE(error == false, "Run pytest with -s to see where the error is.");
     std::string fail_msg = fmt::format(
@@ -261,7 +251,7 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_text_reply_blocking, TestContext) {
     TestContext::init(
         std::bind(&TestContext::callback_text, this, std::placeholders::_1, std::placeholders::_2),
         "/test_restclient_json");
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
     reply = restClient::instance().make_request_blocking("/test_restclient_json", request,
                                                          "127.0.0.1", port);
