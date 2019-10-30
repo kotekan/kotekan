@@ -12,35 +12,36 @@ broker_path = "/usr/local/bin/comet"
 
 
 params = {
-    'num_elements': 5,
-    'num_ev': 0,
-    'total_frames': 16,
-    'cadence': 10.0,
-    'mode': 'default',
-    'buffer_depth': 5,
-    'freq_ids': list(range(500, 550)),
-    'subset_list': [500, 506, 507, 508, 511, 512, 513, 514, 535, 549],
-    'use_dataset_manager': True,
-    'log_level': "Debug"
+    "num_elements": 5,
+    "num_ev": 0,
+    "total_frames": 16,
+    "cadence": 10.0,
+    "mode": "default",
+    "buffer_depth": 5,
+    "freq_ids": list(range(500, 550)),
+    "subset_list": [500, 506, 507, 508, 511, 512, 513, 514, 535, 549],
+    "use_dataset_manager": True,
+    "log_level": "Debug",
 }
 
-params['dataset_manager'] = {
-    'use_dataset_broker': True,
-    'ds_broker_port': 12050,
-    'ds_broker_host': "127.0.0.1",
-    'register_state_path': "/register-state",
-    'register_dataset_path': "/register-dataset",
-    'request_ancestor_path': "/request-ancestor",
-    'send_state_path': "/send-state"
+params["dataset_manager"] = {
+    "use_dataset_broker": True,
+    "ds_broker_port": 12050,
+    "ds_broker_host": "127.0.0.1",
+    "register_state_path": "/register-state",
+    "register_dataset_path": "/register-dataset",
+    "request_ancestor_path": "/request-ancestor",
+    "send_state_path": "/send-state",
 }
 
 params_fakevis = {
-    'num_frames': params['total_frames'],
-    'mode': params['mode'],
-    'freq_ids': params['freq_ids'],
-    'use_dataset_manager': True,
-    'wait': False
+    "num_frames": params["total_frames"],
+    "mode": params["mode"],
+    "freq_ids": params["freq_ids"],
+    "use_dataset_manager": True,
+    "wait": False,
 }
+
 
 @pytest.fixture(scope="module")
 def subset_data(tmpdir_factory):
@@ -48,129 +49,125 @@ def subset_data(tmpdir_factory):
         pytest.skip("Build with -DBOOST_TESTS=ON to activate this test.")
         return
 
-    #run the dataset broker
+    # run the dataset broker
     broker = Popen([broker_path, "--recover", "False"])
     time.sleep(1.5)
 
     try:
-      tmpdir = tmpdir_factory.mktemp("freqsub_broker_fakevis")
+        tmpdir = tmpdir_factory.mktemp("freqsub_broker_fakevis")
 
-      dump_buffer_gen = runner.DumpVisBuffer(
-              str(tmpdir))
+        dump_buffer_gen = runner.DumpVisBuffer(str(tmpdir))
 
-      test = runner.KotekanStageTester(
-          'fakeVis', params_fakevis,
-          None,
-          dump_buffer_gen,
-          params,
-      )
+        test = runner.KotekanStageTester(
+            "fakeVis", params_fakevis, None, dump_buffer_gen, params
+        )
 
-      test.run()
+        test.run()
 
-      data_gen = dump_buffer_gen.load()
+        data_gen = dump_buffer_gen.load()
 
-      ### freqSubset ###
-      tmpdir = tmpdir_factory.mktemp("freqsub_broker")
+        ### freqSubset ###
+        tmpdir = tmpdir_factory.mktemp("freqsub_broker")
 
-      fakevis_buffer_subset = runner.FakeVisBuffer(
-          num_frames=params['total_frames'],
-          mode=params['mode'],
-          freq_ids=params['freq_ids'],
-          use_dataset_manager=True,
-          wait=False,
-          dataset_id=data_gen[0].metadata.dataset_id
-      )
+        fakevis_buffer_subset = runner.FakeVisBuffer(
+            num_frames=params["total_frames"],
+            mode=params["mode"],
+            freq_ids=params["freq_ids"],
+            use_dataset_manager=True,
+            wait=False,
+            dataset_id=data_gen[0].metadata.dataset_id,
+        )
 
-      dump_buffer_subset = runner.DumpVisBuffer(
-          str(tmpdir))
+        dump_buffer_subset = runner.DumpVisBuffer(str(tmpdir))
 
-      test = runner.KotekanStageTester(
-          'freqSubset', {},
-          fakevis_buffer_subset,
-          dump_buffer_subset,
-          params,
-      )
+        test = runner.KotekanStageTester(
+            "freqSubset", {}, fakevis_buffer_subset, dump_buffer_subset, params
+        )
 
-      test.run()
+        test.run()
 
-      data_subset = dump_buffer_subset.load()
+        data_subset = dump_buffer_subset.load()
 
-      ### freqSplit ###
-      time.sleep(10)
-      tmpdir = tmpdir_factory.mktemp("freqsplit_broker")
+        ### freqSplit ###
+        time.sleep(10)
+        tmpdir = tmpdir_factory.mktemp("freqsplit_broker")
 
-      fakevis_buffer_split = runner.FakeVisBuffer(
-          num_frames=params['total_frames'],
-          mode=params['mode'],
-          freq_ids=params['subset_list'],
-          use_dataset_manager=True,
-          wait=False,
-          dataset_id=data_subset[0].metadata.dataset_id
-      )
+        fakevis_buffer_split = runner.FakeVisBuffer(
+            num_frames=params["total_frames"],
+            mode=params["mode"],
+            freq_ids=params["subset_list"],
+            use_dataset_manager=True,
+            wait=False,
+            dataset_id=data_subset[0].metadata.dataset_id,
+        )
 
-      dump_buffer_split_lower = runner.DumpVisBuffer(
-          str(tmpdir))
-      dump_buffer_split_higher = runner.DumpVisBuffer(
-          str(tmpdir))
+        dump_buffer_split_lower = runner.DumpVisBuffer(str(tmpdir))
+        dump_buffer_split_higher = runner.DumpVisBuffer(str(tmpdir))
 
-      test = runner.KotekanStageTester(
-          'freqSplit', {},
-          fakevis_buffer_split,
-          (dump_buffer_split_lower, dump_buffer_split_higher),
-          params,
-      )
+        test = runner.KotekanStageTester(
+            "freqSplit",
+            {},
+            fakevis_buffer_split,
+            (dump_buffer_split_lower, dump_buffer_split_higher),
+            params,
+        )
 
-      test.run()
+        test.run()
 
-      data_split_lower = dump_buffer_split_lower.load()
-      data_split_higher = dump_buffer_split_higher.load()
+        data_split_lower = dump_buffer_split_lower.load()
+        data_split_higher = dump_buffer_split_higher.load()
 
-      ### 2 visWriter processes ###
+        ### 2 visWriter processes ###
 
-      tmpdir = tmpdir_factory.mktemp("freqsub_write_lower")
+        tmpdir = tmpdir_factory.mktemp("freqsub_write_lower")
 
-      params_fakevis_write_lower = params_fakevis.copy()
-      params_fakevis_write_lower['dataset_id'] = data_split_lower[0].metadata.dataset_id
+        params_fakevis_write_lower = params_fakevis.copy()
+        params_fakevis_write_lower["dataset_id"] = data_split_lower[
+            0
+        ].metadata.dataset_id
 
-      # the writer is not given the subset list, it get's it through the broker
-      write_buffer_lower = runner.VisWriterBuffer(
-              str(tmpdir), 'raw', None,
-              extra_config={'use_dataset_manager': True})
+        # the writer is not given the subset list, it get's it through the broker
+        write_buffer_lower = runner.VisWriterBuffer(
+            str(tmpdir), "raw", None, extra_config={"use_dataset_manager": True}
+        )
 
-      test = runner.KotekanStageTester(
-          'fakeVis', params_fakevis_write_lower,
-          None,
-          write_buffer_lower,
-          params,
-      )
+        test = runner.KotekanStageTester(
+            "fakeVis", params_fakevis_write_lower, None, write_buffer_lower, params
+        )
 
-      test.run()
+        test.run()
 
-      tmpdir = tmpdir_factory.mktemp("freqsub_write_higher")
+        tmpdir = tmpdir_factory.mktemp("freqsub_write_higher")
 
-      params_fakevis_write_higher = params_fakevis.copy()
-      params_fakevis_write_higher['dataset_id'] = data_split_higher[0].metadata.dataset_id
+        params_fakevis_write_higher = params_fakevis.copy()
+        params_fakevis_write_higher["dataset_id"] = data_split_higher[
+            0
+        ].metadata.dataset_id
 
-      # the writer is not given the subset list, it get's it through the broker
-      write_buffer_higher = runner.VisWriterBuffer(
-              str(tmpdir), 'raw', None,
-              extra_config={'use_dataset_manager': True})
+        # the writer is not given the subset list, it get's it through the broker
+        write_buffer_higher = runner.VisWriterBuffer(
+            str(tmpdir), "raw", None, extra_config={"use_dataset_manager": True}
+        )
 
-      test = runner.KotekanStageTester(
-          'fakeVis', params_fakevis_write_higher,
-          None,
-          write_buffer_higher,
-          params,
-      )
+        test = runner.KotekanStageTester(
+            "fakeVis", params_fakevis_write_higher, None, write_buffer_higher, params
+        )
 
-      test.run()
+        test.run()
 
-      yield [data_gen, data_subset, data_split_lower, data_split_higher,
-             write_buffer_lower.load(), write_buffer_higher.load()]
+        yield [
+            data_gen,
+            data_subset,
+            data_split_lower,
+            data_split_higher,
+            write_buffer_lower.load(),
+            write_buffer_higher.load(),
+        ]
     finally:
-      pid = broker.pid
-      os.kill(pid, signal.SIGINT)
-      broker.terminate()
+        pid = broker.pid
+        os.kill(pid, signal.SIGINT)
+        broker.terminate()
+
 
 def test_subset_broker(subset_data):
     data_gen = subset_data[0]
@@ -181,47 +178,46 @@ def test_subset_broker(subset_data):
     data_write_higher = subset_data[5]
 
     # basic checks on the data dumped from fakeVis and freqSubset
-    subset_lower = [x for x in params['subset_list'] if x < 512]
-    subset_higher = [x for x in params['subset_list'] if x >= 512]
+    subset_lower = [x for x in params["subset_list"] if x < 512]
+    subset_higher = [x for x in params["subset_list"] if x >= 512]
 
-    assert len(data_gen) == params['total_frames'] * len(params['freq_ids'])
-    assert len(data_subset) == params['total_frames'] \
-                               * len(params['subset_list'])
-    assert len(data_split_lower) == params['total_frames'] * len(subset_lower)
-    assert len(data_split_higher) == params['total_frames'] * len(subset_higher)
+    assert len(data_gen) == params["total_frames"] * len(params["freq_ids"])
+    assert len(data_subset) == params["total_frames"] * len(params["subset_list"])
+    assert len(data_split_lower) == params["total_frames"] * len(subset_lower)
+    assert len(data_split_higher) == params["total_frames"] * len(subset_higher)
 
     # Count frames by frequency
-    counts = [ 0 ] * len(params['subset_list'])
+    counts = [0] * len(params["subset_list"])
     for frame in data_subset:
-      # get freq ids from fakeVis
-      fid = int(frame.vis[2].real)
-      assert fid in params['subset_list']
-      # keep track of number of frames so far
-      counts[params['subset_list'].index(fid)] += 1
+        # get freq ids from fakeVis
+        fid = int(frame.vis[2].real)
+        assert fid in params["subset_list"]
+        # keep track of number of frames so far
+        counts[params["subset_list"].index(fid)] += 1
 
-    assert counts == [ params['total_frames'] ] * len(params['subset_list'])
+    assert counts == [params["total_frames"]] * len(params["subset_list"])
 
     # split lower
-    counts = [ 0 ] * len(subset_lower)
+    counts = [0] * len(subset_lower)
     for frame in data_split_lower:
-      # get freq ids from fakeVis
-      fid = int(frame.vis[2].real)
-      assert fid in subset_lower
-      # keep track of number of frames so far
-      counts[subset_lower.index(fid)] += 1
+        # get freq ids from fakeVis
+        fid = int(frame.vis[2].real)
+        assert fid in subset_lower
+        # keep track of number of frames so far
+        counts[subset_lower.index(fid)] += 1
 
-    assert counts == [ params['total_frames'] ] * len(subset_lower)
+    assert counts == [params["total_frames"]] * len(subset_lower)
 
     # split higher
-    counts = [ 0 ] * len(subset_higher)
+    counts = [0] * len(subset_higher)
     for frame in data_split_higher:
-      # get freq ids from fakeVis
-      fid = int(frame.vis[2].real)
-      assert fid in subset_higher
-      # keep track of number of frames so far
-      counts[subset_higher.index(fid)] += 1
+        # get freq ids from fakeVis
+        fid = int(frame.vis[2].real)
+        assert fid in subset_higher
+        # keep track of number of frames so far
+        counts[subset_higher.index(fid)] += 1
 
-    assert counts == [ params['total_frames'] ] * len(subset_higher)
+    assert counts == [params["total_frames"]] * len(subset_higher)
 
     # this is what it's really about:
     # check the data the visWriter wrote
@@ -231,31 +227,31 @@ def test_subset_broker(subset_data):
     # split < 512
     assert data_write_lower.data.shape[1] == len(subset_lower)
 
-    counts = [ 0 ] * len(subset_lower)
-    for t in range(params['total_frames']):
-      for f in range(len(subset_lower)):
-        # get freq ids from fakeVis
-        fid = int(data_write_lower.metadata["freq_id"][t][f])
-        assert fid in subset_lower
-        # Check the order
-        assert fid == subset_lower[f]
-        # keep track of number of frames so far
-        counts[subset_lower.index(fid)] += 1
+    counts = [0] * len(subset_lower)
+    for t in range(params["total_frames"]):
+        for f in range(len(subset_lower)):
+            # get freq ids from fakeVis
+            fid = int(data_write_lower.metadata["freq_id"][t][f])
+            assert fid in subset_lower
+            # Check the order
+            assert fid == subset_lower[f]
+            # keep track of number of frames so far
+            counts[subset_lower.index(fid)] += 1
 
-    assert counts == [ params['total_frames'] ] * len(subset_lower)
+    assert counts == [params["total_frames"]] * len(subset_lower)
 
     # split > 512
     assert data_write_higher.data.shape[1] == len(subset_higher)
 
-    counts = [ 0 ] * len(subset_higher)
-    for t in range(params['total_frames']):
-      for f in range(len(subset_higher)):
-        # get freq ids from fakeVis
-        fid = int(data_write_higher.metadata["freq_id"][t][f])
-        assert fid in subset_higher
-        # Check the order
-        assert fid == subset_higher[f]
-        # keep track of number of frames so far
-        counts[subset_higher.index(fid)] += 1
+    counts = [0] * len(subset_higher)
+    for t in range(params["total_frames"]):
+        for f in range(len(subset_higher)):
+            # get freq ids from fakeVis
+            fid = int(data_write_higher.metadata["freq_id"][t][f])
+            assert fid in subset_higher
+            # Check the order
+            assert fid == subset_higher[f]
+            # keep track of number of frames so far
+            counts[subset_higher.index(fid)] += 1
 
-    assert counts == [ params['total_frames'] ] * len(subset_higher)
+    assert counts == [params["total_frames"]] * len(subset_higher)
