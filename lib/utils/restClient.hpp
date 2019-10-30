@@ -19,6 +19,7 @@
 #include <thread>
 #include <utility>
 
+// The reply of a request: a pair with a success boolean and the reply string
 using restReply = std::pair<bool, std::string>;
 
 
