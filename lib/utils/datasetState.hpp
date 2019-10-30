@@ -438,7 +438,7 @@ private:
 
 
 /**
- * @brief Take an a rstack map and generate a stack->prod mapping.
+ * @brief Take an rstack map and generate a stack->prod mapping.
  *
  * @param num_stack Total number of stacks.
  * @param stack_map The prod->stack mapping.
