@@ -175,11 +175,12 @@ void restClient::http_request_done(struct evhttp_request* req, void* arg) {
     int response_code = evhttp_request_get_response_code(req);
 
     if (response_code != 200) {
-        INFO_NON_OO("restClient: Received response code {:d}", response_code);
+        std::string status_text = "";
         if (req->response_code_line)
-            INFO_NON_OO("restClient: {:s}", req->response_code_line);
+            status_text = req->response_code_line;
         if (response_code == 0)
-            WARN_NON_OO("restClient: connection error.");
+            status_text = "Connection error";
+        INFO_NON_OO("restClient: Received response code {:d} ({:s})", response_code, status_text);
         ext_cb(restReply(false, str_data));
         cleanup(pair);
         return;
