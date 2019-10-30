@@ -161,7 +161,7 @@ bool applyGains::receive_update(nlohmann::json& json) {
     gainUpdate gain_update = {gain_read, weight_read};
     {
         // Lock mutex exclusively while we update FIFO
-        std::lock_guard<std::shared_timed_mutex> lock(gain_mtx);
+        std::lock_guard<std::shared_mutex> lock(gain_mtx);
         gains_fifo.insert(double_to_ts(new_ts), std::move(gain_update));
     }
     INFO("Updated gains to {:s}.", gtag);
@@ -240,7 +240,7 @@ void applyGains::apply_thread() {
 
         {
             // Request shared lock for reading from FIFO
-            std::shared_lock<std::shared_timed_mutex> lock(gain_mtx);
+            std::shared_lock<std::shared_mutex> lock(gain_mtx);
             gainpair_new = gains_fifo.get_update(double_to_ts(frame_time));
             if (gainpair_new.second == NULL) {
                 FATAL_ERROR("No gains available.\nKilling kotekan");

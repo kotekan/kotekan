@@ -177,8 +177,6 @@ gpu:
   gpu_0:
     kotekan_stage: hsaProcess
     gpu_id: 0
-    updatable_config:
-      gain_frb: /updatable_config/frb_gain
     ew_spacing: [0.0, 0.1, 0.2, 0.3]
     northmost_beam: 90.0
     in_buffers:
