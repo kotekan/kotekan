@@ -42,8 +42,9 @@ void integrateHFBData::initFirstFrame(float* input_data, float* sum_data,
     // Get the first FPGA sequence no. to check for missing frames
     fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
     frame++;
-    
-    DEBUG("\nInit frame. fpga_seq_num: {:d}. sum_data[0]: {:f}", get_fpga_seq_num(in_buf, in_buffer_ID), sum_data[0]);
+
+    DEBUG("\nInit frame. fpga_seq_num: {:d}. sum_data[0]: {:f}",
+          get_fpga_seq_num(in_buf, in_buffer_ID), sum_data[0]);
 }
 
 void integrateHFBData::integrateFrame(float* input_data, float* sum_data,
@@ -59,7 +60,7 @@ void integrateHFBData::integrateFrame(float* input_data, float* sum_data,
             sum_data[beam * _num_sub_freqs + freq] += input_data[beam * _num_sub_freqs + freq];
         }
     }
-    
+
     DEBUG("\nIntegrate frame {:d}, total_lost_timesamples: {:d}, sum_data[0]: {:f}\n", frame,
           total_lost_timesamples, sum_data[0]);
 }
@@ -109,57 +110,67 @@ void integrateHFBData::main_thread() {
         float* input_data = (float*)in_buf->frames[in_buffer_ID];
 
         // Find where the end of the integration is
-        fpga_seq_num_end = get_fpga_seq_num(in_buf, in_buffer_ID) + ((_num_frames_to_integrate * _samples_per_data_set - (get_fpga_seq_num(in_buf, in_buffer_ID) % (_num_frames_to_integrate * _samples_per_data_set))) - _samples_per_data_set);
-        if(first) {
-          fpga_seq_num_end_old = fpga_seq_num_end;
-          first = 0;
+        fpga_seq_num_end = get_fpga_seq_num(in_buf, in_buffer_ID)
+                           + ((_num_frames_to_integrate * _samples_per_data_set
+                               - (get_fpga_seq_num(in_buf, in_buffer_ID)
+                                  % (_num_frames_to_integrate * _samples_per_data_set)))
+                              - _samples_per_data_set);
+        if (first) {
+            fpga_seq_num_end_old = fpga_seq_num_end;
+            first = 0;
         }
 
-        INFO("fpga_seq_num: {:d}, fpga_seq_num_end: {:d}, num_frames * num_samples: {:d}, fpga % (align): {:d}", get_fpga_seq_num(in_buf, in_buffer_ID), fpga_seq_num_end, _num_frames_to_integrate * _samples_per_data_set, get_fpga_seq_num(in_buf, in_buffer_ID) % 
-            (_num_frames_to_integrate * _samples_per_data_set));
+        DEBUG("fpga_seq_num: {:d}, fpga_seq_num_end: {:d}, num_frames * num_samples: {:d}, fpga % "
+              "(align): {:d}",
+              get_fpga_seq_num(in_buf, in_buffer_ID), fpga_seq_num_end,
+              _num_frames_to_integrate * _samples_per_data_set,
+              get_fpga_seq_num(in_buf, in_buffer_ID)
+                  % (_num_frames_to_integrate * _samples_per_data_set));
 
         // Get the no. of lost samples in this frame
         total_lost_timesamples += get_lost_timesamples(in_buf, in_buffer_ID);
 
         // TODO:JSW Store the amount of renormalisation used in the frame
         // When all frames have been integrated output the result
-        if (get_fpga_seq_num(in_buf, in_buffer_ID) >= fpga_seq_num_end_old + _samples_per_data_set) {
+        if (get_fpga_seq_num(in_buf, in_buffer_ID)
+            >= fpga_seq_num_end_old + _samples_per_data_set) {
 
-          INFO("fpga_seq_num_end_old: {:d}, fpga_seq_num: {:d}", fpga_seq_num_end_old, fpga_seq_num); 
-          // Increment the no. of lost frames if there are missing frames
-          total_lost_timesamples += fpga_seq_num_end_old - fpga_seq_num;
+            DEBUG("fpga_seq_num_end_old: {:d}, fpga_seq_num: {:d}", fpga_seq_num_end_old,
+                  fpga_seq_num);
+            // Increment the no. of lost frames if there are missing frames
+            total_lost_timesamples += fpga_seq_num_end_old - fpga_seq_num;
 
-          const float good_samples_frac =
-            (float)(total_timesamples - total_lost_timesamples) / total_timesamples;
+            const float good_samples_frac =
+                (float)(total_timesamples - total_lost_timesamples) / total_timesamples;
 
-          // Normalise data
-          normaliseFrame(sum_data, in_buffer_ID);
+            // Normalise data
+            normaliseFrame(sum_data, in_buffer_ID);
 
-          // Only output integration if there are enough good samples
-          if (good_samples_frac >= _good_samples_threshold) {
-            mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
+            // Only output integration if there are enough good samples
+            if (good_samples_frac >= _good_samples_threshold) {
+                mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
 
-            // Get a new output buffer
-            out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
-            out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
-            if (out_frame == NULL)
-              goto end_loop;
+                // Get a new output buffer
+                out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
+                out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
+                if (out_frame == NULL)
+                    goto end_loop;
 
-            sum_data = (float*)out_buf->frames[out_buffer_ID];
-          } else
-            DEBUG("Integration discarded. Too many lost samples.");
+                sum_data = (float*)out_buf->frames[out_buffer_ID];
+            } else
+                DEBUG("Integration discarded. Too many lost samples.");
 
-          // Already started next integration
-          if (fpga_seq_num > fpga_seq_num_end_old)
-            initFirstFrame(input_data, sum_data, in_buffer_ID);
+            // Already started next integration
+            if (fpga_seq_num > fpga_seq_num_end_old)
+                initFirstFrame(input_data, sum_data, in_buffer_ID);
 
         } else {
-          // If we are on the first frame copy it directly into the
-          // output buffer frame so that we don't need to zero the frame
-          if (frame == 0)
-            initFirstFrame(input_data, sum_data, in_buffer_ID);
-          else
-            integrateFrame(input_data, sum_data, in_buffer_ID);
+            // If we are on the first frame copy it directly into the
+            // output buffer frame so that we don't need to zero the frame
+            if (frame == 0)
+                initFirstFrame(input_data, sum_data, in_buffer_ID);
+            else
+                integrateFrame(input_data, sum_data, in_buffer_ID);
         }
 
         fpga_seq_num_end_old = fpga_seq_num_end;
