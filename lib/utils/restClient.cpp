@@ -258,7 +258,6 @@ bool restClient::_make_request(const struct restRequest* request) {
     struct evhttp_connection* evcon = nullptr;
     struct evhttp_request* req;
     struct evkeyvalq* output_headers;
-    struct evbuffer* output_buffer;
 
     int ret;
 
@@ -325,7 +324,7 @@ bool restClient::_make_request(const struct restRequest* request) {
         size_t datalen = request->data->dump().length();
         char buf[256];
 
-        output_buffer = evhttp_request_get_output_buffer(req);
+        struct evbuffer* output_buffer = evhttp_request_get_output_buffer(req);
 
         // copy data into the buffer
         ret = evbuffer_add(output_buffer, request->data->dump().c_str(), datalen);
