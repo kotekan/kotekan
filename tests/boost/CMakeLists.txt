@@ -16,8 +16,7 @@ set ( KOTEKAN_BOOST_TEST_SOURCES
       test_dataset_manager_rest.cpp
       test_updatequeue.cpp
       test_truncate.cpp
-      # TODO: disabled until we can fix the Libevent issues
-      #test_restclient.cpp
+      test_restclient.cpp
       test_chime_stacking.cpp
       test_config.cpp
       test_prometheus_metrics.cpp
