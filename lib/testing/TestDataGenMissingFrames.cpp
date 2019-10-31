@@ -19,8 +19,7 @@ TestDataGenMissingFrames::TestDataGenMissingFrames(Config& config, const string&
     Stage(config, unique_name, buffer_container,
           std::bind(&TestDataGenMissingFrames::main_thread, this)),
     _samples_per_data_set(config.get<uint32_t>(unique_name, "samples_per_data_set")),
-    _missing_frames(config.get_default<std::vector<uint32_t>>(unique_name, "missing_frames", {}))
-{
+    _missing_frames(config.get_default<std::vector<uint32_t>>(unique_name, "missing_frames", {})) {
     INFO("Stage will drop {:d} frames.", _missing_frames.size());
 
     in_buf = get_buffer("in_buf");
@@ -42,8 +41,7 @@ void TestDataGenMissingFrames::main_thread() {
         // Copy the frame, unless it's in the list of frames to drop
         if (std::find(_missing_frames.begin(), _missing_frames.end(), frame_count)
             == _missing_frames.end()) {
-            float* output =
-                (float*)wait_for_empty_frame(out_buf, unique_name.c_str(), out_buf_id);
+            float* output = (float*)wait_for_empty_frame(out_buf, unique_name.c_str(), out_buf_id);
             if (output == NULL)
                 break;
 
