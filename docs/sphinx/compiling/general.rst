@@ -27,11 +27,11 @@ Required
 =========
 * pthread
 * python and python-YAML
+* `libevent <http://libevent.org/>`_
 
 Required for some options
 ==========================
 
-* `libevent <http://libevent.org/>`_
 * `DPDK dpdk-16.11.9 <http://dpdk.org/>`_ (see :ref:`dpdk`), requires hugepage support
 * `AMD ROCm <https://github.com/RadeonOpenCompute/ROCm>`_ (this also installs AMD OpenCL drivers and SDK)
 * `HDF5 <https://www.hdfgroup.org/HDF5/>`_:: 
@@ -60,22 +60,26 @@ Required for some options
 * `Blaze <https://bitbucket.org/blaze-lib/blaze/src/master/>`_
   * Download and unpack into `/opt`
 * OpenSSL (Package is called ``libssl-dev`` on Ubuntu).
-* For python packages to be installed for all::
-
-    sudo su
-    cd ~
-    pip3 install python-module
 
 Unit tests:
 -----------
-* `pytest-cpp <https://github.com/pytest-dev/pytest-cpp>`_::
+
+* `pytest-cpp <https://github.com/pytest-dev/pytest-cpp>`_ [#]_::
 
     sudo pip3 install pytest-cpp pytest-xdist
     sudo pip3 install atomicwrites pluggy py packaging numpy
 
-* `future <https://pypi.org/project/future/>`_
-* `msgpack <https://pypi.org/project/msgpack/>`_
-* `requests <https://pypi.org/project/requests/>`_
+* `future <https://pypi.org/project/future/>`_::
+
+    sudo pip3 install future
+
+* `msgpack <https://pypi.org/project/msgpack/>`_::
+    
+    sudo pip3 install msgpack
+
+* `requests <https://pypi.org/project/requests/>`_::
+
+    sudo pip3 install requests
 
 * `BOOST <https://www.boost.org/>`_::
 
@@ -219,3 +223,6 @@ To install kotekan:
 .. code:: bash
 
     make install
+
+.. [#] To install python packages for all users:
+    ``sudo su; cd ~; pip3 install python-module``
