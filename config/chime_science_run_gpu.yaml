@@ -287,7 +287,15 @@ cpu_hfb_output_buffers:
     frame_size: num_data_sets * num_sub_freqs * num_frb_total_beams * sizeof_float
     metadata_pool: main_pool
     beamform_hfb_output_buffer_0:
-        kotekan_buffer: standard
+      kotekan_buffer: standard
+    beamform_hfb_output_buffer_1:
+      kotekan_buffer: standard
+    beamform_hfb_output_buffer_2:
+      kotekan_buffer: standard
+    beamform_hfb_output_buffer_3:
+      kotekan_buffer: standard
+    beamform_hfb_output_buffer_merge:
+      kotekan_buffer: standard
 
 gain_frb_buffers:
   num_frames: 5
@@ -717,12 +725,30 @@ gpu:
 hyper_fine_beam:
   num_frames_to_integrate: 80
   good_samples_threshold: 0.95
-  integrate_hfb_data:
+  integrate_hfb_data_0:
     kotekan_stage: integrateHFBData
     log_level: debug
     hfb_input_buf: gpu_beamform_hfb_output_buffer_0
     hfb_output_buf: beamform_hfb_output_buffer_0
     lost_samples_buf: lost_samples_buffer
+  integrate_hfb_data_1:
+   kotekan_stage: integrateHFBData
+   log_level: debug
+   hfb_input_buf: gpu_beamform_hfb_output_buffer_1
+   hfb_output_buf: beamform_hfb_output_buffer_1
+   lost_samples_buf: lost_samples_buffer
+  integrate_hfb_data_2:
+   kotekan_stage: integrateHFBData
+   log_level: debug
+   hfb_input_buf: gpu_beamform_hfb_output_buffer_2
+   hfb_output_buf: beamform_hfb_output_buffer_2
+   lost_samples_buf: lost_samples_buffer
+  integrate_hfb_data_3:
+   kotekan_stage: integrateHFBData
+   log_level: debug
+   hfb_input_buf: gpu_beamform_hfb_output_buffer_3
+   hfb_output_buf: beamform_hfb_output_buffer_3
+   lost_samples_buf: lost_samples_buffer
  
 # This set of stages takes information from the packet loss mask
 # and RFI mask and updates the metadata in the output N2 buffers
@@ -1263,6 +1289,17 @@ eigcalc:
     1314, 1380, 1521, 1523, 1543, 1642, 1687, 1738, 1792, 1794, 1910,
     1912, 1943, 1945, 1982, 1984, 1987, 2032, 2034 ]
 
+# Merge 21cm integrated data from each GPU
+21cm_merge:
+  kotekan_stage: bufferMerge
+  timeout: 0.1
+  in_bufs:
+    - beamform_hfb_output_buffer_0
+    - beamform_hfb_output_buffer_1
+    - beamform_hfb_output_buffer_2
+    - beamform_hfb_output_buffer_3
+  out_buf: beamform_hfb_output_buffer_merge
+
 vis_debug:
   kotekan_stage: visDebug
   in_buf: visbuf_eig_10s_merge
@@ -1301,6 +1338,15 @@ buffer_send:
     buf: visbuf_psr0_5s_26m
     server_port: 11026
 
+# Transmit all the 21cm data to Moose
+buffer_send_21cm:
+  server_ip: 10.1.50.12
+  reconnect_time: 20
+  log_level: warn
+  21cm:
+    kotekan_stage: bufferSend
+    buf: beamform_hfb_output_buffer_merge
+    server_port: 11027
 
 #### RFI post processing and TX ####
 rfi_broadcast:
