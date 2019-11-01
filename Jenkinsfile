@@ -36,7 +36,7 @@ pipeline {
                   make -j 4'''
           }
         }
-        /* stage('Build MacOS kotekan') {
+        stage('Build MacOS kotekan') {
           agent {label 'macos'}
           steps {
             sh '''export PATH=${PATH}:/usr/local/bin/
@@ -54,7 +54,7 @@ pipeline {
                         -DCOMPILE_DOCS=ON -DUSE_OPENCL=ON ..
                   make -j 4'''
           }
-        } */
+        }
         stage('Build docs') {
           steps {
             sh '''export PATH=${PATH}:/var/lib/jenkins/.local/bin/
