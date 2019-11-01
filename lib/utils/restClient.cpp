@@ -82,7 +82,8 @@ void restClient::event_thread() {
         FATAL_ERROR_NON_OO("restClient: Failure in bufferevent_disable().");
     if (bufferevent_enable(bev_req_read, EV_READ))
         FATAL_ERROR_NON_OO("restClient: Failure in bufferevent_enable().");
-    bufferevent_setcb(bev_req_read, _bev_req_readcb, NULL, NULL, this);
+    bufferevent_setcb(bev_req_read, _bev_req_readcb, NULL, _bev_req_errcb, this);
+    bufferevent_setcb(bev_req_write, NULL, NULL, _bev_req_errcb, this);
 
     // DNS resolution is blocking (if not numeric host is passed)
     _dns = evdns_base_new(_base, 1);
@@ -399,4 +400,25 @@ restReply restClient::make_request_blocking(const std::string& path, const nlohm
         return reply;
     }
     return reply;
+}
+
+void restClient::_bev_req_errcb(bufferevent* bev, short what, void* arg) {
+    (void)arg;
+    std::string err = "";
+
+    // find out what the error code means
+    if (what & BEV_EVENT_READING)
+        err += "error encountered while reading, ";
+    if (what & BEV_EVENT_WRITING)
+        err += "error encountered while writing, ";
+    if (what & BEV_EVENT_EOF)
+        err += "eof file reached, ";
+    if (what & BEV_EVENT_ERROR)
+        err += "unrecoverable error encountered, ";
+    if (what & BEV_EVENT_TIMEOUT)
+        err += "user-specified timeout reached, ";
+    if (what & BEV_EVENT_CONNECTED)
+        err += "connect operation finished.";
+
+    WARN_NON_OO("restClient::_bev_req_errcb: {:p} - {:d} ({:s})", (void*)bev, what, err);
 }

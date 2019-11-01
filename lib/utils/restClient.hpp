@@ -147,6 +147,9 @@ private:
     /// pointers has new data.
     static void _bev_req_readcb(struct bufferevent* bev, void* arg);
 
+    /// error callback for the bufferevent pair
+    static void _bev_req_errcb(struct bufferevent* bev, short what, void* arg);
+
     /// Main event thread handle
     std::thread _main_thread;
 
