@@ -122,32 +122,6 @@ void restClient::event_thread() {
     event_base_free(_base);
 }
 
-void restClient::_bev_req_readcb(struct bufferevent* bev, void* arg) {
-    (void)bev;
-
-    // Get the restClient object from the arg void pointer
-    restClient* client = (restClient*)arg;
-    if (!client)
-        FATAL_ERROR_NON_OO("restClient: _bev_req_readcb got nullptr client");
-
-    // Sometime libevent calls this cb just once when there are multiple requests in the
-    // bufferevent pair. Read until we have all of them.
-    int read_size;
-    while (true) {
-        restRequest* request = nullptr;
-        read_size = bufferevent_read(client->bev_req_read, &request, sizeof(restRequest*));
-        if (read_size <= 0)
-            return;
-        if (!request)
-            FATAL_ERROR_NON_OO("restClient: _bev_req_readcb got nullptr request");
-
-        DEBUG2_NON_OO("restClient: _bev_req_readcb read {} bytes", read_size);
-
-        if (!client->_make_request(request))
-            FATAL_ERROR_NON_OO("restClient: Failure making request.");
-    }
-}
-
 void restClient::http_request_done(struct evhttp_request* req, void* arg) {
     // FIXME: evcon is passed here, because evhttp_request_get_connection(req)
     // always returns NULL and there is no way to free the connection on
@@ -156,19 +130,18 @@ void restClient::http_request_done(struct evhttp_request* req, void* arg) {
     // the bufferevent never gets deleted...
     // TODO: maybe keep the evhttp_connections in a pool and reuse them
     // (set Connection:keep-alive header)
-    auto pair = (std::pair<std::function<void(restReply)>, struct evhttp_connection*>*)arg;
-    std::function<void(restReply)> ext_cb = pair->first;
+    auto pair = (std::pair<std::function<void(restReply)>*, struct evhttp_connection*>*)arg;
+    std::function<void(restReply)>* ext_cb = pair->first;
 
     // this is where we store the reply
     std::string str_data("");
 
     if (req == nullptr) {
         int errcode = EVUTIL_SOCKET_ERROR();
-        WARN_NON_OO("restClient: request failed.");
         // Print socket error
         std::string str = evutil_socket_error_to_string(errcode);
-        WARN_NON_OO("restClient: socket error = {:s} ({:d})", str, errcode);
-        ext_cb(restReply(false, str_data));
+        WARN_NON_OO("restClient: Request failed with socket error {:d} ({:s})", errcode, str);
+        (*ext_cb)(restReply(false, str_data));
         cleanup(pair);
         return;
     }
@@ -182,7 +155,7 @@ void restClient::http_request_done(struct evhttp_request* req, void* arg) {
         if (response_code == 0)
             status_text = "Connection error";
         INFO_NON_OO("restClient: Received response code {:d} ({:s})", response_code, status_text);
-        ext_cb(restReply(false, str_data));
+        (*ext_cb)(restReply(false, str_data));
         cleanup(pair);
         return;
     }
@@ -191,7 +164,7 @@ void restClient::http_request_done(struct evhttp_request* req, void* arg) {
     evbuffer* input_buffer = evhttp_request_get_input_buffer(req);
     size_t datalen = evbuffer_get_length(input_buffer);
     if (datalen == 0) {
-        ext_cb(restReply(true, str_data));
+        (*ext_cb)(restReply(true, str_data));
         cleanup(pair);
         return;
     }
@@ -226,142 +199,154 @@ void restClient::http_request_done(struct evhttp_request* req, void* arg) {
     free(vec_out);
 
     // call the external callback
-    ext_cb(restReply(true, str_data));
+    (*ext_cb)(restReply(true, str_data));
     cleanup(pair);
 }
 
 void restClient::cleanup(
-    std::pair<std::function<void(restReply)>, struct evhttp_connection*>* pair) {
+    std::pair<std::function<void(restReply)>*, struct evhttp_connection*>* pair) {
     if (pair->second)
         evhttp_connection_free(pair->second);
     delete pair;
 }
 
 void restClient::make_request(const std::string& path,
-                              std::function<void(restReply)> request_done_cb,
+                              std::function<void(restReply)>& request_done_cb,
                               const nlohmann::json& data, const std::string& host,
                               const unsigned short port, const int retries, const int timeout) {
     if (!bev_req_write)
         FATAL_ERROR_NON_OO("restClient: make_request called, but bev_req_write is NULL.");
 
-    // create a request object on the heap to let it live until we have a reply...
-    restRequest* request =
-        new restRequest(path, request_done_cb, data, host, port, retries, timeout);
-    if (!request)
-        FATAL_ERROR_NON_OO("restClient: memory for restRequest failed");
+    // serialize json data
+    std::string datadump = data.dump();
+
+    // put as much of the request data as possible in a struct
+    restRequest request = {
+        datadump.size(), path.size(), host.size(), retries, timeout, port, &request_done_cb,
+    };
 
     // and drop it in the socket bufferevent for the event thread
-    if (bufferevent_write(bev_req_write, &request, sizeof(restRequest*)))
+    int ret = bufferevent_write(bev_req_write, &request, sizeof(restRequest));
+    ret |= bufferevent_write(bev_req_write, host.c_str(), request.host_len);
+    ret |= bufferevent_write(bev_req_write, path.c_str(), request.path_len);
+    if (request.data_len)
+        ret |= bufferevent_write(bev_req_write, datadump.c_str(), request.data_len);
+    if (ret)
         FATAL_ERROR_NON_OO("restClient: Failure writing to socket bufferevent.");
 }
 
-bool restClient::_make_request(const struct restRequest* request) {
-    struct evhttp_connection* evcon = nullptr;
-    struct evhttp_request* req;
-    struct evkeyvalq* output_headers;
+void restClient::_bev_req_readcb(struct bufferevent* bev, void* arg) {
+    // Get the restClient object from the arg void pointer
+    restClient* client = (restClient*)arg;
+    if (!client)
+        FATAL_ERROR_NON_OO("restClient: _bev_req_readcb got nullptr client");
 
-    int ret;
+    // Sometimes libevent calls this cb just once when there are multiple requests in the
+    // bufferevent pair. Read until we have all of them.
+    size_t len_read;
+    while (true) {
+        restRequest request;
+        len_read = bufferevent_read(bev, &request, sizeof(restRequest));
+        DEBUG2_NON_OO("restClient: _bev_req_readcb read {} bytes", len_read);
+        if (len_read <= 0)
+            return;
 
-    evcon = evhttp_connection_base_new(_base, _dns, request->host->c_str(), request->port);
-    if (evcon == nullptr) {
-        WARN_NON_OO("restClient: evhttp_connection_base_new() failed.");
-        delete request;
-        return false;
-    }
+        std::string host;
+        host.resize(request.host_len);
+        len_read = bufferevent_read(bev, &host[0], request.host_len);
+        if (len_read != request.host_len)
+            FATAL_ERROR_NON_OO("restClient::_bev_req_readcb: Failure reading hostname from "
+                               "bufferevent ({} != {}).",
+                               len_read, request.host_len);
 
-    if (request->retries > 0)
-        evhttp_connection_set_retries(evcon, request->retries);
-    if (request->timeout >= 0)
-        evhttp_connection_set_timeout(evcon, request->timeout);
+        std::string path;
+        path.resize(request.path_len);
+        len_read = bufferevent_read(bev, &path[0], request.path_len);
+        if (len_read != request.path_len)
+            FATAL_ERROR_NON_OO("restClient::_bev_req_readcb: Failure reading endpoint from "
+                               "bufferevent ({} != {}).",
+                               len_read, request.path_len);
 
-    // Fire off the request and pass the external callback to the internal one.
-    // check if external callback function is callable
-    if (!request->request_done_cb) {
-        ERROR_NON_OO("restClient: external callback function is not callable.");
-        evhttp_connection_free(evcon);
-        delete request;
-        return false;
-    }
+        evhttp_connection* evcon =
+            evhttp_connection_base_new(client->_base, client->_dns, host.c_str(), request.port);
+        if (evcon == nullptr)
+            FATAL_ERROR_NON_OO("restClient: evhttp_connection_base_new() failed.");
 
-    // keep the external callback function object on the heap, so it is allowed
-    // to run out of scope on the calling side
-    // also pass the connection to the callback, so it can be freed there
-    std::pair<std::function<void(restReply)>, struct evhttp_connection*>* pair =
-        new std::pair<std::function<void(restReply)>, struct evhttp_connection*>(
-            request->request_done_cb, evcon);
-    req = evhttp_request_new(http_request_done, pair);
-    if (req == nullptr) {
-        WARN_NON_OO("restClient: evhttp_request_new() failed.");
-        evhttp_connection_free(evcon);
-        delete request;
-        return false;
-    }
-    output_headers = evhttp_request_get_output_headers(req);
-    ret = evhttp_add_header(output_headers, "Host", request->host->c_str());
-    if (ret) {
-        WARN_NON_OO("restClient: Failure adding \"Host\" header.");
-        evhttp_connection_free(evcon);
-        evhttp_request_free(req);
-        delete request;
-        return false;
-    }
-    ret = evhttp_add_header(output_headers, "Connection", "close");
-    if (ret) {
-        WARN_NON_OO("restClient: Failure adding \"Connection\" header.");
-        evhttp_connection_free(evcon);
-        evhttp_request_free(req);
-        delete request;
-        return false;
-    }
-    ret = evhttp_add_header(output_headers, "Content-Type", "application/json");
-    if (ret) {
-        WARN_NON_OO("restClient: Failure adding \"Content-Type\" header.");
-        evhttp_connection_free(evcon);
-        evhttp_request_free(req);
-        delete request;
-        return false;
-    }
-    if (!request->data->empty()) {
-        size_t datalen = request->data->dump().length();
-        char buf[256];
+        if (request.retries > 0)
+            evhttp_connection_set_retries(evcon, request.retries);
+        if (request.timeout >= 0)
+            evhttp_connection_set_timeout(evcon, request.timeout);
 
-        struct evbuffer* output_buffer = evhttp_request_get_output_buffer(req);
-
-        // copy data into the buffer
-        ret = evbuffer_add(output_buffer, request->data->dump().c_str(), datalen);
-        if (ret) {
-            WARN_NON_OO("restClient: Failure adding JSON data to event buffer.");
+        // Fire off the request and pass the external callback to the internal one.
+        // check if external callback function is callable
+        if (!request.request_done_cb) {
             evhttp_connection_free(evcon);
-            evhttp_request_free(req);
-            delete request;
-            return false;
+            FATAL_ERROR_NON_OO("restClient: external callback function is not callable.");
         }
 
-        evutil_snprintf(buf, sizeof(buf) - 1, "%lu", (unsigned long)datalen);
-        ret = evhttp_add_header(output_headers, "Content-Length", buf);
-        if (ret) {
-            WARN_NON_OO("restClient: Failure adding \"Content-Length\" header.");
+        // pass the external callback function to the libevent callback
+        // also pass the connection to the callback, so it can be freed there
+        std::pair<std::function<void(restReply)>*, evhttp_connection*>* pair =
+            new std::pair<std::function<void(restReply)>*, evhttp_connection*>(
+                request.request_done_cb, evcon);
+        evhttp_request* req = evhttp_request_new(http_request_done, pair);
+        if (req == nullptr) {
+            evhttp_connection_free(evcon);
+            FATAL_ERROR_NON_OO("restClient: evhttp_request_new() failed.");
+        }
+        evkeyvalq* output_headers = evhttp_request_get_output_headers(req);
+        if (evhttp_add_header(output_headers, "Host", host.c_str())) {
             evhttp_connection_free(evcon);
             evhttp_request_free(req);
-            delete request;
-            return false;
+            FATAL_ERROR_NON_OO("restClient: Failure adding \"Host\" header.");
         }
-        DEBUG2_NON_OO("restClient: Sending {:s} bytes: {:s}", buf, request->data->dump(4));
+        if (evhttp_add_header(output_headers, "Connection", "close")) {
+            evhttp_connection_free(evcon);
+            evhttp_request_free(req);
+            FATAL_ERROR_NON_OO("restClient: Failure adding \"Connection\" header.");
+        }
+        if (evhttp_add_header(output_headers, "Content-Type", "application/json")) {
+            evhttp_connection_free(evcon);
+            evhttp_request_free(req);
+            FATAL_ERROR_NON_OO("restClient: Failure adding \"Content-Type\" header.");
+        }
 
-        ret = evhttp_make_request(evcon, req, EVHTTP_REQ_POST, request->path->c_str());
-    } else {
-        DEBUG2_NON_OO("restClient: sending GET request.");
-        ret = evhttp_make_request(evcon, req, EVHTTP_REQ_GET, request->path->c_str());
+        int ret;
+        if (request.data_len) {
+            char buf[256];
+
+            evbuffer* output_buffer = evhttp_request_get_output_buffer(req);
+            evbuffer* bev_buffer = bufferevent_get_input(bev);
+
+            // move data into the requests output buffer (avoids copy by value)
+            len_read = evbuffer_remove_buffer(bev_buffer, output_buffer, request.data_len);
+            if (len_read != request.data_len) {
+                evhttp_connection_free(evcon);
+                evhttp_request_free(req);
+                FATAL_ERROR_NON_OO("restClient::_bev_req_readcb: Failure reading data from "
+                                   "bufferevent ({} != {}).",
+                                   len_read, request.data_len);
+            }
+
+            evutil_snprintf(buf, sizeof(buf) - 1, "%lu", (unsigned long)request.data_len);
+            if (evhttp_add_header(output_headers, "Content-Length", buf)) {
+                evhttp_connection_free(evcon);
+                evhttp_request_free(req);
+                FATAL_ERROR_NON_OO("restClient: Failure adding \"Content-Length\" header.");
+            }
+            DEBUG_NON_OO("restClient: Sending {:s} bytes.", buf);
+
+            ret = evhttp_make_request(evcon, req, EVHTTP_REQ_POST, path.c_str());
+        } else {
+            DEBUG_NON_OO("restClient: sending GET request.");
+            ret = evhttp_make_request(evcon, req, EVHTTP_REQ_GET, path.c_str());
+        }
+        if (ret) {
+            evhttp_connection_free(evcon);
+            evhttp_request_free(req);
+            FATAL_ERROR_NON_OO("restClient: evhttp_make_request() failed.");
+        }
     }
-    if (ret) {
-        WARN_NON_OO("restClient: evhttp_make_request() failed.");
-        evhttp_connection_free(evcon);
-        evhttp_request_free(req);
-        delete request;
-        return false;
-    }
-    delete request;
-    return true;
 }
 
 restReply restClient::make_request_blocking(const std::string& path, const nlohmann::json& data,

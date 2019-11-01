@@ -59,7 +59,7 @@ public:
      * @param timeout   Timeout in seconds. If -1 is passed, the default value
      * (of 50 seconds) is set (default: -1).
      */
-    void make_request(const std::string& path, std::function<void(restReply)> request_done_cb,
+    void make_request(const std::string& path, std::function<void(restReply)>& request_done_cb,
                       const nlohmann::json& data = {}, const std::string& host = "127.0.0.1",
                       const unsigned short port = PORT_REST_SERVER, const int retries = 0,
                       const int timeout = -1);
@@ -92,30 +92,16 @@ public:
 private:
     /// A structure to pass requests around inside the restClient
     struct restRequest {
-        std::string const* path;
-        std::function<void(restReply)> request_done_cb;
-        nlohmann::json const* data;
-        std::string const* host;
-        unsigned short port;
+        // The strings are of dynamic length and kept outside of the struct.
+        // But we need to pass their sizes...
+        size_t data_len;
+        size_t path_len;
+        size_t host_len;
+
         int retries;
         int timeout;
-
-        restRequest(const std::string& path, std::function<void(restReply)> request_done_cb,
-                    const nlohmann::json& data, const std::string& host, const unsigned short port,
-                    const int retries, const int timeout) :
-            path(new std::string(path)),
-            request_done_cb(request_done_cb),
-            data(new nlohmann::json(data)),
-            host(new std::string(host)),
-            port(port),
-            retries(retries),
-            timeout(timeout) {}
-
-        ~restRequest() {
-            delete path;
-            delete data;
-            delete host;
-        }
+        unsigned short port;
+        std::function<void(restReply)>* request_done_cb;
     };
 
     /// Private constuctor
@@ -138,7 +124,7 @@ private:
     static void http_request_done(struct evhttp_request* req, void* arg);
 
     /// cleanup function that deletes evcon and the argument pair
-    static void cleanup(std::pair<std::function<void(restReply)>, struct evhttp_connection*>* pair);
+    static void cleanup(std::pair<std::function<void(restReply)>*, evhttp_connection*>* pair);
 
     /// Only to be called inside event thread
     bool _make_request(const restRequest* request);
