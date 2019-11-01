@@ -1,4 +1,3 @@
-cmake_minimum_required( VERSION 2.8 )
 project( libkotekan_hcc )
 
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
