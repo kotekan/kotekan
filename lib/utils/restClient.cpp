@@ -92,9 +92,9 @@ void restClient::event_thread() {
     }
 
     // Create a timer to check for the exit condition
-    struct event* timer_event;
+    event* timer_event;
     timer_event = event_new(_base, -1, EV_PERSIST, timer, this);
-    struct timeval interval;
+    timeval interval;
     interval.tv_sec = 0;
     interval.tv_usec = 500000;
     event_add(timer_event, &interval);
@@ -207,13 +207,13 @@ void restClient::http_request_done(struct evhttp_request* req, void* arg) {
     int n_vec = evbuffer_peek(input_buffer, datalen, NULL, NULL, 0);
     if (n_vec < 0) {
         WARN_NON_OO("restClient: Failure in evbuffer_peek()");
-        ext_cb(restReply(false, str_data));
+        (*ext_cb)(restReply(false, str_data));
         cleanup(pair);
         return;
     }
 
     // Allocate space for the chunks.
-    vec_out = (iovec*)malloc(sizeof(struct evbuffer_iovec) * n_vec);
+    vec_out = (iovec*)malloc(sizeof(evbuffer_iovec) * n_vec);
 
     n_vec = evbuffer_peek(input_buffer, datalen, NULL, vec_out, n_vec);
     for (int i = 0; i < n_vec; i++) {
