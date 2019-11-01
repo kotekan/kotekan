@@ -201,7 +201,6 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_text_reply, TestContext) {
     json request, bad_request;
     request["array"] = {1, 2, 3};
     request["flag"] = true;
-    bad_request["array"] = 0;
 
 
     /* Test receiveing a text reply */
@@ -243,7 +242,6 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_text_reply_blocking, TestContext) {
     json request, bad_request;
     request["array"] = {1, 2, 3};
     request["flag"] = true;
-    bad_request["array"] = 0;
 
 
     /* Test receiveing a text reply */
