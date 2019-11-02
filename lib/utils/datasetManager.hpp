@@ -568,8 +568,7 @@ inline const T* datasetManager::get_closest_ancestor(dset_id_t dset) {
         while (true) {
             // Search for the requested type in each dataset
             try {
-                if (_datasets.at(dset).type()
-                    == datasetState::_registered_names[typeid(T).hash_code()]) {
+                if (_datasets.at(dset).type() == FACTORY(datasetState)::label<T>()) {
                     ancestor = _datasets.at(dset).state();
                     break;
                 }
@@ -688,7 +687,7 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
         else {
             throw std::runtime_error(
                 fmt::format(fmt("Broker sent state that didn't match requested type ({:s}): {:s}"),
-                            datasetState::_registered_names[typeid(T).hash_code()],
+                            FACTORY(datasetState)::label<T>(),
                             js_reply.at("state").dump(4)));
         }
     } catch (std::exception& e) {

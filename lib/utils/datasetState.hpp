@@ -3,6 +3,7 @@
 
 #include "Config.hpp"
 #include "errors.h"
+#include "factory.hpp"
 #include "gateSpec.hpp"
 #include "Hash.hpp"
 #include "visUtil.hpp"
@@ -53,7 +54,7 @@ public:
      * @param j Full JSON serialisation.
      * @returns The created datasetState or a nullptr in a failure case.
      **/
-    static state_uptr from_json(json& j);
+    static state_uptr from_json(const json& j);
 
     /**
      * @brief Full serialisation of state into JSON.
@@ -80,8 +81,8 @@ public:
      *
      * @returns Always returns zero.
      **/
-    template<typename T>
-    static inline int _register_state_type(std::string name);
+    // template<typename T>
+    // static inline int _register_state_type(std::string name);
 
     /**
      * @brief Compare to another dataset state.
@@ -91,13 +92,13 @@ public:
     bool equals(datasetState& s) const;
 
     /**
-     * @brief Get names of this state and its inner states.
-     * @return A set of state names.
+     * @brief Get the name of this state.
+     * @return The state name.
      */
     std::string type() const;
 
     // Static map of type names
-    static std::map<size_t, std::string> _registered_names;
+    //static std::map<size_t, std::string> _registered_names;
 
 private:
     /**
@@ -107,35 +108,26 @@ private:
      * @param data  Serialisation of config.
      * @returns The created datasetState.
      **/
-    static state_uptr _create(std::string name, json& data);
+    //static state_uptr _create(std::string name, json& data);
 
     // List of registered subclass creating functions
-    static std::map<string, std::function<state_uptr(json&)>>& _registered_types();
+    //static std::map<string, std::function<state_uptr(json&)>>& _registered_types();
 
     // Add as friend so it can walk the inner state
     friend datasetManager;
 };
 
-#define REGISTER_DATASET_STATE(T, s) int _register_##T = datasetState::_register_state_type<T>(s)
+
+CREATE_FACTORY(datasetState, const json&);
+
+
+//#define REGISTER_DATASET_STATE(T, s) int _register_##T = datasetState::_register_state_type<T>(s)
+#define REGISTER_DATASET_STATE(T, s) REGISTER_NAMED_TYPE_WITH_FACTORY(datasetState, T, s);
 
 
 // Printing for datasetState
 std::ostream& operator<<(std::ostream&, const datasetState&);
 
-
-template<typename T>
-inline int datasetState::_register_state_type(std::string name) {
-
-    DEBUG_NON_OO("Registering state type: {:s}", name);
-
-    // Generate a lambda function that creates an instance of the type
-    datasetState::_registered_types()[name] = [](json& data) -> state_uptr {
-        return std::make_unique<T>(data);
-    };
-
-    datasetState::_registered_names[typeid(T).hash_code()] = name;
-    return 0;
-}
 
 /**
  * @brief A dataset state that describes the frequencies in a datatset.
@@ -149,7 +141,7 @@ public:
      * @param data  The frequency information as serialized by
      *              freqState::to_json().
      */
-    freqState(json& data) {
+    freqState(const json& data) {
         try {
             _freqs = data.get<std::vector<std::pair<uint32_t, freq_ctype>>>();
         } catch (std::exception& e) {
@@ -199,7 +191,7 @@ public:
      * @param data  The input information as serialized by
      *              inputState::to_json().
      */
-    inputState(json& data) {
+    inputState(const json& data) {
         try {
             _inputs = data.get<std::vector<input_ctype>>();
         } catch (std::exception& e) {
@@ -248,7 +240,7 @@ public:
      * @param data  The product information as serialized by
      *              prodState::to_json().
      */
-    prodState(json& data) {
+    prodState(const json& data) {
         try {
             _prods = data.get<std::vector<prod_ctype>>();
         } catch (std::exception& e) {
@@ -297,7 +289,7 @@ public:
      * @param data  The time information as serialized by
      *              timeState::to_json().
      */
-    timeState(json& data) {
+    timeState(const json& data) {
         try {
             _times = data.get<std::vector<time_ctype>>();
         } catch (std::exception& e) {
@@ -346,7 +338,7 @@ public:
      * @param data  The eigenvalues as serialized by
      *              eigenvalueState::to_json().
      */
-    eigenvalueState(json& data) {
+    eigenvalueState(const json& data) {
         try {
             _ev = data.get<std::vector<uint32_t>>();
         } catch (std::exception& e) {
@@ -417,7 +409,7 @@ public:
      * @param data  The stack information as serialized by
      *              stackState::to_json().
      */
-    stackState(json& data) {
+    stackState(const json& data) {
         try {
             _rstack_map = data["rstack"].get<std::vector<rstack_ctype>>();
             _num_stack = data["num_stack"].get<uint32_t>();
@@ -499,7 +491,7 @@ public:
      * git_version_number: string
      *
      */
-    metadataState(json& data) {
+    metadataState(const json& data) {
         try {
             _weight_type = data.at("weight_type").get<std::string>();
             _instrument_name = data.at("instrument_name").get<std::string>();
@@ -586,7 +578,7 @@ public:
      *
      * @param  data   Full serialised data.
      **/
-    gatingState(json& data) :
+    gatingState(const json& data) :
         gating_type(data["type"].get<std::string>()),
         gating_data(data["data"]) {}
 
@@ -622,7 +614,7 @@ public:
      * @param data  The dataset ID as serialized by
      *              acqDatasetIdState::to_json().
      */
-    acqDatasetIdState(json& data) {
+    acqDatasetIdState(const json& data) {
         try {
             _ds_id = data.get<dset_id_t>();
         } catch (std::exception& e) {

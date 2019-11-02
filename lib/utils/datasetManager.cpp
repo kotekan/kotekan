@@ -64,14 +64,6 @@ bool dataset::equals(dataset& ds) const {
     return _state == ds.state() && _base_dset == ds.base_dset() && _type == ds.type();
 }
 
-
-std::ostream& operator<<(std::ostream& out, const datasetState& dt) {
-    out << datasetState::_registered_names[typeid(dt).hash_code()];
-
-    return out;
-}
-
-
 datasetManager::datasetManager() :
     _conn_error_count(0),
     _timestamp_update(json(0)),
@@ -317,13 +309,7 @@ bool datasetManager::register_state_parser(std::string& reply) {
             {
                 std::lock_guard<std::mutex> slck(_lock_states);
                 js_post["state"] = _states.at(state)->to_json();
-
-                // clang-format off
-                // Inlining s in the lines below causes clang to complain about
-                // potential side effects, unfortunately clang-format will try to undo it
-                auto s = _states.at(state).get();
-                // clang-format on
-                js_post["type"] = datasetState::_registered_names[typeid(*s).hash_code()];
+                js_post["type"] = _states.at(state)->type();
             }
 
             std::lock_guard<std::mutex> lk(_lock_stop_request_threads);
