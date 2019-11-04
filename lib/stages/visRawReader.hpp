@@ -22,13 +22,15 @@
 
 using json = nlohmann::json;
 
-
 /**
  * @class visRawReader
  * @brief Read and stream a raw visibility file.
  *
  * This will divide the file up into time-frequency chunks of set size and
- * stream out the frames with time as the *fastest* index.
+ * stream out the frames with time as the *fastest* index. The dataset ID
+ * will be restored from the dataset broker if `use_comet` is set. Otherwise
+ * a new dataset will be created and the original ID stored in the frames
+ * will be lost.
  *
  * @par Buffers
  * @buffer out_buf The data read from the raw file.
@@ -49,6 +51,8 @@ using json = nlohmann::json;
  * @conf    sleep_time          Float. After the data is read pause this long in
  *                              seconds before sending shutdown. If < 0, never
  *                              send a shutdown signal. Default is -1.
+ * @conf    use_comet           Bool. Whether to try and restore dataset ID from
+ *                              dataset broker (i.e. comet). Default is false.
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte, Rick Nitsche
  */
@@ -122,8 +126,11 @@ private:
      * and, if the data is stacked, stack.
      * Sets the dataset ID that should be given to the dataset coming from
      * the file that is read.
+     *
+     * If the dataset broker is being used, add a timeState to existing dataset
+     * and pass that on.
      */
-    void change_dataset_state(dset_id_t ds_id);
+    void get_dataset_state(dset_id_t ds_id);
 
     /**
      * @brief Read the next frame.
@@ -161,6 +168,9 @@ private:
 
     // whether to read in chunks
     bool chunked;
+
+    // whether to use comet to track dataset IDs
+    bool use_comet;
 
     // Read chunk size (freq, prod, time)
     std::vector<int> chunk_size;

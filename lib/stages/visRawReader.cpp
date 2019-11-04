@@ -46,6 +46,7 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
     readahead_blocks = config.get<size_t>(unique_name, "readahead_blocks");
     max_read_rate = config.get_default<double>(unique_name, "max_read_rate", 0.0);
     sleep_time = config.get_default<float>(unique_name, "sleep_time", -1);
+    use_comet = config.get_default<bool>(unique_name, "use_comet", false);
 
     chunked = config.exists(unique_name, "chunk_size");
     if (chunked) {
@@ -171,28 +172,34 @@ visRawReader::~visRawReader() {
     close(fd);
 }
 
-void visRawReader::change_dataset_state(dset_id_t ds_id) {
+void visRawReader::get_dataset_state(dset_id_t ds_id) {
     datasetManager& dm = datasetManager::instance();
 
-    // Add the states: metadata, time, prod, freq, input, eigenvalue and stack.
-    state_uptr sstate = nullptr;
-    if (!_stack.empty())
-        sstate = std::make_unique<stackState>(_num_stack, std::move(_rstack));
-    state_uptr istate = std::make_unique<inputState>(_inputs, std::move(sstate));
-    state_uptr evstate = std::make_unique<eigenvalueState>(_ev, std::move(istate));
-    state_uptr fstate = std::make_unique<freqState>(_freqs, std::move(evstate));
-    state_uptr pstate = std::make_unique<prodState>(_prods, std::move(fstate));
-    state_uptr tstate = std::make_unique<timeState>(_times, std::move(pstate));
-    state_uptr idstate = std::make_unique<acqDatasetIdState>(ds_id, std::move(tstate));
+    if (use_comet) {
+        // Add time to dataset
+        state_id_t tstate_id = dm.add_state(std::make_unique<timeState>(_times)).first;
+        // Register with dataset broker
+        _dataset_id = dm.add_dataset(tstate_id, ds_id);
+    } else {
+        // Create new states: metadata, time, prod, freq, input, eigenvalue and stack.
+        state_uptr sstate = nullptr;
+        if (!_stack.empty())
+            sstate = std::make_unique<stackState>(_num_stack, std::move(_rstack));
+        state_uptr istate = std::make_unique<inputState>(_inputs, std::move(sstate));
+        state_uptr evstate = std::make_unique<eigenvalueState>(_ev, std::move(istate));
+        state_uptr fstate = std::make_unique<freqState>(_freqs, std::move(evstate));
+        state_uptr pstate = std::make_unique<prodState>(_prods, std::move(fstate));
+        state_uptr tstate = std::make_unique<timeState>(_times, std::move(pstate));
 
-    state_id_t mstate_id =
-        dm.add_state(std::make_unique<metadataState>(
-                         _metadata.at("weight_type"), _metadata.at("instrument_name"),
-                         _metadata.at("git_version_tag"), std::move(idstate)))
-            .first;
+        state_id_t mstate_id =
+            dm.add_state(std::make_unique<metadataState>(
+                             _metadata.at("weight_type"), _metadata.at("instrument_name"),
+                             _metadata.at("git_version_tag"), std::move(tstate)))
+                .first;
 
-    // register it as root dataset
-    _dataset_id = dm.add_dataset(mstate_id);
+        // register it as root dataset
+        _dataset_id = dm.add_dataset(mstate_id);
+    }
 }
 
 void visRawReader::read_ahead(int ind) {
@@ -229,6 +236,8 @@ void visRawReader::main_thread() {
     double start_time, end_time;
     size_t frame_id = 0;
     uint8_t* frame;
+    dset_id_t dset_id;
+    dset_id_t cur_dset_id;
 
     size_t ind = 0, read_ind = 0, file_ind;
 
@@ -291,16 +300,27 @@ void visRawReader::main_thread() {
             std::fill(frame.flags.begin(), frame.flags.end(), 0.0);
             frame.freq_id = 0;
             frame.erms = 0;
+            frame.dataset_id = _dataset_id;
             DEBUG("visRawReader: Reading empty frame: {:d}", frame_id);
         }
 
-        // Read first frame to get true dataset ID
+        // Update the dataset ID. If not using comet, only need to do this once.
+        dset_id = ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id;
         if (ind == 0) {
-            change_dataset_state(
-                ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id);
+            get_dataset_state(dset_id);
+            cur_dset_id = dset_id;
+        } else if (dset_id != cur_dset_id) {
+            if (!use_comet) {
+                FATAL_ERROR("Dataset ID of incoming frames changed from {:#x} to {:#x}. Changing  ID "
+                            "not supported without dataset broker, exiting...",
+                            _dataset_id, dset_id);
+
+            }
+            get_dataset_state(dset_id);
+            cur_dset_id = dset_id;
         }
 
-        // Set the dataset ID to one associated with this file
+        // Set the dataset ID to the updated value
         ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id = _dataset_id;
 
         // Try and clear out the cached data as we don't need it again

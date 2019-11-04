@@ -67,6 +67,9 @@ private:
     /// that is not already set in the constructor.
     bool get_dataset_state(dset_id_t ds_id);
 
+    /// Extract the base dataset ID
+    dset_id_t base_dset(dset_id_t ds_id);
+
     // Buffers
     Buffer* in_buf;
 
@@ -90,6 +93,7 @@ private:
     std::vector<cfloat> gain;
     std::vector<float> frac_lost;
     std::vector<float> frac_rfi;
+    std::vector<dset_id_t> dset_id;
     std::vector<float> input_flags;
     std::vector<rstack_ctype> reverse_stack;
 

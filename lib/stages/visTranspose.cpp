@@ -84,7 +84,6 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     auto evstate_fut = std::async(&datasetManager::dataset_state<eigenvalueState>, &dm, ds_id);
     auto mstate_fut = std::async(&datasetManager::dataset_state<metadataState>, &dm, ds_id);
     auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>, &dm, ds_id);
-    auto idstate_fut = std::async(&datasetManager::dataset_state<acqDatasetIdState>, &dm, ds_id);
 
     const stackState* sstate = sstate_fut.get();
     const metadataState* mstate = mstate_fut.get();
@@ -93,11 +92,10 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     const prodState* pstate = pstate_fut.get();
     const freqState* fstate = fstate_fut.get();
     const inputState* istate = istate_fut.get();
-    const acqDatasetIdState* idstate = idstate_fut.get();
 
 
     if (mstate == nullptr || tstate == nullptr || pstate == nullptr || fstate == nullptr
-        || istate == nullptr || evstate == nullptr || idstate == nullptr)
+        || istate == nullptr || evstate == nullptr)
         return false;
 
     // TODO split instrument_name up into the real instrument name,
@@ -105,7 +103,6 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     // data is written to file the first time
     metadata["instrument_name"] = mstate->get_instrument_name();
     metadata["weight_type"] = mstate->get_weight_type();
-    metadata["dataset_id"] = fmt::format("{:d}", idstate->get_id());
 
     std::string git_commit_hash_dataset = mstate->get_git_version_tag();
 
@@ -162,6 +159,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     gain.resize(chunk_t * chunk_f * num_input);
     frac_lost.resize(chunk_t * chunk_f);
     frac_rfi.resize(chunk_t * chunk_f);
+    dset_id.resize(chunk_t * chunk_f);
     input_flags.resize(chunk_t * num_input);
     std::fill(input_flags.begin(), input_flags.end(), 0.);
 
@@ -195,6 +193,9 @@ void visTranspose::main_thread() {
                     ds_id);
     }
 
+    // Get the original dataset ID (before adding time axis)
+    dset_id_t base_ds_id = base_dset(ds_id);
+
     // Once the async get_dataset_state() is done, we have all the metadata to
     // create a file.
 
@@ -223,9 +224,11 @@ void visTranspose::main_thread() {
         auto frame = visFrameView(in_buf, frame_id);
 
         if (frame.dataset_id != ds_id) {
-            FATAL_ERROR("Dataset ID of incoming frames changed from {:#x} to {:#x}. Changing  ID "
-                        "not supported, exiting...",
-                        ds_id, frame.dataset_id);
+            // TODO assuming that dataset ID changes here never change dataset dimensions
+            INFO("Dataset ID has changed from {:#x} to {:#x}. Getting base dataset ID from broker...",
+                 ds_id, frame.dataset_id);
+            ds_id = frame.dataset_id;
+            base_ds_id = base_dset(ds_id);
         }
 
         // Collect frames until a chunk is filled
@@ -246,6 +249,9 @@ void visTranspose::main_thread() {
         frac_rfi[offset + ti] =
             frame.fpga_seq_length == 0 ? 0. : float(frame.rfi_total) / frame.fpga_seq_length;
         strided_copy(frame.gain.data(), gain.data(), offset * num_input + ti, write_t, num_input);
+
+        // Store original dataset ID (before adding time axis)
+        dset_id[offset + ti] = base_ds_id;
 
         // Only copy flags if we haven't already
         if (!found_flags[ti]) {
@@ -315,6 +321,8 @@ void visTranspose::write() {
     file->write_block("flags/frac_rfi", f_ind, t_ind, write_f, write_t, frac_rfi.data());
 
     file->write_block("flags/inputs", f_ind, t_ind, write_f, write_t, input_flags.data());
+
+    file->write_block("flags/dataset_id", f_ind, t_ind, write_f, write_t, dset_id.data());
 }
 
 // increment between chunks
@@ -343,4 +351,12 @@ void visTranspose::increment_chunk() {
     // Determine size of next chunk
     write_f = f_edge ? num_freq - f_ind : chunk_f;
     write_t = t_edge ? num_time - t_ind : chunk_t;
+}
+
+dset_id_t visTranspose::base_dset(dset_id_t ds_id) {
+
+    datasetManager& dm = datasetManager::instance();
+
+    return dm.datasets().at(ds_id).base_dset();
+
 }
