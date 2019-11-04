@@ -261,22 +261,23 @@ void restClient::make_request(const std::string& path,
 
 void restClient::_copy_to_iovec(const void* src, size_t len_src, evbuffer_iovec* iovec,
                                 int* i_extends, size_t* i_vec, int n_extends) {
-    // If the iovec has enough space, copy all and be done.
-    if (len_src <= iovec[*i_extends].iov_len) {
-        std::memcpy(static_cast<char*>(iovec[*i_extends].iov_base) + *i_vec, src, len_src);
-        *i_vec += len_src;
-        return;
+    // If we have more data than fits in the iovec, copy as much as possible and continue
+    // with the next extension of the iovec.
+    while (len_src > iovec[*i_extends].iov_len) {
+        std::memcpy(static_cast<char*>(iovec[*i_extends].iov_base) + *i_vec, src,
+                    iovec[*i_extends].iov_len);
+        src = static_cast<const char*>(src) + iovec[*i_extends].iov_len;
+        len_src -= iovec[*i_extends].iov_len;
+        *i_vec = 0;
+        if (++(*i_extends) >= n_extends)
+            FATAL_ERROR_NON_OO(
+                "restClient::_copy_to_iovec: not enough iovec extends to copy data.");
     }
 
-    // ...otherwise copy as much and possible and continue recursively.
-    std::memcpy(static_cast<char*>(iovec[*i_extends].iov_base) + *i_vec, src,
-                iovec[*i_extends].iov_len);
-    src = static_cast<const char*>(src) + iovec[*i_extends].iov_len;
-    len_src -= iovec[*i_extends].iov_len;
-    *i_vec = 0;
-    if (++(*i_extends) >= n_extends)
-        FATAL_ERROR_NON_OO("restClient::_copy_to_iovec: not enough iovec extends to copy data.");
-    _copy_to_iovec(src, len_src, iovec, i_extends, i_vec, n_extends);
+    // If the iovec has enough space, copy all and be done.
+    std::memcpy(static_cast<char*>(iovec[*i_extends].iov_base) + *i_vec, src, len_src);
+    *i_vec += len_src;
+    return;
 }
 
 void restClient::_bev_req_readcb(struct bufferevent* bev, void* arg) {
