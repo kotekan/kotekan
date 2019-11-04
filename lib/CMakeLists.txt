@@ -1,4 +1,6 @@
-cmake_minimum_required( VERSION 2.8 )
+# There are no symbols in this entire library, and so it is created as an
+# INTERFACE library. If any symbols are ever added it will need to be turned
+# back into a standard CMake library
 project( kotekan_libs )
 
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
@@ -15,39 +17,39 @@ include_directories (${KOTEKAN_SOURCE_DIR}/lib/dpdk)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/version)
 include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
 
-add_library ( kotekan_libs "empty.c" )
+add_library ( kotekan_libs INTERFACE )
 
 add_subdirectory(core)
-target_link_libraries( kotekan_libs kotekan_core )
+target_link_libraries( kotekan_libs INTERFACE kotekan_core )
 
 add_subdirectory(metadata)
-target_link_libraries( kotekan_libs kotekan_metadata )
+target_link_libraries( kotekan_libs INTERFACE kotekan_metadata )
 
 add_subdirectory(utils)
-target_link_libraries( kotekan_libs kotekan_utils )
+target_link_libraries( kotekan_libs INTERFACE kotekan_utils )
 
 if (NUMA_FOUND)
-    target_link_libraries( kotekan_libs numa )
+    target_link_libraries( kotekan_libs INTERFACE numa )
 endif()
 
 ### SELF-REGISTERING BITS:
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    target_link_libraries( kotekan_libs -Wl,--whole-archive )
+    target_link_libraries( kotekan_libs INTERFACE -Wl,--whole-archive )
 endif ()
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries( kotekan_libs -Wl,-all_load )
+    target_link_libraries( kotekan_libs INTERFACE -Wl,-all_load )
 endif ()
 
 
 add_subdirectory(testing)
-target_link_libraries( kotekan_libs kotekan_testing )
+target_link_libraries( kotekan_libs INTERFACE kotekan_testing )
 
 add_subdirectory(stages)
-target_link_libraries( kotekan_libs kotekan_stages )
+target_link_libraries( kotekan_libs INTERFACE kotekan_stages )
 
 if (${USE_HCC})
     add_subdirectory(hcc)
-    target_link_libraries( kotekan_libs kotekan_hcc )
+    target_link_libraries( kotekan_libs INTERFACE kotekan_hcc )
 endif ()
 
 if (${USE_HSA} OR ${USE_OPENCL})
@@ -57,24 +59,24 @@ endif ()
 if (${USE_HSA})
     add_subdirectory(hsa)
     link_directories ( /opt/rocm/hsa/lib/ )
-    target_link_libraries( kotekan_libs kotekan_hsa kotekan_gpu )
-    target_link_libraries( kotekan_libs hsa-runtime64 )
+    target_link_libraries( kotekan_libs INTERFACE kotekan_hsa kotekan_gpu )
+    target_link_libraries( kotekan_libs INTERFACE hsa-runtime64 )
     include_directories ( /opt/rocm/hsa/include/ )
 endif ()
 
 if (${USE_OPENCL})
     add_subdirectory(opencl)
-    target_link_libraries( kotekan_libs kotekan_opencl kotekan_gpu )
-    target_link_libraries( kotekan_libs ${OpenCL_LIBRARY} )
+    target_link_libraries( kotekan_libs INTERFACE kotekan_opencl kotekan_gpu )
+    target_link_libraries( kotekan_libs INTERFACE ${OpenCL_LIBRARY} )
 endif ()
 
 if (${USE_DPDK})
     add_subdirectory(dpdk)
-    target_link_libraries( kotekan_libs kotekan_dpdk )
+    target_link_libraries( kotekan_libs INTERFACE kotekan_dpdk )
 endif ()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    target_link_libraries( kotekan_libs -Wl,--no-whole-archive )
+    target_link_libraries( kotekan_libs INTERFACE -Wl,--no-whole-archive )
 endif ()
 ### END SELF-REGISTERING BITS
 
@@ -82,21 +84,10 @@ endif ()
 if (${USE_HDF5})
   include_directories (${HDF5_INCLUDE_DIRS})
   include_directories (/kotekan/HighFive/include/)
-  target_link_libraries ( kotekan_libs ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )
+  target_link_libraries ( kotekan_libs INTERFACE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )
 endif ()
 
 add_subdirectory(version)
 
-# There are no symbols in this entire library,
-# the following lines prevent warnings on MacOS.
-# If someone ever adds symbols this library,
-# the lines below should be removed!
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    SET(CMAKE_C_ARCHIVE_CREATE   "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
-    SET(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
-    SET(CMAKE_C_ARCHIVE_FINISH   "")
-    SET(CMAKE_CXX_ARCHIVE_FINISH "")
-endif ()
-
-target_link_libraries( kotekan_libs kotekan_version )
+target_link_libraries( kotekan_libs INTERFACE kotekan_version )
 

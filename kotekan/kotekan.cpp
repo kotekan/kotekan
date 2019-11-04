@@ -57,7 +57,7 @@ using namespace kotekan;
 
 // Embedded script for converting the YAML config to json
 const std::string yaml_to_json = R"(
-import yaml, json, sys, os, subprocess
+import yaml, json, sys, os, subprocess, errno
 
 file_name = sys.argv[1]
 gps_server = ""
@@ -79,8 +79,9 @@ try:
     if response != "":
         sys.stderr.write("yamllint warnings/errors for: ")
         sys.stderr.write(str(response))
+# TODO: change to checking for OSError subtypes when Python 2 support is removed
 except OSError as e:
-    if e.errno == os.errno.ENOENT:
+    if e.errno == errno.ENOENT:
         sys.stderr.write("yamllint not installed, skipping pre-validation\n")
     else:
         sys.stderr.write("error with yamllint, skipping pre-validation\n")

@@ -1,4 +1,5 @@
-cmake_minimum_required (VERSION 2.8)
+# Set the version of CMake required for *all* CMake files in the project
+cmake_minimum_required (VERSION 3.0)
 project (KOTEKAN)
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 
