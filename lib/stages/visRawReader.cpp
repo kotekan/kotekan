@@ -311,10 +311,10 @@ void visRawReader::main_thread() {
             cur_dset_id = dset_id;
         } else if (dset_id != cur_dset_id) {
             if (!use_comet) {
-                FATAL_ERROR("Dataset ID of incoming frames changed from {:#x} to {:#x}. Changing  ID "
-                            "not supported without dataset broker, exiting...",
-                            _dataset_id, dset_id);
-
+                FATAL_ERROR(
+                    "Dataset ID of incoming frames changed from {:#x} to {:#x}. Changing  ID "
+                    "not supported without dataset broker, exiting...",
+                    _dataset_id, dset_id);
             }
             get_dataset_state(dset_id);
             cur_dset_id = dset_id;

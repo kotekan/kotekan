@@ -225,7 +225,8 @@ void visTranspose::main_thread() {
 
         if (frame.dataset_id != ds_id) {
             // TODO assuming that dataset ID changes here never change dataset dimensions
-            INFO("Dataset ID has changed from {:#x} to {:#x}. Getting base dataset ID from broker...",
+            INFO("Dataset ID has changed from {:#x} to {:#x}. Getting base dataset ID from "
+                 "broker...",
                  ds_id, frame.dataset_id);
             ds_id = frame.dataset_id;
             base_ds_id = base_dset(ds_id);
@@ -358,5 +359,4 @@ dset_id_t visTranspose::base_dset(dset_id_t ds_id) {
     datasetManager& dm = datasetManager::instance();
 
     return dm.datasets().at(ds_id).base_dset();
-
 }
