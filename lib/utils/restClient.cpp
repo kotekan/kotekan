@@ -285,7 +285,7 @@ void restClient::_bev_req_readcb(struct bufferevent* bev, void* arg) {
     if (!client)
         FATAL_ERROR_NON_OO("restClient: _bev_req_readcb got nullptr client");
 
-    // Sometimes libevent calls this cb just once when there are multiple requests in the
+    // libevent calls this cb just once when there are multiple requests in the
     // bufferevent pair. Read until we have all of them.
     size_t len_read;
     while (true) {
