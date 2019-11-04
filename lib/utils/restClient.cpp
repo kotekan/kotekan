@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <cstring>
 #include <event2/buffer.h>
 #include <event2/dns.h>
 #include <event2/event.h>
@@ -227,14 +228,50 @@ void restClient::make_request(const std::string& path,
         datadump.size(), path.size(), host.size(), retries, timeout, port, &request_done_cb,
     };
 
-    // and drop it in the socket bufferevent for the event thread
-    int ret = bufferevent_write(bev_req_write, &request, sizeof(restRequest));
-    ret |= bufferevent_write(bev_req_write, host.c_str(), request.host_len);
-    ret |= bufferevent_write(bev_req_write, path.c_str(), request.path_len);
+    // We have a struct and 3 strings to drop into the bufferevent.
+    // We only want the read callback to be called once we are done. That's why we use
+    // evbuffer_iovec to copy all our data in before committing that to the bufferevent.
+    struct evbuffer_iovec iovec[2];
+    size_t len_total = sizeof(restRequest) + request.host_len + request.path_len + request.data_len;
+    evbuffer* output_buf = bufferevent_get_output(bev_req_write);
+    int n_extends = evbuffer_reserve_space(output_buf, len_total, iovec, 2);
+    if (n_extends < 0)
+        FATAL_ERROR_NON_OO(
+            "restClient::make_request: unable to reserve memory (evbuffer_reserve_space).");
+
+    int i_extends = 0;
+    size_t i_vec = 0;
+    _copy_to_iovec(&request, sizeof(request), iovec, &i_extends, &i_vec, n_extends);
+    _copy_to_iovec(host.c_str(), request.host_len, iovec, &i_extends, &i_vec, n_extends);
+    _copy_to_iovec(path.c_str(), request.path_len, iovec, &i_extends, &i_vec, n_extends);
     if (request.data_len)
-        ret |= bufferevent_write(bev_req_write, datadump.c_str(), request.data_len);
-    if (ret)
-        FATAL_ERROR_NON_OO("restClient: Failure writing to socket bufferevent.");
+        _copy_to_iovec(datadump.c_str(), request.data_len, iovec, &i_extends, &i_vec, n_extends);
+
+    // make sure we don't commit too much
+    iovec[0].iov_len = len_total;
+
+    if (evbuffer_commit_space(output_buf, iovec, 1) < 0)
+        FATAL_ERROR_NON_OO("restClient::make_request: Failure in evbuffer_commit_space.");
+}
+
+void restClient::_copy_to_iovec(const void* src, size_t len_src, evbuffer_iovec* iovec,
+                                int* i_extends, size_t* i_vec, int n_extends) {
+    // If the iovec has enough space, copy all and be done.
+    if (len_src <= iovec[*i_extends].iov_len) {
+        std::memcpy(static_cast<char*>(iovec[*i_extends].iov_base) + *i_vec, src, len_src);
+        *i_vec += len_src;
+        return;
+    }
+
+    // ...otherwise copy as much and possible and continue recursively.
+    std::memcpy(static_cast<char*>(iovec[*i_extends].iov_base) + *i_vec, src,
+                iovec[*i_extends].iov_len);
+    src = static_cast<const char*>(src) + iovec[*i_extends].iov_len;
+    len_src -= iovec[*i_extends].iov_len;
+    *i_vec = 0;
+    if (++(*i_extends) >= n_extends)
+        FATAL_ERROR_NON_OO("restClient::_copy_to_iovec: not enough iovec extends to copy data.");
+    _copy_to_iovec(src, len_src, iovec, i_extends, i_vec, n_extends);
 }
 
 void restClient::_bev_req_readcb(struct bufferevent* bev, void* arg) {

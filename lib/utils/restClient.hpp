@@ -136,6 +136,10 @@ private:
     /// error callback for the bufferevent pair
     static void _bev_req_errcb(struct bufferevent* bev, short what, void* arg);
 
+    /// Helper function to copy data of any length into iovec structure.
+    static inline void _copy_to_iovec(const void* src, size_t len_src, evbuffer_iovec* iovec,
+                                      int* i_extends, size_t* i_vec, int n_extends);
+
     /// Main event thread handle
     std::thread _main_thread;
 
