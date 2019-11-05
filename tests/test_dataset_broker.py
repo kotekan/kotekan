@@ -10,6 +10,7 @@ import os.path
 import re
 import time
 import tempfile
+import shutil
 import signal
 
 from subprocess import call, Popen
@@ -20,22 +21,17 @@ consumer_path = "../build/tests/boost/dataset_broker_consumer"
 
 
 def test_produce_consume():
-    broker_path = [
-        "/usr/local/bin/comet",
-        os.path.join(os.path.expanduser("~"), ".local/bin/comet"),
-    ]
+    broker_path = shutil.which("comet")
     if (
         not os.path.isfile(producer_path)
         or not os.path.isfile(consumer_path)
         or not os.path.isfile(producer2_path)
     ):
         pytest.skip("Build with -DBOOST_TESTS=ON to activate this test")
-    if not os.path.isfile(broker_path[0]):
-        if not os.path.isfile(broker_path[1]):
-            pytest.skip("Make sure the dataset_broker is at {}".format(broker_path))
-        broker_path = broker_path[1]
-    else:
-        broker_path = broker_path[0]
+    if not broker_path:
+        pytest.skip(
+            "Make sure PYTHONPATH is set to where the comet dataset broker is installed."
+        )
 
     with tempfile.NamedTemporaryFile(mode="w") as f_out:
         # Start comet with a random port
