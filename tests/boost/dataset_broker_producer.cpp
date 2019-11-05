@@ -22,6 +22,9 @@ using json = nlohmann::json;
 using namespace std::string_literals;
 
 BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
+
+    // The randomly chosen port for the dataset broker is passed to this test as a command line
+    // argument.
     BOOST_CHECK(boost::unit_test::framework::master_test_suite().argc == 2);
     int broker_port = atoi(boost::unit_test::framework::master_test_suite().argv[1]);
     BOOST_CHECK(broker_port);
@@ -29,7 +32,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
     _global_log_level = 5;
     __enable_syslog = 0;
 
-    // We have to start the restServer here, because the datasetManager uses it.
+    // We have to start the restServer here, because the datasetManager uses it (for forced-update).
     kotekan::restServer::instance().start("127.0.0.1", 0);
 
     json json_config;
