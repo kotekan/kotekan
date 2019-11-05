@@ -241,6 +241,10 @@ void restClient::make_request(const std::string& path,
     evbuffer_iovec iovec[2];
     size_t len_total = sizeof(restRequest) + request.host_len + request.path_len + request.data_len;
     evbuffer* output_buf = bufferevent_get_output(bev_req_write);
+
+    // After we reserve space we have to make sure no other thread writes to the buffer before
+    // we commit. Therefore lock this critical section with a mutex.
+    std::lock_guard<std::mutex> lock_bev_buffer(_mtx_bev_buffer);
     int n_extends = evbuffer_reserve_space(output_buf, len_total, iovec, 2);
     if (n_extends < 0)
         FATAL_ERROR_NON_OO(

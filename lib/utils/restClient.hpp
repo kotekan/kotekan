@@ -163,6 +163,10 @@ private:
 
     /// Reading socket event to pass requests to the event thread
     struct bufferevent* bev_req_read;
+
+    /// Lock to protect writing to the bufferevent_pair's output buffer (the datasetManager does
+    /// this in threads for example).
+    std::mutex _mtx_bev_buffer;
 };
 
 #endif // RESTCLIENT_HPP
