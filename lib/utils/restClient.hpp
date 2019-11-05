@@ -29,6 +29,43 @@ using restReply = std::pair<bool, std::string>;
  * This class supports sending GET messages and POST messages with json data
  * using libevent and provides access to data from the reply of the server.
  *
+ * Implementation
+ * ==============
+ *
+ * There is an event loop running int the main_thread() that gets started by the constructor.
+ * The event thread is sending out requests, waits for results and calls the assigned callback
+ * functions. All this has to be done from the same thread that runs the event loop, which makes
+ * class more complicated than you would expect:
+ * The function `make_request` does not itself create the request, because it's usually called from
+ * another thread. To bring the request to the event loop thread, libevent's `bufferevent_pair` is
+ * used (see http://www.wangafu.net/~nickm/libevent-book/Ref6a_advanced_bufferevents.html).
+ * One side of the pair (`bev_req_write`) takes new requests in the form
+ *
+ * | struct restRequest | string host | string path | string json_data |
+ *
+ * The length of each string is in the `restRequest` struct. Writing all of this data to the
+ * bufferevent's output buffer has to be done atomically, so that the read callback
+ * (`_bev_req_readcb`) attached to the other side of the pair (`bew_req_read`) is not called more
+ * than once. To achieve this, a `evbuffer_iovec` is used to reserve the necessary space in the
+ * output buffer, then copying all data in and finally committing the written data once, which will
+ * trigger the read callback. The described sequence still has to be protected from concurrent
+ * access (`_mtx_bev_buffer`), because it fails if the buffer is written to between reserving and
+ * committing.
+ *
+ * The request is then finally made by the same thread that runs the event loop, in the
+ * read callback `_bev_req_readcb` attached to the reading side `bev_req_read` of the
+ * bufferevent pair. This is done by the following:
+ *
+ * - Create a connection base.
+ * - Make a new HTTP request. The external callback function as well as the connection base are
+ *   attached to the request in order to pass them to the internal callback function.
+ * - Write request data into the HTTP request output buffer.
+ * - Start the request.
+ *
+ * When the request is done, the internal callback function `http_request_done` is called.
+ * It calls the external callback that was initially given to `make_request` and hands the
+ * result of the request to it.
+ *
  * @author Rick Nitsche
  */
 class restClient {
