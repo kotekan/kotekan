@@ -232,11 +232,13 @@ void restClient::make_request(const std::string& path,
     restRequest request = {
         datadump.size(), path.size(), host.size(), retries, timeout, port, &request_done_cb,
     };
+    if (data.empty())
+        request.data_len = 0;
 
     // We have a struct and 3 strings to drop into the bufferevent.
     // We only want the read callback to be called once we are done. That's why we use
     // evbuffer_iovec to copy all our data in before committing that to the bufferevent.
-    struct evbuffer_iovec iovec[2];
+    evbuffer_iovec iovec[2];
     size_t len_total = sizeof(restRequest) + request.host_len + request.path_len + request.data_len;
     evbuffer* output_buf = bufferevent_get_output(bev_req_write);
     int n_extends = evbuffer_reserve_space(output_buf, len_total, iovec, 2);
