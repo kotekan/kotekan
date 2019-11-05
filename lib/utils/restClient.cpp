@@ -255,7 +255,7 @@ void restClient::make_request(const std::string& path,
         _copy_to_iovec(datadump.c_str(), request.data_len, iovec, &i_extends, &i_vec, n_extends);
 
     // make sure we don't commit too much
-    iovec[0].iov_len = len_total;
+    iovec[i_extends].iov_len = i_vec;
 
     if (evbuffer_commit_space(output_buf, iovec, i_extends + 1) < 0)
         FATAL_ERROR_NON_OO("restClient::make_request: Failure in evbuffer_commit_space.");
