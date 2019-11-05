@@ -12,7 +12,10 @@ from kotekan import runner
 from kotekan import visutil
 import time
 
-print(runner.__file__)
+# Skip if HDF5 support not built into kotekan
+if not runner.has_hdf5():
+    pytest.skip("HDF5 support not available.", allow_module_level=True)
+
 
 old_tmstp = time.time()
 old_tag = "gains{0}".format(int(old_tmstp))
