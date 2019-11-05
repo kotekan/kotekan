@@ -89,7 +89,7 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
         if (request->type == EVHTTP_REQ_POST) {
             connectionInstance conn(request);
             if (!server->json_callbacks.count(url)) {
-                DEBUG_NON_OO("restServer: Endpoint {:s} called, but not found", url);
+                DEBUG_NON_OO("restServer: POST Endpoint {:s} called, but not found", url);
                 conn.send_error("Not Found", HTTP_RESPONSE::NOT_FOUND);
                 return;
             }
@@ -125,7 +125,7 @@ void restServer::register_get_callback(string endpoint,
         }
         get_callbacks[endpoint] = callback;
     }
-    INFO_NON_OO("restServer: Adding REST endpoint: {:s}", endpoint);
+    INFO_NON_OO("restServer: Adding GET endpoint: {:s}", endpoint);
 }
 
 void restServer::register_post_callback(string endpoint,
@@ -142,7 +142,7 @@ void restServer::register_post_callback(string endpoint,
         }
         json_callbacks[endpoint] = callback;
     }
-    INFO_NON_OO("restServer: Adding REST endpoint: {:s}", endpoint);
+    INFO_NON_OO("restServer: Adding POST endpoint: {:s}", endpoint);
 }
 
 void restServer::remove_get_callback(string endpoint) {
