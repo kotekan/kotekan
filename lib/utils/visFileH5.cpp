@@ -41,8 +41,7 @@ REGISTER_VIS_FILE("hdf5fast", visFileH5Fast);
 
 visFileH5::visFileH5(const std::string& name, const kotekan::logLevel log_level,
                      const std::map<std::string, std::string>& metadata, dset_id_t dataset,
-                     size_t max_time)
-{
+                     size_t max_time) {
     set_log_level(log_level);
 
     auto& dm = datasetManager::instance();
@@ -95,8 +94,7 @@ visFileH5::visFileH5(const std::string& name, const kotekan::logLevel log_level,
     }
 }
 
-void visFileH5::deferred_init()
-{
+void visFileH5::deferred_init() {
     create_time_axis();
     create_datasets();
 }
@@ -290,11 +288,9 @@ void visFileH5::write_sample(uint32_t time_ind, uint32_t freq_ind, const visFram
 visFileH5Fast::visFileH5Fast(const std::string& name, const kotekan::logLevel log_level,
                              const std::map<std::string, std::string>& metadata, dset_id_t dataset,
                              size_t max_time) :
-    visFileH5(name, log_level, metadata, dataset, max_time)
-{ }
+    visFileH5(name, log_level, metadata, dataset, max_time) {}
 
-void visFileH5Fast::deferred_init()
-{
+void visFileH5Fast::deferred_init() {
     create_time_axis();
     create_datasets();
     setup_raw();

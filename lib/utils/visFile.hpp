@@ -86,13 +86,11 @@ public:
     virtual size_t num_time() = 0;
 
 protected:
-
     // Save the size for when we are outside of HDF5 space
     size_t nfreq, nprod, ninput, nev, ntime = 0;
 };
 
-CREATE_FACTORY(visFile,
-               const std::string& /*name*/, const kotekan::logLevel /*log_level*/,
+CREATE_FACTORY(visFile, const std::string& /*name*/, const kotekan::logLevel /*log_level*/,
                const std::map<std::string, std::string>& /*metadata*/, dset_id_t /*dataset*/,
                size_t /*max_time*/);
 
@@ -267,7 +265,8 @@ inline visFileBundle::visFileBundle(const std::string& type, const std::string& 
         metadata_acq["acquisition_name"] = acq_name;
 
         std::string abspath = root_path + '/' + acq_name + '/' + file_name;
-        //return visFile::create(type, abspath, std::forward<const kotekan::logLevel>(log_level), metadata_acq, std::forward<InitArgs>(args)...);
+        // return visFile::create(type, abspath, std::forward<const kotekan::logLevel>(log_level),
+        // metadata_acq, std::forward<InitArgs>(args)...);
         return visFile::create(type, abspath, log_level, metadata_acq, args...);
     };
 }

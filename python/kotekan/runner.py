@@ -701,15 +701,18 @@ def fix_strings(d):
 
     return d
 
+
 ## Quick tests for kotekan's builds
 def has_hdf5():
     """Is HDF5 support built in."""
-    return KotekanRunner.kotekan_config()['cmake_build_settings']["USE_HDF5"] == "ON"
+    return KotekanRunner.kotekan_config()["cmake_build_settings"]["USE_HDF5"] == "ON"
+
 
 def has_lapack():
     """Is LAPACK support built in."""
-    return KotekanRunner.kotekan_config()['cmake_build_settings']["USE_LAPACK"] == "ON"
+    return KotekanRunner.kotekan_config()["cmake_build_settings"]["USE_LAPACK"] == "ON"
+
 
 def has_openmp():
     """Is OpenMP support build in."""
-    return KotekanRunner.kotekan_config()['cmake_build_settings']["USE_OMP"] == "ON"
+    return KotekanRunner.kotekan_config()["cmake_build_settings"]["USE_OMP"] == "ON"

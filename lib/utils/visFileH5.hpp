@@ -34,7 +34,6 @@
 class visFileH5 : public visFile {
 
 public:
-
     /**
      * Create an HDF5 file.
      *
@@ -79,7 +78,6 @@ public:
 
 
 protected:
-
     // This method contains initialisation of the file, that is deferred until
     // the first write into it is performed.
     // NOTE: the reason for having this (rather than doing it during
@@ -140,7 +138,6 @@ protected:
 class visFileH5Fast : public visFileH5 {
 
 public:
-
     /**
      * Create an HDF5 file that uses faster IO.
      *
@@ -190,7 +187,6 @@ public:
     void deactivate_time(uint32_t time_ind) override;
 
 protected:
-
     // Override initialisation for the raw file
     void deferred_init() override;
 

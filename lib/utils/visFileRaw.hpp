@@ -103,7 +103,6 @@ public:
     void deactivate_time(uint32_t time_ind) override;
 
 protected:
-
     /**
      * @brief  Helper routine for writing data into the file
      *

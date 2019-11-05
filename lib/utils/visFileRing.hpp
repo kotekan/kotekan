@@ -25,7 +25,6 @@
 class visFileRing : public visFileRaw {
 
 public:
-
     /**
      * Create a ring output file.
      *

@@ -33,8 +33,7 @@ REGISTER_VIS_FILE("raw", visFileRaw);
 visFileRaw::visFileRaw(const std::string& name, const kotekan::logLevel log_level,
                        const std::map<std::string, std::string>& metadata, dset_id_t dataset,
                        size_t max_time, int oflags) :
-    _name(name)
-{
+    _name(name) {
     set_log_level(log_level);
 
     INFO("Creating new output file {:s}", name);

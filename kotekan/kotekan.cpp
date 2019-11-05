@@ -176,11 +176,12 @@ std::vector<std::string> split_string(const std::string& s, const std::string& d
 
     size_t start = 0;
 
-    while(start <= s.size()) {
+    while (start <= s.size()) {
         size_t end = s.find(delimiter, start);
 
         // If no match was found, then we should select to the end of the string
-        if (end == std::string::npos) end = s.size();
+        if (end == std::string::npos)
+            end = s.size();
 
         // If a match was found at the start then we shouldn't add anything
         if (end != start)
@@ -192,8 +193,7 @@ std::vector<std::string> split_string(const std::string& s, const std::string& d
     return tokens;
 }
 
-std::string trim(std::string& s)
-{
+std::string trim(std::string& s) {
     s.erase(0, s.find_first_not_of(' '));
     s.erase(s.find_last_not_of(' ') + 1);
     return s;
@@ -207,7 +207,7 @@ json parse_cmake_options() {
     for (auto opt : options) {
 
         // Trim off the indent from any nested options
-        if(opt[1] == '-') {
+        if (opt[1] == '-') {
             opt = opt.substr(2, opt.size() - 2);
         }
 
@@ -352,12 +352,17 @@ int main(int argc, char** argv) {
     __enable_syslog = 0;
 
     for (;;) {
-        static struct option long_options[] = {
-            {"config", required_argument, 0, 'c'}, {"bind-address", required_argument, 0, 'b'},
-            {"gps-time", no_argument, 0, 'g'},     {"gps-time-source", required_argument, 0, 't'},
-            {"help", no_argument, 0, 'h'},         {"syslog", no_argument, 0, 's'},
-            {"no-stderr", no_argument, 0, 'n'},    {"version", no_argument, 0, 'v'},
-            {"version-json", no_argument, 0, 'j'}, {"print-config", no_argument, 0, 'p'}, {0, 0, 0, 0}};
+        static struct option long_options[] = {{"config", required_argument, 0, 'c'},
+                                               {"bind-address", required_argument, 0, 'b'},
+                                               {"gps-time", no_argument, 0, 'g'},
+                                               {"gps-time-source", required_argument, 0, 't'},
+                                               {"help", no_argument, 0, 'h'},
+                                               {"syslog", no_argument, 0, 's'},
+                                               {"no-stderr", no_argument, 0, 'n'},
+                                               {"version", no_argument, 0, 'v'},
+                                               {"version-json", no_argument, 0, 'j'},
+                                               {"print-config", no_argument, 0, 'p'},
+                                               {0, 0, 0, 0}};
 
         int option_index = 0;
 
