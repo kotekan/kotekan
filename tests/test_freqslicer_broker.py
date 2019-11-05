@@ -1,12 +1,10 @@
 import pytest
-import numpy as np
 import os
-import re
 from subprocess import Popen
 import time
 import signal
 
-from kotekan import runner, visbuffer
+from kotekan import runner
 
 broker_path = "/usr/local/bin/comet"
 
