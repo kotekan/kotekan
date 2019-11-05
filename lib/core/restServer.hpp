@@ -232,7 +232,7 @@ public:
     void remove_all_aliases();
 
     /// The port to use
-    u_short port;
+    const u_short& port;
 
 private:
     /// Private constuctor
@@ -332,6 +332,9 @@ private:
 
     /// Bind address
     std::string bind_address;
+
+    /// The port to use
+    u_short _port;
 
     /// Main server thread handle
     std::thread main_thread;
