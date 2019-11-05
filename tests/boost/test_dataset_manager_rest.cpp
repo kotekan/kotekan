@@ -146,7 +146,7 @@ BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, TestContext) {
 
     // kotekan restServer endpoints defined above. Start with random free port.
     restServer::instance().start("127.0.0.1", 0);
-    usleep(2000);
+    usleep(10000);
     json_config["ds_broker_port"] = restServer::instance().port;
     std::cout << "Running RESTserver on port " << json_config["ds_broker_port"] << " for dM test."
               << std::endl;
