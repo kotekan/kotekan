@@ -220,7 +220,7 @@ void restClient::make_request(const std::string& path,
                               std::function<void(restReply)>& request_done_cb,
                               const nlohmann::json& data, const std::string& host,
                               const unsigned short port, const int retries, const int timeout) {
-    DEBUG_NON_OO("restClient::make_request(): {}:{}{} - {}", host, port, path, data.dump(4));
+    DEBUG_NON_OO("restClient::make_request(): {}:{}{}, data = {}", host, port, path, data.dump(4));
 
     if (!bev_req_write || !bev_req_read)
         FATAL_ERROR_NON_OO("restClient: make_request called, but bev_req_write is NULL.");
