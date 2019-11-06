@@ -105,7 +105,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     // data is written to file the first time
     metadata["instrument_name"] = mstate->get_instrument_name();
     metadata["weight_type"] = mstate->get_weight_type();
-    metadata["dataset_id"] = fmt::format("{:d}", idstate->get_id());
+    metadata["dataset_id"] = fmt::format("{}", idstate->get_id());
 
     std::string git_commit_hash_dataset = mstate->get_git_version_tag();
 
@@ -144,7 +144,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     // the dimension of the visibilities is different for stacked data
     eff_prod_dim = (stack.size() > 0) ? stack.size() : num_prod;
 
-    DEBUG("Dataset {:d} has {:d} times, {:d} frequencies, {:d} products", ds_id, num_time, num_freq,
+    DEBUG("Dataset {} has {:d} times, {:d} frequencies, {:d} products", ds_id, num_time, num_freq,
           eff_prod_dim);
 
     // Ensure chunk_size not too large

@@ -2,6 +2,7 @@
 
 #include "fmt.hpp"
 
+#include <inttypes.h>
 #include <iostream>
 #include <stdint.h>
 #include <stdio.h>
@@ -25,7 +26,7 @@ void Hash::set_from_string(const std::string& s) {
 
     // C++ doesn't provide any reasonable string parsing routines, need to use
     // some old school C ones instead.
-    int ret = sscanf(s.c_str(), "%016llx%016llx", &h, &l);
+    int ret = sscanf(s.c_str(), "%016" SCNx64 "%016" SCNx64, &h, &l);
     if (ret != 2) {
         throw std::invalid_argument(
             fmt::format("Could not parse \"{}\" as a 128-bit hash. Length != 32.", s));
