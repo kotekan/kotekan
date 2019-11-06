@@ -35,7 +35,7 @@ void to_json(json& j, const basebandDumpStatus& s);
  * using the @c register_with_server() function.
  *
  * This class is a singleton, and can be accessed with @c instance(). The normal
- * use is for the @c basebandReadout stage to call @get_next_request in a
+ * use is for the @c basebandReadout stage to call @c get_next_request in a
  * loop, and when the result is non-null, use the returned @c basebandDumpStatus
  * to keep track of the data written so far. Once the writing of the data file
  * is completed, the ``state`` of the request should be set to ``DONE``.
@@ -62,10 +62,15 @@ public:
     void register_with_server(restServer* rest_server);
 
     /**
-     * @brief The call back function for GET requests to `/baseband`.
+     * @brief The call back function for GET requests to `/baseband[?event_id=<event_id>]`
      *
      * The function sends over `conn` an HTTP response with the status of all
      * baseband dumps received since this instance started running.
+     *
+     * If the query option `?event_id=<event_id>` is provided in the URL then
+     * the function @c status_callback_single_event() is called to return
+     * just the information related to that single event_id.
+     * See @c status_callback_single_event() for details of the return message in that case.
      *
      * The response is a JSON dictionary, with keys of unique ids of the
      * baseband events. The key's value is the status of that baseband dump, and
@@ -91,7 +96,7 @@ public:
     void status_callback_all(connectionInstance& conn);
 
     /**
-     * @brief The call back function for GET requests to `/baseband/:event_id`.
+     * @brief Helper function for GET requests to `/baseband?event_id=<event_id>`.
      *
      * The function sends over `conn` an HTTP response with the status of a
      * specified baseband dump. The response is a JSON list, with an element for

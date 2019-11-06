@@ -24,7 +24,7 @@ void clRfiInputSum::rest_callback(connectionInstance& conn, json& json_request) 
     WARN("RFI Input Sum Callback Received... Changing Parameters")
     // Update parameters
     _num_bad_inputs = json_request["num_bad_inputs"].get<int>();
-    WARN("RFI Input Sum Callback, num_bad_inputs %d", _num_bad_inputs)
+    WARN("RFI Input Sum Callback, num_bad_inputs {:d}", _num_bad_inputs)
     // Re-calculat integration length
     _M = (_num_elements - _num_bad_inputs) * _sk_step;
     // Set new kernel args
@@ -43,7 +43,7 @@ void clRfiInputSum::build(device_interface& param_Device) {
     _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
     _num_bad_inputs = config.get<std::vector<uint32_t>>(unique_name, "bad_inputs").size();
     _use_local_sum = config.get_default<bool>(unique_name, "local_sum", true);
-    DEBUG("Number of bad inputs computed: %d", _num_bad_inputs);
+    DEBUG("Number of bad inputs computed: {:d}", _num_bad_inputs);
     // Calculate integration length
     _M = (_num_elements - _num_bad_inputs) * _sk_step;
 

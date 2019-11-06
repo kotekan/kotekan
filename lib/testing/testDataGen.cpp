@@ -27,13 +27,11 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&testDataGen::main_thread, this)) {
 
-    buf = get_buffer("network_out_buf");
+    buf = get_buffer("out_buf");
     register_producer(buf, unique_name.c_str());
     type = config.get<std::string>(unique_name, "type");
     assert(type == "const" || type == "random" || type == "ramp" || type == "tpluse");
-    if (type == "const")
-        value = config.get<int>(unique_name, "value");
-    if (type == "ramp")
+    if (type == "const" || type == "random" || type == "ramp")
         value = config.get<int>(unique_name, "value");
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
 
@@ -118,7 +116,8 @@ void testDataGen::main_thread() {
         // std::random_device rd;
         // std::mt19937 gen(rd());
         // std::uniform_int_distribution<> dis(0, 255);
-        srand(42);
+        if (type == "random")
+            srand(value);
         unsigned char temp_output;
         int num_elements = buf->frame_size / sizeof(uint8_t) / samples_per_data_set;
         for (uint j = 0; j < buf->frame_size / sizeof(uint8_t); ++j) {
@@ -140,13 +139,14 @@ void testDataGen::main_thread() {
                 frame[j] = seq_num + j / num_elements + j % num_elements;
             }
         }
-        DEBUG("Generated a %s test data set in %s[%d]", type.c_str(), buf->buffer_name, frame_id);
+        DEBUG("Generated a {:s} test data set in {:s}[{:d}]", type, buf->buffer_name, frame_id);
 
         mark_frame_full(buf, unique_name.c_str(), frame_id);
 
         frame_id_abs += 1;
         if (num_frames >= 0 && frame_id_abs >= num_frames) {
-            std::raise(SIGINT);
+            INFO("Frame ID greater than the no. of frames");
+            exit_kotekan(ReturnCode::CLEAN_EXIT);
             break;
         };
         frame_id = frame_id_abs % buf->num_frames;

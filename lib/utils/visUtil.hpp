@@ -23,6 +23,7 @@
 #include <string>
 #include <sys/time.h>
 #include <time.h>
+#include <type_traits>
 #include <vector>
 
 using json = nlohmann::json;
@@ -349,6 +350,21 @@ inline double current_time() {
     return ts_to_double(ts);
 }
 
+/**
+ * @brief Calculate the size of GPU packed data.
+ *
+ * @note This is the length of a *single* frequency.
+ *
+ * @param  N      The number of elements.
+ * @param  block  The size of a block.
+ * @return        The size of the packd GPU data.
+ **/
+inline constexpr uint32_t gpu_N2_size(uint32_t N, uint32_t block) {
+    const auto num_blocks1 = ((N - 1) / block) + 1;               // Blocks per side
+    const auto num_blocks2 = num_blocks1 * (num_blocks1 + 1) / 2; // ... triangle
+    return (num_blocks2 * block * block);                         // Total size
+}
+
 
 /**
  * @brief Copy the visibility triangle into a contiguous array.
@@ -442,13 +458,13 @@ struct_layout<T> struct_alignment(std::vector<std::tuple<T, size_t, size_t>> mem
 
 
 /**
- * @brief Calculate the norm of a complex number (i.e. |z|^2).
+ * @brief Calculate the norm of a complex number (i.e. |x|^2).
  *
  * In theory std::norm should do this, but the version in libstdc++ is super
  * slow.
  *
- * @param z  Number to find the norm of.
- * @returns  Norm of z.
+ * @param x  Number to find the norm of.
+ * @returns  Norm of x.
  **/
 template<typename T>
 inline T fast_norm(const T& x) {
@@ -630,23 +646,30 @@ public:
         return t;
     }
 
-    modulo<T>& operator+=(const T& rhs) {
+    template<typename V, typename std::enable_if_t<std::is_integral<V>::value>* = nullptr>
+    modulo<T>& operator+=(const V& rhs) {
         _i += rhs;
         return *this;
     }
-    modulo<T>& operator-=(const T& rhs) {
+
+    template<typename V, typename std::enable_if_t<std::is_integral<V>::value>* = nullptr>
+    modulo<T>& operator-=(const V& rhs) {
         _i -= rhs;
         return *this;
     }
 
     // Add and subtract are *asymmetric*. Must be always be modulo<T> +/- T
-    friend modulo<T> operator+(modulo<T> lhs, const T& rhs) {
-        lhs += rhs;
-        return lhs;
+    template<typename V, typename std::enable_if_t<std::is_integral<V>::value>* = nullptr>
+    friend modulo<T> operator+(modulo<T> lhs, const V& rhs) {
+        modulo<T> t(lhs);
+        t += rhs;
+        return t;
     }
-    friend modulo<T> operator-(modulo<T> lhs, const T& rhs) {
-        lhs -= rhs;
-        return lhs;
+    template<typename V, typename std::enable_if_t<std::is_integral<V>::value>* = nullptr>
+    friend modulo<T> operator-(modulo<T> lhs, const V& rhs) {
+        modulo<T> t(lhs);
+        t -= rhs;
+        return t;
     }
 
     // Comparisons are always false if the bases don't match
@@ -707,11 +730,23 @@ public:
     /**
      * @brief Create a frameID for a given buffer.
      *
-     * @param Buffer to use.
+     * @param buf   Buffer to use.
      * @returns frameID instance.
      **/
     frameID(const Buffer* buf) : modulo<int>(buf->num_frames) {}
 };
+
+/**
+ *@brief FMT formatter that casts frameIDs to int so that `format("{:d}", frame_id)` works.
+ */
+namespace fmt {
+template<>
+struct formatter<frameID> : formatter<int> {
+    auto format(const frameID id, format_context& ctx) {
+        return formatter<int>::format((int)id, ctx);
+    }
+};
+} // namespace fmt
 
 
 #endif

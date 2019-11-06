@@ -69,10 +69,10 @@ beamform_output_buffers:
         num_frames: buffer_depth
 
 gen_data:
-    type: random #const
-    value: 153
-    kotekan_stage: testDataGen
-    network_out_buf: gpu_input_buffer
+  type: random #const
+  value: 153
+  kotekan_stage: testDataGen
+  out_buf: gpu_input_buffer
 
 data_format: dot4b
 #data_format: "4+4b"

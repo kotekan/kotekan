@@ -45,6 +45,8 @@ private:
     Buffer* _rfi_output_buf;
     /// ID for _network_buf
     int32_t _network_buf_id;
+
+    int32_t _network_buf_precondition_id;
     /// ID for _rfi_output_buf
     int32_t _rfi_output_buf_id;
     /// ID for _rfi_output_buf_precondition

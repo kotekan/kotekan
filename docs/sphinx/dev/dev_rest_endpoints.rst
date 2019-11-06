@@ -75,14 +75,14 @@ Shared Endpoints
 *****************
 If several stages need to share one endpoint, the endpoint can be created by the `configUpdater`.
 
-.. doxygenclass:: configUpdater
+.. doxygenclass:: kotekan::configUpdater
 
 Aliases
 **************
 To make things easier to access, it is possible to define aliases to endpoints in
 the config under ``the aliases:`` block in the ``rest_server`` block:
 
-.. code-block:: json-object
+.. code-block:: YAML
 
     rest_server:
         aliases:
@@ -98,7 +98,7 @@ The CPU affinity defaults to the global ``cpu_affinity:`` property
 
 To override that and pin it to say cores 3,4:
 
-.. code-block:: json-object
+.. code-block:: YAML
 
     rest_server:
         cpu_affinity: [3,4]

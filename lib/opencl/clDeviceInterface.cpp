@@ -14,12 +14,12 @@ clDeviceInterface::clDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_b
 
     // Get a platform.
     CHECK_CL_ERROR(clGetPlatformIDs(1, &platform_id, NULL));
-    INFO("GPU Id %i", gpu_id);
+    INFO("GPU Id {:d}", gpu_id);
 
     // Find out how many GPUs can be probed.
     cl_uint max_num_gpus;
     CHECK_CL_ERROR(clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 0, NULL, &max_num_gpus));
-    INFO("Maximum number of GPUs: %d", max_num_gpus);
+    INFO("Maximum number of GPUs: {:d}", max_num_gpus);
 
     // Find a GPU device..
     cl_device_id device_ids[max_num_gpus];

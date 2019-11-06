@@ -63,8 +63,9 @@ public:
 
 protected:
     // Implement the create file method
-    void create_file(const std::string& name, const std::map<std::string, std::string>& metadata,
-                     dset_id_t dataset, size_t max_time) override;
+    void create_file(const std::string& name, const kotekan::logLevel log_level,
+                     const std::map<std::string, std::string>& metadata, dset_id_t dataset,
+                     size_t max_time) override;
 
     // Create the time axis (separated for overloading)
     virtual void create_time_axis(size_t num_time);
@@ -150,8 +151,9 @@ public:
 
 protected:
     // Reimplement the create file method
-    void create_file(const std::string& name, const std::map<std::string, std::string>& metadata,
-                     dset_id_t dataset, size_t max_time) override;
+    void create_file(const std::string& name, const kotekan::logLevel log_level,
+                     const std::map<std::string, std::string>& metadata, dset_id_t dataset,
+                     size_t max_time) override;
 
     // Create the time axis (separated for overloading)
     void create_time_axis(size_t num_time) override;

@@ -11,6 +11,7 @@ constDataCheck::constDataCheck(kotekan::Config& config, const string& unique_nam
     register_consumer(buf, unique_name.c_str());
     ref_real = config.get<std::vector<int32_t>>(unique_name, "real");
     ref_imag = config.get<std::vector<int32_t>>(unique_name, "imag");
+    num_frames_to_test = config.get_default<int32_t>(unique_name, "num_frames_to_test", 0);
 }
 
 constDataCheck::~constDataCheck() {}
@@ -29,7 +30,7 @@ void constDataCheck::main_thread() {
         if (frame == NULL)
             break;
 
-        DEBUG("constDataCheck: Got buffer %s[%d]", buf->buffer_name, frame_id);
+        DEBUG("constDataCheck: Got buffer {:s}[{:d}]", buf->buffer_name, frame_id);
 
         bool error = false;
         num_errors = 0;
@@ -43,19 +44,22 @@ void constDataCheck::main_thread() {
 
             if (real != rfr || imag != rfi) {
                 if (num_errors++ < 1000)
-                    ERROR("%s[%d][%d] != %d + %di; actual value: %d + %di", buf->buffer_name,
-                          frame_id, i / 2, rfr, rfi, real, imag);
+                    FATAL_ERROR("{:s}[{:d}][{:d}] != {:d} + {:d}i; actual value: {:d} + {:d}i",
+                                buf->buffer_name, frame_id, i / 2, rfr, rfi, real, imag);
                 error = true;
             }
         }
 
         if (!error)
-            INFO("The buffer %s[%d] passed all checks; contains all (%d + %di)", buf->buffer_name,
-                 frame_id, rfr, rfi);
+            INFO("The buffer {:s}[{:d}] passed all checks; contains all ({:d} + {:d}i)",
+                 buf->buffer_name, frame_id, rfr, rfi);
         //                    ref_real, ref_imag);
 
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
         frame_id = (frame_id + 1) % buf->num_frames;
         framect++;
+
+        if (num_frames_to_test == framect)
+            TEST_PASSED();
     }
 }

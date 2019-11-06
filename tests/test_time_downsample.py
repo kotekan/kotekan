@@ -1,19 +1,25 @@
+# === Start Python 2/3 compatibility
+from __future__ import absolute_import, division, print_function, unicode_literals
+from future.builtins import *  # noqa  pylint: disable=W0401, W0614
+from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
+
+# === End Python 2/3 compatibility
+
 import pytest
 import numpy as np
 
 from kotekan import runner
 
 downsamp_params = {
-    'num_elements': 4,
-    'num_ev': 4,
-    'num_samples': 2,
-    'total_frames': 11,
-    'fakevis_mode': 'fill_ij',
-    'cadence': 2.,
-    'dataset_manager': {
-        'use_dataset_broker': False
-    },
+    "num_elements": 4,
+    "num_ev": 4,
+    "num_samples": 2,
+    "total_frames": 11,
+    "fakevis_mode": "fill_ij_missing",
+    "cadence": 2.0,
+    "dataset_manager": {"use_dataset_broker": False},
 }
+
 
 @pytest.fixture(scope="module")
 def vis_data(tmpdir_factory):
@@ -23,14 +29,15 @@ def vis_data(tmpdir_factory):
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
     test = runner.KotekanStageTester(
-        'timeDownsample', downsamp_params,
+        "timeDownsample",
+        downsamp_params,
         runner.FakeVisBuffer(
-            num_frames=downsamp_params['total_frames'],
-            mode=downsamp_params['fakevis_mode'],
-            cadence=downsamp_params['cadence']
+            num_frames=downsamp_params["total_frames"],
+            mode=downsamp_params["fakevis_mode"],
+            cadence=downsamp_params["cadence"],
         ),
         dump_buffer,
-        downsamp_params
+        downsamp_params,
     )
 
     test.run()
@@ -40,48 +47,52 @@ def vis_data(tmpdir_factory):
 
 def test_structure(vis_data):
 
-    n = downsamp_params['num_elements']
+    n = downsamp_params["num_elements"]
 
     # Check that each samples is the expected shape
     for frame in vis_data:
         assert frame.metadata.num_elements == n
-        assert frame.metadata.num_prod == (n * (n + 1) / 2)
-        assert (frame.metadata.num_ev == downsamp_params['num_ev'])
+        assert frame.metadata.num_prod == (n * (n + 1) // 2)
+        assert frame.metadata.num_ev == downsamp_params["num_ev"]
 
     # Check that we have the expected number of samples
-    nsamp = downsamp_params['total_frames'] / downsamp_params['num_samples']
+    nsamp = downsamp_params["total_frames"] // downsamp_params["num_samples"]
     assert len(vis_data) == nsamp
 
 
 def test_metadata(vis_data):
 
-    input_frame_length = int(800e6 / 2048 * downsamp_params['cadence'])
-    frame_length = input_frame_length * downsamp_params['num_samples']
+    input_frame_length = int(800e6 / 2048 * downsamp_params["cadence"])
+    frame_length = input_frame_length * downsamp_params["num_samples"]
+    frame_total = (input_frame_length - 2) * downsamp_params["num_samples"]
+    rfi_total = downsamp_params["num_samples"]
 
     for frame in vis_data:
         assert frame.metadata.freq_id == 0
         assert frame.metadata.fpga_length == frame_length
-        assert frame.metadata.fpga_total == frame_length
+        assert frame.metadata.fpga_total == frame_total
+        assert frame.metadata.rfi_total == rfi_total
 
 
 def test_time(vis_data):
-
     def timespec_to_float(ts):
         return ts.tv + ts.tv_nsec * 1e-9
 
-    ctime = np.array([ timespec_to_float(v.metadata.ctime) for v in vis_data ])
+    ctime = np.array([timespec_to_float(v.metadata.ctime) for v in vis_data])
 
     # Check downsampled cadence
-    assert np.all(np.diff(ctime) == downsamp_params['cadence'] * downsamp_params['num_samples'])
+    assert np.all(
+        np.diff(ctime) == downsamp_params["cadence"] * downsamp_params["num_samples"]
+    )
 
 
 def test_contents(vis_data):
 
-    n = downsamp_params['num_elements']
-    n_ev = downsamp_params['num_ev']
+    n = downsamp_params["num_elements"]
+    n_ev = downsamp_params["num_ev"]
 
     # Reproduce expected fakeVis output
-    model_vis = np.zeros(n * (n+1) / 2, dtype=np.complex64)
+    model_vis = np.zeros(n * (n + 1) // 2, dtype=np.complex64)
     ind = 0
     for i in range(n):
         for j in range(i, n):
@@ -99,8 +110,8 @@ def test_contents(vis_data):
         assert np.all(frame.vis == model_vis)
         assert np.all(frame.evec == model_evec)
         assert np.all(frame.eval == model_eval)
-        assert frame.erms == 1.
+        assert frame.erms == 1.0
 
     # weights get an extra factor of nsamp
     for frame in vis_data:
-        assert np.all(frame.weight == downsamp_params['num_samples'])
+        assert np.all(frame.weight == downsamp_params["num_samples"])

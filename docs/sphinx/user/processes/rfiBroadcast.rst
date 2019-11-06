@@ -1,0 +1,5 @@
+*****************
+rfiBroadcast
+*****************
+
+.. doxygenclass:: rfiBroadcast

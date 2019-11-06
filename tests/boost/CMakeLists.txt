@@ -4,22 +4,25 @@ project( kotekan_boost_tests )
 find_package(Boost COMPONENTS unit_test_framework REQUIRED)
 include_directories (${Boost_INCLUDE_DIRS} $BOOST_TESTS_DIR)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/utils)
-include_directories (${KOTEKAN_SOURCE_DIR}/lib/processes)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/stages)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/core)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/metadata)
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
 set ( KOTEKAN_BOOST_TEST_SOURCES
+      test_bip_buffer.cpp
       test_dataset_manager.cpp
       # TODO: disabled until we can fix the Libevent issues
       #test_dataset_manager_rest.cpp
       test_updatequeue.cpp
       test_truncate.cpp
-      test_restclient.cpp
+      # TODO: disabled until we can fix the Libevent issues
+      #test_restclient.cpp
       test_chime_stacking.cpp
       test_config.cpp
       test_prometheus_metrics.cpp
+      test_synchronized_queue.cpp
     )
 
 # source files for broker test

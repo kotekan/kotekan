@@ -8,11 +8,12 @@ project.
 
 Naming
 ^^^^^^^^^^
-- Type names in kotekan should be nouns, use *CamelCase* formatting and begin
+- Type names in kotekan should be nouns, use *PascalCase* formatting and begin
   with a capital letter, e.g. ``MyFavouriteStage``. This includes classes,
   enums, structs and typedefs.
-- With the exception of class constructors & destructors, function names should
-  use underscore notation and begin with a lower case letter, e.g. ``my_func``.
+- With the exception of class constructors & destructors, names of class members
+  and standalone functions should use underscore notation and begin with a lower
+  case letter, e.g. ``my_func``.
 
 Variables
 ^^^^^^^^^^
@@ -35,8 +36,13 @@ Namespaces
 
 Header files
 ^^^^^^^^^^^^^
+
 C++ header files should be named after the class they describe and use the
-ending `.hpp`. They should begin with a header file commit like
+ending ``.hpp``, i.e., ``MyClass.hpp``. If the file contains mainly standalone
+functions with maybe a grab bag of useful small/utility classes, name it using
+``snake_case``, for example: ``networking_functions.hpp``.
+
+Header files should begin with a header file commit like
 
 .. code-block:: c++
 
@@ -147,7 +153,15 @@ file <https://github.com/kotekan/kotekan/blob/master/.clang-format>`_.
 
 
 Disabling Code Formatting
- ^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
 If you write a piece of code that you want to be excluded from auto-formatting,
 you can prepend ``// clang-format off`` or ``/* clang-format off */`` and append
 ``// clang-format on`` or ``/* clang-format on */``.
+
+Python Code Formatting
+----------------------
+
+All python code in this project should be formatted accoring to the `black code style
+<https://black.readthedocs.io/en/stable/the_black_code_style.html>_`. You can let black take care
+of that using `black --exclude docs kotekan/root/dir` before you commit python code.

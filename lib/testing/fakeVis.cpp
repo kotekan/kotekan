@@ -48,6 +48,7 @@ fakeVis::fakeVis(Config& config, const string& unique_name, bufferContainer& buf
     num_elements = config.get<size_t>(unique_name, "num_elements");
     block_size = config.get<size_t>(unique_name, "block_size");
     num_eigenvectors = config.get<size_t>(unique_name, "num_ev");
+    sleep_time = config.get_default<float>(unique_name, "sleep_time", 2.0);
 
     // Get the output buffer
     std::string buffer_name = config.get<std::string>(unique_name, "out_buf");
@@ -69,6 +70,7 @@ fakeVis::fakeVis(Config& config, const string& unique_name, bufferContainer& buf
     // Get fill type
     fill_map["default"] = std::bind(&fakeVis::fill_mode_default, this, _1);
     fill_map["fill_ij"] = std::bind(&fakeVis::fill_mode_fill_ij, this, _1);
+    fill_map["fill_ij_missing"] = std::bind(&fakeVis::fill_mode_fill_ij_missing, this, _1);
     fill_map["phase_ij"] = std::bind(&fakeVis::fill_mode_phase_ij, this, _1);
     fill_map["chime"] = std::bind(&fakeVis::fill_mode_chime, this, _1);
     fill_map["test_pattern_simple"] = std::bind(&fakeVis::fill_mode_test_pattern_simple, this, _1);
@@ -80,7 +82,7 @@ fakeVis::fakeVis(Config& config, const string& unique_name, bufferContainer& buf
     if (fill_map.count(mode) == 0) {
         throw std::invalid_argument("unknown fill type " + mode);
     }
-    INFO("Using fill type: %s", mode.c_str());
+    INFO("Using fill type: {:s}", mode);
     fill = fill_map.at(mode);
 
     // Get timing and frame params
@@ -125,8 +127,9 @@ fakeVis::fakeVis(Config& config, const string& unique_name, bufferContainer& buf
             else
                 test_pattern_value[i] = bin_values.at(j) * std::conj(bin_values.at(j));
         }
-        DEBUG("Using test pattern mode %s with default value %f+%fj and %d frequency values",
-              mode.c_str(), default_val.real(), default_val.imag(), bins.size());
+        DEBUG(
+            "Using test pattern mode {:s} with default value {:f}+{:f}j and {:d} frequency values",
+            mode, default_val.real(), default_val.imag(), bins.size());
     } else if (mode == "test_pattern_inputs") {
         std::vector<cfloat> input_values =
             config.get<std::vector<cfloat>>(unique_name, "input_values");
@@ -146,7 +149,7 @@ fakeVis::fakeVis(Config& config, const string& unique_name, bufferContainer& buf
                 ind++;
             }
         }
-        DEBUG("Using test pattern mode %s with %d input values", mode.c_str(), input_values.size());
+        DEBUG("Using test pattern mode {:s} with {:d} input values", mode, input_values.size());
     }
 }
 
@@ -181,7 +184,7 @@ void fakeVis::main_thread() {
 
         std::vector<input_ctype> ispec;
         for (uint32_t i = 0; i < num_elements; i++)
-            ispec.emplace_back((uint32_t)i, fmt::format("dm_input_{}", i));
+            ispec.emplace_back((uint32_t)i, fmt::format(fmt("dm_input_{:d}"), i));
         auto istate = std::make_unique<inputState>(ispec, std::move(fstate));
 
         std::vector<prod_ctype> pspec;
@@ -203,7 +206,7 @@ void fakeVis::main_thread() {
 
         for (auto f : freq) {
 
-            DEBUG("Making fake visBuffer for freq=%i, fpga_seq=%i", f, fpga_seq);
+            DEBUG("Making fake visBuffer for freq={:d}, fpga_seq={:d}", f, fpga_seq);
 
             // Wait for the buffer frame to be free
             if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
@@ -252,8 +255,11 @@ void fakeVis::main_thread() {
 
         // Cause kotekan to exit if we've hit the maximum number of frames
         if (num_frames > 0 && frame_count >= (unsigned)num_frames) {
-            INFO("Reached frame limit [%i frames]. Exiting kotekan...", num_frames);
-            std::raise(SIGINT);
+            INFO("Reached frame limit [{:d} frames]. Sleeping and then exiting kotekan...",
+                 num_frames);
+            timespec ts = double_to_ts(sleep_time);
+            nanosleep(&ts, nullptr);
+            exit_kotekan(ReturnCode::CLEAN_EXIT);
             return;
         }
 
@@ -277,11 +283,9 @@ void fakeVis::fill_mode_default(visFrameView& frame) {
     }
     // Save metadata in first few cells
     if (out_vis.size() < 3) {
-        ERROR("Number of elements (%d) is too small to encode the 3 debugging"
-              " values of fill-mode 'default' in fake visibilities."
-              "\nExiting...",
-              num_elements);
-        raise(SIGINT);
+        FATAL_ERROR("Number of elements ({:d}) is too small to encode the 3 debugging values of "
+                    "fill-mode 'default' in fake visibilities.\nExiting...",
+                    num_elements);
     } else {
         // For simplicity overwrite diagonal if needed
         out_vis[0] = {(float)std::get<0>(frame.time), 0.0};
@@ -301,6 +305,12 @@ void fakeVis::fill_mode_fill_ij(visFrameView& frame) {
         }
     }
     fill_non_vis(frame);
+}
+
+void fakeVis::fill_mode_fill_ij_missing(visFrameView& frame) {
+    fill_mode_fill_ij(frame);
+    frame.fpga_seq_total = frame.fpga_seq_length - 2;
+    frame.rfi_total = 1;
 }
 
 void fakeVis::fill_mode_phase_ij(visFrameView& frame) {

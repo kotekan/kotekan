@@ -63,10 +63,23 @@ public:
     virtual ~hsaRfiInputSum();
     /// Rest server callback
     void rest_callback(kotekan::connectionInstance& conn, json& json_request);
+
+    int wait_on_precondition(int gpu_frame_id) override;
+
     /// Executes rfi_chime_inputsum.hsaco kernel. Allocates kernel variables.
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
+    void finalize_frame(int frame_id) override;
+
 private:
+    /// Main data input, used for metadata access
+    Buffer* _network_buf;
+
+    /// IDs for _network_buf
+    int32_t _network_buf_finalize_id;
+    int32_t _network_buf_execute_id;
+    int32_t _network_buf_precondition_id;
+
     /// Length of the input frame, should be sizeof_float x n_elem x n_freq x nsamp / sk_step
     uint32_t input_frame_len;
     /// Length of the input frame, should be sizeof_float x n_freq x nsamp / sk_step
@@ -77,8 +90,6 @@ private:
     uint32_t output_mask_len;
     /// Length of lost sample correction frame
     uint32_t correction_frame_len;
-    /// Array to hold the input mask (which inputs are currently functioning)
-    uint8_t* input_mask;
     /// Number of elements (2048 for CHIME or 256 for Pathfinder)
     uint32_t _num_elements;
     /// Number of frequencies per GPU (1 for CHIME or 8 for Pathfinder)
@@ -87,20 +98,8 @@ private:
     uint32_t _samples_per_data_set;
     /// Integration length of spectral kurtosis estimate in time
     uint32_t _sk_step;
-    /// The total number of faulty inputs
-    uint32_t _num_bad_inputs;
     /// The number of standard deviations in SK which constitute RFI
     uint32_t _rfi_sigma_cut;
-    /// Vector to hold a list of inputs which are currently malfunctioning
-    vector<int32_t> _bad_inputs;
-    /// Boolean to hold whether or not the current kernel execution is the first or not.
-    bool rebuild_input_mask;
-    /// Rest server callback mutex
-    std::mutex rest_callback_mutex;
-    /// Sring to hold endpoint name
-    string endpoint;
-    /// Config base (@TODO this is a huge hack replace with updatable config)
-    string config_base;
 };
 
 #endif

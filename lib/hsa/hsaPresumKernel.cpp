@@ -1,5 +1,7 @@
 #include "hsaPresumKernel.hpp"
 
+#include "fmt.hpp"
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 
@@ -19,7 +21,7 @@ hsaPresumKernel::hsaPresumKernel(Config& config, const string& unique_name,
 
     // pre-allocate GPU memory
     device.get_gpu_memory_array("input", 0, input_frame_len);
-    device.get_gpu_memory_array("presum_" + std::to_string(_sub_frame_index), 0, presum_len);
+    device.get_gpu_memory_array(fmt::format(fmt("presum_{:d}"), _sub_frame_index), 0, presum_len);
 }
 
 hsaPresumKernel::~hsaPresumKernel() {}
@@ -45,8 +47,8 @@ hsa_signal_t hsaPresumKernel::execute(int gpu_frame_id, hsa_signal_t precede_sig
                 + _num_elements * _num_local_freq * _sub_frame_samples * _sub_frame_index);
     args.mystery = NULL;
     args.constant = _num_elements / 4; // global_x size
-    args.presum_buffer = device.get_gpu_memory_array("presum_" + std::to_string(_sub_frame_index),
-                                                     gpu_frame_id, presum_len);
+    args.presum_buffer = device.get_gpu_memory_array(
+        fmt::format(fmt("presum_{:d}"), _sub_frame_index), gpu_frame_id, presum_len);
 
     // Copy kernel args into correct location for GPU
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));

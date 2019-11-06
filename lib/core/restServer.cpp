@@ -1,7 +1,11 @@
 #include "restServer.hpp"
 
 #include "errors.h"
+#include "kotekanLogging.hpp"
 
+#include "fmt.hpp"
+
+#include <event2/keyvalq_struct.h>
 #include <pthread.h>
 #include <sched.h>
 #include <signal.h>
@@ -31,8 +35,8 @@ restServer::~restServer() {
     try {
         main_thread.join();
     } catch (std::exception& e) {
-        WARN("restServer: Failure when joining server thread: %s", e.what());
-        WARN("restServer: Was the server used but never started?");
+        WARN_NON_OO("restServer: Failure when joining server thread: {:s}", e.what());
+        WARN_NON_OO("restServer: Was the server used but never started?");
     }
 }
 
@@ -56,9 +60,9 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
 
     restServer* server = (restServer*)(cb_data);
 
-    string url = string(evhttp_request_get_uri(request));
+    string url = string(evhttp_uri_get_path(evhttp_request_get_evhttp_uri(request)));
 
-    DEBUG2("restServer: Got request with url %s", url.c_str());
+    DEBUG2_NON_OO("restServer: Got request with url {:s}", url);
 
     {
         // TODO This function should be locked against changes to the callback
@@ -74,7 +78,7 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
         if (request->type == EVHTTP_REQ_GET) {
             connectionInstance conn(request);
             if (!server->get_callbacks.count(url)) {
-                DEBUG("restServer: GET Endpoint %s called, but not found", url.c_str());
+                DEBUG_NON_OO("restServer: GET Endpoint {:s} called, but not found", url);
                 conn.send_error("Not Found", HTTP_RESPONSE::NOT_FOUND);
                 return;
             }
@@ -85,7 +89,7 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
         if (request->type == EVHTTP_REQ_POST) {
             connectionInstance conn(request);
             if (!server->json_callbacks.count(url)) {
-                DEBUG("restServer: Endpoint %s called, but not found", url.c_str());
+                DEBUG_NON_OO("restServer: Endpoint {:s} called, but not found", url);
                 conn.send_error("Not Found", HTTP_RESPONSE::NOT_FOUND);
                 return;
             }
@@ -101,7 +105,7 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
         }
     }
 
-    DEBUG("restServer: Call back with method != POST|GET called!");
+    DEBUG_NON_OO("restServer: Call back with method != POST|GET called!");
 
     connectionInstance conn(request);
     conn.send_error("Bad Request", HTTP_RESPONSE::BAD_REQUEST);
@@ -110,40 +114,40 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
 void restServer::register_get_callback(string endpoint,
                                        std::function<void(connectionInstance&)> callback) {
     if (endpoint.substr(0, 1) != "/") {
-        endpoint = "/" + endpoint;
+        endpoint = fmt::format(fmt("/{:s}"), endpoint);
     }
 
     {
         std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
         if (get_callbacks.count(endpoint)) {
-            WARN("restServer: Call back %s already exists, overriding old call back!!",
-                 endpoint.c_str());
+            WARN_NON_OO("restServer: Call back {:s} already exists, overriding old call back!!",
+                        endpoint);
         }
         get_callbacks[endpoint] = callback;
     }
-    INFO("restServer: Adding REST endpoint: %s", endpoint.c_str());
+    INFO_NON_OO("restServer: Adding REST endpoint: {:s}", endpoint);
 }
 
 void restServer::register_post_callback(string endpoint,
                                         std::function<void(connectionInstance&, json&)> callback) {
     if (endpoint.substr(0, 1) != "/") {
-        endpoint = "/" + endpoint;
+        endpoint = fmt::format(fmt("/{:s}"), endpoint);
     }
 
     {
         std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
         if (json_callbacks.count(endpoint)) {
-            WARN("restServer: Call back %s already exists, overriding old call back!!",
-                 endpoint.c_str());
+            WARN_NON_OO("restServer: Callback {:s} already exists, overriding old callback!!",
+                        endpoint);
         }
         json_callbacks[endpoint] = callback;
     }
-    INFO("restServer: Adding REST endpoint: %s", endpoint.c_str());
+    INFO_NON_OO("restServer: Adding REST endpoint: {:s}", endpoint);
 }
 
 void restServer::remove_get_callback(string endpoint) {
     if (endpoint.substr(0, 1) != "/") {
-        endpoint = "/" + endpoint;
+        endpoint = fmt::format(fmt("/{:s}"), endpoint);
     }
 
     std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
@@ -155,7 +159,7 @@ void restServer::remove_get_callback(string endpoint) {
 
 void restServer::remove_json_callback(string endpoint) {
     if (endpoint.substr(0, 1) != "/") {
-        endpoint = "/" + endpoint;
+        endpoint = fmt::format(fmt("/{:s}"), endpoint);
     }
 
     std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
@@ -167,16 +171,18 @@ void restServer::remove_json_callback(string endpoint) {
 
 void restServer::add_alias(string alias, string target) {
     if (alias.substr(0, 1) != "/") {
-        alias = "/" + alias;
+        alias = fmt::format(fmt("/{:s}"), alias);
     }
     if (target.substr(0, 1) != "/") {
-        target = "/" + target;
+        target = fmt::format(fmt("/{:s}"), target);
     }
 
     std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
     if (json_callbacks.find(alias) != json_callbacks.end()
         || get_callbacks.find(alias) != get_callbacks.end()) {
-        WARN("restServer: The endpoint %s already exists, cannot add an alias with that name");
+        WARN_NON_OO("restServer: The endpoint {:s} already exists, cannot add an alias for {:s} "
+                    "with that name",
+                    alias, target);
         return;
     }
     aliases[alias] = target;
@@ -184,7 +190,7 @@ void restServer::add_alias(string alias, string target) {
 
 void restServer::remove_alias(string alias) {
     if (alias.substr(0, 1) != "/") {
-        alias = "/" + alias;
+        alias = fmt::format(fmt("/{:s}"), alias);
     }
 
     std::unique_lock<std::shared_timed_mutex> lock(callback_map_lock);
@@ -198,7 +204,7 @@ void restServer::add_aliases_from_config(Config& config) {
     if (!config.exists("/rest_server", "aliases"))
         return;
     json config_aliases = config.get_value("/rest_server", "aliases");
-    INFO("restServer: config aliases: %s", config_aliases.dump().c_str());
+    INFO_NON_OO("restServer: config aliases: {:s}", config_aliases.dump());
     for (json::iterator it = config_aliases.begin(); it != config_aliases.end(); ++it) {
         add_alias(it.key(), it.value());
     }
@@ -234,8 +240,8 @@ string restServer::get_http_message(struct evhttp_request* request) {
     // determine how many chunks we need.
     int n_vec = evbuffer_peek(input_buffer, datalen, NULL, NULL, 0);
     if (n_vec < 0) {
-        WARN("restClient: Failure in evbuffer_peek(), assuming no message and returning an empty "
-             "string");
+        WARN_NON_OO("restClient: Failure in evbuffer_peek(), assuming no message and returning an "
+                    "empty string");
         return "";
     }
 
@@ -258,14 +264,14 @@ int restServer::handle_json(struct evhttp_request* request, json& json_parse) {
 
     struct evbuffer* ev_buf = evhttp_request_get_input_buffer(request);
     if (ev_buf == nullptr) {
-        ERROR("restServer: Cannot get the libevent buffer for the request");
+        ERROR_NON_OO("restServer: Cannot get the libevent buffer for the request");
         return -1;
     }
 
     string message = get_http_message(request);
 
     if (message.empty()) {
-        ERROR("restServer: Request is empty, returning error");
+        ERROR_NON_OO("restServer: Request is empty, returning error");
         string error_message = "Error Message: Message was empty, expected JSON string";
         evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::BAD_REQUEST), message.c_str());
         return -1;
@@ -276,9 +282,10 @@ int restServer::handle_json(struct evhttp_request* request, json& json_parse) {
     } catch (const std::exception& ex) {
         string error_message =
             string("Error Message: JSON failed to parse, error: ") + string(ex.what());
-        ERROR("restServer: Failed to pase JSON from request, the error is '%s', and the HTTP "
-              "message was: %s",
-              ex.what(), message.c_str());
+        ERROR_NON_OO(
+            "restServer: Failed to pase JSON from request, the error is '{:s}', and the HTTP "
+            "message was: {:s}",
+            ex.what(), message);
         evhttp_send_error(request, static_cast<int>(HTTP_RESPONSE::BAD_REQUEST),
                           error_message.c_str());
         return -1;
@@ -327,14 +334,14 @@ void restServer::http_server_thread() {
 
     // Allow for using extra threads (not currently needed)
     if (evthread_use_pthreads()) {
-        ERROR("restServer: Cannot use pthreads with libevent!");
+        ERROR_NON_OO("restServer: Cannot use pthreads with libevent!");
         return;
     }
 
     // Create the base event for handling requests
     event_base = event_base_new();
     if (event_base == nullptr) {
-        ERROR("restServer: Failed to create libevent base");
+        ERROR_NON_OO("restServer: Failed to create libevent base");
         // Use exit() not raise() since this happens early in startup before
         // the signal handlers are all in place.
         exit(1);
@@ -344,7 +351,7 @@ void restServer::http_server_thread() {
     // Create the server
     ev_server = evhttp_new(event_base);
     if (ev_server == nullptr) {
-        ERROR("restServer: Failed to create libevent base");
+        ERROR_NON_OO("restServer: Failed to create libevent base");
         exit(1);
         return;
     }
@@ -356,13 +363,28 @@ void restServer::http_server_thread() {
     evhttp_set_gencb(ev_server, handle_request, (void*)this);
 
     // Bind to the IP and port
-    if (evhttp_bind_socket(ev_server, bind_address.c_str(), port) != 0) {
-        ERROR("restServer: Failed to bind to %s:%d", bind_address.c_str(), port);
+    struct evhttp_bound_socket* ev_sock =
+        evhttp_bind_socket_with_handle(ev_server, bind_address.c_str(), port);
+    if (ev_sock == nullptr) {
+        ERROR_NON_OO("restServer: Failed to bind to {:s}:{:d}", bind_address, port);
         exit(1);
         return;
     }
 
-    INFO("restServer: started server on address:port %s:%d", bind_address.c_str(), port);
+    // if port was set to random, find port socket is listening on
+    if (port == 0) {
+        evutil_socket_t sock = evhttp_bound_socket_get_fd(ev_sock);
+        struct sockaddr_in sin;
+        socklen_t len = sizeof(sin);
+        if (getsockname(sock, (struct sockaddr*)&sin, &len) == -1) {
+            ERROR_NON_OO("restServer: Failed getting socket name ({:s}:{:d})", bind_address, port);
+            exit(1);
+            return;
+        }
+        port = ntohs(sin.sin_port);
+    }
+    // This INFO line is parsed by the python runner to get the RESTserver port. Don't edit.
+    INFO_NON_OO("restServer: started server on address:port {:s}:{:d}", bind_address, port);
 
     // Create a timer to check for the exit condition
     struct event* timer_event;
@@ -493,6 +515,23 @@ void connectionInstance::send_json_reply(const json& json_reply) {
     }
 
     evhttp_send_reply(request, static_cast<int>(HTTP_RESPONSE::OK), "OK", event_buffer);
+}
+
+std::map<std::string, std::string> connectionInstance::get_query() {
+    std::map<std::string, std::string> query_map;
+    struct evkeyvalq queries;
+    queries.tqh_first = nullptr;
+    queries.tqh_last = nullptr;
+    const char* query_string = evhttp_uri_get_query(evhttp_request_get_evhttp_uri(request));
+    if (query_string && evhttp_parse_query_str(query_string, &queries) == 0) {
+        struct evkeyval* cur_query = queries.tqh_first;
+        while (cur_query) {
+            query_map[string(cur_query->key)] = string(cur_query->value);
+            cur_query = cur_query->next.tqe_next;
+        }
+    }
+    evhttp_clear_headers(&queries);
+    return query_map;
 }
 
 } // namespace kotekan

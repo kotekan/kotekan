@@ -1,4 +1,5 @@
-cmake_minimum_required (VERSION 2.8)
+# Set the version of CMake required for *all* CMake files in the project
+cmake_minimum_required (VERSION 3.0)
 project (KOTEKAN)
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 
@@ -103,6 +104,16 @@ endif()
 find_package(LibEvent REQUIRED )
 include_directories(${LIBEVENT_INCLUDE_DIR}/../)
 link_libraries(${LIBEVENT_LIBRARIES})
+
+# Libnuma is optional for some setups
+find_package(NUMA)
+if (${NUMA_FOUND})
+    add_definitions(-DWITH_NUMA)
+    message("NUMA support enabled")
+    link_libraries(${NUMA_LIBRARY})
+else()
+    message("libnuma not found, NUMA support will be disabled")
+endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   add_definitions(-DMAC_OSX)
@@ -214,7 +225,12 @@ set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrt " )
 endif ()
+
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
+
+# dpdk uses the register keyword that got removed in C++17 because it wasn't doing anything
+#TODO remove this line when dpdk people fix this: https://mails.dpdk.org/archives/dev/2018-July/107950.html
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-register")
 
 # Warning about missing override is called differently in clang and gcc
 # TODO: enable once we are using a release version of HighFive
@@ -249,7 +265,7 @@ if (${USE_OPENCL})
     install(DIRECTORY lib/opencl/kernels DESTINATION /var/lib/kotekan/opencl )
 endif ()
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 
 if (${COMPILE_DOCS})
     add_subdirectory(docs EXCLUDE_FROM_ALL)
@@ -289,7 +305,7 @@ endif()
 # Enforce code formatting rules with clang-format.
 find_program(
     CLANG_FORMAT_PATH
-    NAMES "clang-format"
+    NAMES "clang-format-8"
     DOC "Path to clang-format executable"
     )
 if(NOT CLANG_FORMAT_PATH)
