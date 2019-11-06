@@ -187,14 +187,12 @@ void EigenVisIter::update_metrics(uint32_t freq_id, dset_id_t dset_id, double el
 
     // Output eigenvalues to prometheus
     for (uint32_t i = 0; i < _num_eigenvectors; i++) {
-        eigenvalue_metric
-            .labels({std::to_string(i), std::to_string(freq_id), dset_id.to_string()})
+        eigenvalue_metric.labels({std::to_string(i), std::to_string(freq_id), dset_id.to_string()})
             .set(eigpair.first[_num_eigenvectors - 1 - i]);
     }
 
     // Output RMS to prometheus
-    eigenvalue_metric.labels({"rms", std::to_string(freq_id), dset_id.to_string()})
-        .set(stats.rms);
+    eigenvalue_metric.labels({"rms", std::to_string(freq_id), dset_id.to_string()}).set(stats.rms);
 
     // Output convergence stats
     std::vector<std::string> labels = {std::to_string(freq_id), dset_id.to_string()};

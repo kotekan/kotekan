@@ -2,10 +2,10 @@
 #define DATASETSTATE_HPP
 
 #include "Config.hpp"
+#include "Hash.hpp"
 #include "errors.h"
 #include "factory.hpp"
 #include "gateSpec.hpp"
-#include "Hash.hpp"
 #include "visUtil.hpp"
 
 #include "fmt.hpp"
@@ -49,7 +49,7 @@ public:
     /**
      * @brief Create a dataset state from a full json serialisation.
      *
-     * This will correctly instantiate the correct types from the json.
+     * This will correctly instantiate the correct type from the json.
      *
      * @param j Full JSON serialisation.
      * @returns The created datasetState or a nullptr in a failure case.
@@ -74,17 +74,6 @@ public:
     virtual json data_to_json() const = 0;
 
     /**
-     * @brief Register a derived datasetState type
-     *
-     * @warning You shouldn't call this directly. It's only public so the macro
-     * can call it.
-     *
-     * @returns Always returns zero.
-     **/
-    // template<typename T>
-    // static inline int _register_state_type(std::string name);
-
-    /**
      * @brief Compare to another dataset state.
      * @param s    State to compare with.
      * @return True if states identical, False otherwise.
@@ -97,22 +86,7 @@ public:
      */
     std::string type() const;
 
-    // Static map of type names
-    //static std::map<size_t, std::string> _registered_names;
-
 private:
-    /**
-     * @brief Create a datasetState subclass from a json serialisation.
-     *
-     * @param name  Name of subclass to create.
-     * @param data  Serialisation of config.
-     * @returns The created datasetState.
-     **/
-    //static state_uptr _create(std::string name, json& data);
-
-    // List of registered subclass creating functions
-    //static std::map<string, std::function<state_uptr(json&)>>& _registered_types();
-
     // Add as friend so it can walk the inner state
     friend datasetManager;
 };
@@ -121,7 +95,6 @@ private:
 CREATE_FACTORY(datasetState, const json&);
 
 
-//#define REGISTER_DATASET_STATE(T, s) int _register_##T = datasetState::_register_state_type<T>(s)
 #define REGISTER_DATASET_STATE(T, s) REGISTER_NAMED_TYPE_WITH_FACTORY(datasetState, T, s);
 
 
@@ -628,8 +601,7 @@ public:
      * @brief Constructor
      * @param ds_id    The dataset ID for the acquisition.
      */
-    acqDatasetIdState(dset_id_t ds_id) :
-        _ds_id(ds_id) {};
+    acqDatasetIdState(dset_id_t ds_id) : _ds_id(ds_id){};
 
     /**
      * @brief Get dataset ID (read only).

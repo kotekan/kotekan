@@ -479,8 +479,7 @@ void visTestPattern::get_dataset_state(dset_id_t ds_id) {
     if (fstate == nullptr || istate == nullptr || pstate == nullptr) {
         if (outfile.is_open())
             outfile.close();
-        FATAL_ERROR("Could not find all required states of dataset with ID {}.\nExiting...",
-                    ds_id);
+        FATAL_ERROR("Could not find all required states of dataset with ID {}.\nExiting...", ds_id);
     }
 
     freqs = fstate->get_freqs();

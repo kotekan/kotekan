@@ -2,6 +2,7 @@
 #define _HASH_HPP
 
 #include "MurmurHash3.hpp"
+
 #include "fmt.hpp"
 #include "gsl-lite.hpp"
 #include "json.hpp"
@@ -69,7 +70,7 @@ struct Hash {
 template<typename T>
 Hash hash(gsl::span<const T> s) {
     Hash t;
-    MurmurHash3_x64_128((void *)s.as_bytes(), s.size_bytes(), _SEED, (void *)&t);
+    MurmurHash3_x64_128((void*)s.as_bytes(), s.size_bytes(), _SEED, (void*)&t);
     return t;
 }
 
@@ -83,7 +84,7 @@ Hash hash(gsl::span<const T> s) {
  **/
 inline Hash hash(const std::string& s) {
     Hash t;
-    MurmurHash3_x64_128((void *)s.c_str(), s.size(), _SEED, (void *)&t);
+    MurmurHash3_x64_128((void*)s.c_str(), s.size(), _SEED, (void*)&t);
     return t;
 }
 
@@ -123,15 +124,17 @@ inline bool operator!=(const Hash& a, const Hash& b) {
 
 
 // Define a custom fmt formatter for the type
-template <>
+template<>
 struct fmt::formatter<Hash> {
-  template <typename ParseContext>
-  constexpr auto parse(ParseContext &ctx) { return ctx.begin(); }
+    template<typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
 
-  template <typename FormatContext>
-  auto format(const Hash &h, FormatContext &ctx) {
-    return format_to(ctx.out(), "{:016x}{:016x}", h.h, h.l);
-  }
+    template<typename FormatContext>
+    auto format(const Hash& h, FormatContext& ctx) {
+        return format_to(ctx.out(), "{:016x}{:016x}", h.h, h.l);
+    }
 };
 
 // Define the IO stream operators

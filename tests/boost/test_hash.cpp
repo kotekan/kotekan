@@ -29,15 +29,15 @@ BOOST_AUTO_TEST_CASE(_test_serialise) {
 
     // Check the hash against one deserialised from a string
     Hash h1 = hash(s);
-    BOOST_CHECK_EQUAL( h0, h1 );
+    BOOST_CHECK_EQUAL(h0, h1);
 
     // Check that fmt outputs it right
-    BOOST_CHECK_EQUAL( fmt::format("{}", h1), hash_string );
+    BOOST_CHECK_EQUAL(fmt::format("{}", h1), hash_string);
 
     // round trip through json
     json j = h1;
     Hash h2 = j.get<Hash>();
-    BOOST_CHECK_EQUAL( h1, h2 );
+    BOOST_CHECK_EQUAL(h1, h2);
 }
 
 
@@ -47,10 +47,10 @@ BOOST_AUTO_TEST_CASE(_test_hash) {
 
     // Split the hex from above in two, convert to uint64_t's and compare
     uint64_t high = strtoull("4dcf87995e06b6b9", nullptr, 16);
-    uint64_t low  = strtoull("7f012becdab1a2d5", nullptr, 16);
+    uint64_t low = strtoull("7f012becdab1a2d5", nullptr, 16);
 
     Hash h1 = hash(s);
 
-    BOOST_CHECK_EQUAL( h1.h, high );
-    BOOST_CHECK_EQUAL( h1.l, low );
+    BOOST_CHECK_EQUAL(h1.h, high);
+    BOOST_CHECK_EQUAL(h1.l, low);
 }

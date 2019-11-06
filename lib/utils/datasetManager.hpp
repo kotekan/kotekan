@@ -2,6 +2,7 @@
 #define DATASET_MANAGER_HPP
 
 #include "Config.hpp"
+#include "Hash.hpp"
 #include "datasetState.hpp"
 #include "errors.h"
 #include "kotekanLogging.hpp"
@@ -9,7 +10,6 @@
 #include "restClient.hpp"
 #include "restServer.hpp"
 #include "signal.h"
-#include "Hash.hpp"
 
 #include "json.hpp"
 
@@ -242,7 +242,8 @@ public:
      *                      Omit to create a root dataset.
      * @returns The ID assigned to the new dataset.
      **/
-    dset_id_t add_dataset(const std::vector<state_id_t>& states, dset_id_t base_dset = dset_id_t::null);
+    dset_id_t add_dataset(const std::vector<state_id_t>& states,
+                          dset_id_t base_dset = dset_id_t::null);
 
     /**
      * @brief Create *and* register a state with the manager.
@@ -601,9 +602,8 @@ inline const T* datasetManager::get_closest_ancestor(dset_id_t dset) {
             // Request the state from the broker.
             state = request_state<T>(ancestor);
             while (!state) {
-                WARN_NON_OO(
-                    "datasetManager: Failure requesting state {} from broker.\nRetrying...",
-                    ancestor);
+                WARN_NON_OO("datasetManager: Failure requesting state {} from broker.\nRetrying...",
+                            ancestor);
                 std::this_thread::sleep_for(std::chrono::milliseconds(_retry_wait_time_ms));
                 state = request_state<T>(ancestor);
             }
@@ -687,8 +687,7 @@ inline const T* datasetManager::request_state(state_id_t state_id) {
         else {
             throw std::runtime_error(
                 fmt::format(fmt("Broker sent state that didn't match requested type ({:s}): {:s}"),
-                            FACTORY(datasetState)::label<T>(),
-                            js_reply.at("state").dump(4)));
+                            FACTORY(datasetState)::label<T>(), js_reply.at("state").dump(4)));
         }
     } catch (std::exception& e) {
         WARN_NON_OO("datasetManager: failure parsing reply received from broker after requesting "

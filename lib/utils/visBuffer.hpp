@@ -9,8 +9,8 @@
 
 #include "buffer.h"
 #include "chimeMetadata.h"
-#include "visUtil.hpp"
 #include "datasetManager.hpp"
+#include "visUtil.hpp"
 
 #include "gsl-lite.hpp"
 

@@ -145,10 +145,9 @@ dset_id_t datasetManager::add_dataset(state_id_t state, dset_id_t base_dset) {
                                "found: {:s}",
                                state, e.what());
         } else {
-            FATAL_ERROR_NON_OO(
-                "datasetManager: Failure registering dataset : state {} not found "
-                "(base dataset ID: {}): {:s}",
-                state, base_dset, e.what());
+            FATAL_ERROR_NON_OO("datasetManager: Failure registering dataset : state {} not found "
+                               "(base dataset ID: {}): {:s}",
+                               state, base_dset, e.what());
         }
     }
     std::string type = t->type();
@@ -163,8 +162,7 @@ dset_id_t datasetManager::add_dataset(const std::vector<state_id_t>& states, dse
 
     for (const auto& state : states) {
         auto new_id = add_dataset(state, id);
-        DEBUG_NON_OO("Added dataset {} with state {} and base dataset {}", new_id, state,
-                     id);
+        DEBUG_NON_OO("Added dataset {} with state {} and base dataset {}", new_id, state, id);
         id = new_id;
     }
     return id;

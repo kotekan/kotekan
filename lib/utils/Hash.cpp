@@ -42,8 +42,7 @@ void from_json(const json& j, Hash& h) {
 }
 
 // Implement the stream operator
-std::istream& operator>>(std::istream& is, Hash& h)
-{
+std::istream& operator>>(std::istream& is, Hash& h) {
     char t[16];
     is.read(t, 16);
     h.set_from_string(std::string(t, 16));
@@ -51,8 +50,7 @@ std::istream& operator>>(std::istream& is, Hash& h)
 }
 
 // Implement the stream operator using fmt because iostreams are so ghastly.
-std::ostream& operator<<(std::ostream& os, const Hash& h)
-{
+std::ostream& operator<<(std::ostream& os, const Hash& h) {
     os << fmt::format("{}", h);
     return os;
 }

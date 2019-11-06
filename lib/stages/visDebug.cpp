@@ -52,8 +52,7 @@ void visDebug::main_thread() {
         auto frame = visFrameView(in_buf, frame_id);
         DEBUG("{:s}", frame.summary());
 
-        frame_counter.labels({std::to_string(frame.freq_id), frame.dataset_id.to_string()})
-            .inc();
+        frame_counter.labels({std::to_string(frame.freq_id), frame.dataset_id.to_string()}).inc();
 
         // Mark the buffers and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
