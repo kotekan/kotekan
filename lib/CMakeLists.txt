@@ -73,8 +73,8 @@ endif ()
 
 if (${USE_CUDA})
     add_subdirectory(cuda)
-    target_link_libraries( kotekan_libs kotekan_cuda kotekan_gpu )
-    target_link_libraries( kotekan_libs ${CUDA_LIBRARIES} )
+    target_link_libraries( kotekan_libs INTERFACE kotekan_cuda kotekan_gpu )
+    target_link_libraries( kotekan_libs INTERFACE ${CUDA_LIBRARIES} )
 endif ()
 
 if (${USE_DPDK})
