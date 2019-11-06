@@ -9,8 +9,7 @@ pipeline {
       parallel {
         stage('Build kotekan without hardware specific options') {
           steps {
-            sh '''mkdir build_no_hardware
-                  cd build_no_hardware/
+            sh '''cd build/
                   cmake -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
                   -DUSE_OMP=ON -DBOOST_TESTS=ON ..
@@ -19,7 +18,8 @@ pipeline {
         }
         stage('Build CHIME kotekan') {
           steps {
-            sh '''cd build
+            sh '''mkdir chime-build
+                  cd chime-build
                   cmake -DRTE_SDK=/opt/dpdk \
                   -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON \
                   -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
@@ -89,12 +89,12 @@ pipeline {
             stage('Python Unit Tests') {
               steps {
                 sh '''cd tests/
-                      PYTHONPATH=../python/ python3 -m pytest -n 4 -x -vvv -E run_amd_gpu_tests'''
+                      PYTHONPATH=../python/ python3 -m pytest -n 4 -x -vvv'''
               }
             }
             stage('Boost Unit Tests') {
               steps {
-                sh '''cd build_no_hardware/tests/
+                sh '''cd build/tests/
                       python3 -m pytest -x -vvv'''
               }
             }
