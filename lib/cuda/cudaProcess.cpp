@@ -37,7 +37,7 @@ gpuCommand* cudaProcess::create_command(const std::string& cmd_name,
                                         const std::string& unique_name) {
     auto cmd = FACTORY(cudaCommand)::create_bare(cmd_name, config, unique_name,
                                                  local_buffer_container, *device);
-    DEBUG("Command added: %s", cmd_name.c_str());
+    DEBUG("Command added: {:s}", cmd_name.c_str());
     return cmd;
 }
 
