@@ -1,5 +1,5 @@
 /**
- * @file cudaCommand.h
+ * @file
  * @brief Base class for defining CUDA commands to execute on GPUs
  *  - cudaCommand
  */

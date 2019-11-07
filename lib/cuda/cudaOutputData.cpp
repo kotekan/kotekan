@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief CUDA command to copy data from the GPU to the host
+ *  - cudaOutputData : public cudaCommand
+ */
+
 #include "cudaOutputData.hpp"
 
 using kotekan::bufferContainer;

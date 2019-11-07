@@ -1,3 +1,10 @@
+/**
+ * @file
+ * @brief Helper function for using CUDA
+ *  - CHECK_CUDA_ERROR
+ *  - CHECK_CUDA_ERROR_NON_OO
+ */
+
 #ifndef CUDA_UTILS_H
 #define CUDA_UTILS_H
 

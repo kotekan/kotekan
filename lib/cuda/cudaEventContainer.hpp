@@ -1,5 +1,5 @@
 /**
- * @file cudaEventContainer.h
+ * @file
  * @brief Base class for defining CUDA commands to execute on GPUs
  *  - cudaEventContainer
  */

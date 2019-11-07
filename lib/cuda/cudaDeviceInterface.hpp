@@ -1,5 +1,5 @@
 /**
- * @file cudaDeviceInterface.h
+ * @file
  * @brief Class to handle CUDA interactions with GPU hardware
  *  - cudaCommand
  */

@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Stage for running a set of CUDA commands
+ *  - cudaProcess : public gpuProcess
+ */
+
 #ifndef CUDA_PROCESS_H
 #define CUDA_PROCESS_H
 
