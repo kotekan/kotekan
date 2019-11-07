@@ -164,18 +164,21 @@ BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, TestContext) {
     std::vector<std::pair<uint32_t, freq_ctype>> freqs = {
         {1, {1.1, 1}}, {2, {2, 2.2}}, {3, {3, 3}}};
 
-    std::pair<state_id_t, const inputState*> input_state =
-        dm.add_state(std::make_unique<inputState>(
-            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
+    std::vector<state_id_t> states1;
+    states1.push_back(dm.create_state<freqState>(freqs).first);
+    states1.push_back(dm.create_state<prodState>(prods).first);
+    states1.push_back(dm.create_state<inputState>(inputs).first);
 
-    dset_id_t init_ds_id = dm.add_dataset(input_state.first);
+    dset_id_t init_ds_id = dm.add_dataset(states1);
 
     // register first state again
-    std::pair<state_id_t, const inputState*> input_state3 =
-        dm.add_state(std::make_unique<inputState>(
-            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
+    std::vector<state_id_t> states2;
+    states2.push_back(dm.create_state<freqState>(freqs).first);
+    states2.push_back(dm.create_state<prodState>(prods).first);
+    states2.push_back(dm.create_state<inputState>(inputs).first);
+
     // register new dataset with the twin state
-    dm.add_dataset(init_ds_id, input_state3.first);
+    dm.add_dataset(states2, init_ds_id);
 
     std::cout << dm.summary() << std::endl;
 

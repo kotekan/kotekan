@@ -114,9 +114,10 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_second_root_update) {
     std::vector<prod_ctype> prods = {{4, 1}};
     std::vector<std::pair<uint32_t, freq_ctype>> freqs = {{4, {1.1, 1}}};
 
-    std::pair<state_id_t, const inputState*> input_state =
-        dm.add_state(std::make_unique<inputState>(
-            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
+    std::vector<state_id_t> states;
+    states.push_back(dm.create_state<freqState>(freqs).first);
+    states.push_back(dm.create_state<prodState>(prods).first);
+    states.push_back(dm.create_state<inputState>(inputs).first);
 
     // read second_root from file
     std::string line;
@@ -130,7 +131,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_second_root_update) {
     dset_id_t second_root;
     std::stringstream(line) >> second_root;
 
-    second_root_update = dm.add_dataset(second_root, input_state.first);
+    second_root_update = dm.add_dataset(states, second_root);
 
     // wait a bit, to make sure we see errors in any late callbacks
     usleep(1000000);

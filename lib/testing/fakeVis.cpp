@@ -166,13 +166,15 @@ void fakeVis::main_thread() {
     uint64_t delta_ns = (uint64_t)(cadence * 1000000000);
 
     // Register datasetStates to describe the properties of the created stream
-    dset_id_t ds_id = 0;
+    dset_id_t ds_id = dset_id_t::null;
     auto& dm = datasetManager::instance();
 
     if (_fixed_dset_id) {
         ds_id = _dset_id;
     } else {
-        auto mstate = std::make_unique<metadataState>("not set", "fakeVis", get_git_commit_hash());
+        std::vector<state_id_t> states;
+        states.push_back(
+            dm.create_state<metadataState>("not set", "fakeVis", get_git_commit_hash()).first);
 
         std::vector<std::pair<uint32_t, freq_ctype>> fspec;
         // TODO: CHIME specific
@@ -180,24 +182,22 @@ void fakeVis::main_thread() {
                        [](const uint32_t& id) -> std::pair<uint32_t, freq_ctype> {
                            return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
                        });
-        auto fstate = std::make_unique<freqState>(fspec, std::move(mstate));
+        states.push_back(dm.create_state<freqState>(fspec).first);
 
         std::vector<input_ctype> ispec;
         for (uint32_t i = 0; i < num_elements; i++)
             ispec.emplace_back(i, fmt::format(fmt("dm_input_{:d}"), i));
-        auto istate = std::make_unique<inputState>(ispec, std::move(fstate));
+        states.push_back(dm.create_state<inputState>(ispec).first);
 
         std::vector<prod_ctype> pspec;
         for (uint16_t i = 0; i < num_elements; i++)
             for (uint16_t j = i; j < num_elements; j++)
                 pspec.push_back({i, j});
-        auto pstate = std::make_unique<prodState>(pspec, std::move(istate));
-        auto evstate = std::make_unique<eigenvalueState>(num_eigenvectors, std::move(pstate));
-
-        auto s = dm.add_state(std::move(evstate));
+        states.push_back(dm.create_state<prodState>(pspec).first);
+        states.push_back(dm.create_state<eigenvalueState>(num_eigenvectors).first);
 
         // Register a root state
-        ds_id = dm.add_dataset(s.first);
+        ds_id = dm.add_dataset(states);
     }
 
     while (!stop_thread) {

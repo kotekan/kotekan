@@ -78,10 +78,11 @@ BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, CompareCTypes) {
     std::vector<std::pair<uint32_t, freq_ctype>> new_freqs = {{1, {1.1, 1}}, {3, {3, 3}}};
 
     // add new input state and new freq state
-    std::pair<state_id_t, const inputState*> new_input_state = dm.add_state(
-        std::make_unique<inputState>(new_inputs, std::make_unique<freqState>(new_freqs)));
+    std::pair<state_id_t, const freqState*> new_freq_state = dm.create_state<freqState>(new_freqs);
+    std::pair<state_id_t, const inputState*> new_input_state =
+        dm.create_state<inputState>(new_inputs);
 
-    dset_id_t ds_id2 = dm.add_dataset(ds_id, new_input_state.first);
+    dset_id_t ds_id2 = dm.add_dataset({new_freq_state.first, new_input_state.first}, ds_id);
 
     // write ID to disk for consumer
     std::ofstream o("DS_ID2.txt");
