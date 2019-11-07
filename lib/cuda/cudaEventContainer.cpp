@@ -2,6 +2,7 @@
 
 #include "errors.h"
 
+#include <core/buffer.h>
 #include <unistd.h>
 
 void cudaEventContainer::set(void* sig) {
@@ -17,5 +18,5 @@ void cudaEventContainer::unset() {
 }
 
 void cudaEventContainer::wait() {
-    CHECK_CUDA_ERROR(cudaEventSynchronize(signal));
+    CHECK_CUDA_ERROR_NON_OO(cudaEventSynchronize(signal));
 }
