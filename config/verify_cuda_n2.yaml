@@ -67,7 +67,7 @@ gen_data:
     type: random #const
     value: 153
     kotekan_stage: testDataGen
-    network_out_buf: gpu_input_buffer
+    out_buf: gpu_input_buffer
 
 data_format: "cuda_wmma"
 #data_format: "dot4b"

@@ -10,14 +10,15 @@
 // can be wrapped around any runtime API call. No-op in release builds.
 #define CHECK_CUDA_ERROR(result)                                                                   \
     if (result != cudaSuccess) {                                                                   \
-        internal_logging(LOG_ERR, "Error at %s:%d; Error type: %s", __FILE__, __LINE__,            \
-                         cudaGetErrorString(result));                                              \
+        internal_logging(LOG_ERR, __log_prefix, "Error at {:s}:{:d}; Error type: {:s}", __FILE__,  \
+                         __LINE__, cudaGetErrorString(result));                                    \
         std::abort();                                                                              \
     }
 
 #define CHECK_CUDA_ERROR_NON_OO(result)                                                            \
     if (result != cudaSuccess) {                                                                   \
-        kotekan::kotekanLogging::internal_logging(LOG_ERR, "Error at %s:%d; Error type: %s",       \
+        kotekan::kotekanLogging::internal_logging(LOG_ERR, "",                                     \
+                                                  "Error at {:s}:{:d}; Error type: {:s}",          \
                                                   __FILE__, __LINE__, cudaGetErrorString(result)); \
         std::abort();                                                                              \
     }
