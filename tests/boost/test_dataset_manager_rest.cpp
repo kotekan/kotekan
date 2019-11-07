@@ -2,6 +2,7 @@
 #define BOOST_TEST_MODULE "test_datasetManager_REST"
 
 #include "Config.hpp"
+#include "Hash.hpp"
 #include "restClient.hpp"
 #include "restServer.hpp"
 #include "visUtil.hpp"
@@ -55,7 +56,7 @@ struct TestContext {
             BOOST_CHECK_MESSAGE(false, error);
         }
 
-        BOOST_CHECK(js.at("hash").is_number());
+        BOOST_CHECK(js.at("hash").is_string());
         reply["request"] = "get_state";
         reply["hash"] = js.at("hash");
         reply["result"] = "success";
@@ -80,20 +81,29 @@ struct TestContext {
             BOOST_CHECK_MESSAGE(false, error);
         }
 
-        BOOST_CHECK(js.at("hash").is_number());
+        BOOST_CHECK(js.at("hash").is_string());
 
         // check the received state
-        std::vector<input_ctype> inputs = {input_ctype(1, "1"), input_ctype(2, "2"),
-                                           input_ctype(3, "3")};
-        std::vector<prod_ctype> prods = {{1, 1}, {2, 2}, {3, 3}};
-        std::vector<std::pair<uint32_t, freq_ctype>> freqs = {
+        static std::vector<input_ctype> inputs = {input_ctype(1, "1"), input_ctype(2, "2"),
+                                                  input_ctype(3, "3")};
+        static std::vector<prod_ctype> prods = {{1, 1}, {2, 2}, {3, 3}};
+        static std::vector<std::pair<uint32_t, freq_ctype>> freqs = {
             {1, {1.1, 1}}, {2, {2, 2.2}}, {3, {3, 3}}};
 
-        state_uptr same_state = std::make_unique<inputState>(
-            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs)));
+        static state_uptr states[3] = {std::make_unique<inputState>(inputs),
+                                       std::make_unique<prodState>(prods),
+                                       std::make_unique<freqState>(freqs)};
+        static bool pass[3] = {false, false, false};
         state_uptr received_state = datasetState::from_json(js.at("state"));
 
-        BOOST_CHECK(same_state->to_json() == received_state->to_json());
+        for (ushort i = 0; i < 4; i++) {
+            BOOST_CHECK(i < 4);
+            if (states[i]->to_json() == received_state->to_json()) {
+                BOOST_CHECK(pass[i] == false);
+                pass[i] = true;
+                break;
+            }
+        }
 
         reply["result"] = "success";
         con.send_json_reply(reply);
@@ -120,16 +130,13 @@ struct TestContext {
             BOOST_CHECK_MESSAGE(false, error);
         }
 
-        BOOST_CHECK(js_ds.at("state").is_number());
+        BOOST_CHECK(js_ds.at("state").is_string());
         if (!js_ds.at("is_root"))
-            BOOST_CHECK(js_ds.at("base_dset").is_number());
+            BOOST_CHECK(js_ds.at("base_dset").is_string());
         BOOST_CHECK(js_ds.at("is_root").is_boolean());
-        BOOST_CHECK(js.at("hash").is_number());
+        BOOST_CHECK(js.at("hash").is_string());
 
-        dataset recvd(js_ds);
-
-        static std::hash<std::string> hash_function;
-        BOOST_CHECK(hash_function(recvd.to_json().dump()) == js.at("hash"));
+        BOOST_CHECK(hash(js_ds.dump()) == Hash::from_string(js.at("hash")));
 
         reply["result"] = "success";
         con.send_json_reply(reply);
