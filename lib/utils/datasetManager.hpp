@@ -45,8 +45,6 @@ const std::string PATH_UPDATE_DATASETS = "/update-datasets";
 const std::string PATH_REQUEST_STATE = "/request-state";
 
 // Alias certain types to give semantic meaning to the IDs
-// This is the output format of a std::hash
-// (64bit so we shouldn't have collisions)
 using dset_id_t = Hash;
 using state_id_t = Hash;
 
