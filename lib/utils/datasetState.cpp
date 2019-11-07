@@ -36,20 +36,6 @@ std::ostream& operator<<(std::ostream& out, const datasetState& dt) {
     return out;
 }
 
-// TODO: this is a very weird place for this routine to be. Put it somewhere more sane.
-std::vector<stack_ctype> invert_stack(uint32_t num_stack,
-                                      const std::vector<rstack_ctype>& stack_map) {
-    std::vector<stack_ctype> res(num_stack);
-    size_t num_prod = stack_map.size();
-
-    for (uint32_t i = 0; i < num_prod; i++) {
-        uint32_t j = num_prod - i - 1;
-        res[stack_map[j].stack] = {j, stack_map[j].conjugate};
-    }
-
-    return res;
-}
-
 std::vector<stack_ctype> invert_stack(uint32_t num_stack,
                                       const std::vector<rstack_ctype>& stack_map) {
     std::vector<stack_ctype> res(num_stack);
