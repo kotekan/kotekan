@@ -89,13 +89,13 @@ pipeline {
             stage('Python Unit Tests') {
               steps {
                 sh '''cd tests/
-                      PYTHONPATH=../python/ python3 -m pytest -n 4 -x -vvv'''
+                      PYTHONPATH=../python/ python3.7 -m pytest -n 4 -x -vvv'''
               }
             }
             stage('Boost Unit Tests') {
               steps {
                 sh '''cd build/tests/
-                      python3 -m pytest -x -vvv'''
+                      python3.7 -m pytest -x -vvv'''
               }
             }
          }
