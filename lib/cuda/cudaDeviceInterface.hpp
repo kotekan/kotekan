@@ -44,7 +44,7 @@ public:
     cudaStream_t getStream(int param_Dim);
 
     /**
-     * @breif Asynchronous copies memory from the host (CPU RAM) to the device GPU (global memory)
+     * @brief Asynchronous copies memory from the host (CPU RAM) to the device GPU (global memory)
      *
      * @param dst The GPU memory pointer
      * @param src The CPU memory pointer
@@ -57,7 +57,7 @@ public:
                                 cudaEvent_t& copy_pre_event, cudaEvent_t& copy_post_event);
 
     /**
-     * @breif Asynchronous Copies memory from the device GPU (global memory) to host (CPU RAM).
+     * @brief Asynchronous Copies memory from the device GPU (global memory) to host (CPU RAM).
      *
      * @param dst The CPU memory pointer
      * @param src The GPU memory pointer
