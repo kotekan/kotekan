@@ -216,6 +216,10 @@ main_pool:
   num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
                         + 100 * 8 * buffer_depth # This part is for the sk/var output.
 
+21cm_pool:
+  kotekan_metadata_pool: hfbMetadata
+  num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
+
 # Input data buffers from the DPDK stage
 network_buffers:
   num_frames: baseband_buffer_depth
@@ -285,7 +289,7 @@ gpu_beamform_hfb_output_buffers:
 cpu_hfb_output_buffers:
     num_frames: buffer_depth
     frame_size: num_data_sets * num_sub_freqs * num_frb_total_beams * sizeof_float
-    metadata_pool: main_pool
+    metadata_pool: 21cm_pool
     beamform_hfb_output_buffer_0:
       kotekan_buffer: standard
     beamform_hfb_output_buffer_1:
