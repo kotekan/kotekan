@@ -56,9 +56,6 @@ int cudaOutputData::wait_on_precondition(int gpu_frame_id) {
         wait_for_empty_frame(output_buffer, unique_name.c_str(), output_buffer_precondition_id);
     if (frame == NULL)
         return -1;
-    // INFO("Got full buffer %s[%d], gpu[%d][%d]", output_buffer->buffer_name,
-    // output_buffer_precondition_id,
-    //        device.get_gpu_id(), gpu_frame_id);
 
     output_buffer_precondition_id = (output_buffer_precondition_id + 1) % output_buffer->num_frames;
     return 0;
@@ -73,17 +70,8 @@ cudaEvent_t cudaOutputData::execute(int gpu_frame_id, cudaEvent_t pre_event) {
     void* gpu_output_frame = device.get_gpu_memory_array("output", gpu_frame_id, output_len);
     void* host_output_frame = (void*)output_buffer->frames[output_buffer_execute_id];
 
-    if (pre_event)
-        CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(CUDA_OUTPUT_STREAM), pre_event, 0));
-    // Data transfer to GPU
-    CHECK_CUDA_ERROR(cudaEventCreate(&pre_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(
-        cudaEventRecord(pre_events[gpu_frame_id], device.getStream(CUDA_OUTPUT_STREAM)));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(host_output_frame, gpu_output_frame, output_len,
-                                     cudaMemcpyDeviceToHost, device.getStream(CUDA_OUTPUT_STREAM)));
-    CHECK_CUDA_ERROR(cudaEventCreate(&post_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(
-        cudaEventRecord(post_events[gpu_frame_id], device.getStream(CUDA_OUTPUT_STREAM)));
+    device.async_copy_gpu_to_host(host_output_frame, gpu_output_frame, output_len, pre_event,
+                                  pre_events[gpu_frame_id], post_events[gpu_frame_id]);
 
     output_buffer_execute_id = (output_buffer_execute_id + 1) % output_buffer->num_frames;
     return post_events[gpu_frame_id];

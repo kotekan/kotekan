@@ -76,9 +76,6 @@ data_format: "cuda_wmma"
 
 gpu:
     profiling: true
-  #  kernel_path: "./opencl/kernels/"
-  #  kernel_path: "/home/hirax/hirax/kotekan-kv/lib/opencl/kernels/"
-#    log_level: debug2
     commands:
     - name: cudaInputData
     - name: cudaCorrelatorKernel

@@ -43,6 +43,32 @@ public:
     void prepareStreams();
     cudaStream_t getStream(int param_Dim);
 
+    /**
+     * @breif Asynchronous copies memory from the host (CPU RAM) to the device GPU (global memory)
+     *
+     * @param dst The GPU memory pointer
+     * @param src The CPU memory pointer
+     * @param len The amount of data to copy in bytes
+     * @param pre_event The event before this one to wait on, if NULL will not wait
+     * @param copy_pre_event The profiling event at the start of this copy
+     * @param copy_post_event The event at the end of the copy.
+     */
+    void async_copy_host_to_gpu(void* dst, void* src, size_t len, cudaEvent_t pre_event,
+                                cudaEvent_t& copy_pre_event, cudaEvent_t& copy_post_event);
+
+    /**
+     * @breif Asynchronous Copies memory from the device GPU (global memory) to host (CPU RAM).
+     *
+     * @param dst The CPU memory pointer
+     * @param src The GPU memory pointer
+     * @param len The amount of data to copy in bytes
+     * @param pre_event The event before this one to wait on, if NULL will not wait
+     * @param copy_pre_event The profiling event at the start of this copy
+     * @param copy_post_event The event at the end of the copy.
+     */
+    void async_copy_gpu_to_host(void* dst, void* src, size_t len, cudaEvent_t pre_event,
+                                cudaEvent_t& copy_pre_event, cudaEvent_t& copy_post_event);
+
     // Function overrides to cast the generic gpu_memory retulsts appropriately.
     void* get_gpu_memory_array(const string& name, const uint32_t index, const uint32_t len);
     void* get_gpu_memory(const string& name, const uint32_t len);

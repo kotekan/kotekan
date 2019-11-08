@@ -57,17 +57,8 @@ cudaEvent_t cudaInputData::execute(int gpu_frame_id, cudaEvent_t pre_event) {
     void* gpu_memory_frame = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
     void* host_memory_frame = (void*)in_buf->frames[in_buffer_id];
 
-    if (pre_event)
-        CHECK_CUDA_ERROR(cudaStreamWaitEvent(device.getStream(CUDA_INPUT_STREAM), pre_event, 0));
-    // Data transfer to GPU
-    CHECK_CUDA_ERROR(cudaEventCreate(&pre_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(
-        cudaEventRecord(pre_events[gpu_frame_id], device.getStream(CUDA_INPUT_STREAM)));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(gpu_memory_frame, host_memory_frame, input_frame_len,
-                                     cudaMemcpyHostToDevice, device.getStream(CUDA_INPUT_STREAM)));
-    CHECK_CUDA_ERROR(cudaEventCreate(&post_events[gpu_frame_id]));
-    CHECK_CUDA_ERROR(
-        cudaEventRecord(post_events[gpu_frame_id], device.getStream(CUDA_INPUT_STREAM)));
+    device.async_copy_host_to_gpu(gpu_memory_frame, host_memory_frame, input_frame_len, pre_event,
+                                  pre_events[gpu_frame_id], post_events[gpu_frame_id]);
 
     in_buffer_id = (in_buffer_id + 1) % in_buf->num_frames;
     return post_events[gpu_frame_id];

@@ -42,7 +42,7 @@ gpuCommand* cudaProcess::create_command(const std::string& cmd_name,
 }
 
 void cudaProcess::queue_commands(int gpu_frame_id) {
-    cudaEvent_t signal = NULL;
+    cudaEvent_t signal = nullptr;
     for (auto& command : commands) {
         // Feed the last signal into the next operation
         signal = ((cudaCommand*)command)->execute(gpu_frame_id, signal);
