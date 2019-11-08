@@ -22,11 +22,19 @@ using json = nlohmann::json;
 using namespace std::string_literals;
 
 BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, CompareCTypes) {
-
     // The randomly chosen port for the dataset broker is passed to this test as a command line
     // argument.
-    BOOST_CHECK(boost::unit_test::framework::master_test_suite().argc == 2);
-    int broker_port = atoi(boost::unit_test::framework::master_test_suite().argv[1]);
+    // At some point boost stopped requiring the `--` to pass command line arguments, so we
+    // should be ready for both.
+    BOOST_CHECK(boost::unit_test::framework::master_test_suite().argc >= 2);
+    int broker_port;
+    if (!std::string("--").compare(boost::unit_test::framework::master_test_suite().argv[1])) {
+        BOOST_CHECK(boost::unit_test::framework::master_test_suite().argc == 3);
+        broker_port = atoi(boost::unit_test::framework::master_test_suite().argv[2]);
+    } else {
+        BOOST_CHECK(boost::unit_test::framework::master_test_suite().argc == 2);
+        broker_port = atoi(boost::unit_test::framework::master_test_suite().argv[1]);
+    }
     BOOST_CHECK(broker_port);
 
     _global_log_level = 5;
