@@ -24,8 +24,6 @@
  * @class cudaDeviceInterface
  * @brief Class to handle CUDA interactions with GPU hardware.
  *
- * .
- *
  * @par GPU Memory
  * @gpu_mem  bf_output       Output from the FRB pipeline, size 1024x128x16
  *     @gpu_mem_type         staging

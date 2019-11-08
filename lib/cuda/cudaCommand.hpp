@@ -36,13 +36,18 @@
  *
  * @author Keith Vanderlinde
  */
-
 class cudaCommand : public gpuCommand {
 public:
-    /** Kernel file name is optional.
-     * @param device  The instance of the clDeviceInterface class that abstracts the interfacing
-     *                      layer between the software and hardware.
-     **/
+
+    /**
+     * @brief Base constructor
+     * @param config       The system config, passed by factory.
+     * @param unique_name  The stage + command name.
+     * @param host_buffers The list of bufferes handled by this GPU stage.
+     * @param device       Abstracted GPU API interface for managing memory and common operations.
+     * @param default_kernel_command   Name of the kernel for profiling read out.
+     * @param default_kernel_file_name Kernel dile name, not really needed with cuda kernels.
+     */
     cudaCommand(kotekan::Config& config, const string& unique_name,
                 kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
                 const string& default_kernel_command = "",
