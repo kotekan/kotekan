@@ -11,9 +11,17 @@ import json
 import os
 import argparse
 
-parser = argparse.ArgumentParser(description='Query Kotekan GPU timings and display the results')
-parser.add_argument('-i', help='ID(s) of GPUs', dest='gpu_ids', type=int, default=[0,1,2,3],
-                          nargs='+')
+parser = argparse.ArgumentParser(
+    description="Query Kotekan GPU timings and display the results"
+)
+parser.add_argument(
+    "-i",
+    help="ID(s) of GPUs",
+    dest="gpu_ids",
+    type=int,
+    default=[0, 1, 2, 3],
+    nargs="+",
+)
 args = parser.parse_args()
 
 import sys
@@ -24,15 +32,15 @@ r = []
 json_data = []
 gpu_ids = args.gpu_ids
 
-for i,gpu_id in enumerate(gpu_ids):
-    r.append(requests.get('http://localhost:12048/gpu_profile/' + str(gpu_id)))
+for i, gpu_id in enumerate(gpu_ids):
+    r.append(requests.get("http://localhost:12048/gpu_profile/" + str(gpu_id)))
     json_data.append(r[i].json())
 
 kernels = []
 copy_ins = []
 copy_outs = []
 
-for gpu_id in range(0,len(gpu_ids)):
+for gpu_id in range(0, len(gpu_ids)):
     kernels.append([])
     # Kernel tables
     for kernel in json_data[gpu_id]["kernel"]:
@@ -85,7 +93,7 @@ for gpu_id in range(0,len(gpu_ids)):
         ]
     )
 
-for gpu_id in range(0,len(gpu_ids)):
+for gpu_id in range(0, len(gpu_ids)):
     print("| -------- GPU[" + str(gpu_id) + "] Kernel timing --------")
     print(
         tabulate(
