@@ -2,6 +2,7 @@
 
 #include "Config.hpp"
 #include "chimeMetadata.h"
+#include "hfbMetadata.h"
 #include "metadata.h"
 #include "visBuffer.hpp"
 
@@ -68,6 +69,10 @@ struct metadataPool* metadataFactory::new_pool(const string& pool_type, const st
 
     if (pool_type == "visMetadata") {
         return create_metadata_pool(num_metadata_objects, sizeof(struct visMetadata));
+    }
+    
+    if (pool_type == "hfbMetadata") {
+        return create_metadata_pool(num_metadata_objects, sizeof(struct hfbMetadata));
     }
     // No metadata found
     throw std::runtime_error(fmt::format(fmt("No metadata object named: {:s}"), pool_type));
