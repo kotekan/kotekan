@@ -2,8 +2,10 @@
 
 using std::string;
 
-#include "chimeMetadata.h"
 #include "integrateHFBData.hpp"
+#include "chimeMetadata.h"
+#include "hfbMetadata.h"
+#include "gpsTime.h"
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -65,7 +67,7 @@ void integrateHFBData::integrateFrame(float* input_data, float* sum_data,
           total_lost_timesamples, sum_data[0]);
 }
 
-void integrateHFBData::normaliseFrame(float* sum_data, const uint32_t in_buffer_ID) {
+float integrateHFBData::normaliseFrame(float* sum_data, const uint32_t in_buffer_ID) {
 
     const float normalise_frac =
         (float)total_timesamples / (total_timesamples - total_lost_timesamples);
@@ -82,6 +84,8 @@ void integrateHFBData::normaliseFrame(float* sum_data, const uint32_t in_buffer_
     frame = 0;
 
     fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
+
+    return normalise_frac;
 }
 
 void integrateHFBData::main_thread() {
@@ -144,10 +148,34 @@ void integrateHFBData::main_thread() {
                 (float)(total_timesamples - total_lost_timesamples) / total_timesamples;
 
             // Normalise data
-            normaliseFrame(sum_data, in_buffer_ID);
+            const float norm_frac = normaliseFrame(sum_data, in_buffer_ID);
 
             // Only output integration if there are enough good samples
             if (good_samples_frac >= _good_samples_threshold) {
+
+                // Create new metadata
+                allocate_new_metadata_object(out_buf, out_buffer_ID);
+                
+                // Populate metadata
+                int64_t fpga_seq = fpga_seq_num_end_old - ((_num_frames_to_integrate - 1) * _samples_per_data_set);
+                set_fpga_seq_num(out_buf, out_buffer_ID, fpga_seq);
+
+                // Check if GPS time is set
+                if(!is_gps_global_time_set())
+                  set_gps_time_flag(out_buf, out_buffer_ID, 0);
+                else {
+                  set_gps_time_flag(out_buf, out_buffer_ID, 1);
+                  set_gps_time(out_buf, out_buffer_ID, compute_gps_time(fpga_seq));
+                }
+                
+                set_norm_frac(out_buf, out_buffer_ID, norm_frac);
+                set_num_samples_integrated(out_buf, out_buffer_ID, total_timesamples - total_lost_timesamples);
+                set_num_samples_expected(out_buf, out_buffer_ID, total_timesamples);
+               
+                const stream_id_t stream_id = extract_stream_id(get_stream_id(in_buf, in_buffer_ID));
+                uint32_t freq_bin_num = bin_number_chime(&stream_id); 
+                set_freq_bin_num(out_buf, out_buffer_ID, freq_bin_num);
+
                 mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
 
                 // Get a new output buffer
