@@ -608,7 +608,7 @@ hyper_fine_beam:
 
 # Transmit all the 21cm data to Moose
 buffer_send_21cm:
-  server_ip: 10.1.50.12
+  server_ip: 10.5.0.10
   reconnect_time: 20
   log_level: warn
   21cm:

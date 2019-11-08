@@ -48,6 +48,10 @@ main_pool:
   kotekan_metadata_pool: chimeMetadata
   num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
 
+21cm_pool:
+  kotekan_metadata_pool: hfbMetadata
+  num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
+
 # Buffers
 network_buffers:
   num_frames: baseband_buffer_depth
@@ -98,6 +102,7 @@ cpu_hfb_output_buffers:
     cpu_hfb_output_buffer_0:
         kotekan_buffer: standard
     beamform_hfb_output_buffer_0:
+        metadata_pool: 21cm_pool
         kotekan_buffer: standard
 
 lost_samples_buffer:
@@ -195,7 +200,14 @@ hyper_fine_beam:
     hfb_input_buf: gpu_beamform_hfb_output_buffer_0
     hfb_output_buf: beamform_hfb_output_buffer_0
     lost_samples_buf: lost_samples_buffer
- 
+  
+21cm:
+    kotekan_stage: rawFileWrite
+    in_buf: beamform_hfb_output_buffer_0
+    file_name: 'hfb_buf'
+    file_ext: 'dump'
+    base_dir: '/home/willis/21cm_data'
+
 read_gain:
     kotekan_stage: ReadGain
     updatable_config:
