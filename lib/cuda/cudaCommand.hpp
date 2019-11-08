@@ -38,7 +38,6 @@
  */
 class cudaCommand : public gpuCommand {
 public:
-
     /**
      * @brief Base constructor
      * @param config       The system config, passed by factory.

@@ -39,8 +39,9 @@ gpu_output_buffers:
 
 gen_data:
     type: random
+    value: 53
     kotekan_stage: testDataGen
-    network_out_buf: gpu_input_buffer
+    out_buf: gpu_input_buffer
 
 gpu:
     profiling: true
