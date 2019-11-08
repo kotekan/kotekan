@@ -65,7 +65,7 @@ EigenVisIter::EigenVisIter(Config& config, const string& unique_name,
 
 dset_id_t EigenVisIter::change_dataset_state(dset_id_t input_dset_id) const {
     auto& dm = datasetManager::instance();
-    return dm.add_dataset(input_dset_id, ev_state_id);
+    return dm.add_dataset(ev_state_id, input_dset_id);
 }
 
 void EigenVisIter::main_thread() {
@@ -73,7 +73,7 @@ void EigenVisIter::main_thread() {
     frameID input_frame_id(in_buf);
     frameID output_frame_id(out_buf);
 
-    dset_id_t _output_dset_id = 0;
+    dset_id_t _output_dset_id = dset_id_t::null;
 
     DynamicHermitian<float> mask;
     uint32_t num_elements = 0;
@@ -187,17 +187,15 @@ void EigenVisIter::update_metrics(uint32_t freq_id, dset_id_t dset_id, double el
 
     // Output eigenvalues to prometheus
     for (uint32_t i = 0; i < _num_eigenvectors; i++) {
-        eigenvalue_metric
-            .labels({std::to_string(i), std::to_string(freq_id), std::to_string(dset_id)})
+        eigenvalue_metric.labels({std::to_string(i), std::to_string(freq_id), dset_id.to_string()})
             .set(eigpair.first[_num_eigenvectors - 1 - i]);
     }
 
     // Output RMS to prometheus
-    eigenvalue_metric.labels({"rms", std::to_string(freq_id), std::to_string(dset_id)})
-        .set(stats.rms);
+    eigenvalue_metric.labels({"rms", std::to_string(freq_id), dset_id.to_string()}).set(stats.rms);
 
     // Output convergence stats
-    std::vector<std::string> labels = {std::to_string(freq_id), std::to_string(dset_id)};
+    std::vector<std::string> labels = {std::to_string(freq_id), dset_id.to_string()};
     iterations_metric.labels(labels).set(stats.iterations);
     eigenvalue_convergence_metric.labels(labels).set(stats.eps_eval);
     eigenvector_convergence_metric.labels(labels).set(stats.eps_evec);

@@ -226,32 +226,28 @@ dset_id_t visAccumulate::base_dataset_state(std::string& instrument_name,
     const std::string git_tag = get_git_commit_hash();
 
     // create all the states
-    state_uptr freq_state = std::make_unique<freqState>(freqs);
-    state_uptr input_state = std::make_unique<inputState>(inputs, std::move(freq_state));
-    state_uptr prod_state = std::make_unique<prodState>(prods, std::move(input_state));
-    state_uptr ev_state = std::make_unique<eigenvalueState>(0, std::move(prod_state));
-    state_uptr mstate =
-        std::make_unique<metadataState>(weight_type, instrument_name, git_tag, std::move(ev_state));
-
-    // register them with the datasetManager
     datasetManager& dm = datasetManager::instance();
-    state_id_t mstate_id = dm.add_state(std::move(mstate)).first;
+    std::vector<state_id_t> base_states;
+    base_states.push_back(dm.create_state<freqState>(freqs).first);
+    base_states.push_back(dm.create_state<inputState>(inputs).first);
+    base_states.push_back(dm.create_state<prodState>(prods).first);
+    base_states.push_back(dm.create_state<eigenvalueState>(0).first);
+    base_states.push_back(
+        dm.create_state<metadataState>(weight_type, instrument_name, git_tag).first);
 
     // register root dataset
-    return dm.add_dataset(mstate_id);
+    return dm.add_dataset(base_states);
 }
 
 
 dset_id_t visAccumulate::gate_dataset_state(const gateSpec& spec) {
-    // create the state
-    state_uptr gate_state = std::make_unique<gatingState>(spec);
 
     // register with the datasetManager
     datasetManager& dm = datasetManager::instance();
-    state_id_t gstate_id = dm.add_state(std::move(gate_state)).first;
+    state_id_t gstate_id = dm.create_state<gatingState>(spec).first;
 
     // register gated dataset
-    return dm.add_dataset(base_dataset_id, gstate_id);
+    return dm.add_dataset(gstate_id, base_dataset_id);
 }
 
 
