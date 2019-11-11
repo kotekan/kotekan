@@ -34,7 +34,8 @@ Required for some options
 
 * `DPDK dpdk-16.11.9 <http://dpdk.org/>`_ (see :ref:`dpdk`), requires hugepage support
 * `AMD ROCm <https://github.com/RadeonOpenCompute/ROCm>`_ (this also installs AMD OpenCL drivers and SDK)
-* `HDF5 <https://www.hdfgroup.org/HDF5/>`_:: 
+* `CUDA <https://developer.nvidia.com/cuda-downloads>`_ Required for use with Nvidia cards
+* `HDF5 <https://www.hdfgroup.org/HDF5/>`_::
 
     sudo apt-get install libhdf5-serial-dev
 
@@ -178,6 +179,8 @@ Cmake build options
     Build with OpenCL support.
 * ``-DUSE_HCC=ON``
     Build with HCC support, must also set `CXX=hcc`, i.e. `CXX=hcc cmake -DUSE_HCC=ON ..`  This mode has limited support.
+* ``-DUSE_CUDA=ON``
+    Build support for CUDA kernels and Nvidia GPUs, requires `nvcc`
 * ``-DUSE_HDF5=ON``
     Build with HDF5 support. Requires HighFive, Bitshuffle and h5py.
 * ``-DHIGHFIVE_PATH=<path>``
