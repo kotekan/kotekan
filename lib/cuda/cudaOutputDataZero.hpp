@@ -28,7 +28,6 @@
  * @author Keith Vanderlinde
  *
  */
-
 class cudaOutputDataZero : public cudaCommand {
 public:
     cudaOutputDataZero(kotekan::Config& config, const string& unique_name,

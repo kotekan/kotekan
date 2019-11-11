@@ -1,7 +1,5 @@
 #include "cudaCommand.hpp"
 
-#include <iostream>
-
 using kotekan::bufferContainer;
 using kotekan::Config;
 

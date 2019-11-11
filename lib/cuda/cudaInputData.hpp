@@ -24,7 +24,6 @@
  * @author Keith Vanderlinde
  *
  */
-
 class cudaInputData : public cudaCommand {
 public:
     cudaInputData(kotekan::Config& config, const string& unique_name,

@@ -22,7 +22,6 @@
  *
  * @author Keith Vanderlinde
  */
-
 class cudaEventContainer final : public gpuEventContainer {
 
 public:

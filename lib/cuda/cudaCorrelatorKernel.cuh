@@ -19,8 +19,6 @@
  * @author Keith Vanderlinde
  *
  */
-
-
 class cudaCorrelatorKernel : public cudaCommand {
 public:
     cudaCorrelatorKernel(kotekan::Config& config, const string& unique_name,

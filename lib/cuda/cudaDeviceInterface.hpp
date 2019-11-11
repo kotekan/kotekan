@@ -34,7 +34,6 @@
  *
  * @author Keith Vanderlinde
  */
-
 class cudaDeviceInterface final : public gpuDeviceInterface {
 public:
     cudaDeviceInterface(kotekan::Config& config_, int32_t gpu_id_, int gpu_buffer_depth_);

@@ -1,4 +1,3 @@
-cmake_minimum_required( VERSION 2.8 )
 project( kotekan_cuda )
 
 include_directories(${CUDA_INCLUDE_DIR})
