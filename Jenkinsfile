@@ -18,7 +18,7 @@ pipeline {
         }
         stage('Build CHIME kotekan') {
           steps {
-            sh '''mkdir chime-build
+            sh '''mkdir -p chime-build
                   cd chime-build
                   cmake -DRTE_SDK=/opt/dpdk \
                   -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON \
@@ -30,7 +30,7 @@ pipeline {
         }
         stage('Build base kotekan') {
           steps {
-            sh '''mkdir build_base
+            sh '''mkdir -p build_base
                   cd build_base
                   cmake ..
                   make -j 4'''
@@ -40,7 +40,7 @@ pipeline {
           agent {label 'macos'}
           steps {
             sh '''export PATH=${PATH}:/usr/local/bin/
-                  mkdir build_base
+                  mkdir -p build_base
                   cd build_base/
                   cmake ..
                   make -j 4
@@ -58,7 +58,7 @@ pipeline {
         stage('Build docs') {
           steps {
             sh '''export PATH=${PATH}:/var/lib/jenkins/.local/bin/
-                  mkdir build-docs
+                  mkdir -p build-docs
                   cd build-docs/
                   cmake -DCOMPILE_DOCS=ON -DPLANTUML_PATH=/opt/plantuml ..
                   make doc
@@ -67,7 +67,7 @@ pipeline {
         }
         stage('Check code formatting') {
           steps {
-            sh '''mkdir build-check-format
+            sh '''mkdir -p build-check-format
                   cd build-check-format/
                   cmake ..
                   make clang-format

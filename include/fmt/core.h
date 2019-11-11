@@ -118,8 +118,12 @@
 #  define FMT_NORETURN
 #endif
 
+// See https://github.com/fmtlib/fmt/issues/1288
+// Fix for NVCC warning, should be included in future releases
 #ifndef FMT_DEPRECATED
-#  if (FMT_HAS_CPP_ATTRIBUTE(deprecated) && __cplusplus >= 201402L) || \
+#  if defined(__NVCC__)
+#    define FMT_DEPRECATED
+#  elif (FMT_HAS_CPP_ATTRIBUTE(deprecated) && __cplusplus >= 201402L) || \
       FMT_MSC_VER >= 1900
 #    define FMT_DEPRECATED [[deprecated]]
 #  else
