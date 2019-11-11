@@ -22,7 +22,6 @@ set ( KOTEKAN_CUDA_SOURCES
       cudaOutputDataZero.cpp
 
 # Simple test
-      cudaSaxpyKernel.cu
       cudaCorrelatorKernel.cu
     )
 
