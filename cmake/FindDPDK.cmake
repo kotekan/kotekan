@@ -1,7 +1,10 @@
 # Tries to find DPDK on local system
 # If found it defines DPDK_FOUND, DPDK_INCLUDE_DIR, and DPDK_LIBRARIES
 
+set(DPDK_SEARCH_PATHS /usr/include /usr/local/include)
+
 find_path(DPDK_INCLUDE_DIR rte_config.h
+          PATHS ${DPDK_SEARCH_PATHS}
           PATH_SUFFIXES dpdk)
 find_library(rte_hash_LIBRARY rte_hash)
 find_library(rte_kvargs_LIBRARY rte_kvargs)
@@ -35,10 +38,12 @@ set(dpdk_list_LIBRARIES
 
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(dpdk DEFAULT_MSG
-                                  DPDK_INCLUDE_DIR
-                                  dpdk_list_LIBRARIES)
+                                  dpdk_list_LIBRARIES
+                                  DPDK_INCLUDE_DIR)
 
 if(DPDK_FOUND)
     set(DPDK_LIBRARIES
             -Wl,--whole-archive ${dpdk_list_LIBRARIES} -lpthread -Wl,--no-whole-archive)
 endif(DPDK_FOUND)
+
+mark_as_advanced(DPDK_INCLUDE_DIR dpdk_list_LIBRARIES)

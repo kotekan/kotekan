@@ -10,6 +10,7 @@ add_library(kotekan_dpdk ${KOTEKAN_DPDK_SOURCES})
 
 # Link in DPDK
 find_library(dpdk REQUIRED)
+message("DPDK include dir: ${DPDK_INCLUDE_DIR}")
 include_directories(${DPDK_INCLUDE_DIR})
 target_link_libraries(kotekan_dpdk ${DPDK_LIBRARIES})
 
