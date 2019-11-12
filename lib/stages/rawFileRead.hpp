@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief foo bar
+ * @brief Stage to read in frames from file and inject them into a pipeline buffer.
  *  - rawFileRead : public kotekan:Stage
  */
 
