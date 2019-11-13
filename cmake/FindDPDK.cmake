@@ -19,8 +19,8 @@ else()
 endif()
 
 find_path(DPDK_INCLUDE_DIR rte_common.h
-        PATHS ${DPDK_SEARCH_PATHS} ${RTE_SDK}/${RTE_TARGET}/include
-        PATH_SUFFIXES dpdk)
+    PATHS ${DPDK_SEARCH_PATHS} ${RTE_SDK}/${RTE_TARGET}/include
+    PATH_SUFFIXES dpdk)
 
 find_library(rte_hash_LIBRARY NAMES librte_hash.a PATHS ${DPDK_LINK_HINT})
 find_library(rte_kvargs_LIBRARY NAMES librte_kvargs.a PATHS ${DPDK_LINK_HINT})
@@ -40,51 +40,51 @@ find_library(rte_pmd_ring_LIBRARY NAMES librte_pmd_ring.a PATHS ${DPDK_LINK_HINT
 find_library(rte_pmd_af_packet_LIBRARY NAMES librte_pmd_af_packet.a PATHS ${DPDK_LINK_HINT})
 
 set(DPDK_LIST_LIBRARIES
-        ${rte_hash_LIBRARY}
-        ${rte_kvargs_LIBRARY}
-        ${rte_mbuf_LIBRARY}
-        ${rte_ethdev_LIBRARY}
-        ${rte_mempool_LIBRARY}
-        ${rte_ring_LIBRARY}
-        ${rte_eal_LIBRARY}
-        ${rte_cmdline_LIBRARY}
-        ${rte_pci_LIBRARY}
-        ${rte_bus_pci_LIBRARY}
-        ${rte_bus_vdev_LIBRARY}
-        ${rte_pmd_bond_LIBRARY}
-        ${rte_pmd_vmxnet3_uio_LIBRARY}
-        ${rte_pmd_ixgbe_LIBRARY}
-        ${rte_pmd_i40e_LIBRARY}
-        ${rte_pmd_ring_LIBRARY}
-        ${rte_pmd_af_packet_LIBRARY})
+    ${rte_hash_LIBRARY}
+    ${rte_kvargs_LIBRARY}
+    ${rte_mbuf_LIBRARY}
+    ${rte_ethdev_LIBRARY}
+    ${rte_mempool_LIBRARY}
+    ${rte_ring_LIBRARY}
+    ${rte_eal_LIBRARY}
+    ${rte_cmdline_LIBRARY}
+    ${rte_pmd_bond_LIBRARY}
+    ${rte_pmd_vmxnet3_uio_LIBRARY}
+    ${rte_pmd_ixgbe_LIBRARY}
+    ${rte_pmd_i40e_LIBRARY}
+    ${rte_pmd_ring_LIBRARY}
+    ${rte_pmd_af_packet_LIBRARY})
+
+if (rte_pci_LIBRARY AND rte_bus_pci_LIBRARY AND rte_bus_vdev_LIBRARY)
+    set(DPDK_LIST_LIBRARIES ${DPDK_LIST_LIBRARIES}
+            ${rte_pci_LIBRARY}
+            ${rte_bus_pci_LIBRARY}
+            ${rte_bus_vdev_LIBRARY})
+    mark_as_advanced(rte_pci_LIBRARY rte_bus_pci_LIBRARY rte_bus_vdev_LIBRARY)
+endif()
 
 find_package_handle_standard_args(dpdk DEFAULT_MSG
-        DPDK_LIST_LIBRARIES
-        DPDK_INCLUDE_DIR)
-
-message("DPDK List: ${DPDK_LIST_LIBRARIES}")
+    DPDK_LIST_LIBRARIES
+    DPDK_INCLUDE_DIR)
 
 if(DPDK_FOUND)
     set(DPDK_LIBRARIES
-            -Wl,--start-group ${DPDK_LIST_LIBRARIES} -Wl,--end-group -ldl)
+        -Wl,--start-group ${DPDK_LIST_LIBRARIES} -Wl,--end-group -ldl)
 endif(DPDK_FOUND)
 
 mark_as_advanced(DPDK_INCLUDE_DIR
-        DPDK_LIBRARIES
-        DPDK_LIST_LIBRARIES
-        rte_hash_LIBRARY
-        rte_kvargs_LIBRARY
-        rte_mbuf_LIBRARY
-        rte_ethdev_LIBRARY
-        rte_mempool_LIBRARY
-        rte_ring_LIBRARY
-        rte_eal_LIBRARY
-        rte_cmdline_LIBRARY
-        rte_pci_LIBRARY
-        rte_bus_pci_LIBRARY
-        rte_bus_vdev_LIBRARY
-        rte_pmd_bond_LIBRARY
-        rte_pmd_ixgbe_LIBRARY
-        rte_pmd_i40e_LIBRARY
-        rte_pmd_ring_LIBRARY
-        rte_pmd_af_packet_LIBRARY)
+    DPDK_LIBRARIES
+    DPDK_LIST_LIBRARIES
+    rte_hash_LIBRARY
+    rte_kvargs_LIBRARY
+    rte_mbuf_LIBRARY
+    rte_ethdev_LIBRARY
+    rte_mempool_LIBRARY
+    rte_ring_LIBRARY
+    rte_eal_LIBRARY
+    rte_cmdline_LIBRARY
+    rte_pmd_bond_LIBRARY
+    rte_pmd_ixgbe_LIBRARY
+    rte_pmd_i40e_LIBRARY
+    rte_pmd_ring_LIBRARY
+    rte_pmd_af_packet_LIBRARY)
