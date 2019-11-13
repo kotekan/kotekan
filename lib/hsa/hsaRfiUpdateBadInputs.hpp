@@ -54,12 +54,19 @@ public:
 private:
     /// Main data input, used for metadata access
     Buffer* _network_buf;
+    Buffer* _in_buf;
 
     /// IDs for _network_buf
     int32_t _network_buf_finalize_id;
     int32_t _network_buf_execute_id;
     int32_t _network_buf_precondition_id;
-
+    
+    /// IDs for _in_buf
+    int32_t _in_buf_id;
+    int32_t _in_buf_len;
+    int32_t _in_buf_finalize_id;
+    int32_t _in_buf_precondition_id;
+ 
     /// State of the update
     bool update_bad_inputs;
 
@@ -87,6 +94,12 @@ private:
 
     /// The mapping from correlator to cylinder element indexing.
     std::vector<uint32_t> input_remap;
+
+    int32_t frame_to_fill;
+    int32_t frame_to_fill_finalize;
+    bool filling_frame;
+    bool first_pass;
+
 };
 
 #endif // HSA_RFI_UPDATE_BAD_INPUTS_HPP

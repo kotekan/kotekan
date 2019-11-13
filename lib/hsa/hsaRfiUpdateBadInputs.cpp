@@ -32,16 +32,24 @@ hsaRfiUpdateBadInputs::hsaRfiUpdateBadInputs(Config& config, const string& uniqu
     _network_buf_execute_id = 0;
     _network_buf_finalize_id = 0;
 
+    _in_buf_len = num_elements * sizeof(uint8_t);
+    _in_buf = host_buffers.get_buffer("bad_inputs_buf");
+    register_consumer(_in_buf, unique_name.c_str());
+    _in_buf_id = 0;
+    _in_buf_finalize_id = 0;
+    _in_buf_precondition_id = 0;
+    frame_to_fill = 0;
+    frame_to_fill_finalize = 0;
+    filling_frame = false;
+    first_pass = true;
+
     update_bad_inputs = false;
     frames_to_update = 0;
     frames_to_update_finalize = 0;
 
     // Alloc memory on GPU
     device.get_gpu_memory_array("input_mask", 0, input_mask_len);
-
-    kotekan::configUpdater::instance().subscribe(
-        config.get<std::string>(unique_name, "updatable_config/bad_inputs"),
-        std::bind(&hsaRfiUpdateBadInputs::update_bad_inputs_callback, this, std::placeholders::_1));
+    
 }
 
 hsaRfiUpdateBadInputs::~hsaRfiUpdateBadInputs() {
@@ -51,12 +59,35 @@ hsaRfiUpdateBadInputs::~hsaRfiUpdateBadInputs() {
 int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
 
-    uint8_t* frame =
-        wait_for_full_frame(_network_buf, unique_name.c_str(), _network_buf_precondition_id);
-    if (frame == nullptr)
-        return -1;
-
-    _network_buf_precondition_id = (_network_buf_precondition_id + 1) % _network_buf->num_frames;
+    // Check for bad input updates
+    if (first_pass) {
+        uint8_t* frame =
+            wait_for_full_frame(_in_buf, unique_name.c_str(), _in_buf_precondition_id);
+        if (frame == NULL)
+            return -1;
+        _in_buf_precondition_id = (_in_buf_precondition_id + 1) % _in_buf->num_frames;
+        first_pass = false;
+        frame_to_fill = device.get_gpu_buffer_depth();
+        frame_to_fill_finalize = frame_to_fill;
+        filling_frame = true;
+    } else {
+        // Check for new bad inputs only if filled all gpu frames (not currently filling frame)
+        if (!filling_frame) {
+            auto timeout = double_to_ts(0);
+            int status = wait_for_full_frame_timeout(_in_buf, unique_name.c_str(),
+                                                     _in_buf_precondition_id, timeout);
+            DEBUG("status of bad inputs _in_buf_precondition_id[{:d}]={:d} (0=ready 1=not)",
+                  _in_buf_precondition_id, status);
+            if (status == 0) {
+                filling_frame = true;
+                frame_to_fill = device.get_gpu_buffer_depth();
+                frame_to_fill_finalize = frame_to_fill;
+                _in_buf_precondition_id = (_in_buf_precondition_id + 1) % _in_buf->num_frames;
+            }
+            if (status == -1)
+                return -1;
+        }
+    }
     return 0;
 }
 
@@ -71,7 +102,7 @@ hsa_signal_t hsaRfiUpdateBadInputs::execute(int gpu_frame_id, hsa_signal_t prece
         frames_to_update--;
 
         // Copy memory to GPU
-        DEBUG("Coping bad input list to GPU[{:d}], frames to update: {:d}, update: {}, cylinder "
+        DEBUG("Copying bad input list to GPU[{:d}], frames to update: {:d}, update: {}, cylinder "
               "order: {}, correlator order: {}",
               device.get_gpu_id(), frames_to_update, update_bad_inputs, bad_inputs_cylinder,
               bad_inputs_correlator);
@@ -98,53 +129,4 @@ void hsaRfiUpdateBadInputs::finalize_frame(int frame_id) {
 
     mark_frame_empty(_network_buf, unique_name.c_str(), _network_buf_finalize_id);
     _network_buf_finalize_id = (_network_buf_finalize_id + 1) % _network_buf->num_frames;
-}
-
-bool hsaRfiUpdateBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
-
-    // It might be possible to reduce the scope of this lock.
-    // However all the operations in this command object are async, so it should be fast.
-    std::lock_guard<std::mutex> lock(update_mutex);
-
-    // TODO this isn't ideal, we could read off a buffer and then apply bad inputs coming from
-    // that buffer fed by a stage.  However for the bad inputs list, we are very unlikely to hit
-    // this condition. This will be fixed when we refactor the command objects and create
-    // a generic command object for optional memory array copies.
-    // Note for this to happen we'd need two bad input list updates within less than ~0.5 seconds.
-    if (update_bad_inputs) {
-        WARN("Got new bad inputs list before applying the last list, not applying new bad inputs!");
-        return true;
-    }
-
-    try {
-        bad_inputs_cylinder = json["bad_inputs"].get<std::vector<int>>();
-    } catch (std::exception const& e) {
-        ERROR("Failed to parse bad input list {:s}", e.what());
-        return false;
-    }
-
-    // Reorder list
-    bad_inputs_correlator.clear();
-    for (auto element : bad_inputs_cylinder)
-        bad_inputs_correlator.push_back(input_remap[element]);
-
-    // Zero bad inputs mask
-    for (uint32_t i = 0; i < input_mask_len; ++i) {
-        host_mask[i] = 1;
-    }
-
-    // Add current bad input mask
-    for (auto element : bad_inputs_correlator) {
-        if (element < (int)input_mask_len && element >= 0) {
-            host_mask[element] = 0;
-        } else {
-            ERROR("Got a bad input with invalid index");
-            return false;
-        }
-    }
-
-    update_bad_inputs = true;
-    frames_to_update = device.get_gpu_buffer_depth();
-    frames_to_update_finalize = frames_to_update;
-    return true;
 }
