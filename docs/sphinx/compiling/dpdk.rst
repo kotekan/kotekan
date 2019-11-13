@@ -34,8 +34,12 @@ Then edit ``/etc/dpdk/dpdk.conf`` and add the following line:
 
     NR_2M_PAGES=1024
 
+Reboot the system and check ``dpdk-devbind --status`` to see if the NICs were correctly
+bound to the UIO drivers.
+
 Please note that depending on the setup you may want to use more or less huge pages.
-If you have a NUMA system you'll need to manually create your huge pages on each NUMA node.
+If you have a NUMA system you'll need to manually create your huge pages on each NUMA node,
+the above script will not work.
 
 ============================
 Configuring DPDK from source

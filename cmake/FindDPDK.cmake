@@ -58,7 +58,7 @@ find_package_handle_standard_args(dpdk DEFAULT_MSG
 
 if(DPDK_FOUND)
     set(DPDK_LIBRARIES
-            -Wl,--whole-archive ${dpdk_list_LIBRARIES} -lpthread -Wl,--no-whole-archive)
+            -Wl,--start-group ${dpdk_list_LIBRARIES} -Wl,--end-group -ldl)
 endif(DPDK_FOUND)
 
 mark_as_advanced(DPDK_INCLUDE_DIR
