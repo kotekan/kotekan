@@ -1,0 +1,77 @@
+#include "bufferBadInputs.hpp"
+
+#include "configUpdater.hpp"
+#include "visUtil.hpp"
+
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::configUpdater;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(bufferBadInputs);
+
+bufferBadInputs::bufferBadInputs(Config& config_, const string& unique_name,
+                                   bufferContainer& buffer_container) :
+    Stage(config_, unique_name, buffer_container, std::bind(&bufferBadInputs::main_thread, this)) {
+
+    uint32_t num_elements = config.get<uint32_t>(unique_name, "num_elements");
+    input_mask_len = sizeof(uint8_t) * num_elements;
+
+    auto input_reorder = parse_reorder_default(config, unique_name);
+    input_remap = std::get<0>(input_reorder);
+
+    out_buf = get_buffer("bad_inputs_buffer");
+    register_producer(out_buf, unique_name.c_str());
+    
+    // Listen for bad input list updates
+    string badInputs = config.get<std::string>(unique_name, "updatable_config/bad_inputs");
+    if (badInputs.length() > 0)
+        configUpdater::instance().subscribe(
+            badInputs, std::bind(&bufferBadInputs::update_bad_inputs_callback, this, std::placeholders::_1));
+}
+
+bufferBadInputs::~bufferBadInputs() {}
+
+bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
+    
+    static uint32_t out_buffer_ID = 0;
+
+    // Get the first output buffer which will always be id = 0 to start.
+    uint8_t* host_mask = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
+
+    try {
+      bad_inputs_cylinder = json["bad_inputs"].get<std::vector<int>>();
+    } catch (std::exception const& e) {
+      ERROR("Failed to parse bad input list {:s}", e.what());
+      return false;
+    }
+
+    // Reorder list
+    bad_inputs_correlator.clear();
+    for (auto element : bad_inputs_cylinder)
+      bad_inputs_correlator.push_back(input_remap[element]);
+
+    // Zero bad inputs mask
+    for (uint32_t i = 0; i < input_mask_len; ++i) {
+      host_mask[i] = 1;
+    }
+
+    // Add current bad input mask
+    for (auto element : bad_inputs_correlator) {
+      if (element < (int)input_mask_len && element >= 0) {
+        host_mask[element] = 0;
+      } else {
+        ERROR("Got a bad input with invalid index");
+        return false;
+      }
+    }
+
+    mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
+
+    // Increment frame ID
+    out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
+
+    return true;
+}
+
+void bufferBadInputs::main_thread() {}
