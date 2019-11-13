@@ -17,6 +17,7 @@ import json
 
 from . import visbuffer
 from . import frbbuffer
+from . import psrbuffer
 
 
 class KotekanRunner(object):
@@ -872,6 +873,53 @@ class DumpFrbPostProcessBuffer(InputBuffer):
             The buffer output, one list per frame, a list of packets within the frame.
         """
         return frbbuffer.FrbPacket.load_files(
+            "{}/*{}*.dump".format(self.output_dir, self.name)
+        )
+
+
+class DumpPsrPostProcessBuffer(InputBuffer):
+    """Consume a Pulsar output buffer and provide its contents as a list of `psrbuffer.PsrPacket`s.
+
+    Parameters
+    ----------
+    output_dir : string
+        Temporary directory to output to. The dumped files are not removed.
+    """
+
+    def __init__(self, output_dir, **kwargs):
+        self.name = "psr_post_process_buffer"
+        self.output_dir = output_dir
+
+        self.buffer_block = {
+            self.name: {
+                "num_frames": "buffer_depth + 4",
+                "frame_size": "udp_pulsar_packet_size * num_stream * num_packet_per_stream",
+                "kotekan_buffer": "standard",
+                "metadata_pool": "main_pool",
+            }
+        }
+
+        stage_name = kwargs.get("stage_name", "dump_psr_post_process")
+        stage_config = {
+            "kotekan_stage": "rawFileWrite",
+            "in_buf": self.name,
+            "file_name": self.name,
+            "file_ext": "dump",
+            "base_dir": self.output_dir,
+        }
+        stage_config.update(kwargs)
+
+        self.stage_block = {stage_name: stage_config}
+
+    def load(self):
+        """Load the output data from the frbPostProcess buffer.
+
+        Returns
+        -------
+        dumps : list of lists of PsrPacket
+            The buffer output, one list per frame, a list of packets within the frame.
+        """
+        return psrbuffer.PsrPacket.load_files(
             "{}/*{}*.dump".format(self.output_dir, self.name)
         )
 
