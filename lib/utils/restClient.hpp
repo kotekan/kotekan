@@ -32,7 +32,7 @@ using restReply = std::pair<bool, std::string>;
  * Implementation
  * ==============
  *
- * There is an event loop running int the main_thread() that gets started by the constructor.
+ * There is an event loop running in the main_thread() that gets started by the constructor.
  * The event thread is sending out requests, waits for results and calls the assigned callback
  * functions. All this has to be done from the same thread that runs the event loop, which makes
  * class more complicated than you would expect:
