@@ -63,6 +63,7 @@ int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
     if (first_pass) {
         uint8_t* frame =
             wait_for_full_frame(_in_buf, unique_name.c_str(), _in_buf_precondition_id);
+        DEBUG("hsaRfiUpdateBadInputs::wait_on_precondition: Bad inputs update.");
         if (frame == NULL)
             return -1;
         _in_buf_precondition_id = (_in_buf_precondition_id + 1) % _in_buf->num_frames;

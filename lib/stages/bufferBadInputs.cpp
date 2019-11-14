@@ -36,6 +36,8 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     
     static uint32_t out_buffer_ID = 0;
 
+    DEBUG("update_bad_inputs_callback(): Update to bad inputs list.");
+
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t* host_mask = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
 
@@ -67,6 +69,8 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     }
 
     mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
+
+    DEBUG("update_bad_inputs_callback(): Bad inputs reordered and buffered.");
 
     // Increment frame ID
     out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
