@@ -21,12 +21,11 @@ using json = nlohmann::json;
 
 using namespace std::string_literals;
 
-BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
-
+int read_from_argv() {
     // The randomly chosen port for the dataset broker is passed to this test as a command line
     // argument.
     // At some point boost stopped requiring the `--` to pass command line arguments, so we
-    // should be ready for both.
+    // should be ready for both `--` being there or not...
     BOOST_CHECK(boost::unit_test::framework::master_test_suite().argc >= 2);
     int broker_port;
     if (!std::string("--").compare(boost::unit_test::framework::master_test_suite().argv[1])) {
@@ -37,6 +36,11 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
         broker_port = atoi(boost::unit_test::framework::master_test_suite().argv[1]);
     }
     BOOST_CHECK(broker_port);
+    return broker_port;
+}
+
+BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
+    int broker_port = read_from_argv();
 
     _global_log_level = 5;
     __enable_syslog = 0;
@@ -102,20 +106,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
 
 
 BOOST_AUTO_TEST_CASE(_dataset_manager_state_known_to_broker) {
-    // The randomly chosen port for the dataset broker is passed to this test as a command line
-    // argument.
-    // At some point boost stopped requiring the `--` to pass command line arguments, so we
-    // should be ready for both.
-    BOOST_CHECK(boost::unit_test::framework::master_test_suite().argc >= 2);
-    int broker_port;
-    if (!std::string("--").compare(boost::unit_test::framework::master_test_suite().argv[1])) {
-        BOOST_CHECK(boost::unit_test::framework::master_test_suite().argc == 3);
-        broker_port = atoi(boost::unit_test::framework::master_test_suite().argv[2]);
-    } else {
-        BOOST_CHECK(boost::unit_test::framework::master_test_suite().argc == 2);
-        broker_port = atoi(boost::unit_test::framework::master_test_suite().argv[1]);
-    }
-    BOOST_CHECK(broker_port);
+    int broker_port = read_from_argv();
 
     _global_log_level = 5;
     __enable_syslog = 0;
@@ -149,20 +140,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_state_known_to_broker) {
 }
 
 BOOST_AUTO_TEST_CASE(_dataset_manager_second_root) {
-    // The randomly chosen port for the dataset broker is passed to this test as a command line
-    // argument.
-    // At some point boost stopped requiring the `--` to pass command line arguments, so we
-    // should be ready for both.
-    BOOST_CHECK(boost::unit_test::framework::master_test_suite().argc >= 2);
-    int broker_port;
-    if (!std::string("--").compare(boost::unit_test::framework::master_test_suite().argv[1])) {
-        BOOST_CHECK(boost::unit_test::framework::master_test_suite().argc == 3);
-        broker_port = atoi(boost::unit_test::framework::master_test_suite().argv[2]);
-    } else {
-        BOOST_CHECK(boost::unit_test::framework::master_test_suite().argc == 2);
-        broker_port = atoi(boost::unit_test::framework::master_test_suite().argv[1]);
-    }
-    BOOST_CHECK(broker_port);
+    int broker_port = read_from_argv();
 
     _global_log_level = 5;
     __enable_syslog = 0;
