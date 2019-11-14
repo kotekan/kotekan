@@ -61,6 +61,9 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
     std::vector<std::pair<uint32_t, freq_ctype>> freqs = {
         {1, {1.1, 1}}, {2, {2, 2.2}}, {3, {3, 3}}};
 
+    // wait for the restServer to start
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
     // Force the dM to update while it knows of nothing yet.
     restReply reply = restClient::instance().make_request_blocking(
         "/dataset-manager/force-update", {}, "127.0.0.1", kotekan::restServer::instance().port);
