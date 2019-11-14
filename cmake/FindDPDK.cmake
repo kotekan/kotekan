@@ -7,7 +7,7 @@ include(FindPackageHandleStandardArgs)
 
 # Default install locations
 set(DPDK_SEARCH_PATHS /usr/include
-        /usr/local/include)
+    /usr/local/include)
 
 # Note the ${RTE_SDK}/${RTE_TARGET} path is for backwards compatibility
 # with non-standard DPDK install locations
@@ -22,22 +22,22 @@ find_path(DPDK_INCLUDE_DIR rte_common.h
     PATHS ${DPDK_SEARCH_PATHS} ${RTE_SDK}/${RTE_TARGET}/include
     PATH_SUFFIXES dpdk)
 
-find_library(rte_hash_LIBRARY NAMES librte_hash.a PATHS ${DPDK_LINK_HINT})
-find_library(rte_kvargs_LIBRARY NAMES librte_kvargs.a PATHS ${DPDK_LINK_HINT})
-find_library(rte_mbuf_LIBRARY NAMES librte_mbuf.a PATHS ${DPDK_LINK_HINT})
-find_library(rte_ethdev_LIBRARY NAMES librte_ethdev.a PATHS ${DPDK_LINK_HINT})
-find_library(rte_mempool_LIBRARY NAMES librte_mempool.a PATHS ${DPDK_LINK_HINT})
-find_library(rte_ring_LIBRARY NAMES librte_ring.a PATHS ${DPDK_LINK_HINT})
-find_library(rte_eal_LIBRARY NAMES librte_eal.a PATHS ${DPDK_LINK_HINT})
-find_library(rte_cmdline_LIBRARY NAMES librte_cmdline.a PATHS ${DPDK_LINK_HINT})
-find_library(rte_pci_LIBRARY NAMES librte_pci.a PATHS ${DPDK_LINK_HINT})
-find_library(rte_bus_pci_LIBRARY NAMES librte_bus_pci.a PATHS ${DPDK_LINK_HINT})
-find_library(rte_bus_vdev_LIBRARY NAMES librte_bus_vdev.a PATHS ${DPDK_LINK_HINT})
-find_library(rte_pmd_bond_LIBRARY NAMES librte_pmd_bond.a PATHS ${DPDK_LINK_HINT})
-find_library(rte_pmd_ixgbe_LIBRARY NAMES librte_pmd_ixgbe.a PATHS ${DPDK_LINK_HINT})
-find_library(rte_pmd_i40e_LIBRARY NAMES librte_pmd_i40e.a PATHS ${DPDK_LINK_HINT})
-find_library(rte_pmd_ring_LIBRARY NAMES librte_pmd_ring.a PATHS ${DPDK_LINK_HINT})
-find_library(rte_pmd_af_packet_LIBRARY NAMES librte_pmd_af_packet.a PATHS ${DPDK_LINK_HINT})
+find_library(rte_hash_LIBRARY NAMES rte_hash PATHS ${DPDK_LINK_HINT})
+find_library(rte_kvargs_LIBRARY NAMES rte_kvargs PATHS ${DPDK_LINK_HINT})
+find_library(rte_mbuf_LIBRARY NAMES rte_mbuf PATHS ${DPDK_LINK_HINT})
+find_library(rte_ethdev_LIBRARY NAMES rte_ethdev PATHS ${DPDK_LINK_HINT})
+find_library(rte_mempool_LIBRARY NAMES rte_mempool PATHS ${DPDK_LINK_HINT})
+find_library(rte_ring_LIBRARY NAMES rte_ring PATHS ${DPDK_LINK_HINT})
+find_library(rte_eal_LIBRARY NAMES rte_eal PATHS ${DPDK_LINK_HINT})
+find_library(rte_cmdline_LIBRARY NAMES rte_cmdline PATHS ${DPDK_LINK_HINT})
+find_library(rte_pci_LIBRARY NAMES rte_pci PATHS ${DPDK_LINK_HINT})
+find_library(rte_bus_pci_LIBRARY NAMES rte_bus_pci PATHS ${DPDK_LINK_HINT})
+find_library(rte_bus_vdev_LIBRARY NAMES rte_bus_vdev PATHS ${DPDK_LINK_HINT})
+find_library(rte_pmd_bond_LIBRARY NAMES rte_pmd_bond PATHS ${DPDK_LINK_HINT})
+find_library(rte_pmd_ixgbe_LIBRARY NAMES rte_pmd_ixgbe PATHS ${DPDK_LINK_HINT})
+find_library(rte_pmd_i40e_LIBRARY NAMES rte_pmd_i40e PATHS ${DPDK_LINK_HINT})
+find_library(rte_pmd_ring_LIBRARY NAMES rte_pmd_ring PATHS ${DPDK_LINK_HINT})
+find_library(rte_pmd_af_packet_LIBRARY NAMES rte_pmd_af_packet PATHS ${DPDK_LINK_HINT})
 
 set(DPDK_LIST_LIBRARIES
     ${rte_hash_LIBRARY}
@@ -57,9 +57,9 @@ set(DPDK_LIST_LIBRARIES
 
 if (rte_pci_LIBRARY AND rte_bus_pci_LIBRARY AND rte_bus_vdev_LIBRARY)
     set(DPDK_LIST_LIBRARIES ${DPDK_LIST_LIBRARIES}
-            ${rte_pci_LIBRARY}
-            ${rte_bus_pci_LIBRARY}
-            ${rte_bus_vdev_LIBRARY})
+        ${rte_pci_LIBRARY}
+        ${rte_bus_pci_LIBRARY}
+        ${rte_bus_vdev_LIBRARY})
     mark_as_advanced(rte_pci_LIBRARY rte_bus_pci_LIBRARY rte_bus_vdev_LIBRARY)
 endif()
 

@@ -20,31 +20,31 @@ Cmake build options:
 
 * `-DCMAKE_BUILD_TYPE=Debug` - Builds the project with debug symbols.
 * `-DUSE_DPDK=ON` - Include DPDK support.  Optional `-DRTE_SDK=<build-location>` and
-`-DRTE_TARGET=x86_64-native-linuxapp-gcc` can be provided for non standard build locations.
+  `-DRTE_TARGET=x86_64-native-linuxapp-gcc` can be provided for non standard build locations.
 * `-DUSE_HSA=ON` - Build with HSA support if available. On by default.
 * `-DUSE_OLD_ROCM=ON` - Build for ROCm versions 2.3 or older. Off by default.
 * `-DUSE_CLOC=ON` - For HSA, use cloc.sh to compile .hsaco binaries.
-Direct toolchain calls are used by default.
+  Direct toolchain calls are used by default.
 * `-DUSE_OPENCL=ON` - Build with OpenCL support.
 * `-DUSE_HCC=ON` - Build with HCC support, must also set `CXX=hcc`,
-i.e. `CXX=hcc cmake -DUSE_HCC=ON ..`  This mode has limited support.
+  i.e. `CXX=hcc cmake -DUSE_HCC=ON ..`  This mode has limited support.
 * `-DUSE_CUDA=ON` - Build with CUDA support, requires `nvcc`
 * `-DUSE_HDF5=ON` and `-DHIGHFIVE_PATH=<path>` - To enable the HDF5 writer
 * `-DUSE_AIRSPY=ON` - Build the AirSpy producer. Requires libairspy.
 * `-DUSE_FFTW=ON` - Build an FFTW-based F-engine. Requires FFTW3.
 * `-DUSE_LAPACK=ON` - Build stages depending on LAPACK.
-Currently only OpenBLAS built from source is supported (see above).
+  Currently only OpenBLAS built from source is supported (see above).
 * `-DOPENBLAS_PATH=<openblas_prefix>` - Path to OpenBLAS installation,
-if not in the `CMAKE_PREFIX_PATH`
+  if not in the `CMAKE_PREFIX_PATH`
 * `-DBLAZE_PATH=<blaze_path>` - Path to BLAZE headers. Required if `USE_LAPACK` is set.
 * `-DCOMPILE_DOCS=ON` - Build kotekan documentation. Requires doxygen,
-sphinx (+ sphinx_rtd_theme), and breathe.
-Note that docs will only compile if explicitly told to,
-it is not part of the base compile, even when enabled.
+  sphinx (+ sphinx_rtd_theme), and breathe.
+  Note that docs will only compile if explicitly told to,
+  it is not part of the base compile, even when enabled.
 * `-DUSE_OMP=ON` Build stages using OpenMP. This requires a compiler supporting OpenMP (>= 3.0)
 * `-DOPENSSL_ROOT_DIR=<openssl_root_dir>` Only required for non-standard install locations of OpenSSL
 * `-DBOOST_TESTS=ON` Build tests using The Boost Test Framework.
-pytest-cpp needs to be installed for pytest to find them.
+  pytest-cpp needs to be installed for pytest to find them.
 * `-DSUPERDEBUG=ON` Add extra debugging info and turn off all optimisation to improve coverage.
 * `-DSANITIZE=ON` Turn on extra Clang sanitizers (currently the address sanitizer) for finding issues.
 
