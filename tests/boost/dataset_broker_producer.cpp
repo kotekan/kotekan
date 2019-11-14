@@ -76,7 +76,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
 
     // write ID to disk for producer2
     std::ofstream o("DS_ID.txt");
-    o << ds_id;
+    o << ds_id.to_string();
     o.close();
 
     for (auto s : dm.states())
@@ -157,7 +157,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_second_root) {
 
     // write ID to disk for consumer
     std::ofstream o("SECOND_ROOT.txt");
-    o << second_root;
+    o << second_root.to_string();
     o.close();
 
     // wait a bit, to make sure we see errors in any late callbacks

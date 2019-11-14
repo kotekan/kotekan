@@ -62,7 +62,7 @@ BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, CompareCTypes) {
     } else
         std::cout << "Unable to open file DS_D.txt\n";
     dset_id_t ds_id;
-    std::stringstream(line) >> ds_id;
+    ds_id.set_from_string(line);
 
     auto freq_state = dm.dataset_state<freqState>(ds_id);
     check_equal(old_freqs, freq_state->get_freqs());
@@ -86,7 +86,7 @@ BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, CompareCTypes) {
 
     // write ID to disk for consumer
     std::ofstream o("DS_ID2.txt");
-    o << ds_id2;
+    o << ds_id2.to_string();
     o.close();
 
     std::cout << dm.summary() << std::endl;

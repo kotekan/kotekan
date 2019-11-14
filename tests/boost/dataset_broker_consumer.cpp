@@ -67,7 +67,7 @@ BOOST_FIXTURE_TEST_CASE(_ask_broker_for_ancestors, CompareCTypes) {
     } else
         std::cout << "Unable to open file DS_ID2.txt\n";
     dset_id_t ds_id;
-    std::stringstream(line) >> ds_id;
+    ds_id.set_from_string(line);
 
     auto i = dm.dataset_state<inputState>(ds_id);
     check_equal(i->get_inputs(), inputs);
@@ -129,7 +129,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_second_root_update) {
     } else
         std::cout << "Unable to open file SECOND_ROOT.txt\n";
     dset_id_t second_root;
-    std::stringstream(line) >> second_root;
+    second_root.set_from_string(line);
 
     second_root_update = dm.add_dataset(states, second_root);
 
@@ -178,7 +178,7 @@ BOOST_FIXTURE_TEST_CASE(_ask_broker_for_second_root, CompareCTypes) {
     } else
         std::cout << "Unable to open file SECOND_ROOT.txt\n";
     dset_id_t second_root;
-    std::stringstream(line) >> second_root;
+    second_root.set_from_string(line);
 
     auto i = dm.dataset_state<inputState>(second_root);
     check_equal(i->get_inputs(), inputs);
