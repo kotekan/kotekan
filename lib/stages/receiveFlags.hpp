@@ -7,6 +7,7 @@
 #define RECEIVEFLAGS_H
 
 #include "Stage.hpp"
+#include "datasetManager.hpp"
 #include "prometheusMetrics.hpp"
 #include "updateQueue.hpp"
 
@@ -65,7 +66,12 @@ private:
     // this is faster than std::queue/deque
     /// The bad_input chan_id's and when to start applying them in a FIFO
     /// (len set by config)
-    updateQueue<std::vector<float>> flags;
+    updateQueue<std::pair<state_id_t, std::vector<float>>> flags;
+
+    // Map from the state being applied and input dataset to the output dataset.
+    // This is used to keep track of the labels we should be applying for
+    // timesamples coming out of order.
+    std::map<std::pair<state_id_t, dset_id_t>, dset_id_t> output_dataset_ids;
 
     /// Input buffer
     Buffer* buf_in;
@@ -86,7 +92,7 @@ private:
     /// Number of elements
     size_t num_elements;
 
-    /// Number of updates to keept track of
+    /// Number of updates to keep track of
     uint32_t num_kept_updates;
 };
 

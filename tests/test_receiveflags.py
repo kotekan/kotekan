@@ -128,7 +128,7 @@ def test_too_many_flags(tmpdir_factory):
     for frame in flags_dump:
         assert n == len(frame.flags)
 
-        # flaggs should always stay at the initialization value
+        # flags should always stay at the initialization value
         assert np.all([1, 0, 1, 1, 0] == pytest.approx(frame.flags))
 
 
@@ -473,3 +473,60 @@ def test_flags_wrong_type(tmpdir_factory):
 
         # flags should stay the same
         assert np.all(frame.flags == [1, 0, 1, 1, 0])
+
+
+def test_dset_id_change(tmpdir_factory):
+    params["total_frames"] = 200
+    params["num_kept_updates"] = 5
+    params["cadence"] = 0.1
+    params["wait"] = True
+    params["num_elements"] = 5
+    params["dynamic_attributes"]["flagging"]["bad_inputs"] = [1, 4]
+    flags_set = 0
+
+    # REST commands
+    flags = [params["dynamic_attributes"]["flagging"]["bad_inputs"], [1], [2], [3]]
+    frame_flags = [[1, 0, 1, 1, 0], [1, 0, 1, 1, 1], [1, 1, 0, 1, 1], [1, 1, 1, 0, 1]]
+    ts = [time.time() + 15, time.time() + 17, time.time() + 18.5]
+    cmds = [
+        [
+            "post",
+            "dynamic_attributes/flagging",
+            {"bad_inputs": flags[1], "start_time": ts[0], "tag": "test_flag_update1"},
+        ],
+        [
+            "post",
+            "dynamic_attributes/flagging",
+            {"bad_inputs": flags[2], "start_time": ts[1], "tag": "test_flag_update2"},
+        ],
+        [
+            "post",
+            "dynamic_attributes/flagging",
+            {"bad_inputs": flags[3], "start_time": ts[2], "tag": "test_flag_update3"},
+        ],
+    ]
+
+    flags_dump = run_flagging(tmpdir_factory, cmds)
+
+    def get_dset_id(frame):
+        return bytes(frame.metadata.dataset_id).hex()
+
+    prev_dset_id = get_dset_id(flags_dump[0])
+
+    for frame in flags_dump:
+        assert params["num_elements"] == len(frame.flags)
+
+        dset_id = get_dset_id(frame)
+
+        # we know when the flags should change in this test
+        frame_ts = frame.metadata.ctime.tv + frame.metadata.ctime.tv_nsec * 1e-9
+        if flags_set < 3 and frame_ts >= ts[flags_set]:
+            # Check that the dataset_id has changed when we expected it to
+            assert prev_dset_id != dset_id
+            flags_set += 1
+        else:
+            assert prev_dset_id == dset_id
+
+        prev_dset_id = dset_id
+
+    assert flags_set == 3
