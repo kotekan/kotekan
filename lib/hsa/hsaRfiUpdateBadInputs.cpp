@@ -49,7 +49,6 @@ hsaRfiUpdateBadInputs::hsaRfiUpdateBadInputs(Config& config, const string& uniqu
 
     // Alloc memory on GPU
     device.get_gpu_memory_array("input_mask", 0, input_mask_len);
-    
 }
 
 hsaRfiUpdateBadInputs::~hsaRfiUpdateBadInputs() {
@@ -61,8 +60,8 @@ int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
 
     // Check for bad input updates
     if (first_pass) {
-        uint8_t* frame =
-            wait_for_full_frame(_in_buf, unique_name.c_str(), _in_buf_precondition_id);
+        DEBUG("hsaRfiUpdateBadInputs::wait_on_precondition: Waiting for full frame...");
+        uint8_t* frame = wait_for_full_frame(_in_buf, unique_name.c_str(), _in_buf_precondition_id);
         DEBUG("hsaRfiUpdateBadInputs::wait_on_precondition: Bad inputs update.");
         if (frame == NULL)
             return -1;

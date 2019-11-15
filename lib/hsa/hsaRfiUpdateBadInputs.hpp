@@ -60,13 +60,13 @@ private:
     int32_t _network_buf_finalize_id;
     int32_t _network_buf_execute_id;
     int32_t _network_buf_precondition_id;
-    
+
     /// IDs for _in_buf
     int32_t _in_buf_id;
     int32_t _in_buf_len;
     int32_t _in_buf_finalize_id;
     int32_t _in_buf_precondition_id;
- 
+
     /// State of the update
     bool update_bad_inputs;
 
@@ -99,7 +99,6 @@ private:
     int32_t frame_to_fill_finalize;
     bool filling_frame;
     bool first_pass;
-
 };
 
 #endif // HSA_RFI_UPDATE_BAD_INPUTS_HPP

@@ -17,7 +17,7 @@
  *
  * @par Buffers
  * @buffer out_buf Kotekan buffer of bad inputs.
- *     @buffer_format Array of @c uint8_t 
+ *     @buffer_format Array of @c uint8_t
  *
  * @conf   updatable_config/bad_inputs  String.  String pointing to the location of the
  *                                      config block containing the following properties:
@@ -31,7 +31,7 @@ class bufferBadInputs : public kotekan::Stage {
 public:
     /// Constructor.
     bufferBadInputs(kotekan::Config& config_, const string& unique_name,
-                     kotekan::bufferContainer& buffer_container);
+                    kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~bufferBadInputs();
     /// Primary loop to wait for buffers, dig through data,
@@ -70,6 +70,7 @@ private:
     /// The mapping from correlator to cylinder element indexing.
     std::vector<uint32_t> input_remap;
 
+    uint32_t out_buffer_ID = 0;
 };
 
 #endif
