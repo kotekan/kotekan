@@ -59,3 +59,5 @@ REGISTER_DATASET_STATE(timeState, "time");
 REGISTER_DATASET_STATE(metadataState, "metadata");
 REGISTER_DATASET_STATE(gatingState, "gating");
 REGISTER_DATASET_STATE(acqDatasetIdState, "acq_dataset_id");
+REGISTER_DATASET_STATE(flagState, "flag");
+REGISTER_DATASET_STATE(gainState, "gain");

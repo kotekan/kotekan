@@ -316,7 +316,7 @@ public:
      * If `use_dataset_broker` is set and no ancestor of the given type is found,
      * this will ask the broker for a complete list of ancestors for the given
      * dataset. In that case, this function is blocking, until the broker
-     * answeres. If you want to do something else, while waiting for the return
+     * answers. If you want to do something else, while waiting for the return
      * value of this function, use std::future.
      *
      * @returns A read-only pointer to the ancestor state.
