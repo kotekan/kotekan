@@ -312,7 +312,7 @@ class FakeGPUBuffer(InputBuffer):
 
 
 class FakeVisBuffer(InputBuffer):
-    """Create an input visBuffer format buffer and fill it using `fakeVis`.
+    """Create an input visBuffer format buffer and fill it using `FakeVis`.
 
     Parameters
     ----------
@@ -337,7 +337,7 @@ class FakeVisBuffer(InputBuffer):
         }
 
         stage_config = {
-            "kotekan_stage": "fakeVis",
+            "kotekan_stage": "FakeVis",
             "out_buf": self.name,
             "freq_ids": [0],
             "wait": False,

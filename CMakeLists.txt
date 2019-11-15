@@ -305,7 +305,7 @@ endif()
 # Enforce code formatting rules with clang-format.
 find_program(
     CLANG_FORMAT_PATH
-    NAMES "clang-format-8"
+    NAMES "clang-format-8" "clang-format"
     DOC "Path to clang-format executable"
     )
 if(NOT CLANG_FORMAT_PATH)
