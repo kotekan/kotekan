@@ -2,11 +2,10 @@ import pytest
 import os
 from subprocess import Popen
 import time
+import shutil
 import signal
 
 from kotekan import runner
-
-broker_path = "/usr/local/bin/comet"
 
 
 params = {
@@ -43,9 +42,11 @@ params_fakevis = {
 
 @pytest.fixture(scope="module")
 def subset_data(tmpdir_factory):
-    if not os.path.isfile(broker_path):
-        pytest.skip("Build with -DBOOST_TESTS=ON to activate this test.")
-        return
+    broker_path = shutil.which("comet")
+    if not broker_path:
+        pytest.skip(
+            "Make sure PYTHONPATH is set to where the comet dataset broker is installed."
+        )
 
     # run the dataset broker
     broker = Popen([broker_path, "--recover", "False"])
