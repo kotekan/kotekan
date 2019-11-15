@@ -265,8 +265,6 @@ inline visFileBundle::visFileBundle(const std::string& type, const std::string& 
         metadata_acq["acquisition_name"] = acq_name;
 
         std::string abspath = root_path + '/' + acq_name + '/' + file_name;
-        // return visFile::create(type, abspath, std::forward<const kotekan::logLevel>(log_level),
-        // metadata_acq, std::forward<InitArgs>(args)...);
         return visFile::create(type, abspath, log_level, metadata_acq, args...);
     };
 }
@@ -288,7 +286,11 @@ inline bool visFileBundle::add_sample(time_ctype new_time, WriteArgs&&... args) 
     }
 }
 
-
+/**
+ * @brief Create a lock file for the given file.
+ * @param filename Name of file to lock.
+ * @return The name of the lock file.
+ **/
 std::string create_lockfile(std::string filename);
 
 

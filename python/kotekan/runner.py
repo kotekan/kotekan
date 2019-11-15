@@ -100,11 +100,6 @@ class KotekanRunner(object):
         config_dict.update(self._buffers)
         config_dict.update(self._stages)
 
-        # Set the working directory for the run
-        build_dir = os.path.normpath(
-            os.path.join(os.path.dirname(__file__), "..", "..", "build", "kotekan")
-        )
-
         config_dict = fix_strings(config_dict)
 
         with tempfile.NamedTemporaryFile(
