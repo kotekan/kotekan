@@ -32,9 +32,8 @@ hsaRfiUpdateBadInputs::hsaRfiUpdateBadInputs(Config& config, const string& uniqu
     _network_buf_execute_id = 0;
     _network_buf_finalize_id = 0;
 
-    update_bad_inputs = false;
     frames_to_update = 0;
-    frames_to_update_finalize = 0;
+    frame_copy_active.insert(std::begin(frame_copy_active), device.get_gpu_buffer_depth(), false);
 
     // Alloc memory on GPU
     device.get_gpu_memory_array("input_mask", 0, input_mask_len);
@@ -67,8 +66,9 @@ hsa_signal_t hsaRfiUpdateBadInputs::execute(int gpu_frame_id, hsa_signal_t prece
     set_rfi_num_bad_inputs(_network_buf, _network_buf_execute_id, bad_inputs_correlator.size());
     _network_buf_execute_id = (_network_buf_execute_id + 1) % _network_buf->num_frames;
 
-    if (update_bad_inputs && frames_to_update > 0) {
+    if (frames_to_update > 0) {
         frames_to_update--;
+        frame_copy_active.at(frame_id) = true;
 
         // Copy memory to GPU
         DEBUG("Coping bad input list to GPU[{:d}], frames to update: {:d}, update: {}, cylinder "
@@ -87,13 +87,10 @@ hsa_signal_t hsaRfiUpdateBadInputs::execute(int gpu_frame_id, hsa_signal_t prece
 
 void hsaRfiUpdateBadInputs::finalize_frame(int frame_id) {
     std::lock_guard<std::mutex> lock(update_mutex);
-    if (update_bad_inputs && frames_to_update_finalize > 0) {
-        frames_to_update_finalize--;
+
+    if (frame_copy_active.at(frame_id)) {
+        frame_copy_active.at(frame_id) = false;
         hsaCommand::finalize_frame(frame_id);
-        // Check if we've finished loading the new bad input mask in all frames.
-        if (frames_to_update_finalize == 0) {
-            update_bad_inputs = false;
-        }
     }
 
     mark_frame_empty(_network_buf, unique_name.c_str(), _network_buf_finalize_id);
@@ -111,7 +108,14 @@ bool hsaRfiUpdateBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     // this condition. This will be fixed when we refactor the command objects and create
     // a generic command object for optional memory array copies.
     // Note for this to happen we'd need two bad input list updates within less than ~0.5 seconds.
-    if (update_bad_inputs) {
+    bool current_update_active = false;
+    for (bool& in_use : frame_copy_active) {
+        if (in_use) {
+            current_update_active = true;
+            break;
+        }
+    }
+    if (frames_to_update > 0 || current_update_active) {
         WARN("Got new bad inputs list before applying the last list, not applying new bad inputs!");
         return true;
     }
@@ -143,8 +147,6 @@ bool hsaRfiUpdateBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
         }
     }
 
-    update_bad_inputs = true;
     frames_to_update = device.get_gpu_buffer_depth();
-    frames_to_update_finalize = frames_to_update;
     return true;
 }

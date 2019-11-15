@@ -60,14 +60,15 @@ private:
     int32_t _network_buf_execute_id;
     int32_t _network_buf_precondition_id;
 
-    /// State of the update
-    bool update_bad_inputs;
-
-    /// The numer of frames to update before stopping to copy the bad input mask
+    /// The number of frames to update before stopping to copy the bad input mask
     int frames_to_update;
 
-    /// Counter of the number of copy operations which have to be finalized
-    int frames_to_update_finalize;
+    /// Tracks which GPU frames have an active copy from the execute stage
+    /// Note since for a given frame_id there can only be one active set
+    /// of commands as long as finalize_frame() marks this as false
+    /// there is no risk of a race condition, since that index will not be
+    /// reused until finalize_frame() is finished.
+    std::vector<bool> frame_copy_active;
 
     /// Mutex to lock updates to the bad_input lists and copy state.
     std::mutex update_mutex;
