@@ -20,7 +20,7 @@ bufferBadInputs::bufferBadInputs(Config& config_, const string& unique_name,
     auto input_reorder = parse_reorder_default(config, unique_name);
     input_remap = std::get<0>(input_reorder);
 
-    out_buf = get_buffer("bad_inputs_buffer");
+    out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
     
     // Listen for bad input list updates
