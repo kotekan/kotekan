@@ -20,6 +20,7 @@ char * __cmake_build_options =
         " USE_CLOC: @USE_CLOC@\n"
         " USE_OPENCL: @USE_OPENCL@\n"
         " USE_HCC: @USE_HCC@\n"
+        " USE_CUDA: @USE_CUDA@\n"
         " USE_HDF5: @USE_HDF5@\n"
         " - HIGHFIVE_PATH: @HIGHFIVE_PATH@\n"
         " USE_LAPACK: @USE_LAPACK@\n"
@@ -44,4 +45,3 @@ char * get_git_commit_hash() {
 char * get_cmake_build_options() {
     return __cmake_build_options;
 }
-

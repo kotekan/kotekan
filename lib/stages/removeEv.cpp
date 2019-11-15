@@ -29,7 +29,7 @@ removeEv::removeEv(Config& config, const string& unique_name, bufferContainer& b
 
 dset_id_t removeEv::change_dataset_state(dset_id_t input_dset_id) {
     auto& dm = datasetManager::instance();
-    return dm.add_dataset(input_dset_id, ev_state_id);
+    return dm.add_dataset(ev_state_id, input_dset_id);
 }
 
 
@@ -38,7 +38,7 @@ void removeEv::main_thread() {
     frameID in_frame_id(in_buf);
     frameID out_frame_id(out_buf);
 
-    dset_id_t _output_dset_id = 0;
+    dset_id_t _output_dset_id = dset_id_t::null;
 
     while (!stop_thread) {
 

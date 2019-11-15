@@ -57,7 +57,7 @@ class VisMetadata(ctypes.Structure):
         ("fpga_total", ctypes.c_uint64),
         ("rfi_total", ctypes.c_uint64),
         ("freq_id", ctypes.c_uint32),
-        ("dataset_id", ctypes.c_uint64),
+        ("dataset_id", ctypes.c_uint64 * 2),
         ("num_elements", ctypes.c_uint32),
         ("num_prod", ctypes.c_uint32),
         ("num_ev", ctypes.c_uint32),
@@ -517,7 +517,7 @@ def simple_visraw_data(filename, ntime, nfreq, ninput):
 
     time = [{"ctime": (10.0 * i), "fpga_count": i} for i in range(ntime)]
 
-    freq = [{"centre": (800 - i * 10.0), "width": 10.0} for i in range(10)]
+    freq = [{"centre": (800 - i * 10.0), "width": 10.0} for i in range(nfreq)]
 
     input_ = [(i, "test%04i" % i) for i in range(ninput)]
 

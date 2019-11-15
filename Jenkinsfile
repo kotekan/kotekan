@@ -9,8 +9,7 @@ pipeline {
       parallel {
         stage('Build kotekan without hardware specific options') {
           steps {
-            sh '''mkdir build_no_hardware
-                  cd build_no_hardware/
+            sh '''cd build/
                   cmake -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
                   -DUSE_OMP=ON -DBOOST_TESTS=ON ..
@@ -19,7 +18,8 @@ pipeline {
         }
         stage('Build CHIME kotekan') {
           steps {
-            sh '''cd build
+            sh '''mkdir -p chime-build
+                  cd chime-build
                   cmake -DRTE_SDK=/opt/dpdk \
                   -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON \
                   -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
@@ -30,7 +30,7 @@ pipeline {
         }
         stage('Build base kotekan') {
           steps {
-            sh '''mkdir build_base
+            sh '''mkdir -p build_base
                   cd build_base
                   cmake ..
                   make -j 4'''
@@ -40,7 +40,7 @@ pipeline {
           agent {label 'macos'}
           steps {
             sh '''export PATH=${PATH}:/usr/local/bin/
-                  mkdir build_base
+                  mkdir -p build_base
                   cd build_base/
                   cmake ..
                   make -j 4
@@ -58,7 +58,7 @@ pipeline {
         stage('Build docs') {
           steps {
             sh '''export PATH=${PATH}:/var/lib/jenkins/.local/bin/
-                  mkdir build-docs
+                  mkdir -p build-docs
                   cd build-docs/
                   cmake -DCOMPILE_DOCS=ON -DPLANTUML_PATH=/opt/plantuml ..
                   make doc
@@ -67,7 +67,7 @@ pipeline {
         }
         stage('Check code formatting') {
           steps {
-            sh '''mkdir build-check-format
+            sh '''mkdir -p build-check-format
                   cd build-check-format/
                   cmake ..
                   make clang-format
@@ -82,12 +82,12 @@ pipeline {
             stage('Python Unit Tests') {
               steps {
                 sh '''cd tests/
-                      PYTHONPATH=../python/ python3 -m pytest -n 4 -x -vvv -E run_amd_gpu_tests'''
+                      PYTHONPATH=../python/ python3 -m pytest -n 4 -x -vvv'''
               }
             }
             stage('Boost Unit Tests') {
               steps {
-                sh '''cd build_no_hardware/tests/
+                sh '''cd build/tests/
                       python3 -m pytest -x -vvv'''
               }
             }
