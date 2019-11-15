@@ -729,27 +729,24 @@ gpu:
 hyper_fine_beam:
   num_frames_to_integrate: 80
   good_samples_threshold: 0.95
+  log_level: info
   integrate_hfb_data_0:
     kotekan_stage: integrateHFBData
-    log_level: debug
     hfb_input_buf: gpu_beamform_hfb_output_buffer_0
     hfb_output_buf: beamform_hfb_output_buffer_0
     lost_samples_buf: lost_samples_buffer
   integrate_hfb_data_1:
    kotekan_stage: integrateHFBData
-   log_level: debug
    hfb_input_buf: gpu_beamform_hfb_output_buffer_1
    hfb_output_buf: beamform_hfb_output_buffer_1
    lost_samples_buf: lost_samples_buffer
   integrate_hfb_data_2:
    kotekan_stage: integrateHFBData
-   log_level: debug
    hfb_input_buf: gpu_beamform_hfb_output_buffer_2
    hfb_output_buf: beamform_hfb_output_buffer_2
    lost_samples_buf: lost_samples_buffer
   integrate_hfb_data_3:
    kotekan_stage: integrateHFBData
-   log_level: debug
    hfb_input_buf: gpu_beamform_hfb_output_buffer_3
    hfb_output_buf: beamform_hfb_output_buffer_3
    lost_samples_buf: lost_samples_buffer
@@ -1344,7 +1341,7 @@ buffer_send:
 
 # Transmit all the 21cm data to Moose
 buffer_send_21cm:
-  server_ip: 10.1.50.12
+  server_ip: 10.5.0.10
   reconnect_time: 20
   log_level: warn
   21cm:
