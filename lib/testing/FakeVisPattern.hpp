@@ -50,21 +50,13 @@ public:
     /**
      * @brief Fill the data with a test pattern.
      *
-     * @note You can also modify the metadata (for example to set the number of
-     *       lost frames), but be careful doing this if there are multiple
-     *       frequencies in the buffer.
+     * @note The weights, eigenvalues, eigenvectors, erms, gains and flags will
+     *       have been pre-filled with some reasonable values. However, they can be
+     *       overwritten if desired.
      *
-     * @param  data       Data for the specific frequency in the buffer.
-     * @param  metadata   Metadata for sample. Potentially shared across
-     *                    frequencies.
-     * @param  frame_num  Index of frame since start.
-     * @param  freq_id    Global frequency ID.
+     * @param  frame  The vis buffer frame to fill with data.
      **/
     virtual void fill(visFrameView& frame) = 0;
-
-protected:
-    // Configuration info
-    size_t _num_elements;
 };
 
 // Create the abstract factory for generating patterns

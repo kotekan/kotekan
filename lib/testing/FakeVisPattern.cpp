@@ -18,7 +18,6 @@ REGISTER_FAKE_VIS_PATTERN(TestPatternInputVisPattern, "test_pattern_inputs");
 
 
 FakeVisPattern::FakeVisPattern(kotekan::Config& config, const std::string& path) {
-    _num_elements = config.get<int>(path, "num_elements");
     set_log_level(config.get<std::string>(path, "log_level"));
     set_log_prefix(path);
 }
