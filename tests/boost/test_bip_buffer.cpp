@@ -95,7 +95,7 @@ BOOST_AUTO_TEST_CASE(buffer_max_write_read_independent_threads) {
             std::this_thread::sleep_for(std::chrono::milliseconds(dis(gen) * 5));
         }
     });
-    std::thread t2([&buffer, count]() {
+    std::thread t2([&buffer]() {
         std::random_device rd;
         std::mt19937 gen(rd());
         std::uniform_int_distribution<> dis(3, 30);
