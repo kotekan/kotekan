@@ -68,13 +68,12 @@ hsa_signal_t hsaRfiUpdateBadInputs::execute(int gpu_frame_id, hsa_signal_t prece
 
     if (frames_to_update > 0) {
         frames_to_update--;
-        frame_copy_active.at(frame_id) = true;
+        frame_copy_active.at(gpu_frame_id) = true;
 
         // Copy memory to GPU
-        DEBUG("Coping bad input list to GPU[{:d}], frames to update: {:d}, update: {}, cylinder "
-              "order: {}, correlator order: {}",
-              device.get_gpu_id(), frames_to_update, update_bad_inputs, bad_inputs_cylinder,
-              bad_inputs_correlator);
+        DEBUG("Coping bad input list to GPU[{:d}], frames to update: {:d}, cylinder order: {},"
+	      " correlator order: {}",
+              device.get_gpu_id(), frames_to_update, bad_inputs_cylinder, bad_inputs_correlator);
         void* gpu_mem = device.get_gpu_memory_array("input_mask", gpu_frame_id, input_mask_len);
         device.async_copy_host_to_gpu(gpu_mem, (void*)host_mask, input_mask_len, precede_signal,
                                       signals[gpu_frame_id]);
@@ -109,7 +108,7 @@ bool hsaRfiUpdateBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     // a generic command object for optional memory array copies.
     // Note for this to happen we'd need two bad input list updates within less than ~0.5 seconds.
     bool current_update_active = false;
-    for (bool& in_use : frame_copy_active) {
+    for (bool in_use : frame_copy_active) {
         if (in_use) {
             current_update_active = true;
             break;
