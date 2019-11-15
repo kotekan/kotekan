@@ -11,7 +11,7 @@ from kotekan import runner
 params = {
     "num_elements": 5,
     "num_ev": 0,
-    "total_frames": 16,
+    "total_frames": 4,
     "cadence": 10.0,
     "mode": "default",
     "buffer_depth": 5,
@@ -25,10 +25,6 @@ params["dataset_manager"] = {
     "use_dataset_broker": True,
     "ds_broker_port": 12050,
     "ds_broker_host": "127.0.0.1",
-    "register_state_path": "/register-state",
-    "register_dataset_path": "/register-dataset",
-    "request_ancestor_path": "/request-ancestor",
-    "send_state_path": "/send-state",
 }
 
 params_fakevis = {
@@ -68,13 +64,14 @@ def subset_data(tmpdir_factory):
         ### freqSubset ###
         tmpdir = tmpdir_factory.mktemp("freqsub_broker")
 
+        ds_id = data_gen[0].metadata.dataset_id
         fakevis_buffer_subset = runner.FakeVisBuffer(
             num_frames=params["total_frames"],
             mode=params["mode"],
             freq_ids=params["freq_ids"],
             use_dataset_manager=True,
             wait=False,
-            dataset_id=data_gen[0].metadata.dataset_id,
+            dataset_id="{:016x}{:016x}".format(ds_id[1], ds_id[0]),
         )
 
         dump_buffer_subset = runner.DumpVisBuffer(str(tmpdir))
@@ -91,13 +88,14 @@ def subset_data(tmpdir_factory):
         time.sleep(10)
         tmpdir = tmpdir_factory.mktemp("freqsplit_broker")
 
+        ds_id = data_subset[0].metadata.dataset_id
         fakevis_buffer_split = runner.FakeVisBuffer(
             num_frames=params["total_frames"],
             mode=params["mode"],
             freq_ids=params["subset_list"],
             use_dataset_manager=True,
             wait=False,
-            dataset_id=data_subset[0].metadata.dataset_id,
+            dataset_id="{:016x}{:016x}".format(ds_id[1], ds_id[0]),
         )
 
         dump_buffer_split_lower = runner.DumpVisBuffer(str(tmpdir))
@@ -121,9 +119,12 @@ def subset_data(tmpdir_factory):
         tmpdir = tmpdir_factory.mktemp("freqsub_write_lower")
 
         params_fakevis_write_lower = params_fakevis.copy()
-        params_fakevis_write_lower["dataset_id"] = data_split_lower[
-            0
-        ].metadata.dataset_id
+
+        ds_id = data_split_lower[0].metadata.dataset_id
+
+        params_fakevis_write_lower["dataset_id"] = "{:016x}{:016x}".format(
+            ds_id[1], ds_id[0]
+        )
 
         # the writer is not given the subset list, it get's it through the broker
         write_buffer_lower = runner.VisWriterBuffer(
@@ -139,9 +140,11 @@ def subset_data(tmpdir_factory):
         tmpdir = tmpdir_factory.mktemp("freqsub_write_higher")
 
         params_fakevis_write_higher = params_fakevis.copy()
-        params_fakevis_write_higher["dataset_id"] = data_split_higher[
-            0
-        ].metadata.dataset_id
+        ds_id = data_split_higher[0].metadata.dataset_id
+
+        params_fakevis_write_higher["dataset_id"] = "{:016x}{:016x}".format(
+            ds_id[1], ds_id[0]
+        )
 
         # the writer is not given the subset list, it get's it through the broker
         write_buffer_higher = runner.VisWriterBuffer(
@@ -220,8 +223,8 @@ def test_subset_broker(subset_data):
 
     # this is what it's really about:
     # check the data the visWriter wrote
-    assert len(data_write_lower.valid_frames) == 16
-    assert len(data_write_higher.valid_frames) == 16
+    assert len(data_write_lower.valid_frames) == params["total_frames"]
+    assert len(data_write_higher.valid_frames) == params["total_frames"]
 
     # split < 512
     assert data_write_lower.data.shape[1] == len(subset_lower)
