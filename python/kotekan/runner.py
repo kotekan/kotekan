@@ -13,6 +13,7 @@ import itertools
 import subprocess
 import tempfile
 import time
+import json
 
 from . import visbuffer
 
@@ -37,6 +38,29 @@ class KotekanRunner(object):
         Port to use for kotekan REST server. Set it to 0 to get a random free port.
         Default: 0.
     """
+
+    @classmethod
+    def kotekan_binary(cls):
+        """Determine the kotekan binary to use."""
+        build_dir = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "build", "kotekan")
+        )
+        # If this path exists we are using a non installed version of the
+        # kotekan python packages. If so we want to run the local kotekan
+        # binary
+        relative_path = os.path.join(build_dir, "kotekan")
+        if os.path.exists(relative_path):
+            return os.path.abspath(relative_path)
+        else:
+            return shutil.which("kotekan")
+
+    @classmethod
+    def kotekan_config(cls):
+        """Get kotekan's build config."""
+        cmd = "%s --version-json" % cls.kotekan_binary()
+        version_string = subprocess.check_output(cmd.split()).decode()
+
+        return json.loads(version_string)
 
     def __init__(
         self,
@@ -76,21 +100,6 @@ class KotekanRunner(object):
         config_dict.update(self._buffers)
         config_dict.update(self._stages)
 
-        # Set the working directory for the run
-        build_dir = os.path.normpath(
-            os.path.join(os.path.dirname(__file__), "..", "..", "build", "kotekan")
-        )
-
-        # If this path exists we are using a non installed version of the
-        # kotekan python packages. If so we want to run the local kotekan
-        # binary
-        if os.path.exists(build_dir):
-            kotekan_cmd = "./kotekan -b %s -c %s"
-            wd = build_dir
-        else:
-            kotekan_cmd = "kotekan -b %s -c %s"
-            wd = os.curdir
-
         config_dict = fix_strings(config_dict)
 
         with tempfile.NamedTemporaryFile(
@@ -101,9 +110,9 @@ class KotekanRunner(object):
             print(yaml.safe_dump(config_dict))
             fh.flush()
 
-            print(kotekan_cmd % (rest_addr, fh.name), build_dir)
-            cmd = (kotekan_cmd % (rest_addr, fh.name)).split()
-            p = subprocess.Popen(cmd, cwd=wd, stdout=f_out, stderr=f_out)
+            cmd = "%s -b %s -c %s" % (self.kotekan_binary(), rest_addr, fh.name)
+            print(cmd)
+            p = subprocess.Popen(cmd.split(), stdout=f_out, stderr=f_out)
 
             # Run any requested REST commands
             if self._rest_commands:
@@ -686,3 +695,19 @@ def fix_strings(d):
         return future.utils.native(d.decode())
 
     return d
+
+
+## Quick tests for kotekan's builds
+def has_hdf5():
+    """Is HDF5 support built in."""
+    return KotekanRunner.kotekan_config()["cmake_build_settings"]["USE_HDF5"] == "ON"
+
+
+def has_lapack():
+    """Is LAPACK support built in."""
+    return KotekanRunner.kotekan_config()["cmake_build_settings"]["USE_LAPACK"] == "ON"
+
+
+def has_openmp():
+    """Is OpenMP support build in."""
+    return KotekanRunner.kotekan_config()["cmake_build_settings"]["USE_OMP"] == "ON"

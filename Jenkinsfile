@@ -4,7 +4,16 @@ pipeline {
     timeout(time: 1, unit: 'HOURS')
     parallelsAlwaysFailFast()
   }
+  environment {
+    CCACHE_NOHASHDIR = 1
+    CCACHE_BASEDIR = "/mnt/data/jenkins/workspace"
+  }
   stages {
+    stage('Pre build ccache stats') {
+      steps {
+        sh '''ccache -s'''
+      }
+    }
     stage('Build') {
       parallel {
         stage('Build kotekan without hardware specific options') {
@@ -12,25 +21,25 @@ pipeline {
             sh '''cd build/
                   cmake -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
-                  -DUSE_OMP=ON -DBOOST_TESTS=ON ..
+                  -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
                   make -j 4'''
           }
         }
         stage('Build CHIME kotekan') {
           steps {
-            sh '''mkdir chime-build
+            sh '''mkdir -p chime-build
                   cd chime-build
                   cmake -DRTE_SDK=/opt/dpdk \
                   -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON \
                   -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
-                  -DUSE_OMP=ON -DBOOST_TESTS=ON ..
+                  -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
                   make -j 4'''
           }
         }
         stage('Build base kotekan') {
           steps {
-            sh '''mkdir build_base
+            sh '''mkdir -p build_base
                   cd build_base
                   cmake ..
                   make -j 4'''
@@ -40,7 +49,7 @@ pipeline {
           agent {label 'macos'}
           steps {
             sh '''export PATH=${PATH}:/usr/local/bin/
-                  mkdir build_base
+                  mkdir -p build_base
                   cd build_base/
                   cmake ..
                   make -j 4
@@ -51,14 +60,14 @@ pipeline {
                         -DUSE_LAPACK=ON -DBLAZE_PATH=/usr/local/opt/blaze \
                         -DOPENBLAS_PATH=/usr/local/opt/OpenBLAS \
                         -DUSE_HDF5=ON -DHIGHFIVE_PATH=/usr/local/opt/HighFive \
-                        -DCOMPILE_DOCS=ON -DUSE_OPENCL=ON ..
+                        -DCOMPILE_DOCS=ON -DUSE_OPENCL=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
                   make -j 4'''
           }
         } */
         stage('Build docs') {
           steps {
             sh '''export PATH=${PATH}:/var/lib/jenkins/.local/bin/
-                  mkdir build-docs
+                  mkdir -p build-docs
                   cd build-docs/
                   cmake -DCOMPILE_DOCS=ON -DPLANTUML_PATH=/opt/plantuml ..
                   make doc
@@ -67,7 +76,7 @@ pipeline {
         }
         stage('Check code formatting') {
           steps {
-            sh '''mkdir build-check-format
+            sh '''mkdir -p build-check-format
                   cd build-check-format/
                   cmake ..
                   make clang-format
@@ -82,6 +91,11 @@ pipeline {
             }
           }
         }
+      }
+    }
+    stage('Post build ccache stats') {
+      steps {
+        sh '''ccache -s'''
       }
     }
     stage('Unit Tests') {

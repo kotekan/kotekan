@@ -18,13 +18,6 @@
 #include <unistd.h>
 
 
-std::map<std::string, std::function<visFile*()>>& visFile::_registered_types() {
-    static std::map<std::string, std::function<visFile*()>> _register;
-
-    return _register;
-}
-
-
 visFileBundle::~visFileBundle() {
     // Deactivate each open sample and remove them from the map
     auto it = vis_file_map.begin();
