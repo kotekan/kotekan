@@ -63,7 +63,6 @@ private:
 
     /// IDs for _in_buf
     int32_t _in_buf_id;
-    int32_t _in_buf_len;
     int32_t _in_buf_finalize_id;
     int32_t _in_buf_precondition_id;
 
@@ -80,12 +79,6 @@ private:
     /// Mutex to lock updates to the bad_input lists and copy state.
     std::mutex update_mutex;
 
-    /// List of current bad inputs in cylinder order
-    std::vector<int> bad_inputs_cylinder;
-
-    /// List of current bad inputs in correlator order.
-    std::vector<int> bad_inputs_correlator;
-
     /// The size of the bad input mask.
     uint32_t input_mask_len;
 
@@ -93,9 +86,9 @@ private:
     /// Note 1 means the element is good, 0 means flagged.
     uint8_t* host_mask;
 
-    /// The mapping from correlator to cylinder element indexing.
-    std::vector<uint32_t> input_remap;
-
+    /// The no. of bad inputs.
+    uint32_t num_bad_inputs;
+    
     int32_t frame_to_fill;
     int32_t frame_to_fill_finalize;
     bool filling_frame;
