@@ -45,13 +45,6 @@ private:
     struct Buffer* in_buf;
     struct Buffer* out_buf;
 
-    /// Config variables
-    uint32_t _num_frames_to_integrate;
-    uint32_t _num_frb_total_beams;
-    uint32_t _num_sub_freqs;
-    uint32_t _samples_per_data_set;
-    float _good_samples_threshold;
-
     /// Stage variables
 
     /// List of current bad inputs in cylinder order
