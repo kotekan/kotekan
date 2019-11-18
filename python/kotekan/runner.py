@@ -120,12 +120,12 @@ class KotekanRunner(object):
                 import json
 
                 attempt = 0
-                wait = 1
+                wait = 0.2
 
                 # Wait for REST server to start
-                while attempt < 10:
+                while attempt < 100:
 
-                    if attempt == 9:
+                    if attempt == 99:
                         print("Could not find kotekan REST server address in logs")
                         exit(1)
 
