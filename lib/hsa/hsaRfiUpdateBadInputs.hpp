@@ -91,7 +91,6 @@ private:
     
     int32_t frame_to_fill;
     int32_t frame_to_fill_finalize;
-    bool filling_frame;
     bool first_pass;
 };
 

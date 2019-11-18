@@ -34,7 +34,6 @@ hsaRfiUpdateBadInputs::hsaRfiUpdateBadInputs(Config& config, const string& uniqu
     _in_buf_finalize_id = 0;
     _in_buf_precondition_id = 0;
     frame_to_fill_finalize = 0;
-    filling_frame = false;
     first_pass = true;
     num_bad_inputs = 0;
 
@@ -53,6 +52,7 @@ int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
 
     // Check for bad input updates
+    std::lock_guard<std::mutex> lock(update_mutex);
     if (first_pass) {
         DEBUG("hsaRfiUpdateBadInputs::wait_on_precondition: Waiting for full frame...");
         uint8_t* frame = wait_for_full_frame(_in_buf, unique_name.c_str(), _in_buf_precondition_id);
@@ -62,20 +62,18 @@ int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
         first_pass = false;
         frames_to_update = device.get_gpu_buffer_depth();
         frame_to_fill_finalize = frames_to_update;
-        filling_frame = true;
         memcpy(host_mask, frame, input_mask_len);
         num_bad_inputs = get_rfi_num_bad_inputs(_in_buf, _in_buf_precondition_id);
         _in_buf_precondition_id = (_in_buf_precondition_id + 1) % _in_buf->num_frames;
     } else {
-        // Check for new bad inputs only if filled all gpu frames (not currently filling frame)
-        if (!filling_frame) {
+        // Check for new bad inputs only if all gpu frames have been updated (not currently updating frame)
+        if (frames_to_update == 0 && !frame_copy_active.at(gpu_frame_id)) {
             auto timeout = double_to_ts(0);
             int status = wait_for_full_frame_timeout(_in_buf, unique_name.c_str(),
                                                      _in_buf_precondition_id, timeout);
             DEBUG("status of bad inputs _in_buf_precondition_id[{:d}]={:d} (0=ready 1=not)",
                   _in_buf_precondition_id, status);
             if (status == 0) {
-                filling_frame = true;
                 frames_to_update = device.get_gpu_buffer_depth();
                 frame_to_fill_finalize = frames_to_update;
                 memcpy(host_mask, _in_buf->frames[_in_buf_precondition_id], input_mask_len);
