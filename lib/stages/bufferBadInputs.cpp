@@ -70,15 +70,17 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
         }
     }
 
+    // Create new metadata
+    allocate_new_metadata_object(out_buf, out_buffer_ID);
+
+    // Set no. of bad inputs in the metadata
+    set_rfi_num_bad_inputs(out_buf, out_buffer_ID, bad_inputs_correlator.size());
+
     mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
 
     DEBUG("update_bad_inputs_callback(): Bad inputs reordered and buffered.");
 
-    // Create new metadata
-    allocate_new_metadata_object(out_buf, out_buffer_ID);
-
-    // Set no. of bad inputs and increment frame ID
-    set_rfi_num_bad_inputs(out_buf, out_buffer_ID, bad_inputs_correlator.size());
+    // Increment frame ID
     out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
 
     return true;
