@@ -24,6 +24,8 @@
  *     @buffer_metadata none, or a class derived from @c kotekanMetadata
  *
  * @conf   missing_frames @c Vector of UInt32 (Default: empty). Frames to drop.
+ * @conf   drop_frame_chance @c Double (Default: 0). Chance of dropping a frame if not in the @c
+ *missing_frames list.
  *
  * @author James Willis, Davor Cubranic
  **/
@@ -44,7 +46,9 @@ private:
     /// Number of time samples, should be a multiple of 3x128 for FRB, standard ops is 49152
     uint32_t _samples_per_data_set;
     // List of missing frames
-    std::vector<uint32_t> _missing_frames;
+    const std::vector<uint32_t> _missing_frames;
+    /// Percentage of frames to drop
+    const double _drop_frame_chance;
 };
 
 #endif
