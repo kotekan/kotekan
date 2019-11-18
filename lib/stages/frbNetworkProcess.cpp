@@ -49,11 +49,11 @@ frbNetworkProcess::frbNetworkProcess(Config& config_, const string& unique_name,
                                      bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&frbNetworkProcess::main_thread, this)),
     _ping_interval{
-        std::chrono::seconds(config_.get_default<long>(unique_name, "ping_interval", 360))},
+        std::chrono::seconds(config_.get_default<uint32_t>(unique_name, "ping_interval", 360))},
     _quick_ping_interval{
-        std::chrono::seconds(config_.get_default<long>(unique_name, "quick_ping_interval", 5))},
-    _ping_dead_threshold{
-        std::chrono::seconds(config_.get_default<long>(unique_name, "ping_dead_threshold", 30))} {
+        std::chrono::seconds(config_.get_default<uint32_t>(unique_name, "quick_ping_interval", 5))},
+    _ping_dead_threshold{std::chrono::seconds(
+        config_.get_default<uint32_t>(unique_name, "ping_dead_threshold", 30))} {
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -348,14 +348,14 @@ void frbNetworkProcess::ping_destinations() {
                 ERROR(
                     "Cannot create source socket for FRB host pings (requires root). Stopping the "
                     "pings.");
-                return;
-            }
-            if (bind(s, (struct sockaddr*)&src.addr, sizeof(src.addr)) < 0) {
+                err = true;
+            } else if (bind(s, (struct sockaddr*)&src.addr, sizeof(src.addr)) < 0) {
                 ERROR("Cannot bind source socket for FRB host pings (requires root). Stopping the "
                       "pings.");
-                return;
+                err = true;
+            } else {
+                ping_src_fd.push_back(s);
             }
-            ping_src_fd.push_back(s);
         }
 
         if (err) {

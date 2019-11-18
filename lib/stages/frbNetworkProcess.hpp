@@ -48,11 +48,13 @@
  * @conf   beam_offset          Int (default 0). Offset the beam_id going to L1 Process
  * @conf   time_interval        Unsigned long (default 125829120). Time per buffer in ns.
  * @conf   column_mode          bool (default false) Send beams in a single CHIME cylinder.
- * @conf   live_check_frequency Unsigned long (default 30s) Time in ms between sending a ping to
- * check if a destination host is live.
- * @conf   node_dead_interval   Unsigned long (default 2*live_check_frequency) Time in ms after
- * which the host is marked dead if it hasn't sent a ping reply. check if a destination host is
- * live.
+ * @conf   ping_interval        Uint32 (default 6 min) Time in seconds between sending a ping to
+ * check destination is live
+ * @conf   quick_ping_interval  Uint32 (default 5 sec) Time in seconds for sending pings when a live
+ * node stops responding
+ * @conf   ping_dead_threshold  Uint32 (default 30 sec) Duration in seconds of quick-checking state
+ * after which a node is declared dead if it still hasn't responded
+ *
  * @todo   Resolve the issue of NTP clock vs Monotonic clock.
  *
  * @author Arun Naidu, Davor Cubranic
