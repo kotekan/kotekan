@@ -28,10 +28,9 @@ bufferBadInputs::bufferBadInputs(Config& config_, const string& unique_name,
 
     // Listen for bad input list updates
     string badInputs = config.get<std::string>(unique_name, "updatable_config/bad_inputs");
-    if (badInputs.length() > 0)
-        configUpdater::instance().subscribe(
-            badInputs,
-            std::bind(&bufferBadInputs::update_bad_inputs_callback, this, std::placeholders::_1));
+    configUpdater::instance().subscribe(
+        badInputs,
+        std::bind(&bufferBadInputs::update_bad_inputs_callback, this, std::placeholders::_1));
 }
 
 bufferBadInputs::~bufferBadInputs() {}
