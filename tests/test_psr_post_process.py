@@ -6,6 +6,7 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 # === End Python 2/3 compatibility
 
 import glob
+import itertools
 import pytest
 from os import path
 from kotekan import runner
@@ -34,12 +35,12 @@ global_params = {
 }
 
 
-def psr_post_process_data(tmpdir_factory, test_env=None):
-    """Runs the Kotekan using the short 6144 samples_per_dataset, optionally dropping frames
+def psr_post_process_data(tmpdir_factory, missing_frames=None, test_env=None):
+    """Runs the Kotekan pulsarPostProcess stage, optionally dropping frames
 
-    This works out to just one packet per stream in a frame, and uses a single
-    GPU, reading the beamforming inputs from files named starting with
-    "fake_cpu_beamform".
+    If there are any frames to drop, the config will include a
+    TestDataGenMissingFrames stage, and drop the specified frame from the input
+    to the pulsarPostProcess.
     """
 
     if test_env is None and not glob.glob(
@@ -62,8 +63,22 @@ def psr_post_process_data(tmpdir_factory, test_env=None):
         beamform_buffer.buffer_block[beamform_buffer.name][
             "frame_size"
         ] = "samples_per_data_set * num_beams * num_pol * sizeof_float * 2"
-        stage_params["network_input_buffer_{:d}".format(i)] = beamform_buffer.name
+
         input_buffers.append(beamform_buffer)
+        if missing_frames and missing_frames[i]:
+            drop_frames_buffer = runner.DropFramesBuffer(
+                beamform_buffer,
+                missing_frames[i],
+                frame_size=beamform_buffer.buffer_block[beamform_buffer.name][
+                    "frame_size"
+                ],
+            )
+            input_buffers.append(drop_frames_buffer)
+            stage_params[
+                "network_input_buffer_{:d}".format(i)
+            ] = drop_frames_buffer.name
+        else:
+            stage_params["network_input_buffer_{:d}".format(i)] = beamform_buffer.name
 
     params = global_params.copy()
 
@@ -81,18 +96,113 @@ def test_psr_post_process(tmpdir_factory, request):
 
     data = psr_post_process_data(tmpdir_factory, test_env=test_env)
 
-    fpga_seq_num = 625  # skipped by the main_thread looking for 1s boundary
-    frame_seconds = 632718848  # (`0 - ctime(1 Jan 2018 UTC)`, truncated to 30 bits)
-    frame_nanoseconds = 1600000  # 625 elapsed FPGA samples @ 2.56 us / sample
-    for frame in data.load():
+    check_data(data)
+
+
+def test_psr_post_process_missing(tmpdir_factory, request):
+    test_env = request.config.getoption("-E", None)
+
+    missing_frames = [[1], [0, 3, 4], [], []]
+    data = psr_post_process_data(tmpdir_factory, missing_frames, test_env=test_env)
+
+    check_data(data, missing_frames)
+
+
+def check_data(data, missing_frames=[]):
+    missing_frames = set(itertools.chain.from_iterable(missing_frames))
+    actual_frames = data.load()
+
+    input_fpga_seq_num = 0
+    input_frame = 0
+
+    output_fpga_seq_num = 0
+    # output_fpga_seq_num = 625
+    output_frame_seconds = (
+        632718848
+    )  # (`0 - ctime(1 Jan 2018 UTC)`, truncated to 30 bits)
+    output_frame_nanoseconds = 0
+    # output_frame_nanoseconds = 1600000  # 625 elapsed FPGA samples @ 2.56 us / sample
+
+    expected_output = []
+    output_in_progress = False
+    start_new_stream = True
+    while len(expected_output) <= len(actual_frames):
+        print("Pass:", input_fpga_seq_num, output_fpga_seq_num)
+        # catch up input to where output should start
+        if input_fpga_seq_num + 49152 < output_fpga_seq_num:
+            input_frame += 1
+            input_fpga_seq_num += 49152
+            print("Advance input:", input_fpga_seq_num)
+
+        # handle missing frames
+        while input_frame in missing_frames:
+            if output_in_progress:
+                print("Reset output")
+                output_in_progress = False
+            input_frame += 1
+            input_fpga_seq_num += 49152
+            print("Skip dropped input to :", input_fpga_seq_num)
+            start_new_stream = True
+
+        # if we get to here, we know we have a good input_frame that's advanced far enough to overlap with output_fpga_seq_num
+        if output_in_progress:
+            if output_fpga_seq_num + 50000 < input_fpga_seq_num + 49152:
+                # completed output
+                print(
+                    "Completed output:",
+                    output_fpga_seq_num,
+                    output_frame_seconds,
+                    output_frame_nanoseconds,
+                )
+                output_in_progress = False
+                expected_output.append(
+                    (
+                        output_fpga_seq_num,
+                        output_frame_seconds,
+                        output_frame_nanoseconds,
+                    )
+                )
+                output_fpga_seq_num += 50000
+                output_frame_nanoseconds += 128000000
+                if output_frame_nanoseconds >= 1e9:
+                    output_frame_seconds += 1
+                    output_frame_nanoseconds = output_frame_nanoseconds - 1e9
+            else:
+                input_frame += 1
+                input_fpga_seq_num += 49152
+                print("Advance input", input_fpga_seq_num)
+        elif start_new_stream:
+            # start outputting but align on a whole "data_frame" segment
+            print("Align near", input_fpga_seq_num)
+            output_frame_nanoseconds = input_fpga_seq_num * 2560
+            offset = 1600000 - (output_frame_nanoseconds % 1600000)
+            output_fpga_seq_num = input_fpga_seq_num + offset // 2560
+            print("Move output by {} to {}".format(offset, output_fpga_seq_num))
+
+            output_frame_nanoseconds += offset
+            if output_frame_nanoseconds >= 1e9:
+                output_frame_seconds += output_frame_nanoseconds // 1e9
+                output_frame_nanoseconds = output_frame_nanoseconds % 1e9
+            print("{}.{:09}".format(output_frame_seconds, output_frame_nanoseconds))
+            output_in_progress = True
+            print("Start output", output_fpga_seq_num)
+            start_new_stream = False
+        else:
+            # continuing with the stream, but need to start a new output frame
+            if output_fpga_seq_num >= input_fpga_seq_num:
+                output_in_progress = True
+                print("Start output", output_fpga_seq_num)
+    print("Expected output frames:", expected_output)
+
+    for frame, (fpga_seq_num, frame_seconds, frame_nanoseconds) in zip(
+        actual_frames, expected_output
+    ):
         beam_id = 0
         beam_frame = 1
-
         for pkt in frame:
             if beam_frame > 80:
                 beam_frame = 1
                 beam_id += 1
-
             if beam_frame == 1:
                 seconds = frame_seconds
                 nanoseconds = frame_nanoseconds
@@ -114,7 +224,7 @@ def test_psr_post_process(tmpdir_factory, request):
             assert pkt.header.data_type == 1
 
             assert pkt.header.beam_id == beam_id
-            assert pkt.header.scaling_factor
+            # print(pkt.header.scaling_factor)
 
             assert pkt.header.ra == 5361
             assert pkt.header.dec == 14464
@@ -124,16 +234,3 @@ def test_psr_post_process(tmpdir_factory, request):
             if nanoseconds >= 1e9:
                 seconds += 1
                 nanoseconds -= 1e9
-
-        fpga_seq_num += 500000  # 625 samples * 80 packets
-        frame_nanoseconds += 128000000
-        if frame_nanoseconds >= 1e9:
-            frame_seconds += 1
-            frame_nanoseconds -= 1e9
-
-    # check_data(data, 1, 1)
-    # pkt = data.load()[0][0]
-    # # I know this because I traced the main loop of frbPostProcess
-    # # and recorded the very first value of scales and offsets:
-    # assert pkt.scales[0] == 4748.201171875
-    # assert pkt.offsets[0] == 484518.0625
