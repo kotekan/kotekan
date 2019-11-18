@@ -25,12 +25,6 @@ bufferBadInputs::bufferBadInputs(Config& config_, const string& unique_name,
     register_producer(out_buf, unique_name.c_str());
 
     out_buffer_ID = 0;
-
-    // Listen for bad input list updates
-    string badInputs = config.get<std::string>(unique_name, "updatable_config/bad_inputs");
-    configUpdater::instance().subscribe(
-        badInputs,
-        std::bind(&bufferBadInputs::update_bad_inputs_callback, this, std::placeholders::_1));
 }
 
 bufferBadInputs::~bufferBadInputs() {}
@@ -85,4 +79,10 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     return true;
 }
 
-void bufferBadInputs::main_thread() {}
+void bufferBadInputs::main_thread() {
+    // Listen for bad input list updates
+    string badInputs = config.get<std::string>(unique_name, "updatable_config/bad_inputs");
+    configUpdater::instance().subscribe(
+        badInputs,
+        std::bind(&bufferBadInputs::update_bad_inputs_callback, this, std::placeholders::_1));
+}
