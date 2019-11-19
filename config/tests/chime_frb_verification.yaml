@@ -192,14 +192,13 @@ gpu:
       beamform_hfb_output_buf: gpu_beamform_hfb_output_buffer_0
 
 hyper_fine_beam:
-  num_frames_to_integrate: 80
+  num_frames_to_integrate: 5
   good_samples_threshold: 0.95
   integrate_hfb_data:
     kotekan_stage: integrateHFBData
     log_level: debug
     hfb_input_buf: gpu_beamform_hfb_output_buffer_0
     hfb_output_buf: beamform_hfb_output_buffer_0
-    lost_samples_buf: lost_samples_buffer
   
 21cm:
     kotekan_stage: rawFileWrite
