@@ -192,8 +192,8 @@ private:
     // Number of blocks to read ahead while reading from disk
     size_t readahead_blocks;
 
-    // The ID for the data coming from the file that is read.
-    dset_id_t _dataset_id;
+    // Dataset ID to assign to output frames
+    dset_id_t out_dset_id;
 
     // The read rate
     double max_read_rate;

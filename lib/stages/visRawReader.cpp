@@ -46,7 +46,7 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
     readahead_blocks = config.get<size_t>(unique_name, "readahead_blocks");
     max_read_rate = config.get_default<double>(unique_name, "max_read_rate", 0.0);
     sleep_time = config.get_default<float>(unique_name, "sleep_time", -1);
-    use_comet = config.get_default<bool>(unique_name, "use_comet", false);
+    use_comet = config.get_default<bool>(unique_name, "use_dataset_broker", false);
 
     chunked = config.exists(unique_name, "chunk_size");
     if (chunked) {
@@ -179,7 +179,7 @@ void visRawReader::get_dataset_state(dset_id_t ds_id) {
         // Add time to dataset
         state_id_t tstate_id = dm.add_state(std::make_unique<timeState>(_times)).first;
         // Register with dataset broker
-        _dataset_id = dm.add_dataset(tstate_id, ds_id);
+        out_dset_id = dm.add_dataset(tstate_id, ds_id);
     } else {
         // Create new states: metadata, time, prod, freq, input, eigenvalue and stack.
         state_uptr sstate = nullptr;
@@ -198,7 +198,7 @@ void visRawReader::get_dataset_state(dset_id_t ds_id) {
                 .first;
 
         // register it as root dataset
-        _dataset_id = dm.add_dataset(mstate_id);
+        out_dset_id = dm.add_dataset(mstate_id);
     }
 }
 
@@ -236,8 +236,8 @@ void visRawReader::main_thread() {
     double start_time, end_time;
     size_t frame_id = 0;
     uint8_t* frame;
-    dset_id_t dset_id;
-    dset_id_t cur_dset_id;
+    dset_id_t dset_id;         // dataset ID stored in the frame
+    dset_id_t cur_dset_id = 0; // current dataset ID: used to identify changes in frames coming in
 
     size_t ind = 0, read_ind = 0, file_ind;
 
@@ -300,7 +300,7 @@ void visRawReader::main_thread() {
             std::fill(frame.flags.begin(), frame.flags.end(), 0.0);
             frame.freq_id = 0;
             frame.erms = 0;
-            frame.dataset_id = _dataset_id;
+            frame.dataset_id = out_dset_id;
             DEBUG("visRawReader: Reading empty frame: {:d}", frame_id);
         }
 
@@ -314,14 +314,14 @@ void visRawReader::main_thread() {
                 FATAL_ERROR(
                     "Dataset ID of incoming frames changed from {:#x} to {:#x}. Changing  ID "
                     "not supported without dataset broker, exiting...",
-                    _dataset_id, dset_id);
+                    cur_dset_id, dset_id);
             }
             get_dataset_state(dset_id);
             cur_dset_id = dset_id;
         }
 
         // Set the dataset ID to the updated value
-        ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id = _dataset_id;
+        ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id = out_dset_id;
 
         // Try and clear out the cached data as we don't need it again
         if (madvise(mapped_file + file_ind * file_frame_size, file_frame_size, MADV_DONTNEED) == -1)
