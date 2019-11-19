@@ -54,9 +54,7 @@ int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
     // Check for bad input updates
     std::lock_guard<std::mutex> lock(update_mutex);
     if (first_pass) {
-        DEBUG("hsaRfiUpdateBadInputs::wait_on_precondition: Waiting for full frame...");
         uint8_t* frame = wait_for_full_frame(_in_buf, unique_name.c_str(), _in_buf_precondition_id);
-        DEBUG("hsaRfiUpdateBadInputs::wait_on_precondition: Bad inputs update.");
         if (frame == NULL)
             return -1;
         first_pass = false;
@@ -119,7 +117,7 @@ void hsaRfiUpdateBadInputs::finalize_frame(int frame_id) {
     if (frame_to_fill_finalize > 0 && frame_copy_active.at(frame_id)) {
         frame_copy_active.at(frame_id) = false;
         hsaCommand::finalize_frame(frame_id);
-        INFO("finalize_frame for gpu_frame_id={:d} using _in_buf_finalize_id={:d}", frame_id,
+        DEBUG("finalize_frame for gpu_frame_id={:d} using _in_buf_finalize_id={:d}", frame_id,
               _in_buf_finalize_id);
         frame_to_fill_finalize--;
         if (frame_to_fill_finalize == 0) {
