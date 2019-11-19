@@ -63,7 +63,6 @@ private:
 
     /// IDs for _in_buf
     int32_t _in_buf_id;
-    int32_t _in_buf_finalize_id;
     int32_t _in_buf_precondition_id;
 
     /// The numer of frames to update before stopping to copy the bad input mask
@@ -89,8 +88,6 @@ private:
     /// The no. of bad inputs.
     uint32_t num_bad_inputs;
     
-    int32_t frame_to_fill;
-    int32_t frame_to_fill_finalize;
     bool first_pass;
 };
 

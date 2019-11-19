@@ -31,9 +31,7 @@ hsaRfiUpdateBadInputs::hsaRfiUpdateBadInputs(Config& config, const string& uniqu
 
     _in_buf = host_buffers.get_buffer("bad_inputs_buf");
     register_consumer(_in_buf, unique_name.c_str());
-    _in_buf_finalize_id = 0;
     _in_buf_precondition_id = 0;
-    frame_to_fill_finalize = 0;
     first_pass = true;
     num_bad_inputs = 0;
 
@@ -59,10 +57,8 @@ int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
             return -1;
         first_pass = false;
         frames_to_update = device.get_gpu_buffer_depth();
-        frame_to_fill_finalize = frames_to_update;
         memcpy(host_mask, frame, input_mask_len);
         num_bad_inputs = get_rfi_num_bad_inputs(_in_buf, _in_buf_precondition_id);
-        _in_buf_precondition_id = (_in_buf_precondition_id + 1) % _in_buf->num_frames;
     } else {
         // Check for new bad inputs only if all gpu frames have been updated (not currently updating frame)
         if (frames_to_update == 0 && !frame_copy_active.at(gpu_frame_id)) {
@@ -73,15 +69,18 @@ int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
                   _in_buf_precondition_id, status);
             if (status == 0) {
                 frames_to_update = device.get_gpu_buffer_depth();
-                frame_to_fill_finalize = frames_to_update;
                 memcpy(host_mask, _in_buf->frames[_in_buf_precondition_id], input_mask_len);
                 num_bad_inputs = get_rfi_num_bad_inputs(_in_buf, _in_buf_precondition_id);
-                _in_buf_precondition_id = (_in_buf_precondition_id + 1) % _in_buf->num_frames;
             }
             if (status == -1)
                 return -1;
         }
     }
+    
+    DEBUG("finalize_frame for gpu_frame_id={:d} using _in_buf_precondition_id={:d}", gpu_frame_id,
+        _in_buf_precondition_id);
+    mark_frame_empty(_in_buf, unique_name.c_str(), _in_buf_precondition_id);
+    _in_buf_precondition_id = (_in_buf_precondition_id + 1) % _in_buf->num_frames;
     return 0;
 }
 
@@ -114,16 +113,9 @@ void hsaRfiUpdateBadInputs::finalize_frame(int frame_id) {
     
     // Only mark input empty if filling frame and
     // no more frames to finalize.
-    if (frame_to_fill_finalize > 0 && frame_copy_active.at(frame_id)) {
+    if (frame_copy_active.at(frame_id)) {
         frame_copy_active.at(frame_id) = false;
         hsaCommand::finalize_frame(frame_id);
-        DEBUG("finalize_frame for gpu_frame_id={:d} using _in_buf_finalize_id={:d}", frame_id,
-              _in_buf_finalize_id);
-        frame_to_fill_finalize--;
-        if (frame_to_fill_finalize == 0) {
-            mark_frame_empty(_in_buf, unique_name.c_str(), _in_buf_finalize_id);
-            _in_buf_finalize_id = (_in_buf_finalize_id + 1) % _in_buf->num_frames;
-        }
     }
 
     mark_frame_empty(_network_buf, unique_name.c_str(), _network_buf_finalize_id);
