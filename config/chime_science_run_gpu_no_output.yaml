@@ -512,7 +512,6 @@ bad_input_buffer:
 # 2) Zero bad inputs mask
 # 3) Add current bad input mask
 buffer_bad_input_update:
-  log_level: debug
   kotekan_stage: bufferBadInputs
   updatable_config:
     bad_inputs: /updatable_config/bad_inputs
