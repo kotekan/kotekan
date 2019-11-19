@@ -47,6 +47,7 @@ hsaRfiUpdateBadInputs::~hsaRfiUpdateBadInputs() {
 }
 
 inline void hsaRfiUpdateBadInputs::copy_frame(int gpu_frame_id) {
+    (void)gpu_frame_id;
 
     frames_to_update = device.get_gpu_buffer_depth();
     memcpy(host_mask, _in_buf->frames[_in_buf_precondition_id], input_mask_len);
