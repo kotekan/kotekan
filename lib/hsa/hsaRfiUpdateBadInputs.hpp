@@ -87,7 +87,7 @@ private:
 
     /// The no. of bad inputs.
     uint32_t num_bad_inputs;
-    
+
     bool first_pass;
 };
 

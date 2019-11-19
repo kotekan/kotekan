@@ -1,8 +1,8 @@
 #include "bufferBadInputs.hpp"
 
+#include "chimeMetadata.h"
 #include "configUpdater.hpp"
 #include "visUtil.hpp"
-#include "chimeMetadata.h"
 
 using kotekan::bufferContainer;
 using kotekan::Config;

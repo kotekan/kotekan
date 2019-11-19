@@ -60,7 +60,8 @@ int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
         memcpy(host_mask, frame, input_mask_len);
         num_bad_inputs = get_rfi_num_bad_inputs(_in_buf, _in_buf_precondition_id);
     } else {
-        // Check for new bad inputs only if all gpu frames have been updated (not currently updating frame)
+        // Check for new bad inputs only if all gpu frames have been updated (not currently updating
+        // frame)
         if (frames_to_update == 0 && !frame_copy_active.at(gpu_frame_id)) {
             auto timeout = double_to_ts(0);
             int status = wait_for_full_frame_timeout(_in_buf, unique_name.c_str(),
@@ -76,9 +77,9 @@ int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
                 return -1;
         }
     }
-    
+
     DEBUG("finalize_frame for gpu_frame_id={:d} using _in_buf_precondition_id={:d}", gpu_frame_id,
-        _in_buf_precondition_id);
+          _in_buf_precondition_id);
     mark_frame_empty(_in_buf, unique_name.c_str(), _in_buf_precondition_id);
     _in_buf_precondition_id = (_in_buf_precondition_id + 1) % _in_buf->num_frames;
     return 0;
@@ -96,8 +97,8 @@ hsa_signal_t hsaRfiUpdateBadInputs::execute(int gpu_frame_id, hsa_signal_t prece
         frame_copy_active.at(gpu_frame_id) = true;
 
         // Copy memory to GPU
-        DEBUG("Copying bad input list to GPU[{:d}], frames to update: {:d}",
-              device.get_gpu_id(), frames_to_update);
+        DEBUG("Copying bad input list to GPU[{:d}], frames to update: {:d}", device.get_gpu_id(),
+              frames_to_update);
         void* gpu_mem = device.get_gpu_memory_array("input_mask", gpu_frame_id, input_mask_len);
         device.async_copy_host_to_gpu(gpu_mem, (void*)host_mask, input_mask_len, precede_signal,
                                       signals[gpu_frame_id]);
@@ -110,7 +111,7 @@ hsa_signal_t hsaRfiUpdateBadInputs::execute(int gpu_frame_id, hsa_signal_t prece
 
 void hsaRfiUpdateBadInputs::finalize_frame(int frame_id) {
     std::lock_guard<std::mutex> lock(update_mutex);
-    
+
     // Only mark input empty if filling frame and
     // no more frames to finalize.
     if (frame_copy_active.at(frame_id)) {
