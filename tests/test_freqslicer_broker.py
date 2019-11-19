@@ -171,6 +171,7 @@ def subset_data(tmpdir_factory):
         broker.terminate()
 
 
+@pytest.mark.serial
 def test_subset_broker(subset_data):
     data_gen = subset_data[0]
     data_subset = subset_data[1]
