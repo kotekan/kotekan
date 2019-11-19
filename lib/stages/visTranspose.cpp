@@ -191,6 +191,7 @@ void visTranspose::main_thread() {
                     "Make sure there is a stage upstream in the config, that adds the dataset "
                     "states.\nExiting...",
                     ds_id);
+        return;
     }
 
     // Get the original dataset ID (before adding time axis)
