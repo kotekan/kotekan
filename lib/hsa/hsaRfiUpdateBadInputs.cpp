@@ -72,7 +72,14 @@ int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
     } else {
         // Check for new bad inputs only if all gpu frames have been updated (not currently updating
         // frame)
-        if (frames_to_update == 0 && !frame_copy_active.at(gpu_frame_id)) {
+        bool current_update_active = false;
+        for (bool in_use : frame_copy_active) {
+            if (in_use) {
+                current_update_active = true;
+                break;
+            }
+        }
+        if (frames_to_update == 0 && !current_update_active) {
             auto timeout = double_to_ts(0);
             int status = wait_for_full_frame_timeout(_in_buf, unique_name.c_str(),
                                                      _in_buf_precondition_id, timeout);
