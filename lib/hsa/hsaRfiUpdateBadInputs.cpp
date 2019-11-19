@@ -46,6 +46,17 @@ hsaRfiUpdateBadInputs::~hsaRfiUpdateBadInputs() {
     hsa_host_free(host_mask);
 }
 
+inline void hsaRfiUpdateBadInputs::copy_frame(int gpu_frame_id) {
+
+    frames_to_update = device.get_gpu_buffer_depth();
+    memcpy(host_mask, _in_buf->frames[_in_buf_precondition_id], input_mask_len);
+    num_bad_inputs = get_rfi_num_bad_inputs(_in_buf, _in_buf_precondition_id);
+    DEBUG("gpu_frame_id={:d} using _in_buf_precondition_id={:d}", gpu_frame_id,
+          _in_buf_precondition_id);
+    mark_frame_empty(_in_buf, unique_name.c_str(), _in_buf_precondition_id);
+    _in_buf_precondition_id = (_in_buf_precondition_id + 1) % _in_buf->num_frames;
+}
+
 int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
 
@@ -56,13 +67,7 @@ int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
         if (frame == NULL)
             return -1;
         first_pass = false;
-        frames_to_update = device.get_gpu_buffer_depth();
-        memcpy(host_mask, frame, input_mask_len);
-        num_bad_inputs = get_rfi_num_bad_inputs(_in_buf, _in_buf_precondition_id);
-        DEBUG("finalize_frame for gpu_frame_id={:d} using _in_buf_precondition_id={:d}",
-              gpu_frame_id, _in_buf_precondition_id);
-        mark_frame_empty(_in_buf, unique_name.c_str(), _in_buf_precondition_id);
-        _in_buf_precondition_id = (_in_buf_precondition_id + 1) % _in_buf->num_frames;
+        copy_frame(gpu_frame_id);
     } else {
         // Check for new bad inputs only if all gpu frames have been updated (not currently updating
         // frame)
@@ -72,15 +77,8 @@ int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
                                                      _in_buf_precondition_id, timeout);
             DEBUG("status of bad inputs _in_buf_precondition_id[{:d}]={:d} (0=ready 1=not)",
                   _in_buf_precondition_id, status);
-            if (status == 0) {
-                frames_to_update = device.get_gpu_buffer_depth();
-                memcpy(host_mask, _in_buf->frames[_in_buf_precondition_id], input_mask_len);
-                num_bad_inputs = get_rfi_num_bad_inputs(_in_buf, _in_buf_precondition_id);
-                DEBUG("finalize_frame for gpu_frame_id={:d} using _in_buf_precondition_id={:d}",
-                      gpu_frame_id, _in_buf_precondition_id);
-                mark_frame_empty(_in_buf, unique_name.c_str(), _in_buf_precondition_id);
-                _in_buf_precondition_id = (_in_buf_precondition_id + 1) % _in_buf->num_frames;
-            }
+            if (status == 0)
+                copy_frame(gpu_frame_id);
             if (status == -1)
                 return -1;
         }

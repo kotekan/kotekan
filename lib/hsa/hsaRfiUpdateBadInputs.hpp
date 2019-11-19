@@ -51,6 +51,9 @@ public:
      */
     bool update_bad_inputs_callback(nlohmann::json& json);
 
+    /// Copy frame into host_mask and store the no. of bad inputs.
+    inline void copy_frame(int gpu_frame_id);
+
 private:
     /// Main data input, used for metadata access
     Buffer* _network_buf;
