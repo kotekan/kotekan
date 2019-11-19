@@ -134,7 +134,6 @@ void integrateHFBData::main_thread() {
         // Get the no. of lost samples in this frame
         total_lost_timesamples += get_lost_timesamples(in_buf, in_buffer_ID);
 
-        // TODO:JSW Store the amount of renormalisation used in the frame
         // When all frames have been integrated output the result
         if (get_fpga_seq_num(in_buf, in_buffer_ID)
             >= fpga_seq_num_end_old + _samples_per_data_set) {
@@ -158,14 +157,14 @@ void integrateHFBData::main_thread() {
                 
                 // Populate metadata
                 int64_t fpga_seq = fpga_seq_num_end_old - ((_num_frames_to_integrate - 1) * _samples_per_data_set);
-                set_fpga_seq_num(out_buf, out_buffer_ID, fpga_seq);
+                set_fpga_seq_num_hfb(out_buf, out_buffer_ID, fpga_seq);
 
                 // Check if GPS time is set
                 if(!is_gps_global_time_set())
                   set_gps_time_flag(out_buf, out_buffer_ID, 0);
                 else {
                   set_gps_time_flag(out_buf, out_buffer_ID, 1);
-                  set_gps_time(out_buf, out_buffer_ID, compute_gps_time(fpga_seq));
+                  set_gps_time_hfb(out_buf, out_buffer_ID, compute_gps_time(fpga_seq));
                 }
                 
                 set_norm_frac(out_buf, out_buffer_ID, norm_frac);
