@@ -46,7 +46,7 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
     readahead_blocks = config.get<size_t>(unique_name, "readahead_blocks");
     max_read_rate = config.get_default<double>(unique_name, "max_read_rate", 0.0);
     sleep_time = config.get_default<float>(unique_name, "sleep_time", -1);
-    use_comet = config.get_default<bool>(unique_name, "use_dataset_broker", false);
+    use_comet = config.get_default<bool>(unique_name, "use_dataset_broker", true);
 
     chunked = config.exists(unique_name, "chunk_size");
     if (chunked) {

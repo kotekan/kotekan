@@ -51,8 +51,8 @@ using json = nlohmann::json;
  * @conf    sleep_time          Float. After the data is read pause this long in
  *                              seconds before sending shutdown. If < 0, never
  *                              send a shutdown signal. Default is -1.
- * @conf    use_comet           Bool. Whether to try and restore dataset ID from
- *                              dataset broker (i.e. comet). Default is false.
+ * @conf    use_dataset_broker  Bool. Restore dataset ID from dataset broker (i.e. comet).
+ *                              Should be disabled only for testing. Default is true.
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte, Rick Nitsche
  */
