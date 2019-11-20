@@ -213,13 +213,15 @@ void bufferRecv::main_thread() {
 
     listener = socket(AF_INET, SOCK_STREAM, 0);
     evutil_make_socket_nonblocking(listener);
+
+    // This makes is possible to reuse the same socket even if it goes into TIME_WAIT
+    // Used by gossec
     int reuse = 1;
     if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)) < 0) {
         ERROR("Could not set SO_REUSEADDR on socket");
         close(listener);
         return;
     }
-
 
     if (bind(listener, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         FATAL_ERROR("Failed to bind to socket 0.0.0.0:{:d}, error: {:d} ({:s})", listen_port, errno,
