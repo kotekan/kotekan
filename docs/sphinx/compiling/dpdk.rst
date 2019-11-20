@@ -21,7 +21,7 @@ Setup
 Run ``dpdk-devbind --status`` to see the addresses of your system NICs, then
 add the NICs you want to have bound to DPDK at startup to ``/etc/dpdk/interfaces``
 for example to bind two Intel XL710 NICs to the ``uio_igb`` driver at PCIe addresses
-``0000:46:00.0`` and ``0000:48:00.0`` and the following two lines:
+``0000:46:00.0`` and ``0000:48:00.0`` add the following two lines:
 
 .. code:: text
 
