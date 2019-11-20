@@ -5,9 +5,15 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 
 # === End Python 2/3 compatibility
 
+import pytest
 import numpy as np
 
 from kotekan import runner
+
+# Skip if LAPACK support not built into kotekan
+if not runner.has_lapack():
+    pytest.skip("LAPACK support not available.", allow_module_level=True)
+
 
 default_params = {
     "num_elements": 200,
