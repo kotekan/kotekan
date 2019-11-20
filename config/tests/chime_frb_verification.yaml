@@ -143,7 +143,7 @@ gen_data:
 
 cpu_simulate:
   cpu_data_sim_0:
-    gain_dir: "/mnt/frb-archiver/daily_gain_solutions/broker_cyga_09_09_T063243_nonorm/"
+    gain_dir: "./"
     ew_spacing: [0.0, 0.1, 0.2, 0.3]
     northmost_beam: 90.0
     kotekan_stage: gpuBeamformSimulate
