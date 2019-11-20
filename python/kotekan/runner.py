@@ -160,6 +160,9 @@ class KotekanRunner(object):
                 # the requests module needs the address wrapped in http://*/
                 rest_addr = "http://" + rest_addr + "/"
 
+                # wait a moment for the restServer to start
+                time.sleep(1)
+
                 for rtype, endpoint, data in self._rest_commands:
                     if rtype == "wait":
                         time.sleep(endpoint)
