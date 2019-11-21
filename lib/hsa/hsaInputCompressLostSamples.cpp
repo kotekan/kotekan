@@ -20,6 +20,7 @@ hsaInputCompressLostSamples::hsaInputCompressLostSamples(Config& config, const s
     input_frame_len = _samples_per_data_set / _num_sub_freqs * sizeof(uint8_t);
 
     compressed_lost_samples_buf = host_buffers.get_buffer("compressed_lost_samples_buf");
+    register_consumer(compressed_lost_samples_buf, unique_name.c_str());
     compressed_lost_samples_buffer_id = 0;
     compressed_lost_samples_buffer_precondition_id = 0;
     compressed_lost_samples_buffer_finalize_id = 0;
