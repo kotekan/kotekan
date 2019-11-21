@@ -152,7 +152,10 @@ dset_id_t datasetManager::add_dataset(state_id_t state, dset_id_t base_dset) {
     }
     std::string type = t->type();
     dataset ds(state, type, base_dset);
-    return add_dataset(ds);
+    auto id = add_dataset(ds);
+    DEBUG_NON_OO("Added dataset {} with state {}:{} and base dataset {}", id, type, state,
+                 base_dset);
+    return id;
 }
 
 
@@ -160,9 +163,9 @@ dset_id_t datasetManager::add_dataset(const std::vector<state_id_t>& states, dse
 
     dset_id_t id = base_dset;
 
+    DEBUG_NON_OO("Adding {} dataset states to base dataset {}", states.size(), base_dset);
     for (const auto& state : states) {
         auto new_id = add_dataset(state, id);
-        DEBUG_NON_OO("Added dataset {} with state {} and base dataset {}", new_id, state, id);
         id = new_id;
     }
     return id;

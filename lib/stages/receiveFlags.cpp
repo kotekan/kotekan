@@ -161,8 +161,8 @@ void receiveFlags::main_thread() {
 
         if (update == nullptr) {
             FATAL_ERROR("receiveFlags: Flags for frame {:d} with timestamp {:f} are not in memory. "
-                  "updateQueue is empty",
-                  frame_id_in, ts_to_double(ts_frame));
+                        "updateQueue is empty",
+                        frame_id_in, ts_to_double(ts_frame));
             return;
         }
 
