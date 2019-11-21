@@ -4,7 +4,7 @@
 
 #define NUM_SUB_FREQS 128
 
-__kernel void sum_hfb(__global float *data, __constant uchar *lost_samples_buf, __global float *hfb_sum_output_array, const uint num_samples){
+__kernel void sum_hfb(__global float *data, __constant uchar *compressed_lost_samples_buf, __global float *hfb_sum_output_array, const uint num_samples){
     
   uint local_address = get_local_id(0);
 
@@ -16,11 +16,10 @@ __kernel void sum_hfb(__global float *data, __constant uchar *lost_samples_buf, 
 
   for(int sample=0; sample<num_samples; sample++) {
 
-      if(!lost_samples_buf[((freq * num_samples) + sample) % 30])
+      if(!compressed_lost_samples_buf[sample]) {
           freq_sum_1 += data[1024*NUM_SUB_FREQS*sample + beam*NUM_SUB_FREQS + freq];
-      
-      if(!lost_samples_buf[(((freq + 1) * num_samples) + sample) % 30])
           freq_sum_2 += data[1024*NUM_SUB_FREQS*sample + beam*NUM_SUB_FREQS + freq + 1];
+      }
   }
 
   // Write sums back to global
