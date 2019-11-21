@@ -114,24 +114,22 @@ lost_samples_buffer:
 compressed_lost_samples_buffer:
     kotekan_buffer: standard
     num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set / num_sub_freqs * num_data_sets
+    frame_size: samples_per_data_set / num_sub_freqs * num_data_sets / 3
     metadata_pool: main_pool
 
 cpu_affinity: [2,3,8,9]
 
 gen_data:
-  type: const
-  value: 1
-  test_data_gen_0:
-    kotekan_stage: testDataGen
-    network_out_buf: lost_samples_buffer
-
-gen_data:
-  type: random
-  value: 153
-  test_data_gen_0:
+  test_data_gen_network:
+    type: random
+    value: 153
     kotekan_stage: testDataGen
     out_buf: network_buffer_0
+  test_data_gen_lost_samples:
+    type: const
+    value: 0
+    kotekan_stage: testDataGen
+    out_buf: lost_samples_buffer
 
 #baseband:
 #  base_dir: /mnt/gong/cherry/B0329/July10/ForVerification/
@@ -152,16 +150,16 @@ cpu_simulate:
     hfb_out_buf: cpu_hfb_output_buffer_0
 
 compress_lost_samples:
-  compress_lost_samples_buf:
-    kotekan_stage: compressLostSamples
-    log_level: debug
-    lost_samples_buf: lost_samples_buffer
-    compressed_lost_samples_buf: compressed_lost_samples_buffer
+  kotekan_stage: compressLostSamples
+  log_level: debug
+  lost_samples_buf: lost_samples_buffer
+  compressed_lost_samples_buf: compressed_lost_samples_buffer
  
 gpu:
   kernel_path: "../lib/hsa/kernels/"
   commands:
   - name: hsaInputData
+  - name: hsaInputCompressLostSamples
   - name: hsaOutputDataZero
   - name: hsaAsyncCopyGain
   - name: hsaBarrier
@@ -187,6 +185,7 @@ gpu:
     in_buffers:
       network_buf: network_buffer_0
       gain_frb_buf: gain_frb_buffer
+      compressed_lost_samples_buf: compressed_lost_samples_buffer
     out_buffers:
       beamform_output_buf: gpu_beamform_output_buffer_0
       beamform_hfb_output_buf: gpu_beamform_hfb_output_buffer_0
