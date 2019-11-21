@@ -47,7 +47,7 @@ buffer_recv:
   21cm:
     kotekan_stage: bufferRecv
     buf: beamform_hfb_output_buffer_merge
-    listen_port: 11027
+    listen_port: 12050
 
 # Write raw 21cm data
 write_hfb:
