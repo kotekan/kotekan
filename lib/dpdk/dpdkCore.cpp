@@ -123,12 +123,15 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
             }
         }
         DEBUG("Number of ports on numa node {:d}: {:d}", node_id, num_ports_on_node);
-        struct rte_mempool* pool = rte_mempool_create(
-            ("MBUF_POOL_" + to_string(node_id)).c_str(), num_mbufs * num_ports_on_node, mbuf_size,
-            mbuf_cache_size, sizeof(struct rte_pktmbuf_pool_private), rte_pktmbuf_pool_init, NULL,
-            rte_pktmbuf_init, NULL, node_id, 0);
-        if (pool == NULL) {
-            throw std::runtime_error("Cannot create DPDK mbuf pool.");
+        struct rte_mempool* pool = NULL;
+        if (num_ports_on_node > 0) {
+            pool = rte_mempool_create(
+                ("MBUF_POOL_" + to_string(node_id)).c_str(), num_mbufs * num_ports_on_node,
+                mbuf_size, mbuf_cache_size, sizeof(struct rte_pktmbuf_pool_private),
+                rte_pktmbuf_pool_init, NULL, rte_pktmbuf_init, NULL, node_id, 0);
+            if (pool == NULL) {
+                throw std::runtime_error("Cannot create DPDK mbuf pool.");
+            }
         }
         mbuf_pools.push_back(pool);
     }

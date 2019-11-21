@@ -25,14 +25,14 @@ Compiling **Kotekan**
 
 Required
 =========
-* pthread
-* python and python-YAML
+* ``pthread``
+* ``python`` and ``python-YAML``
 * `libevent <http://libevent.org/>`_
 
 Required for some options
 ==========================
 
-* `DPDK dpdk-16.11.9 <http://dpdk.org/>`_ (see :ref:`dpdk`), requires hugepage support
+* `DPDK <http://dpdk.org/>`_ (see :ref:`dpdk`)
 * `AMD ROCm <https://github.com/RadeonOpenCompute/ROCm>`_ (this also installs AMD OpenCL drivers and SDK)
 * `CUDA <https://developer.nvidia.com/cuda-downloads>`_ Required for use with Nvidia cards
 * `HDF5 <https://www.hdfgroup.org/HDF5/>`_::
@@ -168,9 +168,9 @@ Cmake build options
 * ``-DCMAKE_BUILD_TYPE=Debug``
     Builds the project with debug symbols.
 * ``-DUSE_DPDK=ON``
-* ``-DRTE_SDK=<dir>``
-* ``-DRTE_TARGET=x86_64-native-linuxapp-gcc``
-    Includes DPDK support.
+    Builds with DPDK support, for source installs requires: `-DRTE_SDK=<dir>`
+    and `-DRTE_TARGET=x86_64-native-linuxapp-gcc`
+    See :ref:`dpdk` for more details.
 * ``-DUSE_HSA=ON``
     Build with HSA support if available. Off by default.
 * ``-DUSE_OLD_ROCM=ON``

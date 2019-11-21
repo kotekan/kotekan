@@ -51,32 +51,35 @@ public:
      */
     bool update_bad_inputs_callback(nlohmann::json& json);
 
+    /// Copy frame into host_mask and store the no. of bad inputs.
+    inline void copy_frame(int gpu_frame_id);
+
 private:
     /// Main data input, used for metadata access
     Buffer* _network_buf;
+    Buffer* _in_buf;
 
     /// IDs for _network_buf
     int32_t _network_buf_finalize_id;
     int32_t _network_buf_execute_id;
     int32_t _network_buf_precondition_id;
 
-    /// State of the update
-    bool update_bad_inputs;
+    /// IDs for _in_buf
+    int32_t _in_buf_id;
+    int32_t _in_buf_precondition_id;
 
     /// The numer of frames to update before stopping to copy the bad input mask
     int frames_to_update;
 
-    /// Counter of the number of copy operations which have to be finalized
-    int frames_to_update_finalize;
+    /// Tracks which GPU frames have an active copy from the execute stage
+    /// Note since for a given frame_id there can only be one active set
+    /// of commands as long as finalize_frame() marks this as false
+    /// there is no risk of a race condition, since that index will not be
+    /// reused until finalize_frame() is finished.
+    std::vector<bool> frame_copy_active;
 
     /// Mutex to lock updates to the bad_input lists and copy state.
     std::mutex update_mutex;
-
-    /// List of current bad inputs in cylinder order
-    std::vector<int> bad_inputs_cylinder;
-
-    /// List of current bad inputs in correlator order.
-    std::vector<int> bad_inputs_correlator;
 
     /// The size of the bad input mask.
     uint32_t input_mask_len;
@@ -85,8 +88,10 @@ private:
     /// Note 1 means the element is good, 0 means flagged.
     uint8_t* host_mask;
 
-    /// The mapping from correlator to cylinder element indexing.
-    std::vector<uint32_t> input_remap;
+    /// The no. of bad inputs.
+    uint32_t num_bad_inputs;
+
+    bool first_pass;
 };
 
 #endif // HSA_RFI_UPDATE_BAD_INPUTS_HPP

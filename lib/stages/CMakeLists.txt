@@ -55,6 +55,7 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       visTestPattern.cpp
       visDebug.cpp
       removeEv.cpp
+      bufferBadInputs.cpp
     )
 
 if (${USE_AIRSPY})
