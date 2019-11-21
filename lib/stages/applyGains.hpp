@@ -3,6 +3,7 @@
 
 #include "Stage.hpp"
 #include "buffer.h"
+#include "datasetManager.hpp"
 #include "errors.h"
 #include "fpga_header_functions.h"
 #include "updateQueue.hpp"
@@ -20,6 +21,15 @@
  *
  * This stage registers as a subscriber to an updatable config block. The
  * full name of the block should be defined in the value @c updatable_block
+ *
+ * Gain updates *must* match the frequencies expected to be present in the
+ * input stream. That is there must be exactly as many frequencies in the gain
+ * update as there are in the `freqState` attached to the input stream.
+ * The number of elements must also match those on the incoming
+ * stream.
+ *
+ * The number of frequencies and inputs is locked in
+ *
  *
  * @par Buffers
  * @buffer in_buf The input stream.
@@ -55,11 +65,6 @@
 class applyGains : public kotekan::Stage {
 
 public:
-    struct gainUpdate {
-        std::vector<std::vector<cfloat>> gain;
-        std::vector<std::vector<float>> weight;
-    };
-
     /// Default constructor
     applyGains(kotekan::Config& config, const string& unique_name,
                kotekan::bufferContainer& buffer_container);
@@ -70,10 +75,20 @@ public:
     /// Callback function to receive updates on timestamps from configUpdater
     bool receive_update(nlohmann::json& json);
 
-    /// Check if file to read exists
-    bool fexists(const std::string& filename);
-
 private:
+    // An internal type for holding the actual gains
+    struct GainData {
+        std::vector<std::vector<cfloat>> gain;
+        std::vector<std::vector<float>> weight;
+    };
+
+    // An internal type for holding all information about the gain update
+    struct GainUpdate {
+        GainData data;
+        double t_combine;
+        state_id_t state_id;
+    };
+
     // Parameters saved from the config files
 
     /// Path to gains directory
@@ -83,10 +98,10 @@ private:
     uint64_t num_kept_updates;
 
     /// Time over which to blend old and new gains in seconds. Default is 5 minutes.
-    double tcombine;
+    double t_combine_default;
 
     /// The gains and when to start applying them in a FIFO (len set by config)
-    updateQueue<gainUpdate> gains_fifo;
+    updateQueue<GainUpdate> gains_fifo;
 
     /// Input buffer to read from
     Buffer* in_buf;
@@ -99,12 +114,6 @@ private:
 
     /// Timestamp of the current frame
     std::atomic<timespec> ts_frame{{0, 0}};
-
-    /// Number of updates received too late
-    std::atomic<size_t> num_late_updates;
-
-    /// Number of frames received too late, every thread must be able to increment
-    std::atomic<size_t> num_late_frames;
 
     /// Entrancepoint for n threads. Each thread takes frames with a
     /// different frame_id from the buffer and applies gains.
@@ -125,9 +134,40 @@ private:
     /// Mutex protecting shared frame IDs.
     std::mutex m_frame_ids;
 
+    // Prometheus metrics
     kotekan::prometheus::Gauge& update_age_metric;
-    kotekan::prometheus::Gauge& late_update_counter;
-    kotekan::prometheus::Gauge& late_frames_counter;
+    kotekan::prometheus::Counter& late_update_counter;
+    kotekan::prometheus::Counter& late_frames_counter;
+
+    /// Read the gain file from disk
+    std::optional<GainData> read_gain_file(std::string tag) const;
+
+    /// Test that the frame is valid. On failure it will call FATAL_ERROR and
+    /// return false
+    bool validate_frame(const visFrameView& frame);
+
+    /// Test that the gain is valid. On failure it will call FATAL_ERROR and
+    /// return false. Gains failing this *should* have already been rejected,
+    /// except the initial gains which can't be checked.
+    bool validate_gain(const GainData& frame) const;
+
+
+    // Check if file to read exists
+    bool fexists(const std::string& filename) const;
+
+    // Save the number of frequencies and elements for checking gain updates
+    // against
+    std::optional<size_t> num_freq;
+    std::optional<size_t> num_elements;
+    std::optional<size_t> num_prod;
+
+    // Mapping from frequency ID to index (in the gain file)
+    std::map<uint32_t, uint32_t> freq_map;
+
+    // Map from the state being applied and input dataset to the output dataset.
+    // This is used to keep track of the labels we should be applying for
+    // timesamples coming out of order.
+    std::map<std::pair<state_id_t, dset_id_t>, dset_id_t> output_dataset_ids;
 };
 
 

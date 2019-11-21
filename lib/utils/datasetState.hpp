@@ -637,7 +637,8 @@ public:
      */
     gainState(const json& data) {
         try {
-            _update_id = data.get<std::string>();
+            _update_id = data["update_id"].get<std::string>();
+            _t_combine = data["t_combine"].get<double>();
         } catch (std::exception& e) {
             throw std::runtime_error(fmt::format(
                 fmt("gainState: Failure parsing json data ({:s}): {:s}"), data.dump(4), e.what()));
@@ -647,22 +648,40 @@ public:
     /**
      * @brief Constructor
      * @param  update_id  The string update_id labelling the applied gains.
+     * @param  t_combine  The length of time to blend updates over.
      */
-    gainState(std::string update_id) : _update_id(update_id){};
+    gainState(std::string update_id, double t_combine) :
+        _update_id(update_id),
+        _t_combine(t_combine){};
 
+    /**
+     * @brief Get the update_id
+     **/
     const std::string& get_update_id() const {
         return _update_id;
+    }
+
+    /**
+     * @brief Get the length of time to blend this new update with the previous one.
+     **/
+    double get_t_combine() const {
+        return _t_combine;
     }
 
 private:
     /// Serialize the data of this state in a json object
     json data_to_json() const override {
-        json j(_update_id);
+        json j;
+        j["update_id"] = _update_id;
+        j["t_combine"] = _t_combine;
         return j;
     }
 
     // The label for the gains
     std::string _update_id;
+
+    // The length of time we (in seconds) should blend gain updates over
+    double _t_combine;
 };
 
 

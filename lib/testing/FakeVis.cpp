@@ -72,6 +72,7 @@ FakeVis::FakeVis(Config& config, const string& unique_name, bufferContainer& buf
     pattern = FACTORY(FakeVisPattern)::create_unique(mode, config, unique_name);
 
     // Get timing and frame params
+    start_time = config.get_default<double>(unique_name, "start_time", current_time());
     cadence = config.get<float>(unique_name, "cadence");
     num_frames = config.get_default<int32_t>(unique_name, "num_frames", -1);
     wait = config.get_default<bool>(unique_name, "wait", true);
@@ -85,8 +86,7 @@ void FakeVis::main_thread() {
     unsigned int output_frame_id = 0, frame_count = 0;
     uint64_t fpga_seq = 0;
 
-    timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
+    timespec ts = double_to_ts(start_time);
 
     // Calculate the time increments in seq and ctime
     uint64_t delta_seq = (uint64_t)(800e6 / 2048 * cadence);
@@ -101,7 +101,7 @@ void FakeVis::main_thread() {
     } else {
         std::vector<state_id_t> states;
         states.push_back(
-            dm.create_state<metadataState>("not set", "fakeVis", get_git_commit_hash()).first);
+            dm.create_state<metadataState>("not set", "FakeVis", get_git_commit_hash()).first);
 
         std::vector<std::pair<uint32_t, freq_ctype>> fspec;
         // TODO: CHIME specific
@@ -126,6 +126,10 @@ void FakeVis::main_thread() {
         // Register a root state
         ds_id = dm.add_dataset(states);
     }
+
+    // Sleep before starting up
+    timespec ts_sleep = double_to_ts(sleep_time);
+    nanosleep(&ts_sleep, nullptr);
 
     while (!stop_thread) {
 
