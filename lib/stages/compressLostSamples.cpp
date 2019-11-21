@@ -51,11 +51,11 @@ void compressLostSamples::main_thread() {
         uint8_t* compressed_lost_samples_frame = out_buf->frames[out_buffer_ID];
 
         // Compress lost samples buffer by checking each sample for a flag
-        for (uint sample = 0; sample < _samples_per_data_set; sample += _num_sub_freqs) {
-            compressed_lost_samples_frame[sample % _num_sub_freqs] = 0;
-            for (uint freq = 0; freq < _num_sub_freqs; freq++) {
+        for (uint sample = 0; sample < _samples_per_data_set; sample += 3 * _num_sub_freqs) {
+            compressed_lost_samples_frame[sample / (3 * _num_sub_freqs)] = 0;
+            for (uint freq = 0; freq < 3 * _num_sub_freqs; freq++) {
                 if (lost_samples_frame[sample + freq]) {
-                    compressed_lost_samples_frame[sample % _num_sub_freqs] = 1;
+                    compressed_lost_samples_frame[sample / (3 * _num_sub_freqs)] = 1;
                     break;
                 }
             }
