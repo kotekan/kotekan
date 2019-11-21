@@ -46,7 +46,7 @@ eigenVis::eigenVis(Config& config, const string& unique_name, bufferContainer& b
 
 dset_id_t eigenVis::change_dataset_state(dset_id_t input_dset_id) {
     auto& dm = datasetManager::instance();
-    return dm.add_dataset(input_dset_id, ev_state_id);
+    return dm.add_dataset(ev_state_id, input_dset_id);
 }
 
 void eigenVis::main_thread() {
@@ -56,7 +56,7 @@ void eigenVis::main_thread() {
     uint32_t num_elements = 0;
     bool initialized = false;
     size_t lapack_failure_total = 0;
-    dset_id_t _output_dset_id = 0;
+    dset_id_t _output_dset_id = dset_id_t::null;
 
     // Memory for LAPACK interface.
     std::vector<cfloat> vis_square;
@@ -165,7 +165,7 @@ void eigenVis::main_thread() {
 
             // Update prometheus metric about LAPACK failures
             lapack_failure_counter
-                .labels({std::to_string(freq_id), std::to_string(input_frame.dataset_id)})
+                .labels({std::to_string(freq_id), input_frame.dataset_id.to_string()})
                 .set(lapack_failure_total);
 
             // Clear frame and advance
@@ -225,13 +225,13 @@ void eigenVis::main_thread() {
         for (uint32_t i = 0; i < num_eigenvectors; i++) {
             eigenvalue_metric
                 .labels({std::to_string(i), std::to_string(freq_id),
-                         std::to_string(input_frame.dataset_id)})
+                         input_frame.dataset_id.to_string()})
                 .set(evals[num_eigenvectors - 1 - i]);
         }
 
         // Output RMS to prometheus
         eigenvalue_metric
-            .labels({"rms", std::to_string(freq_id), std::to_string(input_frame.dataset_id)})
+            .labels({"rms", std::to_string(freq_id), input_frame.dataset_id.to_string()})
             .set(rms);
 
         // Get output buffer for visibilities. Essentially identical to input buffers.

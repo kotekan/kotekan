@@ -23,6 +23,7 @@ set ( KOTEKAN_BOOST_TEST_SOURCES
       test_config.cpp
       test_prometheus_metrics.cpp
       test_synchronized_queue.cpp
+      test_hash.cpp
     )
 
 # source files for broker test

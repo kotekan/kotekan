@@ -108,7 +108,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
 
     // TODO: enforce this if build type == release?
     if (git_commit_hash_dataset != metadata["git_version_tag"].get<std::string>())
-        INFO("Git version tags don't match: dataset {:#x} has tag {:s},"
+        INFO("Git version tags don't match: dataset {} has tag {:s},"
              "while the local git version tag is {:s}",
              ds_id, git_commit_hash_dataset, metadata["git_version_tag"].get<std::string>());
 
@@ -141,7 +141,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     // the dimension of the visibilities is different for stacked data
     eff_prod_dim = (stack.size() > 0) ? stack.size() : num_prod;
 
-    DEBUG("Dataset {:d} has {:d} times, {:d} frequencies, {:d} products", ds_id, num_time, num_freq,
+    DEBUG("Dataset {} has {:d} times, {:d} frequencies, {:d} products", ds_id, num_time, num_freq,
           eff_prod_dim);
 
     // Ensure chunk_size not too large
@@ -187,7 +187,7 @@ void visTranspose::main_thread() {
     auto future_ds_state = std::async(&visTranspose::get_dataset_state, this, ds_id);
 
     if (!future_ds_state.get()) {
-        FATAL_ERROR("Set to not use dataset_broker and couldn't find ancestor of dataset {:#x}. "
+        FATAL_ERROR("Set to not use dataset_broker and couldn't find ancestor of dataset {}. "
                     "Make sure there is a stage upstream in the config, that adds the dataset "
                     "states.\nExiting...",
                     ds_id);

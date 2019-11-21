@@ -13,6 +13,12 @@ Obtain the source from the OpenBLAS homepage or via:
 
     git clone https://github.com/xianyi/OpenBLAS.git
 
+Ensure that there is a Fortran compiler present on the system, so that LAPACK is also installed:
+
+.. code-block:: bash
+
+   sudo apt install gfortran 
+
 Enter the source directory and run:
 
 .. code-block:: bash

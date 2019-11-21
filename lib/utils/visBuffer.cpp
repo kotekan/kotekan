@@ -107,7 +107,7 @@ std::string visFrameView::summary() const {
     struct tm* tm = std::gmtime(&(std::get<1>(time).tv_sec));
 
     string s =
-        fmt::format("visBuffer[name={:s}]: freq={:d} dataset={:#x} fpga_start={:d} time={:%F %T}",
+        fmt::format("visBuffer[name={:s}]: freq={:d} dataset={} fpga_start={:d} time={:%F %T}",
                     buffer->buffer_name, freq_id, dataset_id, std::get<0>(time), *tm);
 
     return s;
@@ -260,7 +260,7 @@ struct_layout<visField> visFrameView::calculate_buffer_layout(uint32_t num_eleme
 void visFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata) {
 
     // Set to zero as there's no information in chimeMetadata about it.
-    dataset_id = 0;
+    dataset_id = dset_id_t::null;
 
     // Set the frequency index from the stream id of the metadata
     stream_id_t stream_id = extract_stream_id(chime_metadata->stream_ID);

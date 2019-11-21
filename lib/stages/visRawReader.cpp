@@ -176,29 +176,25 @@ void visRawReader::get_dataset_state(dset_id_t ds_id) {
     datasetManager& dm = datasetManager::instance();
 
     if (use_comet) {
-        // Add time to dataset
-        state_id_t tstate_id = dm.add_state(std::make_unique<timeState>(_times)).first;
-        // Register with dataset broker
-        out_dset_id = dm.add_dataset(tstate_id, ds_id);
+        // Add time dataset state and register with dataset broker
+        out_dset_id = dm.add_dataset(dm.create_state<timeState>(_times).first, ds_id);
     } else {
-        // Create new states: metadata, time, prod, freq, input, eigenvalue and stack.
-        state_uptr sstate = nullptr;
+        // Add the states: acq_dataset_id, metadata, time, prod, freq, input,
+        // eigenvalue and stack.
+        std::vector<state_id_t> states;
         if (!_stack.empty())
-            sstate = std::make_unique<stackState>(_num_stack, std::move(_rstack));
-        state_uptr istate = std::make_unique<inputState>(_inputs, std::move(sstate));
-        state_uptr evstate = std::make_unique<eigenvalueState>(_ev, std::move(istate));
-        state_uptr fstate = std::make_unique<freqState>(_freqs, std::move(evstate));
-        state_uptr pstate = std::make_unique<prodState>(_prods, std::move(fstate));
-        state_uptr tstate = std::make_unique<timeState>(_times, std::move(pstate));
-
-        state_id_t mstate_id =
-            dm.add_state(std::make_unique<metadataState>(
-                             _metadata.at("weight_type"), _metadata.at("instrument_name"),
-                             _metadata.at("git_version_tag"), std::move(tstate)))
-                .first;
-
+            states.push_back(dm.create_state<stackState>(_num_stack, std::move(_rstack)).first);
+        states.push_back(dm.create_state<inputState>(_inputs).first);
+        states.push_back(dm.create_state<eigenvalueState>(_ev).first);
+        states.push_back(dm.create_state<freqState>(_freqs).first);
+        states.push_back(dm.create_state<prodState>(_prods).first);
+        states.push_back(dm.create_state<timeState>(_times).first);
+        states.push_back(dm.create_state<metadataState>(_metadata.at("weight_type"),
+                                                        _metadata.at("instrument_name"),
+                                                        _metadata.at("git_version_tag"))
+                             .first);
         // register it as root dataset
-        out_dset_id = dm.add_dataset(mstate_id);
+        out_dset_id = dm.add_dataset(states);
     }
 }
 

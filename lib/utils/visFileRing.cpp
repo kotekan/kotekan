@@ -6,17 +6,11 @@
 REGISTER_VIS_FILE("ring", visFileRing);
 
 
-void visFileRing::create_file(const std::string& name, const kotekan::logLevel log_level,
-                              const std::map<std::string, std::string>& metadata, dset_id_t dataset,
-                              size_t max_time) {
-    set_log_level(log_level);
-
-    // Set open flags to allow overwriting
-    oflags = O_CREAT | O_WRONLY;
-
-    visFileRaw::create_file(name, log_level, metadata, dataset, max_time);
-    file_len = max_time;
-}
+visFileRing::visFileRing(const std::string& name, const kotekan::logLevel log_level,
+                         const std::map<std::string, std::string>& metadata, dset_id_t dataset,
+                         size_t max_time) :
+    visFileRaw(name, log_level, metadata, dataset, max_time, O_CREAT | O_WRONLY),
+    file_len(max_time){};
 
 
 uint32_t visFileRing::extend_time(time_ctype new_time) {

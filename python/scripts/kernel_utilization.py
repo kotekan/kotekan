@@ -10,36 +10,61 @@ from tabulate import tabulate
 import json
 import os
 import sys
+import argparse
+
+parser = argparse.ArgumentParser(
+    description="Query Kotekan GPU timings and display the results"
+)
+parser.add_argument(
+    "-i",
+    help="ID(s) of GPUs",
+    dest="gpu_ids",
+    type=int,
+    default=[0, 1, 2, 3],
+    nargs="+",
+)
+parser.add_argument(
+    "-n", help="Host name", dest="host_name", type=str, default="localhost"
+)
+
+args = parser.parse_args()
 
 headers = {"Content-type": "application/json"}
-
 r = []
 json_data = []
-n_gpus = 4
+gpu_ids = args.gpu_ids
+host_name = args.host_name
 
-print(sys.argv[1])
-
-for gpu_id in range(0, n_gpus):
-    r.append(
-        requests.get("http://" + sys.argv[1] + ":12048/gpu_profile/" + str(gpu_id))
-    )
-    json_data.append(r[gpu_id].json())
+for i, gpu_id in enumerate(gpu_ids):
+    try:
+        r.append(
+            requests.get("http://" + host_name + ":12048/gpu_profile/" + str(gpu_id))
+        )
+    except requests.exceptions.RequestException as err:
+        print("Error getting data: ", err)
+        exit(-1)
+    json_data.append(r[i].json())
 
 kernels = []
 copy_ins = []
 copy_outs = []
 
-for gpu_id in range(0, n_gpus):
+for gpu_id in range(0, len(gpu_ids)):
     kernels.append([])
     # Kernel tables
-    for kernel in json_data[gpu_id]["kernel"]:
-        kernels[gpu_id].append(
-            [
-                os.path.basename(kernel["name"]),
-                "%.6f" % kernel["time"],
-                "%.4f" % (kernel["utilization"] * 100) + "%",
-            ]
-        )
+    try:
+        for kernel in json_data[gpu_id]["kernel"]:
+            kernels[gpu_id].append(
+                [
+                    os.path.basename(kernel["name"]),
+                    "%.6f" % kernel["time"],
+                    "%.4f" % (kernel["utilization"] * 100) + "%",
+                ]
+            )
+    except:
+        print("No kernel profiling data returned for GPU " + str(gpu_ids[gpu_id]))
+        print("You may need to set `-i` to not include some of the GPUs")
+        exit(-1)
     kernels[gpu_id].append(
         [
             "Total:",
@@ -82,8 +107,8 @@ for gpu_id in range(0, n_gpus):
         ]
     )
 
-for gpu_id in range(0, n_gpus):
-    print("| -------- GPU[" + str(gpu_id) + "] Kernel timing --------")
+for gpu_id in range(0, len(gpu_ids)):
+    print("| -------- GPU[" + str(gpu_ids[gpu_id]) + "] Kernel timing --------")
     print(
         tabulate(
             kernels[gpu_id],

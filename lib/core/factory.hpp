@@ -162,6 +162,20 @@ public:
         return label_registry().at(std::type_index(typeid(obj)));
     }
 
+    /**
+     * Get the type label corresponding to the type.
+     *
+     * @tparam  U  A sub-class of T to get the registered label for.
+     *
+     * @return     The string label the type was registered as.
+     **/
+    template<typename U,
+             typename std::enable_if_t<std::is_base_of<T, U>::value>* = nullptr>
+    static std::string label()
+    {
+        return label_registry().at(std::type_index(typeid(U)));
+    }
+
 private:
 
     // Return a reference to the type registry.
