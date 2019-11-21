@@ -132,6 +132,7 @@ void integrateHFBData::main_thread() {
                   % (_num_frames_to_integrate * _samples_per_data_set));
 
         // Get the no. of lost samples in this frame
+        // TODO: Check that this number is still correct
         total_lost_timesamples += get_lost_timesamples(in_buf, in_buffer_ID);
 
         // When all frames have been integrated output the result

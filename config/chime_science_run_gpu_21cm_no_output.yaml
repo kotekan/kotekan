@@ -452,10 +452,10 @@ lost_samples_buffer:
   metadata_pool: main_pool
 
 compressed_lost_samples_buffer:
-    kotekan_buffer: standard
-    num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set / num_sub_freqs * num_data_sets
-    metadata_pool: main_pool
+  kotekan_buffer: standard
+  num_frames: 2 * buffer_depth
+  frame_size: samples_per_data_set / num_sub_freqs * num_data_sets / 3
+  metadata_pool: main_pool
 
 #duplicate_lost_samples_buffers:
 #  num_frames: 2 * buffer_depth
@@ -541,19 +541,19 @@ baseband:
     in_buf: network_buffer_3
 
 # Compress lost samples buffer for HFB data
-#compress_lost_samples:
-#  compress_lost_samples_buf:
-#    kotekan_stage: compressLostSamples
-#    log_level: debug
-#    lost_samples_buf: lost_samples_buffer
-#    compressed_lost_samples_buf: compressed_lost_samples_buffer
-
+compress_lost_samples:
+  kotekan_stage: compressLostSamples
+  log_level: debug
+  lost_samples_buf: lost_samples_buffer
+  compressed_lost_samples_buf: compressed_lost_samples_buffer
+ 
 # GPU processing section
 gpu:
   kernel_path: "/var/lib/kotekan/hsa_kernels/"
   commands: &command_list
     # Copy in queue
     - name: hsaInputData
+    - name: hsaInputCompressLostSamples
     - name: hsaPresumZero
       sub_frame_index: 0
     - name: hsaPresumZero
@@ -642,6 +642,7 @@ gpu:
       gain_frb_buf: gain_frb_buffer_0
       gain_psr_buf: gain_psr_buffer_0
       lost_samples_buf: lost_samples_buffer
+      compressed_lost_samples_buf: compressed_lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_0
       beamform_output_buf: gpu_beamform_output_buffer_0
@@ -667,6 +668,7 @@ gpu:
       gain_frb_buf: gain_frb_buffer_1
       gain_psr_buf: gain_psr_buffer_1
       lost_samples_buf: lost_samples_buffer
+      compressed_lost_samples_buf: compressed_lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_1
       beamform_output_buf: gpu_beamform_output_buffer_1
@@ -692,6 +694,7 @@ gpu:
       gain_frb_buf: gain_frb_buffer_2
       gain_psr_buf: gain_psr_buffer_2
       lost_samples_buf: lost_samples_buffer
+      compressed_lost_samples_buf: compressed_lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_2
       beamform_output_buf: gpu_beamform_output_buffer_2
@@ -717,6 +720,7 @@ gpu:
       gain_frb_buf: gain_frb_buffer_3
       gain_psr_buf: gain_psr_buffer_3
       lost_samples_buf: lost_samples_buffer
+      compressed_lost_samples_buf: compressed_lost_samples_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_3
       beamform_output_buf: gpu_beamform_output_buffer_3
