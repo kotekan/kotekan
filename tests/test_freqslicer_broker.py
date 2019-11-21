@@ -54,7 +54,7 @@ def subset_data(tmpdir_factory):
         dump_buffer_gen = runner.DumpVisBuffer(str(tmpdir))
 
         test = runner.KotekanStageTester(
-            "fakeVis", params_fakevis, None, dump_buffer_gen, params
+            "FakeVis", params_fakevis, None, dump_buffer_gen, params
         )
 
         test.run()
@@ -132,7 +132,7 @@ def subset_data(tmpdir_factory):
         )
 
         test = runner.KotekanStageTester(
-            "fakeVis", params_fakevis_write_lower, None, write_buffer_lower, params
+            "FakeVis", params_fakevis_write_lower, None, write_buffer_lower, params
         )
 
         test.run()
@@ -152,7 +152,7 @@ def subset_data(tmpdir_factory):
         )
 
         test = runner.KotekanStageTester(
-            "fakeVis", params_fakevis_write_higher, None, write_buffer_higher, params
+            "FakeVis", params_fakevis_write_higher, None, write_buffer_higher, params
         )
 
         test.run()
