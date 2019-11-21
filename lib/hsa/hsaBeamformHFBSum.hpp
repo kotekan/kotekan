@@ -52,8 +52,8 @@ private:
     uint32_t input_frame_len;
     /// Output length, num_frb_total_beams x num_sub_freqs
     uint32_t output_frame_len;
-    /// Length of the lost sample frame
-    uint32_t lost_samples_frame_len;
+    /// Length of the compressed lost samples frame
+    uint32_t compressed_lost_samples_frame_len;
 
     /// Total number of FRB formed beams, should be 1024
     uint32_t _num_frb_total_beams;
