@@ -91,9 +91,15 @@ void bufferCopy::main_thread() {
         if (output_frame == NULL)
           goto exit_loop; // Shutdown condition
 
-        // Move the metadata over to the new frame if flag set
-        if(_copy_metadata)
-          pass_metadata(in_buf, in_frame_id, out_buf, out_frame_id);
+        // Either make a deep copy or pass the metadata depending if the flag is set
+        if(get_metadata_container(in_buf, in_frame_id) != NULL) {
+            if(_copy_metadata) {
+              allocate_new_metadata_object(out_buf, out_frame_id);
+              copy_metadata(in_buf, in_frame_id, out_buf, out_frame_id);
+            }
+            else
+              pass_metadata(in_buf, in_frame_id, out_buf, out_frame_id);
+        }
 
         // Copy the frame.
         std::memcpy(output_frame, input_frame, in_buf->frame_size);
