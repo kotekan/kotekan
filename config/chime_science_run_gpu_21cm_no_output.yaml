@@ -548,23 +548,40 @@ baseband:
     in_buf: network_buffer_3
 
 # Compress lost samples buffer for HFB data
+#compress_lost_samples:
+#  compress_lost_samples_0:
+#    kotekan_stage: compressLostSamples
+#    lost_samples_buf: lost_samples_buffer
+#    compressed_lost_samples_buf: compressed_lost_samples_buf_0
+#  compress_lost_samples_1:
+#    kotekan_stage: compressLostSamples
+#    lost_samples_buf: lost_samples_buffer
+#    compressed_lost_samples_buf: compressed_lost_samples_buf_1
+#  compress_lost_samples_2:
+#    kotekan_stage: compressLostSamples
+#    lost_samples_buf: lost_samples_buffer
+#    compressed_lost_samples_buf: compressed_lost_samples_buf_2
+#  compress_lost_samples_3:
+#    kotekan_stage: compressLostSamples
+#    lost_samples_buf: lost_samples_buffer
+#    compressed_lost_samples_buf: compressed_lost_samples_buf_3
+
+# Compress lost samples buffer for HFB data using only 1 buffer
+# and copy the result into the remaining 3 buffers
 compress_lost_samples:
   compress_lost_samples_0:
     kotekan_stage: compressLostSamples
     lost_samples_buf: lost_samples_buffer
     compressed_lost_samples_buf: compressed_lost_samples_buf_0
-  compress_lost_samples_1:
-    kotekan_stage: compressLostSamples
-    lost_samples_buf: lost_samples_buffer
-    compressed_lost_samples_buf: compressed_lost_samples_buf_1
-  compress_lost_samples_2:
-    kotekan_stage: compressLostSamples
-    lost_samples_buf: lost_samples_buffer
-    compressed_lost_samples_buf: compressed_lost_samples_buf_2
-  compress_lost_samples_3:
-    kotekan_stage: compressLostSamples
-    lost_samples_buf: lost_samples_buffer
-    compressed_lost_samples_buf: compressed_lost_samples_buf_3
+
+copy_compress_lost_samples_buffers:
+  kotekan_stage: bufferCopy
+  copy_metadata: True
+  in_buf: compressed_lost_samples_buf_0
+  out_bufs: 
+    - compressed_lost_samples_buf_1
+    - compressed_lost_samples_buf_2
+    - compressed_lost_samples_buf_3
 
 # GPU processing section
 gpu:
