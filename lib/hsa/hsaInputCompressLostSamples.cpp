@@ -46,6 +46,7 @@ hsa_signal_t hsaInputCompressLostSamples::execute(int gpu_frame_id, hsa_signal_t
     void* gpu_memory_frame =
         device.get_gpu_memory_array("compressed_lost_samples", gpu_frame_id, input_frame_len);
     void* host_memory_frame = (void*)compressed_lost_samples_buf->frames[compressed_lost_samples_buffer_id];
+
     // Do the input data copy.
     device.async_copy_host_to_gpu(gpu_memory_frame, host_memory_frame, input_frame_len,
                                   precede_signal, signals[gpu_frame_id]);
