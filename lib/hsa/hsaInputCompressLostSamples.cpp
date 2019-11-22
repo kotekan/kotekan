@@ -51,6 +51,7 @@ hsa_signal_t hsaInputCompressLostSamples::execute(int gpu_frame_id, hsa_signal_t
     device.async_copy_host_to_gpu(gpu_memory_frame, host_memory_frame, input_frame_len,
                                   precede_signal, signals[gpu_frame_id]);
     compressed_lost_samples_buffer_id = (compressed_lost_samples_buffer_id + 1) % compressed_lost_samples_buf->num_frames;
+
     return signals[gpu_frame_id];
 }
 
