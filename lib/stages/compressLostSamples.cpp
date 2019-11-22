@@ -61,6 +61,9 @@ void compressLostSamples::main_thread() {
             }
         }
 
+        // Copy the metadata
+        pass_metadata(in_buf, in_buffer_ID, out_buf, out_buffer_ID);
+
         mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
 
         // Get a new output buffer
