@@ -576,7 +576,6 @@ compress_lost_samples:
 
 copy_compress_lost_samples_buffers:
   kotekan_stage: bufferCopy
-  copy_metadata: True
   in_buf: compressed_lost_samples_buf_0
   out_bufs: 
     - compressed_lost_samples_buf_1
