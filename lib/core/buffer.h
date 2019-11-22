@@ -49,7 +49,7 @@ extern "C" {
 #define MAX_STAGE_NAME_LEN 128
 
 /// The maximum number of consumers that can register on a buffer
-#define MAX_CONSUMERS 15
+#define MAX_CONSUMERS 20
 /// The maximum number of producers that can register on a buffer
 #define MAX_PRODUCERS 10
 
