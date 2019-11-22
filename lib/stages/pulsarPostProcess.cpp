@@ -129,6 +129,7 @@ void pulsarPostProcess::main_thread() {
     for (uint32_t i = 0; i < _num_gpus; ++i) {
         in_buffer_ID[i] = 0;
     }
+    uint64_t frame_fpga_seq_num = 0;     // sample starting the current input frame
     uint32_t current_input_location = 0; // goes from 0 to _samples_per_data_set
 
     struct VDIFHeader vdif_header;
@@ -170,8 +171,8 @@ void pulsarPostProcess::main_thread() {
 
     while (!stop_thread) {
         // Get an input buffer, This call is blocking!
-        auto skipped_frames = sync_input_buffers();
-        if (!skipped_frames.has_value())
+        auto new_frame_fpga_seq_num = sync_input_buffers();
+        if (!new_frame_fpga_seq_num.has_value())
             return;
 
         for (uint32_t i = 0; i < _num_gpus; ++i) {
@@ -180,6 +181,9 @@ void pulsarPostProcess::main_thread() {
             freq_ids[i] = bin_number_chime(&stream_id);
         }
 
+        bool skipped_frames = (new_frame_fpga_seq_num.value() - frame_fpga_seq_num) > _samples_per_data_set;
+        frame_fpga_seq_num = new_frame_fpga_seq_num.value();
+
         // If this is the first time wait until we get the start of an interger second period.
         if (unlikely(startup == 1)) {
             startup = 0;
@@ -187,21 +191,19 @@ void pulsarPostProcess::main_thread() {
             // GPS time, need ch_master
             time_now = get_gps_time(in_buf[0], in_buffer_ID[0]);
 
-            if (skipped_frames.value()) {
-                fpga_seq_num = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
-                DEBUG("Skipped {} frames to {}; current output packet {} / {}",
-                      skipped_frames.value(), fpga_seq_num, frame, in_frame_location);
+            if (skipped_frames) {
+                DEBUG("Skipped frames to {}; current output packet {} / {}",
+                      frame_fpga_seq_num, frame, in_frame_location);
                 DEBUG("GPS clock {}.{:09d}, advance for skipped frames...", time_now.tv_sec,
                       time_now.tv_nsec);
-                time_now.tv_nsec += skipped_frames.value() * _samples_per_data_set * FPGA_PERIOD_NS;
+                time_now.tv_nsec += (frame_fpga_seq_num - fpga_seq_num) * FPGA_PERIOD_NS;
                 time_now.tv_sec += time_now.tv_nsec / 1'000'000'000;
                 time_now.tv_nsec %= 1'000'000'000;
                 DEBUG("Advanced the clock to {}.{:09d}", time_now.tv_sec, time_now.tv_nsec);
-                skipped_frames = 0;
+                skipped_frames = false;
             }
 
-            const uint64_t first_seq_number = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
-            struct timespec time_now_from_compute2 = compute_gps_time(first_seq_number);
+            struct timespec time_now_from_compute2 = compute_gps_time(frame_fpga_seq_num);
             if (time_now.tv_sec != time_now_from_compute2.tv_sec) {
                 ERROR("[Time Check] mismatch in execute time_now.tv_sec={:d}"
                       " time_now_from_compute2.tv_sec={:d}",
@@ -221,7 +223,7 @@ void pulsarPostProcess::main_thread() {
             uint seq_number_offset = round(seq_number_offset_float);
 
             current_input_location = seq_number_offset;
-            fpga_seq_num = first_seq_number + seq_number_offset;
+            fpga_seq_num = frame_fpga_seq_num + seq_number_offset;
             time_now = compute_gps_time(fpga_seq_num);
 
             // Fill the first output buffer headers
@@ -232,11 +234,11 @@ void pulsarPostProcess::main_thread() {
         // Take data from the input buffer and format the output
         if (likely(startup == 0)) {
             // Adjust the output position and in-frame time when we skip any input frames
-            if (skipped_frames.value()) {
+            if (skipped_frames) {
                 // TODO this section duplicates the code in startup, look into combining them
-                fpga_seq_num = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
-                DEBUG("Skipped {} frames to {}; current output packet {} / {}",
-                      skipped_frames.value(), fpga_seq_num, frame, in_frame_location);
+                fpga_seq_num = frame_fpga_seq_num;
+                DEBUG("Skipped frames to {}; current output packet {} / {}",
+                      fpga_seq_num, frame, in_frame_location);
                 time_now = compute_gps_time(fpga_seq_num);
                 DEBUG("GPS clock {}.{:09d}, fpga_seq_num: {}", time_now.tv_sec, time_now.tv_nsec,
                       fpga_seq_num);
@@ -343,8 +345,7 @@ end_loop:;
 }
 
 
-std::optional<size_t> pulsarPostProcess::sync_input_buffers() {
-    auto skipped_frames = 0;
+std::optional<uint64_t> pulsarPostProcess::sync_input_buffers() {
     for (unsigned i = 0; i < _num_gpus; i++) {
         in_frame[i] = wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
         if (in_frame[i] == NULL)
@@ -355,13 +356,10 @@ std::optional<size_t> pulsarPostProcess::sync_input_buffers() {
         // furthest along, and keep advancing others until they all match. (Keep in
         // mind that advancing one of the others may put it ahead of the current
         // largest fpga_seq_no, in which case we have to repeat the process.)
-        auto min_fpga_count = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
-        auto max_fpga_count = min_fpga_count;
+        auto max_fpga_count = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
         for (unsigned i = 1; i < _num_gpus; i++) {
-            min_fpga_count = std::min(min_fpga_count, get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
             max_fpga_count = std::max(max_fpga_count, get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
         }
-        skipped_frames += (max_fpga_count - min_fpga_count) / _samples_per_data_set;
         bool fpga_seq_in_sync = true;
         for (unsigned i = 0; i < _num_gpus; ++i) {
             while (max_fpga_count > get_fpga_seq_num(in_buf[i], in_buffer_ID[i])) {
@@ -382,6 +380,5 @@ std::optional<size_t> pulsarPostProcess::sync_input_buffers() {
     if (stop_thread)
         return {};
 
-    DEBUG("Skipped {} frames", skipped_frames);
-    return skipped_frames;
+    return get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
 }

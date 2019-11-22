@@ -85,10 +85,10 @@ private:
      * On exit, `in_buf`s will be synced up, `in_frame`s will point to the correct current frame,
      * and `in_buffer_ID`s have the current `frame_id`.
      *
-     * @returns No value if the stage should exit, otherwise the wrapped count of the number of
-     * frames skipped across all buffers
+     * @returns No value if the stage should exit, otherwise the wrapped @c fpga_seq_num that starts
+     * the synced frames.
      */
-    std::optional<size_t> sync_input_buffers();
+    std::optional<uint64_t> sync_input_buffers();
 
     /// Pointer to the input buffer for each of the GPUs
     Buffer** in_buf;

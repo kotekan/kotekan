@@ -108,6 +108,15 @@ def test_psr_post_process_missing(tmpdir_factory, request):
     check_data(data, missing_frames)
 
 
+def test_psr_post_process_missing_1(tmpdir_factory, request):
+    test_env = request.config.getoption("-E", None)
+
+    missing_frames = [[1], [1], [1], [1]]
+    data = psr_post_process_data(tmpdir_factory, missing_frames, test_env=test_env)
+
+    check_data(data, missing_frames)
+
+
 def check_data(data, missing_frames=[]):
     missing_frames = set(itertools.chain.from_iterable(missing_frames))
     actual_frames = data.load()
