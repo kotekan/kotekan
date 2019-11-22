@@ -7,6 +7,7 @@
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp"
 #include "visFileArchive.hpp"
+#include "visFileH5.hpp"
 #include "visUtil.hpp"
 
 #include "json.hpp"
@@ -93,7 +94,7 @@ private:
     std::vector<cfloat> gain;
     std::vector<float> frac_lost;
     std::vector<float> frac_rfi;
-    std::vector<dset_id_t> dset_id;
+    std::vector<dset_id_str> dset_id;
     std::vector<float> input_flags;
     std::vector<rstack_ctype> reverse_stack;
 

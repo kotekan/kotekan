@@ -46,7 +46,7 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
     readahead_blocks = config.get<size_t>(unique_name, "readahead_blocks");
     max_read_rate = config.get_default<double>(unique_name, "max_read_rate", 0.0);
     sleep_time = config.get_default<float>(unique_name, "sleep_time", -1);
-    use_comet = config.get_default<bool>(unique_name, "use_dataset_broker", true);
+    use_comet = config.get_default<bool>(DS_UNIQUE_NAME, "use_dataset_broker", true);
 
     chunked = config.exists(unique_name, "chunk_size");
     if (chunked) {
@@ -179,7 +179,7 @@ void visRawReader::get_dataset_state(dset_id_t ds_id) {
         // Add time dataset state and register with dataset broker
         out_dset_id = dm.add_dataset(dm.create_state<timeState>(_times).first, ds_id);
     } else {
-        // Add the states: acq_dataset_id, metadata, time, prod, freq, input,
+        // Add the states: metadata, time, prod, freq, input,
         // eigenvalue and stack.
         std::vector<state_id_t> states;
         if (!_stack.empty())
@@ -233,7 +233,7 @@ void visRawReader::main_thread() {
     size_t frame_id = 0;
     uint8_t* frame;
     dset_id_t dset_id;         // dataset ID stored in the frame
-    dset_id_t cur_dset_id = 0; // current dataset ID: used to identify changes in frames coming in
+    dset_id_t cur_dset_id = dset_id_t::null; // current dataset ID: used to identify changes in frames coming in
 
     size_t ind = 0, read_ind = 0, file_ind;
 

@@ -95,8 +95,10 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
 
 
     if (mstate == nullptr || tstate == nullptr || pstate == nullptr || fstate == nullptr
-        || istate == nullptr || evstate == nullptr)
+        || istate == nullptr || evstate == nullptr) {
+        DEBUG("One of the dataset states is null.");
         return false;
+    }
 
     // TODO split instrument_name up into the real instrument name,
     // registered by visAccumulate (?) and a data type, registered where
@@ -187,7 +189,7 @@ void visTranspose::main_thread() {
     auto future_ds_state = std::async(&visTranspose::get_dataset_state, this, ds_id);
 
     if (!future_ds_state.get()) {
-        FATAL_ERROR("Set to not use dataset_broker and couldn't find ancestor of dataset {}. "
+        FATAL_ERROR("Couldn't find ancestor of dataset {}. "
                     "Make sure there is a stage upstream in the config, that adds the dataset "
                     "states.\nExiting...",
                     ds_id);
@@ -253,7 +255,12 @@ void visTranspose::main_thread() {
         strided_copy(frame.gain.data(), gain.data(), offset * num_input + ti, write_t, num_input);
 
         // Store original dataset ID (before adding time axis)
-        dset_id[offset + ti] = base_ds_id;
+        std::string dset_id_str = fmt::format("{}", base_ds_id);
+        if (dset_id_str.length() != DSET_ID_LEN - 1) {
+            FATAL_ERROR("Formatted dataset ID string does not have expected length.");
+            return;
+        }
+        std::copy(dset_id_str.c_str(), dset_id_str.c_str() + DSET_ID_LEN, dset_id[offset + ti].hash);
 
         // Only copy flags if we haven't already
         if (!found_flags[ti]) {
