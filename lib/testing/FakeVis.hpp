@@ -63,9 +63,12 @@
  * @conf  dataset_id    Int. Use a fixed dataset ID and don't register
  *                      states. If not set, the dataset manager will create
  *                      the dataset ID.
- * @conf  sleep_time    Float. Sleep for this number of seconds before
- *                      shutting down. Useful for allowing other processes
- *                      to finish. Default is 1s.
+ * @conf  sleep_before  Float. Sleep for this number of seconds before
+ *                      starting. Useful for allowing other processes
+ *                      to send REST commands. Default is 0s.
+ * @conf  sleep_after   Float. Sleep for this number of seconds after running
+ *                      and before shutting down. Useful for allowing other
+ *                      processes to finish. Default is 1s.
  *
  * @todo  It might be useful eventually to produce realistic looking mock
  *        visibilities.
@@ -114,8 +117,11 @@ private:
     bool wait;
     int32_t num_frames;
 
+    // How long to sleep before starting.
+    double sleep_before;
+
     // How long to sleep before exiting.
-    double sleep_time;
+    double sleep_after;
 
     /// Fill non vis components. A helper for the fill_mode functions.
     void fill_non_vis(visFrameView& frame);
