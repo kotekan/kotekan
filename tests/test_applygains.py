@@ -25,6 +25,8 @@ new_timestamp = start_time + 5.0
 old_tag = f"gains{old_timestamp}"
 new_tag = f"gains{new_timestamp}"
 
+t_combine = 10.0
+
 global_params = {
     "num_elements": 16,
     "num_ev": 4,
@@ -39,10 +41,10 @@ global_params = {
         "kotekan_update_endpoint": "json",
         "start_time": old_timestamp,
         "tag": old_tag,
+        "t_combine": t_combine,
     },
     "wait": False,
-    "sleep_time": 2.0,
-    "combine_gains_time": 10.0,
+    "sleep_before": 2.0,
     "num_threads": 4,
     "dataset_manager": {"use_dataset_broker": False},
 }
@@ -111,7 +113,13 @@ def apply_data(tmp_path_factory, gain_path, old_gains, new_gains):
     global_params["gains_dir"] = str(gain_path)
 
     # REST commands
-    cmds = [["post", "gains", {"tag": new_tag, "start_time": new_timestamp}]]
+    cmds = [
+        [
+            "post",
+            "gains",
+            {"tag": new_tag, "start_time": new_timestamp, "t_combine": t_combine},
+        ]
+    ]
 
     fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=global_params["freq_ids"],
@@ -193,8 +201,6 @@ def test_gain(apply_data, old_gains, new_gains):
     This reimplements the gain combination algorithm within python for testing.
     """
 
-    tcombine = global_params["combine_gains_time"]
-
     # Preload the gain arrays
     old_gain_arr, _ = old_gains
     new_gain_arr, weight_arr = new_gains
@@ -212,7 +218,7 @@ def test_gain(apply_data, old_gains, new_gains):
         output_frame_timestamp = visutil.ts_to_double(output_frame.metadata.ctime)
         gains = combine_gains(
             output_frame_timestamp,
-            tcombine,
+            t_combine,
             new_timestamp,
             old_timestamp,
             new_gain,
