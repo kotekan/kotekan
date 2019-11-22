@@ -258,8 +258,8 @@ void applyGains::apply_thread() {
 
                 // Now we know how long to combine over, we can see if there's
                 // another gain update within that time window
-                auto [ts_old, update_old] =
-                    gains_fifo.get_update(double_to_ts(frame_time - update_new->t_combine));
+                auto update_old =
+                    gains_fifo.get_update(double_to_ts(frame_time - update_new->t_combine)).second;
 
                 auto& new_gain = update_new->data.gain.at(freq_ind);
                 if (update_old == nullptr || update_new == update_old) {
@@ -446,8 +446,9 @@ bool applyGains::validate_frame(const visFrameView& frame) {
 
         // Construct the frequency mapping determining which
         uint32_t freq_ind = 0;
-        for (auto& [freq_id, t] : freqs) {
-            freq_map[freq_id] = freq_ind;
+        for (auto& f : freqs) {
+            freq_map[f.first] = freq_ind;
+            freq_ind++;
         }
 
         num_freq = freqs.size();
