@@ -181,42 +181,18 @@ void pulsarPostProcess::main_thread() {
             freq_ids[i] = bin_number_chime(&stream_id);
         }
 
-        bool skipped_frames = (new_frame_fpga_seq_num.value() - frame_fpga_seq_num) > _samples_per_data_set;
+        bool skipped_frames =
+            (new_frame_fpga_seq_num.value() - frame_fpga_seq_num) > _samples_per_data_set;
         frame_fpga_seq_num = new_frame_fpga_seq_num.value();
 
         // If this is the first time wait until we get the start of an interger second period.
         if (unlikely(startup == 1)) {
             startup = 0;
 
-            // GPS time, need ch_master
-            time_now = get_gps_time(in_buf[0], in_buffer_ID[0]);
-
-            if (skipped_frames) {
-                DEBUG("Skipped frames to {}; current output packet {} / {}",
-                      frame_fpga_seq_num, frame, in_frame_location);
-                DEBUG("GPS clock {}.{:09d}, advance for skipped frames...", time_now.tv_sec,
-                      time_now.tv_nsec);
-                time_now.tv_nsec += (frame_fpga_seq_num - fpga_seq_num) * FPGA_PERIOD_NS;
-                time_now.tv_sec += time_now.tv_nsec / 1'000'000'000;
-                time_now.tv_nsec %= 1'000'000'000;
-                DEBUG("Advanced the clock to {}.{:09d}", time_now.tv_sec, time_now.tv_nsec);
-                skipped_frames = false;
-            }
-
-            struct timespec time_now_from_compute2 = compute_gps_time(frame_fpga_seq_num);
-            if (time_now.tv_sec != time_now_from_compute2.tv_sec) {
-                ERROR("[Time Check] mismatch in execute time_now.tv_sec={:d}"
-                      " time_now_from_compute2.tv_sec={:d}",
-                      time_now.tv_sec, time_now_from_compute2.tv_sec);
-            }
-            if (time_now.tv_nsec != time_now_from_compute2.tv_nsec) {
-                ERROR("[Time Check] mismatch in execute time_now.tv_nsec={:d}"
-                      " time_now_from_compute2.tv_nsec={:d}",
-                      time_now.tv_nsec, time_now_from_compute2.tv_nsec);
-            }
             if (is_gps_global_time_set() != 1) {
                 ERROR("[Time Check] gps global time not set ({:d})", is_gps_global_time_set());
             }
+            time_now = compute_gps_time(frame_fpga_seq_num);
             uint32_t pkt_length_in_ns = _timesamples_per_pulsar_packet * 2560;
             uint32_t ns_offset = pkt_length_in_ns - (time_now.tv_nsec % pkt_length_in_ns);
             float seq_number_offset_float = ns_offset / 2560.;
@@ -224,7 +200,12 @@ void pulsarPostProcess::main_thread() {
 
             current_input_location = seq_number_offset;
             fpga_seq_num = frame_fpga_seq_num + seq_number_offset;
-            time_now = compute_gps_time(fpga_seq_num);
+            time_now.tv_nsec += seq_number_offset * 2560;
+            while (time_now.tv_nsec >= 1e9) {
+                time_now.tv_sec += 1;
+                time_now.tv_nsec -= 1e9;
+            }
+            skipped_frames = false;
 
             // Fill the first output buffer headers
             fill_headers((unsigned char*)out_frame, &vdif_header, fpga_seq_num, &time_now,
@@ -237,8 +218,8 @@ void pulsarPostProcess::main_thread() {
             if (skipped_frames) {
                 // TODO this section duplicates the code in startup, look into combining them
                 fpga_seq_num = frame_fpga_seq_num;
-                DEBUG("Skipped frames to {}; current output packet {} / {}",
-                      fpga_seq_num, frame, in_frame_location);
+                DEBUG("Skipped frames to {}; current output packet {} / {}", fpga_seq_num, frame,
+                      in_frame_location);
                 time_now = compute_gps_time(fpga_seq_num);
                 DEBUG("GPS clock {}.{:09d}, fpga_seq_num: {}", time_now.tv_sec, time_now.tv_nsec,
                       fpga_seq_num);
@@ -250,7 +231,11 @@ void pulsarPostProcess::main_thread() {
 
                 current_input_location = seq_number_offset;
                 fpga_seq_num += seq_number_offset;
-                time_now.tv_nsec += ns_offset;
+                time_now.tv_nsec += seq_number_offset * 2560;
+                while (time_now.tv_nsec >= 1e9) {
+                    time_now.tv_sec += 1;
+                    time_now.tv_nsec -= 1e9;
+                }
                 DEBUG("Advanced the clock to {}.{:09d}", time_now.tv_sec, time_now.tv_nsec);
 
                 frame = 0;
