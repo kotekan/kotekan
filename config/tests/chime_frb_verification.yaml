@@ -239,6 +239,7 @@ hyper_fine_beam:
     kotekan_stage: integrateHFBData
     log_level: debug
     hfb_input_buf: gpu_beamform_hfb_output_buffer_0
+    compressed_lost_samples_buf: compressed_lost_samples_buffer
     hfb_output_buf: beamform_hfb_output_buffer_0
   
 21cm:

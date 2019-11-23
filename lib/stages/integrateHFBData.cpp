@@ -28,6 +28,9 @@ integrateHFBData::integrateHFBData(Config& config_, const string& unique_name,
     in_buf = get_buffer("hfb_input_buf");
     register_consumer(in_buf, unique_name.c_str());
 
+    compressed_lost_samples_buf = get_buffer("compressed_lost_samples_buf");
+    register_consumer(compressed_lost_samples_buf, unique_name.c_str());
+
     out_buf = get_buffer("hfb_output_buf");
     register_producer(out_buf, unique_name.c_str());
 }
@@ -87,8 +90,9 @@ float integrateHFBData::normaliseFrame(float* sum_data, const uint32_t in_buffer
 
 void integrateHFBData::main_thread() {
 
-    uint in_buffer_ID = 0; // Process only 1 GPU buffer, cycle through buffer depth
+    uint in_buffer_ID = 0, compress_buffer_ID = 0; // Process only 1 GPU buffer, cycle through buffer depth
     uint8_t* in_frame;
+    uint8_t* compressed_lost_samples_frame;
     int out_buffer_ID = 0, first = 1;
     int64_t fpga_seq_num_end_old;
     total_timesamples = _samples_per_data_set * _num_frames_to_integrate;
@@ -105,6 +109,10 @@ void integrateHFBData::main_thread() {
         // Get an input buffer, This call is blocking!
         in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_buffer_ID);
         if (in_frame == NULL)
+            goto end_loop;
+
+        compressed_lost_samples_frame = wait_for_full_frame(compressed_lost_samples_buf, unique_name.c_str(), compress_buffer_ID);
+        if (compressed_lost_samples_frame == NULL)
             goto end_loop;
 
         float* sum_data = (float*)out_buf->frames[out_buffer_ID];
@@ -130,7 +138,7 @@ void integrateHFBData::main_thread() {
 
         // Get the no. of lost samples in this frame
         // TODO: Check that this number is still correct
-        total_lost_timesamples += get_lost_timesamples(in_buf, in_buffer_ID);
+        total_lost_timesamples += get_lost_timesamples(compressed_lost_samples_buf, compress_buffer_ID);
 
         // When all frames have been integrated output the result
         if (get_fpga_seq_num(in_buf, in_buffer_ID)
@@ -206,7 +214,9 @@ void integrateHFBData::main_thread() {
 
         // Release the input buffers
         mark_frame_empty(in_buf, unique_name.c_str(), in_buffer_ID);
+        mark_frame_empty(compressed_lost_samples_buf, unique_name.c_str(), compress_buffer_ID);
         in_buffer_ID = (in_buffer_ID + 1) % in_buf->num_frames;
+        compress_buffer_ID = (compress_buffer_ID + 1) % compressed_lost_samples_buf->num_frames;
 
     } // end stop thread
 end_loop:;

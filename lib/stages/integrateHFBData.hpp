@@ -57,6 +57,7 @@ public:
 
 private:
     struct Buffer* in_buf;
+    struct Buffer* compressed_lost_samples_buf;
     struct Buffer* out_buf;
 
     /// Config variables
