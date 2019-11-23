@@ -297,14 +297,25 @@ void restClient::_bev_req_readcb(struct bufferevent* bev, void* arg) {
     size_t len_read;
     while (true) {
         restRequest request;
-        len_read = bufferevent_read(bev, &request, sizeof(restRequest));
+        len_read = 0;
+        do {
+            len_read += bufferevent_read(bev, &request + len_read, sizeof(restRequest) - len_read);
+            // this can be empty ...means there's nothing to do.
+            if (len_read == 0)
+                return;
+        } while (len_read < sizeof(restRequest));
         DEBUG2_NON_OO("restClient: _bev_req_readcb read {} bytes", len_read);
-        if (len_read <= 0)
-            return;
+        if (len_read != sizeof(restRequest))
+            FATAL_ERROR_NON_OO("restClient::_bev_req_readcb: Failure reading request struct from "
+                               "bufferevent ({} != {}).",
+                               len_read, sizeof(restRequest));
 
         std::string host;
         host.resize(request.host_len);
-        len_read = bufferevent_read(bev, &host[0], request.host_len);
+        len_read = 0;
+        do
+            len_read += bufferevent_read(bev, &host[0] + len_read, request.host_len - len_read);
+        while (len_read < request.host_len);
         if (len_read != request.host_len)
             FATAL_ERROR_NON_OO("restClient::_bev_req_readcb: Failure reading hostname from "
                                "bufferevent ({} != {}).",
@@ -312,7 +323,10 @@ void restClient::_bev_req_readcb(struct bufferevent* bev, void* arg) {
 
         std::string path;
         path.resize(request.path_len);
-        len_read = bufferevent_read(bev, &path[0], request.path_len);
+        len_read = 0;
+        do
+            len_read += bufferevent_read(bev, &path[0] + len_read, request.path_len - len_read);
+        while (len_read < request.path_len);
         if (len_read != request.path_len)
             FATAL_ERROR_NON_OO("restClient::_bev_req_readcb: Failure reading endpoint from "
                                "bufferevent ({} != {}).",
@@ -370,7 +384,11 @@ void restClient::_bev_req_readcb(struct bufferevent* bev, void* arg) {
             evbuffer* bev_buffer = bufferevent_get_input(bev);
 
             // move data into the requests output buffer (avoids copy by value)
-            len_read = evbuffer_remove_buffer(bev_buffer, output_buffer, request.data_len);
+            len_read = 0;
+            do
+                len_read +=
+                    evbuffer_remove_buffer(bev_buffer, output_buffer, request.data_len - len_read);
+            while (len_read < request.data_len);
             if (len_read != request.data_len) {
                 evhttp_connection_free(evcon);
                 evhttp_request_free(req);
