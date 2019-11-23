@@ -49,6 +49,7 @@ void compressLostSamples::main_thread() {
         // Information on dropped packets
         uint8_t* lost_samples_frame = in_buf->frames[in_buffer_ID];
         uint8_t* compressed_lost_samples_frame = out_buf->frames[out_buffer_ID];
+        uint32_t total_lost_samples = 0;
 
         // Compress lost samples buffer by checking each sample for a flag
         for (uint sample = 0; sample < _samples_per_data_set; sample += 3 * _num_sub_freqs) {
@@ -56,11 +57,17 @@ void compressLostSamples::main_thread() {
             for (uint freq = 0; freq < 3 * _num_sub_freqs; freq++) {
                 if (lost_samples_frame[sample + freq]) {
                     compressed_lost_samples_frame[sample / (3 * _num_sub_freqs)] = 1;
+                    total_lost_samples += 3 * _num_sub_freqs;
                     break;
                 }
             }
         }
         
+        // Create new metadata
+        allocate_new_metadata_object(out_buf, out_buffer_ID);
+        zero_lost_samples(out_buf, out_buffer_ID);
+        atomic_add_lost_timesamples(out_buf, out_buffer_ID, total_lost_samples); 
+
         mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
 
         // Get a new output buffer
