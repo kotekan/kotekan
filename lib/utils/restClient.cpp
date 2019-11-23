@@ -86,7 +86,7 @@ void restClient::event_thread() {
 
     // Set a watermark on the input buffer of the bufferevent for reading. This is to prevent
     // it getting filled up so much, that the read callback later starves other threads.
-    bufferevent_setwatermark(bev_req_read, EV_READ, 0, 1 << 20); // 1mb
+    bufferevent_setwatermark(bev_req_read, EV_READ, 0, 5 * 1 << 20); // 5mb
 
     bufferevent_setcb(bev_req_read, _bev_req_readcb, NULL, _bev_req_errcb, this);
     bufferevent_setcb(bev_req_write, NULL, NULL, _bev_req_errcb, this);
