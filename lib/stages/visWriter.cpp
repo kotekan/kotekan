@@ -25,7 +25,6 @@
 #include <sys/types.h>
 #include <time.h>
 #include <tuple>
-#include <unistd.h>
 #include <vector>
 
 
@@ -404,17 +403,14 @@ visCalWriter::visCalWriter(Config& config, const string& unique_name,
     file_type = "ring";
 
     // Check if any of these files exist
+    DEBUG("Checking for and removing old buffer files...");
     std::string full_path = root_path + "/" + acq_name + "/";
-    if ((access((full_path + fname_base + "_A.data").c_str(), F_OK) == 0)
-        || (access((full_path + fname_base + "_B.data").c_str(), F_OK) == 0)) {
-        INFO("Clobering files in {:s}", full_path);
-        check_remove(full_path + fname_base + "_A.data");
-        check_remove("." + full_path + fname_base + "_A.lock");
-        check_remove(full_path + fname_base + "_A.meta");
-        check_remove(full_path + fname_base + "_B.data");
-        check_remove("." + full_path + fname_base + "_B.lock");
-        check_remove(full_path + fname_base + "_B.meta");
-    }
+    check_remove(full_path + fname_base + "_A.data");
+    check_remove(full_path + "." + fname_base + "_A.lock");
+    check_remove(full_path + fname_base + "_A.meta");
+    check_remove(full_path + fname_base + "_B.data");
+    check_remove(full_path + "." + fname_base + "_B.lock");
+    check_remove(full_path + fname_base + "_B.meta");
 
     file_cal_bundle = nullptr;
 

@@ -26,6 +26,7 @@
 #include <stdexcept>
 #include <stdio.h>
 #include <string>
+#include <unistd.h>
 #include <utility>
 
 
@@ -295,6 +296,10 @@ protected:
 
 
 inline void check_remove(std::string fname) {
+    // Check if we need to remove anything
+    if (access(fname.c_str(), F_OK) != 0)
+        return;
+    // Remove
     if (remove(fname.c_str()) != 0) {
         if (errno != ENOENT)
             throw std::runtime_error("Could not remove file " + fname);
