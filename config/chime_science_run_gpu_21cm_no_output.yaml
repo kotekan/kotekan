@@ -756,18 +756,22 @@ hyper_fine_beam:
     kotekan_stage: integrateHFBData
     hfb_input_buf: gpu_beamform_hfb_output_buffer_0
     hfb_output_buf: beamform_hfb_output_buffer_0
+    compressed_lost_samples_buf: compressed_lost_samples_buf_0
   integrate_hfb_data_1:
    kotekan_stage: integrateHFBData
    hfb_input_buf: gpu_beamform_hfb_output_buffer_1
    hfb_output_buf: beamform_hfb_output_buffer_1
+   compressed_lost_samples_buf: compressed_lost_samples_buf_1
   integrate_hfb_data_2:
    kotekan_stage: integrateHFBData
    hfb_input_buf: gpu_beamform_hfb_output_buffer_2
    hfb_output_buf: beamform_hfb_output_buffer_2
+   compressed_lost_samples_buf: compressed_lost_samples_buf_2
   integrate_hfb_data_3:
    kotekan_stage: integrateHFBData
    hfb_input_buf: gpu_beamform_hfb_output_buffer_3
    hfb_output_buf: beamform_hfb_output_buffer_3
+   compressed_lost_samples_buf: compressed_lost_samples_buf_3
  
 # Merge 21cm integrated data from each GPU
 21cm_merge:
