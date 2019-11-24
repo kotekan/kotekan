@@ -320,6 +320,7 @@ public:
      * value of this function, use std::future.
      *
      * @param  dset  The ID of the dataset to start from.
+     * @param  type  The type name of the state change we are searching for.
      *
      * @returns      The dataset entry matching the type. Unset if no state of given
      *               type exists.
