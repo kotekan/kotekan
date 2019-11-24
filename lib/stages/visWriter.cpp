@@ -81,7 +81,8 @@ visWriter::visWriter(Config& config, const string& unique_name, bufferContainer&
     instrument_name = config.get_default<std::string>(unique_name, "instrument_name", "chime");
 
     // Set the list of critical states
-    critical_state_types = {"frequencies", "inputs", "products", "stack", "eigenvalues", "metadata"};
+    critical_state_types = {"frequencies", "inputs",      "products",
+                            "stack",       "eigenvalues", "metadata"};
     auto t = config.get_default<std::vector<std::string>>(unique_name, "critical_states", {});
     for (const auto& state : t) {
         if (!FACTORY(datasetState)::exists(state)) {

@@ -69,7 +69,7 @@ def critical_state_data(tmpdir_factory):
             {"timestamp": start_time + 19.5, "type": "flags"},
             {"timestamp": start_time + 39.5, "type": "inputs"},
         ],
-        mode="change_state"
+        mode="change_state",
     )
 
     params = writer_params.copy()
@@ -199,7 +199,6 @@ def test_dataset_changes(critical_state_data):
         "20170714T024010Z_chime_corr",
         "20170714T024040Z_chime_corr",
     ]
-
 
     for ii, vr in enumerate(critical_state_data):
         ds = np.array(vr.metadata["dataset_id"]).copy().view("u8,u8")

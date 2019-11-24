@@ -622,7 +622,8 @@ datasetManager::closest_dataset_of_type(dset_id_t dset, const std::string& type)
 }
 
 
-fingerprint_t datasetManager::fingerprint(dset_id_t ds_id, const std::set<std::string>& state_types) {
+fingerprint_t datasetManager::fingerprint(dset_id_t ds_id,
+                                          const std::set<std::string>& state_types) {
 
     // This routine constructs a string out of the concatenation of the
     // state_type + state_id pairs. This string should be unique for a specific

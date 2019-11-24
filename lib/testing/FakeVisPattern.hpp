@@ -218,7 +218,8 @@ private:
 /**
  * @brief Send out some data but change the dataset IDs
  *
- * @conf  state_changes  A series of timestamp-state type pairs. Supported state types are `inputs`  and `flags`.
+ * @conf  state_changes  A series of timestamp-state type pairs. Supported state types are `inputs`
+ *and `flags`.
  *
  **/
 class ChangeStatePattern : public DefaultVisPattern {
@@ -230,7 +231,6 @@ public:
     void fill(visFrameView& frame);
 
 private:
-
     // Alias for the type of a function that will generate the state
     using gen_state = std::function<state_id_t()>;
 

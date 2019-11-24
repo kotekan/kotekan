@@ -274,8 +274,7 @@ void TestPatternInputVisPattern::fill(visFrameView& frame) {
 }
 
 
-ChangeStatePattern::ChangeStatePattern(kotekan::Config& config,
-                                               const std::string& path) :
+ChangeStatePattern::ChangeStatePattern(kotekan::Config& config, const std::string& path) :
     DefaultVisPattern(config, path) {
 
     // Map for state generators
@@ -336,7 +335,6 @@ state_id_t ChangeStatePattern::gen_state_inputs() {
 
     auto& dm = datasetManager::instance();
     return dm.create_state<inputState>(inputs).first;
-
 }
 
 
@@ -345,5 +343,4 @@ state_id_t ChangeStatePattern::gen_state_flags() {
     std::string update_id = fmt::format("flag_update_{}", _flag_update_ind++);
     auto& dm = datasetManager::instance();
     return dm.create_state<flagState>(update_id).first;
-
 }
