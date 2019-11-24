@@ -11,8 +11,10 @@
  *
  * This class wraps std::deque to keep updates and their timestamps in a FIFO
  * queue. A timestamp is understood as "apply this update to all frames that
- * have a timestamp later than the one associated to this update". The queue is
- * ordered by the updates timestamps.
+ * have a timestamp later than (or equal to) the one associated to this
+ * update". The queue is ordered by the updates timestamps. No future update
+ * will ever be returned, that is if the only available updates have future
+ * timestamps, nothing will be returned.
  *
  * @author Rick Nitsche
  */
