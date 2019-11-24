@@ -509,7 +509,7 @@ def test_dset_id_change(tmpdir_factory):
     flags_dump = run_flagging(tmpdir_factory, cmds)
 
     def get_dset_id(frame):
-        return bytes(frame.metadata.dataset_id).hex()
+        return bytes(frame.metadata.dataset_id)[::-1].hex()
 
     prev_dset_id = get_dset_id(flags_dump[0])
 

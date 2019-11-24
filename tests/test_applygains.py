@@ -249,7 +249,7 @@ def test_dataset_ids(apply_data):
     new_ds_id = None
 
     def dataset_id(frame):
-        return bytes(frame.metadata.dataset_id).hex()
+        return bytes(frame.metadata.dataset_id)[::-1].hex()
 
     for input_frame, output_frame in zip(*apply_data):
 
