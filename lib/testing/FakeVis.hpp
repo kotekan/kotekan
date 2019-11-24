@@ -51,7 +51,7 @@
  * @conf  cadence       Float. The interval of time (in seconds) between
  *                      frames.
  * @conf  mode          String. How to fill the visibility array. See
- *                      fakeVis::fill_mode_X routines for documentation.
+ *                      the set of FakeVisPattern implementations for details.
  * @conf  wait          Bool. Sleep to try and output data at roughly
  *                      the correct cadence.
  * @conf  num_frames    Exit after num_frames have been produced. If

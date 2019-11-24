@@ -214,4 +214,38 @@ private:
     std::vector<cfloat> test_pattern_value;
 };
 
+
+/**
+ * @brief Send out some data but change the dataset IDs
+ *
+ * @conf  state_changes  A series of timestamp-state type pairs. Supported state types are `inputs`  and `flags`.
+ *
+ **/
+class ChangeStatePattern : public DefaultVisPattern {
+public:
+    /// @sa FakeVisPattern::FakeVisPattern
+    ChangeStatePattern(kotekan::Config& config, const std::string& path);
+
+    /// @sa FakeVisPattern::fill
+    void fill(visFrameView& frame);
+
+private:
+
+    // Alias for the type of a function that will generate the state
+    using gen_state = std::function<state_id_t()>;
+
+    std::deque<std::pair<double, gen_state>> _dataset_changes;
+
+    // Methods to generate state changes. These should not change any structural
+    // parameters.
+    state_id_t gen_state_inputs();
+    state_id_t gen_state_flags();
+
+    std::optional<dset_id_t> current_dset_id;
+
+    size_t num_elements;
+
+    size_t _input_update_ind = 0;
+    size_t _flag_update_ind = 0;
+};
 #endif // FAKE_VIS_PATTERN
