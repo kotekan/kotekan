@@ -579,3 +579,66 @@ void datasetManager::force_update_callback(kotekan::connectionInstance& conn) {
 
     conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
 }
+
+
+std::optional<std::pair<dset_id_t, dataset>>
+datasetManager::closest_dataset_of_type(dset_id_t dset, const std::string& type) {
+    if (_use_broker) {
+        update_datasets(dset);
+    }
+
+    if (!FACTORY(datasetState)::exists(type)) {
+        ERROR_NON_OO("Type '{}' not registered dataset state type.", type);
+        return {};
+    }
+
+    {
+        std::lock_guard<std::mutex> dslock(_lock_dsets);
+
+        while (true) {
+            // Search for the requested type in each dataset
+            try {
+                if (_datasets.at(dset).type() == type) {
+                    std::pair<dset_id_t, dataset> r = {dset, _datasets.at(dset)};
+                    return r;
+                }
+
+                // if this is the root dataset, we don't have that ancestor
+                if (_datasets.at(dset).is_root())
+                    return {};
+
+                // Move on to the parent dataset...
+                dset = _datasets.at(dset).base_dset();
+
+            } catch (std::out_of_range& e) {
+                // we don't have the base dataset
+                DEBUG2_NON_OO("datasetManager: found a dead reference when looking for "
+                              "locally known ancestor: {:s}",
+                              e.what());
+                return {};
+            }
+        }
+    }
+}
+
+
+fingerprint_t datasetManager::fingerprint(dset_id_t ds_id, const std::set<std::string>& state_types) {
+
+    // This routine constructs a string out of the concatenation of the
+    // state_type + state_id pairs. This string should be unique for a specific
+    // set of identical states. This is then hashed to give the fingerprint.
+
+    // TODO: doing this via constructing a string seems like a bit of a hack, so
+    // we should look for a cleaner way to do it. The big problem is that the
+    // type names are all variable length strings.
+    std::string fs;
+
+    for (const auto& state : state_types) {
+        auto dset = closest_dataset_of_type(ds_id, state);
+        state_id_t id = dset ? dset.value().second.state() : dset_id_t::null;
+
+        fs += state + id.to_string();
+    }
+
+    return hash(fs);
+}

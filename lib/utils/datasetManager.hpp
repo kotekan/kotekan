@@ -45,8 +45,10 @@ const std::string PATH_UPDATE_DATASETS = "/update-datasets";
 const std::string PATH_REQUEST_STATE = "/request-state";
 
 // Alias certain types to give semantic meaning to the IDs
+// These use a 128 bit hash type so there shouldn't be any collisions.
 using dset_id_t = Hash;
 using state_id_t = Hash;
+using fingerprint_t = Hash;
 
 
 /**
@@ -317,12 +319,53 @@ public:
      * answers. If you want to do something else, while waiting for the return
      * value of this function, use std::future.
      *
-     * @returns A read-only pointer to the ancestor state.
-     * Returns a `nullptr` if not found in ancestors or in a
-     * failure case.
+     * @param  dset  The ID of the dataset to start from.
+     *
+     * @returns      The dataset entry matching the type. Unset if no state of given
+     *               type exists.
+     **/
+    std::optional<std::pair<dset_id_t, dataset>> closest_dataset_of_type(dset_id_t dset,
+                                                                         const std::string& type);
+
+    /**
+     * @brief Find the closest ancestor of a given type.
+     *
+     * If `use_dataset_broker` is set and no ancestor of the given type is found,
+     * this will ask the broker for a complete list of ancestors for the given
+     * dataset. In that case, this function is blocking, until the broker
+     * answers. If you want to do something else, while waiting for the return
+     * value of this function, use std::future.
+     *
+     * @param  dset  The ID of the dataset to start from.
+     *
+     * @returns      A read-only pointer to the ancestor state.
+     *               Returns a `nullptr` if not found in ancestors or in a
+     *               failure case.
      **/
     template<typename T>
     inline const T* dataset_state(dset_id_t dset);
+
+
+    /**
+     * @brief Fingerprint a dataset for specified states.
+     *
+     * Generate a summary of the specified states present in the requested
+     * dataset. This will be unique for datasets where there one or more of the
+     * requested states differ. Datasets that share all these states will give
+     * the same fingerprint regardless of differences in any other states.
+     *
+     * The fingerprint does not depend on the order of state_types. It is also
+     * specific to the types, even when states are missing. This means that for
+     * a dataset which contains a state of `type_A`, but neither of `type_B` or
+     * `type_C`, the fingerprints with respect to `{type_A, type_B}` and
+     * `{type_A, type_C}` will be different.
+     *
+     * @param  ds_id        Dataset ID of the incoming frame.
+     * @param  state_types  Names of the state types to fingerprint.
+     *
+     * @return              Finger print of the dataset.
+     **/
+    fingerprint_t fingerprint(dset_id_t ds_id, const std::set<std::string>& state_types);
 
     /**
      * @brief Callback for endpoint `force-update` called by the restServer.
@@ -411,11 +454,6 @@ private:
     void request_thread(const json&& request, const std::string&& endpoint,
                         const std::function<bool(std::string&)>&& parse_reply);
 
-    /// Gets the closest ancestor of the given dataset of the given dataset
-    /// state type. If it is not known locally, it will be sent from the broker.
-    template<typename T>
-    inline const T* get_closest_ancestor(dset_id_t dset);
-
     /// Wait for any ongoing requests of the same state OR request state.
     template<typename T>
     inline const T* request_state(state_id_t state_id);
@@ -500,16 +538,41 @@ private:
 template<typename T>
 inline const T* datasetManager::dataset_state(dset_id_t dset) {
 
-    if (!_use_broker)
-        return get_closest_ancestor<T>(dset);
+    // Try to find a matching dataset
+    std::string type = FACTORY(datasetState)::label<T>();
+    auto ret = closest_dataset_of_type(dset, type);
 
-    // get an update on the dataset topology (blocking)
-    update_datasets(dset);
+    // If not found, return null
+    if (!ret)
+        return nullptr;
 
-    // get the state or ask broker for it
-    const T* state = get_closest_ancestor<T>(dset);
+    state_id_t state_id = ret.value().second.state();
 
-    return state;
+    {
+        std::lock_guard<std::mutex> dslock(_lock_dsets);
+
+        // Check if we have that state already
+        const datasetState* state = nullptr;
+        try {
+            state = _states.at(state_id).get();
+            return (const T*)state;
+        } catch (std::out_of_range& e) {
+            DEBUG_NON_OO("datasetManager: requested state {} not known locally.", state_id);
+        }
+
+        if (_use_broker) {
+            // Request the state from the broker.
+            state = request_state<T>(state_id);
+            while (!state) {
+                WARN_NON_OO("datasetManager: Failure requesting state {} from broker.\nRetrying...",
+                            state_id);
+                std::this_thread::sleep_for(std::chrono::milliseconds(_retry_wait_time_ms));
+                state = request_state<T>(state_id);
+            }
+            return (const T*)state;
+        } else
+            return nullptr;
+    }
 }
 
 
@@ -556,60 +619,6 @@ datasetManager::add_state(std::unique_ptr<T>&& state,
     return std::pair<state_id_t, const T*>(hash, (const T*)(_states.at(hash).get()));
 }
 
-template<typename T>
-inline const T* datasetManager::get_closest_ancestor(dset_id_t dset) {
-    {
-        std::lock_guard<std::mutex> dslock(_lock_dsets);
-        state_id_t ancestor;
-
-        // Check if we can find requested state in dataset topology.
-        // Walk up from the current node to the root.
-        while (true) {
-            // Search for the requested type in each dataset
-            try {
-                if (_datasets.at(dset).type() == FACTORY(datasetState)::label<T>()) {
-                    ancestor = _datasets.at(dset).state();
-                    break;
-                }
-
-                // if this is the root dataset, we don't have that ancestor
-                if (_datasets.at(dset).is_root())
-                    return nullptr;
-
-                // Move on to the parent dataset...
-                dset = _datasets.at(dset).base_dset();
-
-            } catch (std::out_of_range& e) {
-                // we don't have the base dataset
-                DEBUG2_NON_OO("datasetManager: found a dead reference when looking for "
-                              "locally known ancestor: {:s}",
-                              e.what());
-                return nullptr;
-            }
-        }
-
-        // Check if we have that state already
-        const datasetState* state = nullptr;
-        try {
-            state = _states.at(ancestor).get();
-            return (const T*)state;
-        } catch (std::out_of_range& e) {
-            DEBUG_NON_OO("datasetManager: requested state {} not known locally.", ancestor);
-        }
-        if (_use_broker) {
-            // Request the state from the broker.
-            state = request_state<T>(ancestor);
-            while (!state) {
-                WARN_NON_OO("datasetManager: Failure requesting state {} from broker.\nRetrying...",
-                            ancestor);
-                std::this_thread::sleep_for(std::chrono::milliseconds(_retry_wait_time_ms));
-                state = request_state<T>(ancestor);
-            }
-            return (const T*)state;
-        } else
-            return nullptr;
-    }
-}
 
 template<typename T>
 inline const T* datasetManager::request_state(state_id_t state_id) {
