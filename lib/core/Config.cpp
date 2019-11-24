@@ -49,7 +49,7 @@ void Config::parse_file(const string& file_name) {
         config_file_stream >> _json;
     } catch (std::exception const& ex) {
         WARN_NON_OO("Could not parse json file: {:s}, error: {:s}", file_name, ex.what());
-        throw ex;
+        throw;
     }
 }
 

@@ -11,7 +11,6 @@ bufferContainer::~bufferContainer() {}
 void bufferContainer::add_buffer(const string& name, Buffer* buf) {
     if (buffers.count(name) != 0) {
         throw std::runtime_error(fmt::format(fmt("The buffer named {:s} already exists!"), name));
-        return;
     }
     buffers[name] = buf;
 }

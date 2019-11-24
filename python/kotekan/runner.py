@@ -120,12 +120,12 @@ class KotekanRunner(object):
                 import json
 
                 attempt = 0
-                wait = 1
+                wait = 0.2
 
                 # Wait for REST server to start
-                while attempt < 10:
+                while attempt < 100:
 
-                    if attempt == 9:
+                    if attempt == 99:
                         print("Could not find kotekan REST server address in logs")
                         exit(1)
 
@@ -159,6 +159,9 @@ class KotekanRunner(object):
 
                 # the requests module needs the address wrapped in http://*/
                 rest_addr = "http://" + rest_addr + "/"
+
+                # wait a moment for the restServer to start
+                time.sleep(1)
 
                 for rtype, endpoint, data in self._rest_commands:
                     if rtype == "wait":
@@ -200,7 +203,7 @@ class KotekanRunner(object):
 
             while self.debug and None == p.poll():
                 time.sleep(10)
-                print(file(f_out.name).read())
+                print(open(f_out.name, "r").read())
 
             # Wait for kotekan to finish and capture the output
             p.wait()

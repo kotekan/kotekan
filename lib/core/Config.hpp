@@ -65,7 +65,6 @@ public:
             if (std::is_arithmetic<T>::value && !std::is_same<bool, T>::value
                 && !json_value.is_number()) {
 
-                std::string expression = json_value.get<std::string>();
                 try {
                     Config::configEval<T> eval(*this, base_path, name);
                     value = eval.compute_result();

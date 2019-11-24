@@ -36,7 +36,6 @@ std::ostream& operator<<(std::ostream& out, const datasetState& dt) {
     return out;
 }
 
-// TODO: this is a very weird place for this routine to be. Put it somewhere more sane.
 std::vector<stack_ctype> invert_stack(uint32_t num_stack,
                                       const std::vector<rstack_ctype>& stack_map) {
     std::vector<stack_ctype> res(num_stack);
