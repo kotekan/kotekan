@@ -8,6 +8,7 @@
 #include "version.h"
 #include "visBuffer.hpp"
 #include "visCompression.hpp"
+#include "visFile.hpp"
 
 #include "fmt.hpp"
 #include "json.hpp"
@@ -57,13 +58,13 @@ visWriter::visWriter(Config& config, const string& unique_name, bufferContainer&
     acq_timeout = config.get_default<double>(unique_name, "acq_timeout", 300);
     ignore_version = config.get_default<bool>(unique_name, "ignore_version", false);
 
-    // Get the list of buffers that this stage shoud connect to
-    in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
-
     // Get the type of the file we are writing
     // TODO: we may want to validate here rather than at creation time
     file_type = config.get_default<std::string>(unique_name, "file_type", "hdf5fast");
+    if (!FACTORY(visFile)::exists(file_type)) {
+        FATAL_ERROR("Unknown file type '{}'", file_type);
+        return;
+    }
 
     file_length = config.get_default<size_t>(unique_name, "file_length", 1024);
     window = config.get_default<size_t>(unique_name, "window", 20);
@@ -79,7 +80,20 @@ visWriter::visWriter(Config& config, const string& unique_name, bufferContainer&
     // TODO: get this from the datasetManager and put data type somewhere else
     instrument_name = config.get_default<std::string>(unique_name, "instrument_name", "chime");
 
-    // Get the acq time out from the config
+    // Set the list of critical states
+    critical_state_types = {"frequencies", "inputs", "products", "stack", "eigenvalues", "metadata"};
+    auto t = config.get_default<std::vector<std::string>>(unique_name, "critical_states", {});
+    for (const auto& state : t) {
+        if (!FACTORY(datasetState)::exists(state)) {
+            FATAL_ERROR("Unknown datasetState type '{}' given as `critical_state`", state);
+            return;
+        }
+        critical_state_types.insert(state);
+    }
+
+    // Get the list of buffers that this stage should connect to
+    in_buf = get_buffer("in_buf");
+    register_consumer(in_buf, unique_name.c_str());
 }
 
 void visWriter::main_thread() {
@@ -106,7 +120,7 @@ void visWriter::main_thread() {
         }
 
         // Get the acquisition we are writing into
-        auto& acq = acqs.at(frame.dataset_id);
+        auto& acq = *(acqs.at(frame.dataset_id));
 
 
         // If the dataset is bad, skip the frame and move onto the next
@@ -167,27 +181,53 @@ void visWriter::main_thread() {
 
 void visWriter::report_dropped_frame(dset_id_t ds_id, uint32_t freq_id, droppedType reason) {
 
-    // Get acqusition
-    auto& acq = acqs.at(ds_id);
+    // Get acquisition
+    auto acq = acqs.at(ds_id);
 
     // Relies on the fact that insertion zero intialises
     auto key = std::make_pair(freq_id, reason);
     // TODO: check if this is necessary
-    acq.dropped_frame_count[key] += 1;
+    acq->dropped_frame_count[key] += 1;
     dropped_frame_counter
         .labels({std::to_string(freq_id), ds_id.to_string(), dropped_type_map.at(reason)})
         .inc();
 }
 
-void visWriter::close_old_acqs() {
-    auto it = acqs.begin();
-    while (it != acqs.end()) {
-        double age = current_time() - it->second.last_update;
 
-        if (!it->second.bad_dataset && age > acq_timeout) {
-            it = acqs.erase(it);
+void visWriter::close_old_acqs() {
+
+    // Sweep over all both acq storing maps and delete any entries for expired
+    // acquisitions. Must loop over both to actually remove and close the
+    // acquisitions
+
+    /// Only sweep over the acqs to decide which to close every 1/3 of the
+    /// acq_timeout
+    double now = current_time();
+    if (now > next_sweep) {
+        next_sweep = now + acq_timeout / 3.0;
+    }
+
+    // Scan over the dataset keyed list
+    auto it1 = acqs.begin();
+    while (it1 != acqs.end()) {
+        double age = now - it1->second->last_update;
+
+        if (!it1->second->bad_dataset && age > acq_timeout) {
+            it1 = acqs.erase(it1);
         } else {
-            it++;
+            it1++;
+        }
+    }
+
+    // Scan over the fingerprint keyed list
+    auto it2 = acqs_fingerprint.begin();
+    while (it2 != acqs_fingerprint.end()) {
+        double age = now - it2->second->last_update;
+
+        if (!it2->second->bad_dataset && age > acq_timeout) {
+            it2 = acqs_fingerprint.erase(it2);
+        } else {
+            it2++;
         }
     }
 }
@@ -223,11 +263,11 @@ void visWriter::get_dataset_state(dset_id_t ds_id) {
     }
 
     // Get a reference to the acq state
-    auto& acq = acqs.at(ds_id);
+    auto acq = acqs.at(ds_id);
 
     uint ind = 0;
     for (auto& f : fstate->get_freqs())
-        acq.freq_id_map[f.first] = ind++;
+        acq->freq_id_map[f.first] = ind++;
 
     // compare git commit hashes
     // TODO: enforce and crash here if build type is Release?
@@ -237,7 +277,7 @@ void visWriter::get_dataset_state(dset_id_t ds_id) {
              ds_id, mstate->get_git_version_tag(), get_git_commit_hash());
     }
 
-    acq.num_vis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
+    acq->num_vis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
 }
 
 
@@ -259,8 +299,22 @@ bool visWriter::check_git_version(dset_id_t ds_id) {
 
 
 void visWriter::init_acq(dset_id_t ds_id) {
+
     // Create the new acqState
-    auto& acq = acqs[ds_id];
+    auto fp = datasetManager::instance().fingerprint(ds_id, critical_state_types);
+
+    // If the fingerprint is already known, we don't need to start a new
+    // acquisition, just add a map from the dataset_id to the acquisition we
+    // should use.
+    if (acqs_fingerprint.count(fp) > 0) {
+        acqs[ds_id] = acqs_fingerprint.at(fp);
+        return;
+    }
+
+    // If it is not known we need to initialise everything
+    acqs_fingerprint[fp] = std::make_shared<acqState>();
+    acqs[ds_id] = acqs_fingerprint.at(fp);
+    auto& acq = *(acqs.at(ds_id));
 
     // get dataset states
     get_dataset_state(ds_id);
@@ -382,10 +436,11 @@ void visCalWriter::init_acq(dset_id_t ds_id) {
     // Count the number of enabled acqusitions, for the visCalWriter this can't
     // be more than one
     int num_enabled = std::count_if(acqs.begin(), acqs.end(),
-                                    [](auto& item) -> bool { return !(item.second.bad_dataset); });
+                                    [](auto& item) -> bool { return !(item.second->bad_dataset); });
 
     // Create the new acqState
-    auto& acq = acqs[ds_id];
+    acqs[ds_id] = std::make_shared<acqState>();
+    auto& acq = *(acqs.at(ds_id));
 
     // get dataset states
     get_dataset_state(ds_id);

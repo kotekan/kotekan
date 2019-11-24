@@ -8,6 +8,7 @@
 #define VIS_WRITER_HPP
 
 #include "Config.hpp"
+#include "Hash.hpp"
 #include "Stage.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
@@ -44,7 +45,19 @@
  * `ignore_version` a mismatch will either generate a warning, or cause the
  * mismatched data to be dropped.
  *
- * The output is written into the CHIME N^2 HDF5 format version 3.1.0.
+ * The output files will write out the dataset ID of every piece of data
+ * written. This allows the dataset ID to change on the incoming stream without
+ * requiring a new file or acquisition to be started. However, some types of
+ * state change will always cause a new acquisition to be started. By default
+ * these are the structural parameters `input`, `frequencies`, `products`, and
+ * `stack` along with `gating` and `metadata`. This list can be *added* to
+ * using the config variable `critical_states`. Any state change not considered
+ * critical will cause an updated ID to be written into the file, but the
+ * acquisition will continue as normal.
+ *
+ * The output is written a specified format. Either the CHIME N^2 HDF5 format
+ * version 3.1.0, or the raw format which can be processed into that format by
+ * gossec.
  *
  * @par Buffers
  * @buffer in_buf The buffer streaming data to write
@@ -67,6 +80,9 @@
  *                          mistmatch will generate a warning, if false, it
  *                          will cause data to be dropped. This should only be
  *                          set to true when testing.
+ * @conf   critical_states  List of strings. A list of state types to consider
+ *                          critical. That is, if they change in the incoming
+ *                          data stream then a new acquisition will be started.
  *
  * @par Metrics
  * @metric kotekan_viswriter_write_time_seconds
@@ -122,6 +138,7 @@ protected:
      **/
     void report_dropped_frame(dset_id_t ds_id, uint32_t freq_id, droppedType reason);
 
+
     // Parameters saved from the config files
     std::string root_path;
     std::string instrument_name;
@@ -162,11 +179,23 @@ protected:
         double last_update;
     };
 
-    /// The set of open acquisitions
-    std::map<dset_id_t, acqState> acqs;
+    /// The set of open acquisitions, keyed by the dataset_id. Multiple
+    /// dataset_ids may point to the same acquisition, and these acquisitions are
+    /// shared with `acqs_fingerprint`
+    std::map<dset_id_t, std::shared_ptr<acqState>> acqs;
+
+    /// The set of open acquisitions, keyed by fingerprint. These are shared with
+    /// `acqs`.
+    std::map<fingerprint_t, std::shared_ptr<acqState>> acqs_fingerprint;
 
     /// Translate droppedTypes to string description for prometheus
     static std::map<droppedType, std::string> dropped_type_map;
+
+    /// List of states that will cause a new acq
+    std::set<std::string> critical_state_types;
+
+    /// Next sweep
+    double next_sweep = 0.0;
 
 private:
     /// Number of products to write and freqency map
