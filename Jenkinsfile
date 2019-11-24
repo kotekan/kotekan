@@ -87,7 +87,7 @@ pipeline {
         stage('Install comet') {
           steps {
             catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-              sh '''python3.7 -m pip install --user git+https://github.com/chime-experiment/comet.git@rn/redislocks'''
+              sh '''python3.7 -m pip install --user git+https://github.com/chime-experiment/comet.git@master'''
             }
           }
         }
