@@ -463,9 +463,6 @@ compressed_lost_samples_buffers:
     kotekan_buffer: standard
   compressed_lost_samples_buf_3:
     kotekan_buffer: standard
-    num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set / num_sub_freqs * num_data_sets / 3
-    metadata_pool: main_pool
 
 #duplicate_lost_samples_buffers:
 #  num_frames: 2 * buffer_depth
