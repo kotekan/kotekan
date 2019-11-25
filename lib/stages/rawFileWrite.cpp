@@ -29,6 +29,7 @@ rawFileWrite::rawFileWrite(Config& config, const string& unique_name,
     base_dir = config.get<std::string>(unique_name, "base_dir");
     file_name = config.get<std::string>(unique_name, "file_name");
     file_ext = config.get<std::string>(unique_name, "file_ext");
+    _num_frames_per_file = config.get_default<uint32_t>(unique_name, "num_frames_per_file", 1);
 }
 
 rawFileWrite::~rawFileWrite() {}
@@ -38,9 +39,11 @@ void rawFileWrite::main_thread() {
     int fd;
     int file_num = 0;
     int frame_id = 0;
+    uint32_t frame_ctr = 0;
     uint8_t* frame = NULL;
     char hostname[64];
     gethostname(hostname, 64);
+    bool isFileOpen = false;
 
     auto& write_time_metric =
         Metrics::instance().add_gauge("kotekan_rawfilewrite_write_time_seconds", unique_name);
@@ -57,15 +60,19 @@ void rawFileWrite::main_thread() {
         const int full_path_len = 200;
         char full_path[full_path_len];
 
-        snprintf(full_path, full_path_len, "%s/%s_%s_%07d.%s", base_dir.c_str(), hostname,
-                 file_name.c_str(), file_num, file_ext.c_str());
+        if(!isFileOpen) {
+          snprintf(full_path, full_path_len, "%s/%s_%s_%07d.%s", base_dir.c_str(), hostname,
+              file_name.c_str(), file_num, file_ext.c_str());
 
-        fd = open(full_path, O_WRONLY | O_CREAT, 0666);
+          fd = open(full_path, O_WRONLY | O_CREAT, 0666);
 
-        if (fd == -1) {
+          if (fd == -1) {
             ERROR("Cannot open file");
             ERROR("File name was: {:s}", full_path);
             exit(errno);
+          }
+
+          isFileOpen = true;
         }
 
         // Write the meta data to disk
@@ -98,9 +105,15 @@ void rawFileWrite::main_thread() {
 
         INFO("Data file write done for {:s}", full_path);
 
-        if (close(fd) == -1) {
+        if(frame_ctr == _num_frames_per_file) {
+          if (close(fd) == -1) {
             ERROR("Cannot close file {:s}", full_path);
+          }
+          isFileOpen = false;
+          frame_ctr = 0;
         }
+
+        frame_ctr++;
 
         double elapsed = current_time() - st;
         write_time_metric.set(elapsed);

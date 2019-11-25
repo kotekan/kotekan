@@ -37,6 +37,7 @@ private:
     std::string base_dir;
     std::string file_name;
     std::string file_ext;
+    uint32_t _num_frames_per_file;
 };
 
 #endif
