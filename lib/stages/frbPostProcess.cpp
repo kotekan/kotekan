@@ -112,6 +112,8 @@ void frbPostProcess::main_thread() {
     frb_header.nupfreq = _factor_upchan_out;
     frb_header.ntsamp = _timesamples_per_frb_packet;
 
+    bool startup = true; // True on first pass through the loop
+
     while (!stop_thread) {
         // Get the next output buffer, id = 0 to start.
         uint8_t* out_frame = wait_for_empty_frame(frb_buf, unique_name.c_str(), out_buffer_ID);
@@ -144,17 +146,30 @@ void frbPostProcess::main_thread() {
         // keep advancing others until they all match. (Keep in mind that advancing one of the
         // others may put it ahead of the current largest fpga_seq_no, in which case we have to
         // repeat the process.)
-        auto min_fpga_count = frb_header.fpga_count;
+        int64_t start_fpga_count = frb_header.fpga_count;
         while (!stop_thread) {
-            // find out the amount by which inputs are out of sync
-            auto max_fpga_count = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
+            // Find out the amount by which inputs are out of sync
+            int64_t max_fpga_count = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
             for (int i = 1; i < _num_gpus; i++) {
                 max_fpga_count =
                     std::max(max_fpga_count, get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
             }
 
+            // On startup, we just go with whatever is the smallest input fpga_seq_num.
+            // Afterwards, we know what the last frame was, and so can just count from there
+            if (startup) {
+                for (int i = 1; i < _num_gpus; i++) {
+                    start_fpga_count =
+                        std::min(start_fpga_count, get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
+                }
+                startup = false;
+            }
+
+            DEBUG("Syncing min {} -> {} max", start_fpga_count, max_fpga_count);
+
             // Advance lost_samples buffer by the amount of known dropped frames across all inputs
-            for (size_t i = 0; i < (max_fpga_count - min_fpga_count) / _samples_per_data_set; ++i) {
+            for (int i = 0; i < (max_fpga_count - start_fpga_count) / _samples_per_data_set; ++i) {
+                INFO("Advance lost_samples");
                 mark_frame_empty(lost_samples_buf, unique_name.c_str(), lost_samples_buf_id);
                 lost_samples_buf_id = (lost_samples_buf_id + 1) % lost_samples_buf->num_frames;
                 lost_samples_frame =
@@ -162,12 +177,13 @@ void frbPostProcess::main_thread() {
                 if (lost_samples_frame == NULL)
                     return;
             }
-            min_fpga_count = max_fpga_count;
+            start_fpga_count = max_fpga_count;
 
             // try to catch up the GPU inputs
             bool fpga_seq_in_sync = true;
             for (int i = 0; i < _num_gpus; ++i) {
                 while (max_fpga_count > get_fpga_seq_num(in_buf[i], in_buffer_ID[i])) {
+                    INFO("Advance {} from {}", i, get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
                     mark_frame_empty(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
                     in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
                     in_frame[i] =
@@ -184,6 +200,7 @@ void frbPostProcess::main_thread() {
 
             if (fpga_seq_in_sync) {
                 frb_header.fpga_count = max_fpga_count;
+                DEBUG("Synced to {}", max_fpga_count);
                 break;
             }
         }
