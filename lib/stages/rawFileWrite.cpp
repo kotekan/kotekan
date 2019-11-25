@@ -105,15 +105,16 @@ void rawFileWrite::main_thread() {
 
         INFO("Data file write done for {:s}", full_path);
 
+        frame_ctr++;
+
         if(frame_ctr == _num_frames_per_file) {
           if (close(fd) == -1) {
             ERROR("Cannot close file {:s}", full_path);
           }
           isFileOpen = false;
           frame_ctr = 0;
+          file_num++;
         }
-
-        frame_ctr++;
 
         double elapsed = current_time() - st;
         write_time_metric.set(elapsed);
@@ -121,6 +122,6 @@ void rawFileWrite::main_thread() {
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
 
         frame_id = (frame_id + 1) % buf->num_frames;
-        file_num++;
+
     }
 }
