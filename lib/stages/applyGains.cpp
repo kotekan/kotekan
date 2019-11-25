@@ -9,6 +9,7 @@
 #include "visBuffer.hpp"
 #include "visFileH5.hpp"
 #include "visUtil.hpp"
+#include "restClient.hpp"
 
 #include "fmt.hpp"
 
@@ -67,8 +68,10 @@ applyGains::applyGains(Config& config, const string& unique_name,
                                     "to be positive (is "
                                     + std::to_string(t_combine_default) + ").");
 
-    // Get the path to gains directory
+    // Get the calibration broker gains endpoint
     gains_dir = config.get<std::string>(unique_name, "gains_dir");
+    broker_host = config.get<std::string>(unique_name, "broker_host");
+    broker_port = config.get<unsigned int>(unique_name, "broker_port");
 
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     if (num_threads == 0)
@@ -145,6 +148,12 @@ bool applyGains::receive_update(nlohmann::json& json) {
         return false;
     }
 
+    // TODO: get gains from cal broker endpoint
+    auto gain_data = fetch_gains(gtag, new_ts);
+    if (!gain_data) {
+        return false;
+    }
+
     state_id_t state_id = dm.create_state<gainState>(gtag, t_combine).first;
     GainUpdate update = {std::move(gain_data.value()), t_combine, state_id};
 
@@ -156,6 +165,33 @@ bool applyGains::receive_update(nlohmann::json& json) {
     INFO("Updated gains to {:s}.", gtag);
 
     return true;
+}
+
+std::optional<applyGains::GainData> applyGains::fetch_gains(std::string& tag) {
+    // get a REST client
+    restClient client = restClient::instance();
+
+    // query cal broker
+    restReply reply = client.make_request_blocking("/gain", {"update_id", tag}, broker_host, broker_port);
+    if (!reply.first) {
+        WARN("Failed to retrieve gains from calibration broker. ({})", reply);
+        return false;
+    }
+
+    // parse reply
+    nlohmann::json js_reply;
+    try {
+        js_reply = json::parse(reply.second);
+    } catch (std::exception& e) {
+        WARN("Failed to parse calibration broker gains reponse.: {}", reply, e.what());
+        return false;
+    }
+
+    try {
+        std::vector<int> shape = js_reply.at("shape").get<std::vector<int>>();
+        // need to parse base64 string
+        std::vector<cfloat> = js_reply.at("data").get<std::vector<cfloat>>();
+    }
 }
 
 void applyGains::main_thread() {
