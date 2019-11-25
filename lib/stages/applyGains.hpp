@@ -55,6 +55,12 @@
  * @conf   updatable_block  String. The full name of the updatable_block that
  *                                  will provide new flagging values (e.g. "/dynamic_block/gains").
  * @conf   gains_dir        String. The path to the directory holding the gains file.
+ * @conf   broker_host      String. Calibration broker host.
+ * @conf   broker_port      Int.    Calibration broker port.
+ * @conf   read_from_file   Bool, default false. Whether to read the gains from file or
+ *                                  fetch them over the network.
+ * @conf   tcombine         Double. Time (in seconds) over which to combine old and new gains to
+ *                                  prevent discontinuities. Default is 5 minutes.
  * @conf   num_kept_updates Int.    The number of gain updates stored in a FIFO.
  * @conf   num_threads      Int.    Number of threads to run. Default is 1.
  *
@@ -106,6 +112,16 @@ private:
     /// Number of gains updates to maintain
     uint64_t num_kept_updates;
 
+    /// Time over which to blend old and new gains in seconds. Default is 5 minutes.
+    double t_combine_default;
+
+    /// Host and port of calibration broker
+    std::string broker_host;
+    unsigned int broker_port;
+
+    /// Whether to read gains from file or over network
+    bool read_from_file;
+
     /// The gains and when to start applying them in a FIFO (len set by config)
     updateQueue<GainUpdate> gains_fifo;
 
@@ -124,6 +140,9 @@ private:
     /// Entrancepoint for n threads. Each thread takes frames with a
     /// different frame_id from the buffer and applies gains.
     void apply_thread();
+
+    /// Thread for getting gains from cal broker
+    void fetch_thread();
 
     /// Vector to hold the thread handles
     std::vector<std::thread> thread_handles;
@@ -147,6 +166,18 @@ private:
 
     /// Read the gain file from disk
     std::optional<GainData> read_gain_file(std::string update_id) const;
+
+    /// Fetch gains from calibration broker
+    std::optional<GainData> fetch_gains(std::string tag) const;
+
+    /// Condition variable used to communicate new gains
+    std::condition_variable received_update_cv;
+    std::mutex update_mtx;
+    /// Identity of gain update to insert. Should only be modified with update_mtx held.
+    std::tuple<std::string, double, double> new_update;
+
+    /// REST client for communication with cal broker
+    restClient& client;
 
     /// Test that the frame is valid. On failure it will call FATAL_ERROR and
     /// return false

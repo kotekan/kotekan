@@ -9,6 +9,7 @@
 #include "datasetState.hpp"      // for gainState, freqState, inputState
 #include "kotekanLogging.hpp"    // for WARN, FATAL_ERROR, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
+#include "restClient.hpp"
 #include "visBuffer.hpp"         // for visFrameView, visField, visField::vis, visField...
 #include "visFileH5.hpp"         // IWYU pragma: keep
 #include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double, fra...
@@ -62,7 +63,8 @@ applyGains::applyGains(Config& config, const std::string& unique_name,
     late_update_counter(
         Metrics::instance().add_counter("kotekan_applygains_late_update_count", unique_name)),
     late_frames_counter(
-        Metrics::instance().add_counter("kotekan_applygains_late_frame_count", unique_name)) {
+        Metrics::instance().add_counter("kotekan_applygains_late_frame_count", unique_name)),
+    client(restClient::instance()) {
 
     // Setup the input buffer
     register_consumer(in_buf, unique_name.c_str());
@@ -78,8 +80,11 @@ applyGains::applyGains(Config& config, const std::string& unique_name,
                                     "to be equal or greater than one (is "
                                     + std::to_string(num_kept_updates) + ").");
 
-    // Get the path to gains directory
+    // Get the calibration broker gains endpoint
     gains_dir = config.get<std::string>(unique_name, "gains_dir");
+    broker_host = config.get<std::string>(unique_name, "broker_host");
+    broker_port = config.get<unsigned int>(unique_name, "broker_port");
+    read_from_file = config.get_default<bool>(unique_name, "read_from_file", false);
 
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     if (num_threads == 0)
@@ -87,6 +92,12 @@ applyGains::applyGains(Config& config, const std::string& unique_name,
 
     // FIFO for gains and weights updates
     gains_fifo = updateQueue<GainUpdate>(num_kept_updates);
+
+    // Initialise update tuple
+    {
+        std::unique_lock<std::mutex> lk(update_mtx);
+        new_update = {"", -1., -1.};
+    }
 
     // subscribe to gain timestamp updates
     configUpdater::instance().subscribe(this, std::bind(&applyGains::receive_update, this, _1));
@@ -98,8 +109,6 @@ bool applyGains::fexists(const std::string& filename) const {
 }
 
 bool applyGains::receive_update(nlohmann::json& json) {
-
-    auto& dm = datasetManager::instance();
 
     double new_ts;
     std::string gains_path;
@@ -148,31 +157,29 @@ bool applyGains::receive_update(nlohmann::json& json) {
         return false;
     }
 
-    // Read the gain file and return false if the read failed
-    auto gain_data = read_gain_file(update_id);
-    if (!gain_data) {
-        return false;
-    }
-
-    state_id_t state_id = dm.create_state<gainState>(update_id, transition_interval).first;
-    GainUpdate update = {std::move(gain_data.value()), transition_interval, state_id};
-
+    // Signal to fetch thread to get gains from broker
     {
-        // Lock mutex exclusively while we update FIFO
-        std::lock_guard<std::shared_mutex> lock(gain_mtx);
-        gains_fifo.insert(double_to_ts(new_ts), std::move(update));
+        std::unique_lock<std::mutex> lk(update_mtx);
+        new_update = {gtag, t_combine, new_ts};
     }
-    INFO("Updated gains to {:s}.", update_id);
+    received_update_cv.notify_one();
+
+    INFO("Received gain update with tag {:s}.", gtag);
 
     return true;
 }
 
+
 void applyGains::main_thread() {
 
     // Create the threads
-    thread_handles.resize(num_threads);
+    thread_handles.resize(num_threads + 1);
+
+    // Create a thread for fetching gains from cal broker
+    thread_handles[0] = std::thread(&applyGains::fetch_thread, this);
+
     for (uint32_t i = 0; i < num_threads; ++i) {
-        thread_handles[i] = std::thread(&applyGains::apply_thread, this);
+        thread_handles[i + 1] = std::thread(&applyGains::apply_thread, this);
 
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
@@ -185,8 +192,11 @@ void applyGains::main_thread() {
 
     // Join the threads
     for (uint32_t i = 0; i < num_threads; ++i) {
-        thread_handles[i].join();
+        thread_handles[i + 1].join();
     }
+    // Join fetch thread
+    received_update_cv.notify_one();
+    thread_handles[0].join();
 }
 
 void applyGains::apply_thread() {
@@ -381,6 +391,67 @@ void applyGains::apply_thread() {
 }
 
 
+void applyGains::fetch_thread() {
+
+    bool first = true;
+
+    while (!stop_thread) {
+        double test = -1;
+        // we may have missed the initial gain update
+        if (first) {
+            {
+                std::unique_lock<std::mutex> lk(update_mtx);
+                test = std::get<1>(new_update);
+            }
+        }
+        if (first && test == -1){
+            // We can go straight to the wait step
+            first = false;
+        } else {
+            auto& dm = datasetManager::instance();
+
+            // Extract the update specs
+            std::string gtag;
+            double t_combine, new_ts;
+            {
+                std::unique_lock<std::mutex> lk(update_mtx);
+                gtag = std::get<0>(new_update);
+                t_combine = std::get<1>(new_update);
+                new_ts = std::get<2>(new_update);
+            }
+
+            std::optional<applyGains::GainData> gain_data;
+            if (read_from_file) {
+                INFO("Reading gains from file...");
+                gain_data = read_gain_file(gtag);
+            } else {
+                INFO("Fetching gains...");
+                gain_data = fetch_gains(gtag);
+            }
+            if (!gain_data) {
+                WARN("Ignoring gain update with tag {:s}.", gtag);
+                continue;
+            }
+
+            // update gains
+            state_id_t state_id = dm.create_state<gainState>(gtag, t_combine).first;
+            GainUpdate update = {std::move(gain_data.value()), t_combine, state_id};
+
+            {
+                // Lock mutex exclusively while we update FIFO
+                std::lock_guard<std::shared_mutex> lock(gain_mtx);
+                gains_fifo.insert(double_to_ts(new_ts), std::move(update));
+            }
+            INFO("Updated gains to {:s}.", gtag);
+        }
+
+        // wait for conditional variable signal
+        std::unique_lock<std::mutex> lk(update_mtx);
+        received_update_cv.wait(lk);
+    }
+}
+
+
 std::optional<applyGains::GainData> applyGains::read_gain_file(std::string update_id) const {
 
     // Define the output arrays
@@ -431,6 +502,95 @@ std::optional<applyGains::GainData> applyGains::read_gain_file(std::string updat
     gain_weight_ds.read(weight_read);
 
     GainData g{std::move(gain_read), std::move(weight_read)};
+
+    return g;
+}
+
+
+std::optional<applyGains::GainData> applyGains::fetch_gains(std::string tag) const {
+
+    // query cal broker
+    nlohmann::json json;
+    json["update_id"] = tag;
+    restReply reply = client.make_request_blocking("/gain", json, broker_host, broker_port);
+    if (!reply.first) {
+        WARN("Failed to retrieve gains from calibration broker. ({})", reply.second);
+        return {};
+    }
+    INFO("Got reply from cal broker.");
+
+    // parse reply
+    nlohmann::json js_reply;
+    try {
+        js_reply = json::parse(reply.second);
+    } catch (std::exception& e) {
+        WARN("Failed to parse calibration broker gains reponse.: {}", e.what());
+        return {};
+    }
+
+    std::string gain_str, wgt_str;
+    std::vector<uint32_t> g_shape, w_shape;
+    try {
+        auto gain = js_reply.at("gain");
+        auto weight = js_reply.at("weight");
+        g_shape = gain.at("shape").get<std::vector<uint32_t>>();
+        w_shape = weight.at("shape").get<std::vector<uint32_t>>();
+        // read into a string
+        gain_str = gain.at("data").get<std::string>();
+        wgt_str = weight.at("data").get<std::string>();
+    } catch (std::exception& e) {
+        WARN("Failed to read gain and weight from cal broker response.: {}", e.what());
+        return {};
+    }
+
+    // TODO how to load initial gains?
+    // Check the size of the datasets.
+    // This first test will be skipped loading the initial gains as we don't yet
+    // know what num_freq and num_elements will be.
+    if ((num_freq && g_shape[0] != num_freq.value())
+        || (num_elements && g_shape[1] != num_elements.value())) {
+        WARN("Gain dataset does not have the right shape. "
+             "Got ({}, {}), expected ({}, {})). Skipping update.",
+             g_shape[0], g_shape[1], num_freq.value(), num_elements.value());
+        return {};
+    }
+    // This consistency test will work regardless
+    if (g_shape[0] != w_shape[0] || g_shape[1] != w_shape[1]) {
+        WARN("Gain and weight datasets do not match shapes. "
+             "Gain ({}, {}), weight ({}, {})). Skipping update.",
+             g_shape[0], g_shape[1], w_shape[0], w_shape[1]);
+        return {};
+    }
+
+    // decode base64
+    size_t gain_size = g_shape[0] * g_shape[1];
+    cfloat gain[gain_size];
+    size_t gain_len, wgt_len;
+    bool weight_bool[gain_size];
+    if (base64_decode(gain_str.c_str(), gain_str.length(), (char*) gain, &gain_len, 0) != 1) {
+        WARN("Failed to decode gains.");
+        return {};
+    }
+    if (base64_decode(wgt_str.c_str(), wgt_str.length(), (char*) weight_bool, &wgt_len, 0) != 1) {
+        WARN("Failed to decode gain weights.");
+        return {};
+    }
+    if (gain_len != gain_size * sizeof(cfloat) || wgt_len != gain_size * sizeof(bool)) {
+        WARN("Decoded gains/weights do not have expected length. Got (gain: {:d}, weight: {:d}), expected {:d}.",
+             gain_len / sizeof(cfloat), wgt_len / sizeof(bool), gain_size);
+        return {};
+    }
+
+    // Reshape
+    // TODO: I don't know if it's possible to turn this into vectors without copying
+    std::vector<std::vector<cfloat>> gain_vec;
+    std::vector<std::vector<float>> weight_vec;
+    for (size_t fi = 0; fi < g_shape[0]; fi++) {
+        gain_vec.push_back(std::vector<cfloat>(gain, gain + g_shape[1]));
+        weight_vec.push_back(std::vector<float>(weight_bool, weight_bool + g_shape[1]));
+    }
+
+    GainData g{std::move(gain_vec), std::move(weight_vec)};
 
     return g;
 }
