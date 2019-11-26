@@ -47,7 +47,7 @@ buffer_recv:
   21cm:
     kotekan_stage: bufferRecv
     buf: beamform_hfb_output_buffer_merge
-    listen_port: 12050
+    listen_port: 11027
 
 # Write raw 21cm data
 write_hfb:
@@ -56,7 +56,7 @@ write_hfb:
   num_frames_per_file: 1024
   file_name: 'hfb_buf_merge'
   file_ext: 'dump'
-  base_dir: '/root/willis/21cm_data'
+  base_dir: '/drives/J/2/21cm_absorber_data'
 
 buffer_status:
   kotekan_stage: bufferStatus

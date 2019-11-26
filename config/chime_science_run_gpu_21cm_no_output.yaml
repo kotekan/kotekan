@@ -547,6 +547,24 @@ baseband:
     kotekan_stage: basebandReadout
     in_buf: network_buffer_3
 
+# Bad inputs buffer
+bad_input_buffer:
+  num_frames: buffer_depth
+  frame_size: num_elements
+  metadata_pool: main_pool
+  bad_inputs_buffer:
+    kotekan_buffer: standard
+
+# Buffer bad input updates
+# 1) Reorder list
+# 2) Zero bad inputs mask
+# 3) Add current bad input mask
+buffer_bad_input_update:
+  kotekan_stage: bufferBadInputs
+  updatable_config:
+    bad_inputs: /updatable_config/bad_inputs
+  out_buf: bad_inputs_buffer
+
 # Compress lost samples buffer for HFB data using only 1 buffer
 # and copy the result into the remaining 3 buffers
 compress_lost_samples:
@@ -647,7 +665,6 @@ gpu:
     gpu_id: 0
     updatable_config:
       psr_pt: /updatable_config/pulsar_pointing
-      bad_inputs: /updatable_config/bad_inputs
       rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
       rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
@@ -658,6 +675,7 @@ gpu:
       gain_frb_buf: gain_frb_buffer_0
       gain_psr_buf: gain_psr_buffer_0
       lost_samples_buf: lost_samples_buffer
+      bad_inputs_buf: bad_inputs_buffer
       compressed_lost_samples_buf: compressed_lost_samples_buf_0
     out_buffers:
       output_buf: gpu_n2_output_buffer_0
@@ -673,7 +691,6 @@ gpu:
     gpu_id: 1
     updatable_config:
       psr_pt: /updatable_config/pulsar_pointing
-      bad_inputs: /updatable_config/bad_inputs
       rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
       rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
@@ -684,6 +701,7 @@ gpu:
       gain_frb_buf: gain_frb_buffer_1
       gain_psr_buf: gain_psr_buffer_1
       lost_samples_buf: lost_samples_buffer
+      bad_inputs_buf: bad_inputs_buffer
       compressed_lost_samples_buf: compressed_lost_samples_buf_1
     out_buffers:
       output_buf: gpu_n2_output_buffer_1
@@ -699,7 +717,6 @@ gpu:
     gpu_id: 2
     updatable_config:
       psr_pt: /updatable_config/pulsar_pointing
-      bad_inputs: /updatable_config/bad_inputs
       rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
       rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
@@ -710,6 +727,7 @@ gpu:
       gain_frb_buf: gain_frb_buffer_2
       gain_psr_buf: gain_psr_buffer_2
       lost_samples_buf: lost_samples_buffer
+      bad_inputs_buf: bad_inputs_buffer
       compressed_lost_samples_buf: compressed_lost_samples_buf_2
     out_buffers:
       output_buf: gpu_n2_output_buffer_2
@@ -725,7 +743,6 @@ gpu:
     gpu_id: 3
     updatable_config:
       psr_pt: /updatable_config/pulsar_pointing
-      bad_inputs: /updatable_config/bad_inputs
       rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
       rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
@@ -736,6 +753,7 @@ gpu:
       gain_frb_buf: gain_frb_buffer_3
       gain_psr_buf: gain_psr_buffer_3
       lost_samples_buf: lost_samples_buffer
+      bad_inputs_buf: bad_inputs_buffer
       compressed_lost_samples_buf: compressed_lost_samples_buf_3
     out_buffers:
       output_buf: gpu_n2_output_buffer_3
@@ -786,7 +804,7 @@ hyper_fine_beam:
 
 # Transmit all the 21cm data to Moose
 buffer_send_21cm:
-  server_ip: 10.5.0.10
+  server_ip: 10.1.50.10
   reconnect_time: 20
   log_level: warn
   21cm:
