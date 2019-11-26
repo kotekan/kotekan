@@ -17,8 +17,6 @@ using kotekan::restServer;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
 
-const float pi = std::acos(-1);
-
 REGISTER_KOTEKAN_STAGE(mapMaker);
 REGISTER_KOTEKAN_STAGE(redundantStack);
 
@@ -37,6 +35,9 @@ mapMaker::mapMaker(Config& config, const string& unique_name, bufferContainer& b
 
     // config parameters
     feed_sep = config.get_default<float>(unique_name, "feed_sep", 0.3048);
+    apodization = config.get_default<std::string>(unique_name, "apodization", "nuttall");
+    if (apod_param.count(apodization) == 0)
+        FATAL_ERROR("Unknown apodization window '{}'", apodization);
 }
 
 void mapMaker::main_thread() {
@@ -280,6 +281,7 @@ void mapMaker::gen_matrices() {
     // calculate baseline for every stacked product
     ns_baselines.reserve(num_bl);
     chimeFeed input_a, input_b;
+    float max_bl = 0.;
     for (size_t i = 0; i < num_bl; i++) {
         stack_ctype s = stacks[i];
         input_a = chimeFeed::from_input(inputs[prods[s.prod].input_a]);
@@ -287,7 +289,17 @@ void mapMaker::gen_matrices() {
         ns_baselines[i] = feed_sep * (input_b.feed_location - input_a.feed_location);
         if (s.conjugate)
             ns_baselines[i] *= -1;
+        if (std::abs(ns_baselines[i]) > max_bl)
+            max_bl = std::abs(ns_baselines[i]);
     }
+
+    std::vector<float> apod_coeff = apod(ns_baselines, max_bl, apodization);
+    float norm = 0.;
+    for (float a : apod_coeff) {
+        norm += a;
+    }
+    if (norm == 0.)
+        norm = 1.;
 
     // Construct matrix of phase weights for every baseline and pixel
     for (auto f : freqs) {
@@ -296,7 +308,7 @@ void mapMaker::gen_matrices() {
         for (uint p = 0; p < num_pix; p++) {
             for (uint i = 0; i < num_bl; i++) {
                 m[p * num_bl + i] =
-                    std::exp(cfloat(-2.i) * pi * ns_baselines[i] / lam * sinza[p]) / float(num_bl);
+                    std::exp(cfloat(-2.i) * pi * ns_baselines[i] / lam * sinza[p]) * apod_coeff[i] / norm;
             }
         }
         vis2map.insert(std::pair<uint64_t, std::vector<cfloat>>(f.first, m));

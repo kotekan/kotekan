@@ -74,6 +74,7 @@ private:
 
     // Configurable
     float feed_sep;
+    std::string apodization;
 
     // Mutex for reading and writing to maps
     std::mutex mtx;
@@ -107,5 +108,42 @@ private:
 
 std::pair<uint32_t, std::vector<rstack_ctype>>
 full_redundant(const std::vector<input_ctype>& inputs, const std::vector<prod_ctype>& prods);
+
+const float pi = std::acos(-1);
+
+// Apodization windows.
+// Based on https://github.com/radiocosmology/draco/blob/hybrid-beamform/draco/util/tools.py#L370
+const std::map<std::string, std::vector<float>> apod_param = {
+    {"uniform", {1., 0., 0., 0.}},
+    {"hanning", {0.5, -0.5, 0., 0.}},
+    {"hamming", {0.53836, -0.46164, 0., 0.}},
+    {"blackman", {0.42, -0.5, 0.08, 0.}},
+    {"nuttall", {0.355768, -0.487396, 0.144232, -0.012604}},
+    {"blackman_nuttall", {0.3635819, -0.4891775, 0.1365995, -0.0106411}},
+    {"blackman_harris", {0.35875, -0.48829, 0.14128, -0.01168}},
+};
+
+inline std::vector<float> apod(std::vector<float>& x, float width = 1., const std::string& win = "nuttall") {
+
+    if (width <= 0)
+        throw std::runtime_error(fmt::format("Apodization width {:f} <= 0", width));
+
+    std::vector<float> coeff = apod_param.at(win);
+    std::vector<float> w;
+    for (auto xi : x) {
+        // Accept a range of +/- 1
+        if (xi < -1 * width || xi > width) {
+            w.push_back(0.);
+        } else {
+            float y = 0.;
+            for (unsigned short n = 0; n < coeff.size(); n++) {
+                y += coeff[n] * std::cos(pi * (xi / width + 1) * n);
+            }
+            w.push_back(y);
+        }
+    }
+
+    return w;
+};
 
 #endif
