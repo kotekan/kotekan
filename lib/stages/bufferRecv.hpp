@@ -59,6 +59,7 @@ class connInstance;
  * @conf listen_port         Int, default 11024.  The port to listen for new connections
  * @conf num_threads         Int, default 1.  The number of worker threads to use
  * @conf connection_timeout  Int, default 60.  Number of seconds before timeout on transfer
+ * @conf drop_frames         Bool, default true.  Whether to drop frames when buffer fills.
  *
  * @par Metrics
  * @metric kotekan_buffer_recv_transfer_time_seconds
@@ -113,6 +114,9 @@ private:
 
     /// The current frame to use next
     int current_frame_id = 0;
+
+    /// Whether to drop frames when buffer starts filling up
+    bool drop_frames;
 
     /// A lock on the current frame, since many systems may ask for the next frame
     std::mutex next_frame_lock;
@@ -217,7 +221,7 @@ class connInstance : public kotekan::kotekanLogging {
 public:
     /// Constructor
     connInstance(const string& producer_name, struct Buffer* buf, bufferRecv* buffer_recv,
-                 const string& client_ip, int port, struct timeval read_timeout);
+                 const string& client_ip, int port, struct timeval read_timeout, bool drop_frames);
 
     /// Destructor
     ~connInstance();
@@ -268,6 +272,9 @@ public:
 
     /// The event/read timeout
     struct timeval read_timeout;
+
+    /// Whether to drop frames or block if buffer is full
+    bool drop_frames;
 
     /// The libevent event which gets triggered on a read
     struct event* event_read;

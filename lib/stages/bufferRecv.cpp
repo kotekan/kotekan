@@ -41,6 +41,7 @@ bufferRecv::bufferRecv(Config& config, const string& unique_name,
     listen_port = config.get_default<uint32_t>(unique_name, "listen_port", 11024);
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     connection_timeout = config.get_default<int>(unique_name, "connection_timeout", 60);
+    drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
 
     buf = get_buffer("buf");
     register_producer(buf, unique_name.c_str());
@@ -144,7 +145,8 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
 
     // New connection instance
     connInstance* instance = new connInstance(accept_args->unique_name, accept_args->buf,
-                                              accept_args->buffer_recv, ip_str, port, read_timeout);
+                                              accept_args->buffer_recv, ip_str, port, read_timeout,
+                                              drop_frames);
 
     // Setup logging for the instance object.
     instance->set_log_prefix(accept_args->unique_name + "/instance");
@@ -275,7 +277,7 @@ int bufferRecv::get_next_frame() {
 
     // If the frame is full for some reason (items not being consumed fast enough)
     // Then return -1;
-    if (is_frame_empty(buf, current_frame_id) == 0) {
+    if (drop_frames && is_frame_empty(buf, current_frame_id) == 0) {
         return -1;
     }
 
@@ -286,13 +288,14 @@ int bufferRecv::get_next_frame() {
 }
 
 connInstance::connInstance(const string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
-                           const string& client_ip, int port, struct timeval read_timeout) :
+                           const string& client_ip, int port, struct timeval read_timeout, bool drop_frames) :
     producer_name(producer_name),
     buf(buf),
     buffer_recv(buffer_recv),
     client_ip(client_ip),
     port(port),
-    read_timeout(read_timeout) {
+    read_timeout(read_timeout),
+    drop_frames(drop_frames) {
 
     frame_space = buffer_malloc(buf->aligned_frame_size, 0);
     CHECK_MEM(frame_space);
