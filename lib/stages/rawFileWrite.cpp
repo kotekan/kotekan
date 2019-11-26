@@ -45,6 +45,9 @@ void rawFileWrite::main_thread() {
     gethostname(hostname, 64);
     bool isFileOpen = false;
 
+    const int full_path_len = 200;
+    char full_path[full_path_len];
+
     auto& write_time_metric =
         Metrics::instance().add_gauge("kotekan_rawfilewrite_write_time_seconds", unique_name);
     while (!stop_thread) {
@@ -56,9 +59,6 @@ void rawFileWrite::main_thread() {
 
         // Start timing the write time
         double st = current_time();
-
-        const int full_path_len = 200;
-        char full_path[full_path_len];
 
         if(!isFileOpen) {
           snprintf(full_path, full_path_len, "%s/%s_%s_%07d.%s", base_dir.c_str(), hostname,
