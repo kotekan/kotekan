@@ -39,16 +39,16 @@ RfiFrameDrop::RfiFrameDrop(Config& config, const std::string& unique_name, buffe
     register_consumer(_buf_in_sk, unique_name.c_str());
     register_producer(_buf_out, unique_name.c_str());
 
-    auto num_samples = config.get<size_t>("samples_per_data_set", unique_name);
-    sk_step = config.get<size_t>("sk_step", unique_name);
-    num_elements = config.get<size_t>("num_elements", unique_name);
-    num_sub_frames = config.get<size_t>("num_sub_frames", unique_name);
+    auto num_samples = config.get<size_t>(unique_name, "samples_per_data_set");
+    sk_step = config.get<size_t>(unique_name, "sk_step");
+    num_elements = config.get<size_t>(unique_name, "num_elements");
+    num_sub_frames = config.get<size_t>(unique_name, "num_sub_frames");
     sk_samples_per_frame = num_samples / sk_step / num_sub_frames;
-    enable_rfi_zero = config.get_default<bool>("enable_rfi_zero", unique_name, false);
+    enable_rfi_zero = config.get_default<bool>(unique_name, "enable_rfi_zero", false);
 
     assert((size_t)_buf_in_sk->frame_size == sizeof(float) * sk_samples_per_frame * num_sub_frames);
 
-    auto j = config.get<nlohmann::json>("thresholds", unique_name);
+    auto j = config.get<nlohmann::json>(unique_name, "thresholds");
 
     if (!parse_thresholds(j)) {
         FATAL_ERROR("Error parsing thresholds.");
