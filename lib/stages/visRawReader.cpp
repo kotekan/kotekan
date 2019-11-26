@@ -234,6 +234,7 @@ void visRawReader::main_thread() {
     uint8_t* frame;
     dset_id_t dset_id;         // dataset ID stored in the frame
     dset_id_t cur_dset_id = dset_id_t::null; // current dataset ID: used to identify changes in frames coming in
+    bool got_first_frame = false;
 
     size_t ind = 0, read_ind = 0, file_ind;
 
@@ -280,6 +281,23 @@ void visRawReader::main_thread() {
             // Copy the data from the file
             std::memcpy(frame, mapped_file + file_ind * file_frame_size + metadata_size + 1,
                         data_size);
+
+            // Update the dataset ID. If not using comet, only need to do this once.
+            dset_id = ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id;
+            if (!got_first_frame) {
+                get_dataset_state(dset_id);
+                cur_dset_id = dset_id;
+                got_first_frame = true;
+            } else if (dset_id != cur_dset_id) {
+                if (!use_comet) {
+                    FATAL_ERROR(
+                        "Dataset ID of incoming frames changed from {} to {}. Changing  ID "
+                        "not supported without dataset broker, exiting...",
+                        cur_dset_id, dset_id);
+                }
+                get_dataset_state(dset_id);
+                cur_dset_id = dset_id;
+            }
         } else {
             // Set metadata if file contained an empty frame
             ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->num_prod = _prods.size();
@@ -298,22 +316,6 @@ void visRawReader::main_thread() {
             frame.erms = 0;
             frame.dataset_id = out_dset_id;
             DEBUG("visRawReader: Reading empty frame: {:d}", frame_id);
-        }
-
-        // Update the dataset ID. If not using comet, only need to do this once.
-        dset_id = ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id;
-        if (ind == 0) {
-            get_dataset_state(dset_id);
-            cur_dset_id = dset_id;
-        } else if (dset_id != cur_dset_id) {
-            if (!use_comet) {
-                FATAL_ERROR(
-                    "Dataset ID of incoming frames changed from {:#x} to {:#x}. Changing  ID "
-                    "not supported without dataset broker, exiting...",
-                    cur_dset_id, dset_id);
-            }
-            get_dataset_state(dset_id);
-            cur_dset_id = dset_id;
         }
 
         // Set the dataset ID to the updated value
