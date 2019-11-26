@@ -4,7 +4,16 @@ pipeline {
     timeout(time: 1, unit: 'HOURS')
     parallelsAlwaysFailFast()
   }
+  environment {
+    CCACHE_NOHASHDIR = 1
+    CCACHE_BASEDIR = "/mnt/data/jenkins/workspace"
+  }
   stages {
+    stage('Pre build ccache stats') {
+      steps {
+        sh '''ccache -s'''
+      }
+    }
     stage('Build') {
       parallel {
         stage('Build kotekan without hardware specific options') {
@@ -12,7 +21,7 @@ pipeline {
             sh '''cd build/
                   cmake -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
-                  -DUSE_OMP=ON -DBOOST_TESTS=ON ..
+                  -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
                   make -j 4'''
           }
         }
@@ -24,7 +33,7 @@ pipeline {
                   -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON \
                   -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
-                  -DUSE_OMP=ON -DBOOST_TESTS=ON ..
+                  -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
                   make -j 4'''
           }
         }
@@ -51,7 +60,7 @@ pipeline {
                         -DUSE_LAPACK=ON -DBLAZE_PATH=/usr/local/opt/blaze \
                         -DOPENBLAS_PATH=/usr/local/opt/OpenBLAS \
                         -DUSE_HDF5=ON -DHIGHFIVE_PATH=/usr/local/opt/HighFive \
-                        -DCOMPILE_DOCS=ON -DUSE_OPENCL=ON ..
+                        -DCOMPILE_DOCS=ON -DUSE_OPENCL=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
                   make -j 4'''
           }
         } */
@@ -75,6 +84,18 @@ pipeline {
                   black --check --exclude docs ..'''
           }
         }
+        stage('Install comet') {
+          steps {
+            catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+              sh '''python3.7 -m pip install --user git+https://github.com/chime-experiment/comet.git@master'''
+            }
+          }
+        }
+      }
+    }
+    stage('Post build ccache stats') {
+      steps {
+        sh '''ccache -s'''
       }
     }
     stage('Unit Tests') {
@@ -82,7 +103,8 @@ pipeline {
             stage('Python Unit Tests') {
               steps {
                 sh '''cd tests/
-                      PYTHONPATH=../python/ python3 -m pytest -n 4 -x -vvv'''
+                      PATH=~/.local/bin:$PATH PYTHONPATH=../python/ python3 -m pytest -n auto -x -vvv -m "not serial"
+                      PATH=~/.local/bin:$PATH PYTHONPATH=../python/ python3 -m pytest -x -vvv -m serial'''
               }
             }
             stage('Boost Unit Tests') {

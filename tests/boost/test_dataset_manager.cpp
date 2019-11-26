@@ -19,6 +19,9 @@ using json = nlohmann::json;
 
 using namespace std::string_literals;
 
+// The datasetManager uses the restServer, but it's not started by this test.
+// That leads to a warnings message from the restServer on exit we can ignore.
+
 
 BOOST_FIXTURE_TEST_CASE(_general, CompareCTypes) {
     _global_log_level = 5;

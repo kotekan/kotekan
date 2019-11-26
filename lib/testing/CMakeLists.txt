@@ -5,7 +5,8 @@ set ( KOTEKAN_TESTING_SOURCES
       constDataCheck.cpp
       fakeGpu.cpp
       fakeGpuPattern.cpp
-      fakeVis.cpp
+      FakeVis.cpp
+      FakeVisPattern.cpp
       gpuBeamformSimulate.cpp
       gpuBeamformPulsarSimulate.cpp
       gpuSimulate.cpp

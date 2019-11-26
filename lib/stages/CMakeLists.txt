@@ -59,6 +59,7 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       integrateHFBData.cpp
       compressLostSamples.cpp
       compressData.cpp
+      bufferBadInputs.cpp
     )
 
 if (${USE_AIRSPY})

@@ -21,16 +21,37 @@ using json = nlohmann::json;
 
 using namespace std::string_literals;
 
+int read_from_argv() {
+    // The randomly chosen port for the dataset broker is passed to this test as a command line
+    // argument.
+    // At some point boost stopped requiring the `--` to pass command line arguments, so we
+    // should be ready for both `--` being there or not...
+    BOOST_CHECK(boost::unit_test::framework::master_test_suite().argc >= 2);
+    int broker_port;
+    if (!std::string("--").compare(boost::unit_test::framework::master_test_suite().argv[1])) {
+        BOOST_CHECK(boost::unit_test::framework::master_test_suite().argc == 3);
+        broker_port = atoi(boost::unit_test::framework::master_test_suite().argv[2]);
+    } else {
+        BOOST_CHECK(boost::unit_test::framework::master_test_suite().argc == 2);
+        broker_port = atoi(boost::unit_test::framework::master_test_suite().argv[1]);
+    }
+    BOOST_CHECK(broker_port);
+    return broker_port;
+}
+
 BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, CompareCTypes) {
+    int broker_port = read_from_argv();
+
     _global_log_level = 5;
     __enable_syslog = 0;
 
-    // We have to start the restServer here, because the datasetManager uses it.
-    kotekan::restServer::instance().start("127.0.0.1");
+    // We have to start the restServer here, because the datasetManager uses it (for forced-update).
+    kotekan::restServer::instance().start("127.0.0.1", 0);
 
     json json_config;
     json json_config_dm;
     json_config_dm["use_dataset_broker"] = true;
+    json_config_dm["ds_broker_port"] = broker_port;
     json_config["dataset_manager"] = json_config_dm;
 
     Config conf;
@@ -54,7 +75,7 @@ BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, CompareCTypes) {
     } else
         std::cout << "Unable to open file DS_D.txt\n";
     dset_id_t ds_id;
-    std::stringstream(line) >> ds_id;
+    ds_id.set_from_string(line);
 
     auto freq_state = dm.dataset_state<freqState>(ds_id);
     check_equal(old_freqs, freq_state->get_freqs());
@@ -78,7 +99,7 @@ BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, CompareCTypes) {
 
     // write ID to disk for consumer
     std::ofstream o("DS_ID2.txt");
-    o << ds_id2;
+    o << ds_id2.to_string();
     o.close();
 
     std::cout << dm.summary() << std::endl;

@@ -155,6 +155,7 @@ MESSAGE("GPU Modules Included: " ${GPU_MODULES})
 set(INPUT_MODULES "")
 if (${USE_DPDK})
   set(INPUT_MODULES ${INPUT_MODULES} "DPDK ")
+  find_package(DPDK REQUIRED)
 endif ()
 if (${USE_AIRSPY})
   add_definitions(-DWITH_AIRSPY)
@@ -305,7 +306,7 @@ endif()
 # Enforce code formatting rules with clang-format.
 find_program(
     CLANG_FORMAT_PATH
-    NAMES "clang-format-8"
+    NAMES "clang-format-8" "clang-format"
     DOC "Path to clang-format executable"
     )
 if(NOT CLANG_FORMAT_PATH)

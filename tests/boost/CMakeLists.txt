@@ -13,12 +13,10 @@ include_directories (${KOTEKAN_SOURCE_DIR}/include)
 set ( KOTEKAN_BOOST_TEST_SOURCES
       test_bip_buffer.cpp
       test_dataset_manager.cpp
-      # TODO: disabled until we can fix the Libevent issues
-      #test_dataset_manager_rest.cpp
+      test_dataset_manager_rest.cpp
       test_updatequeue.cpp
       test_truncate.cpp
-      # TODO: disabled until we can fix the Libevent issues
-      #test_restclient.cpp
+      test_restclient.cpp
       test_chime_stacking.cpp
       test_config.cpp
       test_prometheus_metrics.cpp
