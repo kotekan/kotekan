@@ -1119,19 +1119,23 @@ valve:
 rfi_stage2:
   rfi0:
     kotekan_stage: RfiFrameDrop
-    in_buf: valve_buffer_0
+    in_buf_vis: valve_buffer_0
+    in_buf_sk: gpu_rfi_output_buffer_0
     out_buf: rfi_vis_buffer_0
   rfi1:
     kotekan_stage: RfiFrameDrop
-    in_buf: valve_buffer_1
+    in_buf_vis: valve_buffer_1
+    in_buf_sk: gpu_rfi_output_buffer_1
     out_buf: rfi_vis_buffer_1
   rfi2:
     kotekan_stage: RfiFrameDrop
-    in_buf: valve_buffer_2
+    in_buf_vis: valve_buffer_2
+    in_buf_sk: gpu_rfi_output_buffer_2
     out_buf: rfi_vis_buffer_2
   rfi3:
     kotekan_stage: RfiFrameDrop
-    in_buf: valve_buffer_3
+    in_buf_vis: valve_buffer_3
+    in_buf_sk: gpu_rfi_output_buffer_3
     out_buf: rfi_vis_buffer_3
   thresholds:
     - threshold: 5.0

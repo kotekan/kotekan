@@ -92,10 +92,12 @@ void RfiFrameDrop::main_thread() {
         // Try and synchronize up the frames. Even though they arrive at
         // different rates, this should eventually sync them up.
         if (metadata_vis->fpga_seq_num < metadata_sk->fpga_seq_num) {
+	    INFO("Dropping incoming N2 frame to sync up.");
             mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
             continue;
         }
         if (metadata_sk->fpga_seq_num < metadata_vis->fpga_seq_num) {
+	    INFO("Dropping incoming SK frame to sync up.");
             mark_frame_empty(_buf_in_sk, unique_name.c_str(), frame_id_in_sk++);
             continue;
         }
