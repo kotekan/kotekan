@@ -56,6 +56,7 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       visDebug.cpp
       removeEv.cpp
       bufferBadInputs.cpp
+      RfiFrameDrop.cpp
     )
 
 if (${USE_AIRSPY})
