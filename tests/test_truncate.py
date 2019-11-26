@@ -11,6 +11,10 @@ import numpy as np
 from kotekan import visbuffer
 from kotekan import runner
 
+# Skip if OpenMP support not built into kotekan
+if not runner.has_openmp():
+    pytest.skip("OpenMP support not available.", allow_module_level=True)
+
 trunc_params = {
     "fakevis_mode": "test_pattern_simple",
     "test_pattern_value": [0, 0],

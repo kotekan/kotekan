@@ -23,6 +23,7 @@
 
 
 using kotekan::basebandApiManager;
+using kotekan::basebandDumpData;
 using kotekan::basebandDumpStatus;
 using kotekan::basebandReadoutManager;
 using kotekan::basebandRequest;
@@ -46,8 +47,8 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
     next_frame(0),
     oldest_frame(-1),
     frame_locks(_num_frames_buffer),
-    // Over allocate so we can align the memory.
-    baseband_data(std::make_unique<uint8_t[]>(_num_elements * _max_dump_samples + 15)),
+    // Over allocate so we can align the memory and can't get stuck halfway in BipBuffer
+    data_buffer(2 * (_num_elements * _max_dump_samples + 16)),
     readout_counter(kotekan::prometheus::Metrics::instance().add_counter(
         "kotekan_baseband_readout_total", unique_name, {"freq_id", "status"})),
     readout_in_progress_metric(kotekan::prometheus::Metrics::instance().add_gauge(
@@ -99,6 +100,7 @@ void basebandReadout::main_thread() {
     std::unique_ptr<std::thread> wt;
     std::unique_ptr<std::thread> lt;
 
+    basebandReadoutManager* mgr = nullptr;
     while (!stop_thread) {
 
         if (wait_for_full_frame(buf, unique_name.c_str(), frame_id % buf->num_frames) == nullptr) {
@@ -119,11 +121,10 @@ void basebandReadout::main_thread() {
             readout_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
 
             INFO("Starting request-listening thread for freq_id: {:d}", freq_id);
-            basebandReadoutManager& mgr =
-                basebandApiManager::instance().register_readout_stage(freq_id);
-            lt = std::make_unique<std::thread>([&] { this->listen_thread(freq_id, mgr); });
+            mgr = &basebandApiManager::instance().register_readout_stage(freq_id);
+            lt = std::make_unique<std::thread>([&] { this->readout_thread(freq_id, *mgr); });
 
-            wt = std::make_unique<std::thread>([&] { this->write_thread(mgr); });
+            wt = std::make_unique<std::thread>([&] { this->writeout_thread(*mgr); });
         }
 
         int done_frame = add_replace_frame(frame_id);
@@ -133,7 +134,9 @@ void basebandReadout::main_thread() {
 
         frame_id++;
     }
-    ready_to_write.notify_all();
+    if (mgr) {
+        mgr->stop();
+    }
 
     if (lt) {
         lt->join();
@@ -143,7 +146,7 @@ void basebandReadout::main_thread() {
     }
 }
 
-void basebandReadout::listen_thread(const uint32_t freq_id, basebandReadoutManager& mgr) {
+void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutManager& mgr) {
     auto& request_no_data_counter = readout_counter.labels({std::to_string(freq_id), "no_data"});
 
     while (!stop_thread) {
@@ -165,15 +168,6 @@ void basebandReadout::listen_thread(const uint32_t freq_id, basebandReadoutManag
             INFO("Received baseband dump request for event {:d}: {:d} samples starting at count "
                  "{:d}. (next_frame: {:d})",
                  event_id, request.length_fpga, request.start_fpga, next_frame);
-
-            std::unique_lock<std::mutex> lock(dump_to_write_mtx);
-            while (dump_to_write) {
-                ready_to_write.wait(lock);
-                if (stop_thread)
-                    return;
-            }
-            INFO("Ready to copy samples into the baseband readout buffer");
-
             {
                 std::lock_guard<std::mutex> lock(request_mtx);
                 dump_status.state = basebandDumpStatus::State::INPROGRESS;
@@ -184,6 +178,8 @@ void basebandReadout::listen_thread(const uint32_t freq_id, basebandReadoutManag
                 // is available in the current buffers.
             }
 
+            DEBUG("Ready to copy samples into the baseband readout buffer");
+
             // Copying the data from the ring buffer is done in *this* thread. Writing the data
             // out is done by another thread. This keeps the number of threads that can lock out
             // the main buffer limited to 2 (listen and main).
@@ -191,63 +187,94 @@ void basebandReadout::listen_thread(const uint32_t freq_id, basebandReadoutManag
                 get_data(event_id, request.start_fpga,
                          std::min((int64_t)request.length_fpga, _max_dump_samples));
 
-
             // At this point we know how much of the requested data we managed to read from the
-            // buffer (which may be nothing if the request as recieved too late).
+            // buffer (which may be nothing if the request as received too late).
             {
                 std::lock_guard<std::mutex> lock(request_mtx);
                 dump_status.bytes_total = data.num_elements * data.data_length_fpga;
                 dump_status.bytes_remaining = dump_status.bytes_total;
-                if (data.data_length_fpga == 0) {
+                if (data.status != basebandDumpData::Status::Ok) {
                     INFO("Captured no data for event {:d} and freq {:d}.", event_id, freq_id);
                     dump_status.state = basebandDumpStatus::State::ERROR;
                     dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
                         std::chrono::system_clock::now());
-                    dump_status.reason = "No data captured.";
-                    request_no_data_counter.inc();
-                    continue;
+                    switch (data.status) {
+                        case basebandDumpData::Status::TooLong:
+                            dump_status.reason = "Request length exceeds the configured limit.";
+                            break;
+                        case basebandDumpData::Status::Late:
+                            dump_status.reason = "No data captured.";
+                            request_no_data_counter.inc();
+                            break;
+                        case basebandDumpData::Status::ReserveFailed:
+                            dump_status.reason = "No free space in the baseband buffer";
+                            break;
+                        case basebandDumpData::Status::Cancelled:
+                            dump_status.reason = "Kotekan exiting.";
+                            break;
+                        default:
+                            INFO("Unknown dump status: {}", int(data.status));
+                            throw std::runtime_error(
+                                "Unhandled basebandDumpData::Status case in a switch statement.");
+                    }
                 } else {
                     INFO("Captured {:d} samples for event {:d} and freq {:d}.",
                          data.data_length_fpga, data.event_id, data.freq_id);
+
+                    // we are done copying the samples into the readout buffer
+                    mgr.ready({dump_status, data});
                 }
             }
-
-            dump_to_write = std::make_unique<basebandDumpData>(data);
-            lock.unlock();
-            ready_to_write.notify_one();
         }
     }
 }
 
-void basebandReadout::write_thread(basebandReadoutManager& mgr) {
+void basebandReadout::writeout_thread(basebandReadoutManager& mgr) {
 
     while (!stop_thread) {
-        std::unique_lock<std::mutex> lock(dump_to_write_mtx);
-
-        // This will reset `dump_to_write` to nullptr so that even if this
-        // raises an exception, it will be empty until `listen_thread` copies
-        // the next request's data
-        while (!dump_to_write) {
-            ready_to_write.wait(lock);
-            if (stop_thread)
-                return;
-        }
-
-        auto data = std::move(dump_to_write);
-
         auto next_request = mgr.get_next_ready_request();
-        basebandDumpStatus& dump_status = std::get<0>(next_request);
+        if (!next_request)
+            continue;
+
+        basebandDumpStatus& dump_status = std::get<0>(std::get<0>(*next_request));
+        basebandDumpData dump_data = std::get<1>(std::get<0>(*next_request));
         // Sanity check
-        if (dump_status.request.event_id != data->event_id) {
+        if (dump_status.request.event_id != dump_data.event_id) {
             ERROR("Mismatched event ids: {:d} - {:d}", dump_status.request.event_id,
-                  data->event_id);
+                  dump_data.event_id);
             throw std::runtime_error("Mismatched id - abort");
         }
-        std::mutex& request_mtx = std::get<1>(next_request);
-        readout_in_progress_metric.labels({std::to_string(data->freq_id)}).set(1);
+        std::mutex& request_mtx = std::get<1>(*next_request);
+        readout_in_progress_metric.labels({std::to_string(dump_data.freq_id)}).set(1);
 
+        // first, get read access to the underlying BipBuffer segment
+        BipBufferReader reader(data_buffer);
+        auto rr = reader.access(dump_data.reservation_length);
+        if (!rr) {
+            ERROR("No matching buffer reader reservation for the baseband dump data");
+            throw std::runtime_error("Not able to get reader reservation");
+        }
+
+        // Sanity check that the read reservation points to the same memory used by the writer
+        DEBUG("Read reservation: starting at {}, length {}",
+              rr->data.data() - data_buffer.data.get(), rr->length);
+        // Ugly workaround to lose the read-only view of the ReadReservation, for consumption by
+        // `span_from_length_aligned`
+        auto reader_data_span = basebandDumpData::span_from_length_aligned(
+            gsl::span<uint8_t>((uint8_t*)rr->data.data(), rr->data.size()));
+        DEBUG("Read data starts alignment at: {}",
+              reader_data_span.data() - data_buffer.data.get());
+        if (reader_data_span != dump_data.data) {
+            ERROR("Baseband dump data doesn't have matching buffer writer and reader reservations "
+                  "after alignment: writer ({}, {}); reader ({}, {})",
+                  dump_data.data.data(), dump_data.data.length(), reader_data_span.data(),
+                  reader_data_span.length());
+            throw std::runtime_error("reader and writer data spans don't align.");
+        }
+
+        // write out the data
         try {
-            write_dump(*data, dump_status, request_mtx);
+            write_dump(dump_data, dump_status, request_mtx);
         } catch (HighFive::FileException& e) {
             INFO("Writing Baseband dump file failed with hdf5 error.");
             std::lock_guard<std::mutex> lock(request_mtx);
@@ -255,11 +282,10 @@ void basebandReadout::write_thread(basebandReadoutManager& mgr) {
             dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
                 std::chrono::system_clock::now());
             dump_status.reason = e.what();
-            readout_counter.labels({std::to_string(data->freq_id), "error"}).inc();
+            readout_counter.labels({std::to_string(dump_data.freq_id), "error"}).inc();
         }
-        readout_in_progress_metric.labels({std::to_string(data->freq_id)}).set(0);
-        lock.unlock();
-        ready_to_write.notify_one();
+        reader.advance(*rr);
+        readout_in_progress_metric.labels({std::to_string(dump_data.freq_id)}).set(0);
     }
 }
 
@@ -288,7 +314,7 @@ int basebandReadout::add_replace_frame(int frame_id) {
 basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_start_fpga,
                                            int64_t trigger_length_fpga) {
     // This assumes that the frame's timestamps are in order, but not that they
-    // are nessisarily contiguous.
+    // are necessarily contiguous.
 
     int dump_start_frame = 0;
     int dump_end_frame = 0;
@@ -299,7 +325,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
 
     if (trigger_length_fpga > _samples_per_data_set * _num_frames_buffer / 2) {
         // Too long, I won't allow it.
-        return basebandDumpData();
+        return basebandDumpData(basebandDumpData::Status::TooLong);
     }
 
     while (!stop_thread) {
@@ -360,13 +386,13 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
         unlock_range(dump_start_frame, dump_end_frame);
     }
     if (stop_thread) {
-        return basebandDumpData();
+        return basebandDumpData(basebandDumpData::Status::Cancelled);
     }
 
     if (dump_start_frame >= dump_end_frame) {
         // Trigger was too late and missed the data. Return an empty dataset.
         INFO("Baseband dump trigger is too late: {:d} >= {:d}", dump_start_frame, dump_end_frame);
-        return basebandDumpData();
+        return basebandDumpData(basebandDumpData::Status::Late);
     }
 
     int buf_frame = dump_start_frame % buf->num_frames;
@@ -387,8 +413,21 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
     timeradd(&(first_meta->first_packet_recv_time), &delta, &tmp);
     timespec packet_time0 = {tmp.tv_sec, tmp.tv_usec * 1000};
 
+    BipBufferWriter writer(data_buffer);
+    // NOTE: oversize the reservation so span_from_length_aligned is happy
+    auto wr = writer.reserve(_num_elements * (data_end_fpga - data_start_fpga) + 15);
+    if (!wr) {
+        INFO("Write reservation failed: {}",
+             _num_elements * (data_end_fpga - data_start_fpga) + 15);
+        unlock_range(dump_start_frame, dump_end_frame);
+        return basebandDumpData(basebandDumpData::Status::ReserveFailed);
+    }
+
+    DEBUG("Write reservation: starting at {}, length {}", wr->data.data() - data_buffer.data.get(),
+          wr->length);
     basebandDumpData dump(event_id, freq_id, _num_elements, data_start_fpga,
-                          data_end_fpga - data_start_fpga, packet_time0, baseband_data.get());
+                          data_end_fpga - data_start_fpga, packet_time0, wr->data);
+    DEBUG("Write data starts alignment at: {}", dump.data.data() - data_buffer.data.get());
 
     // Fill in the data.
     int64_t next_data_ind = 0;
@@ -413,10 +452,11 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
         // Done with this frame. Allow it to participate in the ring buffer.
         frame_locks[frame_index % _num_frames_buffer].unlock();
     }
+    writer.commit(*wr);
     unlock_range(dump_start_frame, dump_end_frame);
 
     if (stop_thread)
-        return basebandDumpData();
+        return basebandDumpData(basebandDumpData::Status::Cancelled);
     return dump;
 }
 
@@ -560,32 +600,3 @@ void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump
     }
     // H5 file goes out of scope and is closed automatically.
 }
-
-
-/* Helper for basebandDumpData constructor.
- * Binds a span to an array, aligning it on a 16 byte boundary. Array should
- * be at least 15 bytes too long.
- */
-gsl::span<uint8_t> span_from_length_aligned(uint8_t* start, size_t length) {
-
-    intptr_t span_start_int = (intptr_t)start + 15;
-    span_start_int -= span_start_int % 16;
-    uint8_t* span_start = (uint8_t*)span_start_int;
-    uint8_t* span_end = span_start + length;
-
-    return gsl::span<uint8_t>(span_start, span_end);
-}
-
-
-basebandDumpData::basebandDumpData(uint64_t event_id_, uint32_t freq_id_, uint32_t num_elements_,
-                                   int64_t data_start_fpga_, uint64_t data_length_fpga_,
-                                   timespec data_start_ctime_, uint8_t* baseband_data) :
-    event_id(event_id_),
-    freq_id(freq_id_),
-    num_elements(num_elements_),
-    data_start_fpga(data_start_fpga_),
-    data_length_fpga(data_length_fpga_),
-    data_start_ctime(data_start_ctime_),
-    data(span_from_length_aligned(baseband_data, num_elements_ * data_length_fpga_)) {}
-
-basebandDumpData::basebandDumpData() : basebandDumpData(0, 0, 0, 0, 0, {0, 0}, nullptr) {}

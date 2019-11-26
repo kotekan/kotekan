@@ -57,7 +57,7 @@ using namespace kotekan;
 
 // Embedded script for converting the YAML config to json
 const std::string yaml_to_json = R"(
-import yaml, json, sys, os, subprocess
+import yaml, json, sys, os, subprocess, errno
 
 file_name = sys.argv[1]
 gps_server = ""
@@ -79,8 +79,9 @@ try:
     if response != "":
         sys.stderr.write("yamllint warnings/errors for: ")
         sys.stderr.write(str(response))
+# TODO: change to checking for OSError subtypes when Python 2 support is removed
 except OSError as e:
-    if e.errno == os.errno.ENOENT:
+    if e.errno == errno.ENOENT:
         sys.stderr.write("yamllint not installed, skipping pre-validation\n")
     else:
         sys.stderr.write("error with yamllint, skipping pre-validation\n")
@@ -168,19 +169,74 @@ void print_version() {
     }
 }
 
-json get_json_version_into() {
+
+std::vector<std::string> split_string(const std::string& s, const std::string& delimiter) {
+
+    std::vector<std::string> tokens;
+
+    size_t start = 0;
+
+    while (start <= s.size()) {
+        size_t end = s.find(delimiter, start);
+
+        // If no match was found, then we should select to the end of the string
+        if (end == std::string::npos)
+            end = s.size();
+
+        // If a match was found at the start then we shouldn't add anything
+        if (end != start)
+            tokens.push_back(s.substr(start, end - start));
+
+        start = end + delimiter.size();
+    }
+
+    return tokens;
+}
+
+std::string trim(std::string& s) {
+    s.erase(0, s.find_first_not_of(' '));
+    s.erase(s.find_last_not_of(' ') + 1);
+    return s;
+}
+
+json parse_cmake_options() {
+    auto options = split_string(get_cmake_build_options(), "\n");
+
+    json j;
+
+    for (auto opt : options) {
+
+        // Trim off the indent from any nested options
+        if (opt[1] == '-') {
+            opt = opt.substr(2, opt.size() - 2);
+        }
+
+        auto t = split_string(opt, ":");
+        auto key = trim(t[0]);
+        auto val = trim(t[1]);
+
+        j[key] = val;
+    }
+    return j;
+}
+
+json get_json_version_info() {
     // Create version information
     json version_json;
     version_json["kotekan_version"] = get_kotekan_version();
     version_json["branch"] = get_git_branch();
     version_json["git_commit_hash"] = get_git_commit_hash();
-    version_json["cmake_build_settings"] = get_cmake_build_options();
+    version_json["cmake_build_settings"] = parse_cmake_options();
     vector<string> available_stages;
     std::map<std::string, StageMaker*> known_stages = StageFactoryRegistry::get_registered_stages();
     for (auto& stage_maker : known_stages)
         available_stages.push_back(stage_maker.first);
     version_json["available_stages"] = available_stages;
     return version_json;
+}
+
+void print_json_version() {
+    std::cout << get_json_version_info().dump(2) << std::endl;
 }
 
 std::string exec(const std::string& cmd) {
@@ -280,7 +336,6 @@ int main(int argc, char** argv) {
 
     std::signal(SIGINT, signal_handler);
 
-    int opt_val = 0;
     char* config_file_name = (char*)"none";
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
     bool gps_time = false;
@@ -296,16 +351,21 @@ int main(int argc, char** argv) {
     __enable_syslog = 0;
 
     for (;;) {
-        static struct option long_options[] = {
-            {"config", required_argument, 0, 'c'}, {"bind-address", required_argument, 0, 'b'},
-            {"gps-time", no_argument, 0, 'g'},     {"gps-time-source", required_argument, 0, 't'},
-            {"help", no_argument, 0, 'h'},         {"syslog", no_argument, 0, 's'},
-            {"no-stderr", no_argument, 0, 'n'},    {"version", no_argument, 0, 'v'},
-            {"print-config", no_argument, 0, 'p'}, {0, 0, 0, 0}};
+        static struct option long_options[] = {{"config", required_argument, 0, 'c'},
+                                               {"bind-address", required_argument, 0, 'b'},
+                                               {"gps-time", no_argument, 0, 'g'},
+                                               {"gps-time-source", required_argument, 0, 't'},
+                                               {"help", no_argument, 0, 'h'},
+                                               {"syslog", no_argument, 0, 's'},
+                                               {"no-stderr", no_argument, 0, 'n'},
+                                               {"version", no_argument, 0, 'v'},
+                                               {"version-json", no_argument, 0, 'j'},
+                                               {"print-config", no_argument, 0, 'p'},
+                                               {0, 0, 0, 0}};
 
         int option_index = 0;
 
-        opt_val = getopt_long(argc, argv, "gt:hc:b:snvp", long_options, &option_index);
+        int opt_val = getopt_long(argc, argv, "gt:hc:b:snvp", long_options, &option_index);
 
         // End of args
         if (opt_val == -1) {
@@ -337,6 +397,10 @@ int main(int argc, char** argv) {
                 break;
             case 'v':
                 print_version();
+                return 0;
+                break;
+            case 'j':
+                print_json_version();
                 return 0;
                 break;
             case 'p':
@@ -395,7 +459,7 @@ int main(int argc, char** argv) {
                 fmt::format(fmt("python -c '{:s}' {:s}"), yaml_to_json, config_file_name);
         }
         std::string json_string = exec(exec_command.c_str());
-        json config_json = json::parse(json_string.c_str());
+        json config_json = json::parse(json_string);
         config.update_config(config_json);
         try {
             start_new_kotekan_mode(config, gps_time, dump_config);
@@ -487,7 +551,7 @@ int main(int argc, char** argv) {
         conn.send_json_reply(reply);
     });
 
-    json version_json = get_json_version_into();
+    json version_json = get_json_version_info();
 
     rest_server.register_get_callback(
         "/version", [&](connectionInstance& conn) { conn.send_json_reply(version_json); });

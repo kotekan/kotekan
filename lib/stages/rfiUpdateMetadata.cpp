@@ -53,17 +53,16 @@ void rfiUpdateMetadata::main_thread() {
         if (lost_samples_frame == NULL)
             break;
 
-        // Note this stage expects the output data frame will already
-        // have a copy of the metadata at this point.  This is true only if hsaRfiMaskOutput
-        // comes after hsaOutputData, this is not really ideal, but I cannot find an easy way
-        // around it.
-        uint8_t* gpu_correlation_frame = wait_for_empty_frame(
-            gpu_correlation_buf, unique_name.c_str(), gpu_correlation_frame_id);
-        if (gpu_correlation_frame == NULL)
-            break;
-
-
         for (uint32_t subframe = 0; subframe < _num_sub_frames; ++subframe) {
+
+            // Note this stage expects the output data frame will already
+            // have a copy of the metadata at this point.  This is true only if hsaRfiMaskOutput
+            // comes after hsaOutputData, this is not really ideal, but I cannot find an easy way
+            // around it.
+            uint8_t* gpu_correlation_frame = wait_for_empty_frame(
+                gpu_correlation_buf, unique_name.c_str(), gpu_correlation_frame_id);
+            if (gpu_correlation_frame == NULL)
+                break;
 
             // Total number of samples flagged as RFI
             uint32_t flagged_samples = 0;

@@ -101,7 +101,7 @@ void visWriter::main_thread() {
 
         // Check the dataset ID hasn't changed
         if (acqs.count(frame.dataset_id) == 0) {
-            INFO("Got new dataset ID={:#x}. Starting a new acquisition.", frame.dataset_id);
+            INFO("Got new dataset ID={}. Starting a new acquisition.", frame.dataset_id);
             init_acq(frame.dataset_id);
         }
 
@@ -175,7 +175,7 @@ void visWriter::report_dropped_frame(dset_id_t ds_id, uint32_t freq_id, droppedT
     // TODO: check if this is necessary
     acq.dropped_frame_count[key] += 1;
     dropped_frame_counter
-        .labels({std::to_string(freq_id), std::to_string(ds_id), dropped_type_map.at(reason)})
+        .labels({std::to_string(freq_id), ds_id.to_string(), dropped_type_map.at(reason)})
         .inc();
 }
 
@@ -209,7 +209,7 @@ void visWriter::get_dataset_state(dset_id_t ds_id) {
     const prodState* pstate = pstate_fut.get();
 
     if (pstate == nullptr || mstate == nullptr || fstate == nullptr) {
-        ERROR("Set to not use dataset_broker and couldn't find ancestor of dataset {:#x}. Make "
+        ERROR("Set to not use dataset_broker and couldn't find ancestor of dataset {}. Make "
               "sure there is a stage upstream in the config, that the dataset states. Unexpected "
               "nullptr: ",
               ds_id);
@@ -232,7 +232,7 @@ void visWriter::get_dataset_state(dset_id_t ds_id) {
     // compare git commit hashes
     // TODO: enforce and crash here if build type is Release?
     if (mstate->get_git_version_tag() != std::string(get_git_commit_hash())) {
-        INFO("Git version tags don't match: dataset {:#x} has tag {:s},"
+        INFO("Git version tags don't match: dataset {} has tag {:s},"
              "while the local git version tag is {:s}",
              ds_id, mstate->get_git_version_tag(), get_git_commit_hash());
     }
@@ -249,7 +249,7 @@ bool visWriter::check_git_version(dset_id_t ds_id) {
     // compare git commit hashes
     // TODO: enforce and crash here if build type is Release?
     if (mstate->get_git_version_tag() != std::string(get_git_commit_hash())) {
-        WARN("Git version tags don't match: dataset {:#x} has tag {:s},"
+        WARN("Git version tags don't match: dataset {} has tag {:s},"
              "while the local git version tag is {:s}",
              ds_id, mstate->get_git_version_tag(), get_git_commit_hash());
         return ignore_version;
@@ -392,7 +392,7 @@ void visCalWriter::init_acq(dset_id_t ds_id) {
 
     // Check there are no other valid acqs
     if (num_enabled > 0) {
-        WARN("visCalWriter can only have one acquistion. Dropping all frames of dataset_id {:#x}",
+        WARN("visCalWriter can only have one acquistion. Dropping all frames of dataset_id {}",
              ds_id);
         acq.bad_dataset = true;
         return;

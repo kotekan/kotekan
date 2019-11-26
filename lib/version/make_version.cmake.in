@@ -18,6 +18,7 @@ set(USE_HSA "@USE_HSA@")
 set(USE_CLOC "@USE_CLOC@")
 set(USE_OPENCL "@USE_OPENCL@")
 set(USE_HCC "@USE_HCC@")
+set(USE_CUDA "@USE_CUDA@")
 set(USE_HDF5 "@USE_HDF5@")
 set(HIGHFIVE_PATH "@HIGHFIVE_PATH@")
 set(USE_LAPACK "@USE_LAPACK@")
@@ -44,7 +45,7 @@ execute_process(
 )
 
 execute_process(
-  COMMAND python3 ${SOURCE_DIR}/scripts/version.py
+  COMMAND python3 ${SOURCE_DIR}/python/kotekan/version.py
   WORKING_DIRECTORY ${SOURCE_DIR}
   OUTPUT_VARIABLE KOTEKAN_VERSION
   OUTPUT_STRIP_TRAILING_WHITESPACE

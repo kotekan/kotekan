@@ -1,4 +1,3 @@
-cmake_minimum_required( VERSION 2.8 )
 project( kotekan_utils )
 
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
@@ -23,6 +22,9 @@ set ( KOTEKAN_UTIL_SOURCES
       pulsarTiming.cpp
       datasetState.cpp
       restClient.cpp
+      BipBuffer.cpp
+      Hash.cpp
+      MurmurHash3.cpp
     )
 
 if (${USE_HDF5})

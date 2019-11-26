@@ -9,6 +9,7 @@
 
 #include "buffer.h"
 #include "chimeMetadata.h"
+#include "datasetManager.hpp"
 #include "visUtil.hpp"
 
 #include "gsl-lite.hpp"
@@ -52,8 +53,8 @@ struct visMetadata {
 
     /// ID of the frequency bin
     uint32_t freq_id;
-    /// ID of the dataset (vis, gatedvisX ...), main vis dataset = 0
-    uint64_t dataset_id;
+    /// ID of the dataset
+    dset_id_t dataset_id;
 
     /// Number of elements for data in buffer
     uint32_t num_elements;
@@ -276,7 +277,7 @@ public:
     /// A reference to the frequency ID.
     uint32_t& freq_id;
     /// A reference to the dataset ID.
-    uint64_t& dataset_id;
+    dset_id_t& dataset_id;
 
     /// View of the visibility data.
     const gsl::span<cfloat> vis;

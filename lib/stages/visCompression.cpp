@@ -122,7 +122,7 @@ dset_id_t baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
     prod_state_ptr = prod_state.get();
     if (input_state_ptr == nullptr || prod_state_ptr == nullptr) {
         FATAL_ERROR("Set to not use dataset_broker and couldn't find freqState ancestor of dataset "
-                    "{:#x}. Make sure there is a stage upstream in the config, that adds a "
+                    "{}. Make sure there is a stage upstream in the config, that adds a "
                     "freqState.\nExiting...",
                     input_ds_id);
     }
@@ -132,7 +132,7 @@ dset_id_t baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
 
     std::tie(stack_state_id, stack_state_ptr) = dm.add_state(std::move(sstate));
 
-    return dm.add_dataset(input_ds_id, stack_state_id);
+    return dm.add_dataset(stack_state_id, input_ds_id);
 }
 
 void baselineCompression::compress_thread(uint32_t thread_id) {
@@ -142,7 +142,7 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
     uint64_t frame_counter;
 
     dset_id_t input_dset_id;
-    dset_id_t output_dset_id = 0;
+    dset_id_t output_dset_id = dset_id_t::null;
 
     // Get the current values of the shared frame IDs.
     {
@@ -287,21 +287,18 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
 
         // Update prometheus metrics
         double elapsed = current_time() - start_time;
-        std::string labels =
-            fmt::format(fmt("freq_id=\"{:d}\",dataset_id=\"{:#x}\",thread_id=\"{:d}\""),
-                        output_frame.freq_id, output_frame.dataset_id, thread_id);
         compression_residuals_metric
-            .labels({std::to_string(output_frame.freq_id), std::to_string(output_frame.dataset_id),
+            .labels({std::to_string(output_frame.freq_id), output_frame.dataset_id.to_string(),
                      std::to_string(thread_id)})
             .set(residual);
         compression_time_seconds_metric
-            .labels({std::to_string(output_frame.freq_id), std::to_string(output_frame.dataset_id),
+            .labels({std::to_string(output_frame.freq_id), output_frame.dataset_id.to_string(),
                      std::to_string(thread_id)})
             .set(elapsed);
         // TODO: this feels like it should be a counter, but it's unclear
         // how `frame_counter` increments exactly
         compression_frame_counter
-            .labels({std::to_string(output_frame.freq_id), std::to_string(output_frame.dataset_id),
+            .labels({std::to_string(output_frame.freq_id), output_frame.dataset_id.to_string(),
                      std::to_string(thread_id)})
             .set(frame_counter);
 

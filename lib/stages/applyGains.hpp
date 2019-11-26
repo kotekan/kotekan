@@ -94,8 +94,8 @@ private:
     Buffer* out_buf;
 
     /// Mutex to protect access to gains
-    // N.B. `shared_mutex` is only available in C++17
-    std::shared_timed_mutex gain_mtx;
+    // Note: Using shared_mutex together with gcc-5 doesn't work.
+    std::shared_mutex gain_mtx;
 
     /// Timestamp of the current frame
     std::atomic<timespec> ts_frame{{0, 0}};

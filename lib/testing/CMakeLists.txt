@@ -1,4 +1,3 @@
-cmake_minimum_required( VERSION 2.8 )
 project( libkotekan_testing )
 
 set ( KOTEKAN_TESTING_SOURCES
@@ -6,7 +5,8 @@ set ( KOTEKAN_TESTING_SOURCES
       constDataCheck.cpp
       fakeGpu.cpp
       fakeGpuPattern.cpp
-      fakeVis.cpp
+      FakeVis.cpp
+      FakeVisPattern.cpp
       gpuBeamformSimulate.cpp
       gpuBeamformPulsarSimulate.cpp
       gpuSimulate.cpp

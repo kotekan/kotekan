@@ -76,7 +76,7 @@ private:
     movingAverage calc_time;
 
     state_id_t ev_state_id;
-    dset_id_t input_dset_id = 0;
+    dset_id_t input_dset_id = dset_id_t::null;
 };
 
 #endif

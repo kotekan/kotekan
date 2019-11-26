@@ -34,15 +34,18 @@ struct chimeMetadata {
     /// should NOT be used, use @c lost_timesamples instead.
     /// This value will be filled even if RFI zeroing is disabled.
     int32_t rfi_flagged_samples;
+    /// This value is set to 1 if the RFI containing samples were zeroed
+    /// in the correlation, and 0 otherwise.
+    uint32_t rfi_zeroed;
+    /// The number of bad inputs in the RFI systems bad input list.
+    /// This value is mostly needed for renormalization of the SK values.
+    uint32_t rfi_num_bad_inputs;
     /// The stream ID from the ICEBoard
     /// Note in the case of CHIME-2048 the normally unused section
     /// Encodes the port-shuffle freqeuncy information
     uint16_t stream_ID;
     /// The corrdinates of the pulsar beam (if applicable)
     struct psrCoord psr_coord;
-    /// This value is set to 1 if the RFI containing samples were zeroed
-    /// in the correlation, and 0 otherwise.
-    uint32_t rfi_zeroed;
 };
 
 // Helper functions to save lots of pointer work
@@ -82,6 +85,19 @@ inline int32_t get_rfi_flagged_samples(struct Buffer * buf, int ID) {
     struct chimeMetadata * chime_metadata =
      (struct chimeMetadata *) buf->metadata[ID]->metadata;
     return chime_metadata->rfi_flagged_samples;
+}
+
+/**
+ * @brief Get the number of bad inputs (elements) in the data
+ *
+ * @param buf The buffer containing the frame
+ * @param ID The frame to get metadata from
+ * @return The number of bad inputs in the input mask
+ */
+inline uint32_t get_rfi_num_bad_inputs(struct Buffer * buf, int ID) {
+    struct chimeMetadata * chime_metadata =
+        (struct chimeMetadata *) buf->metadata[ID]->metadata;
+    return chime_metadata->rfi_num_bad_inputs;
 }
 
 inline uint16_t get_stream_id(struct Buffer * buf, int ID) {
@@ -134,6 +150,12 @@ inline void atomic_add_rfi_flagged_samples(struct Buffer * buf, int ID,
 }
 
 // Setting functions
+
+inline void set_rfi_num_bad_inputs(struct Buffer * buf, int ID, uint32_t num_bad_inputs) {
+    struct chimeMetadata * chime_metadata =
+        (struct chimeMetadata *) buf->metadata[ID]->metadata;
+    chime_metadata->rfi_num_bad_inputs = num_bad_inputs;
+}
 
 inline void set_fpga_seq_num(struct Buffer * buf, int ID, int64_t seq) {
     struct chimeMetadata * chime_metadata =

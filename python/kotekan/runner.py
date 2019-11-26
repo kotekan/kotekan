@@ -13,6 +13,7 @@ import itertools
 import subprocess
 import tempfile
 import time
+import json
 
 from . import visbuffer
 
@@ -37,6 +38,29 @@ class KotekanRunner(object):
         Port to use for kotekan REST server. Set it to 0 to get a random free port.
         Default: 0.
     """
+
+    @classmethod
+    def kotekan_binary(cls):
+        """Determine the kotekan binary to use."""
+        build_dir = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "build", "kotekan")
+        )
+        # If this path exists we are using a non installed version of the
+        # kotekan python packages. If so we want to run the local kotekan
+        # binary
+        relative_path = os.path.join(build_dir, "kotekan")
+        if os.path.exists(relative_path):
+            return os.path.abspath(relative_path)
+        else:
+            return shutil.which("kotekan")
+
+    @classmethod
+    def kotekan_config(cls):
+        """Get kotekan's build config."""
+        cmd = "%s --version-json" % cls.kotekan_binary()
+        version_string = subprocess.check_output(cmd.split()).decode()
+
+        return json.loads(version_string)
 
     def __init__(
         self,
@@ -76,21 +100,6 @@ class KotekanRunner(object):
         config_dict.update(self._buffers)
         config_dict.update(self._stages)
 
-        # Set the working directory for the run
-        build_dir = os.path.normpath(
-            os.path.join(os.path.dirname(__file__), "..", "..", "build", "kotekan")
-        )
-
-        # If this path exists we are using a non installed version of the
-        # kotekan python packages. If so we want to run the local kotekan
-        # binary
-        if os.path.exists(build_dir):
-            kotekan_cmd = "./kotekan -b %s -c %s"
-            wd = build_dir
-        else:
-            kotekan_cmd = "kotekan -b %s -c %s"
-            wd = os.curdir
-
         config_dict = fix_strings(config_dict)
 
         with tempfile.NamedTemporaryFile(
@@ -101,36 +110,58 @@ class KotekanRunner(object):
             print(yaml.safe_dump(config_dict))
             fh.flush()
 
-            print(kotekan_cmd % (rest_addr, fh.name), build_dir)
-            cmd = (kotekan_cmd % (rest_addr, fh.name)).split()
-            p = subprocess.Popen(cmd, cwd=wd, stdout=f_out, stderr=f_out)
+            cmd = "%s -b %s -c %s" % (self.kotekan_binary(), rest_addr, fh.name)
+            print(cmd)
+            p = subprocess.Popen(cmd.split(), stdout=f_out, stderr=f_out)
 
             # Run any requested REST commands
             if self._rest_commands:
                 import requests
                 import json
 
-                # Wait a moment for rest servers to start up.
-                time.sleep(1)
+                attempt = 0
+                wait = 0.2
 
-                # If kotekan's REST server was started with a random port (0), we have to find out
-                # what that is from the logs
-                if self.rest_port == 0:
-                    log = open(f_out.name, "r").read().split("\n")
-                    rest_addr = None
-                    for line in log:
-                        if line[:43] == "restServer: started server on address:port ":
-                            rest_addr = line[43:]
-                    if rest_addr:
-                        print(
-                            "Found REST server address in kotekan log: %s" % rest_addr
-                        )
-                    else:
-                        print("Could not find kotekan REST server address in logs.")
+                # Wait for REST server to start
+                while attempt < 100:
+
+                    if attempt == 99:
+                        print("Could not find kotekan REST server address in logs")
                         exit(1)
+
+                    attempt += 1
+
+                    # Wait a moment for rest servers to start up.
+                    time.sleep(wait)
+
+                    # If kotekan's REST server was started with a random port (0), we have to find out
+                    # what that is from the logs
+                    if self.rest_port == 0:
+                        log = open(f_out.name, "r").read().split("\n")
+                        rest_addr = None
+                        for line in log:
+                            if (
+                                line[:43]
+                                == "restServer: started server on address:port "
+                            ):
+                                rest_addr = line[43:]
+                        if rest_addr:
+                            print(
+                                "Found REST server address in kotekan log: %s"
+                                % rest_addr
+                            )
+                            break
+                        else:
+                            print(
+                                "Could not find kotekan REST server address in logs. Increasing wait time..."
+                            )
+                            wait += 1
 
                 # the requests module needs the address wrapped in http://*/
                 rest_addr = "http://" + rest_addr + "/"
+
+                # wait a moment for the restServer to start
+                time.sleep(1)
 
                 for rtype, endpoint, data in self._rest_commands:
                     if rtype == "wait":
@@ -172,7 +203,7 @@ class KotekanRunner(object):
 
             while self.debug and None == p.poll():
                 time.sleep(10)
-                print(file(f_out.name).read())
+                print(open(f_out.name, "r").read())
 
             # Wait for kotekan to finish and capture the output
             p.wait()
@@ -284,7 +315,7 @@ class FakeGPUBuffer(InputBuffer):
 
 
 class FakeVisBuffer(InputBuffer):
-    """Create an input visBuffer format buffer and fill it using `fakeVis`.
+    """Create an input visBuffer format buffer and fill it using `FakeVis`.
 
     Parameters
     ----------
@@ -309,7 +340,7 @@ class FakeVisBuffer(InputBuffer):
         }
 
         stage_config = {
-            "kotekan_stage": "fakeVis",
+            "kotekan_stage": "FakeVis",
             "out_buf": self.name,
             "freq_ids": [0],
             "wait": False,
@@ -627,7 +658,7 @@ class KotekanStageTester(KotekanRunner):
 default_config = """
 ---
 type: config
-log_level: info
+log_level: debug
 num_elements: 10
 num_freq_in_frame: 1
 num_local_freq: 1
@@ -667,3 +698,19 @@ def fix_strings(d):
         return future.utils.native(d.decode())
 
     return d
+
+
+## Quick tests for kotekan's builds
+def has_hdf5():
+    """Is HDF5 support built in."""
+    return KotekanRunner.kotekan_config()["cmake_build_settings"]["USE_HDF5"] == "ON"
+
+
+def has_lapack():
+    """Is LAPACK support built in."""
+    return KotekanRunner.kotekan_config()["cmake_build_settings"]["USE_LAPACK"] == "ON"
+
+
+def has_openmp():
+    """Is OpenMP support build in."""
+    return KotekanRunner.kotekan_config()["cmake_build_settings"]["USE_OMP"] == "ON"

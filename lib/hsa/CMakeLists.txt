@@ -1,4 +1,3 @@
-cmake_minimum_required( VERSION 2.8 )
 project( libkotekan_hsa )
 
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
@@ -31,6 +30,8 @@ set ( KOTEKAN_HSA_SOURCES
       hsaRfiBadInputOutput.cpp
       hsaRfiMaskOutput.cpp
       hsaRfiOutput.cpp
+      hsaRfiVarOutput.cpp
+      hsaRfiUpdateBadInputs.cpp
 
 # CHIME N2 Kernels & copy-out:
       hsaOutputDataZero.cpp
