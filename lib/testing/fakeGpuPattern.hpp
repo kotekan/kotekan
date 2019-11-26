@@ -19,6 +19,7 @@
 
 #include "gsl-lite.hpp"
 
+#include <random>
 #include <stdint.h>
 #include <string>
 
@@ -178,6 +179,12 @@ public:
     /// @sa fakeGpuPattern::fill
     void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
               const int freq_id) override;
+
+private:
+
+    std::random_device rd;
+    std::mt19937 gen;
+    std::normal_distribution<float> gaussian;
 };
 
 

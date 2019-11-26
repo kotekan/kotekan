@@ -12,6 +12,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
+#include <random>
 
 
 REGISTER_KOTEKAN_STAGE(FakeGpu);
@@ -34,6 +35,7 @@ FakeGpu::FakeGpu(kotekan::Config& config, const string& unique_name,
     num_frames = config.get_default<int32_t>(unique_name, "num_frames", -1);
     num_freq_in_frame = config.get_default<int32_t>(unique_name, "num_freq_in_frame", 1);
     wait = config.get_default<bool>(unique_name, "wait", true);
+    drop_probability = config.get_default<float>(unique_name, "drop_probability", 0.0);
 
     // Fetch the correct fill function
     std::string pattern_name = config.get<std::string>(unique_name, "pattern");
@@ -92,32 +94,46 @@ void FakeGpu::main_thread() {
     delta_ts.tv_sec = delta_ns / 1000000000;
     delta_ts.tv_nsec = delta_ns % 1000000000;
 
+    // Set up a random number generating for testing drops
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> drop(0.0, 1.0);
+
     while (!stop_thread) {
-        int32_t* output = (int*)wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id);
-        if (output == NULL)
-            break;
 
-        DEBUG("Simulating GPU buffer in {}[{}]", out_buf->buffer_name, frame_id);
+        // Test if this will be dropped or not, and only fill out the buffer
+        // (and advance) if it won't
+        if (drop(gen) < drop_probability) {
+            DEBUG("Dropping frame.")
 
-        allocate_new_metadata_object(out_buf, frame_id);
-        set_fpga_seq_num(out_buf, frame_id, fpga_seq);
-        set_stream_id_t(out_buf, frame_id, s);
+        } else {
 
-        // Set the two times
-        TIMESPEC_TO_TIMEVAL(&tv, &ts);
-        set_first_packet_recv_time(out_buf, frame_id, tv);
-        set_gps_time(out_buf, frame_id, ts);
+            int32_t* output = (int*)wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id);
+            if (output == NULL)
+                break;
 
-        // Fill the buffer with the specified mode
-        chimeMetadata* metadata = (chimeMetadata*)out_buf->metadata[frame_id]->metadata;
-        for (int freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
-            gsl::span<int32_t> data(output + 2 * freq_ind * nprod_gpu,
-                                    output + 2 * (freq_ind + 1) * nprod_gpu);
-            pattern->fill(data, metadata, frame_count, freq + freq_ind);
+            DEBUG("Simulating GPU buffer in {}[{}]", out_buf->buffer_name, frame_id);
+
+            allocate_new_metadata_object(out_buf, frame_id);
+            set_fpga_seq_num(out_buf, frame_id, fpga_seq);
+            set_stream_id_t(out_buf, frame_id, s);
+
+            // Set the two times
+            TIMESPEC_TO_TIMEVAL(&tv, &ts);
+            set_first_packet_recv_time(out_buf, frame_id, tv);
+            set_gps_time(out_buf, frame_id, ts);
+
+            // Fill the buffer with the specified mode
+            chimeMetadata* metadata = (chimeMetadata*)out_buf->metadata[frame_id]->metadata;
+            for (int freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
+                gsl::span<int32_t> data(output + 2 * freq_ind * nprod_gpu,
+                                        output + 2 * (freq_ind + 1) * nprod_gpu);
+                pattern->fill(data, metadata, frame_count, freq + freq_ind);
+            }
+
+            // Mark full and move onto next frame...
+            mark_frame_full(out_buf, unique_name.c_str(), frame_id++);
         }
-
-        // Mark full and move onto next frame...
-        mark_frame_full(out_buf, unique_name.c_str(), frame_id++);
 
         // Increase total frame count
         frame_count++;
