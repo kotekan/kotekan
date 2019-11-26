@@ -1133,6 +1133,12 @@ rfi_stage2:
     kotekan_stage: RfiFrameDrop
     in_buf: valve_buffer_3
     out_buf: rfi_vis_buffer_3
+  thresholds:
+    - threshold: 5.0
+      fraction: 0.025
+    - threshold: 1.4
+      fraction: 0.4
+  enable_rfi_zero: true
 
 vis_accumulate:
   integration_time: 5.0  # Integrate to roughly 5s cadence
