@@ -131,6 +131,10 @@ void RfiFrameDrop::main_thread() {
             // frame over to the output and release it. If we want to drop the
             // incoming frame then we leave the output as is.
             if (!skip || !enable_rfi_zero) {
+
+                if (wait_for_empty_frame(_buf_out, unique_name.c_str(), frame_id_out) == nullptr) {
+                    break;
+                }
                 copy_frame(_buf_in_vis, frame_id_in_vis, _buf_out, frame_id_out);
                 mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
             }
