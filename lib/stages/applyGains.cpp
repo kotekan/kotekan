@@ -121,7 +121,7 @@ bool applyGains::receive_update(nlohmann::json& json) {
         late_update_counter.inc();
     }
 
-    // receive new gains tag
+    // receive new gains update
     try {
         if (!json.at("update_id").is_string())
             throw std::invalid_argument(fmt::format(fmt("applyGains: received bad gains update_id: {:s}"),

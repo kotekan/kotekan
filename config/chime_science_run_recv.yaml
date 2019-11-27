@@ -104,12 +104,12 @@ updatable_config:
   flagging:
     kotekan_update_endpoint: "json"
     start_time: 1535048997.
-    tag: "initial_flags"
+    update_id: "initial_flags"
     bad_inputs: [ ]
   gains:
     kotekan_update_endpoint: "json"
     start_time: 1541039597.
-    tag: "gain_20181101T023317.440691Z_cyga"
+    update_id: "gain_20181101T023317.440691Z_cyga"
   26m_gated:
     kotekan_update_endpoint: "json"
     enabled: false
