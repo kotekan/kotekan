@@ -60,12 +60,12 @@ bool receiveFlags::flags_callback(nlohmann::json& json) {
             throw std::invalid_argument("receiveFlags: flags_callback "
                                         "received bad value 'bad_inputs': "
                                         + json.at("bad_inputs").dump());
-        update_id = json.at("tag").get<std::string>();
+        update_id = json.at("update_id").get<std::string>();
 
-        if (!json.at("tag").is_string())
+        if (!json.at("update_id").is_string())
             throw std::invalid_argument("receiveFlags: flags_callback "
-                                        "received bad value 'tag': "
-                                        + json.at("tag").dump());
+                                        "received bad value 'update_id': "
+                                        + json.at("update_id").dump());
 
         if (json.at("bad_inputs").size() > num_elements)
             throw std::invalid_argument(

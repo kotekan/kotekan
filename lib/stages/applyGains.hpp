@@ -140,7 +140,7 @@ private:
     kotekan::prometheus::Counter& late_frames_counter;
 
     /// Read the gain file from disk
-    std::optional<GainData> read_gain_file(std::string tag) const;
+    std::optional<GainData> read_gain_file(std::string update_id) const;
 
     /// Test that the frame is valid. On failure it will call FATAL_ERROR and
     /// return false

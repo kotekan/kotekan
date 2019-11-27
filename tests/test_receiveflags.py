@@ -32,7 +32,7 @@ params = {
             "kotekan_update_endpoint": "json",
             "bad_inputs": [1, 4],
             "start_time": time.time(),
-            "tag": "initial_test_flags",
+            "update_id": "initial_test_flags",
         }
     },
     "wait": True,
@@ -90,7 +90,7 @@ def test_clear_flags(tmpdir_factory):
         [
             "post",
             "dynamic_attributes/flagging",
-            {"bad_inputs": flags, "start_time": start_time, "tag": "test_flag_update"},
+            {"bad_inputs": flags, "start_time": start_time, "update_id": "test_flag_update"},
         ]
     ]
 
@@ -119,7 +119,7 @@ def test_too_many_flags(tmpdir_factory):
         [
             "post",
             "dynamic_attributes/flagging",
-            {"bad_inputs": flags, "start_time": start_time, "tag": "test_flag_update"},
+            {"bad_inputs": flags, "start_time": start_time, "update_id": "test_flag_update"},
         ]
     ]
 
@@ -143,7 +143,7 @@ def test_one_flag(tmpdir_factory):
         [
             "post",
             "dynamic_attributes/flagging",
-            {"bad_inputs": flags, "start_time": start_time, "tag": "test_flag_update"},
+            {"bad_inputs": flags, "start_time": start_time, "update_id": "test_flag_update"},
         ]
     ]
     params["dynamic_attributes"]["flagging"]["bad_inputs"] = []
@@ -174,7 +174,7 @@ def test_out_of_bounds_msg_flag(tmpdir_factory):
         [
             "post",
             "dynamic_attributes/flagging",
-            {"bad_inputs": flags, "start_time": start_time, "tag": "test_flag_update"},
+            {"bad_inputs": flags, "start_time": start_time, "update_id": "test_flag_update"},
         ]
     ]
     params["dynamic_attributes"]["flagging"]["bad_inputs"] = [0]
@@ -201,7 +201,7 @@ def test_flags_data_type(tmpdir_factory):
             {
                 "bad_inputs": flags,
                 "start_time": params["dynamic_attributes"]["flagging"]["start_time"],
-                "tag": "test_flag_update",
+                "update_id": "test_flag_update",
             },
         ]
     ]
@@ -229,7 +229,7 @@ def test_flags_extra_arguments(tmpdir_factory):
                 "bad_inputs": flags,
                 "foo": "bar",
                 "start_time": params["dynamic_attributes"]["flagging"]["start_time"],
-                "tag": "test_flag_update",
+                "update_id": "test_flag_update",
             },
         ]
     ]
@@ -256,7 +256,7 @@ def test_flags_wrong_argument(tmpdir_factory):
             {
                 "flags_with_a_typo": flags,
                 "start_time": params["dynamic_attributes"]["flagging"]["start_time"],
-                "tag": "test_flag_update",
+                "update_id": "test_flag_update",
             },
         ]
     ]
@@ -311,17 +311,17 @@ def test_start_time(tmpdir_factory):
         [
             "post",
             "dynamic_attributes/flagging",
-            {"bad_inputs": flags[1], "start_time": ts[0], "tag": "test_flag_update1"},
+            {"bad_inputs": flags[1], "start_time": ts[0], "update_id": "test_flag_update1"},
         ],
         [
             "post",
             "dynamic_attributes/flagging",
-            {"bad_inputs": flags[2], "start_time": ts[1], "tag": "test_flag_update2"},
+            {"bad_inputs": flags[2], "start_time": ts[1], "update_id": "test_flag_update2"},
         ],
         [
             "post",
             "dynamic_attributes/flagging",
-            {"bad_inputs": flags[3], "start_time": ts[2], "tag": "test_flag_update3"},
+            {"bad_inputs": flags[3], "start_time": ts[2], "update_id": "test_flag_update3"},
         ],
     ]
 
@@ -358,17 +358,17 @@ def test_start_time_out_of_order(tmpdir_factory):
         [
             "post",
             "dynamic_attributes/flagging",
-            {"bad_inputs": flags[1], "start_time": ts[2], "tag": "test_flag_update1"},
+            {"bad_inputs": flags[1], "start_time": ts[2], "update_id": "test_flag_update1"},
         ],
         [
             "post",
             "dynamic_attributes/flagging",
-            {"bad_inputs": flags[2], "start_time": ts[0], "tag": "test_flag_update2"},
+            {"bad_inputs": flags[2], "start_time": ts[0], "update_id": "test_flag_update2"},
         ],
         [
             "post",
             "dynamic_attributes/flagging",
-            {"bad_inputs": flags[3], "start_time": ts[1], "tag": "test_flag_update3"},
+            {"bad_inputs": flags[3], "start_time": ts[1], "update_id": "test_flag_update3"},
         ],
     ]
     frame_flags = [frame_flags[i] for i in [0, 2, 3, 1]]
@@ -404,25 +404,25 @@ def test_start_time_new_update(tmpdir_factory):
         [
             "post",
             "dynamic_attributes/flagging",
-            {"bad_inputs": flags[1], "start_time": ts[0], "tag": "test_flag_update1"},
+            {"bad_inputs": flags[1], "start_time": ts[0], "update_id": "test_flag_update1"},
         ],
         ["wait", 0.1, None],
         [
             "post",
             "dynamic_attributes/flagging",
-            {"bad_inputs": flags[2], "start_time": ts[1], "tag": "test_flag_update2"},
+            {"bad_inputs": flags[2], "start_time": ts[1], "update_id": "test_flag_update2"},
         ],
         ["wait", 0.1, None],
         [
             "post",
             "dynamic_attributes/flagging",
-            {"bad_inputs": flags[3], "start_time": ts[2], "tag": "test_flag_update3"},
+            {"bad_inputs": flags[3], "start_time": ts[2], "update_id": "test_flag_update3"},
         ],
         ["wait", 0.1, None],
         [
             "post",
             "dynamic_attributes/flagging",
-            {"bad_inputs": flags[3], "start_time": ts[0], "tag": "test_flag_update4"},
+            {"bad_inputs": flags[3], "start_time": ts[0], "update_id": "test_flag_update4"},
         ],
     ]
     flags_dump = run_flagging(tmpdir_factory, cmds)
@@ -459,7 +459,7 @@ def test_flags_wrong_type(tmpdir_factory):
             {
                 "bad_inputs": start_time,
                 "start_time": start_time,
-                "tag": "test_flag_update",
+                "update_id": "test_flag_update",
             },
         ]
     ]
@@ -492,17 +492,17 @@ def test_dset_id_change(tmpdir_factory):
         [
             "post",
             "dynamic_attributes/flagging",
-            {"bad_inputs": flags[1], "start_time": ts[0], "tag": "test_flag_update1"},
+            {"bad_inputs": flags[1], "start_time": ts[0], "update_id": "test_flag_update1"},
         ],
         [
             "post",
             "dynamic_attributes/flagging",
-            {"bad_inputs": flags[2], "start_time": ts[1], "tag": "test_flag_update2"},
+            {"bad_inputs": flags[2], "start_time": ts[1], "update_id": "test_flag_update2"},
         ],
         [
             "post",
             "dynamic_attributes/flagging",
-            {"bad_inputs": flags[3], "start_time": ts[2], "tag": "test_flag_update3"},
+            {"bad_inputs": flags[3], "start_time": ts[2], "update_id": "test_flag_update3"},
         ],
     ]
 

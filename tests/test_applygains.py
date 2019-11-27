@@ -22,8 +22,8 @@ start_time = 1_500_000_000
 old_timestamp = start_time - 10.0
 new_timestamp = start_time + 5.0
 
-old_tag = f"gains{old_timestamp}"
-new_tag = f"gains{new_timestamp}"
+old_update_id = f"gains{old_timestamp}"
+new_update_id = f"gains{new_timestamp}"
 
 t_combine = 10.0
 
@@ -40,7 +40,7 @@ global_params = {
     "gains": {
         "kotekan_update_endpoint": "json",
         "start_time": old_timestamp,
-        "tag": old_tag,
+        "update_id": old_update_id,
         "t_combine": t_combine,
     },
     "wait": False,
@@ -88,7 +88,7 @@ def gain_path(tmp_path_factory):
 def old_gains(gain_path):
 
     # Get the name of the file to write
-    fname = str(gain_path / f"{old_tag}.h5")
+    fname = str(gain_path / f"{old_update_id}.h5")
 
     freq = np.linspace(800.0, 400.0, 1024)[global_params["freq_ids"]]
 
@@ -99,7 +99,7 @@ def old_gains(gain_path):
 def new_gains(gain_path):
 
     # Get the name of the file to write
-    fname = str(gain_path / f"{new_tag}.h5")
+    fname = str(gain_path / f"{new_update_id}.h5")
 
     freq = np.linspace(800.0, 400.0, 1024)[global_params["freq_ids"]]
 
@@ -117,7 +117,7 @@ def apply_data(tmp_path_factory, gain_path, old_gains, new_gains):
         [
             "post",
             "gains",
-            {"tag": new_tag, "start_time": new_timestamp, "t_combine": t_combine},
+            {"update_id": new_update_id, "start_time": new_timestamp, "t_combine": t_combine},
         ]
     ]
 

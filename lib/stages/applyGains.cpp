@@ -96,7 +96,7 @@ bool applyGains::receive_update(nlohmann::json& json) {
 
     double new_ts;
     std::string gains_path;
-    std::string gtag;
+    std::string update_id;
     double t_combine;
 
     // receive new gains timestamp ("start_time" might move to "start_time")
@@ -123,12 +123,12 @@ bool applyGains::receive_update(nlohmann::json& json) {
 
     // receive new gains tag
     try {
-        if (!json.at("tag").is_string())
-            throw std::invalid_argument(fmt::format(fmt("applyGains: received bad gains tag: {:s}"),
-                                                    json.at("tag").dump()));
-        gtag = json.at("tag").get<std::string>();
+        if (!json.at("update_id").is_string())
+            throw std::invalid_argument(fmt::format(fmt("applyGains: received bad gains update_id: {:s}"),
+                                                    json.at("update_id").dump()));
+        update_id = json.at("update_id").get<std::string>();
     } catch (std::exception& e) {
-        WARN("Failure reading 'tag' from update: {:s}", e.what());
+        WARN("Failure reading 'update_id' from update: {:s}", e.what());
         return false;
     }
 
@@ -140,12 +140,12 @@ bool applyGains::receive_update(nlohmann::json& json) {
     }
 
     // Read the gain file and return false if the read failed
-    auto gain_data = read_gain_file(gtag);
+    auto gain_data = read_gain_file(update_id);
     if (!gain_data) {
         return false;
     }
 
-    state_id_t state_id = dm.create_state<gainState>(gtag, t_combine).first;
+    state_id_t state_id = dm.create_state<gainState>(update_id, t_combine).first;
     GainUpdate update = {std::move(gain_data.value()), t_combine, state_id};
 
     {
@@ -153,7 +153,7 @@ bool applyGains::receive_update(nlohmann::json& json) {
         std::lock_guard<std::shared_mutex> lock(gain_mtx);
         gains_fifo.insert(double_to_ts(new_ts), std::move(update));
     }
-    INFO("Updated gains to {:s}.", gtag);
+    INFO("Updated gains to {:s}.", update_id);
 
     return true;
 }
@@ -370,19 +370,19 @@ void applyGains::apply_thread() {
 }
 
 
-std::optional<applyGains::GainData> applyGains::read_gain_file(std::string tag) const {
+std::optional<applyGains::GainData> applyGains::read_gain_file(std::string update_id) const {
 
     // Define the output arrays
     std::vector<std::vector<cfloat>> gain_read;
     std::vector<std::vector<float>> weight_read;
 
     // Get the gains for this timestamp
-    // TODO: For now, assume the tag is the gain file name.
-    std::string gains_path = fmt::format(fmt("{:s}/{:s}.h5"), gains_dir, tag);
+    // TODO: For now, assume the update_id is the gain file name.
+    std::string gains_path = fmt::format(fmt("{:s}/{:s}.h5"), gains_dir, update_id);
     // Check if file exists
     if (!fexists(gains_path)) {
         // Try a different extension
-        gains_path = fmt::format(fmt("{:s}/{:s}.hdf5"), gains_dir, tag);
+        gains_path = fmt::format(fmt("{:s}/{:s}.hdf5"), gains_dir, update_id);
         if (!fexists(gains_path)) {
             WARN("Could not update gains. File not found: {:s}", gains_path)
             return {};
