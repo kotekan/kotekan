@@ -11,6 +11,22 @@
 
 #include "gsl-lite.hpp"
 
+/**
+ * @brief Generate a ringmap from a real-time stream of data.
+ *
+ * Expects frames from the stacked dataset.
+ *
+ * @par buffers
+ * @buffer in_buf The buffer to read from.
+ *        @buffer_format visBuffer
+ *        @buffer_metadata visMetadata
+ *
+ * @conf feed_sep       Float, default 0.3048. The separation between feeds (in m)
+ * @conf apodization    String, default nuttall. The type of window to use for apodization.
+ *
+ *
+ * @author Tristan Pinsonneault-Marotte
+ */
 class mapMaker : public kotekan::Stage {
 
 public:
@@ -83,6 +99,24 @@ private:
     Buffer* in_buf;
 };
 
+/**
+ * @brief Complete stack over redundant baselines from previously stacked data.
+ *
+ * This is based on baselineCompression.
+ *
+ * @todo merge this with baselineCompression
+ *
+ * @par buffers
+ * @buffer in_buf The buffer to read from.
+ *        @buffer_format visBuffer
+ *        @buffer_metadata visMetadata
+ * @buffer out_buf The buffer to write to.
+ *        @buffer_format visBuffer
+ *        @buffer_metadata visMetadata
+ *
+ *
+ * @author Tristan Pinsonneault-Marotte
+ */
 class redundantStack : public kotekan::Stage {
 
 public:
@@ -106,6 +140,14 @@ private:
     Buffer* out_buf;
 };
 
+/**
+ * @brief Complete the redundant stacking.
+ *
+ * @param inputs The set of inputs.
+ * @param prods  The products we are stacking.
+ *
+ * @returns Stack definition.
+ **/
 std::pair<uint32_t, std::vector<rstack_ctype>>
 full_redundant(const std::vector<input_ctype>& inputs, const std::vector<prod_ctype>& prods);
 
@@ -123,6 +165,19 @@ const std::map<std::string, std::vector<float>> apod_param = {
     {"blackman_harris", {0.35875, -0.48829, 0.14128, -0.01168}},
 };
 
+/**
+ * @brief Generate an apodization function over some range.
+ *
+ * Evaluates a window function that is symmetric around zero.
+ * Available functions are listed in the `apod_param` variable.
+ *
+ * @param x        Vector of float. The locations at which to evaluate the window.
+ * @param width    Float, default 1. The distance from zero beyond which window will be set to 0.
+ *                      The x parameter will be normalized by this value before evaluating.
+ * @param win      String, default nuttall. The type of window to use.
+ *
+ * @author Tristan Pinsoneault-Marotte, Richard Shaw
+ **/
 inline std::vector<float> apod(std::vector<float>& x, float width = 1., const std::string& win = "nuttall") {
 
     if (width <= 0)
