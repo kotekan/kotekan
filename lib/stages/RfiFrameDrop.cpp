@@ -23,16 +23,16 @@ using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(RfiFrameDrop);
 
-RfiFrameDrop::RfiFrameDrop(Config& config, const std::string& unique_name, bufferContainer& buffer_container) :
+RfiFrameDrop::RfiFrameDrop(Config& config, const std::string& unique_name,
+                           bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&RfiFrameDrop::main_thread, this)),
-    _failing_frame_counter(Metrics::instance().add_counter("kotekan_rfiframedrop_failing_frame_total",
-                                                           unique_name,
-                                                           {"freq_id", "threshold", "fraction"})),
-    _dropped_frame_counter(Metrics::instance().add_counter("kotekan_rfiframedrop_dropped_frame_total",
-                                                           unique_name, {"freq_id"})),
-    _frame_counter(Metrics::instance().add_counter("kotekan_rfiframedrop_frame_total",
-                                                   unique_name, {"freq_id"}))
-{
+    _failing_frame_counter(
+        Metrics::instance().add_counter("kotekan_rfiframedrop_failing_frame_total", unique_name,
+                                        {"freq_id", "threshold", "fraction"})),
+    _dropped_frame_counter(Metrics::instance().add_counter(
+        "kotekan_rfiframedrop_dropped_frame_total", unique_name, {"freq_id"})),
+    _frame_counter(Metrics::instance().add_counter("kotekan_rfiframedrop_frame_total", unique_name,
+                                                   {"freq_id"})) {
 
     _buf_in_vis = get_buffer("in_buf_vis");
     _buf_in_sk = get_buffer("in_buf_sk");
@@ -73,13 +73,16 @@ void RfiFrameDrop::main_thread() {
     // In theory this could be pre-applied to the threshold, but that's more
     // difficult if we dynamically receive the bad input list
     size_t num_inputs = num_elements;
-    float sigma_scale = sqrt((num_inputs * (sk_step - 1) * (sk_step + 2) * (sk_step + 3)) / (4.0 * sk_step * sk_step));
+    float sigma_scale = sqrt((num_inputs * (sk_step - 1) * (sk_step + 2) * (sk_step + 3))
+                             / (4.0 * sk_step * sk_step));
 
 
     while (!stop_thread) {
         // Fetch the input buffers
-        uint8_t* frame_in_vis = wait_for_full_frame(_buf_in_vis, unique_name.c_str(), frame_id_in_vis);
-        float* frame_in_sk = (float*)wait_for_full_frame(_buf_in_sk, unique_name.c_str(), frame_id_in_sk);
+        uint8_t* frame_in_vis =
+            wait_for_full_frame(_buf_in_vis, unique_name.c_str(), frame_id_in_vis);
+        float* frame_in_sk =
+            (float*)wait_for_full_frame(_buf_in_sk, unique_name.c_str(), frame_id_in_sk);
 
         // Test to ensure we actually got valid buffers back
         if (frame_in_vis == nullptr || frame_in_sk == nullptr)
@@ -99,18 +102,18 @@ void RfiFrameDrop::main_thread() {
 
         if (vis_seq < sk_seq) {
             DEBUG("Dropping incoming N2 frame to sync up. Vis frame: {}; SK frame: {}, diff {}",
-                 vis_seq, sk_seq, vis_seq - sk_seq);
+                  vis_seq, sk_seq, vis_seq - sk_seq);
             mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
             continue;
         }
         if (sk_seq < vis_seq) {
             DEBUG("Dropping incoming SK frame to sync up. Vis frame: {}; SK frame: {}, diff {}",
-                 vis_seq, sk_seq, vis_seq - sk_seq);
+                  vis_seq, sk_seq, vis_seq - sk_seq);
             mark_frame_empty(_buf_in_sk, unique_name.c_str(), frame_id_in_sk++);
             continue;
         }
-        DEBUG2("Frames are synced. Vis frame: {}; SK frame: {}, diff {}",
-	           vis_seq, sk_seq, vis_seq - sk_seq);
+        DEBUG2("Frames are synced. Vis frame: {}; SK frame: {}, diff {}", vis_seq, sk_seq,
+               vis_seq - sk_seq);
 
         for (size_t ii = 0; ii < num_sub_frames; ii++) {
 
@@ -135,7 +138,8 @@ void RfiFrameDrop::main_thread() {
             // Process all the SK values to their deltas and for each threshold
             // we need to count how many samples exceed that threshold
             for (size_t jj = 0; jj < sk_samples_per_frame; jj++) {
-                float sk_sig = fabs(sigma_scale * frame_in_sk[ii * sk_samples_per_frame + jj] - 1.0f);
+                float sk_sig =
+                    fabs(sigma_scale * frame_in_sk[ii * sk_samples_per_frame + jj] - 1.0f);
 
                 for (size_t kk = 0; kk < num_thresholds; kk++) {
                     sk_exceeds[kk] += (sk_sig > std::get<0>(_thresholds[kk]));
@@ -145,9 +149,11 @@ void RfiFrameDrop::main_thread() {
             for (size_t kk = 0; kk < num_thresholds; kk++) {
                 if (sk_exceeds[kk] > std::get<1>(_thresholds[kk])) {
                     skip = true;
-                    _failing_frame_counter.labels({
-                        std::to_string(freq_id), std::to_string(std::get<2>(_thresholds[kk])), std::to_string(std::get<2>(_thresholds[kk]))
-                    }).inc();
+                    _failing_frame_counter
+                        .labels({std::to_string(freq_id),
+                                 std::to_string(std::get<2>(_thresholds[kk])),
+                                 std::to_string(std::get<2>(_thresholds[kk]))})
+                        .inc();
                 }
                 // Reset counters for the next sub_frame
                 sk_exceeds[kk] = 0;
@@ -175,7 +181,8 @@ void RfiFrameDrop::main_thread() {
 
 
 // mostly copied from visFrameView
-void RfiFrameDrop::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, int frame_id_dest) {
+void RfiFrameDrop::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
+                              int frame_id_dest) {
 
     // Buffer sizes must match exactly
     if (buf_src->frame_size != buf_dest->frame_size) {
@@ -198,7 +205,6 @@ void RfiFrameDrop::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_des
 
     pass_metadata(buf_src, frame_id_src, buf_dest, frame_id_dest);
 }
-
 
 
 bool RfiFrameDrop::parse_thresholds(nlohmann::json j) {

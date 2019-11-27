@@ -127,6 +127,7 @@ def drop_frame_data(tmpdir_factory):
 
     yield dump_buffer.load()
 
+
 @pytest.fixture(scope="module")
 def lostsamples_data(tmpdir_factory):
 
@@ -341,7 +342,9 @@ def test_rfi_total(lostweights_data):
 def test_gaussian(gaussian_data):
 
     exp_vis = np.identity(4)[np.triu_indices(4)]
-    frac_var = 1.0 / (gaussian_params["samples_per_data_set"] * gaussian_params["num_gpu_frames"])
+    frac_var = 1.0 / (
+        gaussian_params["samples_per_data_set"] * gaussian_params["num_gpu_frames"]
+    )
 
     vis_set = np.array([frame.vis for frame in gaussian_data])
     weight_set = np.array([frame.weight for frame in gaussian_data])
@@ -359,7 +362,11 @@ def test_gaussian(gaussian_data):
 def test_missing_frames(drop_frame_data):
 
     exp_vis = np.identity(4)[np.triu_indices(4)]
-    frac_var = 1.0 / (drop_frame_params["samples_per_data_set"] * drop_frame_params["num_gpu_frames"] * (1 - drop_frame_params["drop_probability"]))
+    frac_var = 1.0 / (
+        drop_frame_params["samples_per_data_set"]
+        * drop_frame_params["num_gpu_frames"]
+        * (1 - drop_frame_params["drop_probability"])
+    )
 
     vis_set = np.array([frame.vis for frame in drop_frame_data])
     weight_set = np.array([frame.weight for frame in drop_frame_data])

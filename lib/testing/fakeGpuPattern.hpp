@@ -181,7 +181,6 @@ public:
               const int freq_id) override;
 
 private:
-
     std::random_device rd;
     std::mt19937 gen;
     std::normal_distribution<float> gaussian;

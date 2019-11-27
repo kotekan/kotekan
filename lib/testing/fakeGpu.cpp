@@ -9,10 +9,10 @@
 
 #include <csignal>
 #include <iterator>
+#include <random>
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
-#include <random>
 
 
 REGISTER_KOTEKAN_STAGE(FakeGpu);

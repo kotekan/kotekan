@@ -7,10 +7,10 @@
 #define VALVE_HPP
 
 #include "Config.hpp"
-#include "prometheusMetrics.hpp"
 #include "Stage.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
+#include "prometheusMetrics.hpp"
 
 #include "json.hpp"
 
