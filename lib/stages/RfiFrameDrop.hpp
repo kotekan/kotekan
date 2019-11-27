@@ -47,8 +47,11 @@
  *                              to get dropped.
  *
  * @par Metrics
+ * @metric  kotekan_rfiframedrop_failing_frame_total
+ *          The number of frames failing each criteria per frequency.
  * @metric  kotekan_rfiframedrop_dropped_frame_total
- *          The number of frames dropped by each criteria.
+ *          The number of frames dropped (i.e. failing any single threshold test) for
+ *          each frequency.
  * @metric  kotekan_rfiframedrop_frame_total
  *          The total number of frames seen by this stage per frequency.
  *
@@ -83,6 +86,7 @@ private:
     std::vector<std::tuple<float, size_t, float>> _thresholds;
 
     /// Prometheus metrics to export
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& _failing_frame_counter;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& _dropped_frame_counter;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& _frame_counter;
 
@@ -93,6 +97,7 @@ private:
     size_t num_sub_frames;
     size_t sk_step;
     size_t sk_samples_per_frame;
+    size_t samples_per_sub_frame;
 };
 
 

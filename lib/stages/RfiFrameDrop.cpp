@@ -25,9 +25,11 @@ REGISTER_KOTEKAN_STAGE(RfiFrameDrop);
 
 RfiFrameDrop::RfiFrameDrop(Config& config, const std::string& unique_name, bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&RfiFrameDrop::main_thread, this)),
-    _dropped_frame_counter(Metrics::instance().add_counter("kotekan_rfiframedrop_dropped_frame_total",
+    _failing_frame_counter(Metrics::instance().add_counter("kotekan_rfiframedrop_failing_frame_total",
                                                            unique_name,
                                                            {"freq_id", "threshold", "fraction"})),
+    _dropped_frame_counter(Metrics::instance().add_counter("kotekan_rfiframedrop_dropped_frame_total",
+                                                           unique_name, {"freq_id"})),
     _frame_counter(Metrics::instance().add_counter("kotekan_rfiframedrop_frame_total",
                                                    unique_name, {"freq_id"}))
 {
@@ -44,6 +46,7 @@ RfiFrameDrop::RfiFrameDrop(Config& config, const std::string& unique_name, buffe
     num_elements = config.get<size_t>(unique_name, "num_elements");
     num_sub_frames = config.get<size_t>(unique_name, "num_sub_frames");
     sk_samples_per_frame = num_samples / sk_step / num_sub_frames;
+    samples_per_sub_frame = num_samples / num_sub_frames;
     enable_rfi_zero = config.get_default<bool>(unique_name, "enable_rfi_zero", false);
 
     assert((size_t)_buf_in_sk->frame_size == sizeof(float) * sk_samples_per_frame * num_sub_frames);
@@ -91,28 +94,41 @@ void RfiFrameDrop::main_thread() {
 
         // Try and synchronize up the frames. Even though they arrive at
         // different rates, this should eventually sync them up.
-	auto vis_seq = metadata_vis->fpga_seq_num; 
-	auto sk_seq = metadata_sk->fpga_seq_num; 
+        auto vis_seq = metadata_vis->fpga_seq_num;
+        auto sk_seq = metadata_sk->fpga_seq_num;
+
         if (vis_seq < sk_seq) {
-	    INFO("Dropping incoming N2 frame to sync up. Vis frame: {}; SK frame: {}, diff {}",
-		 vis_seq, sk_seq, vis_seq - sk_seq);
+            DEBUG("Dropping incoming N2 frame to sync up. Vis frame: {}; SK frame: {}, diff {}",
+                 vis_seq, sk_seq, vis_seq - sk_seq);
             mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
             continue;
         }
         if (sk_seq < vis_seq) {
-	    INFO("Dropping incoming SK frame to sync up. Vis frame: {}; SK frame: {}, diff {}",
-		 vis_seq, sk_seq, vis_seq - sk_seq);
+            DEBUG("Dropping incoming SK frame to sync up. Vis frame: {}; SK frame: {}, diff {}",
+                 vis_seq, sk_seq, vis_seq - sk_seq);
             mark_frame_empty(_buf_in_sk, unique_name.c_str(), frame_id_in_sk++);
             continue;
         }
         DEBUG2("Frames are synced. Vis frame: {}; SK frame: {}, diff {}",
-	       vis_seq, sk_seq, vis_seq - sk_seq);
+	           vis_seq, sk_seq, vis_seq - sk_seq);
 
         for (size_t ii = 0; ii < num_sub_frames; ii++) {
 
-	    if (wait_for_full_frame(_buf_in_vis, unique_name.c_str(), frame_id_in_vis) == nullptr) {
-	        break;
-	    }
+            if (wait_for_full_frame(_buf_in_vis, unique_name.c_str(), frame_id_in_vis) == nullptr) {
+                break;
+            }
+
+            auto sf_seq = get_fpga_seq_num(_buf_in_vis, frame_id_in_vis);
+
+            // Check that we are still synchronized with the frame we are
+            // expecting. If not (and this may happen if the Valve process is
+            // active), we will just skip the set of sub frames and hopefully we
+            // will resync
+            if (sf_seq != (int64_t)(sk_seq + ii * samples_per_sub_frame)) {
+                INFO("Lost synchronization. Dropping data and resetting.");
+                mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
+                break;
+            }
 
             bool skip = false;
 
@@ -129,12 +145,10 @@ void RfiFrameDrop::main_thread() {
             for (size_t kk = 0; kk < num_thresholds; kk++) {
                 if (sk_exceeds[kk] > std::get<1>(_thresholds[kk])) {
                     skip = true;
-                    _dropped_frame_counter.labels({
+                    _failing_frame_counter.labels({
                         std::to_string(freq_id), std::to_string(std::get<2>(_thresholds[kk])), std::to_string(std::get<2>(_thresholds[kk]))
                     }).inc();
                 }
-                // TODO: log prometheus output
-
                 // Reset counters for the next sub_frame
                 sk_exceeds[kk] = 0;
             }
@@ -149,6 +163,7 @@ void RfiFrameDrop::main_thread() {
                 }
                 copy_frame(_buf_in_vis, frame_id_in_vis, _buf_out, frame_id_out);
                 mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
+                _dropped_frame_counter.labels({std::to_string(freq_id)}).inc();
             }
             //
             mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
