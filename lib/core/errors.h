@@ -11,9 +11,13 @@
 #include <signal.h>
 
 #ifdef __cplusplus
+#ifdef __clang__
+#include <string.h>
+#else
 #include <cstring>
-#include <cerrno>
 using std::strerror;
+#endif
+#include <cerrno>
 #endif
 
 enum ReturnCode {CLEAN_EXIT = 0, FATAL_ERROR = 1, TEST_PASSED, TEST_FAILED, RETURN_CODE_COUNT};
