@@ -158,6 +158,7 @@ void frbPostProcess::main_thread() {
             // On startup, we just go with whatever is the smallest input fpga_seq_num.
             // Afterwards, we know what the last frame was, and so can just count from there
             if (startup) {
+                start_fpga_count = max_fpga_count;
                 for (int i = 1; i < _num_gpus; i++) {
                     start_fpga_count =
                         std::min(start_fpga_count, get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
