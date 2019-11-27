@@ -91,16 +91,22 @@ void RfiFrameDrop::main_thread() {
 
         // Try and synchronize up the frames. Even though they arrive at
         // different rates, this should eventually sync them up.
-        if (metadata_vis->fpga_seq_num < metadata_sk->fpga_seq_num) {
-	    INFO("Dropping incoming N2 frame to sync up.");
+	auto vis_seq = metadata_vis->fpga_seq_num; 
+	auto sk_seq = metadata_sk->fpga_seq_num; 
+        if (vis_seq < sk_seq) {
+	    INFO("Dropping incoming N2 frame to sync up. Vis frame: {}; SK frame: {}, diff {}",
+		 vis_seq, sk_seq, vis_seq - sk_seq);
             mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
             continue;
         }
-        if (metadata_sk->fpga_seq_num < metadata_vis->fpga_seq_num) {
-	    INFO("Dropping incoming SK frame to sync up.");
+        if (sk_seq < vis_seq) {
+	    INFO("Dropping incoming SK frame to sync up. Vis frame: {}; SK frame: {}, diff {}",
+		 vis_seq, sk_seq, vis_seq - sk_seq);
             mark_frame_empty(_buf_in_sk, unique_name.c_str(), frame_id_in_sk++);
             continue;
         }
+	INFO("Frames are synced. Vis frame: {}; SK frame: {}, diff {}",
+	     vis_seq, sk_seq, vis_seq - sk_seq);
 
         for (size_t ii = 0; ii < num_sub_frames; ii++) {
 
@@ -144,13 +150,13 @@ void RfiFrameDrop::main_thread() {
             mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
             _frame_counter.labels({std::to_string(freq_id)}).inc();
         }
+        mark_frame_empty(_buf_in_sk, unique_name.c_str(), frame_id_in_sk++);
     }
 }
 
 
 // mostly copied from visFrameView
 void RfiFrameDrop::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, int frame_id_dest) {
-    allocate_new_metadata_object(buf_dest, frame_id_dest);
 
     // Buffer sizes must match exactly
     if (buf_src->frame_size != buf_dest->frame_size) {
