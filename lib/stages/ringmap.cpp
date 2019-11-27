@@ -7,6 +7,7 @@
 
 #include <cblas.h>
 #include <complex>
+#include <future>
 
 using namespace std::complex_literals;
 using namespace std::placeholders;
@@ -198,22 +199,24 @@ void mapMaker::change_dataset_state(dset_id_t new_ds_id) {
 
     // Get the product spec and (if available) the stackState to determine the
     // number of vis entries we are expecting
-    auto istate = dm.dataset_state<inputState>(ds_id);
-    auto pstate = dm.dataset_state<prodState>(ds_id);
-    auto sstate = dm.dataset_state<stackState>(ds_id);
-    auto fstate = dm.dataset_state<freqState>(ds_id);
-    if (pstate == nullptr || istate == nullptr || fstate == nullptr)
-        throw std::runtime_error("Could not find all dataset states for "
-                                 "incoming dataset with ID "
-                                 + std::to_string(ds_id)
-                                 + ".\n"
-                                   "One of them is a nullptr (0): prod "
-                                 + std::to_string(pstate != nullptr) + ", input "
-                                 + std::to_string(istate != nullptr) + ", stack "
-                                 + std::to_string(sstate != nullptr));
+    auto istate_fut = std::async(&datasetManager::dataset_state<inputState>, &dm, ds_id);
+    auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>, &dm, ds_id);
+    auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>, &dm, ds_id);
+    auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm, ds_id);
+    const inputState* istate = istate_fut.get();
+    const prodState* pstate = pstate_fut.get();
+    const stackState* sstate = sstate_fut.get();
+    const freqState* fstate = fstate_fut.get();
+    if (pstate == nullptr || istate == nullptr || fstate == nullptr) {
+        FATAL_ERROR("Could not find all dataset states for incoming dataset with ID {}."
+                    "\nOne of them is a nullptr: prod {}, input {}, freq {}.", ds_id,
+                    pstate != nullptr, istate != nullptr, fstate != nullptr);
+        return;
+    }
 
-    if (sstate == nullptr)
-        throw std::runtime_error("MapMaker requires visibilities stacked ");
+    if (sstate == nullptr) {
+        FATAL_ERROR("MapMaker requires visibilities stacked.");
+    }
 
     stacks = sstate->get_stack_map();
     prods = pstate->get_prods();
@@ -382,22 +385,25 @@ void redundantStack::change_dataset_state(dset_id_t ds_id) {
     state_id_t stack_state_id;
 
     // Get input & prod states synchronoulsy
-    const inputState* input_state_ptr = dm.dataset_state<inputState>(ds_id);
-    prod_state_ptr = dm.dataset_state<prodState>(ds_id);
-    old_stack_state_ptr = dm.dataset_state<stackState>(ds_id);
+    auto istate_fut = std::async(&datasetManager::dataset_state<inputState>, &dm, ds_id);
+    auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>, &dm, ds_id);
+    auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>, &dm, ds_id);
+    const inputState* input_state_ptr = istate_fut.get();
+    const prodState* prod_state_ptr = pstate_fut.get();
+    const stackState* old_stack_state_ptr = sstate_fut.get();
 
-    if (input_state_ptr == nullptr)
-        throw std::runtime_error("Could not find inputState for "
-                                 "incoming dataset with ID "
-                                 + std::to_string(ds_id) + ".");
-    if (prod_state_ptr == nullptr)
-        throw std::runtime_error("Could not find prodState for "
-                                 "incoming dataset with ID "
-                                 + std::to_string(ds_id) + ".");
-    if (old_stack_state_ptr == nullptr)
-        throw std::runtime_error("Could not find stackState for "
-                                 "incoming dataset with ID "
-                                 + std::to_string(ds_id) + ".");
+    if (input_state_ptr == nullptr) {
+        FATAL_ERROR("Could not find inputState for incoming dataset with ID {}.", ds_id);
+        return;
+    }
+    if (prod_state_ptr == nullptr) {
+        FATAL_ERROR("Could not find prodState for incoming dataset with ID {}.", ds_id);
+        return;
+    }
+    if (old_stack_state_ptr == nullptr) {
+        FATAL_ERROR("Could not find stackState for incoming dataset with ID {}.", ds_id);
+        return;
+    }
 
     auto sspec = full_redundant(input_state_ptr->get_inputs(), prod_state_ptr->get_prods());
     auto sstate = std::make_unique<stackState>(sspec.first, std::move(sspec.second));
