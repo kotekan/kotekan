@@ -105,10 +105,14 @@ void RfiFrameDrop::main_thread() {
             mark_frame_empty(_buf_in_sk, unique_name.c_str(), frame_id_in_sk++);
             continue;
         }
-	INFO("Frames are synced. Vis frame: {}; SK frame: {}, diff {}",
-	     vis_seq, sk_seq, vis_seq - sk_seq);
+        DEBUG2("Frames are synced. Vis frame: {}; SK frame: {}, diff {}",
+	       vis_seq, sk_seq, vis_seq - sk_seq);
 
         for (size_t ii = 0; ii < num_sub_frames; ii++) {
+
+	    if (wait_for_full_frame(_buf_in_vis, unique_name.c_str(), frame_id_in_vis) == nullptr) {
+	        break;
+	    }
 
             bool skip = false;
 
