@@ -37,6 +37,20 @@ pipeline {
                   make -j 4'''
           }
         }
+        stage('Build CHIME kotekan with Clang') {
+          steps {
+            sh '''mkdir -p chime-build-clang
+                  cd chime-build-clang
+                  export CC=/usr/lib/clang-8.0/bin/clang
+                  export CXX=/usr/lib/clang-8.0/bin/clang++
+                  cmake -DRTE_SDK=/opt/dpdk \
+                  -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON \
+                  -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
+                  -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
+                  -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+                  make -j 4'''
+          }
+        }
         stage('Build base kotekan') {
           steps {
             sh '''mkdir -p build_base
