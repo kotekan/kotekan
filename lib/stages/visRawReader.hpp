@@ -202,4 +202,61 @@ private:
     double sleep_time;
 };
 
+class ensureOrdered : public kotekan::Stage {
+
+public:
+    ensureOrdered(kotekan::Config& config, const string& unique_name,
+                  kotekan::bufferContainer& buffer_container);
+
+    ~ensureOrdered() = default;
+
+    /// Main loop over buffer frames
+    void main_thread() override;
+
+private:
+    Buffer* in_buf;
+    Buffer* out_buf;
+
+    // Map of buffer frames waiting for their turn
+    std::map<size_t, size_t> waiting;
+    size_t max_waiting;
+
+    // time and frequency axes
+    std::map<time_ctype, size_t> time_map;
+    std::map<size_t, size_t> freq_map;
+    size_t ntime;
+    size_t nfreq;
+
+    // HDF5 chunk size
+    std::vector<int> chunk_size;
+    // size of time dimension of chunk
+    size_t chunk_t;
+    // size of frequency dimension of chunk
+    size_t chunk_f;
+    bool chunked;
+
+    bool get_dataset_state(dset_id_t ds_id);
+
+    // map from time and freq index to frame index
+    // visRawReader reads chunks with frequency as fastest varying index
+    // but within a chunk, time is the fastest varying index.
+    // This is how we perform the transpose.
+    inline size_t get_frame_ind(size_t ti, size_t fi) {
+        size_t ind = 0;
+        // chunk row and column
+        size_t row = ti / chunk_t;
+        size_t col = fi / chunk_f;
+        // special dimension at array edges
+        size_t this_chunk_t = chunk_t ? row * chunk_t + chunk_t < ntime : ntime - row * chunk_t;
+        // number of frames in previous rows
+        ind += nfreq * chunk_t * row;
+        // number of frames in chunks in this row
+        ind += (this_chunk_t * chunk_f) * col;
+        // within a chunk, time is fastest varying
+        ind += (fi % chunk_f) * this_chunk_t + (ti % chunk_t);
+
+        return ind;
+    };
+};
+
 #endif

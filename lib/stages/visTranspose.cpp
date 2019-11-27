@@ -301,6 +301,7 @@ void visTranspose::main_thread() {
         }
 
         // Increment within read chunk
+        // within a chunk, time is the fastest varying index
         ti = (ti + 1) % write_t;
         if (ti == 0)
             fi++;
@@ -355,7 +356,7 @@ void visTranspose::write() {
 }
 
 // increment between chunks
-// cycle through all times before incrementing the frequency
+// chunks come in (time, freq) order
 // WARNING: This order must be consistent with how visRawReader
 //      implements chunked reads. The mechanism for avoiding
 //      overwriting flags also relies on this ordering.
