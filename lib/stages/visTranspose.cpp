@@ -178,26 +178,42 @@ void visTranspose::main_thread() {
     // offset for copying into buffer
     uint32_t offset = 0;
 
+    // The dataset ID we read from the frame
+    dset_id_t ds_id;
+    // The dataset ID of the state without the time axis
+    dset_id_t base_ds_id;
+
     uint64_t frame_size = 0;
 
-    // Wait for a frame in the input buffer in order to get the dataset ID
-    if ((wait_for_full_frame(in_buf, unique_name.c_str(), 0)) == nullptr) {
-        return;
-    }
-    auto frame = visFrameView(in_buf, 0);
-    dset_id_t ds_id = frame.dataset_id;
-    auto future_ds_state = std::async(&visTranspose::get_dataset_state, this, ds_id);
+    bool found_frame = false;
+    uint32_t first_ind = 0;
+    while (!found_frame) {
+        // Wait for a frame in the input buffer in order to get the dataset ID
+        if ((wait_for_full_frame(in_buf, unique_name.c_str(), first_ind)) == nullptr) {
+            return;
+        }
+        auto frame = visFrameView(in_buf, first_ind);
+        if (frame.fpga_seq_length == 0) {
+            INFO("Got empty frame ({:d}).", first_ind);
+            first_ind++;
+            continue;
+        }
+        found_frame = true;
 
-    if (!future_ds_state.get()) {
-        FATAL_ERROR("Couldn't find ancestor of dataset {}. "
-                    "Make sure there is a stage upstream in the config, that adds the dataset "
-                    "states.\nExiting...",
-                    ds_id);
-        return;
+        ds_id = frame.dataset_id;
+        auto future_ds_state = std::async(&visTranspose::get_dataset_state, this, ds_id);
+
+        if (!future_ds_state.get()) {
+            FATAL_ERROR("Couldn't find ancestor of dataset {}. "
+                        "Make sure there is a stage upstream in the config, that adds the dataset "
+                        "states.\nExiting...",
+                        ds_id);
+            return;
+        }
     }
 
     // Get the original dataset ID (before adding time axis)
-    dset_id_t base_ds_id = base_dset(ds_id);
+    base_ds_id = base_dset(ds_id);
 
     // Once the async get_dataset_state() is done, we have all the metadata to
     // create a file.
@@ -227,12 +243,16 @@ void visTranspose::main_thread() {
         auto frame = visFrameView(in_buf, frame_id);
 
         if (frame.dataset_id != ds_id) {
-            // TODO assuming that dataset ID changes here never change dataset dimensions
-            INFO("Dataset ID has changed from {} to {}. Getting base dataset ID from "
-                 "broker...",
-                 ds_id, frame.dataset_id);
-            ds_id = frame.dataset_id;
-            base_ds_id = base_dset(ds_id);
+            if (frame.fpga_seq_length == 0) {
+                INFO("Got an empty frame.");
+            } else {
+                // TODO assuming that dataset ID changes here never change dataset dimensions
+                INFO("Dataset ID has changed from {} to {}. Getting base dataset ID from "
+                     "broker...",
+                     ds_id, frame.dataset_id);
+                ds_id = frame.dataset_id;
+                base_ds_id = base_dset(ds_id);
+            }
         }
 
         // Collect frames until a chunk is filled

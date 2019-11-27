@@ -315,6 +315,8 @@ void visRawReader::main_thread() {
             frame.freq_id = 0;
             frame.erms = 0;
             frame.dataset_id = out_dset_id;
+            // mark frame as empty by ensuring this is 0
+            frame.fpga_seq_length = 0;
             DEBUG("visRawReader: Reading empty frame: {:d}", frame_id);
         }
 
