@@ -139,19 +139,22 @@ void RfiFrameDrop::main_thread() {
             // we need to count how many samples exceed that threshold
             for (size_t jj = 0; jj < sk_samples_per_frame; jj++) {
                 float sk_sig =
-                    fabs(sigma_scale * frame_in_sk[ii * sk_samples_per_frame + jj] - 1.0f);
+                    fabs(sigma_scale * (frame_in_sk[ii * sk_samples_per_frame + jj] - 1.0f));
 
+		INFO("SK: {}; SKraw: {}", sk_sig, frame_in_sk[ii * sk_samples_per_frame + jj]);
                 for (size_t kk = 0; kk < num_thresholds; kk++) {
                     sk_exceeds[kk] += (sk_sig > std::get<0>(_thresholds[kk]));
+	            INFO("threshold {}", std::get<0>(_thresholds[kk]));
                 }
             }
 
             for (size_t kk = 0; kk < num_thresholds; kk++) {
+	        INFO("Threshold: {}; Count: {}; Limit: {}", std::get<0>(_thresholds[kk]), sk_exceeds[kk], std::get<1>(_thresholds[kk]));
                 if (sk_exceeds[kk] > std::get<1>(_thresholds[kk])) {
                     skip = true;
                     _failing_frame_counter
                         .labels({std::to_string(freq_id),
-                                 std::to_string(std::get<2>(_thresholds[kk])),
+                                 std::to_string(std::get<1>(_thresholds[kk])),
                                  std::to_string(std::get<2>(_thresholds[kk]))})
                         .inc();
                 }
@@ -169,6 +172,7 @@ void RfiFrameDrop::main_thread() {
                 }
                 copy_frame(_buf_in_vis, frame_id_in_vis, _buf_out, frame_id_out);
                 mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
+            } else {
                 _dropped_frame_counter.labels({std::to_string(freq_id)}).inc();
             }
             //
