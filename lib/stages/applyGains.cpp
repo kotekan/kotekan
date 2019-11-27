@@ -60,12 +60,6 @@ applyGains::applyGains(Config& config, const string& unique_name,
         throw std::invalid_argument("applyGains: config: num_kept_updates has"
                                     "to be equal or greater than one (is "
                                     + std::to_string(num_kept_updates) + ").");
-    // Time to blend old and new gains in seconds. Default is 5 minutes.
-    t_combine_default = config.get_default<float>(unique_name, "combine_gains_time", 5 * 60);
-    if (t_combine_default < 0)
-        throw std::invalid_argument("applyGains: config: combine_gains_time has"
-                                    "to be positive (is "
-                                    + std::to_string(t_combine_default) + ").");
 
     // Get the path to gains directory
     gains_dir = config.get<std::string>(unique_name, "gains_dir");
@@ -97,7 +91,7 @@ bool applyGains::receive_update(nlohmann::json& json) {
     double new_ts;
     std::string gains_path;
     std::string update_id;
-    double t_combine;
+    double transition_interval;
 
     // receive new gains timestamp ("start_time" might move to "start_time")
     try {
@@ -124,8 +118,9 @@ bool applyGains::receive_update(nlohmann::json& json) {
     // receive new gains update
     try {
         if (!json.at("update_id").is_string())
-            throw std::invalid_argument(fmt::format(fmt("applyGains: received bad gains update_id: {:s}"),
-                                                    json.at("update_id").dump()));
+            throw std::invalid_argument(
+                fmt::format(fmt("applyGains: received bad gains update_id: {:s}"),
+                            json.at("update_id").dump()));
         update_id = json.at("update_id").get<std::string>();
     } catch (std::exception& e) {
         WARN("Failure reading 'update_id' from update: {:s}", e.what());
@@ -134,9 +129,10 @@ bool applyGains::receive_update(nlohmann::json& json) {
 
     // Read the interval to blend over
     try {
-        t_combine = json.at("t_combine").get<double>();
+        transition_interval = json.at("transition_interval").get<double>();
     } catch (std::exception& e) {
-        t_combine = t_combine_default;
+        WARN("Failure reading 'transition_interval' from update: {:s}", e.what());
+        return false;
     }
 
     // Read the gain file and return false if the read failed
@@ -145,8 +141,8 @@ bool applyGains::receive_update(nlohmann::json& json) {
         return false;
     }
 
-    state_id_t state_id = dm.create_state<gainState>(update_id, t_combine).first;
-    GainUpdate update = {std::move(gain_data.value()), t_combine, state_id};
+    state_id_t state_id = dm.create_state<gainState>(update_id, transition_interval).first;
+    GainUpdate update = {std::move(gain_data.value()), transition_interval, state_id};
 
     {
         // Lock mutex exclusively while we update FIFO
@@ -259,7 +255,9 @@ void applyGains::apply_thread() {
                 // Now we know how long to combine over, we can see if there's
                 // another gain update within that time window
                 auto update_old =
-                    gains_fifo.get_update(double_to_ts(frame_time - update_new->t_combine)).second;
+                    gains_fifo
+                        .get_update(double_to_ts(frame_time - update_new->transition_interval))
+                        .second;
 
                 auto& new_gain = update_new->data.gain.at(freq_ind);
                 if (update_old == nullptr || update_new == update_old) {
@@ -271,7 +269,7 @@ void applyGains::apply_thread() {
                         return;
 
                     auto& old_gain = update_old->data.gain.at(freq_ind);
-                    float coeff_new = age / update_new->t_combine;
+                    float coeff_new = age / update_new->transition_interval;
                     float coeff_old = 1 - coeff_new;
 
                     for (uint32_t ii = 0; ii < input_frame.num_elements; ii++) {

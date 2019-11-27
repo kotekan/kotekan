@@ -25,7 +25,7 @@ new_timestamp = start_time + 5.0
 old_update_id = f"gains{old_timestamp}"
 new_update_id = f"gains{new_timestamp}"
 
-t_combine = 10.0
+transition_interval = 10.0
 
 global_params = {
     "num_elements": 16,
@@ -41,7 +41,7 @@ global_params = {
         "kotekan_update_endpoint": "json",
         "start_time": old_timestamp,
         "update_id": old_update_id,
-        "t_combine": t_combine,
+        "transition_interval": transition_interval,
     },
     "wait": False,
     "sleep_before": 2.0,
@@ -117,7 +117,11 @@ def apply_data(tmp_path_factory, gain_path, old_gains, new_gains):
         [
             "post",
             "gains",
-            {"update_id": new_update_id, "start_time": new_timestamp, "t_combine": t_combine},
+            {
+                "update_id": new_update_id,
+                "start_time": new_timestamp,
+                "transition_interval": transition_interval,
+            },
         ]
     ]
 
@@ -154,14 +158,14 @@ def apply_data(tmp_path_factory, gain_path, old_gains, new_gains):
     return in_dump, out_dump_buffer.load()
 
 
-def combine_gains(t_frame, t_combine, new_ts, old_ts, new_gains, old_gains):
+def combine_gains(t_frame, transition_interval, new_ts, old_ts, new_gains, old_gains):
     if t_frame < old_ts:
         raise ValueError("Definitely shouldn't get in here.")
     elif t_frame < new_ts:
         return old_gains
-    elif t_frame < new_ts + t_combine:
+    elif t_frame < new_ts + transition_interval:
         age = t_frame - new_ts
-        new_coeff = age / t_combine
+        new_coeff = age / transition_interval
         old_coeff = 1.0 - new_coeff
         return new_coeff * new_gains + old_coeff * old_gains
     else:
@@ -218,7 +222,7 @@ def test_gain(apply_data, old_gains, new_gains):
         output_frame_timestamp = visutil.ts_to_double(output_frame.metadata.ctime)
         gains = combine_gains(
             output_frame_timestamp,
-            t_combine,
+            transition_interval,
             new_timestamp,
             old_timestamp,
             new_gain,

@@ -646,7 +646,7 @@ public:
     gainState(const json& data) {
         try {
             _update_id = data["update_id"].get<std::string>();
-            _t_combine = data["t_combine"].get<double>();
+            _transition_interval = data["transition_interval"].get<double>();
         } catch (std::exception& e) {
             throw std::runtime_error(fmt::format(
                 fmt("gainState: Failure parsing json data ({:s}): {:s}"), data.dump(4), e.what()));
@@ -656,11 +656,11 @@ public:
     /**
      * @brief Constructor
      * @param  update_id  The string update_id labelling the applied gains.
-     * @param  t_combine  The length of time to blend updates over.
+     * @param  transition_interval  The length of time to blend updates over.
      */
-    gainState(std::string update_id, double t_combine) :
+    gainState(std::string update_id, double transition_interval) :
         _update_id(update_id),
-        _t_combine(t_combine){};
+        _transition_interval(transition_interval){};
 
     /**
      * @brief Get the update_id
@@ -672,8 +672,8 @@ public:
     /**
      * @brief Get the length of time to blend this new update with the previous one.
      **/
-    double get_t_combine() const {
-        return _t_combine;
+    double get_transition_interval() const {
+        return _transition_interval;
     }
 
 private:
@@ -681,7 +681,7 @@ private:
     json data_to_json() const override {
         json j;
         j["update_id"] = _update_id;
-        j["t_combine"] = _t_combine;
+        j["transition_interval"] = _transition_interval;
         return j;
     }
 
@@ -689,7 +689,7 @@ private:
     std::string _update_id;
 
     // The length of time we (in seconds) should blend gain updates over
-    double _t_combine;
+    double _transition_interval;
 };
 
 

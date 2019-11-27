@@ -44,8 +44,6 @@
  * @conf   updatable_block  String. The full name of the updatable_block that
  *                                  will provide new flagging values (e.g. "/dynamic_block/gains").
  * @conf   gains_dir        String. The path to the directory holding the gains file.
- * @conf   tcombine         Double. Time (in seconds) over which to combine old and new gains to
- *                                  prevent discontinuities. Default is 5 minutes.
  * @conf   num_kept_updates Int.    The number of gain updates stored in a FIFO.
  * @conf   num_threads      Int.    Number of threads to run. Default is 1.
  *
@@ -85,7 +83,7 @@ private:
     // An internal type for holding all information about the gain update
     struct GainUpdate {
         GainData data;
-        double t_combine;
+        double transition_interval;
         state_id_t state_id;
     };
 
@@ -96,9 +94,6 @@ private:
 
     /// Number of gains updates to maintain
     uint64_t num_kept_updates;
-
-    /// Time over which to blend old and new gains in seconds. Default is 5 minutes.
-    double t_combine_default;
 
     /// The gains and when to start applying them in a FIFO (len set by config)
     updateQueue<GainUpdate> gains_fifo;
