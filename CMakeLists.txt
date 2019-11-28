@@ -25,6 +25,7 @@ option(USE_DPDK "Enable DPDK Framework" OFF)
 option(USE_HDF5 "Build HDF5 output stages" OFF)
 option(USE_OMP "Enable OpenMP" OFF)
 option(USE_OLD_ROCM "Build for ROCm versions 2.3 or older" OFF)
+option(USE_BASE64 "Build stages that require base64 library." OFF)
 option(SUPERDEBUG "Enable extra debugging with no optimisation" OFF)
 option(SANITIZE "Enable clang sanitizers for testing" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
@@ -193,6 +194,31 @@ if (${USE_HDF5})
     find_package(HDF5 REQUIRED)
     add_definitions(-DWITH_HDF5)
 endif ()
+
+if (${USE_BASE64})
+	if (NOT DEFINED BASE64_PATH)
+		MESSAGE("BASE64_PATH not specified: Cloning repository")
+        include(ExternalProject)
+        find_package(Git REQUIRED)
+        ExternalProject_Add(
+            base64
+            PREFIX ${CMAKE_BINARY_DIR}/ext
+            GIT_REPOSITORY https://github.com/aklomp/base64.git
+            TIMEOUT 10
+            UPDATE_COMMAND ${GIT_EXECUTABLE} pull
+            CONFIGURE_COMMAND ""
+            INSTALL_COMMAND ""
+			BUILD_IN_SOURCE ON
+            LOG_DOWNLOAD ON
+        )
+        ExternalProject_Get_Property(base64 source_dir)
+		set(BASE64_PATH ${source_dir} CACHE INTERNAL "Path to base64")
+	endif()
+	MESSAGE("base64 enabled; using: " ${BASE64_PATH})
+	include_directories ( ${BASE64_PATH}/include )
+	add_definitions(-DWITH_BASE64)
+endif ()
+
 
 # Optionally include OpenSSL for hash function support
 find_package( OpenSSL )

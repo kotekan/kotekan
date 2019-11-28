@@ -66,13 +66,6 @@ if (${USE_FFTW})
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} fftwEngine.cpp)
 endif ()
 
-# HDF5 stuff
-if (${USE_HDF5})
-  # Disable for the moment as requires too modern HDF5 not available in most computers
-  #set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} calibration_io.cpp)
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} basebandReadout.cpp applyGains.cpp)
-endif ()
-
 # HDF5 and OpenMP
 if (${USE_HDF5} AND ${USE_OMP})
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visTranspose.cpp)
@@ -88,6 +81,10 @@ if (${USE_LAPACK})
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} EigenVisIter.cpp)
 endif ()
 
+if (${USE_BASE64} AND ${USE_HDF5})
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} applyGains.cpp)
+endif ()
+
 add_library (kotekan_stages ${KOTEKAN_PROCESS_LIB_SOURCES})
 target_link_libraries( kotekan_stages ${EVENT_LIBRARIES} )
 
@@ -98,6 +95,9 @@ if (${USE_FFTW})
   target_link_libraries ( kotekan_stages -lfftw3f)
 endif ()
 
+if (${USE_BASE64} AND ${USE_HDF5})
+  target_link_libraries( kotekan_stages ${BASE64_PATH}/lib/libbase64.o )
+endif ()
 
 if (${USE_AIRSPY})
   target_link_libraries ( kotekan_stages -lairspy)

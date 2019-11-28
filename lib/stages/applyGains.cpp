@@ -12,6 +12,7 @@
 #include "restClient.hpp"
 
 #include "fmt.hpp"
+#include "libbase64.h"
 
 #include <algorithm>
 #include <csignal>
