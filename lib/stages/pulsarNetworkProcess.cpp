@@ -26,6 +26,7 @@ using std::string;
 #include "pulsarNetworkProcess.hpp"
 #include "tx_utils.hpp"
 #include "util.h"
+#include "vdif_functions.h"
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -172,15 +173,28 @@ void pulsarNetworkProcess::main_thread() {
     CLOCK_ABS_NANOSLEEP(CLOCK_REALTIME, t0);
 
     clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    // added to take care of the missed frames
+    VDIFHeader* header = reinterpret_cast<VDIFHeader*>(packet_buffer);
+    int64_t vdif_last_seconds = header->seconds;
+    int64_t vdif_last_frame = header->data_frame;
+
     while (!stop_thread) {
-        add_nsec(t0, time_interval);
-
-        t1.tv_sec = t0.tv_sec;
-        t1.tv_nsec = t0.tv_nsec;
-
         packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
         if (packet_buffer == NULL)
             break;
+
+        header = reinterpret_cast<VDIFHeader*>(packet_buffer);
+        time_interval = 2560
+                        * (390625 * (header->seconds - vdif_last_seconds)
+                           + 625 * (header->data_frame - vdif_last_frame));
+
+        add_nsec(t0, time_interval);
+        t1.tv_sec = t0.tv_sec;
+        t1.tv_nsec = t0.tv_nsec;
+
+        vdif_last_seconds = header->seconds;
+        vdif_last_frame = header->data_frame;
 
         for (int frame = 0; frame < 80; frame++) {
             for (int beam = 0; beam < 10; beam++) {
