@@ -476,24 +476,33 @@ void datasetManager::update_datasets(dset_id_t ds_id) {
     std::unique_lock<std::mutex> dslock(_lock_dsets, std::adopt_lock);
     std::lock_guard<std::mutex> updatelock(_lock_ds_update, std::adopt_lock);
 
-    // check if local dataset topology is up to date to include requested ds_id
-    if (_datasets.find(ds_id) == _datasets.end()) {
-        dslock.unlock();
-        json js_rqst;
-        js_rqst["ts"] = _timestamp_update;
-        js_rqst["ds_id"] = ds_id;
-        js_rqst["roots"] = _known_roots;
-
-        restReply reply = _rest_client.make_request_blocking(
-            PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host, _ds_broker_port, _retries_rest_client,
-            _timeout_rest_client_s);
-
-        while (!parse_reply_dataset_update(reply)) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(_retry_wait_time_ms));
-            reply = _rest_client.make_request_blocking(
-                PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host, _ds_broker_port,
-                _retries_rest_client, _timeout_rest_client_s);
+    // Walk up the tree from the given dataset until we find a state that we
+    // don't know. If we reach the root state, then we don't need to update
+    // anything so we exit
+    while (_datasets.count(ds_id) == 1) {
+        auto& ds = _datasets.at(ds_id);
+        if (ds.is_root()) {
+            return;
         }
+        ds_id = ds.base_dset();
+    }
+
+    // check if local dataset topology is up to date to include requested ds_id
+    dslock.unlock();
+    json js_rqst;
+    js_rqst["ts"] = _timestamp_update;
+    js_rqst["ds_id"] = ds_id;
+    js_rqst["roots"] = _known_roots;
+
+    restReply reply = _rest_client.make_request_blocking(
+        PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host, _ds_broker_port, _retries_rest_client,
+        _timeout_rest_client_s);
+
+    while (!parse_reply_dataset_update(reply)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(_retry_wait_time_ms));
+        reply = _rest_client.make_request_blocking(
+            PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host, _ds_broker_port,
+            _retries_rest_client, _timeout_rest_client_s);
     }
 }
 

@@ -445,6 +445,8 @@ private:
     bool register_dataset_parser(std::string& reply);
 
     /// request an update on the topology of datasets (blocking)
+    /// this will check to see if any ancestors of ds_id are not known, and try
+    /// to fetch any that are missing
     void update_datasets(dset_id_t ds_id);
 
     /// Helper function to parse the reply for update_datasets()
@@ -541,6 +543,7 @@ inline const T* datasetManager::dataset_state(dset_id_t dset) {
 
     // Try to find a matching dataset
     std::string type = FACTORY(datasetState)::label<T>();
+    DEBUG_NON_OO("Finding state {} from dset {}", type, dset.to_string());
     auto ret = closest_dataset_of_type(dset, type);
 
     // If not found, return null

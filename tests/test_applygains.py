@@ -44,7 +44,7 @@ global_params = {
         "transition_interval": transition_interval,
     },
     "wait": False,
-    "sleep_before": 2.0,
+    "sleep_before": 3.0,
     "num_threads": 4,
     "dataset_manager": {"use_dataset_broker": False},
 }
