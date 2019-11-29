@@ -23,9 +23,8 @@ hsaAsyncCopyGain::hsaAsyncCopyGain(Config& config, const string& unique_name,
     gain_buf_id = 0;
     gain_buf_finalize_id = 0;
     gain_buf_precondition_id = 0;
-    frame_to_fill = 0;
-    frame_to_fill_finalize = 0;
-    filling_frame = false;
+    frames_to_update = 0;
+    frame_copy_active.insert(std::begin(frame_copy_active), device.get_gpu_buffer_depth(), false);
     first_pass = true;
 }
 
@@ -33,6 +32,8 @@ hsaAsyncCopyGain::~hsaAsyncCopyGain() {}
 
 int hsaAsyncCopyGain::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
+
+    std::lock_guard<std::mutex> lock(update_mutex);
 
     // Check for new gains
     if (first_pass) {
@@ -42,21 +43,24 @@ int hsaAsyncCopyGain::wait_on_precondition(int gpu_frame_id) {
             return -1;
         gain_buf_precondition_id = (gain_buf_precondition_id + 1) % gain_buf->num_frames;
         first_pass = false;
-        frame_to_fill = device.get_gpu_buffer_depth();
-        frame_to_fill_finalize = frame_to_fill;
-        filling_frame = true;
+        frames_to_update = device.get_gpu_buffer_depth();
     } else {
-        // Check for new gains only if filled all gpu frames (not currently filling frame)
-        if (!filling_frame) {
+        // Check for new gains only if filled all gpu frames (not currently updating frames)
+        bool current_update_active = false;
+        for (bool in_use : frame_copy_active) {
+            if (in_use) {
+                current_update_active = true;
+                break;
+            }
+        }
+        if (frames_to_update == 0 && !current_update_active) {
             auto timeout = double_to_ts(0);
             int status = wait_for_full_frame_timeout(gain_buf, unique_name.c_str(),
                                                      gain_buf_precondition_id, timeout);
             DEBUG("status of gain_buf_precondition_id[{:d}]={:d} (0=ready 1=not)",
                   gain_buf_precondition_id, status);
             if (status == 0) {
-                filling_frame = true;
-                frame_to_fill = device.get_gpu_buffer_depth();
-                frame_to_fill_finalize = frame_to_fill;
+                frames_to_update = device.get_gpu_buffer_depth();
                 gain_buf_precondition_id = (gain_buf_precondition_id + 1) % gain_buf->num_frames;
             }
             if (status == -1)
@@ -68,16 +72,18 @@ int hsaAsyncCopyGain::wait_on_precondition(int gpu_frame_id) {
 
 
 hsa_signal_t hsaAsyncCopyGain::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
+    std::lock_guard<std::mutex> lock(update_mutex);
 
-    if (filling_frame && frame_to_fill > 0) {
-        DEBUG("Going to async copy gain_buf_id={:d} gpu_frame_id={:d}", gain_buf_id, gpu_frame_id);
+    if (frames_to_update > 0) {
+        frame_copy_active.at(gpu_frame_id) = true;
+        INFO("Going to async copy gain_buf_id={:d} gpu_frame_id={:d}", gain_buf_id, gpu_frame_id);
         void* device_gain = device.get_gpu_memory_array("beamform_gain", gpu_frame_id, gain_len);
         void* host_gain = (void*)gain_buf->frames[gain_buf_id];
         device.async_copy_host_to_gpu(device_gain, host_gain, gain_len, precede_signal,
                                       signals[gpu_frame_id]);
 
-        frame_to_fill--;
-        if (frame_to_fill == 0) {
+        frames_to_update--;
+        if (frames_to_update == 0) {
             gain_buf_id = (gain_buf_id + 1) % gain_buf->num_frames;
         }
         return signals[gpu_frame_id];
@@ -86,16 +92,26 @@ hsa_signal_t hsaAsyncCopyGain::execute(int gpu_frame_id, hsa_signal_t precede_si
 }
 
 void hsaAsyncCopyGain::finalize_frame(int frame_id) {
-    if (frame_to_fill_finalize > 0 && filling_frame) { // only mark input empty if filling frame and
+    std::lock_guard<std::mutex> lock(update_mutex);
+
+    if (frame_copy_active.at(frame_id)) { // only mark input empty if filling frame and
                                                        // no more frames to finalize.
+        frame_copy_active.at(frame_id) = false;
         hsaCommand::finalize_frame(frame_id);
-        DEBUG("finalize_frame for gpu_frame_id={:d} using gain_buf_finaliz_id={:d}", frame_id,
+        INFO("finalize_frame for gpu_frame_id={:d} using gain_buf_finaliz_id={:d}", frame_id,
               gain_buf_finalize_id);
-        frame_to_fill_finalize--;
-        if (frame_to_fill_finalize == 0) {
+
+        bool current_update_active = false;
+        for (bool in_use : frame_copy_active) {
+            if (in_use) {
+                current_update_active = true;
+                break;
+            }
+        }
+        // We've updated all required frames.
+        if (!current_update_active) {
             mark_frame_empty(gain_buf, unique_name.c_str(), gain_buf_finalize_id);
             gain_buf_finalize_id = (gain_buf_finalize_id + 1) % gain_buf->num_frames;
-            filling_frame = false;
         }
     }
 }
