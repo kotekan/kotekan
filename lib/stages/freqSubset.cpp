@@ -78,7 +78,7 @@ void freqSubset::change_dataset_state(dset_id_t input_dset_id) {
                 output_freqs.push_back(std::pair<uint32_t, freq_ctype>(
                     _subset_list.at(i), input_freqs.at(_subset_list.at(i))));
 
-        states_map[input_dset_id] = dm.create_state<freqState>(output_freqs).first;
+        states_map[fprint] = dm.create_state<freqState>(output_freqs).first;
     }
 
     dset_id_map[input_dset_id] = dm.add_dataset(states_map.at(fprint), input_dset_id);
