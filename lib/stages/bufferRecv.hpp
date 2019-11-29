@@ -263,7 +263,7 @@ public:
      */
     void close_instance();
 
-    /// The name of the parient kotekan_stage
+    /// The name of the parent kotekan_stage
     string producer_name;
 
     /// The kotekan buffer to transfer data into
