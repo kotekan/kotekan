@@ -225,11 +225,13 @@ void bufferRecv::main_thread() {
 
     // This makes is possible to reuse the same socket even if it goes into TIME_WAIT
     // Used by gossec
-    int reuse = 1;
-    if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)) < 0) {
-        ERROR("Could not set SO_REUSEADDR on socket");
-        close(listener);
-        return;
+    if (!drop_frames) {
+        int reuse = 1;
+        if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)) < 0) {
+            ERROR("Could not set SO_REUSEADDR on socket");
+            close(listener);
+            return;
+        }
     }
 
     if (bind(listener, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {

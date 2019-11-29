@@ -8,6 +8,7 @@
 
 #include <cerrno>
 #include <cstring>
+#include <chrono>
 
 // Only Linux supports MSG_NOSIGNAL
 #ifndef __linux__
@@ -143,7 +144,8 @@ void bufferSend::main_thread() {
             // Wait for connection and block
             INFO("Waiting for connection to {:s}:{:d}...", server_ip, server_port);
             std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
-            connection_state_cv.wait(connection_lock, [&]() {return (true && connected);});
+            connection_state_cv.wait_for(connection_lock, std::chrono::seconds(1),
+                                         [&]() {return (stop_thread || connected);});
             continue;
         }
 
