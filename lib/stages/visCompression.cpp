@@ -150,9 +150,6 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
     int output_frame_id;
     uint64_t frame_counter;
 
-    dset_id_t input_dset_id;
-    dset_id_t output_dset_id = dset_id_t::null;
-
     // Get the current values of the shared frame IDs.
     {
         std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
@@ -231,7 +228,7 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
         // Copy over the data we won't modify
         output_frame.copy_metadata(input_frame);
         output_frame.copy_data(input_frame, {visField::vis, visField::weight});
-        output_frame.dataset_id = output_dset_id;
+        output_frame.dataset_id = new_dset_id;
 
         // Zero the output frame
         std::fill(std::begin(output_frame.vis), std::end(output_frame.vis), 0.0);

@@ -106,10 +106,6 @@ private:
     Buffer* in_buf;
     Buffer* out_buf;
 
-    // dataset states
-    const prodState* prod_state_ptr;
-    const stackState* stack_state_ptr;
-
     // Frame IDs, shared by compress threads and their mutex.
     frameID frame_id_in;
     frameID frame_id_out;
