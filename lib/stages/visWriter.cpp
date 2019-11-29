@@ -107,8 +107,8 @@ void visWriter::main_thread() {
     std::unique_lock<std::mutex> acqs_lock(acqs_mutex, std::defer_lock);
 
     while (!stop_thread) {
-        // Wait for the buffer to be filled with data
 
+        // Wait for the buffer to be filled with data
         if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
             break;
         }
@@ -213,7 +213,7 @@ void visWriter::close_old_acqs() {
         next_sweep = now + acq_timeout / 3.0;
     }
 
-    { 
+    {
         std::lock_guard<std::mutex> _lock(acqs_mutex);
         // Scan over the dataset keyed list
         auto it1 = acqs.begin();
@@ -280,14 +280,6 @@ void visWriter::get_dataset_state(dset_id_t ds_id) {
         for (auto& f : fstate->get_freqs())
             acq->freq_id_map[f.first] = ind++;
 
-        // compare git commit hashes
-        // TODO: enforce and crash here if build type is Release?
-        if (mstate->get_git_version_tag() != std::string(get_git_commit_hash())) {
-            INFO("Git version tags don't match: dataset {} has tag {:s},"
-                 "while the local git version tag is {:s}",
-                 ds_id, mstate->get_git_version_tag(), get_git_commit_hash());
-        }
-
         acq->num_vis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
     }
 }
@@ -301,10 +293,17 @@ bool visWriter::check_git_version(dset_id_t ds_id) {
     // compare git commit hashes
     // TODO: enforce and crash here if build type is Release?
     if (mstate->get_git_version_tag() != std::string(get_git_commit_hash())) {
-        WARN("Git version tags don't match: dataset {} has tag {:s},"
-             "while the local git version tag is {:s}",
-             ds_id, mstate->get_git_version_tag(), get_git_commit_hash());
-        return ignore_version;
+        if (ignore_version) {
+            WARN("Git version tags don't match: dataset {} has tag {:s},"
+                "while the local git version tag is {:s}. Ignoring for now, but you should look into this.",
+                ds_id, mstate->get_git_version_tag(), get_git_commit_hash());
+            return true;
+        } else {
+            WARN("Git version tags don't match: dataset {} has tag {:s},"
+                "while the local git version tag is {:s}. Marking acqusition bad and dropping all data.",
+                ds_id, mstate->get_git_version_tag(), get_git_commit_hash());
+            return false;
+        }
     }
     return true;
 }
@@ -323,7 +322,7 @@ void visWriter::init_acq(dset_id_t ds_id) {
         acqs[ds_id] = acqs_fingerprint.at(fp);
         return;
     }
-    
+
     INFO("Got new dataset ID={} with new fingerprint={}. Creating new acquisition.",
          ds_id, fp);
 
@@ -473,18 +472,17 @@ void visCalWriter::init_acq(dset_id_t ds_id) {
         return;
     }
 
-    WARN("Got new dataset ID={} with new fingerprint={}. visCalWriter can't support this, so we "
-         "will a new acq but reject all writes into it.", ds_id, fp);
-
-    // If it is not known we need to initialise everything
-    acqs_fingerprint[fp] = std::make_shared<acqState>();
-    acqs[ds_id] = acqs_fingerprint.at(fp);
-    auto& acq = *(acqs.at(ds_id));
+    INFO("Got new dataset ID={} with new fingerprint={}.", ds_id, fp);
 
     // Count the number of enabled acqusitions, for the visCalWriter this can't
     // be more than one
     int num_enabled = std::count_if(acqs_fingerprint.begin(), acqs_fingerprint.end(),
                                     [](auto& item) -> bool { return !(item.second->bad_dataset); });
+
+    // If it is not known we need to initialise everything
+    acqs_fingerprint[fp] = std::make_shared<acqState>();
+    acqs[ds_id] = acqs_fingerprint.at(fp);
+    auto& acq = *(acqs.at(ds_id));
 
     // get dataset states
     get_dataset_state(ds_id);

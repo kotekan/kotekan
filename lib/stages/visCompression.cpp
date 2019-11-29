@@ -111,8 +111,10 @@ void baselineCompression::main_thread() {
 }
 
 void baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
-    auto& dm = datasetManager::instance();
 
+    double start_time = current_time();
+
+    auto& dm = datasetManager::instance();
     auto fprint = dm.fingerprint(input_ds_id, {"inputs", "products"});
 
     if (state_map.count(fprint) == 0) {
@@ -138,10 +140,13 @@ void baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
         state_map[fprint] = {state_id, sstate_ptr, pstate_ptr};
     }
 
+
     auto [state_id, sstate, pstate] = state_map.at(fprint);
     auto new_ds_id = dm.add_dataset(state_id, input_ds_id);
 
     dset_id_map[input_ds_id] = {new_ds_id, sstate, pstate};
+
+    INFO("Created new stack update and registering. Took {:.2f}s", current_time() - start_time);
 }
 
 void baselineCompression::compress_thread(uint32_t thread_id) {
@@ -192,7 +197,6 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
                 change_dataset_state(input_frame.dataset_id);
             }
             std::tie(new_dset_id, sstate_ptr, pstate_ptr) = dset_id_map.at(input_frame.dataset_id);
-            INFO("Creating new stack update and registering took {:.2f}s", current_time() - start_time);
         }
 
         // if (input_dset_id != input_frame.dataset_id) {
