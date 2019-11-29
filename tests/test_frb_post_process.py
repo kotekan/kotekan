@@ -39,7 +39,7 @@ def frb_post_process_data(tmpdir_factory, missing_frames=None, test_env=None):
     "fake_cpu_beamform".
 
     If there are any frames to drop, the config will include a
-    TestDataGenMissingFrames stage, and drop the specified frame from the input
+    TestDropFrames stage, and drop the specified frame from the input
     to the FrbPostProcess.
 
     """
@@ -99,7 +99,7 @@ def frb_post_process_full_data(
     are stored in files starting with "fake_cpu_beamform_long{GPU_ID}".
 
     If there are any frames to drop, the config will include a
-    TestDataGenMissingFrames stage, and drop the specified frame from the input
+    TestDropFrames stage, and drop the specified frame from the input
     to the FrbPostProcess.
 
     """

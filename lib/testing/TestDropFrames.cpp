@@ -1,4 +1,4 @@
-#include "TestDataGenMissingFrames.hpp"
+#include "TestDropFrames.hpp"
 
 #include "chimeMetadata.h"
 #include "errors.h"
@@ -10,12 +10,11 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_STAGE(TestDataGenMissingFrames);
+REGISTER_KOTEKAN_STAGE(TestDropFrames);
 
-TestDataGenMissingFrames::TestDataGenMissingFrames(Config& config, const string& unique_name,
-                                                   bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container,
-          std::bind(&TestDataGenMissingFrames::main_thread, this)),
+TestDropFrames::TestDropFrames(Config& config, const string& unique_name,
+                               bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&TestDropFrames::main_thread, this)),
     _samples_per_data_set(config.get<uint32_t>(unique_name, "samples_per_data_set")),
     _missing_frames(config.get_default<std::vector<uint32_t>>(unique_name, "missing_frames", {})),
     _drop_frame_chance(config.get_default<double>(unique_name, "drop_frame_chance", 0)) {
@@ -27,7 +26,7 @@ TestDataGenMissingFrames::TestDataGenMissingFrames(Config& config, const string&
     register_producer(out_buf, unique_name.c_str());
 }
 
-void TestDataGenMissingFrames::main_thread() {
+void TestDropFrames::main_thread() {
     int frame_count = 0;
     int in_buf_id = 0;
     int out_buf_id = 0;

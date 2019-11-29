@@ -3,14 +3,14 @@
  * @brief Config-driven insertion of missing frames
  */
 
-#ifndef TEST_DATA_GEN_MISSING_FRAMES_HPP
-#define TEST_DATA_GEN_MISSING_FRAMES_HPP
+#ifndef TEST_DROP_FRAMES_HPP
+#define TEST_DROP_FRAMES_HPP
 
 #include "Stage.hpp"
 #include "buffer.h"
 
 /**
- * @class TestDataGenMissingFrames
+ * @class TestDropFrames
  * @brief Config-driven dropping of frames
  *
  * This stage can be interposed between two buffers to drop frames specified in the configuration.
@@ -30,12 +30,12 @@
  * @author James Willis, Davor Cubranic
  **/
 
-class TestDataGenMissingFrames : public kotekan::Stage {
+class TestDropFrames : public kotekan::Stage {
 public:
     /// Constructor
-    TestDataGenMissingFrames(kotekan::Config& config, const string& unique_name,
-                             kotekan::bufferContainer& buffer_container);
-    ~TestDataGenMissingFrames() = default;
+    TestDropFrames(kotekan::Config& config, const string& unique_name,
+                   kotekan::bufferContainer& buffer_container);
+    ~TestDropFrames() = default;
     void main_thread() override;
 
 private:

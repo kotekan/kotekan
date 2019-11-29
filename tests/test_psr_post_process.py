@@ -39,7 +39,7 @@ def psr_post_process_data(tmpdir_factory, missing_frames=None, test_env=None):
     """Runs the Kotekan pulsarPostProcess stage, optionally dropping frames
 
     If there are any frames to drop, the config will include a
-    TestDataGenMissingFrames stage, and drop the specified frame from the input
+    TestDropFrames stage, and drop the specified frame from the input
     to the pulsarPostProcess.
     """
 

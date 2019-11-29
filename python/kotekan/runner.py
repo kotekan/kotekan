@@ -946,7 +946,7 @@ class DropFramesBuffer(InputBuffer):
         self.buffer_block[self.name].update(kwargs)
 
         stage_config = {
-            "kotekan_stage": "TestDataGenMissingFrames",
+            "kotekan_stage": "TestDropFrames",
             "missing_frames": missing_frames,
             "in_buf": input_buffer.name,
             "out_buf": self.name,

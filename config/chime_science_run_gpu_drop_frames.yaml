@@ -754,19 +754,19 @@ read_gain:
 frb_packet_drop:
   drop_frame_chance: 0.02
   frb_packet_drop_0:
-    kotekan_stage: TestDataGenMissingFrames
+    kotekan_stage: TestDropFrames
     in_buf: gpu_beamform_output_buffer_0
     out_buf: gpu_beamform_output_valved_buffer_0
   frb_packet_drop_1:
-    kotekan_stage: TestDataGenMissingFrames
+    kotekan_stage: TestDropFrames
     in_buf: gpu_beamform_output_buffer_1
     out_buf: gpu_beamform_output_valved_buffer_1
   frb_packet_drop_2:
-    kotekan_stage: TestDataGenMissingFrames
+    kotekan_stage: TestDropFrames
     in_buf: gpu_beamform_output_buffer_2
     out_buf: gpu_beamform_output_valved_buffer_2
   frb_packet_drop_3:
-    kotekan_stage: TestDataGenMissingFrames
+    kotekan_stage: TestDropFrames
     in_buf: gpu_beamform_output_buffer_3
     out_buf: gpu_beamform_output_valved_buffer_3
 
@@ -1083,19 +1083,19 @@ frb:
 pulsar_packet_drop:
   drop_frame_chance: 0.02
   pulsar_packet_drop_0:
-    kotekan_stage: TestDataGenMissingFrames
+    kotekan_stage: TestDropFrames
     in_buf: beamform_pulsar_output_buffer_0
     out_buf: beamform_pulsar_output_valved_buffer_0
   pulsar_packet_drop_1:
-    kotekan_stage: TestDataGenMissingFrames
+    kotekan_stage: TestDropFrames
     in_buf: beamform_pulsar_output_buffer_1
     out_buf: beamform_pulsar_output_valved_buffer_1
   pulsar_packet_drop_2:
-    kotekan_stage: TestDataGenMissingFrames
+    kotekan_stage: TestDropFrames
     in_buf: beamform_pulsar_output_buffer_2
     out_buf: beamform_pulsar_output_valved_buffer_2
   pulsar_packet_drop_3:
-    kotekan_stage: TestDataGenMissingFrames
+    kotekan_stage: TestDropFrames
     in_buf: beamform_pulsar_output_buffer_3
     out_buf: beamform_pulsar_output_valved_buffer_3
 
