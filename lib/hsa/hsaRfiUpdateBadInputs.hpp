@@ -48,7 +48,7 @@ public:
     inline void copy_frame(int gpu_frame_id);
 
 private:
-    /// Main data input, list of bad inputs 
+    /// Main data input, list of bad inputs
     Buffer* _in_buf;
 
     /// Used for metadata access
