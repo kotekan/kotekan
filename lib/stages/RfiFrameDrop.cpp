@@ -218,7 +218,7 @@ bool RfiFrameDrop::rest_callback(nlohmann::json& update) {
     std::vector<std::tuple<float, size_t, float>> thresholds_new;
 
     try {
-        enable_rfi_zero_new = update.at("enable_rfi_zero").get<bool>();
+        enable_rfi_zero_new = update.at("rfi_zeroing").get<bool>();
     } catch (json::exception& e) {
         WARN("Failure parsing update: Can't read 'enable_rfi_zero' (bool): {:s}", e.what());
         return false;
