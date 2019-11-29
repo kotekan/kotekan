@@ -45,7 +45,6 @@ vis_buffer:
   visbuf_10s_flags:
     kotekan_buffer: vis
     buffer_depth: 256  # Before slow stage
-#    buffer_depth: 640  # Before slow stage
   visbuf_10s_stack:
     kotekan_buffer: vis
     num_prod: 17000  # Approximation to the correct size
@@ -181,8 +180,8 @@ count_check:
     in_buf: visbuf_5s_26m_gated
 
 apply_gains:
-  cpu_affinity: [4, 5, 6, 7]
-  num_threads: 4
+  cpu_affinity: [4, 5]
+  num_threads: 2
   kotekan_stage: applyGains
   in_buf: visbuf_10s_flags
   out_buf: visbuf_10s_gain
@@ -192,7 +191,6 @@ apply_gains:
 stacking:
   kotekan_stage: baselineCompression
   in_buf: visbuf_10s_gain
-  #in_buf: visbuf_10s_flags
   out_buf: visbuf_10s_stack
   stack_type: chime_in_cyl
   exclude_inputs: [
@@ -303,11 +301,11 @@ archive_writers:
 
 
 # Transmit part of the stack to the recv1 for testing
-#buffer_send:
-#  server_ip: 10.1.50.11
-#  log_level: warn
-#  stack_mfreq:
-#    kotekan_stage: bufferSend
-#    buf: visbuf_10s_stack_mfreq
-#    server_port: 14096
+buffer_send:
+  server_ip: 10.1.50.11
+  log_level: warn
+  stack_mfreq:
+    kotekan_stage: bufferSend
+    buf: visbuf_10s_stack_mfreq
+    server_port: 14096
 
