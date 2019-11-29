@@ -210,7 +210,7 @@ updatable_config:
         fraction: 0.025
       - threshold: 1.4
         fraction: 0.4
-    enable_rfi_zero: true
+    enable_rfi_zero: false
 
 
 ###########################
