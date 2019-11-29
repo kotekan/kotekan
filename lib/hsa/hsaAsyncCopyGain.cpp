@@ -76,7 +76,7 @@ hsa_signal_t hsaAsyncCopyGain::execute(int gpu_frame_id, hsa_signal_t precede_si
 
     if (frames_to_update > 0) {
         frame_copy_active.at(gpu_frame_id) = true;
-        INFO("Going to async copy gain_buf_id={:d} gpu_frame_id={:d}", gain_buf_id, gpu_frame_id);
+        DEBUG("Going to async copy gain_buf_id={:d} gpu_frame_id={:d}", gain_buf_id, gpu_frame_id);
         void* device_gain = device.get_gpu_memory_array("beamform_gain", gpu_frame_id, gain_len);
         void* host_gain = (void*)gain_buf->frames[gain_buf_id];
         device.async_copy_host_to_gpu(device_gain, host_gain, gain_len, precede_signal,
@@ -94,11 +94,10 @@ hsa_signal_t hsaAsyncCopyGain::execute(int gpu_frame_id, hsa_signal_t precede_si
 void hsaAsyncCopyGain::finalize_frame(int frame_id) {
     std::lock_guard<std::mutex> lock(update_mutex);
 
-    if (frame_copy_active.at(frame_id)) { // only mark input empty if filling frame and
-                                                       // no more frames to finalize.
+    if (frame_copy_active.at(frame_id)) {
         frame_copy_active.at(frame_id) = false;
         hsaCommand::finalize_frame(frame_id);
-        INFO("finalize_frame for gpu_frame_id={:d} using gain_buf_finaliz_id={:d}", frame_id,
+        DEBUG("finalize_frame for gpu_frame_id={:d} using gain_buf_finalize_id={:d}", frame_id,
               gain_buf_finalize_id);
 
         bool current_update_active = false;
@@ -108,7 +107,7 @@ void hsaAsyncCopyGain::finalize_frame(int frame_id) {
                 break;
             }
         }
-        // We've updated all required frames.
+        // We've updated all required GPU frames and can release the host frame
         if (!current_update_active && frames_to_update == 0) {
             mark_frame_empty(gain_buf, unique_name.c_str(), gain_buf_finalize_id);
             gain_buf_finalize_id = (gain_buf_finalize_id + 1) % gain_buf->num_frames;
