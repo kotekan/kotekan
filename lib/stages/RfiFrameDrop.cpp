@@ -155,7 +155,7 @@ void RfiFrameDrop::main_thread() {
                         skip = true;
                         _failing_frame_counter
                             .labels({std::to_string(freq_id),
-                                     std::to_string(std::get<1>(_thresholds[kk])),
+                                     std::to_string(std::get<0>(_thresholds[kk])),
                                      std::to_string(std::get<2>(_thresholds[kk]))})
                             .inc();
                     }
