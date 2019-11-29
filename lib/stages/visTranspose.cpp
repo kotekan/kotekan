@@ -387,5 +387,10 @@ dset_id_t visTranspose::base_dset(dset_id_t ds_id) {
 
     datasetManager& dm = datasetManager::instance();
 
-    return dm.datasets().at(ds_id).base_dset();
+    try {
+        return dm.datasets().at(ds_id).base_dset();
+    } catch (std::exception& e) {
+        FATAL_ERROR("Failed to get base dataset of dataset with ID {}. {}", ds_id, e.what());
+        return ds_id;
+    }
 }
