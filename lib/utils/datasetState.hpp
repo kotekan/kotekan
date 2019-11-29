@@ -632,7 +632,7 @@ private:
 
 
 /**
- * @brief A dataset state that describes the gains being applied.
+ * @brief A dataset state that describes the gains applied to the data.
  *
  * @author Richard Shaw
  */
@@ -688,7 +688,7 @@ private:
     // The label for the gains
     std::string _update_id;
 
-    // The length of time we (in seconds) should blend gain updates over
+    // The length of time (in seconds) the previous gain update is blended with this one.
     double _transition_interval;
 };
 

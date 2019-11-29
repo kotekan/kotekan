@@ -351,7 +351,7 @@ public:
      * @brief Fingerprint a dataset for specified states.
      *
      * Generate a summary of the specified states present in the requested
-     * dataset. This will be unique for datasets where there one or more of the
+     * dataset. This will be unique for datasets where one or more of the
      * requested states differ. Datasets that share all these states will give
      * the same fingerprint regardless of differences in any other states.
      *
@@ -553,6 +553,9 @@ inline const T* datasetManager::dataset_state(dset_id_t dset) {
 
     state_id_t state_id = ret.value().second.state();
 
+    // NOTE: we may want to reconsider if we should have released the lock
+    // between here and the `closest_dataset_of_type` call above. There's a
+    // possibility we may end up doing multiple requests to comet
     {
         std::lock_guard<std::mutex> dslock(_lock_dsets);
 

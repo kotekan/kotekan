@@ -177,7 +177,7 @@ void receiveFlags::main_thread() {
         frame_out.dataset_id = output_dataset_ids[key];
 
         ts_late = ts_update - ts_frame;
-        if (ts_late.tv_sec > 0 && ts_late.tv_nsec > 0) {
+        if (ts_late.tv_sec > 0) {
             // This frame is too old,we don't have flags for it
             // --> Use the last update we have
             WARN("receiveFlags: Flags for frame {:d} with timestamp {:f} are not in memory. "

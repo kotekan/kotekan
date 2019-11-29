@@ -47,7 +47,7 @@ public:
     /**
      * @brief Get the current size of the queue.
      *
-     * This may be less than the length if not enough updates have been posted.
+     * This may be less than the maximum size if not enough updates have been posted.
      *
      * @returns  size  The current size.
      **/
