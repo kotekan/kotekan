@@ -92,6 +92,9 @@ private:
     /// Toggle RFI zeroing
     bool enable_rfi_zero;
 
+    /// Counter storing information between sub frames. Resized by rest callback.
+    std::vector<size_t> sk_exceeds;
+
     /// Prometheus metrics to export
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& _failing_frame_counter;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& _dropped_frame_counter;

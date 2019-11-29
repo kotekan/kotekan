@@ -60,9 +60,7 @@ void RfiFrameDrop::main_thread() {
     frameID frame_id_in_sk(_buf_in_sk);
     frameID frame_id_out(_buf_out);
 
-    size_t num_thresholds = _thresholds.size();
     std::vector<float> sk_delta(sk_samples_per_frame);
-    std::vector<size_t> sk_exceeds(num_thresholds, 0);
 
     while (!stop_thread) {
         // Fetch the input buffers
@@ -138,13 +136,13 @@ void RfiFrameDrop::main_thread() {
                         fabs(sigma_scale * (frame_in_sk[ii * sk_samples_per_frame + jj] - 1.0f));
 
                     INFO("SK: {}; SKraw: {}", sk_sig, frame_in_sk[ii * sk_samples_per_frame + jj]);
-                    for (size_t kk = 0; kk < num_thresholds; kk++) {
+                    for (size_t kk = 0; kk < _thresholds.size(); kk++) {
                         sk_exceeds[kk] += (sk_sig > std::get<0>(_thresholds[kk]));
                         INFO("threshold {}", std::get<0>(_thresholds[kk]));
                     }
                 }
 
-                for (size_t kk = 0; kk < num_thresholds; kk++) {
+                for (size_t kk = 0; kk < _thresholds.size(); kk++) {
                     INFO("Threshold: {}; Count: {}; Limit: {}", std::get<0>(_thresholds[kk]),
                          sk_exceeds[kk], std::get<1>(_thresholds[kk]));
                     if (sk_exceeds[kk] > std::get<1>(_thresholds[kk])) {
@@ -262,6 +260,7 @@ bool RfiFrameDrop::rest_callback(nlohmann::json& update) {
         std::lock_guard<std::mutex> guard(lock_updatables);
         enable_rfi_zero = enable_rfi_zero_new;
         _thresholds = thresholds_new;
+        sk_exceeds.resize(_thresholds.size(), 0);
     }
     return true;
 }
