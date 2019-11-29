@@ -111,7 +111,8 @@ visFileRaw::visFileRaw(const std::string& name, const kotekan::logLevel log_leve
     // Create lock file and then open the other files
     lock_filename = create_lockfile(_name);
     metadata_file = std::ofstream(_name + ".meta", std::ios::binary);
-    if ((fd = open((_name + ".data").c_str(), oflags, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH))
+    if ((fd = open((_name + ".data").c_str(), oflags,
+                   S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH))
         == -1) {
         throw std::runtime_error(
             fmt::format(fmt("Failed to open file {:s}.data: {:s}."), _name, strerror(errno)));
