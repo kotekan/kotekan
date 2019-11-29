@@ -81,7 +81,7 @@ float integrateHFBData::normaliseFrame(float* sum_data, const uint32_t in_buffer
         }
     }
 
-    INFO("Integration completed with {:d} lost samples", total_lost_timesamples);
+    DEBUG("Integration completed with {:d} lost samples", total_lost_timesamples);
 
     fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
 
@@ -190,7 +190,7 @@ void integrateHFBData::main_thread() {
 
                 sum_data = (float*)out_buf->frames[out_buffer_ID];
             } else
-                INFO("Integration discarded. Too many lost samples.");
+                DEBUG("Integration discarded. Too many lost samples.");
 
             // Reset the no. of lost samples and frame counter
             total_lost_timesamples = 0;
