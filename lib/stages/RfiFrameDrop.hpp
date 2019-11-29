@@ -68,12 +68,13 @@ public:
     /// Primary loop.
     void main_thread() override;
 
+    /// Callback for the configUpdater.
+    bool rest_callback(nlohmann::json& update);
+
+
 private:
     /// Copy a frame from the input buffer to the output buffer.
     static void copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, int frame_id_dest);
-
-    /// Parse thresholds (returns false if the parsing failed)
-    bool parse_thresholds(nlohmann::json j);
 
     /// Input buffer
     Buffer* _buf_in_vis;
@@ -82,16 +83,19 @@ private:
     /// Output buffer to receive baseline subset visibilities
     Buffer* _buf_out;
 
+    /// Lock for access to thresholds an enable_rfi_zero
+    std::mutex lock_updatables;
+
     /// Thresholds
     std::vector<std::tuple<float, size_t, float>> _thresholds;
+
+    /// Toggle RFI zeroing
+    bool enable_rfi_zero;
 
     /// Prometheus metrics to export
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& _failing_frame_counter;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& _dropped_frame_counter;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& _frame_counter;
-
-    /// Toggle RFI zeroing
-    bool enable_rfi_zero;
 
     size_t num_elements;
     size_t num_sub_frames;

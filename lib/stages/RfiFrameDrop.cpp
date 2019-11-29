@@ -4,6 +4,7 @@
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "chimeMetadata.h"
+#include "configUpdater.hpp"
 #include "prometheusMetrics.hpp"
 #include "visUtil.hpp"
 
@@ -47,16 +48,11 @@ RfiFrameDrop::RfiFrameDrop(Config& config, const std::string& unique_name,
     num_sub_frames = config.get<size_t>(unique_name, "num_sub_frames");
     sk_samples_per_frame = num_samples / sk_step / num_sub_frames;
     samples_per_sub_frame = num_samples / num_sub_frames;
-    enable_rfi_zero = config.get_default<bool>(unique_name, "enable_rfi_zero", false);
+
+    // subscribe on updates on threshold and enable_rfi_zero
+    kotekan::configUpdater::instance().subscribe(this, std::bind(&RfiFrameDrop::rest_callback, this, std::placeholders::_1));
 
     assert((size_t)_buf_in_sk->frame_size == sizeof(float) * sk_samples_per_frame * num_sub_frames);
-
-    auto j = config.get<nlohmann::json>(unique_name, "thresholds");
-
-    if (!parse_thresholds(j)) {
-        FATAL_ERROR("Error parsing thresholds.");
-        return;
-    }
 }
 
 void RfiFrameDrop::main_thread() {
@@ -115,69 +111,76 @@ void RfiFrameDrop::main_thread() {
         DEBUG2("Frames are synced. Vis frame: {}; SK frame: {}, diff {}", vis_seq, sk_seq,
                vis_seq - sk_seq);
 
-        for (size_t ii = 0; ii < num_sub_frames; ii++) {
+        {
+            // Disable updates on enable_rfi_zero and thresholds while accessing these
+            std::lock_guard<std::mutex> guard(lock_updatables);
+            for (size_t ii = 0; ii < num_sub_frames; ii++) {
 
-            if (wait_for_full_frame(_buf_in_vis, unique_name.c_str(), frame_id_in_vis) == nullptr) {
-                break;
-            }
-
-            auto sf_seq = get_fpga_seq_num(_buf_in_vis, frame_id_in_vis);
-
-            // Check that we are still synchronized with the frame we are
-            // expecting. If not (and this may happen if the Valve process is
-            // active), we will just skip the set of sub frames and hopefully we
-            // will resync
-            if (sf_seq != (int64_t)(sk_seq + ii * samples_per_sub_frame)) {
-                INFO("Lost synchronization. Dropping data and resetting.");
-                mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
-                break;
-            }
-
-            bool skip = false;
-
-            // Process all the SK values to their deltas and for each threshold
-            // we need to count how many samples exceed that threshold
-            for (size_t jj = 0; jj < sk_samples_per_frame; jj++) {
-                float sk_sig =
-                    fabs(sigma_scale * (frame_in_sk[ii * sk_samples_per_frame + jj] - 1.0f));
-
-		INFO("SK: {}; SKraw: {}", sk_sig, frame_in_sk[ii * sk_samples_per_frame + jj]);
-                for (size_t kk = 0; kk < num_thresholds; kk++) {
-                    sk_exceeds[kk] += (sk_sig > std::get<0>(_thresholds[kk]));
-	            INFO("threshold {}", std::get<0>(_thresholds[kk]));
-                }
-            }
-
-            for (size_t kk = 0; kk < num_thresholds; kk++) {
-	        INFO("Threshold: {}; Count: {}; Limit: {}", std::get<0>(_thresholds[kk]), sk_exceeds[kk], std::get<1>(_thresholds[kk]));
-                if (sk_exceeds[kk] > std::get<1>(_thresholds[kk])) {
-                    skip = true;
-                    _failing_frame_counter
-                        .labels({std::to_string(freq_id),
-                                 std::to_string(std::get<1>(_thresholds[kk])),
-                                 std::to_string(std::get<2>(_thresholds[kk]))})
-                        .inc();
-                }
-                // Reset counters for the next sub_frame
-                sk_exceeds[kk] = 0;
-            }
-
-            // If no frame exceeded it's threshold then we should transfer the
-            // frame over to the output and release it. If we want to drop the
-            // incoming frame then we leave the output as is.
-            if (!skip || !enable_rfi_zero) {
-
-                if (wait_for_empty_frame(_buf_out, unique_name.c_str(), frame_id_out) == nullptr) {
+                if (wait_for_full_frame(_buf_in_vis, unique_name.c_str(), frame_id_in_vis)
+                    == nullptr) {
                     break;
                 }
-                copy_frame(_buf_in_vis, frame_id_in_vis, _buf_out, frame_id_out);
-                mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
-            } else {
-                _dropped_frame_counter.labels({std::to_string(freq_id)}).inc();
+
+                auto sf_seq = get_fpga_seq_num(_buf_in_vis, frame_id_in_vis);
+
+                // Check that we are still synchronized with the frame we are
+                // expecting. If not (and this may happen if the Valve process is
+                // active), we will just skip the set of sub frames and hopefully we
+                // will resync
+                if (sf_seq != (int64_t)(sk_seq + ii * samples_per_sub_frame)) {
+                    INFO("Lost synchronization. Dropping data and resetting.");
+                    mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
+                    break;
+                }
+
+                bool skip = false;
+
+                // Process all the SK values to their deltas and for each threshold
+                // we need to count how many samples exceed that threshold
+                for (size_t jj = 0; jj < sk_samples_per_frame; jj++) {
+                    float sk_sig =
+                        fabs(sigma_scale * (frame_in_sk[ii * sk_samples_per_frame + jj] - 1.0f));
+
+                    INFO("SK: {}; SKraw: {}", sk_sig, frame_in_sk[ii * sk_samples_per_frame + jj]);
+                    for (size_t kk = 0; kk < num_thresholds; kk++) {
+                        sk_exceeds[kk] += (sk_sig > std::get<0>(_thresholds[kk]));
+                        INFO("threshold {}", std::get<0>(_thresholds[kk]));
+                    }
+                }
+
+                for (size_t kk = 0; kk < num_thresholds; kk++) {
+                    INFO("Threshold: {}; Count: {}; Limit: {}", std::get<0>(_thresholds[kk]),
+                         sk_exceeds[kk], std::get<1>(_thresholds[kk]));
+                    if (sk_exceeds[kk] > std::get<1>(_thresholds[kk])) {
+                        skip = true;
+                        _failing_frame_counter
+                            .labels({std::to_string(freq_id),
+                                     std::to_string(std::get<1>(_thresholds[kk])),
+                                     std::to_string(std::get<2>(_thresholds[kk]))})
+                            .inc();
+                    }
+                    // Reset counters for the next sub_frame
+                    sk_exceeds[kk] = 0;
+                }
+
+                // If no frame exceeded it's threshold then we should transfer the
+                // frame over to the output and release it. If we want to drop the
+                // incoming frame then we leave the output as is.
+                if (!skip || !enable_rfi_zero) {
+
+                    if (wait_for_empty_frame(_buf_out, unique_name.c_str(), frame_id_out)
+                        == nullptr) {
+                        break;
+                    }
+                    copy_frame(_buf_in_vis, frame_id_in_vis, _buf_out, frame_id_out);
+                    mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
+                } else {
+                    _dropped_frame_counter.labels({std::to_string(freq_id)}).inc();
+                }
+
+                mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
+                _frame_counter.labels({std::to_string(freq_id)}).inc();
             }
-            //
-            mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
-            _frame_counter.labels({std::to_string(freq_id)}).inc();
         }
         mark_frame_empty(_buf_in_sk, unique_name.c_str(), frame_id_in_sk++);
     }
@@ -210,35 +213,59 @@ void RfiFrameDrop::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_des
     pass_metadata(buf_src, frame_id_src, buf_dest, frame_id_dest);
 }
 
+bool RfiFrameDrop::rest_callback(nlohmann::json& update) {
+    bool enable_rfi_zero_new;
+    std::vector<std::tuple<float, size_t, float>> thresholds_new;
 
-bool RfiFrameDrop::parse_thresholds(nlohmann::json j) {
+    try {
+        enable_rfi_zero_new = update.at("enable_rfi_zero").get<bool>();
+    } catch (json::exception& e) {
+        WARN("Failure parsing update: Can't read 'enable_rfi_zero' (bool): {:s}", e.what());
+        return false;
+    }
+    nlohmann::json j;
+    try {
+        j = update.at("thresholds");
+    } catch (json::exception& e) {
+        WARN("Failure parsing update: array 'thresholds' not found: {:s}", e.what());
+    }
 
     if (!j.is_array()) {
-        ERROR("Could not parse thresholds: entry is not a list : {}", j.dump());
+        WARN("Failure parsing update: entry 'thresholds' is not a list : {:s}", j.dump());
         return false;
     }
 
     for (const auto& t : j) {
-
+        // TODO TEST send wrong type and see what it throws
+        // TODO TEST send with threshold or fraction missing
         if (!t.is_object()) {
-            ERROR("Could not parse thresholds item: element is not a dict : {}", t.dump());
+            WARN("Failure parsing update: item in list 'thresholds' is not a dict : {}", t.dump());
             return false;
         }
 
-        if (t.count("threshold") == 0) {
-            ERROR("Required key `threshold` not present in item: {}", t.dump());
+        float threshold, fraction;
+        try {
+            threshold = t["threshold"].get<float>();
+        } catch (nlohmann::json::exception& e) {
+            WARN("Failure parsing update: Required key `threshold` not present in item: {}",
+                 t.dump());
+            return false;
+        }
+        try {
+            fraction = t["fraction"].get<float>();
+        } catch (nlohmann::json::exception& e) {
+            WARN("Failure parsing update: Required key `fraction` not present in item: {}",
+                 t.dump());
             return false;
         }
 
-        if (t.count("fraction") == 0) {
-            ERROR("Required key `fraction` not present in item: {}", t.dump());
-            return false;
-        }
+        thresholds_new.push_back({threshold, (size_t)(fraction * sk_samples_per_frame), fraction});
+    }
 
-        float threshold = t["threshold"].get<float>();
-        float fraction = t["fraction"].get<float>();
-
-        _thresholds.push_back({threshold, (size_t)(fraction * sk_samples_per_frame), fraction});
+    {
+        std::lock_guard<std::mutex> guard(lock_updatables);
+        enable_rfi_zero = enable_rfi_zero_new;
+        _thresholds = thresholds_new;
     }
     return true;
 }
