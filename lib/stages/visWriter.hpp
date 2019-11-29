@@ -108,6 +108,7 @@ public:
 
 protected:
     /// Setup the acquisition
+    // NOTE: must be called from with a region locked by acqs_mutex
     virtual void init_acq(dset_id_t ds_id);
 
     /// Construct the set of metadata
@@ -154,6 +155,9 @@ protected:
 
     /// Mutex for updating file_bundle (used in for visCalWriter)
     std::mutex write_mutex;
+
+    /// Manage access to the list of acquisitions (again mostly for visCalWriter)
+    std::mutex acqs_mutex;
 
     /// Hold the internal state of an acquisition (one per dataset ID)
     /// Note that we create an acqState even for invalid datasets that we will

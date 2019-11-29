@@ -543,8 +543,9 @@ inline const T* datasetManager::dataset_state(dset_id_t dset) {
 
     // Try to find a matching dataset
     std::string type = FACTORY(datasetState)::label<T>();
-    DEBUG_NON_OO("Finding state {} from dset {}", type, dset.to_string());
     auto ret = closest_dataset_of_type(dset, type);
+
+    DEBUG2_NON_OO("Finding state type {} from dset={}", type, dset.to_string());
 
     // If not found, return null
     if (!ret)

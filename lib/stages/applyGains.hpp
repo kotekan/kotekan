@@ -103,9 +103,9 @@ private:
     /// Output buffer with gains applied
     Buffer* out_buf;
 
-    /// Mutex to protect access to gains
-    // Note: Using shared_mutex together with gcc-5 doesn't work.
+    /// Mutex to protect access to gains and freq map
     std::shared_mutex gain_mtx;
+    std::shared_mutex freqmap_mtx;
 
     /// Timestamp of the current frame
     std::atomic<timespec> ts_frame{{0, 0}};

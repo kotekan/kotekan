@@ -170,7 +170,9 @@ void receiveFlags::main_thread() {
 
         std::pair<state_id_t, dset_id_t> key = {state_id, frame_out.dataset_id};
         if (output_dataset_ids.count(key) == 0) {
+            double start = current_time();
             output_dataset_ids[key] = dm.add_dataset(state_id, frame_out.dataset_id);
+            INFO("Adding flags to dM. Took {:.2f}s", current_time() - start);
         }
         frame_out.dataset_id = output_dataset_ids[key];
 

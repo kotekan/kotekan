@@ -45,9 +45,11 @@ vis_buffer:
   visbuf_10s_flags:
     kotekan_buffer: vis
     buffer_depth: 256  # Before slow stage
+#    buffer_depth: 640  # Before slow stage
   visbuf_10s_stack:
     kotekan_buffer: vis
     num_prod: 17000  # Approximation to the correct size
+    buffer_depth: 2048
   visbuf_10s_stack_ne:
     kotekan_buffer: vis
     num_ev: 0
@@ -110,7 +112,7 @@ updatable_config:
     kotekan_update_endpoint: "json"
     start_time: 1541039597.
     update_id: "gain_20181101T023317.440691Z_cyga"
-    transition_interval: 300
+    transition_interval: 300.0
   26m_gated:
     kotekan_update_endpoint: "json"
     enabled: false
@@ -120,6 +122,7 @@ updatable_config:
 
 # Kotekan stages
 buffer_recv:
+  log_level: warn
   n2:
     kotekan_stage: bufferRecv
     buf: visbuf_10s_all
@@ -178,8 +181,8 @@ count_check:
     in_buf: visbuf_5s_26m_gated
 
 apply_gains:
-  cpu_affinity: [4, 5]
-  num_threads: 2
+  cpu_affinity: [4, 5, 6, 7]
+  num_threads: 4
   kotekan_stage: applyGains
   in_buf: visbuf_10s_flags
   out_buf: visbuf_10s_gain
@@ -189,6 +192,7 @@ apply_gains:
 stacking:
   kotekan_stage: baselineCompression
   in_buf: visbuf_10s_gain
+  #in_buf: visbuf_10s_flags
   out_buf: visbuf_10s_stack
   stack_type: chime_in_cyl
   exclude_inputs: [
@@ -299,10 +303,11 @@ archive_writers:
 
 
 # Transmit part of the stack to the recv1 for testing
-buffer_send:
-  server_ip: 10.1.50.11
-  stack_mfreq:
-    kotekan_stage: bufferSend
-    buf: visbuf_10s_stack_mfreq
-    server_port: 14096
+#buffer_send:
+#  server_ip: 10.1.50.11
+#  log_level: warn
+#  stack_mfreq:
+#    kotekan_stage: bufferSend
+#    buf: visbuf_10s_stack_mfreq
+#    server_port: 14096
 

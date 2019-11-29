@@ -428,6 +428,8 @@ bool applyGains::validate_frame(const visFrameView& frame) {
     // TODO: this should validate that the hashes of the input and frequencies
     // dataset states have not changed whenever the dataset_id changes
 
+    std::unique_lock _lock(freqmap_mtx);
+
     if (!num_freq || !num_elements) {
         auto& dm = datasetManager::instance();
         auto* fstate = dm.dataset_state<freqState>(frame.dataset_id);
@@ -478,7 +480,7 @@ bool applyGains::validate_gain(const applyGains::GainData& data) const {
     // check. This should not happen.
     if (!num_freq || !num_elements) {
         WARN("Can't validate gain data as num_freq and num_elements not yet known.")
-        return true;
+        return false;
     }
 
     if (data.gain.size() != num_freq.value()) {

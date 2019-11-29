@@ -104,9 +104,11 @@ void visWriter::main_thread() {
     auto& write_time_metric =
         Metrics::instance().add_gauge("kotekan_viswriter_write_time_seconds", unique_name);
 
-    while (!stop_thread) {
+    std::unique_lock<std::mutex> acqs_lock(acqs_mutex, std::defer_lock);
 
+    while (!stop_thread) {
         // Wait for the buffer to be filled with data
+
         if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
             break;
         }
@@ -114,14 +116,15 @@ void visWriter::main_thread() {
         // Get a view of the current frame
         auto frame = visFrameView(in_buf, frame_id);
 
+        acqs_lock.lock();
         // Check the dataset ID hasn't changed
         if (acqs.count(frame.dataset_id) == 0) {
-            INFO("Got new dataset ID={}. Starting a new acquisition.", frame.dataset_id);
             init_acq(frame.dataset_id);
         }
 
         // Get the acquisition we are writing into
         auto& acq = *(acqs.at(frame.dataset_id));
+        acqs_lock.unlock();
 
 
         // If the dataset is bad, skip the frame and move onto the next
@@ -182,6 +185,8 @@ void visWriter::main_thread() {
 
 void visWriter::report_dropped_frame(dset_id_t ds_id, uint32_t freq_id, droppedType reason) {
 
+    std::lock_guard<std::mutex> _lock(acqs_mutex);
+
     // Get acquisition
     auto acq = acqs.at(ds_id);
 
@@ -208,27 +213,30 @@ void visWriter::close_old_acqs() {
         next_sweep = now + acq_timeout / 3.0;
     }
 
-    // Scan over the dataset keyed list
-    auto it1 = acqs.begin();
-    while (it1 != acqs.end()) {
-        double age = now - it1->second->last_update;
+    { 
+        std::lock_guard<std::mutex> _lock(acqs_mutex);
+        // Scan over the dataset keyed list
+        auto it1 = acqs.begin();
+        while (it1 != acqs.end()) {
+            double age = now - it1->second->last_update;
 
-        if (!it1->second->bad_dataset && age > acq_timeout) {
-            it1 = acqs.erase(it1);
-        } else {
-            it1++;
+            if (!it1->second->bad_dataset && age > acq_timeout) {
+                it1 = acqs.erase(it1);
+            } else {
+                it1++;
+            }
         }
-    }
 
-    // Scan over the fingerprint keyed list
-    auto it2 = acqs_fingerprint.begin();
-    while (it2 != acqs_fingerprint.end()) {
-        double age = now - it2->second->last_update;
+        // Scan over the fingerprint keyed list
+        auto it2 = acqs_fingerprint.begin();
+        while (it2 != acqs_fingerprint.end()) {
+            double age = now - it2->second->last_update;
 
-        if (!it2->second->bad_dataset && age > acq_timeout) {
-            it2 = acqs_fingerprint.erase(it2);
-        } else {
-            it2++;
+            if (!it2->second->bad_dataset && age > acq_timeout) {
+                it2 = acqs_fingerprint.erase(it2);
+            } else {
+                it2++;
+            }
         }
     }
 }
@@ -263,22 +271,25 @@ void visWriter::get_dataset_state(dset_id_t ds_id) {
         ERROR("Exiting...");
     }
 
-    // Get a reference to the acq state
-    auto acq = acqs.at(ds_id);
+    {
+        //std::lock_guard<std::mutex> _lock(acqs_mutex);
+        // Get a reference to the acq state
+        auto acq = acqs.at(ds_id);
 
-    uint ind = 0;
-    for (auto& f : fstate->get_freqs())
-        acq->freq_id_map[f.first] = ind++;
+        uint ind = 0;
+        for (auto& f : fstate->get_freqs())
+            acq->freq_id_map[f.first] = ind++;
 
-    // compare git commit hashes
-    // TODO: enforce and crash here if build type is Release?
-    if (mstate->get_git_version_tag() != std::string(get_git_commit_hash())) {
-        INFO("Git version tags don't match: dataset {} has tag {:s},"
-             "while the local git version tag is {:s}",
-             ds_id, mstate->get_git_version_tag(), get_git_commit_hash());
+        // compare git commit hashes
+        // TODO: enforce and crash here if build type is Release?
+        if (mstate->get_git_version_tag() != std::string(get_git_commit_hash())) {
+            INFO("Git version tags don't match: dataset {} has tag {:s},"
+                 "while the local git version tag is {:s}",
+                 ds_id, mstate->get_git_version_tag(), get_git_commit_hash());
+        }
+
+        acq->num_vis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
     }
-
-    acq->num_vis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
 }
 
 
@@ -308,9 +319,13 @@ void visWriter::init_acq(dset_id_t ds_id) {
     // acquisition, just add a map from the dataset_id to the acquisition we
     // should use.
     if (acqs_fingerprint.count(fp) > 0) {
+        INFO("Got new dataset ID={} with known fingerprint={}.", ds_id, fp);
         acqs[ds_id] = acqs_fingerprint.at(fp);
         return;
     }
+    
+    INFO("Got new dataset ID={} with new fingerprint={}. Creating new acquisition.",
+         ds_id, fp);
 
     // If it is not known we need to initialise everything
     acqs_fingerprint[fp] = std::make_shared<acqState>();
@@ -374,12 +389,6 @@ visCalWriter::visCalWriter(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :
     visWriter::visWriter(config, unique_name, buffer_container) {
 
-    // Register REST callback
-    endpoint = "/release_live_file/" + std::regex_replace(unique_name, std::regex("^/+"), "");
-    using namespace std::placeholders;
-    restServer::instance().register_get_callback(endpoint,
-                                                 std::bind(&visCalWriter::rest_callback, this, _1));
-
     // Get file name to write to
     // TODO: strip file extensions?
     std::string fname_base = config.get_default<std::string>(unique_name, "file_base", "cal");
@@ -406,6 +415,15 @@ visCalWriter::visCalWriter(Config& config, const string& unique_name,
         check_remove("." + full_path + fname_base + "_B.lock");
         check_remove(full_path + fname_base + "_B.meta");
     }
+
+    file_cal_bundle = nullptr;
+
+    // Register REST callback (needs to be done at the end such that the names have been set)
+    using namespace std::placeholders;
+    endpoint = "/release_live_file/" + std::regex_replace(unique_name, std::regex("^/+"), "");
+    restServer::instance().register_get_callback(endpoint,
+                                                 std::bind(&visCalWriter::rest_callback, this, _1));
+
 }
 
 visCalWriter::~visCalWriter() {
@@ -413,10 +431,14 @@ visCalWriter::~visCalWriter() {
 }
 
 void visCalWriter::rest_callback(connectionInstance& conn) {
-    // Ensure no write is ongoing
-    std::lock_guard<std::mutex> write_guard(write_mutex);
 
     INFO("Received request to release calibration live file...");
+
+    // Need to deal with the case that we could release the data before any acq has been started
+    if (acqs_fingerprint.size() == 0 || file_cal_bundle == nullptr) {
+        WARN("Asked to release calibration, but not active data.");
+        return;
+    }
 
     // Swap files
     std::string fname_tmp = fname_live;
@@ -424,7 +446,11 @@ void visCalWriter::rest_callback(connectionInstance& conn) {
     fname_frozen = fname_tmp;
 
     // Tell visCalFileBundle to write to new file starting with next sample
-    file_cal_bundle->swap_file(fname_live, acq_name);
+    {
+        // Ensure no write is ongoing
+        std::lock_guard<std::mutex> write_guard(write_mutex);
+        file_cal_bundle->swap_file(fname_live, acq_name);
+    }
 
     // Respond with frozen file path
     json reply{"file_path", fmt::format(fmt("{:s}/{:s}/{:s}"), root_path, acq_name, fname_frozen)};
@@ -434,14 +460,31 @@ void visCalWriter::rest_callback(connectionInstance& conn) {
 
 
 void visCalWriter::init_acq(dset_id_t ds_id) {
-    // Count the number of enabled acqusitions, for the visCalWriter this can't
-    // be more than one
-    int num_enabled = std::count_if(acqs.begin(), acqs.end(),
-                                    [](auto& item) -> bool { return !(item.second->bad_dataset); });
 
     // Create the new acqState
-    acqs[ds_id] = std::make_shared<acqState>();
+    auto fp = datasetManager::instance().fingerprint(ds_id, critical_state_types);
+
+    // If the fingerprint is already known, we don't need to start a new
+    // acquisition, just add a map from the dataset_id to the acquisition we
+    // should use.
+    if (acqs_fingerprint.count(fp) > 0) {
+        INFO("Got new dataset ID={} with known fingerprint={}.", ds_id, fp);
+        acqs[ds_id] = acqs_fingerprint.at(fp);
+        return;
+    }
+
+    WARN("Got new dataset ID={} with new fingerprint={}. visCalWriter can't support this, so we "
+         "will a new acq but reject all writes into it.", ds_id, fp);
+
+    // If it is not known we need to initialise everything
+    acqs_fingerprint[fp] = std::make_shared<acqState>();
+    acqs[ds_id] = acqs_fingerprint.at(fp);
     auto& acq = *(acqs.at(ds_id));
+
+    // Count the number of enabled acqusitions, for the visCalWriter this can't
+    // be more than one
+    int num_enabled = std::count_if(acqs_fingerprint.begin(), acqs_fingerprint.end(),
+                                    [](auto& item) -> bool { return !(item.second->bad_dataset); });
 
     // get dataset states
     get_dataset_state(ds_id);

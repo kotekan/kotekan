@@ -77,7 +77,7 @@ private:
     void compress_thread(uint32_t thread_id);
 
     /// Tracks input dataset ID and gets output dataset IDs from manager
-    dset_id_t change_dataset_state(dset_id_t input_ds_id);
+    void change_dataset_state(dset_id_t input_ds_id);
 
     /// Vector to hold the thread handles
     std::vector<std::thread> thread_handles;
@@ -115,6 +115,13 @@ private:
     frameID frame_id_out;
     uint64_t frame_counter_global;
     std::mutex m_frame_ids;
+    std::mutex m_dset_map;
+
+    // Map the incoming ID to an outgoing one
+    std::map<dset_id_t, std::tuple<dset_id_t, const stackState*, const prodState*>> dset_id_map;
+
+    // Map from the critical incoming states to the correct stackState
+    std::map<fingerprint_t, std::tuple<state_id_t, const stackState*, const prodState*>> state_map;
 
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_residuals_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_time_seconds_metric;

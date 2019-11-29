@@ -592,6 +592,10 @@ void datasetManager::force_update_callback(kotekan::connectionInstance& conn) {
 
 std::optional<std::pair<dset_id_t, dataset>>
 datasetManager::closest_dataset_of_type(dset_id_t dset, const std::string& type) {
+
+    auto orig_dset = dset;
+    (void)orig_dset;  // this is needed because where it is used below gets omitted in production builds
+
     if (_use_broker) {
         update_datasets(dset);
     }
@@ -608,20 +612,24 @@ datasetManager::closest_dataset_of_type(dset_id_t dset, const std::string& type)
             // Search for the requested type in each dataset
             try {
                 if (_datasets.at(dset).type() == type) {
+                    DEBUG_NON_OO("Found ancestor '{}' of '{}' adding a state of type '{}'.", dset.to_string(), orig_dset.to_string(), type);
                     std::pair<dset_id_t, dataset> r = {dset, _datasets.at(dset)};
                     return r;
                 }
 
                 // if this is the root dataset, we don't have that ancestor
-                if (_datasets.at(dset).is_root())
+                if (_datasets.at(dset).is_root()) {
+                    DEBUG_NON_OO("Could not find ancestor of '{}' adding a state of type '{}'.", dset.to_string(), type);
                     return {};
+                }
 
                 // Move on to the parent dataset...
+                DEBUG2_NON_OO("Moving to ancestor '{}' of '{}'.", _datasets.at(dset).base_dset().to_string(), dset.to_string(), type);
                 dset = _datasets.at(dset).base_dset();
 
             } catch (std::out_of_range& e) {
                 // we don't have the base dataset
-                DEBUG2_NON_OO("datasetManager: found a dead reference when looking for "
+                DEBUG_NON_OO("datasetManager: found a dead reference when looking for "
                               "locally known ancestor: {:s}",
                               e.what());
                 return {};
