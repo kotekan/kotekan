@@ -10,10 +10,10 @@
 
 #include "fmt.hpp"
 
+#include <csignal>
 #include <cstring>
-#include <math.h>
+#include <cmath>
 #include <pthread.h>
-#include <signal.h>
 #include <string>
 
 
