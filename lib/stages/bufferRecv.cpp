@@ -37,8 +37,8 @@ bufferRecv::bufferRecv(Config& config, const string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&bufferRecv::main_thread, this)),
     dropped_frame_counter(
         Metrics::instance().add_counter("kotekan_buffer_recv_dropped_frame_total", unique_name)),
-    transfer_time_seconds(
-        Metrics::instance().add_gauge("kotekan_buffer_recv_transfer_time_seconds", unique_name, {"source"})) {
+    transfer_time_seconds(Metrics::instance().add_gauge("kotekan_buffer_recv_transfer_time_seconds",
+                                                        unique_name, {"source"})) {
 
     listen_port = config.get_default<uint32_t>(unique_name, "listen_port", 11024);
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
