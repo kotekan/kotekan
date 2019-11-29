@@ -109,7 +109,7 @@ void hsaAsyncCopyGain::finalize_frame(int frame_id) {
             }
         }
         // We've updated all required frames.
-        if (!current_update_active) {
+        if (!current_update_active && frames_to_update == 0) {
             mark_frame_empty(gain_buf, unique_name.c_str(), gain_buf_finalize_id);
             gain_buf_finalize_id = (gain_buf_finalize_id + 1) % gain_buf->num_frames;
         }
