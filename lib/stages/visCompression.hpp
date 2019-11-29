@@ -154,18 +154,6 @@ stack_diagonal(const std::vector<input_ctype>& inputs, const std::vector<prod_ct
 std::pair<uint32_t, std::vector<rstack_ctype>>
 stack_chime_in_cyl(const std::vector<input_ctype>& inputs, const std::vector<prod_ctype>& prods);
 
-/**
- * @brief Take an a rstack map and generate a stack->prod mapping.
- *
- * @param num_stack Total number of stacks.
- * @param stack_map The prod->stack mapping.
- *
- * @returns The stack->prod mapping.
- **/
-std::vector<stack_ctype> invert_stack(uint32_t num_stack,
-                                      const std::vector<rstack_ctype>& stack_map);
-
-
 #define CYL_A 0
 #define CYL_B 1
 #define CYL_C 2

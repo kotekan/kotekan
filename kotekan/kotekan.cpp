@@ -336,7 +336,6 @@ int main(int argc, char** argv) {
 
     std::signal(SIGINT, signal_handler);
 
-    int opt_val = 0;
     char* config_file_name = (char*)"none";
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
     bool gps_time = false;
@@ -366,7 +365,7 @@ int main(int argc, char** argv) {
 
         int option_index = 0;
 
-        opt_val = getopt_long(argc, argv, "gt:hc:b:snvp", long_options, &option_index);
+        int opt_val = getopt_long(argc, argv, "gt:hc:b:snvp", long_options, &option_index);
 
         // End of args
         if (opt_val == -1) {
@@ -460,7 +459,7 @@ int main(int argc, char** argv) {
                 fmt::format(fmt("python -c '{:s}' {:s}"), yaml_to_json, config_file_name);
         }
         std::string json_string = exec(exec_command.c_str());
-        json config_json = json::parse(json_string.c_str());
+        json config_json = json::parse(json_string);
         config.update_config(config_json);
         try {
             start_new_kotekan_mode(config, gps_time, dump_config);

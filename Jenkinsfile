@@ -84,6 +84,13 @@ pipeline {
                   black --check --exclude docs ..'''
           }
         }
+        stage('Install comet') {
+          steps {
+            catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+              sh '''python3.7 -m pip install --user git+https://github.com/chime-experiment/comet.git@master'''
+            }
+          }
+        }
       }
     }
     stage('Post build ccache stats') {
@@ -96,7 +103,8 @@ pipeline {
             stage('Python Unit Tests') {
               steps {
                 sh '''cd tests/
-                      PYTHONPATH=../python/ python3 -m pytest -n 4 -x -vvv'''
+                      PATH=~/.local/bin:$PATH PYTHONPATH=../python/ python3 -m pytest -n auto -x -vvv -m "not serial"
+                      PATH=~/.local/bin:$PATH PYTHONPATH=../python/ python3 -m pytest -x -vvv -m serial'''
               }
             }
             stage('Boost Unit Tests') {

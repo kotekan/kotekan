@@ -97,6 +97,12 @@ public:
     void increment_droped_frame_count();
 
     /**
+     * @brief Updates the prometheus metric with time it took to receive the data.
+     *        Thread safe.  Called only by worker threads
+     */
+    void set_transfer_time_seconds(const string& source_label, const double elapsed);
+
+    /**
      * @brief Used only by worker threads to check if they should stop.
      * @return True if they should stop, false otherwise.
      */
@@ -155,6 +161,12 @@ private:
     /// A lock on the @c dropped_frame_counter
     // TODO: move locking to prometheusMetrics?
     std::mutex dropped_frame_count_mutex;
+
+    /// Time to receive the data
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& transfer_time_seconds;
+
+    /// A lock on the `transfer_time_seconds`
+    std::mutex transfer_time_seconds_mutex;
 
     // Worker threads (thread pool section)
 
@@ -255,7 +267,7 @@ public:
      */
     void close_instance();
 
-    /// The name of the parient kotekan_stage
+    /// The name of the parent kotekan_stage
     string producer_name;
 
     /// The kotekan buffer to transfer data into
