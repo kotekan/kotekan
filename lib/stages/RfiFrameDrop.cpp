@@ -64,15 +64,6 @@ void RfiFrameDrop::main_thread() {
     std::vector<float> sk_delta(sk_samples_per_frame);
     std::vector<size_t> sk_exceeds(num_thresholds, 0);
 
-    // Calculate the scaling to turn kurtosis value into sigma
-    // TODO: this should really use the actual number of bad_inputs
-    // In theory this could be pre-applied to the threshold, but that's more
-    // difficult if we dynamically receive the bad input list
-    size_t num_inputs = num_elements;
-    float sigma_scale = sqrt((num_inputs * (sk_step - 1) * (sk_step + 2) * (sk_step + 3))
-                             / (4.0 * sk_step * sk_step));
-
-
     while (!stop_thread) {
         // Fetch the input buffers
         uint8_t* frame_in_vis =
@@ -112,6 +103,11 @@ void RfiFrameDrop::main_thread() {
                vis_seq - sk_seq);
 
         {
+            // Calculate the scaling to turn kurtosis value into sigma
+            size_t num_inputs = num_elements - metadata_vis->rfi_num_bad_inputs;
+            float sigma_scale = sqrt((num_inputs * (sk_step - 1) * (sk_step + 2) * (sk_step + 3))
+                                     / (4.0 * sk_step * sk_step));
+
             // Disable updates on enable_rfi_zero and thresholds while accessing these
             std::lock_guard<std::mutex> guard(lock_updatables);
             for (size_t ii = 0; ii < num_sub_frames; ii++) {
