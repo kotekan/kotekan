@@ -17,15 +17,15 @@
  * @brief hsaCommand copy-in command which updates the bad input list for the RFI system
  *
  * @par Buffers:
+ * @buffer in_buf Buffer containing the list of bad inputs
+ *     @buffer_format Array of @c uint8_t
+ *     @buffer_metadata chime_metadata
+
  * @buffer network_buf Buffer containing the metadata for
  *     @buffer_format FPGA post PDF data.
  *     @buffer_metadata chime_metadata
  *
- * @conf   updatable_config/bad_inputs  String.  String pointing to the location of the
- *                                      config block containing the following properties:
- *                                      "bad_inputs"  An array of bad inputs in cylinder order.
- *
- * @author Andre Renard
+ * @author Andre Renard & James Willis
  */
 class hsaRfiUpdateBadInputs : public hsaCommand {
 
@@ -44,20 +44,15 @@ public:
     /// Finalize any copies when they are activated
     void finalize_frame(int frame_id) override;
 
-    /**
-     * @brief Updatable config callback function to handle updates to the list of bad inouts.
-     * @param json The new list of bad inputs `{"bad_inputs": [<bad_inputs>]}`
-     * @return True if the list of bad inputs was parsed, false otherwise.
-     */
-    bool update_bad_inputs_callback(nlohmann::json& json);
-
     /// Copy frame into host_mask and store the no. of bad inputs.
     inline void copy_frame(int gpu_frame_id);
 
 private:
-    /// Main data input, used for metadata access
-    Buffer* _network_buf;
+    /// Main data input, list of bad inputs
     Buffer* _in_buf;
+
+    /// Used for metadata access
+    Buffer* _network_buf;
 
     /// IDs for _network_buf
     int32_t _network_buf_finalize_id;
@@ -91,6 +86,7 @@ private:
     /// The no. of bad inputs.
     uint32_t num_bad_inputs;
 
+    /// Stores whether the first bad input update has occurred
     bool first_pass;
 };
 
