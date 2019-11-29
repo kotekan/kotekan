@@ -11,6 +11,7 @@ import ctypes
 import os
 import io
 
+
 class FrbPacketHeader(ctypes.Structure):
     """Struct representation of the static section of a FRB network packet, as described in ``FRBHeader``"""
 
@@ -25,9 +26,11 @@ class FrbPacketHeader(ctypes.Structure):
         ("ntsamp", ctypes.c_uint16),
     ]
 
+
 class FrbPacket(ctypes.Structure):
     """Struct representation of a FRB network packet, as described in ``CHIMEFRB/ch_frb_io/L0_L1_packet.hpp``
     """
+
     _pack_ = 1
 
     @classmethod
@@ -49,7 +52,7 @@ class FrbPacket(ctypes.Structure):
             fh.readinto(buf)
 
         header = FrbPacketHeader.from_buffer(buf[4:])
-        struct_name = ("FrbPacket_" + filename).encode('ascii')
+        struct_name = ("FrbPacket_" + filename).encode("ascii")
         struct = type(struct_name, (FrbPacket,), {})
         struct._fields_ = [
             ("header", FrbPacketHeader),
@@ -64,7 +67,6 @@ class FrbPacket(ctypes.Structure):
         if max_packets:
             npkts = min(npkts, max_packets)
         return (struct * npkts).from_buffer(buf[4:])
-
 
     @classmethod
     def load_files(cls, pattern):
