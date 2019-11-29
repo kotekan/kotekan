@@ -122,7 +122,7 @@ void RfiFrameDrop::main_thread() {
                 // active), we will just skip the set of sub frames and hopefully we
                 // will resync
                 if (sf_seq != (int64_t)(sk_seq + ii * samples_per_sub_frame)) {
-                    INFO("Lost synchronization. Dropping data and resetting.");
+                    DEBUG("Lost synchronization. Dropping data and resetting.");
                     mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
                     break;
                 }
@@ -135,16 +135,16 @@ void RfiFrameDrop::main_thread() {
                     float sk_sig =
                         fabs(sigma_scale * (frame_in_sk[ii * sk_samples_per_frame + jj] - 1.0f));
 
-                    INFO("SK: {}; SKraw: {}", sk_sig, frame_in_sk[ii * sk_samples_per_frame + jj]);
+                    //INFO("SK: {}; SKraw: {}", sk_sig, frame_in_sk[ii * sk_samples_per_frame + jj]);
                     for (size_t kk = 0; kk < _thresholds.size(); kk++) {
                         sk_exceeds[kk] += (sk_sig > std::get<0>(_thresholds[kk]));
-                        INFO("threshold {}", std::get<0>(_thresholds[kk]));
+                        //INFO("threshold {}", std::get<0>(_thresholds[kk]));
                     }
                 }
 
                 for (size_t kk = 0; kk < _thresholds.size(); kk++) {
-                    INFO("Threshold: {}; Count: {}; Limit: {}", std::get<0>(_thresholds[kk]),
-                         sk_exceeds[kk], std::get<1>(_thresholds[kk]));
+                    //INFO("Threshold: {}; Count: {}; Limit: {}", std::get<0>(_thresholds[kk]),
+                    //     sk_exceeds[kk], std::get<1>(_thresholds[kk]));
                     if (sk_exceeds[kk] > std::get<1>(_thresholds[kk])) {
                         skip = true;
                         _failing_frame_counter

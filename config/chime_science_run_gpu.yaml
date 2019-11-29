@@ -203,6 +203,14 @@ updatable_config:
           -1.1771713330451292e-32,
           3.948826407949732e-35,
         ],]
+  second_stage_rfi:
+    kotekan_update_endpoint: json
+    thresholds:
+      - threshold: 5.0
+        fraction: 0.025
+      - threshold: 1.4
+        fraction: 0.4
+    enable_rfi_zero: false
 
 
 ###########################
@@ -251,6 +259,14 @@ gpu_n2_buffers:
   valve_buffer_2:
     kotekan_buffer: standard
   valve_buffer_3:
+    kotekan_buffer: standard
+  rfi_vis_buffer_0:
+    kotekan_buffer: standard
+  rfi_vis_buffer_1:
+    kotekan_buffer: standard
+  rfi_vis_buffer_2:
+    kotekan_buffer: standard
+  rfi_vis_buffer_3:
     kotekan_buffer: standard
 
 gpu_beamform_output_buffers:
@@ -1108,6 +1124,30 @@ valve:
     in_buf: gpu_n2_output_buffer_3
     out_buf: valve_buffer_3
 
+# Perform a second pass at RFI excision
+rfi_stage2:
+  rfi0:
+    kotekan_stage: RfiFrameDrop
+    in_buf_vis: valve_buffer_0
+    in_buf_sk: gpu_rfi_output_buffer_0
+    out_buf: rfi_vis_buffer_0
+  rfi1:
+    kotekan_stage: RfiFrameDrop
+    in_buf_vis: valve_buffer_1
+    in_buf_sk: gpu_rfi_output_buffer_1
+    out_buf: rfi_vis_buffer_1
+  rfi2:
+    kotekan_stage: RfiFrameDrop
+    in_buf_vis: valve_buffer_2
+    in_buf_sk: gpu_rfi_output_buffer_2
+    out_buf: rfi_vis_buffer_2
+  rfi3:
+    kotekan_stage: RfiFrameDrop
+    in_buf_vis: valve_buffer_3
+    in_buf_sk: gpu_rfi_output_buffer_3
+    out_buf: rfi_vis_buffer_3
+  updatable_config: "/updatable_config/second_stage_rfi"
+
 vis_accumulate:
   integration_time: 5.0  # Integrate to roughly 5s cadence
   # This (12288) is for num_sub_frames = 4, there is currently a config bug that
@@ -1115,7 +1155,7 @@ vis_accumulate:
   samples_per_data_set: 12288
   acc0:
     kotekan_stage: visAccumulate
-    in_buf: valve_buffer_0
+    in_buf: rfi_vis_buffer_0
     out_buf: visbuf_5s_0
     gating:
       psr0:
@@ -1125,7 +1165,7 @@ vis_accumulate:
       psr0: "/updatable_config/gating/psr0_config"
   acc1:
     kotekan_stage: visAccumulate
-    in_buf: valve_buffer_1
+    in_buf: rfi_vis_buffer_1
     out_buf: visbuf_5s_1
     gating:
       psr0:
@@ -1135,7 +1175,7 @@ vis_accumulate:
       psr0: "/updatable_config/gating/psr0_config"
   acc2:
     kotekan_stage: visAccumulate
-    in_buf: valve_buffer_2
+    in_buf: rfi_vis_buffer_2
     out_buf: visbuf_5s_2
     gating:
       psr0:
@@ -1145,7 +1185,7 @@ vis_accumulate:
       psr0: "/updatable_config/gating/psr0_config"
   acc3:
     kotekan_stage: visAccumulate
-    in_buf: valve_buffer_3
+    in_buf: rfi_vis_buffer_3
     out_buf: visbuf_5s_3
     gating:
       psr0:

@@ -210,7 +210,7 @@ updatable_config:
         fraction: 0.025
       - threshold: 1.4
         fraction: 0.4
-    enable_rfi_zero: true
+    enable_rfi_zero: false
 
 
 ###########################
@@ -1124,6 +1124,7 @@ valve:
     in_buf: gpu_n2_output_buffer_3
     out_buf: valve_buffer_3
 
+# Perform a second pass at RFI excision
 rfi_stage2:
   rfi0:
     kotekan_stage: RfiFrameDrop
@@ -1146,29 +1147,6 @@ rfi_stage2:
     in_buf_sk: gpu_rfi_output_buffer_3
     out_buf: rfi_vis_buffer_3
   updatable_config: "/updatable_config/second_stage_rfi"
-
-#rfi_stage2:
-#  rfi0:
-#    kotekan_stage: RfiFrameDrop
-#    in_buf_vis: gpu_n2_output_buffer_0
-#    in_buf_sk: gpu_rfi_output_buffer_0
-#    out_buf: rfi_vis_buffer_0
-#  rfi1:
-#    kotekan_stage: RfiFrameDrop
-#    in_buf_vis: gpu_n2_output_buffer_1
-#    in_buf_sk: gpu_rfi_output_buffer_1
-#    out_buf: rfi_vis_buffer_1
-#  rfi2:
-#    kotekan_stage: RfiFrameDrop
-#    in_buf_vis: gpu_n2_output_buffer_2
-#    in_buf_sk: gpu_rfi_output_buffer_2
-#    out_buf: rfi_vis_buffer_2
-#  rfi3:
-#    kotekan_stage: RfiFrameDrop
-#    in_buf_vis: gpu_n2_output_buffer_3
-#    in_buf_sk: gpu_rfi_output_buffer_3
-#    out_buf: rfi_vis_buffer_3
-#  updatable_config: "/updatable_config/second_stage_rfi"
 
 vis_accumulate:
   integration_time: 5.0  # Integrate to roughly 5s cadence
