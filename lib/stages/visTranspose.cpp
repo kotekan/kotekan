@@ -391,7 +391,15 @@ dset_id_t visTranspose::base_dset(dset_id_t ds_id) {
     try {
         return dm.datasets().at(ds_id).base_dset();
     } catch (std::exception& e) {
-        FATAL_ERROR("Failed to get base dataset of dataset with ID {}. {}", ds_id, e.what());
-        return ds_id;
+        // fetch a metadata state just to ensure we have a copy of that dataset
+        auto mstate_fut = std::async(&datasetManager::dataset_state<metadataState>, &dm, ds_id);
+        const metadataState* mstate = mstate_fut.get();
+        (void) mstate;
+        try {
+            return dm.datasets().at(ds_id).base_dset();
+        } catch (std::exception& e) {
+            FATAL_ERROR("Failed to get base dataset of dataset with ID {}. {}", ds_id, e.what());
+            return ds_id;
+        }
     }
 }
