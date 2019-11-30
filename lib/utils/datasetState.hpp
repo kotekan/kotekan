@@ -630,4 +630,111 @@ private:
     }
 };
 
+
+/**
+ * @brief A dataset state that describes the gains applied to the data.
+ *
+ * @author Richard Shaw
+ */
+class gainState : public datasetState {
+public:
+    /**
+     * @brief Constructor
+     * @param data  The product information as serialized by
+     *              gainState::to_json().
+     */
+    gainState(const json& data) {
+        try {
+            _update_id = data["update_id"].get<std::string>();
+            _transition_interval = data["transition_interval"].get<double>();
+        } catch (std::exception& e) {
+            throw std::runtime_error(fmt::format(
+                fmt("gainState: Failure parsing json data ({:s}): {:s}"), data.dump(4), e.what()));
+        }
+    };
+
+    /**
+     * @brief Constructor
+     * @param  update_id  The string update_id labelling the applied gains.
+     * @param  transition_interval  The length of time to blend updates over.
+     */
+    gainState(std::string update_id, double transition_interval) :
+        _update_id(update_id),
+        _transition_interval(transition_interval){};
+
+    /**
+     * @brief Get the update_id
+     **/
+    const std::string& get_update_id() const {
+        return _update_id;
+    }
+
+    /**
+     * @brief Get the length of time to blend this new update with the previous one.
+     **/
+    double get_transition_interval() const {
+        return _transition_interval;
+    }
+
+private:
+    /// Serialize the data of this state in a json object
+    json data_to_json() const override {
+        json j;
+        j["update_id"] = _update_id;
+        j["transition_interval"] = _transition_interval;
+        return j;
+    }
+
+    // The label for the gains
+    std::string _update_id;
+
+    // The length of time (in seconds) the previous gain update is blended with this one.
+    double _transition_interval;
+};
+
+
+/**
+ * @brief A dataset state that describes the input flags being applied.
+ *
+ * @author Richard Shaw
+ */
+class flagState : public datasetState {
+public:
+    /**
+     * @brief Constructor
+     *
+     * @param data  The product information as serialized by
+     *              flagState::to_json().
+     */
+    flagState(const json& data) {
+        try {
+            _update_id = data.get<std::string>();
+        } catch (std::exception& e) {
+            throw std::runtime_error(fmt::format(
+                fmt("flagState: Failure parsing json data ({:s}): {:s}"), data.dump(4), e.what()));
+        }
+    };
+
+    /**
+     * @brief Constructor
+     *
+     * @param  update_id  The string update_id labelling the applied flags.
+     */
+    flagState(std::string update_id) : _update_id(update_id){};
+
+    const std::string& get_update_id() const {
+        return _update_id;
+    }
+
+private:
+    /// Serialize the data of this state in a json object
+    json data_to_json() const override {
+        json j(_update_id);
+        return j;
+    }
+
+    // The label for the flags
+    std::string _update_id;
+};
+
 #endif // DATASETSTATE_HPP

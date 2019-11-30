@@ -15,6 +15,7 @@ REGISTER_FAKE_VIS_PATTERN(ChimeVisPattern, "chime");
 REGISTER_FAKE_VIS_PATTERN(TestPatternSimpleVisPattern, "test_pattern_simple");
 REGISTER_FAKE_VIS_PATTERN(TestPatternFreqVisPattern, "test_pattern_freq");
 REGISTER_FAKE_VIS_PATTERN(TestPatternInputVisPattern, "test_pattern_inputs");
+REGISTER_FAKE_VIS_PATTERN(ChangeStatePattern, "change_state");
 
 
 FakeVisPattern::FakeVisPattern(kotekan::Config& config, const std::string& path) {
@@ -270,4 +271,76 @@ void TestPatternInputVisPattern::fill(visFrameView& frame) {
             ind++;
         }
     }
+}
+
+
+ChangeStatePattern::ChangeStatePattern(kotekan::Config& config, const std::string& path) :
+    DefaultVisPattern(config, path) {
+
+    // Map for state generators
+    std::map<std::string, gen_state> gen_state_map;
+    gen_state_map["inputs"] = std::bind(&ChangeStatePattern::gen_state_inputs, this);
+    gen_state_map["flags"] = std::bind(&ChangeStatePattern::gen_state_flags, this);
+
+    auto state_changes = config.get_default<nlohmann::json>(path, "state_changes", {});
+
+    for (const auto& s : state_changes) {
+        double ts = s["timestamp"].get<double>();
+        std::string type = s["type"].get<std::string>();
+
+        if (gen_state_map.count(type) == 0) {
+            FATAL_ERROR("State type '{}' not understood.", type);
+        }
+
+        _dataset_changes.push_back({ts, gen_state_map.at(type)});
+    }
+
+    num_elements = config.get<size_t>(path, "num_elements");
+}
+
+void ChangeStatePattern::fill(visFrameView& frame) {
+
+    auto& dm = datasetManager::instance();
+
+    DefaultVisPattern::fill(frame);
+    double frame_time = ts_to_double(std::get<1>(frame.time));
+
+    if (!current_dset_id) {
+        current_dset_id = frame.dataset_id;
+    }
+
+    // If there are still changes to apply, check that we've exceeded the start
+    // time and then update the state
+    if (_dataset_changes.size() > 0) {
+        auto& [ts, func] = _dataset_changes[0];
+
+        if (frame_time >= ts) {
+            state_id_t id = func();
+            current_dset_id = dm.add_dataset(id, current_dset_id.value());
+            _dataset_changes.pop_front();
+        }
+    }
+
+    frame.dataset_id = current_dset_id.value();
+}
+
+
+state_id_t ChangeStatePattern::gen_state_inputs() {
+
+    std::vector<input_ctype> inputs;
+
+    for (uint16_t i = 0; i < num_elements; i++) {
+        inputs.emplace_back(i, fmt::format("input_{}_{}", _input_update_ind++, i));
+    }
+
+    auto& dm = datasetManager::instance();
+    return dm.create_state<inputState>(inputs).first;
+}
+
+
+state_id_t ChangeStatePattern::gen_state_flags() {
+
+    std::string update_id = fmt::format("flag_update_{}", _flag_update_ind++);
+    auto& dm = datasetManager::instance();
+    return dm.create_state<flagState>(update_id).first;
 }
