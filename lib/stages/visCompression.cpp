@@ -200,19 +200,6 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
             std::tie(new_dset_id, sstate_ptr, pstate_ptr) = dset_id_map.at(input_frame.dataset_id);
         }
 
-        // if (input_dset_id != input_frame.dataset_id) {
-        //     input_dset_id = input_frame.dataset_id;
-        //     future_output_dset_id =
-        //         std::async(&baselineCompression::change_dataset_state, this, input_dset_id);
-        // }
-
-        // Are we waiting for a new dataset ID?
-        // if (future_output_dset_id.valid()) {
-        //     output_dset_id = future_output_dset_id.get();
-        //     INFO("Creating new stack update and registering took {:.2f}s", current_time() -
-        //     start_time);
-        // }
-
         const auto& stack_map = sstate_ptr->get_rstack_map();
         const auto& prods = pstate_ptr->get_prods();
         auto num_stack = sstate_ptr->get_num_stack();
