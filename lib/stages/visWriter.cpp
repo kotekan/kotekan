@@ -272,7 +272,7 @@ void visWriter::get_dataset_state(dset_id_t ds_id) {
     }
 
     {
-        //std::lock_guard<std::mutex> _lock(acqs_mutex);
+        // std::lock_guard<std::mutex> _lock(acqs_mutex);
         // Get a reference to the acq state
         auto acq = acqs.at(ds_id);
 
@@ -295,13 +295,15 @@ bool visWriter::check_git_version(dset_id_t ds_id) {
     if (mstate->get_git_version_tag() != std::string(get_git_commit_hash())) {
         if (ignore_version) {
             WARN("Git version tags don't match: dataset {} has tag {:s},"
-                "while the local git version tag is {:s}. Ignoring for now, but you should look into this.",
-                ds_id, mstate->get_git_version_tag(), get_git_commit_hash());
+                 "while the local git version tag is {:s}. Ignoring for now, but you should look "
+                 "into this.",
+                 ds_id, mstate->get_git_version_tag(), get_git_commit_hash());
             return true;
         } else {
             WARN("Git version tags don't match: dataset {} has tag {:s},"
-                "while the local git version tag is {:s}. Marking acqusition bad and dropping all data.",
-                ds_id, mstate->get_git_version_tag(), get_git_commit_hash());
+                 "while the local git version tag is {:s}. Marking acqusition bad and dropping all "
+                 "data.",
+                 ds_id, mstate->get_git_version_tag(), get_git_commit_hash());
             return false;
         }
     }
@@ -323,8 +325,7 @@ void visWriter::init_acq(dset_id_t ds_id) {
         return;
     }
 
-    INFO("Got new dataset ID={} with new fingerprint={}. Creating new acquisition.",
-         ds_id, fp);
+    INFO("Got new dataset ID={} with new fingerprint={}. Creating new acquisition.", ds_id, fp);
 
     // If it is not known we need to initialise everything
     acqs_fingerprint[fp] = std::make_shared<acqState>();
@@ -422,7 +423,6 @@ visCalWriter::visCalWriter(Config& config, const string& unique_name,
     endpoint = "/release_live_file/" + std::regex_replace(unique_name, std::regex("^/+"), "");
     restServer::instance().register_get_callback(endpoint,
                                                  std::bind(&visCalWriter::rest_callback, this, _1));
-
 }
 
 visCalWriter::~visCalWriter() {

@@ -134,7 +134,8 @@ void baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
 
         // Calculate stack description and register the state
         auto sspec = calculate_stack(istate_ptr->get_inputs(), pstate_ptr->get_prods());
-        auto [state_id, sstate_ptr] = dm.create_state<stackState>(sspec.first, std::move(sspec.second));
+        auto [state_id, sstate_ptr] =
+            dm.create_state<stackState>(sspec.first, std::move(sspec.second));
 
         // Insert state into map
         state_map[fprint] = {state_id, sstate_ptr, pstate_ptr};
@@ -208,7 +209,8 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
         // Are we waiting for a new dataset ID?
         // if (future_output_dset_id.valid()) {
         //     output_dset_id = future_output_dset_id.get();
-        //     INFO("Creating new stack update and registering took {:.2f}s", current_time() - start_time);
+        //     INFO("Creating new stack update and registering took {:.2f}s", current_time() -
+        //     start_time);
         // }
 
         const auto& stack_map = sstate_ptr->get_rstack_map();

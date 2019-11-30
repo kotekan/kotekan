@@ -60,10 +60,11 @@ void prodSubset::change_dataset_state(dset_id_t ds_id) {
         // create new product dataset state
         const prodState* prod_state_ptr = dm.dataset_state<prodState>(ds_id);
         if (prod_state_ptr == nullptr) {
-            FATAL_ERROR("Set to not use dataset_broker and couldn't find freqState ancestor of dataset "
-                        "{}. Make sure there is a stage upstream in the config, that adds a "
-                        "freqState.\nExiting...",
-                        ds_id);
+            FATAL_ERROR(
+                "Set to not use dataset_broker and couldn't find freqState ancestor of dataset "
+                "{}. Make sure there is a stage upstream in the config, that adds a "
+                "freqState.\nExiting...",
+                ds_id);
         }
 
         // Compare function to help sort input_ctypes.
@@ -83,15 +84,15 @@ void prodSubset::change_dataset_state(dset_id_t ds_id) {
         // check if prod_subset is a subset of the prodState
         for (size_t i = 0; i < _base_prod_subset.size(); i++) {
             // so we can use binary search
-            if (std::binary_search(input_prods_copy.begin(), input_prods_copy.end(), _base_prod_subset.at(i),
-                                   compare_prods)) {
+            if (std::binary_search(input_prods_copy.begin(), input_prods_copy.end(),
+                                   _base_prod_subset.at(i), compare_prods)) {
                 new_prod_ind.push_back(_base_prod_ind[i]);
                 new_prod_subset.push_back(_base_prod_subset[i]);
-            } else
-            {
-                WARN("prodSubset: Product ID {:d} is configured to be in the subset, but is missing in "
-                    "dataset {}. Deleting it from subset.",
-                    _base_prod_ind.at(i), ds_id);
+            } else {
+                WARN("prodSubset: Product ID {:d} is configured to be in the subset, but is "
+                     "missing in "
+                     "dataset {}. Deleting it from subset.",
+                     _base_prod_ind.at(i), ds_id);
             }
         }
 
@@ -124,8 +125,8 @@ void prodSubset::main_thread() {
 
         // check if the input dataset has changed
         if (dset_id_map.count(input_frame.dataset_id) == 0) {
-            change_dset_fut = std::async(&prodSubset::change_dataset_state, this,
-                                         input_frame.dataset_id);
+            change_dset_fut =
+                std::async(&prodSubset::change_dataset_state, this, input_frame.dataset_id);
         }
 
         // Wait for the output buffer frame to be free

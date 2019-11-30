@@ -500,9 +500,9 @@ void datasetManager::update_datasets(dset_id_t ds_id) {
 
     while (!parse_reply_dataset_update(reply)) {
         std::this_thread::sleep_for(std::chrono::milliseconds(_retry_wait_time_ms));
-        reply = _rest_client.make_request_blocking(
-            PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host, _ds_broker_port,
-            _retries_rest_client, _timeout_rest_client_s);
+        reply = _rest_client.make_request_blocking(PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host,
+                                                   _ds_broker_port, _retries_rest_client,
+                                                   _timeout_rest_client_s);
     }
 }
 
@@ -594,7 +594,8 @@ std::optional<std::pair<dset_id_t, dataset>>
 datasetManager::closest_dataset_of_type(dset_id_t dset, const std::string& type) {
 
     auto orig_dset = dset;
-    (void)orig_dset;  // this is needed because where it is used below gets omitted in production builds
+    (void)orig_dset; // this is needed because where it is used below gets omitted in production
+                     // builds
 
     if (_use_broker) {
         update_datasets(dset);
@@ -612,26 +613,29 @@ datasetManager::closest_dataset_of_type(dset_id_t dset, const std::string& type)
             // Search for the requested type in each dataset
             try {
                 if (_datasets.at(dset).type() == type) {
-                    DEBUG_NON_OO("Found ancestor '{}' of '{}' adding a state of type '{}'.", dset.to_string(), orig_dset.to_string(), type);
+                    DEBUG_NON_OO("Found ancestor '{}' of '{}' adding a state of type '{}'.",
+                                 dset.to_string(), orig_dset.to_string(), type);
                     std::pair<dset_id_t, dataset> r = {dset, _datasets.at(dset)};
                     return r;
                 }
 
                 // if this is the root dataset, we don't have that ancestor
                 if (_datasets.at(dset).is_root()) {
-                    DEBUG_NON_OO("Could not find ancestor of '{}' adding a state of type '{}'.", dset.to_string(), type);
+                    DEBUG_NON_OO("Could not find ancestor of '{}' adding a state of type '{}'.",
+                                 dset.to_string(), type);
                     return {};
                 }
 
                 // Move on to the parent dataset...
-                DEBUG2_NON_OO("Moving to ancestor '{}' of '{}'.", _datasets.at(dset).base_dset().to_string(), dset.to_string(), type);
+                DEBUG2_NON_OO("Moving to ancestor '{}' of '{}'.",
+                              _datasets.at(dset).base_dset().to_string(), dset.to_string(), type);
                 dset = _datasets.at(dset).base_dset();
 
             } catch (std::out_of_range& e) {
                 // we don't have the base dataset
                 DEBUG_NON_OO("datasetManager: found a dead reference when looking for "
-                              "locally known ancestor: {:s}",
-                              e.what());
+                             "locally known ancestor: {:s}",
+                             e.what());
                 return {};
             }
         }
