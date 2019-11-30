@@ -112,6 +112,8 @@ void frbPostProcess::main_thread() {
     frb_header.nupfreq = _factor_upchan_out;
     frb_header.ntsamp = _timesamples_per_frb_packet;
 
+    bool startup = true; // True on first pass through the loop
+
     while (!stop_thread) {
         // Get the next output buffer, id = 0 to start.
         uint8_t* out_frame = wait_for_empty_frame(frb_buf, unique_name.c_str(), out_buffer_ID);
@@ -140,12 +142,71 @@ void frbPostProcess::main_thread() {
             }
         }
 
-        frb_header.fpga_count = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
-        for (int i = 0; i < _num_gpus; ++i) {
-            assert(frb_header.fpga_count == (uint64_t)get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
-            stream_id_t stream_id = get_stream_id_t(in_buf[i], in_buffer_ID[i]);
-            frb_header_coarse_freq_ids[i] = bin_number_chime(&stream_id);
+        // Get all input buffers in sync by fpga_seq_no: find the one that's the furthest along, and
+        // keep advancing others until they all match. (Keep in mind that advancing one of the
+        // others may put it ahead of the current largest fpga_seq_no, in which case we have to
+        // repeat the process.)
+        int64_t start_fpga_count = frb_header.fpga_count;
+        while (!stop_thread) {
+            // Find out the amount by which inputs are out of sync
+            int64_t max_fpga_count = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
+            for (int i = 1; i < _num_gpus; i++) {
+                max_fpga_count =
+                    std::max(max_fpga_count, get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
+            }
+
+            // On startup, we just go with whatever is the smallest input fpga_seq_num.
+            // Afterwards, we know what the last frame was, and so can just count from there
+            if (startup) {
+                start_fpga_count = max_fpga_count;
+                for (int i = 1; i < _num_gpus; i++) {
+                    start_fpga_count =
+                        std::min(start_fpga_count, get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
+                }
+                startup = false;
+            }
+
+            DEBUG("Syncing min {} -> {} max", start_fpga_count, max_fpga_count);
+
+            // Advance lost_samples buffer by the amount of known dropped frames across all inputs
+            for (int i = 0; i < (max_fpga_count - start_fpga_count) / _samples_per_data_set; ++i) {
+                INFO("Advance lost_samples");
+                mark_frame_empty(lost_samples_buf, unique_name.c_str(), lost_samples_buf_id);
+                lost_samples_buf_id = (lost_samples_buf_id + 1) % lost_samples_buf->num_frames;
+                lost_samples_frame =
+                    wait_for_full_frame(lost_samples_buf, unique_name.c_str(), lost_samples_buf_id);
+                if (lost_samples_frame == NULL)
+                    return;
+            }
+            start_fpga_count = max_fpga_count;
+
+            // try to catch up the GPU inputs
+            bool fpga_seq_in_sync = true;
+            for (int i = 0; i < _num_gpus; ++i) {
+                while (max_fpga_count > get_fpga_seq_num(in_buf[i], in_buffer_ID[i])) {
+                    INFO("Advance {} from {}", i, get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
+                    mark_frame_empty(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
+                    in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
+                    in_frame[i] =
+                        wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
+                    if (in_frame[i] == NULL)
+                        return;
+                }
+                if (max_fpga_count != get_fpga_seq_num(in_buf[i], in_buffer_ID[i])) {
+                    fpga_seq_in_sync = false;
+                }
+                stream_id_t stream_id = get_stream_id_t(in_buf[i], in_buffer_ID[i]);
+                frb_header_coarse_freq_ids[i] = bin_number_chime(&stream_id);
+            }
+
+            if (fpga_seq_in_sync) {
+                frb_header.fpga_count = max_fpga_count;
+                DEBUG("Synced to {}", max_fpga_count);
+                break;
+            }
         }
+        if (stop_thread)
+            return;
 
         // Sum all the beams together into ib array.
         if (_incoherent_beams.size() > 0) {

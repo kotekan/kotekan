@@ -5,6 +5,7 @@
 #include "chimeMetadata.h"
 #include "errors.h"
 #include "fpga_header_functions.h"
+#include "frb_functions.h"
 #include "network_functions.hpp"
 #include "tx_utils.hpp"
 #include "util.h"
@@ -126,9 +127,10 @@ void frbNetworkProcess::main_thread() {
     t0.tv_sec = 0;
     t0.tv_nsec = 0; /*  nanoseconds */
 
-    unsigned long time_interval =
-        samples_per_packet * packets_per_stream * 384 * 2560; // time per buffer frame in ns
     // 384 is integration factor and 2560 fpga sampling time in ns
+    const unsigned samples_per_frame =
+        samples_per_packet * packets_per_stream * 384;      // number of FPGA samples in each frame
+    unsigned long time_interval = samples_per_frame * 2560; // time per buffer frame in ns
 
     long count = 0;
 
@@ -163,9 +165,11 @@ void frbNetworkProcess::main_thread() {
     CLOCK_ABS_NANOSLEEP(CLOCK_REALTIME, t0);
 
     clock_gettime(CLOCK_MONOTONIC, &t0);
-    uint64_t* packet_buffer_uint64 = reinterpret_cast<uint64_t*>(packet_buffer);
-    uint64_t initial_fpga_count = packet_buffer_uint64[1];
     uint64_t initial_nsec = t0.tv_sec * 1e9 + t0.tv_nsec;
+
+    FRBHeader* header = reinterpret_cast<FRBHeader*>(packet_buffer);
+    const uint64_t initial_fpga_count = header->fpga_count;
+    uint64_t last_fpga_count = initial_fpga_count;
 
     while (!stop_thread) {
 
@@ -174,17 +178,28 @@ void frbNetworkProcess::main_thread() {
             packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
             if (packet_buffer == NULL)
                 break;
-            packet_buffer_uint64 = reinterpret_cast<uint64_t*>(packet_buffer);
+
             clock_gettime(CLOCK_MONOTONIC, &t1);
 
             add_nsec(t0, time_interval);
 
             // discipline the monotonic clock with the fpga time stamps
+            header = reinterpret_cast<FRBHeader*>(packet_buffer);
+            const uint64_t fpga_samples_skipped =
+                header->fpga_count - last_fpga_count - samples_per_frame;
+            if (fpga_samples_skipped) {
+                const auto frames_skipped = fpga_samples_skipped / samples_per_frame;
+                INFO("Adjust pacing clock for {} skipped frames", frames_skipped);
+                uint64_t nanos_skipped = frames_skipped * time_interval;
+                add_nsec(t0, nanos_skipped);
+            }
             uint64_t offset = (t0.tv_sec * 1e9 + t0.tv_nsec - initial_nsec)
-                              - (packet_buffer_uint64[1] - initial_fpga_count) * 2560;
+                              - (header->fpga_count - initial_fpga_count) * 2560;
             if (offset != 0)
                 WARN("OFFSET in not zero ");
             add_nsec(t0, -1 * offset);
+
+            last_fpga_count = header->fpga_count;
         }
 
         t1 = t0;
