@@ -254,7 +254,7 @@ protected:
 
 // These templated functions are needed in order to tell HighFive how the
 // various structs are converted into HDF5 datatypes
-const size_t DSET_ID_LEN = 33;  // Length of the string used to represent dataset IDs
+const size_t DSET_ID_LEN = 33; // Length of the string used to represent dataset IDs
 struct dset_id_str {
     char hash[DSET_ID_LEN];
 };
@@ -271,12 +271,12 @@ template<>
 DataType create_datatype<cfloat>();
 
 // Fixed length string to store dataset ID
-template <>
+template<>
 inline AtomicType<dset_id_str>::AtomicType() {
     _hid = H5Tcopy(H5T_C_S1);
     H5Tset_size(_hid, DSET_ID_LEN);
     // define encoding to UTF-8 by default
-    //H5Tset_cset(_hid, H5T_CSET_UTF8);
+    // H5Tset_cset(_hid, H5T_CSET_UTF8);
 }
 }; // namespace HighFive
 

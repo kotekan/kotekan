@@ -280,7 +280,8 @@ void visTranspose::main_thread() {
             FATAL_ERROR("Formatted dataset ID string does not have expected length.");
             return;
         }
-        std::copy(dset_id_str.c_str(), dset_id_str.c_str() + DSET_ID_LEN, dset_id[offset + ti].hash);
+        std::copy(dset_id_str.c_str(), dset_id_str.c_str() + DSET_ID_LEN,
+                  dset_id[offset + ti].hash);
 
         // Only copy flags if we haven't already
         if (!found_flags[ti]) {

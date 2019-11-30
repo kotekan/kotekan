@@ -151,9 +151,9 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
     INFO("New connection from client: {:s}:{:d}", ip_str, port);
 
     // New connection instance
-    connInstance* instance = new connInstance(accept_args->unique_name, accept_args->buf,
-                                              accept_args->buffer_recv, ip_str, port, read_timeout,
-                                              drop_frames);
+    connInstance* instance =
+        new connInstance(accept_args->unique_name, accept_args->buf, accept_args->buffer_recv,
+                         ip_str, port, read_timeout, drop_frames);
 
     // Setup logging for the instance object.
     instance->set_log_prefix(accept_args->unique_name + "/instance");
@@ -297,7 +297,8 @@ int bufferRecv::get_next_frame() {
 }
 
 connInstance::connInstance(const string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
-                           const string& client_ip, int port, struct timeval read_timeout, bool drop_frames) :
+                           const string& client_ip, int port, struct timeval read_timeout,
+                           bool drop_frames) :
     producer_name(producer_name),
     buf(buf),
     buffer_recv(buffer_recv),

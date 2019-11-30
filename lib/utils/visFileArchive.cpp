@@ -142,7 +142,8 @@ void visFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, s
         dset(name)
             .select({f_ind, 0, 0, t_ind}, {chunk_f, length("ev"), length("input"), chunk_t})
             .write(data);
-    } else if (name == "erms" || name == "flags/frac_lost" || name == "flags/frac_rfi" || name == "flags/dataset_id") {
+    } else if (name == "erms" || name == "flags/frac_lost" || name == "flags/frac_rfi"
+               || name == "flags/dataset_id") {
         DEBUG("writing {}...", name);
         dset(name).select({f_ind, t_ind}, {chunk_f, chunk_t}).write(data);
     } else {
@@ -162,7 +163,8 @@ template void visFileArchive::write_block<float>(std::string name, size_t f_ind,
 template void visFileArchive::write_block<int>(std::string name, size_t f_ind, size_t t_ind,
                                                size_t chunk_f, size_t chunk_t, int const*);
 template void visFileArchive::write_block<dset_id_str>(std::string name, size_t f_ind, size_t t_ind,
-                                                       size_t chunk_f, size_t chunk_t, dset_id_str const*);
+                                                       size_t chunk_f, size_t chunk_t,
+                                                       dset_id_str const*);
 
 
 //
@@ -228,7 +230,8 @@ void visFileArchive::create_datasets() {
     create_dataset("gain", {"freq", "input", "time"}, create_datatype<cfloat>(), compress);
     create_dataset("flags/frac_lost", {"freq", "time"}, create_datatype<float>(), no_compress);
     create_dataset("flags/frac_rfi", {"freq", "time"}, create_datatype<float>(), no_compress);
-    create_dataset("flags/dataset_id", {"freq", "time"}, create_datatype<dset_id_str>(), no_compress);
+    create_dataset("flags/dataset_id", {"freq", "time"}, create_datatype<dset_id_str>(),
+                   no_compress);
 
     // Only write the eigenvector datasets if there's going to be anything in them
     if (write_ev) {

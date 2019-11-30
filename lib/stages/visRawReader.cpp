@@ -21,6 +21,7 @@
 #include <fcntl.h>
 #include <fstream>
 #include <functional>
+#include <future>
 #include <iostream>
 #include <memory>
 #include <regex>
@@ -30,7 +31,6 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
-#include <future>
 
 
 using kotekan::bufferContainer;
@@ -234,8 +234,9 @@ void visRawReader::main_thread() {
     double start_time, end_time;
     size_t frame_id = 0;
     uint8_t* frame;
-    dset_id_t dset_id;         // dataset ID stored in the frame
-    dset_id_t cur_dset_id = dset_id_t::null; // current dataset ID: used to identify changes in frames coming in
+    dset_id_t dset_id; // dataset ID stored in the frame
+    dset_id_t cur_dset_id =
+        dset_id_t::null; // current dataset ID: used to identify changes in frames coming in
     bool got_first_frame = false;
 
     size_t ind = 0, read_ind = 0, file_ind;
@@ -292,10 +293,9 @@ void visRawReader::main_thread() {
                 got_first_frame = true;
             } else if (dset_id != cur_dset_id) {
                 if (!use_comet) {
-                    FATAL_ERROR(
-                        "Dataset ID of incoming frames changed from {} to {}. Changing  ID "
-                        "not supported without dataset broker, exiting...",
-                        cur_dset_id, dset_id);
+                    FATAL_ERROR("Dataset ID of incoming frames changed from {} to {}. Changing  ID "
+                                "not supported without dataset broker, exiting...",
+                                cur_dset_id, dset_id);
                 }
                 get_dataset_state(dset_id);
                 cur_dset_id = dset_id;
@@ -365,16 +365,15 @@ ensureOrdered::ensureOrdered(Config& config, const string& unique_name,
     chunked = config.exists(unique_name, "chunk_size");
     if (chunked) {
         chunk_size = config.get<std::vector<int>>(unique_name, "chunk_size");
-        if (chunk_size.size() != 3){
-            FATAL_ERROR("Chunk size needs exactly three elements (got {:d}).",
-                        chunk_size.size());
+        if (chunk_size.size() != 3) {
+            FATAL_ERROR("Chunk size needs exactly three elements (got {:d}).", chunk_size.size());
             return;
         }
         chunk_t = chunk_size[2];
         chunk_f = chunk_size[0];
         if (chunk_size[0] < 1 || chunk_size[1] < 1 || chunk_size[2] < 1) {
-            FATAL_ERROR("Chunk dimensions need to be >= 1 (got ({:d}, {:d}, {:d}).",
-                        chunk_size[0], chunk_size[1], chunk_size[2]);
+            FATAL_ERROR("Chunk dimensions need to be >= 1 (got ({:d}, {:d}, {:d}).", chunk_size[0],
+                        chunk_size[1], chunk_size[2]);
             return;
         }
     }
@@ -417,7 +416,7 @@ bool ensureOrdered::get_dataset_state(dset_id_t ds_id) {
     return true;
 }
 
-void ensureOrdered::main_thread(){
+void ensureOrdered::main_thread() {
 
     // The index to the current buffer frame
     frameID frame_id(in_buf);
@@ -493,7 +492,7 @@ void ensureOrdered::main_thread(){
             INFO("Frame {:d} arrived out of order. Expected {:d}. Adding it to waiting buffer.",
                  ordered_ind, output_ind);
             // Add to waiting frames and move to next (without marking empty!)
-            waiting.insert({ordered_ind, (int) frame_id});
+            waiting.insert({ordered_ind, (int)frame_id});
             frame_id++;
         } else {
             FATAL_ERROR("Number of frames arriving out of order exceeded maximum buffer size.");

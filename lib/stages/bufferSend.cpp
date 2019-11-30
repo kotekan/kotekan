@@ -7,8 +7,8 @@
 #include "fmt.hpp"
 
 #include <cerrno>
-#include <cstring>
 #include <chrono>
+#include <cstring>
 
 // Only Linux supports MSG_NOSIGNAL
 #ifndef __linux__
@@ -145,7 +145,7 @@ void bufferSend::main_thread() {
             INFO("Waiting for connection to {:s}:{:d}...", server_ip, server_port);
             std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
             connection_state_cv.wait_for(connection_lock, std::chrono::seconds(1),
-                                         [&]() {return (stop_thread || connected);});
+                                         [&]() { return (stop_thread || connected); });
             continue;
         }
 
