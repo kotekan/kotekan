@@ -145,18 +145,18 @@ void gpuSimulate::main_thread() {
                             int imag = 0;
                             for (int t = 0; t < _samples_per_data_set / 32; t++) {
                                 for (int tt = 0; tt < 4; tt++) {
-                                    int ix = tt + 4 * x
+                                    int ix = tt + 4*(x%8) + (x/8)*32*2
                                              + 4 * 2 * _block_size * host_block_map[2 * b + 0]
                                              + 4 * 2 * _num_elements * f
                                              + 4 * 2 * _num_elements * _num_local_freq * t;
                                     int xi = input_u[ix];
-                                    int xr = input_u[ix + _block_size * 4];
-                                    int iy = tt + 4 * y
+                                    int xr = input_u[ix + 32];//_block_size * 4];
+                                    int iy = tt + 4*(y%8) + (y/8)*32*2
                                              + 4 * 2 * _block_size * host_block_map[2 * b + 1]
                                              + 4 * 2 * _num_elements * f
                                              + 4 * 2 * _num_elements * _num_local_freq * t;
                                     int yi = input_u[iy];
-                                    int yr = input_u[iy + _block_size * 4];
+                                    int yr = input_u[iy + 32];//_block_size * 4];
                                     real += dot4b(xr, yr) + dot4b(xi, yi);
                                     imag += dot4b(xi, yr) + dot4b(xr, yi); // NOTE: THIS IS WRONG!!!
                                 }
@@ -167,7 +167,7 @@ void gpuSimulate::main_thread() {
                                    + y * _block_size + _block_size * _block_size] = imag;
                         }
                     }
-                    DEBUG("Done block %d of %d (freq %d of %d)...", b, _num_blocks, f,
+                    DEBUG("Done block {:d} of {:d} (freq {:d} of {:d})...", b, _num_blocks, f,
                           _num_local_freq);
                 }
             }
