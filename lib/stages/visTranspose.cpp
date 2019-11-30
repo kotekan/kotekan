@@ -247,9 +247,9 @@ void visTranspose::main_thread() {
                 INFO("Got an empty frame.");
             } else {
                 // TODO assuming that dataset ID changes here never change dataset dimensions
-                INFO("Dataset ID has changed from {} to {}. Getting base dataset ID from "
-                     "broker...",
-                     ds_id, frame.dataset_id);
+                DEBUG("Dataset ID has changed from {} to {}. Getting base dataset ID from "
+                      "broker...",
+                      ds_id, frame.dataset_id);
                 ds_id = frame.dataset_id;
                 base_ds_id = base_dset(ds_id);
             }
