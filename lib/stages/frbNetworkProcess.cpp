@@ -5,6 +5,7 @@
 #include "chimeMetadata.h"
 #include "errors.h"
 #include "fpga_header_functions.h"
+#include "frb_functions.h"
 #include "network_functions.hpp"
 #include "tx_utils.hpp"
 #include "util.h"
@@ -27,16 +28,6 @@
 #include <string>
 #include <sys/socket.h>
 #include <thread>
-
-#include "Config.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
-#include "frbNetworkProcess.hpp"
-#include "frb_functions.h"
-#include "tx_utils.hpp"
-#include "util.h"
 
 
 using std::string;
