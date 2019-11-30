@@ -8,8 +8,8 @@
 #
 # - Packet capture from the ICE boards including FPGA flag handling and normalization
 # - N^2 kernels and output for various data projects to receiver systems
-# - FRB FFT Fan beam and packet Tx
-# - Pulsar 10 coherent beam system abd packet Tx
+# - FRB FFT Fan beam and packet Tx, with Valves protecting input buffers from overflowing
+# - Pulsar 10 coherent beam system and packet Tx, with Valves protecting input buffers from overflowing
 # - RFI detection and summary stats system (only reports on RFI, no normalization yet)
 #
 # This component is intended to be run on the GPU nodes.
@@ -266,6 +266,14 @@ gpu_beamform_output_buffers:
     kotekan_buffer: standard
   gpu_beamform_output_buffer_3:
     kotekan_buffer: standard
+  gpu_beamform_output_valved_buffer_0:
+    kotekan_buffer: standard
+  gpu_beamform_output_valved_buffer_1:
+    kotekan_buffer: standard
+  gpu_beamform_output_valved_buffer_2:
+    kotekan_buffer: standard
+  gpu_beamform_output_valved_buffer_3:
+    kotekan_buffer: standard
 
 gain_frb_buffers:
   num_frames: 5
@@ -304,6 +312,14 @@ pulsar_output_buffers:
   beamform_pulsar_output_buffer_2:
     kotekan_buffer: standard
   beamform_pulsar_output_buffer_3:
+    kotekan_buffer: standard
+  beamform_pulsar_output_valved_buffer_0:
+    kotekan_buffer: standard
+  beamform_pulsar_output_valved_buffer_1:
+    kotekan_buffer: standard
+  beamform_pulsar_output_valved_buffer_2:
+    kotekan_buffer: standard
+  beamform_pulsar_output_valved_buffer_3:
     kotekan_buffer: standard
 
 # The vis buffer metadata pool
@@ -742,6 +758,26 @@ read_gain:
     gain_psr_buf: gain_psr_buffer_3
 
 #### FRB GPU Post processing and Tx ####
+frb_valve:
+  # To introduce random drops, replace Valve with TestDropFrames
+  # Specify probability with `drop_frame_change`
+  frb_valve_0:
+    kotekan_stage: Valve
+    in_buf: gpu_beamform_output_buffer_0
+    out_buf: gpu_beamform_output_valved_buffer_0
+  frb_valve_1:
+    kotekan_stage: Valve
+    in_buf: gpu_beamform_output_buffer_1
+    out_buf: gpu_beamform_output_valved_buffer_1
+  frb_valve_2:
+    kotekan_stage: Valve
+    in_buf: gpu_beamform_output_buffer_2
+    out_buf: gpu_beamform_output_valved_buffer_2
+  frb_valve_3:
+    kotekan_stage: Valve
+    in_buf: gpu_beamform_output_buffer_3
+    out_buf: gpu_beamform_output_valved_buffer_3
+
 frb:
   factor_upchan_out: 16
   num_beams_per_frb_packet: 4
@@ -763,10 +799,10 @@ frb:
     #incoherent_truncation: 25.
     lost_samples_buf: lost_samples_buffer
     frb_out_buf: frb_output_buffer
-    in_buf_0: gpu_beamform_output_buffer_0
-    in_buf_1: gpu_beamform_output_buffer_1
-    in_buf_2: gpu_beamform_output_buffer_2
-    in_buf_3: gpu_beamform_output_buffer_3
+    in_buf_0: gpu_beamform_output_valved_buffer_0
+    in_buf_1: gpu_beamform_output_valved_buffer_1
+    in_buf_2: gpu_beamform_output_valved_buffer_2
+    in_buf_3: gpu_beamform_output_valved_buffer_3
     out_buf: frb_output_buffer
   network_send:
     #kotekan_stage: frbNetworkProcess
@@ -1052,6 +1088,26 @@ frb:
       # cfDn9
 
 #### Pulsar GPU Post processing and Tx ####
+pulsar_valve:
+  # To introduce random drops, replace Valve with TestDropFrames
+  # Specify probability with `drop_frame_change`
+  pulsar_valve_0:
+    kotekan_stage: Valve
+    in_buf: beamform_pulsar_output_buffer_0
+    out_buf: beamform_pulsar_output_valved_buffer_0
+  pulsar_valve_1:
+    kotekan_stage: Valve
+    in_buf: beamform_pulsar_output_buffer_1
+    out_buf: beamform_pulsar_output_valved_buffer_1
+  pulsar_valve_2:
+    kotekan_stage: Valve
+    in_buf: beamform_pulsar_output_buffer_2
+    out_buf: beamform_pulsar_output_valved_buffer_2
+  pulsar_valve_3:
+    kotekan_stage: Valve
+    in_buf: beamform_pulsar_output_buffer_3
+    out_buf: beamform_pulsar_output_valved_buffer_3
+
 pulsar:
   timesamples_per_pulsar_packet: 625
   udp_pulsar_packet_size: 5032
@@ -1065,10 +1121,10 @@ pulsar:
     kotekan_buffer: standard
   postprocess:
     kotekan_stage: pulsarPostProcess
-    network_input_buffer_0: beamform_pulsar_output_buffer_0
-    network_input_buffer_1: beamform_pulsar_output_buffer_1
-    network_input_buffer_2: beamform_pulsar_output_buffer_2
-    network_input_buffer_3: beamform_pulsar_output_buffer_3
+    network_input_buffer_0: beamform_pulsar_output_valved_buffer_0
+    network_input_buffer_1: beamform_pulsar_output_valved_buffer_1
+    network_input_buffer_2: beamform_pulsar_output_valved_buffer_2
+    network_input_buffer_3: beamform_pulsar_output_valved_buffer_3
     pulsar_out_buf: pulsar_output_buffer
   network_send:
     #kotekan_stage: pulsarNetworkProcess
