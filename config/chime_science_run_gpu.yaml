@@ -159,7 +159,7 @@ updatable_config:
     # These inputs are assumed to be in cylinder order
     bad_inputs: []
     start_time: 1535048997.
-    tag: "initial_flags"
+    update_id: "initial_flags"
   rfi_zeroing_toggle:
     kotekan_update_endpoint: json
     rfi_zeroing: True

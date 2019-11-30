@@ -159,7 +159,7 @@ updatable_config:
     # These inputs are assumed to be in cylinder order
     bad_inputs: []
     start_time: 1535048997.
-    tag: "initial_flags"
+    update_id: "initial_flags"
   rfi_zeroing_toggle:
     kotekan_update_endpoint: json
     rfi_zeroing: True
@@ -1131,22 +1131,25 @@ rfi_stage2:
     in_buf_vis: valve_buffer_0
     in_buf_sk: gpu_rfi_output_buffer_0
     out_buf: rfi_vis_buffer_0
+    updatable_config: "/updatable_config/second_stage_rfi"
   rfi1:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_1
     in_buf_sk: gpu_rfi_output_buffer_1
     out_buf: rfi_vis_buffer_1
+    updatable_config: "/updatable_config/second_stage_rfi"
   rfi2:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_2
     in_buf_sk: gpu_rfi_output_buffer_2
     out_buf: rfi_vis_buffer_2
+    updatable_config: "/updatable_config/second_stage_rfi"
   rfi3:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_3
     in_buf_sk: gpu_rfi_output_buffer_3
     out_buf: rfi_vis_buffer_3
-  updatable_config: "/updatable_config/second_stage_rfi"
+    updatable_config: "/updatable_config/second_stage_rfi"
 
 vis_accumulate:
   integration_time: 5.0  # Integrate to roughly 5s cadence
