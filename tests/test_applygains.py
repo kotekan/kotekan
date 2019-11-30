@@ -37,7 +37,7 @@ global_params = {
     "start_time": start_time,
     "cadence": 1.0,
     "mode": "fill_ij",
-    "freq_ids": [250],
+    "freq_ids": [250, 643],
     "buffer_depth": 8,
     "updatable_config": "/gains",
     "gains": {
@@ -58,7 +58,7 @@ def gen_gains(filename, mult_factor, num_elements, freq):
 
     nfreq = len(freq)
     gain = (
-        np.arange(nfreq)[:, None] * 1j * np.arange(num_elements)[None, :] * mult_factor
+        1 + np.arange(nfreq)[:, None] * 1j * np.arange(num_elements)[None, :] * mult_factor
     ).astype(np.complex64)
 
     # Make some weights zero to test the behaviour of apply_gains
@@ -181,7 +181,7 @@ def apply_data(tmp_path_factory, gain_path, old_gains, new_gains, cal_broker):
     }
 
     host, port = cal_broker.server_address
-    global_params.update({"broker_host": host, "broker_port": port})
+    global_params.update({"broker_host": host, "broker_port": port, "read_from_file": True})
 
     test = runner.KotekanStageTester(
         "applyGains",

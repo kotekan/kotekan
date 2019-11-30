@@ -532,6 +532,7 @@ std::optional<applyGains::GainData> applyGains::fetch_gains(std::string tag) con
         WARN("Failed to read gain and weight from cal broker response.: {}", e.what());
         return {};
     }
+    INFO("Gain shape: {:d}, {:d}", g_shape[0], g_shape[1]);
 
     // TODO how to load initial gains?
     // Check the size of the datasets.
@@ -578,6 +579,10 @@ std::optional<applyGains::GainData> applyGains::fetch_gains(std::string tag) con
     for (size_t fi = 0; fi < g_shape[0]; fi++) {
         gain_vec.push_back(std::vector<cfloat>(gain, gain + g_shape[1]));
         weight_vec.push_back(std::vector<float>(weight_bool, weight_bool + g_shape[1]));
+        for (size_t j = 0; j < g_shape[1]; j++) {
+            INFO("weight[{:d}, {:d}] = {:f}", fi, j, weight_vec[fi][j]);
+            INFO("gain[{:d}, {:d}] = {}", fi, j, gain_vec[fi][j]);
+        }
     }
 
     GainData g{std::move(gain_vec), std::move(weight_vec)};
