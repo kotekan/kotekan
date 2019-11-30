@@ -85,22 +85,22 @@ private:
     /// Output buffer to receive baseline subset visibilities
     Buffer* _buf_out;
 
-    /// Lock for access to thresholds an enable_rfi_zero
-    std::mutex lock_updatables;
-
     /// Thresholds
     std::vector<std::tuple<float, size_t, float>> _thresholds;
 
     /// Toggle RFI zeroing
-    bool enable_rfi_zero;
+    bool _enable_rfi_zero;
+
+    /// Lock for access to thresholds and enable_rfi_zero
+    std::mutex lock_updatables;
 
     /// Counter storing information between sub frames. Resized by rest callback.
     std::vector<size_t> sk_exceeds;
 
     /// Prometheus metrics to export
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& _failing_frame_counter;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& _dropped_frame_counter;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& _frame_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& failing_frame_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& dropped_frame_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& frame_counter;
 
     size_t num_elements;
     size_t num_sub_frames;

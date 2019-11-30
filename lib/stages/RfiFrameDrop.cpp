@@ -28,13 +28,13 @@ REGISTER_KOTEKAN_STAGE(RfiFrameDrop);
 RfiFrameDrop::RfiFrameDrop(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&RfiFrameDrop::main_thread, this)),
-    _failing_frame_counter(
+    failing_frame_counter(
         Metrics::instance().add_counter("kotekan_rfiframedrop_failing_frame_total", unique_name,
                                         {"freq_id", "threshold", "fraction"})),
-    _dropped_frame_counter(Metrics::instance().add_counter(
+    dropped_frame_counter(Metrics::instance().add_counter(
         "kotekan_rfiframedrop_dropped_frame_total", unique_name, {"freq_id"})),
-    _frame_counter(Metrics::instance().add_counter("kotekan_rfiframedrop_frame_total", unique_name,
-                                                   {"freq_id"})) {
+    frame_counter(Metrics::instance().add_counter("kotekan_rfiframedrop_frame_total", unique_name,
+                                                  {"freq_id"})) {
 
     _buf_in_vis = get_buffer("in_buf_vis");
     _buf_in_sk = get_buffer("in_buf_sk");
@@ -141,19 +141,20 @@ void RfiFrameDrop::main_thread() {
                     float sk_sig =
                         fabs(sigma_scale * (frame_in_sk[ii * sk_samples_per_frame + jj] - 1.0f));
 
-                    //INFO("SK: {}; SKraw: {}", sk_sig, frame_in_sk[ii * sk_samples_per_frame + jj]);
+                    // INFO("SK: {}; SKraw: {}", sk_sig, frame_in_sk[ii * sk_samples_per_frame +
+                    // jj]);
                     for (size_t kk = 0; kk < _thresholds.size(); kk++) {
                         sk_exceeds[kk] += (sk_sig > std::get<0>(_thresholds[kk]));
-                        //INFO("threshold {}", std::get<0>(_thresholds[kk]));
+                        // INFO("threshold {}", std::get<0>(_thresholds[kk]));
                     }
                 }
 
                 for (size_t kk = 0; kk < _thresholds.size(); kk++) {
-                    //INFO("Threshold: {}; Count: {}; Limit: {}", std::get<0>(_thresholds[kk]),
+                    // INFO("Threshold: {}; Count: {}; Limit: {}", std::get<0>(_thresholds[kk]),
                     //     sk_exceeds[kk], std::get<1>(_thresholds[kk]));
                     if (sk_exceeds[kk] > std::get<1>(_thresholds[kk])) {
                         skip = true;
-                        _failing_frame_counter
+                        failing_frame_counter
                             .labels({std::to_string(freq_id),
                                      std::to_string(std::get<0>(_thresholds[kk])),
                                      std::to_string(std::get<2>(_thresholds[kk]))})
@@ -166,7 +167,7 @@ void RfiFrameDrop::main_thread() {
                 // If no frame exceeded it's threshold then we should transfer the
                 // frame over to the output and release it. If we want to drop the
                 // incoming frame then we leave the output as is.
-                if (!skip || !enable_rfi_zero) {
+                if (!skip || !_enable_rfi_zero) {
 
                     if (wait_for_empty_frame(_buf_out, unique_name.c_str(), frame_id_out)
                         == nullptr) {
@@ -175,11 +176,11 @@ void RfiFrameDrop::main_thread() {
                     copy_frame(_buf_in_vis, frame_id_in_vis, _buf_out, frame_id_out);
                     mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
                 } else {
-                    _dropped_frame_counter.labels({std::to_string(freq_id)}).inc();
+                    dropped_frame_counter.labels({std::to_string(freq_id)}).inc();
                 }
 
                 mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
-                _frame_counter.labels({std::to_string(freq_id)}).inc();
+                frame_counter.labels({std::to_string(freq_id)}).inc();
             }
         }
         mark_frame_empty(_buf_in_sk, unique_name.c_str(), frame_id_in_sk++);
@@ -225,7 +226,7 @@ bool RfiFrameDrop::rest_enable_callback(nlohmann::json& update) {
 
     {
         std::lock_guard<std::mutex> guard(lock_updatables);
-        enable_rfi_zero = enable_rfi_zero_new;
+        _enable_rfi_zero = enable_rfi_zero_new;
     }
     return true;
 }
