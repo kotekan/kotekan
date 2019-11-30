@@ -152,6 +152,10 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
         throw std::runtime_error(msg);
     }
 
+    // Register a state for the time axis
+    datasetManager& dm = datasetManager::instance();
+    tstate_id = dm.create_state<timeState>(_times).first;
+
     // Open up the data file and mmap it
     INFO("Opening data file: {:s}.data", filename);
     if ((fd = open((filename + ".data").c_str(), O_RDONLY)) == -1) {
@@ -179,7 +183,7 @@ void visRawReader::get_dataset_state(dset_id_t ds_id) {
 
     if (use_comet) {
         // Add time dataset state and register with dataset broker
-        out_dset_id = dm.add_dataset(dm.create_state<timeState>(_times).first, ds_id);
+        out_dset_id = dm.add_dataset(tstate_id, ds_id);
     } else {
         // Add the states: metadata, time, prod, freq, input,
         // eigenvalue and stack.

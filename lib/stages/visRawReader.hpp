@@ -195,6 +195,9 @@ private:
     // Dataset ID to assign to output frames
     dset_id_t out_dset_id;
 
+    // the dataset state for the time axis
+    state_id_t tstate_id;
+
     // The read rate
     double max_read_rate;
 
