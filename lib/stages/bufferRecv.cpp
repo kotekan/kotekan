@@ -184,7 +184,7 @@ void bufferRecv::main_thread() {
     struct sockaddr_in server_addr;
     struct event* listener_event;
 
-    INFO("libevent version: {:s}", event_get_version());
+    DEBUG("libevent version: {:s}", event_get_version());
 
     if (evthread_use_pthreads()) {
         ERROR("Cannot use pthreads with libevent!");
@@ -300,7 +300,7 @@ connInstance::connInstance(const string& producer_name, Buffer* buf, bufferRecv*
 }
 
 connInstance::~connInstance() {
-    INFO("Closing FD");
+    DEBUG("Closing FD");
     close(fd);
     event_free(event_read);
     buffer_free(frame_space, buf->aligned_frame_size);
@@ -427,7 +427,7 @@ void connInstance::internal_read_callback() {
             DEBUG2("Finished state");
             int frame_id = buffer_recv->get_next_frame();
             if (frame_id == -1) {
-                WARN("No free buffer frames, dropping data from {:s}", client_ip);
+                DEBUG("No free buffer frames, dropping data from {:s}", client_ip);
 
                 // Update dropped frame count in prometheus
                 buffer_recv->increment_droped_frame_count();

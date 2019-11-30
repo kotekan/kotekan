@@ -48,6 +48,7 @@ vis_buffer:
   visbuf_10s_stack:
     kotekan_buffer: vis
     num_prod: 17000  # Approximation to the correct size
+    buffer_depth: 2048
   visbuf_10s_stack_ne:
     kotekan_buffer: vis
     num_ev: 0
@@ -104,12 +105,13 @@ updatable_config:
   flagging:
     kotekan_update_endpoint: "json"
     start_time: 1535048997.
-    tag: "initial_flags"
+    update_id: "initial_flags"
     bad_inputs: [ ]
   gains:
     kotekan_update_endpoint: "json"
     start_time: 1541039597.
-    tag: "gain_20181101T023317.440691Z_cyga"
+    update_id: "gain_20181101T023317.440691Z_cyga"
+    transition_interval: 300.0
   26m_gated:
     kotekan_update_endpoint: "json"
     enabled: false
@@ -119,6 +121,7 @@ updatable_config:
 
 # Kotekan stages
 buffer_recv:
+  log_level: warn
   n2:
     kotekan_stage: bufferRecv
     buf: visbuf_10s_all
@@ -300,6 +303,7 @@ archive_writers:
 # Transmit part of the stack to the recv1 for testing
 buffer_send:
   server_ip: 10.1.50.11
+  log_level: warn
   stack_mfreq:
     kotekan_stage: bufferSend
     buf: visbuf_10s_stack_mfreq
