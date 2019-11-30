@@ -10,9 +10,10 @@
 
 #include "fmt.hpp"
 
+#include <cmath>
 #include <csignal>
 #include <cstring>
-#include <cmath>
+#include <functional>
 #include <pthread.h>
 #include <string>
 
@@ -50,7 +51,12 @@ RfiFrameDrop::RfiFrameDrop(Config& config, const std::string& unique_name,
     samples_per_sub_frame = num_samples / num_sub_frames;
 
     // subscribe on updates on threshold and enable_rfi_zero
-    kotekan::configUpdater::instance().subscribe(this, std::bind(&RfiFrameDrop::rest_callback, this, std::placeholders::_1));
+    std::map<std::string, std::function<bool(nlohmann::json&)>> callbacks;
+    callbacks["enable"] =
+        std::bind(&RfiFrameDrop::rest_enable_callback, this, std::placeholders::_1);
+    callbacks["thresholds"] =
+        std::bind(&RfiFrameDrop::rest_thresholds_callback, this, std::placeholders::_1);
+    kotekan::configUpdater::instance().subscribe(this, callbacks);
 
     assert((size_t)_buf_in_sk->frame_size == sizeof(float) * sk_samples_per_frame * num_sub_frames);
 }
@@ -207,16 +213,24 @@ void RfiFrameDrop::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_des
     pass_metadata(buf_src, frame_id_src, buf_dest, frame_id_dest);
 }
 
-bool RfiFrameDrop::rest_callback(nlohmann::json& update) {
+bool RfiFrameDrop::rest_enable_callback(nlohmann::json& update) {
     bool enable_rfi_zero_new;
-    std::vector<std::tuple<float, size_t, float>> thresholds_new;
 
     try {
         enable_rfi_zero_new = update.at("rfi_zeroing").get<bool>();
     } catch (json::exception& e) {
-        WARN("Failure parsing update: Can't read 'enable_rfi_zero' (bool): {:s}", e.what());
+        WARN("Failure parsing update: Can't read 'rfi_zeroing' (bool): {:s}", e.what());
         return false;
     }
+
+    {
+        std::lock_guard<std::mutex> guard(lock_updatables);
+        enable_rfi_zero = enable_rfi_zero_new;
+    }
+    return true;
+}
+
+bool RfiFrameDrop::rest_thresholds_callback(nlohmann::json& update) {
     nlohmann::json j;
     try {
         j = update.at("thresholds");
@@ -229,6 +243,7 @@ bool RfiFrameDrop::rest_callback(nlohmann::json& update) {
         return false;
     }
 
+    std::vector<std::tuple<float, size_t, float>> thresholds_new;
     for (const auto& t : j) {
         // TODO TEST send wrong type and see what it throws
         // TODO TEST send with threshold or fraction missing
@@ -258,7 +273,6 @@ bool RfiFrameDrop::rest_callback(nlohmann::json& update) {
 
     {
         std::lock_guard<std::mutex> guard(lock_updatables);
-        enable_rfi_zero = enable_rfi_zero_new;
         _thresholds = thresholds_new;
         sk_exceeds.resize(_thresholds.size(), 0);
     }

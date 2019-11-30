@@ -68,9 +68,11 @@ public:
     /// Primary loop.
     void main_thread() override;
 
-    /// Callback for the configUpdater.
-    bool rest_callback(nlohmann::json& update);
+    /// Callback for the configUpdater to turn on/off rfi zeroing.
+    bool rest_enable_callback(nlohmann::json& update);
 
+    /// Callback for the configUpdater to update thresholds.
+    bool rest_thresholds_callback(nlohmann::json& update);
 
 private:
     /// Copy a frame from the input buffer to the output buffer.
