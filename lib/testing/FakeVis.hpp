@@ -38,30 +38,37 @@
  *     @buffer_format visBuffer structured
  *     @buffer_metadata visMetadata
  *
- * @conf  num_elements      Int. The number of elements (i.e. inputs) in the
- *                          correlator data,
- * @conf  block_size        Int. The block size of the packed data.
- * @conf  num_ev            Int. The number of eigenvectors to be stored.
- * @conf  freq_ids          List of int. The frequency IDs to generate frames
- *                          for.
- * @conf  cadence           Float. The interval of time (in seconds) between
- *                          frames.
- * @conf  mode              String. How to fill the visibility array. See
- *                          fakeVis::fill_mode_X routines for documentation.
- * @conf  wait              Bool. Sleep to try and output data at roughly
- *                          the correct cadence.
- * @conf  num_frames        Exit after num_frames have been produced. If
- *                          less than zero, no limit is applied. Default is `-1`.
- * @conf  zero_weight       Bool. Set all weights to zero, if this is True.
- *                          Default is False.
- * @conf  frequencies       Array of UInt32. Definition of frequency IDs for
- *                          mode 'test_pattern_freq'.
- * @conf  dataset_id        Int. Use a fixed dataset ID and don't register
- *                          states. If not set, the dataset manager will create
- *                          the dataset ID.
- * @conf  sleep_time        Float. Sleep for this number of seconds before
- *                          shutting down. Useful for allowing other processes
- *                          to finish. Default is 1s.
+ * @conf  num_elements  Int. The number of elements (i.e. inputs) in the
+ *                      correlator data,
+ * @conf  block_size    Int. The block size of the packed data.
+ * @conf  num_ev        Int. The number of eigenvectors to be stored.
+ * @conf  freq_ids      List of int. The frequency IDs to generate frames
+ *                      for.
+ * @conf  start_time    Double. The start time of the range of data (as a
+ *                      Unix time in seconds). This simply changes the time
+ *                      the frames are labelled with. Default is the current
+ *                      time.
+ * @conf  cadence       Float. The interval of time (in seconds) between
+ *                      frames.
+ * @conf  mode          String. How to fill the visibility array. See
+ *                      the set of FakeVisPattern implementations for details.
+ * @conf  wait          Bool. Sleep to try and output data at roughly
+ *                      the correct cadence.
+ * @conf  num_frames    Exit after num_frames have been produced. If
+ *                      less than zero, no limit is applied. Default is `-1`.
+ * @conf  zero_weight   Bool. Set all weights to zero, if this is True.
+ *                      Default is False.
+ * @conf  frequencies   Array of UInt32. Definition of frequency IDs for
+ *                      mode 'test_pattern_freq'.
+ * @conf  dataset_id    Int. Use a fixed dataset ID and don't register
+ *                      states. If not set, the dataset manager will create
+ *                      the dataset ID.
+ * @conf  sleep_before  Float. Sleep for this number of seconds before
+ *                      starting. Useful for allowing other processes
+ *                      to send REST commands. Default is 0s.
+ * @conf  sleep_after   Float. Sleep for this number of seconds after running
+ *                      and before shutting down. Useful for allowing other
+ *                      processes to finish. Default is 1s.
  *
  * @todo  It might be useful eventually to produce realistic looking mock
  *        visibilities.
@@ -95,6 +102,9 @@ private:
     /// Test pattern
     std::unique_ptr<FakeVisPattern> pattern;
 
+    /// Start time of data as a Unix time
+    double start_time;
+
     /// Cadence to simulate (in seconds)
     float cadence;
 
@@ -107,8 +117,11 @@ private:
     bool wait;
     int32_t num_frames;
 
+    // How long to sleep before starting.
+    double sleep_before;
+
     // How long to sleep before exiting.
-    double sleep_time;
+    double sleep_after;
 
     /// Fill non vis components. A helper for the fill_mode functions.
     void fill_non_vis(visFrameView& frame);

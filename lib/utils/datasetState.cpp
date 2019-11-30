@@ -57,3 +57,5 @@ REGISTER_DATASET_STATE(eigenvalueState, "eigenvalues");
 REGISTER_DATASET_STATE(timeState, "time");
 REGISTER_DATASET_STATE(metadataState, "metadata");
 REGISTER_DATASET_STATE(gatingState, "gating");
+REGISTER_DATASET_STATE(flagState, "flags");
+REGISTER_DATASET_STATE(gainState, "gains");

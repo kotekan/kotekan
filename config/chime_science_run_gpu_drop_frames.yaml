@@ -1,6 +1,6 @@
 ##########################################
 #
-# chime_science_run_gpu.yaml
+# chime_science_run_gpu_drop_frames.yaml
 #
 # Config to support the CHIME project with 2048 elements, and 1024 frequencies.
 #
@@ -8,13 +8,13 @@
 #
 # - Packet capture from the ICE boards including FPGA flag handling and normalization
 # - N^2 kernels and output for various data projects to receiver systems
-# - FRB FFT Fan beam and packet Tx
-# - Pulsar 10 coherent beam system abd packet Tx
+# - FRB FFT Fan beam and packet Tx, with input frames randomly dropped
+# - Pulsar 10 coherent beam system abd packet Tx, with input frames randomly dropped
 # - RFI detection and summary stats system (only reports on RFI, no normalization yet)
 #
 # This component is intended to be run on the GPU nodes.
 #
-# Author: Andre Renard
+# Author: Andre Renard, Davor Cubranic
 #
 ##########################################
 ---
@@ -159,7 +159,7 @@ updatable_config:
     # These inputs are assumed to be in cylinder order
     bad_inputs: []
     start_time: 1535048997.
-    update_id: "initial_flags"
+    tag: "initial_flags"
   rfi_zeroing_toggle:
     kotekan_update_endpoint: json
     rfi_zeroing: True
@@ -267,6 +267,20 @@ gpu_beamform_output_buffers:
   gpu_beamform_output_buffer_3:
     kotekan_buffer: standard
 
+gpu_beamform_valved_output_buffers:
+  num_frames: buffer_depth
+  frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq)
+              * num_frb_total_beams * sizeof_float
+  metadata_pool: main_pool
+  gpu_beamform_output_valved_buffer_0:
+    kotekan_buffer: standard
+  gpu_beamform_output_valved_buffer_1:
+    kotekan_buffer: standard
+  gpu_beamform_output_valved_buffer_2:
+    kotekan_buffer: standard
+  gpu_beamform_output_valved_buffer_3:
+    kotekan_buffer: standard
+
 gain_frb_buffers:
   num_frames: 5
   frame_size: 2048 * 2 * sizeof_float
@@ -304,6 +318,19 @@ pulsar_output_buffers:
   beamform_pulsar_output_buffer_2:
     kotekan_buffer: standard
   beamform_pulsar_output_buffer_3:
+    kotekan_buffer: standard
+
+pulsar_output_valved_buffers:
+  num_frames: buffer_depth
+  frame_size: samples_per_data_set * num_beams * num_pol * sizeof_float *2
+  metadata_pool: main_pool
+  beamform_pulsar_output_valved_buffer_0:
+    kotekan_buffer: standard
+  beamform_pulsar_output_valved_buffer_1:
+    kotekan_buffer: standard
+  beamform_pulsar_output_valved_buffer_2:
+    kotekan_buffer: standard
+  beamform_pulsar_output_valved_buffer_3:
     kotekan_buffer: standard
 
 # The vis buffer metadata pool
@@ -499,24 +526,6 @@ baseband:
     kotekan_stage: basebandReadout
     in_buf: network_buffer_3
 
-# Bad inputs buffer
-bad_input_buffer:
-  num_frames: buffer_depth
-  frame_size: num_elements
-  metadata_pool: main_pool
-  bad_inputs_buffer:
-    kotekan_buffer: standard
-
-# Buffer bad input updates
-# 1) Reorder list
-# 2) Zero bad inputs mask
-# 3) Add current bad input mask
-buffer_bad_input_update:
-  kotekan_stage: bufferBadInputs
-  updatable_config:
-    bad_inputs: /updatable_config/bad_inputs
-  out_buf: bad_inputs_buffer
-
 # GPU processing section
 gpu:
   kernel_path: "/var/lib/kotekan/hsa_kernels/"
@@ -598,6 +607,7 @@ gpu:
     gpu_id: 0
     updatable_config:
       psr_pt: /updatable_config/pulsar_pointing
+      bad_inputs: /updatable_config/bad_inputs
       rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
       rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
@@ -608,7 +618,6 @@ gpu:
       gain_frb_buf: gain_frb_buffer_0
       gain_psr_buf: gain_psr_buffer_0
       lost_samples_buf: lost_samples_buffer
-      bad_inputs_buf: bad_inputs_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_0
       beamform_output_buf: gpu_beamform_output_buffer_0
@@ -622,6 +631,7 @@ gpu:
     gpu_id: 1
     updatable_config:
       psr_pt: /updatable_config/pulsar_pointing
+      bad_inputs: /updatable_config/bad_inputs
       rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
       rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
@@ -632,7 +642,6 @@ gpu:
       gain_frb_buf: gain_frb_buffer_1
       gain_psr_buf: gain_psr_buffer_1
       lost_samples_buf: lost_samples_buffer
-      bad_inputs_buf: bad_inputs_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_1
       beamform_output_buf: gpu_beamform_output_buffer_1
@@ -646,6 +655,7 @@ gpu:
     gpu_id: 2
     updatable_config:
       psr_pt: /updatable_config/pulsar_pointing
+      bad_inputs: /updatable_config/bad_inputs
       rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
       rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
@@ -656,7 +666,6 @@ gpu:
       gain_frb_buf: gain_frb_buffer_2
       gain_psr_buf: gain_psr_buffer_2
       lost_samples_buf: lost_samples_buffer
-      bad_inputs_buf: bad_inputs_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_2
       beamform_output_buf: gpu_beamform_output_buffer_2
@@ -670,6 +679,7 @@ gpu:
     gpu_id: 3
     updatable_config:
       psr_pt: /updatable_config/pulsar_pointing
+      bad_inputs: /updatable_config/bad_inputs
       rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
       rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
@@ -680,7 +690,6 @@ gpu:
       gain_frb_buf: gain_frb_buffer_3
       gain_psr_buf: gain_psr_buffer_3
       lost_samples_buf: lost_samples_buffer
-      bad_inputs_buf: bad_inputs_buffer
     out_buffers:
       output_buf: gpu_n2_output_buffer_3
       beamform_output_buf: gpu_beamform_output_buffer_3
@@ -742,6 +751,25 @@ read_gain:
     gain_psr_buf: gain_psr_buffer_3
 
 #### FRB GPU Post processing and Tx ####
+frb_packet_drop:
+  drop_frame_chance: 0.02
+  frb_packet_drop_0:
+    kotekan_stage: TestDropFrames
+    in_buf: gpu_beamform_output_buffer_0
+    out_buf: gpu_beamform_output_valved_buffer_0
+  frb_packet_drop_1:
+    kotekan_stage: TestDropFrames
+    in_buf: gpu_beamform_output_buffer_1
+    out_buf: gpu_beamform_output_valved_buffer_1
+  frb_packet_drop_2:
+    kotekan_stage: TestDropFrames
+    in_buf: gpu_beamform_output_buffer_2
+    out_buf: gpu_beamform_output_valved_buffer_2
+  frb_packet_drop_3:
+    kotekan_stage: TestDropFrames
+    in_buf: gpu_beamform_output_buffer_3
+    out_buf: gpu_beamform_output_valved_buffer_3
+
 frb:
   factor_upchan_out: 16
   num_beams_per_frb_packet: 4
@@ -763,10 +791,10 @@ frb:
     #incoherent_truncation: 25.
     lost_samples_buf: lost_samples_buffer
     frb_out_buf: frb_output_buffer
-    in_buf_0: gpu_beamform_output_buffer_0
-    in_buf_1: gpu_beamform_output_buffer_1
-    in_buf_2: gpu_beamform_output_buffer_2
-    in_buf_3: gpu_beamform_output_buffer_3
+    in_buf_0: gpu_beamform_output_valved_buffer_0
+    in_buf_1: gpu_beamform_output_valved_buffer_1
+    in_buf_2: gpu_beamform_output_valved_buffer_2
+    in_buf_3: gpu_beamform_output_valved_buffer_3
     out_buf: frb_output_buffer
   network_send:
     kotekan_stage: frbNetworkProcess
@@ -1052,6 +1080,25 @@ frb:
       # cfDn9
 
 #### Pulsar GPU Post processing and Tx ####
+pulsar_packet_drop:
+  drop_frame_chance: 0.02
+  pulsar_packet_drop_0:
+    kotekan_stage: TestDropFrames
+    in_buf: beamform_pulsar_output_buffer_0
+    out_buf: beamform_pulsar_output_valved_buffer_0
+  pulsar_packet_drop_1:
+    kotekan_stage: TestDropFrames
+    in_buf: beamform_pulsar_output_buffer_1
+    out_buf: beamform_pulsar_output_valved_buffer_1
+  pulsar_packet_drop_2:
+    kotekan_stage: TestDropFrames
+    in_buf: beamform_pulsar_output_buffer_2
+    out_buf: beamform_pulsar_output_valved_buffer_2
+  pulsar_packet_drop_3:
+    kotekan_stage: TestDropFrames
+    in_buf: beamform_pulsar_output_buffer_3
+    out_buf: beamform_pulsar_output_valved_buffer_3
+
 pulsar:
   timesamples_per_pulsar_packet: 625
   udp_pulsar_packet_size: 5032
@@ -1065,10 +1112,10 @@ pulsar:
     kotekan_buffer: standard
   postprocess:
     kotekan_stage: pulsarPostProcess
-    network_input_buffer_0: beamform_pulsar_output_buffer_0
-    network_input_buffer_1: beamform_pulsar_output_buffer_1
-    network_input_buffer_2: beamform_pulsar_output_buffer_2
-    network_input_buffer_3: beamform_pulsar_output_buffer_3
+    network_input_buffer_0: beamform_pulsar_output_valved_buffer_0
+    network_input_buffer_1: beamform_pulsar_output_valved_buffer_1
+    network_input_buffer_2: beamform_pulsar_output_valved_buffer_2
+    network_input_buffer_3: beamform_pulsar_output_valved_buffer_3
     pulsar_out_buf: pulsar_output_buffer
   network_send:
     kotekan_stage: pulsarNetworkProcess

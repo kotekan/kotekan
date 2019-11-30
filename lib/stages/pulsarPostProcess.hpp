@@ -9,6 +9,7 @@
 
 #include "Stage.hpp"
 
+#include <optional>
 #include <vector>
 
 using std::vector;
@@ -77,7 +78,24 @@ private:
                       const uint64_t fpga_seq_num, struct timespec* time_now,
                       struct psrCoord* psr_coord, uint16_t* freq_ids);
 
-    struct Buffer** in_buf;
+    /**
+     * @brief Requests a full frame for each of the input buffers until all start with the same @c
+     * fpga_seq_num.
+     *
+     * On exit, `in_buf`s will be synced up, `in_frame`s will point to the correct current frame,
+     * and `in_buffer_ID`s have the current `frame_id`.
+     *
+     * @returns No value if the stage should exit, otherwise the wrapped @c fpga_seq_num that starts
+     * the synced frames.
+     */
+    std::optional<uint64_t> sync_input_buffers();
+
+    /// Pointer to the input buffer for each of the GPUs
+    Buffer** in_buf;
+    /// Current @c frame_id for each of the `in_buf`s
+    uint* in_buffer_ID;
+    /// Pointer to the current frame for each of the `in_buf`s
+    uint8_t** in_frame;
     struct Buffer* pulsar_buf;
 
     /// Config variables
