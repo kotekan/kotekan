@@ -410,7 +410,7 @@ void redundantStack::change_dataset_state(dset_id_t ds_id) {
 
     std::tie(stack_state_id, new_stack_state_ptr) = dm.add_state(std::move(sstate));
 
-    output_dset_id = dm.add_dataset(ds_id, stack_state_id);
+    output_dset_id = dm.add_dataset(stack_state_id, ds_id);
 }
 
 void redundantStack::main_thread() {
