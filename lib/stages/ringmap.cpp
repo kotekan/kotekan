@@ -209,8 +209,8 @@ void mapMaker::change_dataset_state(dset_id_t new_ds_id) {
     const freqState* fstate = fstate_fut.get();
     if (pstate == nullptr || istate == nullptr || fstate == nullptr) {
         FATAL_ERROR("Could not find all dataset states for incoming dataset with ID {}."
-                    "\nOne of them is a nullptr: prod {}, input {}, freq {}.", ds_id,
-                    pstate != nullptr, istate != nullptr, fstate != nullptr);
+                    "\nOne of them is a nullptr: prod {}, input {}, freq {}.",
+                    ds_id, pstate != nullptr, istate != nullptr, fstate != nullptr);
         return;
     }
 
@@ -310,8 +310,8 @@ void mapMaker::gen_matrices() {
         float lam = wl(f.second.centre);
         for (uint p = 0; p < num_pix; p++) {
             for (uint i = 0; i < num_bl; i++) {
-                m[p * num_bl + i] =
-                    std::exp(cfloat(-2.i) * pi * ns_baselines[i] / lam * sinza[p]) * apod_coeff[i] / norm;
+                m[p * num_bl + i] = std::exp(cfloat(-2.i) * pi * ns_baselines[i] / lam * sinza[p])
+                                    * apod_coeff[i] / norm;
             }
         }
         vis2map.insert(std::pair<uint64_t, std::vector<cfloat>>(f.first, m));

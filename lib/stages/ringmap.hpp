@@ -178,7 +178,8 @@ const std::map<std::string, std::vector<float>> apod_param = {
  *
  * @author Tristan Pinsoneault-Marotte, Richard Shaw
  **/
-inline std::vector<float> apod(std::vector<float>& x, float width = 1., const std::string& win = "nuttall") {
+inline std::vector<float> apod(std::vector<float>& x, float width = 1.,
+                               const std::string& win = "nuttall") {
 
     if (width <= 0)
         throw std::runtime_error(fmt::format("Apodization width {:f} <= 0", width));
