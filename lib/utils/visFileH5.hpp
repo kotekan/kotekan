@@ -270,6 +270,7 @@ DataType create_datatype<prod_ctype>();
 template<>
 DataType create_datatype<cfloat>();
 
+// \cond NO_DOC
 // Fixed length string to store dataset ID
 template<>
 inline AtomicType<dset_id_str>::AtomicType() {
@@ -278,6 +279,7 @@ inline AtomicType<dset_id_str>::AtomicType() {
     // define encoding to UTF-8 by default
     // H5Tset_cset(_hid, H5T_CSET_UTF8);
 }
+// \endcond
 }; // namespace HighFive
 
 
