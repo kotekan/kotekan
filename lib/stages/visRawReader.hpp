@@ -198,6 +198,9 @@ private:
     // the dataset state for the time axis
     state_id_t tstate_id;
 
+    // Store dataset IDs present in file for quick access
+    std::map<dset_id_t, dset_id_t> ds_in_file;
+
     // The read rate
     double max_read_rate;
 

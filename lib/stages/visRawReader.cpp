@@ -183,7 +183,13 @@ void visRawReader::get_dataset_state(dset_id_t ds_id) {
 
     if (use_comet) {
         // Add time dataset state and register with dataset broker
-        out_dset_id = dm.add_dataset(tstate_id, ds_id);
+        auto got_it = ds_in_file.find(ds_id);
+        if (got_it == ds_in_file.end()) {
+            out_dset_id = dm.add_dataset(dm.create_state<timeState>(_times).first, ds_id);
+            ds_in_file[ds_id] = out_dset_id;
+        } else {
+            out_dset_id = got_it->second;
+        }
     } else {
         // Add the states: metadata, time, prod, freq, input,
         // eigenvalue and stack.
