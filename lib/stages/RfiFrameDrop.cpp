@@ -228,6 +228,14 @@ bool RfiFrameDrop::rest_enable_callback(nlohmann::json& update) {
         std::lock_guard<std::mutex> guard(lock_updatables);
         _enable_rfi_zero = enable_rfi_zero_new;
     }
+
+    if (enable_rfi_zero_new) {
+        INFO("Enabled RFI frame dropping.");
+    }
+    else {
+        INFO("Disabled RFI frame dropping.");
+    }
+
     return true;
 }
 
@@ -276,6 +284,11 @@ bool RfiFrameDrop::rest_thresholds_callback(nlohmann::json& update) {
         std::lock_guard<std::mutex> guard(lock_updatables);
         _thresholds = thresholds_new;
         sk_exceeds.resize(_thresholds.size(), 0);
+    }
+
+    INFO("Setting new RFI excision cuts:");
+    for (auto& [threshold, t, fraction] : thresholds_new) {
+        INFO("  added cut with threshold={}, fraction={}", threshold, fraction);
     }
     return true;
 }
