@@ -334,7 +334,7 @@ std::optional<uint64_t> pulsarPostProcess::sync_input_buffers() {
     for (unsigned i = 0; i < _num_gpus; i++) {
         in_frame[i] = wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
         if (in_frame[i] == NULL)
-            return {};
+            return std::nullopt;
     }
     while (!stop_thread) {
         // Get all input buffers in sync by fpga_seq_no: find the one that's the
@@ -352,7 +352,7 @@ std::optional<uint64_t> pulsarPostProcess::sync_input_buffers() {
                 in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
                 in_frame[i] = wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
                 if (in_frame[i] == NULL)
-                    return {};
+                    return std::nullopt;
             }
             if (max_fpga_count != get_fpga_seq_num(in_buf[i], in_buffer_ID[i])) {
                 fpga_seq_in_sync = false;
@@ -363,7 +363,7 @@ std::optional<uint64_t> pulsarPostProcess::sync_input_buffers() {
         }
     }
     if (stop_thread)
-        return {};
+        return std::nullopt;
 
     return get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
 }
