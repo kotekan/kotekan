@@ -39,6 +39,7 @@ mapMaker::mapMaker(Config& config, const string& unique_name, bufferContainer& b
     apodization = config.get_default<std::string>(unique_name, "apodization", "nuttall");
     if (apod_param.count(apodization) == 0)
         FATAL_ERROR("Unknown apodization window '{}'", apodization);
+    exclude_autos = config.get_default<bool>(unique_name, "exclude_autos", true);
 }
 
 void mapMaker::main_thread() {
@@ -285,15 +286,20 @@ void mapMaker::gen_matrices() {
     ns_baselines.reserve(num_bl);
     chimeFeed input_a, input_b;
     float max_bl = 0.;
+    size_t auto_ind = 0;
     for (size_t i = 0; i < num_bl; i++) {
         stack_ctype s = stacks[i];
-        input_a = chimeFeed::from_input(inputs[prods[s.prod].input_a]);
-        input_b = chimeFeed::from_input(inputs[prods[s.prod].input_b]);
+        input_ctype ia = inputs[prods[s.prod].input_a];
+        input_ctype ib = inputs[prods[s.prod].input_b];
+        input_a = chimeFeed::from_input(ia);
+        input_b = chimeFeed::from_input(ib);
         ns_baselines[i] = feed_sep * (input_b.feed_location - input_a.feed_location);
         if (s.conjugate)
             ns_baselines[i] *= -1;
         if (std::abs(ns_baselines[i]) > max_bl)
             max_bl = std::abs(ns_baselines[i]);
+        if (ia.chan_id == ib.chan_id)
+            auto_ind = i;
     }
 
     std::vector<float> apod_coeff = apod(ns_baselines, max_bl, apodization);
@@ -303,6 +309,8 @@ void mapMaker::gen_matrices() {
     }
     if (norm == 0.)
         norm = 1.;
+    if (exclude_autos)
+        apod_coeff[auto_ind] = 0.;
 
     // Construct matrix of phase weights for every baseline and pixel
     for (auto f : freqs) {

@@ -23,6 +23,7 @@
  *
  * @conf feed_sep       Float, default 0.3048. The separation between feeds (in m)
  * @conf apodization    String, default nuttall. The type of window to use for apodization.
+ * @conf exclude_autos  Bool, default true. Exclude the autos from the maps.
  *
  *
  * @author Tristan Pinsonneault-Marotte
@@ -91,6 +92,7 @@ private:
     // Configurable
     float feed_sep;
     std::string apodization;
+    bool exclude_autos;
 
     // Mutex for reading and writing to maps
     std::mutex mtx;
