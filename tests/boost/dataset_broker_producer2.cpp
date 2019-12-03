@@ -15,6 +15,8 @@
 // the code to test:
 #include "datasetManager.hpp"
 
+#define WAIT_TIME 4000000
+
 using kotekan::Config;
 
 using json = nlohmann::json;
@@ -117,5 +119,5 @@ BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, CompareCTypes) {
         std::cout << s.second.state() << " - " << s.second.base_dset() << std::endl;
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(2000000);
+    usleep(WAIT_TIME);
 }
