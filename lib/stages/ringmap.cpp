@@ -239,14 +239,14 @@ bool mapMaker::setup(size_t frame_id) {
     change_dataset_state(ds_id);
 
     // TODO: make these config options ?
-    num_pix = 512; // # unique NS baselines
+    num_pix = 511; // # unique NS baselines
     num_pol = 4;
     num_time = 24. * 3600. / (in_frame.fpga_seq_length * 2.56e-6);
     num_bl = (num_stack + 1) / 4;
 
     sinza = std::vector<float>(num_pix, 0.);
-    for (uint i = 0; i < num_pix; i++) {
-        sinza[i] = i * 2. / num_pix - 1. + 1. / num_pix;
+    for (int i = 0; i < (int) num_pix; i++) {
+        sinza[i] = (i - (int) num_pix / 2) * 2. / num_pix;
     }
 
     // generate map making matrices
@@ -283,7 +283,7 @@ bool mapMaker::setup(size_t frame_id) {
 void mapMaker::gen_matrices() {
 
     // calculate baseline for every stacked product
-    ns_baselines.reserve(num_bl);
+    ns_baselines.resize(num_bl);
     chimeFeed input_a, input_b;
     float max_bl = 0.;
     size_t auto_ind = 0;
