@@ -14,7 +14,9 @@ REGISTER_KOTEKAN_STAGE(frbPostProcess);
 
 frbPostProcess::frbPostProcess(Config& config_, const string& unique_name,
                                bufferContainer& buffer_container) :
-    Stage(config_, unique_name, buffer_container, std::bind(&frbPostProcess::main_thread, this)) {
+    Stage(config_, unique_name, buffer_container, std::bind(&frbPostProcess::main_thread, this)),
+    masked_packets_counter(kotekan::prometheus::Metrics::instance().add_counter(
+        "kotekan_frb_masked_packets_total", unique_name)) {
     // Apply config.
     _num_gpus = config.get<int32_t>(unique_name, "num_gpus");
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
@@ -131,16 +133,6 @@ void frbPostProcess::main_thread() {
             wait_for_full_frame(lost_samples_buf, unique_name.c_str(), lost_samples_buf_id);
         if (lost_samples_frame == NULL)
             return;
-        for (uint t = 0; t < num_samples; t++) {
-            // check if drop packet by reading 384 original times, if so flag that t
-            droppacket[t] = 0;
-            for (int tz = 0; tz < _downsample_time * _factor_upchan; tz++) {
-                if (lost_samples_frame[t * _factor_upchan * _downsample_time + tz] == 1) {
-                    droppacket[t] = 1;
-                    break;
-                }
-            }
-        }
 
         // Get all input buffers in sync by fpga_seq_no: find the one that's the furthest along, and
         // keep advancing others until they all match. (Keep in mind that advancing one of the
@@ -207,6 +199,17 @@ void frbPostProcess::main_thread() {
         }
         if (stop_thread)
             return;
+
+        for (uint t = 0; t < num_samples; t++) {
+            // check if drop packet by reading 384 original times, if so flag that t
+            droppacket[t] = 0;
+            for (int tz = 0; tz < _downsample_time * _factor_upchan; tz++) {
+                if (lost_samples_frame[t * _factor_upchan * _downsample_time + tz] == 1) {
+                    droppacket[t] = 1;
+                    break;
+                }
+            }
+        }
 
         // Sum all the beams together into ib array.
         if (_incoherent_beams.size() > 0) {
@@ -304,6 +307,7 @@ void frbPostProcess::main_thread() {
                             frb_header_offset[b * _num_gpus + thread_id] = 0.0;
                             scl = 0.0;
                             ofs = 0.0;
+                            masked_packets_counter.inc();
                         } else {
                             // scale to 1-254 (0 and 255 are both error codes)
                             scl = (253.) / (max - min);
