@@ -108,7 +108,7 @@ void visFileBundle::add_file(time_ctype first_time) {
 
         // Create acquisition directory. Don't bother checking if it already exists, just let it
         // transparently fail
-        mkdir((root_path + "/" + acq_name).c_str(), 0755);
+        mkdir((root_path + "/" + acq_name).c_str(), 0775);
     }
 
     // Construct the name of the new file
