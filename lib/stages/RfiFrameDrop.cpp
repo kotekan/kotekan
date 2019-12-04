@@ -288,6 +288,7 @@ bool RfiFrameDrop::rest_thresholds_callback(nlohmann::json& update) {
 
     INFO("Setting new RFI excision cuts:");
     for (auto& [threshold, t, fraction] : thresholds_new) {
+        (void)t;
         INFO("  added cut with threshold={}, fraction={}", threshold, fraction);
     }
     return true;
