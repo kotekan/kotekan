@@ -398,7 +398,7 @@ void redundantStack::change_dataset_state(dset_id_t ds_id) {
     auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>, &dm, ds_id);
     const inputState* input_state_ptr = istate_fut.get();
     const prodState* prod_state_ptr = pstate_fut.get();
-    const stackState* old_stack_state_ptr = sstate_fut.get();
+    old_stack_state_ptr = sstate_fut.get();
 
     if (input_state_ptr == nullptr) {
         FATAL_ERROR("Could not find inputState for incoming dataset with ID {}.", ds_id);
