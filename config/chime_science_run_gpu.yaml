@@ -215,9 +215,9 @@ updatable_config:
     thresholds:
       kotekan_update_endpoint: json
       thresholds:
-        - threshold: 5.0
-          fraction: 0.025
-        - threshold: 1.4
+        - threshold: 3.0
+          fraction: 0.13
+        - threshold: 1.5
           fraction: 0.4
 
 
