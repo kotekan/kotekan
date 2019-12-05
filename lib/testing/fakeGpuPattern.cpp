@@ -2,7 +2,7 @@
 
 #include "visUtil.hpp"
 
-#include <random>
+#include <math.h>
 
 // Register test patterns
 REGISTER_FAKE_GPU_PATTERN(BlockGpuPattern, "block");
@@ -136,7 +136,10 @@ void AccumulateGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadat
 
 
 GaussianGpuPattern::GaussianGpuPattern(kotekan::Config& config, const std::string& path) :
-    FakeGpuPattern(config, path) {}
+    FakeGpuPattern(config, path),
+    rd(),
+    gen(rd()),
+    gaussian(0, 1) {}
 
 
 void GaussianGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata, int frame_number,
@@ -146,10 +149,6 @@ void GaussianGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata,
     (void)frame_number;
     (void)freq_id;
 
-    std::random_device rd{};
-    std::mt19937 gen{rd()};
-    std::normal_distribution<float> gaussian{0, 1};
-
     float f_auto = pow(_samples_per_data_set, 0.5);
     float f_cross = pow(_samples_per_data_set / 2, 0.5);
 
@@ -158,11 +157,11 @@ void GaussianGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata,
             uint32_t bi = prod_index(i, j, _block_size, _num_elements);
 
             if (i == j) {
-                data[2 * bi + 1] = _samples_per_data_set + (int32_t)(f_auto * gaussian(gen));
+                data[2 * bi + 1] = (int32_t)lroundf(_samples_per_data_set + f_auto * gaussian(gen));
                 data[2 * bi] = 0;
             } else {
-                data[2 * bi + 1] = (int32_t)(f_cross * gaussian(gen));
-                data[2 * bi] = (int32_t)(f_cross * gaussian(gen));
+                data[2 * bi + 1] = (int32_t)lroundf(f_cross * gaussian(gen));
+                data[2 * bi] = (int32_t)lroundf(f_cross * gaussian(gen));
             }
         }
     }

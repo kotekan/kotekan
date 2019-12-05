@@ -51,17 +51,17 @@ namespace kotekan {
  * Every stage that subscribes to this update endpoint by calling
  * ```
  * configUpdater config_updater = configUpdater::instance();
- * config_updater.subscribe(*this, std::bind(&my_stage::my_callback, this, _1));
+ * config_updater.subscribe(this, std::bind(&my_stage::my_callback, this, _1));
  * ```
  * or
  * ```
- * std::map<std::string, std::function<bool(json &)> callback_map(2);
+ * std::map<std::string, std::function<bool(nlohmann::json &)> callbacks;
  *
- * callbacks.insert ("bar", std::bind(&my_stage::my_bar_callback, this, _1));
+ * callbacks["bar"] = std::bind(&my_stage::my_bar_callback, this, _1);
  *
- * callbacks.insert ("fu", std::bind(&my_stage::my_fu_callback, this, _1));
+ * callbacks["fu"] = std::bind(&my_stage::my_fu_callback, this, _1);
  *
- * configUpdater::instance().subscribe(*this, callback_map);
+ * configUpdater::instance().subscribe(this, callbacks);
  * ```
  * will receive an initial update on each callback function with the initial
  * values defined in the config file (in the first example
