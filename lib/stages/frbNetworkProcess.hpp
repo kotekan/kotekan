@@ -52,7 +52,8 @@
  * @conf   quick_ping_interval  Uint32 (default 5 sec) Time in seconds for sending pings when a live
  * node stops responding
  * @conf   ping_dead_threshold  Uint32 (default 30 sec) Duration in seconds of quick-checking state
- * after which a node is declared dead if it still hasn't responded
+ * after which a node is declared dead if it still hasn't responded. If 0, disable the checks
+ * entirely.
  *
  * @todo   Resolve the issue of NTP clock vs Monotonic clock.
  *
