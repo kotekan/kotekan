@@ -245,8 +245,8 @@ bool mapMaker::setup(size_t frame_id) {
     num_bl = (num_stack + 1) / 4;
 
     sinza = std::vector<float>(num_pix, 0.);
-    for (int i = 0; i < (int) num_pix; i++) {
-        sinza[i] = (i - (int) num_pix / 2) * 2. / num_pix;
+    for (int i = 0; i < (int)num_pix; i++) {
+        sinza[i] = (i - (int)num_pix / 2) * 2. / num_pix;
     }
 
     // generate map making matrices
