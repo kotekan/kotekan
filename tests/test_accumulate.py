@@ -376,11 +376,6 @@ def test_missing_frames(drop_frame_data):
     assert np.allclose(vis_set.var(axis=0), frac_var, rtol=7e-2, atol=0)
     assert np.allclose((1.0 / weight_set).mean(axis=0), frac_var, rtol=1e-2, atol=0)
 
-    vm = (1.0 / weight_set).mean(axis=0)
-    vv = (1.0 / weight_set).std(axis=0)
-    lv = weight_set.shape[0]
-    print(meh)
-
 
 def test_int_time(time_data):
 
