@@ -272,7 +272,7 @@ void frbPostProcess::main_thread() {
                         // AVX2 option, fastest of a few I tried
                         bool firstvalue = true;
                         for (int t = 0; t < _timesamples_per_frb_packet; t++) {
-                            if (droppacket[T * _timesamples_per_frb_packet + t] != 1) {
+                            if (droppacket[T + t] != 1) {
                                 int idx = (T + t) * _factor_upchan_out;
                                 _cA = _mm256_load_ps(in_data + idx);     // 8f
                                 _cB = _mm256_load_ps(in_data + idx + 8); // 8f
@@ -319,7 +319,7 @@ void frbPostProcess::main_thread() {
                         int f_per_m = sizeof(__m256) / sizeof(float);
                         unsigned char utr[256], tr[256];
                         for (int t = 0; t < _timesamples_per_frb_packet; t++) {
-                            if (droppacket[T * _timesamples_per_frb_packet + t] == 1) {
+                            if (droppacket[T + t] == 1) {
                                 scl = 0.0;
                                 off = 0.0;
                             } else {
