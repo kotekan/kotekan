@@ -208,14 +208,17 @@ updatable_config:
           -1.1771713330451292e-32,
           3.948826407949732e-35,
         ],]
-  second_stage_rfi:
-    kotekan_update_endpoint: json
+  rfi_zeroing_second_stage:
+    enable:
+      kotekan_update_endpoint: json
+      rfi_zeroing: false
     thresholds:
-      - threshold: 5.0
-        fraction: 0.025
-      - threshold: 1.4
-        fraction: 0.4
-    enable_rfi_zero: false
+      kotekan_update_endpoint: json
+      thresholds:
+        - threshold: 3.0
+          fraction: 0.13
+        - threshold: 1.5
+          fraction: 0.4
 
 
 ###########################
@@ -1192,25 +1195,33 @@ rfi_stage2:
     in_buf_vis: valve_buffer_0
     in_buf_sk: gpu_rfi_output_buffer_0
     out_buf: rfi_vis_buffer_0
-    updatable_config: "/updatable_config/second_stage_rfi"
+    updatable_config:
+       enable: "/updatable_config/rfi_zeroing_second_stage/enable"
+       thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
   rfi1:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_1
     in_buf_sk: gpu_rfi_output_buffer_1
     out_buf: rfi_vis_buffer_1
-    updatable_config: "/updatable_config/second_stage_rfi"
+    updatable_config:
+       enable: "/updatable_config/rfi_zeroing_second_stage/enable"
+       thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
   rfi2:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_2
     in_buf_sk: gpu_rfi_output_buffer_2
     out_buf: rfi_vis_buffer_2
-    updatable_config: "/updatable_config/second_stage_rfi"
+    updatable_config:
+       enable: "/updatable_config/rfi_zeroing_second_stage/enable"
+       thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
   rfi3:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_3
     in_buf_sk: gpu_rfi_output_buffer_3
     out_buf: rfi_vis_buffer_3
-    updatable_config: "/updatable_config/second_stage_rfi"
+    updatable_config:
+       enable: "/updatable_config/rfi_zeroing_second_stage/enable"
+       thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
 
 vis_accumulate:
   integration_time: 5.0  # Integrate to roughly 5s cadence
