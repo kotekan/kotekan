@@ -23,6 +23,10 @@ REGISTER_KOTEKAN_STAGE(receiveFlags);
 receiveFlags::receiveFlags(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&receiveFlags::main_thread, this)),
+    receiveflags_late_frame_counter(
+        Metrics::instance().add_counter("kotekan_receiveflags_late_frame_count", unique_name)),
+    receiveflags_update_age_metric(
+        Metrics::instance().add_gauge("kotekan_receiveflags_update_age_seconds", unique_name)),
     late_updates_counter(
         Metrics::instance().add_counter("kotekan_receiveflags_late_update_count", unique_name)) {
     // Setup the buffers
@@ -114,13 +118,10 @@ bool receiveFlags::flags_callback(nlohmann::json& json) {
     flags_lock.unlock();
 
     INFO("Updated flags to {:s}.", update_id);
-
     return true;
 }
 
 void receiveFlags::main_thread() {
-
-    auto& dm = datasetManager::instance();
 
     uint32_t frame_id_in = 0;
     uint32_t frame_id_out = 0;
@@ -129,12 +130,7 @@ void receiveFlags::main_thread() {
 
     std::pair<timespec, const std::vector<float>*> update;
 
-    auto& receiveflags_update_age_metric =
-        Metrics::instance().add_gauge("kotekan_receiveflags_update_age_seconds", unique_name);
     receiveflags_update_age_metric.set(-ts_to_double(ts_late));
-    // Report number of frames received late
-    auto& receiveflags_late_frame_counter =
-        Metrics::instance().add_counter("kotekan_receiveflags_late_frame_count", unique_name);
 
     while (!stop_thread) {
 
@@ -153,50 +149,53 @@ void receiveFlags::main_thread() {
         // get the frames timestamp
         ts_frame = std::get<1>(frame_out.time);
 
-        // Copy flags into frame
-        flags_lock.lock();
+        // Output frame is only valid if we have a valid update for this frame
+        bool success = copy_flags_into_frame(frame_out);
 
-        // Get and unpack the update
-        const auto& [ts_update, update] = flags.get_update(ts_frame);
-
-        if (update == nullptr) {
-            FATAL_ERROR("receiveFlags: Flags for frame {:d} with timestamp {:f} are not in memory. "
-                        "updateQueue is empty",
-                        frame_id_in, ts_to_double(ts_frame));
-            return;
-        }
-
-        const auto& [state_id, flag_list] = *update;
-
-        std::pair<state_id_t, dset_id_t> key = {state_id, frame_out.dataset_id};
-        if (output_dataset_ids.count(key) == 0) {
-            double start = current_time();
-            output_dataset_ids[key] = dm.add_dataset(state_id, frame_out.dataset_id);
-            INFO("Adding flags to dM. Took {:.2f}s", current_time() - start);
-        }
-        frame_out.dataset_id = output_dataset_ids[key];
-
-        ts_late = ts_update - ts_frame;
-        if (ts_late.tv_sec > 0) {
-            // This frame is too old,we don't have flags for it
-            // --> Use the last update we have
-            WARN("receiveFlags: Flags for frame {:d} with timestamp {:f} are not in memory. "
-                 "Applying oldest flags found ({:f}). Consider increasing num_kept_updates.",
-                 frame_id_in, ts_to_double(ts_frame), ts_to_double(ts_update));
-            receiveflags_late_frame_counter.inc();
-        }
-        // actually copy the new flags and apply them from now
-        std::copy(flag_list.begin(), flag_list.end(), frame_out.flags.begin());
-        flags_lock.unlock();
-
-        // Report how old the flags being applied to the current data are.
-        receiveflags_update_age_metric.set(-ts_to_double(ts_late));
-
-        // Mark output frame full and input frame empty
-        mark_frame_full(buf_out, unique_name.c_str(), frame_id_out);
+        // Mark input frame empty
         mark_frame_empty(buf_in, unique_name.c_str(), frame_id_in);
-        // Move forward one frame
-        frame_id_out = (frame_id_out + 1) % buf_out->num_frames;
         frame_id_in = (frame_id_in + 1) % buf_in->num_frames;
+
+        if (success) {
+            // Mark output frame full
+            mark_frame_full(buf_out, unique_name.c_str(), frame_id_out);
+            // Move forward one frame
+            frame_id_out = (frame_id_out + 1) % buf_out->num_frames;
+        }
     }
+}
+
+bool receiveFlags::copy_flags_into_frame(const visFrameView& frame_out) {
+    auto& dm = datasetManager::instance();
+
+    std::lock_guard<std::mutex> lock(flags_lock);
+
+    // Get and unpack the update
+    const auto& [ts_update, update] = flags.get_update(ts_frame);
+
+    // Report how old the flags being applied to the current data are.
+    receiveflags_update_age_metric.set(-ts_to_double(ts_update - ts_frame));
+
+    if (update == nullptr) {
+        WARN("updateQueue: {}\nFlags for frame with timestamp {:f} are not in memory. Dropping "
+             "frame...",
+             flags, ts_to_double(ts_frame));
+        receiveflags_late_frame_counter.inc();
+        return false;
+    }
+
+    const auto& [state_id, flag_list] = *update;
+
+    std::pair<state_id_t, dset_id_t> key = {state_id, frame_out.dataset_id};
+    if (output_dataset_ids.count(key) == 0) {
+        double start = current_time();
+        output_dataset_ids[key] = dm.add_dataset(state_id, frame_out.dataset_id);
+        INFO("Adding flags to dM. Took {:.2f}s", current_time() - start);
+    }
+    frame_out.dataset_id = output_dataset_ids[key];
+
+    // actually copy the new flags and apply them from now
+    std::copy(flag_list.begin(), flag_list.end(), frame_out.flags.begin());
+
+    return true;
 }

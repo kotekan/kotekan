@@ -10,8 +10,10 @@
 #include "datasetManager.hpp"
 #include "prometheusMetrics.hpp"
 #include "updateQueue.hpp"
+#include "visBuffer.hpp"
 
 #include <mutex>
+#include <vector>
 
 /**
  * @class receiveFlags
@@ -63,6 +65,10 @@ public:
     bool flags_callback(nlohmann::json& json);
 
 private:
+    /// Copy the freshest flags into the frame or return false if no valid update for
+    /// this frame is available
+    bool copy_flags_into_frame(const visFrameView& frame_out);
+
     // this is faster than std::queue/deque
     /// The bad_input chan_id's and when to start applying them in a FIFO
     /// (len set by config)
@@ -84,6 +90,12 @@ private:
 
     /// Timestamp of the current frame
     timespec ts_frame = {0, 0};
+
+    /// Number of frames received late
+    kotekan::prometheus::Counter& receiveflags_late_frame_counter;
+
+    /// Update ages
+    kotekan::prometheus::Gauge& receiveflags_update_age_metric;
 
     /// Number of updates received too late
     kotekan::prometheus::Counter& late_updates_counter;
