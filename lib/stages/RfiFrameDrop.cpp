@@ -231,8 +231,7 @@ bool RfiFrameDrop::rest_enable_callback(nlohmann::json& update) {
 
     if (enable_rfi_zero_new) {
         INFO("Enabled RFI frame dropping.");
-    }
-    else {
+    } else {
         INFO("Disabled RFI frame dropping.");
     }
 
