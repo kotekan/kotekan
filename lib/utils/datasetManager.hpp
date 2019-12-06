@@ -571,7 +571,7 @@ inline const T* datasetManager::dataset_state(dset_id_t dset) {
         if (_use_broker) {
             // Request the state from the broker.
             state = request_state<T>(state_id);
-            while (!state) {
+            while (!state && !_stop_request_threads) {
                 WARN_NON_OO("datasetManager: Failure requesting state {} from broker.\nRetrying...",
                             state_id);
                 std::this_thread::sleep_for(std::chrono::milliseconds(_retry_wait_time_ms));

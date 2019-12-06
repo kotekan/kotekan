@@ -88,18 +88,45 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     auto mstate_fut = std::async(&datasetManager::dataset_state<metadataState>, &dm, ds_id);
     auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>, &dm, ds_id);
 
-    const stackState* sstate = sstate_fut.get();
-    const metadataState* mstate = mstate_fut.get();
-    const eigenvalueState* evstate = evstate_fut.get();
-    const timeState* tstate = tstate_fut.get();
-    const prodState* pstate = pstate_fut.get();
-    const freqState* fstate = fstate_fut.get();
-    const inputState* istate = istate_fut.get();
+    const stackState* sstate;
+    const metadataState* mstate;
+    const eigenvalueState* evstate;
+    const timeState* tstate;
+    const prodState* pstate;
+    const freqState* fstate;
+    const inputState* istate;
+    bool  timed_out = sstate_fut.wait_for(timeout) == std::future_status::timeout;
+    if (!timed_out)
+        sstate = sstate_fut.get();
+    timed_out = timed_out || (mstate_fut.wait_for(timeout) == std::future_status::timeout);
+    if (!timed_out)
+        mstate = mstate_fut.get();
+    timed_out = timed_out || (evstate_fut.wait_for(timeout) == std::future_status::timeout);
+    if (!timed_out)
+        evstate = evstate_fut.get();
+    timed_out = timed_out || (tstate_fut.wait_for(timeout) == std::future_status::timeout);
+    if (!timed_out)
+        tstate = tstate_fut.get();
+    timed_out = timed_out || (pstate_fut.wait_for(timeout) == std::future_status::timeout);
+    if (!timed_out)
+        pstate = pstate_fut.get();
+    timed_out = timed_out || (fstate_fut.wait_for(timeout) == std::future_status::timeout);
+    if (!timed_out)
+        fstate = fstate_fut.get();
+    timed_out = timed_out || (istate_fut.wait_for(timeout) == std::future_status::timeout);
+    if (!timed_out)
+        istate = istate_fut.get();
+    if (timed_out) {
+        ERROR("Communication with dataset broker timed out for datatset id {}.",
+              ds_id);
+        exit_kotekan(ReturnCode::TIMEOUT);
+        return false;
+    }
 
 
     if (mstate == nullptr || tstate == nullptr || pstate == nullptr || fstate == nullptr
         || istate == nullptr || evstate == nullptr) {
-        DEBUG("One of the dataset states is null.");
+        FATAL_ERROR("One of the dataset states is null.");
         return false;
     }
 
@@ -204,20 +231,11 @@ void visTranspose::main_thread() {
         found_frame = true;
 
         ds_id = frame.dataset_id;
-        auto future_ds_state = std::async(&visTranspose::get_dataset_state, this, ds_id);
-
-        auto ready = future_ds_state.wait_for(timeout);
-        if (ready == std::future_status::timeout) {
-            ERROR("Communication with dataset broker timed out for datatset id {}.",
+        if (!get_dataset_state(ds_id)) {
+            ERROR("Couldn't find ancestor of dataset {}. "
+                  "Make sure there is a stage upstream in the config, that adds the dataset "
+                  "states.\nExiting...",
                   ds_id);
-            exit_kotekan(ReturnCode::TIMEOUT);
-            return;
-        }
-        if (!future_ds_state.get()) {
-            FATAL_ERROR("Couldn't find ancestor of dataset {}. "
-                        "Make sure there is a stage upstream in the config, that adds the dataset "
-                        "states.\nExiting...",
-                        ds_id);
             return;
         }
     }
