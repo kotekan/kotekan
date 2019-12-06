@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Receive and set flags for the visibility data.
-- receiveFlags : public kotekan::Stage
+- ReceiveFlags : public kotekan::Stage
 *****************************************/
 #ifndef RECEIVEFLAGS_H
 #define RECEIVEFLAGS_H
@@ -16,7 +16,7 @@
 #include <vector>
 
 /**
- * @class receiveFlags
+ * @class ReceiveFlags
  * @brief Receives input flags and adds them to the output buffer.
  *
  * This stage registeres as a subscriber to an updatable config block. The
@@ -52,10 +52,10 @@
  *
  * @author Rick Nitsche
  */
-class receiveFlags : public kotekan::Stage {
+class ReceiveFlags : public kotekan::Stage {
 public:
     /// Constructor
-    receiveFlags(kotekan::Config& config, const string& unique_name,
+    ReceiveFlags(kotekan::Config& config, const string& unique_name,
                  kotekan::bufferContainer& buffer_container);
 
     /// Main loop, saves flags in the frames

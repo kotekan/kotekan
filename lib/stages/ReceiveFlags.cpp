@@ -1,4 +1,4 @@
-#include "receiveFlags.hpp"
+#include "ReceiveFlags.hpp"
 
 #include "configUpdater.hpp"
 #include "datasetManager.hpp"
@@ -17,12 +17,12 @@ using kotekan::configUpdater;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
 
-REGISTER_KOTEKAN_STAGE(receiveFlags);
+REGISTER_KOTEKAN_STAGE(ReceiveFlags);
 
 
-receiveFlags::receiveFlags(Config& config, const string& unique_name,
+ReceiveFlags::ReceiveFlags(Config& config, const string& unique_name,
                            bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&receiveFlags::main_thread, this)),
+    Stage(config, unique_name, buffer_container, std::bind(&ReceiveFlags::main_thread, this)),
     receiveflags_late_frame_counter(
         Metrics::instance().add_counter("kotekan_receiveflags_late_frame_count", unique_name)),
     receiveflags_update_age_metric(
@@ -38,7 +38,7 @@ receiveFlags::receiveFlags(Config& config, const string& unique_name,
     // Apply kotekan config
     int num = config.get<int>(unique_name, "num_elements");
     if (num < 0)
-        throw std::invalid_argument("receiveFlags: config: invalid value for"
+        throw std::invalid_argument("ReceiveFlags: config: invalid value for"
                                     " num_elements: "
                                     + std::to_string(num));
     num_elements = (size_t)num;
@@ -49,10 +49,10 @@ receiveFlags::receiveFlags(Config& config, const string& unique_name,
 
     // we are ready to receive updates with the callback function now!
     // register as a subscriber with configUpdater
-    configUpdater::instance().subscribe(this, std::bind(&receiveFlags::flags_callback, this, _1));
+    configUpdater::instance().subscribe(this, std::bind(&ReceiveFlags::flags_callback, this, _1));
 }
 
-bool receiveFlags::flags_callback(nlohmann::json& json) {
+bool ReceiveFlags::flags_callback(nlohmann::json& json) {
     std::vector<float> flags_received(num_elements);
     std::fill(flags_received.begin(), flags_received.end(), 1.0);
     double ts;
@@ -61,29 +61,28 @@ bool receiveFlags::flags_callback(nlohmann::json& json) {
     // receive flags and start_time
     try {
         if (!json.at("bad_inputs").is_array())
-            throw std::invalid_argument("receiveFlags: flags_callback "
+            throw std::invalid_argument("ReceiveFlags: flags_callback "
                                         "received bad value 'bad_inputs': "
                                         + json.at("bad_inputs").dump());
         update_id = json.at("update_id").get<std::string>();
 
         if (!json.at("update_id").is_string())
-            throw std::invalid_argument("receiveFlags: flags_callback "
+            throw std::invalid_argument("ReceiveFlags: flags_callback "
                                         "received bad value 'update_id': "
                                         + json.at("update_id").dump());
 
         if (json.at("bad_inputs").size() > num_elements)
             throw std::invalid_argument(
-                "receiveFlags: flags_callback "
-                "received "
+                "ReceiveFlags: flags_callback received "
                 + std::to_string(json.at("bad_inputs").size())
                 + " bad inputs (has to be less than or equal num_elements = "
                 + std::to_string(num_elements) + ").");
         if (!json.at("start_time").is_number())
-            throw std::invalid_argument("receiveFlags: received bad value "
+            throw std::invalid_argument("ReceiveFlags: received bad value "
                                         "'start_time': "
                                         + json.at("start_time").dump());
         if (json.at("start_time") < 0)
-            throw std::invalid_argument("receiveFlags: received negative "
+            throw std::invalid_argument("ReceiveFlags: received negative "
                                         "start_time: "
                                         + json.at("start_time").dump());
 
@@ -92,18 +91,18 @@ bool receiveFlags::flags_callback(nlohmann::json& json) {
         for (nlohmann::json::iterator flag = json.at("bad_inputs").begin();
              flag != json.at("bad_inputs").end(); ++flag) {
             if (*flag >= num_elements)
-                throw std::invalid_argument("receiveFlags: received "
+                throw std::invalid_argument("ReceiveFlags: received "
                                             "out-of-range bad_input: "
                                             + json.at("bad_inputs").dump());
             flags_received.at(*flag) = 0.0;
         }
     } catch (std::exception& e) {
-        WARN("receiveFlags: Failure parsing message: {:s}", e.what());
+        WARN("Failure parsing message: {:s}", e.what());
         return false;
     }
 
     if (ts_frame > double_to_ts(ts)) {
-        WARN("receiveFlags: Received update with a start_time that is older than the current "
+        WARN("Received update with a start_time that is older than the current "
              "frame (The difference is {:f} s).",
              ts_to_double(ts_frame) - ts);
         late_updates_counter.inc();
@@ -121,7 +120,7 @@ bool receiveFlags::flags_callback(nlohmann::json& json) {
     return true;
 }
 
-void receiveFlags::main_thread() {
+void ReceiveFlags::main_thread() {
 
     frameID frame_id_in(buf_in);
     frameID frame_id_out(buf_out);
@@ -161,7 +160,7 @@ void receiveFlags::main_thread() {
     }
 }
 
-bool receiveFlags::copy_flags_into_frame(const visFrameView& frame_out) {
+bool ReceiveFlags::copy_flags_into_frame(const visFrameView& frame_out) {
     auto& dm = datasetManager::instance();
 
     std::lock_guard<std::mutex> lock(flags_lock);

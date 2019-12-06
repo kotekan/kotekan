@@ -157,7 +157,7 @@ switch_26m_gated:
   updatable_config: "/updatable_config/26m_gated"
 
 receive_flags:
-  kotekan_stage: receiveFlags
+  kotekan_stage: ReceiveFlags
   in_buf: visbuf_10s_all
   out_buf: visbuf_10s_flags
   updatable_config: "/updatable_config/flagging"
