@@ -127,8 +127,6 @@ void ReceiveFlags::main_thread() {
 
     timespec ts_late = {0, 0};
 
-    std::pair<timespec, const std::vector<float>*> update;
-
     receiveflags_update_age_metric.set(-ts_to_double(ts_late));
 
     while (!stop_thread) {
