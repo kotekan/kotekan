@@ -123,8 +123,8 @@ bool receiveFlags::flags_callback(nlohmann::json& json) {
 
 void receiveFlags::main_thread() {
 
-    uint32_t frame_id_in = 0;
-    uint32_t frame_id_out = 0;
+    frameID frame_id_in(buf_in);
+    frameID frame_id_out(buf_out);
 
     timespec ts_late = {0, 0};
 
@@ -153,15 +153,11 @@ void receiveFlags::main_thread() {
         bool success = copy_flags_into_frame(frame_out);
 
         // Mark input frame empty
-        mark_frame_empty(buf_in, unique_name.c_str(), frame_id_in);
-        frame_id_in = (frame_id_in + 1) % buf_in->num_frames;
+        mark_frame_empty(buf_in, unique_name.c_str(), frame_id_in++);
 
-        if (success) {
-            // Mark output frame full
-            mark_frame_full(buf_out, unique_name.c_str(), frame_id_out);
-            // Move forward one frame
-            frame_id_out = (frame_id_out + 1) % buf_out->num_frames;
-        }
+        // Mark output frame full if we had valid flags. Otherwise drop it.
+        if (success)
+            mark_frame_full(buf_out, unique_name.c_str(), frame_id_out++);
     }
 }
 
