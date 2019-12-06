@@ -17,6 +17,7 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
+#include <chrono>
 
 using json = nlohmann::json;
 
@@ -46,6 +47,8 @@ using json = nlohmann::json;
  *                              (freq, prod, time).
  * @conf   outfile              String. Path to the (data-meta-pair of) files to
  *                              write to (e.g. "/path/to/0000_000", without .h5).
+ * @conf   timeout              Float, default 0. Timeout for communications with
+ *                              dataset broker.
  *
  * @par Metrics
  * @metric kotekan_vistranspose_data_transposed_bytes
@@ -83,6 +86,7 @@ private:
 
     // Config values
     std::string filename;
+    std::chrono::duration<float> timeout;
 
     // Datasets to be stored until ready to write
     std::vector<time_ctype> time;

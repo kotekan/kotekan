@@ -59,6 +59,9 @@ visTranspose::visTranspose(Config& config, const string& unique_name,
     // Get file path to write to
     filename = config.get<std::string>(unique_name, "outfile");
 
+    // Get a timeout for communication with broker
+    timeout = std::chrono::duration<float>(config.get_default<float>(unique_name, "comet_timeout", 60.));
+
     // Collect some metadata. The rest is requested from the datasetManager,
     // once we received the first frame.
     metadata["archive_version"] = "3.1.0";
@@ -203,6 +206,13 @@ void visTranspose::main_thread() {
         ds_id = frame.dataset_id;
         auto future_ds_state = std::async(&visTranspose::get_dataset_state, this, ds_id);
 
+        auto ready = future_ds_state.wait_for(timeout);
+        if (ready == std::future_status::timeout) {
+            ERROR("Communication with dataset broker timed out for datatset id {}.",
+                  ds_id);
+            exit_kotekan(ReturnCode::TIMEOUT);
+            return;
+        }
         if (!future_ds_state.get()) {
             FATAL_ERROR("Couldn't find ancestor of dataset {}. "
                         "Make sure there is a stage upstream in the config, that adds the dataset "
