@@ -255,7 +255,6 @@ buffer_writers:
     dir_name: timing
 
 remove_ev:
-
   chimestack:
     kotekan_stage: removeEv
     in_buf: visbuf_10s_stack
@@ -265,6 +264,28 @@ remove_ev:
     kotekan_stage: removeEv
     in_buf: visbuf_10s_timing
     out_buf: visbuf_10s_timing_ne
+
+
+# This stage is here to track the output dataset IDs in prometheus
+vis_dset_tracking:
+  n2_mf:
+    kotekan_stage: visDebug
+    in_buf: visbuf_10s_mfreq
+  chimestack:
+    kotekan_stage: visDebug
+    in_buf: visbuf_10s_stack_ne
+  26m:
+    kotekan_stage: visDebug
+    in_buf: visbuf_5s_26m_ungated_post
+  26mgated:
+    kotekan_stage: visDebug
+    in_buf: visbuf_5s_26m_gated_post
+  cal:
+    kotekan_stage: visDebug
+    in_buf: visbuf_10s_cal
+  timing:
+    kotekan_stage: visDebug
+    in_buf: visbuf_10s_timing_ne{
 
 
 archive_writers:
