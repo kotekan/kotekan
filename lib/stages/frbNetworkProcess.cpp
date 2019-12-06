@@ -69,7 +69,11 @@ frbNetworkProcess::frbNetworkProcess(Config& config_, const string& unique_name,
     time_interval = config.get_default<unsigned long>(unique_name, "time_interval", 125829120);
     column_mode = config.get_default<bool>(unique_name, "column_mode", false);
     samples_per_packet = config.get_default<int>(unique_name, "timesamples_per_frb_packet", 16);
-    INFO("Pinging every {} / {}", _quick_ping_interval, _ping_interval);
+    if (_ping_dead_threshold != std::chrono::seconds::zero()) {
+        INFO("Pinging every {} / {}", _quick_ping_interval, _ping_interval);
+    } else {
+        INFO("L1 ping check is disabled");
+    }
 }
 
 frbNetworkProcess::~frbNetworkProcess() {
@@ -227,7 +231,8 @@ void frbNetworkProcess::main_thread() {
                 for (int link = 0; link < number_of_l1_links; link++) {
                     if (e_stream == local_beam_offset / 4 + link) {
                         DestIpSocket& dst = stream_dest[link];
-                        if (dst.active && dst.live) {
+                        if (dst.active
+                            && (_ping_dead_threshold == std::chrono::seconds::zero() || dst.live)) {
                             sendto(src_sockets[dst.sending_socket].socket_fd,
                                    &packet_buffer[(e_stream * packets_per_stream + frame)
                                                   * udp_frb_packet_size],
@@ -349,6 +354,9 @@ struct DestIpSocketTime {
 using RefDestIpSocketTime = std::reference_wrapper<DestIpSocketTime>;
 
 void frbNetworkProcess::ping_destinations() {
+    if (_ping_dead_threshold == std::chrono::seconds::zero()) {
+        return;
+    }
 
     // raw sockets used as sources for outgoing pings
     std::vector<int> ping_src_fd;
