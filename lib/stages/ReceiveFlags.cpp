@@ -41,7 +41,7 @@ ReceiveFlags::ReceiveFlags(Config& config, const string& unique_name,
         throw std::invalid_argument("ReceiveFlags: config: invalid value for"
                                     " num_elements: "
                                     + std::to_string(num));
-    num_elements = (size_t)num;
+    num_elements = static_cast<size_t>(num);
     num_kept_updates = config.get_default<uint32_t>(unique_name, "num_kept_updates", 5);
 
     /// FIFO for flags updates
