@@ -90,7 +90,7 @@ bool receiveFlags::flags_callback(nlohmann::json& json) {
         ts = json.at("start_time");
 
         for (nlohmann::json::iterator flag = json.at("bad_inputs").begin();
-             flag != json.at("bad_inputs").end(); flag++) {
+             flag != json.at("bad_inputs").end(); ++flag) {
             if (*flag >= num_elements)
                 throw std::invalid_argument("receiveFlags: received "
                                             "out-of-range bad_input: "
