@@ -185,6 +185,7 @@ void visRawReader::get_dataset_state(dset_id_t ds_id) {
         // Add time dataset state and register with dataset broker
         auto got_it = ds_in_file.find(ds_id);
         if (got_it == ds_in_file.end()) {
+            INFO("Registering new dataset with broker based on {}.", ds_id);
             out_dset_id = dm.add_dataset(dm.create_state<timeState>(_times).first, ds_id);
             ds_in_file[ds_id] = out_dset_id;
         } else {

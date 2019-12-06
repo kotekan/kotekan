@@ -257,11 +257,12 @@ void visTranspose::main_thread() {
                 INFO("Got an empty frame.");
             } else {
                 // TODO assuming that dataset ID changes here never change dataset dimensions
-                DEBUG("Dataset ID has changed from {} to {}. Getting base dataset ID from "
+                INFO("Dataset ID has changed from {} to {}. Getting base dataset ID from "
                       "broker...",
                       ds_id, frame.dataset_id);
                 ds_id = frame.dataset_id;
                 base_ds_id = base_dset(ds_id);
+                INFO("Got base dataset ID {}.", base_ds_id);
             }
         }
 
@@ -332,8 +333,10 @@ void visTranspose::main_thread() {
 
         frames_so_far++;
         // Exit when all frames have been written
-        if (frames_so_far == num_time * num_freq)
+        if (frames_so_far == num_time * num_freq) {
             exit_kotekan(ReturnCode::CLEAN_EXIT);
+            return;
+        }
 
         // move to next frame
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
@@ -400,14 +403,22 @@ dset_id_t visTranspose::base_dset(dset_id_t ds_id) {
 
     try {
         return dm.datasets().at(ds_id).base_dset();
-    } catch (std::exception& e) {
+    } catch (std::out_of_range& e) {
+        INFO("Fetching metadata state...");
         // fetch a metadata state just to ensure we have a copy of that dataset
         auto mstate_fut = std::async(&datasetManager::dataset_state<metadataState>, &dm, ds_id);
+        auto ready = mstate_fut.wait_for(timeout);
+        if (ready == std::future_status::timeout) {
+            ERROR("Communication with dataset broker timed out for datatset id {}.",
+                  ds_id);
+            exit_kotekan(ReturnCode::TIMEOUT);
+            return ds_id;
+        }
         const metadataState* mstate = mstate_fut.get();
         (void)mstate;
         try {
             return dm.datasets().at(ds_id).base_dset();
-        } catch (std::exception& e) {
+        } catch (std::out_of_range& e) {
             FATAL_ERROR("Failed to get base dataset of dataset with ID {}. {}", ds_id, e.what());
             return ds_id;
         }
