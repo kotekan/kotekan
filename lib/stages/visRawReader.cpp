@@ -304,11 +304,12 @@ void visRawReader::main_thread() {
                 got_first_frame = true;
             } else if (dset_id != cur_dset_id) {
                 if (!use_comet) {
-                    FATAL_ERROR("Dataset ID of incoming frames changed from {} to {}. Changing  ID "
-                                "not supported without dataset broker, exiting...",
-                                cur_dset_id, dset_id);
+                    WARN("Dataset ID of incoming frames changed from {} to {}. Changing  ID "
+                         "not supported without dataset broker. Ignoring.",
+                         cur_dset_id, dset_id);
+                } else {
+                    get_dataset_state(dset_id);
                 }
-                get_dataset_state(dset_id);
                 cur_dset_id = dset_id;
             }
         } else {
