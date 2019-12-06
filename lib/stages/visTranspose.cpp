@@ -313,11 +313,11 @@ void visTranspose::main_thread() {
         }
 
         // Increment within read chunk
-        // within a chunk, time is the fastest varying index
-        ti = (ti + 1) % write_t;
-        if (ti == 0)
-            fi++;
-        if (fi == write_f) {
+        // within a chunk, frequency is the fastest varying index
+        fi = (fi + 1) % write_f;
+        if (fi == 0)
+            ti++;
+        if (ti == write_t) {
             // chunk is complete
             write();
             // increment between chunks

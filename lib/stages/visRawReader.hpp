@@ -245,8 +245,7 @@ private:
 
     // map from time and freq index to frame index
     // visRawReader reads chunks with frequency as fastest varying index
-    // but within a chunk, time is the fastest varying index.
-    // This is how we perform the transpose.
+    // within a chunk, frequency is also the fastest varying index.
     inline size_t get_frame_ind(size_t ti, size_t fi) {
         size_t ind = 0;
         // chunk row and column
@@ -254,12 +253,13 @@ private:
         size_t col = fi / chunk_f;
         // special dimension at array edges
         size_t this_chunk_t = chunk_t ? row * chunk_t + chunk_t < ntime : ntime - row * chunk_t;
+        size_t this_chunk_f = chunk_f ? col * chunk_f + chunk_f < nfreq : nfreq - col * chunk_f;
         // number of frames in previous rows
         ind += nfreq * chunk_t * row;
         // number of frames in chunks in this row
         ind += (this_chunk_t * chunk_f) * col;
-        // within a chunk, time is fastest varying
-        ind += (fi % chunk_f) * this_chunk_t + (ti % chunk_t);
+        // within a chunk, frequency is fastest varying
+        ind += (ti % chunk_t) * this_chunk_f + (fi % chunk_f);
 
         return ind;
     };

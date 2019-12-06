@@ -230,9 +230,9 @@ int visRawReader::position_map(int ind) {
         // edges case
         int f_width = std::min(nfreq - ci * chunk_f, chunk_f);
         // time and frequency indices
-        // time is fastest varying
-        int fi = ci * chunk_f + ((ind % row_size) % (t_width * f_width)) / t_width;
-        int ti = ri * chunk_t + ((ind % row_size) % (t_width * f_width)) % t_width;
+        // frequency is fastest varying
+        int fi = ci * chunk_f + ((ind % row_size) % (t_width * chunk_f)) % f_width;
+        int ti = ri * chunk_t + ((ind % row_size) % (t_width * chunk_f)) / f_width;
 
         return ti * nfreq + fi;
     } else {
