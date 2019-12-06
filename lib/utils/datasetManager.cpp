@@ -132,6 +132,11 @@ datasetManager::~datasetManager() {
 }
 
 
+void datasetManager::stop() {
+    INFO_NON_OO("Stopping request threads...");
+    _stop_request_threads = true;
+}
+
 // TODO: 0 is not a good sentinel value. Move to std::optional typing when we use C++17
 dset_id_t datasetManager::add_dataset(state_id_t state, dset_id_t base_dset) {
     datasetState* t = nullptr;

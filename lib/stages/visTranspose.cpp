@@ -119,6 +119,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     if (timed_out) {
         ERROR("Communication with dataset broker timed out for datatset id {}.",
               ds_id);
+        dm.stop();
         exit_kotekan(ReturnCode::TIMEOUT);
         return false;
     }

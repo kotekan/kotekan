@@ -215,6 +215,11 @@ public:
     datasetManager(const datasetManager&) = delete;
     void operator=(const datasetManager&) = delete;
 
+    /**
+     * @brief Signal to stop request threads.
+     **/
+    void stop();
+
     // TODO: 0 is not a good sentinel value. Move to std::optional typing when we use C++17
     /**
      * @brief Register a new dataset. Omitting base_dset adds a root dataset.
