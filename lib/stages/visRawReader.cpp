@@ -260,6 +260,7 @@ void visRawReader::main_thread() {
         (max_read_rate > 0 ? file_frame_size / (max_read_rate * 1024 * 1024) : 0.0);
     DEBUG("Minimum read time per frame {}s", min_read_time);
 
+    readahead_blocks = std::min(nframe, readahead_blocks);
     // Initial readahead for frames
     for (read_ind = 0; read_ind < readahead_blocks; read_ind++) {
         read_ahead(read_ind);
