@@ -47,7 +47,7 @@ using json = nlohmann::json;
  *                              (freq, prod, time).
  * @conf   outfile              String. Path to the (data-meta-pair of) files to
  *                              write to (e.g. "/path/to/0000_000", without .h5).
- * @conf   timeout              Float, default 0. Timeout for communications with
+ * @conf   comet_timeout        Float, default 60. Timeout for communications with
  *                              dataset broker.
  *
  * @par Metrics
