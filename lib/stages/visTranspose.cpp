@@ -60,7 +60,8 @@ visTranspose::visTranspose(Config& config, const string& unique_name,
     filename = config.get<std::string>(unique_name, "outfile");
 
     // Get a timeout for communication with broker
-    timeout = std::chrono::duration<float>(config.get_default<float>(unique_name, "comet_timeout", 60.));
+    timeout =
+        std::chrono::duration<float>(config.get_default<float>(unique_name, "comet_timeout", 60.));
 
     // Collect some metadata. The rest is requested from the datasetManager,
     // once we received the first frame.
@@ -95,7 +96,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     const prodState* pstate;
     const freqState* fstate;
     const inputState* istate;
-    bool  timed_out = sstate_fut.wait_for(timeout) == std::future_status::timeout;
+    bool timed_out = sstate_fut.wait_for(timeout) == std::future_status::timeout;
     if (!timed_out)
         sstate = sstate_fut.get();
     timed_out = timed_out || (mstate_fut.wait_for(timeout) == std::future_status::timeout);
@@ -117,8 +118,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     if (!timed_out)
         istate = istate_fut.get();
     if (timed_out) {
-        ERROR("Communication with dataset broker timed out for datatset id {}.",
-              ds_id);
+        ERROR("Communication with dataset broker timed out for datatset id {}.", ds_id);
         dm.stop();
         exit_kotekan(ReturnCode::TIMEOUT);
         return false;
@@ -277,8 +277,8 @@ void visTranspose::main_thread() {
             } else {
                 // TODO assuming that dataset ID changes here never change dataset dimensions
                 INFO("Dataset ID has changed from {} to {}. Getting base dataset ID from "
-                      "broker...",
-                      ds_id, frame.dataset_id);
+                     "broker...",
+                     ds_id, frame.dataset_id);
                 ds_id = frame.dataset_id;
                 base_ds_id = base_dset(ds_id);
                 INFO("Got base dataset ID {}.", base_ds_id);
@@ -428,8 +428,7 @@ dset_id_t visTranspose::base_dset(dset_id_t ds_id) {
         auto mstate_fut = std::async(&datasetManager::dataset_state<metadataState>, &dm, ds_id);
         auto ready = mstate_fut.wait_for(timeout);
         if (ready == std::future_status::timeout) {
-            ERROR("Communication with dataset broker timed out for datatset id {}.",
-                  ds_id);
+            ERROR("Communication with dataset broker timed out for datatset id {}.", ds_id);
             exit_kotekan(ReturnCode::TIMEOUT);
             return ds_id;
         }

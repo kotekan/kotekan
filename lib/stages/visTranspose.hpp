@@ -12,12 +12,12 @@
 
 #include "json.hpp"
 
+#include <chrono>
 #include <memory>
 #include <stddef.h>
 #include <stdint.h>
 #include <string>
 #include <vector>
-#include <chrono>
 
 using json = nlohmann::json;
 
