@@ -49,7 +49,7 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       rfiRecord.cpp
       rfiBadInputFinder.cpp
       rfiUpdateMetadata.cpp
-      receiveFlags.cpp
+      ReceiveFlags.cpp
       valve.cpp
       visTransform.cpp
       visTestPattern.cpp

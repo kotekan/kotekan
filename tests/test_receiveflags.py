@@ -57,7 +57,7 @@ def run_flagging(tmpdir_factory, cmds):
     out_dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
     test = runner.KotekanStageTester(
-        "receiveFlags",
+        "ReceiveFlags",
         params,
         buffers_in=fakevis_buffer,
         buffers_out=out_dump_buffer,

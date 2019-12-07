@@ -151,4 +151,7 @@ BOOST_AUTO_TEST_CASE(_updateQueue_out_of_order) {
     r = q.get_update({7, 0});
     BOOST_CHECK(*(r.second) == 1);
     BOOST_CHECK(r.first == six);
+
+    // A pretty stupid "test" for the fmt formatter:
+    std::cout << fmt::format("This queue should have timestamps 4, 5 and 6 now: {}", q);
 }
