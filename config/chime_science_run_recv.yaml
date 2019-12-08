@@ -23,8 +23,16 @@ samples_per_data_set: 32768
 buffer_depth: 64
 num_gpu_frames: 128
 block_size: 32
-cpu_affinity: [1,7,9,15]
 num_ev: 4
+
+# CPU affinity for most processes
+#
+# Only core 7 is unused by the high priority processes. /stacking and
+# /apply_gains each have three threads and three dedicated cores (1, 2, 3 for
+# stacking, 4, 5, 6 for apply_gains), however as each of these needs only about
+# 2.5 cores of conpute power, we have opened up one of the hyperthread pairs to
+# other stages (11 and 14, twinned with 3 and 6 respectively)
+cpu_affinity: [7, 11, 14, 15]
 
 dataset_manager:
   use_dataset_broker: True
@@ -44,7 +52,7 @@ vis_buffer:
     buffer_depth: 384  # Before slow stage
   visbuf_10s_flags:
     kotekan_buffer: vis
-    buffer_depth: 256  # Before slow stage
+    buffer_depth: 384  # Before slow stage
   visbuf_10s_stack:
     kotekan_buffer: vis
     num_prod: 17000  # Approximation to the correct size
@@ -55,6 +63,7 @@ vis_buffer:
     num_prod: 17000  # Approximation to the correct size
   visbuf_10s_mfreq:
     kotekan_buffer: vis
+    buffer_depth: 16
   visbuf_10s_stack_mfreq:
     kotekan_buffer: vis
     num_prod: 17000  # Approximation to the correct size
@@ -114,8 +123,8 @@ updatable_config:
                  1950, 1982, 1984, 1987, 2032, 2034]
   gains:
     kotekan_update_endpoint: "json"
-    start_time: 1541039597.
-    update_id: "gain_20181101T023317.440691Z_cyga"
+    start_time: 1575000855.0
+    update_id: "gain_20191129T041415.491692Z_casa_ref_cyga"
     transition_interval: 300.0
   26m_gated:
     kotekan_update_endpoint: "json"
@@ -185,8 +194,8 @@ count_check:
     in_buf: visbuf_5s_26m_gated
 
 apply_gains:
-  cpu_affinity: [4, 5, 6]
   num_threads: 3
+  cpu_affinity: [4, 5, 6]
   kotekan_stage: applyGains
   in_buf: visbuf_10s_flags
   out_buf: visbuf_10s_gain
@@ -194,6 +203,8 @@ apply_gains:
   updatable_config: "/updatable_config/gains"
 
 stacking:
+  num_threads: 3
+  cpu_affinity: [1, 2, 3]
   kotekan_stage: baselineCompression
   in_buf: visbuf_10s_gain
   out_buf: visbuf_10s_stack
@@ -201,8 +212,6 @@ stacking:
   exclude_inputs: [
     46, 142, 688, 944, 960, 1058, 1166, 1225, 1314, 1521, 1543, 2032, 2034
   ]
-  num_threads: 2
-  cpu_affinity: [2, 3]
 
 buffer_status:
   kotekan_stage: bufferStatus
