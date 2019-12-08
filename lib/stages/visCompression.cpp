@@ -82,10 +82,6 @@ baselineCompression::baselineCompression(Config& config, const string& unique_na
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     if (num_threads == 0)
         throw std::invalid_argument("baselineCompression: num_threads has to be at least 1.");
-    if (in_buf->num_frames % num_threads != 0 || out_buf->num_frames % num_threads != 0)
-        throw std::invalid_argument("baselineCompression: both "
-                                    "the size of the input and output buffer"
-                                    "have to be multiples of num_threads.");
 }
 
 void baselineCompression::main_thread() {
