@@ -58,6 +58,8 @@ using json = nlohmann::json;
  *      The variance of the residuals.
  * @metric kotekan_baselinecompression_time_seconds
  *      The time elapsed to process one frame.
+ * @metric kotekan_baselinecompression_frame_total
+ *      Number of frames seen by each thread.
  *
  * @author Richard Shaw
  */
@@ -109,7 +111,6 @@ private:
     // Frame IDs, shared by compress threads and their mutex.
     frameID frame_id_in;
     frameID frame_id_out;
-    uint64_t frame_counter_global;
     std::mutex m_frame_ids;
     std::mutex m_dset_map;
 
@@ -121,7 +122,7 @@ private:
 
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_residuals_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_time_seconds_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_frame_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& compression_frame_counter;
 };
 
 

@@ -48,16 +48,15 @@ baselineCompression::baselineCompression(Config& config, const string& unique_na
     out_buf(get_buffer("out_buf")),
     frame_id_in(in_buf),
     frame_id_out(out_buf),
-    frame_counter_global(0),
     compression_residuals_metric(
         Metrics::instance().add_gauge("kotekan_baselinecompression_residuals", unique_name,
-                                      {"freq_id", "dataset_id", "thread_id"})),
+                                      {"freq_id"})),
     compression_time_seconds_metric(
         Metrics::instance().add_gauge("kotekan_baselinecompression_time_seconds", unique_name,
-                                      {"freq_id", "dataset_id", "thread_id"})),
+                                      {"thread_id"})),
     compression_frame_counter(
-        Metrics::instance().add_gauge("kotekan_baselinecompression_frame_counter", unique_name,
-                                      {"freq_id", "dataset_id", "thread_id"})) {
+        Metrics::instance().add_counter("kotekan_baselinecompression_frame_total", unique_name,
+                                        {"thread_id"})) {
 
     register_consumer(in_buf, unique_name.c_str());
     register_producer(out_buf, unique_name.c_str());
@@ -114,7 +113,7 @@ void baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
     auto fprint = dm.fingerprint(input_ds_id, {"inputs", "products"});
 
     if (state_map.count(fprint) == 0) {
-        // Get input & prod states synchronoulsy
+        // Get input & prod states synchronously
         auto istate = std::async(&datasetManager::dataset_state<inputState>, &dm, input_ds_id);
         auto pstate = std::async(&datasetManager::dataset_state<prodState>, &dm, input_ds_id);
 
@@ -150,14 +149,12 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
 
     int input_frame_id;
     int output_frame_id;
-    uint64_t frame_counter;
 
     // Get the current values of the shared frame IDs.
     {
         std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
         output_frame_id = frame_id_out++;
         input_frame_id = frame_id_in++;
-        frame_counter = frame_counter_global++;
     }
 
     // Wait for the input buffer to be filled with data
@@ -166,9 +163,6 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
         return;
     }
     auto input_frame = visFrameView(in_buf, input_frame_id);
-    // input_dset_id = input_frame.dataset_id;
-    // auto future_output_dset_id =
-    //     std::async(&baselineCompression::change_dataset_state, this, input_dset_id);
 
     while (!stop_thread) {
 
@@ -246,7 +240,7 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
             auto& p = prods[prod_ind];
             auto& s = stack_map[prod_ind];
 
-            // If the weight is zero, completey skip this iteration
+            // If the weight is zero, completely skip this iteration
             if (weight == 0 || flags[p.input_a] == 0 || flags[p.input_b] == 0)
                 continue;
 
@@ -298,26 +292,22 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
         // Update prometheus metrics
         double elapsed = current_time() - start_time;
         compression_residuals_metric
-            .labels({std::to_string(output_frame.freq_id), output_frame.dataset_id.to_string(),
-                     std::to_string(thread_id)})
+            .labels({std::to_string(output_frame.freq_id)})
             .set(residual);
         compression_time_seconds_metric
-            .labels({std::to_string(output_frame.freq_id), output_frame.dataset_id.to_string(),
-                     std::to_string(thread_id)})
+            .labels({std::to_string(thread_id)})
             .set(elapsed);
         // TODO: this feels like it should be a counter, but it's unclear
         // how `frame_counter` increments exactly
         compression_frame_counter
-            .labels({std::to_string(output_frame.freq_id), output_frame.dataset_id.to_string(),
-                     std::to_string(thread_id)})
-            .set(frame_counter);
+            .labels({std::to_string(thread_id)})
+            .inc();
 
         // Get the current values of the shared frame IDs and increment them.
         {
             std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
             output_frame_id = frame_id_out++;
             input_frame_id = frame_id_in++;
-            frame_counter = frame_counter_global++;
         }
 
         DEBUG("Compression time {:.4f}", elapsed);

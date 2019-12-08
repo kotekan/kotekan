@@ -37,8 +37,11 @@ void visDebug::main_thread() {
 
     uint64_t num_frames = 0;
 
-    auto& frame_counter = Metrics::instance().add_counter("kotekan_visdebug_frame_total",
-                                                          unique_name, {"freq_id", "dataset_id"});
+    auto& frame_freq_counter = Metrics::instance().add_counter("kotekan_visdebug_frames_by_freq_total",
+                                                          unique_name, {"freq_id"});
+
+    auto& frame_dataset_counter = Metrics::instance().add_counter("kotekan_visdebug_frames_by_dataset_total",
+                                                          unique_name, {"dataset_id"});
     while (!stop_thread) {
 
         // Wait for the buffer to be filled with data
@@ -52,8 +55,8 @@ void visDebug::main_thread() {
         auto frame = visFrameView(in_buf, frame_id);
         DEBUG("{:s}", frame.summary());
 
-        frame_counter.labels({std::to_string(frame.freq_id), frame.dataset_id.to_string()}).inc();
-        frame_counter.labels({std::to_string(frame.freq_id), "all"}).inc();
+        frame_freq_counter.labels({std::to_string(frame.freq_id)}).inc();
+        frame_dataset_counter.labels({frame.dataset_id.to_string()}).inc();
 
         // Mark the buffers and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
