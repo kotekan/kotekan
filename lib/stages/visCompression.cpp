@@ -290,8 +290,6 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
         double elapsed = current_time() - start_time;
         compression_residuals_metric.labels({std::to_string(output_frame.freq_id)}).set(residual);
         compression_time_seconds_metric.labels({std::to_string(thread_id)}).set(elapsed);
-        // TODO: this feels like it should be a counter, but it's unclear
-        // how `frame_counter` increments exactly
         compression_frame_counter.labels({std::to_string(thread_id)}).inc();
 
         // Get the current values of the shared frame IDs and increment them.

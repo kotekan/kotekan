@@ -27,13 +27,13 @@ EigenVisIter::EigenVisIter(Config& config, const string& unique_name,
     comp_time_seconds_metric(
         Metrics::instance().add_gauge("kotekan_eigenvisiter_comp_time_seconds", unique_name)),
     eigenvalue_metric(Metrics::instance().add_gauge("kotekan_eigenvisiter_eigenvalue", unique_name,
-                                                    {"eigenvalue", "freq_id", "dataset_id"})),
+                                                    {"eigenvalue", "freq_id"})),
     iterations_metric(Metrics::instance().add_gauge("kotekan_eigenvisiter_iterations", unique_name,
-                                                    {"freq_id", "dataset_id"})),
+                                                    {"freq_id"})),
     eigenvalue_convergence_metric(Metrics::instance().add_gauge(
-        "kotekan_eigenvisiter_eigenvalue_convergence", unique_name, {"freq_id", "dataset_id"})),
+        "kotekan_eigenvisiter_eigenvalue_convergence", unique_name, {"freq_id"})),
     eigenvector_convergence_metric(Metrics::instance().add_gauge(
-        "kotekan_eigenvisiter_eigenvector_convergence", unique_name, {"freq_id", "dataset_id"})) {
+        "kotekan_eigenvisiter_eigenvector_convergence", unique_name, {"freq_id"})) {
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -187,15 +187,15 @@ void EigenVisIter::update_metrics(uint32_t freq_id, dset_id_t dset_id, double el
 
     // Output eigenvalues to prometheus
     for (uint32_t i = 0; i < _num_eigenvectors; i++) {
-        eigenvalue_metric.labels({std::to_string(i), std::to_string(freq_id), dset_id.to_string()})
+        eigenvalue_metric.labels({std::to_string(i), std::to_string(freq_id)})
             .set(eigpair.first[_num_eigenvectors - 1 - i]);
     }
 
     // Output RMS to prometheus
-    eigenvalue_metric.labels({"rms", std::to_string(freq_id), dset_id.to_string()}).set(stats.rms);
+    eigenvalue_metric.labels({"rms", std::to_string(freq_id)}).set(stats.rms);
 
     // Output convergence stats
-    std::vector<std::string> labels = {std::to_string(freq_id), dset_id.to_string()};
+    std::vector<std::string> labels = {std::to_string(freq_id)};
     iterations_metric.labels(labels).set(stats.iterations);
     eigenvalue_convergence_metric.labels(labels).set(stats.eps_eval);
     eigenvector_convergence_metric.labels(labels).set(stats.eps_evec);
