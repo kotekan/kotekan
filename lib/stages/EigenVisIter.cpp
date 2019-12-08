@@ -28,8 +28,8 @@ EigenVisIter::EigenVisIter(Config& config, const string& unique_name,
         Metrics::instance().add_gauge("kotekan_eigenvisiter_comp_time_seconds", unique_name)),
     eigenvalue_metric(Metrics::instance().add_gauge("kotekan_eigenvisiter_eigenvalue", unique_name,
                                                     {"eigenvalue", "freq_id"})),
-    iterations_metric(Metrics::instance().add_gauge("kotekan_eigenvisiter_iterations", unique_name,
-                                                    {"freq_id"})),
+    iterations_metric(
+        Metrics::instance().add_gauge("kotekan_eigenvisiter_iterations", unique_name, {"freq_id"})),
     eigenvalue_convergence_metric(Metrics::instance().add_gauge(
         "kotekan_eigenvisiter_eigenvalue_convergence", unique_name, {"freq_id"})),
     eigenvector_convergence_metric(Metrics::instance().add_gauge(
