@@ -48,15 +48,12 @@ baselineCompression::baselineCompression(Config& config, const string& unique_na
     out_buf(get_buffer("out_buf")),
     frame_id_in(in_buf),
     frame_id_out(out_buf),
-    compression_residuals_metric(
-        Metrics::instance().add_gauge("kotekan_baselinecompression_residuals", unique_name,
-                                      {"freq_id"})),
-    compression_time_seconds_metric(
-        Metrics::instance().add_gauge("kotekan_baselinecompression_time_seconds", unique_name,
-                                      {"thread_id"})),
-    compression_frame_counter(
-        Metrics::instance().add_counter("kotekan_baselinecompression_frame_total", unique_name,
-                                        {"thread_id"})) {
+    compression_residuals_metric(Metrics::instance().add_gauge(
+        "kotekan_baselinecompression_residuals", unique_name, {"freq_id"})),
+    compression_time_seconds_metric(Metrics::instance().add_gauge(
+        "kotekan_baselinecompression_time_seconds", unique_name, {"thread_id"})),
+    compression_frame_counter(Metrics::instance().add_counter(
+        "kotekan_baselinecompression_frame_total", unique_name, {"thread_id"})) {
 
     register_consumer(in_buf, unique_name.c_str());
     register_producer(out_buf, unique_name.c_str());
@@ -291,17 +288,11 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
 
         // Update prometheus metrics
         double elapsed = current_time() - start_time;
-        compression_residuals_metric
-            .labels({std::to_string(output_frame.freq_id)})
-            .set(residual);
-        compression_time_seconds_metric
-            .labels({std::to_string(thread_id)})
-            .set(elapsed);
+        compression_residuals_metric.labels({std::to_string(output_frame.freq_id)}).set(residual);
+        compression_time_seconds_metric.labels({std::to_string(thread_id)}).set(elapsed);
         // TODO: this feels like it should be a counter, but it's unclear
         // how `frame_counter` increments exactly
-        compression_frame_counter
-            .labels({std::to_string(thread_id)})
-            .inc();
+        compression_frame_counter.labels({std::to_string(thread_id)}).inc();
 
         // Get the current values of the shared frame IDs and increment them.
         {
