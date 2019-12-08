@@ -211,7 +211,7 @@ updatable_config:
   rfi_zeroing_second_stage:
     enable:
       kotekan_update_endpoint: json
-      rfi_zeroing: false
+      rfi_zeroing: true
     thresholds:
       kotekan_update_endpoint: json
       thresholds:
