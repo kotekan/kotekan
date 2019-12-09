@@ -67,6 +67,7 @@ data_format: "romein4b"
 
 gpu:
     profiling: true
+    kernel_path: "../../lib/cuda/kernels/"
     commands:
     - name: cudaInputData
     - name: cudaCorrelatorRomein

@@ -9,8 +9,6 @@
 
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
-#include "cuda.h"
-#include "nvrtc.h"
 
 /**
  * @class cudaCorrelatorRomein
@@ -50,12 +48,11 @@ private:
     /// each buffer.
     int32_t _buffer_depth;
 
-    void build();
+
+    void build(const char **opts, int nopts);
+
     /// Allocates resources on the GPU for the kernel.
     CUfunction sq_kernel, tr_kernel;
-    CUmodule module;
-    char* ptx;
-    nvrtcProgram prog;
 
     // Kernel values.
     /// global work space dimension

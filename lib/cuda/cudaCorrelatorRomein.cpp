@@ -8,7 +8,7 @@ REGISTER_CUDA_COMMAND(cudaCorrelatorRomein);
 
 cudaCorrelatorRomein::cudaCorrelatorRomein(Config& config, const string& unique_name,
                                            bufferContainer& host_buffers, cudaDeviceInterface& device) :
-        cudaCommand(config, unique_name, host_buffers, device, "cudaCorrelator", "cudaCorrelator.cu") {
+        cudaCommand(config, unique_name, host_buffers, device, "interleaveCorrelator", "InterleaveCorrelator.cu") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
@@ -18,7 +18,23 @@ cudaCorrelatorRomein::cudaCorrelatorRomein(Config& config, const string& unique_
     _buffer_depth = config.get<int>(unique_name, "buffer_depth");
 
     command_type = gpuCommandType::KERNEL;
-    build();
+
+    std::string stations = fmt::format("-DNR_STATIONS={:d}",_num_elements/2);
+    std::string channels = fmt::format("-DNR_CHANNELS={:d}",_num_local_freq);
+    std::string nsamples = fmt::format("-DNR_SAMPLES_PER_CHANNEL={:d}",_samples_per_data_set);
+    const char *opts[] = {"-arch=compute_75",
+                          "-std=c++14",
+                          //"-code=sm_75",
+                          "-lineinfo",
+                          //"-src-in-ptx",
+                          "-DNR_BITS=4",
+                          stations.c_str(),
+                          channels.c_str(),
+                          nsamples.c_str(),
+                          "-DNR_POLARIZATIONS=2",
+                          "-I/usr/local/cuda/include"
+    };
+    build(opts,9);
 }
 
 cudaCorrelatorRomein::~cudaCorrelatorRomein() {}
@@ -75,92 +91,10 @@ cudaEvent_t cudaCorrelatorRomein::execute(int gpu_frame_id, cudaEvent_t pre_even
 
 
 // Specialist functions:
-void cudaCorrelatorRomein::build() {
-    std::string kernel_command="interleaveCorrelator";
-    std::string kernel_file_name="../../lib/cuda/kernels/InterleaveCorrelator.cu";
-
-    size_t program_size;
-    FILE* fp;
-    char* program_buffer;
-    nvrtcResult res;
-
-    DEBUG2("Building! {:s}", kernel_command)
-    fp = fopen(kernel_file_name.c_str(), "r");
-    if (fp == NULL) {
-        FATAL_ERROR("error loading file: {:s}", kernel_file_name);
-    }
-    fseek(fp, 0, SEEK_END);
-    program_size = ftell(fp);
-    rewind(fp);
-
-    program_buffer = (char*)malloc(program_size + 1);
-    program_buffer[program_size] = '\0';
-    int sizeRead = fread(program_buffer, sizeof(char), program_size, fp);
-    if (sizeRead < (int32_t)program_size)
-        ERROR("Error reading the file: {:s}", kernel_file_name);
-    fclose(fp);
-
-    res = nvrtcCreateProgram(&prog,program_buffer,kernel_command.c_str(),0,NULL,NULL);
-    if (res != NVRTC_SUCCESS){
-        const char*error_str = nvrtcGetErrorString (res);
-        INFO("ERROR IN nvrtcCreateProgram: {}",error_str);
-    }
-
-    free(program_buffer);
-    DEBUG2("Built! {:s}", kernel_command)
-
-    std::string stations = fmt::format("-DNR_STATIONS={:d}",_num_elements/2);
-    std::string channels = fmt::format("-DNR_CHANNELS={:d}",_num_local_freq);
-    std::string nsamples = fmt::format("-DNR_SAMPLES_PER_CHANNEL={:d}",_samples_per_data_set);
-    const char *opts[] = {"-arch=compute_75",
-                          "-std=c++14",
-                          //"-code=sm_75",
-                          "-lineinfo",
-                          //"-src-in-ptx",
-                          "-DNR_BITS=4",
-                          stations.c_str(),
-                          channels.c_str(),
-                          nsamples.c_str(),
-                          "-DNR_POLARIZATIONS=2",
-                          "-I/usr/local/cuda/include"
-                          };
-    res = nvrtcCompileProgram(prog,9, opts);
-    if (res != NVRTC_SUCCESS){
-        const char*error_str = nvrtcGetErrorString (res);
-        ERROR("ERROR IN nvrtcCompileProgram: {}",error_str);
-        // Obtain compilation log from the program.
-        size_t logSize;
-        nvrtcGetProgramLogSize(prog, &logSize);
-        char *log = new char[logSize];
-        nvrtcGetProgramLog(prog, log);
-        INFO("COMPILE LOG: {}",log);
-    }
-
-    // Obtain PTX from the program.
-    size_t ptxSize;
-    nvrtcGetPTXSize(prog, &ptxSize);
-//    char *ptx = new char[ptxSize];
-    ptx = (char*)malloc(ptxSize);
-    res = nvrtcGetPTX(prog, ptx);
-    if (res != NVRTC_SUCCESS) {
-        const char *error_str = nvrtcGetErrorString(res);
-        INFO("ERROR IN nvrtcGetPTX: {}", error_str);
-    }
-    DEBUG2("PTX EXTRACTED");
-    res = nvrtcDestroyProgram(&prog);
-    if (res != NVRTC_SUCCESS) {
-        const char *error_str = nvrtcGetErrorString(res);
-        INFO("ERROR IN nvrtcDestroyProgram: {}", error_str);
-    }
+void cudaCorrelatorRomein::build(const char **opts, int nopts) {
+    cudaCommand::build(opts, nopts);
 
     CUresult err;
-    // Get the kernel itself!
-    err = cuModuleLoadDataEx(&module, ptx, 0, NULL, NULL);
-    if (err != CUDA_SUCCESS){
-        const char *errStr;
-        cuGetErrorString(err, &errStr);
-        INFO("ERROR IN cuModuleLoadDataEx: {}", errStr);
-    }
     err = cuModuleGetFunction(&sq_kernel, module, "correlateSquare");
     if (err != CUDA_SUCCESS){
         const char *errStr;
