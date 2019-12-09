@@ -437,6 +437,14 @@ gpu_rfi_bad_input_buffers:
   gpu_rfi_bad_input_buffer_3:
     kotekan_buffer: standard
 
+# Bad inputs buffer
+bad_input_buffer:
+  num_frames: buffer_depth
+  frame_size: num_elements
+  metadata_pool: main_pool
+  bad_inputs_buffer:
+    kotekan_buffer: standard
+
 #rfi_var_output_buffers:
 #  num_frames: buffer_depth * 100
 #  frame_size: num_local_freq * samples_per_data_set / sk_step * sizeof_float
@@ -538,14 +546,6 @@ baseband:
   baseband3:
     kotekan_stage: basebandReadout
     in_buf: network_buffer_3
-
-# Bad inputs buffer
-bad_input_buffer:
-  num_frames: buffer_depth
-  frame_size: num_elements
-  metadata_pool: main_pool
-  bad_inputs_buffer:
-    kotekan_buffer: standard
 
 # Buffer bad input updates
 # 1) Reorder list

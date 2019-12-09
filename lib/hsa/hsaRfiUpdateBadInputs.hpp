@@ -47,12 +47,16 @@ public:
     /// Copy frame into host_mask and store the no. of bad inputs.
     inline void copy_frame(int gpu_frame_id);
 
+    /// Copy frame into host_mask and store the no. of bad inputs.
+    inline void copy_frame(int gpu_frame_id);
+
 private:
     /// Main data input, list of bad inputs
     Buffer* _in_buf;
 
     /// Used for metadata access
     Buffer* _network_buf;
+    Buffer* _in_buf;
 
     /// IDs for _network_buf
     int32_t _network_buf_finalize_id;
