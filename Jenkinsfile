@@ -41,8 +41,8 @@ pipeline {
           steps {
             sh '''mkdir -p chime-build-clang
                   cd chime-build-clang
-                  export CC=/usr/lib/clang-8.0/bin/clang
-                  export CXX=/usr/lib/clang-8.0/bin/clang++
+                  export CC=clang
+                  export CXX=clang++
                   cmake -DRTE_SDK=/opt/dpdk \
                   -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON \
                   -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
