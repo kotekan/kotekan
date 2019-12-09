@@ -41,16 +41,12 @@ REGISTER_KOTEKAN_STAGE(visWriter);
 REGISTER_KOTEKAN_STAGE(visCalWriter);
 
 
-// Define the string name of the bad frame types, required for the prometheus output
-std::map<visWriter::droppedType, std::string> visWriter::dropped_type_map = {
-    {visWriter::droppedType::late, "late"}, {visWriter::droppedType::bad_dataset, "bad_dataset"}};
-
-
 visWriter::visWriter(Config& config, const string& unique_name, bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&visWriter::main_thread, this)),
-    dropped_frame_counter(Metrics::instance().add_counter("kotekan_viswriter_dropped_frame_total",
-                                                          unique_name,
-                                                          {"freq_id", "dataset_id", "reason"})) {
+    late_frame_counter(Metrics::instance().add_counter("kotekan_viswriter_late_frame_total",
+                                                       unique_name, {"freq_id"})),
+    bad_dataset_frame_counter(Metrics::instance().add_counter(
+        "kotekan_viswriter_bad_dataset_frame_total", unique_name, {"dataset_id"})) {
 
     // Fetch any simple configuration
     root_path = config.get_default<std::string>(unique_name, "root_path", ".");
@@ -128,7 +124,7 @@ void visWriter::main_thread() {
 
         // If the dataset is bad, skip the frame and move onto the next
         if (acq.bad_dataset) {
-            report_dropped_frame(frame.dataset_id, frame.freq_id, droppedType::bad_dataset);
+            bad_dataset_frame_counter.labels({frame.dataset_id.to_string()}).inc();
 
             // Check if the frequency we are receiving is on the list of frequencies
             // we are processing
@@ -165,7 +161,7 @@ void visWriter::main_thread() {
 
             // Increase metric count if we dropped a frame at write time
             if (late) {
-                report_dropped_frame(frame.dataset_id, frame.freq_id, droppedType::late);
+                late_frame_counter.labels({std::to_string(frame.freq_id)}).inc();
             }
 
             // Update average write time in prometheus
@@ -179,23 +175,6 @@ void visWriter::main_thread() {
         // Clean out any acquisitions that have been inactive long
         close_old_acqs();
     }
-}
-
-
-void visWriter::report_dropped_frame(dset_id_t ds_id, uint32_t freq_id, droppedType reason) {
-
-    std::lock_guard<std::mutex> _lock(acqs_mutex);
-
-    // Get acquisition
-    auto acq = acqs.at(ds_id);
-
-    // Relies on the fact that insertion zero intialises
-    auto key = std::make_pair(freq_id, reason);
-    // TODO: check if this is necessary
-    acq->dropped_frame_count[key] += 1;
-    dropped_frame_counter
-        .labels({std::to_string(freq_id), ds_id.to_string(), dropped_type_map.at(reason)})
-        .inc();
 }
 
 

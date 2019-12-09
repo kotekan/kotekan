@@ -89,8 +89,10 @@
  * @metric kotekan_viswriter_write_time_seconds
  *         The write time of the HDF5 writer. An exponential moving average over ~10
  *         samples.
- * @metric kotekan_viswriter_dropped_frame_total
- *         The number of frames dropped while attempting to write.
+ * @metric kotekan_viswriter_late_frame_total
+ *         The number of frames dropped while attempting to write as they are too late.
+ * @metric kotekan_viswriter_bad_dataset_frame_total
+ *         The number of frames dropped as they belong to a bad dataset.
  *
  * @author Richard Shaw
  */
@@ -131,16 +133,6 @@ protected:
      **/
     bool check_git_version(dset_id_t ds_id);
 
-    /**
-     * Report a dropped frame to prometheus.
-     *
-     * @param  ds_id    Dataset ID of frame.
-     * @param  freq_id  Freq ID of frame.
-     * @param  reason   Reason frame was dropped.
-     **/
-    void report_dropped_frame(dset_id_t ds_id, uint32_t freq_id, droppedType reason);
-
-
     // Parameters saved from the config files
     std::string root_path;
     std::string instrument_name;
@@ -170,9 +162,6 @@ protected:
 
         /// The current set of files we are writing
         std::unique_ptr<visFileBundle> file_bundle;
-
-        /// Dropped frame counts per freq ID
-        std::map<std::pair<uint32_t, droppedType>, uint64_t> dropped_frame_count;
 
         /// Frequency IDs that we are expecting
         std::map<uint32_t, uint32_t> freq_id_map;
@@ -209,8 +198,8 @@ private:
     /// Keep track of the average write time
     movingAverage write_time;
 
-    /// TODO: document
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& dropped_frame_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& late_frame_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& bad_dataset_frame_counter;
 };
 
 /**
