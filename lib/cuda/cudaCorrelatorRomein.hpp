@@ -12,11 +12,12 @@
 
 /**
  * @class cudaCorrelatorRomein
- * @brief cudaCommand for doing an N2 correlation. Still prototyping sandbox only.
+ * @brief cudaCommand for doing an N2 correlation. Uses John Romein's Tensor-based kernel,
+ * which must be provided separately. Contact John (romein@astron.nl) for InterleaveCorrelator.cu.
  *
- * Longer desription goes here. Kernel still needs heavy optimizing, consider a sandbox only for now.
+ * Longer desription goes here.
  *
- * @author Keith Vanderlinde
+ * @author Keith Vanderlinde, kernels (not included) by John Romein
  *
  */
 class cudaCorrelatorRomein : public cudaCommand {
