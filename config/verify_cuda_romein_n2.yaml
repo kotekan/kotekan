@@ -1,0 +1,92 @@
+##########################################
+#
+# verify_cuda_n2.yaml
+#
+# Config to test John Romein's cuda N2 kernel.
+#
+# Author: Keith Vanderlinde
+#
+##########################################
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
+num_links: 4
+freq_array: [4,7,10,16]
+timesamples_per_packet: 2
+block_size: 2
+samples_per_data_set: 3072 #49152 #16384
+num_data_sets: 1
+num_gpus: 1
+buffer_depth: 2 #8
+num_gpu_frames: 4
+cpu_affinity: [2,3,4,5,8,9,10,11]
+sizeof_float: 4
+num_elements: 576*2
+frame_arrival_period: 0.00000256 * samples_per_data_set
+num_local_freq: 64
+num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
+sizeof_int: 4
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+# Buffers
+gpu_input_buffers:
+    num_frames: buffer_depth*2
+    frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
+    metadata_pool: main_pool
+    gpu_input_buffer:
+        kotekan_buffer: standard
+
+gpu_output_buffers:
+    num_frames: buffer_depth*2
+    frame_size: num_local_freq * num_blocks * (block_size*block_size) * 2 * num_data_sets  * sizeof_int
+    metadata_pool: main_pool
+    gpu_output_buffer:
+        kotekan_buffer: standard
+
+cpu_output_buffers:
+    num_frames: buffer_depth
+    frame_size: num_local_freq * num_blocks * (block_size*block_size) * 2 * num_data_sets  * sizeof_int
+    metadata_pool: main_pool
+    cpu_output_buffer:
+        kotekan_buffer: standard
+
+gen_data:
+    type: random
+    value: 1532
+    kotekan_stage: testDataGen
+    out_buf: gpu_input_buffer
+
+data_format: "romein4b"
+
+gpu:
+    profiling: true
+    commands:
+    - name: cudaInputData
+    - name: cudaCorrelatorRomein
+    - name: cudaOutputData
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            in_buf: gpu_input_buffer
+        out_buffers:
+            output_buf: gpu_output_buffer
+
+cpu:
+    kotekan_stage: gpuSimulate
+    log_level: debug
+    network_in_buf: gpu_input_buffer
+    corr_out_buf: cpu_output_buffer
+
+check_data:
+    kotekan_stage: testDataCheckInt
+    first_buf: gpu_output_buffer
+    second_buf: cpu_output_buffer
+

@@ -21,11 +21,17 @@ set ( KOTEKAN_CUDA_SOURCES
       cudaOutputDataZero.cpp
 
 # Simple test
-      cudaCorrelatorKernel.cu
+        cudaCorrelatorKernel.cu
+        cudaCorrelatorRomein.cpp
     )
 
 add_library ( kotekan_cuda ${KOTEKAN_CUDA_SOURCES} )
 
-target_compile_options(kotekan_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-gencode arch=compute_75,code=sm_75 -lineinfo>)
+target_compile_options(kotekan_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-gencode arch=compute_75,code=sm_75 -lineinfo -src-in-ptx>)
 
-add_dependencies( kotekan_cuda kotekan_gpu )
+add_custom_target(cuda_kernel_copy
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${KOTEKAN_SOURCE_DIR}/lib/cuda/kernels"
+        "kernels/")
+
+add_dependencies( kotekan_cuda cuda_kernel_copy kotekan_gpu )

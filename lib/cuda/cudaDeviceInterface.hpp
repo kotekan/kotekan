@@ -9,6 +9,7 @@
 
 #include "cudaUtils.hpp"
 #include "cuda_runtime_api.h"
+#include "cuda.h"
 #include "gpuDeviceInterface.hpp"
 
 // These adjust the number of queues used by the CUDA runtime
