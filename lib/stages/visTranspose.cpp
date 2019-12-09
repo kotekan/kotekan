@@ -429,6 +429,7 @@ dset_id_t visTranspose::base_dset(dset_id_t ds_id) {
         auto ready = mstate_fut.wait_for(timeout);
         if (ready == std::future_status::timeout) {
             ERROR("Communication with dataset broker timed out for datatset id {}.", ds_id);
+            dm.stop();
             exit_kotekan(ReturnCode::TIMEOUT);
             return ds_id;
         }
