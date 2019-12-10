@@ -11,12 +11,6 @@
 #include <signal.h>
 
 #ifdef __cplusplus
-#ifdef __clang__
-#include <string.h>
-#else
-#include <cstring>
-using std::strerror;
-#endif
 #include <cerrno>
 #endif
 
