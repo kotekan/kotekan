@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <iostream>
 #include <stdio.h>
+#include <sys/stat.h>
 #include <thread>
 #include <unistd.h>
 
@@ -168,6 +169,25 @@ void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutMana
             INFO("Received baseband dump request for event {:d}: {:d} samples starting at count "
                  "{:d}. (next_frame: {:d})",
                  event_id, request.length_fpga, request.start_fpga, next_frame);
+
+            // Checks if the destination directory exists, and if it doesn't, stop processing the
+            // request with an error before trying to read out the samples.
+            //
+            // TODO: once API manager is a Stage, this would naturally belong in REST request
+            // callback
+            struct stat path_status;
+            int stat_rc = stat((_base_dir + request.file_path).c_str(), &path_status);
+            if (!(stat_rc == 0 && path_status.st_mode & S_IFDIR)) {
+                std::lock_guard<std::mutex> lock(request_mtx);
+                dump_status.finished = dump_status.started =
+                    std::make_shared<std::chrono::system_clock::time_point>(
+                        std::chrono::system_clock::now());
+                dump_status.state = basebandDumpStatus::State::ERROR;
+                dump_status.reason = "Destination does not exist or is not a directory: "
+                                     + _base_dir + request.file_path;
+                continue;
+            }
+
             {
                 std::lock_guard<std::mutex> lock(request_mtx);
                 dump_status.state = basebandDumpStatus::State::INPROGRESS;
