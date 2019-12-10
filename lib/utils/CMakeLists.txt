@@ -25,6 +25,7 @@ set ( KOTEKAN_UTIL_SOURCES
       BipBuffer.cpp
       Hash.cpp
       MurmurHash3.cpp
+      network_functions.cpp
     )
 
 if (${USE_HDF5})

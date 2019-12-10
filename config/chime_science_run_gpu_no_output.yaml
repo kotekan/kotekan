@@ -8,8 +8,8 @@
 #
 # - Packet capture from the ICE boards including FPGA flag handling and normalization
 # - N^2 kernels and output for various data projects to receiver systems
-# - FRB FFT Fan beam and packet Tx
-# - Pulsar 10 coherent beam system abd packet Tx
+# - FRB FFT Fan beam and packet Tx, with Valves protecting input buffers from overflowing
+# - Pulsar 10 coherent beam system and packet Tx, with Valves protecting input buffers from overflowing
 # - RFI detection and summary stats system (only reports on RFI, no normalization yet)
 #
 # This component is intended to be run on the GPU nodes.
@@ -89,20 +89,20 @@ dataset_manager:
 updatable_config:
   frb_gain:
     kotekan_update_endpoint: json
-    frb_gain_dir: /mnt/frb-archiver/GainFiles/Latest_FRB
+    frb_gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_FRB
   pulsar_gain:
     kotekan_update_endpoint: json
     pulsar_gain_dir:
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
+      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
   pulsar_pointing:
     0:
       kotekan_update_endpoint: json
@@ -157,9 +157,14 @@ updatable_config:
   bad_inputs:
     kotekan_update_endpoint: json
     # These inputs are assumed to be in cylinder order
-    bad_inputs: []
+    bad_inputs: [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
+                  370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
+                  807,  855,  944,  960,  971,  981,  986, 1005, 1010, 1020, 1023,
+                 1058, 1166, 1225, 1280, 1281, 1285, 1314, 1343, 1380, 1381, 1521,
+                 1523, 1543, 1642, 1687, 1738, 1792, 1794, 1910, 1912, 1943, 1945,
+                 1950, 1982, 1984, 1987, 2032, 2034]
     start_time: 1535048997.
-    tag: "initial_flags"
+    update_id: "initial_flags"
   rfi_zeroing_toggle:
     kotekan_update_endpoint: json
     rfi_zeroing: True
@@ -203,6 +208,17 @@ updatable_config:
           -1.1771713330451292e-32,
           3.948826407949732e-35,
         ],]
+  rfi_zeroing_second_stage:
+    enable:
+      kotekan_update_endpoint: json
+      rfi_zeroing: false
+    thresholds:
+      kotekan_update_endpoint: json
+      thresholds:
+        - threshold: 3.0
+          fraction: 0.13
+        - threshold: 1.5
+          fraction: 0.4
 
 
 ###########################
@@ -252,6 +268,14 @@ gpu_n2_buffers:
     kotekan_buffer: standard
   valve_buffer_3:
     kotekan_buffer: standard
+  rfi_vis_buffer_0:
+    kotekan_buffer: standard
+  rfi_vis_buffer_1:
+    kotekan_buffer: standard
+  rfi_vis_buffer_2:
+    kotekan_buffer: standard
+  rfi_vis_buffer_3:
+    kotekan_buffer: standard
 
 gpu_beamform_output_buffers:
   num_frames: buffer_depth
@@ -265,6 +289,14 @@ gpu_beamform_output_buffers:
   gpu_beamform_output_buffer_2:
     kotekan_buffer: standard
   gpu_beamform_output_buffer_3:
+    kotekan_buffer: standard
+  gpu_beamform_output_valved_buffer_0:
+    kotekan_buffer: standard
+  gpu_beamform_output_valved_buffer_1:
+    kotekan_buffer: standard
+  gpu_beamform_output_valved_buffer_2:
+    kotekan_buffer: standard
+  gpu_beamform_output_valved_buffer_3:
     kotekan_buffer: standard
 
 gain_frb_buffers:
@@ -304,6 +336,14 @@ pulsar_output_buffers:
   beamform_pulsar_output_buffer_2:
     kotekan_buffer: standard
   beamform_pulsar_output_buffer_3:
+    kotekan_buffer: standard
+  beamform_pulsar_output_valved_buffer_0:
+    kotekan_buffer: standard
+  beamform_pulsar_output_valved_buffer_1:
+    kotekan_buffer: standard
+  beamform_pulsar_output_valved_buffer_2:
+    kotekan_buffer: standard
+  beamform_pulsar_output_valved_buffer_3:
     kotekan_buffer: standard
 
 # The vis buffer metadata pool
@@ -742,6 +782,26 @@ read_gain:
     gain_psr_buf: gain_psr_buffer_3
 
 #### FRB GPU Post processing and Tx ####
+frb_valve:
+  # To introduce random drops, replace Valve with TestDropFrames
+  # Specify probability with `drop_frame_change`
+  frb_valve_0:
+    kotekan_stage: Valve
+    in_buf: gpu_beamform_output_buffer_0
+    out_buf: gpu_beamform_output_valved_buffer_0
+  frb_valve_1:
+    kotekan_stage: Valve
+    in_buf: gpu_beamform_output_buffer_1
+    out_buf: gpu_beamform_output_valved_buffer_1
+  frb_valve_2:
+    kotekan_stage: Valve
+    in_buf: gpu_beamform_output_buffer_2
+    out_buf: gpu_beamform_output_valved_buffer_2
+  frb_valve_3:
+    kotekan_stage: Valve
+    in_buf: gpu_beamform_output_buffer_3
+    out_buf: gpu_beamform_output_valved_buffer_3
+
 frb:
   factor_upchan_out: 16
   num_beams_per_frb_packet: 4
@@ -763,10 +823,10 @@ frb:
     #incoherent_truncation: 25.
     lost_samples_buf: lost_samples_buffer
     frb_out_buf: frb_output_buffer
-    in_buf_0: gpu_beamform_output_buffer_0
-    in_buf_1: gpu_beamform_output_buffer_1
-    in_buf_2: gpu_beamform_output_buffer_2
-    in_buf_3: gpu_beamform_output_buffer_3
+    in_buf_0: gpu_beamform_output_valved_buffer_0
+    in_buf_1: gpu_beamform_output_valved_buffer_1
+    in_buf_2: gpu_beamform_output_valved_buffer_2
+    in_buf_3: gpu_beamform_output_valved_buffer_3
     out_buf: frb_output_buffer
   network_send:
     #kotekan_stage: frbNetworkProcess
@@ -778,6 +838,7 @@ frb:
     #column_mode: true
     beam_offset: 0
     time_interval: 125829120
+    dead_ping_threshold: 0
     L1_node_ips:
       # Rack 1
       - 10.6.201.10
@@ -1052,6 +1113,26 @@ frb:
       # cfDn9
 
 #### Pulsar GPU Post processing and Tx ####
+pulsar_valve:
+  # To introduce random drops, replace Valve with TestDropFrames
+  # Specify probability with `drop_frame_change`
+  pulsar_valve_0:
+    kotekan_stage: Valve
+    in_buf: beamform_pulsar_output_buffer_0
+    out_buf: beamform_pulsar_output_valved_buffer_0
+  pulsar_valve_1:
+    kotekan_stage: Valve
+    in_buf: beamform_pulsar_output_buffer_1
+    out_buf: beamform_pulsar_output_valved_buffer_1
+  pulsar_valve_2:
+    kotekan_stage: Valve
+    in_buf: beamform_pulsar_output_buffer_2
+    out_buf: beamform_pulsar_output_valved_buffer_2
+  pulsar_valve_3:
+    kotekan_stage: Valve
+    in_buf: beamform_pulsar_output_buffer_3
+    out_buf: beamform_pulsar_output_valved_buffer_3
+
 pulsar:
   timesamples_per_pulsar_packet: 625
   udp_pulsar_packet_size: 5032
@@ -1065,10 +1146,10 @@ pulsar:
     kotekan_buffer: standard
   postprocess:
     kotekan_stage: pulsarPostProcess
-    network_input_buffer_0: beamform_pulsar_output_buffer_0
-    network_input_buffer_1: beamform_pulsar_output_buffer_1
-    network_input_buffer_2: beamform_pulsar_output_buffer_2
-    network_input_buffer_3: beamform_pulsar_output_buffer_3
+    network_input_buffer_0: beamform_pulsar_output_valved_buffer_0
+    network_input_buffer_1: beamform_pulsar_output_valved_buffer_1
+    network_input_buffer_2: beamform_pulsar_output_valved_buffer_2
+    network_input_buffer_3: beamform_pulsar_output_valved_buffer_3
     pulsar_out_buf: pulsar_output_buffer
   network_send:
     #kotekan_stage: pulsarNetworkProcess
@@ -1108,6 +1189,41 @@ valve:
     in_buf: gpu_n2_output_buffer_3
     out_buf: valve_buffer_3
 
+# Perform a second pass at RFI excision
+rfi_stage2:
+  rfi0:
+    kotekan_stage: RfiFrameDrop
+    in_buf_vis: valve_buffer_0
+    in_buf_sk: gpu_rfi_output_buffer_0
+    out_buf: rfi_vis_buffer_0
+    updatable_config:
+       enable: "/updatable_config/rfi_zeroing_second_stage/enable"
+       thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
+  rfi1:
+    kotekan_stage: RfiFrameDrop
+    in_buf_vis: valve_buffer_1
+    in_buf_sk: gpu_rfi_output_buffer_1
+    out_buf: rfi_vis_buffer_1
+    updatable_config:
+       enable: "/updatable_config/rfi_zeroing_second_stage/enable"
+       thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
+  rfi2:
+    kotekan_stage: RfiFrameDrop
+    in_buf_vis: valve_buffer_2
+    in_buf_sk: gpu_rfi_output_buffer_2
+    out_buf: rfi_vis_buffer_2
+    updatable_config:
+       enable: "/updatable_config/rfi_zeroing_second_stage/enable"
+       thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
+  rfi3:
+    kotekan_stage: RfiFrameDrop
+    in_buf_vis: valve_buffer_3
+    in_buf_sk: gpu_rfi_output_buffer_3
+    out_buf: rfi_vis_buffer_3
+    updatable_config:
+       enable: "/updatable_config/rfi_zeroing_second_stage/enable"
+       thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
+
 vis_accumulate:
   integration_time: 5.0  # Integrate to roughly 5s cadence
   # This (12288) is for num_sub_frames = 4, there is currently a config bug that
@@ -1115,7 +1231,7 @@ vis_accumulate:
   samples_per_data_set: 12288
   acc0:
     kotekan_stage: visAccumulate
-    in_buf: valve_buffer_0
+    in_buf: rfi_vis_buffer_0
     out_buf: visbuf_5s_0
     gating:
       psr0:
@@ -1125,7 +1241,7 @@ vis_accumulate:
       psr0: "/updatable_config/gating/psr0_config"
   acc1:
     kotekan_stage: visAccumulate
-    in_buf: valve_buffer_1
+    in_buf: rfi_vis_buffer_1
     out_buf: visbuf_5s_1
     gating:
       psr0:
@@ -1135,7 +1251,7 @@ vis_accumulate:
       psr0: "/updatable_config/gating/psr0_config"
   acc2:
     kotekan_stage: visAccumulate
-    in_buf: valve_buffer_2
+    in_buf: rfi_vis_buffer_2
     out_buf: visbuf_5s_2
     gating:
       psr0:
@@ -1145,7 +1261,7 @@ vis_accumulate:
       psr0: "/updatable_config/gating/psr0_config"
   acc3:
     kotekan_stage: visAccumulate
-    in_buf: valve_buffer_3
+    in_buf: rfi_vis_buffer_3
     out_buf: visbuf_5s_3
     gating:
       psr0:

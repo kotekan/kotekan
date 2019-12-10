@@ -43,6 +43,8 @@
  * @conf  pattern               String. Name of the pattern to fill with. These
  *                              patterns are registerd subclasses of
  *                              fakeGpuPattern.
+ * @conf  drop_probability      Float. Probability that any individual frame gets
+ *                              dropped. Default is zero, i.e. no frames are dropped.
  *
  * @note Look at the documentation for the test patterns to see any addtional
  *       configuration they require.
@@ -73,6 +75,7 @@ private:
     bool pre_accumulate;
     bool wait;
     int32_t num_frames;
+    float drop_probability;
 
     // Pattern to use for filling
     std::unique_ptr<FakeGpuPattern> pattern;

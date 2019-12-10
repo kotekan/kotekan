@@ -36,7 +36,9 @@ bufferRecv::bufferRecv(Config& config, const string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferRecv::main_thread, this)),
     dropped_frame_counter(
-        Metrics::instance().add_counter("kotekan_buffer_recv_dropped_frame_total", unique_name)) {
+        Metrics::instance().add_counter("kotekan_buffer_recv_dropped_frame_total", unique_name)),
+    transfer_time_seconds(Metrics::instance().add_gauge("kotekan_buffer_recv_transfer_time_seconds",
+                                                        unique_name, {"source"})) {
 
     listen_port = config.get_default<uint32_t>(unique_name, "listen_port", 11024);
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
@@ -96,6 +98,11 @@ void bufferRecv::accept_connection(int listener, short event, void* arg) {
 void bufferRecv::increment_droped_frame_count() {
     std::lock_guard<mutex> lock(dropped_frame_count_mutex);
     dropped_frame_counter.inc();
+}
+
+void bufferRecv::set_transfer_time_seconds(const string& source_label, const double elapsed) {
+    std::lock_guard<mutex> lock(transfer_time_seconds_mutex);
+    transfer_time_seconds.labels({source_label}).set(elapsed);
 }
 
 void bufferRecv::internal_accept_connection(evutil_socket_t listener, short event, void* arg) {
@@ -177,7 +184,7 @@ void bufferRecv::main_thread() {
     struct sockaddr_in server_addr;
     struct event* listener_event;
 
-    INFO("libevent version: {:s}", event_get_version());
+    DEBUG("libevent version: {:s}", event_get_version());
 
     if (evthread_use_pthreads()) {
         ERROR("Cannot use pthreads with libevent!");
@@ -293,7 +300,7 @@ connInstance::connInstance(const string& producer_name, Buffer* buf, bufferRecv*
 }
 
 connInstance::~connInstance() {
-    INFO("Closing FD");
+    DEBUG("Closing FD");
     close(fd);
     event_free(event_read);
     buffer_free(frame_space, buf->aligned_frame_size);
@@ -327,29 +334,6 @@ void connInstance::close_instance() {
 
 void connInstance::internal_read_callback() {
     DEBUG2("Read Callback");
-
-    // cache for metrics `kotekan_buffer_recv_transfer_time_seconds` because
-    // prometheusMap requires a unique (metric_name, stage_name) key, and the
-    // "producer_name" that we use as the "stage" comes from (potentially many)
-    // external source(s), so there is no guarantee of its uniqueness.
-    static std::mutex producer_transfer_time_map_lock;
-    static std::unordered_map<
-        std::string, std::shared_ptr<kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>>>
-        producer_transfer_time_map;
-
-    // Look up the metric for this instance's producer, or create a new one
-    std::shared_ptr<kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>>
-        transfer_time_seconds_metric;
-    {
-        std::lock_guard<std::mutex> lock(producer_transfer_time_map_lock);
-        if (producer_transfer_time_map.count(producer_name) == 0) {
-            auto& m = Metrics::instance().add_gauge("kotekan_buffer_recv_transfer_time_seconds",
-                                                    producer_name, {"source"});
-            producer_transfer_time_map[producer_name] =
-                std::shared_ptr<kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>>(&m);
-        }
-        transfer_time_seconds_metric = producer_transfer_time_map.at(producer_name);
-    }
 
     // Locking the instance should be equivalent to locking the bufferevent
     // since the callback which includes a given bev has a unique instance
@@ -443,7 +427,7 @@ void connInstance::internal_read_callback() {
             DEBUG2("Finished state");
             int frame_id = buffer_recv->get_next_frame();
             if (frame_id == -1) {
-                WARN("No free buffer frames, dropping data from {:s}", client_ip);
+                DEBUG("No free buffer frames, dropping data from {:s}", client_ip);
 
                 // Update dropped frame count in prometheus
                 buffer_recv->increment_droped_frame_count();
@@ -472,7 +456,7 @@ void connInstance::internal_read_callback() {
                 // TODO: having IP:port as the "source" label is a **bad**
                 // Prometheus practice and of dubious usefulness
                 std::string source_label = fmt::format(fmt("{:s}:{:d}"), client_ip, port);
-                transfer_time_seconds_metric->labels({source_label}).set(elapsed);
+                buffer_recv->set_transfer_time_seconds(source_label, elapsed);
 
                 DEBUG("Received data from client: {:s}:{:d} into frame: {:s}[{:d}]", client_ip,
                       port, buf->buffer_name, frame_id);

@@ -49,13 +49,14 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       rfiRecord.cpp
       rfiBadInputFinder.cpp
       rfiUpdateMetadata.cpp
-      receiveFlags.cpp
+      ReceiveFlags.cpp
       valve.cpp
       visTransform.cpp
       visTestPattern.cpp
       visDebug.cpp
       removeEv.cpp
       bufferBadInputs.cpp
+      RfiFrameDrop.cpp
     )
 
 if (${USE_AIRSPY})

@@ -50,7 +50,7 @@ public:
 
 private:
     /// adds state and dataset and gets a new output dataset ID from manager
-    dset_id_t change_dataset_state(dset_id_t input_dset_id, std::vector<uint32_t>& subset_list);
+    void change_dataset_state(dset_id_t input_dset_id);
 
     // List of frequencies for the subset
     std::vector<uint32_t> _subset_list;
@@ -60,8 +60,9 @@ private:
     /// Input buffer with all frequencies
     Buffer* in_buf;
 
-    // dataset IDs
-    std::future<dset_id_t> _output_dset_id;
+    // Maps for determining the dataset ID to use
+    std::map<dset_id_t, dset_id_t> dset_id_map;
+    std::map<fingerprint_t, state_id_t> states_map;
 };
 
 

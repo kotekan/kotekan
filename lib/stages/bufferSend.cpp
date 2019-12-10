@@ -131,12 +131,12 @@ void bufferSend::main_thread() {
                 continue;
             }
             DEBUG2("Sent frame: {:d}", n_sent);
-            INFO("Sent frame: {:s}[{:d}] to {:s}:{:d}", buf->buffer_name, frame_id, server_ip,
-                 server_port);
+            DEBUG("Sent frame: {:s}[{:d}] to {:s}:{:d}", buf->buffer_name, frame_id, server_ip,
+                  server_port);
 
         } else {
-            WARN("Dropping frame {:s}[{:d}], because connection to {:s}:{:d} is down.",
-                 buf->buffer_name, frame_id, server_ip, server_port);
+            DEBUG("Dropping frame {:s}[{:d}], because connection to {:s}:{:d} is down.",
+                  buf->buffer_name, frame_id, server_ip, server_port);
         }
 
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
