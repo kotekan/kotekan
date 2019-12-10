@@ -9,11 +9,11 @@ pipeline {
     CCACHE_BASEDIR = "/mnt/data/jenkins/workspace"
   }
   stages {
-    stage('Pre build ccache stats') {
+    /*stage('Pre build ccache stats') {
       steps {
         sh '''ccache -s'''
       }
-    }
+    }*/
     stage('Build') {
       parallel {
         stage('Build kotekan without hardware specific options') {
@@ -107,11 +107,11 @@ pipeline {
         }
       }
     }
-    stage('Post build ccache stats') {
+    /*stage('Post build ccache stats') {
       steps {
         sh '''ccache -s'''
       }
-    }
+    }*/
     stage('Unit Tests') {
         parallel {
             stage('Python Unit Tests') {
