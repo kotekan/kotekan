@@ -31,7 +31,7 @@ compressLostSamples::~compressLostSamples() {}
 
 void compressLostSamples::main_thread() {
 
-    uint in_buffer_ID = 0; // Process only 1 GPU buffer, cycle through buffer depth
+    uint in_buffer_ID = 0;
     uint8_t* in_frame;
     int out_buffer_ID = 0;
 

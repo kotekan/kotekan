@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief Integrate 21-cm data over frames.
+ * @brief Compresses the lost samples buffer.
  *  - compressLostSamples : public kotekan::Stage
  */
 
@@ -15,21 +15,16 @@ using std::vector;
 
 /**
  * @class compressLostSamples
- * @brief Post-processing engine for output of the CHIME/HFB kernel,
- *        integrates data over 80 frames to create 10s worth of data.
- *        num_beams * num_sub_freq = 1024 * 128
- *
- * This engine sums CHIME/HFB data from 1 GPU stream in each CHIME node,
- * which are stored in the output buffer.
+ * @brief Compresses the lost samples buffer by checking samples in blocks of num_sub_freqs * 3, if any are flagged place a 1 in the compressed lost samples frame. 
+ *        samples_per_data_set / num_sub_freq / 3 = 49152 / 128 / 3
  *
  * @par Buffers
- * @buffer hfb_input_buffer Kotekan buffer feeding data from any GPU.
- *     @buffer_format Array of @c floats
- * @buffer hfb_out_buf Kotekan buffer that will be populated with integrated data.
- *     @buffer_format Array of @c floats
+ * @buffer in_buf Kotekan buffer of lost samples.
+ *     @buffer_format Array of @c chars
+ * @buffer out_buf Kotekan buffer of compressed lost samples.
+ *     @buffer_format Array of @c chars
  *
- * @conf   num_frames_to_integrate Int. No. of frames to integrate over.
- * @conf   num_frb_total_beams  Int. No. of total FRB beams (should be 1024).
+ * @conf   samples_per_data_set Int. No. of samples.
  * @conf   num_sub_freqs  Int. No. of sub frequencies (should be 128).
  *
  * @author James Willis
