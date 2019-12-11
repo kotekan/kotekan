@@ -41,7 +41,7 @@ visTransform::visTransform(Config& config, const std::string& unique_name,
     block_size = config.get<size_t>(unique_name, "block_size");
     num_eigenvectors = config.get<size_t>(unique_name, "num_ev");
 
-    // Get the list of buffers that this stage shoud connect to
+    // Get the list of buffers that this stage should connect to
     std::vector<std::string> input_buffer_names =
         config.get<std::vector<std::string>>(unique_name, "in_bufs");
 
@@ -175,16 +175,15 @@ dset_id_t visTransform::change_dataset_state() {
     const std::string weight_type = "none";
     const std::string git_tag = get_git_commit_hash();
 
-    // create all the states
-    state_uptr freq_state = std::make_unique<freqState>(_freqs);
-    state_uptr input_state = std::make_unique<inputState>(_inputs, std::move(freq_state));
-    state_uptr prod_state = std::make_unique<prodState>(_prods, std::move(input_state));
-    state_uptr mstate = std::make_unique<metadataState>(weight_type, _instrument_name, git_tag,
-                                                        std::move(prod_state));
-
-    // register them with the datasetManager
     datasetManager& dm = datasetManager::instance();
-    state_id_t mstate_id = dm.add_state(std::move(mstate)).first;
+
+    // create all the states and register them with the datasetManager
+    std::vector<state_id_t> states;
+    states.push_back(dm.create_state<freqState>(_freqs).first);
+    states.push_back(dm.create_state<inputState>(_inputs).first);
+    states.push_back(dm.create_state<prodState>(_prods).first);
+    states.push_back(dm.create_state<metadataState>(weight_type, _instrument_name, git_tag).first);
+
     // register root dataset
-    return dm.add_dataset(mstate_id);
+    return dm.add_dataset(states);
 }

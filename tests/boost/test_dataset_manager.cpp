@@ -19,6 +19,9 @@ using json = nlohmann::json;
 
 using namespace std::string_literals;
 
+// The datasetManager uses the restServer, but it's not started by this test.
+// That leads to a warnings message from the restServer on exit we can ignore.
+
 
 BOOST_FIXTURE_TEST_CASE(_general, CompareCTypes) {
     _global_log_level = 5;
@@ -36,17 +39,22 @@ BOOST_FIXTURE_TEST_CASE(_general, CompareCTypes) {
     std::vector<prod_ctype> prods = {{1, 1}, {2, 2}, {3, 3}};
     std::vector<std::pair<uint32_t, freq_ctype>> freqs = {
         {1, {1.1, 1}}, {2, {2, 2.2}}, {3, {3, 3}}};
-    std::pair<state_id_t, const inputState*> input_state =
-        dm.add_state(std::make_unique<inputState>(
-            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
-    dset_id_t init_ds_id = dm.add_dataset(input_state.first);
+
+    std::vector<state_id_t> states1;
+    states1.push_back(dm.create_state<freqState>(freqs).first);
+    states1.push_back(dm.create_state<prodState>(prods).first);
+    states1.push_back(dm.create_state<inputState>(inputs).first);
+    dset_id_t init_ds_id = dm.add_dataset(states1);
+
     inputs = {input_ctype(1, "1"), input_ctype(2, "2")};
     prods = {{1, 1}, {2, 2}};
     freqs = {{1, {1.1, 1}}, {2, {2, 2.2}}};
-    std::pair<state_id_t, const inputState*> input_state2 =
-        dm.add_state(std::make_unique<inputState>(
-            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
-    dset_id_t init_ds_id2 = dm.add_dataset(init_ds_id, input_state2.first);
+
+    std::vector<state_id_t> states2;
+    states2.push_back(dm.create_state<freqState>(freqs).first);
+    states2.push_back(dm.create_state<prodState>(prods).first);
+    states2.push_back(dm.create_state<inputState>(inputs).first);
+    dset_id_t init_ds_id2 = dm.add_dataset(states2, init_ds_id);
 
 
     // transform that data:
@@ -69,12 +77,11 @@ BOOST_FIXTURE_TEST_CASE(_general, CompareCTypes) {
     const std::vector<std::pair<uint32_t, freq_ctype>>& old_freqs = old_state3->get_freqs();
     check_equal(old_freqs, freqs);
 
-    std::pair<state_id_t, const inputState*> transformed_input_state =
-        dm.add_state(std::make_unique<inputState>(
-            new_inputs,
-            std::make_unique<prodState>(new_prods, std::make_unique<freqState>(new_freqs))));
-    dset_id_t transformed_ds_id = dm.add_dataset(init_ds_id2, transformed_input_state.first);
-
+    std::vector<state_id_t> transformed_states;
+    transformed_states.push_back(dm.create_state<freqState>(new_freqs).first);
+    transformed_states.push_back(dm.create_state<prodState>(new_prods).first);
+    transformed_states.push_back(dm.create_state<inputState>(new_inputs).first);
+    dset_id_t transformed_ds_id = dm.add_dataset(transformed_states, init_ds_id2);
 
     // get state
     const inputState* final_state = dm.dataset_state<inputState>(transformed_ds_id);
@@ -107,8 +114,7 @@ BOOST_AUTO_TEST_CASE(_serialization_input) {
     std::vector<std::pair<uint32_t, freq_ctype>> freqs = {
         {1, {1.1, 1}}, {2, {2, 2.2}}, {3, {3, 3}}};
     std::pair<state_id_t, const inputState*> input_state =
-        dm.add_state(std::make_unique<inputState>(
-            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
+        dm.add_state(std::make_unique<inputState>(inputs));
     json j = input_state.second->to_json();
     state_uptr s = datasetState::from_json(j);
     json j2 = s->to_json();
@@ -116,8 +122,7 @@ BOOST_AUTO_TEST_CASE(_serialization_input) {
 
     // serialize 2 states with the same data
     std::pair<state_id_t, const inputState*> input_state3 =
-        dm.add_state(std::make_unique<inputState>(
-            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
+        dm.add_state(std::make_unique<inputState>(inputs));
     json j3 = input_state3.second->to_json();
     BOOST_CHECK_EQUAL(j, j3);
 

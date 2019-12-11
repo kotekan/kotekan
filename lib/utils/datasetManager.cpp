@@ -1,5 +1,6 @@
 #include "datasetManager.hpp"
 
+#include "Hash.hpp"
 #include "restClient.hpp"
 #include "restServer.hpp"
 #include "visUtil.hpp"
@@ -22,10 +23,10 @@ dataset::dataset(json& js) {
     _state = js["state"];
     _is_root = js["is_root"];
     if (_is_root)
-        _base_dset = 0;
+        _base_dset = dset_id_t::null;
     else
-        _base_dset = js["base_dset"];
-    _types = js["types"].get<std::set<std::string>>();
+        _base_dset = js["base_dset"].get<dset_id_t>();
+    _type = js["type"].get<std::string>();
 }
 
 bool dataset::is_root() const {
@@ -40,8 +41,8 @@ dset_id_t dataset::base_dset() const {
     return _base_dset;
 }
 
-const std::set<std::string>& dataset::types() const {
-    return _types;
+const std::string& dataset::type() const {
+    return _type;
 }
 
 json dataset::to_json() const {
@@ -50,7 +51,7 @@ json dataset::to_json() const {
     j["state"] = _state;
     if (!_is_root)
         j["base_dset"] = _base_dset;
-    j["types"] = _types;
+    j["type"] = _type;
     return j;
 }
 
@@ -58,30 +59,9 @@ bool dataset::equals(dataset& ds) const {
     if (_is_root != ds.is_root())
         return false;
     if (_is_root) {
-        return _state == ds.state() && _types == ds.types();
+        return _state == ds.state() && _type == ds.type();
     }
-    return _state == ds.state() && _base_dset == ds.base_dset() && _types == ds.types();
-}
-
-
-std::ostream& operator<<(std::ostream& out, const datasetState& dt) {
-    out << datasetState::_registered_names[typeid(dt).hash_code()];
-
-    return out;
-}
-
-
-std::vector<stack_ctype> invert_stack(uint32_t num_stack,
-                                      const std::vector<rstack_ctype>& stack_map) {
-    std::vector<stack_ctype> res(num_stack);
-    size_t num_prod = stack_map.size();
-
-    for (uint32_t i = 0; i < num_prod; i++) {
-        uint32_t j = num_prod - i - 1;
-        res[stack_map[j].stack] = {j, stack_map[j].conjugate};
-    }
-
-    return res;
+    return _state == ds.state() && _base_dset == ds.base_dset() && _type == ds.type();
 }
 
 datasetManager::datasetManager() :
@@ -151,35 +131,44 @@ datasetManager::~datasetManager() {
     _cv_stop_request_threads.wait(lk, [this] { return _n_request_threads == 0; });
 }
 
-dset_id_t datasetManager::add_dataset(state_id_t state) {
-    datasetState* t = nullptr;
-    try {
-        t = _states.at(state).get();
-    } catch (std::exception& e) {
-        // This must be a bug in the calling stage...
-        FATAL_ERROR_NON_OO("datasetManager: Failure registering root dataset : state {:#x} not "
-                           "found: {:s}",
-                           state, e.what());
-    }
-    std::set<std::string> types = t->types();
-    dataset ds(state, types);
-    return add_dataset(ds);
-}
 
-dset_id_t datasetManager::add_dataset(dset_id_t base_dset, state_id_t state) {
+// TODO: 0 is not a good sentinel value. Move to std::optional typing when we use C++17
+dset_id_t datasetManager::add_dataset(state_id_t state, dset_id_t base_dset) {
     datasetState* t = nullptr;
     try {
         std::lock_guard<std::mutex> slck(_lock_states);
         t = _states.at(state).get();
     } catch (std::exception& e) {
         // This must be a bug in the calling stage...
-        FATAL_ERROR_NON_OO("datasetManager: Failure registering dataset : state {:#x} not found "
-                           "(base dataset ID: {:#x}): {:s}",
-                           state, base_dset, e.what());
+        if (base_dset == dset_id_t::null) {
+            FATAL_ERROR_NON_OO("datasetManager: Failure registering root dataset : state {} not "
+                               "found: {:s}",
+                               state, e.what());
+        } else {
+            FATAL_ERROR_NON_OO("datasetManager: Failure registering dataset : state {} not found "
+                               "(base dataset ID: {}): {:s}",
+                               state, base_dset, e.what());
+        }
     }
-    std::set<std::string> types = t->types();
-    dataset ds(state, base_dset, types);
-    return add_dataset(ds);
+    std::string type = t->type();
+    dataset ds(state, type, base_dset);
+    auto id = add_dataset(ds);
+    DEBUG_NON_OO("Added dataset {} with state {}:{} and base dataset {}", id, type, state,
+                 base_dset);
+    return id;
+}
+
+
+dset_id_t datasetManager::add_dataset(const std::vector<state_id_t>& states, dset_id_t base_dset) {
+
+    dset_id_t id = base_dset;
+
+    DEBUG_NON_OO("Adding {} dataset states to base dataset {}", states.size(), base_dset);
+    for (const auto& state : states) {
+        auto new_id = add_dataset(state, id);
+        id = new_id;
+    }
+    return id;
 }
 
 // Private.
@@ -200,7 +189,7 @@ dset_id_t datasetManager::add_dataset(dataset ds) {
                 // hash entries? This would mean the state/dset has to be sent
                 // when registering.
                 FATAL_ERROR_NON_OO("datasetManager: Hash collision!\nThe following datasets have "
-                                   "the same hash ({:#x}).\n\n{:s}\n\n{:s}\n\ndatasetManager: "
+                                   "the same hash ({}).\n\n{:s}\n\n{:s}\n\ndatasetManager: "
                                    "Exiting...",
                                    new_dset_id, ds.to_json().dump(4),
                                    find->second.to_json().dump(4));
@@ -226,15 +215,11 @@ dset_id_t datasetManager::add_dataset(dataset ds) {
 // practice nlohmann::json ensures they are alphabetical by default. It
 // might also be a little slow as it requires full serialisation.
 state_id_t datasetManager::hash_state(datasetState& state) const {
-    static std::hash<std::string> hash_function;
-
-    return hash_function(state.to_json().dump());
+    return hash(state.to_json().dump());
 }
 
 state_id_t datasetManager::hash_dataset(dataset& ds) const {
-    static std::hash<std::string> hash_function;
-
-    return hash_function(ds.to_json().dump());
+    return hash(ds.to_json().dump());
 }
 
 void datasetManager::register_state(state_id_t state) {
@@ -325,13 +310,7 @@ bool datasetManager::register_state_parser(std::string& reply) {
             {
                 std::lock_guard<std::mutex> slck(_lock_states);
                 js_post["state"] = _states.at(state)->to_json();
-
-                // clang-format off
-                // Inlining s in the lines below causes clang to complain about
-                // potential side effects, unfortunately clang-format will try to undo it
-                auto s = _states.at(state).get();
-                // clang-format on
-                js_post["type"] = datasetState::_registered_names[typeid(*s).hash_code()];
+                js_post["type"] = _states.at(state)->type();
             }
 
             std::lock_guard<std::mutex> lk(_lock_stop_request_threads);
@@ -425,11 +404,11 @@ std::string datasetManager::summary() {
         try {
             datasetState* dt = _states.at(t.second.state()).get();
 
-            out += fmt::format(fmt("{:>30} : {:#x}\n"), *dt, t.second.base_dset());
+            out += fmt::format(fmt("{:>30} : {}\n"), *dt, t.second.base_dset());
             id++;
         } catch (std::out_of_range& e) {
             WARN_NON_OO("datasetManager::summary(): This datasetManager instance "
-                        "does not know state {:#x}, referenced by dataset {:#x}. ({:s})",
+                        "does not know state {}, referenced by dataset {}. ({:s})",
                         t.second.state(), t.first, e.what());
         }
     }
@@ -463,7 +442,7 @@ const std::vector<std::pair<dset_id_t, datasetState*>> datasetManager::ancestors
 
     // make sure we know this dataset before running into trouble
     if (_datasets.find(dset) == _datasets.end()) {
-        DEBUG_NON_OO("datasetManager: dataset {:#x} was not found locally.", dset);
+        DEBUG_NON_OO("datasetManager: dataset {} was not found locally.", dset);
         return a_list;
     }
 
@@ -474,15 +453,10 @@ const std::vector<std::pair<dset_id_t, datasetState*>> datasetManager::ancestors
         datasetState* t;
         try {
             t = _states.at(_datasets.at(dset).state()).get();
+            a_list.emplace_back(dset, t);
         } catch (...) {
             // we don't have the base dataset
             break;
-        }
-
-        // Walk over the inner states, given them all the same dataset id.
-        while (t != nullptr) {
-            a_list.emplace_back(dset, t);
-            t = t->_inner_state.get();
         }
 
         // if this is the root dataset, we are done
@@ -502,24 +476,33 @@ void datasetManager::update_datasets(dset_id_t ds_id) {
     std::unique_lock<std::mutex> dslock(_lock_dsets, std::adopt_lock);
     std::lock_guard<std::mutex> updatelock(_lock_ds_update, std::adopt_lock);
 
-    // check if local dataset topology is up to date to include requested ds_id
-    if (_datasets.find(ds_id) == _datasets.end()) {
-        dslock.unlock();
-        json js_rqst;
-        js_rqst["ts"] = _timestamp_update;
-        js_rqst["ds_id"] = ds_id;
-        js_rqst["roots"] = _known_roots;
-
-        restReply reply = _rest_client.make_request_blocking(
-            PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host, _ds_broker_port, _retries_rest_client,
-            _timeout_rest_client_s);
-
-        while (!parse_reply_dataset_update(reply)) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(_retry_wait_time_ms));
-            reply = _rest_client.make_request_blocking(
-                PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host, _ds_broker_port,
-                _retries_rest_client, _timeout_rest_client_s);
+    // Walk up the tree from the given dataset until we find a state that we
+    // don't know. If we reach the root state, then we don't need to update
+    // anything so we exit
+    while (_datasets.count(ds_id) == 1) {
+        auto& ds = _datasets.at(ds_id);
+        if (ds.is_root()) {
+            return;
         }
+        ds_id = ds.base_dset();
+    }
+
+    // check if local dataset topology is up to date to include requested ds_id
+    dslock.unlock();
+    json js_rqst;
+    js_rqst["ts"] = _timestamp_update;
+    js_rqst["ds_id"] = ds_id;
+    js_rqst["roots"] = _known_roots;
+
+    restReply reply = _rest_client.make_request_blocking(
+        PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host, _ds_broker_port, _retries_rest_client,
+        _timeout_rest_client_s);
+
+    while (!parse_reply_dataset_update(reply)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(_retry_wait_time_ms));
+        reply = _rest_client.make_request_blocking(PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host,
+                                                   _ds_broker_port, _retries_rest_client,
+                                                   _timeout_rest_client_s);
     }
 }
 
@@ -545,8 +528,7 @@ bool datasetManager::parse_reply_dataset_update(restReply reply) {
              ds != js_reply.at("datasets").end(); ds++) {
 
             try {
-                dset_id_t ds_id;
-                sscanf(ds.key().c_str(), "%zu", &ds_id);
+                dset_id_t ds_id = dset_id_t::from_string(ds.key());
                 dataset new_dset = dataset(ds.value());
 
                 // insert the new dataset
@@ -605,4 +587,80 @@ void datasetManager::force_update_callback(kotekan::connectionInstance& conn) {
     }
 
     conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
+}
+
+
+std::optional<std::pair<dset_id_t, dataset>>
+datasetManager::closest_dataset_of_type(dset_id_t dset, const std::string& type) {
+
+    auto orig_dset = dset;
+    (void)orig_dset; // this is needed because where it is used below gets omitted in production
+                     // builds
+
+    if (_use_broker) {
+        update_datasets(dset);
+    }
+
+    if (!FACTORY(datasetState)::exists(type)) {
+        ERROR_NON_OO("Type '{}' not registered dataset state type.", type);
+        return {};
+    }
+
+    {
+        std::lock_guard<std::mutex> dslock(_lock_dsets);
+
+        while (true) {
+            // Search for the requested type in each dataset
+            try {
+                if (_datasets.at(dset).type() == type) {
+                    DEBUG_NON_OO("Found ancestor '{}' of '{}' adding a state of type '{}'.",
+                                 dset.to_string(), orig_dset.to_string(), type);
+                    std::pair<dset_id_t, dataset> r = {dset, _datasets.at(dset)};
+                    return r;
+                }
+
+                // if this is the root dataset, we don't have that ancestor
+                if (_datasets.at(dset).is_root()) {
+                    DEBUG_NON_OO("Could not find ancestor of '{}' adding a state of type '{}'.",
+                                 dset.to_string(), type);
+                    return {};
+                }
+
+                // Move on to the parent dataset...
+                DEBUG2_NON_OO("Moving to ancestor '{}' of '{}'.",
+                              _datasets.at(dset).base_dset().to_string(), dset.to_string(), type);
+                dset = _datasets.at(dset).base_dset();
+
+            } catch (std::out_of_range& e) {
+                // we don't have the base dataset
+                DEBUG_NON_OO("datasetManager: found a dead reference when looking for "
+                             "locally known ancestor: {:s}",
+                             e.what());
+                return {};
+            }
+        }
+    }
+}
+
+
+fingerprint_t datasetManager::fingerprint(dset_id_t ds_id,
+                                          const std::set<std::string>& state_types) {
+
+    // This routine constructs a string out of the concatenation of the
+    // state_type + state_id pairs. This string should be unique for a specific
+    // set of identical states. This is then hashed to give the fingerprint.
+
+    // TODO: doing this via constructing a string seems like a bit of a hack, so
+    // we should look for a cleaner way to do it. The big problem is that the
+    // type names are all variable length strings.
+    std::string fs;
+
+    for (const auto& state : state_types) {
+        auto dset = closest_dataset_of_type(ds_id, state);
+        state_id_t id = dset ? dset.value().second.state() : dset_id_t::null;
+
+        fs += state + id.to_string();
+    }
+
+    return hash(fs);
 }

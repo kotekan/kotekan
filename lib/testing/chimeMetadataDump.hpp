@@ -15,7 +15,7 @@
 
 /**
  * @class chimeMetadataDump
- * @brief Displays CHIME metedata for a given buffer
+ * @brief Displays CHIME metadata for a given buffer
  *
  * This is a simple stage which prints (via the @c INFO mechanism)
  * CHIME metadata from a target buffer.

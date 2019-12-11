@@ -1,19 +1,22 @@
 /*****************************************
 @file
 @brief Receive and set flags for the visibility data.
-- receiveFlags : public kotekan::Stage
+- ReceiveFlags : public kotekan::Stage
 *****************************************/
 #ifndef RECEIVEFLAGS_H
 #define RECEIVEFLAGS_H
 
 #include "Stage.hpp"
+#include "datasetManager.hpp"
 #include "prometheusMetrics.hpp"
 #include "updateQueue.hpp"
+#include "visBuffer.hpp"
 
 #include <mutex>
+#include <vector>
 
 /**
- * @class receiveFlags
+ * @class ReceiveFlags
  * @brief Receives input flags and adds them to the output buffer.
  *
  * This stage registeres as a subscriber to an updatable config block. The
@@ -49,10 +52,10 @@
  *
  * @author Rick Nitsche
  */
-class receiveFlags : public kotekan::Stage {
+class ReceiveFlags : public kotekan::Stage {
 public:
     /// Constructor
-    receiveFlags(kotekan::Config& config, const string& unique_name,
+    ReceiveFlags(kotekan::Config& config, const string& unique_name,
                  kotekan::bufferContainer& buffer_container);
 
     /// Main loop, saves flags in the frames
@@ -62,10 +65,19 @@ public:
     bool flags_callback(nlohmann::json& json);
 
 private:
+    /// Copy the freshest flags into the frame or return false if no valid update for
+    /// this frame is available
+    bool copy_flags_into_frame(const visFrameView& frame_out);
+
     // this is faster than std::queue/deque
     /// The bad_input chan_id's and when to start applying them in a FIFO
     /// (len set by config)
-    updateQueue<std::vector<float>> flags;
+    updateQueue<std::pair<state_id_t, std::vector<float>>> flags;
+
+    // Map from the state being applied and input dataset to the output dataset.
+    // This is used to keep track of the labels we should be applying for
+    // timesamples coming out of order.
+    std::map<std::pair<state_id_t, dset_id_t>, dset_id_t> output_dataset_ids;
 
     /// Input buffer
     Buffer* buf_in;
@@ -79,6 +91,12 @@ private:
     /// Timestamp of the current frame
     timespec ts_frame = {0, 0};
 
+    /// Number of frames received late
+    kotekan::prometheus::Counter& receiveflags_late_frame_counter;
+
+    /// Update ages
+    kotekan::prometheus::Gauge& receiveflags_update_age_metric;
+
     /// Number of updates received too late
     kotekan::prometheus::Counter& late_updates_counter;
 
@@ -86,7 +104,7 @@ private:
     /// Number of elements
     size_t num_elements;
 
-    /// Number of updates to keept track of
+    /// Number of updates to keep track of
     uint32_t num_kept_updates;
 };
 

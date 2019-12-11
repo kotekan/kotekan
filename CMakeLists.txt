@@ -1,4 +1,5 @@
-cmake_minimum_required (VERSION 2.8)
+# Set the version of CMake required for *all* CMake files in the project
+cmake_minimum_required (VERSION 3.0)
 project (KOTEKAN)
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 
@@ -19,6 +20,7 @@ option(USE_HCC "Build HCC GPU Framework" OFF)
 option(USE_HSA "Build HSA GPU Framework" OFF)
 option(USE_CLOC "Use the CL offline compiler" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
+option(USE_CUDA "Build CUDA GPU Framework" OFF)
 option(USE_DPDK "Enable DPDK Framework" OFF)
 option(USE_HDF5 "Build HDF5 output stages" OFF)
 option(USE_OMP "Enable OpenMP" OFF)
@@ -54,6 +56,14 @@ if (${USE_OPENCL})
   set( ENV{AMDAPPSDKROOT} /opt/rocm/opencl)
   find_package( OpenCL REQUIRED )
   set(USE_OPENCL ${OPENCL_FOUND})
+endif ()
+
+if (${USE_CUDA})
+  set(CUDA_TOOLKIT_ROOT_DIR /usr/local/cuda )
+  set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)
+  find_package( CUDA REQUIRED )
+  set(USE_CUDA ${CUDA_FOUND})
+  enable_language( CUDA )
 endif ()
 
 if (${USE_AIRSPY})
@@ -129,16 +139,23 @@ if (${USE_HSA})
 endif ()
 if (${USE_OPENCL})
   include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
-  include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
   include_directories( ${OPENCL_INCLUDE_DIRS} )
   add_definitions(-DWITH_OPENCL)
-  set(GPU_MODULES ${GPU_MODULES} "OpenCL")
+  set(GPU_MODULES ${GPU_MODULES} "OpenCL ")
+endif ()
+if (${USE_CUDA})
+  include_directories (${KOTEKAN_SOURCE_DIR}/lib/cuda)
+  include_directories( ${CUDA_INCLUDE_DIRS} )
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lstdc++")
+  add_definitions(-DWITH_CUDA)
+  set(GPU_MODULES ${GPU_MODULES} "CUDA ")
 endif ()
 MESSAGE("GPU Modules Included: " ${GPU_MODULES})
 
 set(INPUT_MODULES "")
 if (${USE_DPDK})
   set(INPUT_MODULES ${INPUT_MODULES} "DPDK ")
+  find_package(DPDK REQUIRED)
 endif ()
 if (${USE_AIRSPY})
   add_definitions(-DWITH_AIRSPY)
@@ -212,6 +229,10 @@ endif ()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
 
+# dpdk uses the register keyword that got removed in C++17 because it wasn't doing anything
+#TODO remove this line when dpdk people fix this: https://mails.dpdk.org/archives/dev/2018-July/107950.html
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-register")
+
 # Warning about missing override is called differently in clang and gcc
 # TODO: enable once we are using a release version of HighFive
 #if (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
@@ -245,7 +266,7 @@ if (${USE_OPENCL})
     install(DIRECTORY lib/opencl/kernels DESTINATION /var/lib/kotekan/opencl )
 endif ()
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 
 if (${COMPILE_DOCS})
     add_subdirectory(docs EXCLUDE_FROM_ALL)
@@ -285,7 +306,7 @@ endif()
 # Enforce code formatting rules with clang-format.
 find_program(
     CLANG_FORMAT_PATH
-    NAMES "clang-format-8"
+    NAMES "clang-format-8" "clang-format"
     DOC "Path to clang-format executable"
     )
 if(NOT CLANG_FORMAT_PATH)

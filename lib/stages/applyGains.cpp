@@ -2,6 +2,8 @@
 
 #include "Stage.hpp"
 #include "configUpdater.hpp"
+#include "datasetManager.hpp"
+#include "datasetState.hpp"
 #include "errors.h"
 #include "prometheusMetrics.hpp"
 #include "visBuffer.hpp"
@@ -41,9 +43,9 @@ applyGains::applyGains(Config& config, const string& unique_name,
     update_age_metric(
         Metrics::instance().add_gauge("kotekan_applygains_update_age_seconds", unique_name)),
     late_update_counter(
-        Metrics::instance().add_gauge("kotekan_applygains_late_update_count", unique_name)),
+        Metrics::instance().add_counter("kotekan_applygains_late_update_count", unique_name)),
     late_frames_counter(
-        Metrics::instance().add_gauge("kotekan_applygains_late_frame_count", unique_name)) {
+        Metrics::instance().add_counter("kotekan_applygains_late_frame_count", unique_name)) {
 
     // Setup the input buffer
     register_consumer(in_buf, unique_name.c_str());
@@ -58,12 +60,6 @@ applyGains::applyGains(Config& config, const string& unique_name,
         throw std::invalid_argument("applyGains: config: num_kept_updates has"
                                     "to be equal or greater than one (is "
                                     + std::to_string(num_kept_updates) + ").");
-    // Time to blend old and new gains in seconds. Default is 5 minutes.
-    tcombine = config.get_default<float>(unique_name, "combine_gains_time", 5 * 60);
-    if (tcombine < 0)
-        throw std::invalid_argument("applyGains: config: combine_gains_time has"
-                                    "to be positive (is "
-                                    + std::to_string(tcombine) + ").");
 
     // Get the path to gains directory
     gains_dir = config.get<std::string>(unique_name, "gains_dir");
@@ -71,29 +67,28 @@ applyGains::applyGains(Config& config, const string& unique_name,
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     if (num_threads == 0)
         throw std::invalid_argument("applyGains: num_threads has to be at least 1.");
-    if (in_buf->num_frames % num_threads != 0 || out_buf->num_frames % num_threads != 0)
-        throw std::invalid_argument("applyGains: both the size of the input "
-                                    "and output buffer have to be multiples "
-                                    "of num_threads.");
 
     // FIFO for gains and weights updates
-    gains_fifo = updateQueue<gainUpdate>(num_kept_updates);
+    gains_fifo = updateQueue<GainUpdate>(num_kept_updates);
 
     // subscribe to gain timestamp updates
     configUpdater::instance().subscribe(this, std::bind(&applyGains::receive_update, this, _1));
 }
 
-bool applyGains::fexists(const std::string& filename) {
+bool applyGains::fexists(const std::string& filename) const {
     struct stat buf;
     return (stat(filename.c_str(), &buf) == 0);
 }
 
 bool applyGains::receive_update(nlohmann::json& json) {
+
+    auto& dm = datasetManager::instance();
+
     double new_ts;
     std::string gains_path;
-    std::string gtag;
-    std::vector<std::vector<cfloat>> gain_read;
-    std::vector<std::vector<float>> weight_read;
+    std::string update_id;
+    double transition_interval;
+
     // receive new gains timestamp ("start_time" might move to "start_time")
     try {
         if (!json.at("start_time").is_number())
@@ -113,66 +108,49 @@ bool applyGains::receive_update(nlohmann::json& json) {
         WARN("applyGains: Received update with a timestamp that is older "
              "than the current frame (The difference is {:f} s).",
              ts_to_double(ts_frame.load()) - new_ts);
-        num_late_updates++;
+        late_update_counter.inc();
     }
 
-    // receive new gains tag
+    // receive new gains update
     try {
-        if (!json.at("tag").is_string())
-            throw std::invalid_argument(fmt::format(fmt("applyGains: received bad gains tag: {:s}"),
-                                                    json.at("tag").dump()));
-        gtag = json.at("tag").get<std::string>();
+        if (!json.at("update_id").is_string())
+            throw std::invalid_argument(
+                fmt::format(fmt("applyGains: received bad gains update_id: {:s}"),
+                            json.at("update_id").dump()));
+        update_id = json.at("update_id").get<std::string>();
     } catch (std::exception& e) {
-        WARN("Failure reading 'tag' from update: {:s}", e.what());
+        WARN("Failure reading 'update_id' from update: {:s}", e.what());
         return false;
-    }
-    // Get the gains for this timestamp
-    // TODO: For now, assume the tag is the gain file name.
-    gains_path = fmt::format(fmt("{:s}/{:s}.h5"), gains_dir, gtag);
-    // Check if file exists
-    if (!fexists(gains_path)) {
-        // Try a different extension
-        gains_path = fmt::format(fmt("{:s}/{:s}.hdf5"), gains_dir, gtag);
-        if (!fexists(gains_path)) {
-            WARN("Could not update gains. File not found: {:s}", gains_path)
-            return false;
-        }
     }
 
-    // Read the gains from file
-    HighFive::File gains_fl(gains_path, HighFive::File::ReadOnly);
-    // Read the dataset and alocates it to the most recent entry of the gain vector
-    HighFive::DataSet gains_ds = gains_fl.getDataSet("/gain");
-    gains_ds.read(gain_read);
-    // Read the gains weight dataset
-    HighFive::DataSet gain_weight_ds = gains_fl.getDataSet("/weight");
-    gain_weight_ds.read(weight_read);
-    // Check dimensions are consistent
-    if (weight_read.size() != gain_read.size()) {
-        WARN("Gain and weight frequency axes are different lengths. Skipping update.");
+    // Read the interval to blend over
+    try {
+        transition_interval = json.at("transition_interval").get<double>();
+    } catch (std::exception& e) {
+        WARN("Failure reading 'transition_interval' from update: {:s}", e.what());
         return false;
     }
-    for (uint i = 0; i < gain_read.size(); i++) {
-        if (weight_read[i].size() != gain_read[i].size()) {
-            WARN("Gain and weight time axes are different lengths. Skipping update.");
-            return false;
-        }
+
+    // Read the gain file and return false if the read failed
+    auto gain_data = read_gain_file(update_id);
+    if (!gain_data) {
+        return false;
     }
-    gainUpdate gain_update = {gain_read, weight_read};
+
+    state_id_t state_id = dm.create_state<gainState>(update_id, transition_interval).first;
+    GainUpdate update = {std::move(gain_data.value()), transition_interval, state_id};
+
     {
         // Lock mutex exclusively while we update FIFO
-        std::lock_guard<std::shared_timed_mutex> lock(gain_mtx);
-        gains_fifo.insert(double_to_ts(new_ts), std::move(gain_update));
+        std::lock_guard<std::shared_mutex> lock(gain_mtx);
+        gains_fifo.insert(double_to_ts(new_ts), std::move(update));
     }
-    INFO("Updated gains to {:s}.", gtag);
+    INFO("Updated gains to {:s}.", update_id);
 
     return true;
 }
 
 void applyGains::main_thread() {
-
-    num_late_frames = 0;
-    num_late_updates = 0;
 
     // Create the threads
     thread_handles.resize(num_threads);
@@ -197,10 +175,10 @@ void applyGains::main_thread() {
 void applyGains::apply_thread() {
     using namespace std::complex_literals;
 
+    auto& dm = datasetManager::instance();
+
     int output_frame_id;
     int input_frame_id;
-    unsigned int freq;
-    double tpast;
     double frame_time;
 
     // Get the current values of the shared frame IDs and increment them.
@@ -212,7 +190,6 @@ void applyGains::apply_thread() {
 
     while (!stop_thread) {
 
-
         // Wait for the input buffer to be filled with data
         if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
             break;
@@ -221,83 +198,103 @@ void applyGains::apply_thread() {
         // Create view to input frame
         auto input_frame = visFrameView(in_buf, input_frame_id);
 
+        // Check that the input frame has the right sizes
+        if (!validate_frame(input_frame))
+            return;
+
         // get the frames timestamp
         ts_frame.store(std::get<1>(input_frame.time));
 
-        // frequency index of this frame
-        freq = input_frame.freq_id;
+        // Get the frequency index of this ID. The map will have been set in the first
+        // validate_frame
+        auto freq_ind = freq_map.at(input_frame.freq_id);
+
         // Unix time
         frame_time = ts_to_double(std::get<1>(input_frame.time));
-        // Vector for storing gains
+
+        // Vectors for storing gains and weights
         std::vector<cfloat> gain(input_frame.num_elements);
         std::vector<cfloat> gain_conj(input_frame.num_elements);
-        // Vector for storing weight factors
         std::vector<float> weight_factor(input_frame.num_elements);
 
+        state_id_t state_id;
+        double age;
+        bool skip = false;
 
-        std::pair<timespec, const gainUpdate*> gainpair_new;
-        std::pair<timespec, const gainUpdate*> gainpair_old;
+        // Check to see if any gains are available at all.
+        if (gains_fifo.size() == 0) {
+            FATAL_ERROR("No gains available.");
+        }
 
         {
             // Request shared lock for reading from FIFO
-            std::shared_lock<std::shared_timed_mutex> lock(gain_mtx);
-            gainpair_new = gains_fifo.get_update(double_to_ts(frame_time));
-            if (gainpair_new.second == NULL) {
-                FATAL_ERROR("No gains available.\nKilling kotekan");
-            }
-            tpast = frame_time - ts_to_double(gainpair_new.first);
+            std::shared_lock<std::shared_mutex> lock(gain_mtx);
+            auto [ts_new, update_new] = gains_fifo.get_update(double_to_ts(frame_time));
 
-            // Determine if we need to combine gains:
-            bool combine_gains = (tpast >= 0) && (tpast < tcombine);
-            if (combine_gains) {
-                gainpair_old = gains_fifo.get_update(double_to_ts(frame_time - tcombine));
-                // If we are not using the very first set of gains, do gains interpolation:
-                combine_gains = combine_gains && !(gainpair_new.first == gainpair_old.first);
-            }
+            // Calculate how much has time has passed between the last gain update and this frame
+            age = frame_time - ts_to_double(ts_new);
 
-            try {
-                // Combine gains if needed:
-                if (combine_gains) {
-                    float coef_new = tpast / tcombine;
-                    float coef_old = 1 - coef_new;
-                    for (uint32_t ii = 0; ii < input_frame.num_elements; ii++) {
-                        gain[ii] = coef_new * gainpair_new.second->gain.at(freq)[ii]
-                                   + coef_old * gainpair_old.second->gain.at(freq)[ii];
-                    }
+            if (update_new == nullptr) {
+                WARN("No gains update is as old as the currently processed frame.");
+                // Report number of frames received late
+                late_frames_counter.inc();
+
+                skip = true;
+
+                // TODO: should figure out how to skip data or use the oldest
+            } else {
+
+                // Check that the gains have the right size
+                if (!validate_gain(update_new->data))
+                    return;
+
+                // Now we know how long to combine over, we can see if there's
+                // another gain update within that time window
+                auto update_old =
+                    gains_fifo
+                        .get_update(double_to_ts(frame_time - update_new->transition_interval))
+                        .second;
+
+                auto& new_gain = update_new->data.gain.at(freq_ind);
+                if (update_old == nullptr || update_new == update_old) {
+                    gain = new_gain;
                 } else {
-                    gain = gainpair_new.second->gain.at(freq);
-                    if (tpast < 0) {
-                        WARN("No gains update is as old as the currently processed frame. Using "
-                             "oldest gains available. Time difference is: {:f} seconds.",
-                             tpast);
-                        num_late_frames++;
+
+                    // Check that the gains have the right size
+                    if (!validate_gain(update_old->data))
+                        return;
+
+                    auto& old_gain = update_old->data.gain.at(freq_ind);
+                    float coeff_new = age / update_new->transition_interval;
+                    float coeff_old = 1 - coeff_new;
+
+                    for (uint32_t ii = 0; ii < input_frame.num_elements; ii++) {
+                        gain[ii] = coeff_new * new_gain[ii] + coeff_old * old_gain[ii];
                     }
                 }
+
                 // Copy weights TODO: should we combine weights somehow?
-                weight_factor = gainpair_new.second->weight.at(freq);
-            } catch (std::out_of_range& e) {
-                WARN("Freq ID {:d} is out of range in gain array: {:s}", freq, e.what());
-                continue;
+                weight_factor = update_new->data.weight.at(freq_ind);
+
+                state_id = update_new->state_id;
             }
         }
-        try {
-            // Compute weight factors and conjugate gains
-            for (uint32_t ii = 0; ii < input_frame.num_elements; ii++) {
-                if (weight_factor.at(ii) == 0.0) {
-                    // If gain_weight is zero, make gains = 1 and weights = 0
-                    gain.at(ii) = 1. + 0i;
-                } else if (gain.at(ii) == (cfloat){0.0, 0.0}) {
-                    // If gain is zero make the weight be zero
-                    weight_factor.at(ii) = 0.0;
-                    gain.at(ii) = {1., 0.};
-                } else {
-                    weight_factor.at(ii) = pow(abs(gain.at(ii)), -2.0);
-                }
-                gain_conj.at(ii) = std::conj(gain.at(ii));
-            }
-        } catch (std::out_of_range& e) {
-            WARN("Input out of range in gain array: {:s}", e.what());
+
+        // If the data is too old we should skip the frame entirely
+        if (skip) {
+            std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
+            mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
+            input_frame_id = frame_id_in++;
             continue;
+        }
+
+        // Compute weight factors and conjugate gains
+        for (uint32_t ii = 0; ii < input_frame.num_elements; ii++) {
+            bool zero_weight = (weight_factor[ii] == 0.0) || (gain[ii] == (0.0f + 0.0if));
+
+            weight_factor[ii] = zero_weight ? 0.0 : pow(abs(gain[ii]), -2.0);
+            gain[ii] = zero_weight ? (1.0f + 0.0if) : gain[ii];
+            gain_conj[ii] = std::conj(gain[ii]);
         }
 
         // Wait for the output buffer to be empty of data
@@ -313,6 +310,20 @@ void applyGains::apply_thread() {
         // Copy over the data we won't modify
         output_frame.copy_metadata(input_frame);
         output_frame.copy_data(input_frame, {visField::vis, visField::weight});
+
+        // Check if we have already registered this gain update against this
+        // input dataset, do so if we haven't, and then label the output data
+        // with the new id. This must be done while locked as the underlying map
+        // could change
+        {
+            std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
+            std::pair<state_id_t, dset_id_t> key = {state_id, input_frame.dataset_id};
+            if (output_dataset_ids.count(key) == 0) {
+                output_dataset_ids[key] = dm.add_dataset(state_id, input_frame.dataset_id);
+            }
+            output_frame.dataset_id = output_dataset_ids[key];
+        }
+
 
         cfloat* out_vis = output_frame.vis.data();
         cfloat* in_vis = input_frame.vis.data();
@@ -337,13 +348,7 @@ void applyGains::apply_thread() {
         }
 
         // Report how old the gains being applied to the current data are.
-        update_age_metric.set(tpast);
-
-        // Report number of updates received too late
-        late_update_counter.set(num_late_updates.load());
-
-        // Report number of frames received late
-        late_frames_counter.set(num_late_frames.load());
+        update_age_metric.set(age);
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
@@ -356,4 +361,136 @@ void applyGains::apply_thread() {
             input_frame_id = frame_id_in++;
         }
     }
+}
+
+
+std::optional<applyGains::GainData> applyGains::read_gain_file(std::string update_id) const {
+
+    // Define the output arrays
+    std::vector<std::vector<cfloat>> gain_read;
+    std::vector<std::vector<float>> weight_read;
+
+    // Get the gains for this timestamp
+    // TODO: For now, assume the update_id is the gain file name.
+    std::string gains_path = fmt::format(fmt("{:s}/{:s}.h5"), gains_dir, update_id);
+    // Check if file exists
+    if (!fexists(gains_path)) {
+        // Try a different extension
+        gains_path = fmt::format(fmt("{:s}/{:s}.hdf5"), gains_dir, update_id);
+        if (!fexists(gains_path)) {
+            WARN("Could not update gains. File not found: {:s}", gains_path)
+            return {};
+        }
+    }
+
+    // Read the gains from file
+    HighFive::File gains_fl(gains_path, HighFive::File::ReadOnly);
+    // Read the dataset and allocates it to the most recent entry of the gain vector
+    HighFive::DataSet gains_ds = gains_fl.getDataSet("/gain");
+    HighFive::DataSet gain_weight_ds = gains_fl.getDataSet("/weight");
+
+    // Check the size of the datasets.
+    // This first test will be skipped loading the initial gains as we don't yet
+    // know what num_freq and num_elements will be.
+    auto gain_size = gains_ds.getSpace().getDimensions();
+    auto weight_size = gain_weight_ds.getSpace().getDimensions();
+    if ((num_freq && gain_size[0] != num_freq.value())
+        || (num_elements && gain_size[1] != num_elements.value())) {
+        WARN("Gain dataset does not have the right shape. "
+             "Got ({}, {}), expected ({}, {})). Skipping update.",
+             gain_size[0], gain_size[1], num_freq.value(), num_elements.value());
+        return {};
+    }
+    // This consistency test will work regardless
+    if (gain_size[0] != weight_size[0] || gain_size[1] != weight_size[1]) {
+        WARN("Gain and weight datasets do not match shapes. "
+             "Gain ({}, {}), weight ({}, {})). Skipping update.",
+             gain_size[0], gain_size[1], weight_size[0], weight_size[1]);
+        return {};
+    }
+
+    // Read the gain and weight datasets
+    gains_ds.read(gain_read);
+    gain_weight_ds.read(weight_read);
+
+    GainData g{std::move(gain_read), std::move(weight_read)};
+
+    return g;
+}
+
+
+bool applyGains::validate_frame(const visFrameView& frame) {
+
+    // TODO: this should validate that the hashes of the input and frequencies
+    // dataset states have not changed whenever the dataset_id changes
+
+    std::unique_lock _lock(freqmap_mtx);
+
+    if (!num_freq || !num_elements) {
+        auto& dm = datasetManager::instance();
+        auto* fstate = dm.dataset_state<freqState>(frame.dataset_id);
+        auto* istate = dm.dataset_state<inputState>(frame.dataset_id);
+
+        if (istate == nullptr || fstate == nullptr) {
+            FATAL_ERROR("Stream with dataset_id={} must have both frequency"
+                        "and input states registered.",
+                        frame.dataset_id);
+            return false;
+        }
+
+        auto& freqs = fstate->get_freqs();
+
+        // Construct the frequency mapping determining which
+        uint32_t freq_ind = 0;
+        for (auto& f : freqs) {
+            freq_map[f.first] = freq_ind;
+            freq_ind++;
+        }
+
+        num_freq = freqs.size();
+        num_elements = istate->get_inputs().size();
+        num_prod = num_elements.value() * (num_elements.value() + 1) / 2;
+    }
+
+    // Check that the number of inputs has not changed
+    if (frame.num_elements != num_elements.value()) {
+        FATAL_ERROR("Number of elements cannot change during lifetime "
+                    "of task. Should be {}, just received {}.",
+                    num_elements.value(), frame.num_elements);
+        return false;
+    }
+
+    // Check that the number of products is still the full upper triangle.
+    if (frame.num_prod != num_prod.value()) {
+        FATAL_ERROR("Must have full triangle of products. Should be {}"
+                    ", just received {}.",
+                    num_prod.value(), frame.num_prod);
+        return false;
+    }
+    return true;
+}
+
+bool applyGains::validate_gain(const applyGains::GainData& data) const {
+
+    // If we haven't got the freq and elements numbers set we can't actually
+    // check. This should not happen.
+    if (!num_freq || !num_elements) {
+        WARN("Can't validate gain data as num_freq and num_elements not yet known.")
+        return false;
+    }
+
+    if (data.gain.size() != num_freq.value()) {
+        FATAL_ERROR("Number of frequencies in gain update does not match the number in the "
+                    "incoming datastream. Expected {}, gain data has {}.",
+                    num_freq.value(), data.gain.size());
+        return false;
+    }
+
+    if (data.gain.size() > 0 && data.gain[0].size() != num_elements.value()) {
+        FATAL_ERROR("Number of elements in gain update does not match the number in the incoming "
+                    "datastream. Expected {}, gain data has {}.",
+                    num_elements.value(), data.gain[0].size());
+        return false;
+    }
+    return true;
 }
