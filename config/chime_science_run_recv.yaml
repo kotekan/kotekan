@@ -123,8 +123,8 @@ updatable_config:
                  1950, 1982, 1984, 1987, 2032, 2034]
   gains:
     kotekan_update_endpoint: "json"
-    start_time: 1575000855.0
-    update_id: "gain_20191129T041415.491692Z_casa_ref_cyga"
+    start_time: 1575950518.4
+    update_id: "gain_20191210T040158.382942Z_casa_ref_cyga"
     transition_interval: 300.0
   26m_gated:
     kotekan_update_endpoint: "json"
