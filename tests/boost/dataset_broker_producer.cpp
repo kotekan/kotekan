@@ -2,7 +2,6 @@
 
 #include "restClient.hpp"
 #include "restServer.hpp"
-#include "visCompression.hpp"
 #include "visUtil.hpp"
 
 #include "json.hpp"
