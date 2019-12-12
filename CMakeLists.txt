@@ -1,4 +1,5 @@
-cmake_minimum_required (VERSION 2.8)
+# Set the version of CMake required for *all* CMake files in the project
+cmake_minimum_required (VERSION 3.0)
 project (KOTEKAN)
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 
@@ -19,9 +20,11 @@ option(USE_HCC "Build HCC GPU Framework" OFF)
 option(USE_HSA "Build HSA GPU Framework" OFF)
 option(USE_CLOC "Use the CL offline compiler" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
+option(USE_CUDA "Build CUDA GPU Framework" OFF)
 option(USE_DPDK "Enable DPDK Framework" OFF)
 option(USE_HDF5 "Build HDF5 output stages" OFF)
 option(USE_OMP "Enable OpenMP" OFF)
+option(USE_OLD_ROCM "Build for ROCm versions 2.3 or older" OFF)
 option(SUPERDEBUG "Enable extra debugging with no optimisation" OFF)
 option(SANITIZE "Enable clang sanitizers for testing" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
@@ -44,12 +47,23 @@ if (${USE_HSA})
   find_package( HSA REQUIRED )
   set(USE_HSA ${HSA_FOUND})
   find_library( hsa-runtime64 /opt/rocm/hsa/lib/ )
+  if (${USE_OLD_ROCM})
+    add_definitions(-DUSE_OLD_ROCM)
+  endif()
 endif ()
 
 if (${USE_OPENCL})
   set( ENV{AMDAPPSDKROOT} /opt/rocm/opencl)
   find_package( OpenCL REQUIRED )
   set(USE_OPENCL ${OPENCL_FOUND})
+endif ()
+
+if (${USE_CUDA})
+  set(CUDA_TOOLKIT_ROOT_DIR /usr/local/cuda )
+  set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)
+  find_package( CUDA REQUIRED )
+  set(USE_CUDA ${CUDA_FOUND})
+  enable_language( CUDA )
 endif ()
 
 if (${USE_AIRSPY})
@@ -91,6 +105,16 @@ find_package(LibEvent REQUIRED )
 include_directories(${LIBEVENT_INCLUDE_DIR}/../)
 link_libraries(${LIBEVENT_LIBRARIES})
 
+# Libnuma is optional for some setups
+find_package(NUMA)
+if (${NUMA_FOUND})
+    add_definitions(-DWITH_NUMA)
+    message("NUMA support enabled")
+    link_libraries(${NUMA_LIBRARY})
+else()
+    message("libnuma not found, NUMA support will be disabled")
+endif()
+
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   add_definitions(-DMAC_OSX)
 else()
@@ -115,16 +139,23 @@ if (${USE_HSA})
 endif ()
 if (${USE_OPENCL})
   include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
-  include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
   include_directories( ${OPENCL_INCLUDE_DIRS} )
   add_definitions(-DWITH_OPENCL)
-  set(GPU_MODULES ${GPU_MODULES} "OpenCL")
+  set(GPU_MODULES ${GPU_MODULES} "OpenCL ")
+endif ()
+if (${USE_CUDA})
+  include_directories (${KOTEKAN_SOURCE_DIR}/lib/cuda)
+  include_directories( ${CUDA_INCLUDE_DIRS} )
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lstdc++")
+  add_definitions(-DWITH_CUDA)
+  set(GPU_MODULES ${GPU_MODULES} "CUDA ")
 endif ()
 MESSAGE("GPU Modules Included: " ${GPU_MODULES})
 
 set(INPUT_MODULES "")
 if (${USE_DPDK})
   set(INPUT_MODULES ${INPUT_MODULES} "DPDK ")
+  find_package(DPDK REQUIRED)
 endif ()
 if (${USE_AIRSPY})
   add_definitions(-DWITH_AIRSPY)
@@ -195,7 +226,12 @@ set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrt " )
 endif ()
+
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
+
+# dpdk uses the register keyword that got removed in C++17 because it wasn't doing anything
+#TODO remove this line when dpdk people fix this: https://mails.dpdk.org/archives/dev/2018-July/107950.html
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-register")
 
 # Warning about missing override is called differently in clang and gcc
 # TODO: enable once we are using a release version of HighFive
@@ -230,7 +266,7 @@ if (${USE_OPENCL})
     install(DIRECTORY lib/opencl/kernels DESTINATION /var/lib/kotekan/opencl )
 endif ()
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 
 if (${COMPILE_DOCS})
     add_subdirectory(docs EXCLUDE_FROM_ALL)
@@ -270,7 +306,7 @@ endif()
 # Enforce code formatting rules with clang-format.
 find_program(
     CLANG_FORMAT_PATH
-    NAMES "clang-format"
+    NAMES "clang-format-8" "clang-format"
     DOC "Path to clang-format executable"
     )
 if(NOT CLANG_FORMAT_PATH)

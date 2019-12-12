@@ -3,6 +3,7 @@
 
 #include "Config.hpp"
 #include "buffer.h"
+#include "kotekanLogging.hpp"
 #include "metadata.h"
 
 #include "json.hpp"

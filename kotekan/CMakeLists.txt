@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 2.8)
-
 PROJECT (kotekan)
 
 SET(SOURCE_EXE kotekan.cpp)
@@ -16,8 +14,11 @@ ADD_DEFINITIONS(-mssse3 -D__STDC_LIMIT_MACROS)
 
 add_executable(kotekan ${SOURCE_EXE})
 
+if (${NUMA_FOUND})
+    target_link_libraries( kotekan numa )
+endif()
+
 target_link_libraries( kotekan m dl pthread )
 target_link_libraries( kotekan kotekan_libs )
 
 install(TARGETS kotekan DESTINATION /usr/local/bin COMPONENT binaries)
-

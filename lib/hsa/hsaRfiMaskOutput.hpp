@@ -36,8 +36,6 @@ public:
     virtual ~hsaRfiMaskOutput();
     /// Wait for output buffer to be empty, keep track of _rfi_mask_output_buf_precondition_id
     int wait_on_precondition(int gpu_frame_id) override;
-    /// Function to handle updatble config rest server calls for rfi zeroing toggle
-    bool update_rfi_add_lostsamples_flag(nlohmann::json& json);
     /// Async copy output form gpu to host
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
     /// Marks output full when done and passes metadata
@@ -47,37 +45,17 @@ private:
     /// The raw time series data from the FPGAs
     Buffer* _network_buf;
     /// The array of missing sample flags for _network_buf
-    Buffer* _lost_samples_buf;
-    /// Output buffer from the FRB pipeline
     Buffer* _rfi_mask_output_buf;
-    /// Output of the N2 correlation products
-    Buffer* _output_buf;
     /// ID for _network_buf
     int32_t _network_buf_id;
-    /// ID for _lost_samples_buf
-    int32_t _lost_samples_buf_id;
-    /// ID for _output_buf;
-    int32_t _output_buf_id;
+
+    int32_t _network_buf_precondition_id;
     /// ID for _rfi_mask_output_buf
     int32_t _rfi_mask_output_buf_id;
     /// ID for _rfi_mask_output_buf_precondition
     int32_t _rfi_mask_output_buf_precondition_id;
     /// ID for _rfi_mask_output_buf_execute
     int32_t _rfi_mask_output_buf_execute_id;
-    // General Config Parameters
-    /// Number of elements (2048 for CHIME or 256 for Pathfinder)
-    uint32_t _num_elements;
-    /// Number of frequencies per GPU (1 for CHIME or 8 for Pathfinder)
-    uint32_t _num_local_freq;
-    /// Total number of frequencies (1024)
-    uint32_t _num_total_freq;
-    /// Number of time samples per frame (Usually 32768 or 49152)
-    uint32_t _samples_per_data_set;
-    // RFI config parameters
-    /// The kurtosis step (How many timesteps per kurtosis estimate)
-    uint32_t _sk_step;
-    /// A Flag wich sets whether or not we compute and add the lost samples due to RFI flagging
-    bool _rfi_add_lostsamples;
 };
 
 #endif

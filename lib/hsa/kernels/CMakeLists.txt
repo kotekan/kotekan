@@ -42,13 +42,20 @@ FOREACH(infileName ${inISAFiles})
     # Generate input file name
     SET(infile "${CMAKE_CURRENT_SOURCE_DIR}/${infileName}")
 
-    # Custom command to build the hasco
-    ADD_CUSTOM_COMMAND(OUTPUT "${outfile}"
+    # Custom command to build the hsaco
+    if (${USE_OLD_ROCM})
+      ADD_CUSTOM_COMMAND(OUTPUT "${outfile}"
         COMMAND ${AMD_CLANG} -x assembler -target amdgcn--amdhsa -mcpu=fiji -c -o "${objectfile}" "${infile}"
         COMMAND ${AMD_CLANG} -target amdgcn--amdhsa "${objectfile}" -o "${outfile}"
         DEPENDS "${infile}" ${AMD_CLANG}
-        COMMENT "Generating hasco file from ${infile}: ${outfile}")
-
+        COMMENT "Generating hsaco file from ${infile}: ${outfile}")
+    else ()
+      ADD_CUSTOM_COMMAND(OUTPUT "${outfile}"
+        COMMAND ${AMD_CLANG} -x assembler -target amdgcn--amdhsa -mcpu=fiji -mno-code-object-v3 -c -o "${objectfile}" "${infile}"
+        COMMAND ${AMD_CLANG} -target amdgcn--amdhsa "${objectfile}" -o "${outfile}"
+        DEPENDS "${infile}" ${AMD_CLANG}
+        COMMENT "Generating hsaco file from ${infile}: ${outfile}")
+    endif ()
     # Build list of depenencies
     SET(outFiles ${outFiles} "${outfile}")
 ENDFOREACH(infileName)
@@ -65,7 +72,7 @@ FOREACH(clfile ${inCLFiles})
     ADD_CUSTOM_COMMAND(OUTPUT "${hsacofile}"
         COMMAND ${CLOC_SCRIPT} "-o" ${hsacofile} ${clfile}
         DEPENDS "${infile}" ${CLOC_SCRIPT}
-        COMMENT "Using cloc.sh to compile hasco file from ${clfile}: ${hsacofile}")
+        COMMENT "Using cloc.sh to compile hsaco file from ${clfile}: ${hsacofile}")
   else ()
     STRING(REGEX REPLACE ".cl\$" ".bc"        bcfile      "${clfile}")
     STRING(REGEX REPLACE ".cl\$" ".lnkd.bc"   lnkdbcfile  "${clfile}")
@@ -119,7 +126,8 @@ FOREACH(clfile ${inCLFiles})
                 "--no-undefined"
                 "-shared"
                 "-o" ${hsacofile}
-        COMMENT "Compiling hasco file from ${clfile}: ${hsacofile}"
+        DEPENDS ${clfile}
+        COMMENT "Compiling hsaco file from ${clfile}: ${hsacofile}"
       )
   endif ()
   SET(outFiles ${outFiles} "${hsacofile}")

@@ -11,6 +11,12 @@
 using std::map;
 using std::string;
 
+// doxygen wants the namespace to be documented somewhere
+/*!
+ *  \addtogroup kotekan
+ *  @{
+ */
+//! Kotekan namespace
 namespace kotekan {
 
 class kotekanMode {
@@ -40,5 +46,7 @@ private:
 };
 
 } // namespace kotekan
+
+/*! @} End of Doxygen Groups*/
 
 #endif /* CHIME_HPP */

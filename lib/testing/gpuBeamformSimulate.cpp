@@ -17,7 +17,7 @@
 
 #define PI 3.14159265
 #define feed_sep 0.3048
-#define light 3.e8
+#define light 299792458.
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -321,7 +321,7 @@ void gpuBeamformSimulate::main_thread() {
 
         // TODO adjust to allow for more than one frequency.
         // TODO remove all the 32's in here with some kind of constant/define
-        INFO("Simulating GPU beamform processing for %s[%d] putting result in %s[%d]",
+        INFO("Simulating GPU beamform processing for {:s}[{:d}] putting result in {:s}[{:d}]",
              input_buf->buffer_name, input_buf_id, output_buf->buffer_name, output_buf_id);
 
         stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
@@ -346,7 +346,7 @@ void gpuBeamformSimulate::main_thread() {
         ptr_myfile = fopen(filename, "rb");
 
         if (ptr_myfile == NULL) {
-            ERROR("CPU verification code: Cannot open gain file %s", filename);
+            ERROR("CPU verification code: Cannot open gain file {:s}", filename);
             for (int i = 0; i < 2048; i++) {
                 cpu_gain[i * 2] = default_gains[0] * scaling;
                 cpu_gain[i * 2 + 1] = default_gains[1] * scaling;
@@ -449,6 +449,11 @@ void gpuBeamformSimulate::main_thread() {
             }
         }
 
+        // 16-bandpass correction
+        float BP[16]{0.52225748, 0.58330915, 0.6868705,  0.80121821, 0.89386546, 0.95477358,
+                     0.98662733, 0.99942558, 0.99988676, 0.98905127, 0.95874124, 0.90094667,
+                     0.81113021, 0.6999944,  0.59367968, 0.52614263};
+
         // Downsample
         int nfreq_out = _factor_upchan / _downsample_freq;
         int nsamp_out = _samples_per_data_set / _factor_upchan / _downsample_time;
@@ -477,17 +482,18 @@ void gpuBeamformSimulate::main_thread() {
                                                                    * 2
                                                                + 1];
                                 out_sq += tmp_real * tmp_real + tmp_imag * tmp_imag;
-                            }
-                        } // end for tt
-                    }     // end for pol
-                    cpu_final_output[out_id] = out_sq / 48.;
+                            } // end for ff
+                        }     // end for tt
+                    }         // end for pol
+                    cpu_final_output[out_id] = out_sq / 48. / BP[int((f + 8) % 16)];
+
                 } // end for freq
             }     // end for time
         }         // end for beam
 
         memcpy(output, cpu_final_output, output_buf->frame_size);
 
-        INFO("Simulating GPU beamform processing done for %s[%d] result is in %s[%d]",
+        INFO("Simulating GPU beamform processing done for {:s}[{:d}] result is in {:s}[{:d}]",
              input_buf->buffer_name, input_buf_id, output_buf->buffer_name, output_buf_id);
 
         pass_metadata(input_buf, input_buf_id, output_buf, output_buf_id);

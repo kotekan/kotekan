@@ -21,7 +21,7 @@ REGISTER_HSA_COMMAND(hsaRfiVdif);
 
 hsaRfiVdif::hsaRfiVdif(Config& config, const string& unique_name, bufferContainer& host_buffers,
                        hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "rfi_vdif", "rfi_vdif.hsaco") {
+    hsaCommand(config, unique_name, host_buffers, device, "rfi_vdif" KERNEL_EXT, "rfi_vdif.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
     // Grab values from config and calculates buffer size
@@ -38,7 +38,8 @@ hsaRfiVdif::hsaRfiVdif(Config& config, const string& unique_name, bufferContaine
         (_num_elements * _num_local_freq * _samples_per_data_set / _sk_step) * sizeof(float);
     mean_len = _num_elements * _num_local_freq * sizeof(float);
 
-    Mean_Array = (float*)hsa_host_malloc(mean_len); // Allocates memory for Mean Array
+    // Allocates memory for Mean Array
+    Mean_Array = (float*)hsa_host_malloc(mean_len, device.get_gpu_numa_node());
 
     for (uint32_t b = 0; b < mean_len / sizeof(float); b++) {
         Mean_Array[b] = 0; /// Initialize
@@ -81,7 +82,7 @@ hsa_signal_t hsaRfiVdif::execute(int gpu_frame_id, hsa_signal_t precede_signal) 
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 
     hsa_status_t hsa_status = hsa_signal_create(1, 0, NULL, &signals[gpu_frame_id]);
-    assert(hsa_status == HSA_STATUS_SUCCESS);
+    HSA_CHECK(hsa_status);
 
     // Obtain the current queue write index.
     uint64_t index = hsa_queue_load_write_index_acquire(device.get_queue());

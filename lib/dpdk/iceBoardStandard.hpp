@@ -27,7 +27,7 @@
  *       memory which this handler did not fill because the packet was lost or invalide.
  *
  * @par REST Endpoints
- * @endpoint /<unique_name>/port_data ``[GET]`` Returns stats about the PORT and the packets
+ * @endpoint /\<unique_name\>/port_data ``[GET]`` Returns stats about the PORT and the packets
  * received on it.
  *
  * @par Buffers
@@ -78,7 +78,7 @@ iceBoardStandard::iceBoardStandard(kotekan::Config& config, const std::string& u
                                    kotekan::bufferContainer& buffer_container, int port) :
     iceBoardHandler(config, unique_name, buffer_container, port) {
 
-    DEBUG("iceBoardStandard: %s", unique_name.c_str());
+    DEBUG("iceBoardStandard: {:s}", unique_name);
 
     out_buf = buffer_container.get_buffer(config.get<std::string>(unique_name, "out_buf"));
     register_producer(out_buf, unique_name.c_str());

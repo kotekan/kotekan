@@ -5,6 +5,7 @@
 #include "datasetState.hpp"
 #include "errors.h"
 
+#include "fmt.hpp"
 #include "gsl-lite.hpp"
 
 #include <complex>
@@ -38,9 +39,11 @@ REGISTER_VIS_FILE("hdf5fast", visFileH5Fast);
 // Implementation of standard HDF5 visibility data file
 //
 
-void visFileH5::create_file(const std::string& name,
-                            const std::map<std::string, std::string>& metadata, dset_id_t dataset,
-                            size_t max_time) {
+visFileH5::visFileH5(const std::string& name, const kotekan::logLevel log_level,
+                     const std::map<std::string, std::string>& metadata, dset_id_t dataset,
+                     size_t max_time) {
+    set_log_level(log_level);
+
     auto& dm = datasetManager::instance();
 
     auto istate_fut = std::async(&datasetManager::dataset_state<inputState>, &dm, dataset);
@@ -56,10 +59,9 @@ void visFileH5::create_file(const std::string& name,
     const eigenvalueState* evstate = evstate_fut.get();
 
     if (!istate || !pstate || !fstate) {
-        ERROR("Required datasetState not found for dataset ID "
-              "0x%" PRIx64 "\nThe following required states were found:\n"
-              "inputState - %d\nprodState - %d\nfreqState - %d\n",
-              dataset, istate, pstate, fstate);
+        ERROR("Required datasetState not found for dataset ID {}\nThe following required states "
+              "were found:\ninputState - {:p}\nprodState - {:p}\nfreqState - {:p}\n",
+              dataset, (void*)istate, (void*)pstate, (void*)fstate);
         throw std::runtime_error("Could not create file.");
     }
 
@@ -69,34 +71,33 @@ void visFileH5::create_file(const std::string& name,
                                  "stacked data.");
     }
 
-    std::string data_filename = name + ".h5";
+    std::string data_filename = fmt::format(fmt("{:s}.h5"), name);
 
     lock_filename = create_lockfile(data_filename);
 
     // Save the number of eigenvalues we are going to get
     num_ev = evstate ? evstate->get_num_ev() : 0;
 
-    INFO("Creating new output file %s", name.c_str());
+
+    INFO("Creating new output file {:s}", name);
 
     file = std::unique_ptr<File>(
         new File(data_filename, File::ReadWrite | File::Create | File::Truncate));
     create_axes(unzip(fstate->get_freqs()).second, istate->get_inputs(), pstate->get_prods(),
-                num_ev, max_time);
-
-    create_datasets();
+                num_ev);
+    _max_time = max_time;
 
     // Write out metadata into flle
     for (auto item : metadata) {
         file->createAttribute<std::string>(item.first, DataSpace::From(item.second))
             .write(item.second);
     }
-
-    // Add weight type flag where gossec expects it
-    dset("vis_weight")
-        .createAttribute<std::string>("type", DataSpace::From(metadata.at("weight_type")))
-        .write(metadata.at("weight_type"));
 }
 
+void visFileH5::deferred_init() {
+    create_time_axis();
+    create_datasets();
+}
 
 visFileH5::~visFileH5() {
     file->flush();
@@ -106,10 +107,7 @@ visFileH5::~visFileH5() {
 
 void visFileH5::create_axes(const std::vector<freq_ctype>& freqs,
                             const std::vector<input_ctype>& inputs,
-                            const std::vector<prod_ctype>& prods, size_t num_ev,
-                            size_t num_time = 0) {
-
-    create_time_axis(num_time);
+                            const std::vector<prod_ctype>& prods, size_t num_ev) {
 
     // Create and fill other axes
     create_axis("freq", freqs);
@@ -133,13 +131,13 @@ void visFileH5::create_axis(std::string name, const std::vector<T>& axis) {
     index.write(axis);
 }
 
-void visFileH5::create_time_axis(size_t num_time) {
+void visFileH5::create_time_axis() {
 
     Group indexmap =
         file->exist("index_map") ? file->getGroup("index_map") : file->createGroup("index_map");
 
     DataSet time_axis =
-        indexmap.createDataSet("time", DataSpace({0}, {num_time}), create_datatype<time_ctype>(),
+        indexmap.createDataSet("time", DataSpace({0}, {_max_time}), create_datatype<time_ctype>(),
                                std::vector<size_t>({1}));
 }
 
@@ -160,6 +158,12 @@ void visFileH5::create_datasets() {
         create_dataset("evec", {"time", "freq", "ev", "input"}, create_datatype<cfloat>());
         create_dataset("erms", {"time", "freq"}, create_datatype<float>());
     }
+
+    // Copy the weight type flag to where gossec expects it
+    std::string wt;
+    file->getAttribute("weight_type").read(wt);
+    auto ds = file->getAttribute("weight_type").getSpace();
+    dset("vis_weight").createAttribute<std::string>("type", ds).write(wt);
 
     file->flush();
 }
@@ -200,7 +204,7 @@ DataSet visFileH5::dset(const std::string& name) {
 size_t visFileH5::length(const std::string& axis_name) {
     if (axis_name == "ev" && num_ev == 0)
         return 0;
-    return dset("index_map/" + axis_name).getSpace().getDimensions()[0];
+    return dset(fmt::format(fmt("index_map/{:s}"), axis_name)).getSpace().getDimensions()[0];
 }
 
 size_t visFileH5::num_time() {
@@ -210,11 +214,16 @@ size_t visFileH5::num_time() {
 
 uint32_t visFileH5::extend_time(time_ctype new_time) {
 
+    // If we haven't create all the datasets, we need to do that now.
+    if (!file->exist("vis")) {
+        deferred_init();
+    }
+
     // Get the current dimensions
     size_t ntime = length("time"), nprod = length("prod"), ninput = length("input"),
            nfreq = length("freq"), nev = length("ev");
 
-    INFO("Current size: %zd; new size: %zd", ntime, ntime + 1);
+    INFO("Current size: {:d}; new size: {:d}", ntime, ntime + 1);
     // Add a new entry to the time axis
     ntime++;
     dset("index_map/time").resize({ntime});
@@ -243,10 +252,9 @@ void visFileH5::write_sample(uint32_t time_ind, uint32_t freq_ind, const visFram
 
     // TODO: consider adding checks for all dims
     if (frame.num_ev != num_ev) {
-        std::string msg =
-            fmt::format("Number of eigenvalues don't match for write (got {}, expected {})",
-                        frame.num_ev, num_ev);
-        throw std::runtime_error(msg);
+        throw std::runtime_error(fmt::format(
+            fmt("Number of eigenvalues don't match for write (got {:d}, expected {:d})"),
+            frame.num_ev, num_ev));
     }
 
     // Get the current dimensions
@@ -277,11 +285,14 @@ void visFileH5::write_sample(uint32_t time_ind, uint32_t freq_ind, const visFram
 // Implementation of the fast HDF5 visibility data file
 //
 
-// Implement the create_file method
-void visFileH5Fast::create_file(const std::string& name,
-                                const std::map<std::string, std::string>& metadata,
-                                dset_id_t dataset, size_t max_time) {
-    visFileH5::create_file(name, metadata, dataset, max_time);
+visFileH5Fast::visFileH5Fast(const std::string& name, const kotekan::logLevel log_level,
+                             const std::map<std::string, std::string>& metadata, dset_id_t dataset,
+                             size_t max_time) :
+    visFileH5(name, log_level, metadata, dataset, max_time) {}
+
+void visFileH5Fast::deferred_init() {
+    create_time_axis();
+    create_datasets();
     setup_raw();
 }
 
@@ -292,9 +303,9 @@ visFileH5Fast::~visFileH5Fast() {
 }
 
 
-void visFileH5Fast::create_time_axis(size_t max_time) {
+void visFileH5Fast::create_time_axis() {
     // Fill the time axis with zeros
-    std::vector<time_ctype> times(max_time, {0, 0.0});
+    std::vector<time_ctype> times(_max_time, {0, 0.0});
     create_axis("time", times);
 }
 
@@ -350,7 +361,7 @@ void visFileH5Fast::setup_raw() {
 #ifndef __APPLE__
     struct stat st;
     if ((fstat(fd, &st) != 0) || (posix_fallocate(fd, 0, st.st_size) != 0)) {
-        ERROR("Couldn't preallocate file: %s", strerror(errno));
+        ERROR("Couldn't preallocate file: {:s}", strerror(errno));
     }
 #endif
 }
@@ -360,7 +371,7 @@ bool visFileH5Fast::write_raw(off_t dset_base, int ind, size_t n, const std::vec
 
 
     if (vec.size() < n) {
-        ERROR("Expected size of write (%i) exceeds vector length (%i)", n, vec.size());
+        ERROR("Expected size of write ({:d}) exceeds vector length ({:d})", n, vec.size());
         return false;
     }
 
@@ -378,7 +389,7 @@ bool visFileH5Fast::write_raw(off_t dset_base, int ind, size_t n, const T* data)
     int nbytes = TEMP_FAILURE_RETRY(pwrite(fd, (const void*)data, nb, offset));
 
     if (nbytes < 0) {
-        ERROR("Write error attempting to write %i bytes at offset %i: %s", nb, offset,
+        ERROR("Write error attempting to write {:d} bytes at offset {:d}: {:s}", nb, offset,
               strerror(errno));
         return false;
     }
@@ -410,6 +421,11 @@ void visFileH5Fast::flush_raw_sync(off_t dset_base, int ind, size_t n) {
 }
 
 uint32_t visFileH5Fast::extend_time(time_ctype new_time) {
+
+    // If we haven't create the datasets, we need to do that now.
+    if (!file->exist("vis")) {
+        deferred_init();
+    }
 
     // Perform a raw write of the new time sample
     write_raw(time_offset, ntime, 1, &new_time);
@@ -466,10 +482,9 @@ void visFileH5Fast::write_sample(uint32_t time_ind, uint32_t freq_ind, const vis
 
     // TODO: consider adding checks for all dims
     if (frame.num_ev != num_ev) {
-        std::string msg =
-            fmt::format("Number of eigenvalues don't match for write (got {}, expected {})",
-                        frame.num_ev, num_ev);
-        throw std::runtime_error(msg);
+        throw std::runtime_error(fmt::format(
+            fmt("Number of eigenvalues don't match for write (got {:d}, expected {:d})"),
+            frame.num_ev, num_ev));
     }
 
     std::vector<cfloat> gain_coeff(ninput, {1, 0});
@@ -502,7 +517,7 @@ DataType HighFive::create_datatype<freq_ctype>() {
     f.addMember("centre", H5T_IEEE_F64LE);
     f.addMember("width", H5T_IEEE_F64LE);
     f.autoCreate();
-    return f;
+    return std::move(f);
 }
 
 template<>
@@ -511,7 +526,7 @@ DataType HighFive::create_datatype<time_ctype>() {
     t.addMember("fpga_count", H5T_STD_U64LE);
     t.addMember("ctime", H5T_IEEE_F64LE);
     t.autoCreate();
-    return t;
+    return std::move(t);
 }
 
 template<>
@@ -525,7 +540,7 @@ DataType HighFive::create_datatype<input_ctype>() {
     i.addMember("correlator_input", s32, 2);
     i.manualCreate(34);
 
-    return i;
+    return std::move(i);
 }
 
 template<>
@@ -535,7 +550,7 @@ DataType HighFive::create_datatype<prod_ctype>() {
     p.addMember("input_a", H5T_STD_U16LE);
     p.addMember("input_b", H5T_STD_U16LE);
     p.autoCreate();
-    return p;
+    return std::move(p);
 }
 
 template<>
@@ -544,5 +559,5 @@ DataType HighFive::create_datatype<cfloat>() {
     c.addMember("r", H5T_IEEE_F32LE);
     c.addMember("i", H5T_IEEE_F32LE);
     c.autoCreate();
-    return c;
+    return std::move(c);
 }

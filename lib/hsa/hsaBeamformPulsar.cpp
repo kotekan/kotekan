@@ -7,7 +7,7 @@ REGISTER_HSA_COMMAND(hsaBeamformPulsar);
 
 hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const string& unique_name,
                                      bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "pulsarbf_float",
+    hsaCommand(config, unique_name, host_buffers, device, "pulsarbf_float" KERNEL_EXT,
                "pulsar_beamformer_nbeam.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
@@ -20,7 +20,7 @@ hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const string& unique_name,
     output_frame_len = _samples_per_data_set * _num_pulsar * _num_pol * 2 * sizeof(float);
 
     phase_len = _num_elements * _num_pulsar * 2 * sizeof(float);
-    host_phase = (float*)hsa_host_malloc(phase_len);
+    host_phase = (float*)hsa_host_malloc(phase_len, device.get_gpu_numa_node());
 
     int index = 0;
     for (int b = 0; b < _num_pulsar; b++) {
