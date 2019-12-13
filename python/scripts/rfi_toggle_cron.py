@@ -2,10 +2,19 @@ import datetime
 import requests
 import json
 import time
+import ephemeris
+#from datetime import datetime
+
+t_now = datetime.utcnow()
+t_transit = ephemeris.solar_transit(t_now)[0]
+t_diff = datetime.utcfromtimestamp(t_transit) - t_now
 
 #Wait until the correct UTC time (deals with daylight savings time)
-while(datetime.datetime.utcnow().time() < datetime.time(19,10)):
-    time.sleep(5)
+print("Time until transit: {}".format(t_diff))
+print("Sleeping for {} seconds".format(abs(t_diff.total_seconds())))
+time.sleep(abs(t_diff.total_seconds()))
+
+print("Waking up to zero RFI during solar transit")
 
 downtime = 60 #minutes
 
@@ -28,6 +37,7 @@ try:
         print("RFI CRONJOB: Request sent")
 except:
     print("RFI CRONJOB: Failure to Contact Kotekan Master, is it running?")
+    on = False
 
 #If we successfully turned RFI Zeroing off
 if(not on):
