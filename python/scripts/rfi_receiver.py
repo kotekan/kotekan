@@ -823,7 +823,7 @@ def rfi_zeroing():
             on = False
             print("RFI CRONJOB: Request sent")
     except:
-        print("RFI CRONJOB: Failure to Contact Kotekan Master, is it running?")
+        print("RFI CRONJOB: Failure to contact Comet, is it running?")
 
     # If we successfully turned RFI Zeroing off
     if not on:
@@ -844,7 +844,7 @@ def rfi_zeroing():
                 on = True
                 print("RFI CRONJOB: Request sent")
         except:
-            print("RFI CRONJOB: Failure to Contact Kotekan Master, is it running?")
+            print("RFI CRONJOB: Failure to contact Comet, is it running?")
             on = False
 
     # Exit
