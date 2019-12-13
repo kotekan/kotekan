@@ -845,6 +845,7 @@ def rfi_zeroing():
                 print("RFI CRONJOB: Request sent")
         except:
             print("RFI CRONJOB: Failure to Contact Kotekan Master, is it running?")
+            on = False
 
     # Exit
     if on:
