@@ -8,15 +8,12 @@
 #include "configUpdater.hpp"
 #include "hsaBase.h"
 #include "restServer.hpp"
+#include "visUtil.hpp"
 
 #include <math.h>
 #include <signal.h>
 #include <string>
 #include <time.h>
-#include <utils/visUtil.hpp>
-
-#define likely(x) __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
 
 #define PI 3.14159265
 #define light 299792458.
