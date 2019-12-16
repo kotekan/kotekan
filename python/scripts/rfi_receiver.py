@@ -795,15 +795,16 @@ def rfi_zeroing():
     t_transit = ephemeris.solar_transit(t_now)[0]
     t_diff = datetime.utcfromtimestamp(t_transit) - t_now
 
+    downtime_m = 60  # minutes
+    sleep_time_s = abs(t_diff.total_seconds() - 0.5 * downtime_m * 60) # seconds
+
     # Wait until the correct UTC time (deals with daylight savings time)
-    print("Time until transit: {}".format(t_diff))
-    print("Sleeping for {} seconds".format(abs(t_diff.total_seconds())))
+    logger.info("Time until transit: {}".format(t_diff))
+    logger.info("Sleeping for {} seconds".format(sleep_time_s))
 
-    time.sleep(abs(t_diff.total_seconds()))
+    time.sleep(sleep_time_s)
 
-    print("Waking up to zero RFI during solar transit")
-
-    downtime = 60  # minutes
+    logger.info("Waking up to zero RFI during solar transit")
 
     # Endpoint parameters
     url = "http://csBfs:54323/toggle-rfi-zeroing"
@@ -818,18 +819,18 @@ def rfi_zeroing():
     try:
         r = requests.post(url, data=json.dumps(payload), headers=headers)
         if not r.ok:
-            print("RFI CRONJOB: Something went wrong in the request.")
+            logger.info("RFI Solar Transit Toggle: Something went wrong in the request.")
         else:
             on = False
-            print("RFI CRONJOB: Request sent")
+            logger.info("RFI Solar Transit Toggle: Request sent")
     except:
-        print("RFI CRONJOB: Failure to contact Comet, is it running?")
+        logger.info("RFI Solar Transit Toggle: Failure to contact Comet, is it running?")
 
     # If we successfully turned RFI Zeroing off
     if not on:
 
         # Wait until sun has passed
-        time.sleep(downtime * 60)
+        time.sleep(downtime_m * 60)
 
         # Payload
         payload = dict()
@@ -839,20 +840,20 @@ def rfi_zeroing():
         try:
             r = requests.post(url, data=json.dumps(payload), headers=headers)
             if not r.ok:
-                print("RFI CRONJOB: Something went wrong in the request.")
+                logger.info("RFI Solar Transit Toggle: Something went wrong in the request.")
             else:
                 on = True
-                print("RFI CRONJOB: Request sent")
+                logger.info("RFI Solar Transit Toggle: Request sent")
         except:
-            print("RFI CRONJOB: Failure to contact Comet, is it running?")
+            logger.info("RFI Solar Transit Toggle: Failure to contact Comet, is it running?")
             on = False
 
     # Exit
     if on:
-        print("RFI CRONJOB: RFI zeroing has successfully been turned back on")
+        logger.info("RFI Solar Transit Toggle: RFI zeroing has successfully been turned back on")
     else:
-        print(
-            "RFI CRONJOB: There was a failure, RFI zeroing has not been turned back on"
+        logger.info(
+            "RFI Solar Transit Toggle: There was a failure, RFI zeroing has not been turned back on"
         )
 
 
