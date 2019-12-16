@@ -178,6 +178,8 @@ void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutMana
             struct stat path_status;
             int stat_rc = stat((_base_dir + request.file_path).c_str(), &path_status);
             if (!(stat_rc == 0 && path_status.st_mode & S_IFDIR)) {
+                WARN("Baseband destination path {} for request {:d} is not valid",
+                     request.file_path, event_id);
                 std::lock_guard<std::mutex> lock(request_mtx);
                 dump_status.finished = dump_status.started =
                     std::make_shared<std::chrono::system_clock::time_point>(
