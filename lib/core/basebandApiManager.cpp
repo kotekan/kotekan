@@ -3,6 +3,7 @@
 #include "basebandReadoutManager.hpp"
 #include "kotekanLogging.hpp"
 
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 
