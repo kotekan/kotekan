@@ -71,7 +71,7 @@ public:
     /// Load gain, update phases every second by alternating the use of 2 banks.
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
-    void finalize_frame(int frame_id);
+    void finalize_frame(int frame_id) override;
 
     /// Endpoint for providing new pulsar target (RA, Dec, sacling factor, beam_id)
     bool pulsar_grab_callback(nlohmann::json& json, const uint8_t beamID);

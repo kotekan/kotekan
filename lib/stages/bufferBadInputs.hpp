@@ -42,7 +42,6 @@ public:
     bool update_bad_inputs_callback(nlohmann::json& json);
 
 private:
-    struct Buffer* in_buf;
     struct Buffer* out_buf;
 
     /// Stage variables
@@ -55,10 +54,6 @@ private:
 
     /// The size of the bad input mask.
     uint32_t input_mask_len;
-
-    /// The host memory region which holds the input mask
-    /// Note 1 means the element is good, 0 means flagged.
-    uint8_t* host_mask;
 
     /// The mapping from correlator to cylinder element indexing.
     std::vector<uint32_t> input_remap;

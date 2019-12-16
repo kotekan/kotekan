@@ -206,10 +206,11 @@ find_package(Threads REQUIRED)
 
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
-# Note that -lrt here is needed on some versions of CentOS
-if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+# Note that -lrt here is needed on some versions of CentOS but not Clang
+if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
        set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrt " )
 endif ()
+
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
 
 # OpenMP flag
@@ -222,8 +223,8 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
-# Note that -lrt here is needed on some versions of CentOS
-if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+# Note that -lrt here is needed on some versions of CentOS but not Clang
+if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrt " )
 endif ()
 
@@ -252,6 +253,11 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm -Wl,-no_pie")
 else()
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lm")
+endif()
+
+# Add link to atomic operations library if we are using Clang
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -latomic")
 endif()
 
 # Add fcx-limited-range to speed up complex arithmetic if we are using GCC
