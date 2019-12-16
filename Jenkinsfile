@@ -92,8 +92,11 @@ pipeline {
           steps {
             sh '''mkdir -p build-check-format
                   cd build-check-format/
-                  cmake ..
+                  CXX=clang++ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
                   make clang-format
+                  git diff --exit-code
+                  iwyu_tool -p . -- --mapping_file=${WORKSPACE}/iwyu.kotekan.imp --max_line_length 100 > iwyu.out
+                  python2 /usr/bin/fix_include --dry --comments < iwyu.out
                   git diff --exit-code
                   black --check --exclude docs ..'''
           }
