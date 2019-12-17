@@ -43,7 +43,7 @@
  *
  * @conf   num_elements         Int . Number of elements.
  * @conf   num_local_freq       Int . Number of local freq.
- * @conf   num_local_freq       Int (default 1024). Number of total freq.
+ * @conf   num_total_freq       Int (default 1024). Number of total freq.
  * @conf   samples_per_data_set Int . Number of time samples in a data set.
  * @conf   sk_step              Int (default 256). Length of time integration in SK estimate.
  * @conf   frames_per_packet    Int (default 1). The Number of frames to average over before sending

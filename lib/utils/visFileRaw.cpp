@@ -30,9 +30,10 @@ REGISTER_VIS_FILE("raw", visFileRaw);
 //
 // Implementation of raw visibility data file
 //
-void visFileRaw::create_file(const std::string& name, const kotekan::logLevel log_level,
-                             const std::map<std::string, std::string>& metadata, dset_id_t dataset,
-                             size_t max_time) {
+visFileRaw::visFileRaw(const std::string& name, const kotekan::logLevel log_level,
+                       const std::map<std::string, std::string>& metadata, dset_id_t dataset,
+                       size_t max_time, int oflags) :
+    _name(name) {
     set_log_level(log_level);
 
     INFO("Creating new output file {:s}", name);
@@ -51,7 +52,7 @@ void visFileRaw::create_file(const std::string& name, const kotekan::logLevel lo
     const freqState* fstate = fstate_fut.get();
 
     if (!istate || !pstate || !fstate) {
-        ERROR("Required datasetState not found for dataset ID {:#x}\nThe following required states "
+        ERROR("Required datasetState not found for dataset ID {}\nThe following required states "
               "were found:\ninputState - {:p}\nprodState - {:p}\nfreqState - {:p}\n",
               dataset, (void*)istate, (void*)pstate, (void*)fstate);
         throw std::runtime_error("Could not create file.");
@@ -108,13 +109,13 @@ void visFileRaw::create_file(const std::string& name, const kotekan::logLevel lo
 
 
     // Create lock file and then open the other files
-    _name = name;
-    lock_filename = create_lockfile(name);
-    metadata_file = std::ofstream(name + ".meta", std::ios::binary);
-    if ((fd = open((name + ".data").c_str(), oflags, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH))
+    lock_filename = create_lockfile(_name);
+    metadata_file = std::ofstream(_name + ".meta", std::ios::binary);
+    if ((fd = open((_name + ".data").c_str(), oflags,
+                   S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH))
         == -1) {
         throw std::runtime_error(
-            fmt::format(fmt("Failed to open file {:s}.data: {:s}."), name, strerror(errno)));
+            fmt::format(fmt("Failed to open file {:s}.data: {:s}."), _name, strerror(errno)));
     }
 
     // Preallocate data file (without increasing the length)

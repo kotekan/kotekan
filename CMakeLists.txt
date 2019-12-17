@@ -1,4 +1,5 @@
-cmake_minimum_required (VERSION 2.8)
+# Set the version of CMake required for *all* CMake files in the project
+cmake_minimum_required (VERSION 3.0)
 project (KOTEKAN)
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 
@@ -19,6 +20,7 @@ option(USE_HCC "Build HCC GPU Framework" OFF)
 option(USE_HSA "Build HSA GPU Framework" OFF)
 option(USE_CLOC "Use the CL offline compiler" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
+option(USE_CUDA "Build CUDA GPU Framework" OFF)
 option(USE_DPDK "Enable DPDK Framework" OFF)
 option(USE_HDF5 "Build HDF5 output stages" OFF)
 option(USE_OMP "Enable OpenMP" OFF)
@@ -54,6 +56,14 @@ if (${USE_OPENCL})
   set( ENV{AMDAPPSDKROOT} /opt/rocm/opencl)
   find_package( OpenCL REQUIRED )
   set(USE_OPENCL ${OPENCL_FOUND})
+endif ()
+
+if (${USE_CUDA})
+  set(CUDA_TOOLKIT_ROOT_DIR /usr/local/cuda )
+  set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)
+  find_package( CUDA REQUIRED )
+  set(USE_CUDA ${CUDA_FOUND})
+  enable_language( CUDA )
 endif ()
 
 if (${USE_AIRSPY})
@@ -129,16 +139,23 @@ if (${USE_HSA})
 endif ()
 if (${USE_OPENCL})
   include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
-  include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
   include_directories( ${OPENCL_INCLUDE_DIRS} )
   add_definitions(-DWITH_OPENCL)
-  set(GPU_MODULES ${GPU_MODULES} "OpenCL")
+  set(GPU_MODULES ${GPU_MODULES} "OpenCL ")
+endif ()
+if (${USE_CUDA})
+  include_directories (${KOTEKAN_SOURCE_DIR}/lib/cuda)
+  include_directories( ${CUDA_INCLUDE_DIRS} )
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lstdc++")
+  add_definitions(-DWITH_CUDA)
+  set(GPU_MODULES ${GPU_MODULES} "CUDA ")
 endif ()
 MESSAGE("GPU Modules Included: " ${GPU_MODULES})
 
 set(INPUT_MODULES "")
 if (${USE_DPDK})
   set(INPUT_MODULES ${INPUT_MODULES} "DPDK ")
+  find_package(DPDK REQUIRED)
 endif ()
 if (${USE_AIRSPY})
   add_definitions(-DWITH_AIRSPY)
@@ -189,10 +206,11 @@ find_package(Threads REQUIRED)
 
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
-# Note that -lrt here is needed on some versions of CentOS
-if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+# Note that -lrt here is needed on some versions of CentOS but not Clang
+if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
        set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrt " )
 endif ()
+
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
 
 # OpenMP flag
@@ -205,8 +223,8 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
-# Note that -lrt here is needed on some versions of CentOS
-if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+# Note that -lrt here is needed on some versions of CentOS but not Clang
+if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrt " )
 endif ()
 
@@ -235,6 +253,11 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm -Wl,-no_pie")
 else()
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lm")
+endif()
+
+# Add link to atomic operations library if we are using Clang
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -latomic")
 endif()
 
 # Add fcx-limited-range to speed up complex arithmetic if we are using GCC
@@ -289,7 +312,7 @@ endif()
 # Enforce code formatting rules with clang-format.
 find_program(
     CLANG_FORMAT_PATH
-    NAMES "clang-format-8"
+    NAMES "clang-format-8" "clang-format"
     DOC "Path to clang-format executable"
     )
 if(NOT CLANG_FORMAT_PATH)

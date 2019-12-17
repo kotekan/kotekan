@@ -1,6 +1,8 @@
 
 #define BOOST_TEST_MODULE "test_datasetManager_REST"
 
+#include "Config.hpp"
+#include "Hash.hpp"
 #include "restClient.hpp"
 #include "restServer.hpp"
 #include "visUtil.hpp"
@@ -47,15 +49,14 @@ struct TestContext {
             js.at("hash");
         } catch (std::exception& e) {
             std::string error =
-                fmt::format("Failure parsing register state message from datasetManager: "
-                            "{}\n{}.",
+                fmt::format("Failure parsing register state message from datasetManager: {}\n{}.",
                             js.dump(), e.what());
             reply["result"] = error;
             con.send_json_reply(reply);
             BOOST_CHECK_MESSAGE(false, error);
         }
 
-        BOOST_CHECK(js.at("hash").is_number());
+        BOOST_CHECK(js.at("hash").is_string());
         reply["request"] = "get_state";
         reply["hash"] = js.at("hash");
         reply["result"] = "success";
@@ -80,20 +81,29 @@ struct TestContext {
             BOOST_CHECK_MESSAGE(false, error);
         }
 
-        BOOST_CHECK(js.at("hash").is_number());
+        BOOST_CHECK(js.at("hash").is_string());
 
         // check the received state
-        std::vector<input_ctype> inputs = {input_ctype(1, "1"), input_ctype(2, "2"),
-                                           input_ctype(3, "3")};
-        std::vector<prod_ctype> prods = {{1, 1}, {2, 2}, {3, 3}};
-        std::vector<std::pair<uint32_t, freq_ctype>> freqs = {
+        static std::vector<input_ctype> inputs = {input_ctype(1, "1"), input_ctype(2, "2"),
+                                                  input_ctype(3, "3")};
+        static std::vector<prod_ctype> prods = {{1, 1}, {2, 2}, {3, 3}};
+        static std::vector<std::pair<uint32_t, freq_ctype>> freqs = {
             {1, {1.1, 1}}, {2, {2, 2.2}}, {3, {3, 3}}};
 
-        state_uptr same_state = std::make_unique<inputState>(
-            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs)));
+        static state_uptr states[3] = {std::make_unique<inputState>(inputs),
+                                       std::make_unique<prodState>(prods),
+                                       std::make_unique<freqState>(freqs)};
+        static bool pass[3] = {false, false, false};
         state_uptr received_state = datasetState::from_json(js.at("state"));
 
-        BOOST_CHECK(same_state->to_json() == received_state->to_json());
+        for (ushort i = 0; i < 4; i++) {
+            BOOST_CHECK(i < 4);
+            if (states[i]->to_json() == received_state->to_json()) {
+                BOOST_CHECK(pass[i] == false);
+                pass[i] = true;
+                break;
+            }
+        }
 
         reply["result"] = "success";
         con.send_json_reply(reply);
@@ -120,16 +130,13 @@ struct TestContext {
             BOOST_CHECK_MESSAGE(false, error);
         }
 
-        BOOST_CHECK(js_ds.at("state").is_number());
+        BOOST_CHECK(js_ds.at("state").is_string());
         if (!js_ds.at("is_root"))
-            BOOST_CHECK(js_ds.at("base_dset").is_number());
+            BOOST_CHECK(js_ds.at("base_dset").is_string());
         BOOST_CHECK(js_ds.at("is_root").is_boolean());
-        BOOST_CHECK(js.at("hash").is_number());
+        BOOST_CHECK(js.at("hash").is_string());
 
-        dataset recvd(js_ds);
-
-        static std::hash<std::string> hash_function;
-        BOOST_CHECK(hash_function(recvd.to_json().dump()) == js.at("hash"));
+        BOOST_CHECK(hash(js_ds.dump()) == Hash::from_string(js.at("hash")));
 
         reply["result"] = "success";
         con.send_json_reply(reply);
@@ -144,13 +151,16 @@ BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, TestContext) {
     json json_config;
     json_config["use_dataset_broker"] = true;
 
-    // kotekan restServer endpoints defined above
-    json_config["ds_broker_port"] = 12048;
-    restServer::instance().start("127.0.0.1");
+    // kotekan restServer endpoints defined above. Start with random free port.
+    restServer::instance().start("127.0.0.1", 0);
+    usleep(10000);
+    json_config["ds_broker_port"] = restServer::instance().port;
+    std::cout << "Running RESTserver on port " << json_config["ds_broker_port"] << " for dM test."
+              << std::endl;
 
     TestContext::init();
 
-    Config conf;
+    kotekan::Config conf;
     conf.update_config(json_config);
     datasetManager& dm = datasetManager::instance(conf);
 
@@ -161,18 +171,21 @@ BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, TestContext) {
     std::vector<std::pair<uint32_t, freq_ctype>> freqs = {
         {1, {1.1, 1}}, {2, {2, 2.2}}, {3, {3, 3}}};
 
-    std::pair<state_id_t, const inputState*> input_state =
-        dm.add_state(std::make_unique<inputState>(
-            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
+    std::vector<state_id_t> states1;
+    states1.push_back(dm.create_state<freqState>(freqs).first);
+    states1.push_back(dm.create_state<prodState>(prods).first);
+    states1.push_back(dm.create_state<inputState>(inputs).first);
 
-    dset_id_t init_ds_id = dm.add_dataset(input_state.first);
+    dset_id_t init_ds_id = dm.add_dataset(states1);
 
     // register first state again
-    std::pair<state_id_t, const inputState*> input_state3 =
-        dm.add_state(std::make_unique<inputState>(
-            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs))));
+    std::vector<state_id_t> states2;
+    states2.push_back(dm.create_state<freqState>(freqs).first);
+    states2.push_back(dm.create_state<prodState>(prods).first);
+    states2.push_back(dm.create_state<inputState>(inputs).first);
+
     // register new dataset with the twin state
-    dm.add_dataset(init_ds_id, input_state3.first);
+    dm.add_dataset(states2, init_ds_id);
 
     std::cout << dm.summary() << std::endl;
 

@@ -7,10 +7,7 @@
 
 using std::string;
 
-// TODO Where do these live?
-#define likely(x) __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
-
+#include "BranchPrediction.hpp"
 #include "beamformingPostProcess.hpp"
 #include "errors.h"
 #include "time_tracking.h"

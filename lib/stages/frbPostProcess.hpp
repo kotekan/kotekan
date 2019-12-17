@@ -11,6 +11,7 @@
 #include "chimeMetadata.h"
 #include "fpga_header_functions.h"
 #include "frb_functions.h"
+#include "prometheusMetrics.hpp"
 
 #include <emmintrin.h>
 #include <immintrin.h>
@@ -69,6 +70,10 @@ using std::vector;
  *                                        anomalously high values, this limits values used prior to
  * summing into the incoherent beam.
  *
+ * @par Metrics
+ * @metric kotekan_frb_masked_packets_total
+ *         Count of masked packets
+ *
  * @author Keith Vanderlinde, Cherry Ng
  *
  */
@@ -123,6 +128,9 @@ private:
     int16_t fpga_counts_per_sample;
 
     uint8_t* droppacket;
+
+    /// Count of masked packets
+    kotekan::prometheus::Counter& masked_packets_counter;
 };
 
 #endif

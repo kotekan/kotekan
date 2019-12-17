@@ -532,8 +532,8 @@ int private_producers_done(struct Buffer * buf, const int ID) {
 int is_frame_empty(struct Buffer* buf, const int ID)
 {
     assert (ID >= 0);
-    assert (ID < buf->num_frames);
     assert (buf != NULL);
+    assert (ID < buf->num_frames);
 
     int empty = 1;
 
