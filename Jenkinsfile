@@ -66,8 +66,8 @@ pipeline {
                   source ~/.bash_profile
                   mkdir -p build_base
                   cd build_base/
-                  cmake ..
-                  make -j 4
+                  cmake -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+                  make -j
                   cd ..
                   mkdir build_full
                   cd build_full/
@@ -76,7 +76,7 @@ pipeline {
                         -DOPENBLAS_PATH=/usr/local/opt/OpenBLAS \
                         -DUSE_HDF5=ON -DHIGHFIVE_PATH=/usr/local/opt/HighFive \
                         -DCOMPILE_DOCS=ON -DUSE_OPENCL=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
-                  make -j 4'''
+                  make -j'''
           }
         }
         stage('Build docs') {
