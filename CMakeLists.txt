@@ -75,6 +75,7 @@ if (${USE_FFTW})
   find_package( FFTW)
   set(USE_FFTW ${FFTW_FOUND})
   add_definitions(-DWITH_FFTW)
+  include_directories(${FFTW_INCLUDES})
 endif()
 
 include(CheckIncludeFileCXX)

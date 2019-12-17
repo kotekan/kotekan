@@ -10,6 +10,10 @@ include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl/kernels)
 include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
 
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+add_definitions(-DCL_SILENCE_DEPRECATION)
+endif()
+
 set ( KOTEKAN_OPENCL_SOURCES
       clCommand.cpp
       clDeviceInterface.cpp
