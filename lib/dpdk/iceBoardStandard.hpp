@@ -140,7 +140,7 @@ inline int iceBoardStandard::handle_packet(struct rte_mbuf* mbuf) {
 
 inline bool iceBoardStandard::advance_frame(uint64_t new_seq, bool first_time) {
     struct timeval now;
-    gettimeofday(&now, NULL);
+    gettimeofday(&now, nullptr);
 
     // Advance the frame
     if (!first_time) {
@@ -151,7 +151,7 @@ inline bool iceBoardStandard::advance_frame(uint64_t new_seq, bool first_time) {
     }
 
     out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
-    if (out_frame == NULL)
+    if (out_frame == nullptr)
         return false;
 
     // Set metadata values.
@@ -174,7 +174,7 @@ inline bool iceBoardStandard::advance_frame(uint64_t new_seq, bool first_time) {
     }
     lost_samples_frame =
         wait_for_empty_frame(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
-    if (lost_samples_frame == NULL)
+    if (lost_samples_frame == nullptr)
         return false;
 
     return true;

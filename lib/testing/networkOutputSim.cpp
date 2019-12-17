@@ -52,13 +52,13 @@ void networkOutputSim::main_thread() {
     _num_elem = config.get<int32_t>(unique_name, "num_elements");
 
     int frame_id = link_id;
-    unsigned char* frame = NULL;
+    unsigned char* frame = nullptr;
     uint64_t fpga_seq_num = 0;
     int constant = 9;
 
     while (!stop_thread) {
         frame = (unsigned char*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         if ((fpga_seq_num / _samples_per_data_set) % 2 == 0) {
@@ -70,7 +70,7 @@ void networkOutputSim::main_thread() {
         set_stream_id(buf, frame_id, stream_id);
         set_fpga_seq_num(buf, frame_id, fpga_seq_num);
         struct timeval now;
-        gettimeofday(&now, NULL);
+        gettimeofday(&now, nullptr);
         set_first_packet_recv_time(buf, frame_id, now);
 
         // TODO perfect place for lambdas here.

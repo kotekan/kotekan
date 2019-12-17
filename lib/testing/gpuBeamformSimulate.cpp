@@ -299,13 +299,13 @@ void gpuBeamformSimulate::main_thread() {
     while (!stop_thread) {
         unsigned char* input =
             (unsigned char*)wait_for_full_frame(input_buf, unique_name.c_str(), input_buf_id);
-        if (input == NULL)
+        if (input == nullptr)
             break;
 
         float* output =
             (float*)wait_for_empty_frame(output_buf, unique_name.c_str(), output_buf_id);
 
-        if (output == NULL)
+        if (output == nullptr)
             break;
 
         for (int i = 0; i < input_len; i++) {
@@ -339,13 +339,13 @@ void gpuBeamformSimulate::main_thread() {
             }
         }
 
-        FILE* ptr_myfile = NULL;
+        FILE* ptr_myfile = nullptr;
         char filename[512];
         snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin", _gain_dir.c_str(),
                  freq_now);
         ptr_myfile = fopen(filename, "rb");
 
-        if (ptr_myfile == NULL) {
+        if (ptr_myfile == nullptr) {
             ERROR("CPU verification code: Cannot open gain file {:s}", filename);
             for (int i = 0; i < 2048; i++) {
                 cpu_gain[i * 2] = default_gains[0] * scaling;

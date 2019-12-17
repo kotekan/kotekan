@@ -109,7 +109,7 @@ void FakeGpu::main_thread() {
         } else {
 
             int32_t* output = (int*)wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id);
-            if (output == NULL)
+            if (output == nullptr)
                 break;
 
             DEBUG("Simulating GPU buffer in {}[{}]", out_buf->buffer_name, frame_id);

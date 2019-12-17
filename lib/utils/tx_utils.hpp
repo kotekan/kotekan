@@ -52,7 +52,7 @@ int get_vlan_from_ip(const char* ip_address);
 void osx_clock_abs_nanosleep(clockid_t clock, struct timespec ts);
 #define CLOCK_ABS_NANOSLEEP(clock, ts) osx_clock_abs_nanosleep(clock, ts)
 #else
-#define CLOCK_ABS_NANOSLEEP(clock, ts) clock_nanosleep(clock, TIMER_ABSTIME, &ts, NULL)
+#define CLOCK_ABS_NANOSLEEP(clock, ts) clock_nanosleep(clock, TIMER_ABSTIME, &ts, nullptr)
 #endif
 
 #endif

@@ -106,14 +106,14 @@ void clKVCorr::build() {
 
     cl_device_id dev_id = device.get_id();
 
-    err = clBuildProgram(program, 1, &dev_id, cl_options.c_str(), NULL, NULL);
+    err = clBuildProgram(program, 1, &dev_id, cl_options.c_str(), nullptr, nullptr);
     if (err != CL_SUCCESS) {
         size_t len = 0;
-        CHECK_CL_ERROR(
-            clGetProgramBuildInfo(program, device.get_id(), CL_PROGRAM_BUILD_LOG, 0, NULL, &len));
+        CHECK_CL_ERROR(clGetProgramBuildInfo(program, device.get_id(), CL_PROGRAM_BUILD_LOG, 0,
+                                             nullptr, &len));
         char* buffer = (char*)calloc(len, sizeof(char));
         CHECK_CL_ERROR(clGetProgramBuildInfo(program, device.get_id(), CL_PROGRAM_BUILD_LOG, len,
-                                             buffer, NULL));
+                                             buffer, nullptr));
         INFO("CL failed. Build log follows: \n {:s}", buffer);
         free(buffer);
     }
@@ -148,7 +148,7 @@ cl_event clKVCorr::execute(int gpu_frame_id, cl_event pre_event) {
     setKernelArg(1, presum_memory);
     setKernelArg(2, output_memory_frame);
 
-    CHECK_CL_ERROR(clEnqueueNDRangeKernel(device.getQueue(1), kernel, 3, NULL, gws, lws, 1,
+    CHECK_CL_ERROR(clEnqueueNDRangeKernel(device.getQueue(1), kernel, 3, nullptr, gws, lws, 1,
                                           &pre_event, &post_events[gpu_frame_id]));
 
     return post_events[gpu_frame_id];

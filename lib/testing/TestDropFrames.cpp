@@ -37,7 +37,7 @@ void TestDropFrames::main_thread() {
 
     while (!stop_thread) {
         uint8_t* input = wait_for_full_frame(in_buf, unique_name.c_str(), in_buf_id);
-        if (input == NULL)
+        if (input == nullptr)
             break;
 
         // Copy the frame, unless it's in the list of frames to drop or it drew the "DROP" odds
@@ -49,7 +49,7 @@ void TestDropFrames::main_thread() {
             INFO("Drop frame {} because it drew the short straw.", frame_count);
         } else {
             uint8_t* output = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buf_id);
-            if (output == NULL)
+            if (output == nullptr)
                 break;
 
             int num_consumers = get_num_consumers(in_buf);

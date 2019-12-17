@@ -63,12 +63,12 @@ void testDataCheck<A_Type>::main_thread() {
 
         // Get both full frames
         uint8_t* first_frame = wait_for_full_frame(first_buf, unique_name.c_str(), first_buf_id);
-        if (first_frame == NULL)
+        if (first_frame == nullptr)
             break;
         DEBUG("testDataCheck: Got the first buffer {:s}[{:d}]", first_buf->buffer_name,
               first_buf_id);
         uint8_t* second_frame = wait_for_full_frame(second_buf, unique_name.c_str(), second_buf_id);
-        if (second_frame == NULL)
+        if (second_frame == nullptr)
             break;
         DEBUG("testDataCheck: Got the second buffer {:s}[{:d}]", second_buf->buffer_name,
               second_buf_id);

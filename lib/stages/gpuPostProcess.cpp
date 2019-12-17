@@ -78,7 +78,7 @@ void gpuPostProcess::main_thread() {
     _product_remap = config.get<std::vector<int32_t>>(unique_name, "product_remap");
 
     // Create a C style array for backwards compatiably.
-    if (_product_remap_c != NULL)
+    if (_product_remap_c != nullptr)
         delete _product_remap_c;
 
     _product_remap_c = new int32_t[_product_remap.size()];
@@ -175,7 +175,7 @@ void gpuPostProcess::main_thread() {
         // This call is blocking!
         uint8_t* in_frame =
             wait_for_full_frame(in_buf[gpu_id], unique_name.c_str(), in_frame_ids[gpu_id]);
-        if (in_frame == NULL)
+        if (in_frame == nullptr)
             break;
         //        INFO("GPU Post process got full buffer ID {:d} for GPU {:d}",
         //        in_frame_ids[gpu_id], gpu_id);
@@ -343,11 +343,11 @@ void gpuPostProcess::main_thread() {
 
                     uint8_t* out_frame =
                         wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
-                    if (out_frame == NULL)
+                    if (out_frame == nullptr)
                         goto end_loop;
                     uint8_t* gate_frame =
                         wait_for_empty_frame(gate_buf, unique_name.c_str(), out_buffer_ID);
-                    if (gate_frame == NULL)
+                    if (gate_frame == nullptr)
                         goto end_loop;
 
                     if (_enable_basic_gating) {

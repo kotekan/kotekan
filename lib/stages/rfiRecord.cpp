@@ -78,7 +78,7 @@ void rfiRecord::main_thread() {
     while (!stop_thread) {
         // Get Frame
         frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
         // Lock mutex
         rest_callback_mutex.lock();
@@ -114,7 +114,7 @@ void rfiRecord::main_thread() {
                 char data_time[64];
                 struct timespec gps_time = get_gps_time(rfi_buf, frame_id);
                 struct tm timeinfo;
-                if (gmtime_r(&gps_time.tv_sec, &timeinfo) == NULL) {
+                if (gmtime_r(&gps_time.tv_sec, &timeinfo) == nullptr) {
                     ERROR("Cannot gerate time info");
                 }
                 strftime(data_time, sizeof(data_time), "%Y%m%dT%H%M%S", &timeinfo);

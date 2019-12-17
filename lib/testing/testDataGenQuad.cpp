@@ -35,19 +35,19 @@ testDataGenQuad::~testDataGenQuad() {}
 void testDataGenQuad::main_thread() {
 
     int frame_id = 0;
-    uint8_t* frame[4] = {NULL, NULL, NULL, NULL};
+    uint8_t* frame[4] = {nullptr, nullptr, nullptr, nullptr};
     uint64_t seq_num = 0;
     static struct timeval now;
 
     // pre-seed everything!
     INFO("Seeding...");
-    gettimeofday(&now, NULL);
+    gettimeofday(&now, nullptr);
     for (int b = 0; b < 4; b++) {
         for (int f = 0; f < buf[0]->num_frames; f++) {
             uint8_t v = value[f % value.size()];
 
             frame[b] = wait_for_empty_frame(buf[b], unique_name.c_str(), f);
-            if (frame[b] == NULL)
+            if (frame[b] == nullptr)
                 break;
 
             allocate_new_metadata_object(buf[b], f);
@@ -72,11 +72,11 @@ void testDataGenQuad::main_thread() {
 
         for (int i = 0; i < 4; i++) {
             frame[i] = wait_for_empty_frame(buf[i], unique_name.c_str(), frame_id);
-            if (frame[i] == NULL)
+            if (frame[i] == nullptr)
                 break;
         }
 
-        gettimeofday(&now, NULL);
+        gettimeofday(&now, nullptr);
         for (int i = 0; i < 4; i++) {
             allocate_new_metadata_object(buf[i], frame_id);
             set_fpga_seq_num(buf[i], frame_id, seq_num);

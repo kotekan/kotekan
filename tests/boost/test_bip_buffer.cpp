@@ -178,7 +178,7 @@ BOOST_AUTO_TEST_CASE(buffer_write_read_task_threads) {
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(dis(gen) * 5));
         }
-        q.put(TestTask{0, 0, 0});
+        q.put(TestTask{0, nullptr, 0});
     });
     std::thread t2([&q, &buffer, &actual]() {
         std::random_device rd;
@@ -187,7 +187,7 @@ BOOST_AUTO_TEST_CASE(buffer_write_read_task_threads) {
 
         BipBufferReader reader(buffer);
         while (auto t = q.get()) {
-            if (t->start == 0) {
+            if (t->start == nullptr) {
                 return;
             }
             auto reservation = reader.access(t->length);

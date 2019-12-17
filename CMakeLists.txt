@@ -94,7 +94,7 @@ if (${USE_LAPACK})
     if (NOT EXISTS ${BLAZE_PATH}/blaze/Blaze.h)
       MESSAGE(FATAL_ERROR "Could not find Blaze headers")
     else()
-      include_directories(${BLAZE_PATH})
+      include_directories(SYSTEM ${BLAZE_PATH})
     endif()
   endif()
   add_definitions(-DBLAZE_BLAS_MODE=1)
@@ -190,7 +190,7 @@ if (${USE_HDF5})
         add_custom_target(highfive)
     endif()
     MESSAGE("HDF5 enabled; using HighFive from: " ${HIGHFIVE_PATH})
-    include_directories ( ${HIGHFIVE_PATH}/include )
+    include_directories (SYSTEM ${HIGHFIVE_PATH}/include )
     find_package(HDF5 REQUIRED)
     add_definitions(-DWITH_HDF5)
 endif ()
@@ -229,7 +229,7 @@ if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT ${CMAKE_CXX_COMPILER_ID} M
        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrt " )
 endif ()
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wextra -Werror -Wzero-as-null-pointer-constant -march=native -mtune=native -I/opt/rocm/include")
 
 # dpdk uses the register keyword that got removed in C++17 because it wasn't doing anything
 #TODO remove this line when dpdk people fix this: https://mails.dpdk.org/archives/dev/2018-July/107950.html

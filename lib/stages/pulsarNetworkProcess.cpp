@@ -100,7 +100,7 @@ void pulsarNetworkProcess::main_thread() {
     }
 
     int frame_id = 0;
-    uint8_t* packet_buffer = NULL;
+    uint8_t* packet_buffer = nullptr;
 
     for (int i = 0; i < number_of_subnets; i++) {
         sock_fd[i] = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -155,7 +155,7 @@ void pulsarNetworkProcess::main_thread() {
         (int)(my_node_id / 128) + 2 * ((my_node_id % 128) / 8) + 32 * (my_node_id % 8);
 
     packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-    if (packet_buffer == NULL)
+    if (packet_buffer == nullptr)
         return;
     mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
     frame_id = (frame_id + 1) % in_buf->num_frames;
@@ -181,7 +181,7 @@ void pulsarNetworkProcess::main_thread() {
 
     while (!stop_thread) {
         packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-        if (packet_buffer == NULL)
+        if (packet_buffer == nullptr)
             break;
 
         header = reinterpret_cast<VDIFHeader*>(packet_buffer);

@@ -19,7 +19,7 @@ constDataCheck::~constDataCheck() {}
 void constDataCheck::main_thread() {
 
     int frame_id = 0;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
     int num_errors = 0;
 
     int framect = 0;
@@ -27,7 +27,7 @@ void constDataCheck::main_thread() {
     while (!stop_thread) {
 
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         DEBUG("constDataCheck: Got buffer {:s}[{:d}]", buf->buffer_name, frame_id);

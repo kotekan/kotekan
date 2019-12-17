@@ -68,7 +68,7 @@ void nDiskFileRead::file_read_thread(int disk_id) {
 
         unsigned char* buf_ptr =
             (unsigned char*)wait_for_empty_frame(buf, unique_name.c_str(), buf_id);
-        if (buf_ptr == NULL)
+        if (buf_ptr == nullptr)
             break;
 
         char file_name[100]; // Find current file

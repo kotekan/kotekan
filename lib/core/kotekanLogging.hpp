@@ -43,7 +43,7 @@ enum class logLevel {
         exit(errno);                                                                               \
     }
 #define CHECK_MEM(pointer)                                                                         \
-    if (pointer == NULL) {                                                                         \
+    if (pointer == nullptr) {                                                                      \
         internal_logging(LOG_ERR, __log_prefix, fmt("Error at {:s}:{:d}; Null pointer! "),         \
                          __FILE__, __LINE__);                                                      \
         exit(-1);                                                                                  \

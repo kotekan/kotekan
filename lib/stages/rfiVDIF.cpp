@@ -41,8 +41,8 @@ void rfiVDIF::main_thread() {
     // Frame parameters
     uint32_t frame_in_id = 0;
     uint32_t frame_out_id = 0;
-    uint8_t* in_frame = NULL;
-    uint8_t* out_frame = NULL;
+    uint8_t* in_frame = nullptr;
+    uint8_t* out_frame = nullptr;
     // Set the VDIF block size
     uint32_t VDIF_BLOCK_SIZE = _num_local_freq + sizeof(VDIFHeader);
     // Counters and indices
@@ -73,7 +73,7 @@ void rfiVDIF::main_thread() {
     while (!stop_thread) {
         // Get a new frame
         in_frame = wait_for_full_frame(buf_in, unique_name.c_str(), frame_in_id);
-        if (in_frame == NULL)
+        if (in_frame == nullptr)
             break;
         // Start timer
         double start_time = e_time();
@@ -158,7 +158,7 @@ void rfiVDIF::main_thread() {
         }
         // Wait for output frame
         out_frame = wait_for_empty_frame(buf_out, unique_name.c_str(), frame_out_id);
-        if (out_frame == NULL)
+        if (out_frame == nullptr)
             break;
         // Copy results to output frame
         memcpy(out_frame, RFI_Buffer, RFI_Buffer_Size * sizeof(float));

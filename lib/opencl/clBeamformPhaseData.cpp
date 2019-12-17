@@ -43,7 +43,7 @@ void clBeamformPhaseData::build() {
     phases[0] = (float*)malloc(_num_elements * sizeof(float));
     phases[1] = (float*)malloc(_num_elements * sizeof(float));
 
-    start_beamform_time = time(NULL); // Current time.
+    start_beamform_time = time(nullptr); // Current time.
 }
 
 cl_event clBeamformPhaseData::execute(int gpu_frame_id, cl_event pre_event) {

@@ -36,7 +36,7 @@ void vdifStream::main_thread() {
     _vdif_server_ip = config.get<std::string>(unique_name, "vdif_server_ip");
 
     int frame_id = {0};
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
 
     double start_t, diff_t;
     int sleep_period = 3000;
@@ -70,7 +70,7 @@ void vdifStream::main_thread() {
 
         // Wait for a full buffer.
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
         // IT - commented out to test performance without INFO calls.
         //        INFO("vdif_stream; got full buffer, sending to VDIF server.");

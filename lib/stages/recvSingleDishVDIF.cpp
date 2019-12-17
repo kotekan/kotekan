@@ -29,7 +29,7 @@ void recvSingleDishVDIF::main_thread() {
 
     int file_num = 0;
     int frame_id = 0;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
 
     const int vdif_header_len = 32;
 
@@ -40,7 +40,7 @@ void recvSingleDishVDIF::main_thread() {
     while (!stop_thread) {
         // Get an empty buffer to write into
         frame = wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         // Send data to remote server.

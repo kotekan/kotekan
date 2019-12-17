@@ -29,7 +29,7 @@ int hsaRfiVarOutput::wait_on_precondition(int gpu_frame_id) {
     // We want to make sure we have some space to put our results.
     uint8_t* frame = wait_for_empty_frame(_rfi_output_var_buf, unique_name.c_str(),
                                           _rfi_output_var_buf_precondition_id);
-    if (frame == NULL)
+    if (frame == nullptr)
         return -1;
 
     frame = wait_for_full_frame(_network_buf, unique_name.c_str(), _network_buf_precondition_id);

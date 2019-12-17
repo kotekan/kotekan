@@ -58,7 +58,7 @@ void bufferSend::main_thread() {
     while (!stop_thread) {
 
         uint8_t* frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         uint32_t num_full_frames = get_num_full_frames(buf);

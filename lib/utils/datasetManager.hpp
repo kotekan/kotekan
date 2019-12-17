@@ -287,7 +287,7 @@ public:
     template<typename T>
     inline std::pair<state_id_t, const T*>
     add_state(std::unique_ptr<T>&& state,
-              typename std::enable_if<std::is_base_of<datasetState, T>::value>::type* = 0);
+              typename std::enable_if<std::is_base_of<datasetState, T>::value>::type* = nullptr);
 
     /**
      * @brief Return the state table.

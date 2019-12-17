@@ -39,7 +39,7 @@ private:
     int32_t _block_size;
     vector<int32_t> _link_map;
     vector<int32_t> _product_remap;
-    int32_t* _product_remap_c = NULL;
+    int32_t* _product_remap_c = nullptr;
     int32_t _num_fpga_links;
     bool _enable_basic_gating;
     int32_t _gate_phase;

@@ -81,7 +81,7 @@ public:
             int status;
             throw std::runtime_error(fmt::format(
                 fmt("The value {:s} in path {:s} is not of type '{:s}' or doesn't exist."), name,
-                base_path, abi::__cxa_demangle(typeid(T).name(), NULL, NULL, &status)));
+                base_path, abi::__cxa_demangle(typeid(T).name(), nullptr, nullptr, &status)));
         }
 
         return value;
@@ -103,7 +103,7 @@ public:
             int status;
             throw std::runtime_error(fmt::format(
                 fmt("The value {:s} in path {:s} is not of type '{:s}' or doesn't exist"), name,
-                base_path, abi::__cxa_demangle(typeid(T).name(), NULL, NULL, &status)));
+                base_path, abi::__cxa_demangle(typeid(T).name(), nullptr, nullptr, &status)));
         }
 
         return value;

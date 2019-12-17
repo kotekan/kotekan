@@ -37,9 +37,9 @@ integratePowerStream::~integratePowerStream() {}
 
 void integratePowerStream::main_thread() {
     int in_buf_id = 0;
-    uint8_t* in_frame = NULL;
+    uint8_t* in_frame = nullptr;
     int out_buf_id = 0;
-    uint8_t* out_frame = NULL;
+    uint8_t* out_frame = nullptr;
     uint packet_length = freqs * sizeof(float) + sizeof(IntensityPacketHeader);
     uint packets_per_buffer = in_buf->frame_size / packet_length;
 
@@ -55,7 +55,7 @@ void integratePowerStream::main_thread() {
     // IntensityPacketHeader *header_in;
     while (!stop_thread) {
         in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_buf_id);
-        if (in_frame == NULL)
+        if (in_frame == nullptr)
             break;
 
         for (uint i = 0; i < packets_per_buffer; i++) {
@@ -74,7 +74,7 @@ void integratePowerStream::main_thread() {
                 //                INFO("Integrated sample! {:d}", integrated_samples[e]);
                 integrated_samples[e] = 0;
                 out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buf_id);
-                if (out_frame == NULL)
+                if (out_frame == nullptr)
                     goto end_loop;
 
                 memcpy(out_frame, (char*)accum_buffer + e * packet_length, packet_length);

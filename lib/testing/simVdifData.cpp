@@ -23,7 +23,7 @@ simVdifData::~simVdifData() {}
 
 double e_time(void) {
     static struct timeval now;
-    gettimeofday(&now, NULL);
+    gettimeofday(&now, nullptr);
     return (double)(now.tv_sec + now.tv_usec / 1000000.0);
 }
 
@@ -65,7 +65,7 @@ void simVdifData::main_thread() {
     while (!stop_thread) {
         unsigned char* buf_ptr =
             (unsigned char*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
-        if (buf_ptr == NULL)
+        if (buf_ptr == nullptr)
             break;
         stop_time = e_time();
         double dt = stop_time - start_time;

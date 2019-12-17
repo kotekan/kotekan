@@ -38,7 +38,7 @@ void simpleAutocorr::main_thread() {
 
     while (!stop_thread) {
         in_local = (float*)wait_for_full_frame(buf_in, unique_name.c_str(), frame_in);
-        if (in_local == NULL)
+        if (in_local == nullptr)
             break;
         for (int j = 0; j < samples_per_frame; j += spectrum_length) {
             for (int i = 0; i < spectrum_length; i++) {

@@ -368,7 +368,7 @@ inline bool iceBoardShuffle::check_stream_id() {
 
 inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     struct timeval now;
-    gettimeofday(&now, NULL);
+    gettimeofday(&now, nullptr);
 
     for (uint32_t i = 0; i < shuffle_size; ++i) {
         if (!first_time) {
@@ -380,7 +380,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
         out_buf_frame[i] =
             wait_for_empty_frame(out_bufs[i], unique_name.c_str(), out_buf_frame_ids[i]);
-        if (out_buf_frame[i] == NULL)
+        if (out_buf_frame[i] == nullptr)
             return false;
 
         allocate_new_metadata_object(out_bufs[i], out_buf_frame_ids[i]);
@@ -411,7 +411,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     }
     lost_samples_frame =
         wait_for_empty_frame(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
-    if (lost_samples_frame == NULL)
+    if (lost_samples_frame == nullptr)
         return false;
     return true;
 }
@@ -505,7 +505,7 @@ inline bool iceBoardShuffle::check_fpga_shuffle_flags(struct rte_mbuf* mbuf) {
     // Go to the last part of the packet
     // Note this assumes that the footer doesn't cross two mbuf
     // segment, but based on the packet design this should never happen.
-    while (mbuf->next != NULL) {
+    while (mbuf->next != nullptr) {
         mbuf = mbuf->next;
     }
 

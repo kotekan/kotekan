@@ -166,7 +166,7 @@ void pulsarPostProcess::main_thread() {
     struct psrCoord psr_coord[_num_gpus];
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t* out_frame = wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
-    if (out_frame == NULL)
+    if (out_frame == nullptr)
         goto end_loop;
 
     while (!stop_thread) {
@@ -258,7 +258,7 @@ void pulsarPostProcess::main_thread() {
                         out_buffer_ID = (out_buffer_ID + 1) % pulsar_buf->num_frames;
                         out_frame =
                             wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
-                        if (out_frame == NULL)
+                        if (out_frame == nullptr)
                             goto end_loop;
                         // Fill the headers of the new buffer
                         fpga_seq_num += _timesamples_per_pulsar_packet * _num_packet_per_stream;
@@ -333,7 +333,7 @@ end_loop:;
 std::optional<uint64_t> pulsarPostProcess::sync_input_buffers() {
     for (unsigned i = 0; i < _num_gpus; i++) {
         in_frame[i] = wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
-        if (in_frame[i] == NULL)
+        if (in_frame[i] == nullptr)
             return std::nullopt;
     }
     while (!stop_thread) {
@@ -351,7 +351,7 @@ std::optional<uint64_t> pulsarPostProcess::sync_input_buffers() {
                 mark_frame_empty(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
                 in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
                 in_frame[i] = wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
-                if (in_frame[i] == NULL)
+                if (in_frame[i] == nullptr)
                     return std::nullopt;
             }
             if (max_fpga_count != get_fpga_seq_num(in_buf[i], in_buffer_ID[i])) {

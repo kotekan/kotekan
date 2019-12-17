@@ -45,12 +45,12 @@ void rfiUpdateMetadata::main_thread() {
     while (!stop_thread) {
         uint8_t* rfi_mask_frame =
             wait_for_full_frame(rfi_mask_buf, unique_name.c_str(), rfi_mask_frame_id);
-        if (rfi_mask_frame == NULL)
+        if (rfi_mask_frame == nullptr)
             break;
 
         uint8_t* lost_samples_frame =
             wait_for_full_frame(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
-        if (lost_samples_frame == NULL)
+        if (lost_samples_frame == nullptr)
             break;
 
         for (uint32_t subframe = 0; subframe < _num_sub_frames; ++subframe) {
@@ -61,7 +61,7 @@ void rfiUpdateMetadata::main_thread() {
             // around it.
             uint8_t* gpu_correlation_frame = wait_for_empty_frame(
                 gpu_correlation_buf, unique_name.c_str(), gpu_correlation_frame_id);
-            if (gpu_correlation_frame == NULL)
+            if (gpu_correlation_frame == nullptr)
                 break;
 
             // Total number of samples flagged as RFI

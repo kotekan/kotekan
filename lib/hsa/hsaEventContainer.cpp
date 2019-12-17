@@ -15,7 +15,7 @@ void* hsaEventContainer::get() {
 }
 
 void hsaEventContainer::unset() {
-    // signal = 0;//*(hsa_signal_t*)NULL;
+    // signal = 0;//*(hsa_signal_t*)nullptr;
 }
 
 void hsaEventContainer::wait() {

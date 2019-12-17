@@ -180,7 +180,7 @@ void frbNetworkProcess::main_thread() {
         // reading the next frame and comparing the fpga clock with the monotonic clock.
         if (count != 0) {
             packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-            if (packet_buffer == NULL)
+            if (packet_buffer == nullptr)
                 break;
 
             clock_gettime(CLOCK_MONOTONIC, &t1);

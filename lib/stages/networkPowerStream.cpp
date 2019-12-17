@@ -70,7 +70,7 @@ networkPowerStream::~networkPowerStream() {}
 
 void networkPowerStream::main_thread() {
     int frame_id = 0;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
     uint packet_length = freqs * sizeof(float) + sizeof(IntensityPacketHeader);
     void* packet_buffer = malloc(packet_length);
     IntensityPacketHeader* packet_header = (IntensityPacketHeader*)packet_buffer;
@@ -98,7 +98,7 @@ void networkPowerStream::main_thread() {
         while (!stop_thread) {
             // Wait for a full buffer.
             frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-            if (frame == NULL)
+            if (frame == nullptr)
                 break;
 
             for (int t = 0; t < times; t++) {
@@ -127,7 +127,7 @@ void networkPowerStream::main_thread() {
         while (!stop_thread) {
             // Wait for a full buffer.
             frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-            if (frame == NULL)
+            if (frame == nullptr)
                 break;
 
             while (atomic_flag_test_and_set(&socket_lock)) {
@@ -157,7 +157,7 @@ void networkPowerStream::main_thread() {
             } else if (!tcp_connecting) {
                 frame_idx += times;
                 handshake_idx = frame_idx;
-                gettimeofday(&tv, NULL);
+                gettimeofday(&tv, nullptr);
                 handshake_utc = tv.tv_sec + tv.tv_usec / 1e6;
                 tcp_connecting = true;
                 atomic_flag_clear(&socket_lock);

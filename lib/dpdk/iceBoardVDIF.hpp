@@ -173,7 +173,7 @@ int iceBoardVDIF::handle_packet(struct rte_mbuf* mbuf) {
 
 bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
     struct timeval now;
-    gettimeofday(&now, NULL);
+    gettimeofday(&now, nullptr);
 
     // Advance the frame
     if (!first_time) {
@@ -184,7 +184,7 @@ bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
     }
 
     out_buf_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buf_frame_id);
-    if (out_buf_frame == NULL)
+    if (out_buf_frame == nullptr)
         return false;
 
     // Setup the VDIF time offsets from the seq number
@@ -225,7 +225,7 @@ bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
     }
     lost_samples_frame =
         wait_for_empty_frame(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
-    if (lost_samples_frame == NULL)
+    if (lost_samples_frame == nullptr)
         return false;
 
     return true;

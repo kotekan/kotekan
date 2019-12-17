@@ -39,7 +39,7 @@ streamSingleDishVDIF::~streamSingleDishVDIF() {}
 void streamSingleDishVDIF::main_thread() {
 
     int frame_id = 0;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
 
     // Send files over the loop back address;
     // UDP variables
@@ -73,7 +73,7 @@ void streamSingleDishVDIF::main_thread() {
 
         // Wait for a full buffer.
         frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         // Send data to remote server.

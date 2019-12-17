@@ -105,8 +105,8 @@ void rfiBroadcast::main_thread() {
     uint32_t frame_mask_id = 0;
     uint32_t i, j, f;
     uint32_t bytes_sent = 0;
-    uint8_t* frame = NULL;
-    uint8_t* frame_mask = NULL;
+    uint8_t* frame = nullptr;
+    uint8_t* frame_mask = nullptr;
     uint32_t link_id = 0;
     uint16_t StreamIDs[total_links];
     uint64_t fake_seq = 0;
@@ -160,11 +160,11 @@ void rfiBroadcast::main_thread() {
             for (f = 0; f < _frames_per_packet * total_links; f++) {
                 // Get Frame of Mask
                 frame_mask = wait_for_full_frame(rfi_mask_buf, unique_name.c_str(), frame_mask_id);
-                if (frame_mask == NULL)
+                if (frame_mask == nullptr)
                     break;
                 // Get Frame
                 frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
-                if (frame == NULL)
+                if (frame == nullptr)
                     break;
                 // Copy frame data to array
                 memcpy(rfi_data[link_id], frame, rfi_buf->frame_size);

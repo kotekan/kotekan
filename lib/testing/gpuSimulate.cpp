@@ -61,10 +61,10 @@ void gpuSimulate::main_thread() {
 
     while (!stop_thread) {
         char* input = (char*)wait_for_full_frame(input_buf, unique_name.c_str(), input_frame_id);
-        if (input == NULL)
+        if (input == nullptr)
             break;
         int* output = (int*)wait_for_empty_frame(output_buf, unique_name.c_str(), output_frame_id);
-        if (output == NULL)
+        if (output == nullptr)
             break;
 
         // TODO adjust to allow for more than one frequency.

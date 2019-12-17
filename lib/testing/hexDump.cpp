@@ -35,7 +35,7 @@ void hexDump::main_thread() {
     while (!stop_thread) {
 
         uint8_t* frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         DEBUG("hexDump: Got buffer {:s}[{:d}]", in_buf->buffer_name, frame_id);

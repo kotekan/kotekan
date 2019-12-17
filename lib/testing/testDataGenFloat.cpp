@@ -31,7 +31,7 @@ testDataGenFloat::~testDataGenFloat() {}
 void testDataGenFloat::main_thread() {
 
     int frame_id = 0;
-    float* frame = NULL;
+    float* frame = nullptr;
     uint64_t seq_num = 0;
     bool finished_seeding_consant = false;
     static struct timeval now;
@@ -40,7 +40,7 @@ void testDataGenFloat::main_thread() {
 
     while (!stop_thread) {
         frame = (float*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         allocate_new_metadata_object(buf, frame_id);
@@ -48,7 +48,7 @@ void testDataGenFloat::main_thread() {
         // TODO This should be dynamic/config controlled.
         set_stream_id(buf, frame_id, 0);
 
-        gettimeofday(&now, NULL);
+        gettimeofday(&now, nullptr);
         set_first_packet_recv_time(buf, frame_id, now);
 
         // std::random_device rd;

@@ -49,13 +49,13 @@ void pyPlotN2::main_thread() {
                                       std::bind(&pyPlotN2::request_plot_callback, this, _1));
 
     int frame_id = 0;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
 
     while (!stop_thread) {
 
         // This call is blocking.
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         // INFO("Got buffer, id: {:d}", bufferID);

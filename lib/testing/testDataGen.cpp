@@ -87,7 +87,7 @@ void testDataGen::main_thread() {
 
     int frame_id = 0;
     int frame_id_abs = 0;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
     uint64_t seq_num = 0;
     bool finished_seeding_consant = false;
     static struct timeval now;
@@ -103,14 +103,14 @@ void testDataGen::main_thread() {
         }
 
         frame = (uint8_t*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         allocate_new_metadata_object(buf, frame_id);
         set_fpga_seq_num(buf, frame_id, seq_num);
         set_stream_id(buf, frame_id, stream_id);
 
-        gettimeofday(&now, NULL);
+        gettimeofday(&now, nullptr);
         set_first_packet_recv_time(buf, frame_id, now);
 
         // std::random_device rd;

@@ -206,11 +206,11 @@ void gpuBeamformPulsarSimulate::main_thread() {
 
         unsigned char* input =
             (unsigned char*)wait_for_full_frame(input_buf, unique_name.c_str(), input_buf_id);
-        if (input == NULL)
+        if (input == nullptr)
             break;
         float* output =
             (float*)wait_for_empty_frame(output_buf, unique_name.c_str(), output_buf_id);
-        if (output == NULL)
+        if (output == nullptr)
             break;
 
         for (int i = 0; i < input_len; i++) {
@@ -233,13 +233,13 @@ void gpuBeamformPulsarSimulate::main_thread() {
 
         // Load in gains (without dynamic update capability like in GPU, just get set once in the
         // beginning)
-        FILE* ptr_myfile = NULL;
+        FILE* ptr_myfile = nullptr;
         char filename[512];
         for (int b = 0; b < _num_pulsar; b++) {
             snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",
                      _gain_dir[b].c_str(), freq_now);
             ptr_myfile = fopen(filename, "rb");
-            if (ptr_myfile == NULL) {
+            if (ptr_myfile == nullptr) {
                 ERROR("CPU verification code: Cannot open gain file {:s}", filename);
                 for (uint i = 0; i < _num_elements; i++) {
                     cpu_gain[(b * _num_elements + i) * 2] = default_gains[0];

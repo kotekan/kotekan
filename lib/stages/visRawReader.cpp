@@ -156,7 +156,7 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
             fmt::format(fmt("Failed to open file {:s}.data: {:s}."), filename, strerror(errno)));
     }
     mapped_file =
-        (uint8_t*)mmap(NULL, ntime * nfreq * file_frame_size, PROT_READ, MAP_SHARED, fd, 0);
+        (uint8_t*)mmap(nullptr, ntime * nfreq * file_frame_size, PROT_READ, MAP_SHARED, fd, 0);
     if (mapped_file == MAP_FAILED)
         throw std::runtime_error(fmt::format(fmt("Failed to map file {:s}.data to memory: {:s}."),
                                              filename, strerror(errno)));
@@ -318,7 +318,7 @@ void visRawReader::main_thread() {
         DEBUG("Sleep time {}", sleep_time);
         if (sleep_time > 0) {
             auto ts = double_to_ts(sleep_time);
-            nanosleep(&ts, NULL);
+            nanosleep(&ts, nullptr);
         }
     }
 

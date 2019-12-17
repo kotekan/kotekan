@@ -48,7 +48,7 @@ void clCorrelatorKernel::build() {
 
     cl_device_id dev_id = device.get_id();
 
-    CHECK_CL_ERROR(clBuildProgram(program, 1, &dev_id, cl_options.c_str(), NULL, NULL));
+    CHECK_CL_ERROR(clBuildProgram(program, 1, &dev_id, cl_options.c_str(), nullptr, nullptr));
 
     kernel = clCreateKernel(program, "corr", &err);
     CHECK_CL_ERROR(err);
@@ -91,7 +91,7 @@ cl_event clCorrelatorKernel::execute(int gpu_frame_id, cl_event pre_event) {
     setKernelArg(0, input_memory);
     setKernelArg(1, output_memory_frame);
 
-    CHECK_CL_ERROR(clEnqueueNDRangeKernel(device.getQueue(1), kernel, 3, NULL, gws, lws, 1,
+    CHECK_CL_ERROR(clEnqueueNDRangeKernel(device.getQueue(1), kernel, 3, nullptr, gws, lws, 1,
                                           &pre_event, &post_events[gpu_frame_id]));
 
     return post_events[gpu_frame_id];

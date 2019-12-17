@@ -49,12 +49,12 @@ void restInspectFrame::rest_callback(connectionInstance& conn) {
 
 void restInspectFrame::main_thread() {
 
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
     uint32_t frame_id = 0;
 
     while (!stop_thread) {
         frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         if (frame_copy_lock.try_lock()) {

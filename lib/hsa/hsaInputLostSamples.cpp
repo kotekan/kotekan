@@ -32,7 +32,7 @@ int hsaInputLostSamples::wait_on_precondition(int gpu_frame_id) {
     // Wait for there to be data in the input buffer.
     uint8_t* frame = wait_for_full_frame(lost_samples_buf, unique_name.c_str(),
                                          lost_samples_buffer_precondition_id);
-    if (frame == NULL)
+    if (frame == nullptr)
         return -1;
     lost_samples_buffer_precondition_id =
         (lost_samples_buffer_precondition_id + 1) % lost_samples_buf->num_frames;

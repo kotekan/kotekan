@@ -22,12 +22,12 @@ chimeMetadataDump::~chimeMetadataDump() {}
 void chimeMetadataDump::main_thread() {
 
     int frame_id = 0;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
 
     while (!stop_thread) {
 
         frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         uint64_t fpga_seq = get_fpga_seq_num(in_buf, frame_id);

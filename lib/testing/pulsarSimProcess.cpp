@@ -240,7 +240,7 @@ void pulsarSimProcess::main_thread() {
     struct psrCoord psr_coord[_num_gpus];
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t* out_frame = wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
-    if (out_frame == NULL)
+    if (out_frame == nullptr)
         return;
 
     for (int i = 0; i < _num_gpus; i++)
@@ -252,7 +252,7 @@ void pulsarSimProcess::main_thread() {
         mark_frame_full(pulsar_buf, unique_name.c_str(), out_buffer_ID);
         out_buffer_ID = (out_buffer_ID + 1) % pulsar_buf->num_frames;
         out_frame = wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
-        if (out_frame == NULL)
+        if (out_frame == nullptr)
             return;
         // Fill the headers of the new buffer
         fpga_seq_num += samples_in_frame * num_packet;

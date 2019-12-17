@@ -157,13 +157,13 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
     int fd;
     size_t file_num = disk_id;
     int frame_id = disk_id;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
 
     while (!stop_thread) {
 
         // This call is blocking.
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         // INFO("Got buffer id: {:d}, disk id {:d}", frame_id, disk_id);

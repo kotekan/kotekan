@@ -54,8 +54,8 @@ void chrxUplink::main_thread() {
     _enable_gating = config.get<bool>(unique_name, "enable_gating");
 
     int buffer_ID = 0;
-    uint8_t* vis_frame = NULL;
-    uint8_t* gate_frame = NULL;
+    uint8_t* vis_frame = nullptr;
+    uint8_t* gate_frame = nullptr;
 
     // Connect to server.
     struct sockaddr_in ch_acq_addr;
@@ -82,7 +82,7 @@ void chrxUplink::main_thread() {
 
         // This call is blocking!
         vis_frame = wait_for_full_frame(vis_buf, unique_name.c_str(), buffer_ID);
-        if (vis_frame == NULL)
+        if (vis_frame == nullptr)
             break;
 
         // INFO("Sending TCP frame to ch_master. frame size: {:d}", vis_buf->frame_size);
@@ -102,7 +102,7 @@ void chrxUplink::main_thread() {
         if (_enable_gating) {
             //            DEBUG("Getting gated buffer");
             gate_frame = wait_for_full_frame(gate_buf, unique_name.c_str(), buffer_ID);
-            if (gate_frame == NULL)
+            if (gate_frame == nullptr)
                 break;
 
             //            DEBUG("Sending gated buffer");

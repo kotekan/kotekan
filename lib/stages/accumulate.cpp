@@ -30,12 +30,12 @@ void accumulate::main_thread() {
     int out_frame_id = 0;
     int64_t frame_id = 0;
     int32_t* input;
-    int32_t* output = NULL;
+    int32_t* output = nullptr;
     //    uint64_t seq_num;
 
     while (!stop_thread) {
         uint8_t* in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
-        if (in_frame == NULL)
+        if (in_frame == nullptr)
             break;
         input = (int32_t*)in_frame;
 
@@ -43,7 +43,7 @@ void accumulate::main_thread() {
 
         if (frame_id % _num_gpu_frames == 0) {
             uint8_t* out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
-            if (out_frame == NULL)
+            if (out_frame == nullptr)
                 break;
             output = (int32_t*)out_frame;
 

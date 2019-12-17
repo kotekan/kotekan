@@ -65,7 +65,7 @@ int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
     std::lock_guard<std::mutex> lock(update_mutex);
     if (first_pass) {
         uint8_t* frame = wait_for_full_frame(_in_buf, unique_name.c_str(), _in_buf_precondition_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             return -1;
         first_pass = false;
         copy_frame(gpu_frame_id);

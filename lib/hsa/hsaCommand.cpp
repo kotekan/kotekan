@@ -26,7 +26,7 @@ hsaCommand::hsaCommand(Config& config_, const string& unique_name_, bufferContai
     memset(signals, 0, _gpu_buffer_depth * sizeof(hsa_signal_t));
 
     for (int i = 0; i < _gpu_buffer_depth; ++i) {
-        hsa_signal_create(0, 0, NULL, &signals[i]);
+        hsa_signal_create(0, 0, nullptr, &signals[i]);
     }
 
     // Not everyone needs this, maybe move out of constructor
@@ -129,29 +129,29 @@ uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {
 
     // Deserialize code object.
     hsa_code_object_t code_object = {0};
-    hsa_status =
-        hsa_code_object_deserialize((void*)raw_code_object, code_object_size, NULL, &code_object);
+    hsa_status = hsa_code_object_deserialize((void*)raw_code_object, code_object_size, nullptr,
+                                             &code_object);
     HSA_CHECK(hsa_status);
     assert(0 != code_object.handle);
 
     // Create executable.
     hsa_executable_t hsaExecutable;
-    hsa_status = hsa_executable_create(HSA_PROFILE_FULL, HSA_EXECUTABLE_STATE_UNFROZEN, NULL,
+    hsa_status = hsa_executable_create(HSA_PROFILE_FULL, HSA_EXECUTABLE_STATE_UNFROZEN, nullptr,
                                        &hsaExecutable);
     HSA_CHECK(hsa_status);
 
     // Load code object.
-    hsa_status =
-        hsa_executable_load_code_object(hsaExecutable, device.get_gpu_agent(), code_object, NULL);
+    hsa_status = hsa_executable_load_code_object(hsaExecutable, device.get_gpu_agent(), code_object,
+                                                 nullptr);
     HSA_CHECK(hsa_status);
 
     // Freeze executable.
-    hsa_status = hsa_executable_freeze(hsaExecutable, NULL);
+    hsa_status = hsa_executable_freeze(hsaExecutable, nullptr);
     HSA_CHECK(hsa_status);
 
     // Get symbol handle.
     hsa_executable_symbol_t kernelSymbol;
-    hsa_status = hsa_executable_get_symbol(hsaExecutable, NULL, kernel_name.c_str(),
+    hsa_status = hsa_executable_get_symbol(hsaExecutable, nullptr, kernel_name.c_str(),
                                            device.get_gpu_agent(), 0, &kernelSymbol);
     HSA_CHECK(hsa_status);
 

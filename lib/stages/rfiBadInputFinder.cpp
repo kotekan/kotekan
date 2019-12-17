@@ -117,7 +117,7 @@ void rfiBadInputFinder::main_thread() {
 
     // Intialize frame variables
     uint32_t frame_id = 0;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
     uint32_t frame_counter = 0;
     // Initialize arrays
     float rfi_data[_num_local_freq * _num_elements];
@@ -160,7 +160,7 @@ void rfiBadInputFinder::main_thread() {
     while (!stop_thread) {
         // Get a frame
         frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 #ifdef DEBUGGING
         // Reset Timer

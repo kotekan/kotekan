@@ -88,8 +88,8 @@ void restClient::event_thread() {
     // it getting filled up so much, that the read callback later starves other threads.
     bufferevent_setwatermark(bev_req_read, EV_READ, 0, 5 * 1 << 20); // 5mb
 
-    bufferevent_setcb(bev_req_read, _bev_req_readcb, NULL, _bev_req_errcb, this);
-    bufferevent_setcb(bev_req_write, NULL, NULL, _bev_req_errcb, this);
+    bufferevent_setcb(bev_req_read, _bev_req_readcb, nullptr, _bev_req_errcb, this);
+    bufferevent_setcb(bev_req_write, nullptr, nullptr, _bev_req_errcb, this);
 
     // DNS resolution is blocking (if not numeric host is passed)
     _dns = evdns_base_new(_base, 1);
@@ -130,7 +130,7 @@ void restClient::event_thread() {
 
 void restClient::http_request_done(struct evhttp_request* req, void* arg) {
     // FIXME: evcon is passed here, because evhttp_request_get_connection(req)
-    // always returns NULL and there is no way to free the connection on
+    // always returns a nullptr and there is no way to free the connection on
     // completion in libevent < 2.1
     // libevent 2.1 has a evhttp_connection_free_on_completion, but using it,
     // the bufferevent never gets deleted...
@@ -183,7 +183,7 @@ void restClient::http_request_done(struct evhttp_request* req, void* arg) {
     struct evbuffer_iovec* vec_out;
     size_t written = 0;
     // determine how many chunks we need.
-    int n_vec = evbuffer_peek(input_buffer, datalen, NULL, NULL, 0);
+    int n_vec = evbuffer_peek(input_buffer, datalen, nullptr, nullptr, 0);
     if (n_vec < 0) {
         WARN_NON_OO("restClient: Failure in evbuffer_peek()");
         (*ext_cb)(restReply(false, str_data));
@@ -194,7 +194,7 @@ void restClient::http_request_done(struct evhttp_request* req, void* arg) {
     // Allocate space for the chunks.
     vec_out = (iovec*)malloc(sizeof(evbuffer_iovec) * n_vec);
 
-    n_vec = evbuffer_peek(input_buffer, datalen, NULL, vec_out, n_vec);
+    n_vec = evbuffer_peek(input_buffer, datalen, nullptr, vec_out, n_vec);
     for (int i = 0; i < n_vec; i++) {
         size_t len = vec_out[i].iov_len;
         if (written + len > datalen)
@@ -223,7 +223,8 @@ void restClient::make_request(const std::string& path,
     DEBUG2_NON_OO("restClient::make_request(): {}:{}{}, data = {}", host, port, path, data.dump(4));
 
     if (!bev_req_write || !bev_req_read)
-        FATAL_ERROR_NON_OO("restClient: make_request called, but bev_req_write is NULL.");
+        FATAL_ERROR_NON_OO(
+            "restClient: make_request called, but bev_req_write returned a nullptr.");
 
     // serialize json data
     std::string datadump = data.dump();

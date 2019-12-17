@@ -35,12 +35,12 @@ void invalidateVDIFframes::main_thread() {
         lost_samples = 0;
 
         uint8_t* data_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buf_frame_id);
-        if (data_frame == NULL)
+        if (data_frame == nullptr)
             break;
 
         uint8_t* flag_frame =
             wait_for_full_frame(lost_samples_buf, unique_name.c_str(), lost_samples_buf_frame_id);
-        if (flag_frame == NULL)
+        if (flag_frame == nullptr)
             break;
 
         for (int32_t i = 0; i < lost_samples_buf->frame_size; ++i) {

@@ -245,7 +245,7 @@ void bufferRecv::main_thread() {
     // in the base loop thread, but this needs to be tested more.
     listener_event = event_new(base, listener, EV_READ | EV_PERSIST, bufferRecv::accept_connection,
                                (void*)&args);
-    event_add(listener_event, NULL);
+    event_add(listener_event, nullptr);
 
     // Create a timer to check for the exit condition
     struct event* timer_event;
@@ -435,7 +435,7 @@ void connInstance::internal_read_callback() {
                 // This call cannot be blocking because we checked that
                 // the frame is empty in get_next_frame()
                 uint8_t* frame = wait_for_empty_frame(buf, producer_name.c_str(), frame_id);
-                if (frame == NULL)
+                if (frame == nullptr)
                     return;
 
                 allocate_new_metadata_object(buf, frame_id);
@@ -446,7 +446,7 @@ void connInstance::internal_read_callback() {
                 // We could also swap the metadata,
                 // but this is more complex, and mucher lower overhead to just memcpy here.
                 void* metadata = get_metadata(buf, frame_id);
-                if (metadata != NULL)
+                if (metadata != nullptr)
                     memcpy(metadata, metadata_space, buf_frame_header.metadata_size);
 
                 mark_frame_full(buf, producer_name.c_str(), frame_id);

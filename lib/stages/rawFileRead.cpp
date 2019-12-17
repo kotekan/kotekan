@@ -37,7 +37,7 @@ void rawFileRead::main_thread() {
 
     int file_num = 0;
     int frame_id = 0;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
 
     while (!stop_thread) {
 
@@ -61,7 +61,7 @@ void rawFileRead::main_thread() {
 
         // Get an empty buffer to write into
         frame = wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         FILE* fp = fopen(full_path, "rb");

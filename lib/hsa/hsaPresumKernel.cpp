@@ -45,7 +45,7 @@ hsa_signal_t hsaPresumKernel::execute(int gpu_frame_id, hsa_signal_t precede_sig
     args.input_buffer =
         (void*)((uint8_t*)device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len)
                 + _num_elements * _num_local_freq * _sub_frame_samples * _sub_frame_index);
-    args.mystery = NULL;
+    args.mystery = nullptr;
     args.constant = _num_elements / 4; // global_x size
     args.presum_buffer = device.get_gpu_memory_array(
         fmt::format(fmt("presum_{:d}"), _sub_frame_index), gpu_frame_id, presum_len);

@@ -73,7 +73,7 @@ computeDualpolPower::~computeDualpolPower() {
 }
 
 void computeDualpolPower::main_thread() {
-    srand(time(NULL));
+    srand(time(nullptr));
 
     int buf_in_id = 0;
     int buf_out_id = 0;
@@ -84,10 +84,10 @@ void computeDualpolPower::main_thread() {
 
     while (!stop_thread) {
         in_local = (unsigned char*)wait_for_full_frame(buf_in, unique_name.c_str(), buf_in_id);
-        if (in_local == NULL)
+        if (in_local == nullptr)
             break;
         out_local = (unsigned char*)wait_for_empty_frame(buf_out, unique_name.c_str(), buf_out_id);
-        if (out_local == NULL)
+        if (out_local == nullptr)
             break;
 #ifdef DEBUGGING
         double start_time = e_time();

@@ -39,7 +39,7 @@ int hsaAsyncCopyGain::wait_on_precondition(int gpu_frame_id) {
     if (first_pass) {
         uint8_t* frame =
             wait_for_full_frame(gain_buf, unique_name.c_str(), gain_buf_precondition_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             return -1;
         gain_buf_precondition_id = (gain_buf_precondition_id + 1) % gain_buf->num_frames;
         first_pass = false;

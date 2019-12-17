@@ -81,7 +81,7 @@ hsa_signal_t hsaRfiVdif::execute(int gpu_frame_id, hsa_signal_t precede_signal) 
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 
-    hsa_status_t hsa_status = hsa_signal_create(1, 0, NULL, &signals[gpu_frame_id]);
+    hsa_status_t hsa_status = hsa_signal_create(1, 0, nullptr, &signals[gpu_frame_id]);
     HSA_CHECK(hsa_status);
 
     // Obtain the current queue write index.

@@ -87,7 +87,7 @@ void bufferMerge::main_thread() {
                 DEBUG2("Waiting for {:s}[{:d}]", in_buf->buffer_name, in_frame_id);
                 uint8_t* input_frame =
                     wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
-                if (input_frame == NULL)
+                if (input_frame == nullptr)
                     goto exit_loop; // Shutdown condition
             } else {
                 auto timeout = double_to_ts(current_time() + _timeout);
@@ -103,7 +103,7 @@ void bufferMerge::main_thread() {
 
                 uint8_t* output_frame =
                     wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
-                if (output_frame == NULL)
+                if (output_frame == nullptr)
                     break;
 
                 // Move the metadata over to the new frame

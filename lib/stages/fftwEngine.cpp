@@ -41,10 +41,10 @@ void fftwEngine::main_thread() {
 
     while (!stop_thread) {
         in_local = (short*)wait_for_full_frame(in_buf, unique_name.c_str(), frame_in);
-        if (in_local == NULL)
+        if (in_local == nullptr)
             break;
         out_local = (fftwf_complex*)wait_for_empty_frame(out_buf, unique_name.c_str(), frame_out);
-        if (out_local == NULL)
+        if (out_local == nullptr)
             break;
 
         for (int j = 0; j < samples_per_input_frame / 2; j += spectrum_length) {

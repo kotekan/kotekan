@@ -156,7 +156,7 @@ void eigenVis::main_thread() {
         info = LAPACKE_cheevr(LAPACK_COL_MAJOR, 'V', 'I', 'L', nside,
                               (lapack_complex_float*)vis_square.data(), nside, 0.0, 0.0,
                               nside - nev + 1, nside, 0.0, &ev_found, evals.data(),
-                              (lapack_complex_float*)evecs.data(), nside, NULL);
+                              (lapack_complex_float*)evecs.data(), nside, nullptr);
 
         DEBUG("LAPACK exit status: {:d}", info);
         if (info) {

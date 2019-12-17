@@ -46,18 +46,18 @@ int hsaOutputData::wait_on_precondition(int gpu_frame_id) {
     // We want to make sure we have some space to put our results.
     uint8_t* frame = wait_for_empty_frame(output_buffer, static_unique_name.c_str(),
                                           output_buffer_precondition_id);
-    if (frame == NULL)
+    if (frame == nullptr)
         return -1;
     output_buffer_precondition_id =
         (output_buffer_precondition_id + _num_sub_frames) % output_buffer->num_frames;
     if (_sub_frame_index == 0) {
         frame = wait_for_full_frame(network_buffer, static_unique_name.c_str(),
                                     network_buffer_precondition_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             return -1;
         frame = wait_for_full_frame(lost_samples_buf, static_unique_name.c_str(),
                                     lost_samples_buf_precondition_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             return -1;
         network_buffer_precondition_id =
             (network_buffer_precondition_id + 1) % network_buffer->num_frames;

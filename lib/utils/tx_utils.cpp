@@ -178,7 +178,7 @@ void osx_clock_abs_nanosleep(clockid_t clock, struct timespec ts) {
         timespec waittime;
         waittime.tv_sec = sec;
         waittime.tv_nsec = nsec;
-        nanosleep(&waittime, NULL);
+        nanosleep(&waittime, nullptr);
     }
     return;
 }

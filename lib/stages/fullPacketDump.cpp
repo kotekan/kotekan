@@ -86,14 +86,14 @@ void fullPacketDump::main_thread() {
 
 
     int first_time = 1;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
 
     // Wait for, and drop full buffers
     while (!stop_thread) {
 
         // This call is blocking!
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         if (!_dump_to_disk) {

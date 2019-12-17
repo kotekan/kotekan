@@ -62,7 +62,7 @@ void networkInputPowerStream::receive_packet(void* buffer, int length, int socke
 
 void networkInputPowerStream::main_thread() {
     int frame_id = 0;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
 
     if (protocol == "UDP") {
         int socket_fd;
@@ -83,12 +83,13 @@ void networkInputPowerStream::main_thread() {
 
         while (!stop_thread) {
             frame = wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id);
-            if (frame == NULL)
+            if (frame == nullptr)
                 break;
 
             for (int t = 0; t < times; t++) {
                 for (int e = 0; e < elems; e++) {
-                    uint32_t len = recvfrom(socket_fd, local_buf, packet_length, 0, NULL, 0);
+                    uint32_t len =
+                        recvfrom(socket_fd, local_buf, packet_length, 0, nullptr, nullptr);
                     if (len != packet_length) {
                         ERROR("BAD UDP PACKET! {:d} {:d}", len, errno)
                     } else {
@@ -140,7 +141,7 @@ void networkInputPowerStream::main_thread() {
         while (!stop_thread) {
             unsigned char* buf_ptr =
                 (unsigned char*)wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id);
-            if (buf_ptr == NULL)
+            if (buf_ptr == nullptr)
                 break;
 
             for (int t = 0; t < times; t++) {

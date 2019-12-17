@@ -246,7 +246,7 @@ std::string exec(const std::string& cmd) {
     if (!pipe)
         throw std::runtime_error(fmt::format(fmt("popen() for the command {:s} failed!"), cmd));
     while (!feof(pipe.get())) {
-        if (fgets(buffer.data(), 256, pipe.get()) != NULL)
+        if (fgets(buffer.data(), 256, pipe.get()) != nullptr)
             result += buffer.data();
     }
     return result;
@@ -351,17 +351,17 @@ int main(int argc, char** argv) {
     __enable_syslog = 0;
 
     for (;;) {
-        static struct option long_options[] = {{"config", required_argument, 0, 'c'},
-                                               {"bind-address", required_argument, 0, 'b'},
-                                               {"gps-time", no_argument, 0, 'g'},
-                                               {"gps-time-source", required_argument, 0, 't'},
-                                               {"help", no_argument, 0, 'h'},
-                                               {"syslog", no_argument, 0, 's'},
-                                               {"no-stderr", no_argument, 0, 'n'},
-                                               {"version", no_argument, 0, 'v'},
-                                               {"version-json", no_argument, 0, 'j'},
-                                               {"print-config", no_argument, 0, 'p'},
-                                               {0, 0, 0, 0}};
+        static struct option long_options[] = {{"config", required_argument, nullptr, 'c'},
+                                               {"bind-address", required_argument, nullptr, 'b'},
+                                               {"gps-time", no_argument, nullptr, 'g'},
+                                               {"gps-time-source", required_argument, nullptr, 't'},
+                                               {"help", no_argument, nullptr, 'h'},
+                                               {"syslog", no_argument, nullptr, 's'},
+                                               {"no-stderr", no_argument, nullptr, 'n'},
+                                               {"version", no_argument, nullptr, 'v'},
+                                               {"version-json", no_argument, nullptr, 'j'},
+                                               {"print-config", no_argument, nullptr, 'p'},
+                                               {nullptr, 0, nullptr, 0}};
 
         int option_index = 0;
 

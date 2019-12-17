@@ -123,13 +123,13 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
             }
         }
         DEBUG("Number of ports on numa node {:d}: {:d}", node_id, num_ports_on_node);
-        struct rte_mempool* pool = NULL;
+        struct rte_mempool* pool = nullptr;
         if (num_ports_on_node > 0) {
             pool = rte_mempool_create(
                 ("MBUF_POOL_" + to_string(node_id)).c_str(), num_mbufs * num_ports_on_node,
                 mbuf_size, mbuf_cache_size, sizeof(struct rte_pktmbuf_pool_private),
-                rte_pktmbuf_pool_init, NULL, rte_pktmbuf_init, NULL, node_id, 0);
-            if (pool == NULL) {
+                rte_pktmbuf_pool_init, nullptr, rte_pktmbuf_init, nullptr, node_id, 0);
+            if (pool == nullptr) {
                 throw std::runtime_error("Cannot create DPDK mbuf pool.");
             }
         }
@@ -219,7 +219,7 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
     strncpy(arg6, std::to_string(init_mem_alloc).c_str(),
             std::to_string(init_mem_alloc).length() + 1);
     // Generate final options string for EAL initialization
-    char* argv2[] = {&arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], NULL};
+    char* argv2[] = {&arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], nullptr};
     int argc2 = (int)(sizeof(argv2) / sizeof(argv2[0])) - 1;
 
     // Initialize the Environment Abstraction Layer (EAL).
@@ -291,7 +291,7 @@ int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
 
     // Allocate and set up 1 RX queue per Ethernet port.
     for (q = 0; q < rx_rings; q++) {
-        retval = rte_eth_rx_queue_setup(port, q, rx_ring_size, rte_eth_dev_socket_id(port), NULL,
+        retval = rte_eth_rx_queue_setup(port, q, rx_ring_size, rte_eth_dev_socket_id(port), nullptr,
                                         mbuf_pools.at(numa_node_of_cpu(lcore_id)));
         if (retval < 0) {
             ERROR("Failed to setupt RX queue for port {:d}, error: {:d}", port, retval);
@@ -302,7 +302,8 @@ int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
     // Allocate and set up 1 TX queue per Ethernet port.
     // TODO Do we need this?
     for (q = 0; q < tx_rings; q++) {
-        retval = rte_eth_tx_queue_setup(port, q, tx_ring_size, rte_eth_dev_socket_id(port), NULL);
+        retval =
+            rte_eth_tx_queue_setup(port, q, tx_ring_size, rte_eth_dev_socket_id(port), nullptr);
         if (retval < 0) {
             ERROR("Failed to setupt TX queue for port {:d}, error: {:d}", port, retval);
             return retval;

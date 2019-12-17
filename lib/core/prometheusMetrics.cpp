@@ -54,7 +54,7 @@ std::ostringstream& Gauge::to_string(std::ostringstream& out) {
 /* static */
 uint64_t Gauge::get_time_in_milliseconds() {
     struct timeval tv;
-    gettimeofday(&tv, NULL);
+    gettimeofday(&tv, nullptr);
 
     return (uint64_t)(tv.tv_sec) * 1000 + (uint64_t)(tv.tv_usec) / 1000;
 }
