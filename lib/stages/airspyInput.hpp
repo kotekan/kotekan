@@ -12,7 +12,7 @@
 #include "errors.h"
 #include "util.h"
 
-#include <libairspy/airspy.h>
+#include <airspy.h>
 #include <signal.h>
 #include <unistd.h>
 
