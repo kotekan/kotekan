@@ -63,6 +63,7 @@ pipeline {
           agent {label 'macos'}
           steps {
             sh '''export PATH=${PATH}:/usr/local/bin/
+                  source ~/.bash_profile
                   mkdir -p build_base
                   cd build_base/
                   cmake ..
