@@ -256,7 +256,7 @@ else()
 endif()
 
 # Add link to atomic operations library if we are using Clang
-if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR "AppleClang")
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -latomic")
 endif()
 
