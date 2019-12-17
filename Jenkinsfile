@@ -55,7 +55,7 @@ pipeline {
           steps {
             sh '''mkdir -p build_base
                   cd build_base
-                  cmake ..
+                  cmake -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
                   make -j 4'''
           }
         }
