@@ -512,7 +512,7 @@ void frbNetworkProcess::ping_destinations() {
              * If a node has stopped responding recently, we switch to an accelerated check
              * schedule. Otherwise, give up and mark it dead.
              */
-            auto time_since_last_live = std::chrono::steady_clock::now() - lru_dest.last_responded;
+            time_since_last_live = std::chrono::steady_clock::now() - lru_dest.last_responded;
             if (time_since_last_live < _ping_interval + _ping_dead_threshold) {
                 DEBUG("Live host {} has not responded, schedule a backup check in {}",
                       lru_dest.dst->host, _quick_ping_interval);
