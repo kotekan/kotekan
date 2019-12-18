@@ -93,7 +93,7 @@ if (${USE_HDF5})
   include_directories (/kotekan/HighFive/include/)
   target_link_libraries ( kotekan_libs INTERFACE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )
 endif ()
-
+#test
 add_subdirectory(version)
 
 target_link_libraries( kotekan_libs INTERFACE kotekan_version )
