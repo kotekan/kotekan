@@ -1,7 +1,3 @@
-// TODO Where do these live?
-#define likely(x) __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
-
 #include "frbPostProcess.hpp"
 
 #include <immintrin.h>

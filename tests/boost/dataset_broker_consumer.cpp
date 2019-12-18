@@ -3,7 +3,6 @@
 #include "restClient.hpp"
 #include "restServer.hpp"
 #include "test_utils.hpp"
-#include "visCompression.hpp"
 #include "visUtil.hpp"
 
 #include "json.hpp"
@@ -14,6 +13,8 @@
 
 // the code to test:
 #include "datasetManager.hpp"
+
+#define WAIT_TIME 4000000
 
 using kotekan::Config;
 
@@ -104,7 +105,7 @@ BOOST_FIXTURE_TEST_CASE(_ask_broker_for_ancestors, CompareCTypes) {
     check_equal(p->get_prods(), prods);
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(500000);
+    usleep(WAIT_TIME);
 }
 
 BOOST_AUTO_TEST_CASE(_dataset_manager_second_root_update) {
@@ -148,7 +149,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_second_root_update) {
     second_root_update = dm.add_dataset(states, second_root);
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(1000000);
+    usleep(WAIT_TIME);
 }
 
 BOOST_FIXTURE_TEST_CASE(_ask_broker_for_second_root, CompareCTypes) {
@@ -210,7 +211,7 @@ BOOST_FIXTURE_TEST_CASE(_ask_broker_for_second_root, CompareCTypes) {
         std::cout << s.second.state() << " - " << s.second.base_dset() << std::endl;
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(500000);
+    usleep(WAIT_TIME);
 }
 
 BOOST_FIXTURE_TEST_CASE(_ask_broker_for_second_root_update, CompareCTypes) {
@@ -267,5 +268,5 @@ BOOST_FIXTURE_TEST_CASE(_ask_broker_for_second_root_update, CompareCTypes) {
 
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(600000);
+    usleep(WAIT_TIME);
 }

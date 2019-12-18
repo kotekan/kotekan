@@ -2,7 +2,6 @@
 
 #include "restClient.hpp"
 #include "restServer.hpp"
-#include "visCompression.hpp"
 #include "visUtil.hpp"
 
 #include "json.hpp"
@@ -14,6 +13,8 @@
 
 // the code to test:
 #include "datasetManager.hpp"
+
+#define WAIT_TIME 4000000
 
 using kotekan::Config;
 
@@ -101,7 +102,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
     for (auto s : dm.datasets())
         std::cout << s.second.state() << " - " << s.second.base_dset() << std::endl;
 
-    usleep(1000000);
+    usleep(WAIT_TIME);
 }
 
 
@@ -136,7 +137,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_state_known_to_broker) {
     dm.add_dataset(states1);
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(500000);
+    usleep(WAIT_TIME);
 }
 
 BOOST_AUTO_TEST_CASE(_dataset_manager_second_root) {
@@ -173,5 +174,5 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_second_root) {
     o.close();
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(1000000);
+    usleep(WAIT_TIME);
 }

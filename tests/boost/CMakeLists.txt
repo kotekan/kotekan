@@ -3,8 +3,9 @@ project( kotekan_boost_tests )
 # Prep ourselves for compiling boost
 find_package(Boost COMPONENTS unit_test_framework REQUIRED)
 include_directories (${Boost_INCLUDE_DIRS} $BOOST_TESTS_DIR)
-include_directories (${KOTEKAN_SOURCE_DIR}/lib/utils)
+
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/stages)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/utils)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/core)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/metadata)
@@ -38,8 +39,12 @@ endif()
 
 # Run through each source
 foreach(testSrc ${KOTEKAN_BOOST_TEST_SOURCES})
-	get_filename_component(testName ${testSrc} NAME_WE)
+    get_filename_component(testName ${testSrc} NAME_WE)
     add_executable(${testName} ${testSrc})
+
+    # TODO: fix cmake build for buffer.c : It uses hsa_host_malloc etc.
+    # TODO: remove chimeFeed from visCompression files.
+    # After that it should be enough to link against kotekan_utils kotekan_core
     target_link_libraries(${testName} kotekan_libs dl m pthread)
 
     if(${USE_HDF5})
@@ -52,6 +57,5 @@ endforeach(testSrc)
 foreach(testSrc ${KOTEKAN_BROKER_TEST_SOURCES})
 	get_filename_component(testName ${testSrc} NAME_WE)
     add_executable(${testName} ${testSrc})
-    target_link_libraries(${testName} kotekan_libs dl m pthread)
-    #target_link_libraries(${testName} libinclude)
+    target_link_libraries(${testName} kotekan_utils kotekan_core dl m pthread)
 endforeach(testSrc)
