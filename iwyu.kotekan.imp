@@ -1,0 +1,38 @@
+# IWYU mappings for the kotekan project
+[
+    # Make use of mapping files that come with iwyu
+    { ref: "tools/iwyu/iwyu.gcc.imp" },
+    { ref: "tools/iwyu/libcxx.imp" },
+    { ref: "tools/iwyu/boost-1.64-all.imp" },
+
+    # Add what is missing
+    { include: [ "<bits/exception.h>", private, "<exception>", public ] },
+    { include: [ "<bits/types/struct_tm.h>", private, "<time.h>", public ] },
+    { include: [ "<bits/std_abs.h>", private, "<cmath>", public ] },
+    { include: [ "<bits/getopt_core.h>", private, "<unistd.h>", public ] },
+    { include: [ "<bits/types/sig_atomic_t.h>", private, "<csignal>", public ] },
+
+    # Use the main fmt header file only
+    { include: [ "\"fmt/core.h\"", private, "\"fmt.hpp\"", public ] },
+    { include: [ "\"fmt/ostream.h\"", private, "\"fmt.hpp\"", public ] },
+
+    # libevent
+    { symbol: [ "evhttp_request", public, "<evhttp.h>", public ] },
+
+    # Boost unit tests
+    { include: [ "<boost/preprocessor/comparison/not_equal.hpp>", private, "<boost/test/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/control/iif.hpp>", private, "<boost/test/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/logical/bool.hpp>", private, "<boost/test/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/logical/compl.hpp>", private, "<boost/test/unit_test.hpp>", public ] },
+    { include: [ "<boost/test/included/unit_test.hpp>", public, "<boost/test/unit_test.hpp>", public ] },
+    { include: [ "<boost/test/unit_test_suite.hpp>", public, "<boost/test/unit_test.hpp>", public ] },
+    { include: [ "<boost/test/tools/old/interface.hpp>", public, "<boost/test/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/arithmetic/dec.hpp>", private, "<boost/test/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/control/expr_iif.hpp>", private, "<boost/test/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/repetition/for.hpp>", public, "<boost/test/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/seq/elem.hpp>", private, "<boost/test/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/seq/size.hpp>", private, "<boost/test/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/seq/enum.hpp>", private, "<boost/test/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/tuple/elem.hpp>", public, "<boost/test/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/variadic/elem.hpp>", private, "<boost/test/unit_test.hpp>", public ] },
+]
