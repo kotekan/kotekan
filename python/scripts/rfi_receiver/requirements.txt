@@ -1,0 +1,14 @@
+comet @ git+https://github.com/chime-experiment/comet.git
+prometheus_client @ git+https://github.com/prometheus/client_python.git
+logging
+threading
+socket
+numpy
+datetime
+os
+time
+argparse
+yaml
+subprocess
+requests
+json
