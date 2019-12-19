@@ -35,8 +35,9 @@ import subprocess
 import requests
 import json
 
-# TODO: this can be a different python kotekan installation in some cases
-from kotekan import __version__
+from _version import get_versions
+__version__ = get_versions()["version"]
+del get_versions
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
