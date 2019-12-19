@@ -166,14 +166,7 @@ class CommandLine(object):
                     argument.config
                 )
             )
-            # TODO: this was disabled because it ignores the structure of the kotekan
-            # config, looks in the whole kotekan config tree for the keys from the
-            # config hardcoded in this file. It ignores that the kotekan config has
-            # variable names reused in different parts of the config and just applies
-            # all of them, resulting in wrong values, i.e. for samples_per_data_set.
-            # To solve this issue, only the hardcoded config is used, but it should
-            # become a config file or fin d a better way to read the kotekan config.
-            # parse_dict(self, yaml.safe_load(open(argument.config)))
+            parse_dict(self, yaml.safe_load(open(argument.config)))
             logger.info(self.config)
             self.register_config(self.config)
             status = True
