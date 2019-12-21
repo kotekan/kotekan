@@ -96,7 +96,7 @@ pipeline {
                   cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
                   make clang-format
                   git diff --exit-code
-                  iwyu_tool -p . -- --mapping_file=${WORKSPACE}/iwyu.kotekan.imp --max_line_length 100 > iwyu.out
+                  iwyu_tool -p . -- --mapping_file=${WORKSPACE}/iwyu.kotekan.imp --max_line_length=100 > iwyu.out
                   python2 /usr/bin/fix_include --dry --comments < iwyu.out
                   git diff --exit-code
                   black --check --exclude docs ..'''
