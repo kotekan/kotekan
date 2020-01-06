@@ -90,7 +90,7 @@ protected:
         // We allow for the fact we might miss the first packet by upto 100 FPGA frames,
         // if this happens then the missing frames at the start of the buffer frame are filled
         // in as lost packets.
-        if ((seq % alignment) <= 100) {
+        if ((seq % alignment) <= 1000) {
 
             last_seq = seq - seq % alignment;
             cur_seq = seq;
