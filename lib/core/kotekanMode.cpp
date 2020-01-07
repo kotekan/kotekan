@@ -33,7 +33,7 @@ kotekanMode::~kotekanMode() {
     configUpdater::instance().reset();
     restServer::instance().remove_get_callback("/config");
     restServer::instance().remove_get_callback("/buffers");
-    restServer::instance().remove_get_callback("/pipeline_dot")
+    restServer::instance().remove_get_callback("/pipeline_dot");
     restServer::instance().remove_all_aliases();
 
     for (auto const& stage : stages) {
