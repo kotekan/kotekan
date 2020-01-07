@@ -32,6 +32,8 @@ kotekanMode::~kotekanMode() {
 
     configUpdater::instance().reset();
     restServer::instance().remove_get_callback("/config");
+    restServer::instance().remove_get_callback("/buffers");
+    restServer::instance().remove_get_callback("/pipeline_dot")
     restServer::instance().remove_all_aliases();
 
     for (auto const& stage : stages) {
@@ -78,6 +80,70 @@ void kotekanMode::initalize_stages() {
     // Create Stages
     StageFactory stage_factory(config, buffer_container);
     stages = stage_factory.build_stages();
+
+
+    restServer::instance().register_get_callback("/buffers", [&](connectionInstance& conn) {
+        nlohmann::json buffer_json = {};
+
+        for (auto& buf : buffer_container.get_buffer_map()) {
+            json buf_info = {};
+            buf_info["consumers"];
+            for (int i = 0; i < MAX_CONSUMERS; ++i) {
+                if (buf.second->consumers[i].in_use) {
+                    buf_info["consumers"].push_back(buf.second->consumers[i].name);
+                }
+            }
+            buf_info["producers"];
+            for (int i = 0; i < MAX_PRODUCERS; ++i) {
+                if (buf.second->producers[i].in_use) {
+                    buf_info["producers"].push_back(buf.second->producers[i].name);
+                }
+            }
+            buf_info["frames"];
+            for (int i = 0; i < buf.second->num_frames; ++i) {
+                buf_info["frames"].push_back(buf.second->is_full[i]);
+            }
+
+            buffer_json[buf.first] = buf_info;
+        }
+
+        conn.send_json_reply(buffer_json);
+    });
+
+    restServer::instance().register_get_callback("/pipeline_dot", [&](connectionInstance& conn) {
+        string dot = "# This is a DOT formated pipeline graph, use the graphviz package to plot.\n";
+        dot += "digraph pipeline {\n";
+
+        // Setup buffer nodes
+        for (auto& buf : buffer_container.get_buffer_map()) {
+            dot += "    \"" + buf.first + "\" [shape=doubleoctagon, color=blue];\n";
+        }
+
+        // Setup stage nodes
+        for (auto& stage : stages) {
+            dot += stage.second->dot_string("    ");
+        }
+
+        // Generate graph edges (producer/consumer relations)
+        for (auto& buf : buffer_container.get_buffer_map()) {
+            for (int i = 0; i < MAX_CONSUMERS; ++i) {
+                if (buf.second->consumers[i].in_use) {
+                    dot += "    \"" + buf.first + "\" -> \"" + string(buf.second->consumers[i].name)
+                           + "\";\n";
+                }
+            }
+            for (int i = 0; i < MAX_PRODUCERS; ++i) {
+                if (buf.second->producers[i].in_use) {
+                    dot += "    \"" + string(buf.second->producers[i].name) + "\" -> \"" + buf.first
+                           + "\";\n";
+                }
+            }
+        }
+
+        dot += "}\n";
+        conn.send_text_reply(dot);
+    });
+
 
     // Update REST server
     restServer::instance().set_server_affinity(config);

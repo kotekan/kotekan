@@ -219,3 +219,50 @@ void gpuProcess::results_thread() {
         gpu_frame_id = (gpu_frame_id + 1) % _gpu_buffer_depth;
     }
 }
+
+std::string gpuProcess::dot_string(const std::string& pre_fix) const {
+    std::string dot = pre_fix + "subgraph " + "\"cluster_" + get_unique_name() + "\" {\n";
+
+    dot += pre_fix + "    style=filled;\n";
+    dot += pre_fix + "    color=lightgrey;\n";
+    dot += pre_fix + "    node [style=filled,color=white];\n";
+    dot += pre_fix + "    label = \"" + get_unique_name() + "\";\n";
+
+    for (auto& command : commands) {
+        dot += pre_fix + "    \"" + command->get_unique_name() + "\" [";
+        switch (command->get_command_type()) {
+            case gpuCommandType::COPY_IN:
+                dot += "shape=trapezium";
+                break;
+            case gpuCommandType::KERNEL:
+                dot += "shape=box";
+                break;
+            case gpuCommandType::BARRIER:
+                dot += "shape=parallelogram";
+                break;
+            case gpuCommandType::COPY_OUT:
+                dot += "shape=invtrapezium";
+                break;
+            default:
+                break;
+        }
+        dot += ",label=\"" + command->get_name() + "\"];\n";
+    }
+
+    bool first_item = true;
+    std::string last_item = "";
+    for (auto& command : commands) {
+        if (first_item) {
+            last_item = command->get_unique_name();
+            first_item = false;
+            continue;
+        }
+        dot += pre_fix + "    \"" + last_item + "\" -> \"" + command->get_unique_name()
+               + "\" [style=dotted];\n";
+        last_item = command->get_unique_name();
+    }
+
+    dot += pre_fix + "}\n";
+
+    return dot;
+}

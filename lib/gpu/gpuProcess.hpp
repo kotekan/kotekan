@@ -20,6 +20,8 @@ public:
     void main_thread() override;
     void profile_callback(kotekan::connectionInstance& conn);
 
+    virtual std::string dot_string(const std::string& pre_fix) const override;
+
 protected:
     virtual gpuCommand* create_command(const std::string& cmd_name,
                                        const std::string& unique_name) = 0;

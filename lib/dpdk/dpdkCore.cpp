@@ -379,3 +379,27 @@ int dpdkCore::lcore_rx(void* args) {
 exit_lcore:
     return 0;
 }
+
+std::string dpdkCore::dot_string(const std::string& pre_fix) const {
+    std::string dot = pre_fix + "subgraph " + "\"cluster_" + get_unique_name() + "\" {\n";
+
+    dot += pre_fix + "    style=filled;\n";
+    dot += pre_fix + "    color=lightgrey;\n";
+    dot += pre_fix + "    node [style=filled,color=white];\n";
+    dot += pre_fix + "    label = \"" + get_unique_name() + "\";\n";
+
+    for (uint i = 0; i < num_ports; ++i) {
+        dot += pre_fix + "    \"" + handlers[i]->unique_name + "\" [shape=box];\n";
+    }
+
+    dot += pre_fix + "}\n";
+
+    for (uint i = 0; i < num_ports; ++i) {
+        dot += pre_fix + "port_" + std::to_string(i)
+               + " [shape=Mdiamond style=filled,color=lightblue]";
+        dot +=
+            pre_fix + "port_" + std::to_string(i) + " -> \"" + handlers[i]->unique_name + "\";\n";
+    }
+
+    return dot;
+}

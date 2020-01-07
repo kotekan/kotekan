@@ -37,7 +37,9 @@ REGISTER_HSA_COMMAND(hsaPulsarUpdatePhase);
 hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_name,
                                            bufferContainer& host_buffers,
                                            hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "", "") {
+    hsaCommand(config, unique_name, host_buffers, device, "hsaPulsarUpdatePhase", "") {
+
+    command_type = gpuCommandType::COPY_IN;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
     _num_beams = config.get<int16_t>(unique_name, "num_beams");

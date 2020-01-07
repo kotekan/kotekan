@@ -127,4 +127,8 @@ Stage::~Stage() {
         this_thread.join();
 }
 
+std::string Stage::dot_string(const std::string& pre_fix) const {
+    return pre_fix + "\"" + get_unique_name() + "\" [shape=box, color=darkgreen];\n";
+}
+
 } // namespace kotekan

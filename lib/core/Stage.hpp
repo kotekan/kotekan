@@ -9,6 +9,7 @@
 #include <atomic>
 #include <functional>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 #ifdef MAC_OSX
@@ -39,6 +40,15 @@ public:
      */
     void join();
     void stop();
+
+    /**
+     * @brief Generates a graphviz "dot" string for this stage.
+     *
+     * By default this is just the stage name plus some default formating.
+     *
+     * @return "dot" style graph discription for this stage.
+     */
+    virtual std::string dot_string(const std::string& pre_fix) const;
 
 protected:
     std::atomic_bool stop_thread;

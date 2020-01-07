@@ -89,6 +89,8 @@ public:
     /// Get to distinguish the flavour of command (copy,kernel,etc)
     gpuCommandType get_command_type();
 
+    virtual std::string get_unique_name() const;
+
 protected:
     /// A unique name used for the gpu command. Used in indexing commands in a list and referencing
     /// them by this value.

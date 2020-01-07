@@ -18,6 +18,8 @@ public:
 
     void finalize_frame(int frame_id) override;
 
+    virtual std::string get_unique_name() const override;
+
 private:
     /// Use the same consumer/producer name accross subframes,
     /// but unique for each GPU.
