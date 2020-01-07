@@ -33,8 +33,10 @@ template string Config::get(const string& base_path, const string& name);
 template vector<int32_t> Config::get(const string& base_path, const string& name);
 template vector<uint32_t> Config::get(const string& base_path, const string& name);
 template vector<float> Config::get(const string& base_path, const string& name);
-template vector<string> Config::get(const string& base_path, const string& name);
-template vector<nlohmann::json> Config::get(const string& base_path, const string& name);
+template vector<string> Config::get(const string& base_path,
+                                              const string& name);
+template vector<nlohmann::json> Config::get(const string& base_path,
+                                                 const string& name);
 
 Config::Config() {}
 
@@ -122,7 +124,8 @@ vector<json> Config::get_value(const string& name) const {
     return results;
 }
 
-void Config::get_value_recursive(const json& j, const string& name, vector<json>& results) const {
+void Config::get_value_recursive(const json& j, const string& name,
+                                 vector<json>& results) const {
     for (auto it = j.begin(); it != j.end(); ++it) {
         if (it.key() == name)
             results.push_back(it.value());

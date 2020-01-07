@@ -452,8 +452,6 @@ extern template std::vector<std::string> Config::get(const std::string& base_pat
                                                      const std::string& name);
 extern template std::vector<nlohmann::json> Config::get(const std::string& base_path,
                                                         const std::string& name);
-extern template std::vector<std::complex<float>> Config::get(const std::string& base_path,
-                                                             const std::string& name);
 
 } // namespace kotekan
 
