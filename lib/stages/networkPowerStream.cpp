@@ -1,18 +1,24 @@
 #include "networkPowerStream.hpp"
 
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for mark_frame_empty, wait_for_full_frame, register_consumer
+#include "kotekanLogging.hpp" // for ERROR, INFO
 
-#include <arpa/inet.h>
-#include <functional>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <string.h>
-#include <string>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <unistd.h>
+#include <arpa/inet.h>  // for inet_addr, inet_aton
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <netinet/in.h> // for sockaddr_in, htons, IPPROTO_TCP, IPPROTO_UDP, in_addr
+#include <stdlib.h>     // for free, malloc
+#include <string.h>     // for memcpy, memset
+#include <string>       // for string, allocator, operator==
+#include <sys/socket.h> // for send, socket, AF_INET, connect, sendto, setsockopt, SOCK_D...
+#include <sys/time.h>   // for timeval, gettimeofday
+#include <sys/types.h>  // for uint
+#include <unistd.h>     // for close
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

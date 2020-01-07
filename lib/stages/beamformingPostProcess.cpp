@@ -1,9 +1,12 @@
-#include <assert.h>
-#include <functional>
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for uint32_t, int32_t, uint8_t
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <math.h>     // for round
+#include <stdlib.h>   // for free, malloc
+#include <string.h>   // for memcpy
+#include <string>     // for string
+#include <sys/time.h> // for timeval
 
 using std::string;
 
@@ -11,11 +14,18 @@ using std::string;
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "beamformingPostProcess.hpp"
-#include "errors.h"
-#include "time_tracking.h"
-#include "util.h"
-#include "vdif_functions.h"
+#include "buffer.h"         // for wait_for_empty_frame, Buffer, mark_frame_empty, mark_frame_full
+#include "chimeMetadata.h"  // for get_fpga_seq_num, get_first_packet_recv_time, get_stream_id
+#include "vdif_functions.h" // for VDIFHeader
+
+#include "fmt.hpp" // for format, fmt
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

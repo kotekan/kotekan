@@ -6,16 +6,20 @@
 #ifndef FREQ_SUBSET_HPP
 #define FREQ_SUBSET_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
+#include "Stage.hpp"          // for Stage
+#include "dataset.hpp"        // for dset_id_t, state_id_t
+#include "datasetManager.hpp" // for fingerprint_t
 
-#include <future>
-#include <stdint.h>
-#include <string>
-#include <vector>
+#include <map>      // for map
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <vector>   // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
 
 
 /**

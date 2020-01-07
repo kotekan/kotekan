@@ -8,22 +8,23 @@
 #ifndef FAKE_VIS
 #define FAKE_VIS
 
-#include "Config.hpp"
-#include "FakeVisPattern.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "kotekanLogging.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "FakeVisPattern.hpp" // for FakeVisPattern
+#include "Stage.hpp"          // for Stage
+#include "dataset.hpp"        // for dset_id_t
+#include "visUtil.hpp"        // for cfloat
 
-#include <functional>
-#include <map>
-#include <stddef.h>
-#include <stdint.h>
-#include <string>
-#include <vector>
+#include <memory>   // for unique_ptr
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint32_t, int32_t
+#include <string>   // for string
+#include <vector>   // for vector
+
+class visFrameView;
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
 
 /**
  * @brief Generate fake visibility data into a ``visBuffer``.

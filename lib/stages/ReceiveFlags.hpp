@@ -6,14 +6,30 @@
 #ifndef RECEIVEFLAGS_H
 #define RECEIVEFLAGS_H
 
-#include "Stage.hpp"
-#include "datasetManager.hpp"
-#include "prometheusMetrics.hpp"
-#include "updateQueue.hpp"
-#include "visBuffer.hpp"
+#include "Stage.hpp"       // for Stage
+#include "dataset.hpp"     // for dset_id_t, state_id_t
+#include "updateQueue.hpp" // for updateQueue
 
-#include <mutex>
-#include <vector>
+#include "json.hpp" // for json
+
+#include <map>      // for map
+#include <mutex>    // for mutex
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <time.h>   // for size_t, timespec
+#include <utility>  // for pair
+#include <vector>   // for vector
+
+class visFrameView;
+namespace kotekan {
+class Config;
+class bufferContainer;
+namespace prometheus {
+class Counter;
+class Gauge;
+} // namespace prometheus
+} // namespace kotekan
+struct Buffer;
 
 /**
  * @class ReceiveFlags

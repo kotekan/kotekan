@@ -1,12 +1,24 @@
 #include "gpuBeamformSimulate.hpp"
 
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
+#include "chimeMetadata.h"         // for get_stream_id_t
+#include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
+#include "kotekanLogging.hpp"      // for ERROR, INFO
 
-#include <math.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include <assert.h>    // for assert
+#include <atomic>      // for atomic_bool
+#include <cmath>       // for sin, cos, asin, floor, pow
+#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <stdio.h>     // for fclose, fopen, fread, snprintf, FILE
+#include <stdlib.h>    // for free, malloc
+#include <string.h>    // for memcpy
+#include <sys/types.h> // for uint
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 #define SWAP(a, b)                                                                                 \
     tempr = (a);                                                                                   \

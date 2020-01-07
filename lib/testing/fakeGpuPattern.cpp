@@ -1,8 +1,15 @@
 #include "fakeGpuPattern.hpp"
 
-#include "visUtil.hpp"
+#include "Config.hpp"              // for Config
+#include "chimeMetadata.h"         // for chimeMetadata
+#include "fpga_header_functions.h" // for freq_from_bin
+#include "visUtil.hpp"             // for prod_index
 
-#include <math.h>
+#include "gsl-lite.hpp" // for span, span<>::iterator
+
+#include <algorithm> // for fill
+#include <cmath>     // for lroundf, pow
+#include <vector>    // for vector
 
 // Register test patterns
 REGISTER_FAKE_GPU_PATTERN(BlockGpuPattern, "block");

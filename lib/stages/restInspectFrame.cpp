@@ -1,5 +1,20 @@
 #include "restInspectFrame.hpp"
 
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for Buffer, mark_frame_empty, register_consumer, wait_for_full...
+#include "kotekanLogging.hpp" // for CHECK_MEM, WARN
+#include "restServer.hpp"     // for restServer, connectionInstance
+
+#include <atomic>     // for atomic_bool
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <stdlib.h>   // for free, malloc
+#include <string.h>   // for memcpy
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;

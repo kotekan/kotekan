@@ -7,27 +7,36 @@
 #ifndef VIS_WRITER_HPP
 #define VIS_WRITER_HPP
 
-#include "Config.hpp"
-#include "Hash.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "restServer.hpp"
-#include "visFile.hpp"
-#include "visUtil.hpp"
+#include "Stage.hpp"          // for Stage
+#include "dataset.hpp"        // for dset_id_t
+#include "datasetManager.hpp" // for fingerprint_t
+#include "visFile.hpp"        // for visFileBundle, visCalFileBundle (ptr only)
+#include "visUtil.hpp"        // for movingAverage
 
-#include <cstdint>
-#include <errno.h>
-#include <future>
-#include <map>
-#include <memory>
-#include <mutex>
-#include <stdexcept>
-#include <stdio.h>
-#include <string>
-#include <unistd.h>
-#include <utility>
+#include <cstdint>   // for uint32_t
+#include <errno.h>   // for ENOENT, errno
+#include <future>    // for future
+#include <map>       // for map
+#include <memory>    // for shared_ptr, unique_ptr
+#include <mutex>     // for mutex
+#include <set>       // for set
+#include <stdexcept> // for runtime_error
+#include <stdio.h>   // for size_t, remove
+#include <string>    // for string, operator+
+#include <unistd.h>  // for access, F_OK
+#include <utility>   // for pair
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+class connectionInstance;
+namespace prometheus {
+class Counter;
+template<typename T>
+class MetricFamily;
+} // namespace prometheus
+} // namespace kotekan
+struct Buffer;
 
 
 /**

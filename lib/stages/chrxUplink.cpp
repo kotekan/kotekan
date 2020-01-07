@@ -1,21 +1,24 @@
 #include "chrxUplink.hpp"
 
-#include "buffer.h"
-#include "errors.h"
-#include "output_formating.h"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for Buffer, mark_frame_empty, register_consumer, wait_for_full...
+#include "kotekanLogging.hpp" // for ERROR, INFO
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <arpa/inet.h>
-#include <assert.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include <arpa/inet.h>  // for inet_addr
+#include <atomic>       // for atomic_bool
+#include <errno.h>      // for errno
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <netinet/in.h> // for sockaddr_in, htons, in_addr
+#include <strings.h>    // for bzero
+#include <sys/socket.h> // for send, connect, socket, AF_INET, SOCK_STREAM
+#include <unistd.h>     // for gethostname, ssize_t
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

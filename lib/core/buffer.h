@@ -29,18 +29,19 @@
 extern "C" {
 #endif
 
-#include <pthread.h>
-#include <sys/types.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <time.h>
+#include <pthread.h>    // for pthread_cond_t, pthread_mutex_t
+#include <stdint.h>     // for uint8_t
+#include <stdlib.h>     // for size_t
+#include <sys/types.h>  // for ssize_t
+
+struct metadataPool;
+struct timespec;
 
 #ifdef MAC_OSX
-#include "osxBindCPU.hpp"
 #include <immintrin.h>
-#endif
 
-#include "metadata.h"
+#include "osxBindCPU.hpp"
+#endif
 
 /// The system page size, this might become more dynamic someday
 #define PAGESIZE_MEM 4096

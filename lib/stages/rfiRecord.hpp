@@ -7,14 +7,18 @@
 #ifndef RFI_RECORD_H
 #define RFI_RECORD_H
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "powerStreamUtil.hpp"
-#include "restServer.hpp"
+#include "Stage.hpp" // for Stage
 
-#include <sys/socket.h>
+#include "json.hpp" // for json
+
+#include <mutex>    // for mutex
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 /*
  * @class rfiRecord

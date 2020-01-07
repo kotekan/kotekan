@@ -1,9 +1,21 @@
 #ifndef GPU_BEAMFORM_PULSAR_SIMULATE_HPP
 #define GPU_BEAMFORM_PULSAR_SIMULATE_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
+#include "Stage.hpp"       // for Stage
+#include "chimeMetadata.h" // for psrCoord
+
+#include <stdint.h>    // for int32_t, uint32_t
+#include <string>      // for string
+#include <sys/types.h> // for uint
+#include <time.h>      // for timespec
+#include <vector>      // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
+struct timespec;
 
 /**
  * @class gpuBeamformPulsarSimulate

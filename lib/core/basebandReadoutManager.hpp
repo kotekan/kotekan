@@ -9,16 +9,22 @@
 #ifndef BASEBAND_READOUT_MANAGER_HPP
 #define BASEBAND_READOUT_MANAGER_HPP
 
-#include "SynchronizedQueue.hpp"
+#include "SynchronizedQueue.hpp" // for SynchronizedQueue
 
-#include "gsl-lite.hpp"
+#include "gsl-lite.hpp" // for span
 
-#include <forward_list>
-#include <functional>
-#include <memory>
-#include <mutex>
-#include <string>
-#include <vector>
+#include <chrono>       // for system_clock, system_clock::time_point
+#include <forward_list> // for forward_list
+#include <functional>   // for reference_wrapper
+#include <memory>       // for unique_ptr, shared_ptr, allocator
+#include <mutex>        // for mutex
+#include <stdint.h>     // for uint64_t, int64_t, uint32_t, uint8_t
+#include <string>       // for string
+#include <time.h>       // for size_t, timespec
+#include <utility>      // for pair
+#include <vector>       // for vector
+
+struct timespec;
 
 namespace kotekan {
 

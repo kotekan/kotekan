@@ -6,21 +6,23 @@
 #ifndef VIS_FILE_RAW_HPP
 #define VIS_FILE_RAW_HPP
 
-#include "Config.hpp"
-#include "datasetManager.hpp"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
-#include "visFile.hpp"
-#include "visUtil.hpp"
+#include "dataset.hpp"        // for dset_id_t
+#include "kotekanLogging.hpp" // for logLevel
+#include "visFile.hpp"        // for visFile
+#include "visUtil.hpp"        // for time_ctype
 
-#include <cstdint>
-#include <fcntl.h>
-#include <fstream>
-#include <map>
-#include <stddef.h>
-#include <string>
-#include <sys/types.h>
-#include <vector>
+#include "json.hpp" // for json
+
+#include <cstdint>     // for uint32_t
+#include <fcntl.h>     // for O_CREAT, O_EXCL, O_WRONLY
+#include <fstream>     // for ofstream
+#include <map>         // for map
+#include <stddef.h>    // for size_t
+#include <string>      // for string
+#include <sys/types.h> // for off_t
+#include <vector>      // for vector
+
+class visFrameView;
 
 
 /** @brief A CHIME correlator file in raw format.

@@ -1,9 +1,17 @@
 #ifndef TEST_DATA_GEN_H
 #define TEST_DATA_GEN_H
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "restServer.hpp"
+#include "Stage.hpp" // for Stage
+
+#include "json.hpp" // for json
+
+#include <string> // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+class connectionInstance;
+} // namespace kotekan
 
 // Type: one of "random", "const"
 // Value: the value of the constant

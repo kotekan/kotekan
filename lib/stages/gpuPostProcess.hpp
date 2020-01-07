@@ -1,12 +1,20 @@
 #ifndef GPU_POST_PROCESS
 #define GPU_POST_PROCESS
 
-#include "Stage.hpp"
-#include "restServer.hpp"
-#include "util.h"
+#include "Stage.hpp" // for Stage
 
-#include <mutex>
-#include <vector>
+#include "json.hpp" // for json
+
+#include <stdint.h>   // for int32_t, uint32_t, int64_t, uint64_t
+#include <string>     // for string
+#include <sys/time.h> // for timeval
+#include <vector>     // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+class connectionInstance;
+} // namespace kotekan
 
 
 #define MAX_GATE_DESCRIPTION_LEN 127

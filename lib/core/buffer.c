@@ -1,22 +1,23 @@
 #include "buffer.h"
-#include "metadata.h"
-#include "errors.h"
-#include "nt_memset.h"
-#include "util.h"
+
+#include "errors.h"     // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, INFO_F, DEBUG_F, WARN_F, DEB...
+#include "metadata.h"   // for decrement_metadata_ref_count, metadataContainer, increment_metada...
+#include "nt_memset.h"  // for nt_memset
+#include "util.h"       // for e_time
 #ifdef WITH_HSA
 #include "hsaBase.h"
 #endif
 
-#include <assert.h>
-#include <stdlib.h>
-#include <memory.h>
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/mman.h>
-#include <math.h>
+#include <assert.h>     // for assert
+#include <errno.h>      // for ETIMEDOUT, errno
+#include <sched.h>      // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdio.h>      // for snprintf
+#include <stdlib.h>     // for free, NULL, malloc, size_t
+#include <string.h>     // for memset, memcpy, strncmp, strncpy, strdup
+#include <sys/mman.h>   // for mlock
+#include <time.h>       // for timespec
 #ifdef WITH_NUMA
-#include <numa.h>
+#include <numa.h>       // for numa_alloc_onnode, numa_free
 #endif
 
 struct zero_frames_thread_args {

@@ -1,29 +1,31 @@
 #include "prodSubset.hpp"
 
-#include "StageFactory.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"         // for Config
+#include "Hash.hpp"           // for operator<
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for allocate_new_metadata_object, mark_frame_empty, mark_frame...
+#include "datasetManager.hpp" // for datasetManager
+#include "datasetState.hpp"   // for prodState
+#include "kotekanLogging.hpp" // for FATAL_ERROR, WARN
+#include "visBuffer.hpp"      // for visFrameView, visField, visField::vis, visField::weight
+#include "visUtil.hpp"        // for prod_ctype, frameID, cmap, icmap, modulo, cfloat
 
-#include "gsl-lite.hpp"
+#include "gsl-lite.hpp" // for span
 
-#include <algorithm>
-#include <atomic>
-#include <complex>
-#include <cstdint>
-#include <cxxabi.h>
-#include <exception>
-#include <functional>
-#include <inttypes.h>
-#include <iterator>
-#include <memory>
-#include <regex>
-#include <signal.h>
-#include <stdexcept>
-#include <utility>
+#include <algorithm>    // for binary_search, copy, sort
+#include <atomic>       // for atomic_bool
+#include <complex>      // for complex
+#include <cxxabi.h>     // for __forced_unwind
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <future>       // for future, async
+#include <iterator>     // for back_insert_iterator, back_inserter
+#include <stdint.h>     // for uint16_t, uint32_t
+#include <system_error> // for system_error
+#include <utility>      // for pair, tuple_element<>::type
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 
 using kotekan::bufferContainer;

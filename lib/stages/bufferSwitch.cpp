@@ -1,11 +1,24 @@
 #include "bufferSwitch.hpp"
 
-#include "configUpdater.hpp"
-#include "visUtil.hpp"
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "configUpdater.hpp"  // for configUpdater
+#include "kotekanLogging.hpp" // for WARN
+#include "visUtil.hpp"        // for frameID  // IWYU pragma: keep
 
-#include "json.hpp"
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for json, basic_json<>::iterator, basic_json, iter_impl
 
-#include <exception>
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1
+#include <stdexcept>  // for runtime_error
+#include <tuple>      // for get
+#include <utility>    // for pair
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
 
 using nlohmann::json;
 using namespace std::placeholders;

@@ -1,29 +1,31 @@
 #include "visTransform.hpp"
 
-#include "StageFactory.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "chimeMetadata.h"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "metadata.h"
-#include "version.h"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_empty
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for datasetManager
+#include "kotekanLogging.hpp"  // for INFO
+#include "metadata.h"          // for metadataContainer
+#include "version.h"           // for get_git_commit_hash
+#include "visBuffer.hpp"       // for visFrameView
+#include "visUtil.hpp"         // for freq_ctype, copy_vis_triangle, current_time, double_to_ts
 
-#include "gsl-lite.hpp"
+#include "gsl-lite.hpp" // for span<>::iterator, span
 
-#include <algorithm>
-#include <atomic>
-#include <cstdint>
-#include <exception>
-#include <functional>
-#include <iterator>
-#include <memory>
-#include <numeric>
-#include <regex>
-#include <stdexcept>
-#include <tuple>
+#include <algorithm>  // for fill, transform
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for uint32_t
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <iterator>   // for begin, end, back_insert_iterator, back_inserter
+#include <numeric>    // for iota
+#include <tuple>      // for get, tie, tuple
+
+class freqState;
+class inputState;
+class metadataState;
+class prodState;
+struct chimeMetadata;
 
 
 using kotekan::bufferContainer;

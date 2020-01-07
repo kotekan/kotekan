@@ -1,22 +1,22 @@
 #ifndef REST_SERVER_HPP
 #define REST_SERVER_HPP
 
-#include "Config.hpp"
-#include "kotekanLogging.hpp"
+#include "json.hpp" // for json
 
-#include "json.hpp"
-
-#include <atomic>
-#include <event2/event.h>
-#include <event2/http.h>
-#include <event2/thread.h>
-#include <evhttp.h>
-#include <functional>
-#include <map>
-#include <shared_mutex>
-#include <thread>
+#include <atomic>        // for atomic
+#include <event2/util.h> // for evutil_socket_t
+#include <evhttp.h>      // for evhttp  // IWYU pragma: keep
+#include <functional>    // for function
+#include <map>           // for map, allocator
+#include <shared_mutex>  // for shared_timed_mutex
+#include <stdint.h>      // for uint8_t
+#include <string>        // for string
+#include <sys/types.h>   // for u_short
+#include <thread>        // for thread
 
 namespace kotekan {
+
+class Config;
 
 enum class HTTP_RESPONSE {
     OK = 200,

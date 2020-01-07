@@ -1,32 +1,31 @@
-#include <arpa/inet.h>
-#include <assert.h>
-#include <chrono>
-#include <cmath>
-#include <cstdlib>
-#include <cstring>
-#include <fstream>
-#include <functional>
-#include <iostream>
-#include <math.h>
-#include <netinet/in.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
-#include <sys/socket.h>
-#include <unistd.h>
+#include <arpa/inet.h>  // for inet_pton
+#include <atomic>       // for atomic_bool
+#include <cstdio>       // for snprintf
+#include <cstring>      // for memset
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <memory>       // for allocator_traits<>::value_type
+#include <netinet/in.h> // for sockaddr_in, htons, IPPROTO_UDP
+#include <stdint.h>     // for int64_t, uint8_t
+#include <stdlib.h>     // for free, malloc
+#include <string>       // for string, allocator
+#include <sys/socket.h> // for AF_INET, bind, sendto, setsockopt, socket, SOCK_DGRAM, SOL...
+#include <sys/time.h>   // for CLOCK_MONOTONIC, CLOCK_REALTIME
+#include <time.h>       // for timespec, clock_gettime
+#include <vector>       // for vector
 
 using std::string;
 
-#include "Config.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for mark_frame_empty, wait_for_full_frame, register_consumer
+#include "kotekanLogging.hpp" // for FATAL_ERROR, INFO, CHECK_MEM
 #include "pulsarNetworkProcess.hpp"
-#include "tx_utils.hpp"
-#include "util.h"
-#include "vdif_functions.h"
+#include "tx_utils.hpp"     // for add_nsec, get_vlan_from_ip, parse_chime_host_name, CLOCK_A...
+#include "vdif_functions.h" // for VDIFHeader
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

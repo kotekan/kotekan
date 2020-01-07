@@ -1,36 +1,44 @@
 #include "visTestPattern.hpp"
 
-#include "StageFactory.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "restClient.hpp"
-#include "restServer.hpp"
-#include "visBuffer.hpp"
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for Hash, operator!=
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for wait_for_full_frame, Buffer, mark_frame_empty, mark_fra...
+#include "datasetManager.hpp"    // for datasetManager
+#include "datasetState.hpp"      // for freqState, inputState, prodState
+#include "kotekanLogging.hpp"    // for INFO, DEBUG, DEBUG2, FATAL_ERROR, WARN
+#include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
+#include "restClient.hpp"        // for restClient, restClient::restReply
+#include "restServer.hpp"        // for restServer, HTTP_RESPONSE, connectionInstance, HTTP_RES...
+#include "visBuffer.hpp"         // for visFrameView
 
-#include "fmt.hpp"
-#include "gsl-lite.hpp"
+#include "fmt.hpp"      // for format, fmt
+#include "gsl-lite.hpp" // for span
 
-#include <atomic>
-#include <complex>
-#include <cstdint>
-#include <cstring>
-#include <dirent.h>
-#include <exception>
-#include <functional>
-#include <future>
-#include <iomanip>
-#include <math.h>
-#include <mutex>
-#include <regex>
-#include <stdexcept>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <time.h>
-#include <tuple>
+#include <atomic>             // for atomic_bool
+#include <cmath>              // for log10, sqrt
+#include <complex>            // for conj, operator*, operator-, complex
+#include <cstdint>            // for uint32_t, uint64_t, uint8_t
+#include <cstring>            // for memcpy, strerror
+#include <cxxabi.h>           // for __forced_unwind
+#include <dirent.h>           // for opendir
+#include <errno.h>            // for errno
+#include <exception>          // for exception
+#include <ext/alloc_traits.h> // for __alloc_traits<>::value_type
+#include <functional>         // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
+#include <future>             // for async, future
+#include <iomanip>            // for operator<<, setprecision
+#include <memory>             // for allocator_traits<>::value_type
+#include <mutex>              // for mutex, lock_guard, unique_lock
+#include <stdexcept>          // for invalid_argument, runtime_error
+#include <sys/stat.h>         // for mkdir, S_IRGRP, S_IROTH, S_IRWXU
+#include <system_error>       // for system_error
+#include <time.h>             // for timespec
+#include <tuple>              // for get
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

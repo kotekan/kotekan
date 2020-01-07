@@ -11,17 +11,23 @@
 #ifndef FAKE_GPU_PATTERN_HPP
 #define FAKE_GPU_PATTERN_HPP
 
-#include "Config.hpp"
-#include "chimeMetadata.h"
-#include "factory.hpp"
-#include "kotekanLogging.hpp"
-#include "pulsarTiming.hpp"
+#include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
+#include "kotekanLogging.hpp" // for kotekanLogging
+#include "pulsarTiming.hpp"   // for Polyco
 
-#include "gsl-lite.hpp"
+#include <random>   // for mt19937, normal_distribution, random_device
+#include <stddef.h> // for size_t
+#include <stdint.h> // for int32_t, uint32_t
+#include <string>   // for string
 
-#include <random>
-#include <stdint.h>
-#include <string>
+namespace gsl {
+template<class U>
+class span;
+} // namespace gsl
+namespace kotekan {
+class Config;
+} // namespace kotekan
+struct chimeMetadata;
 
 /**
  * @class fakeGpuPattern

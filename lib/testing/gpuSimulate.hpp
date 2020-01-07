@@ -1,8 +1,16 @@
 #ifndef GPU_SIMULATE_HPP
 #define GPU_SIMULATE_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
+#include "Stage.hpp" // for Stage
+
+#include <stdint.h>    // for int32_t, uint32_t
+#include <string>      // for string
+#include <sys/types.h> // for uint
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 class gpuSimulate : public kotekan::Stage {
 public:

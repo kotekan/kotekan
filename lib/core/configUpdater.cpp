@@ -1,15 +1,18 @@
 #include "configUpdater.hpp"
 
-#include "Stage.hpp"
-#include "errors.h"
-#include "restServer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"         // for Config
+#include "Stage.hpp"          // for Stage
+#include "kotekanLogging.hpp" // for WARN_NON_OO, DEBUG_NON_OO, INFO_NON_OO, ERROR_NON_OO, FATA...
+#include "restServer.hpp"     // for connectionInstance, HTTP_RESPONSE, HTTP_RESPONSE::BAD_REQUEST
+#include "visUtil.hpp"        // for json_type_name
 
-#include "fmt.hpp"
-#include "json.hpp"
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for json, basic_json<>::iterator, basic_json, iter_impl, basic...
 
-#include <iostream>
-#include <signal.h>
+#include <algorithm> // for find, count
+#include <exception> // for exception
+#include <stdexcept> // for runtime_error
+#include <utility>   // for pair
 
 using nlohmann::json;
 

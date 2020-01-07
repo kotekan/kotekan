@@ -1,12 +1,16 @@
 #ifndef BEAMFORMING_POST_PROCESS
 #define BEAMFORMING_POST_PROCESS
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
+#include "Stage.hpp" // for Stage
 
-#include <vector>
+#include <stdint.h> // for uint32_t, int32_t
+#include <string>   // for string
+#include <vector>   // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 
 class beamformingPostProcess : public kotekan::Stage {

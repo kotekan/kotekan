@@ -1,13 +1,19 @@
 #ifndef BUFFER_MERGE_HPP
 #define BUFFER_MERGE_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "visUtil.hpp"
+#include "Stage.hpp" // for Stage
 
-#include <string>
-#include <tuple>
-#include <vector>
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <tuple>    // for tuple
+#include <vector>   // for vector
+
+class frameID;
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
 
 /**
  * @brief Merges frames from many buffers into one buffer.

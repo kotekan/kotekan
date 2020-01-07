@@ -7,20 +7,27 @@
 #ifndef VISTESTPATTERN_HPP
 #define VISTESTPATTERN_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "restServer.hpp"
-#include "visUtil.hpp"
+#include "Stage.hpp"   // for Stage
+#include "dataset.hpp" // for dset_id_t
+#include "visUtil.hpp" // for cfloat, freq_ctype (ptr only), input_ctype, prod_ctype
 
-#include "json.hpp"
+#include "json.hpp" // for json
 
-#include <fstream>
-#include <stddef.h>
-#include <string>
-#include <vector>
+#include <fstream>  // for ofstream
+#include <map>      // for map
+#include <mutex>    // for mutex
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint32_t, int8_t
+#include <string>   // for string
+#include <utility>  // for pair
+#include <vector>   // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+class connectionInstance;
+} // namespace kotekan
+struct Buffer;
 
 
 /**

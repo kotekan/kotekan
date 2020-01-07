@@ -6,19 +6,23 @@
 #ifndef PROD_SUB_HPP
 #define PROD_SUB_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "visUtil.hpp"
+#include "Stage.hpp"          // for Stage
+#include "dataset.hpp"        // for dset_id_t, state_id_t
+#include "datasetManager.hpp" // for fingerprint_t
+#include "visUtil.hpp"        // for prod_ctype
 
-#include <future>
-#include <stddef.h>
-#include <stdint.h>
-#include <string>
-#include <tuple>
-#include <vector>
+#include <map>      // for map
+#include <stddef.h> // for size_t
+#include <string>   // for string
+#include <tuple>    // for tuple
+#include <utility>  // for pair
+#include <vector>   // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
 
 
 /**

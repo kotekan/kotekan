@@ -7,13 +7,14 @@
 #ifndef INTEGRATE_POWER_STREAM_H
 #define INTEGRATE_POWER_STREAM_H
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "powerStreamUtil.hpp"
+#include "Stage.hpp" // for Stage
 
-#include <atomic>
-#include <sys/socket.h>
+#include <string> // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 /**
  * @class integratePowerStream

@@ -1,8 +1,10 @@
 #ifndef NETWORK_UTILITY_FUNCTIONS_H
 #define NETWORK_UTILITY_FUNCTIONS_H
-#include <netinet/ip.h>
 
 
+#include <stdint.h> // for uint16_t
+
+struct sockaddr_in;
 /*****************************************
 @file
 @brief Utility functions for dealing with low-level sockets APIs

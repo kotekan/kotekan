@@ -7,14 +7,25 @@
 #ifndef FRBNETWORKPROCESS_HPP
 #define FRBNETWORKPROCESS_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "restServer.hpp"
+#include "Stage.hpp" // for Stage
 
-#include <atomic>
-#include <functional>
-#include <string>
-#include <vector>
+#include "json.hpp" // for json
+
+#include <atomic>             // for atomic_bool
+#include <chrono>             // for seconds
+#include <condition_variable> // for condition_variable
+#include <functional>         // for reference_wrapper
+#include <map>                // for map
+#include <netinet/in.h>       // for sockaddr_in
+#include <stdint.h>           // for uint32_t
+#include <string>             // for string
+#include <vector>             // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+class connectionInstance;
+} // namespace kotekan
 
 /**
  * @class frbNetworkProcess

@@ -1,10 +1,10 @@
 #ifndef BUFFER_CONTAINER_H
 #define BUFFER_CONTAINER_H
 
-#include "buffer.h"
+#include <map>    // for map
+#include <string> // for string
 
-#include <map>
-#include <string>
+struct Buffer;
 
 
 namespace kotekan {

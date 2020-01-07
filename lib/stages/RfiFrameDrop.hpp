@@ -6,15 +6,26 @@
 #ifndef VALVE_HPP
 #define VALVE_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "prometheusMetrics.hpp"
+#include "Stage.hpp" // for Stage
 
-#include "json.hpp"
+#include "json.hpp" // for json
 
-#include <string>
+#include <mutex>    // for mutex
+#include <stddef.h> // for size_t
+#include <string>   // for string
+#include <tuple>    // for tuple
+#include <vector>   // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+namespace prometheus {
+class Counter;
+template<typename T>
+class MetricFamily;
+} // namespace prometheus
+} // namespace kotekan
+struct Buffer;
 
 
 /**

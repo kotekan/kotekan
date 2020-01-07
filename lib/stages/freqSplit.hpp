@@ -6,18 +6,20 @@
 #ifndef FREQ_SPLIT_HPP
 #define FREQ_SPLIT_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
+#include "Stage.hpp"   // for Stage
+#include "dataset.hpp" // for dset_id_t
 
-#include <array>
-#include <future>
-#include <stdint.h>
-#include <string>
-#include <utility>
-#include <vector>
+#include <array>   // for array
+#include <future>  // for future
+#include <string>  // for string
+#include <utility> // for pair
+#include <vector>  // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
 
 
 /**

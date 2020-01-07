@@ -1,16 +1,28 @@
-#include "testDataGen.hpp"
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"         // for Buffer, allocate_new_metadata_object, mark_frame_full, reg...
+#include "chimeMetadata.h"  // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "errors.h"         // for exit_kotekan, ReturnCode, ReturnCode::CLEAN_EXIT
 
-#include "chimeMetadata.h"
-#include "errors.h"
-
-#include <csignal>
-#include <mutex>
-#include <random>
-#include <sys/time.h>
-#include <unistd.h>
+#include <assert.h>    // for assert
+#include <atomic>      // for atomic_bool
+#include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
+#include <math.h>      // for fmod
+#include <stdint.h>    // for uint8_t, uint64_t
+#include <stdlib.h>    // for rand, srand
+#include <sys/time.h>  // for gettimeofday, timeval
+#include <sys/types.h> // for uint
+#include <unistd.h>    // for usleep
 // Needed for a bunch of time utilities.
-#include "gpsTime.h"
-#include "visUtil.hpp"
+#include "gpsTime.h"          // for FPGA_PERIOD_NS
+#include "kotekanLogging.hpp" // for DEBUG, INFO
+#include "restServer.hpp"     // for restServer, HTTP_RESPONSE, connectionInstance, HTTP_RESPON...
+#include "testDataGen.hpp"
+#include "visUtil.hpp" // for current_time
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

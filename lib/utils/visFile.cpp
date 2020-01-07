@@ -1,21 +1,15 @@
 
 #include "visFile.hpp"
 
-#include "errors.h"
-#include "version.h"
+#include "fmt.hpp" // for format, fmt
 
-#include "fmt.hpp"
-
-#include <algorithm>
-#include <fcntl.h>
-#include <fstream>
-#include <iomanip>
-#include <iostream>
-#include <libgen.h>
-#include <stdexcept>
-#include <sys/stat.h>
-#include <time.h>
-#include <unistd.h>
+#include <ctime>      // for gmtime, time_t
+#include <fstream>    // for ofstream, IWYU pragma: keep
+#include <iostream>   // for char_traits, basic_ostream::operator<<, ofstream, endl, basic_ostream
+#include <iterator>   // for reverse_iterator
+#include <libgen.h>   // for dirname, basename
+#include <sys/stat.h> // for mkdir
+#include <unistd.h>   // for getpid
 
 
 visFileBundle::~visFileBundle() {

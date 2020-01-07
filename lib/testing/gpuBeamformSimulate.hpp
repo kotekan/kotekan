@@ -6,8 +6,17 @@
 #ifndef GPU_BEAMFORM_SIMULATE_HPP
 #define GPU_BEAMFORM_SIMULATE_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
+#include "Stage.hpp" // for Stage
+
+#include <stdint.h> // for int32_t, uint64_t
+#include <string>   // for string
+#include <vector>   // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
 
 /**
  * @class gpuBeamformSimulate

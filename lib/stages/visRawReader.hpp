@@ -6,19 +6,23 @@
 #ifndef _VIS_RAW_READER_HPP
 #define _VIS_RAW_READER_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "prometheusMetrics.hpp"
-#include "visUtil.hpp"
+#include "Stage.hpp"   // for Stage
+#include "dataset.hpp" // for dset_id_t
+#include "visUtil.hpp" // for freq_ctype (ptr only), input_ctype, prod_ctype, rstack_ctype, sta...
 
-#include <stddef.h>
-#include <stdint.h>
-#include <string>
-#include <utility>
-#include <vector>
+#include "json.hpp" // for json
+
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint32_t, uint8_t
+#include <string>   // for string
+#include <utility>  // for pair
+#include <vector>   // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
 
 
 /**

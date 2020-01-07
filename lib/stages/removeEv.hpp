@@ -6,10 +6,17 @@
 #ifndef REMOVE_EV_HPP
 #define REMOVE_EV_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "datasetManager.hpp"
-#include "visUtil.hpp"
+#include "Stage.hpp"   // for Stage
+#include "dataset.hpp" // for dset_id_t, state_id_t
+
+#include <map>    // for map
+#include <string> // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
 
 /**
  * @class removeEv

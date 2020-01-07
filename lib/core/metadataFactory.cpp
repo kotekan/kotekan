@@ -1,11 +1,15 @@
 #include "metadataFactory.hpp"
 
-#include "Config.hpp"
-#include "chimeMetadata.h"
-#include "metadata.h"
-#include "visBuffer.hpp"
+#include "Config.hpp"         // for Config
+#include "chimeMetadata.h"    // for chimeMetadata
+#include "kotekanLogging.hpp" // for INFO_NON_OO
+#include "metadata.h"         // for create_metadata_pool
+#include "visBuffer.hpp"      // for visMetadata
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
+
+#include <stdexcept> // for runtime_error
+#include <stdint.h>  // for uint32_t
 
 using json = nlohmann::json;
 using std::map;

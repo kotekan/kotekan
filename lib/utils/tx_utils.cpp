@@ -1,5 +1,12 @@
 #include "tx_utils.hpp"
 
+#include <cstring>   // for strlen
+#include <stdexcept> // for runtime_error
+#include <stdlib.h>  // for atoi, malloc
+#include <string.h>  // for strlen
+#include <time.h>    // for timespec
+#include <unistd.h>  // for gethostname
+
 void parse_chime_host_name(int& my_rack, int& my_node, int& my_nos, int& my_node_id) {
     int rack = 0, node = 0, nos = 0;
     // std::stringstream temp_ip[number_of_subnets];

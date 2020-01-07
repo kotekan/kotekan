@@ -1,25 +1,24 @@
 #include "freqSplit.hpp"
 
-#include "StageFactory.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "Hash.hpp"            // for operator!=
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for wait_for_full_frame, allocate_new_metadata_object, mark_f...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for datasetManager, state_uptr
+#include "datasetState.hpp"    // for freqState
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO
+#include "visBuffer.hpp"       // for visFrameView
+#include "visUtil.hpp"         // for freq_ctype
 
-#include <atomic>
-#include <cstdint>
-#include <cxxabi.h>
-#include <exception>
-#include <functional>
-#include <inttypes.h>
-#include <memory>
-#include <regex>
-#include <signal.h>
-#include <stddef.h>
-#include <stdexcept>
-#include <tuple>
+#include <atomic>       // for atomic_bool
+#include <cxxabi.h>     // for __forced_unwind
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <memory>       // for make_unique, allocator_traits<>::value_type
+#include <stddef.h>     // for size_t
+#include <stdint.h>     // for uint32_t
+#include <system_error> // for system_error
+#include <tuple>        // for tie, tuple
 
 
 using kotekan::bufferContainer;

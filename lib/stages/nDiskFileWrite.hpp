@@ -7,12 +7,17 @@
 #ifndef N_DISK_FILE_WRITE_H
 #define N_DISK_FILE_WRITE_H
 
-#include "Stage.hpp"
-#include "buffer.h"
+#include "Stage.hpp" // for Stage
 
-#include <string>
-#include <thread>
-#include <vector>
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <thread>   // for thread
+#include <vector>   // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 
 /**

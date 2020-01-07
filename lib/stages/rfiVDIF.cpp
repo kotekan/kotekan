@@ -1,13 +1,19 @@
 #include "rfiVDIF.hpp"
 
-#include "errors.h"
-#include "utils/util.h"
-#include "vdif_functions.h"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for Buffer, mark_frame_empty, mark_frame_full, register_consumer
+#include "kotekanLogging.hpp" // for INFO
+#include "utils/util.h"       // for e_time
+#include "vdif_functions.h"   // for VDIFHeader
 
-#include <random>
-#include <string.h>
-#include <sys/time.h>
-#include <unistd.h>
+#include <atomic>     // for atomic_bool
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <string.h>   // for memset, memcpy
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using std::string;
 

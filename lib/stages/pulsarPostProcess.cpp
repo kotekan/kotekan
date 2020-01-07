@@ -1,11 +1,16 @@
-#include "gpsTime.h"
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "gpsTime.h"          // for compute_gps_time, is_gps_global_time_set
+#include "kotekanLogging.hpp" // for DEBUG, ERROR
 
-#include <assert.h>
-#include <functional>
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
+#include <algorithm>  // for max
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <cmath>      // for round
+#include <cstdint>    // for uint32_t, uint16_t, uint8_t, int64_t, uint64_t
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <stdexcept>  // for runtime_error
+#include <string.h>   // for memcpy
+#include <string>     // for allocator, string, operator+, to_string
 
 using std::string;
 
@@ -15,14 +20,16 @@ using std::string;
 
 #define udp_pulsar_header_size 32
 
-#include "Config.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
+#include "Config.hpp"              // for Config
+#include "buffer.h"                // for mark_frame_empty, wait_for_empty_frame, wait_for_full...
+#include "chimeMetadata.h"         // for get_fpga_seq_num, psrCoord, get_psr_coord, get_stream...
+#include "fpga_header_functions.h" // for bin_number_chime, stream_id_t
 #include "pulsarPostProcess.hpp"
-#include "util.h"
-#include "vdif_functions.h"
+#include "vdif_functions.h" // for VDIFHeader
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

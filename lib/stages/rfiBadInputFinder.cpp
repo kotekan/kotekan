@@ -1,23 +1,27 @@
 #include "rfiBadInputFinder.hpp"
 
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "chimeMetadata.h"    // for get_fpga_seq_num, get_stream_id
+#include "kotekanLogging.hpp" // for ERROR, INFO, DEBUG
+#include "restServer.hpp"     // for restServer, HTTP_RESPONSE, HTTP_RESPONSE::OK, connectionIn...
+#include "rfi_functions.h"    // for RFIHeader
 
-#include <arpa/inet.h>
-#include <errno.h>
-#include <functional>
-#include <math.h>
-#include <mutex>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <string.h>
-#include <string>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <time.h>
-#include <unistd.h>
+#include <arpa/inet.h>  // for inet_aton
+#include <atomic>       // for atomic_bool
+#include <cmath>        // for sqrt, pow
+#include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
+#include <mutex>        // for mutex
+#include <netinet/in.h> // for sockaddr_in, IPPROTO_UDP, htons
+#include <stdlib.h>     // for free, malloc
+#include <string.h>     // for memcpy, memset
+#include <string>       // for string, allocator, operator+
+#include <sys/socket.h> // for sendto, socket, AF_INET, SOCK_DGRAM
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

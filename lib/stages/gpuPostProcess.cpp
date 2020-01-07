@@ -1,28 +1,29 @@
 #define __STDC_FORMAT_MACROS 1
 #include "gpuPostProcess.hpp"
 
-#include "Config.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "output_formating.h"
-#include "util.h"
-#include "version.h"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for Buffer, mark_frame_full, register_producer, wait_for_empty...
+#include "chimeMetadata.h"    // for get_first_packet_recv_time, get_fpga_seq_num, get_lost_tim...
+#include "kotekanLogging.hpp" // for CHECK_MEM, INFO
+#include "output_formating.h" // for full_16_element_matrix_to_upper_triangle, reorganize_32_to...
+#include "restServer.hpp"     // for HTTP_RESPONSE, connectionInstance (ptr only), restServer (...
+#include "util.h"             // for complex_int_t
+#include "version.h"          // for get_git_commit_hash
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <arpa/inet.h>
-#include <assert.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <functional>
-#include <inttypes.h>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for int32_t, uint8_t, int64_t, uint32_t, uint64_t
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <stdio.h>    // for snprintf
+#include <stdlib.h>   // for malloc, free
+#include <string.h>   // for memcpy, strcpy, strcat
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

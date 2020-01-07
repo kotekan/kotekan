@@ -1,6 +1,13 @@
 #include "gateSpec.hpp"
 
-#include "kotekanLogging.hpp"
+#include "kotekanLogging.hpp" // for WARN, logLevel, INFO
+#include "visUtil.hpp"        // for operator-, ts_to_double
+
+#include <exception> // for exception
+#include <time.h>    // for timespec
+#include <utility>   // for move
+
+struct timespec;
 
 
 REGISTER_GATESPEC(pulsarSpec, "pulsar");

@@ -1,20 +1,22 @@
 #include "streamSingleDishVDIF.hpp"
 
-#include "buffer.h"
-#include "errors.h"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "kotekanLogging.hpp" // for ERROR, INFO
 
-#include <arpa/inet.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <unistd.h>
+#include <arpa/inet.h>  // for inet_aton
+#include <atomic>       // for atomic_bool
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <netinet/in.h> // for sockaddr_in, IPPROTO_UDP, htons
+#include <stdio.h>      // for size_t
+#include <stdlib.h>     // for exit
+#include <string.h>     // for memset
+#include <sys/socket.h> // for sendto, socket, AF_INET, SOCK_DGRAM
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

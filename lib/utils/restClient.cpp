@@ -1,20 +1,29 @@
 #include "restClient.hpp"
 
-#include "errors.h"
-#include "signal.h"
+#include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO, DEBUG_NON_OO, WARN_NON_OO, DEBU...
 
-#include <chrono>
-#include <condition_variable>
-#include <cstring>
-#include <event2/buffer.h>
-#include <event2/dns.h>
-#include <event2/event.h>
-#include <event2/http.h>
-#include <event2/thread.h>
-#include <pthread.h>
-#include <stdlib.h>
-#include <sys/time.h>
-#include <sys/uio.h>
+#include <bits/types/struct_iovec.h> // for iovec
+#include <chrono>                    // for operator+, seconds, system_clock, system_clock::tim...
+#include <condition_variable>        // for condition_variable
+#include <cstring>                   // for memcpy, size_t
+#include <event2/buffer.h>           // for evbuffer_peek, evbuffer_iovec, evbuffer_commit_space
+#include <event2/bufferevent.h>      // for bufferevent_read, bufferevent_free, bufferevent_setcb
+#include <event2/dns.h>              // for evdns_base_free, evdns_base_new
+#include <event2/event.h>            // for event_base_loopbreak, EV_READ, event_add, event_bas...
+#include <event2/http.h>             // for evhttp_connection_free, evhttp_request_free, evhttp...
+#include <event2/thread.h>           // for evthread_use_pthreads
+#include <evhttp.h>                  // for evhttp_request
+#include <ext/alloc_traits.h>        // for __alloc_traits<>::value_type
+#include <pthread.h>                 // for pthread_setname_np
+#include <stdlib.h>                  // for free, malloc, size_t
+#include <sys/time.h>                // for timeval
+
+struct bufferevent;
+struct evbuffer;
+struct event;
+struct evhttp_connection;
+struct evhttp_request;
+struct evkeyvalq;
 
 
 restClient& restClient::instance() {

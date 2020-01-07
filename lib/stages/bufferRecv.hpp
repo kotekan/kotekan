@@ -9,33 +9,36 @@
 #ifndef BUFFER_RECV_H
 #define BUFFER_RECV_H
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferSend.hpp"
-#include "errors.h"
-#include "util.h"
+#include "Stage.hpp"          // for Stage
+#include "bufferSend.hpp"     // for bufferFrameHeader
+#include "kotekanLogging.hpp" // for DEBUG2, ERROR, INFO, kotekanLogging
 
-#include <arpa/inet.h>
-#include <atomic>
-#include <condition_variable>
-#include <event2/buffer.h>
-#include <event2/bufferevent.h>
-#include <event2/event.h>
-#include <event2/thread.h>
-#include <functional>
-#include <mutex>
-#include <netinet/in.h>
-#include <queue>
-#include <stdio.h>
-#include <string.h>
-#include <string>
-#include <sys/socket.h>
-#include <thread>
-#include <unistd.h>
-#include <unordered_map>
+#include <condition_variable> // for condition_variable
+#include <deque>              // for deque
+#include <event2/event.h>     // for event_add
+#include <event2/util.h>      // for evutil_socket_t
+#include <mutex>              // for mutex
+#include <stdint.h>           // for uint32_t, uint8_t
+#include <stdio.h>            // for size_t
+#include <string.h>           // for strerror
+#include <string>             // for string
+#include <sys/time.h>         // for timeval
+#include <thread>             // for thread
+#include <unistd.h>           // for ssize_t
+#include <vector>             // for vector
 
 // Forward declare
 class connInstance;
+namespace kotekan {
+class Config;
+class bufferContainer;
+namespace prometheus {
+class Counter;
+class Gauge;
+template<typename T>
+class MetricFamily;
+} // namespace prometheus
+} // namespace kotekan
 
 /**
  * @brief Receives frames and metadata from other networked kotekan buffers,

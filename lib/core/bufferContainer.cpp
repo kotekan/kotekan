@@ -1,6 +1,10 @@
 #include "bufferContainer.hpp"
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
+
+#include <stdexcept> // for runtime_error
+
+struct Buffer;
 
 using std::map;
 using std::string;

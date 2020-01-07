@@ -5,19 +5,18 @@
 #ifndef GATE_SPEC_HPP
 #define GATE_SPEC_HPP
 
-#include "buffer.h"
-#include "factory.hpp"
-#include "kotekanLogging.hpp"
-#include "pulsarTiming.hpp"
-#include "visUtil.hpp"
+#include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
+#include "kotekanLogging.hpp" // for logLevel, kotekanLogging
+#include "pulsarTiming.hpp"   // for SegmentedPolyco
 
-#include "json.hpp"
+#include "json.hpp" // for json
 
-#include <cstdint>
-#include <fstream>
-#include <functional>
-#include <memory>
-#include <time.h>
+#include <functional> // for function
+#include <memory>     // for unique_ptr
+#include <string>     // for string
+#include <vector>     // for vector
+
+struct timespec;
 
 
 /**

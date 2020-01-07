@@ -1,8 +1,11 @@
 #ifndef DATASET_HPP
 #define DATASET_HPP
 
-#include "Hash.hpp"
-#include "datasetState.hpp"
+#include "Hash.hpp" // for operator==, Hash
+
+#include "json.hpp" // for json
+
+#include <string> // for string
 
 /// DatasetID
 using dset_id_t = Hash;

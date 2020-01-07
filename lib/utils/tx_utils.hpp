@@ -7,20 +7,7 @@
 #define TX_UTILS_HPP
 
 
-#include <assert.h>
-#include <chrono>
-#include <cmath>
-#include <cstdlib>
-#include <cstring>
-#include <fstream>
-#include <functional>
-#include <iostream>
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
-#include <unistd.h>
-
+#include <sys/time.h> // for TIMER_ABSTIME
 /** @brief parse the gethostname() return string to the IP address of the node
  *
  *  @param my_rack rack number of the node

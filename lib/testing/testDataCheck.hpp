@@ -1,14 +1,24 @@
 #ifndef TEST_DATA_CHECK_H
 #define TEST_DATA_CHECK_H
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"         // for Config
+#include "Stage.hpp"          // for Stage
+#include "buffer.h"           // for Buffer, mark_frame_empty, register_consumer, wait_for_full...
+#include "errors.h"           // for TEST_PASSED
+#include "kotekanLogging.hpp" // for DEBUG, INFO, ERROR, FATAL_ERROR
 
-#include <cmath>
-#include <type_traits>
-#include <unistd.h>
+#include <assert.h>    // for assert
+#include <cmath>       // for abs
+#include <functional>  // for bind
+#include <limits>      // for numeric_limits
+#include <stdint.h>    // for uint8_t, int32_t, uint32_t
+#include <stdlib.h>    // for abs
+#include <string>      // for string, allocator
+#include <type_traits> // for is_same, enable_if
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 template<typename A_Type>
 class testDataCheck : public kotekan::Stage {

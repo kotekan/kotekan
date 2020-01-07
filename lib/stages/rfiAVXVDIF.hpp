@@ -6,9 +6,15 @@
 #ifndef RFI_AVX_VDIF_HPP
 #define RFI_AVX_VDIF_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "errors.h"
+#include "Stage.hpp" // for Stage
+
+#include <stdint.h> // for uint32_t, uint8_t
+#include <string>   // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 /*
  * @class rfiAVXVDIF

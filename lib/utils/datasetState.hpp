@@ -1,31 +1,28 @@
 #ifndef DATASETSTATE_HPP
 #define DATASETSTATE_HPP
 
-#include "Config.hpp"
-#include "Hash.hpp"
-#include "errors.h"
-#include "factory.hpp"
-#include "gateSpec.hpp"
-#include "visUtil.hpp"
+#include "Hash.hpp"     // for Hash
+#include "factory.hpp"  // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, FACTORY, Factory
+#include "gateSpec.hpp" // for _factory_aliasgateSpec, gateSpec
+#include "visUtil.hpp"  // for input_ctype, prod_ctype, time_ctype, rstack_ctype, freq_ctype
 
-#include "fmt.hpp"
-#include "json.hpp"
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for json, json_ref, basic_json, basic_json<>::value_type
 
-#include <cstdint>
-#include <exception>
-#include <functional>
-#include <iosfwd>
-#include <map>
-#include <memory>
-#include <set>
-#include <stdexcept>
-#include <string>
-#include <utility>
-#include <vector>
+#include <cstdint>   // for uint32_t
+#include <exception> // for exception
+#include <iosfwd>    // for ostream
+#include <memory>    // for allocator, unique_ptr
+#include <numeric>   // for iota
+#include <stddef.h>  // for size_t
+#include <stdexcept> // for runtime_error
+#include <string>    // for string
+#include <utility>   // for pair
+#include <vector>    // for vector, vector<>::iterator
 
+class datasetManager;
 // Forward declarations
 class datasetState;
-class datasetManager;
 
 
 /// Unique pointer to a datasetState

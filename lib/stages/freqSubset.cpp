@@ -1,26 +1,28 @@
 #include "freqSubset.hpp"
 
-#include "StageFactory.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"         // for Config
+#include "Hash.hpp"           // for operator<
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for allocate_new_metadata_object, mark_frame_empty, mark_frame...
+#include "datasetManager.hpp" // for datasetManager
+#include "datasetState.hpp"   // for freqState
+#include "kotekanLogging.hpp" // for FATAL_ERROR
+#include "visBuffer.hpp"      // for visFrameView
+#include "visUtil.hpp"        // for frameID, freq_ctype, modulo
 
-#include <algorithm>
-#include <atomic>
-#include <cstdint>
-#include <cxxabi.h>
-#include <exception>
-#include <functional>
-#include <inttypes.h>
-#include <map>
-#include <memory>
-#include <regex>
-#include <signal.h>
-#include <stdexcept>
-#include <utility>
+#include <algorithm>    // for find
+#include <atomic>       // for atomic_bool
+#include <cstdint>      // for uint32_t
+#include <cxxabi.h>     // for __forced_unwind
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <future>       // for future, async
+#include <map>          // for map, operator!=, map<>::mapped_type, map<>::iterator
+#include <system_error> // for system_error
+#include <utility>      // for pair
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -1,14 +1,17 @@
 #include "Stage.hpp"
 
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"          // for Config
+#include "bufferContainer.hpp" // for bufferContainer
+#include "util.h"              // for string_tail
 
-#include <cstdlib>
-#include <future>
-#include <pthread.h>
-#include <sched.h>
-#include <syslog.h>
-#include <thread>
+#include <chrono>       // for seconds
+#include <cstdlib>      // for abort
+#include <cxxabi.h>     // for __forced_unwind
+#include <future>       // for async, future, future_status, future_status::timeout, launch
+#include <pthread.h>    // for pthread_setaffinity_np, pthread_setname_np
+#include <sched.h>      // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <system_error> // for system_error
+#include <thread>       // for thread
 
 namespace kotekan {
 

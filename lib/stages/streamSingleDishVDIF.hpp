@@ -7,9 +7,15 @@
 #ifndef STREAM_SINGLE_DISH_VDIF_H
 #define STREAM_SINGLE_DISH_VDIF_H
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
+#include "Stage.hpp" // for Stage
+
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 /**
  * @class streamSingleDishVDIF

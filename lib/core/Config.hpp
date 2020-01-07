@@ -6,20 +6,22 @@
 #ifndef CONFIG_HPP
 #define CONFIG_HPP
 
-#include "errors.h"
-#include "kotekanLogging.hpp"
+#include "kotekanLogging.hpp" // for ERROR_NON_OO
 
-#include "fmt.hpp"
-#include "json.hpp"
+#include "fmt.hpp"  // for fmt
+#include "json.hpp" // for json
 
-#include <complex>
-#include <cxxabi.h>
-#include <exception>
-#include <list>
-#include <regex>
-#include <string>
-#include <type_traits>
-#include <vector>
+#include <complex>     // for complex  // IWYU pragma: keep
+#include <cxxabi.h>    // for __cxa_demangle
+#include <exception>   // for exception
+#include <list>        // for list
+#include <regex>       // for regex, cmatch, regex_match, sregex_token_iterator
+#include <stdexcept>   // for runtime_error
+#include <stdint.h>    // for int32_t
+#include <string>      // for string, allocator
+#include <type_traits> // for is_arithmetic, enable_if, is_same
+#include <typeinfo>    // for type_info
+#include <vector>      // for vector
 
 
 namespace kotekan {

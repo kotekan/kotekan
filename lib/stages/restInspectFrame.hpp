@@ -1,11 +1,17 @@
 #ifndef REST_INSPECT_FRAME_HPP
 #define REST_INSPECT_FRAME_HPP
 
-#include "Stage.hpp"
-#include "restServer.hpp"
+#include "Stage.hpp" // for Stage
 
-#include <mutex>
-#include <string>
+#include <mutex>    // for mutex
+#include <stdint.h> // for int32_t, uint8_t
+#include <string>   // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+class connectionInstance;
+} // namespace kotekan
 
 /**
  * @class restInspectFrame

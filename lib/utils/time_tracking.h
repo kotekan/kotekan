@@ -1,9 +1,9 @@
 #ifndef TIME_TRACKING
 #define TIME_TRACKING
 
-#include <sys/types.h>
-#include <stdlib.h>
-#include <stdint.h>
+#include <stdint.h>  // for uint32_t, uint64_t
+
+struct timeval;
 
 #ifdef __cplusplus
 extern "C" {

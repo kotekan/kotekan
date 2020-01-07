@@ -21,11 +21,9 @@
 #ifndef METADATA_H
 #define METADATA_H
 
-#include "errors.h"
-#include <errno.h>
-#include <string.h>
-#include <stdio.h>
-#include <pthread.h>
+#include <pthread.h>  // for pthread_mutex_t
+#include <stdint.h>   // for uint32_t
+#include <stdio.h>    // for size_t
 
 #ifdef __cplusplus
 extern "C" {

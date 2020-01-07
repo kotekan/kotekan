@@ -1,8 +1,8 @@
-#include <emmintrin.h>
-#include <stdlib.h>
-#include <assert.h>
-#include <stdint.h>
-#include <memory.h>
+#include <assert.h>     // for assert
+#include <emmintrin.h>  // for __m128i, _mm_stream_si128, _mm_load_si128, _mm_loadu_si128
+#include <stdint.h>     // for uintptr_t
+#include <stdlib.h>     // for size_t
+#include <xmmintrin.h>  // for _MM_HINT_NTA, _mm_prefetch
 
 #include "nt_memcpy.h"
 

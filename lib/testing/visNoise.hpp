@@ -7,9 +7,17 @@
 #ifndef VISNOISE_HPP
 #define VISNOISE_HPP
 
-#include "Stage.hpp"
+#include "Stage.hpp" // for Stage
 
-#include <random>
+#include <random>   // for default_random_engine
+#include <stddef.h> // for size_t
+#include <string>   // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
 
 /**
  * @brief Adds gaussian noise.

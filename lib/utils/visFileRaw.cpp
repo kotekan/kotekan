@@ -1,27 +1,26 @@
 
 #include "visFileRaw.hpp"
 
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "visCompression.hpp"
+#include "Hash.hpp"           // for Hash
+#include "datasetManager.hpp" // for datasetManager
+#include "datasetState.hpp"   // for stackState, eigenvalueState, freqState, gatingState, input...
+#include "visBuffer.hpp"      // for visFrameView, visMetadata
 
-#include "json.hpp"
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for basic_json<>::value_type, json
 
-#include <cstdio>
-#include <cxxabi.h>
-#include <errno.h>
-#include <exception>
-#include <fmt.hpp>
-#include <fstream>
-#include <future>
-#include <inttypes.h>
-#include <numeric>
-#include <stdexcept>
-#include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <utility>
+#include <cstdio>         // for remove
+#include <cxxabi.h>       // for __forced_unwind
+#include <errno.h>        // for errno
+#include <fstream>        // for ofstream, basic_ostream::write, ios
+#include <future>         // for async, future
+#include <linux/falloc.h> // for FALLOC_FL_KEEP_SIZE
+#include <stdexcept>      // for runtime_error
+#include <string.h>       // for strerror
+#include <sys/stat.h>     // for S_IRGRP, S_IROTH, S_IRUSR, S_IWGRP, S_IWUSR
+#include <system_error>   // for system_error
+#include <unistd.h>       // for close, pwrite, TEMP_FAILURE_RETRY
+#include <utility>        // for pair
 
 
 // Register the raw file writer

@@ -7,12 +7,21 @@
 #ifndef READ_GAIN
 #define READ_GAIN
 
-#include "Stage.hpp"
-#include "restServer.hpp"
+#include "Stage.hpp" // for Stage
 
-#include <condition_variable>
-#include <mutex>
-#include <vector>
+#include "json.hpp" // for json
+
+#include <condition_variable> // for condition_variable
+#include <mutex>              // for mutex
+#include <stdint.h>           // for int32_t, int16_t, uint32_t
+#include <string>             // for string
+#include <vector>             // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
 
 using std::vector;
 

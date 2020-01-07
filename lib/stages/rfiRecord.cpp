@@ -1,21 +1,27 @@
 #include "rfiRecord.hpp"
 
-#include "chimeMetadata.h"
-#include "configUpdater.hpp"
-#include "errors.h"
-#include "gpsTime.h"
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for Buffer, mark_frame_empty, register_consumer, wait_for...
+#include "chimeMetadata.h"         // for get_fpga_seq_num, get_gps_time, get_stream_id_t
+#include "configUpdater.hpp"       // for configUpdater
+#include "fpga_header_functions.h" // for bin_number_chime, stream_id_t
+#include "kotekanLogging.hpp"      // for ERROR, INFO
 
-#include <errno.h>
-#include <fcntl.h>
-#include <functional>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <time.h>
-#include <unistd.h>
+#include <atomic>     // for atomic_bool
+#include <errno.h>    // for errno
+#include <exception>  // for exception
+#include <fcntl.h>    // for open, O_APPEND, O_CREAT, O_WRONLY
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <stdio.h>    // for snprintf
+#include <string.h>   // for strerror
+#include <string>     // for string, allocator
+#include <time.h>     // for gmtime_r, strftime, timespec, tm
+#include <unistd.h>   // for write, close, ssize_t
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

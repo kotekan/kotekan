@@ -1,10 +1,20 @@
 #include "bufferMerge.hpp"
 
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, get_num_consumers, get_num_producers, mark_frame_...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO, DEBUG2, FATAL_ERROR
+#include "visUtil.hpp"         // for frameID, current_time, double_to_ts, modulo
 
-#include "json.hpp"
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for json, basic_json<>::iterator, basic_json
 
-#include <signal.h>
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <cstring>    // for memcpy
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <stdexcept>  // for invalid_argument, runtime_error
 
 using nlohmann::json;
 

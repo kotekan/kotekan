@@ -1,21 +1,10 @@
-#include "Hash.hpp"
-#include "datasetManager.hpp"
-#include "restClient.hpp"
-#include "restServer.hpp"
-#include "visUtil.hpp"
+#include "dataset.hpp" // for dataset, dset_id_t, state_id_t
 
-#include "fmt/ostream.h"
+#include "Hash.hpp" // for operator==
 
-#include <cstdint>
-#include <fmt.hpp>
-#include <functional>
-#include <inttypes.h>
-#include <iostream>
-#include <mutex>
-#include <regex>
-#include <signal.h>
-#include <stdio.h>
-#include <typeinfo>
+#include "json.hpp" // for json, basic_json<>::value_type, basic_json
+
+#include <string> // for string, operator==
 
 using nlohmann::json;
 

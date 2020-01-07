@@ -1,11 +1,23 @@
 #include "basebandApiManager.hpp"
 
-#include "basebandReadoutManager.hpp"
-#include "kotekanLogging.hpp"
+#include "basebandReadoutManager.hpp" // for basebandDumpStatus, basebandRequest, basebandDumpS...
+#include "kotekanLogging.hpp"         // for DEBUG_NON_OO, INFO_NON_OO, WARN_NON_OO
+#include "prometheusMetrics.hpp"      // for Metrics, Counter
+#include "restServer.hpp"             // for connectionInstance, HTTP_RESPONSE, HTTP_RESPONSE::...
 
-#include <iomanip>
-#include <iostream>
-#include <sstream>
+#include "fmt.hpp" // for format, fmt
+
+#include <chrono>     // for milliseconds, duration_cast, system_clock, system_...
+#include <ctime>      // for localtime_r, time_t, tm, timespec
+#include <cxxabi.h>   // for __forced_unwind
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, _2
+#include <iomanip>    // for operator<<, put_time
+#include <memory>     // for allocator, shared_ptr, unique_ptr, __shared_ptr_ac...
+#include <sstream>    // for basic_ostringstream<>::__string_type, char_traits
+#include <string>     // for string, to_string, stoul
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 using nlohmann::json;
 

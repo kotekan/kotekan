@@ -1,38 +1,40 @@
 #ifndef DATASET_MANAGER_HPP
 #define DATASET_MANAGER_HPP
 
-#include "Config.hpp"
-#include "Hash.hpp"
-#include "dataset.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "kotekanLogging.hpp"
-#include "prometheusMetrics.hpp"
-#include "restClient.hpp"
-#include "restServer.hpp"
-#include "signal.h"
+#include "Hash.hpp"              // for Hash
+#include "dataset.hpp"           // for state_id_t, dset_id_t, dataset
+#include "datasetState.hpp"      // for datasetState, _factory_aliasdatasetState
+#include "factory.hpp"           // for FACTORY
+#include "kotekanLogging.hpp"    // for WARN_NON_OO, DEBUG_NON_OO, DEBUG2_NON_OO, FATAL_ERROR_N...
+#include "prometheusMetrics.hpp" // for Gauge
+#include "restClient.hpp"        // for restClient::restReply, restClient
 
-#include "json.hpp"
+#include "fmt.hpp"  // for fmt
+#include "json.hpp" // for json, basic_json, operator!=, basic_json<>::value_type
 
-#include <atomic>
-#include <chrono>
-#include <condition_variable>
-#include <exception>
-#include <functional>
-#include <inttypes.h>
-#include <map>
-#include <memory>
-#include <mutex>
-#include <set>
-#include <stdexcept>
-#include <stdint.h>
-#include <string>
-#include <thread>
-#include <time.h>
-#include <type_traits>
-#include <typeinfo>
-#include <utility>
-#include <vector>
+#include <atomic>             // for atomic, __atomic_base
+#include <chrono>             // for milliseconds
+#include <condition_variable> // for condition_variable
+#include <exception>          // for exception
+#include <functional>         // for function
+#include <map>                // for map, _Rb_tree_iterator, operator!=, map<>::iterator
+#include <memory>             // for unique_ptr, allocator, operator==, make_unique
+#include <mutex>              // for mutex, unique_lock, lock_guard
+#include <optional>           // for optional
+#include <set>                // for set
+#include <stdexcept>          // for runtime_error, out_of_range
+#include <stdint.h>           // for uint32_t, int32_t, uint64_t
+#include <string>             // for string, basic_string
+#include <thread>             // for sleep_for
+#include <type_traits>        // for is_base_of, enable_if, enable_if_t
+#include <typeinfo>           // for type_info
+#include <utility>            // for pair, move, forward
+#include <vector>             // for vector
+
+namespace kotekan {
+class Config;
+class connectionInstance;
+} // namespace kotekan
 
 
 #define DS_UNIQUE_NAME "/dataset_manager"

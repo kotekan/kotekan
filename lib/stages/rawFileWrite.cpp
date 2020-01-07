@@ -1,17 +1,25 @@
 #include "rawFileWrite.hpp"
 
-#include "buffer.h"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for Buffer, get_metadata_container, mark_frame_empty, regis...
+#include "kotekanLogging.hpp"    // for ERROR, INFO
+#include "metadata.h"            // for metadataContainer
+#include "prometheusMetrics.hpp" // for Metrics, Gauge
+#include "visUtil.hpp"           // for current_time
 
-#include <errno.h>
-#include <fcntl.h>
-#include <functional>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
+#include <atomic>     // for atomic_bool
+#include <errno.h>    // for errno
+#include <fcntl.h>    // for open, O_CREAT, O_WRONLY
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <stdint.h>   // for uint32_t, int32_t, uint8_t
+#include <stdio.h>    // for snprintf
+#include <stdlib.h>   // for exit
+#include <unistd.h>   // for write, close, gethostname, ssize_t
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -1,37 +1,29 @@
 #include "computeDualpolPower.hpp"
 
-#include "Config.hpp"
-#include "buffer.h"
-#include "errors.h"
-#include "nt_memcpy.h"
-#include "time_tracking.h"
-#include "util.h"
-#include "vdif_functions.h"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for mark_frame_empty, mark_frame_full, register_consumer, regi...
+#include "kotekanLogging.hpp" // for DEBUG, ERROR
+#include "vdif_functions.h"   // for VDIFHeader
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
 
-#include <immintrin.h>
+#include <immintrin.h> // for __m256i, _mm256_loadu_si256, _mm256_add_epi32, _mm256_stor...
 #endif
-#include <arpa/inet.h>
-#include <assert.h>
-#include <dirent.h>
-#include <errno.h>
-#include <functional>
-#include <immintrin.h>
-#include <inttypes.h>
-#include <math.h>
-#include <memory.h>
-#include <pmmintrin.h>
-#include <pthread.h>
-#include <sched.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <thread>
-#include <time.h>
-#include <unistd.h>
+#include <atomic>      // for atomic_bool
+#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <immintrin.h> // for __m256i, _mm256_loadu_si256, _mm256_add_epi32, _mm256_stor...
+#include <pthread.h>   // for pthread_setaffinity_np
+#include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdlib.h>    // for free, malloc, srand
+#include <string.h>    // for memset
+#include <thread>      // for thread
+#include <time.h>      // for time
+#include <vector>      // for vector
 
 //#define PACKET_OFFSET 58
 //#define NUM_POL 2

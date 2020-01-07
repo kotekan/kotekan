@@ -1,11 +1,25 @@
 #include "gpuBeamformPulsarSimulate.hpp"
 
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
+#include "chimeMetadata.h"         // for psrCoord, get_fpga_seq_num, get_gps_time, get_stream_...
+#include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
+#include "kotekanLogging.hpp"      // for INFO, ERROR
 
-#include <math.h>
-#include <time.h>
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <cmath>      // for cos, sin, fmod, pow, acos, asin, atan2, sqrt
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <memory>     // for allocator, allocator_traits<>::value_type
+#include <stdio.h>    // for fclose, fopen, fread, snprintf, FILE
+#include <stdlib.h>   // for free, malloc
+#include <string.h>   // for memcpy
+#include <time.h>     // for tm, timespec, localtime
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 
 #define HI_NIBBLE(b) (((b) >> 4) & 0x0F)

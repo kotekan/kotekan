@@ -1,5 +1,8 @@
 #include "errors.h"
 
+#include <signal.h>  // for raise, SIGINT
+#include <stdarg.h>  // for va_end, va_list, va_start
+
 // Default values for log levels.
 int _global_log_level = 3;
 int __enable_syslog = 1;

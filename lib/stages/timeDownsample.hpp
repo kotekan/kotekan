@@ -6,8 +6,16 @@
 #ifndef TIME_DOWNSAMP_HPP
 #define TIME_DOWNSAMP_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
+#include "Stage.hpp" // for Stage
+
+#include <stddef.h> // for size_t
+#include <string>   // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
 
 /**
  * @class timeDownsample

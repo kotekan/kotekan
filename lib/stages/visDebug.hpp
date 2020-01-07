@@ -6,15 +6,15 @@
 #ifndef VISDEBUG_HPP
 #define VISDEBUG_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
+#include "Stage.hpp" // for Stage
 
-#include <cstdint>
-#include <map>
-#include <string>
-#include <utility>
+#include <string> // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
 
 
 /**

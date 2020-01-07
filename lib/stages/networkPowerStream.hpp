@@ -7,13 +7,19 @@
 #ifndef NETWORK_POWER_STREAM_H
 #define NETWORK_POWER_STREAM_H
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "powerStreamUtil.hpp"
+#include "Stage.hpp"           // for Stage
+#include "powerStreamUtil.hpp" // for IntensityHeader
 
-#include <atomic>
-#include <sys/socket.h>
+#include <atomic>      // for atomic_flag
+#include <stdint.h>    // for uint32_t, uint64_t
+#include <string>      // for string
+#include <sys/types.h> // for uint
+#include <thread>      // for thread
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 /**
  * @class networkPowerStream

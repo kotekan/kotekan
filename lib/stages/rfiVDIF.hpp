@@ -6,9 +6,15 @@
 #ifndef VDIF_RFI_H
 #define VDIF_RFI_H
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "vdif_functions.h"
+#include "Stage.hpp" // for Stage
+
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 /*
  * @class rfiVDIF

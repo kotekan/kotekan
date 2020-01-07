@@ -7,26 +7,34 @@
 #ifndef VIS_ACCUMULATE_HPP
 #define VIS_ACCUMULATE_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "gateSpec.hpp"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Stage.hpp"     // for Stage
+#include "dataset.hpp"   // for dset_id_t
+#include "gateSpec.hpp"  // for gateSpec
+#include "visBuffer.hpp" // for visFrameView
+#include "visUtil.hpp"   // for frameID, freq_ctype (ptr only), input_ctype (ptr only), prod_ct...
 
-#include <cstdint>
-#include <deque>
-#include <functional>
-#include <map>
-#include <memory>
-#include <mutex>
-#include <string>
-#include <time.h>
-#include <utility>
-#include <vector>
+#include <cstdint>    // for uint32_t, int32_t
+#include <deque>      // for deque
+#include <functional> // for function
+#include <map>        // for map
+#include <memory>     // for unique_ptr
+#include <mutex>      // for mutex
+#include <string>     // for string
+#include <time.h>     // for size_t
+#include <utility>    // for pair
+#include <vector>     // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+namespace prometheus {
+class Counter;
+template<typename T>
+class MetricFamily;
+} // namespace prometheus
+} // namespace kotekan
+struct Buffer;
+struct timespec;
 
 
 /**

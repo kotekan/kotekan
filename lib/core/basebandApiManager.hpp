@@ -7,23 +7,26 @@
 #ifndef BASEBAND_API_MANAGER_HPP
 #define BASEBAND_API_MANAGER_HPP
 
-#include "basebandReadoutManager.hpp"
-#include "gpsTime.h"
-#include "prometheusMetrics.hpp"
-#include "restServer.hpp"
+#include "basebandReadoutManager.hpp" // for basebandReadoutManager, basebandDumpStatus (ptr only)
+#include "gpsTime.h"                  // for FPGA_PERIOD_NS
 
-#include "json.hpp"
+#include "json.hpp" // for json
 
-#include <chrono>
-#include <condition_variable>
-#include <deque>
-#include <map>
-#include <memory>
+#include <map>      // for map, map<>::iterator
+#include <math.h>   // for M_PI
+#include <mutex>    // for mutex
+#include <stdint.h> // for uint32_t, int64_t, uint64_t
 
 
 namespace kotekan {
 
 /// Implicit conversion for constructing `nlohmann::json` from a `basebandDumpStatus`
+class connectionInstance;
+class restServer;
+namespace prometheus {
+class Counter;
+} // namespace prometheus
+
 void to_json(nlohmann::json& j, const basebandDumpStatus& s);
 
 

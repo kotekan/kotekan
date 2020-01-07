@@ -7,7 +7,15 @@
 #ifndef PULSAR_SIM_PROCESS
 #define PULSAR_SIM_PROCESS
 
-#include "Stage.hpp"
+#include "Stage.hpp" // for Stage
+
+#include <stdint.h> // for int32_t, uint16_t, uint64_t
+#include <string>   // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 
 /**

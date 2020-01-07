@@ -1,8 +1,18 @@
 #include "accumulate.hpp"
 
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"         // for Buffer, allocate_new_metadata_object, mark_frame_empty, mark...
+#include "chimeMetadata.h"  // for atomic_add_lost_timesamples, get_lost_timesamples, get_first...
+
+#include <atomic>     // for atomic_bool
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <sys/time.h> // for timeval
+#include <time.h>     // for timespec
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

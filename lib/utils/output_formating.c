@@ -1,11 +1,5 @@
 
-#include <stdio.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <assert.h>
-
+#include <stdlib.h>  // for free, malloc
 
 #include "output_formating.h"
 

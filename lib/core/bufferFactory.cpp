@@ -1,10 +1,14 @@
 #include "bufferFactory.hpp"
 
-#include "Config.hpp"
-#include "metadata.h"
-#include "visBuffer.hpp"
+#include "Config.hpp"         // for Config
+#include "kotekanLogging.hpp" // for INFO_NON_OO
+#include "visBuffer.hpp"      // for visFrameView
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
+
+#include <stdexcept> // for runtime_error
+#include <stdint.h>  // for uint32_t, int32_t
+#include <utility>   // for pair
 
 using json = nlohmann::json;
 using std::map;

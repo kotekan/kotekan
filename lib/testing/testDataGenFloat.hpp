@@ -1,8 +1,14 @@
 #ifndef TEST_DATA_GEN_FLOAT_H
 #define TEST_DATA_GEN_FLOAT_H
 
-#include "Stage.hpp"
-#include "buffer.h"
+#include "Stage.hpp" // for Stage
+
+#include <string> // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 // Type: one of "random", "const"
 // Value: the value of the constant

@@ -6,14 +6,17 @@
 #ifndef VISDROP_HPP
 #define VISDROP_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
+#include "Stage.hpp" // for Stage
 
-#include <stdint.h>
-#include <string>
-#include <vector>
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <vector>   // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
 
 /**
  * @brief Drops frames based on given criteria (for testing) without telling the

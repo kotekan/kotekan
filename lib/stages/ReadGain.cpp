@@ -1,14 +1,26 @@
 #include "ReadGain.hpp"
 
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "chimeMetadata.h"
-#include "configUpdater.hpp"
-#include "errors.h"
-#include "visUtil.hpp"
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for mark_frame_full, register_producer, wait_for_empty_frame
+#include "chimeMetadata.h"         // for get_stream_id_t
+#include "configUpdater.hpp"       // for configUpdater
+#include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
+#include "kotekanLogging.hpp"      // for WARN, INFO, DEBUG
+#include "restServer.hpp"          // for HTTP_RESPONSE, connectionInstance (ptr only), restSer...
+#include "visUtil.hpp"             // for current_time
 
-#include <chrono>
-#include <functional>
+#include <atomic>      // for atomic_bool
+#include <chrono>      // for seconds
+#include <exception>   // for exception
+#include <functional>  // for _Bind_helper<>::type, bind, _Placeholder, _1, function
+#include <memory>      // for allocator_traits<>::value_type
+#include <stdio.h>     // for fclose, fopen, fread, snprintf, FILE
+#include <sys/types.h> // for uint
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

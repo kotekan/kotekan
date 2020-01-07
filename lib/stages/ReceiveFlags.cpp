@@ -1,13 +1,30 @@
 #include "ReceiveFlags.hpp"
 
-#include "configUpdater.hpp"
-#include "datasetManager.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for mark_frame_empty, mark_frame_full, register_consumer
+#include "configUpdater.hpp"     // for configUpdater
+#include "datasetManager.hpp"    // for datasetManager
+#include "kotekanLogging.hpp"    // for WARN, INFO
+#include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
+#include "visBuffer.hpp"         // for visFrameView
+#include "visUtil.hpp"           // for frameID, ts_to_double, current_time, double_to_ts, modulo
 
-#include <exception>
-#include <utility>
+#include "gsl-lite.hpp" // for span<>::iterator, span
+
+#include <algorithm>   // for copy, fill
+#include <atomic>      // for atomic_bool
+#include <exception>   // for exception
+#include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <stdexcept>   // for invalid_argument
+#include <tuple>       // for get
+#include <type_traits> // for add_const<>::type
+#include <utility>     // for pair, move, tuple_element<>::type
+
+class flagState;
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using namespace std::placeholders;
 

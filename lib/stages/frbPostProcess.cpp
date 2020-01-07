@@ -4,7 +4,31 @@
 
 #include "frbPostProcess.hpp"
 
-#include <immintrin.h>
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for mark_frame_empty, wait_for_full_frame, register_consumer
+#include "chimeMetadata.h"         // for get_fpga_seq_num, get_stream_id_t
+#include "fpga_header_functions.h" // for bin_number_chime, stream_id_t
+#include "kotekanLogging.hpp"      // for DEBUG, INFO
+#include "prometheusMetrics.hpp"   // for Metrics, Counter
+
+#include "fmt.hpp" // for format, fmt
+
+#include <algorithm>   // for find, max, min
+#include <atomic>      // for atomic_bool
+#include <cstdint>     // for int32_t, uint8_t, uint16_t, uint32_t, int64_t
+#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <immintrin.h> // for _mm256_broadcast_ss, __m256, _mm256_load_ps, _mm256_m...
+#include <mm_malloc.h> // for posix_memalign
+#include <stdexcept>   // for runtime_error
+#include <stdlib.h>    // for free, calloc, malloc
+#include <string.h>    // for memcpy, memset
+#include <sys/types.h> // for uint
+#include <xmmintrin.h> // for _mm_max_ps, _mm_min_ps, _mm_store_ss, __m128, _mm_shu...
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

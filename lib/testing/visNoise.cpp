@@ -1,7 +1,24 @@
 #include "visNoise.hpp"
 
-#include "errors.h"
-#include "visBuffer.hpp"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for mark_frame_empty, mark_frame_full, register_consumer, regi...
+#include "kotekanLogging.hpp" // for INFO
+#include "visBuffer.hpp"      // for visFrameView
+#include "visUtil.hpp"        // for cfloat
+
+#include "gsl-lite.hpp" // for span
+
+#include <atomic>     // for atomic_bool
+#include <complex>    // for complex
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <math.h>     // for pow
+#include <stdexcept>  // for invalid_argument
+#include <stdint.h>   // for uint32_t
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

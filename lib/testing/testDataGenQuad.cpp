@@ -1,11 +1,20 @@
 #include "testDataGenQuad.hpp"
 
-#include "chimeMetadata.h"
-#include "errors.h"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for allocate_new_metadata_object, mark_frame_full, wait_for_em...
+#include "chimeMetadata.h"    // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "kotekanLogging.hpp" // for INFO
 
-#include <random>
-#include <sys/time.h>
-#include <unistd.h>
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <sys/time.h> // for gettimeofday, timeval
+#include <unistd.h>   // for usleep
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

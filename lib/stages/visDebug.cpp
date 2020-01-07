@@ -1,17 +1,20 @@
 #include "visDebug.hpp"
 
-#include "StageFactory.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "dataset.hpp"           // for dset_id_t
+#include "kotekanLogging.hpp"    // for DEBUG, INFO
+#include "prometheusMetrics.hpp" // for Metrics, Counter, MetricFamily
+#include "visBuffer.hpp"         // for visFrameView
 
-#include "fmt.hpp"
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for uint64_t
+#include <functional> // for _Bind_helper<>::type, bind, function
 
-#include <atomic>
-#include <functional>
-#include <stdint.h>
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

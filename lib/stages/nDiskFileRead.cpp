@@ -1,12 +1,23 @@
 #include "nDiskFileRead.hpp"
 
-#include "errors.h"
-#include "vdif_functions.h"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for Buffer, mark_frame_full, register_producer, wait_for_empty...
+#include "kotekanLogging.hpp" // for INFO, ERROR
 
-#include <random>
-#include <string.h>
-#include <sys/time.h>
-#include <unistd.h>
+#include <assert.h>           // for assert
+#include <atomic>             // for atomic_bool
+#include <ext/alloc_traits.h> // for __alloc_traits<>::value_type
+#include <functional>         // for _Bind_helper<>::type, bind, function
+#include <memory>             // for allocator, allocator_traits<>::value_type
+#include <pthread.h>          // for pthread_setaffinity_np
+#include <sched.h>            // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdio.h>            // for fclose, fopen, fread, fseek, ftell, rewind, snprintf, FILE
+#include <sys/types.h>        // for uint
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using std::string;
 

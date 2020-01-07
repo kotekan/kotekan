@@ -8,10 +8,15 @@
 #ifndef MONITOR_BUFFER_H
 #define MONITOR_BUFFER_H
 
-#include "Stage.hpp"
-#include "bufferContainer.hpp"
+#include "Stage.hpp" // for Stage
 
-#include <vector>
+#include <string> // for string
+#include <vector> // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 /**
  * @class monitorBuffer

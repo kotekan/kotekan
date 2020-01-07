@@ -1,6 +1,19 @@
 #include "gpuSimulate.hpp"
 
-#include "errors.h"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
+#include "kotekanLogging.hpp" // for DEBUG, INFO
+
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <stdio.h>    // for printf
+#include <stdlib.h>   // for free, malloc
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

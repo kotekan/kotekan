@@ -1,8 +1,10 @@
 #include "metadata.h"
-#include "buffer.h"
-#include "errors.h"
 
-#include <assert.h>
+#include <assert.h>  // for assert
+#include <stdlib.h>  // for malloc, free
+#include <string.h>  // for memset
+
+#include "errors.h"  // for CHECK_ERROR_F, CHECK_MEM_F
 
 // *** Metadata object section ***
 

@@ -1,7 +1,19 @@
 #include "rfiUpdateMetadata.hpp"
 
-#include "chimeMetadata.h"
-#include "visUtil.hpp"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "chimeMetadata.h"    // for atomic_add_lost_timesamples, atomic_add_rfi_flagged_samples
+#include "kotekanLogging.hpp" // for DEBUG2
+#include "visUtil.hpp"        // for frameID, modulo
+
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <functional> // for _Bind_helper<>::type, bind, function
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 
 using kotekan::bufferContainer;

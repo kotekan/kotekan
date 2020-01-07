@@ -1,12 +1,21 @@
 #ifndef PROMETHEUS_METRICS_HPP
 #define PROMETHEUS_METRICS_HPP
 
-#include "restServer.hpp"
+#include <deque>     // for deque
+#include <iosfwd>    // for ostringstream
+#include <map>       // for map
+#include <memory>    // for shared_ptr
+#include <mutex>     // for mutex, lock_guard
+#include <stdexcept> // for runtime_error
+#include <stdint.h>  // for uint64_t
+#include <string>    // for string
+#include <tuple>     // for tuple
+#include <vector>    // for vector
 
-#include <map>
-#include <mutex>
-#include <string>
-#include <tuple>
+namespace kotekan {
+class connectionInstance;
+class restServer;
+} // namespace kotekan
 
 
 namespace kotekan {

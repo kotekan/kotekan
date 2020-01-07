@@ -1,10 +1,24 @@
 #include "rawFileRead.hpp"
 
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for Buffer, allocate_new_metadata_object, get_metadata_container
+#include "kotekanLogging.hpp" // for ERROR, INFO, FATAL_ERROR
+#include "metadata.h"         // for metadataContainer
 
-#include <csignal>
-#include <errno.h>
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <cstdio>     // for fread, fclose, fopen, snprintf, FILE
+#include <errno.h>    // for errno
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <stdint.h>   // for uint32_t, uint8_t
+#include <string.h>   // for strerror
+#include <sys/stat.h> // for stat
+#include <unistd.h>   // for sleep
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 inline bool file_exists(char* name) {
     struct stat buf;

@@ -1,15 +1,19 @@
 #include "visDrop.hpp"
 
-#include "StageFactory.hpp"
-#include "errors.h"
-#include "visBuffer.hpp"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for mark_frame_empty, Buffer, mark_frame_full, register_consumer
+#include "kotekanLogging.hpp" // for DEBUG, INFO
+#include "visBuffer.hpp"      // for visFrameView
 
-#include <algorithm>
-#include <atomic>
-#include <cstdint>
-#include <exception>
-#include <functional>
-#include <stdexcept>
+#include <algorithm>  // for find
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for uint32_t
+#include <functional> // for _Bind_helper<>::type, bind, function
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

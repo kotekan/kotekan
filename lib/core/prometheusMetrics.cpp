@@ -1,9 +1,15 @@
 #include "prometheusMetrics.hpp"
 
-#include "errors.h"
-#include "metadata.h"
+#include "kotekanLogging.hpp" // for ERROR_NON_OO
+#include "restServer.hpp"     // for restServer, connectionInstance
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt, print
+
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1
+#include <iterator>   // for begin, end
+#include <ostream>    // for operator<<, ostringstream, basic_ostream
+#include <sys/time.h> // for gettimeofday, timeval
+#include <utility>    // for pair
 
 using std::string;
 

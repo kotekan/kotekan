@@ -1,31 +1,36 @@
 #include "visWriter.hpp"
 
-#include "StageFactory.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "version.h"
-#include "visBuffer.hpp"
-#include "visCompression.hpp"
-#include "visFile.hpp"
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for Hash, operator<
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "datasetManager.hpp"    // for datasetManager, fingerprint_t
+#include "datasetState.hpp"      // for metadataState, freqState, prodState, stackState, _facto...
+#include "factory.hpp"           // for FACTORY
+#include "kotekanLogging.hpp"    // for INFO, ERROR, WARN, FATAL_ERROR, DEBUG, logLevel
+#include "prometheusMetrics.hpp" // for Metrics, Counter, MetricFamily, Gauge
+#include "restServer.hpp"        // for restServer, HTTP_RESPONSE, connectionInstance
+#include "version.h"             // for get_git_commit_hash
+#include "visBuffer.hpp"         // for visFrameView
+#include "visFile.hpp"           // for visFileBundle, visCalFileBundle, _factory_aliasvisFile
 
-#include "fmt.hpp"
-#include "json.hpp"
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for json_ref, json
 
-#include <atomic>
-#include <cxxabi.h>
-#include <exception>
-#include <functional>
-#include <inttypes.h>
-#include <regex>
-#include <signal.h>
-#include <sstream>
-#include <stdexcept>
-#include <sys/types.h>
-#include <time.h>
-#include <tuple>
-#include <vector>
+#include <algorithm>    // for count_if
+#include <atomic>       // for atomic_bool
+#include <cxxabi.h>     // for __forced_unwind
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <regex>        // for regex_replace, regex
+#include <sys/types.h>  // for uint
+#include <system_error> // for system_error
+#include <tuple>        // for get
+#include <vector>       // for operator==, vector
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 
 using kotekan::bufferContainer;

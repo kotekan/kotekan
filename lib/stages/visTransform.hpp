@@ -6,18 +6,21 @@
 #ifndef VISTRANSFORM_H
 #define VISTRANSFORM_H
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "visUtil.hpp"
+#include "Stage.hpp"   // for Stage
+#include "dataset.hpp" // for dset_id_t
+#include "visUtil.hpp" // for input_ctype, prod_ctype, freq_ctype (ptr only)
 
-#include <stddef.h>
-#include <stdint.h>
-#include <string>
-#include <utility>
-#include <vector>
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <utility>  // for pair
+#include <vector>   // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
 
 
 /**

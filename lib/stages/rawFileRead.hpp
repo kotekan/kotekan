@@ -7,13 +7,14 @@
 #ifndef RAW_FILE_READ_H
 #define RAW_FILE_READ_H
 
-#include "Stage.hpp"
-#include "buffer.h"
+#include "Stage.hpp" // for Stage
 
-#include <cstdio>
-#include <string>
-#include <sys/stat.h>
-#include <unistd.h>
+#include <string> // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 /**
  * @class rawFileRead

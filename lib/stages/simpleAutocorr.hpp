@@ -6,13 +6,14 @@
 
 #ifndef SIMPLE_AUTOCORR_HPP
 #define SIMPLE_AUTOCORR_HPP
-#include "Stage.hpp"
-#include "buffer.h"
-#include "errors.h"
-#include "util.h"
+#include "Stage.hpp" // for Stage
 
-#include <string>
-#include <unistd.h>
+#include <string> // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 /**
  * @class simpleAutocorr

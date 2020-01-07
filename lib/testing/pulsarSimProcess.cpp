@@ -1,19 +1,11 @@
-#include <arpa/inet.h>
-#include <assert.h>
-#include <chrono>
-#include <cmath>
-#include <cstdlib>
-#include <cstring>
-#include <fstream>
-#include <functional>
-#include <iostream>
-#include <math.h>
-#include <netinet/in.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
-#include <sys/socket.h>
-#include <unistd.h>
+#include <atomic>     // for atomic_bool
+#include <fstream>    // for basic_ostream::operator<<, operator<<, stringstream, basic...
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <stdlib.h>   // for exit
+#include <string.h>   // for memcpy
+#include <string>     // for allocator, string, char_traits
+#include <sys/time.h> // for timeval
+#include <unistd.h>   // for gethostname
 
 using std::string;
 
@@ -24,14 +16,17 @@ using std::string;
 #define samples_in_frame 3125
 #define num_packet 16
 
-#include "Config.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for wait_for_empty_frame, mark_frame_full, register_producer
+#include "chimeMetadata.h"    // for psrCoord
+#include "kotekanLogging.hpp" // for INFO, CHECK_MEM
 #include "pulsarSimProcess.hpp"
-#include "util.h"
-#include "vdif_functions.h"
+#include "vdif_functions.h" // for VDIFHeader
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

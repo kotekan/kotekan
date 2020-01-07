@@ -6,25 +6,35 @@
 #ifndef VIS_COMPRESSION_HPP
 #define VIS_COMPRESSION_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "prometheusMetrics.hpp"
-#include "visUtil.hpp"
+#include "Stage.hpp"          // for Stage
+#include "dataset.hpp"        // for dset_id_t, state_id_t
+#include "datasetManager.hpp" // for fingerprint_t
+#include "visUtil.hpp"        // for input_ctype (ptr only), prod_ctype (ptr only), frameID
 
-#include <atomic>
-#include <cstdint>
-#include <functional>
-#include <iosfwd>
-#include <map>
-#include <string>
-#include <sys/types.h>
-#include <thread>
-#include <utility>
-#include <vector>
+#include <cstdint>    // for uint32_t, int8_t, int16_t
+#include <functional> // for function
+#include <iosfwd>     // for ostream
+#include <map>        // for map
+#include <mutex>      // for mutex
+#include <string>     // for string
+#include <thread>     // for thread
+#include <tuple>      // for tuple
+#include <utility>    // for pair
+#include <vector>     // for vector
+
+class prodState;
+class stackState;
+namespace kotekan {
+class Config;
+class bufferContainer;
+namespace prometheus {
+class Counter;
+class Gauge;
+template<typename T>
+class MetricFamily;
+} // namespace prometheus
+} // namespace kotekan
+struct Buffer;
 
 
 /**

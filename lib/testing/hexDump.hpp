@@ -1,12 +1,15 @@
 #ifndef HEX_DUMP_H
 #define HEX_DUMP_H
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "errors.h"
-#include "util.h"
+#include "Stage.hpp" // for Stage
 
-#include <unistd.h>
+#include <stdint.h> // for int32_t
+#include <string>   // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 /**
  * @class hexDump

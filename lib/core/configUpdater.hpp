@@ -1,11 +1,12 @@
 #ifndef CONFIGUPDATER_H
 #define CONFIGUPDATER_H
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "restServer.hpp"
+#include "json.hpp" // for json
 
-#include "json.hpp"
+#include <functional> // for function
+#include <map>        // for map, multimap
+#include <string>     // for string
+#include <vector>     // for vector
 
 namespace kotekan {
 
@@ -81,6 +82,10 @@ namespace kotekan {
  *
  * @author Rick Nitsche
  */
+class Config;
+class Stage;
+class connectionInstance;
+
 class configUpdater {
 public:
     /**

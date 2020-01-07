@@ -1,12 +1,20 @@
 #ifndef BUFFER_SWITCH_HPP
 #define BUFFER_SWITCH_HPP
 
-#include "buffer.h"
-#include "bufferMerge.hpp"
+#include "bufferMerge.hpp" // for bufferMerge
 
-#include <map>
-#include <string>
-#include <vector>
+#include "json.hpp" // for json
+
+#include <map>      // for map
+#include <mutex>    // for mutex
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
 
 /**
  * @brief Selects buffers based on the values in an updatable config endpoint.

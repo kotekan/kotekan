@@ -1,35 +1,46 @@
 #include "visRawReader.hpp"
 
-#include "StageFactory.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "metadata.h"
-#include "version.h"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for Buffer, allocate_new_metadata_object, mark_frame_full, reg...
+#include "datasetManager.hpp" // for datasetManager
+#include "errors.h"           // for exit_kotekan, ReturnCode, ReturnCode::CLEAN_EXIT
+#include "kotekanLogging.hpp" // for DEBUG, INFO, FATAL_ERROR
+#include "metadata.h"         // for metadataContainer
+#include "version.h"          // for get_git_commit_hash
+#include "visBuffer.hpp"      // for visFrameView, visMetadata
+#include "visUtil.hpp"        // for input_ctype, prod_ctype, rstack_ctype, stack_ctype, time_c...
 
-#include "fmt.hpp"
-#include "gsl-lite.hpp"
-#include "json.hpp"
+#include "fmt.hpp"      // for format, fmt
+#include "gsl-lite.hpp" // for span<>::iterator, span
+#include "json.hpp"     // for json, basic_json, basic_json<>::value_type, iter_impl
 
-#include <algorithm>
-#include <atomic>
-#include <cstdint>
-#include <cstring>
-#include <errno.h>
-#include <exception>
-#include <fcntl.h>
-#include <fstream>
-#include <functional>
-#include <iostream>
-#include <memory>
-#include <regex>
-#include <signal.h>
-#include <stdexcept>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <time.h>
-#include <unistd.h>
+#include <algorithm>  // for fill, min
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for uint8_t
+#include <cstring>    // for strerror, memcpy
+#include <errno.h>    // for errno
+#include <fcntl.h>    // for open, O_RDONLY
+#include <fstream>    // for ifstream  // IWYU pragma: keep
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <iostream>   // for ifstream, ios_base::failure, ios_base, basic_ios, basic_is...
+#include <stdexcept>  // for runtime_error, invalid_argument
+#include <sys/mman.h> // for madvise, mmap, munmap, MADV_DONTNEED, MADV_WILLNEED, MAP_F...
+#include <sys/stat.h> // for stat
+#include <time.h>     // for nanosleep, timespec
+#include <unistd.h>   // for close, off_t
+
+class acqDatasetIdState;
+class eigenvalueState;
+class freqState;
+class inputState;
+class metadataState;
+class prodState;
+class stackState;
+class timeState;
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 
 using kotekan::bufferContainer;

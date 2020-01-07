@@ -7,9 +7,19 @@
 #ifndef PULSAR_POST_PROCESS
 #define PULSAR_POST_PROCESS
 
-#include "Stage.hpp"
+#include "Stage.hpp" // for Stage
 
-#include <optional>
+#include <optional>    // for optional
+#include <stdint.h>    // for uint32_t, uint64_t, uint16_t, uint8_t
+#include <string>      // for string
+#include <sys/types.h> // for uint
+#include <time.h>      // for timespec
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
 
 
 /**

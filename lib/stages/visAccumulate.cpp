@@ -1,37 +1,47 @@
 #include "visAccumulate.hpp"
 
-#include "StageFactory.hpp"
-#include "chimeMetadata.h"
-#include "configUpdater.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "factory.hpp"
-#include "metadata.h"
-#include "prometheusMetrics.hpp"
-#include "version.h"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for register_producer, allocate_new_metadata_object, mark...
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chimeMetadata.h"         // for get_fpga_seq_num, get_lost_timesamples, get_rfi_flagg...
+#include "configUpdater.hpp"       // for configUpdater
+#include "datasetManager.hpp"      // for datasetManager
+#include "factory.hpp"             // for FACTORY
+#include "fpga_header_functions.h" // for freq_from_bin
+#include "kotekanLogging.hpp"      // for FATAL_ERROR, INFO, logLevel, DEBUG
+#include "metadata.h"              // for metadataContainer
+#include "prometheusMetrics.hpp"   // for Counter, MetricFamily, Metrics
+#include "version.h"               // for get_git_commit_hash
+#include "visBuffer.hpp"           // for visFrameView
+#include "visUtil.hpp"             // for frameID, input_ctype, modulo, operator+, map_vis_tria...
 
-#include "fmt.hpp"
-#include "gsl-lite.hpp"
-#include "json.hpp"
+#include "fmt.hpp"      // for format, fmt
+#include "gsl-lite.hpp" // for span<>::iterator, span
+#include "json.hpp"     // for json, basic_json, iteration_proxy_value, basic_json<>...
 
-#include <algorithm>
-#include <atomic>
-#include <complex>
-#include <csignal>
-#include <cstring>
-#include <exception>
-#include <fstream>
-#include <iterator>
-#include <mutex>
-#include <numeric>
-#include <regex>
-#include <stdexcept>
-#include <time.h>
-#include <tuple>
-#include <vector>
+#include <algorithm>          // for fill, transform
+#include <assert.h>           // for assert
+#include <atomic>             // for atomic_bool
+#include <complex>            // for conj, operator*, complex
+#include <cstring>            // for memcpy
+#include <exception>          // for exception
+#include <ext/alloc_traits.h> // for __alloc_traits<>::value_type
+#include <iterator>           // for begin, end, back_insert_iterator, back_inserter
+#include <math.h>             // for pow
+#include <mutex>              // for lock_guard, mutex
+#include <numeric>            // for iota
+#include <stdexcept>          // for invalid_argument
+#include <time.h>             // for size_t, timespec
+#include <tuple>              // for get
+#include <vector>             // for vector, vector<>::iterator, operator==
+
+class eigenvalueState;
+class freqState;
+class gatingState;
+class inputState;
+class metadataState;
+class prodState;
 
 
 using namespace std::placeholders;

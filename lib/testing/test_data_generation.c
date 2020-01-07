@@ -1,8 +1,7 @@
 
 #include "test_data_generation.h"
-#include "fpga_header_functions.h"
 
-#include <stdlib.h>
+#include "fpga_header_functions.h"  // for bin_number, bin_number_16_elem, stream_id_t
 
 // TODO replace these functions with C++11 style lambda functions.
 

@@ -1,34 +1,41 @@
 #include "visCompression.hpp"
 
-#include "StageFactory.hpp"
-#include "datasetManager.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for Hash, operator<
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for wait_for_full_frame, allocate_new_metadata_object, mark...
+#include "datasetManager.hpp"    // for datasetManager
+#include "datasetState.hpp"      // for stackState, prodState, inputState
+#include "kotekanLogging.hpp"    // for INFO, DEBUG, ERROR, FATAL_ERROR
+#include "prometheusMetrics.hpp" // for Metrics, MetricFamily, Gauge, Counter
+#include "visBuffer.hpp"         // for visFrameView, visField, visField::vis, visField::weight
+#include "visUtil.hpp"           // for rstack_ctype, current_time, modulo, prod_ctype, input_c...
 
-#include "fmt.hpp"
-#include "gsl-lite.hpp"
+#include "fmt.hpp"      // for format, fmt
+#include "gsl-lite.hpp" // for span
 
-#include <algorithm>
-#include <complex>
-#include <cstdlib>
-#include <cxxabi.h>
-#include <exception>
-#include <functional>
-#include <future>
-#include <inttypes.h>
-#include <iostream>
-#include <iterator>
-#include <memory>
-#include <numeric>
-#include <pthread.h>
-#include <regex>
-#include <sched.h>
-#include <signal.h>
-#include <stdexcept>
-#include <tuple>
-#include <vector>
+#include <algorithm>          // for fill, sort, transform
+#include <atomic>             // for atomic_bool
+#include <complex>            // for complex, conj, norm
+#include <cstdlib>            // for abs
+#include <cxxabi.h>           // for __forced_unwind
+#include <ext/alloc_traits.h> // for __alloc_traits<>::value_type
+#include <functional>         // for _Bind_helper<>::type, bind, function, _1
+#include <future>             // for async, future
+#include <iterator>           // for begin, end, back_insert_iterator, back_inserter
+#include <memory>             // for allocator_traits<>::value_type
+#include <numeric>            // for iota
+#include <pthread.h>          // for pthread_setaffinity_np
+#include <sched.h>            // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept>          // for invalid_argument
+#include <sys/types.h>        // for int8_t
+#include <system_error>       // for system_error
+#include <tuple>              // for tuple, make_tuple, operator!=, operator<, tie
+#include <vector>             // for vector, operator==
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using namespace std::placeholders;
 

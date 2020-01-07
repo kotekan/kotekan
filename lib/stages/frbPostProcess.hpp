@@ -7,14 +7,21 @@
 #ifndef FRB_POST_PROCESS
 #define FRB_POST_PROCESS
 
-#include "Stage.hpp"
-#include "chimeMetadata.h"
-#include "fpga_header_functions.h"
-#include "frb_functions.h"
-#include "prometheusMetrics.hpp"
+#include "Stage.hpp"       // for Stage
+#include "frb_functions.h" // for FRBHeader
 
-#include <emmintrin.h>
-#include <immintrin.h>
+#include <stdint.h> // for int32_t, uint16_t, int16_t, uint32_t, uint8_t
+#include <string>   // for string
+#include <vector>   // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+namespace prometheus {
+class Counter;
+} // namespace prometheus
+} // namespace kotekan
+struct Buffer;
 
 
 /**

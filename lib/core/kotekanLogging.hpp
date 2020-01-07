@@ -1,13 +1,13 @@
 #ifndef KOTEKAN_LOGGING_H
 #define KOTEKAN_LOGGING_H
 
-#include "errors.h"
+#include "errors.h" // for _global_log_level  // IWYU pragma: keep
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for fmt, basic_string_view, make_format_args, FMT_STRING
 
-#include <stdarg.h>
-#include <string>
-#include <syslog.h>
+#include <errno.h>  // for errno
+#include <string>   // for string
+#include <syslog.h> // for LOG_ERR, LOG_INFO, LOG_WARNING
 
 
 namespace kotekan {

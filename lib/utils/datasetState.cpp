@@ -1,5 +1,7 @@
 #include "datasetState.hpp"
 
+#include <ext/alloc_traits.h> // for __alloc_traits<>::value_type
+
 using nlohmann::json;
 
 

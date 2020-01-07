@@ -7,18 +7,16 @@
 #ifndef PY_PLOT_N2_H
 #define PY_PLOT_N2_H
 
-#include "Stage.hpp"
-#include "accumulate.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
-#include "restServer.hpp"
+#include "Stage.hpp"               // for Stage
+#include "fpga_header_functions.h" // for stream_id_t
 
-#include <cstdio>
-#include <string>
-#include <sys/stat.h>
-#include <unistd.h>
+#include <string> // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+class connectionInstance;
+} // namespace kotekan
 
 /**
  * @class pyPlotN2

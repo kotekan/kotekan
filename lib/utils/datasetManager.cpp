@@ -1,22 +1,13 @@
 #include "datasetManager.hpp"
 
-#include "Hash.hpp"
-#include "restClient.hpp"
-#include "restServer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"     // for Config
+#include "Hash.hpp"       // for hash, operator==
+#include "restClient.hpp" // for restClient::restReply, restClient
+#include "restServer.hpp" // for restServer, HTTP_RESPONSE, connectionInstance, HTTP_RESPONSE::...
 
-#include "fmt/ostream.h"
-
-#include <cstdint>
-#include <fmt.hpp>
-#include <functional>
-#include <inttypes.h>
-#include <iostream>
-#include <mutex>
-#include <regex>
-#include <signal.h>
-#include <stdio.h>
-#include <typeinfo>
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, function, _1
+#include <mutex>      // for mutex, lock_guard, lock, adopt_lock, unique_lock
+#include <stdlib.h>   // for exit
 
 using nlohmann::json;
 

@@ -1,15 +1,15 @@
 #ifndef _HASH_HPP
 #define _HASH_HPP
 
-#include "MurmurHash3.hpp"
+#include "MurmurHash3.hpp" // for MurmurHash3_x64_128
 
-#include "fmt.hpp"
-#include "gsl-lite.hpp"
-#include "json.hpp"
+#include "fmt.hpp"      // for formatter
+#include "gsl-lite.hpp" // for span
+#include "json.hpp"     // for json
 
-#include <iostream>
-#include <stdint.h>
-#include <stdio.h>
+#include <iostream> // for istream, ostream
+#include <stdint.h> // for uint64_t
+#include <string>   // for string
 
 // Set a value for the hash seed
 #define _SEED 1420

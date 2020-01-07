@@ -7,8 +7,16 @@
 #ifndef TEST_DATA_GEN_QUAD_H
 #define TEST_DATA_GEN_QUAD_H
 
-#include "Stage.hpp"
-#include "buffer.h"
+#include "Stage.hpp" // for Stage
+
+#include <stdint.h> // for int32_t
+#include <string>   // for string
+#include <vector>   // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 
 /**

@@ -1,17 +1,25 @@
 #include "fullPacketDump.hpp"
 
-#include "buffer.h"
-#include "errors.h"
-#include "output_formating.h"
-#include "restServer.hpp"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for Buffer, mark_frame_empty, register_consumer, wait_for_full...
+#include "kotekanLogging.hpp" // for ERROR, INFO
+#include "restServer.hpp"     // for connectionInstance, restServer, HTTP_RESPONSE, HTTP_RESPON...
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <fcntl.h>
-#include <functional>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include <atomic>     // for atomic_bool
+#include <errno.h>    // for errno
+#include <fcntl.h>    // for open, O_CREAT, O_WRONLY
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
+#include <stdio.h>    // for snprintf
+#include <stdlib.h>   // for exit, free, malloc
+#include <string.h>   // for memcpy
+#include <unistd.h>   // for close, gethostname, sleep, write, ssize_t
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 #define MAX_NUM_PACKETS 100
 

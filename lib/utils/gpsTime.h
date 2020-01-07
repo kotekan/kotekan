@@ -1,9 +1,10 @@
 #ifndef GPS_TIME_H
 #define GPS_TIME_H
 
-#include <sys/time.h>
-#include <time.h>
-#include <inttypes.h>
+#include <stdint.h>  // for uint64_t
+#include <time.h>    // for timespec
+
+struct timespec;
 
 #ifdef __cplusplus
 extern "C" {

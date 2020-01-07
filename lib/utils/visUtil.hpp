@@ -11,20 +11,34 @@
 #ifndef VIS_UTIL_HPP
 #define VIS_UTIL_HPP
 
-#include "Config.hpp"
-#include "buffer.h"
+#include "buffer.h" // for Buffer
 
-#include "gsl-lite.hpp"
-#include "json.hpp"
+#include "fmt.hpp"      // for format_context, formatter
+#include "gsl-lite.hpp" // for span
+#include "json.hpp"     // for json
 
-#include <complex>
-#include <cstdint>
-#include <functional>
-#include <string>
-#include <sys/time.h>
-#include <time.h>
-#include <type_traits>
-#include <vector>
+#include <algorithm>   // for max
+#include <complex>     // for complex, imag, real
+#include <cstdint>     // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
+#include <cstdlib>     // for div, (anonymous), size_t
+#include <functional>  // for function
+#include <iosfwd>      // for ostream
+#include <map>         // for map
+#include <math.h>      // for fmod
+#include <string>      // for string
+#include <sys/time.h>  // for timeval, suseconds_t, CLOCK_REALTIME
+#include <sys/types.h> // for __syscall_slong_t
+#include <time.h>      // for timespec, size_t, clock_gettime, time_t
+#include <tuple>       // for tuple, tie
+#include <type_traits> // for enable_if_t, is_integral, make_unsigned
+#include <utility>     // for pair
+#include <vector>      // for vector
+
+namespace kotekan {
+class Config;
+} // namespace kotekan
+struct timespec;
+struct timeval;
 
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;

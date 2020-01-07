@@ -7,13 +7,15 @@
 #ifndef RECV_SINGLE_DISH_VDIF_H
 #define RECV_SINGLE_DISH_VDIF_H
 
-#include "Stage.hpp"
-#include "buffer.h"
+#include "Stage.hpp" // for Stage
 
-#include <cstdio>
-#include <string>
-#include <sys/stat.h>
-#include <unistd.h>
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 /**
  * @class recvSingleDishVDIF

@@ -1,26 +1,31 @@
 #include "rfiBroadcast.hpp"
 
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "util.h"
-#include "visUtil.hpp"
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "chimeMetadata.h"         // for get_fpga_seq_num, get_stream_id
+#include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, stream_id_t
+#include "kotekanLogging.hpp"      // for ERROR, DEBUG, INFO
+#include "prometheusMetrics.hpp"   // for Metrics, Gauge, MetricFamily
+#include "restServer.hpp"          // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_R...
+#include "rfi_functions.h"         // for RFIHeader
+#include "visUtil.hpp"             // for movingAverage
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <arpa/inet.h>
-#include <errno.h>
-#include <functional>
-#include <mutex>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <string.h>
-#include <string>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <time.h>
-#include <unistd.h>
+#include <arpa/inet.h>  // for inet_aton
+#include <atomic>       // for atomic_bool
+#include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, fun...
+#include <mutex>        // for mutex, lock_guard
+#include <netinet/in.h> // for sockaddr_in, IPPROTO_UDP, htons
+#include <stdlib.h>     // for free, malloc
+#include <string.h>     // for memcpy, memset
+#include <string>       // for string, allocator, to_string, operator+, operator==
+#include <sys/socket.h> // for sendto, socket, AF_INET, SOCK_DGRAM
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

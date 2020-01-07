@@ -1,10 +1,21 @@
 #include "simVdifData.hpp"
 
-#include "errors.h"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for mark_frame_full, register_producer, wait_for_empty_frame
+#include "kotekanLogging.hpp" // for INFO
+#include "vdif_functions.h"   // for VDIFHeader
 
-#include <random>
-#include <sys/time.h>
-#include <unistd.h>
+#include <atomic>     // for atomic_bool
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <random>     // for random_device, uniform_int_distribution, mt19937
+#include <string.h>   // for memcpy, memset
+#include <sys/time.h> // for gettimeofday, timeval
+#include <unistd.h>   // for usleep
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

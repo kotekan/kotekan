@@ -1,12 +1,11 @@
 #ifndef KOTEKAN_MODE_HPP
 #define KOTEKAN_MODE_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "metadata.h"
-#include "restServer.hpp"
+#include "bufferContainer.hpp" // for bufferContainer
+#include "metadata.h"          // for metadataPool  // IWYU pragma: keep
 
-#include <map>
+#include <map>    // for map
+#include <string> // for string
 
 
 // doxygen wants the namespace to be documented somewhere
@@ -16,6 +15,9 @@
  */
 //! Kotekan namespace
 namespace kotekan {
+
+class Config;
+class Stage;
 
 class kotekanMode {
 public:

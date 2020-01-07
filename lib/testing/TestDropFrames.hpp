@@ -6,8 +6,16 @@
 #ifndef TEST_DROP_FRAMES_HPP
 #define TEST_DROP_FRAMES_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
+#include "Stage.hpp" // for Stage
+
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <vector>   // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 /**
  * @class TestDropFrames

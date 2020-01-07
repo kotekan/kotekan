@@ -7,13 +7,15 @@
 #ifndef NETWORK_INPUT_POWER_STREAM_H
 #define NETWORK_INPUT_POWER_STREAM_H
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "powerStreamUtil.hpp"
+#include "Stage.hpp" // for Stage
 
-#include <atomic>
-#include <sys/socket.h>
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 
 /**

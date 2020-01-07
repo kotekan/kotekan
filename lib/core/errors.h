@@ -1,14 +1,9 @@
 #ifndef ERRORS
 #define ERRORS
 
-#include <syslog.h>
-#include <stdlib.h>
-#include <inttypes.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <string.h>
-#include <errno.h>
-#include <signal.h>
+#include <errno.h>   // for errno
+#include <stdio.h>   // for NULL
+#include <syslog.h>  // for LOG_ERR, LOG_INFO, LOG_WARNING
 
 #ifdef __cplusplus
 #include <cerrno>

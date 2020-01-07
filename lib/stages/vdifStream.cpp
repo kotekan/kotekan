@@ -1,18 +1,25 @@
 #include "vdifStream.hpp"
 
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "kotekanLogging.hpp" // for ERROR, INFO
+#include "util.h"             // for e_time
 
-#include <arpa/inet.h>
-#include <functional>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <string.h>
-#include <string>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <unistd.h>
+#include <arpa/inet.h>  // for inet_aton
+#include <atomic>       // for atomic_bool
+#include <errno.h>      // for errno
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <netinet/in.h> // for sockaddr_in, IPPROTO_UDP, htons
+#include <stdio.h>      // for size_t
+#include <string.h>     // for memset, strerror
+#include <string>       // for string, allocator
+#include <sys/socket.h> // for sendto, socket, AF_INET, SOCK_DGRAM
+#include <unistd.h>     // for usleep
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

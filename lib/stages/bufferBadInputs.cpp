@@ -1,8 +1,20 @@
 #include "bufferBadInputs.hpp"
 
-#include "chimeMetadata.h"
-#include "configUpdater.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for allocate_new_metadata_object, mark_frame_full, register_pr...
+#include "chimeMetadata.h"    // for set_rfi_num_bad_inputs
+#include "configUpdater.hpp"  // for configUpdater
+#include "kotekanLogging.hpp" // for DEBUG, ERROR
+#include "visUtil.hpp"        // for parse_reorder_default
+
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <tuple>      // for get
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

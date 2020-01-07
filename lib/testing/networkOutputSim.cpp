@@ -1,28 +1,22 @@
 #include "networkOutputSim.hpp"
 
-#include "Config.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "nt_memcpy.h"
-#include "test_data_generation.h"
-#include "time_tracking.h"
-#include "util.h"
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for mark_frame_full, register_producer, wait_for_empty_frame
+#include "chimeMetadata.h"         // for set_first_packet_recv_time, set_fpga_seq_num, set_str...
+#include "fpga_header_functions.h" // for stream_id_t
+#include "kotekanLogging.hpp"      // for ERROR
+#include "test_data_generation.h"  // for generate_complex_sine_data_set, generate_const_data_set
 
-#include <arpa/inet.h>
-#include <assert.h>
-#include <dirent.h>
-#include <errno.h>
-#include <functional>
-#include <inttypes.h>
-#include <memory.h>
-#include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <unistd.h>
+#include <atomic>     // for atomic_bool
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <pthread.h>  // for pthread_exit
+#include <stdlib.h>   // for exit
+#include <sys/time.h> // for gettimeofday, timeval
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

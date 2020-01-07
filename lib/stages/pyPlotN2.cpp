@@ -1,12 +1,26 @@
 #include "pyPlotN2.hpp"
 
-#include <errno.h>
-#include <fcntl.h>
-#include <functional>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"         // for mark_frame_empty, Buffer, register_consumer, wait_for_full_f...
+#include "chimeMetadata.h"  // for get_stream_id_t
+#include "restServer.hpp"   // for restServer, HTTP_RESPONSE, HTTP_RESPONSE::OK, connectionInst...
+
+#include "json.hpp" // for json_ref, json
+
+#include <atomic>      // for atomic_bool
+#include <cstdio>      // for fwrite, fflush, popen, FILE
+#include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <stdint.h>    // for uint32_t, uint8_t
+#include <stdlib.h>    // for free, malloc
+#include <string.h>    // for memcpy
+#include <sys/types.h> // for uint
+#include <thread>      // for thread
+#include <unistd.h>    // for usleep
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using json = nlohmann::json;
 

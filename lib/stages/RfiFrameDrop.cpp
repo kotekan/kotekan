@@ -1,21 +1,31 @@
 #include "RfiFrameDrop.hpp"
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "chimeMetadata.h"
-#include "configUpdater.hpp"
-#include "prometheusMetrics.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"              // for Config
+#include "Stage.hpp"               // for Stage
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for mark_frame_empty, wait_for_full_frame, Buffer, get_me...
+#include "chimeMetadata.h"         // for chimeMetadata, get_fpga_seq_num
+#include "configUpdater.hpp"       // for configUpdater
+#include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id
+#include "kotekanLogging.hpp"      // for WARN, INFO, DEBUG, DEBUG2
+#include "prometheusMetrics.hpp"   // for Metrics, Counter, MetricFamily
+#include "visUtil.hpp"             // for frameID, modulo
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <cmath>
-#include <csignal>
-#include <cstring>
-#include <functional>
-#include <pthread.h>
-#include <string>
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <cmath>      // for fabs, sqrt
+#include <cstring>    // for size_t, memcpy
+#include <functional> // for _Bind_helper<>::type, bind, _Placeholder, function, _1
+#include <map>        // for map, map<>::mapped_type
+#include <stdexcept>  // for runtime_error
+#include <stdint.h>   // for uint8_t, int64_t, uint32_t
+#include <string>     // for string, to_string, allocator
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 
 using kotekan::bufferContainer;

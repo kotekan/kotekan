@@ -1,11 +1,10 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <fcntl.h>
-#include <unistd.h>
+#include <errno.h>     // for errno, EEXIST, EINTR
+#include <fcntl.h>     // for open, O_CREAT, O_EXCL, O_RDONLY, O_WRONLY
+#include <stdio.h>     // for printf, perror, snprintf, NULL
+#include <stdlib.h>    // for exit
+#include <sys/stat.h>  // for mkdir
+#include <sys/time.h>  // for gettimeofday, timeval
+#include <unistd.h>    // for close, read, write, ssize_t
 
 #include "util.h"
 

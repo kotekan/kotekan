@@ -1,10 +1,19 @@
 #include "TestDropFrames.hpp"
 
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for Buffer, get_num_consumers, mark_frame_empty, mark_frame_full
+#include "kotekanLogging.hpp" // for INFO
 
-#include <random>
+#include <algorithm>  // for find
+#include <atomic>     // for atomic_bool
+#include <cstring>    // for memcpy
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <random>     // for default_random_engine, bernoulli_distribution, random_device
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

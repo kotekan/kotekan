@@ -6,12 +6,14 @@
 #ifndef CHIME_METADATA_DUMP_HPP
 #define CHIME_METADATA_DUMP_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "errors.h"
-#include "util.h"
+#include "Stage.hpp" // for Stage
 
-#include <unistd.h>
+#include <string> // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 
 /**
  * @class chimeMetadataDump

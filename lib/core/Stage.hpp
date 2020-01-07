@@ -1,16 +1,21 @@
 #ifndef KOTEKAN_STAGE_H
 #define KOTEKAN_STAGE_H
 
-#include "Config.hpp"
-#include "StageFactory.hpp"
-#include "bufferContainer.hpp"
-#include "kotekanLogging.hpp"
+#include "buffer.h"           // for Buffer, IWYU pragma: keep
+#include "kotekanLogging.hpp" // for kotekanLogging
 
-#include <atomic>
-#include <functional>
-#include <mutex>
-#include <thread>
-#include <vector>
+#include <atomic>     // for atomic_bool
+#include <functional> // for function
+#include <mutex>      // for mutex
+#include <stdint.h>   // for uint32_t
+#include <string>     // for string
+#include <thread>     // for thread
+#include <vector>     // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
 

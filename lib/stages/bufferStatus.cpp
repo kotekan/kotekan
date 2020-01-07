@@ -1,18 +1,19 @@
 #include "bufferStatus.hpp"
 
-#include "buffer.h"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for get_num_full_frames, print_buffer_status, Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "kotekanLogging.hpp"    // for INFO
+#include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
+#include "visUtil.hpp"           // for current_time
 
-#include <fcntl.h>
-#include <functional>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string>
-#include <thread>
-#include <time.h>
-#include <unistd.h>
+#include <atomic>     // for atomic_bool
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <stdint.h>   // for uint32_t
+#include <string>     // for string, allocator
+#include <unistd.h>   // for usleep
+#include <utility>    // for pair
 
 using kotekan::bufferContainer;
 using kotekan::Config;

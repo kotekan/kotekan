@@ -6,12 +6,15 @@
 #ifndef VALVE_HPP
 #define VALVE_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
+#include "Stage.hpp" // for Stage
 
-#include <string>
+#include <string> // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
 
 
 /**
