@@ -10,10 +10,7 @@
 
 using std::string;
 
-// TODO Where do these live?
-#define likely(x) __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
-
+#include "BranchPrediction.hpp"
 #include "Config.hpp"       // for Config
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "beamformingPostProcess.hpp"

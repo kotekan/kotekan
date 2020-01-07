@@ -14,12 +14,9 @@
 
 using std::string;
 
-// TODO Where do these live?
-#define likely(x) __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
-
 #define udp_pulsar_header_size 32
 
+#include "BranchPrediction.hpp"
 #include "Config.hpp"              // for Config
 #include "buffer.h"                // for mark_frame_empty, wait_for_empty_frame, wait_for_full...
 #include "chimeMetadata.h"         // for get_fpga_seq_num, psrCoord, get_psr_coord, get_stream...
