@@ -38,14 +38,14 @@
 class rfiRecord : public kotekan::Stage {
 public:
     // Constructor
-    rfiRecord(kotekan::Config& config, const string& unique_name,
+    rfiRecord(kotekan::Config& config, const std::string& unique_name,
               kotekan::bufferContainer& buffer_container);
     // Deconstructor, cleans up / does nothing
     virtual ~rfiRecord();
     // Primary loop, reads buffer and sends out UDP stream
     void main_thread() override;
     // Callback function called by rest server
-    bool config_callback(json& json);
+    bool config_callback(nlohmann::json& json);
 
 private:
     /// Kotekan buffer containing kurtosis estimates
@@ -58,7 +58,7 @@ private:
     /// Writing state control mutex
     std::mutex rest_callback_mutex;
     /// Where to record the RFI data
-    string _output_dir;
+    std::string _output_dir;
     /// Whether or not the stage should write to the disk
     bool _write_to_disk;
 };

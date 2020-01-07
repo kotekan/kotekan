@@ -32,7 +32,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(prodSubset);
 
-prodSubset::prodSubset(Config& config, const string& unique_name,
+prodSubset::prodSubset(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&prodSubset::main_thread, this)) {
 

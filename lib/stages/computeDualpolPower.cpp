@@ -46,7 +46,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(computeDualpolPower);
 
-computeDualpolPower::computeDualpolPower(Config& config, const string& unique_name,
+computeDualpolPower::computeDualpolPower(Config& config, const std::string& unique_name,
                                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&computeDualpolPower::main_thread, this)) {

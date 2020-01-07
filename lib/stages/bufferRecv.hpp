@@ -76,7 +76,7 @@ class connInstance;
 class bufferRecv : public kotekan::Stage {
 public:
     /// Constructor
-    bufferRecv(kotekan::Config& config, const string& unique_name,
+    bufferRecv(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
     ~bufferRecv();
     void main_thread() override;
@@ -99,7 +99,7 @@ public:
      * @brief Updates the prometheus metric with time it took to receive the data.
      *        Thread safe.  Called only by worker threads
      */
-    void set_transfer_time_seconds(const string& source_label, const double elapsed);
+    void set_transfer_time_seconds(const std::string& source_label, const double elapsed);
 
     /**
      * @brief Used only by worker threads to check if they should stop.
@@ -210,10 +210,10 @@ struct acceptArgs {
     bufferRecv* buffer_recv;
 
     /// Just copy the unique_name of the stage
-    string unique_name;
+    std::string unique_name;
 
     /// The log level to use.
-    string log_level;
+    std::string log_level;
 };
 
 /**
@@ -228,8 +228,8 @@ struct acceptArgs {
 class connInstance : public kotekan::kotekanLogging {
 public:
     /// Constructor
-    connInstance(const string& producer_name, struct Buffer* buf, bufferRecv* buffer_recv,
-                 const string& client_ip, int port, struct timeval read_timeout);
+    connInstance(const std::string& producer_name, struct Buffer* buf, bufferRecv* buffer_recv,
+                 const std::string& client_ip, int port, struct timeval read_timeout);
 
     /// Destructor
     ~connInstance();
@@ -264,7 +264,7 @@ public:
     void close_instance();
 
     /// The name of the parent kotekan_stage
-    string producer_name;
+    std::string producer_name;
 
     /// The kotekan buffer to transfer data into
     struct Buffer* buf;
@@ -273,7 +273,7 @@ public:
     bufferRecv* buffer_recv;
 
     /// The client IP address for this instance
-    string client_ip;
+    std::string client_ip;
 
     /// The port the client is connected on.
     int port;

@@ -20,7 +20,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(vdifStream);
 
-vdifStream::vdifStream(Config& config, const string& unique_name,
+vdifStream::vdifStream(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&vdifStream::main_thread, this)) {
 

@@ -5,10 +5,10 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 
-hsaSubframeCommand::hsaSubframeCommand(Config& config, const string& unique_name,
+hsaSubframeCommand::hsaSubframeCommand(Config& config, const std::string& unique_name,
                                        bufferContainer& host_buffers, hsaDeviceInterface& device,
-                                       const string& default_kernel_command,
-                                       const string& default_kernel_file_name) :
+                                       const std::string& default_kernel_command,
+                                       const std::string& default_kernel_file_name) :
     hsaCommand(config, unique_name, host_buffers, device, default_kernel_command,
                default_kernel_file_name) {
 

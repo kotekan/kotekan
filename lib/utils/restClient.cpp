@@ -419,9 +419,11 @@ void restClient::_bev_req_readcb(struct bufferevent* bev, void* arg) {
     }
 }
 
-restReply restClient::make_request_blocking(const std::string& path, const nlohmann::json& data,
-                                            const std::string& host, const unsigned short port,
-                                            const int retries, const int timeout) {
+restClient::restReply restClient::make_request_blocking(const std::string& path,
+                                                        const nlohmann::json& data,
+                                                        const std::string& host,
+                                                        const unsigned short port,
+                                                        const int retries, const int timeout) {
     restReply reply = restReply(false, "");
     bool reply_copied = false;
 

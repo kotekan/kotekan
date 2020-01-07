@@ -5,7 +5,7 @@ using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaRfiBadInputOutput);
 
-hsaRfiBadInputOutput::hsaRfiBadInputOutput(Config& config, const string& unique_name,
+hsaRfiBadInputOutput::hsaRfiBadInputOutput(Config& config, const std::string& unique_name,
                                            bufferContainer& host_buffers,
                                            hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "hsaRfiBadInputOutput", "") {

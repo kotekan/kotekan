@@ -20,7 +20,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(networkPowerStream);
 
-networkPowerStream::networkPowerStream(Config& config, const string& unique_name,
+networkPowerStream::networkPowerStream(Config& config, const std::string& unique_name,
                                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&networkPowerStream::main_thread, this)) {

@@ -45,7 +45,7 @@ using std::vector;
 class ReadGain : public kotekan::Stage {
 public:
     /// Constructor.
-    ReadGain(kotekan::Config& config_, const string& unique_name,
+    ReadGain(kotekan::Config& config_, const std::string& unique_name,
              kotekan::bufferContainer& buffer_container);
 
     void main_thread() override;
@@ -72,8 +72,8 @@ private:
     int32_t gain_psr_buf_id;
 
     /// Directory path where gain files are
-    string _gain_dir_frb;
-    vector<string> _gain_dir_psr;
+    std::string _gain_dir_frb;
+    vector<std::string> _gain_dir_psr;
     /// Default gain values if gain file is missing for this freq, currently set to 1+1j
     vector<float> default_gains;
 

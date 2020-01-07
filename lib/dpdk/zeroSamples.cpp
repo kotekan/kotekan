@@ -11,7 +11,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(zeroSamples);
 
-zeroSamples::zeroSamples(Config& config, const string& unique_name,
+zeroSamples::zeroSamples(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&zeroSamples::main_thread, this)) {
 

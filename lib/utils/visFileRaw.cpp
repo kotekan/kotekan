@@ -138,7 +138,7 @@ visFileRaw::~visFileRaw() {
     // Finalize the metadata file
     file_metadata["structure"]["ntime"] = num_time();
     file_metadata["index_map"]["time"] = times;
-    std::vector<uint8_t> t = json::to_msgpack(file_metadata);
+    std::vector<uint8_t> t = nlohmann::json::to_msgpack(file_metadata);
     metadata_file.write((const char*)&t[0], t.size());
     metadata_file.close();
 

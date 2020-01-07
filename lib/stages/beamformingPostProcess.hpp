@@ -8,11 +8,10 @@
 
 #include <vector>
 
-using std::vector;
 
 class beamformingPostProcess : public kotekan::Stage {
 public:
-    beamformingPostProcess(kotekan::Config& config, const string& unique_name,
+    beamformingPostProcess(kotekan::Config& config, const std::string& unique_name,
                            kotekan::bufferContainer& buffer_container);
     virtual ~beamformingPostProcess();
     void main_thread() override;
@@ -28,7 +27,7 @@ private:
     uint32_t _num_fpga_links;
     uint32_t _samples_per_data_set;
     uint32_t _num_data_sets;
-    vector<int32_t> _link_map;
+    std::vector<int32_t> _link_map;
     uint32_t _num_local_freq;
     uint32_t _num_gpus;
 };

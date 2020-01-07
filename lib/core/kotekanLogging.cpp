@@ -35,11 +35,11 @@ void kotekanLogging::set_log_level(const logLevel& log_level) {
     _member_log_level = static_cast<std::underlying_type<logLevel>::type>(log_level);
 }
 
-void kotekanLogging::set_log_prefix(const string& log_prefix) {
+void kotekanLogging::set_log_prefix(const std::string& log_prefix) {
     __log_prefix = log_prefix;
 }
 
-void kotekanLogging::set_log_level(const string& s_log_level) {
+void kotekanLogging::set_log_level(const std::string& s_log_level) {
 
     logLevel log_level;
 

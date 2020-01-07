@@ -2,7 +2,7 @@
 
 REGISTER_KOTEKAN_STAGE(constDataCheck);
 
-constDataCheck::constDataCheck(kotekan::Config& config, const string& unique_name,
+constDataCheck::constDataCheck(kotekan::Config& config, const std::string& unique_name,
                                kotekan::bufferContainer& buffer_container) :
     kotekan::Stage(config, unique_name, buffer_container,
                    std::bind(&constDataCheck::main_thread, this)) {

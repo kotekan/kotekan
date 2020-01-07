@@ -28,7 +28,6 @@
 #include <utility>
 #include <vector>
 
-using namespace kotekan::prometheus;
 
 /**
  * @class visAccumulate
@@ -80,7 +79,7 @@ using namespace kotekan::prometheus;
  */
 class visAccumulate : public kotekan::Stage {
 public:
-    visAccumulate(kotekan::Config& config, const string& unique_name,
+    visAccumulate(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& buffer_container);
     ~visAccumulate() = default;
     void main_thread() override;
@@ -229,7 +228,7 @@ private:
 
     // Reference to the prometheus metric that we will use for counting skipped
     // frames
-    MetricFamily<Counter>& skipped_frame_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& skipped_frame_counter;
 };
 
 #endif

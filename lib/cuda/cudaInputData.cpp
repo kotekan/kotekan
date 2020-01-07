@@ -5,7 +5,7 @@ using kotekan::Config;
 
 REGISTER_CUDA_COMMAND(cudaInputData);
 
-cudaInputData::cudaInputData(Config& config, const string& unique_name,
+cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
                              bufferContainer& host_buffers, cudaDeviceInterface& device) :
     cudaCommand(config, unique_name, host_buffers, device, "", "") {
 

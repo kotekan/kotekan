@@ -8,6 +8,9 @@
 #include <stdio.h>
 
 
+using nlohmann::json;
+
+
 // Define the null Hash
 const Hash Hash::null = {0, 0};
 

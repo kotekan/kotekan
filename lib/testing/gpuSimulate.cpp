@@ -8,7 +8,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(gpuSimulate);
 
-gpuSimulate::gpuSimulate(Config& config, const string& unique_name,
+gpuSimulate::gpuSimulate(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&gpuSimulate::main_thread, this)) {
 
@@ -18,7 +18,7 @@ gpuSimulate::gpuSimulate(Config& config, const string& unique_name,
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     _num_blocks = config.get<int32_t>(unique_name, "num_blocks");
     _block_size = config.get<int32_t>(unique_name, "block_size");
-    _data_format = config.get_default<string>(unique_name, "data_format", "4+4b");
+    _data_format = config.get_default<std::string>(unique_name, "data_format", "4+4b");
 
     input_buf = get_buffer("network_in_buf");
     register_consumer(input_buf, unique_name.c_str());

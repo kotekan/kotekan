@@ -21,7 +21,7 @@ using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(EigenVisIter);
 
-EigenVisIter::EigenVisIter(Config& config, const string& unique_name,
+EigenVisIter::EigenVisIter(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&EigenVisIter::main_thread, this)),
     comp_time_seconds_metric(

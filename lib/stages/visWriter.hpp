@@ -98,7 +98,7 @@
  */
 class visWriter : public kotekan::Stage {
 public:
-    visWriter(kotekan::Config& config, const string& unique_name,
+    visWriter(kotekan::Config& config, const std::string& unique_name,
               kotekan::bufferContainer& buffer_container);
 
     void main_thread() override;
@@ -261,7 +261,7 @@ private:
  **/
 class visCalWriter : public visWriter {
 public:
-    visCalWriter(kotekan::Config& config, const string& unique_name,
+    visCalWriter(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
 
     ~visCalWriter();

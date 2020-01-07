@@ -34,7 +34,7 @@ using kotekan::restServer;
 
 REGISTER_KOTEKAN_STAGE(gpuPostProcess);
 
-gpuPostProcess::gpuPostProcess(Config& config_, const string& unique_name,
+gpuPostProcess::gpuPostProcess(Config& config_, const std::string& unique_name,
                                bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&gpuPostProcess::main_thread, this)) {
 

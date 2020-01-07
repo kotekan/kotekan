@@ -6,7 +6,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(fftwEngine);
 
-fftwEngine::fftwEngine(Config& config, const string& unique_name,
+fftwEngine::fftwEngine(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&fftwEngine::main_thread, this)) {
 

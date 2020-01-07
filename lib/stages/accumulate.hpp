@@ -6,7 +6,7 @@
 
 class accumulate : public kotekan::Stage {
 public:
-    accumulate(kotekan::Config& config, const string& unique_name,
+    accumulate(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
     ~accumulate();
     void main_thread() override;

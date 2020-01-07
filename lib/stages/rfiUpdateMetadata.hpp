@@ -36,7 +36,7 @@
 class rfiUpdateMetadata : public kotekan::Stage {
 public:
     /// Constructor.
-    rfiUpdateMetadata(kotekan::Config& config, const string& unique_name,
+    rfiUpdateMetadata(kotekan::Config& config, const std::string& unique_name,
                       kotekan::bufferContainer& buffer_container);
 
     /// Destructor.

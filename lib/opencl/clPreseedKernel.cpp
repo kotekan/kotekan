@@ -5,7 +5,7 @@ using kotekan::Config;
 
 REGISTER_CL_COMMAND(clPreseedKernel);
 
-clPreseedKernel::clPreseedKernel(Config& config, const string& unique_name,
+clPreseedKernel::clPreseedKernel(Config& config, const std::string& unique_name,
                                  bufferContainer& host_buffers, clDeviceInterface& device) :
     clCommand(config, unique_name, host_buffers, device, "preseed", "preseed_multifreq.cl") {
     _num_elements = config.get<int>(unique_name, "num_elements");
@@ -32,7 +32,7 @@ void clPreseedKernel::build() {
 
     cl_device_id dev_id = device.get_id();
 
-    string cl_options = "";
+    std::string cl_options = "";
     cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_elements);
     cl_options += " -D NUM_BLOCKS=" + std::to_string(_num_blocks);
     cl_options += " -D NUM_TIMESAMPLES=" + std::to_string(_samples_per_data_set);

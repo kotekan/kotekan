@@ -17,7 +17,7 @@
 
 REGISTER_KOTEKAN_STAGE(FakeGpu);
 
-FakeGpu::FakeGpu(kotekan::Config& config, const string& unique_name,
+FakeGpu::FakeGpu(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container) :
     kotekan::Stage(config, unique_name, buffer_container, std::bind(&FakeGpu::main_thread, this)) {
 

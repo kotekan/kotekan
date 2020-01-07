@@ -22,8 +22,6 @@
 #include <string>
 #include <vector>
 
-using json = nlohmann::json;
-
 
 /**
  * @class visTestPattern
@@ -93,7 +91,7 @@ public:
     void main_thread() override;
 
     /// Callback function to receive updates from configUpdater.
-    void receive_update(kotekan::connectionInstance& conn, json& data);
+    void receive_update(kotekan::connectionInstance& conn, nlohmann::json& data);
 
 private:
     /// Gets the frequency, input and product information from the datasetManager.

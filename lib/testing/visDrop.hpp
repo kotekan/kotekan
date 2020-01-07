@@ -32,7 +32,7 @@
 class visDrop : public kotekan::Stage {
 public:
     // Default constructor
-    visDrop(kotekan::Config& config, const string& unique_name,
+    visDrop(kotekan::Config& config, const std::string& unique_name,
             kotekan::bufferContainer& buffer_container);
 
     // Main loop for the stage

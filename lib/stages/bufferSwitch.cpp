@@ -16,7 +16,7 @@ using kotekan::configUpdater;
 
 REGISTER_KOTEKAN_STAGE(bufferSwitch);
 
-bufferSwitch::bufferSwitch(Config& config, const string& unique_name,
+bufferSwitch::bufferSwitch(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     bufferMerge(config, unique_name, buffer_container) {
 

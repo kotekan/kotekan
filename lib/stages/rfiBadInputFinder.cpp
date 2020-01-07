@@ -29,7 +29,7 @@ using kotekan::restServer;
 
 REGISTER_KOTEKAN_STAGE(rfiBadInputFinder);
 
-rfiBadInputFinder::rfiBadInputFinder(Config& config, const string& unique_name,
+rfiBadInputFinder::rfiBadInputFinder(Config& config, const std::string& unique_name,
                                      bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&rfiBadInputFinder::main_thread, this)) {
     // Get buffer from framework
@@ -65,7 +65,7 @@ rfiBadInputFinder::~rfiBadInputFinder() {
     restServer::instance().remove_json_callback(endpoint);
 }
 
-void rfiBadInputFinder::rest_callback(connectionInstance& conn, json& json_request) {
+void rfiBadInputFinder::rest_callback(connectionInstance& conn, nlohmann::json& json_request) {
     // Notify that request was received
     INFO("RFI Callback Received... Changing Parameters")
     // Lock mutex

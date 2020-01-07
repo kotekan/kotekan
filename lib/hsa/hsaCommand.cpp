@@ -7,16 +7,17 @@ using std::string;
 
 #define MAX_ARGS_LEN 64
 
-hsaCommand::hsaCommand(Config& config_, const string& unique_name_, bufferContainer& host_buffers_,
-                       hsaDeviceInterface& device_, const string& default_kernel_command,
-                       const string& default_kernel_file_name) :
+hsaCommand::hsaCommand(Config& config_, const std::string& unique_name_,
+                       bufferContainer& host_buffers_, hsaDeviceInterface& device_,
+                       const std::string& default_kernel_command,
+                       const std::string& default_kernel_file_name) :
     gpuCommand(config_, unique_name_, host_buffers_, device_, default_kernel_command,
                default_kernel_file_name),
     device(device_) {
     _gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");
 
     // Set the local log level.
-    string s_log_level = config.get<std::string>(unique_name, "log_level");
+    std::string s_log_level = config.get<std::string>(unique_name, "log_level");
     set_log_level(s_log_level);
     set_log_prefix(unique_name);
 
@@ -103,7 +104,7 @@ void hsaCommand::finalize_frame(int frame_id) {
     HSA_CHECK(hsa_status);
 }
 
-uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {
+uint64_t hsaCommand::load_hsaco_file(string& file_name, std::string& kernel_name) {
 
     hsa_status_t hsa_status;
 

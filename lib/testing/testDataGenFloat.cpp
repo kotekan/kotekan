@@ -13,7 +13,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(testDataGenFloat);
 
-testDataGenFloat::testDataGenFloat(Config& config, const string& unique_name,
+testDataGenFloat::testDataGenFloat(Config& config, const std::string& unique_name,
                                    bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&testDataGenFloat::main_thread, this)) {
 

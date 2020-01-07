@@ -8,7 +8,7 @@
 // Value: the value of the constant
 class testDataGenFloat : public kotekan::Stage {
 public:
-    testDataGenFloat(kotekan::Config& config, const string& unique_name,
+    testDataGenFloat(kotekan::Config& config, const std::string& unique_name,
                      kotekan::bufferContainer& buffer_container);
     ~testDataGenFloat();
     void main_thread() override;

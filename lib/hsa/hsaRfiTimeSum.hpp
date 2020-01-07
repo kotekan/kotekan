@@ -48,7 +48,7 @@ class hsaRfiTimeSum : public hsaCommand {
 
 public:
     /// Constructor, initializes internal variables.
-    hsaRfiTimeSum(kotekan::Config& config, const string& unique_name,
+    hsaRfiTimeSum(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiTimeSum();

@@ -46,7 +46,7 @@ using kotekan::restServer;
 
 REGISTER_KOTEKAN_STAGE(frbNetworkProcess);
 
-frbNetworkProcess::frbNetworkProcess(Config& config_, const string& unique_name,
+frbNetworkProcess::frbNetworkProcess(Config& config_, const std::string& unique_name,
                                      bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&frbNetworkProcess::main_thread, this)),
     _ping_interval{
@@ -85,7 +85,8 @@ frbNetworkProcess::~frbNetworkProcess() {
 }
 
 
-void frbNetworkProcess::update_offset_callback(connectionInstance& conn, json& json_request) {
+void frbNetworkProcess::update_offset_callback(connectionInstance& conn,
+                                               nlohmann::json& json_request) {
     // no need for a lock here, beam_offset copied into a local variable for use
     try {
         beam_offset = json_request["beam_offset"];
@@ -120,7 +121,7 @@ void frbNetworkProcess::main_thread() {
     // rest server
     using namespace std::placeholders;
     restServer& rest_server = restServer::instance();
-    string endpoint = "/frb/update_beam_offset";
+    std::string endpoint = "/frb/update_beam_offset";
     rest_server.register_post_callback(
         endpoint, std::bind(&frbNetworkProcess::update_offset_callback, this, _1, _2));
 

@@ -12,7 +12,8 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(removeEv);
 
-removeEv::removeEv(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+removeEv::removeEv(Config& config, const std::string& unique_name,
+                   bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&removeEv::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");

@@ -12,7 +12,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(frbPostProcess);
 
-frbPostProcess::frbPostProcess(Config& config_, const string& unique_name,
+frbPostProcess::frbPostProcess(Config& config_, const std::string& unique_name,
                                bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&frbPostProcess::main_thread, this)),
     masked_packets_counter(kotekan::prometheus::Metrics::instance().add_counter(
@@ -26,7 +26,7 @@ frbPostProcess::frbPostProcess(Config& config_, const string& unique_name,
     _nbeams = config.get<int32_t>(unique_name, "num_beams_per_frb_packet");
     _timesamples_per_frb_packet = config.get<int32_t>(unique_name, "timesamples_per_frb_packet");
 
-    vector<int32_t> bd;
+    std::vector<int32_t> bd;
     _incoherent_beams =
         config.get_default<std::vector<int32_t>>(unique_name, "incoherent_beams", bd);
     _incoherent_truncation = config.get_default<float>(unique_name, "incoherent_truncation", 1e10);

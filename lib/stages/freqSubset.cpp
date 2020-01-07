@@ -29,7 +29,7 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(freqSubset);
 
 
-freqSubset::freqSubset(Config& config, const string& unique_name,
+freqSubset::freqSubset(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&freqSubset::main_thread, this)) {
 

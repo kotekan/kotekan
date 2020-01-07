@@ -20,10 +20,11 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using std::string;
 
 REGISTER_KOTEKAN_STAGE(chrxUplink);
 
-chrxUplink::chrxUplink(Config& config, const string& unique_name,
+chrxUplink::chrxUplink(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&chrxUplink::main_thread, this)) {
 
@@ -40,13 +41,13 @@ void chrxUplink::main_thread() {
 
     // Apply config.
     char hostname[1024];
-    string s_port;
+    std::string s_port;
 
     _collection_server_ip = config.get<std::string>(unique_name, "collection_server_ip");
     gethostname(hostname, 1024);
 
-    string s_hostname(hostname);
-    string lastNum = s_hostname.substr(s_hostname.length() - 2, 2);
+    std::string s_hostname(hostname);
+    std::string lastNum = s_hostname.substr(s_hostname.length() - 2, 2);
     s_port = fmt::format(fmt("410{:s}"), lastNum);
 
     _collection_server_port =

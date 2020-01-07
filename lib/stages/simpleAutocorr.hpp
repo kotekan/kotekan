@@ -13,7 +13,6 @@
 
 #include <string>
 #include <unistd.h>
-using std::string;
 
 /**
  * @class simpleAutocorr
@@ -45,7 +44,7 @@ using std::string;
 class simpleAutocorr : public kotekan::Stage {
 public:
     /// Constructor, also initializes FFTW and values from config yaml.
-    simpleAutocorr(kotekan::Config& config, const string& unique_name,
+    simpleAutocorr(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
 
     /// Destructor, frees local allocs and exits FFTW.

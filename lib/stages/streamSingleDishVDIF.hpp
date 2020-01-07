@@ -35,7 +35,7 @@
 class streamSingleDishVDIF : public kotekan::Stage {
 public:
     /// Constructor
-    streamSingleDishVDIF(kotekan::Config& config, const string& unique_name,
+    streamSingleDishVDIF(kotekan::Config& config, const std::string& unique_name,
                          kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~streamSingleDishVDIF();
@@ -51,7 +51,7 @@ private:
     /// Port of the listening receiver.
     uint32_t dest_port;
     /// IP of the listening receiver.
-    string dest_ip;
+    std::string dest_ip;
 
     /// Number of frequencies in the buffer
     int num_freq;

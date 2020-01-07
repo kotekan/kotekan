@@ -47,10 +47,10 @@ public:
      * @param default_kernel_command   Name of the kernel for profiling read out.
      * @param default_kernel_file_name Kernel dile name, not really needed with cuda kernels.
      */
-    cudaCommand(kotekan::Config& config, const string& unique_name,
+    cudaCommand(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
-                const string& default_kernel_command = "",
-                const string& default_kernel_file_name = "");
+                const std::string& default_kernel_command = "",
+                const std::string& default_kernel_file_name = "");
     /// Destructor that frees memory for the kernel and name.
     virtual ~cudaCommand();
 
@@ -74,8 +74,9 @@ protected:
 };
 
 // Create a factory for cudaCommands
-CREATE_FACTORY(cudaCommand, // const string &, const string &,
-               kotekan::Config&, const string&, kotekan::bufferContainer&, cudaDeviceInterface&);
+CREATE_FACTORY(cudaCommand, // const std::string &, const std::string &,
+               kotekan::Config&, const std::string&, kotekan::bufferContainer&,
+               cudaDeviceInterface&);
 #define REGISTER_CUDA_COMMAND(newCommand)                                                          \
     REGISTER_NAMED_TYPE_WITH_FACTORY(cudaCommand, newCommand, #newCommand)
 

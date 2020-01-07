@@ -10,9 +10,7 @@
 #include "Stage.hpp"
 
 #include <optional>
-#include <vector>
 
-using std::vector;
 
 /**
  * @class pulsarPostProcess
@@ -65,7 +63,7 @@ using std::vector;
 class pulsarPostProcess : public kotekan::Stage {
 public:
     /// Constructor.
-    pulsarPostProcess(kotekan::Config& config_, const string& unique_name,
+    pulsarPostProcess(kotekan::Config& config_, const std::string& unique_name,
                       kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~pulsarPostProcess();

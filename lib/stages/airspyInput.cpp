@@ -6,7 +6,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(airspyInput);
 
-airspyInput::airspyInput(Config& config, const string& unique_name,
+airspyInput::airspyInput(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&airspyInput::main_thread, this)) {
 

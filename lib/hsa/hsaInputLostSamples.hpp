@@ -29,7 +29,7 @@
 class hsaInputLostSamples : public hsaCommand {
 public:
     /// Constructor, applies config, initializes variables
-    hsaInputLostSamples(kotekan::Config& config, const string& unique_name,
+    hsaInputLostSamples(kotekan::Config& config, const std::string& unique_name,
                         kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     // Destructor, cleans up local allocs
     virtual ~hsaInputLostSamples();

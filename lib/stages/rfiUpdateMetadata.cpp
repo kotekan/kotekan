@@ -10,7 +10,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(rfiUpdateMetadata);
 
-rfiUpdateMetadata::rfiUpdateMetadata(Config& config, const string& unique_name,
+rfiUpdateMetadata::rfiUpdateMetadata(Config& config, const std::string& unique_name,
                                      bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&rfiUpdateMetadata::main_thread, this)) {
 

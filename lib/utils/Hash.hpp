@@ -15,9 +15,6 @@
 #define _SEED 1420
 
 
-using nlohmann::json;
-
-
 /**
  * @brief Container for 128-bit hashes.
  *
@@ -145,7 +142,7 @@ std::ostream& operator<<(std::ostream& os, const Hash& h);
 std::string to_string(const Hash& h);
 
 // Conversions of the index types to json
-void to_json(json& j, const Hash& h);
-void from_json(const json& j, Hash& h);
+void to_json(nlohmann::json& j, const Hash& h);
+void from_json(const nlohmann::json& j, Hash& h);
 
 #endif

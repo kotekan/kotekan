@@ -5,7 +5,7 @@
 
 class hsaAsyncCopyGain : public hsaCommand {
 public:
-    hsaAsyncCopyGain(kotekan::Config& config, const string& unique_name,
+    hsaAsyncCopyGain(kotekan::Config& config, const std::string& unique_name,
                      kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaAsyncCopyGain();

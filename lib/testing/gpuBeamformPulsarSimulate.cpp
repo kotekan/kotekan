@@ -26,7 +26,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(gpuBeamformPulsarSimulate);
 
-gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config, const string& unique_name,
+gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config, const std::string& unique_name,
                                                      bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&gpuBeamformPulsarSimulate::main_thread, this)) {
@@ -41,9 +41,9 @@ gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config, const strin
     _source_ra = config.get<std::vector<float>>(unique_name, "source_ra");
     _source_dec = config.get<std::vector<float>>(unique_name, "source_dec");
     _reorder_map = config.get<std::vector<int32_t>>(unique_name, "reorder_map");
-    _gain_dir = config.get<std::vector<string>>(unique_name, "pulsar_gain/pulsar_gain_dir");
+    _gain_dir = config.get<std::vector<std::string>>(unique_name, "pulsar_gain/pulsar_gain_dir");
     INFO("[PSR CPU] start with gain {:s} {:s} {:s}", _gain_dir[0], _gain_dir[1], _gain_dir[2]);
-    vector<float> dg = {0.0, 0.0}; // re,im
+    std::vector<float> dg = {0.0, 0.0}; // re,im
     default_gains = config.get_default<std::vector<float>>(unique_name, "frb_missing_gains", dg);
 
 

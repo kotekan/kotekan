@@ -110,7 +110,7 @@ public:
      *
      * @return  Serialized config.
      **/
-    virtual json to_dm_json() const {
+    virtual nlohmann::json to_dm_json() const {
         return {};
     }
 
@@ -172,7 +172,7 @@ public:
      *
      * @return  JSON config.
      **/
-    json to_dm_json() const override;
+    nlohmann::json to_dm_json() const override;
 
 private:
     // Config parameters for pulsar gating

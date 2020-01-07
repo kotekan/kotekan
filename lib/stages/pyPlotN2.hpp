@@ -51,7 +51,7 @@
 class pyPlotN2 : public kotekan::Stage {
 public:
     /// Constructor
-    pyPlotN2(kotekan::Config& config, const string& unique_name,
+    pyPlotN2(kotekan::Config& config, const std::string& unique_name,
              kotekan::bufferContainer& buffer_container);
 
     /// Destructor, currently does nothing

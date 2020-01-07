@@ -10,7 +10,7 @@ using kotekan::Config;
 
 REGISTER_CL_COMMAND(clKVCorr);
 
-clKVCorr::clKVCorr(Config& config, const string& unique_name, bufferContainer& host_buffers,
+clKVCorr::clKVCorr(Config& config, const std::string& unique_name, bufferContainer& host_buffers,
                    clDeviceInterface& device) :
     clCommand(config, unique_name, host_buffers, device, "corr", "kv_corr.cl") {
     _num_elements = config.get<int>(unique_name, "num_elements");
@@ -58,7 +58,7 @@ void clKVCorr::build() {
 
     cl_int err;
 
-    string cl_options = "";
+    std::string cl_options = "";
 
     if (_data_format == "4+4b") {
         INFO("Running 4+4b CHIME-like data");

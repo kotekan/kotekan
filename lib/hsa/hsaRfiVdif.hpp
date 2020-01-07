@@ -6,7 +6,7 @@
 
 class hsaRfiVdif : public hsaCommand {
 public:
-    hsaRfiVdif(kotekan::Config& config, const string& unique_name,
+    hsaRfiVdif(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaRfiVdif();

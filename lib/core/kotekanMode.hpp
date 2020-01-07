@@ -8,8 +8,6 @@
 
 #include <map>
 
-using std::map;
-using std::string;
 
 // doxygen wants the namespace to be documented somewhere
 /*!
@@ -40,9 +38,9 @@ private:
     Config& config;
     bufferContainer buffer_container;
 
-    map<string, Stage*> stages;
-    map<string, struct metadataPool*> metadata_pools;
-    map<string, struct Buffer*> buffers;
+    std::map<std::string, Stage*> stages;
+    std::map<std::string, struct metadataPool*> metadata_pools;
+    std::map<std::string, struct Buffer*> buffers;
 };
 
 } // namespace kotekan

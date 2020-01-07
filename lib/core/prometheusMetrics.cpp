@@ -5,6 +5,8 @@
 
 #include "fmt.hpp"
 
+using std::string;
+
 namespace kotekan {
 namespace prometheus {
 

@@ -7,7 +7,7 @@
 
 class computeDualpolPower : public kotekan::Stage {
 public:
-    computeDualpolPower(kotekan::Config& config, const string& unique_name,
+    computeDualpolPower(kotekan::Config& config, const std::string& unique_name,
                         kotekan::bufferContainer& buffer_container);
     ~computeDualpolPower();
     void main_thread() override;

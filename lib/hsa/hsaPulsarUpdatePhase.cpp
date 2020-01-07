@@ -37,7 +37,7 @@ using kotekan::restServer;
 
 REGISTER_HSA_COMMAND(hsaPulsarUpdatePhase);
 
-hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_name,
+hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const std::string& unique_name,
                                            bufferContainer& host_buffers,
                                            hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "", "") {

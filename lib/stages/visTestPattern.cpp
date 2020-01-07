@@ -37,6 +37,7 @@ using kotekan::Config;
 using kotekan::HTTP_RESPONSE;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
+using nlohmann::json;
 
 REGISTER_KOTEKAN_STAGE(visTestPattern);
 
@@ -316,7 +317,7 @@ void visTestPattern::main_thread() {
                         json data;
                         data["result"] = "OK";
                         data["name"] = test_name;
-                        restReply reply = restClient::instance().make_request_blocking(
+                        restClient::restReply reply = restClient::instance().make_request_blocking(
                             test_done_path, data, test_done_host, test_done_port);
                         if (!reply.first) {
                             FATAL_ERROR("Failed to report back test completion: {:s}",
@@ -344,7 +345,7 @@ void visTestPattern::main_thread() {
         json data;
         data["result"] = error_msg;
         data["name"] = test_name;
-        restReply reply = restClient::instance().make_request_blocking(
+        restClient::restReply reply = restClient::instance().make_request_blocking(
             test_done_path, data, test_done_host, test_done_port);
         if (!reply.first) {
             FATAL_ERROR("Failed to report back test completion: {:s}", reply.second);

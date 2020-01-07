@@ -87,7 +87,7 @@ class hsaBeamformKernel : public hsaCommand {
 public:
     /// Constructor, also initializes internal variables from config, allocates host_map, host_coeff
     /// and host_gain, get metadata buffer and register endpoint for gain path.
-    hsaBeamformKernel(kotekan::Config& config, const string& unique_name,
+    hsaBeamformKernel(kotekan::Config& config, const std::string& unique_name,
                       kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor, cleans up local allocs.
@@ -178,7 +178,7 @@ private:
     std::string endpoint_EW_beam;
 
     /// Config base (@todo this is a huge hack replace with updatable config)
-    string config_base;
+    std::string config_base;
 };
 
 #endif

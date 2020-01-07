@@ -24,7 +24,7 @@
 namespace kotekan {
 
 /// Implicit conversion for constructing `nlohmann::json` from a `basebandDumpStatus`
-void to_json(json& j, const basebandDumpStatus& s);
+void to_json(nlohmann::json& j, const basebandDumpStatus& s);
 
 
 /**
@@ -160,7 +160,7 @@ public:
      * @param conn The connection instance to send results to
      * @param request JSON dictionary with the request data
      */
-    void handle_request_callback(connectionInstance& conn, json& request);
+    void handle_request_callback(connectionInstance& conn, nlohmann::json& request);
 
     /**
      * @brief Register a readout stage for specified frequency

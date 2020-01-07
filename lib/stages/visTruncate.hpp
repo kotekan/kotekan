@@ -37,7 +37,7 @@
 class visTruncate : public kotekan::Stage {
 public:
     /// Constructor; loads parameters from config
-    visTruncate(kotekan::Config& config, const string& unique_name,
+    visTruncate(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& buffer_container);
     ~visTruncate() = default;
 

@@ -15,7 +15,7 @@ using namespace std;
 REGISTER_KOTEKAN_STAGE(cudaProcess);
 
 // TODO Remove the GPU_ID from this constructor
-cudaProcess::cudaProcess(Config& config_, const string& unique_name,
+cudaProcess::cudaProcess(Config& config_, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     gpuProcess(config_, unique_name, buffer_container) {
     device = new cudaDeviceInterface(config_, gpu_id, _gpu_buffer_depth);

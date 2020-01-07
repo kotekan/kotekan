@@ -42,7 +42,7 @@
 class rfiAVXVDIF : public kotekan::Stage {
 public:
     // Constructor, resgister producer/consumer and apply config
-    rfiAVXVDIF(kotekan::Config& config, const string& unique_name,
+    rfiAVXVDIF(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
     // Destructor, do nothing
     ~rfiAVXVDIF();

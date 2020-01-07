@@ -7,11 +7,13 @@
 #include <iostream>
 #include <sstream>
 
+using nlohmann::json;
+
 
 // Conversion of std::chrono::system_clock::time_point to JSON
 namespace std {
 namespace chrono {
-void to_json(json& j, const system_clock::time_point& t) {
+void to_json(nlohmann::json& j, const system_clock::time_point& t) {
     std::time_t t_c = std::chrono::system_clock::to_time_t(t);
     std::tm t_tm;
     localtime_r(&t_c, &t_tm);

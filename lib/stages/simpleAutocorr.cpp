@@ -6,7 +6,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(simpleAutocorr);
 
-simpleAutocorr::simpleAutocorr(Config& config, const string& unique_name,
+simpleAutocorr::simpleAutocorr(Config& config, const std::string& unique_name,
                                bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&simpleAutocorr::main_thread, this)) {
 

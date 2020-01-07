@@ -52,6 +52,7 @@ extern "C" {
 #include "hsaBase.h"
 #endif
 
+using std::string;
 using json = nlohmann::json;
 using namespace kotekan;
 
@@ -227,7 +228,7 @@ json get_json_version_info() {
     version_json["branch"] = get_git_branch();
     version_json["git_commit_hash"] = get_git_commit_hash();
     version_json["cmake_build_settings"] = parse_cmake_options();
-    vector<string> available_stages;
+    std::vector<std::string> available_stages;
     std::map<std::string, StageMaker*> known_stages = StageFactoryRegistry::get_registered_stages();
     for (auto& stage_maker : known_stages)
         available_stages.push_back(stage_maker.first);

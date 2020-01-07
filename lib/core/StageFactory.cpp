@@ -4,6 +4,10 @@
 
 #include "fmt.hpp"
 
+using nlohmann::json;
+using std::string;
+
+
 namespace kotekan {
 
 StageFactory::StageFactory(Config& config, bufferContainer& buffer_container) :
@@ -20,8 +24,8 @@ StageFactory::StageFactory(Config& config, bufferContainer& buffer_container) :
 
 StageFactory::~StageFactory() {}
 
-map<string, Stage*> StageFactory::build_stages() {
-    map<string, Stage*> stages;
+std::map<std::string, Stage*> StageFactory::build_stages() {
+    std::map<std::string, Stage*> stages;
 
     // Start parsing tree, put the stages in the "stages" vector
     build_from_tree(stages, config.get_full_config_json(), "");
@@ -29,8 +33,8 @@ map<string, Stage*> StageFactory::build_stages() {
     return stages;
 }
 
-void StageFactory::build_from_tree(map<string, Stage*>& stages, json& config_tree,
-                                   const string& path) {
+void StageFactory::build_from_tree(std::map<std::string, Stage*>& stages,
+                                   nlohmann::json& config_tree, const std::string& path) {
 
     for (json::iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
         // If the item isn't an object we can just ignore it.

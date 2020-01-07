@@ -2,6 +2,8 @@
 
 #include <cstring>
 
+using nlohmann::json;
+
 // Initialise the serial from a std::string
 input_ctype::input_ctype() {
     chan_id = 0;
@@ -230,7 +232,7 @@ double movingAverage::average() {
 }
 
 std::vector<std::string> regex_split(const std::string input, const std::string reg) {
-    vector<std::string> split_array;
+    std::vector<std::string> split_array;
     std::regex split_regex(reg);
     std::copy(std::sregex_token_iterator(input.begin(), input.end(), split_regex, -1),
               std::sregex_token_iterator(), std::back_inserter(split_array));

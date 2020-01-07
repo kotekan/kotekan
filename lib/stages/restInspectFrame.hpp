@@ -45,7 +45,7 @@
 class restInspectFrame : public kotekan::Stage {
 public:
     /// Constructor
-    restInspectFrame(kotekan::Config& config, const string& unique_name,
+    restInspectFrame(kotekan::Config& config, const std::string& unique_name,
                      kotekan::bufferContainer& buffer_container);
 
     /// Destructor

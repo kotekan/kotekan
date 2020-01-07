@@ -40,7 +40,7 @@ using kotekan::prometheus::Metrics;
 REGISTER_KOTEKAN_STAGE(baselineCompression);
 
 
-baselineCompression::baselineCompression(Config& config, const string& unique_name,
+baselineCompression::baselineCompression(Config& config, const std::string& unique_name,
                                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&baselineCompression::main_thread, this)),

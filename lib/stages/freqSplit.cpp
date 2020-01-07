@@ -29,7 +29,8 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(freqSplit);
 
 
-freqSplit::freqSplit(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+freqSplit::freqSplit(Config& config, const std::string& unique_name,
+                     bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&freqSplit::main_thread, this)) {
 
     // Get the list of buffers that this stage shoud connect to

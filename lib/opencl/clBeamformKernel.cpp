@@ -12,7 +12,7 @@ using kotekan::Config;
 
 REGISTER_CL_COMMAND(clBeamformKernel);
 
-clBeamformKernel::clBeamformKernel(Config& config, const string& unique_name,
+clBeamformKernel::clBeamformKernel(Config& config, const std::string& unique_name,
                                    bufferContainer& host_buffers, clDeviceInterface& device) :
     clCommand(config, unique_name, host_buffers, device, "gpu_beamforming",
               "beamform_tree_scale.cl") {
@@ -50,7 +50,7 @@ void clBeamformKernel::build() {
 
     cl_device_id dev_id = device.get_id();
 
-    string cl_options = "";
+    std::string cl_options = "";
     cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_elements);
     cl_options += " -D NUM_TIMESAMPLES=" + std::to_string(_samples_per_data_set);
 

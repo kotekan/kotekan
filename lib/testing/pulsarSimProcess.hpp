@@ -9,9 +9,6 @@
 
 #include "Stage.hpp"
 
-#include <vector>
-
-using std::vector;
 
 /**
  * @class pulsarSimProcess
@@ -44,7 +41,7 @@ using std::vector;
 class pulsarSimProcess : public kotekan::Stage {
 public:
     /// constructor
-    pulsarSimProcess(kotekan::Config& config_, const string& unique_name,
+    pulsarSimProcess(kotekan::Config& config_, const std::string& unique_name,
                      kotekan::bufferContainer& buffer_container);
 
     /// distructor

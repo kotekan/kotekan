@@ -31,7 +31,7 @@
 class hsaRfiVarOutput : public hsaCommand {
 public:
     /// Constructor
-    hsaRfiVarOutput(kotekan::Config& config, const string& unique_name,
+    hsaRfiVarOutput(kotekan::Config& config, const std::string& unique_name,
                     kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor
     virtual ~hsaRfiVarOutput();

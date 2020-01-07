@@ -9,8 +9,8 @@ using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaInputData);
 
-hsaInputData::hsaInputData(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                           hsaDeviceInterface& device) :
+hsaInputData::hsaInputData(Config& config, const std::string& unique_name,
+                           bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "hsaInputData", "") {
     command_type = gpuCommandType::COPY_IN;
 

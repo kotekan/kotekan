@@ -5,7 +5,7 @@ using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaBeamformPulsarOutput);
 
-hsaBeamformPulsarOutput::hsaBeamformPulsarOutput(Config& config, const string& unique_name,
+hsaBeamformPulsarOutput::hsaBeamformPulsarOutput(Config& config, const std::string& unique_name,
                                                  bufferContainer& host_buffers,
                                                  hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "hsaBeamformPulsarOutput", "") {

@@ -11,7 +11,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(invalidateVDIFframes);
 
-invalidateVDIFframes::invalidateVDIFframes(Config& config, const string& unique_name,
+invalidateVDIFframes::invalidateVDIFframes(Config& config, const std::string& unique_name,
                                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&invalidateVDIFframes::main_thread, this)) {

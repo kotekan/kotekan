@@ -41,7 +41,8 @@ REGISTER_KOTEKAN_STAGE(FakeVis);
 REGISTER_KOTEKAN_STAGE(ReplaceVis);
 
 
-FakeVis::FakeVis(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+FakeVis::FakeVis(Config& config, const std::string& unique_name,
+                 bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&FakeVis::main_thread, this)) {
 
     // Fetch any simple configuration
@@ -238,7 +239,7 @@ void FakeVis::fill_non_vis(visFrameView& frame) {
 }
 
 
-ReplaceVis::ReplaceVis(Config& config, const string& unique_name,
+ReplaceVis::ReplaceVis(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&ReplaceVis::main_thread, this)) {
 

@@ -18,7 +18,7 @@ using kotekan::restServer;
 using namespace std;
 
 // TODO Remove the GPU_ID from this constructor
-gpuProcess::gpuProcess(Config& config_, const string& unique_name,
+gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&gpuProcess::main_thread, this)) {
     log_profiling = config.get_default<bool>(unique_name, "log_profiling", false);
@@ -30,16 +30,16 @@ gpuProcess::gpuProcess(Config& config_, const string& unique_name,
 
     json in_bufs = config.get_value(unique_name, "in_buffers");
     for (json::iterator it = in_bufs.begin(); it != in_bufs.end(); ++it) {
-        string internal_name = it.key();
-        string global_buffer_name = it.value();
+        std::string internal_name = it.key();
+        std::string global_buffer_name = it.value();
         struct Buffer* buf = buffer_container.get_buffer(global_buffer_name);
         local_buffer_container.add_buffer(internal_name, buf);
     }
 
     json out_bufs = config.get_value(unique_name, "out_buffers");
     for (json::iterator it = out_bufs.begin(); it != out_bufs.end(); ++it) {
-        string internal_name = it.key();
-        string global_buffer_name = it.value();
+        std::string internal_name = it.key();
+        std::string global_buffer_name = it.value();
         struct Buffer* buf = buffer_container.get_buffer(global_buffer_name);
         local_buffer_container.add_buffer(internal_name, buf);
     }
@@ -61,8 +61,8 @@ void gpuProcess::init() {
         final_signals.push_back(create_signal());
     }
 
-    string g_log_level = config.get<string>(unique_name, "log_level");
-    string s_log_level =
+    std::string g_log_level = config.get<string>(unique_name, "log_level");
+    std::string s_log_level =
         config.get_default<string>(unique_name, "device_interface_log_level", g_log_level);
     dev->set_log_level(s_log_level);
     dev->set_log_prefix(fmt::format(fmt("GPU[{:d}] device interface"), gpu_id));
@@ -205,7 +205,7 @@ void gpuProcess::results_thread() {
         DEBUG2("Finished finalizing frames for gpu[{:d}][{:d}]", gpu_id, gpu_frame_id);
 
         if (log_profiling) {
-            string output = "";
+            std::string output = "";
             for (uint32_t i = 0; i < commands.size(); ++i) {
                 output = fmt::format(fmt("{:s}kernel: {:s} time: {:f}; \n"), output,
                                      commands[i]->get_name(),

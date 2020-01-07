@@ -25,7 +25,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(gpuBeamformSimulate);
 
-gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const string& unique_name,
+gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const std::string& unique_name,
                                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&gpuBeamformSimulate::main_thread, this)) {
@@ -45,7 +45,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const string& unique_na
         _ew_spacing_c[i] = _ew_spacing[i];
     }
     _gain_dir = config.get<std::string>(unique_name, "gain_dir");
-    vector<float> dg = {0.0, 0.0}; // re,im
+    std::vector<float> dg = {0.0, 0.0}; // re,im
     default_gains = config.get_default<std::vector<float>>(unique_name, "frb_missing_gains", dg);
     scaling = config.get_default<float>(unique_name, "frb_scaling", 1.0);
 

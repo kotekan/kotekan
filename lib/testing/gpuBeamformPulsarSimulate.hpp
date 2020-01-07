@@ -21,7 +21,7 @@
 class gpuBeamformPulsarSimulate : public kotekan::Stage {
 public:
     /// Constructor
-    gpuBeamformPulsarSimulate(kotekan::Config& config, const string& unique_name,
+    gpuBeamformPulsarSimulate(kotekan::Config& config, const std::string& unique_name,
                               kotekan::bufferContainer& buffer_container);
     /// Destructor
     ~gpuBeamformPulsarSimulate();
@@ -52,7 +52,7 @@ private:
     /// number of polarizations = 2
     int32_t _num_pol;
     /// Array of reordering index, length 512
-    vector<int32_t> _reorder_map;
+    std::vector<int32_t> _reorder_map;
     /// Array of reordering index in c
     int* reorder_map_c;
     /// N-S feed separation in m
@@ -62,9 +62,9 @@ private:
 
     /// gain stuff:
     /// Array of gain paths
-    vector<string> _gain_dir;
+    std::vector<std::string> _gain_dir;
     /// Defualt gain if invalid gain paths
-    vector<float> default_gains;
+    std::vector<float> default_gains;
     /// Array of gain values
     float* cpu_gain;
 
@@ -87,8 +87,8 @@ private:
 
     /// 10 pulsar RA, DEC and scaling factor
     struct psrCoord psr_coord; // active coordinates to be passed to metatdata
-    vector<float> _source_ra;
-    vector<float> _source_dec;
+    std::vector<float> _source_ra;
+    std::vector<float> _source_dec;
 
     /// Array of phase for beamforming
     double* phase;

@@ -7,8 +7,8 @@ using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaBarrier);
 
-hsaBarrier::hsaBarrier(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                       hsaDeviceInterface& device) :
+hsaBarrier::hsaBarrier(Config& config, const std::string& unique_name,
+                       bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "", "") {
     command_type = gpuCommandType::BARRIER;
 }

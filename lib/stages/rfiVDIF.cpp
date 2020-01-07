@@ -17,7 +17,8 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(rfiVDIF);
 
-rfiVDIF::rfiVDIF(Config& config, const string& unique_name, bufferContainer& buffer_containter) :
+rfiVDIF::rfiVDIF(Config& config, const std::string& unique_name,
+                 bufferContainer& buffer_containter) :
     Stage(config, unique_name, buffer_containter, std::bind(&rfiVDIF::main_thread, this)) {
     // Get relevant buffers
     buf_in = get_buffer("vdif_in");

@@ -51,10 +51,10 @@ void clDeviceInterface::free_gpu_memory(void* ptr) {
 }
 
 
-cl_mem clDeviceInterface::get_gpu_memory(const string& name, const uint32_t len) {
+cl_mem clDeviceInterface::get_gpu_memory(const std::string& name, const uint32_t len) {
     return (cl_mem)gpuDeviceInterface::get_gpu_memory(name, len);
 }
-cl_mem clDeviceInterface::get_gpu_memory_array(const string& name, const uint32_t index,
+cl_mem clDeviceInterface::get_gpu_memory_array(const std::string& name, const uint32_t index,
                                                const uint32_t len) {
     return (cl_mem)gpuDeviceInterface::get_gpu_memory_array(name, index, len);
 }

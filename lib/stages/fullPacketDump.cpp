@@ -25,7 +25,7 @@ using kotekan::restServer;
 
 REGISTER_KOTEKAN_STAGE(fullPacketDump);
 
-fullPacketDump::fullPacketDump(Config& config, const string& unique_name,
+fullPacketDump::fullPacketDump(Config& config, const std::string& unique_name,
                                bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&fullPacketDump::main_thread, this)) {
 
@@ -53,7 +53,7 @@ fullPacketDump::~fullPacketDump() {
     free(_packet_frame);
 }
 
-void fullPacketDump::packet_grab_callback(connectionInstance& conn, json& json_request) {
+void fullPacketDump::packet_grab_callback(connectionInstance& conn, nlohmann::json& json_request) {
 
     if (!got_packets) {
         conn.send_error("no packets captured yet.", HTTP_RESPONSE::REQUEST_FAILED);

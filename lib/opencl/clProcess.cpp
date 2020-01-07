@@ -14,7 +14,7 @@ using namespace std;
 REGISTER_KOTEKAN_STAGE(clProcess);
 
 // TODO Remove the GPU_ID from this constructor
-clProcess::clProcess(Config& config_, const string& unique_name,
+clProcess::clProcess(Config& config_, const std::string& unique_name,
                      bufferContainer& buffer_container) :
     gpuProcess(config_, unique_name, buffer_container) {
     device = new clDeviceInterface(config_, gpu_id, _gpu_buffer_depth);

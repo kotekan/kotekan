@@ -12,7 +12,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(TestDropFrames);
 
-TestDropFrames::TestDropFrames(Config& config, const string& unique_name,
+TestDropFrames::TestDropFrames(Config& config, const std::string& unique_name,
                                bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&TestDropFrames::main_thread, this)),
     _samples_per_data_set(config.get<uint32_t>(unique_name, "samples_per_data_set")),

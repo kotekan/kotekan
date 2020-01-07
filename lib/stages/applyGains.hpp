@@ -64,7 +64,7 @@ class applyGains : public kotekan::Stage {
 
 public:
     /// Default constructor
-    applyGains(kotekan::Config& config, const string& unique_name,
+    applyGains(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
     /// Main loop for the stage

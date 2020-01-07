@@ -9,7 +9,7 @@
 
 REGISTER_KOTEKAN_STAGE(chimeMetadataDump);
 
-chimeMetadataDump::chimeMetadataDump(kotekan::Config& config, const string& unique_name,
+chimeMetadataDump::chimeMetadataDump(kotekan::Config& config, const std::string& unique_name,
                                      kotekan::bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&chimeMetadataDump::main_thread, this)) {
 

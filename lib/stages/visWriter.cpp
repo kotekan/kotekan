@@ -41,7 +41,8 @@ REGISTER_KOTEKAN_STAGE(visWriter);
 REGISTER_KOTEKAN_STAGE(visCalWriter);
 
 
-visWriter::visWriter(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+visWriter::visWriter(Config& config, const std::string& unique_name,
+                     bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&visWriter::main_thread, this)),
     late_frame_counter(Metrics::instance().add_counter("kotekan_viswriter_late_frame_total",
                                                        unique_name, {"freq_id"})),
@@ -363,7 +364,7 @@ std::map<std::string, std::string> visWriter::make_metadata(dset_id_t ds_id) {
 }
 
 
-visCalWriter::visCalWriter(Config& config, const string& unique_name,
+visCalWriter::visCalWriter(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     visWriter::visWriter(config, unique_name, buffer_container) {
 
@@ -427,7 +428,8 @@ void visCalWriter::rest_callback(connectionInstance& conn) {
     }
 
     // Respond with frozen file path
-    json reply{"file_path", fmt::format(fmt("{:s}/{:s}/{:s}"), root_path, acq_name, fname_frozen)};
+    nlohmann::json reply{"file_path",
+                         fmt::format(fmt("{:s}/{:s}/{:s}"), root_path, acq_name, fname_frozen)};
     conn.send_json_reply(reply);
     INFO("Done. Resuming write loop.");
 }

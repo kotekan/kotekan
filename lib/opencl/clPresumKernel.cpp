@@ -7,7 +7,7 @@ using kotekan::Config;
 
 REGISTER_CL_COMMAND(clPresumKernel);
 
-clPresumKernel::clPresumKernel(Config& config, const string& unique_name,
+clPresumKernel::clPresumKernel(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, clDeviceInterface& device) :
     clCommand(config, unique_name, host_buffers, device, "offsetAccumulateElements",
               "offset_accumulator.cl") {
@@ -30,7 +30,7 @@ void clPresumKernel::build() {
 
     cl_device_id dev_id = device.get_id();
 
-    string cl_options = "";
+    std::string cl_options = "";
     cl_options += " -D ACTUAL_NUM_ELEMENTS=" + std::to_string(_num_elements);
     cl_options += " -D ACTUAL_NUM_FREQUENCIES=" + std::to_string(_num_local_freq);
     CHECK_CL_ERROR(clBuildProgram(program, 1, &dev_id, cl_options.c_str(), nullptr, nullptr));

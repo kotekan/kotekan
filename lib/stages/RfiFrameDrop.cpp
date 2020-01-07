@@ -219,7 +219,7 @@ bool RfiFrameDrop::rest_enable_callback(nlohmann::json& update) {
 
     try {
         enable_rfi_zero_new = update.at("rfi_zeroing").get<bool>();
-    } catch (json::exception& e) {
+    } catch (nlohmann::json::exception& e) {
         WARN("Failure parsing update: Can't read 'rfi_zeroing' (bool): {:s}", e.what());
         return false;
     }
@@ -242,7 +242,7 @@ bool RfiFrameDrop::rest_thresholds_callback(nlohmann::json& update) {
     nlohmann::json j;
     try {
         j = update.at("thresholds");
-    } catch (json::exception& e) {
+    } catch (nlohmann::json::exception& e) {
         WARN("Failure parsing update: array 'thresholds' not found: {:s}", e.what());
     }
 

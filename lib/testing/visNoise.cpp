@@ -9,7 +9,8 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(visNoise);
 
-visNoise::visNoise(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+visNoise::visNoise(Config& config, const std::string& unique_name,
+                   bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&visNoise::main_thread, this)) {
 
     // Setup the buffers

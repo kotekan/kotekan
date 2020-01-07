@@ -53,14 +53,14 @@ public:
      *                               for a derived command
      * @param default_kernel_file_name  (optional) external file (e.g. CL) used by a command
      */
-    gpuCommand(kotekan::Config& config, const string& unique_name,
+    gpuCommand(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& host_buffers, gpuDeviceInterface& device,
-               const string& default_kernel_command = "",
-               const string& default_kernel_file_name = "");
+               const std::string& default_kernel_command = "",
+               const std::string& default_kernel_file_name = "");
     /// Destructor that frees memory for the kernel and name.
     virtual ~gpuCommand();
     /// Get that returns the name given to this gpuCommand object.
-    string& get_name();
+    std::string& get_name();
 
     /**
      * @brief This function blocks on whatever resource is required by the command.
@@ -92,14 +92,14 @@ public:
 protected:
     /// A unique name used for the gpu command. Used in indexing commands in a list and referencing
     /// them by this value.
-    string kernel_command;
+    std::string kernel_command;
     /// File reference for the openCL file (.cl) where the kernel is written.
-    string kernel_file_name;
+    std::string kernel_file_name;
     /// reference to the config file for the current run
     kotekan::Config& config;
 
     /// Name to use with consumer and producer assignment for buffers defined in yaml files.
-    string unique_name;
+    std::string unique_name;
     kotekan::bufferContainer host_buffers;
 
     /// Reference to a derived device interface.

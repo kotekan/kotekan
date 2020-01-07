@@ -11,7 +11,7 @@
 
 class networkOutputSim : public kotekan::Stage {
 public:
-    networkOutputSim(kotekan::Config& config, const string& unique_name,
+    networkOutputSim(kotekan::Config& config, const std::string& unique_name,
                      kotekan::bufferContainer& buffer_container);
     virtual ~networkOutputSim();
     void main_thread() override;

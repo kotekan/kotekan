@@ -43,7 +43,7 @@
  */
 class testDataGen : public kotekan::Stage {
 public:
-    testDataGen(kotekan::Config& config, const string& unique_name,
+    testDataGen(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& buffer_container);
     ~testDataGen();
     void main_thread() override;

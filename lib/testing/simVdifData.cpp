@@ -12,7 +12,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(simVdifData);
 
-simVdifData::simVdifData(Config& config, const string& unique_name,
+simVdifData::simVdifData(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&simVdifData::main_thread, this)) {
     buf = get_buffer("network_out_buf");

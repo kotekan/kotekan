@@ -15,7 +15,7 @@ using kotekan::Config;
 
 REGISTER_KOTEKAN_STAGE(hsaProcess);
 
-hsaProcess::hsaProcess(Config& config, const string& unique_name,
+hsaProcess::hsaProcess(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     gpuProcess(config, unique_name, buffer_container) {
     uint32_t numa_node = config.get_default(unique_name, "numa_node", 0);

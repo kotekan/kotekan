@@ -21,7 +21,7 @@ namespace kotekan {
 
 class Stage : public kotekanLogging {
 public:
-    Stage(Config& config, const string& unique_name, bufferContainer& buffer_container,
+    Stage(Config& config, const std::string& unique_name, bufferContainer& buffer_container,
           std::function<void(const Stage&)> main_thread_ref);
     virtual ~Stage();
     virtual void start();
@@ -94,7 +94,7 @@ private:
 /// Helper defined to reduce the boiler plate needed to crate the
 /// standarized constructor in sub classes
 #define STAGE_CONSTRUCTOR(T)                                                                       \
-    T::T(Config& config, const string& unique_name, bufferContainer& buffer_container) :           \
+    T::T(Config& config, const std::string& unique_name, bufferContainer& buffer_container) :      \
         Stage(config, unique_name, buffer_container, std::bind(&T::main_thread, this))
 
 #endif /* KOTEKAN_STAGE_H */

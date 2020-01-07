@@ -45,7 +45,7 @@ using kotekan::prometheus::Metrics;
 REGISTER_KOTEKAN_STAGE(visAccumulate);
 
 
-visAccumulate::visAccumulate(Config& config, const string& unique_name,
+visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
                              bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&visAccumulate::main_thread, this)),
     skipped_frame_counter(Metrics::instance().add_counter(

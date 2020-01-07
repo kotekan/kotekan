@@ -10,7 +10,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(visTruncate);
 
-visTruncate::visTruncate(Config& config, const string& unique_name,
+visTruncate::visTruncate(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&visTruncate::main_thread, this)) {
 

@@ -50,7 +50,7 @@
 class pulsarNetworkProcess : public kotekan::Stage {
 public:
     /// Constructor, also initializes internal variables from config.
-    pulsarNetworkProcess(kotekan::Config& config, const string& unique_name,
+    pulsarNetworkProcess(kotekan::Config& config, const std::string& unique_name,
                          kotekan::bufferContainer& buffer_container);
 
 

@@ -43,7 +43,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(rfiAVXVDIF);
 
-rfiAVXVDIF::rfiAVXVDIF(Config& config, const string& unique_name,
+rfiAVXVDIF::rfiAVXVDIF(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&rfiAVXVDIF::main_thread, this)) {
     // Retrieve buffers

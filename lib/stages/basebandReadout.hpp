@@ -63,7 +63,7 @@ constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
  */
 class basebandReadout : public kotekan::Stage {
 public:
-    basebandReadout(kotekan::Config& config, const string& unique_name,
+    basebandReadout(kotekan::Config& config, const std::string& unique_name,
                     kotekan::bufferContainer& buffer_container);
     virtual ~basebandReadout();
     void main_thread() override;

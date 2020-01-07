@@ -20,8 +20,6 @@
 #include <utility>
 #include <vector>
 
-using json = nlohmann::json;
-
 
 /**
  * @class visRawReader
@@ -56,7 +54,7 @@ class visRawReader : public kotekan::Stage {
 
 public:
     /// default constructor
-    visRawReader(kotekan::Config& config, const string& unique_name,
+    visRawReader(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
 
     ~visRawReader();
@@ -109,7 +107,7 @@ public:
     /**
      * @brief Get the metadata saved into the file.
      **/
-    const json& metadata() {
+    const nlohmann::json& metadata() {
         return _metadata;
     }
 
@@ -149,7 +147,7 @@ private:
     Buffer* out_buf;
 
     // The metadata
-    json _metadata;
+    nlohmann::json _metadata;
     std::vector<time_ctype> _times;
     std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
     std::vector<prod_ctype> _prods;

@@ -36,7 +36,7 @@ using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(visTranspose);
 
-visTranspose::visTranspose(Config& config, const string& unique_name,
+visTranspose::visTranspose(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&visTranspose::main_thread, this)) {
 

@@ -16,7 +16,7 @@ using kotekan::restServer;
 
 REGISTER_HSA_COMMAND(hsaRfiInputSum);
 
-hsaRfiInputSum::hsaRfiInputSum(Config& config, const string& unique_name,
+hsaRfiInputSum::hsaRfiInputSum(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, hsaDeviceInterface& device) :
     // Note, the rfi_chime_inputsum_private.hsaco kernel may be used in the future.
     hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_inputsum" KERNEL_EXT,

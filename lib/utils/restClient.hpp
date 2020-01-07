@@ -19,8 +19,6 @@
 #include <thread>
 #include <utility>
 
-// The reply of a request: a pair with a success boolean and the reply string
-using restReply = std::pair<bool, std::string>;
 
 /**
  * @class restClient
@@ -70,6 +68,9 @@ using restReply = std::pair<bool, std::string>;
  */
 class restClient {
 public:
+    /// The reply of a request: a pair with a success boolean and the reply string
+    using restReply = std::pair<bool, std::string>;
+
     /**
      * @brief Returns an instance of the rest client.
      *

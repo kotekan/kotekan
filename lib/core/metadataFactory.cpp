@@ -17,8 +17,8 @@ metadataFactory::metadataFactory(Config& config) : config(config) {}
 
 metadataFactory::~metadataFactory() {}
 
-map<string, struct metadataPool*> metadataFactory::build_pools() {
-    map<string, struct metadataPool*> pools;
+map<std::string, struct metadataPool*> metadataFactory::build_pools() {
+    map<std::string, struct metadataPool*> pools;
 
     // Start parsing tree, put the metadata_pool's in the "pools" vector
     build_from_tree(pools, config.get_full_config_json(), "");
@@ -26,8 +26,8 @@ map<string, struct metadataPool*> metadataFactory::build_pools() {
     return pools;
 }
 
-void metadataFactory::build_from_tree(map<string, struct metadataPool*>& pools, json& config_tree,
-                                      const string& path) {
+void metadataFactory::build_from_tree(map<std::string, struct metadataPool*>& pools,
+                                      json& config_tree, const std::string& path) {
 
     for (json::iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
         // If the item isn't an object we can just ignore it.
@@ -36,10 +36,10 @@ void metadataFactory::build_from_tree(map<string, struct metadataPool*>& pools, 
         }
 
         // Check if this is a kotekan_metadata_pool block, and if so create the metadata_pool.
-        string pool_type = it.value().value("kotekan_metadata_pool", "none");
+        std::string pool_type = it.value().value("kotekan_metadata_pool", "none");
         if (pool_type != "none") {
-            string unique_path = fmt::format(fmt("{:s}/{:s}"), path, it.key());
-            string name = it.key();
+            std::string unique_path = fmt::format(fmt("{:s}/{:s}"), path, it.key());
+            std::string name = it.key();
             if (pools.count(name) != 0) {
                 throw std::runtime_error(fmt::format(
                     fmt("The metadata object named {:s} has already been defined!"), name));
@@ -55,7 +55,8 @@ void metadataFactory::build_from_tree(map<string, struct metadataPool*>& pools, 
 }
 
 
-struct metadataPool* metadataFactory::new_pool(const string& pool_type, const string& location) {
+struct metadataPool* metadataFactory::new_pool(const std::string& pool_type,
+                                               const std::string& location) {
 
     INFO_NON_OO("Creating metadata pool of type: {:s}, at config tree path: {:s}", pool_type,
                 location);

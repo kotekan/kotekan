@@ -38,7 +38,7 @@ class countCheck : public kotekan::Stage {
 
 public:
     // Default constructor
-    countCheck(kotekan::Config& config, const string& unique_name,
+    countCheck(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
     // Main loop for the stage

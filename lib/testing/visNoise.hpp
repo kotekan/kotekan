@@ -26,7 +26,7 @@
 class visNoise : public kotekan::Stage {
 public:
     // Default constructor
-    visNoise(kotekan::Config& config, const string& unique_name,
+    visNoise(kotekan::Config& config, const std::string& unique_name,
              kotekan::bufferContainer& buffer_container);
 
     // Main loop for the stage

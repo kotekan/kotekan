@@ -2,6 +2,9 @@
 
 #include "fmt.hpp"
 
+using std::map;
+using std::string;
+
 namespace kotekan {
 
 bufferContainer::bufferContainer() {}

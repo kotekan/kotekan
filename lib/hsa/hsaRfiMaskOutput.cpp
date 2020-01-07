@@ -7,7 +7,7 @@ using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaRfiMaskOutput);
 
-hsaRfiMaskOutput::hsaRfiMaskOutput(Config& config, const string& unique_name,
+hsaRfiMaskOutput::hsaRfiMaskOutput(Config& config, const std::string& unique_name,
                                    bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaSubframeCommand(config, unique_name, host_buffers, device, "hsaRfiMaskOutput", "") {
     command_type = gpuCommandType::COPY_OUT;

@@ -45,7 +45,7 @@
 class testDataGenQuad : public kotekan::Stage {
 public:
     /// Constructor, also initializes internal variables from config.
-    testDataGenQuad(kotekan::Config& config, const string& unique_name,
+    testDataGenQuad(kotekan::Config& config, const std::string& unique_name,
                     kotekan::bufferContainer& buffer_container);
 
     /// Destructor, cleans up local allocs.
@@ -57,7 +57,7 @@ public:
 private:
     struct Buffer* buf[4];
     std::string type;
-    vector<int32_t> value;
+    std::vector<int32_t> value;
 };
 
 #endif

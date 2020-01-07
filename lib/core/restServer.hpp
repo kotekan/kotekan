@@ -294,7 +294,7 @@ private:
      * @param request The libevent http request object
      * @return string The http message if it exists, or an empty string
      */
-    static string get_http_message(struct evhttp_request* request);
+    static std::string get_http_message(struct evhttp_request* request);
 
     /**
      * @brief Generates a string message to match one of the response codes
@@ -303,7 +303,7 @@ private:
      * @param status The responce code enum
      * @return string The string message matching that code
      */
-    static string get_http_responce_code_text(const HTTP_RESPONSE& status);
+    static std::string get_http_responce_code_text(const HTTP_RESPONSE& status);
 
     /**
      * @brief Returns the aliases map
@@ -316,7 +316,7 @@ private:
     std::map<std::string, std::function<void(connectionInstance&)>> get_callbacks;
 
     /// Map of JSON POST callbacks
-    std::map<std::string, std::function<void(connectionInstance&, json&)>> json_callbacks;
+    std::map<std::string, std::function<void(connectionInstance&, nlohmann::json&)>> json_callbacks;
 
     /// Alias map
     std::map<std::string, std::string> aliases;

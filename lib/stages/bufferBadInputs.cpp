@@ -11,7 +11,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(bufferBadInputs);
 
-bufferBadInputs::bufferBadInputs(Config& config_, const string& unique_name,
+bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name,
                                  bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&bufferBadInputs::main_thread, this)) {
 
@@ -81,7 +81,7 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
 
 void bufferBadInputs::main_thread() {
     // Listen for bad input list updates
-    string badInputs = config.get<std::string>(unique_name, "updatable_config/bad_inputs");
+    std::string badInputs = config.get<std::string>(unique_name, "updatable_config/bad_inputs");
     configUpdater::instance().subscribe(
         badInputs,
         std::bind(&bufferBadInputs::update_bad_inputs_callback, this, std::placeholders::_1));

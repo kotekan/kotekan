@@ -23,7 +23,7 @@ using kotekan::restServer;
 REGISTER_KOTEKAN_STAGE(testDataGen);
 
 
-testDataGen::testDataGen(Config& config, const string& unique_name,
+testDataGen::testDataGen(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&testDataGen::main_thread, this)) {
 

@@ -32,7 +32,7 @@ using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(bufferRecv);
 
-bufferRecv::bufferRecv(Config& config, const string& unique_name,
+bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferRecv::main_thread, this)),
     dropped_frame_counter(
@@ -100,7 +100,7 @@ void bufferRecv::increment_droped_frame_count() {
     dropped_frame_counter.inc();
 }
 
-void bufferRecv::set_transfer_time_seconds(const string& source_label, const double elapsed) {
+void bufferRecv::set_transfer_time_seconds(const std::string& source_label, const double elapsed) {
     std::lock_guard<mutex> lock(transfer_time_seconds_mutex);
     transfer_time_seconds.labels({source_label}).set(elapsed);
 }
@@ -283,8 +283,8 @@ int bufferRecv::get_next_frame() {
     return last_frame_id;
 }
 
-connInstance::connInstance(const string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
-                           const string& client_ip, int port, struct timeval read_timeout) :
+connInstance::connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
+                           const std::string& client_ip, int port, struct timeval read_timeout) :
     producer_name(producer_name),
     buf(buf),
     buffer_recv(buffer_recv),

@@ -20,7 +20,7 @@ using kotekan::prometheus::Metrics;
 REGISTER_KOTEKAN_STAGE(ReceiveFlags);
 
 
-ReceiveFlags::ReceiveFlags(Config& config, const string& unique_name,
+ReceiveFlags::ReceiveFlags(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&ReceiveFlags::main_thread, this)),
     receiveflags_late_frame_counter(

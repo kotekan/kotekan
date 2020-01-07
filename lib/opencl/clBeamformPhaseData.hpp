@@ -156,7 +156,7 @@
 class clBeamformPhaseData : public clCommand {
 public:
     /// Constructor, no logic added.
-    clBeamformPhaseData(kotekan::Config& config, const string& unique_name,
+    clBeamformPhaseData(kotekan::Config& config, const std::string& unique_name,
                         kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
     /// Allocate size for phases arrays and initialize start_beamform_time and last_bankID.
     virtual void build() override;

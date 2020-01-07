@@ -30,7 +30,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(networkOutputSim);
 
-networkOutputSim::networkOutputSim(Config& config_, const string& unique_name,
+networkOutputSim::networkOutputSim(Config& config_, const std::string& unique_name,
                                    bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&networkOutputSim::main_thread, this)) {
 

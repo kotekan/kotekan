@@ -5,7 +5,7 @@ using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaCorrelatorKernel);
 
-hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const string& unique_name,
+hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const std::string& unique_name,
                                          bufferContainer& host_buffers,
                                          hsaDeviceInterface& device) :
     hsaSubframeCommand(config, unique_name, host_buffers, device, "CHIME_X", "N2.hsaco") {

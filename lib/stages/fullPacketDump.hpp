@@ -9,12 +9,12 @@
 
 class fullPacketDump : public kotekan::Stage {
 public:
-    fullPacketDump(kotekan::Config& config, const string& unique_name,
+    fullPacketDump(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
     virtual ~fullPacketDump();
     void main_thread() override;
 
-    void packet_grab_callback(kotekan::connectionInstance& conn, json& json_request);
+    void packet_grab_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
 
 private:
     struct Buffer* buf;

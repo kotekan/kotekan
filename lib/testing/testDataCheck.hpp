@@ -13,7 +13,7 @@
 template<typename A_Type>
 class testDataCheck : public kotekan::Stage {
 public:
-    testDataCheck(kotekan::Config& config, const string& unique_name,
+    testDataCheck(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& buffer_container);
     ~testDataCheck();
     void main_thread() override;
@@ -26,7 +26,7 @@ private:
 };
 
 template<typename A_Type>
-testDataCheck<A_Type>::testDataCheck(kotekan::Config& config, const string& unique_name,
+testDataCheck<A_Type>::testDataCheck(kotekan::Config& config, const std::string& unique_name,
                                      kotekan::bufferContainer& buffer_container) :
     kotekan::Stage(config, unique_name, buffer_container,
                    std::bind(&testDataCheck::main_thread, this)) {

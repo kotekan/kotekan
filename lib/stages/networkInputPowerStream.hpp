@@ -48,7 +48,7 @@
 class networkInputPowerStream : public kotekan::Stage {
 public:
     /// Constructor.
-    networkInputPowerStream(kotekan::Config& config, const string& unique_name,
+    networkInputPowerStream(kotekan::Config& config, const std::string& unique_name,
                             kotekan::bufferContainer& buffer_container);
     /// Destructor.
     virtual ~networkInputPowerStream();
@@ -66,9 +66,9 @@ private:
     /// Port of the listening receiver.
     uint32_t port;
     /// IP of the listening receiver.
-    string server_ip;
+    std::string server_ip;
     /// Protocol to use: TCP or UDP. (Only TCP works now)
-    string protocol;
+    std::string protocol;
 
 
     /// Number of frequencies in the buffer

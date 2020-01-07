@@ -92,7 +92,7 @@ std::function<float(timespec, timespec, float)> pulsarSpec::weight_function(time
 }
 
 
-json pulsarSpec::to_dm_json() const {
+nlohmann::json pulsarSpec::to_dm_json() const {
     return {{"pulsar_name", _pulsar_name}};
 }
 

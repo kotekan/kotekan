@@ -21,7 +21,8 @@ using kotekan::prometheus::Metrics;
 REGISTER_KOTEKAN_STAGE(visDebug);
 
 
-visDebug::visDebug(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+visDebug::visDebug(Config& config, const std::string& unique_name,
+                   bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&visDebug::main_thread, this)) {
 
     // Setup the input vector

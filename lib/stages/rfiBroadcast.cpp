@@ -33,7 +33,7 @@ using kotekan::restServer;
 
 REGISTER_KOTEKAN_STAGE(rfiBroadcast);
 
-rfiBroadcast::rfiBroadcast(Config& config, const string& unique_name,
+rfiBroadcast::rfiBroadcast(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&rfiBroadcast::main_thread, this)) {
     // Get buffer from framework
@@ -76,7 +76,7 @@ rfiBroadcast::~rfiBroadcast() {
     restServer::instance().remove_json_callback(endpoint_zero);
 }
 
-void rfiBroadcast::rest_callback(connectionInstance& conn, json& json_request) {
+void rfiBroadcast::rest_callback(connectionInstance& conn, nlohmann::json& json_request) {
     // Notify that request was received
     INFO("RFI Callback Received... Changing Parameters")
     // Lock mutex
@@ -94,7 +94,7 @@ void rfiBroadcast::rest_zero(connectionInstance& conn) {
     std::lock_guard<std::mutex> lock(rest_zero_callback_mutex);
     // Notify that request was received
     INFO("RFI Broadcast: Current Zeroing Percentage Sent")
-    json reply;
+    nlohmann::json reply;
     reply["percentage_zeroed"] = perc_zeroed.average();
     conn.send_json_reply(reply);
 }

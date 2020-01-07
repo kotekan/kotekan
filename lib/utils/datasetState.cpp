@@ -1,5 +1,7 @@
 #include "datasetState.hpp"
 
+using nlohmann::json;
+
 
 state_uptr datasetState::from_json(const json& data) {
 

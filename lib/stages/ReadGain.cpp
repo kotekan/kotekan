@@ -64,13 +64,14 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     using namespace std::placeholders;
 
     // listen for gain updates FRB
-    string gainfrb = config.get_default<std::string>(unique_name, "updatable_config/gain_frb", "");
+    std::string gainfrb =
+        config.get_default<std::string>(unique_name, "updatable_config/gain_frb", "");
     if (gainfrb.length() > 0)
         configUpdater::instance().subscribe(
             gainfrb, std::bind(&ReadGain::update_gains_frb_callback, this, _1));
 
     // listen for gain updates PSR
-    string gainpsr = config.get<std::string>(unique_name, "updatable_config/gain_psr");
+    std::string gainpsr = config.get<std::string>(unique_name, "updatable_config/gain_psr");
     if (gainpsr.length() > 0)
         configUpdater::instance().subscribe(
             gainpsr, std::bind(&ReadGain::update_gains_psr_callback, this, _1));
@@ -102,7 +103,7 @@ bool ReadGain::update_gains_psr_callback(nlohmann::json& json) {
         return true;
     }
     try {
-        _gain_dir_psr = json.at("pulsar_gain_dir").get<std::vector<string>>();
+        _gain_dir_psr = json.at("pulsar_gain_dir").get<std::vector<std::string>>();
         INFO("[PSR] Updating gains from {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s}",
              _gain_dir_psr[0].c_str(), _gain_dir_psr[1].c_str(), _gain_dir_psr[2].c_str(),
              _gain_dir_psr[3].c_str(), _gain_dir_psr[4].c_str(), _gain_dir_psr[5].c_str(),

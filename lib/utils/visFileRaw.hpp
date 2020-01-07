@@ -22,7 +22,6 @@
 #include <sys/types.h>
 #include <vector>
 
-using json = nlohmann::json;
 
 /** @brief A CHIME correlator file in raw format.
  *
@@ -127,7 +126,7 @@ protected:
     void flush_raw_sync(int ind);
 
     // The metadata we will write into the file
-    json file_metadata;
+    nlohmann::json file_metadata;
 
     // Save the sizes
     size_t nfreq, data_size, metadata_size, frame_size;

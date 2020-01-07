@@ -106,7 +106,7 @@ std::string visFrameView::summary() const {
 
     struct tm* tm = std::gmtime(&(std::get<1>(time).tv_sec));
 
-    string s =
+    std::string s =
         fmt::format("visBuffer[name={:s}]: freq={:d} dataset={} fpga_start={:d} time={:%F %T}",
                     buffer->buffer_name, freq_id, dataset_id, std::get<0>(time), *tm);
 

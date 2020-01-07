@@ -5,7 +5,7 @@
 
 class hsaOutputDataZero : public hsaSubframeCommand {
 public:
-    hsaOutputDataZero(kotekan::Config& config, const string& unique_name,
+    hsaOutputDataZero(kotekan::Config& config, const std::string& unique_name,
                       kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaOutputDataZero();

@@ -71,7 +71,7 @@ struct bufferFrameHeader {
 class bufferSend : public kotekan::Stage {
 public:
     /// Standard constructor
-    bufferSend(kotekan::Config& config, const string& unique_name,
+    bufferSend(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
     /// Destructor

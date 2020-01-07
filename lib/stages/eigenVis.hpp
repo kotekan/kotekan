@@ -56,7 +56,7 @@
 class eigenVis : public kotekan::Stage {
 
 public:
-    eigenVis(kotekan::Config& config, const string& unique_name,
+    eigenVis(kotekan::Config& config, const std::string& unique_name,
              kotekan::bufferContainer& buffer_container);
     virtual ~eigenVis() = default;
     void main_thread() override;

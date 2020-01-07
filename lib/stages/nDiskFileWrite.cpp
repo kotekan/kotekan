@@ -20,6 +20,7 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using std::string;
 
 REGISTER_KOTEKAN_STAGE(nDiskFileWrite);
 

@@ -9,7 +9,7 @@ using kotekan::restServer;
 
 REGISTER_KOTEKAN_STAGE(restInspectFrame);
 
-restInspectFrame::restInspectFrame(Config& config, const string& unique_name,
+restInspectFrame::restInspectFrame(Config& config, const std::string& unique_name,
                                    bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&restInspectFrame::main_thread, this)) {
 

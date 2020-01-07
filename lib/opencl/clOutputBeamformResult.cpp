@@ -5,7 +5,7 @@ using kotekan::Config;
 
 REGISTER_CL_COMMAND(clOutputBeamformResult);
 
-clOutputBeamformResult::clOutputBeamformResult(Config& config, const string& unique_name,
+clOutputBeamformResult::clOutputBeamformResult(Config& config, const std::string& unique_name,
                                                bufferContainer& host_buffers,
                                                clDeviceInterface& device) :
     clCommand(config, unique_name, host_buffers, device, "", "") {

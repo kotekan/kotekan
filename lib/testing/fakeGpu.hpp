@@ -56,7 +56,7 @@
  */
 class FakeGpu : public kotekan::Stage {
 public:
-    FakeGpu(kotekan::Config& config, const string& unique_name,
+    FakeGpu(kotekan::Config& config, const std::string& unique_name,
             kotekan::bufferContainer& buffer_container);
     ~FakeGpu();
     void main_thread() override;

@@ -49,7 +49,7 @@
 class networkPowerStream : public kotekan::Stage {
 public:
     /// Constructor.
-    networkPowerStream(kotekan::Config& config, const string& unique_name,
+    networkPowerStream(kotekan::Config& config, const std::string& unique_name,
                        kotekan::bufferContainer& buffer_container);
 
     /// Destructor.
@@ -68,9 +68,9 @@ private:
     /// Port of the listening receiver.
     uint32_t dest_port;
     /// IP of the listening receiver.
-    string dest_server_ip;
+    std::string dest_server_ip;
     /// Protocol to use: TCP or UDP. (Only TCP works now)
-    string dest_protocol;
+    std::string dest_protocol;
 
     // Socket handle for link
     int socket_fd;

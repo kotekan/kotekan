@@ -71,7 +71,7 @@
 class EigenVisIter : public kotekan::Stage {
 
 public:
-    EigenVisIter(kotekan::Config& config, const string& unique_name,
+    EigenVisIter(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
     virtual ~EigenVisIter() = default;
     void main_thread() override;

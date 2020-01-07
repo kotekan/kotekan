@@ -34,7 +34,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(pulsarNetworkProcess);
 
-pulsarNetworkProcess::pulsarNetworkProcess(Config& config_, const string& unique_name,
+pulsarNetworkProcess::pulsarNetworkProcess(Config& config_, const std::string& unique_name,
                                            bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container,
           std::bind(&pulsarNetworkProcess::main_thread, this)) {

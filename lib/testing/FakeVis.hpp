@@ -80,7 +80,7 @@ class FakeVis : public kotekan::Stage {
 
 public:
     /// Constructor. Loads config options.
-    FakeVis(kotekan::Config& config, const string& unique_name,
+    FakeVis(kotekan::Config& config, const std::string& unique_name,
             kotekan::bufferContainer& buffer_container);
 
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
@@ -150,7 +150,7 @@ class ReplaceVis : public kotekan::Stage {
 
 public:
     /// Constructor. Loads config options.
-    ReplaceVis(kotekan::Config& config, const string& unique_name,
+    ReplaceVis(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.

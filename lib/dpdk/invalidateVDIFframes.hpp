@@ -36,7 +36,7 @@
 class invalidateVDIFframes : public kotekan::Stage {
 public:
     /// Standard constructor
-    invalidateVDIFframes(kotekan::Config& config, const string& unique_name,
+    invalidateVDIFframes(kotekan::Config& config, const std::string& unique_name,
                          kotekan::bufferContainer& buffer_container);
 
     /// Destructor

@@ -8,7 +8,7 @@
 
 class clBeamformKernel : public clCommand {
 public:
-    clBeamformKernel(kotekan::Config& config, const string& unique_name,
+    clBeamformKernel(kotekan::Config& config, const std::string& unique_name,
                      kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
     ~clBeamformKernel();
     virtual void build() override;

@@ -5,7 +5,7 @@
 
 class hsaPresumZero : public hsaSubframeCommand {
 public:
-    hsaPresumZero(kotekan::Config& config, const string& unique_name,
+    hsaPresumZero(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaPresumZero();

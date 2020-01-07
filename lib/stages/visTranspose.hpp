@@ -17,7 +17,6 @@
 #include <string>
 #include <vector>
 
-using json = nlohmann::json;
 
 /**
  * @class visTranspose
@@ -55,7 +54,7 @@ using json = nlohmann::json;
 class visTranspose : public kotekan::Stage {
 public:
     /// Constructor; loads parameters from config
-    visTranspose(kotekan::Config& config, const string& unique_name,
+    visTranspose(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
     ~visTranspose() = default;
 
@@ -112,7 +111,7 @@ private:
     std::vector<prod_ctype> prods;
     std::vector<uint32_t> ev;
     std::vector<stack_ctype> stack;
-    json metadata;
+    nlohmann::json metadata;
 
     /// Number of products to write
     size_t num_prod;

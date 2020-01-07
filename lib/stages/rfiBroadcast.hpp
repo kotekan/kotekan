@@ -61,14 +61,14 @@
 class rfiBroadcast : public kotekan::Stage {
 public:
     // Constructor
-    rfiBroadcast(kotekan::Config& config, const string& unique_name,
+    rfiBroadcast(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
     // Deconstructor, cleans up / does nothing
     virtual ~rfiBroadcast();
     // Primary loop, reads buffer and sends out UDP stream
     void main_thread() override;
     // Callback function called by rest server
-    void rest_callback(kotekan::connectionInstance& conn, json& json_request);
+    void rest_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
     // Callback function called by rest server
     void rest_zero(kotekan::connectionInstance& conn);
 
@@ -101,9 +101,9 @@ private:
     /// The port for UDP stream to be sent to
     uint32_t dest_port;
     /// The address for UDP stream to be sent to
-    string dest_server_ip;
+    std::string dest_server_ip;
     /// The streaming protocol, only UDP is supported
-    string dest_protocol;
+    std::string dest_protocol;
     /// Internal socket error holder
     int socket_fd;
     /// Rest server callback mutex
@@ -111,9 +111,9 @@ private:
     /// Rest server callback mutex
     std::mutex rest_zero_callback_mutex;
     /// String to hold endpoint
-    string endpoint;
+    std::string endpoint;
     /// String to hold endpoint
-    string endpoint_zero;
+    std::string endpoint_zero;
     /// Moving average of frame zeroing percentage to send to prometheus
     movingAverage perc_zeroed;
 };

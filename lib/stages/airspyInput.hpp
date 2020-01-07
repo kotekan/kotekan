@@ -19,7 +19,6 @@
 #define BYTES_PER_SAMPLE 2
 
 #include <string>
-using std::string;
 
 /**
  * @class airspyInput
@@ -63,7 +62,7 @@ using std::string;
 class airspyInput : public kotekan::Stage {
 public:
     /// Constructor, also initializes internal variables from config.
-    airspyInput(kotekan::Config& config, const string& unique_name,
+    airspyInput(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& buffer_container);
 
     /// Destructor, cleans up local allocs.

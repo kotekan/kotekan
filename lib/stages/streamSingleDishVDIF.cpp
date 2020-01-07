@@ -22,7 +22,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(streamSingleDishVDIF);
 
-streamSingleDishVDIF::streamSingleDishVDIF(Config& config, const string& unique_name,
+streamSingleDishVDIF::streamSingleDishVDIF(Config& config, const std::string& unique_name,
                                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&streamSingleDishVDIF::main_thread, this)) {

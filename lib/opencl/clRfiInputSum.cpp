@@ -11,7 +11,7 @@ using kotekan::HTTP_RESPONSE;
 using kotekan::restServer;
 
 clRfiInputSum::clRfiInputSum(const char* param_gpuKernel, const char* param_name,
-                             Config& param_config, const string& unique_name) :
+                             Config& param_config, const std::string& unique_name) :
     gpu_command(param_gpuKernel, param_name, param_config, unique_name) {}
 
 clRfiInputSum::~clRfiInputSum() {
@@ -57,7 +57,7 @@ void clRfiInputSum::build(device_interface& param_Device) {
     gpu_command::build(param_Device);
     cl_int err;
     cl_device_id valDeviceID;
-    string cl_options = get_cl_options();
+    std::string cl_options = get_cl_options();
     // Build program
     valDeviceID = param_Device.getDeviceID(param_Device.getGpuID());
     CHECK_CL_ERROR(clBuildProgram(program, 1, &valDeviceID, cl_options.c_str(), nullptr, nullptr));

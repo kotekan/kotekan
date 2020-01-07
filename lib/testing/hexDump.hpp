@@ -22,7 +22,7 @@
  */
 class hexDump : public kotekan::Stage {
 public:
-    hexDump(kotekan::Config& config, const string& unique_name,
+    hexDump(kotekan::Config& config, const std::string& unique_name,
             kotekan::bufferContainer& buffer_container);
     ~hexDump();
     void main_thread() override;

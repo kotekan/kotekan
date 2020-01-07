@@ -15,7 +15,7 @@ using kotekan::Config;
 
 REGISTER_CL_COMMAND(clBeamformPhaseData);
 
-clBeamformPhaseData::clBeamformPhaseData(Config& config, const string& unique_name,
+clBeamformPhaseData::clBeamformPhaseData(Config& config, const std::string& unique_name,
                                          bufferContainer& host_buffers, clDeviceInterface& device) :
     clCommand(config, unique_name, host_buffers, device, "", "") {
     command_type = gpuCommandType::NOT_SET;

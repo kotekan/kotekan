@@ -33,7 +33,7 @@ using kotekan::prometheus::Metrics;
 REGISTER_KOTEKAN_STAGE(applyGains);
 
 
-applyGains::applyGains(Config& config, const string& unique_name,
+applyGains::applyGains(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&applyGains::main_thread, this)),
     in_buf(get_buffer("in_buf")),

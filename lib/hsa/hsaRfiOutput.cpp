@@ -5,8 +5,8 @@ using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaRfiOutput);
 
-hsaRfiOutput::hsaRfiOutput(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                           hsaDeviceInterface& device) :
+hsaRfiOutput::hsaRfiOutput(Config& config, const std::string& unique_name,
+                           bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "hsaRfiOutput", "") {
     command_type = gpuCommandType::COPY_OUT;
     // Get buffers

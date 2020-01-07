@@ -55,7 +55,7 @@
 class ReceiveFlags : public kotekan::Stage {
 public:
     /// Constructor
-    ReceiveFlags(kotekan::Config& config, const string& unique_name,
+    ReceiveFlags(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
 
     /// Main loop, saves flags in the frames

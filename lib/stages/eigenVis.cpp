@@ -20,7 +20,8 @@ using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(eigenVis);
 
-eigenVis::eigenVis(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+eigenVis::eigenVis(Config& config, const std::string& unique_name,
+                   bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&eigenVis::main_thread, this)) {
 
     input_buffer = get_buffer("in_buf");

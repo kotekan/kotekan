@@ -26,8 +26,6 @@
 #include <type_traits>
 #include <vector>
 
-using json = nlohmann::json;
-
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;
 
@@ -147,29 +145,29 @@ inline bool operator>(const time_ctype& a, const time_ctype& b) {
 }
 
 // Conversions of the index types to json
-void to_json(json& j, const freq_ctype& f);
-void to_json(json& j, const input_ctype& f);
-void to_json(json& j, const prod_ctype& f);
-void to_json(json& j, const time_ctype& f);
-void to_json(json& j, const stack_ctype& f);
-void to_json(json& j, const rstack_ctype& f);
+void to_json(nlohmann::json& j, const freq_ctype& f);
+void to_json(nlohmann::json& j, const input_ctype& f);
+void to_json(nlohmann::json& j, const prod_ctype& f);
+void to_json(nlohmann::json& j, const time_ctype& f);
+void to_json(nlohmann::json& j, const stack_ctype& f);
+void to_json(nlohmann::json& j, const rstack_ctype& f);
 
-void from_json(const json& j, freq_ctype& f);
-void from_json(const json& j, input_ctype& f);
-void from_json(const json& j, prod_ctype& f);
-void from_json(const json& j, time_ctype& f);
-void from_json(const json& j, stack_ctype& f);
-void from_json(const json& j, rstack_ctype& f);
+void from_json(const nlohmann::json& j, freq_ctype& f);
+void from_json(const nlohmann::json& j, input_ctype& f);
+void from_json(const nlohmann::json& j, prod_ctype& f);
+void from_json(const nlohmann::json& j, time_ctype& f);
+void from_json(const nlohmann::json& j, stack_ctype& f);
+void from_json(const nlohmann::json& j, rstack_ctype& f);
 
 // Conversion of std::complex<T> to and from json
 namespace std {
 template<class T>
-void to_json(json& j, const std::complex<T>& p) {
-    j = json{p.real(), p.imag()};
+void to_json(nlohmann::json& j, const std::complex<T>& p) {
+    j = nlohmann::json{p.real(), p.imag()};
 }
 
 template<class T>
-void from_json(const json& j, std::complex<T>& p) {
+void from_json(const nlohmann::json& j, std::complex<T>& p) {
     p = std::complex<T>{j.at(0).get<T>(), j.at(1).get<T>()};
 }
 } // namespace std

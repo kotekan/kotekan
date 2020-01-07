@@ -27,7 +27,7 @@
  **/
 class rawFileWrite : public kotekan::Stage {
 public:
-    rawFileWrite(kotekan::Config& config, const string& unique_name,
+    rawFileWrite(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
     virtual ~rawFileWrite();
     void main_thread() override;

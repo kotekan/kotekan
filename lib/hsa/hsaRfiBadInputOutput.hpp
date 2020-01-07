@@ -27,7 +27,7 @@
 class hsaRfiBadInputOutput : public hsaCommand {
 public:
     /// Constructor
-    hsaRfiBadInputOutput(kotekan::Config& config, const string& unique_name,
+    hsaRfiBadInputOutput(kotekan::Config& config, const std::string& unique_name,
                          kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor
     virtual ~hsaRfiBadInputOutput();

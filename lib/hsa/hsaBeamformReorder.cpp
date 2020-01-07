@@ -5,7 +5,7 @@ using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaBeamformReorder);
 
-hsaBeamformReorder::hsaBeamformReorder(Config& config, const string& unique_name,
+hsaBeamformReorder::hsaBeamformReorder(Config& config, const std::string& unique_name,
                                        bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "reorder" KERNEL_EXT, "reorder.hsaco") {
     command_type = gpuCommandType::KERNEL;

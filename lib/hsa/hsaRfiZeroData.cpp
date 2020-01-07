@@ -13,7 +13,7 @@ using kotekan::configUpdater;
 
 REGISTER_HSA_COMMAND(hsaRfiZeroData);
 
-hsaRfiZeroData::hsaRfiZeroData(Config& config, const string& unique_name,
+hsaRfiZeroData::hsaRfiZeroData(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_zero" KERNEL_EXT,
                "rfi_chime_zero.hsaco") {

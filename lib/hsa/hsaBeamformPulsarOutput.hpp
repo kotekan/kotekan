@@ -5,7 +5,7 @@
 
 class hsaBeamformPulsarOutput : public hsaCommand {
 public:
-    hsaBeamformPulsarOutput(kotekan::Config& config, const string& unique_name,
+    hsaBeamformPulsarOutput(kotekan::Config& config, const std::string& unique_name,
                             kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaBeamformPulsarOutput();

@@ -7,7 +7,7 @@ using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaPresumKernel);
 
-hsaPresumKernel::hsaPresumKernel(Config& config, const string& unique_name,
+hsaPresumKernel::hsaPresumKernel(Config& config, const std::string& unique_name,
                                  bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaSubframeCommand(config, unique_name, host_buffers, device, "CHIME_presum" KERNEL_EXT,
                        "presum_opencl.hsaco") {

@@ -16,7 +16,7 @@ using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(timeDownsample);
 
-timeDownsample::timeDownsample(Config& config, const string& unique_name,
+timeDownsample::timeDownsample(Config& config, const std::string& unique_name,
                                bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&timeDownsample::main_thread, this)) {
 

@@ -35,10 +35,11 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using nlohmann::json;
 
 REGISTER_KOTEKAN_STAGE(visRawReader);
 
-visRawReader::visRawReader(Config& config, const string& unique_name,
+visRawReader::visRawReader(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&visRawReader::main_thread, this)) {
 

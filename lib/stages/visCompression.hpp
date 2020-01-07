@@ -26,9 +26,6 @@
 #include <utility>
 #include <vector>
 
-// This type is used a lot so let's use an alias
-using json = nlohmann::json;
-
 
 /**
  * @brief Compress visibility data by stacking together equivalent baselines.
@@ -67,7 +64,7 @@ class baselineCompression : public kotekan::Stage {
 
 public:
     // Default constructor
-    baselineCompression(kotekan::Config& config, const string& unique_name,
+    baselineCompression(kotekan::Config& config, const std::string& unique_name,
                         kotekan::bufferContainer& buffer_container);
 
     // Main loop for the stage: Creates n threads that do the compression.

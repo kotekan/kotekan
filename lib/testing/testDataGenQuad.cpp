@@ -13,7 +13,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(testDataGenQuad);
 
-testDataGenQuad::testDataGenQuad(Config& config, const string& unique_name,
+testDataGenQuad::testDataGenQuad(Config& config, const std::string& unique_name,
                                  bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&testDataGenQuad::main_thread, this)) {
 

@@ -12,7 +12,7 @@
 
 namespace kotekan {
 
-Stage::Stage(Config& config, const string& unique_name, bufferContainer& buffer_container_,
+Stage::Stage(Config& config, const std::string& unique_name, bufferContainer& buffer_container_,
              std::function<void(const Stage&)> main_thread_ref) :
     stop_thread(false),
     config(config),
@@ -24,7 +24,7 @@ Stage::Stage(Config& config, const string& unique_name, bufferContainer& buffer_
     set_cpu_affinity(config.get<std::vector<int>>(unique_name, "cpu_affinity"));
 
     // Set the local log level.
-    string s_log_level = config.get<std::string>(unique_name, "log_level");
+    std::string s_log_level = config.get<std::string>(unique_name, "log_level");
     set_log_level(s_log_level);
     set_log_prefix(unique_name);
 
@@ -35,7 +35,7 @@ Stage::Stage(Config& config, const string& unique_name, bufferContainer& buffer_
 struct Buffer* Stage::get_buffer(const std::string& name) {
     // NOTE: Maybe require that the buffer be given in the stage, not
     // just somewhere in the path to the stage.
-    string buf_name = config.get<std::string>(unique_name, name);
+    std::string buf_name = config.get<std::string>(unique_name, name);
     return buffer_container.get_buffer(buf_name);
 }
 

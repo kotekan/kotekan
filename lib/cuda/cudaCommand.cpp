@@ -6,10 +6,10 @@ using kotekan::Config;
 using std::string;
 using std::to_string;
 
-cudaCommand::cudaCommand(Config& config_, const string& unique_name_,
+cudaCommand::cudaCommand(Config& config_, const std::string& unique_name_,
                          bufferContainer& host_buffers_, cudaDeviceInterface& device_,
-                         const string& default_kernel_command,
-                         const string& default_kernel_file_name) :
+                         const std::string& default_kernel_command,
+                         const std::string& default_kernel_file_name) :
     gpuCommand(config_, unique_name_, host_buffers_, device_, default_kernel_command,
                default_kernel_file_name),
     device(device_) {

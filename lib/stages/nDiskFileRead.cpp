@@ -16,7 +16,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(nDiskFileRead);
 
-nDiskFileRead::nDiskFileRead(Config& config, const string& unique_name,
+nDiskFileRead::nDiskFileRead(Config& config, const std::string& unique_name,
                              bufferContainer& buffer_containter) :
     Stage(config, unique_name, buffer_containter, std::bind(&nDiskFileRead::main_thread, this)) {
     // Get variables from config

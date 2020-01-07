@@ -14,7 +14,7 @@ struct corr_kernel_config_t {
 
 class hsaCorrelatorKernel : public hsaSubframeCommand {
 public:
-    hsaCorrelatorKernel(kotekan::Config& config, const string& unique_name,
+    hsaCorrelatorKernel(kotekan::Config& config, const std::string& unique_name,
                         kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaCorrelatorKernel();

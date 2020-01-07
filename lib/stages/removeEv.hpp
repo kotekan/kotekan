@@ -28,7 +28,7 @@
 class removeEv : public kotekan::Stage {
 
 public:
-    removeEv(kotekan::Config& config, const string& unique_name,
+    removeEv(kotekan::Config& config, const std::string& unique_name,
              kotekan::bufferContainer& buffer_container);
 
     void main_thread() override;

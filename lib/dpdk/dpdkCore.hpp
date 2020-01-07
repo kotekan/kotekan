@@ -164,7 +164,7 @@ protected:
  */
 class dpdkCore : public kotekan::Stage {
 public:
-    dpdkCore(kotekan::Config& config, const string& unique_name,
+    dpdkCore(kotekan::Config& config, const std::string& unique_name,
              kotekan::bufferContainer& buffer_container);
     ~dpdkCore();
 

@@ -34,7 +34,7 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(basebandReadout);
 
 
-basebandReadout::basebandReadout(Config& config, const string& unique_name,
+basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
                                  bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&basebandReadout::main_thread, this)),
     _base_dir(config.get_default<std::string>(unique_name, "base_dir", "./")),
@@ -75,7 +75,7 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
 
     // Ensure input buffer is long enough.
     if (buf->num_frames <= _num_frames_buffer) {
-        // This process of creating an error string is rediculous. Figure out what
+        // This process of creating an error std::string is rediculous. Figure out what
         // the std::string way to do this is.
         const int msg_len = 200;
         char msg[200];

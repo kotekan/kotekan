@@ -35,7 +35,7 @@
 class constDataCheck : public kotekan::Stage {
 public:
     /// Constructor, also initializes internal variables from config.
-    constDataCheck(kotekan::Config& config, const string& unique_name,
+    constDataCheck(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
 
     /// Destructor, cleans up local allocs.
@@ -46,8 +46,8 @@ public:
 
 private:
     struct Buffer* buf;
-    vector<int32_t> ref_real;
-    vector<int32_t> ref_imag;
+    std::vector<int32_t> ref_real;
+    std::vector<int32_t> ref_imag;
     int num_frames_to_test;
 };
 

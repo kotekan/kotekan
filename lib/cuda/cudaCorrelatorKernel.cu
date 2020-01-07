@@ -7,7 +7,7 @@ using kotekan::Config;
 
 REGISTER_CUDA_COMMAND(cudaCorrelatorKernel);
 
-cudaCorrelatorKernel::cudaCorrelatorKernel(Config& config, const string& unique_name,
+cudaCorrelatorKernel::cudaCorrelatorKernel(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, cudaDeviceInterface& device) :
     cudaCommand(config, unique_name, host_buffers, device, "cudaCorrelator", "cudaCorrelator.cu") {
     _num_elements = config.get<int>(unique_name, "num_elements");

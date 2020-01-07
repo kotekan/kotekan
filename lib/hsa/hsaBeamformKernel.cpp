@@ -28,7 +28,7 @@ REGISTER_HSA_COMMAND(hsaBeamformKernel);
 
 // clang-format on
 
-hsaBeamformKernel::hsaBeamformKernel(Config& config, const string& unique_name,
+hsaBeamformKernel::hsaBeamformKernel(Config& config, const std::string& unique_name,
                                      bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "zero_padded_FFT512" KERNEL_EXT,
                "unpack_shift_beamform_flip.hsaco") {

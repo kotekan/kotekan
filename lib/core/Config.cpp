@@ -1,20 +1,20 @@
 #include "Config.hpp"
 
-#include "errors.h"
-#include "visUtil.hpp"
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for json, iter_impl, operator>>, basic_json
 
-#include "fmt.hpp"
-
-#include <fstream>
-#include <iostream>
-#include <json.hpp>
-#include <stdexcept>
-#include <vector>
+#include <fstream>   // for ifstream, istream, size_t
+#include <map>       // for map<>::key_type
+#include <stdexcept> // for runtime_error
+#include <stdio.h>   // for sprintf
+#include <vector>    // for vector
 
 #ifdef WITH_SSL
-#include <openssl/md5.h>
+#include <openssl/md5.h> // for MD5, MD5_DIGEST_LENGTH
 #endif
 
+using nlohmann::json;
+using std::string;
 using std::vector;
 
 namespace kotekan {
@@ -29,13 +29,12 @@ template int32_t Config::get(const string& base_path, const string& name);
 template int16_t Config::get(const string& base_path, const string& name);
 template uint16_t Config::get(const string& base_path, const string& name);
 template bool Config::get(const string& base_path, const string& name);
-template std::string Config::get(const string& base_path, const string& name);
-template std::vector<int32_t> Config::get(const string& base_path, const string& name);
-template std::vector<uint32_t> Config::get(const string& base_path, const string& name);
-template std::vector<float> Config::get(const string& base_path, const string& name);
-template std::vector<std::string> Config::get(const string& base_path, const string& name);
-template std::vector<nlohmann::json> Config::get(const string& base_path, const string& name);
-template std::vector<std::complex<float>> Config::get(const string& base_path, const string& name);
+template string Config::get(const string& base_path, const string& name);
+template vector<int32_t> Config::get(const string& base_path, const string& name);
+template vector<uint32_t> Config::get(const string& base_path, const string& name);
+template vector<float> Config::get(const string& base_path, const string& name);
+template vector<string> Config::get(const string& base_path, const string& name);
+template vector<nlohmann::json> Config::get(const string& base_path, const string& name);
 
 Config::Config() {}
 
@@ -60,7 +59,7 @@ void Config::update_config(json updates) {
 int32_t Config::num_links_per_gpu(const int32_t& gpu_id) {
 
     int32_t num_links = get<int32_t>("/", "num_links");
-    vector<int32_t> link_map = get<std::vector<int32_t>>("/", "link_map");
+    vector<int32_t> link_map = get<vector<int32_t>>("/", "link_map");
     int32_t gpus_in_link = 0;
 
     for (int i = 0; i < num_links; ++i) {
@@ -117,14 +116,13 @@ bool Config::exists(const string& base_path, const string& name) {
     return true;
 }
 
-std::vector<json> Config::get_value(const std::string& name) const {
-    std::vector<json> results;
+vector<json> Config::get_value(const string& name) const {
+    vector<json> results;
     get_value_recursive(_json, name, results);
     return results;
 }
 
-void Config::get_value_recursive(const json& j, const std::string& name,
-                                 std::vector<json>& results) const {
+void Config::get_value_recursive(const json& j, const string& name, vector<json>& results) const {
     for (auto it = j.begin(); it != j.end(); ++it) {
         if (it.key() == name)
             results.push_back(it.value());
@@ -142,10 +140,10 @@ json& Config::get_full_config_json() {
 }
 
 #ifdef WITH_SSL
-std::string Config::get_md5sum() {
+string Config::get_md5sum() {
     unsigned char md5sum[MD5_DIGEST_LENGTH];
 
-    std::vector<std::uint8_t> v_msgpack = json::to_msgpack(_json);
+    vector<std::uint8_t> v_msgpack = json::to_msgpack(_json);
     MD5((const unsigned char*)v_msgpack.data(), v_msgpack.size(), md5sum);
 
     char md5str[33];

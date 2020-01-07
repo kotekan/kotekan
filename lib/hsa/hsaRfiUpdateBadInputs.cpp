@@ -9,7 +9,7 @@ using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaRfiUpdateBadInputs);
 
-hsaRfiUpdateBadInputs::hsaRfiUpdateBadInputs(Config& config, const string& unique_name,
+hsaRfiUpdateBadInputs::hsaRfiUpdateBadInputs(Config& config, const std::string& unique_name,
                                              kotekan::bufferContainer& host_buffers,
                                              hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "hsaRfiUpdateBadInputs", "") {

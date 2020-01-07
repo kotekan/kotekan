@@ -30,7 +30,7 @@
 class bufferBadInputs : public kotekan::Stage {
 public:
     /// Constructor.
-    bufferBadInputs(kotekan::Config& config_, const string& unique_name,
+    bufferBadInputs(kotekan::Config& config_, const std::string& unique_name,
                     kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~bufferBadInputs();

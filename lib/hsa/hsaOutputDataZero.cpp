@@ -7,7 +7,7 @@ using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaOutputDataZero);
 
-hsaOutputDataZero::hsaOutputDataZero(Config& config, const string& unique_name,
+hsaOutputDataZero::hsaOutputDataZero(Config& config, const std::string& unique_name,
                                      bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaSubframeCommand(config, unique_name, host_buffers, device, "hsaOutputDataZero", "") {
     command_type = gpuCommandType::COPY_IN;

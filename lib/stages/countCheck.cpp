@@ -15,7 +15,7 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(countCheck);
 
 
-countCheck::countCheck(Config& config, const string& unique_name,
+countCheck::countCheck(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&countCheck::main_thread, this)) {
 

@@ -33,7 +33,7 @@
 class TestDropFrames : public kotekan::Stage {
 public:
     /// Constructor
-    TestDropFrames(kotekan::Config& config, const string& unique_name,
+    TestDropFrames(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
     ~TestDropFrames() = default;
     void main_thread() override;

@@ -14,7 +14,7 @@
 
 class gpuProcess : public kotekan::Stage {
 public:
-    gpuProcess(kotekan::Config& config, const string& unique_name,
+    gpuProcess(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
     virtual ~gpuProcess();
     void main_thread() override;

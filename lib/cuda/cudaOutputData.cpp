@@ -11,7 +11,7 @@ using kotekan::Config;
 
 REGISTER_CUDA_COMMAND(cudaOutputData);
 
-cudaOutputData::cudaOutputData(Config& config, const string& unique_name,
+cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, cudaDeviceInterface& device) :
     cudaCommand(config, unique_name, host_buffers, device, "", "") {
 

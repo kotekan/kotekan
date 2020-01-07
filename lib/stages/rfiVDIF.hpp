@@ -44,7 +44,7 @@
 class rfiVDIF : public kotekan::Stage {
 public:
     // Constructor, initializes class, sets up config
-    rfiVDIF(kotekan::Config& config, const string& unique_name,
+    rfiVDIF(kotekan::Config& config, const std::string& unique_name,
             kotekan::bufferContainer& buffer_containter);
     // Deconstructor, cleans up, does nothing
     ~rfiVDIF();

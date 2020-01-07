@@ -74,7 +74,7 @@ class prodSubset : public kotekan::Stage {
 
 public:
     /// Constructor. Loads config options. Defines subset of products.
-    prodSubset(kotekan::Config& config, const string& unique_name,
+    prodSubset(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
     /// Primary loop: sorts products and passes them on to output buffer.

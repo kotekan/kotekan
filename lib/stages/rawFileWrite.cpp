@@ -20,7 +20,7 @@ using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(rawFileWrite);
 
-rawFileWrite::rawFileWrite(Config& config, const string& unique_name,
+rawFileWrite::rawFileWrite(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&rawFileWrite::main_thread, this)) {
 

@@ -8,12 +8,8 @@
 #include "hsa/hsa_ext_finalize.h"
 
 #include <map>
-#include <string>
 #include <sys/mman.h>
-#include <vector>
 
-using std::string;
-using std::vector;
 
 // Parameters for the get_gpu_agent function
 struct gpu_config_t {

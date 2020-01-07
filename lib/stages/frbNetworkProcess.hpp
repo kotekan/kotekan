@@ -78,7 +78,7 @@ struct DestIpSocket {
     DestIpSocket(DestIpSocket&& other);
 
     //@{
-    /// host address as a string and a `sockaddr` structure
+    /// host address as a std::string and a `sockaddr` structure
     const std::string host;
     const sockaddr_in addr;
     //@}
@@ -96,17 +96,18 @@ struct DestIpSocket {
 class frbNetworkProcess : public kotekan::Stage {
 public:
     /// Constructor, also initializes internal variables from config.
-    frbNetworkProcess(kotekan::Config& config, const string& unique_name,
+    frbNetworkProcess(kotekan::Config& config, const std::string& unique_name,
                       kotekan::bufferContainer& buffer_container);
 
     /// Destructor , cleaning local allocations
     virtual ~frbNetworkProcess();
 
     /// Callback to update the beam offset
-    void update_offset_callback(kotekan::connectionInstance& conn, json& json_request);
+    void update_offset_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
 
     /// Callback to change destination active status
-    void set_destination_active_callback(kotekan::connectionInstance& conn, json& json_request);
+    void set_destination_active_callback(kotekan::connectionInstance& conn,
+                                         nlohmann::json& json_request);
 
     /// main thread
     void main_thread() override;

@@ -8,19 +8,18 @@
 #include <mutex>
 #include <vector>
 
-using std::vector;
 
 #define MAX_GATE_DESCRIPTION_LEN 127
 #define HDF5_NAME_LEN 65
 
 class gpuPostProcess : public kotekan::Stage {
 public:
-    gpuPostProcess(kotekan::Config& config_, const string& unique_name,
+    gpuPostProcess(kotekan::Config& config_, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
     virtual ~gpuPostProcess();
     void main_thread() override;
 
-    void vis_endpoint(kotekan::connectionInstance& conn, json& json_request);
+    void vis_endpoint(kotekan::connectionInstance& conn, nlohmann::json& json_request);
 
 private:
     struct Buffer** in_buf;
@@ -37,8 +36,8 @@ private:
     int32_t _num_gpu_frames;
     int32_t _num_blocks;
     int32_t _block_size;
-    vector<int32_t> _link_map;
-    vector<int32_t> _product_remap;
+    std::vector<int32_t> _link_map;
+    std::vector<int32_t> _product_remap;
     int32_t* _product_remap_c = nullptr;
     int32_t _num_fpga_links;
     bool _enable_basic_gating;

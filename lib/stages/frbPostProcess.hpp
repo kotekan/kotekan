@@ -16,7 +16,6 @@
 #include <emmintrin.h>
 #include <immintrin.h>
 
-using std::vector;
 
 /**
  * @class frbPostProcess
@@ -80,7 +79,7 @@ using std::vector;
 class frbPostProcess : public kotekan::Stage {
 public:
     /// Constructor.
-    frbPostProcess(kotekan::Config& config_, const string& unique_name,
+    frbPostProcess(kotekan::Config& config_, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
 
     /// Destructor
@@ -117,7 +116,7 @@ private:
     int32_t _factor_upchan_out;
     int32_t _nbeams;
     int32_t _timesamples_per_frb_packet;
-    vector<int32_t> _incoherent_beams;
+    std::vector<int32_t> _incoherent_beams;
     float _incoherent_truncation;
 
     // Derived useful things

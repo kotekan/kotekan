@@ -15,7 +15,7 @@
 
 class hsaProcess final : public gpuProcess {
 public:
-    hsaProcess(kotekan::Config& config, const string& unique_name,
+    hsaProcess(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
     virtual ~hsaProcess();
 

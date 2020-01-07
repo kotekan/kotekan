@@ -17,7 +17,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(rawFileRead);
 
-rawFileRead::rawFileRead(Config& config, const string& unique_name,
+rawFileRead::rawFileRead(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&rawFileRead::main_thread, this)) {
 

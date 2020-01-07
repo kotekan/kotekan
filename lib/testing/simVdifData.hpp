@@ -7,7 +7,7 @@
 
 class simVdifData : public kotekan::Stage {
 public:
-    simVdifData(kotekan::Config& config, const string& unique_name,
+    simVdifData(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& buffer_container);
     ~simVdifData();
     void main_thread() override;

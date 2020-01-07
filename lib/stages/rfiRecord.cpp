@@ -23,7 +23,8 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(rfiRecord);
 
-rfiRecord::rfiRecord(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+rfiRecord::rfiRecord(Config& config, const std::string& unique_name,
+                     bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&rfiRecord::main_thread, this)) {
     // Get buffer from framework
     rfi_buf = get_buffer("rfi_in");
@@ -42,12 +43,12 @@ rfiRecord::rfiRecord(Config& config, const string& unique_name, bufferContainer&
 
 rfiRecord::~rfiRecord() {}
 
-bool rfiRecord::config_callback(json& json) {
+bool rfiRecord::config_callback(nlohmann::json& json) {
 
-    string output_dir;
+    std::string output_dir;
     bool write_to_disk;
     try {
-        output_dir = json["output_dir"].get<string>();
+        output_dir = json["output_dir"].get<std::string>();
         write_to_disk = json["write_to_disk"].get<bool>();
     } catch (std::exception& e) {
         ERROR("Failure parsing message. Error: {:s}, Request JSON: {:s}", e.what(), json.dump());

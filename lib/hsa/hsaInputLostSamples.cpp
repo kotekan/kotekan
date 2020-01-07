@@ -9,7 +9,7 @@ using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaInputLostSamples);
 
-hsaInputLostSamples::hsaInputLostSamples(Config& config, const string& unique_name,
+hsaInputLostSamples::hsaInputLostSamples(Config& config, const std::string& unique_name,
                                          bufferContainer& host_buffers,
                                          hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "", "") {
