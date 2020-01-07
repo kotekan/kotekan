@@ -2,7 +2,6 @@
 
 #include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO, DEBUG_NON_OO, WARN_NON_OO, DEBU...
 
-#include <bits/types/struct_iovec.h> // for iovec
 #include <chrono>                    // for operator+, seconds, system_clock, system_clock::tim...
 #include <condition_variable>        // for condition_variable
 #include <cstring>                   // for memcpy, size_t
@@ -201,7 +200,7 @@ void restClient::http_request_done(struct evhttp_request* req, void* arg) {
     }
 
     // Allocate space for the chunks.
-    vec_out = (iovec*)malloc(sizeof(evbuffer_iovec) * n_vec);
+    vec_out = (evbuffer_iovec*)malloc(sizeof(evbuffer_iovec) * n_vec);
 
     n_vec = evbuffer_peek(input_buffer, datalen, nullptr, vec_out, n_vec);
     for (int i = 0; i < n_vec; i++) {

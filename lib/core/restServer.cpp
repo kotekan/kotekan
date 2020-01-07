@@ -6,7 +6,6 @@
 #include "fmt.hpp" // for format, fmt
 
 #include <assert.h>                  // for assert
-#include <bits/types/struct_iovec.h> // for iovec
 #include <event2/buffer.h>           // for evbuffer_add, evbuffer_peek, evbuffer_free, evbuffe...
 #include <event2/event.h>            // for event_add, event_base_dispatch, event_base_free
 #include <event2/http.h>             // for evhttp_send_reply, evhttp_add_header, evhttp_reques...
@@ -263,7 +262,7 @@ string restServer::get_http_message(struct evhttp_request* request) {
     }
 
     // Allocate space for the chunks.
-    vec_out = (iovec*)malloc(sizeof(struct evbuffer_iovec) * n_vec);
+    vec_out = (evbuffer_iovec*)malloc(sizeof(struct evbuffer_iovec) * n_vec);
     n_vec = evbuffer_peek(input_buffer, datalen, nullptr, vec_out, n_vec);
     for (int i = 0; i < n_vec; i++) {
         size_t len = vec_out[i].iov_len;
