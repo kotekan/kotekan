@@ -46,10 +46,16 @@ execute_process(
 
 execute_process(
   COMMAND python3 ${SOURCE_DIR}/python/kotekan/version.py
+  #COMMAND PYTHONPATH=lib/version python3 -c 'from _version import get_versions; print get_versions()["version"]'
+  #COMMAND PYTHONPATH=/home/willis/rfi/kotekan/python/scripts/rfi_receiver python -c 'from _version import get_versions; print get_versions()["version"]'
+  #COMMAND PYTHONPATH=/home/willis/rfi/kotekan/python/scripts/rfi_receiver python -c 'from _version import get_versions; print get_versions() '
+  #COMMAND python -c 'from _version import get_versions; print get_versions()["version"]'
   WORKING_DIRECTORY ${SOURCE_DIR}
   OUTPUT_VARIABLE KOTEKAN_VERSION
   OUTPUT_STRIP_TRAILING_WHITESPACE
 )
+
+message("KOTEKAN_VERSION='${KOTEKAN_VERSION}'")
 
 configure_file(
     ${CURRENT_SOURCE_DIR}/version.c.in
