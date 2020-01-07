@@ -17,7 +17,7 @@ class Config;
 class bufferContainer;
 } // namespace kotekan
 
-REGISTER_KOTEKAN_STAGE(chimeMetadataDump);
+REGISTER_KOTEKAN_STAGE(chimeMetadataDump)
 
 chimeMetadataDump::chimeMetadataDump(kotekan::Config& config, const std::string& unique_name,
                                      kotekan::bufferContainer& buffer_container) :

@@ -126,7 +126,7 @@ public:
      * @param subscriber Reference to the subscribing stage.
      * @param callback   Callback function for attribute updates.
      */
-    void subscribe(const Stage* subscriber, std::function<bool(nlohmann::json&)> callback);
+    void subscribe(const kotekan::Stage* subscriber, std::function<bool(nlohmann::json&)> callback);
 
     /**
      * @brief Subscribe to all updatable blocks of a Kotekan Stage.
@@ -141,7 +141,7 @@ public:
      * @param subscriber Reference to the subscribing stage.
      * @param callbacks  Map of value names and callback functions.
      */
-    void subscribe(const Stage* subscriber,
+    void subscribe(const kotekan::Stage* subscriber,
                    std::map<std::string, std::function<bool(nlohmann::json&)>> callbacks);
 
     /**

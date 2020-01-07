@@ -14,29 +14,26 @@
 #endif
 
 using nlohmann::json;
-using std::string;
 using std::vector;
 
 namespace kotekan {
 
 // Instantiation of the most common types to prevent them being built inline
 // everywhere used.
-template float Config::get(const string& base_path, const string& name);
-template double Config::get(const string& base_path, const string& name);
-template uint32_t Config::get(const string& base_path, const string& name);
-template uint64_t Config::get(const string& base_path, const string& name);
-template int32_t Config::get(const string& base_path, const string& name);
-template int16_t Config::get(const string& base_path, const string& name);
-template uint16_t Config::get(const string& base_path, const string& name);
-template bool Config::get(const string& base_path, const string& name);
-template string Config::get(const string& base_path, const string& name);
-template vector<int32_t> Config::get(const string& base_path, const string& name);
-template vector<uint32_t> Config::get(const string& base_path, const string& name);
-template vector<float> Config::get(const string& base_path, const string& name);
-template vector<string> Config::get(const string& base_path,
-                                              const string& name);
-template vector<nlohmann::json> Config::get(const string& base_path,
-                                                 const string& name);
+template float Config::get(const std::string& base_path, const std::string& name);
+template double Config::get(const std::string& base_path, const std::string& name);
+template uint32_t Config::get(const std::string& base_path, const std::string& name);
+template uint64_t Config::get(const std::string& base_path, const std::string& name);
+template int32_t Config::get(const std::string& base_path, const std::string& name);
+template int16_t Config::get(const std::string& base_path, const std::string& name);
+template uint16_t Config::get(const std::string& base_path, const std::string& name);
+template bool Config::get(const std::string& base_path, const std::string& name);
+template std::string Config::get(const std::string& base_path, const std::string& name);
+template vector<int32_t> Config::get(const std::string& base_path, const std::string& name);
+template vector<uint32_t> Config::get(const std::string& base_path, const std::string& name);
+template vector<float> Config::get(const std::string& base_path, const std::string& name);
+template vector<std::string> Config::get(const std::string& base_path, const std::string& name);
+template vector<nlohmann::json> Config::get(const std::string& base_path, const std::string& name);
 
 Config::Config() {}
 
@@ -44,7 +41,7 @@ Config::~Config() {
     _json.clear();
 }
 
-void Config::parse_file(const string& file_name) {
+void Config::parse_file(const std::string& file_name) {
     try {
         std::ifstream config_file_stream(file_name);
         config_file_stream >> _json;
@@ -71,8 +68,8 @@ int32_t Config::num_links_per_gpu(const int32_t& gpu_id) {
     return gpus_in_link;
 }
 
-json Config::get_value(const string& base_path, const string& name) {
-    string search_path = base_path;
+json Config::get_value(const std::string& base_path, const std::string& name) {
+    std::string search_path = base_path;
     for (;;) {
 
         if (search_path == "" && exists("/", name)) {
@@ -101,8 +98,8 @@ json Config::get_value(const string& base_path, const string& name) {
                     name, base_path));
 }
 
-bool Config::exists(const string& base_path, const string& name) {
-    string search_path;
+bool Config::exists(const std::string& base_path, const std::string& name) {
+    std::string search_path;
     if (base_path == "/") {
         search_path = base_path + name;
     } else {
@@ -118,13 +115,13 @@ bool Config::exists(const string& base_path, const string& name) {
     return true;
 }
 
-vector<json> Config::get_value(const string& name) const {
+vector<json> Config::get_value(const std::string& name) const {
     vector<json> results;
     get_value_recursive(_json, name, results);
     return results;
 }
 
-void Config::get_value_recursive(const json& j, const string& name,
+void Config::get_value_recursive(const json& j, const std::string& name,
                                  vector<json>& results) const {
     for (auto it = j.begin(); it != j.end(); ++it) {
         if (it.key() == name)
@@ -143,7 +140,7 @@ json& Config::get_full_config_json() {
 }
 
 #ifdef WITH_SSL
-string Config::get_md5sum() {
+std::string Config::get_md5sum() {
     unsigned char md5sum[MD5_DIGEST_LENGTH];
 
     vector<std::uint8_t> v_msgpack = json::to_msgpack(_json);
@@ -153,7 +150,7 @@ string Config::get_md5sum() {
     for (int i = 0; i < 16; i++)
         sprintf(&md5str[i * 2], "%02x", (unsigned int)md5sum[i]);
 
-    return string(md5str);
+    return std::string(md5str);
 }
 #endif
 

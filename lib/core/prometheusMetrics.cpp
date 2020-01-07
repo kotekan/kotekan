@@ -163,7 +163,7 @@ void Metrics::add(const string name, const string stage_name,
     families[key] = metric;
 }
 
-Gauge& Metrics::add_gauge(const string& name, const string& stage_name) {
+Gauge& Metrics::add_gauge(const std::string& name, const std::string& stage_name) {
     const std::vector<string> empty_labels;
     auto f = std::make_shared<MetricFamily<Gauge>>(name, stage_name, empty_labels,
                                                    MetricFamily<Gauge>::MetricType::Gauge);
@@ -171,15 +171,15 @@ Gauge& Metrics::add_gauge(const string& name, const string& stage_name) {
     return f->labels({});
 }
 
-MetricFamily<Gauge>& Metrics::add_gauge(const string& name, const string& stage_name,
-                                        const std::vector<string>& label_names) {
+MetricFamily<Gauge>& Metrics::add_gauge(const std::string& name, const std::string& stage_name,
+                                        const std::vector<std::string>& label_names) {
     auto f = std::make_shared<MetricFamily<Gauge>>(name, stage_name, label_names,
                                                    MetricFamily<Gauge>::MetricType::Gauge);
     add(name, stage_name, f);
     return *f;
 }
 
-Counter& Metrics::add_counter(const string& name, const string& stage_name) {
+Counter& Metrics::add_counter(const std::string& name, const std::string& stage_name) {
     const std::vector<string> empty_labels;
     auto f = std::shared_ptr<MetricFamily<Counter>>(new MetricFamily<Counter>(
         name, stage_name, empty_labels, MetricFamily<Counter>::MetricType::Counter));
@@ -187,8 +187,8 @@ Counter& Metrics::add_counter(const string& name, const string& stage_name) {
     return f->labels({});
 }
 
-MetricFamily<Counter>& Metrics::add_counter(const string& name, const string& stage_name,
-                                            const std::vector<string>& label_names) {
+MetricFamily<Counter>& Metrics::add_counter(const std::string& name, const std::string& stage_name,
+                                            const std::vector<std::string>& label_names) {
     auto f = std::shared_ptr<MetricFamily<Counter>>(new MetricFamily<Counter>(
         name, stage_name, label_names, MetricFamily<Counter>::MetricType::Counter));
     add(name, stage_name, f);

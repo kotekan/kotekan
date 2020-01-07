@@ -317,7 +317,8 @@ private:
      * @throw std::runtime_error if the metric with that name is already registered or if the
      * ``name`` or ``stage_name`` are left empty.
      */
-    void add(const std::string name, const std::string stage_name, std::shared_ptr<Serializable>);
+    void add(const std::string name, const std::string stage_name,
+             std::shared_ptr<Serializable> metric);
 
     /**
      * The metric storage object with the format:
