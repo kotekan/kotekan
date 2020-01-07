@@ -58,7 +58,12 @@ execute_process(
   OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-set(FULL_KOTEKAN_VERSION "${KOTEKAN_BRANCH}.${KOTEKAN_VERSION}")
+# Remove branch name if we are on master
+if (${KOTEKAN_BRANCH} MATCHES "master")
+    set(FULL_KOTEKAN_VERSION "${KOTEKAN_VERSION}")
+else()
+    set(FULL_KOTEKAN_VERSION "${KOTEKAN_BRANCH}.${KOTEKAN_VERSION}")
+endif()
 
 configure_file(
     ${CURRENT_SOURCE_DIR}/version.c.in
