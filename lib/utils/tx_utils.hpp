@@ -6,8 +6,11 @@
 #ifndef TX_UTILS_HPP
 #define TX_UTILS_HPP
 
+#ifdef MAC_OSX
+#include <chrono> // for clockid_t  //IWYU pragma: keep
+#endif
 
-#include <sys/time.h> // for TIMER_ABSTIME
+
 /** @brief parse the gethostname() return string to the IP address of the node
  *
  *  @param my_rack rack number of the node

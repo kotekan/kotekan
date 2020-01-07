@@ -6,7 +6,7 @@
 #include "bufferContainer.hpp"     // for bufferContainer
 #include "chimeMetadata.h"         // for get_fpga_seq_num, get_lost_timesamples, get_rfi_flagg...
 #include "configUpdater.hpp"       // for configUpdater
-#include "datasetManager.hpp"      // for datasetManager
+#include "datasetManager.hpp"      // for datasetManager, state_id_t, dset_id_t
 #include "factory.hpp"             // for FACTORY
 #include "fpga_header_functions.h" // for freq_from_bin
 #include "kotekanLogging.hpp"      // for FATAL_ERROR, INFO, logLevel, DEBUG
@@ -20,21 +20,20 @@
 #include "gsl-lite.hpp" // for span<>::iterator, span
 #include "json.hpp"     // for json, basic_json, iteration_proxy_value, basic_json<>...
 
-#include <algorithm>          // for fill, transform
-#include <assert.h>           // for assert
-#include <atomic>             // for atomic_bool
-#include <complex>            // for conj, operator*, complex
-#include <cstring>            // for memcpy
-#include <exception>          // for exception
-#include <ext/alloc_traits.h> // for __alloc_traits<>::value_type
-#include <iterator>           // for begin, end, back_insert_iterator, back_inserter
-#include <math.h>             // for pow
-#include <mutex>              // for lock_guard, mutex
-#include <numeric>            // for iota
-#include <stdexcept>          // for invalid_argument
-#include <time.h>             // for size_t, timespec
-#include <tuple>              // for get
-#include <vector>             // for vector, vector<>::iterator, operator==
+#include <algorithm> // for fill, transform
+#include <assert.h>  // for assert
+#include <atomic>    // for atomic_bool
+#include <cmath>     // for pow
+#include <complex>   // for conj, operator*, complex
+#include <cstring>   // for memcpy
+#include <exception> // for exception
+#include <iterator>  // for begin, end, back_insert_iterator, back_inserter
+#include <mutex>     // for lock_guard, mutex
+#include <numeric>   // for iota
+#include <stdexcept> // for invalid_argument
+#include <time.h>    // for size_t, timespec
+#include <tuple>     // for get
+#include <vector>    // for vector, vector<>::iterator, __alloc_traits<>::value_type
 
 class eigenvalueState;
 class freqState;

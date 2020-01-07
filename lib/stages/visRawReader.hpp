@@ -6,9 +6,9 @@
 #ifndef _VIS_RAW_READER_HPP
 #define _VIS_RAW_READER_HPP
 
-#include "Stage.hpp"   // for Stage
-#include "dataset.hpp" // for dset_id_t
-#include "visUtil.hpp" // for freq_ctype (ptr only), input_ctype, prod_ctype, rstack_ctype, sta...
+#include "Stage.hpp"          // for Stage
+#include "datasetManager.hpp" // for dset_id_t
+#include "visUtil.hpp"        // for freq_ctype (ptr only), input_ctype, prod_ctype, rstack_ctype
 
 #include "json.hpp" // for json
 

@@ -1,6 +1,7 @@
 #ifndef METADATA_FACTORY_HPP
 #define METADATA_FACTORY_HPP
 
+#include "Config.hpp"
 #include "metadata.h" // for metadataPool  // IWYU pragma: keep
 
 #include "json.hpp" // for json
@@ -9,8 +10,6 @@
 #include <string> // for string
 
 namespace kotekan {
-
-class Config;
 
 class metadataFactory {
 

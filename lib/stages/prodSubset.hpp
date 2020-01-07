@@ -7,8 +7,7 @@
 #define PROD_SUB_HPP
 
 #include "Stage.hpp"          // for Stage
-#include "dataset.hpp"        // for dset_id_t, state_id_t
-#include "datasetManager.hpp" // for fingerprint_t
+#include "datasetManager.hpp" // for dset_id_t, state_id_t, fingerprint_t
 #include "visUtil.hpp"        // for prod_ctype
 
 #include <map>      // for map

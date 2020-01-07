@@ -9,19 +9,18 @@
 
 #include "fmt.hpp" // for format, fmt
 
-#include <atomic>             // for atomic_bool
-#include <errno.h>            // for errno
-#include <ext/alloc_traits.h> // for __alloc_traits<>::value_type
-#include <fcntl.h>            // for open, O_CREAT, O_WRONLY
-#include <functional>         // for _Bind_helper<>::type, bind, function
-#include <memory>             // for allocator_traits<>::value_type
-#include <pthread.h>          // for pthread_setaffinity_np
-#include <sched.h>            // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdio.h>            // for fprintf, snprintf, fclose, fopen, FILE, size_t
-#include <stdlib.h>           // for exit
-#include <thread>             // for thread
-#include <time.h>             // for gmtime, strftime, time, time_t
-#include <unistd.h>           // for close, write, ssize_t
+#include <atomic>     // for atomic_bool
+#include <errno.h>    // for errno
+#include <fcntl.h>    // for open, O_CREAT, O_WRONLY
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <memory>     // for allocator_traits<>::value_type
+#include <pthread.h>  // for pthread_setaffinity_np
+#include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdio.h>    // for fprintf, snprintf, fclose, fopen, FILE, size_t
+#include <stdlib.h>   // for exit
+#include <thread>     // for thread
+#include <time.h>     // for gmtime, strftime, time, time_t
+#include <unistd.h>   // for close, write, ssize_t
 
 namespace kotekan {
 class bufferContainer;

@@ -9,18 +9,18 @@
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for basic_json<>::value_type, json
 
-#include <cstdio>         // for remove
-#include <cxxabi.h>       // for __forced_unwind
-#include <errno.h>        // for errno
-#include <fstream>        // for ofstream, basic_ostream::write, ios
-#include <future>         // for async, future
-#include <linux/falloc.h> // for FALLOC_FL_KEEP_SIZE
-#include <stdexcept>      // for runtime_error
-#include <string.h>       // for strerror
-#include <sys/stat.h>     // for S_IRGRP, S_IROTH, S_IRUSR, S_IWGRP, S_IWUSR
-#include <system_error>   // for system_error
-#include <unistd.h>       // for close, pwrite, TEMP_FAILURE_RETRY
-#include <utility>        // for pair
+#include <cstdio>       // for remove
+#include <cxxabi.h>     // for __forced_unwind
+#include <errno.h>      // for errno
+#include <fcntl.h>      // for FALLOC_FL_KEEP_SIZE
+#include <fstream>      // for ofstream, basic_ostream::write, ios
+#include <future>       // for async, future
+#include <stdexcept>    // for runtime_error
+#include <string.h>     // for strerror
+#include <sys/stat.h>   // for S_IRGRP, S_IROTH, S_IRUSR, S_IWGRP, S_IWUSR
+#include <system_error> // for system_error
+#include <unistd.h>     // for close, pwrite, TEMP_FAILURE_RETRY
+#include <utility>      // for pair
 
 
 // Register the raw file writer

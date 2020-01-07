@@ -3,7 +3,6 @@
 #include <cstring>   // for strlen
 #include <stdexcept> // for runtime_error
 #include <stdlib.h>  // for atoi, malloc
-#include <string.h>  // for strlen
 #include <time.h>    // for timespec
 #include <unistd.h>  // for gethostname
 

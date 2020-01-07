@@ -1,6 +1,7 @@
 #ifndef BUFFER_FACTORY_HPP
 #define BUFFER_FACTORY_HPP
 
+#include "Config.hpp"
 #include "buffer.h"   // for Buffer        // IWYU pragma: keep
 #include "metadata.h" // for metadataPool  // IWYU pragma: keep
 
@@ -10,8 +11,6 @@
 #include <string> // for string
 
 namespace kotekan {
-
-class Config;
 
 class bufferFactory {
 

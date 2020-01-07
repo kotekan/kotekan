@@ -1,33 +1,38 @@
 #include "visTranspose.hpp"
 
-#include "StageFactory.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "version.h"
-#include "visBuffer.hpp"
-#include "visRawReader.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for Hash, operator!=
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for wait_for_full_frame, mark_frame_empty, register_consumer
+#include "datasetManager.hpp"    // for dset_id_t, datasetManager
+#include "datasetState.hpp"      // for metadataState, stackState, acqDatasetIdState, eigenvalu...
+#include "errors.h"              // for exit_kotekan, ReturnCode, ReturnCode::CLEAN_EXIT
+#include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, logLevel, INFO
+#include "prometheusMetrics.hpp" // for Metrics, Gauge
+#include "version.h"             // for get_git_commit_hash
+#include "visBuffer.hpp"         // for visFrameView
+#include "visFileArchive.hpp"    // for visFileArchive
 
-#include "gsl-lite.hpp"
+#include "fmt.hpp"      // for format
+#include "gsl-lite.hpp" // for span
 
-#include <algorithm>
-#include <atomic>
-#include <complex>
-#include <csignal>
-#include <cstdint>
-#include <cxxabi.h>
-#include <exception>
-#include <functional>
-#include <future>
-#include <inttypes.h>
-#include <iterator>
-#include <regex>
-#include <stdexcept>
-#include <sys/types.h>
-#include <unistd.h>
-#include <utility>
+#include <algorithm>    // for fill, min
+#include <atomic>       // for atomic_bool
+#include <complex>      // for complex
+#include <cxxabi.h>     // for __forced_unwind
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <future>       // for async, future
+#include <iterator>     // for make_move_iterator, move_iterator, operator!=
+#include <stdexcept>    // for invalid_argument
+#include <stdint.h>     // for uint32_t, uint64_t
+#include <sys/types.h>  // for uint
+#include <system_error> // for system_error
+#include <unistd.h>     // for gethostname, getlogin_r
+#include <utility>      // for move, pair
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -198,7 +203,7 @@ void visTranspose::main_thread() {
     // Once the async get_dataset_state() is done, we have all the metadata to
     // create a file.
 
-    found_flags = vector<bool>(write_t, false);
+    found_flags = std::vector<bool>(write_t, false);
 
     // Create HDF5 file
     if (stack.size() > 0) {

@@ -7,20 +7,28 @@
 #ifndef BASEBAND_READOUT_H
 #define BASEBAND_READOUT_H
 
-#include "BipBuffer.hpp"
-#include "Stage.hpp"
-#include "basebandReadoutManager.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "gpsTime.h"
-#include "prometheusMetrics.hpp"
-#include "visUtil.hpp"
+#include "BipBuffer.hpp"              // for BipBuffer
+#include "Stage.hpp"                  // for Stage
+#include "basebandReadoutManager.hpp" // for basebandDumpData, basebandReadoutManager (ptr only)
+#include "visUtil.hpp"                // for input_ctype
 
-#include <highfive/H5DataSet.hpp>
-#include <highfive/H5DataSpace.hpp>
-#include <highfive/H5File.hpp>
-#include <mutex>
-#include <string>
+#include <mutex>    // for mutex
+#include <stddef.h> // for size_t
+#include <stdint.h> // for int64_t, uint32_t, uint64_t
+#include <string>   // for string
+#include <vector>   // for vector
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+
+namespace prometheus {
+class Counter;
+class Gauge;
+template<typename T>
+class MetricFamily;
+} // namespace prometheus
+} // namespace kotekan
 
 
 constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;

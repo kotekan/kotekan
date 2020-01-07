@@ -3,7 +3,7 @@
 #include "Config.hpp"         // for Config
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"           // for Buffer, allocate_new_metadata_object, mark_frame_full, reg...
-#include "datasetManager.hpp" // for datasetManager
+#include "datasetManager.hpp" // for datasetManager, state_id_t, dset_id_t
 #include "errors.h"           // for exit_kotekan, ReturnCode, ReturnCode::CLEAN_EXIT
 #include "kotekanLogging.hpp" // for DEBUG, INFO, FATAL_ERROR
 #include "metadata.h"         // for metadataContainer
@@ -21,9 +21,8 @@
 #include <cstring>    // for strerror, memcpy
 #include <errno.h>    // for errno
 #include <fcntl.h>    // for open, O_RDONLY
-#include <fstream>    // for ifstream  // IWYU pragma: keep
+#include <fstream>    // for ifstream, ios_base::failure, ios_base, basic_ios, basic_is...
 #include <functional> // for _Bind_helper<>::type, bind, function
-#include <iostream>   // for ifstream, ios_base::failure, ios_base, basic_ios, basic_is...
 #include <stdexcept>  // for runtime_error, invalid_argument
 #include <sys/mman.h> // for madvise, mmap, munmap, MADV_DONTNEED, MADV_WILLNEED, MAP_F...
 #include <sys/stat.h> // for stat
@@ -38,6 +37,7 @@ class metadataState;
 class prodState;
 class stackState;
 class timeState;
+
 namespace kotekan {
 class bufferContainer;
 } // namespace kotekan

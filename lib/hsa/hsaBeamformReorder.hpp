@@ -81,7 +81,7 @@ private:
     /// Number of sample per data set, current set at 128*128*3
     int32_t _samples_per_data_set;
     /// Array of reordering index
-    vector<int32_t> _reorder_map;
+    std::vector<int32_t> _reorder_map;
     /// Array of reordering index in C style for backwards compatibility.
     int* _reorder_map_c;
 };

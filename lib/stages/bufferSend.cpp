@@ -11,11 +11,9 @@
 
 #include <arpa/inet.h>  // for inet_addr
 #include <cerrno>       // for errno
-#include <cstring>      // for strerror
+#include <cstring>      // for strerror, size_t
 #include <functional>   // for _Bind_helper<>::type, bind, ref, function
 #include <stdexcept>    // for runtime_error
-#include <stdio.h>      // for size_t
-#include <string.h>     // for strerror
 #include <strings.h>    // for bzero
 #include <sys/socket.h> // for send, MSG_NOSIGNAL, connect, setsockopt, socket, AF_INET
 #include <sys/time.h>   // for timeval

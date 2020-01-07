@@ -31,7 +31,7 @@ class hsaRfiUpdateBadInputs : public hsaCommand {
 
 public:
     /// Standard constructor
-    hsaRfiUpdateBadInputs(kotekan::Config& config, const string& unique_name,
+    hsaRfiUpdateBadInputs(kotekan::Config& config, const std::string& unique_name,
                           kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     virtual ~hsaRfiUpdateBadInputs();
 

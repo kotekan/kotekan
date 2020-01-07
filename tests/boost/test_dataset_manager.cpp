@@ -1,17 +1,24 @@
 #define BOOST_TEST_MODULE "test_datasetManager"
 
-#include "Config.hpp"
-#include "test_utils.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"  // for Config
+#include "Hash.hpp"    // for operator<<
+#include "dataset.hpp" // for dataset
 
-#include "json.hpp"
-
-#include <boost/test/included/unit_test.hpp>
-#include <iostream>
-#include <string>
-
+#include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...
+#include <iostream>                          // for endl, operator<<, ostream, basic_ostream, cout
+#include <memory>                            // for allocator, make_unique, unique_ptr
+#include <stdint.h>                          // for uint32_t
+#include <string>                            // for string, operator<<
+#include <utility>                           // for pair
+#include <vector>                            // for vector
 // the code to test:
-#include "datasetManager.hpp"
+#include "datasetManager.hpp" // for datasetManager, state_id_t, dset_id_t
+#include "datasetState.hpp"   // for inputState, freqState, prodState, datasetState
+#include "errors.h"           // for _global_log_level, __enable_syslog
+#include "test_utils.hpp"     // for CompareCTypes
+#include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype
+
+#include "json.hpp" // for basic_json<>::value_type, operator!=, json
 
 using kotekan::Config;
 

@@ -1,6 +1,8 @@
 #ifndef PROMETHEUS_METRICS_HPP
 #define PROMETHEUS_METRICS_HPP
 
+#include "restServer.hpp" // IWYU pragma: keep
+
 #include <deque>     // for deque
 #include <iosfwd>    // for ostringstream
 #include <map>       // for map
@@ -11,11 +13,6 @@
 #include <string>    // for string
 #include <tuple>     // for tuple
 #include <vector>    // for vector
-
-namespace kotekan {
-class connectionInstance;
-class restServer;
-} // namespace kotekan
 
 
 namespace kotekan {

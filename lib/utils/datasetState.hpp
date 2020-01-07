@@ -20,9 +20,9 @@
 #include <utility>   // for pair
 #include <vector>    // for vector, vector<>::iterator
 
-class datasetManager;
 // Forward declarations
 class datasetState;
+class datasetManager;
 
 
 /// Unique pointer to a datasetState
@@ -33,7 +33,6 @@ using state_id_t = Hash;
 
 /// DatasetID
 using dset_id_t = Hash;
-
 
 /**
  * @brief A base class for representing state changes done to datasets.

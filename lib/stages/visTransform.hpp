@@ -6,9 +6,9 @@
 #ifndef VISTRANSFORM_H
 #define VISTRANSFORM_H
 
-#include "Stage.hpp"   // for Stage
-#include "dataset.hpp" // for dset_id_t
-#include "visUtil.hpp" // for input_ctype, prod_ctype, freq_ctype (ptr only)
+#include "Stage.hpp"          // for Stage
+#include "datasetManager.hpp" // for dset_id_t
+#include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype (ptr only)
 
 #include <stddef.h> // for size_t
 #include <stdint.h> // for uint32_t

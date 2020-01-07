@@ -4,7 +4,7 @@
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for mark_frame_empty, mark_frame_full, register_consumer
 #include "configUpdater.hpp"     // for configUpdater
-#include "datasetManager.hpp"    // for datasetManager
+#include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
 #include "kotekanLogging.hpp"    // for WARN, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
 #include "visBuffer.hpp"         // for visFrameView
@@ -22,6 +22,7 @@
 #include <utility>     // for pair, move, tuple_element<>::type
 
 class flagState;
+
 namespace kotekan {
 class bufferContainer;
 } // namespace kotekan

@@ -8,8 +8,7 @@
 #define VIS_WRITER_HPP
 
 #include "Stage.hpp"          // for Stage
-#include "dataset.hpp"        // for dset_id_t
-#include "datasetManager.hpp" // for fingerprint_t
+#include "datasetManager.hpp" // for dset_id_t, fingerprint_t
 #include "visFile.hpp"        // for visFileBundle, visCalFileBundle (ptr only)
 #include "visUtil.hpp"        // for movingAverage
 
@@ -30,6 +29,7 @@ namespace kotekan {
 class Config;
 class bufferContainer;
 class connectionInstance;
+
 namespace prometheus {
 class Counter;
 template<typename T>

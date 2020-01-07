@@ -7,22 +7,25 @@
 #ifndef VIS_FILE_H5_HPP
 #define VIS_FILE_H5_HPP
 
-#include "Config.hpp"
-#include "datasetManager.hpp"
-#include "visBuffer.hpp"
-#include "visFile.hpp"
-#include "visUtil.hpp"
+#include "datasetManager.hpp" // for dset_id_t
+#include "kotekanLogging.hpp" // for logLevel
+#include "visFile.hpp"        // for visFile
+#include "visUtil.hpp"        // for time_ctype (ptr only), freq_ctype (ptr only)
 
-#include <cstdint>
-#include <highfive/H5DataSet.hpp>
-#include <highfive/H5File.hpp>
-#include <iostream>
-#include <map>
-#include <memory>
-#include <stddef.h>
-#include <string>
-#include <sys/types.h>
-#include <vector>
+#include <cstdint>                 // for uint32_t
+#include <highfive/H5DataSet.hpp>  // for DataSet
+#include <highfive/H5DataType.hpp> // for DataType
+#include <map>                     // for map
+#include <memory>                  // for unique_ptr
+#include <stddef.h>                // for size_t
+#include <string>                  // for string
+#include <sys/types.h>             // for off_t
+#include <vector>                  // for vector
+
+class visFrameView;
+namespace HighFive {
+class File;
+} // namespace HighFive
 
 /** @brief A CHIME correlator file.
  *

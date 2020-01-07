@@ -10,7 +10,6 @@
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <random>     // for random_device, uniform_int_distribution, mt19937
 #include <string.h>   // for memcpy, memset
-#include <sys/time.h> // for gettimeofday, timeval
 #include <unistd.h>   // for usleep
 
 namespace kotekan {

@@ -7,11 +7,11 @@
 #ifndef VIS_ACCUMULATE_HPP
 #define VIS_ACCUMULATE_HPP
 
-#include "Stage.hpp"     // for Stage
-#include "dataset.hpp"   // for dset_id_t
-#include "gateSpec.hpp"  // for gateSpec
-#include "visBuffer.hpp" // for visFrameView
-#include "visUtil.hpp"   // for frameID, freq_ctype (ptr only), input_ctype (ptr only), prod_ct...
+#include "Stage.hpp"          // for Stage
+#include "datasetManager.hpp" // for dset_id_t
+#include "gateSpec.hpp"       // for gateSpec
+#include "visBuffer.hpp"      // for visFrameView
+#include "visUtil.hpp"        // for frameID, freq_ctype (ptr only), input_ctype (ptr only)
 
 #include <cstdint>    // for uint32_t, int32_t
 #include <deque>      // for deque
@@ -27,6 +27,7 @@
 namespace kotekan {
 class Config;
 class bufferContainer;
+
 namespace prometheus {
 class Counter;
 template<typename T>

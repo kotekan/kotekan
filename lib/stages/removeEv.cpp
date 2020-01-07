@@ -3,7 +3,7 @@
 #include "Hash.hpp"           // for operator<
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"           // for allocate_new_metadata_object, mark_frame_empty, mark_frame...
-#include "datasetManager.hpp" // for datasetManager
+#include "datasetManager.hpp" // for datasetManager, dset_id_t
 #include "visBuffer.hpp"      // for visFrameView, visField, visField::erms, visField::eval
 #include "visUtil.hpp"        // for frameID, modulo
 
@@ -12,6 +12,7 @@
 #include <utility>    // for pair
 
 class eigenvalueState;
+
 namespace kotekan {
 class Config;
 class bufferContainer;

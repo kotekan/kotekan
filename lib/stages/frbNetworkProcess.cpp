@@ -11,28 +11,27 @@
 
 #include "fmt.hpp" // for format
 
-#include <algorithm>          // for max_element
-#include <arpa/inet.h>        // for inet_pton
-#include <chrono>             // for steady_clock::time_point, seconds, operator+, steady_clock
-#include <cstring>            // for strerror, memset, size_t
-#include <errno.h>            // for errno, EINTR
-#include <ext/alloc_traits.h> // for __alloc_traits<>::value_type
-#include <map>                // for map, map<>::mapped_type
-#include <memory>             // for allocator_traits<>::value_type
-#include <mutex>              // for mutex, unique_lock
-#include <pthread.h>          // for pthread_setaffinity_np
-#include <queue>              // for priority_queue
-#include <random>             // for random_device, uniform_int_distribution, mt19937
-#include <ratio>              // for ratio
-#include <sched.h>            // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <string>             // for string, allocator
-#include <sys/select.h>       // for select, FD_SET, FD_ZERO, FD_ISSET, fd_set
-#include <sys/socket.h>       // for AF_INET, bind, socket, sendto, setsockopt, SOCK_DGRAM
-#include <sys/time.h>         // for CLOCK_MONOTONIC, CLOCK_REALTIME, timeval
-#include <thread>             // for thread
-#include <time.h>             // for clock_gettime, timespec
-#include <unistd.h>           // for close
-#include <utility>            // for move, get
+#include <algorithm>    // for max_element
+#include <arpa/inet.h>  // for inet_pton
+#include <chrono>       // for steady_clock::time_point, seconds, operator+, steady_clock
+#include <cstring>      // for strerror, memset, size_t
+#include <errno.h>      // for errno, EINTR
+#include <map>          // for map, map<>::mapped_type
+#include <memory>       // for allocator_traits<>::value_type
+#include <mutex>        // for mutex, unique_lock
+#include <pthread.h>    // for pthread_setaffinity_np
+#include <queue>        // for priority_queue
+#include <random>       // for random_device, uniform_int_distribution, mt19937
+#include <ratio>        // for ratio
+#include <sched.h>      // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <string>       // for string, allocator
+#include <sys/select.h> // for select, FD_SET, FD_ZERO, FD_ISSET, fd_set
+#include <sys/socket.h> // for AF_INET, bind, socket, sendto, setsockopt, SOCK_DGRAM
+#include <sys/time.h>   // for CLOCK_MONOTONIC, CLOCK_REALTIME, timeval
+#include <thread>       // for thread
+#include <time.h>       // for clock_gettime, timespec
+#include <unistd.h>     // for close
+#include <utility>      // for move, get
 
 namespace kotekan {
 class bufferContainer;

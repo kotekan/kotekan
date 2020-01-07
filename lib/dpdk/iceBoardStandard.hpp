@@ -7,12 +7,15 @@
 #ifndef ICE_BOARD_STANDARD_HPP
 #define ICE_BOARD_STANDARD_HPP
 
+#include "Config.hpp"
 #include "buffer.h"
+#include "bufferContainer.hpp"
 #include "chimeMetadata.h"
 #include "gpsTime.h"
 #include "iceBoardHandler.hpp"
 #include "packet_copy.h"
 #include "prometheusMetrics.hpp"
+#include "restServer.hpp"
 #include "util.h"
 
 /**
@@ -92,11 +95,11 @@ iceBoardStandard::iceBoardStandard(kotekan::Config& config, const std::string& u
     // TODO Some parts of this function are common to the various ICEboard
     // handlers, and could likely be factored out.
     std::string endpoint_name = unique_name + "/port_data";
-    kotekan::restServer::instance().register_get_callback(endpoint_name,
-                                                          [&](kotekan::connectionInstance& conn) {
-                                                              json info = get_json_port_info();
-                                                              conn.send_json_reply(info);
-                                                          });
+    kotekan::restServer::instance().register_get_callback(
+        endpoint_name, [&](kotekan::connectionInstance& conn) {
+            nlohmann::json info = get_json_port_info();
+            conn.send_json_reply(info);
+        });
 }
 
 inline int iceBoardStandard::handle_packet(struct rte_mbuf* mbuf) {

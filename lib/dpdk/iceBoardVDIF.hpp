@@ -7,9 +7,12 @@
 #ifndef ICE_BOARD_VDIF
 #define ICE_BOARD_VDIF
 
+#include "Config.hpp"
 #include "buffer.h"
+#include "bufferContainer.hpp"
 #include "iceBoardHandler.hpp"
 #include "packet_copy.h"
+#include "restServer.hpp"
 #include "util.h"
 #include "vdif_functions.h"
 
@@ -124,11 +127,11 @@ iceBoardVDIF::iceBoardVDIF(kotekan::Config& config, const std::string& unique_na
     }
 
     std::string endpoint_name = unique_name + "/port_data";
-    kotekan::restServer::instance().register_get_callback(endpoint_name,
-                                                          [&](kotekan::connectionInstance& conn) {
-                                                              json info = get_json_port_info();
-                                                              conn.send_json_reply(info);
-                                                          });
+    kotekan::restServer::instance().register_get_callback(
+        endpoint_name, [&](kotekan::connectionInstance& conn) {
+            nlohmann::json info = get_json_port_info();
+            conn.send_json_reply(info);
+        });
 }
 
 int iceBoardVDIF::handle_packet(struct rte_mbuf* mbuf) {

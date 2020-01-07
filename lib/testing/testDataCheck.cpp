@@ -2,8 +2,6 @@
 
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 
-#include <memory> // for allocator
-
 
 using testDataCheckInt = testDataCheck<int32_t>;
 using testDataCheckUchar = testDataCheck<uint8_t>;

@@ -1,6 +1,7 @@
 #ifndef KOTEKAN_MODE_HPP
 #define KOTEKAN_MODE_HPP
 
+#include "Stage.hpp"
 #include "bufferContainer.hpp" // for bufferContainer
 #include "metadata.h"          // for metadataPool  // IWYU pragma: keep
 
@@ -17,7 +18,6 @@
 namespace kotekan {
 
 class Config;
-class Stage;
 
 class kotekanMode {
 public:

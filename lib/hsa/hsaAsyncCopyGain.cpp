@@ -12,7 +12,7 @@ using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaAsyncCopyGain);
 
-hsaAsyncCopyGain::hsaAsyncCopyGain(Config& config, const string& unique_name,
+hsaAsyncCopyGain::hsaAsyncCopyGain(Config& config, const std::string& unique_name,
                                    bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "hsaAsyncCopyGain", "") {
     command_type = gpuCommandType::COPY_IN;

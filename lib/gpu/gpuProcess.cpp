@@ -17,6 +17,8 @@ using kotekan::restServer;
 
 using namespace std;
 
+using nlohmann::json;
+
 // TODO Remove the GPU_ID from this constructor
 gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
                        bufferContainer& buffer_container) :

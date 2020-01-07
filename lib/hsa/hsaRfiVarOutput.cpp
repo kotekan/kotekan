@@ -5,7 +5,7 @@ using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaRfiVarOutput);
 
-hsaRfiVarOutput::hsaRfiVarOutput(Config& config, const string& unique_name,
+hsaRfiVarOutput::hsaRfiVarOutput(Config& config, const std::string& unique_name,
                                  bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "hsaRfiVarOutput", "") {
     command_type = gpuCommandType::COPY_OUT;

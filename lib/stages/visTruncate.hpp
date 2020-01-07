@@ -1,11 +1,15 @@
 #ifndef VISTRUNCATE
 #define VISTRUNCATE
 
-#include "Stage.hpp"
-#include "buffer.h"
+#include "Stage.hpp" // for Stage
 
-#include <immintrin.h>
-#include <xmmintrin.h>
+#include <string> // for string
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+} // namespace kotekan
+struct Buffer;
 
 /**
  * @class visTruncate

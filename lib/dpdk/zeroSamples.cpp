@@ -1,5 +1,8 @@
 #include "zeroSamples.hpp"
 
+#include "Config.hpp"
+#include "StageFactory.hpp"
+#include "bufferContainer.hpp"
 #include "chimeMetadata.h"
 #include "nt_memset.h"
 
@@ -8,6 +11,7 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using nlohmann::json;
 
 REGISTER_KOTEKAN_STAGE(zeroSamples);
 

@@ -1,5 +1,6 @@
 #include "clProcess.hpp"
 
+#include "StageFactory.hpp"
 #include "unistd.h"
 #include "util.h"
 

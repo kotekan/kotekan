@@ -5,15 +5,14 @@
 #include "buffer.h"           // for Buffer, mark_frame_full, register_producer, wait_for_empty...
 #include "kotekanLogging.hpp" // for INFO, ERROR
 
-#include <assert.h>           // for assert
-#include <atomic>             // for atomic_bool
-#include <ext/alloc_traits.h> // for __alloc_traits<>::value_type
-#include <functional>         // for _Bind_helper<>::type, bind, function
-#include <memory>             // for allocator, allocator_traits<>::value_type
-#include <pthread.h>          // for pthread_setaffinity_np
-#include <sched.h>            // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdio.h>            // for fclose, fopen, fread, fseek, ftell, rewind, snprintf, FILE
-#include <sys/types.h>        // for uint
+#include <assert.h>    // for assert
+#include <atomic>      // for atomic_bool
+#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <memory>      // for allocator, allocator_traits<>::value_type
+#include <pthread.h>   // for pthread_setaffinity_np
+#include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdio.h>     // for fclose, fopen, fread, fseek, ftell, rewind, snprintf, FILE
+#include <sys/types.h> // for uint
 
 namespace kotekan {
 class bufferContainer;

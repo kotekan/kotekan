@@ -10,7 +10,7 @@
 
 /// Stores a named set of gpu pointer(s) with uniform size
 struct gpuMemoryBlock {
-    vector<void*> gpu_pointers;
+    std::vector<void*> gpu_pointers;
     uint32_t len;
 };
 
@@ -73,7 +73,7 @@ protected:
     uint32_t gpu_buffer_depth;
 
 private:
-    std::map<string, gpuMemoryBlock> gpu_memory;
+    std::map<std::string, gpuMemoryBlock> gpu_memory;
 };
 
 #endif // GPU_DEVICE_INTERFACE_H

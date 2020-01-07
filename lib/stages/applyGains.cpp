@@ -1,24 +1,38 @@
 #include "applyGains.hpp"
 
-#include "Stage.hpp"
-#include "configUpdater.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
-#include "visFileH5.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for mark_frame_empty, allocate_new_metadata...
+#include "configUpdater.hpp"     // for configUpdater
+#include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
+#include "datasetState.hpp"      // for freqState, gainState (ptr only), inputS...
+#include "kotekanLogging.hpp"    // for WARN, FATAL_ERROR, INFO
+#include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
+#include "visBuffer.hpp"         // for visFrameView, visField, visField::vis
+#include "visFileH5.hpp"         // for HighFive::AtomicType<cfloat>  // IWYU pragma: keep
+#include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double
 
-#include "fmt.hpp"
+#include "fmt.hpp"      // for format, fmt
+#include "gsl-lite.hpp" // for span
 
-#include <algorithm>
-#include <csignal>
-#include <exception>
-#include <highfive/H5DataSet.hpp>
-#include <highfive/H5DataSpace.hpp>
-#include <highfive/H5File.hpp>
-#include <sys/stat.h>
+#include <cmath>                    // for pow, abs
+#include <complex>                  // for operator*, operator+, complex, operator...
+#include <exception>                // for exception
+#include <functional>               // for _Bind_helper<>::type, _Placeholder, bind
+#include <highfive/H5DataSet.hpp>   // for DataSet, DataSet::getSpace
+#include <highfive/H5DataSpace.hpp> // for DataSpace, DataSpace::getDimensions
+#include <highfive/H5File.hpp>      // for File, NodeTraits::getDataSet, File::File
+#include <highfive/H5Selection.hpp> // for SliceTraits::read
+#include <memory>                   // for allocator_traits<>::value_type
+#include <pthread.h>                // for pthread_setaffinity_np
+#include <sched.h>                  // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept>                // for invalid_argument
+#include <sys/stat.h>               // for stat
+#include <tuple>                    // for get
+
+namespace kotekan {
+class bufferContainer;
+} // namespace kotekan
 
 using namespace HighFive;
 using namespace std::placeholders;

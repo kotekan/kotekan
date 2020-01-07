@@ -96,7 +96,8 @@ hsaBeamformKernel::~hsaBeamformKernel() {
     // TODO Free device memory allocations.
 }
 
-void hsaBeamformKernel::update_EW_beam_callback(connectionInstance& conn, json& json_request) {
+void hsaBeamformKernel::update_EW_beam_callback(connectionInstance& conn,
+                                                nlohmann::json& json_request) {
     int ew_id;
     try {
         ew_id = json_request["ew_id"];
@@ -111,7 +112,8 @@ void hsaBeamformKernel::update_EW_beam_callback(connectionInstance& conn, json& 
     conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
-void hsaBeamformKernel::update_NS_beam_callback(connectionInstance& conn, json& json_request) {
+void hsaBeamformKernel::update_NS_beam_callback(connectionInstance& conn,
+                                                nlohmann::json& json_request) {
     try {
         _northmost_beam = json_request["northmost_beam"];
     } catch (...) {

@@ -25,6 +25,8 @@
 #include <stdint.h>   // for uint32_t
 #include <stdio.h>    // for size_t
 
+struct metadataPool;
+
 #ifdef __cplusplus
 extern "C" {
 #endif

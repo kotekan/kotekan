@@ -1,18 +1,28 @@
 #define BOOST_TEST_MODULE "test_dataset_broker_producer"
 
-#include "restClient.hpp"
-#include "restServer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"  // for Config
+#include "Hash.hpp"    // for operator<<
+#include "dataset.hpp" // for dataset
 
-#include "json.hpp"
-
-#include <boost/test/included/unit_test.hpp>
-#include <fstream>
-#include <iostream>
-#include <string>
-
+#include <boost/test/included/unit_test.hpp> // for master_test_suite, BOOST_PP_IIF_1, BOOST_CHECK
+#include <chrono>                            // for milliseconds
+#include <iostream>                          // for ofstream, operator<<, basic_ostream, ostream
+#include <stdint.h>                          // for uint32_t
+#include <stdlib.h>                          // for atoi
+#include <string>                            // for allocator, string, operator<<, operator==
+#include <thread>                            // for sleep_for
+#include <unistd.h>                          // for usleep
+#include <utility>                           // for pair
+#include <vector>                            // for vector
 // the code to test:
-#include "datasetManager.hpp"
+#include "datasetManager.hpp" // for datasetManager, state_id_t, dset_id_t
+#include "datasetState.hpp"   // for freqState (ptr only), inputState (ptr only)
+#include "errors.h"           // for __enable_syslog, _global_log_level
+#include "restClient.hpp"     // for restClient, restClient::restReply
+#include "restServer.hpp"     // for restServer
+#include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype
+
+#include "json.hpp" // for basic_json<>::value_type, json
 
 #define WAIT_TIME 4000000
 
@@ -70,7 +80,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     // Force the dM to update while it knows of nothing yet.
-    restReply reply = restClient::instance().make_request_blocking(
+    restClient::restReply reply = restClient::instance().make_request_blocking(
         "/dataset-manager/force-update", {}, "127.0.0.1", kotekan::restServer::instance().port);
     BOOST_CHECK(reply.first == true);
     BOOST_CHECK(reply.second == "");

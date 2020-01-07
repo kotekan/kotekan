@@ -6,8 +6,8 @@
 #ifndef REMOVE_EV_HPP
 #define REMOVE_EV_HPP
 
-#include "Stage.hpp"   // for Stage
-#include "dataset.hpp" // for dset_id_t, state_id_t
+#include "Stage.hpp"          // for Stage
+#include "datasetManager.hpp" // for dset_id_t, state_id_t
 
 #include <map>    // for map
 #include <string> // for string

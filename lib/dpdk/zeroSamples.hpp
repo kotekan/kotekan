@@ -73,7 +73,7 @@ private:
     bool _duplicate_ls_buffer;
 
     /// Vector to hold all duplicate lost sample buffers
-    vector<Buffer*> out_lost_sample_bufs;
+    std::vector<Buffer*> out_lost_sample_bufs;
 
     /// The int8 "zero" value
     uint8_t zero_value;

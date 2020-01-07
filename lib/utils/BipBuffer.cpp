@@ -4,7 +4,6 @@
 
 #include <algorithm> // for min, max
 #include <cassert>   // for assert
-#include <stdint.h>  // for uint8_t
 
 
 BipWriteReservation::BipWriteReservation(uint8_t* const start, const size_t length,

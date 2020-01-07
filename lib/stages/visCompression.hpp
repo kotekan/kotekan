@@ -7,8 +7,7 @@
 #define VIS_COMPRESSION_HPP
 
 #include "Stage.hpp"          // for Stage
-#include "dataset.hpp"        // for dset_id_t, state_id_t
-#include "datasetManager.hpp" // for fingerprint_t
+#include "datasetManager.hpp" // for dset_id_t, state_id_t, fingerprint_t
 #include "visUtil.hpp"        // for input_ctype (ptr only), prod_ctype (ptr only), frameID
 
 #include <cstdint>    // for uint32_t, int8_t, int16_t
@@ -24,9 +23,11 @@
 
 class prodState;
 class stackState;
+
 namespace kotekan {
 class Config;
 class bufferContainer;
+
 namespace prometheus {
 class Counter;
 class Gauge;

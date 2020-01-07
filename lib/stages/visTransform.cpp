@@ -4,7 +4,7 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_empty
 #include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for datasetManager
+#include "datasetManager.hpp"  // for datasetManager, state_id_t, dset_id_t
 #include "kotekanLogging.hpp"  // for INFO
 #include "metadata.h"          // for metadataContainer
 #include "version.h"           // for get_git_commit_hash

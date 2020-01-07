@@ -79,7 +79,7 @@ public:
 protected:
     // Extract the code handle for the specified kernelName from the specified fileName
     // Returns a 64-bit code object which can be used with an AQL packet
-    uint64_t load_hsaco_file(string& file_name, std::string& kernel_name);
+    uint64_t load_hsaco_file(std::string& file_name, std::string& kernel_name);
 
     // Creates the memory needed for the kernel args.
     void allocate_kernel_arg_memory(int max_size);

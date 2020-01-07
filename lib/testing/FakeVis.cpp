@@ -4,7 +4,7 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for allocate_new_metadata_object, mark_frame_full, register_p...
 #include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for datasetManager
+#include "datasetManager.hpp"  // for dset_id_t, datasetManager, state_id_t
 #include "errors.h"            // for exit_kotekan, ReturnCode, ReturnCode::CLEAN_EXIT
 #include "factory.hpp"         // for FACTORY
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
@@ -18,11 +18,11 @@
 #include <algorithm>   // for fill, transform
 #include <atomic>      // for atomic_bool
 #include <complex>     // for complex
-#include <cstdint>     // for uint32_t
+#include <cstdint>     // for uint32_t, uint64_t
 #include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, bind, function
 #include <iterator>    // for back_insert_iterator, back_inserter, begin, end
-#include <memory>      // for unique_ptr
+#include <memory>      // for allocator, unique_ptr
 #include <time.h>      // for nanosleep, timespec
 #include <tuple>       // for get, make_tuple, tuple
 #include <type_traits> // for __decay_and_strip<>::__type

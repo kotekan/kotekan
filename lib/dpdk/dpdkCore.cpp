@@ -6,23 +6,27 @@
 #ifdef WITH_NUMA
 #include <numa.h>
 #endif
+#include "Config.hpp"
+#include "StageFactory.hpp"
+#include "captureHandler.hpp"
+#include "iceBoardShuffle.hpp"
+#include "iceBoardStandard.hpp"
+#include "iceBoardVDIF.hpp"
+
 #include <signal.h>
 #include <stdexcept>
 #include <unistd.h>
 #include <vector>
+
+
+/// TODO move this to an inline static once we go to C++17
+stream_id_t iceBoardShuffle::all_stream_ids[iceBoardShuffle::shuffle_size];
 
 using nlohmann::json;
 using std::string;
 using std::to_string;
 using std::vector;
 
-#include "captureHandler.hpp"
-#include "iceBoardShuffle.hpp"
-#include "iceBoardStandard.hpp"
-#include "iceBoardVDIF.hpp"
-
-/// TODO move this to an inline static once we go to C++17
-stream_id_t iceBoardShuffle::all_stream_ids[iceBoardShuffle::shuffle_size];
 
 using kotekan::bufferContainer;
 using kotekan::Config;

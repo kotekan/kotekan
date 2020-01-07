@@ -6,8 +6,8 @@
 
 #include <assert.h>    // for assert
 #include <atomic>      // for atomic_bool
+#include <cmath>       // for fmod
 #include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
-#include <math.h>      // for fmod
 #include <stdint.h>    // for uint8_t, uint64_t
 #include <stdlib.h>    // for rand, srand
 #include <sys/time.h>  // for gettimeofday, timeval

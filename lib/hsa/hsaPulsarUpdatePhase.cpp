@@ -84,7 +84,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const std::string& un
         configUpdater::instance().subscribe(
             config.get<std::string>(unique_name, "updatable_config/psr_pt") + "/"
                 + std::to_string(beam_id),
-            [beam_id, this](json& json_msg) -> bool {
+            [beam_id, this](nlohmann::json& json_msg) -> bool {
                 return pulsar_grab_callback(json_msg, beam_id);
             });
     }

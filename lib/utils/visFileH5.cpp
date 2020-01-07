@@ -1,31 +1,37 @@
 
 #include "visFileH5.hpp"
 
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
+#include "Hash.hpp"           // for Hash
+#include "datasetManager.hpp" // for datasetManager, dset_id_t
+#include "datasetState.hpp"   // for eigenvalueState, freqState, inputState, prodS...
+#include "visBuffer.hpp"      // for visFrameView
+#include "visUtil.hpp"        // for cfloat, time_ctype, unzip, freq_ctype, input_...
 
-#include "fmt.hpp"
-#include "gsl-lite.hpp"
+#include "fmt.hpp"      // for format, fmt
+#include "gsl-lite.hpp" // for span
 
-#include <complex>
-#include <cstdio>
-#include <cxxabi.h>
-#include <errno.h>
-#include <exception>
-#include <fcntl.h>
-#include <future>
-#include <highfive/H5DataSet.hpp>
-#include <highfive/H5DataSpace.hpp>
-#include <highfive/H5File.hpp>
-#include <inttypes.h>
-#include <numeric>
-#include <stdexcept>
-#include <string.h>
-#include <sys/stat.h>
-#include <tuple>
-#include <unistd.h>
-#include <utility>
+#include <cstdio>                      // for remove
+#include <cxxabi.h>                    // for __forced_unwind
+#include <errno.h>                     // for errno
+#include <fcntl.h>                     // for sync_file_range, posix_fadvise, posix_fallocate
+#include <future>                      // for async, future
+#include <highfive/H5Attribute.hpp>    // for Attribute, Attribute::write, Attribute::getSpace
+#include <highfive/H5DataSet.hpp>      // for DataSet, DataSet::resize, AnnotateTraits::cre...
+#include <highfive/H5DataSpace.hpp>    // for DataSpace, DataSpace::From, DataSpace::DataSpace
+#include <highfive/H5DataType.hpp>     // for CompoundType, create_datatype, CompoundType::...
+#include <highfive/H5File.hpp>         // for File, File::flush, NodeTraits::exist, NodeTra...
+#include <highfive/H5Group.hpp>        // for Group
+#include <highfive/H5Object.hpp>       // for Object::getId
+#include <highfive/H5PropertyList.hpp> // for Object::getId,H5Pcreate, H5Pset_alloc_time, ...
+#include <highfive/H5Selection.hpp>    // for Selection, SliceTraits::select, SliceTraits::...
+#include <numeric>                     // for iota
+#include <stdexcept>                   // for runtime_error
+#include <string.h>                    // for strerror
+#include <sys/stat.h>                  // for fstat, stat
+#include <system_error>                // for system_error
+#include <tuple>                       // for make_tuple, get, tuple
+#include <unistd.h>                    // for pwrite, TEMP_FAILURE_RETRY
+#include <utility>                     // for move, pair
 
 using namespace HighFive;
 

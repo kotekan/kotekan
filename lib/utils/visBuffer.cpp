@@ -9,6 +9,7 @@
 #include "fmt.hpp" // for format, fmt
 
 #include <algorithm>   // for copy
+#include <cstdint>     // for uint64_t
 #include <cstring>     // for memcpy
 #include <ctime>       // for gmtime
 #include <map>         // for map

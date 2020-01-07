@@ -2,6 +2,7 @@
 
 #include "Config.hpp" // for Config
 
+#include <cmath>     // for pow
 #include <cstring>   // for memset
 #include <exception> // for exception
 #include <iterator>  // for back_insert_iterator, back_inserter

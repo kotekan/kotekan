@@ -1,5 +1,8 @@
 #include "gpuCommand.hpp"
 
+#include "gpuDeviceInterface.hpp"
+#include "kotekanLogging.hpp"
+
 #include <iostream>
 
 using kotekan::bufferContainer;

@@ -10,9 +10,9 @@
 #include "gsl-lite.hpp" // for span
 
 #include <atomic>     // for atomic_bool
+#include <cmath>      // for pow
 #include <complex>    // for complex
 #include <functional> // for _Bind_helper<>::type, bind, function
-#include <math.h>     // for pow
 #include <stdexcept>  // for invalid_argument
 #include <stdint.h>   // for uint32_t
 

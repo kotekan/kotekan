@@ -1,5 +1,6 @@
 #include "invalidateVDIFframes.hpp"
 
+#include "StageFactory.hpp"
 #include "chimeMetadata.h"
 #include "vdif_functions.h"
 

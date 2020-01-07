@@ -5,14 +5,13 @@
 
 #include "json.hpp" // for basic_json<>::value_type, json
 
-#include <errno.h>            // for errno
-#include <ext/alloc_traits.h> // for __alloc_traits<>::value_type
-#include <fcntl.h>            // for O_CREAT, O_WRONLY
-#include <ostream>            // for ofstream, basic_ostream::flush, basic_ostream::seekp, basi...
-#include <string.h>           // for size_t, strerror
-#include <sys/types.h>        // for uint
-#include <unistd.h>           // for pwrite, TEMP_FAILURE_RETRY
-#include <vector>             // for vector
+#include <errno.h>     // for errno
+#include <fcntl.h>     // for O_CREAT, O_WRONLY
+#include <ostream>     // for ofstream, basic_ostream::flush, basic_ostream::seekp, basi...
+#include <string.h>    // for size_t, strerror
+#include <sys/types.h> // for uint
+#include <unistd.h>    // for pwrite, TEMP_FAILURE_RETRY
+#include <vector>      // for vector
 
 // Register the HDF5 file writers
 REGISTER_VIS_FILE("ring", visFileRing);

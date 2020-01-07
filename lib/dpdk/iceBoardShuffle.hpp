@@ -8,13 +8,17 @@
 #ifndef ICE_BOARD_SHUFFLE_HPP
 #define ICE_BOARD_SHUFFLE_HPP
 
+#include "Config.hpp"
 #include "buffer.h"
+#include "bufferContainer.hpp"
 #include "chimeMetadata.h"
 #include "gpsTime.h"
 #include "iceBoardHandler.hpp"
+#include "kotekanLogging.hpp"
 #include "packet_copy.h"
 #include "prometheusMetrics.hpp"
 #include "util.h"
+
 
 /**
  * @brief DPDK Packet handler which adds a final stage shuffle for systems larger than 512 elements
@@ -247,9 +251,9 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
     std::string endpoint_name = unique_name + "/port_data";
     kotekan::restServer::instance().register_get_callback(
         endpoint_name, [&](kotekan::connectionInstance& conn) {
-            json info = get_json_port_info();
+            nlohmann::json info = get_json_port_info();
 
-            vector<uint64_t> second_stage_errors;
+            std::vector<uint64_t> second_stage_errors;
             second_stage_errors.assign(fpga_second_stage_shuffle_errors,
                                        fpga_second_stage_shuffle_errors + 16);
             info["fpga_second_stage_shuffle_errors"] = second_stage_errors;
@@ -258,7 +262,7 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
             info["fpga_second_stage_long_errors"] = fpga_second_stage_long_errors;
             info["fpga_second_stage_fifo_overflow_errors"] = fpga_second_stage_fifo_overflow_errors;
 
-            vector<uint64_t> third_stage_errors;
+            std::vector<uint64_t> third_stage_errors;
             third_stage_errors.assign(fpga_third_stage_shuffle_errors,
                                       fpga_third_stage_shuffle_errors + 8);
             info["fpga_thrid_stage_shuffle_errors"] = third_stage_errors;

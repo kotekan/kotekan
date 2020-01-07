@@ -28,7 +28,7 @@ protected:
     void results_thread();
     void init(void);
 
-    vector<gpuEventContainer*> final_signals;
+    std::vector<gpuEventContainer*> final_signals;
     kotekan::bufferContainer local_buffer_container;
 
     bool log_profiling;

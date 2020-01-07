@@ -1,9 +1,18 @@
 #define BOOST_TEST_MODULE "test_updateQueue"
 
-#include <boost/test/included/unit_test.hpp>
+#include "fmt.hpp" // for format
 
+#include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_CHECK, BOOST_PP_BOOL_2
+#include <ctime>                             // for timespec
+#include <iostream>                          // for cout, ostream
+#include <string>                            // for operator<<
+#include <utility>                           // for pair
+#include <vector>                            // for vector
 // the code to test:
-#include "updateQueue.hpp"
+#include "updateQueue.hpp" // for updateQueue
+#include "visUtil.hpp"     // for operator==
+
+struct timespec;
 
 using namespace std;
 

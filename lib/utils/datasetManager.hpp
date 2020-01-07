@@ -31,10 +31,17 @@
 #include <utility>            // for pair, move, forward
 #include <vector>             // for vector
 
+// Forward declarations
 namespace kotekan {
 class Config;
 class connectionInstance;
 } // namespace kotekan
+
+/// DatasetState ID
+using state_id_t = Hash;
+
+/// DatasetID
+using dset_id_t = Hash;
 
 
 #define DS_UNIQUE_NAME "/dataset_manager"
@@ -51,8 +58,6 @@ const std::string PATH_REQUEST_STATE = "/request-state";
 /// These use a 128 bit hash type so there shouldn't be any collisions.
 using fingerprint_t = Hash;
 
-/// Unique pointer to a datasetState
-using state_uptr = std::unique_ptr<datasetState>;
 
 /**
  * @class datasetManager

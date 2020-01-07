@@ -1,5 +1,7 @@
 #include "eigenVis.hpp"
 
+#include "Config.hpp"
+#include "StageFactory.hpp"
 #include "chimeMetadata.h"
 #include "errors.h"
 #include "fpga_header_functions.h"

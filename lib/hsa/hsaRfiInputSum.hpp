@@ -62,7 +62,7 @@ public:
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiInputSum();
     /// Rest server callback
-    void rest_callback(kotekan::connectionInstance& conn, json& json_request);
+    void rest_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
 
     int wait_on_precondition(int gpu_frame_id) override;
 

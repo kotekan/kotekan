@@ -1,18 +1,20 @@
 #ifndef VIS_FILE_ARCHIVE_HPP
 #define VIS_FILE_ARCHIVE_HPP
 
-#include "Config.hpp"
-#include "kotekanLogging.hpp"
-#include "visUtil.hpp"
+#include "kotekanLogging.hpp" // for logLevel, kotekanLogging
+#include "visUtil.hpp"        // for freq_ctype (ptr only), prod_ctype (ptr only)
 
-#include <highfive/H5DataSet.hpp>
-#include <highfive/H5File.hpp>
-#include <iostream>
-#include <map>
-#include <memory>
-#include <stddef.h>
-#include <string>
-#include <vector>
+#include <highfive/H5DataSet.hpp>  // for DataSet
+#include <highfive/H5DataType.hpp> // for DataType
+#include <map>                     // for map
+#include <memory>                  // for unique_ptr
+#include <stddef.h>                // for size_t
+#include <string>                  // for string, allocator
+#include <vector>                  // for vector
+
+namespace HighFive {
+class File;
+} // namespace HighFive
 
 
 /** @brief A CHIME correlator archive file.

@@ -1,6 +1,8 @@
 #ifndef HSA_PROCESS_H
 #define HSA_PROCESS_H
 
+#include "Config.hpp"
+#include "StageFactory.hpp"
 #include "gpuProcess.hpp"
 #include "hsa/hsa.h"
 #include "hsa/hsa_ext_amd.h"

@@ -17,9 +17,9 @@ public:
 protected:
     cl_mem device_mask;
 
-    vector<int32_t> _element_mask;
-    vector<int32_t> _product_remap;
-    vector<int32_t> _inverse_product_remap;
+    std::vector<int32_t> _element_mask;
+    std::vector<int32_t> _product_remap;
+    std::vector<int32_t> _inverse_product_remap;
     uint32_t _scale_factor;
 
 private:

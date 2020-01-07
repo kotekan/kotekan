@@ -101,9 +101,9 @@ public:
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
     /// Endpoint for setting N-S beam extent
-    void update_NS_beam_callback(kotekan::connectionInstance& conn, json& json_request);
+    void update_NS_beam_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
     /// Endpoint for setting E-W beam sky angle
-    void update_EW_beam_callback(kotekan::connectionInstance& conn, json& json_request);
+    void update_EW_beam_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
 
 private:
     /**
@@ -159,7 +159,7 @@ private:
     /// The desired extent (e.g. 90, 60, 45) of the Northmost beam in degree
     float _northmost_beam;
     /// The sky angle of the 4 EW beams in degree
-    vector<float> _ew_spacing;
+    std::vector<float> _ew_spacing;
     float* _ew_spacing_c;
 
     /// The reference freq for calcating beam spacing, a function of the input _northmost_beam

@@ -5,7 +5,7 @@
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for wait_for_full_frame, allocate_new_metadata_object, mark...
 #include "datasetManager.hpp"    // for datasetManager
-#include "datasetState.hpp"      // for stackState, prodState, inputState
+#include "datasetState.hpp"      // for dset_id_t, stackState, prodState, inputState, state_id_t
 #include "kotekanLogging.hpp"    // for INFO, DEBUG, ERROR, FATAL_ERROR
 #include "prometheusMetrics.hpp" // for Metrics, MetricFamily, Gauge, Counter
 #include "visBuffer.hpp"         // for visFrameView, visField, visField::vis, visField::weight
@@ -14,24 +14,23 @@
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>          // for fill, sort, transform
-#include <atomic>             // for atomic_bool
-#include <complex>            // for complex, conj, norm
-#include <cstdlib>            // for abs
-#include <cxxabi.h>           // for __forced_unwind
-#include <ext/alloc_traits.h> // for __alloc_traits<>::value_type
-#include <functional>         // for _Bind_helper<>::type, bind, function, _1
-#include <future>             // for async, future
-#include <iterator>           // for begin, end, back_insert_iterator, back_inserter
-#include <memory>             // for allocator_traits<>::value_type
-#include <numeric>            // for iota
-#include <pthread.h>          // for pthread_setaffinity_np
-#include <sched.h>            // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdexcept>          // for invalid_argument
-#include <sys/types.h>        // for int8_t
-#include <system_error>       // for system_error
-#include <tuple>              // for tuple, make_tuple, operator!=, operator<, tie
-#include <vector>             // for vector, operator==
+#include <algorithm>    // for fill, sort, transform
+#include <atomic>       // for atomic_bool
+#include <complex>      // for complex, conj, norm
+#include <cstdlib>      // for abs
+#include <cxxabi.h>     // for __forced_unwind
+#include <functional>   // for _Bind_helper<>::type, bind, function, _1
+#include <future>       // for async, future
+#include <iterator>     // for begin, end, back_insert_iterator, back_inserter
+#include <math.h>       // for abs
+#include <memory>       // for allocator_traits<>::value_type
+#include <numeric>      // for iota
+#include <pthread.h>    // for pthread_setaffinity_np
+#include <sched.h>      // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept>    // for invalid_argument
+#include <system_error> // for system_error
+#include <tuple>        // for tuple, make_tuple, operator!=, operator<, tie
+#include <vector>       // for vector
 
 namespace kotekan {
 class bufferContainer;

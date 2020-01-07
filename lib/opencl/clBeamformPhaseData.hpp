@@ -198,7 +198,7 @@ protected:
     /// Declination in degrees of source to beamform on.
     double dec;
     /// The x,y positions in meters of the feeds across the telescope.
-    vector<float> feed_positions;
+    std::vector<float> feed_positions;
     /// Set to current time in build() and pass that value to local beamform time if fixed_time is
     /// 0.
     time_t start_beamform_time;
