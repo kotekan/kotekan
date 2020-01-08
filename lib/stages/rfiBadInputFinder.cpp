@@ -8,6 +8,10 @@
 #include "restServer.hpp"     // for restServer, HTTP_RESPONSE, HTTP_RESPONSE::OK, connectionIn...
 #include "rfi_functions.h"    // for RFIHeader
 
+#ifdef DEBUGGING
+#include "util.h" // for e_time
+#endif
+
 #include <arpa/inet.h>  // for inet_aton
 #include <atomic>       // for atomic_bool
 #include <cmath>        // for sqrt, pow

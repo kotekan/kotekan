@@ -4,6 +4,7 @@
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"           // for mark_frame_full, register_producer, wait_for_empty_frame
 #include "kotekanLogging.hpp" // for INFO
+#include "util.h"             // for e_time
 #include "vdif_functions.h"   // for VDIFHeader
 
 #include <atomic>     // for atomic_bool
@@ -30,12 +31,6 @@ simVdifData::simVdifData(Config& config, const std::string& unique_name,
 }
 
 simVdifData::~simVdifData() {}
-
-double e_time(void) {
-    static struct timeval now;
-    gettimeofday(&now, nullptr);
-    return (double)(now.tv_sec + now.tv_usec / 1000000.0);
-}
 
 void simVdifData::main_thread() {
     int times = config.get<int>(unique_name, "samples_per_data_set");

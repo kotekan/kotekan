@@ -1,6 +1,6 @@
 #include "hsaInputData.hpp"
 
-#include "utils/util.h"
+#include "util.h" // for e_time
 
 #include <random>
 

@@ -1,7 +1,7 @@
 #include "hccGPUThread.hpp"
 
 #include "errors.h"
-#include "util.h"
+#include "util.h" // for e_time
 
 #include <algorithm>
 #include <cstdio>

@@ -4,7 +4,7 @@
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"           // for Buffer, mark_frame_empty, mark_frame_full, register_consumer
 #include "kotekanLogging.hpp" // for INFO
-#include "utils/util.h"       // for e_time
+#include "util.h"             // for e_time
 #include "vdif_functions.h"   // for VDIFHeader
 
 #include <atomic>     // for atomic_bool

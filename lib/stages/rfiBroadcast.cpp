@@ -11,6 +11,10 @@
 #include "rfi_functions.h"         // for RFIHeader
 #include "visUtil.hpp"             // for movingAverage
 
+#ifdef DEBUGGING
+#include "util.h" // for e_time
+#endif
+
 #include "fmt.hpp" // for format, fmt
 
 #include <arpa/inet.h>  // for inet_aton

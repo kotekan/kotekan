@@ -25,6 +25,10 @@ class bufferContainer;
 #include <time.h>      // for time
 #include <vector>      // for vector
 
+#ifdef DEBUGGING
+#include "util.h" // for e_time
+#endif
+
 //#define PACKET_OFFSET 58
 //#define NUM_POL 2
 #define PACKET_LEN (num_freq + VDIF_HEADER_LEN)

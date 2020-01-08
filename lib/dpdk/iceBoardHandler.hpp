@@ -11,6 +11,7 @@
 #include "dpdkCore.hpp"
 #include "fpga_header_functions.h"
 #include "prometheusMetrics.hpp"
+#include "util.h" // for e_time
 
 #include "json.hpp"
 
