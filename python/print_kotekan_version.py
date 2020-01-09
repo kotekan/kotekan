@@ -2,4 +2,4 @@
 # The script is called from make_version.cmake.in
 from _version import get_versions
 
-print get_versions()["version"]
+print(get_versions()["version"])
