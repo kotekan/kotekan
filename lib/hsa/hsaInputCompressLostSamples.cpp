@@ -10,8 +10,8 @@ using kotekan::Config;
 REGISTER_HSA_COMMAND(hsaInputCompressLostSamples);
 
 hsaInputCompressLostSamples::hsaInputCompressLostSamples(Config& config, const string& unique_name,
-                                         bufferContainer& host_buffers,
-                                         hsaDeviceInterface& device) :
+                                                         bufferContainer& host_buffers,
+                                                         hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "", "") {
     command_type = gpuCommandType::COPY_IN;
 
@@ -37,7 +37,8 @@ int hsaInputCompressLostSamples::wait_on_precondition(int gpu_frame_id) {
     if (frame == NULL)
         return -1;
     compressed_lost_samples_buffer_precondition_id =
-        (compressed_lost_samples_buffer_precondition_id + 1) % compressed_lost_samples_buf->num_frames;
+        (compressed_lost_samples_buffer_precondition_id + 1)
+        % compressed_lost_samples_buf->num_frames;
     return 0;
 }
 
@@ -45,19 +46,22 @@ hsa_signal_t hsaInputCompressLostSamples::execute(int gpu_frame_id, hsa_signal_t
     // Get the gpu and cpu memory pointers.
     void* gpu_memory_frame =
         device.get_gpu_memory_array("compressed_lost_samples", gpu_frame_id, input_frame_len);
-    void* host_memory_frame = (void*)compressed_lost_samples_buf->frames[compressed_lost_samples_buffer_id];
+    void* host_memory_frame =
+        (void*)compressed_lost_samples_buf->frames[compressed_lost_samples_buffer_id];
 
     // Do the input data copy.
     device.async_copy_host_to_gpu(gpu_memory_frame, host_memory_frame, input_frame_len,
                                   precede_signal, signals[gpu_frame_id]);
-    compressed_lost_samples_buffer_id = (compressed_lost_samples_buffer_id + 1) % compressed_lost_samples_buf->num_frames;
+    compressed_lost_samples_buffer_id =
+        (compressed_lost_samples_buffer_id + 1) % compressed_lost_samples_buf->num_frames;
 
     return signals[gpu_frame_id];
 }
 
 void hsaInputCompressLostSamples::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
-    mark_frame_empty(compressed_lost_samples_buf, unique_name.c_str(), compressed_lost_samples_buffer_finalize_id);
+    mark_frame_empty(compressed_lost_samples_buf, unique_name.c_str(),
+                     compressed_lost_samples_buffer_finalize_id);
     compressed_lost_samples_buffer_finalize_id =
         (compressed_lost_samples_buffer_finalize_id + 1) % compressed_lost_samples_buf->num_frames;
 }

@@ -15,8 +15,9 @@ using std::vector;
 
 /**
  * @class compressLostSamples
- * @brief Compresses the lost samples buffer by checking samples in blocks of num_sub_freqs * 3, if any are flagged place a 1 in the compressed lost samples frame. 
- *        samples_per_data_set / num_sub_freq / 3 = 49152 / 128 / 3
+ * @brief Compresses the lost samples buffer by checking samples in blocks of num_sub_freqs * 3, if
+ * any are flagged place a 1 in the compressed lost samples frame. samples_per_data_set /
+ * num_sub_freq / 3 = 49152 / 128 / 3
  *
  * @par Buffers
  * @buffer in_buf Kotekan buffer of lost samples.

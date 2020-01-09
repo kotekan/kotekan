@@ -70,7 +70,7 @@ struct metadataPool* metadataFactory::new_pool(const string& pool_type, const st
     if (pool_type == "visMetadata") {
         return create_metadata_pool(num_metadata_objects, sizeof(struct visMetadata));
     }
-    
+
     if (pool_type == "hfbMetadata") {
         return create_metadata_pool(num_metadata_objects, sizeof(struct hfbMetadata));
     }

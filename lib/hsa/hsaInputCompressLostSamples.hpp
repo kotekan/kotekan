@@ -12,9 +12,10 @@
  * @class hsaInputCompressLostSamples
  * @brief hsaCommand for copying compressed lost sample buffer from host to gpu
  *
- * A kotekan hsa command to copy the compressed lost samples buffer from host memory to GPU memory. The command
- * waits for a full frame, async copies the frame contents to GPU memroy, and marks the frame empty.
- * The compressed lost samples buffer is used in the HFB pipeline to exclude samples when summing across time.
+ * A kotekan hsa command to copy the compressed lost samples buffer from host memory to GPU memory.
+ * The command waits for a full frame, async copies the frame contents to GPU memroy, and marks the
+ * frame empty. The compressed lost samples buffer is used in the HFB pipeline to exclude samples
+ * when summing across time.
  *
  * @par GPU Memory
  * @gpu_mem  compressed_lost_samples Array indicating if a given timestep was zeroed, size:
@@ -29,7 +30,7 @@ class hsaInputCompressLostSamples : public hsaCommand {
 public:
     /// Constructor, applies config, initializes variables
     hsaInputCompressLostSamples(kotekan::Config& config, const string& unique_name,
-                        kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
+                                kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     // Destructor, cleans up local allocs
     virtual ~hsaInputCompressLostSamples();
     /// Wait for full metadata frame and keep track of precondition_id

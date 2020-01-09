@@ -60,19 +60,19 @@ void rawFileWrite::main_thread() {
         // Start timing the write time
         double st = current_time();
 
-        if(!isFileOpen) {
-          snprintf(full_path, full_path_len, "%s/%s_%s_%07d.%s", base_dir.c_str(), hostname,
-              file_name.c_str(), file_num, file_ext.c_str());
+        if (!isFileOpen) {
+            snprintf(full_path, full_path_len, "%s/%s_%s_%07d.%s", base_dir.c_str(), hostname,
+                     file_name.c_str(), file_num, file_ext.c_str());
 
-          fd = open(full_path, O_WRONLY | O_CREAT, 0666);
+            fd = open(full_path, O_WRONLY | O_CREAT, 0666);
 
-          if (fd == -1) {
-            ERROR("Cannot open file");
-            ERROR("File name was: {:s}", full_path);
-            exit(errno);
-          }
+            if (fd == -1) {
+                ERROR("Cannot open file");
+                ERROR("File name was: {:s}", full_path);
+                exit(errno);
+            }
 
-          isFileOpen = true;
+            isFileOpen = true;
         }
 
         // Write the meta data to disk
@@ -107,13 +107,13 @@ void rawFileWrite::main_thread() {
 
         frame_ctr++;
 
-        if(frame_ctr == _num_frames_per_file) {
-          if (close(fd) == -1) {
-            ERROR("Cannot close file {:s}", full_path);
-          }
-          isFileOpen = false;
-          frame_ctr = 0;
-          file_num++;
+        if (frame_ctr == _num_frames_per_file) {
+            if (close(fd) == -1) {
+                ERROR("Cannot close file {:s}", full_path);
+            }
+            isFileOpen = false;
+            frame_ctr = 0;
+            file_num++;
         }
 
         double elapsed = current_time() - st;
@@ -122,6 +122,5 @@ void rawFileWrite::main_thread() {
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
 
         frame_id = (frame_id + 1) % buf->num_frames;
-
     }
 }
