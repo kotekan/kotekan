@@ -72,8 +72,6 @@ private:
     const uint32_t codes32[5] = {7, 2, 0, 1,
                                  3};           // value of each code (32 bit dtype for internal use)
     const ssize_t lens[5] = {3, 2, 2, 2, 3};   // bit length of each code
-    const uint32_t check[5] = {7, 3, 3, 3, 7}; // used to match during decode
-    const ssize_t maxlen = 3;                  // maximum length of code, used for size bound
 
     // hard-coded, used to estimate encoding efficiency
     // we can compute the entropy of an encoding scheme (as a function of N) in quanztiaztion.py
