@@ -12,17 +12,31 @@ __kernel void sum_hfb(__global float *data, __constant uchar *compressed_lost_sa
   const int freq = get_local_id(0) * 2;
 
   // Sum data across samples from global memory
-  float freq_sum_1 = 0.f, freq_sum_2 = 0.f;
+  float4 freq_sum_1 = (float4)(0.f, 0.f, 0.f, 0.f), freq_sum_2 = (float4)(0.f, 0.f, 0.f, 0.f);
+  float4 data_1, data_2;
 
-  for(int sample=0; sample<num_samples; sample++) {
+  for(int sample=0; sample<num_samples; sample+=4) {
 
       if(!compressed_lost_samples_buf[sample]) {
-          freq_sum_1 += data[1024*NUM_SUB_FREQS*sample + beam*NUM_SUB_FREQS + freq];
-          freq_sum_2 += data[1024*NUM_SUB_FREQS*sample + beam*NUM_SUB_FREQS + freq + 1];
+
+          // Load data into vectors
+          data_1.s0 = data[1024*NUM_SUB_FREQS*sample + beam*NUM_SUB_FREQS + freq];
+          data_1.s1 = data[1024*NUM_SUB_FREQS*(sample + 1) + beam*NUM_SUB_FREQS + freq];
+          data_1.s2 = data[1024*NUM_SUB_FREQS*(sample + 2) + beam*NUM_SUB_FREQS + freq];
+          data_1.s3 = data[1024*NUM_SUB_FREQS*(sample + 3) + beam*NUM_SUB_FREQS + freq];
+          
+          data_2.s0 = data[1024*NUM_SUB_FREQS*sample + beam*NUM_SUB_FREQS + freq + 1];
+          data_2.s1 = data[1024*NUM_SUB_FREQS*(sample + 1) + beam*NUM_SUB_FREQS + freq + 1];
+          data_2.s2 = data[1024*NUM_SUB_FREQS*(sample + 2) + beam*NUM_SUB_FREQS + freq + 1];
+          data_2.s3 = data[1024*NUM_SUB_FREQS*(sample + 3) + beam*NUM_SUB_FREQS + freq + 1];
+ 
+          freq_sum_1 += data_1;
+          freq_sum_2 += data_2;
       }
   }
 
   // Write sums back to global
-  hfb_sum_output_array[(beam * NUM_SUB_FREQS) + freq] = freq_sum_1;
-  hfb_sum_output_array[(beam * NUM_SUB_FREQS) + freq + 1] = freq_sum_2;
+  // Perform reduction on vector elements to get total
+  hfb_sum_output_array[(beam * NUM_SUB_FREQS) + freq] = freq_sum_1.s0 + freq_sum_1.s1 + freq_sum_1.s2 + freq_sum_1.s3;
+  hfb_sum_output_array[(beam * NUM_SUB_FREQS) + freq + 1] = freq_sum_2.s0 + freq_sum_2.s1 + freq_sum_2.s2 + freq_sum_2.s3;
 }
