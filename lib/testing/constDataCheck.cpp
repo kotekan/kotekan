@@ -1,17 +1,14 @@
 #include "constDataCheck.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for Buffer, mark_frame_empty, register_consumer, wait_for_full...
-#include "errors.h"           // for TEST_PASSED
-#include "kotekanLogging.hpp" // for DEBUG, FATAL_ERROR, INFO
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_full...
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "errors.h"            // for TEST_PASSED
+#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, INFO
 
 #include <atomic>     // for atomic_bool
 #include <functional> // for _Bind_helper<>::type, bind, function
-
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 REGISTER_KOTEKAN_STAGE(constDataCheck);
 

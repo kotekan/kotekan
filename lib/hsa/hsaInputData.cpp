@@ -1,5 +1,7 @@
 #include "hsaInputData.hpp"
 
+#include "StageFactory.hpp"
+#include "metadataFactory.hpp"
 #include "util.h" // for e_time
 
 #include <random>

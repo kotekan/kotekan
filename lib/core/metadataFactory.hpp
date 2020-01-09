@@ -1,7 +1,7 @@
 #ifndef METADATA_FACTORY_HPP
 #define METADATA_FACTORY_HPP
 
-#include "Config.hpp"
+#include "Config.hpp" // IWYU pragma: keep
 #include "metadata.h" // for metadataPool  // IWYU pragma: keep
 
 #include "json.hpp" // for json

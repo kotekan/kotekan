@@ -1,7 +1,9 @@
 #include "chimeMetadataDump.hpp"
 
+#include "Config.hpp"              // IWYU pragma: keep
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"                // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp"     // // IWYU pragma: keep
 #include "chimeMetadata.h"         // for get_first_packet_recv_time, get_fpga_seq_num, get_gps...
 #include "fpga_header_functions.h" // for bin_number_chime, stream_id_t, freq_from_bin
 #include "kotekanLogging.hpp"      // for INFO
@@ -12,10 +14,6 @@
 #include <sys/time.h> // for timeval
 #include <time.h>     // for gmtime, strftime, timespec, time_t
 
-namespace kotekan {
-class Config;
-class bufferContainer;
-} // namespace kotekan
 
 REGISTER_KOTEKAN_STAGE(chimeMetadataDump);
 

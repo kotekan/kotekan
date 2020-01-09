@@ -10,7 +10,9 @@
 #ifndef STAGE_FACTORY_HPP
 #define STAGE_FACTORY_HPP
 
-#include "Config.hpp" // IWYU pragma: keep
+#include "Config.hpp"          // IWYU pragma: keep
+#include "Stage.hpp"           // IWYU pragma: keep
+#include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include "json.hpp" // for json
 
@@ -18,9 +20,6 @@
 #include <string> // for string
 
 namespace kotekan {
-
-class Stage;
-class bufferContainer;
 
 class StageMaker {
 public:

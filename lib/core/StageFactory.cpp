@@ -1,4 +1,4 @@
-#include "StageFactory.hpp"
+#include "StageFactory.hpp" // IWYU pragma: keep
 
 #include "Config.hpp"         // for Config
 #include "kotekanLogging.hpp" // for ERROR_NON_OO
@@ -8,9 +8,6 @@
 #include <stdexcept> // for runtime_error
 #include <utility>   // for pair
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using nlohmann::json;
 using std::string;

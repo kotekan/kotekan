@@ -1,7 +1,7 @@
 #ifndef BUFFER_FACTORY_HPP
 #define BUFFER_FACTORY_HPP
 
-#include "Config.hpp"
+#include "Config.hpp" // IWYU pragma: keep
 #include "buffer.h"   // for Buffer        // IWYU pragma: keep
 #include "metadata.h" // for metadataPool  // IWYU pragma: keep
 
