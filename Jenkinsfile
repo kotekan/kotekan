@@ -122,9 +122,7 @@ pipeline {
     stage('Check results of iwyu') {
       steps {
         sh '''cd build_base
-              python2 /usr/bin/fix_include --dry --comments < iwyu.out
-              make clang-format
-              git diff --exit-code'''
+              python2 /usr/bin/fix_include --dry --comments < iwyu.out'''
       }
     }
     stage('Unit Tests') {
