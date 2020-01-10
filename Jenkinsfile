@@ -54,12 +54,14 @@ pipeline {
                   make -j 4'''
           }
         }
-        stage('Build base kotekan') {
+        stage('Build base kotekan & Run IWYU') {
           steps {
             sh '''mkdir -p build_base
                   cd build_base
-                  cmake -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
-                  make -j 4'''
+                  cmake -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                  -DIWYU=ON ..
+                  make -j 4 2> iwyu.out
+                  cat iwyu.out'''
           }
         }
         stage('Build MacOS kotekan') {
@@ -97,12 +99,8 @@ pipeline {
           steps {
             sh '''mkdir -p build-check-format
                   cd build-check-format/
-                  export CXX=clang++
-                  cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
+                  cmake ..
                   make clang-format
-                  git diff --exit-code
-                  iwyu_tool -p . -- --mapping_file=${WORKSPACE}/iwyu.kotekan.imp --max_line_length=100 > iwyu.out
-                  python2 /usr/bin/fix_include --dry --comments < iwyu.out
                   git diff --exit-code
                   black --check --exclude docs ..'''
           }
@@ -119,6 +117,14 @@ pipeline {
     stage('Post build ccache stats') {
       steps {
         sh '''ccache -s'''
+      }
+    }
+    stage('Check results of iwyu') {
+      steps {
+        sh '''cd build_base
+              python2 /usr/bin/fix_include --dry --comments < iwyu.out
+              make clang-format
+              git diff --exit-code'''
       }
     }
     stage('Unit Tests') {
