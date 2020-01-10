@@ -1,5 +1,6 @@
 #include "bufferSwitch.hpp"
 
+#include "Config.hpp"         // IWYU pragma: keep
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "configUpdater.hpp"  // for configUpdater
 #include "kotekanLogging.hpp" // for WARN
@@ -15,7 +16,6 @@
 #include <utility>    // for pair
 
 namespace kotekan {
-class Config;
 class bufferContainer;
 } // namespace kotekan
 struct Buffer;

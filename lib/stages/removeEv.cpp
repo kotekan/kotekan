@@ -1,5 +1,6 @@
 #include "removeEv.hpp"
 
+#include "Config.hpp"         // IWYU pragma: keep
 #include "Hash.hpp"           // for operator<
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"           // for allocate_new_metadata_object, mark_frame_empty, mark_frame...
@@ -14,7 +15,6 @@
 class eigenvalueState;
 
 namespace kotekan {
-class Config;
 class bufferContainer;
 } // namespace kotekan
 

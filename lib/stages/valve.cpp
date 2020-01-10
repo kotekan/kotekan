@@ -1,5 +1,6 @@
 #include "valve.hpp"
 
+#include "Config.hpp"            // IWYU pragma: keep
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for Buffer, allocate_new_metadata_object, get_num_consumers
@@ -19,7 +20,6 @@
 #include <string>     // for string, allocator
 
 namespace kotekan {
-class Config;
 class bufferContainer;
 } // namespace kotekan
 
