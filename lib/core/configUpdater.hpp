@@ -1,6 +1,9 @@
 #ifndef CONFIGUPDATER_H
 #define CONFIGUPDATER_H
 
+#include "Config.hpp" // IWYU pragma: keep
+#include "Stage.hpp"  // IWYU pragma: keep
+
 #include "json.hpp" // for json
 
 #include <functional> // for function
@@ -82,8 +85,6 @@ namespace kotekan {
  *
  * @author Rick Nitsche
  */
-class Config;
-class Stage;
 class connectionInstance;
 
 class configUpdater {

@@ -1,12 +1,12 @@
 /*****************************************
 @file
 @brief Patterns for fake GPU data
-- fakeGpuPattern
-- blockGpuPattern
-- lostSamplesGpuPattern
-- accumulateGpuPattern
-- gaussianGpuPattern
-- pulsarGpuPulsar
+* fakeGpuPattern
+* blockGpuPattern
+* lostSamplesGpuPattern
+* accumulateGpuPattern
+* gaussianGpuPattern
+* pulsarGpuPulsar
 *****************************************/
 #ifndef FAKE_GPU_PATTERN_HPP
 #define FAKE_GPU_PATTERN_HPP
