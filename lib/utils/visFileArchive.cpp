@@ -140,7 +140,7 @@ void visFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, s
         dset(name)
             .select({f_ind, 0, 0, t_ind}, {chunk_f, length("ev"), length("input"), chunk_t})
             .write(data);
-    } else if (name == "erms" || name == "flags/frac_lost") {
+    } else if (name == "erms" || name == "flags/frac_lost" || name == "flags/frac_rfi") {
         dset(name).select({f_ind, t_ind}, {chunk_f, chunk_t}).write(data);
     } else {
         size_t last_dim = dset(name).getSpace().getDimensions().at(1);
@@ -221,6 +221,7 @@ void visFileArchive::create_datasets() {
     create_dataset("flags/inputs", {"input", "time"}, create_datatype<float>(), no_compress);
     create_dataset("gain", {"freq", "input", "time"}, create_datatype<cfloat>(), compress);
     create_dataset("flags/frac_lost", {"freq", "time"}, create_datatype<float>(), no_compress);
+    create_dataset("flags/frac_rfi", {"freq", "time"}, create_datatype<float>(), no_compress);
 
     // Only write the eigenvector datasets if there's going to be anything in them
     if (write_ev) {
@@ -314,7 +315,7 @@ inline DataType HighFive::create_datatype<freq_ctype>() {
     f.addMember("centre", H5T_IEEE_F64LE);
     f.addMember("width", H5T_IEEE_F64LE);
     f.autoCreate();
-    return f;
+    return std::move(f);
 }
 
 template<>
@@ -323,7 +324,7 @@ inline DataType HighFive::create_datatype<time_ctype>() {
     t.addMember("fpga_count", H5T_STD_U64LE);
     t.addMember("ctime", H5T_IEEE_F64LE);
     t.autoCreate();
-    return t;
+    return std::move(t);
 }
 
 template<>
@@ -337,7 +338,7 @@ inline DataType HighFive::create_datatype<input_ctype>() {
     i.addMember("correlator_input", s32, 2);
     i.manualCreate(34);
 
-    return i;
+    return std::move(i);
 }
 
 template<>
@@ -347,7 +348,7 @@ inline DataType HighFive::create_datatype<prod_ctype>() {
     p.addMember("input_a", H5T_STD_U16LE);
     p.addMember("input_b", H5T_STD_U16LE);
     p.autoCreate();
-    return p;
+    return std::move(p);
 }
 
 template<>
@@ -356,7 +357,7 @@ inline DataType HighFive::create_datatype<cfloat>() {
     c.addMember("r", H5T_IEEE_F32LE);
     c.addMember("i", H5T_IEEE_F32LE);
     c.autoCreate();
-    return c;
+    return std::move(c);
 }
 
 template<>
@@ -365,7 +366,7 @@ inline DataType HighFive::create_datatype<rstack_ctype>() {
     c.addMember("stack", H5T_STD_U32LE);
     c.addMember("conjugate", H5T_STD_U8LE);
     c.autoCreate();
-    return c;
+    return std::move(c);
 }
 
 template<>
@@ -374,5 +375,5 @@ inline DataType HighFive::create_datatype<stack_ctype>() {
     c.addMember("prod", H5T_STD_U32LE);
     c.addMember("conjugate", H5T_STD_U8LE);
     c.autoCreate();
-    return c;
+    return std::move(c);
 }

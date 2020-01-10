@@ -133,6 +133,7 @@ void rfiBroadcast::main_thread() {
         socket_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
         if (socket_fd == -1) {
             ERROR("Could not create UDP socket for output stream");
+            free(packet_buffer);
             return;
         }
         memset((char*)&saddr_remote, 0, sizeof(sockaddr_in));

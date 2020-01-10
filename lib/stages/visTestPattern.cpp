@@ -155,7 +155,7 @@ void visTestPattern::main_thread() {
         // Check if the dataset ID changed.
         auto frame = visFrameView(in_buf, frame_id);
         if (frame.dataset_id != ds_id) {
-            std::string error_msg = fmt::format(fmt("Expected dataset id {:#x}, got {:#x}.\nNot "
+            std::string error_msg = fmt::format(fmt("Expected dataset id {}, got {}.\nNot "
                                                     "supported. Exiting..."),
                                                 ds_id, frame.dataset_id);
             std::lock_guard<std::mutex> thread_lck(mtx_update);
@@ -199,8 +199,8 @@ void visTestPattern::main_thread() {
                                "{:f}j in frame {:d} with freq_id {:d}.",
                                i, (float)expected.at(frame.freq_id).at(i).real(),
                                (float)expected.at(frame.freq_id).at(i).imag(),
-                               (float)frame.vis[i].real(), (float)frame.vis[i].imag(),
-                               (int)frame_id, frame.freq_id);
+                               (float)frame.vis[i].real(), (float)frame.vis[i].imag(), frame_id,
+                               frame.freq_id);
                         num_bad++;
 
                         // Calculate the error here, this square root is then
@@ -312,13 +312,16 @@ void visTestPattern::main_thread() {
                     expected_data_ready = false;
 
                     // Report back.
-                    json data;
-                    data["result"] = "OK";
-                    data["name"] = test_name;
-                    restReply reply = restClient::instance().make_request_blocking(
-                        test_done_path, data, test_done_host, test_done_port);
-                    if (!reply.first) {
-                        FATAL_ERROR("Failed to report back test completion: {:s}", reply.second);
+                    if (test_done_host != "none") {
+                        json data;
+                        data["result"] = "OK";
+                        data["name"] = test_name;
+                        restReply reply = restClient::instance().make_request_blocking(
+                            test_done_path, data, test_done_host, test_done_port);
+                        if (!reply.first) {
+                            FATAL_ERROR("Failed to report back test completion: {:s}",
+                                        reply.second);
+                        }
                     }
 
                     INFO("Test '{:s}' done.", test_name);
@@ -476,8 +479,7 @@ void visTestPattern::get_dataset_state(dset_id_t ds_id) {
     if (fstate == nullptr || istate == nullptr || pstate == nullptr) {
         if (outfile.is_open())
             outfile.close();
-        FATAL_ERROR("Could not find all required states of dataset with ID {:#x}.\nExiting...",
-                    ds_id);
+        FATAL_ERROR("Could not find all required states of dataset with ID {}.\nExiting...", ds_id);
     }
 
     freqs = fstate->get_freqs();

@@ -58,6 +58,8 @@ using json = nlohmann::json;
  *      The variance of the residuals.
  * @metric kotekan_baselinecompression_time_seconds
  *      The time elapsed to process one frame.
+ * @metric kotekan_baselinecompression_frame_total
+ *      Number of frames seen by each thread.
  *
  * @author Richard Shaw
  */
@@ -77,7 +79,7 @@ private:
     void compress_thread(uint32_t thread_id);
 
     /// Tracks input dataset ID and gets output dataset IDs from manager
-    dset_id_t change_dataset_state(dset_id_t input_ds_id);
+    void change_dataset_state(dset_id_t input_ds_id);
 
     /// Vector to hold the thread handles
     std::vector<std::thread> thread_handles;
@@ -106,19 +108,21 @@ private:
     Buffer* in_buf;
     Buffer* out_buf;
 
-    // dataset states
-    const prodState* prod_state_ptr;
-    const stackState* stack_state_ptr;
-
     // Frame IDs, shared by compress threads and their mutex.
     frameID frame_id_in;
     frameID frame_id_out;
-    uint64_t frame_counter_global;
     std::mutex m_frame_ids;
+    std::mutex m_dset_map;
+
+    // Map the incoming ID to an outgoing one
+    std::map<dset_id_t, std::tuple<dset_id_t, const stackState*, const prodState*>> dset_id_map;
+
+    // Map from the critical incoming states to the correct stackState
+    std::map<fingerprint_t, std::tuple<state_id_t, const stackState*, const prodState*>> state_map;
 
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_residuals_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_time_seconds_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_frame_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& compression_frame_counter;
 };
 
 
@@ -153,18 +157,6 @@ stack_diagonal(const std::vector<input_ctype>& inputs, const std::vector<prod_ct
  **/
 std::pair<uint32_t, std::vector<rstack_ctype>>
 stack_chime_in_cyl(const std::vector<input_ctype>& inputs, const std::vector<prod_ctype>& prods);
-
-/**
- * @brief Take an a rstack map and generate a stack->prod mapping.
- *
- * @param num_stack Total number of stacks.
- * @param stack_map The prod->stack mapping.
- *
- * @returns The stack->prod mapping.
- **/
-std::vector<stack_ctype> invert_stack(uint32_t num_stack,
-                                      const std::vector<rstack_ctype>& stack_map);
-
 
 #define CYL_A 0
 #define CYL_B 1

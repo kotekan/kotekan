@@ -28,9 +28,14 @@
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
+ * @conf    output_period    Int. Print output every `output_period` frames.
+ *                           Default is every 1000 frames.
+ *
  * @par Metrics
- * @metric kotekan_visdebug_frame_total
- *         The total frames seen per frequency and dataset (given as labelled).
+ * @metric kotekan_visdebug_frames_by_freq_total
+ *         The total frames seen per frequency.
+ * @metric kotekan_visdebug_frames_by_dataset_total
+ *         The total frames seen per dataset.
  *
  * @author Richard Shaw
  */
@@ -44,6 +49,9 @@ public:
 
 private:
     Buffer* in_buf;
+
+    // Output every set number of frames
+    int _output_period;
 };
 
 #endif // VISDEBUG_HPP

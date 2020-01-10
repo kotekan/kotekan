@@ -28,6 +28,7 @@
 #include <stdexcept>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 
@@ -43,6 +44,8 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
 
     filename = config.get<std::string>(unique_name, "infile");
     readahead_blocks = config.get<size_t>(unique_name, "readahead_blocks");
+    max_read_rate = config.get_default<double>(unique_name, "max_read_rate", 0.0);
+    sleep_time = config.get_default<float>(unique_name, "sleep_time", -1);
 
     chunked = config.exists(unique_name, "chunk_size");
     if (chunked) {
@@ -157,10 +160,6 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
     if (mapped_file == MAP_FAILED)
         throw std::runtime_error(fmt::format(fmt("Failed to map file {:s}.data to memory: {:s}."),
                                              filename, strerror(errno)));
-
-    // tell the dataset manager and get a dataset ID for the data coming from
-    // this file
-    change_dataset_state();
 }
 
 visRawReader::~visRawReader() {
@@ -172,27 +171,26 @@ visRawReader::~visRawReader() {
     close(fd);
 }
 
-void visRawReader::change_dataset_state() {
+void visRawReader::change_dataset_state(dset_id_t ds_id) {
     datasetManager& dm = datasetManager::instance();
 
-    // Add the states: metadata, time, prod, freq, input, eigenvalue and stack.
-    state_uptr sstate = nullptr;
+    // Add the states: acq_dataset_id, metadata, time, prod, freq, input,
+    // eigenvalue and stack.
+    std::vector<state_id_t> states;
     if (!_stack.empty())
-        sstate = std::make_unique<stackState>(_num_stack, std::move(_rstack));
-    state_uptr istate = std::make_unique<inputState>(_inputs, std::move(sstate));
-    state_uptr evstate = std::make_unique<eigenvalueState>(_ev, std::move(istate));
-    state_uptr fstate = std::make_unique<freqState>(_freqs, std::move(evstate));
-    state_uptr pstate = std::make_unique<prodState>(_prods, std::move(fstate));
-    state_uptr tstate = std::make_unique<timeState>(_times, std::move(pstate));
-
-    state_id_t mstate_id =
-        dm.add_state(std::make_unique<metadataState>(
-                         _metadata.at("weight_type"), _metadata.at("instrument_name"),
-                         _metadata.at("git_version_tag"), std::move(tstate)))
-            .first;
-
+        states.push_back(dm.create_state<stackState>(_num_stack, std::move(_rstack)).first);
+    states.push_back(dm.create_state<inputState>(_inputs).first);
+    states.push_back(dm.create_state<eigenvalueState>(_ev).first);
+    states.push_back(dm.create_state<freqState>(_freqs).first);
+    states.push_back(dm.create_state<prodState>(_prods).first);
+    states.push_back(dm.create_state<timeState>(_times).first);
+    states.push_back(dm.create_state<metadataState>(_metadata.at("weight_type"),
+                                                    _metadata.at("instrument_name"),
+                                                    _metadata.at("git_version_tag"))
+                         .first);
+    states.push_back(dm.create_state<acqDatasetIdState>(ds_id).first);
     // register it as root dataset
-    _dataset_id = dm.add_dataset(mstate_id);
+    _dataset_id = dm.add_dataset(states);
 }
 
 void visRawReader::read_ahead(int ind) {
@@ -226,6 +224,7 @@ int visRawReader::position_map(int ind) {
 
 void visRawReader::main_thread() {
 
+    double start_time, end_time;
     size_t frame_id = 0;
     uint8_t* frame;
 
@@ -233,12 +232,21 @@ void visRawReader::main_thread() {
 
     size_t nframe = nfreq * ntime;
 
+    // Calculate the minimum time we should take to read the data to satisfy the
+    // rate limiting
+    double min_read_time =
+        (max_read_rate > 0 ? file_frame_size / (max_read_rate * 1024 * 1024) : 0.0);
+    DEBUG("Minimum read time per frame {}s", min_read_time);
+
     // Initial readahead for frames
     for (read_ind = 0; read_ind < readahead_blocks; read_ind++) {
         read_ahead(read_ind);
     }
 
     while (!stop_thread && ind < nframe) {
+
+        // Get the start time of the loop for rate limiting
+        start_time = current_time();
 
         // Wait for an empty frame in the output buffer
         if ((frame = wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id)) == nullptr) {
@@ -284,7 +292,13 @@ void visRawReader::main_thread() {
             DEBUG("visRawReader: Reading empty frame: {:d}", frame_id);
         }
 
-        // Set the dataset ID
+        // Read first frame to get true dataset ID
+        if (ind == 0) {
+            change_dataset_state(
+                ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id);
+        }
+
+        // Set the dataset ID to one associated with this file
         ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id = _dataset_id;
 
         // Try and clear out the cached data as we don't need it again
@@ -296,5 +310,24 @@ void visRawReader::main_thread() {
         frame_id = (frame_id + 1) % out_buf->num_frames;
         read_ind++;
         ind++;
+
+        // Get the end time for the loop and sleep for long enough to satisfy
+        // the max rate
+        end_time = current_time();
+        double sleep_time = min_read_time - (end_time - start_time);
+        DEBUG("Sleep time {}", sleep_time);
+        if (sleep_time > 0) {
+            auto ts = double_to_ts(sleep_time);
+            nanosleep(&ts, NULL);
+        }
+    }
+
+    if (sleep_time > 0) {
+        INFO("Read all data. Sleeping and then exiting kotekan...");
+        timespec ts = double_to_ts(sleep_time);
+        nanosleep(&ts, nullptr);
+        exit_kotekan(ReturnCode::CLEAN_EXIT);
+    } else {
+        INFO("Read all data. Exiting stage, but keeping kotekan alive.");
     }
 }

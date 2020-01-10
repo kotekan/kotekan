@@ -7,6 +7,7 @@
 #include "prometheusMetrics.hpp"
 #include "version.h"
 #include "visBuffer.hpp"
+#include "visRawReader.hpp"
 #include "visUtil.hpp"
 
 #include "gsl-lite.hpp"
@@ -83,6 +84,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     auto evstate_fut = std::async(&datasetManager::dataset_state<eigenvalueState>, &dm, ds_id);
     auto mstate_fut = std::async(&datasetManager::dataset_state<metadataState>, &dm, ds_id);
     auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>, &dm, ds_id);
+    auto idstate_fut = std::async(&datasetManager::dataset_state<acqDatasetIdState>, &dm, ds_id);
 
     const stackState* sstate = sstate_fut.get();
     const metadataState* mstate = mstate_fut.get();
@@ -91,10 +93,11 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     const prodState* pstate = pstate_fut.get();
     const freqState* fstate = fstate_fut.get();
     const inputState* istate = istate_fut.get();
+    const acqDatasetIdState* idstate = idstate_fut.get();
 
 
     if (mstate == nullptr || tstate == nullptr || pstate == nullptr || fstate == nullptr
-        || istate == nullptr || evstate == nullptr)
+        || istate == nullptr || evstate == nullptr || idstate == nullptr)
         return false;
 
     // TODO split instrument_name up into the real instrument name,
@@ -102,12 +105,13 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     // data is written to file the first time
     metadata["instrument_name"] = mstate->get_instrument_name();
     metadata["weight_type"] = mstate->get_weight_type();
+    metadata["dataset_id"] = fmt::format("{}", idstate->get_id());
 
     std::string git_commit_hash_dataset = mstate->get_git_version_tag();
 
     // TODO: enforce this if build type == release?
     if (git_commit_hash_dataset != metadata["git_version_tag"].get<std::string>())
-        INFO("Git version tags don't match: dataset {:#x} has tag {:s},"
+        INFO("Git version tags don't match: dataset {} has tag {:s},"
              "while the local git version tag is {:s}",
              ds_id, git_commit_hash_dataset, metadata["git_version_tag"].get<std::string>());
 
@@ -140,7 +144,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     // the dimension of the visibilities is different for stacked data
     eff_prod_dim = (stack.size() > 0) ? stack.size() : num_prod;
 
-    DEBUG("Dataset {:d} has {:d} times, {:d} frequencies, {:d} products", ds_id, num_time, num_freq,
+    DEBUG("Dataset {} has {:d} times, {:d} frequencies, {:d} products", ds_id, num_time, num_freq,
           eff_prod_dim);
 
     // Ensure chunk_size not too large
@@ -157,6 +161,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     erms.resize(chunk_t * chunk_f);
     gain.resize(chunk_t * chunk_f * num_input);
     frac_lost.resize(chunk_t * chunk_f);
+    frac_rfi.resize(chunk_t * chunk_f);
     input_flags.resize(chunk_t * num_input);
     std::fill(input_flags.begin(), input_flags.end(), 0.);
 
@@ -184,7 +189,7 @@ void visTranspose::main_thread() {
     auto future_ds_state = std::async(&visTranspose::get_dataset_state, this, ds_id);
 
     if (!future_ds_state.get()) {
-        FATAL_ERROR("Set to not use dataset_broker and couldn't find ancestor of dataset {:#x}. "
+        FATAL_ERROR("Set to not use dataset_broker and couldn't find ancestor of dataset {}. "
                     "Make sure there is a stage upstream in the config, that adds the dataset "
                     "states.\nExiting...",
                     ds_id);
@@ -218,7 +223,7 @@ void visTranspose::main_thread() {
         auto frame = visFrameView(in_buf, frame_id);
 
         if (frame.dataset_id != ds_id) {
-            FATAL_ERROR("Dataset ID of incoming frames changed from {:#x} to {:#x}. Changing  ID "
+            FATAL_ERROR("Dataset ID of incoming frames changed from {} to {}. Changing  ID "
                         "not supported, exiting...",
                         ds_id, frame.dataset_id);
         }
@@ -238,6 +243,8 @@ void visTranspose::main_thread() {
         frac_lost[offset + ti] = frame.fpga_seq_length == 0
                                      ? 1.
                                      : 1. - float(frame.fpga_seq_total) / frame.fpga_seq_length;
+        frac_rfi[offset + ti] =
+            frame.fpga_seq_length == 0 ? 0. : float(frame.rfi_total) / frame.fpga_seq_length;
         strided_copy(frame.gain.data(), gain.data(), offset * num_input + ti, write_t, num_input);
 
         // Only copy flags if we haven't already
@@ -304,6 +311,8 @@ void visTranspose::write() {
     file->write_block("gain", f_ind, t_ind, write_f, write_t, gain.data());
 
     file->write_block("flags/frac_lost", f_ind, t_ind, write_f, write_t, frac_lost.data());
+
+    file->write_block("flags/frac_rfi", f_ind, t_ind, write_f, write_t, frac_rfi.data());
 
     file->write_block("flags/inputs", f_ind, t_ind, write_f, write_t, input_flags.data());
 }

@@ -89,6 +89,7 @@ private:
     std::vector<float> erms;
     std::vector<cfloat> gain;
     std::vector<float> frac_lost;
+    std::vector<float> frac_rfi;
     std::vector<float> input_flags;
     std::vector<rstack_ctype> reverse_stack;
 
@@ -113,9 +114,6 @@ private:
     std::vector<stack_ctype> stack;
     json metadata;
 
-    /// A unique ID for the chunk (i.e. frequency set)
-    uint32_t chunk_id;
-
     /// Number of products to write
     size_t num_prod;
     size_t num_input;
@@ -134,8 +132,6 @@ private:
 
     size_t f_ind = 0;
     size_t t_ind = 0;
-
-    const size_t BLOCK_SIZE = 32;
 };
 
 template<typename T>

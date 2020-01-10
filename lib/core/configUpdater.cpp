@@ -78,7 +78,6 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path) {
             throw std::runtime_error("configUpdater: Found an unknown "
                                      "endpoint type value: "
                                      + endpoint_type);
-            continue; // no recursive updatable blocks allowed
         }
 
         // Recursive part.

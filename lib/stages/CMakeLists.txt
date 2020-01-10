@@ -9,6 +9,7 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       fullPacketDump.cpp
       gpuPostProcess.cpp
       pulsarPostProcess.cpp
+      ReadGain.cpp
       nDiskFileWrite.cpp
       nDiskFileRead.cpp
       networkPowerStream.cpp
@@ -48,12 +49,14 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       rfiRecord.cpp
       rfiBadInputFinder.cpp
       rfiUpdateMetadata.cpp
-      receiveFlags.cpp
+      ReceiveFlags.cpp
       valve.cpp
       visTransform.cpp
       visTestPattern.cpp
       visDebug.cpp
       removeEv.cpp
+      bufferBadInputs.cpp
+      RfiFrameDrop.cpp
     )
 
 if (${USE_AIRSPY})
@@ -93,16 +96,9 @@ if (${USE_AIRSPY})
   target_link_libraries(kotekan_stages ${LIBAIRSPY_LIBRARIES})
 endif ()
 if (${USE_FFTW})
-  target_link_libraries ( kotekan_stages -lfftw3f)
+  target_link_libraries(kotekan_stages ${FFTW_LIBRARIES})
 endif ()
 
-
-if (${USE_AIRSPY})
-  target_link_libraries ( kotekan_stages -lairspy)
-endif ()
-if (${USE_FFTW})
-  target_link_libraries ( kotekan_stages -lfftw3f)
-endif ()
 if (${USE_HDF5})
   include_directories (${HDF5_INCLUDE_DIRS})
   target_link_libraries ( kotekan_stages ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )

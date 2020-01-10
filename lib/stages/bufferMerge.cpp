@@ -34,8 +34,7 @@ bufferMerge::bufferMerge(Config& config, const string& unique_name,
             // Assuming each array entry has only one key.
             json::iterator it = buffer.begin();
             internal_name = it.key();
-            // it.value() doesn't work on MacOS
-            buffer_name = buffer.get<std::string>();
+            buffer_name = it.value().get<std::string>();
             in_buf = buffer_container.get_buffer(buffer_name);
             assert(in_buf != nullptr);
         } else if (buffer.is_string()) {
@@ -85,7 +84,7 @@ void bufferMerge::main_thread() {
 
             /// Wait for an input frame
             if (_timeout < 0) {
-                DEBUG2("Waiting for {:s}[{:d}]", in_buf->buffer_name, (int)in_frame_id);
+                DEBUG2("Waiting for {:s}[{:d}]", in_buf->buffer_name, in_frame_id);
                 uint8_t* input_frame =
                     wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
                 if (input_frame == NULL)

@@ -231,6 +231,9 @@ public:
      */
     void remove_all_aliases();
 
+    /// The port to use
+    const u_short& port;
+
 private:
     /// Private constuctor
     restServer();
@@ -327,11 +330,11 @@ private:
     /// The libevent HTTP server object
     struct evhttp* ev_server = nullptr;
 
-    /// The port to use
-    u_short port;
-
     /// Bind address
     std::string bind_address;
+
+    /// The port to use
+    u_short _port;
 
     /// Main server thread handle
     std::thread main_thread;

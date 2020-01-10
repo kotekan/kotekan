@@ -100,13 +100,10 @@ public:
     /// argument buffer, set kernel dimensions, enqueue kernel
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
-    /// Endpoint for providing new directory path for gain updates
-    bool update_gains_callback(nlohmann::json& json);
     /// Endpoint for setting N-S beam extent
     void update_NS_beam_callback(kotekan::connectionInstance& conn, json& json_request);
     /// Endpoint for setting E-W beam sky angle
     void update_EW_beam_callback(kotekan::connectionInstance& conn, json& json_request);
-
 
 private:
     /**
@@ -135,10 +132,6 @@ private:
     int32_t coeff_len;
     /// 2048 elements x 2 for complex
     int32_t gain_len;
-    /// Directory path where gain files are
-    string _gain_dir;
-    /// Default gain values if gain file is missing for this freq, currently set to 1+1j
-    vector<float> default_gains;
 
     /// Buffer for accessing metadata
     Buffer* metadata_buf;
@@ -155,11 +148,6 @@ private:
     uint32_t* host_map;
     /// Array of phase delays for E-W brute force beamform, float of size 32
     float* host_coeff;
-    /// Array of gains, float size of 2048*2
-    float* host_gain;
-
-    /// Scaling factor to be applied on the gains, currently set to 1.0 and somewhat deprecated?
-    float scaling;
 
     /// Number of elements, should be 2048
     uint32_t _num_elements;
@@ -177,8 +165,6 @@ private:
     /// The reference freq for calcating beam spacing, a function of the input _northmost_beam
     double freq_ref;
 
-    /// Flag to control gains to be only loaded on request.
-    bool update_gains;
     /// Flag to avoid re-calculating freq-specific params except at first pass
     bool first_pass;
     /// Flag to update NS beam

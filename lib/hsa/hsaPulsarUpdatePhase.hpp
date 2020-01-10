@@ -28,8 +28,6 @@
  * Each of the 10 source position (and an associated scaling factor) can be
  * changed/re-pointed on a per beam basis via endpoint.
  *
- * The gain path is registered as a subscriber to an updatable config block.
- *
  * The pointings are registered as subscrbers to 10 individual endpoints,
  * each with fields "ra", "dec", "scaling".
  *
@@ -43,7 +41,6 @@
  * @conf   num_beams            Int (default 10). Number of pulsars
  * @conf   feed_sep_NS          Float (default 0.3048). N-S feed separation in m.
  * @conf   feed_sep_EW          Float (default 22.0). E-W feed separation in m.
- * @conf   default_gains        Float array (default 1+1j). Default gain value if gain file is
  * missing
  * @conf   pulsar_pointing/i/ra       Float - initial RA (in deg) to form beams on for beam_id=i
  * @conf   pulsar_pointing/i/dec      Float - initial Dec (in deg) to form beams on for beam_id=i
@@ -53,11 +50,9 @@
  * @author Cherry Ng
  *
  */
-
-
 class hsaPulsarUpdatePhase : public hsaCommand {
 public:
-    /// Constructor, also initializes internal variables from config, allocates host_gain,
+    /// Constructor, also initializes internal variables from config, allocates
     /// host_phase_0, host_pahse_1, and set up 2 endpoints
     hsaPulsarUpdatePhase(kotekan::Config& config, const string& unique_name,
                          kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
@@ -68,9 +63,6 @@ public:
     /// Wait for full metadata frame and keep track of precondition_id
     int wait_on_precondition(int gpu_frame_id) override;
 
-    /// Endpoint for providing new directory path for gain updates
-    bool update_gains_callback(nlohmann::json& json);
-
     /// Figure our LST at this frame and the Alt-Az of the 10 sources, then calculate phase delays
     /// at each input
     void calculate_phase(struct psrCoord psr_coord, timespec time_now, float freq_now, float* gain,
@@ -79,7 +71,7 @@ public:
     /// Load gain, update phases every second by alternating the use of 2 banks.
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
-    void finalize_frame(int frame_id);
+    void finalize_frame(int frame_id) override;
 
     /// Endpoint for providing new pulsar target (RA, Dec, sacling factor, beam_id)
     bool pulsar_grab_callback(nlohmann::json& json, const uint8_t beamID);
@@ -91,13 +83,11 @@ private:
     float* host_phase_0;
     /// Two of two alternating array of host phase
     float* host_phase_1;
-    /// 2048 elements x 2 for complex
+    /// Gain stuff--------------------------------
+    struct Buffer* gain_buf;
     int32_t gain_len;
-    /// Directory path where gain files are
-    vector<string> _gain_dir;
-    /// Default gain values if gain file is missing for this freq
-    vector<float> default_gains;
-    /// Array of gains, float size of 2048*2
+    int32_t gain_buf_id;
+    /// Array of gains, float size of 2048*2*10
     float* host_gain;
 
     /// Number of elements, should be 2048
@@ -143,8 +133,6 @@ private:
     /// mutex lock prevent psr_coord to be read while it is being updated.
     std::mutex _pulsar_lock;
 
-    /// Flag to control gains to be only loaded on request.
-    bool update_gains;
     /// Flag to avoid re-calculating freq-specific params except at first pass
     bool first_pass;
     /// Flag to trigger phase update, either because of endpt message or every second

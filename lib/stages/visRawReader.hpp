@@ -43,6 +43,12 @@ using json = nlohmann::json;
  * @conf    infile              String. Path to the (data-meta-pair of) files to
  *                              read (e.g. "/path/to/0000_000", without .data or
  *                              .meta).
+ * @conf    max_read_rate       Float. Maximum read rate for the process in MB/s.
+ *                              If the value is zero (default), then no rate
+ *                              limiting is applied.
+ * @conf    sleep_time          Float. After the data is read pause this long in
+ *                              seconds before sending shutdown. If < 0, never
+ *                              send a shutdown signal. Default is -1.
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte, Rick Nitsche
  */
@@ -117,7 +123,7 @@ private:
      * Sets the dataset ID that should be given to the dataset coming from
      * the file that is read.
      */
-    void change_dataset_state();
+    void change_dataset_state(dset_id_t ds_id);
 
     /**
      * @brief Read the next frame.
@@ -178,6 +184,12 @@ private:
 
     // The ID for the data coming from the file that is read.
     dset_id_t _dataset_id;
+
+    // The read rate
+    double max_read_rate;
+
+    // Sleep time after reading
+    double sleep_time;
 };
 
 #endif
