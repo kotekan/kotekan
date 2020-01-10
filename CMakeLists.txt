@@ -137,6 +137,8 @@ if(IWYU)
         set(IWYU_MAPPING_FILE "${KOTEKAN_SOURCE_DIR}/iwyu.kotekan.imp")
     endif()
     message("IWYU enabled: Using iwyu from ${IWYU_PATH} and mapping file ${IWYU_MAPPING_FILE}")
+    execute_process(COMMAND ${IWYU_PATH} "--version" OUTPUT_VARIABLE IWYU_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE)
+    message("IWYU version: ${IWYU_VERSION}")
     set(IWYU_PATH_AND_OPTIONS ${IWYU_PATH}
         -Xiwyu --max_line_length=100
         -Xiwyu --mapping_file=${IWYU_MAPPING_FILE})
