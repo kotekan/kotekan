@@ -30,7 +30,7 @@ option(SANITIZE "Enable clang sanitizers for testing" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
 option(BOOST_TESTS "Compile Boost C++ unit tests" OFF)
 option(_GOSSEC "Set buffer status messages to DEBUG log level" OFF)
-option(IWYU "Disable some linker options that confuse include-what-you-use" OFF)
+option(IWYU "Enable include-what-you-use and print suggestions to stderr" OFF)
 
 if(${_GOSSEC})
     add_definitions(-D_GOSSEC=1)
@@ -127,6 +127,23 @@ IF(CMAKE_BUILD_TYPE MATCHES Debug)
   add_definitions(-DDEBUGGING)
 endif()
 
+# include-what-you-use: this has to be set before any targets are added
+if(IWYU)
+    find_program(IWYU_PATH NAMES include-what-you-use iwyu)
+    if(NOT IWYU_PATH)
+      message(FATAL_ERROR "Could not find the program include-what-you-use")
+    endif()
+    if(NOT IWYU_MAPPING_FILE)
+        set(IWYU_MAPPING_FILE "${KOTEKAN_SOURCE_DIR}/iwyu.kotekan.imp")
+    endif()
+    message("IWYU enabled: Using iwyu from ${IWYU_PATH} and mapping file ${IWYU_MAPPING_FILE}")
+    set(IWYU_PATH_AND_OPTIONS ${IWYU_PATH}
+        -Xiwyu --max_line_length=100
+        -Xiwyu --mapping_file=${IWYU_MAPPING_FILE})
+    set(CMAKE_CXX_INCLUDE_WHAT_YOU_USE ${IWYU_PATH_AND_OPTIONS})
+    set(CMAKE_C_INCLUDE_WHAT_YOU_USE ${IWYU_PATH_AND_OPTIONS})
+endif()
+
 set(GPU_MODULES "")
 if (${USE_HCC})
   include_directories (${KOTEKAN_SOURCE_DIR}/lib/hcc)
@@ -209,7 +226,7 @@ find_package(Threads REQUIRED)
 include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
 # Note that -lrt here is needed on some versions of CentOS but not Clang
-if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT IWYU)
+if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
        set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrt " )
 endif ()
 
@@ -226,7 +243,7 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
 # Note that -lrt here is needed on some versions of CentOS but not Clang
-if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang" AND NOT IWYU)
+if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrt " )
 endif ()
 
