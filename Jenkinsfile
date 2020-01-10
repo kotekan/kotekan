@@ -60,7 +60,7 @@ pipeline {
                   cd build_base
                   cmake -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache \
                   -DIWYU=ON ..
-                  make -j 4 2> iwyu.out
+                  make -j 6 2> iwyu.out
                   cat iwyu.out'''
           }
         }
