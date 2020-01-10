@@ -9,6 +9,7 @@
 #include "fmt.hpp" // for format, fmt
 
 #include <algorithm>   // for copy
+#include <complex>     // for complex  // IWYU pragma: keep
 #include <cstdint>     // for uint64_t
 #include <cstring>     // for memcpy
 #include <ctime>       // for gmtime

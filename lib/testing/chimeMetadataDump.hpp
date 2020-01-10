@@ -6,7 +6,8 @@
 #ifndef CHIME_METADATA_DUMP_HPP
 #define CHIME_METADATA_DUMP_HPP
 
-#include "Stage.hpp" // for Stage
+#include "Stage.hpp"        // for Stage
+#include "StageFactory.hpp" // IWYU pragma: keep
 
 #include <string> // for string
 

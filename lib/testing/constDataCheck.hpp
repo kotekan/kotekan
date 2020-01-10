@@ -7,11 +7,12 @@
 #ifndef CONST_DATA_CHECK_H
 #define CONST_DATA_CHECK_H
 
-#include "Stage.hpp" // for Stage
+#include "Stage.hpp"        // for Stage
+#include "StageFactory.hpp" // IWYU pragma: keep
 
-#include <stdint.h> // for int32_t
-#include <string>   // for string
-#include <vector>   // for vector
+#include <cstdint> // for int32_t
+#include <string>  // for string
+#include <vector>  // for vector
 
 namespace kotekan {
 class Config;

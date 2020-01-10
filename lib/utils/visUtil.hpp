@@ -11,6 +11,7 @@
 #ifndef VIS_UTIL_HPP
 #define VIS_UTIL_HPP
 
+
 #include "buffer.h" // for Buffer
 
 #include "fmt.hpp"      // for format_context, formatter
@@ -34,6 +35,7 @@
 #include <type_traits> // for enable_if_t, is_integral, make_unsigned
 #include <utility>     // for pair
 #include <vector>      // for vector
+
 
 namespace kotekan {
 class Config;
