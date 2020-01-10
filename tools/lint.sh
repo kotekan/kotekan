@@ -10,7 +10,11 @@
 if [ "build" != "${PWD##*/}" ]; then
     echo "Expected current working dir: build (was ${PWD##*/}). Please create and or change to the
     build directory in your clone of the kotekan repository."
+    exit 1
 fi
+
+# exit when any command fails
+set -e
 
 # include-what-you-use
 if [ "$#" -eq 1 ] && [ "$1" = "iwyu" ]; then
@@ -26,7 +30,8 @@ fi
 # clang-format
 echo "Running clang-format..."
 make clang-format
+git diff --exit-code
 
 # black
 echo "Running black..."
-black --exclude docs ..
+black --check --exclude docs ..
