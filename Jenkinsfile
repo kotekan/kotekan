@@ -45,6 +45,7 @@ pipeline {
                   cd chime-build-clang
                   export CC=clang
                   export CXX=clang++
+                  export CCACHE_DISABLE=1
                   cmake -DRTE_SDK=/opt/dpdk \
                   -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON \
                   -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
