@@ -6,15 +6,13 @@
 #ifndef CHIME_METADATA_DUMP_HPP
 #define CHIME_METADATA_DUMP_HPP
 
-#include "Stage.hpp"        // for Stage
-#include "StageFactory.hpp" // IWYU pragma: keep
+#include "Config.hpp"          // IWYU pragma: keep
+#include "Stage.hpp"           // for Stage
+#include "StageFactory.hpp"    // IWYU pragma: keep
+#include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <string> // for string
 
-namespace kotekan {
-class Config;
-class bufferContainer;
-} // namespace kotekan
 
 /**
  * @class chimeMetadataDump
