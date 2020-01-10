@@ -14,11 +14,15 @@ fi
 
 # include-what-you-use
 CXX=clang++ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
-iwyu_tool -p . -- --mapping_file=${WORKSPACE}/iwyu.kotekan.imp --max_line_length=100 > iwyu.out
+echo "Running iwyu. This could take a while..."
+iwyu_tool -j 4 -p . -- --mapping_file=${PWD}/../iwyu.kotekan.imp --max_line_length=100 | tee iwyu.out
+echo "Applying suggested changes..."
 python2 /usr/bin/fix_include --comments < iwyu.out
 
 # clang-format
+echo "Running clang-format..."
 make clang-format
 
 # black
+echo "Running black..."
 black --exclude docs ..
