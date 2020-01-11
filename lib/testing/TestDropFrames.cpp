@@ -11,9 +11,6 @@
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <random>     // for default_random_engine, bernoulli_distribution, random_device
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

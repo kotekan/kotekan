@@ -16,17 +16,11 @@
 
 #include <atomic>     // for atomic_bool
 #include <csignal>    // for raise, SIGINT
-#include <cstdint>    // for int32_t, uint8_t, uint64_t
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <random>     // for mt19937, random_device, uniform_real_distribution
 #include <string>     // for string
 #include <sys/time.h> // for CLOCK_REALTIME, TIMESPEC_TO_TIMEVAL, timeval
 #include <time.h>     // for timespec, clock_gettime, nanosleep
-
-
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 
 REGISTER_KOTEKAN_STAGE(FakeGpu);
