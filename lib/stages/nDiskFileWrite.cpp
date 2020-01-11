@@ -1,11 +1,12 @@
 #include "nDiskFileWrite.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for Buffer, mark_frame_empty, register_consumer, wait_for_full...
-#include "chimeMetadata.h"    // for get_lost_timesamples
-#include "kotekanLogging.hpp" // for ERROR, INFO
-#include "util.h"             // for cp, make_raw_dirs
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_full...
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "chimeMetadata.h"     // for get_lost_timesamples
+#include "kotekanLogging.hpp"  // for ERROR, INFO
+#include "util.h"              // for cp, make_raw_dirs
 
 #include "fmt.hpp" // for format, fmt
 
@@ -22,9 +23,6 @@
 #include <time.h>     // for gmtime, strftime, time, time_t
 #include <unistd.h>   // for close, write, ssize_t
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

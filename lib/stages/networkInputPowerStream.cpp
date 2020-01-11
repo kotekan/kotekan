@@ -3,6 +3,7 @@
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for mark_frame_full, wait_for_empty_frame, register_producer
+#include "bufferContainer.hpp" // IWYU pragma: keep
 #include "kotekanLogging.hpp"  // for ERROR
 #include "powerStreamUtil.hpp" // for IntensityHeader, IntensityPacketHeader
 
@@ -16,9 +17,6 @@
 #include <sys/socket.h> // for bind, socket, accept, listen, recv, recvfrom, AF_INET
 #include <sys/types.h>  // for uint, ssize_t
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

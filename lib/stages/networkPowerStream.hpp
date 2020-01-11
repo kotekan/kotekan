@@ -8,6 +8,7 @@
 #define NETWORK_POWER_STREAM_H
 
 #include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
 #include "powerStreamUtil.hpp" // for IntensityHeader
 
 #include <atomic>      // for atomic_flag
@@ -18,7 +19,6 @@
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 } // namespace kotekan
 
 /**

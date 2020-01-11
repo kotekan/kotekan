@@ -1,11 +1,12 @@
 #include "simVdifData.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for mark_frame_full, register_producer, wait_for_empty_frame
-#include "kotekanLogging.hpp" // for INFO
-#include "util.h"             // for e_time
-#include "vdif_functions.h"   // for VDIFHeader
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_full, register_producer, wait_for_empty_frame
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "kotekanLogging.hpp"  // for INFO
+#include "util.h"              // for e_time
+#include "vdif_functions.h"    // for VDIFHeader
 
 #include <atomic>     // for atomic_bool
 #include <functional> // for _Bind_helper<>::type, bind, function
@@ -13,9 +14,6 @@
 #include <string.h>   // for memcpy, memset
 #include <unistd.h>   // for usleep
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

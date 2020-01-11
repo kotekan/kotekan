@@ -1,10 +1,11 @@
 #include "testDataGenFloat.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for allocate_new_metadata_object, mark_frame_full, register_pr...
-#include "chimeMetadata.h"    // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
-#include "kotekanLogging.hpp" // for DEBUG
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for allocate_new_metadata_object, mark_frame_full, register_pr...
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "chimeMetadata.h"     // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "kotekanLogging.hpp"  // for DEBUG
 
 #include <assert.h>    // for assert
 #include <atomic>      // for atomic_bool
@@ -16,9 +17,6 @@
 #include <sys/types.h> // for uint
 #include <unistd.h>    // for usleep
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

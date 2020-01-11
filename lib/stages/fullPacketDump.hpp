@@ -1,7 +1,8 @@
 #ifndef FULL_PACKET_DUMP_HPP
 #define FULL_PACKET_DUMP_HPP
 
-#include "Stage.hpp" // for Stage
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include "json.hpp" // for json
 
@@ -11,7 +12,6 @@
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 class connectionInstance;
 } // namespace kotekan
 

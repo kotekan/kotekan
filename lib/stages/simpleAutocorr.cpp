@@ -1,9 +1,10 @@
 #include "simpleAutocorr.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for Buffer, mark_frame_empty, mark_frame_full, register_consumer
-#include "kotekanLogging.hpp" // for DEBUG
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_empty, mark_frame_full, register_consumer
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "kotekanLogging.hpp"  // for DEBUG
 
 #include <atomic>      // for atomic_bool
 #include <functional>  // for _Bind_helper<>::type, bind, function
@@ -12,9 +13,6 @@
 #include <string.h>    // for memset
 #include <sys/types.h> // for uint
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -38,9 +38,7 @@ class prodState;
 class stackState;
 class timeState;
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
+#include "bufferContainer.hpp" // IWYU pragma: keep
 
 
 using kotekan::bufferContainer;

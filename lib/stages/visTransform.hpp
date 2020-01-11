@@ -6,9 +6,10 @@
 #ifndef VISTRANSFORM_H
 #define VISTRANSFORM_H
 
-#include "Stage.hpp"          // for Stage
-#include "datasetManager.hpp" // for dset_id_t
-#include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype (ptr only)
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "datasetManager.hpp"  // for dset_id_t
+#include "visUtil.hpp"         // for input_ctype, prod_ctype, freq_ctype (ptr only)
 
 #include <stddef.h> // for size_t
 #include <stdint.h> // for uint32_t
@@ -18,7 +19,6 @@
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 } // namespace kotekan
 struct Buffer;
 

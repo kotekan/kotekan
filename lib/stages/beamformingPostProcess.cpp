@@ -14,15 +14,13 @@ using std::string;
 #include "Config.hpp"       // for Config
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "beamformingPostProcess.hpp"
-#include "buffer.h"         // for wait_for_empty_frame, Buffer, mark_frame_empty, mark_frame_full
-#include "chimeMetadata.h"  // for get_fpga_seq_num, get_first_packet_recv_time, get_stream_id
-#include "vdif_functions.h" // for VDIFHeader
+#include "buffer.h" // for wait_for_empty_frame, Buffer, mark_frame_empty, mark_frame_full
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "chimeMetadata.h"     // for get_fpga_seq_num, get_first_packet_recv_time, get_stream_id
+#include "vdif_functions.h"    // for VDIFHeader
 
 #include "fmt.hpp" // for format, fmt
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

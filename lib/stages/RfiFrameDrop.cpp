@@ -4,6 +4,7 @@
 #include "Stage.hpp"               // for Stage
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"                // for mark_frame_empty, wait_for_full_frame, Buffer, get_me...
+#include "bufferContainer.hpp"     // IWYU pragma: keep
 #include "chimeMetadata.h"         // for chimeMetadata, get_fpga_seq_num
 #include "configUpdater.hpp"       // for configUpdater
 #include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id
@@ -22,10 +23,6 @@
 #include <stdexcept>  // for runtime_error
 #include <stdint.h>   // for uint8_t, int64_t, uint32_t
 #include <string>     // for string, to_string, allocator
-
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 
 using kotekan::bufferContainer;

@@ -8,13 +8,13 @@
 #define PY_PLOT_N2_H
 
 #include "Stage.hpp"               // for Stage
+#include "bufferContainer.hpp"     // IWYU pragma: keep
 #include "fpga_header_functions.h" // for stream_id_t
 
 #include <string> // for string
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 class connectionInstance;
 } // namespace kotekan
 

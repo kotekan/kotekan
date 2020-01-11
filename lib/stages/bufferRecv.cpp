@@ -3,6 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for Buffer, allocate_new_metadata_object, buffer_free, buff...
+#include "bufferContainer.hpp"   // IWYU pragma: keep
 #include "bufferSend.hpp"        // for bufferFrameHeader
 #include "metadata.h"            // for metadataPool
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge, MetricFamily
@@ -31,7 +32,6 @@
 #include <sys/socket.h>    // for AF_INET, accept, bind, listen, setsockopt, socket, sock...
 
 namespace kotekan {
-class bufferContainer;
 class connectionInstance;
 } // namespace kotekan
 

@@ -15,17 +15,15 @@
 
 using std::string;
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for mark_frame_empty, wait_for_full_frame, register_consumer
-#include "kotekanLogging.hpp" // for FATAL_ERROR, INFO, CHECK_MEM
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_empty, wait_for_full_frame, register_consumer
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO, CHECK_MEM
 #include "pulsarNetworkProcess.hpp"
 #include "tx_utils.hpp"     // for add_nsec, get_vlan_from_ip, parse_chime_host_name, CLOCK_A...
 #include "vdif_functions.h" // for VDIFHeader
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

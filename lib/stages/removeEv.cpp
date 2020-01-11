@@ -14,9 +14,7 @@
 
 class eigenvalueState;
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
+#include "bufferContainer.hpp" // IWYU pragma: keep
 
 
 using kotekan::bufferContainer;

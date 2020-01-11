@@ -4,6 +4,7 @@
 #include "Hash.hpp"              // for Hash, operator!=
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for wait_for_full_frame, mark_frame_empty, register_consumer
+#include "bufferContainer.hpp"   // IWYU pragma: keep
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager
 #include "datasetState.hpp"      // for metadataState, stackState, acqDatasetIdState, eigenvalu...
 #include "errors.h"              // for exit_kotekan, ReturnCode, ReturnCode::CLEAN_EXIT
@@ -30,9 +31,6 @@
 #include <unistd.h>     // for gethostname, getlogin_r
 #include <utility>      // for move, pair
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

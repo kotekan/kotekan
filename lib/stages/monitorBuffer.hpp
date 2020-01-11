@@ -8,14 +8,14 @@
 #ifndef MONITOR_BUFFER_H
 #define MONITOR_BUFFER_H
 
-#include "Stage.hpp" // for Stage
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <string> // for string
 #include <vector> // for vector
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 } // namespace kotekan
 
 /**

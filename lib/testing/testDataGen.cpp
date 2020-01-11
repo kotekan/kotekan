@@ -14,15 +14,13 @@
 #include <sys/types.h> // for uint
 #include <unistd.h>    // for usleep
 // Needed for a bunch of time utilities.
-#include "gpsTime.h"          // for FPGA_PERIOD_NS
-#include "kotekanLogging.hpp" // for DEBUG, INFO
-#include "restServer.hpp"     // for restServer, HTTP_RESPONSE, connectionInstance, HTTP_RESPON...
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "gpsTime.h"           // for FPGA_PERIOD_NS
+#include "kotekanLogging.hpp"  // for DEBUG, INFO
+#include "restServer.hpp"      // for restServer, HTTP_RESPONSE, connectionInstance, HTTP_RESPON...
 #include "testDataGen.hpp"
 #include "visUtil.hpp" // for current_time
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

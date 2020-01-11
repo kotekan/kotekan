@@ -3,6 +3,7 @@
 #include "Config.hpp"              // for Config
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"                // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
+#include "bufferContainer.hpp"     // IWYU pragma: keep
 #include "chimeMetadata.h"         // for get_stream_id_t
 #include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
 #include "kotekanLogging.hpp"      // for ERROR, INFO
@@ -16,9 +17,6 @@
 #include <string.h>    // for memcpy
 #include <sys/types.h> // for uint
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 #define SWAP(a, b)                                                                                 \
     tempr = (a);                                                                                   \

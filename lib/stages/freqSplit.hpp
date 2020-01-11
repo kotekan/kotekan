@@ -6,8 +6,9 @@
 #ifndef FREQ_SPLIT_HPP
 #define FREQ_SPLIT_HPP
 
-#include "Stage.hpp"   // for Stage
-#include "dataset.hpp" // for dset_id_t
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "dataset.hpp"         // for dset_id_t
 
 #include <array>   // for array
 #include <future>  // for future
@@ -17,7 +18,6 @@
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 } // namespace kotekan
 struct Buffer;
 

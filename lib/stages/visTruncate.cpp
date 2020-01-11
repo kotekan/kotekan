@@ -1,12 +1,13 @@
 #include "visTruncate.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for wait_for_full_frame, allocate_new_metadata_object, mark_fr...
-#include "kotekanLogging.hpp" // for DEBUG
-#include "truncate.hpp"       // for bit_truncate_float
-#include "visBuffer.hpp"      // for visFrameView
-#include "visUtil.hpp"        // for cfloat
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for wait_for_full_frame, allocate_new_metadata_object, mark_fr...
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "kotekanLogging.hpp"  // for DEBUG
+#include "truncate.hpp"        // for bit_truncate_float
+#include "visBuffer.hpp"       // for visFrameView
+#include "visUtil.hpp"         // for cfloat
 
 #include "gsl-lite.hpp" // for span
 
@@ -21,9 +22,6 @@
 #include <mm_malloc.h> // for _mm_free, _mm_malloc
 #include <stdexcept>   // for invalid_argument
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

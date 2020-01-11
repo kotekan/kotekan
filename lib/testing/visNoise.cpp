@@ -1,11 +1,12 @@
 #include "visNoise.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for mark_frame_empty, mark_frame_full, register_consumer, regi...
-#include "kotekanLogging.hpp" // for INFO
-#include "visBuffer.hpp"      // for visFrameView
-#include "visUtil.hpp"        // for cfloat
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_empty, mark_frame_full, register_consumer, regi...
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "kotekanLogging.hpp"  // for INFO
+#include "visBuffer.hpp"       // for visFrameView
+#include "visUtil.hpp"         // for cfloat
 
 #include "gsl-lite.hpp" // for span
 
@@ -16,9 +17,6 @@
 #include <stdexcept>  // for invalid_argument
 #include <stdint.h>   // for uint32_t
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

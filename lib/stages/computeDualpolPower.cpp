@@ -1,14 +1,12 @@
 #include "computeDualpolPower.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for mark_frame_empty, mark_frame_full, register_consumer, regi...
-#include "kotekanLogging.hpp" // for DEBUG, ERROR
-#include "vdif_functions.h"   // for VDIFHeader
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_empty, mark_frame_full, register_consumer, regi...
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "kotekanLogging.hpp"  // for DEBUG, ERROR
+#include "vdif_functions.h"    // for VDIFHeader
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
 

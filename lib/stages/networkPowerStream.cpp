@@ -1,9 +1,10 @@
 #include "networkPowerStream.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for mark_frame_empty, wait_for_full_frame, register_consumer
-#include "kotekanLogging.hpp" // for ERROR, INFO
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_empty, wait_for_full_frame, register_consumer
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "kotekanLogging.hpp"  // for ERROR, INFO
 
 #include <arpa/inet.h>  // for inet_addr, inet_aton
 #include <functional>   // for _Bind_helper<>::type, bind, function
@@ -16,9 +17,6 @@
 #include <sys/types.h>  // for uint
 #include <unistd.h>     // for close
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

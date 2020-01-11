@@ -7,10 +7,11 @@
 #ifndef VIS_WRITER_HPP
 #define VIS_WRITER_HPP
 
-#include "Stage.hpp"          // for Stage
-#include "datasetManager.hpp" // for dset_id_t, fingerprint_t
-#include "visFile.hpp"        // for visFileBundle, visCalFileBundle (ptr only)
-#include "visUtil.hpp"        // for movingAverage
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "datasetManager.hpp"  // for dset_id_t, fingerprint_t
+#include "visFile.hpp"         // for visFileBundle, visCalFileBundle (ptr only)
+#include "visUtil.hpp"         // for movingAverage
 
 #include <cstdint>   // for uint32_t
 #include <errno.h>   // for ENOENT, errno
@@ -27,7 +28,6 @@
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 class connectionInstance;
 
 namespace prometheus {

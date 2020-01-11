@@ -1,18 +1,16 @@
 #include "hexDump.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "kotekanLogging.hpp" // for DEBUG
-#include "util.h"             // for hex_dump
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "kotekanLogging.hpp"  // for DEBUG
+#include "util.h"              // for hex_dump
 
 #include <atomic>            // for atomic_bool
 #include <stdexcept>         // for runtime_error
 #include <utils/visUtil.hpp> // for frameID, modulo
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

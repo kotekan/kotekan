@@ -1,19 +1,17 @@
 #include "visDrop.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for mark_frame_empty, Buffer, mark_frame_full, register_consumer
-#include "kotekanLogging.hpp" // for DEBUG, INFO
-#include "visBuffer.hpp"      // for visFrameView
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_empty, Buffer, mark_frame_full, register_consumer
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "kotekanLogging.hpp"  // for DEBUG, INFO
+#include "visBuffer.hpp"       // for visFrameView
 
 #include <algorithm>  // for find
 #include <atomic>     // for atomic_bool
 #include <cstdint>    // for uint32_t
 #include <functional> // for _Bind_helper<>::type, bind, function
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

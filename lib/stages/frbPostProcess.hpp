@@ -6,9 +6,9 @@
 
 #ifndef FRB_POST_PROCESS
 #define FRB_POST_PROCESS
-
-#include "Stage.hpp"       // for Stage
-#include "frb_functions.h" // for FRBHeader
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "frb_functions.h"     // for FRBHeader
 
 #include <stdint.h> // for int32_t, uint16_t, int16_t, uint32_t, uint8_t
 #include <string>   // for string
@@ -16,7 +16,6 @@
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 namespace prometheus {
 class Counter;
 } // namespace prometheus

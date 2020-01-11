@@ -9,9 +9,10 @@
 #ifndef BUFFER_RECV_H
 #define BUFFER_RECV_H
 
-#include "Stage.hpp"          // for Stage
-#include "bufferSend.hpp"     // for bufferFrameHeader
-#include "kotekanLogging.hpp" // for DEBUG2, ERROR, INFO, kotekanLogging
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "bufferSend.hpp"      // for bufferFrameHeader
+#include "kotekanLogging.hpp"  // for DEBUG2, ERROR, INFO, kotekanLogging
 
 #include <condition_variable> // for condition_variable
 #include <deque>              // for deque
@@ -31,7 +32,6 @@
 class connInstance;
 namespace kotekan {
 class Config;
-class bufferContainer;
 namespace prometheus {
 class Counter;
 class Gauge;

@@ -6,9 +6,10 @@
 #ifndef PROD_SUB_HPP
 #define PROD_SUB_HPP
 
-#include "Stage.hpp"          // for Stage
-#include "datasetManager.hpp" // for dset_id_t, state_id_t, fingerprint_t
-#include "visUtil.hpp"        // for prod_ctype
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "datasetManager.hpp"  // for dset_id_t, state_id_t, fingerprint_t
+#include "visUtil.hpp"         // for prod_ctype
 
 #include <map>      // for map
 #include <stddef.h> // for size_t
@@ -19,7 +20,6 @@
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 } // namespace kotekan
 struct Buffer;
 

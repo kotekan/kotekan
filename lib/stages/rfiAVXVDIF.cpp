@@ -10,6 +10,8 @@
 #include "util.h" // for e_time
 #endif
 
+#include "bufferContainer.hpp" // IWYU pragma: keep
+
 #include <atomic>      // for atomic_bool
 #include <cstdint>     // for uint32_t, uint8_t
 #include <functional>  // for _Bind_helper<>::type, bind, function
@@ -22,9 +24,6 @@
 #include <time.h>      // for time
 #include <vector>      // for vector
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
 

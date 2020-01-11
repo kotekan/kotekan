@@ -6,8 +6,9 @@
 #ifndef RFI_BROADCAST_H
 #define RFI_BROADCAST_H
 
-#include "Stage.hpp"   // for Stage
-#include "visUtil.hpp" // for movingAverage
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "visUtil.hpp"         // for movingAverage
 
 #include "json.hpp" // for json
 
@@ -17,7 +18,6 @@
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 class connectionInstance;
 } // namespace kotekan
 

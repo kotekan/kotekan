@@ -1,10 +1,11 @@
 #include "fullPacketDump.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for Buffer, mark_frame_empty, register_consumer, wait_for_full...
-#include "kotekanLogging.hpp" // for ERROR, INFO
-#include "restServer.hpp"     // for connectionInstance, restServer, HTTP_RESPONSE, HTTP_RESPON...
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_full...
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "kotekanLogging.hpp"  // for ERROR, INFO
+#include "restServer.hpp"      // for connectionInstance, restServer, HTTP_RESPONSE, HTTP_RESPON...
 
 #include "fmt.hpp" // for format, fmt
 
@@ -17,9 +18,6 @@
 #include <string.h>   // for memcpy
 #include <unistd.h>   // for close, gethostname, sleep, write, ssize_t
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 #define MAX_NUM_PACKETS 100
 

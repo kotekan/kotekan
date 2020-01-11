@@ -3,6 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for Buffer, get_num_full_frames, mark_frame_empty, register...
+#include "bufferContainer.hpp"   // IWYU pragma: keep
 #include "kotekanLogging.hpp"    // for DEBUG2, ERROR, DEBUG, WARN, INFO
 #include "metadata.h"            // for metadataContainer
 #include "prometheusMetrics.hpp" // for Metrics, Counter
@@ -20,9 +21,6 @@
 #include <thread>       // for thread
 #include <unistd.h>     // for close, sleep
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 // Only Linux supports MSG_NOSIGNAL
 #ifndef __linux__

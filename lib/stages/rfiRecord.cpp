@@ -3,6 +3,7 @@
 #include "Config.hpp"              // for Config
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"                // for Buffer, mark_frame_empty, register_consumer, wait_for...
+#include "bufferContainer.hpp"     // IWYU pragma: keep
 #include "chimeMetadata.h"         // for get_fpga_seq_num, get_gps_time, get_stream_id_t
 #include "configUpdater.hpp"       // for configUpdater
 #include "fpga_header_functions.h" // for bin_number_chime, stream_id_t
@@ -19,9 +20,6 @@
 #include <time.h>     // for gmtime_r, strftime, timespec, tm
 #include <unistd.h>   // for write, close, ssize_t
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

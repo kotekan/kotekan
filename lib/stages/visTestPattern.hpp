@@ -7,9 +7,10 @@
 #ifndef VISTESTPATTERN_HPP
 #define VISTESTPATTERN_HPP
 
-#include "Stage.hpp"   // for Stage
-#include "dataset.hpp" // for dset_id_t
-#include "visUtil.hpp" // for cfloat, freq_ctype (ptr only), input_ctype, prod_ctype
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "dataset.hpp"         // for dset_id_t
+#include "visUtil.hpp"         // for cfloat, freq_ctype (ptr only), input_ctype, prod_ctype
 
 #include "json.hpp" // for json
 
@@ -24,7 +25,6 @@
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 class connectionInstance;
 } // namespace kotekan
 struct Buffer;

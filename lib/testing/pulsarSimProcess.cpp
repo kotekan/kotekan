@@ -12,17 +12,15 @@ using std::string;
 #define samples_in_frame 3125
 #define num_packet 16
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for wait_for_empty_frame, mark_frame_full, register_producer
-#include "chimeMetadata.h"    // for psrCoord
-#include "kotekanLogging.hpp" // for INFO, CHECK_MEM
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for wait_for_empty_frame, mark_frame_full, register_producer
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "chimeMetadata.h"     // for psrCoord
+#include "kotekanLogging.hpp"  // for INFO, CHECK_MEM
 #include "pulsarSimProcess.hpp"
 #include "vdif_functions.h" // for VDIFHeader
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

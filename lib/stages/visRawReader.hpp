@@ -6,9 +6,10 @@
 #ifndef _VIS_RAW_READER_HPP
 #define _VIS_RAW_READER_HPP
 
-#include "Stage.hpp"          // for Stage
-#include "datasetManager.hpp" // for dset_id_t
-#include "visUtil.hpp"        // for freq_ctype (ptr only), input_ctype, prod_ctype, rstack_ctype
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "datasetManager.hpp"  // for dset_id_t
+#include "visUtil.hpp"         // for freq_ctype (ptr only), input_ctype, prod_ctype, rstack_ctype
 
 #include "json.hpp" // for json
 
@@ -20,7 +21,6 @@
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 } // namespace kotekan
 struct Buffer;
 

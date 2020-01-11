@@ -1,7 +1,8 @@
 #ifndef BUFFER_SWITCH_HPP
 #define BUFFER_SWITCH_HPP
 
-#include "bufferMerge.hpp" // for bufferMerge
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "bufferMerge.hpp"     // for bufferMerge
 
 #include "json.hpp" // for json
 
@@ -12,7 +13,6 @@
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 } // namespace kotekan
 struct Buffer;
 

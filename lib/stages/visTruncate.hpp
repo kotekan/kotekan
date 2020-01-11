@@ -1,13 +1,13 @@
 #ifndef VISTRUNCATE
 #define VISTRUNCATE
 
-#include "Stage.hpp" // for Stage
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <string> // for string
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 } // namespace kotekan
 struct Buffer;
 

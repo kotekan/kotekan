@@ -6,7 +6,8 @@
 #ifndef GPU_BEAMFORM_SIMULATE_HPP
 #define GPU_BEAMFORM_SIMULATE_HPP
 
-#include "Stage.hpp" // for Stage
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <stdint.h> // for int32_t, uint64_t
 #include <string>   // for string
@@ -14,7 +15,6 @@
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 } // namespace kotekan
 struct Buffer;
 

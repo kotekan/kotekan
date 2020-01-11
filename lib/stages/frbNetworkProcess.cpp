@@ -3,6 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for wait_for_full_frame, mark_frame_empty, register_consumer
+#include "bufferContainer.hpp"   // IWYU pragma: keep
 #include "frb_functions.h"       // for FRBHeader
 #include "kotekanLogging.hpp"    // for DEBUG, INFO, WARN, FATAL_ERROR, ERROR
 #include "network_functions.hpp" // for receive_ping, send_ping
@@ -32,10 +33,6 @@
 #include <time.h>       // for clock_gettime, timespec
 #include <unistd.h>     // for close
 #include <utility>      // for move, get
-
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 
 using std::string;

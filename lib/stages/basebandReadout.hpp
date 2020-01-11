@@ -10,6 +10,7 @@
 #include "BipBuffer.hpp"              // for BipBuffer
 #include "Stage.hpp"                  // for Stage
 #include "basebandReadoutManager.hpp" // for basebandDumpData, basebandReadoutManager (ptr only)
+#include "bufferContainer.hpp"        // IWYU pragma: keep
 #include "visUtil.hpp"                // for input_ctype
 
 #include <mutex>    // for mutex
@@ -20,7 +21,6 @@
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 
 namespace prometheus {
 class Counter;

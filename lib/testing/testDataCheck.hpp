@@ -1,11 +1,12 @@
 #ifndef TEST_DATA_CHECK_H
 #define TEST_DATA_CHECK_H
 
-#include "Config.hpp"         // for Config
-#include "Stage.hpp"          // for Stage
-#include "buffer.h"           // for Buffer, mark_frame_empty, register_consumer, wait_for_full...
-#include "errors.h"           // for TEST_PASSED
-#include "kotekanLogging.hpp" // for DEBUG, INFO, ERROR, FATAL_ERROR
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_full...
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "errors.h"            // for TEST_PASSED
+#include "kotekanLogging.hpp"  // for DEBUG, INFO, ERROR, FATAL_ERROR
 
 #include <assert.h>    // for assert
 #include <cmath>       // for abs
@@ -16,9 +17,6 @@
 #include <string>      // for string, allocator
 #include <type_traits> // for is_same, enable_if
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 template<typename A_Type>
 class testDataCheck : public kotekan::Stage {

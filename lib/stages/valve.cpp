@@ -4,6 +4,7 @@
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for Buffer, allocate_new_metadata_object, get_num_consumers
+#include "bufferContainer.hpp"   // IWYU pragma: keep
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, WARN
 #include "metadata.h"            // for metadataContainer
 #include "prometheusMetrics.hpp" // for Metrics, Counter
@@ -18,10 +19,6 @@
 #include <stdexcept>  // for runtime_error
 #include <stdint.h>   // for uint8_t
 #include <string>     // for string, allocator
-
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 
 using kotekan::bufferContainer;

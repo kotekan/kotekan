@@ -15,6 +15,8 @@
 #include "util.h" // for e_time
 #endif
 
+#include "bufferContainer.hpp" // IWYU pragma: keep
+
 #include "fmt.hpp" // for format, fmt
 
 #include <arpa/inet.h>  // for inet_aton
@@ -27,9 +29,6 @@
 #include <string>       // for string, allocator, to_string, operator+, operator==
 #include <sys/socket.h> // for sendto, socket, AF_INET, SOCK_DGRAM
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

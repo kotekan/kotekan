@@ -4,6 +4,7 @@
 #include "Hash.hpp"              // for Hash, operator<
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp"   // IWYU pragma: keep
 #include "datasetManager.hpp"    // for datasetManager, fingerprint_t
 #include "datasetState.hpp"      // for metadataState, freqState, prodState, stackState, _facto...
 #include "factory.hpp"           // for FACTORY
@@ -27,10 +28,6 @@
 #include <system_error> // for system_error
 #include <tuple>        // for get
 #include <vector>       // for operator==, vector
-
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 
 using kotekan::bufferContainer;

@@ -1,9 +1,10 @@
 #include "streamSingleDishVDIF.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "kotekanLogging.hpp" // for ERROR, INFO
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "kotekanLogging.hpp"  // for ERROR, INFO
 
 #include <arpa/inet.h>  // for inet_aton
 #include <atomic>       // for atomic_bool
@@ -14,9 +15,6 @@
 #include <string.h>     // for memset
 #include <sys/socket.h> // for sendto, socket, AF_INET, SOCK_DGRAM
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

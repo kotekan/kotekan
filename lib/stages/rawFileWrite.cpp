@@ -3,6 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for Buffer, get_metadata_container, mark_frame_empty, regis...
+#include "bufferContainer.hpp"   // IWYU pragma: keep
 #include "kotekanLogging.hpp"    // for ERROR, INFO
 #include "metadata.h"            // for metadataContainer
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
@@ -17,9 +18,6 @@
 #include <stdlib.h>   // for exit
 #include <unistd.h>   // for write, close, gethostname, ssize_t
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

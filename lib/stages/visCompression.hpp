@@ -6,9 +6,10 @@
 #ifndef VIS_COMPRESSION_HPP
 #define VIS_COMPRESSION_HPP
 
-#include "Stage.hpp"          // for Stage
-#include "datasetManager.hpp" // for dset_id_t, state_id_t, fingerprint_t
-#include "visUtil.hpp"        // for input_ctype (ptr only), prod_ctype (ptr only), frameID
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "datasetManager.hpp"  // for dset_id_t, state_id_t, fingerprint_t
+#include "visUtil.hpp"         // for input_ctype (ptr only), prod_ctype (ptr only), frameID
 
 #include <cstdint>    // for uint32_t, int8_t, int16_t
 #include <functional> // for function
@@ -26,7 +27,6 @@ class stackState;
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 
 namespace prometheus {
 class Counter;

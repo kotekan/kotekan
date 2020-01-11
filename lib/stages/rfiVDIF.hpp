@@ -6,14 +6,14 @@
 #ifndef VDIF_RFI_H
 #define VDIF_RFI_H
 
-#include "Stage.hpp" // for Stage
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 } // namespace kotekan
 
 /*

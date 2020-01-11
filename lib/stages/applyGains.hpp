@@ -1,11 +1,12 @@
 #ifndef APPLY_GAINS_HPP
 #define APPLY_GAINS_HPP
 
-#include "Hash.hpp"           // for Hash
-#include "Stage.hpp"          // for Stage
-#include "datasetManager.hpp" // for dset_id_t, state_id_t
-#include "updateQueue.hpp"    // for updateQueue
-#include "visUtil.hpp"        // for cfloat, frameID
+#include "Hash.hpp"            // for Hash
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "datasetManager.hpp"  // for dset_id_t, state_id_t
+#include "updateQueue.hpp"     // for updateQueue
+#include "visUtil.hpp"         // for cfloat, frameID
 
 #include "json.hpp" // for json
 
@@ -25,7 +26,6 @@ class visFrameView;
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 
 namespace prometheus {
 class Counter;

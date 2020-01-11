@@ -3,6 +3,7 @@
 #include "Config.hpp"              // for Config
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"                // for mark_frame_full, register_producer, wait_for_empty_frame
+#include "bufferContainer.hpp"     // IWYU pragma: keep
 #include "chimeMetadata.h"         // for set_first_packet_recv_time, set_fpga_seq_num, set_str...
 #include "fpga_header_functions.h" // for stream_id_t
 #include "kotekanLogging.hpp"      // for ERROR
@@ -14,9 +15,6 @@
 #include <stdlib.h>   // for exit
 #include <sys/time.h> // for gettimeofday, timeval
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

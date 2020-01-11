@@ -1,14 +1,15 @@
 #include "prodSubset.hpp"
 
-#include "Config.hpp"         // for Config
-#include "Hash.hpp"           // for operator<
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for allocate_new_metadata_object, mark_frame_empty, mark_frame...
-#include "datasetManager.hpp" // for datasetManager
-#include "datasetState.hpp"   // for prodState
-#include "kotekanLogging.hpp" // for FATAL_ERROR, WARN
-#include "visBuffer.hpp"      // for visFrameView, visField, visField::vis, visField::weight
-#include "visUtil.hpp"        // for prod_ctype, frameID, cmap, icmap, modulo, cfloat
+#include "Config.hpp"          // for Config
+#include "Hash.hpp"            // for operator<
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for allocate_new_metadata_object, mark_frame_empty, mark_frame...
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "datasetManager.hpp"  // for datasetManager
+#include "datasetState.hpp"    // for prodState
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, WARN
+#include "visBuffer.hpp"       // for visFrameView, visField, visField::vis, visField::weight
+#include "visUtil.hpp"         // for prod_ctype, frameID, cmap, icmap, modulo, cfloat
 
 #include "gsl-lite.hpp" // for span
 
@@ -22,10 +23,6 @@
 #include <stdint.h>     // for uint16_t, uint32_t
 #include <system_error> // for system_error
 #include <utility>      // for pair, tuple_element<>::type
-
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 
 using kotekan::bufferContainer;

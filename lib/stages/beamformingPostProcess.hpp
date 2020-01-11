@@ -1,7 +1,8 @@
 #ifndef BEAMFORMING_POST_PROCESS
 #define BEAMFORMING_POST_PROCESS
 
-#include "Stage.hpp" // for Stage
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <stdint.h> // for uint32_t, int32_t
 #include <string>   // for string
@@ -9,7 +10,6 @@
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 } // namespace kotekan
 
 

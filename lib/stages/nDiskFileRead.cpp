@@ -1,9 +1,10 @@
 #include "nDiskFileRead.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for Buffer, mark_frame_full, register_producer, wait_for_empty...
-#include "kotekanLogging.hpp" // for INFO, ERROR
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_full, register_producer, wait_for_empty...
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "kotekanLogging.hpp"  // for INFO, ERROR
 
 #include <assert.h>    // for assert
 #include <atomic>      // for atomic_bool
@@ -14,9 +15,6 @@
 #include <stdio.h>     // for fclose, fopen, fread, fseek, ftell, rewind, snprintf, FILE
 #include <sys/types.h> // for uint
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using std::string;
 

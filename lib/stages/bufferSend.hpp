@@ -6,7 +6,8 @@
 #ifndef BUFFER_SEND_H
 #define BUFFER_SEND_H
 
-#include "Stage.hpp" // for Stage
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <atomic>             // for atomic
 #include <condition_variable> // for condition_variable
@@ -17,7 +18,6 @@
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 namespace prometheus {
 class Counter;
 } // namespace prometheus

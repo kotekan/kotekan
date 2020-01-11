@@ -12,7 +12,7 @@ if [ "build" != "${PWD##*/}" ]; then
     build directory in your clone of the kotekan repository."
     exit 1
 fi
-
+exit 1
 # exit when any command fails
 set -e
 

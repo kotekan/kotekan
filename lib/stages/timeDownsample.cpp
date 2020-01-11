@@ -3,6 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for mark_frame_empty, allocate_new_metadata_object, mark_fr...
+#include "bufferContainer.hpp"   // IWYU pragma: keep
 #include "kotekanLogging.hpp"    // for DEBUG
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
 #include "visBuffer.hpp"         // for visFrameView
@@ -17,10 +18,6 @@
 #include <stdint.h>   // for uint32_t, uint64_t, int32_t
 #include <time.h>     // for size_t, timespec
 #include <tuple>      // for get
-
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 
 using kotekan::bufferContainer;

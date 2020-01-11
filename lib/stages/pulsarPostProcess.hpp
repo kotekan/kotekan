@@ -7,7 +7,8 @@
 #ifndef PULSAR_POST_PROCESS
 #define PULSAR_POST_PROCESS
 
-#include "Stage.hpp" // for Stage
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <optional>    // for optional
 #include <stdint.h>    // for uint32_t, uint64_t, uint16_t, uint8_t
@@ -17,7 +18,6 @@
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 } // namespace kotekan
 struct Buffer;
 

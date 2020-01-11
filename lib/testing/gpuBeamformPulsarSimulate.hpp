@@ -1,8 +1,8 @@
 #ifndef GPU_BEAMFORM_PULSAR_SIMULATE_HPP
 #define GPU_BEAMFORM_PULSAR_SIMULATE_HPP
-
-#include "Stage.hpp"       // for Stage
-#include "chimeMetadata.h" // for psrCoord
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "chimeMetadata.h"     // for psrCoord
 
 #include <stdint.h>    // for int32_t, uint32_t
 #include <string>      // for string
@@ -12,7 +12,6 @@
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 } // namespace kotekan
 struct Buffer;
 struct timespec;

@@ -7,8 +7,9 @@
 #ifndef CONST_DATA_CHECK_H
 #define CONST_DATA_CHECK_H
 
-#include "Stage.hpp"        // for Stage
-#include "StageFactory.hpp" // IWYU pragma: keep
+#include "Stage.hpp"           // for Stage
+#include "StageFactory.hpp"    // IWYU pragma: keep
+#include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <cstdint> // for int32_t
 #include <string>  // for string
@@ -16,7 +17,6 @@
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 } // namespace kotekan
 
 /**

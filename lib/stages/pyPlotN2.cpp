@@ -3,8 +3,9 @@
 #include "Config.hpp"       // for Config
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"         // for mark_frame_empty, Buffer, register_consumer, wait_for_full_f...
-#include "chimeMetadata.h"  // for get_stream_id_t
-#include "restServer.hpp"   // for restServer, HTTP_RESPONSE, HTTP_RESPONSE::OK, connectionInst...
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "chimeMetadata.h"     // for get_stream_id_t
+#include "restServer.hpp" // for restServer, HTTP_RESPONSE, HTTP_RESPONSE::OK, connectionInst...
 
 #include "json.hpp" // for json_ref, json
 
@@ -18,9 +19,6 @@
 #include <thread>      // for thread
 #include <unistd.h>    // for usleep
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using json = nlohmann::json;
 

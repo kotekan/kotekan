@@ -1,9 +1,10 @@
 #include "chrxUplink.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for Buffer, mark_frame_empty, register_consumer, wait_for_full...
-#include "kotekanLogging.hpp" // for ERROR, INFO
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_full...
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "kotekanLogging.hpp"  // for ERROR, INFO
 
 #include "fmt.hpp" // for format, fmt
 
@@ -16,9 +17,6 @@
 #include <sys/socket.h> // for send, connect, socket, AF_INET, SOCK_STREAM
 #include <unistd.h>     // for gethostname, ssize_t
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

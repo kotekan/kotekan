@@ -6,7 +6,8 @@
 #ifndef FAKE_GPU_HPP
 #define FAKE_GPU_HPP
 
-#include "Stage.hpp" // for Stage
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <memory>   // for unique_ptr
 #include <stdint.h> // for int32_t
@@ -15,7 +16,6 @@
 class FakeGpuPattern;
 namespace kotekan {
 class Config;
-class bufferContainer;
 } // namespace kotekan
 struct Buffer;
 

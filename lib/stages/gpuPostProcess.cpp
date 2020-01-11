@@ -1,15 +1,16 @@
 #define __STDC_FORMAT_MACROS 1
 #include "gpuPostProcess.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for Buffer, mark_frame_full, register_producer, wait_for_empty...
-#include "chimeMetadata.h"    // for get_first_packet_recv_time, get_fpga_seq_num, get_lost_tim...
-#include "kotekanLogging.hpp" // for CHECK_MEM, INFO
-#include "output_formating.h" // for full_16_element_matrix_to_upper_triangle, reorganize_32_to...
-#include "restServer.hpp"     // for HTTP_RESPONSE, connectionInstance (ptr only), restServer (...
-#include "util.h"             // for complex_int_t
-#include "version.h"          // for get_git_commit_hash
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_full, register_producer, wait_for_empty...
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "chimeMetadata.h"     // for get_first_packet_recv_time, get_fpga_seq_num, get_lost_tim...
+#include "kotekanLogging.hpp"  // for CHECK_MEM, INFO
+#include "output_formating.h"  // for full_16_element_matrix_to_upper_triangle, reorganize_32_to...
+#include "restServer.hpp"      // for HTTP_RESPONSE, connectionInstance (ptr only), restServer (...
+#include "util.h"              // for complex_int_t
+#include "version.h"           // for get_git_commit_hash
 
 #include "fmt.hpp" // for format, fmt
 
@@ -21,9 +22,6 @@
 #include <stdlib.h>   // for malloc, free
 #include <string.h>   // for memcpy, strcpy, strcat
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

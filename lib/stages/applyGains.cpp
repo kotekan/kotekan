@@ -3,6 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for mark_frame_empty, allocate_new_metadata...
+#include "bufferContainer.hpp"   // IWYU pragma: keep
 #include "configUpdater.hpp"     // for configUpdater
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
 #include "datasetState.hpp"      // for freqState, gainState (ptr only), inputS...
@@ -30,9 +31,6 @@
 #include <sys/stat.h>               // for stat
 #include <tuple>                    // for get
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using namespace HighFive;
 using namespace std::placeholders;

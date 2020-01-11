@@ -1,14 +1,14 @@
 #ifndef HEX_DUMP_H
 #define HEX_DUMP_H
 
-#include "Stage.hpp" // for Stage
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <stdint.h> // for int32_t
 #include <string>   // for string
 
 namespace kotekan {
 class Config;
-class bufferContainer;
 } // namespace kotekan
 
 /**

@@ -6,9 +6,10 @@
 #ifndef RECEIVEFLAGS_H
 #define RECEIVEFLAGS_H
 
-#include "Stage.hpp"       // for Stage
-#include "dataset.hpp"     // for dset_id_t, state_id_t
-#include "updateQueue.hpp" // for updateQueue
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "dataset.hpp"         // for dset_id_t, state_id_t
+#include "updateQueue.hpp"     // for updateQueue
 
 #include "json.hpp" // for json
 
@@ -23,7 +24,6 @@
 class visFrameView;
 namespace kotekan {
 class Config;
-class bufferContainer;
 namespace prometheus {
 class Counter;
 class Gauge;

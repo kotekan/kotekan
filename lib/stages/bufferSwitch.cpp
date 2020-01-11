@@ -1,10 +1,11 @@
 #include "bufferSwitch.hpp"
 
-#include "Config.hpp"         // IWYU pragma: keep
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "configUpdater.hpp"  // for configUpdater
-#include "kotekanLogging.hpp" // for WARN
-#include "visUtil.hpp"        // for frameID  // IWYU pragma: keep
+#include "Config.hpp"          // IWYU pragma: keep
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "configUpdater.hpp"   // for configUpdater
+#include "kotekanLogging.hpp"  // for WARN
+#include "visUtil.hpp"         // for frameID  // IWYU pragma: keep
 
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for json, basic_json<>::iterator, basic_json, iter_impl
@@ -15,9 +16,6 @@
 #include <tuple>      // for get
 #include <utility>    // for pair
 
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 struct Buffer;
 
 using nlohmann::json;
