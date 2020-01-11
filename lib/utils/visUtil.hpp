@@ -12,7 +12,8 @@
 #define VIS_UTIL_HPP
 
 
-#include "buffer.h" // for Buffer
+#include "Config.hpp" // IWYU pragma: keep
+#include "buffer.h"   // for Buffer
 
 #include "fmt.hpp"      // for format_context, formatter
 #include "gsl-lite.hpp" // for span
@@ -36,10 +37,6 @@
 #include <utility>     // for pair
 #include <vector>      // for vector
 
-
-namespace kotekan {
-class Config;
-} // namespace kotekan
 struct timespec;
 struct timeval;
 

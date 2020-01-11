@@ -1,6 +1,7 @@
 #ifndef DATASET_MANAGER_HPP
 #define DATASET_MANAGER_HPP
 
+#include "Config.hpp"            // IWYU pragma: keep
 #include "Hash.hpp"              // for Hash
 #include "dataset.hpp"           // for state_id_t, dset_id_t, dataset
 #include "datasetState.hpp"      // for datasetState, _factory_aliasdatasetState
@@ -33,7 +34,6 @@
 
 // Forward declarations
 namespace kotekan {
-class Config;
 class connectionInstance;
 } // namespace kotekan
 

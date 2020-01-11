@@ -16,7 +16,7 @@
 
 namespace kotekan {
 
-class Config;
+#include "Config.hpp" // IWYU pragma: keep
 
 enum class HTTP_RESPONSE {
     OK = 200,

@@ -17,8 +17,7 @@
 //! Kotekan namespace
 namespace kotekan {
 
-class Config;
-
+#include "Config.hpp" // IWYU pragma: keep
 class kotekanMode {
 public:
     kotekanMode(Config& config);
