@@ -85,6 +85,16 @@ pipeline {
                   make -j'''
           }
         }
+        stage('Build docs') {
+          steps {
+            sh '''export PATH=${PATH}:/var/lib/jenkins/.local/bin/
+                  mkdir -p build-docs
+                  cd build-docs/
+                  cmake -DCOMPILE_DOCS=ON -DPLANTUML_PATH=/opt/plantuml ..
+                  make doc
+                  make sphinx'''
+          }
+        }
         stage('Check code formatting') {
           steps {
             sh '''mkdir -p build-check-format
