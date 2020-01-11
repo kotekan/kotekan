@@ -1,6 +1,8 @@
 #ifndef REST_SERVER_HPP
 #define REST_SERVER_HPP
 
+#include "Config.hpp" // IWYU pragma: keep
+
 #include "json.hpp" // for json
 
 #include <atomic>        // for atomic
@@ -16,7 +18,6 @@
 
 namespace kotekan {
 
-#include "Config.hpp" // IWYU pragma: keep
 
 enum class HTTP_RESPONSE {
     OK = 200,

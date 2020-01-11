@@ -1,6 +1,7 @@
 #ifndef KOTEKAN_MODE_HPP
 #define KOTEKAN_MODE_HPP
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // IWYU pragma: keep
 #include "bufferContainer.hpp" // for bufferContainer
 #include "metadata.h"          // for metadataPool  // IWYU pragma: keep
@@ -17,7 +18,6 @@
 //! Kotekan namespace
 namespace kotekan {
 
-#include "Config.hpp" // IWYU pragma: keep
 class kotekanMode {
 public:
     kotekanMode(Config& config);
