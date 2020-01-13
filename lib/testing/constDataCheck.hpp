@@ -12,9 +12,14 @@
 #include "StageFactory.hpp"    // IWYU pragma: keep
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
-#include <cstdint> // for int32_t
-#include <string>  // for string
-#include <vector>  // for vector
+#include <atomic>     // for atomic_bool   // IWYU pragma: keep
+#include <cstdint>    // for int32_t
+#include <functional> // for _Bind_helper<>::type, bind, function   // IWYU pragma: keep
+#include <string>     // for string
+#include <vector>     // for vector
+
+
+// IWYU pragma: no_forward_declare Config
 
 /**
  * @class constDataCheck

@@ -9,7 +9,7 @@
 
 #include <algorithm> // for fill
 #include <cmath>     // for lroundf, pow
-#include <time.h>    // for timespec
+#include <time.h>    // for timespec  // IWYU pragma: keep
 #include <vector>    // for vector
 
 // Register test patterns

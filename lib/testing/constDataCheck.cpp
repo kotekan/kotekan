@@ -7,8 +7,6 @@
 #include "errors.h"            // for TEST_PASSED
 #include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, INFO
 
-#include <atomic>     // for atomic_bool
-#include <functional> // for _Bind_helper<>::type, bind, function
 
 REGISTER_KOTEKAN_STAGE(constDataCheck);
 
