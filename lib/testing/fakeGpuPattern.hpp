@@ -82,7 +82,6 @@ protected:
 };
 
 
-
 /**
  * @brief Fill with a pattern useful for debugging the packing.
  *
