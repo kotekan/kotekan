@@ -8,12 +8,12 @@
 
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
+#include "fakeGpuPattern.hpp"
 
 #include <memory>   // for unique_ptr
 #include <stdint.h> // for int32_t
 #include <string>   // for string
 
-class FakeGpuPattern;
 namespace kotekan {
 class Config;
 } // namespace kotekan
