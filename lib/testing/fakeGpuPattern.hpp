@@ -18,15 +18,17 @@
 #include "kotekanLogging.hpp" // for kotekanLogging
 #include "pulsarTiming.hpp"   // for Polyco
 
+#include "gsl-lite.hpp"
+
 #include <random>   // for mt19937, normal_distribution, random_device
 #include <stddef.h> // for size_t
 #include <stdint.h> // for int32_t, uint32_t
 #include <string>   // for string
 
-namespace gsl {
-template<class U>
-class span;
-} // namespace gsl
+// Create the abstract factory for generating patterns
+CREATE_FACTORY(FakeGpuPattern, kotekan::Config&, const std::string&);
+#define REGISTER_FAKE_GPU_PATTERN(patternType, name)                                               \
+    REGISTER_NAMED_TYPE_WITH_FACTORY(FakeGpuPattern, patternType, name)
 
 /**
  * @class fakeGpuPattern
@@ -76,12 +78,6 @@ protected:
     size_t _samples_per_data_set;
     size_t _num_freq_in_frame;
 };
-
-// Create the abstract factory for generating patterns
-CREATE_FACTORY(FakeGpuPattern, kotekan::Config&, const std::string&);
-#define REGISTER_FAKE_GPU_PATTERN(patternType, name)                                               \
-    REGISTER_NAMED_TYPE_WITH_FACTORY(FakeGpuPattern, patternType, name)
-
 
 /**
  * @brief Fill with a pattern useful for debugging the packing.
