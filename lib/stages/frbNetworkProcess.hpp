@@ -7,6 +7,7 @@
 #ifndef FRBNETWORKPROCESS_HPP
 #define FRBNETWORKPROCESS_HPP
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
@@ -23,7 +24,6 @@
 #include <vector>             // for vector
 
 namespace kotekan {
-class Config;
 class connectionInstance;
 } // namespace kotekan
 

@@ -9,6 +9,7 @@
 #ifndef BUFFER_RECV_H
 #define BUFFER_RECV_H
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "bufferSend.hpp"      // for bufferFrameHeader
@@ -31,7 +32,6 @@
 // Forward declare
 class connInstance;
 namespace kotekan {
-class Config;
 namespace prometheus {
 class Counter;
 class Gauge;

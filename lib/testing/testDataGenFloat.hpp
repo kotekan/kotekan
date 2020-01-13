@@ -1,14 +1,11 @@
 #ifndef TEST_DATA_GEN_FLOAT_H
 #define TEST_DATA_GEN_FLOAT_H
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <string> // for string
-
-namespace kotekan {
-class Config;
-} // namespace kotekan
 
 // Type: one of "random", "const"
 // Value: the value of the constant

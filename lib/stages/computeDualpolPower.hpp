@@ -1,15 +1,12 @@
 #ifndef COMPUTE_DUALPOL_POWER
 #define COMPUTE_DUALPOL_POWER
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <string>      // for string
 #include <sys/types.h> // for uint
-
-namespace kotekan {
-class Config;
-} // namespace kotekan
 
 class computeDualpolPower : public kotekan::Stage {
 public:

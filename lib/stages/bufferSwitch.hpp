@@ -1,6 +1,7 @@
 #ifndef BUFFER_SWITCH_HPP
 #define BUFFER_SWITCH_HPP
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "bufferMerge.hpp"     // for bufferMerge
 
@@ -10,10 +11,6 @@
 #include <mutex>    // for mutex
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
-
-namespace kotekan {
-class Config;
-} // namespace kotekan
 struct Buffer;
 
 /**

@@ -8,6 +8,7 @@
 #define BASEBAND_READOUT_H
 
 #include "BipBuffer.hpp"              // for BipBuffer
+#include "Config.hpp"                 // IWYU pragma: keep
 #include "Stage.hpp"                  // for Stage
 #include "basebandReadoutManager.hpp" // for basebandDumpData, basebandReadoutManager (ptr only)
 #include "bufferContainer.hpp"        // IWYU pragma: keep
@@ -20,7 +21,6 @@
 #include <vector>   // for vector
 
 namespace kotekan {
-class Config;
 
 namespace prometheus {
 class Counter;

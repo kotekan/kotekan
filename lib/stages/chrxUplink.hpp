@@ -1,15 +1,12 @@
 #ifndef ACQ_UPLINK_H
 #define ACQ_UPLINK_H
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <stdint.h> // for int32_t
 #include <string>   // for string
-
-namespace kotekan {
-class Config;
-} // namespace kotekan
 
 
 class chrxUplink : public kotekan::Stage {

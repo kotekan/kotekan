@@ -24,9 +24,9 @@
 
 class prodState;
 class stackState;
+#include "Config.hpp" // IWYU pragma: keep
 
 namespace kotekan {
-class Config;
 
 namespace prometheus {
 class Counter;

@@ -1,16 +1,13 @@
 #ifndef BEAMFORMING_POST_PROCESS
 #define BEAMFORMING_POST_PROCESS
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <stdint.h> // for uint32_t, int32_t
 #include <string>   // for string
 #include <vector>   // for vector
-
-namespace kotekan {
-class Config;
-} // namespace kotekan
 
 
 class beamformingPostProcess : public kotekan::Stage {

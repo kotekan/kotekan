@@ -1,15 +1,13 @@
 #ifndef BUFFER_STATUS_H
 #define BUFFER_STATUS_H
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <map>    // for map
 #include <string> // for string
 
-namespace kotekan {
-class Config;
-} // namespace kotekan
 struct Buffer;
 
 /**

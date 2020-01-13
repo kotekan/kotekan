@@ -6,6 +6,7 @@
 #ifndef VALVE_HPP
 #define VALVE_HPP
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
@@ -18,7 +19,6 @@
 #include <vector>   // for vector
 
 namespace kotekan {
-class Config;
 namespace prometheus {
 class Counter;
 template<typename T>

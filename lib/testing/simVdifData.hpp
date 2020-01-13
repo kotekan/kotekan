@@ -1,14 +1,11 @@
 #ifndef SIM_VDIF_DATA_H
 #define SIM_VDIF_DATA_H
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <string> // for string
-
-namespace kotekan {
-class Config;
-} // namespace kotekan
 
 class simVdifData : public kotekan::Stage {
 public:

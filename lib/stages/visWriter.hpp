@@ -7,6 +7,7 @@
 #ifndef VIS_WRITER_HPP
 #define VIS_WRITER_HPP
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "datasetManager.hpp"  // for dset_id_t, fingerprint_t
@@ -27,7 +28,6 @@
 #include <utility>   // for pair
 
 namespace kotekan {
-class Config;
 class connectionInstance;
 
 namespace prometheus {

@@ -7,15 +7,12 @@
 #ifndef PULSAR_SIM_PROCESS
 #define PULSAR_SIM_PROCESS
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <stdint.h> // for int32_t, uint16_t, uint64_t
 #include <string>   // for string
-
-namespace kotekan {
-class Config;
-} // namespace kotekan
 
 
 /**

@@ -10,9 +10,8 @@
 #include <vector>   // for vector
 
 class frameID;
-namespace kotekan {
-class Config;
-} // namespace kotekan
+#include "Config.hpp" // IWYU pragma: keep
+
 struct Buffer;
 
 /**

@@ -6,16 +6,13 @@
 #ifndef REMOVE_EV_HPP
 #define REMOVE_EV_HPP
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "datasetManager.hpp"  // for dset_id_t, state_id_t
 
 #include <map>    // for map
 #include <string> // for string
-
-namespace kotekan {
-class Config;
-} // namespace kotekan
 struct Buffer;
 
 /**

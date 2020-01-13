@@ -6,6 +6,7 @@
 
 #ifndef FRB_POST_PROCESS
 #define FRB_POST_PROCESS
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "frb_functions.h"     // for FRBHeader
@@ -15,7 +16,6 @@
 #include <vector>   // for vector
 
 namespace kotekan {
-class Config;
 namespace prometheus {
 class Counter;
 } // namespace prometheus

@@ -1,6 +1,7 @@
 #ifndef APPLY_GAINS_HPP
 #define APPLY_GAINS_HPP
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Hash.hpp"            // for Hash
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
@@ -25,7 +26,6 @@
 class visFrameView;
 
 namespace kotekan {
-class Config;
 
 namespace prometheus {
 class Counter;

@@ -6,14 +6,11 @@
 
 #ifndef SIMPLE_AUTOCORR_HPP
 #define SIMPLE_AUTOCORR_HPP
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <string> // for string
-
-namespace kotekan {
-class Config;
-} // namespace kotekan
 
 /**
  * @class simpleAutocorr

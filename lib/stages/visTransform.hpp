@@ -6,6 +6,7 @@
 #ifndef VISTRANSFORM_H
 #define VISTRANSFORM_H
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "datasetManager.hpp"  // for dset_id_t
@@ -17,9 +18,6 @@
 #include <utility>  // for pair
 #include <vector>   // for vector
 
-namespace kotekan {
-class Config;
-} // namespace kotekan
 struct Buffer;
 
 

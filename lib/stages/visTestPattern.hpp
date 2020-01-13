@@ -7,6 +7,7 @@
 #ifndef VISTESTPATTERN_HPP
 #define VISTESTPATTERN_HPP
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "dataset.hpp"         // for dset_id_t
@@ -24,7 +25,6 @@
 #include <vector>   // for vector
 
 namespace kotekan {
-class Config;
 class connectionInstance;
 } // namespace kotekan
 struct Buffer;

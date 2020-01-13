@@ -6,6 +6,7 @@
 #ifndef RECEIVEFLAGS_H
 #define RECEIVEFLAGS_H
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "dataset.hpp"         // for dset_id_t, state_id_t
@@ -23,7 +24,6 @@
 
 class visFrameView;
 namespace kotekan {
-class Config;
 namespace prometheus {
 class Counter;
 class Gauge;

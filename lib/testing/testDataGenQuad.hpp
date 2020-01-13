@@ -7,16 +7,13 @@
 #ifndef TEST_DATA_GEN_QUAD_H
 #define TEST_DATA_GEN_QUAD_H
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <stdint.h> // for int32_t
 #include <string>   // for string
 #include <vector>   // for vector
-
-namespace kotekan {
-class Config;
-} // namespace kotekan
 
 
 /**

@@ -7,6 +7,7 @@
 #ifndef PULSAR_POST_PROCESS
 #define PULSAR_POST_PROCESS
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
@@ -15,10 +16,6 @@
 #include <string>      // for string
 #include <sys/types.h> // for uint
 #include <time.h>      // for timespec
-
-namespace kotekan {
-class Config;
-} // namespace kotekan
 struct Buffer;
 
 

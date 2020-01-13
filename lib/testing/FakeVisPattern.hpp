@@ -14,6 +14,7 @@
 #ifndef FAKE_VIS_PATTERN_HPP
 #define FAKE_VIS_PATTERN_HPP
 
+#include "Config.hpp"         // IWYU pragma: keep
 #include "dataset.hpp"        // for state_id_t, dset_id_t
 #include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
 #include "kotekanLogging.hpp" // for kotekanLogging
@@ -28,9 +29,6 @@
 #include <vector>     // for vector
 
 class visFrameView;
-namespace kotekan {
-class Config;
-} // namespace kotekan
 
 /**
  * @class FakeVisPattern

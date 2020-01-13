@@ -7,15 +7,12 @@
 #ifndef COUNT_CHECK_HPP
 #define COUNT_CHECK_HPP
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <stdint.h> // for int64_t
 #include <string>   // for string
-
-namespace kotekan {
-class Config;
-} // namespace kotekan
 struct Buffer;
 
 

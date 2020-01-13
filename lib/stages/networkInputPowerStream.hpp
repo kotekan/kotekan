@@ -7,15 +7,12 @@
 #ifndef NETWORK_INPUT_POWER_STREAM_H
 #define NETWORK_INPUT_POWER_STREAM_H
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
-
-namespace kotekan {
-class Config;
-} // namespace kotekan
 
 
 /**

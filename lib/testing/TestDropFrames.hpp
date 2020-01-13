@@ -6,16 +6,13 @@
 #ifndef TEST_DROP_FRAMES_HPP
 #define TEST_DROP_FRAMES_HPP
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
 #include <vector>   // for vector
-
-namespace kotekan {
-class Config;
-} // namespace kotekan
 
 /**
  * @class TestDropFrames

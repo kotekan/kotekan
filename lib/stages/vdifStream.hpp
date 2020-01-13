@@ -1,15 +1,12 @@
 #ifndef VDIF_STREAM
 #define VDIF_STREAM
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
-
-namespace kotekan {
-class Config;
-} // namespace kotekan
 
 class vdifStream : public kotekan::Stage {
 public:

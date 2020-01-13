@@ -7,6 +7,7 @@
 #ifndef VIS_ACCUMULATE_HPP
 #define VIS_ACCUMULATE_HPP
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "datasetManager.hpp"  // for dset_id_t
@@ -26,7 +27,6 @@
 #include <vector>     // for vector
 
 namespace kotekan {
-class Config;
 
 namespace prometheus {
 class Counter;

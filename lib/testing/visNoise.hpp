@@ -7,16 +7,13 @@
 #ifndef VISNOISE_HPP
 #define VISNOISE_HPP
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <random>   // for default_random_engine
 #include <stddef.h> // for size_t
 #include <string>   // for string
-
-namespace kotekan {
-class Config;
-} // namespace kotekan
 struct Buffer;
 
 /**

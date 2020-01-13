@@ -11,6 +11,7 @@
 #ifndef FAKE_GPU_PATTERN_HPP
 #define FAKE_GPU_PATTERN_HPP
 
+#include "Config.hpp"         // IWYU pragma: keep
 #include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
 #include "kotekanLogging.hpp" // for kotekanLogging
 #include "pulsarTiming.hpp"   // for Polyco
@@ -24,9 +25,6 @@ namespace gsl {
 template<class U>
 class span;
 } // namespace gsl
-namespace kotekan {
-class Config;
-} // namespace kotekan
 struct chimeMetadata;
 
 /**

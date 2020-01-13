@@ -1,6 +1,7 @@
 #ifndef GPU_POST_PROCESS
 #define GPU_POST_PROCESS
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
@@ -12,7 +13,6 @@
 #include <vector>     // for vector
 
 namespace kotekan {
-class Config;
 class connectionInstance;
 } // namespace kotekan
 
