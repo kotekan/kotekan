@@ -49,7 +49,7 @@ FakeGpu::FakeGpu(kotekan::Config& config, const std::string& unique_name,
     // Fetch the correct fill function
     std::string pattern_name = config.get<std::string>(unique_name, "pattern");
 
-    // Validate and creeate test pattern
+    // Validate and create test pattern
     if (!FACTORY(FakeGpuPattern)::exists(pattern_name)) {
         ERROR("Test pattern \"%s\" does not exist.", pattern_name.c_str());
         std::raise(SIGINT);
