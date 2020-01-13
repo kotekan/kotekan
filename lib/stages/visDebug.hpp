@@ -8,11 +8,10 @@
 
 #include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for format, fmt
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <string> // for string
-
-struct Buffer;
 
 
 /**

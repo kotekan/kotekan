@@ -2,6 +2,7 @@
 #define BUFFER_SWITCH_HPP
 
 #include "Config.hpp"          // IWYU pragma: keep
+#include "buffer.h"            // for format, fmt
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "bufferMerge.hpp"     // for bufferMerge
 
@@ -11,7 +12,6 @@
 #include <mutex>    // for mutex
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
-struct Buffer;
 
 /**
  * @brief Selects buffers based on the values in an updatable config endpoint.

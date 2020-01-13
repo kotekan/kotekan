@@ -8,12 +8,12 @@
 
 #include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for format, fmt
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <stdint.h> // for int32_t, uint64_t
 #include <string>   // for string
 #include <vector>   // for vector
-struct Buffer;
 
 /**
  * @class gpuBeamformSimulate

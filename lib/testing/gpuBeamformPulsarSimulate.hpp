@@ -2,6 +2,7 @@
 #define GPU_BEAMFORM_PULSAR_SIMULATE_HPP
 #include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for format, fmt
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "chimeMetadata.h"     // for psrCoord
 
@@ -10,7 +11,6 @@
 #include <sys/types.h> // for uint
 #include <time.h>      // for timespec
 #include <vector>      // for vector
-struct Buffer;
 struct timespec;
 
 /**

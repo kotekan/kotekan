@@ -17,7 +17,7 @@
 class visFileArchive;
 
 #include "Config.hpp" // IWYU pragma: keep
-struct Buffer;
+#include "buffer.h"   // for format, fmt
 
 
 /**

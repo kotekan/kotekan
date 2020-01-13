@@ -2,6 +2,7 @@
 
 #include "Config.hpp"          // IWYU pragma: keep
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for format, fmt
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "configUpdater.hpp"   // for configUpdater
 #include "kotekanLogging.hpp"  // for WARN
@@ -15,8 +16,6 @@
 #include <stdexcept>  // for runtime_error
 #include <tuple>      // for get
 #include <utility>    // for pair
-
-struct Buffer;
 
 using nlohmann::json;
 using namespace std::placeholders;

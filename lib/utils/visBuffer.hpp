@@ -8,6 +8,7 @@
 #define VISBUFFER_HPP
 
 #include "Hash.hpp"    // for Hash
+#include "buffer.h"    // for format, fmt
 #include "dataset.hpp" // for dset_id_t
 #include "visUtil.hpp" // for cfloat
 
@@ -19,8 +20,6 @@
 #include <time.h>   // for timespec
 #include <tuple>    // for tuple
 #include <utility>  // for pair
-
-struct Buffer;
 struct chimeMetadata;
 struct timespec;
 

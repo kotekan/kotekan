@@ -8,6 +8,7 @@
 
 #include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for format, fmt
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "datasetManager.hpp"  // for dset_id_t, state_id_t, fingerprint_t
 #include "visUtil.hpp"         // for prod_ctype
@@ -18,7 +19,6 @@
 #include <tuple>    // for tuple
 #include <utility>  // for pair
 #include <vector>   // for vector
-struct Buffer;
 
 
 /**

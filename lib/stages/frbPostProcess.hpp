@@ -8,6 +8,7 @@
 #define FRB_POST_PROCESS
 #include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for format, fmt
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "frb_functions.h"     // for FRBHeader
 
@@ -20,7 +21,6 @@ namespace prometheus {
 class Counter;
 } // namespace prometheus
 } // namespace kotekan
-struct Buffer;
 
 
 /**

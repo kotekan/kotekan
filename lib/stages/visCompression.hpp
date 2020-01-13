@@ -7,6 +7,7 @@
 #define VIS_COMPRESSION_HPP
 
 #include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for format, fmt
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "datasetManager.hpp"  // for dset_id_t, state_id_t, fingerprint_t
 #include "visUtil.hpp"         // for input_ctype (ptr only), prod_ctype (ptr only), frameID
@@ -35,7 +36,6 @@ template<typename T>
 class MetricFamily;
 } // namespace prometheus
 } // namespace kotekan
-struct Buffer;
 
 
 /**

@@ -9,6 +9,7 @@
 
 #include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for format, fmt
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <optional>    // for optional
@@ -16,7 +17,6 @@
 #include <string>      // for string
 #include <sys/types.h> // for uint
 #include <time.h>      // for timespec
-struct Buffer;
 
 
 /**

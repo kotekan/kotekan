@@ -8,12 +8,12 @@
 
 #include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for format, fmt
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
 #include <vector>   // for vector
-struct Buffer;
 
 /**
  * @brief Drops frames based on given criteria (for testing) without telling the

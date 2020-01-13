@@ -11,8 +11,7 @@
 
 class frameID;
 #include "Config.hpp" // IWYU pragma: keep
-
-struct Buffer;
+#include "buffer.h"   // for format, fmt
 
 /**
  * @brief Merges frames from many buffers into one buffer.
