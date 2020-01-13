@@ -25,10 +25,6 @@
 #include <stdint.h> // for int32_t, uint32_t
 #include <string>   // for string
 
-// Create the abstract factory for generating patterns
-CREATE_FACTORY(FakeGpuPattern, kotekan::Config&, const std::string&);
-#define REGISTER_FAKE_GPU_PATTERN(patternType, name)                                               \
-    REGISTER_NAMED_TYPE_WITH_FACTORY(FakeGpuPattern, patternType, name)
 
 /**
  * @class fakeGpuPattern
@@ -78,6 +74,11 @@ protected:
     size_t _samples_per_data_set;
     size_t _num_freq_in_frame;
 };
+
+// Create the abstract factory for generating patterns
+CREATE_FACTORY(FakeGpuPattern, kotekan::Config&, const std::string&);
+#define REGISTER_FAKE_GPU_PATTERN(patternType, name)                                               \
+    REGISTER_NAMED_TYPE_WITH_FACTORY(FakeGpuPattern, patternType, name)
 
 /**
  * @brief Fill with a pattern useful for debugging the packing.
