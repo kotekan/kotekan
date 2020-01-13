@@ -1,3 +1,15 @@
+#include "beamformingPostProcess.hpp"
+
+#include "BranchPrediction.hpp"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for wait_for_empty_frame, Buffer, mark_frame_empty, ...
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "chimeMetadata.h"     // for get_fpga_seq_num, get_first_packet_recv_time, get_stream_id
+#include "vdif_functions.h"    // for VDIFHeader
+
+#include "fmt.hpp" // for format, fmt
+
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
 #include <cstdint>    // for uint32_t, int32_t, uint8_t
@@ -8,23 +20,10 @@
 #include <string>     // for string
 #include <sys/time.h> // for timeval
 
-using std::string;
-
-#include "BranchPrediction.hpp"
-#include "Config.hpp"       // for Config
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "beamformingPostProcess.hpp"
-#include "buffer.h" // for wait_for_empty_frame, Buffer, mark_frame_empty, mark_frame_full
-#include "bufferContainer.hpp" // IWYU pragma: keep
-#include "chimeMetadata.h"     // for get_fpga_seq_num, get_first_packet_recv_time, get_stream_id
-#include "vdif_functions.h"    // for VDIFHeader
-
-#include "fmt.hpp" // for format, fmt
-
-
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using std::string;
 
 REGISTER_KOTEKAN_STAGE(beamformingPostProcess);
 

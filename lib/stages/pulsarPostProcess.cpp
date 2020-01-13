@@ -1,6 +1,14 @@
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "gpsTime.h"          // for compute_gps_time, is_gps_global_time_set
-#include "kotekanLogging.hpp" // for DEBUG, ERROR
+#include "pulsarPostProcess.hpp"
+
+#include "BranchPrediction.hpp"
+#include "Config.hpp"              // for Config
+#include "buffer.h"                // for mark_frame_empty, wait_for_empty_frame, wait_for_full...
+#include "bufferContainer.hpp"     // IWYU pragma: keep
+#include "chimeMetadata.h"         // for get_fpga_seq_num, psrCoord, get_psr_coord, get_stream...
+#include "fpga_header_functions.h" // for bin_number_chime, stream_id_t
+#include "gpsTime.h"               // for compute_gps_time, is_gps_global_time_set
+#include "kotekanLogging.hpp"      // for DEBUG, ERROR
+#include "vdif_functions.h" // for VDIFHeader#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 
 #include <algorithm>  // for max
 #include <assert.h>   // for assert
@@ -15,15 +23,6 @@
 using std::string;
 
 #define udp_pulsar_header_size 32
-
-#include "BranchPrediction.hpp"
-#include "Config.hpp"              // for Config
-#include "buffer.h"                // for mark_frame_empty, wait_for_empty_frame, wait_for_full...
-#include "bufferContainer.hpp"     // IWYU pragma: keep
-#include "chimeMetadata.h"         // for get_fpga_seq_num, psrCoord, get_psr_coord, get_stream...
-#include "fpga_header_functions.h" // for bin_number_chime, stream_id_t
-#include "pulsarPostProcess.hpp"
-#include "vdif_functions.h" // for VDIFHeader
 
 
 using kotekan::bufferContainer;
