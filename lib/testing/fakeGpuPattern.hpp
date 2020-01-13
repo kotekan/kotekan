@@ -13,7 +13,6 @@
 
 #include "Config.hpp"  // IWYU pragma: keep
 #include "factory.hpp" // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
-#include "fakeGpuPattern.hpp"
 #include "kotekanLogging.hpp" // for kotekanLogging
 #include "pulsarTiming.hpp"   // for Polyco
 
