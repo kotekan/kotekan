@@ -1,6 +1,7 @@
 #include "fakeGpu.hpp"
 
-#include "Config.hpp"              // for Config
+#include "Config.hpp" // for Config
+#include "Stage.hpp"
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"                // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "chimeMetadata.h"         // for set_first_packet_recv_time, set_fpga_seq_num, set_gps...
