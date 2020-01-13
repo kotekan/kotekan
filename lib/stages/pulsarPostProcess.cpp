@@ -1,7 +1,7 @@
 #include "pulsarPostProcess.hpp"
 
 #include "BranchPrediction.hpp"
-#include "Config.hpp"              // for Config
+#include "Config.hpp" // for Config
 #include "StageFactory.hpp"
 #include "buffer.h"                // for mark_frame_empty, wait_for_empty_frame, wait_for_full...
 #include "bufferContainer.hpp"     // IWYU pragma: keep
