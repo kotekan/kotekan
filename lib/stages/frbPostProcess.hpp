@@ -8,7 +8,7 @@
 #define FRB_POST_PROCESS
 #include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
-#include "buffer.h"            // for format, fmt
+#include "buffer.h"            // IWYU pragma: keep
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "frb_functions.h"     // for FRBHeader
 

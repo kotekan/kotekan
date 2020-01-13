@@ -2,7 +2,7 @@
 #define BUFFER_SWITCH_HPP
 
 #include "Config.hpp"          // IWYU pragma: keep
-#include "buffer.h"            // for format, fmt
+#include "buffer.h"            // IWYU pragma: keep
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "bufferMerge.hpp"     // for bufferMerge
 

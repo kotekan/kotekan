@@ -2,7 +2,7 @@
 
 #include "Config.hpp"          // IWYU pragma: keep
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for format, fmt
+#include "buffer.h"            // IWYU pragma: keep
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "configUpdater.hpp"   // for configUpdater
 #include "kotekanLogging.hpp"  // for WARN

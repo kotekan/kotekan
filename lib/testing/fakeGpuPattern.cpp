@@ -9,6 +9,7 @@
 
 #include <algorithm> // for fill
 #include <cmath>     // for lroundf, pow
+#include <time.h>    // for timespec
 #include <vector>    // for vector
 
 // Register test patterns

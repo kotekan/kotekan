@@ -1,7 +1,9 @@
 #ifndef BUFFER_MERGE_HPP
 #define BUFFER_MERGE_HPP
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
+#include "buffer.h"            // IWYU pragma: keep
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <stdint.h> // for uint32_t
@@ -9,9 +11,8 @@
 #include <tuple>    // for tuple
 #include <vector>   // for vector
 
+
 class frameID;
-#include "Config.hpp" // IWYU pragma: keep
-#include "buffer.h"   // for format, fmt
 
 /**
  * @brief Merges frames from many buffers into one buffer.

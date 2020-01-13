@@ -1,7 +1,9 @@
 #ifndef VISTRANSPOSE
 #define VISTRANSPOSE
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
+#include "buffer.h"            // IWYU pragma: keep
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "datasetManager.hpp"  // for dset_id_t
 #include "visUtil.hpp"         // for cfloat, time_ctype, freq_ctype, input_ctype, prod_ctype
@@ -15,9 +17,6 @@
 #include <vector>   // for vector
 
 class visFileArchive;
-
-#include "Config.hpp" // IWYU pragma: keep
-#include "buffer.h"   // for format, fmt
 
 
 /**

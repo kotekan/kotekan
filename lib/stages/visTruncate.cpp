@@ -1,13 +1,12 @@
 #include "visTruncate.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for wait_for_full_frame, allocate_new_metadata_object, mark_fr...
-#include "bufferContainer.hpp" // IWYU pragma: keep
-#include "kotekanLogging.hpp"  // for DEBUG
-#include "truncate.hpp"        // for bit_truncate_float
-#include "visBuffer.hpp"       // for visFrameView
-#include "visUtil.hpp"         // for cfloat
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for wait_for_full_frame, allocate_new_metadata_object, mark_fr...
+#include "kotekanLogging.hpp" // for DEBUG
+#include "truncate.hpp"       // for bit_truncate_float
+#include "visBuffer.hpp"      // for visFrameView
+#include "visUtil.hpp"        // for cfloat
 
 #include "gsl-lite.hpp" // for span
 
@@ -15,7 +14,6 @@
 #include <cmath>       // for abs, sqrt
 #include <complex>     // for complex
 #include <cstdint>     // for int32_t
-#include <cstdlib>     // for abs
 #include <cstring>     // for memset, size_t
 #include <functional>  // for _Bind_helper<>::type, bind, function
 #include <immintrin.h> // for _mm256_broadcast_ss, _mm256_div_ps, _mm256_loadu_ps, _mm25...

@@ -8,7 +8,7 @@
 
 #include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
-#include "buffer.h"            // for format, fmt
+#include "buffer.h"            // IWYU pragma: keep
 #include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <stdint.h> // for int32_t, uint64_t

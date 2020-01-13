@@ -1,6 +1,6 @@
 #include "bufferContainer.hpp"
 
-#include "buffer.h" // for format, fmt
+#include "buffer.h" // IWYU pragma: keep
 
 #include "fmt.hpp" // for format, fmt
 

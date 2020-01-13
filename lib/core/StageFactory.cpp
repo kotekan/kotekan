@@ -1,7 +1,6 @@
 #include "StageFactory.hpp" // IWYU pragma: keep
 
-#include "Config.hpp" // for Config
-#include "Stage.hpp"
+#include "Config.hpp"         // for Config
 #include "kotekanLogging.hpp" // for ERROR_NON_OO
 
 #include "fmt.hpp" // for format, fmt

@@ -1,24 +1,19 @@
 /*****************************************
 @file
 @brief Patterns for fake GPU data
-* fakeGpuPattern
-* blockGpuPattern
-* lostSamplesGpuPattern
-* accumulateGpuPattern
-* gaussianGpuPattern
-* pulsarGpuPulsar
+- fakeGpuPattern
+- blockGpuPattern
+- lostSamplesGpuPattern
+- accumulateGpuPattern
+- gaussianGpuPattern
+- pulsarGpuPulsar
 *****************************************/
 #ifndef FAKE_GPU_PATTERN_HPP
 #define FAKE_GPU_PATTERN_HPP
 
-#include "Config.hpp" // IWYU pragma: keep
-#include "Stage.hpp"
-#include "chimeMetadata.h"
 #include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
 #include "kotekanLogging.hpp" // for kotekanLogging
 #include "pulsarTiming.hpp"   // for Polyco
-
-#include "gsl-lite.hpp"
 
 #include <random>   // for mt19937, normal_distribution, random_device
 #include <stddef.h> // for size_t
@@ -27,6 +22,16 @@
 
 // Create the abstract factory for generating patterns
 class FakeGpuPattern;
+namespace kotekan {
+class Config;
+} // namespace kotekan
+
+namespace gsl {
+template<class U>
+class span;
+} // namespace gsl
+struct chimeMetadata;
+
 CREATE_FACTORY(FakeGpuPattern, kotekan::Config&, const std::string&);
 #define REGISTER_FAKE_GPU_PATTERN(patternType, name)                                               \
     REGISTER_NAMED_TYPE_WITH_FACTORY(FakeGpuPattern, patternType, name)

@@ -8,7 +8,7 @@
 #define VISBUFFER_HPP
 
 #include "Hash.hpp"    // for Hash
-#include "buffer.h"    // for format, fmt
+#include "buffer.h"    // IWYU pragma: keep
 #include "dataset.hpp" // for dset_id_t
 #include "visUtil.hpp" // for cfloat
 

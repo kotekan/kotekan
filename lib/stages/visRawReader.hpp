@@ -8,7 +8,7 @@
 
 #include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
-#include "buffer.h"            // for format, fmt
+#include "buffer.h"            // IWYU pragma: keep
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "datasetManager.hpp"  // for dset_id_t
 #include "visUtil.hpp"         // for freq_ctype (ptr only), input_ctype, prod_ctype, rstack_ctype
