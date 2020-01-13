@@ -8,13 +8,13 @@
 
 #include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
+#include "buffer.h" // IWYU pragma: keep
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "fakeGpuPattern.hpp"  // IWYU pragma: keep
 
 #include <memory>   // for unique_ptr
 #include <stdint.h> // for int32_t
 #include <string>   // for string
-struct Buffer;
 
 
 /**
