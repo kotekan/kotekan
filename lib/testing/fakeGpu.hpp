@@ -8,7 +8,7 @@
 
 #include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
-#include "buffer.h" // IWYU pragma: keep
+#include "buffer.h"            // IWYU pragma: keep
 #include "bufferContainer.hpp" // IWYU pragma: keep
 #include "fakeGpuPattern.hpp"  // IWYU pragma: keep
 
