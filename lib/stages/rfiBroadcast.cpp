@@ -3,6 +3,7 @@
 #include "Config.hpp"              // for Config
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"                // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp"     // IWYU pragma: keep
 #include "chimeMetadata.h"         // for get_fpga_seq_num, get_stream_id
 #include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, stream_id_t
 #include "kotekanLogging.hpp"      // for ERROR, DEBUG, INFO
@@ -14,8 +15,6 @@
 #ifdef DEBUGGING
 #include "util.h" // for e_time
 #endif
-
-#include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include "fmt.hpp" // for format, fmt
 

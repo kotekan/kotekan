@@ -37,12 +37,11 @@ namespace kotekan {
 class connectionInstance;
 } // namespace kotekan
 
-/// DatasetState ID
+/// Alias certain types to give semantic meaning to the IDs
+/// These use a 128 bit hash type so there shouldn't be any collisions.
 using state_id_t = Hash;
-
-/// DatasetID
 using dset_id_t = Hash;
-
+using fingerprint_t = Hash;
 
 #define DS_UNIQUE_NAME "/dataset_manager"
 #define DS_FORCE_UPDATE_ENDPOINT_NAME "/dataset-manager/force-update"
@@ -53,11 +52,6 @@ const std::string PATH_SEND_STATE = "/send-state";
 const std::string PATH_REGISTER_DATASET = "/register-dataset";
 const std::string PATH_UPDATE_DATASETS = "/update-datasets";
 const std::string PATH_REQUEST_STATE = "/request-state";
-
-/// Alias certain types to give semantic meaning to the IDs
-/// These use a 128 bit hash type so there shouldn't be any collisions.
-using fingerprint_t = Hash;
-
 
 /**
  * @class datasetManager

@@ -1,16 +1,15 @@
 #include "rfiAVXVDIF.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for mark_frame_empty, mark_frame_full, register_consumer, regi...
-#include "kotekanLogging.hpp" // for DEBUG
-#include "vdif_functions.h"   // for VDIFHeader
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_empty, mark_frame_full, register_consumer, regi...
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "kotekanLogging.hpp"  // for DEBUG
+#include "vdif_functions.h"    // for VDIFHeader
 
 #ifdef DEBUGGING
 #include "util.h" // for e_time
 #endif
-
-#include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <atomic>      // for atomic_bool
 #include <cstdint>     // for uint32_t, uint8_t

@@ -1,8 +1,16 @@
 #define BOOST_TEST_MODULE "test_dataset_broker_producer"
 
-#include "Config.hpp"  // for Config
-#include "Hash.hpp"    // for operator<<
-#include "dataset.hpp" // for dataset
+#include "Config.hpp"         // for Config
+#include "Hash.hpp"           // for operator<<
+#include "dataset.hpp"        // for dataset
+#include "datasetManager.hpp" // for datasetManager, state_id_t, dset_id_t
+#include "datasetState.hpp"   // for freqState (ptr only), inputState (ptr only)
+#include "errors.h"           // for __enable_syslog, _global_log_level
+#include "restClient.hpp"     // for restClient, restClient::restReply
+#include "restServer.hpp"     // for restServer
+#include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype
+
+#include "json.hpp" // for basic_json<>::value_type, json
 
 #include <boost/test/included/unit_test.hpp> // for master_test_suite, BOOST_PP_IIF_1, BOOST_CHECK
 #include <chrono>                            // for milliseconds
@@ -14,15 +22,7 @@
 #include <unistd.h>                          // for usleep
 #include <utility>                           // for pair
 #include <vector>                            // for vector
-// the code to test:
-#include "datasetManager.hpp" // for datasetManager, state_id_t, dset_id_t
-#include "datasetState.hpp"   // for freqState (ptr only), inputState (ptr only)
-#include "errors.h"           // for __enable_syslog, _global_log_level
-#include "restClient.hpp"     // for restClient, restClient::restReply
-#include "restServer.hpp"     // for restServer
-#include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype
 
-#include "json.hpp" // for basic_json<>::value_type, json
 
 #define WAIT_TIME 4000000
 

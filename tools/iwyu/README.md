@@ -7,6 +7,8 @@ It can be applied by running
 cd build
 export CXX=clang++
 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
-iwyu_tool -p . -- --mapping_file=/full/path/to/iwyu.kotekan.imp
+iwyu_tool -p . -- --max_line_length=100 --mapping_file=/full/path/to/iwyu.kotekan.imp > iwyu.out
+python2 /usr/bin/fix_include --comments < iwyu.out
 make clang-format
 ```
+or by using the cmake option `-DIWYU=ON`.

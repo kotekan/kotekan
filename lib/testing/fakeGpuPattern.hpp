@@ -20,18 +20,18 @@
 #include <stdint.h> // for int32_t, uint32_t
 #include <string>   // for string
 
-// Create the abstract factory for generating patterns
-class FakeGpuPattern;
+// Forward declarations
 namespace kotekan {
 class Config;
 } // namespace kotekan
-
 namespace gsl {
 template<class U>
 class span;
 } // namespace gsl
 struct chimeMetadata;
 
+// Create the abstract factory for generating patterns
+class FakeGpuPattern;
 CREATE_FACTORY(FakeGpuPattern, kotekan::Config&, const std::string&);
 #define REGISTER_FAKE_GPU_PATTERN(patternType, name)                                               \
     REGISTER_NAMED_TYPE_WITH_FACTORY(FakeGpuPattern, patternType, name)

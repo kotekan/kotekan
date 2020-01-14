@@ -6,6 +6,7 @@
 #ifndef VIS_COMPRESSION_HPP
 #define VIS_COMPRESSION_HPP
 
+#include "Config.hpp"          // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
 #include "buffer.h"            // IWYU pragma: keep
 #include "bufferContainer.hpp" // IWYU pragma: keep
@@ -25,7 +26,6 @@
 
 class prodState;
 class stackState;
-#include "Config.hpp" // IWYU pragma: keep
 
 namespace kotekan {
 

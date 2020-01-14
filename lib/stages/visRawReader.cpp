@@ -1,15 +1,16 @@
 #include "visRawReader.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for Buffer, allocate_new_metadata_object, mark_frame_full, reg...
-#include "datasetManager.hpp" // for datasetManager, state_id_t, dset_id_t
-#include "errors.h"           // for exit_kotekan, ReturnCode, ReturnCode::CLEAN_EXIT
-#include "kotekanLogging.hpp" // for DEBUG, INFO, FATAL_ERROR
-#include "metadata.h"         // for metadataContainer
-#include "version.h"          // for get_git_commit_hash
-#include "visBuffer.hpp"      // for visFrameView, visMetadata
-#include "visUtil.hpp"        // for input_ctype, prod_ctype, rstack_ctype, stack_ctype, time_c...
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_full, reg...
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "datasetManager.hpp"  // for datasetManager, state_id_t, dset_id_t
+#include "errors.h"            // for exit_kotekan, ReturnCode, ReturnCode::CLEAN_EXIT
+#include "kotekanLogging.hpp"  // for DEBUG, INFO, FATAL_ERROR
+#include "metadata.h"          // for metadataContainer
+#include "version.h"           // for get_git_commit_hash
+#include "visBuffer.hpp"       // for visFrameView, visMetadata
+#include "visUtil.hpp"         // for input_ctype, prod_ctype, rstack_ctype, stack_ctype, time_c...
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span<>::iterator, span
@@ -37,9 +38,6 @@ class metadataState;
 class prodState;
 class stackState;
 class timeState;
-
-#include "bufferContainer.hpp" // IWYU pragma: keep
-
 
 using kotekan::bufferContainer;
 using kotekan::Config;

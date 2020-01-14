@@ -1,20 +1,19 @@
 #include "removeEv.hpp"
 
-#include "Config.hpp"         // IWYU pragma: keep
-#include "Hash.hpp"           // for operator<
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for allocate_new_metadata_object, mark_frame_empty, mark_frame...
-#include "datasetManager.hpp" // for datasetManager, dset_id_t
-#include "visBuffer.hpp"      // for visFrameView, visField, visField::erms, visField::eval
-#include "visUtil.hpp"        // for frameID, modulo
+#include "Config.hpp"          // IWYU pragma: keep
+#include "Hash.hpp"            // for operator<
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for allocate_new_metadata_object, mark_frame_empty, mark_frame...
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "datasetManager.hpp"  // for datasetManager, dset_id_t
+#include "visBuffer.hpp"       // for visFrameView, visField, visField::erms, visField::eval
+#include "visUtil.hpp"         // for frameID, modulo
 
 #include <atomic>     // for atomic_bool
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <utility>    // for pair
 
 class eigenvalueState;
-
-#include "bufferContainer.hpp" // IWYU pragma: keep
 
 
 using kotekan::bufferContainer;

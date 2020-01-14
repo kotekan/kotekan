@@ -18,7 +18,6 @@
 #include <string>     // for string
 #include <vector>     // for vector
 
-
 // IWYU pragma: no_forward_declare Config
 
 /**

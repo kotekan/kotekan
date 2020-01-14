@@ -1,15 +1,15 @@
 #define BOOST_TEST_MODULE "test_config"
 
+#include "Hash.hpp" // for Hash, hash
+
+#include "fmt.hpp"  // for format
+#include "json.hpp" // for json
+
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...
 #include <stdint.h>                          // for uint64_t
 #include <stdlib.h>                          // for strtoull
 #include <string>                            // for string, allocator
 
-// the code to test:
-#include "Hash.hpp" // for Hash, hash
-
-#include "fmt.hpp"  // for format
-#include "json.hpp" // for json
 
 using json = nlohmann::json;
 

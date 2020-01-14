@@ -1,12 +1,12 @@
 #define BOOST_TEST_MODULE "test_truncate"
 
+#include "truncate.hpp" // for fast_pow, bit_truncate_float, count_zeros
+
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...
 #include <cmath>                             // for pow
 #include <limits>                            // for numeric_limits
 #include <stdint.h>                          // for INT8_MAX, INT32_MAX, INT32_MIN, INT8_MIN
 
-// the code to test:
-#include "truncate.hpp" // for fast_pow, bit_truncate_float, count_zeros
 
 BOOST_AUTO_TEST_CASE(_fast_pow) {
     // results for fast_pow(e < -126) are not defined

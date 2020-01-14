@@ -1,18 +1,17 @@
 #include "rfiBadInputFinder.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "chimeMetadata.h"    // for get_fpga_seq_num, get_stream_id
-#include "kotekanLogging.hpp" // for ERROR, INFO, DEBUG
-#include "restServer.hpp"     // for restServer, HTTP_RESPONSE, HTTP_RESPONSE::OK, connectionIn...
-#include "rfi_functions.h"    // for RFIHeader
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "chimeMetadata.h"     // for get_fpga_seq_num, get_stream_id
+#include "kotekanLogging.hpp"  // for ERROR, INFO, DEBUG
+#include "restServer.hpp"      // for restServer, HTTP_RESPONSE, HTTP_RESPONSE::OK, connectionIn...
+#include "rfi_functions.h"     // for RFIHeader
 
 #ifdef DEBUGGING
 #include "util.h" // for e_time
 #endif
-
-#include "bufferContainer.hpp" // IWYU pragma: keep
 
 #include <arpa/inet.h>  // for inet_aton
 #include <atomic>       // for atomic_bool

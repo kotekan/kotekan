@@ -18,19 +18,17 @@
 #include <unistd.h>
 #include <vector>
 
-
-/// TODO move this to an inline static once we go to C++17
-stream_id_t iceBoardShuffle::all_stream_ids[iceBoardShuffle::shuffle_size];
-
 using nlohmann::json;
 using std::string;
 using std::to_string;
 using std::vector;
 
-
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+
+/// TODO move this to an inline static once we go to C++17
+stream_id_t iceBoardShuffle::all_stream_ids[iceBoardShuffle::shuffle_size];
 
 REGISTER_KOTEKAN_STAGE(dpdkCore);
 
