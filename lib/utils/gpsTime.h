@@ -1,8 +1,8 @@
 #ifndef GPS_TIME_H
 #define GPS_TIME_H
 
-#include <stdint.h>  // for uint64_t
-#include <time.h>    // for timespec
+#include <stdint.h> // for uint64_t
+#include <time.h>   // for timespec
 
 struct timespec;
 
