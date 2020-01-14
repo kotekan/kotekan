@@ -7,8 +7,8 @@ void reorganize_32_to_16_feed_GPU_Correlated_Data(int actual_num_frequencies,
                                                   int actual_num_elements, int* correlated_data) {
     // data is processed as 32 elements x 32 elements to fit the kernel even though only 16 elements
     // exist. This is equivalent to processing 2 elements at the same time, where the desired
-    // correlations live in the first and fourth quadrants This function is to reorganize the data so
-    // that comparisons can be done more easily
+    // correlations live in the first and fourth quadrants This function is to reorganize the data
+    // so that comparisons can be done more easily
 
     // The input dataset is larger than the output, so can reorganize in the same array
 
@@ -192,8 +192,8 @@ void reorganize_32_to_16_element_GPU_correlated_data_with_shuffle(int actual_num
                                                                   int* correlated_data, int* map) {
     // data is processed as 32 elements x 32 elements to fit the kernel even though only 16 elements
     // exist. This is equivalent to processing 2 elements at the same time, where the desired
-    // correlations live in the first and fourth quadrants This function is to reorganize the data so
-    // that comparisons can be done more easily
+    // correlations live in the first and fourth quadrants This function is to reorganize the data
+    // so that comparisons can be done more easily
 
     // The input dataset is larger than the output, so can reorganize in the same array
 
@@ -236,8 +236,8 @@ void reorganize_32_to_16_element_UT_GPU_correlated_data_with_shuffle(int actual_
                                                                      int* map) {
     // data is processed as 32 elements x 32 elements to fit the kernel even though only 16 elements
     // exist. This is equivalent to processing 2 elements at the same time, where the desired
-    // correlations live in the first and fourth quadrants This function is to reorganize the data so
-    // that comparisons can be done more easily
+    // correlations live in the first and fourth quadrants This function is to reorganize the data
+    // so that comparisons can be done more easily
 
     // The input dataset is larger than the output, so can reorganize in the same array
 
