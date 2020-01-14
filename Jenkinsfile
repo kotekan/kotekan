@@ -34,7 +34,7 @@ pipeline {
                   -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON \
                   -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
-                  -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                  -DUSE_OMP=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                   -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
                   make -j 4'''
           }
