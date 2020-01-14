@@ -28,6 +28,8 @@ exit_abnormal() {
 # exit when any command fails
 set -e
 
+echo "lint.sh: So you don't have to push kotekan twice."
+
 # parse command line arguments
 while getopts ":d:i:" options; do
   case "${options}" in
@@ -62,7 +64,7 @@ if ! [ $ENABLE_IWYU = "OFF" ]; then
     echo "Applying suggested changes..."
     python2 /usr/bin/fix_include --comments < iwyu.out
 else
-    echo "fast mode enabled, skipping IWYU (add option iwyu to disable fast mode)"
+    echo "fast mode enabled, skipping IWYU (add option -i ON to disable fast mode)"
 fi
 
 # clang-format
@@ -71,6 +73,7 @@ find $KOTEKAN_DIR -type d -name "build" -prune -o -type d -name "include" -prune
 
 # black
 echo "Running black..."
-black --check --exclude docs $KOTEKAN_DIR
+black --exclude docs $KOTEKAN_DIR
+git diff --exit-code
 
 exit 0
