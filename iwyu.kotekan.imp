@@ -67,6 +67,19 @@
     { include: [ "<boost/preprocessor/variadic/elem.hpp>", private, "<boost/test/included/unit_test.hpp>", public ] },
     { include: [ "<boost/test/tree/test_unit.hpp>", public, "<boost/test/included/unit_test.hpp>", public ] },
 
+    # Blaze
+    { include: [ "<blaze/math/adaptors/hermitianmatrix/Dense.h>", public, "<blaze/Blaze.h>", public ] },
+
+    { include: [ "<blaze/math/StorageOrder.h>", public, "<blaze/Blaze.h>", public ] },
+    { include: [ "<blaze/math/dense/DynamicMatrix.h>", public, "<blaze/Blaze.h>", public ] },
+    { include: [ "<blaze/math/dense/DynamicVector.h>", public, "<blaze/Blaze.h>", public ] },
+    { include: [ "<blaze/math/expressions/DMatDeclHermExpr.h>", public, "<blaze/Blaze.h>", public ] },
+    { include: [ "<blaze/math/expressions/Matrix.h>", public, "<blaze/Blaze.h>", public ] },
+    { include: [ "<blaze/math/views/Band.h>", public, "<blaze/Blaze.h>", public ] },
+    { include: [ "<blaze/math/views/Submatrix.h>", public, "<blaze/Blaze.h>", public ] },
+    { include: [ "<blaze/math/views/band/Dense.h>", public, "<blaze/Blaze.h>", public ] },
+    { include: [ "<blaze/math/views/submatrix/Dense.h>", public, "<blaze/Blaze.h>", public ] },
+
     { include: ["<ext/alloc_traits.h>", "private", "<vector>", "public"] },
     { symbol: [ "FALLOC_FL_KEEP_SIZE", public, "<fcntl.h>", public ] },
 ]
