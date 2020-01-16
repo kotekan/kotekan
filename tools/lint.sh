@@ -62,7 +62,7 @@ if ! [ $ENABLE_IWYU = "OFF" ]; then
 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON first. This could take a while..."
     iwyu_tool -j 4 -p . -- --mapping_file=${KOTEKAN_DIR}/iwyu.kotekan.imp --max_line_length=100 | tee iwyu.out
     echo "Applying suggested changes..."
-    python2 /usr/bin/fix_include --comments < iwyu.out
+    python2 /usr/bin/fix_include --nosafe_headers --comments < iwyu.out
 else
     echo "fast mode enabled, skipping IWYU (add option -i ON to disable fast mode)"
 fi
