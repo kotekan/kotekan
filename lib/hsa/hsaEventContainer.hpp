@@ -3,8 +3,6 @@
 
 #include "gpuEventContainer.hpp"  // for gpuEventContainer
 #include "hsa/hsa.h"              // for hsa_signal_t
-#include "hsa/hsa_ext_amd.h"
-#include "hsa/hsa_ext_finalize.h"
 
 class hsaEventContainer final : public gpuEventContainer {
 

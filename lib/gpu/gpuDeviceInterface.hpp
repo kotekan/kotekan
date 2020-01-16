@@ -6,8 +6,6 @@
 #include <string>              // for string
 #include <vector>              // for vector
 
-#include "Config.hpp"
-#include "buffer.h"
 #include "kotekanLogging.hpp"  // for kotekanLogging
 
 namespace kotekan {

@@ -19,8 +19,6 @@ extern "C" {
 
 #include "errors.h"  // for ERROR_F
 #include "hsa/hsa.h" // for ::HSA_STATUS_SUCCESS, hsa_status_string
-#include "hsa/hsa_ext_amd.h"
-#include "hsa/hsa_ext_finalize.h"
 
 #include <assert.h> // for assert
 #include <stddef.h> // for size_t

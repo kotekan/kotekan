@@ -11,15 +11,15 @@
 #include <vector>              // for vector
 
 #include "Stage.hpp"           // for Stage
-#include "buffer.h"
 #include "datasetManager.hpp"  // for dset_id_t, state_id_t
 #include "visUtil.hpp"         // for movingAverage
 
+struct Buffer;
 namespace kotekan {
 class Config;
 class bufferContainer;
 }  // namespace kotekan
-struct Buffer;
+
 
 /**
  * @class eigenVis
