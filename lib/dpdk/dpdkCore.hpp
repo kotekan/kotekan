@@ -10,39 +10,15 @@
 
 // DPDK!
 extern "C" {
-#include <rte_atomic.h>
-#include <rte_branch_prediction.h>
-#include <rte_common.h>
-#include <rte_config.h>
-#include <rte_cycles.h>
-#include <rte_debug.h>
-#include <rte_eal.h>
 #include <rte_ethdev.h>        // for rte_eth_conf
-#include <rte_ether.h>
-#include <rte_interrupts.h>
-#include <rte_launch.h>
-#include <rte_lcore.h>
-#include <rte_log.h>
-#include <rte_mbuf.h>
-#include <rte_memcpy.h>
-#include <rte_memory.h>
-#include <rte_mempool.h>
-#include <rte_memzone.h>
-#include <rte_pci.h>
-#include <rte_per_lcore.h>
-#include <rte_prefetch.h>
-#include <rte_random.h>
-#include <rte_ring.h>
 #include <stdint.h>            // for uint32_t, int32_t, uint8_t
 }
 
-#include <emmintrin.h>
 #include <string>              // for string
 #include <vector>              // for vector
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp"
 #include "kotekanLogging.hpp"  // for kotekanLogging
 
 namespace kotekan {

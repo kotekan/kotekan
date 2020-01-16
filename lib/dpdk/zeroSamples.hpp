@@ -6,7 +6,6 @@
 #include <vector>     // for vector
 
 #include "Stage.hpp"  // for Stage
-#include "json.hpp"
 
 namespace kotekan {
 class Config;

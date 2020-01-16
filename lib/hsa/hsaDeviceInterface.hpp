@@ -2,14 +2,10 @@
 #define GPU_HSA_DEVICE_INTERFACE_H
 
 #include <stdint.h>                // for uint32_t, uint64_t, int32_t
-#include <sys/mman.h>
-#include <map>
 
 #include "gpuDeviceInterface.hpp"  // for gpuDeviceInterface
 #include "hsa/hsa.h"               // for hsa_agent_t, hsa_signal_t, hsa_status_t, hsa_region_t
-#include "hsa/hsaBase.h"
 #include "hsa/hsa_ext_amd.h"       // for hsa_amd_memory_pool_t
-#include "hsa/hsa_ext_finalize.h"
 
 namespace kotekan {
 class Config;

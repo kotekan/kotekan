@@ -13,9 +13,9 @@
 #include <utility>             // for pair
 #include <vector>              // for vector
 
-#include "LinearAlgebra.hpp" // TODO: figure out how to forward declare eig_t
+// TODO: figure out how to forward declare eig_t
+#include "LinearAlgebra.hpp"   // for eig_t // IWYU pragma: keep
 #include "Stage.hpp"           // for Stage
-#include "buffer.h"
 #include "datasetManager.hpp"  // for dset_id_t, state_id_t
 #include "visUtil.hpp"         // for cfloat, movingAverage
 
@@ -29,7 +29,6 @@ template <typename T> class MetricFamily;
 }  // namespace prometheus
 }  // namespace kotekan
 struct Buffer;
-struct EigConvergenceStats;
 
 
 /**

@@ -1,3 +1,5 @@
+#include "EigenVisIter.hpp"
+
 #include <blaze/Blaze.h>          // for DynamicMatrix, band, HermitianMatrix, DynamicVector
 #include <cblas.h>                // for openblas_set_num_threads
 #include <algorithm>              // for min
@@ -11,7 +13,6 @@
 #include <tuple>                  // for tie, tuple
 
 #include "Config.hpp"             // for Config
-#include "EigenVisIter.hpp"
 #include "Hash.hpp"               // for operator!=
 #include "LinearAlgebra.hpp"      // for EigConvergenceStats, eigen_masked_subspace, to_blaze_herm
 #include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate

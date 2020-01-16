@@ -6,7 +6,6 @@
 
 #include "hsa/hsa.h"       // for hsa_signal_t
 #include "hsaCommand.hpp"  // for hsaCommand
-#include "vdif_functions.h"
 
 class hsaDeviceInterface;
 

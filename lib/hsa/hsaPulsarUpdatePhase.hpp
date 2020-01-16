@@ -12,13 +12,11 @@
 #include <time.h>           // for timespec
 #include <mutex>            // for mutex
 #include <string>           // for string
-#include <thread>
 
 #include "chimeMetadata.h"  // for psrCoord
 #include "hsa/hsa.h"        // for hsa_signal_t
 #include "hsaCommand.hpp"   // for hsaCommand
 #include "json.hpp"         // for json
-#include "restServer.hpp"
 
 class hsaDeviceInterface;
 

@@ -13,7 +13,6 @@
 #include "hsa/hsa.h"       // for hsa_signal_t
 #include "hsaCommand.hpp"  // for hsaCommand
 #include "json.hpp"        // for json
-#include "restServer.hpp"
 
 class hsaDeviceInterface;
 

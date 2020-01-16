@@ -1,29 +1,12 @@
 #ifndef GPU_HSA_COMMAND_H
 #define GPU_HSA_COMMAND_H
 
-#include <assert.h>
 #include <stdint.h>        // for uint16_t, uint32_t, uint64_t
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <fstream>
-#include <iostream>
 #include <string>          // for string
 
-#include "Config.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "chimeMetadata.h"
-#include "errors.h"
 #include "factory.hpp"     // for CREATE_FACTORY, Factory, REGISTER_NAMED_TYPE_WITH_FACTORY
 #include "gpuCommand.hpp"  // for gpuCommand, gpuCommandType
 #include "hsa/hsa.h"       // for hsa_signal_t, hsa_packet_type_t
-#include "hsa/hsa_ext_amd.h"
-#include "hsa/hsa_ext_finalize.h"
-#include "hsaBase.h"
-#include "hsaDeviceInterface.hpp"
-#include "kotekanLogging.hpp"
 
 class hsaDeviceInterface;
 

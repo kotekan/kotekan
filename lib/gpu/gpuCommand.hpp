@@ -7,19 +7,10 @@
 #ifndef GPU_COMMAND_H
 #define GPU_COMMAND_H
 
-#include <signal.h>
 #include <stdint.h>             // for int32_t
-#include <stdio.h>
 #include <string>               // for string
 
-#include "Config.hpp"
-#include "assert.h"
-#include "buffer.h"
 #include "bufferContainer.hpp"  // for bufferContainer
-#include "errors.h"
-#include "factory.hpp"
-#include "gpuDeviceInterface.hpp"
-#include "gpuEventContainer.hpp"
 #include "kotekanLogging.hpp"   // for kotekanLogging
 
 class gpuDeviceInterface;

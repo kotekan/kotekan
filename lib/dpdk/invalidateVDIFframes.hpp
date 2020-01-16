@@ -10,10 +10,8 @@
 
 #include <stdint.h>   // for int32_t, uint32_t
 #include <string>     // for string
-#include <vector>
 
 #include "Stage.hpp"  // for Stage
-#include "json.hpp"
 
 namespace kotekan {
 class Config;

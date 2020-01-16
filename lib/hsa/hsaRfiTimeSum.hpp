@@ -7,14 +7,12 @@
 #define HSA_RFI_TIME_SUM_H
 
 #include <stdint.h>        // for uint32_t
-#include <mutex>
 #include <string>          // for string
 #include <vector>          // for vector
 
 #include "hsa/hsa.h"       // for hsa_signal_t
 #include "hsaCommand.hpp"  // for hsaCommand
 #include "json.hpp"        // for json
-#include "restServer.hpp"
 
 class hsaDeviceInterface;
 

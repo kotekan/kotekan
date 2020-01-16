@@ -1,9 +1,7 @@
 #include <assert.h>                // for assert
-#include <stdio.h>                 // for size_t
 #include <stdlib.h>                // for free, malloc
 #include <string.h>                // for memset
 #include <fstream>                 // for ifstream, basic_istream::seekg, ios, basic_istream::read
-#include <iostream>                // for operator|
 
 #include "Config.hpp"              // for Config
 #include "hsa/hsa_ext_amd.h"       // for hsa_amd_profiling_async_copy_time_t, hsa_amd_profiling...
