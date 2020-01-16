@@ -7,6 +7,12 @@
 #ifdef WITH_HSA
 #include "hsaBase.h" // for hsa_host_free, hsa_host_malloc
 #endif
+#ifdef MAC_OSX
+#include <sys/mman.h> // for mlock
+#endif
+#ifdef WITH_NUMA
+#include <numa.h> // for numa_alloc_onnode // IWYU pragma: keep
+#endif
 
 #include <assert.h> // for assert
 #include <errno.h>  // for ETIMEDOUT
