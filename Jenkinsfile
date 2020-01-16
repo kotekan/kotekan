@@ -21,7 +21,7 @@ pipeline {
             sh '''cd build/
                   cmake -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
-                  -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                  -DUSE_OMP=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                   -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
                   make -j 4'''
           }
@@ -39,7 +39,7 @@ pipeline {
                   make -j 4'''
           }
         }
-        stage('Build CHIME kotekan with Clang') {
+        stage('Build CHIME kotekan with Clang & run IWYU') {
           steps {
             sh '''mkdir -p chime-build-clang
                   cd chime-build-clang
@@ -50,18 +50,17 @@ pipeline {
                   -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
                   -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-                  -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
-                  make -j 4'''
+                  -DCMAKE_C_COMPILER_LAUNCHER=ccache -DIWYU=ON ..
+                  make -j 6 2> iwyu.out
+                  cat iwyu.out'''
           }
         }
-        stage('Build base kotekan & Run IWYU') {
+        stage('Build base kotekan') {
           steps {
             sh '''mkdir -p build_base
                   cd build_base
-                  cmake -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-                  -DIWYU=ON ..
-                  make -j 6 2> iwyu.out
-                  cat iwyu.out'''
+                  cmake -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
+                  make -j 4'''
           }
         }
         stage('Build MacOS kotekan') {
@@ -121,7 +120,7 @@ pipeline {
     }
     stage('Check results of iwyu') {
       steps {
-        sh '''cd build_base
+        sh '''cd chime-build-clang
               python2 /usr/bin/fix_include --dry --comments < iwyu.out'''
       }
     }
