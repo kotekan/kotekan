@@ -205,7 +205,7 @@ static inline void copy_block(struct rte_mbuf** pkt, uint8_t* dest, int len, int
             // Advance the frame
             *pkt = (*pkt)->next;
             // The preconditions don't allow this to happen.
-            // assert(pkt != NULL);
+            // assert(pkt != nullptr);
             // assert(n <= pkt->data_len);
 
             // Get the first 8 bytes of the next frame.
@@ -234,7 +234,7 @@ static inline void copy_block(struct rte_mbuf** pkt, uint8_t* dest, int len, int
                 *pkt = (*pkt)->next;
                 local_offset = 0;
                 *offset = 0;
-                assert(pkt != NULL);
+                assert(pkt != nullptr);
             } else {
                 local_offset = local_offset + last_copy_len;
                 break;
