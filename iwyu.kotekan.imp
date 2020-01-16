@@ -69,7 +69,6 @@
 
     # Blaze
     { include: [ "<blaze/math/adaptors/hermitianmatrix/Dense.h>", public, "<blaze/Blaze.h>", public ] },
-
     { include: [ "<blaze/math/StorageOrder.h>", public, "<blaze/Blaze.h>", public ] },
     { include: [ "<blaze/math/dense/DynamicMatrix.h>", public, "<blaze/Blaze.h>", public ] },
     { include: [ "<blaze/math/dense/DynamicVector.h>", public, "<blaze/Blaze.h>", public ] },

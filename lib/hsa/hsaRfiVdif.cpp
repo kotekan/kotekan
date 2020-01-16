@@ -12,8 +12,8 @@ Notes:
 
 **********************************************************************************/
 
-#include <math.h>                  // for sqrt
 #include <string.h>                // for memcpy, memset
+#include <cmath>                   // for sqrt
 
 #include "Config.hpp"              // for Config
 #include "gpuCommand.hpp"          // for gpuCommandType, gpuCommandType::KERNEL

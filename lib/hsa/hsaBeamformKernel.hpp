@@ -17,6 +17,7 @@
 #include "restServer.hpp"
 
 class hsaDeviceInterface;
+
 namespace kotekan {
 class Config;
 class bufferContainer;

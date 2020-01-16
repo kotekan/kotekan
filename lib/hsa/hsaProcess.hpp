@@ -18,6 +18,7 @@
 
 class gpuCommand;
 class gpuEventContainer;
+
 namespace kotekan {
 class Config;
 class bufferContainer;

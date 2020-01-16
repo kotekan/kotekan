@@ -9,6 +9,7 @@
 #include "vdif_functions.h"
 
 class hsaDeviceInterface;
+
 namespace kotekan {
 class Config;
 class bufferContainer;

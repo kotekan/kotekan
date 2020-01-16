@@ -23,6 +23,7 @@
 #include "kotekanLogging.hpp"   // for kotekanLogging
 
 class gpuDeviceInterface;
+
 namespace kotekan {
 class Config;
 }  // namespace kotekan

@@ -20,6 +20,7 @@
 class gpuCommand;
 class gpuDeviceInterface;
 class gpuEventContainer;
+
 namespace kotekan {
 class Config;
 class connectionInstance;
