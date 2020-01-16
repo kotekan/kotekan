@@ -6,11 +6,29 @@
 #ifndef EIGENVISITER_HPP
 #define EIGENVISITER_HPP
 
+#include <blaze/math/adaptors/hermitianmatrix/Dense.h>  // for HermitianMatrix
+#include <stdint.h>                                     // for uint32_t, int32_t
+#include <map>                                          // for map
+#include <string>                                       // for string
+#include <utility>                                      // for pair
+#include <vector>                                       // for vector
+
 #include "LinearAlgebra.hpp" // TODO: figure out how to forward declare eig_t
-#include "Stage.hpp"
+#include "Stage.hpp"                                    // for Stage
 #include "buffer.h"
-#include "datasetManager.hpp"
-#include "visUtil.hpp"
+#include "datasetManager.hpp"                           // for dset_id_t, state_id_t
+#include "visUtil.hpp"                                  // for cfloat, movingAverage
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+namespace prometheus {
+class Gauge;
+template <typename T> class MetricFamily;
+}  // namespace prometheus
+}  // namespace kotekan
+struct Buffer;
+struct EigConvergenceStats;
 
 
 /**

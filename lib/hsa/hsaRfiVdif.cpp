@@ -12,7 +12,19 @@ Notes:
 
 **********************************************************************************/
 
+#include <math.h>                  // for sqrt
+#include <string.h>                // for memcpy, memset
+
+#include "Config.hpp"              // for Config
+#include "gpuCommand.hpp"          // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaBase.h"               // for hsa_host_malloc, HSA_CHECK
+#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
 #include "hsaRfiVdif.hpp"
+#include "vdif_functions.h"        // for VDIFHeader
+
+namespace kotekan {
+class bufferContainer;
+}  // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

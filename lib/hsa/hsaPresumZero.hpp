@@ -1,7 +1,17 @@
 #ifndef HSA_PRESUM_ZERO_H
 #define HSA_PRESUM_ZERO_H
 
-#include "hsaSubframeCommand.hpp"
+#include <stdint.h>                // for int32_t
+#include <string>                  // for string
+
+#include "hsa/hsa.h"               // for hsa_signal_t
+#include "hsaSubframeCommand.hpp"  // for hsaSubframeCommand
+
+class hsaDeviceInterface;
+namespace kotekan {
+class Config;
+class bufferContainer;
+}  // namespace kotekan
 
 class hsaPresumZero : public hsaSubframeCommand {
 public:

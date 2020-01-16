@@ -1,12 +1,19 @@
+#include <pthread.h>               // for pthread_setaffinity_np
+#include <sched.h>                 // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <sys/types.h>             // for uint
+#include <atomic>                  // for atomic_bool
+#include <functional>              // for _Bind_helper<>::type, _Placeholder, bind, ref, _1, fun...
+
+#include "Config.hpp"              // for Config
+#include "fmt.hpp"                 // for format, fmt
+#include "gpuCommand.hpp"          // for gpuCommand, gpuCommandType, gpuCommandType::COPY_IN
+#include "gpuDeviceInterface.hpp"  // for gpuDeviceInterface
+#include "gpuEventContainer.hpp"   // for gpuEventContainer
 #include "gpuProcess.hpp"
-
-#include "unistd.h"
-#include "util.h" // for e_time
-
-#include "fmt.hpp"
-
-#include <iostream>
-#include <sys/time.h>
+#include "json.hpp"                // for json, basic_json<>::value_type, basic_json, basic_json...
+#include "kotekanLogging.hpp"      // for INFO, DEBUG2, DEBUG
+#include "restServer.hpp"          // for restServer, connectionInstance
+#include "util.h"                  // for e_time
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -1,12 +1,18 @@
 #ifndef GPU_DEVICE_INTERFACE_H
 #define GPU_DEVICE_INTERFACE_H
 
+#include <stdint.h>            // for uint32_t, int32_t
+#include <map>                 // for map
+#include <string>              // for string
+#include <vector>              // for vector
+
 #include "Config.hpp"
 #include "buffer.h"
-#include "kotekanLogging.hpp"
+#include "kotekanLogging.hpp"  // for kotekanLogging
 
-#include <map>
-#include <vector>
+namespace kotekan {
+class Config;
+}  // namespace kotekan
 
 /// Stores a named set of gpu pointer(s) with uniform size
 struct gpuMemoryBlock {

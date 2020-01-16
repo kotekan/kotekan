@@ -1,11 +1,18 @@
 #ifndef ZERO_SAMPLES_HPP
 #define ZERO_SAMPLES_HPP
 
-#include "Stage.hpp"
+#include <stdint.h>   // for int32_t, uint32_t, uint8_t
+#include <string>     // for string
+#include <vector>     // for vector
 
+#include "Stage.hpp"  // for Stage
 #include "json.hpp"
 
-#include <vector>
+namespace kotekan {
+class Config;
+class bufferContainer;
+}  // namespace kotekan
+struct Buffer;
 
 /**
  * @brief Zeros samples in the @c out_buf based on flags in the @c lost_samples_buf

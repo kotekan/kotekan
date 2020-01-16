@@ -1,7 +1,17 @@
 #ifndef HSA_CORRELATOR_KERNEL_H
 #define HSA_CORRELATOR_KERNEL_H
 
-#include "hsaSubframeCommand.hpp"
+#include <stdint.h>                // for int32_t, uint32_t
+#include <string>                  // for string
+
+#include "hsa/hsa.h"               // for hsa_signal_t
+#include "hsaSubframeCommand.hpp"  // for hsaSubframeCommand
+
+class hsaDeviceInterface;
+namespace kotekan {
+class Config;
+class bufferContainer;
+}  // namespace kotekan
 
 #pragma pack(4)
 struct corr_kernel_config_t {

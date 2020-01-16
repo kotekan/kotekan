@@ -1,9 +1,18 @@
 #ifndef HSA_OUTPUT_DATA_H
 #define HSA_OUTPUT_DATA_H
 
-#include "hsaSubframeCommand.hpp"
+#include <stdint.h>                // for int32_t
+#include <string>                  // for string
 
-#include <string>
+#include "hsa/hsa.h"               // for hsa_signal_t
+#include "hsaSubframeCommand.hpp"  // for hsaSubframeCommand
+
+class hsaDeviceInterface;
+namespace kotekan {
+class Config;
+class bufferContainer;
+}  // namespace kotekan
+struct Buffer;
 
 class hsaOutputData : public hsaSubframeCommand {
 public:

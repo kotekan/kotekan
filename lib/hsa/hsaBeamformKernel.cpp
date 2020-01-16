@@ -1,11 +1,22 @@
+#include <string.h>                 // for memcpy, memset
+#include <cmath>                    // for sin, asin, cos, floor
+#include <functional>               // for _Bind_helper<>::type, _Placeholder, bind, _1, _2
+
+#include "Config.hpp"               // for Config
+#include "buffer.h"                 // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp"      // for bufferContainer
+#include "chimeMetadata.h"          // for get_stream_id_t
+#include "fmt.hpp"                  // for format, fmt
+#include "fpga_header_functions.h"  // for bin_number_chime, freq_from_bin, stream_id_t
+#include "gpuCommand.hpp"           // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaBase.h"                // for hsa_host_free, hsa_host_malloc
 #include "hsaBeamformKernel.hpp"
+#include "hsaDeviceInterface.hpp"   // for hsaDeviceInterface
+#include "restServer.hpp"           // for restServer, HTTP_RESPONSE, connectionInstance, HTTP_R...
 
-#include "configUpdater.hpp"
-
-#include "fmt.hpp"
-
-#include <signal.h>
-#include <utils/visUtil.hpp>
+namespace kotekan {
+class configUpdater;
+}  // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

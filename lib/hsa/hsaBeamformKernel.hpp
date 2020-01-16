@@ -7,8 +7,22 @@
 #ifndef HSA_BEAMFORM_KERNEL_H
 #define HSA_BEAMFORM_KERNEL_H
 
-#include "hsaCommand.hpp"
+#include <stdint.h>        // for int32_t, uint32_t
+#include <string>          // for string
+#include <vector>          // for vector
+
+#include "hsa/hsa.h"       // for hsa_signal_t
+#include "hsaCommand.hpp"  // for hsaCommand
+#include "json.hpp"        // for json
 #include "restServer.hpp"
+
+class hsaDeviceInterface;
+namespace kotekan {
+class Config;
+class bufferContainer;
+class connectionInstance;
+}  // namespace kotekan
+struct Buffer;
 
 #define LIGHT_SPEED 299792458.
 #define FEED_SEP 0.3048

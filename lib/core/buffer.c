@@ -5,20 +5,16 @@
 #include "nt_memset.h" // for nt_memset
 #include "util.h"      // for e_time
 #ifdef WITH_HSA
-#include "hsaBase.h"
+#include "hsaBase.h" // for hsa_host_free, hsa_host_malloc
 #endif
 
-#include <assert.h>   // for assert
-#include <errno.h>    // for ETIMEDOUT, errno
-#include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdio.h>    // for snprintf
-#include <stdlib.h>   // for free, NULL, malloc, size_t
-#include <string.h>   // for memset, memcpy, strncmp, strncpy, strdup
-#include <sys/mman.h> // for mlock
-#include <time.h>     // for timespec
-#ifdef WITH_NUMA
-#include <numa.h> // for numa_alloc_onnode, numa_free
-#endif
+#include <assert.h> // for assert
+#include <errno.h>  // for ETIMEDOUT
+#include <sched.h>  // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdio.h>  // for snprintf
+#include <stdlib.h> // for NULL, free, malloc, size_t
+#include <string.h> // for memset, memcpy, strncmp, strncpy, strdup
+#include <time.h>   // for timespec
 
 struct zero_frames_thread_args {
     struct Buffer* buf;

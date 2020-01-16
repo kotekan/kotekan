@@ -6,10 +6,20 @@
 #ifndef EIGENVIS_HPP
 #define EIGENVIS_HPP
 
-#include "Stage.hpp"
+#include <stdint.h>            // for uint32_t
+#include <string>              // for string
+#include <vector>              // for vector
+
+#include "Stage.hpp"           // for Stage
 #include "buffer.h"
-#include "datasetManager.hpp"
-#include "visUtil.hpp"
+#include "datasetManager.hpp"  // for dset_id_t, state_id_t
+#include "visUtil.hpp"         // for movingAverage
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+}  // namespace kotekan
+struct Buffer;
 
 /**
  * @class eigenVis

@@ -1,8 +1,11 @@
+#include <assert.h>  // for assert
+#include <utility>   // for pair
+
 #include "gpuDeviceInterface.hpp"
 
-#include "math.h"
-
-#include <errno.h>
+namespace kotekan {
+class Config;
+}  // namespace kotekan
 
 using kotekan::Config;
 

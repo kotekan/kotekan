@@ -1,8 +1,18 @@
 #ifndef HSA_RFI_VDIF_H
 #define HSA_RFI_VDIF_H
 
-#include "hsaCommand.hpp"
+#include <stdint.h>        // for int32_t
+#include <string>          // for string
+
+#include "hsa/hsa.h"       // for hsa_signal_t
+#include "hsaCommand.hpp"  // for hsaCommand
 #include "vdif_functions.h"
+
+class hsaDeviceInterface;
+namespace kotekan {
+class Config;
+class bufferContainer;
+}  // namespace kotekan
 
 class hsaRfiVdif : public hsaCommand {
 public:

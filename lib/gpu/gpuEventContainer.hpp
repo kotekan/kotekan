@@ -1,11 +1,11 @@
 #ifndef GPU_EVENT_CONTAINER_H
 #define GPU_EVENT_CONTAINER_H
 
-#include <any>
-#include <condition_variable>
 #include <errors.h>
-#include <mutex>
 #include <signal.h>
+#include <any>
+#include <condition_variable>  // for condition_variable
+#include <mutex>               // for mutex
 #include <thread>
 
 class gpuEventContainer {

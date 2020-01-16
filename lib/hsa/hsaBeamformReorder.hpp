@@ -7,7 +7,18 @@
 #ifndef HSA_BEAMFORM_REORDER_H
 #define HSA_BEAMFORM_REORDER_H
 
-#include "hsaCommand.hpp"
+#include <stdint.h>        // for int32_t
+#include <string>          // for string
+#include <vector>          // for vector
+
+#include "hsa/hsa.h"       // for hsa_signal_t
+#include "hsaCommand.hpp"  // for hsaCommand
+
+class hsaDeviceInterface;
+namespace kotekan {
+class Config;
+class bufferContainer;
+}  // namespace kotekan
 
 /**
  * @class hsaBeamformReorder

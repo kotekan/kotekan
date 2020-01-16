@@ -1,6 +1,8 @@
 #include "hsaBase.h"
 
-#include <sys/mman.h>
+#include "hsa/hsa_ext_amd.h" // for hsa_amd_memory_pool_get_info, hsa_amd_memory_pool_t, hsa_am...
+
+#include <sys/mman.h> // for mlock
 
 #define MAX_NUMA 4
 

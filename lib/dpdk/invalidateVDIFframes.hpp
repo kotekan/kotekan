@@ -8,11 +8,17 @@
 #ifndef INVALIDATE_VDIF_FRAMES_HPP
 #define INVALIDATE_VDIF_FRAMES_HPP
 
-#include "Stage.hpp"
+#include <stdint.h>   // for int32_t, uint32_t
+#include <string>     // for string
+#include <vector>
 
+#include "Stage.hpp"  // for Stage
 #include "json.hpp"
 
-#include <vector>
+namespace kotekan {
+class Config;
+class bufferContainer;
+}  // namespace kotekan
 
 /**
  * @brief Invalidate VDIF frames in the @c out_buf based on flags in the @c lost_samples_buf

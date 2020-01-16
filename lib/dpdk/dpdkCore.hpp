@@ -17,7 +17,7 @@ extern "C" {
 #include <rte_cycles.h>
 #include <rte_debug.h>
 #include <rte_eal.h>
-#include <rte_ethdev.h>
+#include <rte_ethdev.h>        // for rte_eth_conf
 #include <rte_ether.h>
 #include <rte_interrupts.h>
 #include <rte_launch.h>
@@ -33,16 +33,21 @@ extern "C" {
 #include <rte_prefetch.h>
 #include <rte_random.h>
 #include <rte_ring.h>
+#include <stdint.h>            // for uint32_t, int32_t, uint8_t
 }
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "bufferContainer.hpp"
-#include "kotekanLogging.hpp"
-
 #include <emmintrin.h>
-#include <string>
-#include <vector>
+#include <string>              // for string
+#include <vector>              // for vector
+
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp"
+#include "kotekanLogging.hpp"  // for kotekanLogging
+
+namespace kotekan {
+class bufferContainer;
+}  // namespace kotekan
 
 /**
  * @brief Abstract object for processing packets that come from a given NIC port

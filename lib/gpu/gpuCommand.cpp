@@ -1,9 +1,9 @@
+#include <assert.h>    // for assert
+
+#include "Config.hpp"  // for Config
 #include "gpuCommand.hpp"
 
-#include "gpuDeviceInterface.hpp"
-#include "kotekanLogging.hpp"
-
-#include <iostream>
+class gpuDeviceInterface;
 
 using kotekan::bufferContainer;
 using kotekan::Config;

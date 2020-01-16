@@ -6,10 +6,21 @@
 #ifndef HSA_RFI_BAD_INPUT_H
 #define HSA_RFI_BAD_INPUT_H
 
-#include "hsaCommand.hpp"
+#include <stdint.h>        // for uint32_t
+#include <mutex>
+#include <string>          // for string
+
+#include "hsa/hsa.h"       // for hsa_signal_t
+#include "hsaCommand.hpp"  // for hsaCommand
+#include "json.hpp"        // for json
 #include "restServer.hpp"
 
-#include <mutex>
+class hsaDeviceInterface;
+namespace kotekan {
+class Config;
+class bufferContainer;
+class connectionInstance;
+}  // namespace kotekan
 
 /*
  * @class hsaRfiBadInput

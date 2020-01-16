@@ -1,6 +1,16 @@
+#include <string.h>                // for memset
+
+#include "Config.hpp"              // for Config
+#include "fmt.hpp"                 // for format, fmt
+#include "gpuCommand.hpp"          // for gpuCommandType, gpuCommandType::COPY_IN
+#include "hsaBase.h"               // for hsa_host_free, hsa_host_malloc
+#include "hsaCommand.hpp"          // for REGISTER_HSA_COMMAND, _factory_aliashsaCommand
+#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
 #include "hsaPresumZero.hpp"
 
-#include "fmt.hpp"
+namespace kotekan {
+class bufferContainer;
+}  // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -1,19 +1,23 @@
 // curl localhost:12048/updatable_config/pulsar_pointing/0  -X POST -H 'Content-Type:
 // application/json' -d '{"ra":100.3, "dec":34.23, "scaling":99.0}'
 
+#include <string.h>                 // for memcpy
+#include <time.h>                   // for tm, timespec, localtime
+#include <cmath>                    // for cos, sin, fmod, pow, acos, asin, atan2, sqrt
+#include <exception>                // for exception
+#include <string>                   // for string, allocator, operator+, to_string, char_traits
+
+#include "Config.hpp"               // for Config
+#include "buffer.h"                 // for mark_frame_empty, Buffer, register_consumer, wait_for...
+#include "bufferContainer.hpp"      // for bufferContainer
+#include "configUpdater.hpp"        // for configUpdater
+#include "fpga_header_functions.h"  // for bin_number_chime, freq_from_bin, stream_id_t
+#include "hsaBase.h"                // for hsa_host_free, hsa_host_malloc
+#include "hsaDeviceInterface.hpp"   // for hsaDeviceInterface
 #include "hsaPulsarUpdatePhase.hpp"
-
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "configUpdater.hpp"
-#include "hsaBase.h"
-#include "restServer.hpp"
-#include "visUtil.hpp"
-
-#include <math.h>
-#include <signal.h>
-#include <string>
-#include <time.h>
+#include "kotekanLogging.hpp"       // for DEBUG, WARN, ERROR, INFO
+#include "restServer.hpp"           // for restServer, HTTP_RESPONSE, connectionInstance (ptr only)
+#include "visUtil.hpp"              // for double_to_ts
 
 #define PI 3.14159265
 #define light 299792458.

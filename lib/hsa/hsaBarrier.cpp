@@ -1,6 +1,14 @@
-#include "hsaBarrier.hpp"
+#include <stdint.h>                // for uint32_t, uint8_t, uint64_t
+#include <string.h>                // for memset
 
-#include <unistd.h>
+#include "gpuCommand.hpp"          // for gpuCommandType, gpuCommandType::BARRIER
+#include "hsaBarrier.hpp"
+#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
+
+namespace kotekan {
+class Config;
+class bufferContainer;
+}  // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

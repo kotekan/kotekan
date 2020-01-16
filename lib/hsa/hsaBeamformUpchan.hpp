@@ -7,7 +7,17 @@
 #ifndef HSA_BEAMFORM_UPCHAN_H
 #define HSA_BEAMFORM_UPCHAN_H
 
-#include "hsaCommand.hpp"
+#include <stdint.h>        // for int32_t
+#include <string>          // for string
+
+#include "hsa/hsa.h"       // for hsa_signal_t
+#include "hsaCommand.hpp"  // for hsaCommand
+
+class hsaDeviceInterface;
+namespace kotekan {
+class Config;
+class bufferContainer;
+}  // namespace kotekan
 
 /**
  * @class hsaBeamformUpchan

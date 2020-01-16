@@ -1,4 +1,15 @@
+#include <string.h>                // for memcpy, memset
+#include <sys/types.h>             // for uint
+
+#include "Config.hpp"              // for Config
+#include "gpuCommand.hpp"          // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaBase.h"               // for hsa_host_free, hsa_host_malloc
 #include "hsaBeamformReorder.hpp"
+#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
+
+namespace kotekan {
+class bufferContainer;
+}  // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

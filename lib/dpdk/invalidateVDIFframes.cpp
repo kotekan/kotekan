@@ -1,10 +1,17 @@
+#include <assert.h>          // for assert
+#include <atomic>            // for atomic_bool
+#include <functional>        // for _Bind_helper<>::type, bind, function
+
+#include "StageFactory.hpp"  // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"          // for Buffer, mark_frame_empty, mark_frame_full, register_consumer
+#include "chimeMetadata.h"   // for atomic_add_lost_timesamples
 #include "invalidateVDIFframes.hpp"
+#include "vdif_functions.h"  // for VDIFHeader
 
-#include "StageFactory.hpp"
-#include "chimeMetadata.h"
-#include "vdif_functions.h"
-
-#include <vector>
+namespace kotekan {
+class Config;
+class bufferContainer;
+}  // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

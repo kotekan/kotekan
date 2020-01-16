@@ -1,6 +1,13 @@
-#include "hsaSubframeCommand.hpp"
+#include <stdexcept>           // for runtime_error
 
-#include <exception>
+#include "Config.hpp"          // for Config
+#include "hsaSubframeCommand.hpp"
+#include "kotekanLogging.hpp"  // for DEBUG2
+
+class hsaDeviceInterface;
+namespace kotekan {
+class bufferContainer;
+}  // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;
