@@ -7,7 +7,7 @@ REGISTER_HSA_COMMAND(hsaBeamformReorder);
 
 hsaBeamformReorder::hsaBeamformReorder(Config& config, const string& unique_name,
                                        bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "reorder", "reorder.hsaco") {
+    hsaCommand(config, unique_name, host_buffers, device, "reorder" KERNEL_EXT, "reorder.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
@@ -20,7 +20,7 @@ hsaBeamformReorder::hsaBeamformReorder(Config& config, const string& unique_name
 
     // Create a C style array for backwards compatibility.
     map_len = 512 * sizeof(int);
-    _reorder_map_c = (int*)hsa_host_malloc(map_len);
+    _reorder_map_c = (int*)hsa_host_malloc(map_len, device.get_gpu_numa_node());
     for (uint i = 0; i < 512; ++i) {
         _reorder_map_c[i] = _reorder_map[i];
     }

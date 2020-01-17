@@ -7,7 +7,9 @@
 #define CONFIG_HPP
 
 #include "errors.h"
+#include "kotekanLogging.hpp"
 
+#include "fmt.hpp"
 #include "json.hpp"
 
 #include <complex>
@@ -63,24 +65,23 @@ public:
             if (std::is_arithmetic<T>::value && !std::is_same<bool, T>::value
                 && !json_value.is_number()) {
 
-                std::string expression = json_value.get<std::string>();
                 try {
                     Config::configEval<T> eval(*this, base_path, name);
                     value = eval.compute_result();
                 } catch (std::exception const& ex) {
-                    throw std::runtime_error("Failed to evaluate: '" + json_value.get<std::string>()
-                                             + "' with message: '" + ex.what() + "' for name "
-                                             + name + " in path " + base_path);
+                    throw std::runtime_error(
+                        fmt::format(fmt("Failed to evaluate: '{:s}' with message: '{:s}' for name "
+                                        "{:s} in path {:s}"),
+                                    json_value.get<std::string>(), ex.what(), name, base_path));
                 }
             } else {
                 value = json_value.get<T>();
             }
         } catch (std::exception const& ex) {
             int status;
-            throw std::runtime_error("The value " + name + " in path " + base_path
-                                     + " is not of type '"
-                                     + abi::__cxa_demangle(typeid(T).name(), NULL, NULL, &status)
-                                     + "' or doesn't exist");
+            throw std::runtime_error(fmt::format(
+                fmt("The value {:s} in path {:s} is not of type '{:s}' or doesn't exist."), name,
+                base_path, abi::__cxa_demangle(typeid(T).name(), NULL, NULL, &status)));
         }
 
         return value;
@@ -100,10 +101,9 @@ public:
             value = json_value.get<T>();
         } catch (std::exception const& ex) {
             int status;
-            throw std::runtime_error("The value " + name + " in path " + base_path
-                                     + " is not of type '"
-                                     + abi::__cxa_demangle(typeid(T).name(), NULL, NULL, &status)
-                                     + "' or doesn't exist");
+            throw std::runtime_error(fmt::format(
+                fmt("The value {:s} in path {:s} is not of type '{:s}' or doesn't exist"), name,
+                base_path, abi::__cxa_demangle(typeid(T).name(), NULL, NULL, &status)));
         }
 
         return value;
@@ -174,7 +174,7 @@ public:
      *
      * @return      The values found or an empty list if nothing was found.
      **/
-    std::vector<json> get_value(const string& name) const;
+    std::vector<json> get_value(const std::string& name) const;
 
     /**
      * @brief Updates a config value at an existing config option
@@ -214,7 +214,7 @@ public:
 
     /**
      * @brief Returns the full json data structure (for internal framework use)
-     * @warn This shouldn't be called outside of the core framework
+     * @warning This shouldn't be called outside of the core framework
      * @return A reference to the full JSON
      */
     json& get_full_config_json();
@@ -280,14 +280,14 @@ private:
 
 template<typename T>
 void Config::update_value(const string& base_path, const string& name, const T& value) {
-    string update_path = base_path + "/" + name;
+    string update_path = fmt::format(fmt("{:s}/{:s}"), base_path, name);
     json::json_pointer path(update_path);
 
     try {
         _json.at(path) = value;
     } catch (std::exception const& ex) {
-        throw std::runtime_error("Failed to update config value at: " + update_path
-                                 + " message: " + ex.what());
+        throw std::runtime_error(fmt::format(
+            fmt("Failed to update config value at: {:s} message: {:s}"), update_path, ex.what()));
     }
 }
 
@@ -310,9 +310,9 @@ Config::configEval<Type>::configEval(Config& _config, const std::string& base_pa
     json value = config.get_value(base_path, name);
 
     if (!(value.is_string() || value.is_number())) {
-        throw std::runtime_error("The value " + name + " in path " + base_path
-                                 + " isn't a number or string to eval or "
-                                   "does not exist.");
+        throw std::runtime_error(fmt::format(
+            fmt("The value {:s} in path {:s} isn't a number or string to eval or does not exist."),
+            name, base_path));
     }
     const std::string& expression = value.get<std::string>();
 
@@ -363,7 +363,7 @@ void Config::configEval<Type>::expect(const std::string& symbol) {
     if (current_token == symbol) {
         next();
     } else {
-        ERROR("Expected symbol %s, got %s", symbol.c_str(), tokens.front().c_str());
+        ERROR_NON_OO("Expected symbol {:s}, got {:s}", symbol, tokens.front());
         throw std::runtime_error("Unexpected symbol");
     }
 }
@@ -426,7 +426,7 @@ Type Config::configEval<Type>::factor() {
         ret = exp();
         expect(")");
     } else {
-        ERROR("Unexpected symbol '%s'", current_token.c_str());
+        ERROR_NON_OO("Unexpected symbol '{:s}'", current_token);
         throw std::runtime_error("Unexpected symbol");
     }
     return ret;

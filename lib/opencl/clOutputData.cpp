@@ -38,7 +38,7 @@ int clOutputData::wait_on_precondition(int gpu_frame_id) {
         wait_for_empty_frame(output_buffer, unique_name.c_str(), output_buffer_precondition_id);
     if (frame == NULL)
         return -1;
-    // INFO("Got full buffer %s[%d], gpu[%d][%d]", output_buffer->buffer_name,
+    // INFO("Got full buffer {:s}[{:d}], gpu[{:d}][{:d}]", output_buffer->buffer_name,
     // output_buffer_precondition_id,
     //        device.get_gpu_id(), gpu_frame_id);
 

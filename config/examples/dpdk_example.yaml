@@ -1,0 +1,61 @@
+##########################################
+#
+# dpdk_example.yaml
+#
+# Example config for a simple DPDK setup, this config just captures packets from
+# one DPDK port (including all headers/footers), and puts them in a buffer
+# Nothing is done with the buffer other than printing the contents of the first
+# packet in each frame to screen.
+#
+# Note all frames must be the same size, set by `packet_size`
+#
+# Author: Andre Renard
+#
+##########################################
+
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: debug
+
+# Default buffer depth (number of frames in buffer)
+buffer_depth: 8
+
+# Default core assignments
+cpu_affinity: [0,1]
+
+packets_per_frame: 32768
+# Set this to the size of the packet plus Ethernet/IP/UDP headers
+packet_size: 4928
+
+# Buffers
+network_capture_buf:
+  kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: packets_per_frame * packet_size
+  numa_node: 0
+
+# See the dpdkCore class docs in dpdkCore.hpp for details
+# on the options here.
+dpdk:
+  kotekan_stage: dpdkCore
+  # Format is index = lcore (logical core), value = cpu core
+  lcore_cpu_map: [2]
+  master_lcore_cpu: 3
+  # Format is index = lcore, value = array of port IDs
+  # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
+  # and lcore 1 to service ports 2 and 3.
+  lcore_port_map:
+    - [0]
+  # One handler must be given per port.
+  handlers:
+    # This handler is mapped to port 0 which is being handled by lcore 0
+    - dpdk_handler: captureHandler
+      out_buf: network_capture_buf
+
+hexDump:
+  kotekan_stage: hexDump
+  in_buf: network_capture_buf
+  len: packet_size

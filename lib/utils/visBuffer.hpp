@@ -9,6 +9,7 @@
 
 #include "buffer.h"
 #include "chimeMetadata.h"
+#include "datasetManager.hpp"
 #include "visUtil.hpp"
 
 #include "gsl-lite.hpp"
@@ -42,13 +43,18 @@ struct visMetadata {
     timespec ctime;
     /// Nominal length of the frame in FPGA ticks
     uint64_t fpga_seq_length;
-    // Amount of data that actually went into the frame (in FPGA ticks)
+    /// Amount of data that actually went into the frame (in FPGA ticks)
     uint64_t fpga_seq_total;
+    /// The number of 2.56us samples flagged as containing RFI. NOTE: This value
+    /// might contain overlap with lost samples, as that counts missing samples
+    /// as well as RFI. For renormalization this value should NOT be used, use
+    /// lost samples (= @c fpga_seq_length - @c fpga_seq_total) instead.
+    uint64_t rfi_total;
 
     /// ID of the frequency bin
     uint32_t freq_id;
-    /// ID of the dataset (vis, gatedvisX ...), main vis dataset = 0
-    uint64_t dataset_id;
+    /// ID of the dataset
+    dset_id_t dataset_id;
 
     /// Number of elements for data in buffer
     uint32_t num_elements;
@@ -63,7 +69,7 @@ struct visMetadata {
  * @class visFrameView
  * @brief Provide a structured view of a visibility buffer.
  *
- * This class sets up a view on a visibillity buffer with the ability to
+ * This class sets up a view on a visibility buffer with the ability to
  * interact with the data and metadata. Structural parameters can only be set at
  * creation, everything else is returned as a reference or pointer so can be
  * modified at will.
@@ -265,10 +271,13 @@ public:
     /// The actual amount of data accumulated in FPGA ticks
     uint64_t& fpga_seq_total;
 
+    /// The number of lost samples due to RFI
+    uint64_t& rfi_total;
+
     /// A reference to the frequency ID.
     uint32_t& freq_id;
     /// A reference to the dataset ID.
-    uint64_t& dataset_id;
+    dset_id_t& dataset_id;
 
     /// View of the visibility data.
     const gsl::span<cfloat> vis;

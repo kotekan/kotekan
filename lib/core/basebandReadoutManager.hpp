@@ -9,11 +9,12 @@
 #ifndef BASEBAND_READOUT_MANAGER_HPP
 #define BASEBAND_READOUT_MANAGER_HPP
 
-#include "json.hpp"
+#include "SynchronizedQueue.hpp"
 
-#include <condition_variable>
-#include <deque>
+#include "gsl-lite.hpp"
+
 #include <forward_list>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -65,6 +66,61 @@ struct basebandDumpStatus {
     basebandDumpStatus::State state = State::WAITING;
     /// Description of the failure, when the state is ERROR
     std::string reason = "";
+    /// Time when the processing started (null if ``state`` is still WAITING)
+    std::shared_ptr<std::chrono::system_clock::time_point> started = 0;
+    /// Time when the processing finished (null if ``state`` is not DONE or ERROR)
+    std::shared_ptr<std::chrono::system_clock::time_point> finished = 0;
+};
+
+
+/**
+ * @struct basebandDumpData
+ * @brief A container for baseband data and metadata.
+ *
+ * @note This class does not own the underlying data buffer, but provides a view
+ *       (i.e., a `gsl::span`) to it. Users are responsible for managing the
+ *       memory storage.
+ *
+ * @author Kiyoshi Masui
+ */
+struct basebandDumpData {
+    /// Indicates the reason why data could not be read, if it is not `Ok`
+    enum class Status { Ok, TooLong, Late, ReserveFailed, Cancelled };
+
+    /// Constructor used to indicate error
+    basebandDumpData(Status);
+    /// Initialize the container with all parameters but does not fill in the data.
+    basebandDumpData(uint64_t event_id_, uint32_t freq_id_, uint32_t num_elements_,
+                     int64_t data_start_fpga_, uint64_t data_length_fpga_,
+                     timespec data_start_ctime_, const gsl::span<uint8_t>&);
+
+    //@{
+    /// Metadata.
+    const uint64_t event_id;
+    const uint32_t freq_id;
+    const uint32_t num_elements;
+    const int64_t data_start_fpga;
+    const uint64_t data_length_fpga;
+    const timespec data_start_ctime;
+    //@}
+    /// Data access. Array has length `num_elements * data_length_fpga` and is aligned on a 16-byte
+    /// boundary.
+    const gsl::span<uint8_t> data;
+    /// Original size of the write reservation, regardless of the boundary
+    const size_t reservation_length;
+
+    /// Status::Ok if the `data` is valid, or the reason why it was not read out
+    const Status status;
+
+    /**
+     * @brief Narrows the span to align it on a 16 byte boundary.
+     *
+     * Helper for basebandDumpData constructor.
+     *
+     * @note The original span should be oversized by at least 15 bytes, since that's how much can
+     * be lost by aligning.
+     */
+    static gsl::span<uint8_t> span_from_length_aligned(const gsl::span<uint8_t>&);
 };
 
 
@@ -74,7 +130,15 @@ struct basebandDumpStatus {
  */
 class basebandReadoutManager {
 public:
+    // convenience type alias for keeping a status and mutex required for modifying it
     using requestStatusMutex = std::pair<basebandDumpStatus&, std::mutex&>;
+
+    // convenience type alias for a request ready to be written to a file, together with its
+    // read-out data
+    using ReadyRequest = std::pair<basebandDumpStatus&, basebandDumpData>;
+
+    // convenience type alias for a ReadyRequest and mutex required for modifying it
+    using ReadyRequestMutex = std::pair<ReadyRequest, std::mutex&>;
 
     /**
      * @brief Adds a new baseband dump request to the `requests` queue and
@@ -103,6 +167,17 @@ public:
     std::unique_ptr<basebandReadoutManager::requestStatusMutex> get_next_waiting_request();
 
     /**
+     * @brief Adds a baseband dump request to the `ready` queue and
+     * notifier threads waiting on `has_next_ready_request`
+     */
+    void ready(const ReadyRequest&);
+
+    /**
+     * @brief Interrupts all threads blocked on "waiting" and "ready" dump request queues
+     */
+    void stop();
+
+    /**
      * @brief Tries to get the next dump request whose data is ready for writing
      *
      * This is the element in the `requests` pointed to by `waiting`, unless
@@ -127,7 +202,7 @@ public:
      *        elements of the request object are being accessed.
      *
      */
-    basebandReadoutManager::requestStatusMutex get_next_ready_request();
+    std::unique_ptr<ReadyRequestMutex> get_next_ready_request();
 
     /// Returns a unique pointer to the copy of the event status for `event_id`,
     /// or nullptr if not known
@@ -139,9 +214,9 @@ public:
 private:
     /**
      * Sequence of baseband dump requests and their status. New events are
-     * appended at the end. Events are never removed from the queue, they are
+     * appended at the head. Events are never removed from the queue, they are
      * passed to worker threads by a non-owning pointer, and their state is
-     * updated in-place. Worker threads having a pointer into the elements is
+     * updated in-place. Worker threads' having a pointer into the elements is
      * safe as long as the readout manager is guaranteed to outlive them, which
      * it will be as the manager is itself owned by the
      * `basebandApiManager`, and is created in the main thread.
@@ -150,39 +225,30 @@ private:
 
     /**
      * `requests`-updating lock. Held only while elements are added to the queue
-     * or internal pointers (`waiting`, `tail`) moved around.
+     * or internal pointers (`readout_current`, `writeout_current`) moved around.
      */
     std::mutex requests_mtx;
 
-    /**
-     * Condition used to notify that there is a valid new request in `requests`.
-     */
-    std::condition_variable has_request;
+    /// requests that have been received by the baseband API, but that the readout thread hasn't
+    /// processed yet
+    SynchronizedQueue<std::reference_wrapper<basebandDumpStatus>> waiting_queue;
 
-    using iterator = std::forward_list<basebandDumpStatus>::iterator;
-
-    /**
-     * Pointer just before the next unprocessed request (i.e., the least
-     * recently added element with `state` "waiting") in `requests`.
-     */
-    iterator waiting = requests.before_begin();
-    /// Lock to hold while accessing or updating the `waiting` element.
-    std::mutex waiting_mtx;
+    /// requests that have been processed by the readout thread, and are now ready to be written out
+    SynchronizedQueue<ReadyRequest> ready_queue;
 
     /**
-     * Pointer the element in `requests` whose data are in the process of being
-     * written (by the write thread of the readout stage).
+     * Pointer to the element in `requests` that the readout thread is currently working on
      */
-    iterator current = requests.before_begin();
-    /// Lock to hold while accessing or updating the `current` element.
-    std::mutex current_mtx;
+    basebandDumpStatus* readout_current = nullptr;
+    /// Lock to hold while accessing or updating the `readout_current` element.
+    std::mutex readout_mtx;
 
     /**
-     * Pointer to the last (most recently added) event in `requests`. We need
-     * this to append new elements without traversing the queue from the
-     * beginning.
+     * Pointer to the element in `requests` that the write thread is currently working on
      */
-    iterator tail = requests.before_begin();
+    basebandDumpStatus* writeout_current = nullptr;
+    /// Lock to hold while accessing or updating the `writeout_current` element.
+    std::mutex writeout_mtx;
 };
 
 } // namespace kotekan

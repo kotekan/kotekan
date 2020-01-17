@@ -20,7 +20,8 @@ hsaCommand::hsaCommand(Config& config_, const string& unique_name_, bufferContai
     set_log_level(s_log_level);
     set_log_prefix(unique_name);
 
-    signals = (hsa_signal_t*)hsa_host_malloc(_gpu_buffer_depth * sizeof(hsa_signal_t));
+    signals = (hsa_signal_t*)hsa_host_malloc(_gpu_buffer_depth * sizeof(hsa_signal_t),
+                                             device.get_gpu_numa_node());
     assert(signals != nullptr);
     memset(signals, 0, _gpu_buffer_depth * sizeof(hsa_signal_t));
 
@@ -29,7 +30,8 @@ hsaCommand::hsaCommand(Config& config_, const string& unique_name_, bufferContai
     }
 
     // Not everyone needs this, maybe move out of constructor
-    kernel_args = (void**)hsa_host_malloc(_gpu_buffer_depth * sizeof(void*));
+    kernel_args =
+        (void**)hsa_host_malloc(_gpu_buffer_depth * sizeof(void*), device.get_gpu_numa_node());
     assert(kernel_args != nullptr);
 
     // Load the kernel if there is one.
@@ -51,10 +53,10 @@ hsaCommand::~hsaCommand() {
     for (int i = 0; i < _gpu_buffer_depth; ++i) {
         // DEBUG("Free kernel arg");
         hsa_status = hsa_memory_free(kernel_args[i]);
-        assert(hsa_status == HSA_STATUS_SUCCESS);
+        HSA_CHECK(hsa_status);
         // DEBUG("Free signal");
         hsa_status = hsa_signal_destroy(signals[i]);
-        assert(hsa_status == HSA_STATUS_SUCCESS);
+        HSA_CHECK(hsa_status);
     }
 
     // DEBUG("Free kernel args");
@@ -70,7 +72,7 @@ void hsaCommand::allocate_kernel_arg_memory(int max_size) {
     for (int i = 0; i < _gpu_buffer_depth; ++i) {
 
         hsa_status = hsa_memory_allocate(device.get_kernarg_region(), max_size, &kernel_args[i]);
-        assert(hsa_status == HSA_STATUS_SUCCESS);
+        HSA_CHECK(hsa_status);
     }
 }
 
@@ -98,10 +100,7 @@ void hsaCommand::finalize_frame(int frame_id) {
         return;
     }
 
-    // TODO Common HSA status handler is needed.
-    if (hsa_status != HSA_STATUS_SUCCESS) {
-        throw std::runtime_error("HSA Profiling call failed");
-    }
+    HSA_CHECK(hsa_status);
 }
 
 uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {
@@ -109,7 +108,7 @@ uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {
     hsa_status_t hsa_status;
 
     // Open file.
-    INFO("Loading %s %s", file_name.c_str(), kernel_name.c_str());
+    INFO("Loading {:s} {:s}", file_name, kernel_name);
     std::ifstream file(file_name, std::ios::in | std::ios::binary);
     assert(file.is_open() && file.good());
 
@@ -132,47 +131,45 @@ uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {
     hsa_code_object_t code_object = {0};
     hsa_status =
         hsa_code_object_deserialize((void*)raw_code_object, code_object_size, NULL, &code_object);
-    assert(HSA_STATUS_SUCCESS == hsa_status);
+    HSA_CHECK(hsa_status);
     assert(0 != code_object.handle);
 
     // Create executable.
     hsa_executable_t hsaExecutable;
     hsa_status = hsa_executable_create(HSA_PROFILE_FULL, HSA_EXECUTABLE_STATE_UNFROZEN, NULL,
                                        &hsaExecutable);
-    assert(HSA_STATUS_SUCCESS == hsa_status);
+    HSA_CHECK(hsa_status);
 
     // Load code object.
     hsa_status =
         hsa_executable_load_code_object(hsaExecutable, device.get_gpu_agent(), code_object, NULL);
-    assert(HSA_STATUS_SUCCESS == hsa_status);
+    HSA_CHECK(hsa_status);
 
     // Freeze executable.
     hsa_status = hsa_executable_freeze(hsaExecutable, NULL);
-    assert(HSA_STATUS_SUCCESS == hsa_status);
+    HSA_CHECK(hsa_status);
 
     // Get symbol handle.
     hsa_executable_symbol_t kernelSymbol;
     hsa_status = hsa_executable_get_symbol(hsaExecutable, NULL, kernel_name.c_str(),
                                            device.get_gpu_agent(), 0, &kernelSymbol);
-    assert(HSA_STATUS_SUCCESS == hsa_status);
+    HSA_CHECK(hsa_status);
 
     // Get code handle.
     uint64_t codeHandle;
     hsa_status = hsa_executable_symbol_get_info(
         kernelSymbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &codeHandle);
-    assert(HSA_STATUS_SUCCESS == hsa_status);
+    HSA_CHECK(hsa_status);
 
     uint32_t group_segment_size;
     hsa_status = hsa_executable_symbol_get_info(
         kernelSymbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_GROUP_SEGMENT_SIZE, &group_segment_size);
-    INFO("Kernel %s:%s group_segment_size %i", file_name.c_str(), kernel_name.c_str(),
-         group_segment_size);
+    INFO("Kernel {:s}:{:s} group_segment_size {:d}", file_name, kernel_name, group_segment_size);
 
     uint32_t priv_segment_size;
     hsa_status = hsa_executable_symbol_get_info(
         kernelSymbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_PRIVATE_SEGMENT_SIZE, &priv_segment_size);
-    INFO("Kernel %s:%s group_segment_size %i", file_name.c_str(), kernel_name.c_str(),
-         priv_segment_size);
+    INFO("Kernel {:s}:{:s} group_segment_size {:d}", file_name, kernel_name, priv_segment_size);
 
     // Free raw code object memory.
     free((void*)raw_code_object);

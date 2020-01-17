@@ -52,10 +52,11 @@ visFrameView::visFrameView(Buffer* buf, int frame_id, uint32_t n_elements, uint3
     time(std::tie(_metadata->fpga_seq_start, _metadata->ctime)),
     fpga_seq_length(_metadata->fpga_seq_length),
     fpga_seq_total(_metadata->fpga_seq_total),
+    rfi_total(_metadata->rfi_total),
     freq_id(_metadata->freq_id),
     dataset_id(_metadata->dataset_id),
 
-    // Bind the regions of the buffer to spans and refernces on the view
+    // Bind the regions of the buffer to spans and references on the view
     vis(bind_span<cfloat>(_frame, buffer_layout.second[visField::vis])),
     weight(bind_span<float>(_frame, buffer_layout.second[visField::weight])),
     flags(bind_span<float>(_frame, buffer_layout.second[visField::flags])),
@@ -79,8 +80,8 @@ visFrameView::visFrameView(Buffer* buf, int frame_id, uint32_t n_elements, uint3
     if (required_size > (uint32_t)buffer->frame_size) {
 
         std::string s =
-            fmt::format("Visibility buffer [{}] too small. Must be a minimum of\
-             {} bytes for elements={}, products={}, ev={}",
+            fmt::format(fmt("Visibility buffer [{:s}] too small. Must be a minimum of {:d} bytes "
+                            "for elements={:d}, products={:d}, ev={:d}"),
                         buffer->buffer_name, required_size, n_elements, n_prod, n_eigenvectors);
 
         throw std::runtime_error(s);
@@ -103,10 +104,11 @@ visFrameView::visFrameView(Buffer* buf, int frame_id, visFrameView frame_to_copy
 
 std::string visFrameView::summary() const {
 
-    auto tm = gmtime(&(std::get<1>(time).tv_sec));
+    struct tm* tm = std::gmtime(&(std::get<1>(time).tv_sec));
 
-    string s = fmt::format("visBuffer[name={}]: freq={} dataset={} fpga_start={} time={:%F %T}",
-                           buffer->buffer_name, freq_id, dataset_id, std::get<0>(time), *tm);
+    string s =
+        fmt::format("visBuffer[name={:s}]: freq={:d} dataset={} fpga_start={:d} time={:%F %T}",
+                    buffer->buffer_name, freq_id, dataset_id, std::get<0>(time), *tm);
 
     return s;
 }
@@ -119,7 +121,7 @@ visFrameView visFrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer*
     // Buffer sizes must match exactly
     if (buf_src->frame_size != buf_dest->frame_size) {
         std::string msg =
-            fmt::format("Buffer sizes must match for direct copy (src %i != dest %i).",
+            fmt::format(fmt("Buffer sizes must match for direct copy (src {:d} != dest {:d})."),
                         buf_src->frame_size, buf_dest->frame_size);
         throw std::runtime_error(msg);
     }
@@ -128,7 +130,7 @@ visFrameView visFrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer*
     if (buf_src->metadata[frame_id_src]->metadata_size
         != buf_dest->metadata[frame_id_dest]->metadata_size) {
         std::string msg =
-            fmt::format("Metadata sizes must match for direct copy (src %i != dest %i).",
+            fmt::format(fmt("Metadata sizes must match for direct copy (src {:d} != dest {:d})."),
                         buf_src->metadata[frame_id_src]->metadata_size,
                         buf_dest->metadata[frame_id_dest]->metadata_size);
         throw std::runtime_error(msg);
@@ -166,6 +168,7 @@ void visFrameView::copy_metadata(visFrameView frame_to_copy) {
     _metadata->fpga_seq_start = frame_to_copy.metadata()->fpga_seq_start;
     _metadata->fpga_seq_length = frame_to_copy.metadata()->fpga_seq_length;
     _metadata->fpga_seq_total = frame_to_copy.metadata()->fpga_seq_total;
+    _metadata->rfi_total = frame_to_copy.metadata()->rfi_total;
     _metadata->ctime = frame_to_copy.metadata()->ctime;
     _metadata->freq_id = frame_to_copy.metadata()->freq_id;
     _metadata->dataset_id = frame_to_copy.metadata()->dataset_id;
@@ -179,7 +182,7 @@ void visFrameView::copy_data(visFrameView frame_to_copy, const std::set<visField
 
     auto check_elements = [&]() {
         if (num_elements != frame_to_copy.num_elements) {
-            auto msg = fmt::format("Number of inputs don't match for copy [src={}; dest={}].",
+            auto msg = fmt::format(fmt("Number of inputs don't match for copy [src={}; dest={}]."),
                                    frame_to_copy.num_elements, num_elements);
             throw std::runtime_error(msg);
         }
@@ -187,15 +190,16 @@ void visFrameView::copy_data(visFrameView frame_to_copy, const std::set<visField
 
     auto check_prod = [&]() {
         if (num_elements != frame_to_copy.num_elements) {
-            auto msg = fmt::format("Number of products don't match for copy [src={}; dest={}].",
-                                   frame_to_copy.num_prod, num_prod);
+            auto msg =
+                fmt::format(fmt("Number of products don't match for copy [src={}; dest={}]."),
+                            frame_to_copy.num_prod, num_prod);
             throw std::runtime_error(msg);
         }
     };
 
     auto check_ev = [&]() {
         if (num_ev != frame_to_copy.num_ev) {
-            auto msg = fmt::format("Number of ev don't match for copy [src={}; dest={}].",
+            auto msg = fmt::format(fmt("Number of ev don't match for copy [src={}; dest={}]."),
                                    frame_to_copy.num_ev, num_ev);
             throw std::runtime_error(msg);
         }
@@ -256,7 +260,7 @@ struct_layout<visField> visFrameView::calculate_buffer_layout(uint32_t num_eleme
 void visFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata) {
 
     // Set to zero as there's no information in chimeMetadata about it.
-    dataset_id = 0;
+    dataset_id = dset_id_t::null;
 
     // Set the frequency index from the stream id of the metadata
     stream_id_t stream_id = extract_stream_id(chime_metadata->stream_ID);

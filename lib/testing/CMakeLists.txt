@@ -1,11 +1,12 @@
-cmake_minimum_required( VERSION 2.8 )
 project( libkotekan_testing )
 
 set ( KOTEKAN_TESTING_SOURCES
       chimeMetadataDump.cpp
       constDataCheck.cpp
-      fakeGpuBuffer.cpp
-      fakeVis.cpp
+      fakeGpu.cpp
+      fakeGpuPattern.cpp
+      FakeVis.cpp
+      FakeVisPattern.cpp
       gpuBeamformSimulate.cpp
       gpuBeamformPulsarSimulate.cpp
       gpuSimulate.cpp
@@ -16,6 +17,7 @@ set ( KOTEKAN_TESTING_SOURCES
       testDataGen.cpp
       testDataGenQuad.cpp
       testDataGenFloat.cpp
+      TestDropFrames.cpp
       test_data_generation.c
       pulsarSimProcess.cpp
       visNoise.cpp

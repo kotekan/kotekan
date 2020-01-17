@@ -2,48 +2,72 @@ pipeline {
   agent any
   options {
     timeout(time: 1, unit: 'HOURS')
-    disableConcurrentBuilds()
+    parallelsAlwaysFailFast()
+  }
+  environment {
+    CCACHE_NOHASHDIR = 1
+    CCACHE_BASEDIR = "/mnt/data/jenkins/workspace"
   }
   stages {
+    stage('Pre build ccache stats') {
+      steps {
+        sh '''ccache -s'''
+      }
+    }
     stage('Build') {
       parallel {
         stage('Build kotekan without hardware specific options') {
           steps {
             sh '''cd build/
                   cmake -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
-                  -DOPENBLAS_PATH=/opt/OpenBLAS/build/ -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
-                  -DUSE_OMP=ON -DBOOST_TESTS=ON ..
+                  -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
+                  -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
                   make -j 4'''
           }
         }
         stage('Build CHIME kotekan') {
           steps {
-            sh '''mkdir build_chime
-                  cd build_chime/
-                  cmake -DRTE_SDK=/opt/dpdk-stable-16.11.4/ \
+            sh '''mkdir -p chime-build
+                  cd chime-build
+                  cmake -DRTE_SDK=/opt/dpdk \
                   -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON \
                   -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
-                  -DOPENBLAS_PATH=/opt/OpenBLAS/build/ -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
-                  -DUSE_OMP=ON -DBOOST_TESTS=ON ..
+                  -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
+                  -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+                  make -j 4'''
+          }
+        }
+        stage('Build CHIME kotekan with Clang') {
+          steps {
+            sh '''mkdir -p chime-build-clang
+                  cd chime-build-clang
+                  export CC=clang
+                  export CXX=clang++
+                  cmake -DRTE_SDK=/opt/dpdk \
+                  -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON \
+                  -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
+                  -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
+                  -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
                   make -j 4'''
           }
         }
         stage('Build base kotekan') {
           steps {
-            sh '''mkdir build_base
+            sh '''mkdir -p build_base
                   cd build_base
-                  cmake ..
+                  cmake -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
                   make -j 4'''
           }
         }
-        /* stage('Build MacOS kotekan') {
+        stage('Build MacOS kotekan') {
           agent {label 'macos'}
           steps {
             sh '''export PATH=${PATH}:/usr/local/bin/
-                  mkdir build_base
+                  source ~/.bash_profile
+                  mkdir -p build_base
                   cd build_base/
-                  cmake ..
-                  make -j 4
+                  cmake -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+                  make -j
                   cd ..
                   mkdir build_full
                   cd build_full/
@@ -51,38 +75,60 @@ pipeline {
                         -DUSE_LAPACK=ON -DBLAZE_PATH=/usr/local/opt/blaze \
                         -DOPENBLAS_PATH=/usr/local/opt/OpenBLAS \
                         -DUSE_HDF5=ON -DHIGHFIVE_PATH=/usr/local/opt/HighFive \
-                        -DCOMPILE_DOCS=ON -DUSE_OPENCL=ON ..
-                  make -j 4'''
+                        -DCOMPILE_DOCS=ON -DUSE_OPENCL=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+                  make -j'''
           }
-        } */
+        }
         stage('Build docs') {
           steps {
             sh '''export PATH=${PATH}:/var/lib/jenkins/.local/bin/
-                  mkdir build-docs
+                  mkdir -p build-docs
                   cd build-docs/
-                  cmake -DCOMPILE_DOCS=ON -DPLANTUML_PATH=/opt/plantuml/ ..
-                  cd docs/
-                  make -j 4'''
+                  cmake -DCOMPILE_DOCS=ON -DPLANTUML_PATH=/opt/plantuml ..
+                  make doc
+                  make sphinx'''
           }
         }
         stage('Check code formatting') {
           steps {
-            sh '''mkdir build-check-format
+            sh '''mkdir -p build-check-format
                   cd build-check-format/
                   cmake ..
                   make clang-format
-                  git diff --exit-code'''
+                  git diff --exit-code
+                  black --check --exclude docs ..'''
+          }
+        }
+        stage('Install comet') {
+          steps {
+            catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+              sh '''python3.7 -m pip install --user git+https://github.com/chime-experiment/comet.git@master'''
+            }
           }
         }
       }
     }
-    stage('Unit Tests') {
+    stage('Post build ccache stats') {
       steps {
-        sh '''cd tests/
-              PYTHONPATH=../python/ pytest -s -vvv
-              cd ../build/tests/
-              PYTHONPATH=../python/ pytest -s -vvv'''
+        sh '''ccache -s'''
       }
     }
+    stage('Unit Tests') {
+        parallel {
+            stage('Python Unit Tests') {
+              steps {
+                sh '''cd tests/
+                      PATH=~/.local/bin:$PATH PYTHONPATH=../python/ python3 -m pytest -n auto -x -vvv -m "not serial"
+                      PATH=~/.local/bin:$PATH PYTHONPATH=../python/ python3 -m pytest -x -vvv -m serial'''
+              }
+            }
+            stage('Boost Unit Tests') {
+              steps {
+                sh '''cd build/tests/
+                      python3 -m pytest -x -vvv'''
+              }
+            }
+         }
+     }
   }
 }

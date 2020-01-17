@@ -1,15 +1,20 @@
 #include "gateSpec.hpp"
 
+#include "kotekanLogging.hpp"
+
 
 REGISTER_GATESPEC(pulsarSpec, "pulsar");
 REGISTER_GATESPEC(uniformSpec, "uniform");
 
 
-gateSpec::gateSpec(const std::string& name) : _name(name) {}
+gateSpec::gateSpec(const std::string& name, const kotekan::logLevel log_level) : _name(name) {
+    set_log_level(log_level);
+}
 
 
-std::unique_ptr<gateSpec> gateSpec::create(const std::string& type, const std::string& name) {
-    return FACTORY(gateSpec)::create_unique(type, name);
+std::unique_ptr<gateSpec> gateSpec::create(const std::string& type, const std::string& name,
+                                           const kotekan::logLevel&& log_level) {
+    return FACTORY(gateSpec)::create_unique(type, name, std::move(log_level));
 }
 
 
@@ -21,12 +26,12 @@ bool pulsarSpec::update_spec(nlohmann::json& json) {
     try {
         _enabled = json.at("enabled").get<bool>();
     } catch (std::exception& e) {
-        WARN("Failure reading 'enabled' from update: %s", e.what());
+        WARN("Failure reading 'enabled' from update: {:s}", e.what());
         return false;
     }
 
     if (!enabled()) {
-        INFO("Disabling gated dataset %s", name().c_str());
+        INFO("Disabling gated dataset {:s}", name());
         return true;
     }
 
@@ -41,16 +46,16 @@ bool pulsarSpec::update_spec(nlohmann::json& json) {
         _seg = json.at("segment").get<float>();
         _pulse_width = json.at("pulse_width").get<float>();
     } catch (std::exception& e) {
-        WARN("Failure reading pulsar parameters from update: %s", e.what());
+        WARN("Failure reading pulsar parameters from update: {:s}", e.what());
         return false;
     }
     try {
         _polycos = SegmentedPolyco(_rot_freq, _dm, _seg, _tmid, _phase_ref, _coeff);
     } catch (std::exception& e) {
-        WARN("Could not generate polyco from config parameters: %s", e.what());
+        WARN("Could not generate polyco from config parameters: {:s}", e.what());
         return false;
     }
-    INFO("Dataset %s now gating on pulsar %s", name().c_str(), _pulsar_name.c_str());
+    INFO("Dataset {:s} now gating on pulsar {:s}", name(), _pulsar_name);
 
     return true;
 }
@@ -98,7 +103,8 @@ json pulsarSpec::to_dm_json() const {
 }
 
 
-uniformSpec::uniformSpec(const std::string& name) : gateSpec(name) {
+uniformSpec::uniformSpec(const std::string& name, const kotekan::logLevel log_level) :
+    gateSpec(name, log_level) {
     _enabled = true;
 }
 

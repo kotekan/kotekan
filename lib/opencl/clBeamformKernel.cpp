@@ -27,8 +27,8 @@ clBeamformKernel::clBeamformKernel(Config& config, const string& unique_name,
     int remap_size = _product_remap.size();
 
     if (remap_size != _num_elements) {
-        ERROR("The remap array must have the same size as the number of elements. array size %d, "
-              "num_elements %d",
+        ERROR("The remap array must have the same size as the number of elements. array size {:d}, "
+              "num_elements {:d}",
               remap_size, _num_elements);
     }
     _inverse_product_remap.reserve(remap_size);
@@ -76,7 +76,7 @@ void clBeamformKernel::build() {
     CHECK_CL_ERROR(clSetKernelArg(kernel, 4, sizeof(cl_mem), (void*)&device_mask));
 
     float scale_factor = _scale_factor;
-    INFO("setup_clBeamformKernel_worksize, setting scale factor to %f", scale_factor);
+    INFO("setup_clBeamformKernel_worksize, setting scale factor to {:f}", scale_factor);
     CHECK_CL_ERROR(clSetKernelArg(kernel, 5, sizeof(float), &scale_factor));
 
     // Beamforming kernel global and local work space sizes.

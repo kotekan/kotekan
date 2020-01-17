@@ -27,7 +27,9 @@ visDrop::visDrop(Config& config, const string& unique_name, bufferContainer& buf
     register_producer(buf_out, unique_name.c_str());
 
     drop_freqs = config.get_default<std::vector<uint32_t>>(unique_name, "freq", {});
-    INFO("Dropping %d frequencies.", drop_freqs.size());
+    INFO("Dropping {:d} frequencies.", drop_freqs.size());
+    frac_rfi = config.get_default<float>(unique_name, "frac_rfi", 0.);
+    frac_lost = config.get_default<float>(unique_name, "frac_lost", 0.);
 }
 
 void visDrop::main_thread() {
@@ -50,10 +52,17 @@ void visDrop::main_thread() {
 
         // Check if this frame should be dropped because of its freq_id.
         if (std::find(drop_freqs.begin(), drop_freqs.end(), frame.freq_id) != drop_freqs.end()) {
-            DEBUG("Dropping frame %d with frequency ID %d.", frame_id_in, frame.freq_id);
-            mark_frame_empty(buf_in, unique_name.c_str(), frame_id_in);
-            frame_id_in = (frame_id_in + 1) % buf_in->num_frames;
-            continue;
+            if (frac_lost != 0.) {
+                DEBUG("Setting lost samples for frame {:d} with frequency ID {:d}.", frame_id_in,
+                      frame.freq_id);
+                frame.fpga_seq_total = (uint64_t)(frame.fpga_seq_length * (1 - frac_lost));
+                frame.rfi_total = (uint64_t)(frame.fpga_seq_length * frac_rfi);
+            } else {
+                DEBUG("Dropping frame {:d} with frequency ID {:d}.", frame_id_in, frame.freq_id);
+                mark_frame_empty(buf_in, unique_name.c_str(), frame_id_in);
+                frame_id_in = (frame_id_in + 1) % buf_in->num_frames;
+                continue;
+            }
         }
 
         // Mark output frame full and input frame empty

@@ -8,7 +8,7 @@ void parse_chime_host_name(int& my_rack, int& my_node, int& my_nos, int& my_node
     gethostname(my_host_name, sizeof(my_host_name));
 
     if (my_host_name[0] != 'c' && my_host_name[3] != 'g') {
-        // INFO("Not a valid name \n");
+        // INFO_NON_OO("Not a valid name \n");
         throw std::runtime_error("Invalid host name");
     }
 

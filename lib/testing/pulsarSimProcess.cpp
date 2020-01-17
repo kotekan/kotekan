@@ -17,10 +17,6 @@
 
 using std::string;
 
-// TODO Where do these live?
-#define likely(x) __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
-
 #define samples_in_frame 3125
 #define num_packet 16
 
@@ -164,7 +160,7 @@ void pulsarSimProcess::parse_host_name() {
     for (int i = 0; i < number_of_subnets; i++) {
         temp_ip[i] << "10." << i + 15 << "." << nos + rack << ".1" << node;
         my_ip_address[i] = temp_ip[i].str();
-        INFO("%s ", my_ip_address[i].c_str());
+        INFO("{:s} ", my_ip_address[i]);
     }
 
     if (rack < 7)
