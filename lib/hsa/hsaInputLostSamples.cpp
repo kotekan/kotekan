@@ -1,9 +1,10 @@
-#include "Config.hpp"              // for Config
-#include "buffer.h"                // for Buffer, mark_frame_empty, wait_for_full_frame
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "gpuCommand.hpp"          // for gpuCommandType, gpuCommandType::COPY_IN
-#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
 #include "hsaInputLostSamples.hpp"
+
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for Buffer, mark_frame_empty, wait_for_full_frame
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_IN
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
 using kotekan::bufferContainer;
 using kotekan::Config;

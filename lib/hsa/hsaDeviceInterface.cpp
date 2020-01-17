@@ -1,14 +1,15 @@
-#include <assert.h>            // for assert
-
-#include "hsa/hsa.h"           // for hsa_agent_get_info, hsa_status_t, hsa_signal_t, ::HSA_STAT...
-#include "hsa/hsa_ext_amd.h"   // for hsa_amd_memory_async_copy, hsa_amd_agents_allow_access
-#include "hsaBase.h"           // for HSA_CHECK
 #include "hsaDeviceInterface.hpp"
-#include "kotekanLogging.hpp"  // for DEBUG, INFO, INFO_NON_OO
+
+#include "hsa/hsa.h"          // for hsa_agent_get_info, hsa_status_t, hsa_signal_t, ::HSA_STAT...
+#include "hsa/hsa_ext_amd.h"  // for hsa_amd_memory_async_copy, hsa_amd_agents_allow_access
+#include "hsaBase.h"          // for HSA_CHECK
+#include "kotekanLogging.hpp" // for DEBUG, INFO, INFO_NON_OO
+
+#include <assert.h> // for assert
 
 namespace kotekan {
 class Config;
-}  // namespace kotekan
+} // namespace kotekan
 
 using kotekan::Config;
 

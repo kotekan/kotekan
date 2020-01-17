@@ -1,20 +1,22 @@
-#include <sys/time.h>              // for timeval
-#include <time.h>                  // for timespec
-
-#include "buffer.h"                // for Buffer, mark_frame_empty, register_consumer, wait_for_...
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chimeMetadata.h"         // for atomic_add_lost_timesamples, get_first_packet_recv_time
-#include "fmt.hpp"                 // for format, fmt
-#include "gpsTime.h"               // for compute_gps_time
-#include "gpuCommand.hpp"          // for gpuCommandType, gpuCommandType::COPY_OUT
-#include "hsaCommand.hpp"          // for REGISTER_HSA_COMMAND, _factory_aliashsaCommand, hsaCom...
-#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
 #include "hsaOutputData.hpp"
-#include "visUtil.hpp"             // for double_to_tv, tv_to_double
+
+#include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_for_...
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chimeMetadata.h"        // for atomic_add_lost_timesamples, get_first_packet_recv_time
+#include "gpsTime.h"              // for compute_gps_time
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_OUT
+#include "hsaCommand.hpp"         // for REGISTER_HSA_COMMAND, _factory_aliashsaCommand, hsaCom...
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "visUtil.hpp"            // for double_to_tv, tv_to_double
+
+#include "fmt.hpp" // for format, fmt
+
+#include <sys/time.h> // for timeval
+#include <time.h>     // for timespec
 
 namespace kotekan {
 class Config;
-}  // namespace kotekan
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

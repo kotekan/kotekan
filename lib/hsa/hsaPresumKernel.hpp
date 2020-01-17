@@ -1,17 +1,17 @@
 #ifndef HSA_PRESUM_KERNEL_H
 #define HSA_PRESUM_KERNEL_H
 
-#include <stdint.h>                // for int32_t
-#include <string>                  // for string
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaSubframeCommand.hpp" // for hsaSubframeCommand
 
-#include "hsa/hsa.h"               // for hsa_signal_t
-#include "hsaSubframeCommand.hpp"  // for hsaSubframeCommand
+#include <stdint.h> // for int32_t
+#include <string>   // for string
 
 class hsaDeviceInterface;
 namespace kotekan {
 class Config;
 class bufferContainer;
-}  // namespace kotekan
+} // namespace kotekan
 
 class hsaPresumKernel : public hsaSubframeCommand {
 public:

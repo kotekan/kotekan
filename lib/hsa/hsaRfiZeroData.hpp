@@ -6,20 +6,21 @@
 #ifndef HSA_RFI_ZERO_DATA_H
 #define HSA_RFI_ZERO_DATA_H
 
-#include <stdint.h>        // for uint32_t, int32_t
-#include <mutex>           // for mutex
-#include <string>          // for string
+#include "hsa/hsa.h"      // for hsa_signal_t
+#include "hsaCommand.hpp" // for hsaCommand
 
-#include "hsa/hsa.h"       // for hsa_signal_t
-#include "hsaCommand.hpp"  // for hsaCommand
-#include "json.hpp"        // for json
+#include "json.hpp" // for json
+
+#include <mutex>    // for mutex
+#include <stdint.h> // for uint32_t, int32_t
+#include <string>   // for string
 
 class hsaDeviceInterface;
 
 namespace kotekan {
 class Config;
 class bufferContainer;
-}  // namespace kotekan
+} // namespace kotekan
 struct Buffer;
 
 /*

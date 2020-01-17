@@ -6,20 +6,21 @@
 #ifndef HSA_RFI_TIME_SUM_H
 #define HSA_RFI_TIME_SUM_H
 
-#include <stdint.h>        // for uint32_t
-#include <string>          // for string
-#include <vector>          // for vector
+#include "hsa/hsa.h"      // for hsa_signal_t
+#include "hsaCommand.hpp" // for hsaCommand
 
-#include "hsa/hsa.h"       // for hsa_signal_t
-#include "hsaCommand.hpp"  // for hsaCommand
-#include "json.hpp"        // for json
+#include "json.hpp" // for json
+
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 class hsaDeviceInterface;
 
 namespace kotekan {
 class Config;
 class bufferContainer;
-}  // namespace kotekan
+} // namespace kotekan
 
 /*
  * @class hsaRfiTimeSum

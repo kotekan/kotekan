@@ -1,8 +1,8 @@
 #ifndef HSA_EVENT_CONTAINER_H
 #define HSA_EVENT_CONTAINER_H
 
-#include "gpuEventContainer.hpp"  // for gpuEventContainer
-#include "hsa/hsa.h"              // for hsa_signal_t
+#include "gpuEventContainer.hpp" // for gpuEventContainer
+#include "hsa/hsa.h"             // for hsa_signal_t
 
 class hsaEventContainer final : public gpuEventContainer {
 

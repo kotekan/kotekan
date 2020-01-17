@@ -1,19 +1,19 @@
 #ifndef HSA_ASYNC_COPY_GAIN_H
 #define HSA_ASYNC_COPY_GAIN_H
 
-#include <stdint.h>        // for int32_t
-#include <mutex>           // for mutex
-#include <string>          // for string
-#include <vector>          // for vector
+#include "hsa/hsa.h"      // for hsa_signal_t
+#include "hsaCommand.hpp" // for hsaCommand
 
-#include "hsa/hsa.h"       // for hsa_signal_t
-#include "hsaCommand.hpp"  // for hsaCommand
+#include <mutex>    // for mutex
+#include <stdint.h> // for int32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 class hsaDeviceInterface;
 namespace kotekan {
 class Config;
 class bufferContainer;
-}  // namespace kotekan
+} // namespace kotekan
 
 class hsaAsyncCopyGain : public hsaCommand {
 public:

@@ -1,33 +1,34 @@
 #include "EigenVisIter.hpp"
 
-#include <blaze/Blaze.h>          // for DynamicMatrix, band, HermitianMatrix, DynamicVector
-#include <cblas.h>                // for openblas_set_num_threads
-#include <algorithm>              // for min
-#include <atomic>                 // for atomic_bool
-#include <complex>                // for complex
-#include <cstdint>                // for uint32_t, int32_t
-#include <functional>             // for _Bind_helper<>::type, bind, function
-#include <iostream>               // for basic_ostream::operator<<, operator<<, basic_ostream<>:...
-#include <memory>                 // for make_unique
-#include <stdexcept>              // for runtime_error
-#include <tuple>                  // for tie, tuple
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for operator!=
+#include "LinearAlgebra.hpp"     // for EigConvergenceStats, eigen_masked_subspace, to_blaze_herm
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for allocate_new_metadata_object, mark_frame_empty, mark_fr...
+#include "datasetState.hpp"      // for eigenvalueState, state_uptr
+#include "kotekanLogging.hpp"    // for DEBUG
+#include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
+#include "visBuffer.hpp"         // for visFrameView, visField, visField::erms, visField::eval
+#include "visUtil.hpp"           // for frameID, cfloat, current_time, modulo, movingAverage
 
-#include "Config.hpp"             // for Config
-#include "Hash.hpp"               // for operator!=
-#include "LinearAlgebra.hpp"      // for EigConvergenceStats, eigen_masked_subspace, to_blaze_herm
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"               // for allocate_new_metadata_object, mark_frame_empty, mark_fr...
-#include "datasetState.hpp"       // for eigenvalueState, state_uptr
-#include "fmt.hpp"                // for format, fmt
-#include "gsl-lite.hpp"           // for span
-#include "kotekanLogging.hpp"     // for DEBUG
-#include "prometheusMetrics.hpp"  // for Metrics, Gauge, MetricFamily
-#include "visBuffer.hpp"          // for visFrameView, visField, visField::erms, visField::eval
-#include "visUtil.hpp"            // for frameID, cfloat, current_time, modulo, movingAverage
+#include "fmt.hpp"      // for format, fmt
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm>     // for min
+#include <atomic>        // for atomic_bool
+#include <blaze/Blaze.h> // for DynamicMatrix, band, HermitianMatrix, DynamicVector
+#include <cblas.h>       // for openblas_set_num_threads
+#include <complex>       // for complex
+#include <cstdint>       // for uint32_t, int32_t
+#include <functional>    // for _Bind_helper<>::type, bind, function
+#include <iostream>      // for basic_ostream::operator<<, operator<<, basic_ostream<>:...
+#include <memory>        // for make_unique
+#include <stdexcept>     // for runtime_error
+#include <tuple>         // for tie, tuple
 
 namespace kotekan {
 class bufferContainer;
-}  // namespace kotekan
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

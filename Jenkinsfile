@@ -23,7 +23,7 @@ pipeline {
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
                   -DUSE_OMP=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                   -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
-                  make -j 4'''
+                  make -j 2'''
           }
         }
         stage('Build CHIME kotekan & run IWYU') {
@@ -37,7 +37,7 @@ pipeline {
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
                   -DUSE_OMP=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                   -DCMAKE_C_COMPILER_LAUNCHER=ccache -DIWYU=ON -DBOOST_TESTS=ON ..
-                  make -j 6 2> iwyu.out
+                  make -j 8 2> iwyu.out
                   cat iwyu.out'''
           }
         }
@@ -61,7 +61,7 @@ pipeline {
             sh '''mkdir -p build_base
                   cd build_base
                   cmake -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
-                  make -j 4'''
+                  make -j 2'''
           }
         }
         stage('Build MacOS kotekan') {

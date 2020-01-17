@@ -1,19 +1,19 @@
 #ifndef GPU_HSA_COMMAND_H
 #define GPU_HSA_COMMAND_H
 
-#include <stdint.h>        // for uint16_t, uint32_t, uint64_t
-#include <string>          // for string
+#include "factory.hpp"    // for CREATE_FACTORY, Factory, REGISTER_NAMED_TYPE_WITH_FACTORY
+#include "gpuCommand.hpp" // for gpuCommand, gpuCommandType
+#include "hsa/hsa.h"      // for hsa_signal_t, hsa_packet_type_t
 
-#include "factory.hpp"     // for CREATE_FACTORY, Factory, REGISTER_NAMED_TYPE_WITH_FACTORY
-#include "gpuCommand.hpp"  // for gpuCommand, gpuCommandType
-#include "hsa/hsa.h"       // for hsa_signal_t, hsa_packet_type_t
+#include <stdint.h> // for uint16_t, uint32_t, uint64_t
+#include <string>   // for string
 
 class hsaDeviceInterface;
 
 namespace kotekan {
 class Config;
 class bufferContainer;
-}  // namespace kotekan
+} // namespace kotekan
 
 // Use old symbol naming convention if
 // compiled with ROCM version 2.3 or older

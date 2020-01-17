@@ -1,19 +1,20 @@
-#include <string.h>                // for memcpy, memset
-#include <exception>               // for exception
-#include <functional>              // for _Bind_helper<>::type, _Placeholder, bind, _1
-#include <tuple>                   // for get
-
-#include "Config.hpp"              // for Config
-#include "configUpdater.hpp"       // for configUpdater
-#include "gpuCommand.hpp"          // for gpuCommandType, gpuCommandType::KERNEL
-#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
 #include "hsaRfiTimeSum.hpp"
-#include "kotekanLogging.hpp"      // for DEBUG, INFO, WARN
-#include "visUtil.hpp"             // for parse_reorder_default
+
+#include "Config.hpp"             // for Config
+#include "configUpdater.hpp"      // for configUpdater
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "kotekanLogging.hpp"     // for DEBUG, INFO, WARN
+#include "visUtil.hpp"            // for parse_reorder_default
+
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1
+#include <string.h>   // for memcpy, memset
+#include <tuple>      // for get
 
 namespace kotekan {
 class bufferContainer;
-}  // namespace kotekan
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

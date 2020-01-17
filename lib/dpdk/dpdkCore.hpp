@@ -10,20 +10,20 @@
 
 // DPDK!
 extern "C" {
-#include <rte_ethdev.h>        // for rte_eth_conf
-#include <stdint.h>            // for uint32_t, int32_t, uint8_t
+#include <rte_ethdev.h> // for rte_eth_conf
+#include <stdint.h>     // for uint32_t, int32_t, uint8_t
 }
 
-#include <string>              // for string
-#include <vector>              // for vector
+#include "Config.hpp"         // for Config
+#include "Stage.hpp"          // for Stage
+#include "kotekanLogging.hpp" // for kotekanLogging
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "kotekanLogging.hpp"  // for kotekanLogging
+#include <string> // for string
+#include <vector> // for vector
 
 namespace kotekan {
 class bufferContainer;
-}  // namespace kotekan
+} // namespace kotekan
 
 /**
  * @brief Abstract object for processing packets that come from a given NIC port

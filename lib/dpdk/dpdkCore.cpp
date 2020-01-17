@@ -1,38 +1,40 @@
 #include "dpdkCore.hpp"
-#include "fmt.hpp"                  // for format, fmt
-#include "fpga_header_functions.h"  // for stream_id_t
-#include "json.hpp"                 // for json, basic_json, basic_json<>::value_type
+
+#include "fpga_header_functions.h" // for stream_id_t
+
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for json, basic_json, basic_json<>::value_type
 
 #ifdef WITH_NUMA
-#include <numa.h>                   // for numa_node_of_cpu, numa_num_configured_nodes
+#include <numa.h> // for numa_node_of_cpu, numa_num_configured_nodes
 #endif
-#include <rte_branch_prediction.h>  // for unlikely
-#include <rte_config.h>             // for RTE_PKTMBUF_HEADROOM
-#include <rte_eal.h>                // for rte_eal_init
-#include <rte_ether.h>              // for ether_addr
-#include <rte_launch.h>             // for rte_eal_mp_remote_launch, rte_eal_mp_wait_lcore, rte_...
-#include <rte_lcore.h>              // for rte_lcore_count, rte_lcore_id
-#include <rte_mbuf.h>               // for rte_pktmbuf_free, rte_pktmbuf_init, rte_pktmbuf_pool_...
-#include <rte_mempool.h>            // for rte_mempool_create, rte_mempool_free
-#include <stdio.h>                  // for fprintf, stderr
-#include <stdlib.h>                 // for malloc, free, size_t
-#include <string.h>                 // for strncpy, memset
-#include <unistd.h>                 // for sleep
-#include <atomic>                   // for atomic_bool
-#include <functional>               // for _Bind_helper<>::type, bind, function
-#include <stdexcept>                // for runtime_error
-#include <vector>                   // for vector
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "captureHandler.hpp"   // for captureHandler
+#include "iceBoardShuffle.hpp"  // for iceBoardShuffle, iceBoardShuffle::shuffle_size
+#include "iceBoardStandard.hpp" // for iceBoardStandard
+#include "iceBoardVDIF.hpp"     // for iceBoardVDIF
 
-#include "Config.hpp"               // for Config
-#include "StageFactory.hpp"         // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "captureHandler.hpp"       // for captureHandler
-#include "iceBoardShuffle.hpp"      // for iceBoardShuffle, iceBoardShuffle::shuffle_size
-#include "iceBoardStandard.hpp"     // for iceBoardStandard
-#include "iceBoardVDIF.hpp"         // for iceBoardVDIF
+#include <atomic>                  // for atomic_bool
+#include <functional>              // for _Bind_helper<>::type, bind, function
+#include <rte_branch_prediction.h> // for unlikely
+#include <rte_config.h>            // for RTE_PKTMBUF_HEADROOM
+#include <rte_eal.h>               // for rte_eal_init
+#include <rte_ether.h>             // for ether_addr
+#include <rte_launch.h>            // for rte_eal_mp_remote_launch, rte_eal_mp_wait_lcore, rte_...
+#include <rte_lcore.h>             // for rte_lcore_count, rte_lcore_id
+#include <rte_mbuf.h>              // for rte_pktmbuf_free, rte_pktmbuf_init, rte_pktmbuf_pool_...
+#include <rte_mempool.h>           // for rte_mempool_create, rte_mempool_free
+#include <stdexcept>               // for runtime_error
+#include <stdio.h>                 // for fprintf, stderr
+#include <stdlib.h>                // for malloc, free, size_t
+#include <string.h>                // for strncpy, memset
+#include <unistd.h>                // for sleep
+#include <vector>                  // for vector
 
 namespace kotekan {
 class bufferContainer;
-}  // namespace kotekan
+} // namespace kotekan
 
 using nlohmann::json;
 using std::string;

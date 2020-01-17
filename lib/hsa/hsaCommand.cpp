@@ -1,18 +1,19 @@
-#include <assert.h>                // for assert
-#include <stdlib.h>                // for free, malloc
-#include <string.h>                // for memset
-#include <fstream>                 // for ifstream, basic_istream::seekg, ios, basic_istream::read
-
-#include "Config.hpp"              // for Config
-#include "hsa/hsa_ext_amd.h"       // for hsa_amd_profiling_async_copy_time_t, hsa_amd_profiling...
-#include "hsaBase.h"               // for HSA_CHECK, hsa_host_free, hsa_host_malloc
 #include "hsaCommand.hpp"
-#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
-#include "kotekanLogging.hpp"      // for INFO
+
+#include "Config.hpp"             // for Config
+#include "hsa/hsa_ext_amd.h"      // for hsa_amd_profiling_async_copy_time_t, hsa_amd_profiling...
+#include "hsaBase.h"              // for HSA_CHECK, hsa_host_free, hsa_host_malloc
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "kotekanLogging.hpp"     // for INFO
+
+#include <assert.h> // for assert
+#include <fstream>  // for ifstream, basic_istream::seekg, ios, basic_istream::read
+#include <stdlib.h> // for free, malloc
+#include <string.h> // for memset
 
 namespace kotekan {
 class bufferContainer;
-}  // namespace kotekan
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

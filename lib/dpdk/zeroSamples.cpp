@@ -1,17 +1,19 @@
-#include <assert.h>             // for assert
-#include <string.h>             // for memcpy, size_t
-#include <atomic>               // for atomic_bool
-#include <functional>           // for _Bind_helper<>::type, bind, function
-#include <vector>               // for vector
-
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"             // for mark_frame_full, register_producer, wait_for_empty_frame
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chimeMetadata.h"      // for atomic_add_lost_timesamples
-#include "json.hpp"             // for json, basic_json, basic_json<>::iterator, iter_impl
-#include "nt_memset.h"          // for nt_memset
 #include "zeroSamples.hpp"
+
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_full, register_producer, wait_for_empty_frame
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.h"     // for atomic_add_lost_timesamples
+#include "nt_memset.h"         // for nt_memset
+
+#include "json.hpp" // for json, basic_json, basic_json<>::iterator, iter_impl
+
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <string.h>   // for memcpy, size_t
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

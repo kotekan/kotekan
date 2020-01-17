@@ -1,7 +1,8 @@
-#include <assert.h>    // for assert
-
-#include "Config.hpp"  // for Config
 #include "gpuCommand.hpp"
+
+#include "Config.hpp" // for Config
+
+#include <assert.h> // for assert
 
 class gpuDeviceInterface;
 

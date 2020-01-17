@@ -1,11 +1,11 @@
-#include <assert.h>  // for assert
-#include <utility>   // for pair
-
 #include "gpuDeviceInterface.hpp"
+
+#include <assert.h> // for assert
+#include <utility>  // for pair
 
 namespace kotekan {
 class Config;
-}  // namespace kotekan
+} // namespace kotekan
 
 using kotekan::Config;
 

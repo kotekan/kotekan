@@ -1,7 +1,8 @@
-#include <stdint.h>            // for UINT64_MAX
-
 #include "hsaEventContainer.hpp"
-#include "kotekanLogging.hpp"  // for ERROR_NON_OO
+
+#include "kotekanLogging.hpp" // for ERROR_NON_OO
+
+#include <stdint.h> // for UINT64_MAX
 
 
 void hsaEventContainer::set(void* sig) {

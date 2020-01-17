@@ -6,20 +6,20 @@
 #ifndef HSA_RFI_UPDATE_BAD_INPUTS_HPP
 #define HSA_RFI_UPDATE_BAD_INPUTS_HPP
 
-#include <stdint.h>        // for int32_t, uint32_t, uint8_t
-#include <mutex>           // for mutex
-#include <string>          // for string
-#include <vector>          // for vector
+#include "hsa/hsa.h"      // for hsa_signal_t
+#include "hsaCommand.hpp" // for hsaCommand
 
-#include "hsa/hsa.h"       // for hsa_signal_t
-#include "hsaCommand.hpp"  // for hsaCommand
+#include <mutex>    // for mutex
+#include <stdint.h> // for int32_t, uint32_t, uint8_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 class hsaDeviceInterface;
 
 namespace kotekan {
 class Config;
 class bufferContainer;
-}  // namespace kotekan
+} // namespace kotekan
 struct Buffer;
 
 /**

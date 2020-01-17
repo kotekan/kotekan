@@ -1,16 +1,16 @@
 #ifndef ZERO_SAMPLES_HPP
 #define ZERO_SAMPLES_HPP
 
-#include <stdint.h>   // for int32_t, uint32_t, uint8_t
-#include <string>     // for string
-#include <vector>     // for vector
+#include "Stage.hpp" // for Stage
 
-#include "Stage.hpp"  // for Stage
+#include <stdint.h> // for int32_t, uint32_t, uint8_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 namespace kotekan {
 class Config;
 class bufferContainer;
-}  // namespace kotekan
+} // namespace kotekan
 struct Buffer;
 
 /**

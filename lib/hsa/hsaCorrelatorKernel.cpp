@@ -1,17 +1,19 @@
-#include <string.h>                // for memcpy, memset
-
-#include "Config.hpp"              // for Config
-#include "fmt.hpp"                 // for format, fmt
-#include "gpuCommand.hpp"          // for gpuCommandType, gpuCommandType::KERNEL
-#include "hsaBase.h"               // for hsa_host_free, hsa_host_malloc
-#include "hsaCommand.hpp"          // for kernelParams, REGISTER_HSA_COMMAND, _factory_aliashsaC...
 #include "hsaCorrelatorKernel.hpp"
-#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
-#include "kotekanLogging.hpp"      // for DEBUG2
+
+#include "Config.hpp"             // for Config
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaBase.h"              // for hsa_host_free, hsa_host_malloc
+#include "hsaCommand.hpp"         // for kernelParams, REGISTER_HSA_COMMAND, _factory_aliashsaC...
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "kotekanLogging.hpp"     // for DEBUG2
+
+#include "fmt.hpp" // for format, fmt
+
+#include <string.h> // for memcpy, memset
 
 namespace kotekan {
 class bufferContainer;
-}  // namespace kotekan
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

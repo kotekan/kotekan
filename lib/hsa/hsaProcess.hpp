@@ -1,9 +1,9 @@
 #ifndef HSA_PROCESS_H
 #define HSA_PROCESS_H
 
-#include <string>          // for string
+#include "gpuProcess.hpp" // for gpuProcess
 
-#include "gpuProcess.hpp"  // for gpuProcess
+#include <string> // for string
 
 class gpuCommand;
 class gpuEventContainer;
@@ -11,7 +11,7 @@ class gpuEventContainer;
 namespace kotekan {
 class Config;
 class bufferContainer;
-}  // namespace kotekan
+} // namespace kotekan
 
 class hsaProcess final : public gpuProcess {
 public:

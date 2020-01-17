@@ -1,17 +1,18 @@
-#include <string.h>                // for memcpy, memset
-#include <exception>               // for exception
-#include <functional>              // for _Bind_helper<>::type, _Placeholder, bind, _1
-#include <mutex>                   // for lock_guard, mutex
-
-#include "Config.hpp"              // for Config
-#include "buffer.h"                // for Buffer
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chimeMetadata.h"         // for set_rfi_zeroed
-#include "configUpdater.hpp"       // for configUpdater
-#include "gpuCommand.hpp"          // for gpuCommandType, gpuCommandType::KERNEL
-#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
 #include "hsaRfiZeroData.hpp"
-#include "kotekanLogging.hpp"      // for INFO, WARN
+
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chimeMetadata.h"        // for set_rfi_zeroed
+#include "configUpdater.hpp"      // for configUpdater
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "kotekanLogging.hpp"     // for INFO, WARN
+
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1
+#include <mutex>      // for lock_guard, mutex
+#include <string.h>   // for memcpy, memset
 
 using kotekan::bufferContainer;
 using kotekan::Config;

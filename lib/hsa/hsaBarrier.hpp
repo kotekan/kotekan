@@ -1,16 +1,16 @@
 #ifndef HSA_BARRIER_H
 #define HSA_BARRIER_H
 
-#include <string>          // for string
+#include "hsa/hsa.h"      // for hsa_signal_t
+#include "hsaCommand.hpp" // for hsaCommand
 
-#include "hsa/hsa.h"       // for hsa_signal_t
-#include "hsaCommand.hpp"  // for hsaCommand
+#include <string> // for string
 
 class hsaDeviceInterface;
 namespace kotekan {
 class Config;
 class bufferContainer;
-}  // namespace kotekan
+} // namespace kotekan
 
 class hsaBarrier : public hsaCommand {
 public:

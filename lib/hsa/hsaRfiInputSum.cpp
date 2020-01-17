@@ -1,14 +1,15 @@
-#include <string.h>                // for memcpy, memset
-
-#include "Config.hpp"              // for Config
-#include "buffer.h"                // for Buffer, mark_frame_empty, register_consumer, wait_for_...
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chimeMetadata.h"         // for get_rfi_num_bad_inputs
-#include "gpuCommand.hpp"          // for gpuCommandType, gpuCommandType::KERNEL
-#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
 #include "hsaRfiInputSum.hpp"
-#include "kotekanLogging.hpp"      // for DEBUG
-#include "restServer.hpp"          // for HTTP_RESPONSE, connectionInstance (ptr only), restServ...
+
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_for_...
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chimeMetadata.h"        // for get_rfi_num_bad_inputs
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "kotekanLogging.hpp"     // for DEBUG
+#include "restServer.hpp"         // for HTTP_RESPONSE, connectionInstance (ptr only), restServ...
+
+#include <string.h> // for memcpy, memset
 
 using kotekan::bufferContainer;
 using kotekan::Config;

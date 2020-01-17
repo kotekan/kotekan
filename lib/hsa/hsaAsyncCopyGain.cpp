@@ -1,16 +1,17 @@
-#include <iterator>                // for begin
-
-#include "buffer.h"                // for Buffer, mark_frame_empty, register_consumer, wait_for_...
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "gpuCommand.hpp"          // for gpuCommandType, gpuCommandType::COPY_IN
 #include "hsaAsyncCopyGain.hpp"
-#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
-#include "kotekanLogging.hpp"      // for DEBUG
-#include "visUtil.hpp"             // for double_to_ts
+
+#include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_for_...
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_IN
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "kotekanLogging.hpp"     // for DEBUG
+#include "visUtil.hpp"            // for double_to_ts
+
+#include <iterator> // for begin
 
 namespace kotekan {
 class Config;
-}  // namespace kotekan
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -1,13 +1,14 @@
-#include "buffer.h"                // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "gpuCommand.hpp"          // for gpuCommandType, gpuCommandType::COPY_OUT
-#include "hsaCommand.hpp"          // for REGISTER_HSA_COMMAND, _factory_aliashsaCommand, hsaCom...
-#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
 #include "hsaRfiMaskOutput.hpp"
+
+#include "buffer.h"               // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_OUT
+#include "hsaCommand.hpp"         // for REGISTER_HSA_COMMAND, _factory_aliashsaCommand, hsaCom...
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
 namespace kotekan {
 class Config;
-}  // namespace kotekan
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

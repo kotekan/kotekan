@@ -1,34 +1,36 @@
-#include <cblas.h>                // for openblas_set_num_threads
-#include <lapacke.h>              // for LAPACKE_cheevr, lapack_complex_float, LAPACK_COL_MAJOR
-#include <time.h>                 // for size_t
-#include <algorithm>              // for lower_bound, remove
-#include <atomic>                 // for atomic_bool
-#include <cmath>                  // for pow, sqrt
-#include <complex>                // for conj, operator*, norm, complex
-#include <functional>             // for _Bind_helper<>::type, bind, function
-#include <map>                    // for map, map<>::mapped_type, _Rb_tree_iterator
-#include <memory>                 // for make_unique
-#include <numeric>                // for iota
-#include <stdexcept>              // for runtime_error
-#include <tuple>                  // for forward_as_tuple
-#include <utility>                // for move, pair, piecewise_construct
-
-#include "Config.hpp"             // for Config
-#include "Hash.hpp"               // for operator!=
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"               // for mark_frame_empty, allocate_new_metadata_object, mark_fr...
-#include "datasetState.hpp"       // for eigenvalueState, state_uptr
 #include "eigenVis.hpp"
-#include "fmt.hpp"                // for format, fmt
-#include "gsl-lite.hpp"           // for span
-#include "kotekanLogging.hpp"     // for DEBUG, ERROR, INFO
-#include "prometheusMetrics.hpp"  // for Metrics, Gauge, MetricFamily
-#include "visBuffer.hpp"          // for visFrameView, visField, visField::erms, visField::eval
-#include "visUtil.hpp"            // for frameID, cfloat, modulo, current_time, cmap, movingAverage
+
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for operator!=
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for mark_frame_empty, allocate_new_metadata_object, mark_fr...
+#include "datasetState.hpp"      // for eigenvalueState, state_uptr
+#include "kotekanLogging.hpp"    // for DEBUG, ERROR, INFO
+#include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
+#include "visBuffer.hpp"         // for visFrameView, visField, visField::erms, visField::eval
+#include "visUtil.hpp"           // for frameID, cfloat, modulo, current_time, cmap, movingAverage
+
+#include "fmt.hpp"      // for format, fmt
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm>  // for lower_bound, remove
+#include <atomic>     // for atomic_bool
+#include <cblas.h>    // for openblas_set_num_threads
+#include <cmath>      // for pow, sqrt
+#include <complex>    // for conj, operator*, norm, complex
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <lapacke.h>  // for LAPACKE_cheevr, lapack_complex_float, LAPACK_COL_MAJOR
+#include <map>        // for map, map<>::mapped_type, _Rb_tree_iterator
+#include <memory>     // for make_unique
+#include <numeric>    // for iota
+#include <stdexcept>  // for runtime_error
+#include <time.h>     // for size_t
+#include <tuple>      // for forward_as_tuple
+#include <utility>    // for move, pair, piecewise_construct
 
 namespace kotekan {
 class bufferContainer;
-}  // namespace kotekan
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

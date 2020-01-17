@@ -7,17 +7,17 @@
 #ifndef GPU_COMMAND_H
 #define GPU_COMMAND_H
 
-#include <stdint.h>             // for int32_t
-#include <string>               // for string
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for kotekanLogging
 
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for kotekanLogging
+#include <stdint.h> // for int32_t
+#include <string>   // for string
 
 class gpuDeviceInterface;
 
 namespace kotekan {
 class Config;
-}  // namespace kotekan
+} // namespace kotekan
 
 /// Enumeration of known GPU command types.
 enum class gpuCommandType { COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET };

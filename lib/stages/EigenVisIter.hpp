@@ -6,18 +6,18 @@
 #ifndef EIGENVISITER_HPP
 #define EIGENVISITER_HPP
 
-#include <blaze/Blaze.h>       // for HermitianMatrix
-#include <stdint.h>            // for uint32_t, int32_t
-#include <map>                 // for map
-#include <string>              // for string
-#include <utility>             // for pair
-#include <vector>              // for vector
+#include <blaze/Blaze.h> // for HermitianMatrix
+#include <map>           // for map
+#include <stdint.h>      // for uint32_t, int32_t
+#include <string>        // for string
+#include <utility>       // for pair
+#include <vector>        // for vector
 
 // TODO: figure out how to forward declare eig_t
-#include "LinearAlgebra.hpp"   // for eig_t // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "datasetManager.hpp"  // for dset_id_t, state_id_t
-#include "visUtil.hpp"         // for cfloat, movingAverage
+#include "LinearAlgebra.hpp"  // for eig_t // IWYU pragma: keep
+#include "Stage.hpp"          // for Stage
+#include "datasetManager.hpp" // for dset_id_t, state_id_t
+#include "visUtil.hpp"        // for cfloat, movingAverage
 
 namespace kotekan {
 class Config;
@@ -25,9 +25,10 @@ class bufferContainer;
 
 namespace prometheus {
 class Gauge;
-template <typename T> class MetricFamily;
-}  // namespace prometheus
-}  // namespace kotekan
+template<typename T>
+class MetricFamily;
+} // namespace prometheus
+} // namespace kotekan
 struct Buffer;
 
 

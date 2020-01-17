@@ -1,16 +1,17 @@
-#include <sys/time.h>              // for timeval
-#include <unistd.h>                // for usleep
-#include <random>                  // for mt19937, random_device, uniform_real_distribution
-
-#include "Config.hpp"              // for Config
-#include "buffer.h"                // for Buffer, mark_frame_empty, register_consumer, wait_for_...
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chimeMetadata.h"         // for get_first_packet_recv_time
-#include "gpuCommand.hpp"          // for gpuCommandType, gpuCommandType::COPY_IN
-#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
 #include "hsaInputData.hpp"
-#include "kotekanLogging.hpp"      // for DEBUG2, INFO
-#include "util.h"                  // for e_time
+
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_for_...
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chimeMetadata.h"        // for get_first_packet_recv_time
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_IN
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "kotekanLogging.hpp"     // for DEBUG2, INFO
+#include "util.h"                 // for e_time
+
+#include <random>     // for mt19937, random_device, uniform_real_distribution
+#include <sys/time.h> // for timeval
+#include <unistd.h>   // for usleep
 
 using kotekan::bufferContainer;
 using kotekan::Config;

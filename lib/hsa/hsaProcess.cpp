@@ -1,21 +1,22 @@
-#include <stdint.h>                // for uint32_t
-#include <vector>                  // for vector
-
-#include "Config.hpp"              // for Config
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "factory.hpp"             // for FACTORY
-#include "gpuEventContainer.hpp"   // for gpuEventContainer
-#include "hsa/hsa.h"               // for hsa_signal_t
-#include "hsaCommand.hpp"          // for hsaCommand, _factory_aliashsaCommand
-#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
-#include "hsaEventContainer.hpp"   // for hsaEventContainer
 #include "hsaProcess.hpp"
+
+#include "Config.hpp"             // for Config
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "factory.hpp"            // for FACTORY
+#include "gpuEventContainer.hpp"  // for gpuEventContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaCommand.hpp"         // for hsaCommand, _factory_aliashsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "hsaEventContainer.hpp"  // for hsaEventContainer
+
+#include <stdint.h> // for uint32_t
+#include <vector>   // for vector
 
 class gpuCommand;
 class gpuDeviceInterface;
 namespace kotekan {
 class bufferContainer;
-}  // namespace kotekan
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;
