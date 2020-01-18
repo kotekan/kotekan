@@ -14,6 +14,7 @@
 
 #include "json.hpp"
 
+#include <memory>
 #include <string>
 
 
@@ -86,16 +87,16 @@ private:
     Buffer* _buf_out;
 
     /// Thresholds
-    std::vector<std::tuple<float, size_t, float>> _thresholds;
+    std::shared_ptr<std::vector<std::tuple<float, size_t, float>>> _thresholds;
 
     /// Toggle RFI zeroing
-    bool _enable_rfi_zero;
+    std::shared_ptr<bool> _enable_rfi_zero;
 
-    /// Lock for access to thresholds and enable_rfi_zero
+    /// Counter storing information between sub frames.
+    std::shared_ptr<std::vector<size_t>> _sk_exceeds;
+
+    /// Lock for access to shared pointers
     std::mutex lock_updatables;
-
-    /// Counter storing information between sub frames. Resized by rest callback.
-    std::vector<size_t> sk_exceeds;
 
     /// Prometheus metrics to export
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& failing_frame_counter;
