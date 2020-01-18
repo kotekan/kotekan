@@ -74,6 +74,8 @@ class connInstance;
  * @author Andre Renard
  */
 class bufferRecv : public kotekan::Stage {
+    friend class connInstance;
+
 public:
     /// Constructor
     bufferRecv(kotekan::Config& config, const string& unique_name,
@@ -81,6 +83,7 @@ public:
     ~bufferRecv();
     void main_thread() override;
 
+private:
     /**
      * @brief Returns a buffer ID of the next empty buffer, this must be filled
      *        and returned promptly.  Used internally by worker threads.
@@ -107,7 +110,6 @@ public:
      */
     bool get_worker_stop_thread();
 
-private:
     /// The output buffer
     struct Buffer* buf;
 
