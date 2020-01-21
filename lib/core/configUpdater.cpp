@@ -42,8 +42,8 @@ void configUpdater::reset() {
     _keys.clear();
 }
 
-void configUpdater::parse_tree(json& config_tree, const std::string& path) {
-    for (json::iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
+void configUpdater::parse_tree(const json& config_tree, const std::string& path) {
+    for (json::const_iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
         // If the item isn't an object we can just ignore it.
         if (!it.value().is_object()) {
             continue;
@@ -67,7 +67,7 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path) {
 
             // Store all keys of this updatable block
             std::vector<std::string> keys;
-            for (json::iterator key = it.value().begin(); key != it.value().end(); key++) {
+            for (json::const_iterator key = it.value().begin(); key != it.value().end(); key++) {
                 if (key.value().dump() != "kotekan_update_endpoint")
                     keys.push_back(key.key());
             }
