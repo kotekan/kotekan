@@ -46,7 +46,7 @@ public:
     void finalize_frame(int frame_id) override;
 
 private:
-    /// The very first input data from dpdk
+    /// The data from the dpdk network thread (used for metadata)
     Buffer* network_buffer;
     /// Output buffer from the FRB pipeline
     Buffer* output_buffer;
