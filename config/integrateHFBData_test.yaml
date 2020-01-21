@@ -51,14 +51,24 @@ cpu_hfb_output_buffers:
     beamform_hfb_integrate_buffer_0:
         kotekan_buffer: standard
 
+compressed_lost_samples_buffer:
+    kotekan_buffer: standard
+    num_frames: 2 * buffer_depth
+    frame_size: samples_per_data_set / num_sub_freqs * num_data_sets / 3
+    metadata_pool: main_pool
+
 # Generate input data for integrateHFBData stage
 gen_input_data:
   type: const
-  value: test_value
-  first_frame_index: 21
   test_data_gen_0:
+    value: test_value
+    first_frame_index: 21
     kotekan_stage: testDataGenFloat
     network_out_buf: beamform_hfb_input_buffer_0
+  test_data_gen_lost_samples:
+    value: 0
+    kotekan_stage: testDataGen
+    out_buf: compressed_lost_samples_buffer
 
 # Generate expected output data of integrateHFBData stage
 gen_output_data:
@@ -82,6 +92,7 @@ hyper_fine_beam:
     kotekan_stage: integrateHFBData
     log_level: debug
     hfb_input_buf: beamform_hfb_integrate_buffer_0
+    compressed_lost_samples_buf: compressed_lost_samples_buffer
     hfb_output_buf: beamform_hfb_output_buffer_0
       
 # Check output of stage is correct
