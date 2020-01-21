@@ -87,16 +87,14 @@ private:
     Buffer* _buf_out;
 
     /// Thresholds
-    std::shared_ptr<std::vector<std::tuple<float, size_t, float>>> _thresholds;
+    struct ThresholdData {
+        std::vector<std::tuple<float, size_t, float>> thresholds;
+        std::vector<size_t> sk_exceeds;
+    };
+    std::shared_ptr<ThresholdData> _thresholds;
 
     /// Toggle RFI zeroing
-    std::shared_ptr<bool> _enable_rfi_zero;
-
-    /// Counter storing information between sub frames.
-    std::shared_ptr<std::vector<size_t>> _sk_exceeds;
-
-    /// Lock for access to shared pointers
-    std::mutex lock_updatables;
+    std::atomic<bool> _enable_rfi_zero;
 
     /// Prometheus metrics to export
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& failing_frame_counter;

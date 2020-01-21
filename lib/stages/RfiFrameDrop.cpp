@@ -69,10 +69,8 @@ void RfiFrameDrop::main_thread() {
 
     std::vector<float> sk_delta(sk_samples_per_frame);
 
-    // shared pointers to receive updates from the callback
-    std::shared_ptr<bool> enable_rfi_zero;
-    std::shared_ptr<std::vector<size_t>> sk_exceeds;
-    std::shared_ptr<std::vector<std::tuple<float, size_t, float>>> thresholds;
+    // shared pointer to receive updates from the callback
+    std::shared_ptr<ThresholdData> thresholds;
 
     while (!stop_thread) {
         // Fetch the input buffers
@@ -112,21 +110,14 @@ void RfiFrameDrop::main_thread() {
         DEBUG2("Frames are synced. Vis frame: {}; SK frame: {}, diff {}", vis_seq, sk_seq,
                vis_seq - sk_seq);
 
-        // Point the shared pointers to the newest updates
-        {
-            std::lock_guard<std::mutex> guard(lock_updatables);
-            thresholds = _thresholds;
-            enable_rfi_zero = _enable_rfi_zero;
-            sk_exceeds = _sk_exceeds;
-        }
+        // Point the shared pointer to the newest updates
+        thresholds = std::atomic_load(&_thresholds);
 
         // Calculate the scaling to turn kurtosis value into sigma
         size_t num_inputs = num_elements - metadata_vis->rfi_num_bad_inputs;
         float sigma_scale = sqrt((num_inputs * (sk_step - 1) * (sk_step + 2) * (sk_step + 3))
                                  / (4.0 * sk_step * sk_step));
 
-        // Disable updates on enable_rfi_zero and thresholds while accessing these
-        std::lock_guard<std::mutex> guard(lock_updatables);
         for (size_t ii = 0; ii < num_sub_frames; ii++) {
 
             if (wait_for_full_frame(_buf_in_vis, unique_name.c_str(), frame_id_in_vis) == nullptr) {
@@ -155,29 +146,30 @@ void RfiFrameDrop::main_thread() {
 
                 // INFO("SK: {}; SKraw: {}", sk_sig, frame_in_sk[ii * sk_samples_per_frame +
                 // jj]);
-                for (size_t kk = 0; kk < thresholds->size(); kk++) {
-                    sk_exceeds->at(kk) += (sk_sig > std::get<0>(thresholds->at(kk)));
+                for (size_t kk = 0; kk < thresholds->thresholds.size(); kk++) {
+                    thresholds->sk_exceeds.at(kk) +=
+                        (sk_sig > std::get<0>(thresholds->thresholds.at(kk)));
                     // INFO("threshold {}", std::get<0>(_thresholds[kk]));
                 }
             }
 
-            for (size_t kk = 0; kk < thresholds->size(); kk++) {
-                if (sk_exceeds->at(kk) > std::get<1>(thresholds->at(kk))) {
+            for (size_t kk = 0; kk < thresholds->thresholds.size(); kk++) {
+                if (thresholds->sk_exceeds.at(kk) > std::get<1>(thresholds->thresholds.at(kk))) {
                     skip = true;
                     failing_frame_counter
                         .labels({std::to_string(freq_id),
-                                 std::to_string(std::get<0>(thresholds->at(kk))),
-                                 std::to_string(std::get<2>(thresholds->at(kk)))})
+                                 std::to_string(std::get<0>(thresholds->thresholds.at(kk))),
+                                 std::to_string(std::get<2>(thresholds->thresholds.at(kk)))})
                         .inc();
                 }
                 // Reset counters for the next sub_frame
-                sk_exceeds->at(kk) = 0;
+                thresholds->sk_exceeds.at(kk) = 0;
             }
 
             // If no frame exceeded it's threshold then we should transfer the
             // frame over to the output and release it. If we want to drop the
             // incoming frame then we leave the output as is.
-            if (!skip || !(*enable_rfi_zero)) {
+            if (!skip || !(_enable_rfi_zero)) {
 
                 if (wait_for_empty_frame(_buf_out, unique_name.c_str(), frame_id_out) == nullptr) {
                     break;
@@ -223,25 +215,22 @@ void RfiFrameDrop::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_des
 }
 
 bool RfiFrameDrop::rest_enable_callback(nlohmann::json& update) {
-    auto enable_rfi_zero_new = std::make_shared<bool>();
+    bool enable_rfi_zero_new;
 
     try {
-        *enable_rfi_zero_new = update.at("rfi_zeroing").get<bool>();
+        enable_rfi_zero_new = update.at("rfi_zeroing").get<bool>();
     } catch (json::exception& e) {
         WARN("Failure parsing update: Can't read 'rfi_zeroing' (bool): {:s}", e.what());
         return false;
     }
 
-    {
-        std::lock_guard<std::mutex> guard(lock_updatables);
-        _enable_rfi_zero = enable_rfi_zero_new;
-    }
-
-    if (*enable_rfi_zero_new) {
+    if (enable_rfi_zero_new) {
         INFO("Enabled RFI frame dropping.");
     } else {
         INFO("Disabled RFI frame dropping.");
     }
+
+    _enable_rfi_zero = enable_rfi_zero_new;
 
     return true;
 }
@@ -259,7 +248,7 @@ bool RfiFrameDrop::rest_thresholds_callback(nlohmann::json& update) {
         return false;
     }
 
-    auto thresholds_new = std::make_shared<std::vector<std::tuple<float, size_t, float>>>();
+    auto thresholds_new = std::make_shared<ThresholdData>();
     for (const auto& t : j) {
         if (!t.is_object()) {
             WARN("Failure parsing update: item in list 'thresholds' is not a dict : {}", t.dump());
@@ -282,20 +271,20 @@ bool RfiFrameDrop::rest_thresholds_callback(nlohmann::json& update) {
             return false;
         }
 
-        thresholds_new->push_back({threshold, (size_t)(fraction * sk_samples_per_frame), fraction});
+        thresholds_new->thresholds.push_back(
+            {threshold, (size_t)(fraction * sk_samples_per_frame), fraction});
     }
 
-    {
-        // make the updates available to the main thread by shared pointers
-        std::lock_guard<std::mutex> guard(lock_updatables);
-        _sk_exceeds = std::make_shared<std::vector<size_t>>(thresholds_new->size());
-        _thresholds = thresholds_new;
-    }
+    thresholds_new->sk_exceeds.resize(thresholds_new->thresholds.size(), 0);
 
     INFO("Setting new RFI excision cuts:");
-    for (auto& [threshold, t, fraction] : *thresholds_new) {
+    for (auto& [threshold, t, fraction] : thresholds_new->thresholds) {
         (void)t;
         INFO("  added cut with threshold={}, fraction={}", threshold, fraction);
     }
+
+    // make the updates available to the main thread by shared pointers
+    std::atomic_store(&_thresholds, thresholds_new);
+
     return true;
 }
