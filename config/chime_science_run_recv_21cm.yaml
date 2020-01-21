@@ -2,7 +2,9 @@
 #
 # chime_science_run_recv_21cm.yaml
 #
-# CHIME 21cm absorber receiver node configuration used in the December 2019 run.
+# CHIME 21cm absorber receiver node configuration.
+# Receives frames from each GPU node and writes them in a raw output file. 
+# Stores num_frames_per_file in each output file.
 #
 # Author: James Willis
 #
@@ -10,44 +12,30 @@
 ---
 type: config
 log_level: info
-num_elements: 2048
-num_local_freq: 1
-udp_packet_size: 4928
-num_data_sets: 1
-samples_per_data_set: 32768
 buffer_depth: 64
-baseband_buffer_depth: 282 # 282 = ~34 seconds after accounting for active frames
-num_gpu_frames: 128
-block_size: 32
-cpu_affinity: [1,6,7,9,14,15]
+cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
 num_frb_total_beams: 1024
 num_sub_freqs: 128
 
 # Constants
 sizeof_float: 4
 
-dataset_manager:
-  use_dataset_broker: True
-  ds_broker_host: "10.1.50.11" # recv1
-
 # 21cm Absorber Metadata Pool
 hfb_pool:
   kotekan_metadata_pool: hfbMetadata
-  num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
+  num_metadata_objects: 30 * buffer_depth
 
-cpu_hfb_output_buffers:
-    num_frames: buffer_depth * 4
-    frame_size: num_data_sets * num_sub_freqs * num_frb_total_beams * sizeof_float
-    metadata_pool: hfb_pool
-    beamform_hfb_output_buffer_merge:
-      kotekan_buffer: standard
+beamform_hfb_output_buffer_merge:
+  kotekan_buffer: standard
+  num_frames: buffer_depth * 6
+  frame_size: num_sub_freqs * num_frb_total_beams * sizeof_float
+  metadata_pool: hfb_pool
 
 # Kotekan stages
-buffer_recv:
-  21cm:
-    kotekan_stage: bufferRecv
-    buf: beamform_hfb_output_buffer_merge
-    listen_port: 11027
+hfb_recv:
+  kotekan_stage: bufferRecv
+  buf: beamform_hfb_output_buffer_merge
+  listen_port: 11027
 
 # Write raw 21cm data
 write_hfb:
