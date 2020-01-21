@@ -39,9 +39,9 @@ std::map<std::string, Stage*> StageFactory::build_stages() {
 }
 
 void StageFactory::build_from_tree(std::map<std::string, Stage*>& stages,
-                                   nlohmann::json& config_tree, const std::string& path) {
+                                   const nlohmann::json& config_tree, const std::string& path) {
 
-    for (json::iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
+    for (json::const_iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
         // If the item isn't an object we can just ignore it.
         if (!it.value().is_object()) {
             continue;

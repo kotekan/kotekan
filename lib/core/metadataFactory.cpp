@@ -31,9 +31,9 @@ map<std::string, struct metadataPool*> metadataFactory::build_pools() {
 }
 
 void metadataFactory::build_from_tree(map<std::string, struct metadataPool*>& pools,
-                                      json& config_tree, const std::string& path) {
+                                      const json& config_tree, const std::string& path) {
 
-    for (json::iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
+    for (json::const_iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
         // If the item isn't an object we can just ignore it.
         if (!it.value().is_object()) {
             continue;

@@ -40,7 +40,7 @@ public:
     std::map<std::string, Stage*> build_stages();
 
 private:
-    void build_from_tree(std::map<std::string, Stage*>& stages, nlohmann::json& config_tree,
+    void build_from_tree(std::map<std::string, Stage*>& stages, const nlohmann::json& config_tree,
                          const std::string& path);
 
     Config& config;

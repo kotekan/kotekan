@@ -171,7 +171,7 @@ private:
 
     /// Parses the config tree and calls create_endpoint when it encounters
     /// kotekan_update_endpoint in a block
-    void parse_tree(nlohmann::json& config_tree, const std::string& path);
+    void parse_tree(const nlohmann::json& config_tree, const std::string& path);
 
     /// unique names of endpoints that the configUpdater controlls
     std::vector<std::string> _endpoints;

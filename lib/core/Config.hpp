@@ -54,7 +54,7 @@ public:
      * @return  The requested value.
      */
     template<class T, typename std::enable_if<std::is_arithmetic<T>::value, T>::type* = nullptr>
-    T get(const std::string& base_path, const std::string& name) {
+    T get(const std::string& base_path, const std::string& name) const {
         nlohmann::json json_value = get_value(base_path, name);
         T value;
         try {
@@ -92,7 +92,7 @@ public:
      * @return  The requested value.
      */
     template<class T, typename std::enable_if<!std::is_arithmetic<T>::value, T>::type* = nullptr>
-    T get(const std::string& base_path, const std::string& name) {
+    T get(const std::string& base_path, const std::string& name) const {
         nlohmann::json json_value = get_value(base_path, name);
         T value;
         try {
@@ -118,7 +118,7 @@ public:
      * @return  The value requested or the default value.
      */
     template<typename T>
-    T get_default(const std::string& base_path, const std::string& name, T default_value);
+    T get_default(const std::string& base_path, const std::string& name, T default_value) const;
 
     /**
      * @brief Checks if a value exists at the given location "base_path" + "name"
@@ -127,7 +127,7 @@ public:
      * @param name The name of the value (the key)
      * @return true if the key exists in the path, and false otherwise.
      */
-    bool exists(const std::string& base_path, const std::string& name);
+    bool exists(const std::string& base_path, const std::string& name) const;
 
     /**
      * @brief Reads the config from a JSON file.
@@ -144,7 +144,7 @@ public:
     void update_config(nlohmann::json updates);
 
     // This function should be moved, it doesn't really belong here...
-    int32_t num_links_per_gpu(const int32_t& gpu_id);
+    int32_t num_links_per_gpu(const int32_t& gpu_id) const;
 
     /**
      * @brief Finds the value with key "name" starts looking at the
@@ -159,7 +159,7 @@ public:
      *
      * @return              The value that was found.
      **/
-    nlohmann::json get_value(const std::string& base_pointer, const std::string& name);
+    nlohmann::json get_value(const std::string& base_pointer, const std::string& name) const;
 
     /**
      * @brief Finds all values with key "name". Searches the whole config tree.
@@ -207,7 +207,7 @@ public:
      *
      * @return The MD5sum as 32 char hex std::string
      */
-    std::string get_md5sum();
+    std::string get_md5sum() const;
 #endif
 
     /**
@@ -215,12 +215,12 @@ public:
      * @warning This shouldn't be called outside of the core framework
      * @return A reference to the full JSON
      */
-    nlohmann::json& get_full_config_json();
+    const nlohmann::json& get_full_config_json() const;
 
     /**
      * @brief Dumps the config to INFO in JSON format.
      */
-    void dump_config();
+    void dump_config() const;
 
 private:
     /// Internal json object
@@ -252,14 +252,14 @@ private:
     class configEval {
 
     public:
-        configEval(Config& _config, const std::string& base_path, const std::string& name);
+        configEval(const Config& _config, const std::string& base_path, const std::string& name);
 
         ~configEval();
 
         Type compute_result();
 
     private:
-        Config& config;
+        const Config& config;
         std::string unique_name;
 
         bool isNumber();
@@ -290,7 +290,7 @@ void Config::update_value(const std::string& base_path, const std::string& name,
 }
 
 template<typename T>
-T Config::get_default(const std::string& base_path, const std::string& name, T default_value) {
+T Config::get_default(const std::string& base_path, const std::string& name, T default_value) const {
     try {
         T value = get<T>(base_path, name);
         return value;
@@ -300,7 +300,7 @@ T Config::get_default(const std::string& base_path, const std::string& name, T d
 }
 
 template<class Type>
-Config::configEval<Type>::configEval(Config& _config, const std::string& base_path,
+Config::configEval<Type>::configEval(const Config& _config, const std::string& base_path,
                                      const std::string& name) :
     config(_config),
     unique_name(base_path) {
@@ -433,25 +433,25 @@ Type Config::configEval<Type>::factor() {
 // Tell the compiler that all those are instantiated in Config.cpp,
 // so that they are not built inline everywhere they are used
 // (would add >60MB to the binary).
-extern template float Config::get(const std::string& base_path, const std::string& name);
-extern template double Config::get(const std::string& base_path, const std::string& name);
-extern template uint32_t Config::get(const std::string& base_path, const std::string& name);
-extern template uint64_t Config::get(const std::string& base_path, const std::string& name);
-extern template int32_t Config::get(const std::string& base_path, const std::string& name);
-extern template int16_t Config::get(const std::string& base_path, const std::string& name);
-extern template uint16_t Config::get(const std::string& base_path, const std::string& name);
-extern template bool Config::get(const std::string& base_path, const std::string& name);
-extern template std::string Config::get(const std::string& base_path, const std::string& name);
+extern template float Config::get(const std::string& base_path, const std::string& name) const;
+extern template double Config::get(const std::string& base_path, const std::string& name) const;
+extern template uint32_t Config::get(const std::string& base_path, const std::string& name) const;
+extern template uint64_t Config::get(const std::string& base_path, const std::string& name) const;
+extern template int32_t Config::get(const std::string& base_path, const std::string& name) const;
+extern template int16_t Config::get(const std::string& base_path, const std::string& name) const;
+extern template uint16_t Config::get(const std::string& base_path, const std::string& name) const;
+extern template bool Config::get(const std::string& base_path, const std::string& name) const;
+extern template std::string Config::get(const std::string& base_path, const std::string& name) const;
 extern template std::vector<int32_t> Config::get(const std::string& base_path,
-                                                 const std::string& name);
+                                                 const std::string& name) const;
 extern template std::vector<uint32_t> Config::get(const std::string& base_path,
-                                                  const std::string& name);
+                                                  const std::string& name) const;
 extern template std::vector<float> Config::get(const std::string& base_path,
-                                               const std::string& name);
+                                               const std::string& name) const;
 extern template std::vector<std::string> Config::get(const std::string& base_path,
-                                                     const std::string& name);
+                                                     const std::string& name) const;
 extern template std::vector<nlohmann::json> Config::get(const std::string& base_path,
-                                                        const std::string& name);
+                                                        const std::string& name) const;
 
 } // namespace kotekan
 

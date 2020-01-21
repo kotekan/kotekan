@@ -13,6 +13,7 @@
 
 #include "json.hpp" // for json
 
+#include <memory>   // for shared_ptr
 #include <mutex>    // for mutex
 #include <stddef.h> // for size_t
 #include <string>   // for string
@@ -97,16 +98,14 @@ private:
     Buffer* _buf_out;
 
     /// Thresholds
-    std::vector<std::tuple<float, size_t, float>> _thresholds;
+    struct ThresholdData {
+        std::vector<std::tuple<float, size_t, float>> thresholds;
+        std::vector<size_t> sk_exceeds;
+    };
+    std::shared_ptr<ThresholdData> _thresholds;
 
     /// Toggle RFI zeroing
-    bool _enable_rfi_zero;
-
-    /// Lock for access to thresholds and enable_rfi_zero
-    std::mutex lock_updatables;
-
-    /// Counter storing information between sub frames. Resized by rest callback.
-    std::vector<size_t> sk_exceeds;
+    std::atomic<bool> _enable_rfi_zero;
 
     /// Prometheus metrics to export
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& failing_frame_counter;
