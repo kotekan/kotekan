@@ -14,7 +14,8 @@
  * @brief hsaCommand to upchannelize and downsample FRB data
  *
  * This is an hsaCommand that launches the kernel (sum_hfb) for
- * summing HFB data across all samples. Final output in float of
+ * summing HFB data across all samples. Excludes samples from 
+ * the sum where there is >=1 lost samples. Final output in float of
  * 1024 beams x 128 freq.
  *
  * @requires_kernel   sum_hfb.hasco
@@ -23,6 +24,11 @@
  * @gpu_mem  hfb_output  Input data of size input_frame_len
  *     @gpu_mem_type            static
  *     @gpu_mem_format          Array of @c float
+ * @gpu_mem  compressed_lost_samples Array indicating if a given timestep was zeroed, size:
+ *           samples_per_data_set / num_sub_freqs
+ *     @gpu_mem_type         staging
+ *     @gpu_mem_format       Array of @c uint8_t
+ *     @gpu_mem_metadata     chimeMetadata
  * @gpu_mem  hfb_sum_output     Output data of size output_frame_len
  *     @gpu_mem_type            staging
  *     @gpu_mem_format          Array of @c float

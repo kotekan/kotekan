@@ -49,8 +49,6 @@
  * @conf   num_frb_total_beams  Int (default 1024). Number of total FRB formed beams
  * @conf   num_sub_freqs        Int (default 128). Number of sub frequencies
  *
- * @todo   Check that the 16 freq axis has the correct orientation
- *
  * @author Cherry Ng and James Willis
  *
  */
