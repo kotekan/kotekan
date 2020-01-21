@@ -8,7 +8,6 @@ REGISTER_HSA_COMMAND(hsaBeamformTranspose);
 hsaBeamformTranspose::hsaBeamformTranspose(Config& config, const string& unique_name,
                                            bufferContainer& host_buffers,
                                            hsaDeviceInterface& device) :
-
     hsaCommand(config, unique_name, host_buffers, device, "transpose" KERNEL_EXT,
                "transpose.hsaco") {
     command_type = gpuCommandType::KERNEL;
