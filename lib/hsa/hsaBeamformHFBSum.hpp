@@ -14,7 +14,7 @@
  * @brief hsaCommand to upchannelize and downsample FRB data
  *
  * This is an hsaCommand that launches the kernel (sum_hfb) for
- * summing HFB data across all samples. Excludes samples from 
+ * summing HFB data across all samples. Excludes samples from
  * the sum where there is >=1 lost samples. Final output in float of
  * 1024 beams x 128 freq.
  *

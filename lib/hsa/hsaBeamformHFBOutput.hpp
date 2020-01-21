@@ -18,7 +18,8 @@
  * it can be reused.
  *
  * @par GPU Memory
- * @gpu_mem  hfb_output      Output from the HFB pipeline, size 1024x128x4 (beams x sub-freq x sizeof(float))
+ * @gpu_mem  hfb_output      Output from the HFB pipeline, size 1024x128x4 (beams x sub-freq x
+ * sizeof(float))
  *     @gpu_mem_type         staging
  *     @gpu_mem_format       Array of @c float
  *
