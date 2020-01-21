@@ -633,13 +633,13 @@ gpu:
   # How many sub frames to devide the N2 products into.
   n_intg: 24576 / num_sub_frames
   frame_arrival_period: samples_per_data_set / 390625
+  updatable_config:
+    psr_pt: /updatable_config/pulsar_pointing
+    rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
+    rfi_var_element_index: /updatable_config/rfi_var_element_index
   gpu_0:
     kotekan_stage: hsaProcess
     gpu_id: 0
-    updatable_config:
-      psr_pt: /updatable_config/pulsar_pointing
-      rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
-      rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     commands: *command_list
@@ -660,10 +660,6 @@ gpu:
   gpu_1:
     kotekan_stage: hsaProcess
     gpu_id: 1
-    updatable_config:
-      psr_pt: /updatable_config/pulsar_pointing
-      rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
-      rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     commands: *command_list
@@ -684,10 +680,6 @@ gpu:
   gpu_2:
     kotekan_stage: hsaProcess
     gpu_id: 2
-    updatable_config:
-      psr_pt: /updatable_config/pulsar_pointing
-      rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
-      rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     commands: *command_list
@@ -708,10 +700,6 @@ gpu:
   gpu_3:
     kotekan_stage: hsaProcess
     gpu_id: 3
-    updatable_config:
-      psr_pt: /updatable_config/pulsar_pointing
-      rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
-      rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     commands: *command_list
@@ -1191,44 +1179,37 @@ valve:
 
 # Perform a second pass at RFI excision
 rfi_stage2:
+  updatable_config:
+   enable: "/updatable_config/rfi_zeroing_second_stage/enable"
+   thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
   rfi0:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_0
     in_buf_sk: gpu_rfi_output_buffer_0
     out_buf: rfi_vis_buffer_0
-    updatable_config:
-       enable: "/updatable_config/rfi_zeroing_second_stage/enable"
-       thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
   rfi1:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_1
     in_buf_sk: gpu_rfi_output_buffer_1
     out_buf: rfi_vis_buffer_1
-    updatable_config:
-       enable: "/updatable_config/rfi_zeroing_second_stage/enable"
-       thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
   rfi2:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_2
     in_buf_sk: gpu_rfi_output_buffer_2
     out_buf: rfi_vis_buffer_2
-    updatable_config:
-       enable: "/updatable_config/rfi_zeroing_second_stage/enable"
-       thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
   rfi3:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_3
     in_buf_sk: gpu_rfi_output_buffer_3
     out_buf: rfi_vis_buffer_3
-    updatable_config:
-       enable: "/updatable_config/rfi_zeroing_second_stage/enable"
-       thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
 
 vis_accumulate:
   integration_time: 5.0  # Integrate to roughly 5s cadence
   # This (12288) is for num_sub_frames = 4, there is currently a config bug that
   # prevents referencing the higher level samples_per_data_set and dividing it
   samples_per_data_set: 12288
+  updatable_config:
+    psr0: "/updatable_config/gating/psr0_config"
   acc0:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_0
@@ -1237,8 +1218,6 @@ vis_accumulate:
       psr0:
         mode: pulsar
         buf: visbuf_psr0_5s_0
-    updatable_config:
-      psr0: "/updatable_config/gating/psr0_config"
   acc1:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_1
@@ -1247,8 +1226,6 @@ vis_accumulate:
       psr0:
         mode: pulsar
         buf: visbuf_psr0_5s_1
-    updatable_config:
-      psr0: "/updatable_config/gating/psr0_config"
   acc2:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_2
@@ -1257,8 +1234,6 @@ vis_accumulate:
       psr0:
         mode: pulsar
         buf: visbuf_psr0_5s_2
-    updatable_config:
-      psr0: "/updatable_config/gating/psr0_config"
   acc3:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_3
@@ -1267,8 +1242,6 @@ vis_accumulate:
       psr0:
         mode: pulsar
         buf: visbuf_psr0_5s_3
-    updatable_config:
-      psr0: "/updatable_config/gating/psr0_config"
 
 #### Perform all extra time integration and calculate eigenvalues ####
 vis_merge_5s:
@@ -1430,41 +1403,35 @@ rfi_bad_input_finder:
 
 rfi_sk_record:
   total_links: 1
+  updatable_config: "/updatable_config/rfi_sk_record"
   gpu_0:
     kotekan_stage: rfiRecord
     rfi_in: gpu_rfi_output_buffer_0
-    updatable_config: "/updatable_config/rfi_sk_record"
   gpu_1:
     kotekan_stage: rfiRecord
     rfi_in: gpu_rfi_output_buffer_1
-    updatable_config: "/updatable_config/rfi_sk_record"
   gpu_2:
     kotekan_stage: rfiRecord
     rfi_in: gpu_rfi_output_buffer_2
-    updatable_config: "/updatable_config/rfi_sk_record"
   gpu_3:
     kotekan_stage: rfiRecord
     rfi_in: gpu_rfi_output_buffer_3
-    updatable_config: "/updatable_config/rfi_sk_record"
 
 #rfi_var_record:
 #  total_links: 1
+#  updatable_config: "/updatable_config/rfi_var_record"
 #  gpu_0:
 #    kotekan_stage: rfiRecord
 #    rfi_in: gpu_rfi_var_output_buffer_0
-#    updatable_config: "/updatable_config/rfi_var_record"
 #  gpu_1:
 #    kotekan_stage: rfiRecord
 #    rfi_in: gpu_rfi_var_output_buffer_1
-#    updatable_config: "/updatable_config/rfi_var_record"
 #  gpu_2:
 #    kotekan_stage: rfiRecord
 #    rfi_in: gpu_rfi_var_output_buffer_2
-#    updatable_config: "/updatable_config/rfi_var_record"
 #  gpu_3:
 #    kotekan_stage: rfiRecord
 #    rfi_in: gpu_rfi_var_output_buffer_3
-#    updatable_config: "/updatable_config/rfi_var_record"
 
 #### Monitoring and debug stages ####
 
