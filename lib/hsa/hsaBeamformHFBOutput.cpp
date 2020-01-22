@@ -29,10 +29,10 @@ int hsaBeamformHFBOutputData::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
     uint8_t* frame =
         wait_for_empty_frame(output_buffer, unique_name.c_str(), output_buffer_precondition_id);
-    uint8_t* network_frame =
-        wait_for_full_frame(network_buffer, unique_name.c_str(), network_buffer_precondition_id);
     if (frame == NULL)
         return -1;
+    uint8_t* network_frame =
+        wait_for_full_frame(network_buffer, unique_name.c_str(), network_buffer_precondition_id);
     if (network_frame == NULL)
         return -1;
     output_buffer_precondition_id = (output_buffer_precondition_id + 1) % output_buffer->num_frames;

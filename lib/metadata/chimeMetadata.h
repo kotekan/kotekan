@@ -46,8 +46,6 @@ struct chimeMetadata {
     uint16_t stream_ID;
     /// The corrdinates of the pulsar beam (if applicable)
     struct psrCoord psr_coord;
-    // Data size of frame after compression
-    uint32_t compressed_data_size;
 };
 
 // Helper functions to save lots of pointer work
@@ -126,12 +124,6 @@ inline struct timespec get_gps_time(struct Buffer * buf, int ID) {
     return chime_metadata->gps_time;
 }
 
-inline int64_t get_compressed_data_size(struct Buffer * buf, int ID) {
-    struct chimeMetadata * chime_metadata =
-     (struct chimeMetadata *) buf->metadata[ID]->metadata;
-    return chime_metadata->compressed_data_size;
-}
-
 inline void atomic_add_lost_timesamples(struct Buffer * buf, int ID,
                                         int64_t num_lost_samples) {
     struct metadataContainer * mc = buf->metadata[ID];
@@ -205,12 +197,6 @@ inline void set_gps_time(struct Buffer * buf, int ID, struct timespec time) {
     struct chimeMetadata * chime_metadata =
      (struct chimeMetadata *) buf->metadata[ID]->metadata;
     chime_metadata->gps_time = time;
-}
-
-inline void set_compressed_data_size(struct Buffer * buf, int ID, uint32_t compressed_size) {
-    struct chimeMetadata * chime_metadata =
-     (struct chimeMetadata *) buf->metadata[ID]->metadata;
-    chime_metadata->compressed_data_size = compressed_size;
 }
 
 /**
