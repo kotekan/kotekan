@@ -1,15 +1,15 @@
-#include "hsaBeamformUpchan21cm.hpp"
+#include "hsaBeamformUpchanHFB.hpp"
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 
-REGISTER_HSA_COMMAND(hsaBeamformUpchan21cm);
+REGISTER_HSA_COMMAND(hsaBeamformUpchanHFB);
 
-hsaBeamformUpchan21cm::hsaBeamformUpchan21cm(Config& config, const string& unique_name,
+hsaBeamformUpchanHFB::hsaBeamformUpchanHFB(Config& config, const string& unique_name,
                                              bufferContainer& host_buffers,
                                              hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "upchannelize" KERNEL_EXT,
-               "upchannelize_flip_21cm.hsaco") {
+               "upchannelize_flip_hfb.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
     // Read parameters from config file.
@@ -31,9 +31,9 @@ hsaBeamformUpchan21cm::hsaBeamformUpchan21cm(Config& config, const string& uniqu
         * sizeof(float);
 }
 
-hsaBeamformUpchan21cm::~hsaBeamformUpchan21cm() {}
+hsaBeamformUpchanHFB::~hsaBeamformUpchanHFB() {}
 
-hsa_signal_t hsaBeamformUpchan21cm::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
+hsa_signal_t hsaBeamformUpchanHFB::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
     // Unused parameter, suppress warning
     (void)precede_signal;

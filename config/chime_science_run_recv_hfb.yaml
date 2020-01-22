@@ -1,6 +1,6 @@
 ##########################################
 #
-# chime_science_run_recv_21cm.yaml
+# chime_science_run_recv_hfb.yaml
 #
 # CHIME 21cm absorber receiver node configuration.
 # Receives frames from each GPU node and writes them in a raw output file. 
@@ -37,7 +37,7 @@ hfb_recv:
   buf: beamform_hfb_output_buffer_merge
   listen_port: 11027
 
-# Write raw 21cm data
+# Write raw HFB data
 write_hfb:
   kotekan_stage: rawFileWrite
   in_buf: beamform_hfb_output_buffer_merge

@@ -614,7 +614,7 @@ gpu:
     - name: hsaBeamformReorder
     - name: hsaBeamformKernel
     - name: hsaBeamformTranspose
-    - name: hsaBeamformUpchan21cm
+    - name: hsaBeamformUpchanHFB
     - name: hsaBeamformHFBSum
     - name: hsaBeamformPulsar
     - name: hsaRfiTimeSum
@@ -792,8 +792,8 @@ hyper_fine_beam:
     hfb_output_buf: beamform_hfb_output_buffer_3
     compressed_lost_samples_buf: compressed_lost_samples_buf_3
  
-# Merge 21cm integrated data from each GPU
-21cm_merge:
+# Merge HFB integrated data from each GPU
+hfb_merge:
   kotekan_stage: bufferMerge
   timeout: 0.1
   in_bufs:
@@ -803,12 +803,12 @@ hyper_fine_beam:
     - beamform_hfb_output_buffer_3
   out_buf: beamform_hfb_output_buffer_merge
 
-# Transmit all the 21cm data to Moose
-buffer_send_21cm:
+# Transmit all the HFB data to Moose
+buffer_send_hfb:
   server_ip: 10.1.50.10
   reconnect_time: 20
   log_level: warn
-  21cm:
+  hfb:
     kotekan_stage: bufferSend
     buf: beamform_hfb_output_buffer_merge
     server_port: 11027

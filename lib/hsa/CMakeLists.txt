@@ -46,7 +46,7 @@ set ( KOTEKAN_HSA_SOURCES
       hsaBeamformKernel.cpp
       hsaBeamformTranspose.cpp
       hsaBeamformUpchan.cpp
-      hsaBeamformUpchan21cm.cpp
+      hsaBeamformUpchanHFB.cpp
       hsaBeamformOutput.cpp
       hsaBeamformHFBOutput.cpp
       hsaBeamformHFBSum.cpp

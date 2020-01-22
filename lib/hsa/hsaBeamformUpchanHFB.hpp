@@ -1,16 +1,16 @@
 /**
  * @file
- * @brief Upchannelization of FRB data with 21cm data extracted
- *  - hsaBeamformUpchan21cm : public hsaCommand
+ * @brief Upchannelization of FRB data with HFB data extracted
+ *  - hsaBeamformUpchanHFB : public hsaCommand
  */
 
-#ifndef HSA_BEAMFORM_UPCHAN_21CM_H
-#define HSA_BEAMFORM_UPCHAN_21CM_H
+#ifndef HSA_BEAMFORM_UPCHAN_HFB_H
+#define HSA_BEAMFORM_UPCHAN_HFB_H
 
 #include "hsaCommand.hpp"
 
 /**
- * @class hsaBeamformUpchan21cm
+ * @class hsaBeamformUpchanHFB
  * @brief hsaCommand to upchannelize and downsample FRB data
  *
  * This is an hsaCommand that launches the kernel (upchannelize_flip) for
@@ -53,14 +53,14 @@
  *
  */
 
-class hsaBeamformUpchan21cm : public hsaCommand {
+class hsaBeamformUpchanHFB : public hsaCommand {
 public:
     /// Constructor, also initializes internal variables from config
-    hsaBeamformUpchan21cm(kotekan::Config& config, const string& unique_name,
+    hsaBeamformUpchanHFB(kotekan::Config& config, const string& unique_name,
                           kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor
-    virtual ~hsaBeamformUpchan21cm();
+    virtual ~hsaBeamformUpchanHFB();
 
     /// Allocate kernel argument buffer, set kernel dimensions, enqueue kernel
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;

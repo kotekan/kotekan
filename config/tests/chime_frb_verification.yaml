@@ -80,7 +80,7 @@ main_pool:
   kotekan_metadata_pool: chimeMetadata
   num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
 
-21cm_pool:
+hfb_pool:
   kotekan_metadata_pool: hfbMetadata
   num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
 
@@ -134,7 +134,7 @@ cpu_hfb_output_buffers:
     cpu_hfb_output_buffer_0:
         kotekan_buffer: standard
     beamform_hfb_output_buffer_0:
-        metadata_pool: 21cm_pool
+        metadata_pool: hfb_pool
         kotekan_buffer: standard
 
 lost_samples_buffer:
@@ -208,7 +208,7 @@ gpu:
   - name: hsaBeamformReorder
   - name: hsaBeamformKernel
   - name: hsaBeamformTranspose
-  - name: hsaBeamformUpchan21cm
+  - name: hsaBeamformUpchanHFB
   - name: hsaBeamformHFBSum
   - name: hsaBeamformOutputData
   - name: hsaBeamformHFBOutputData
@@ -242,12 +242,12 @@ hyper_fine_beam:
     compressed_lost_samples_buf: compressed_lost_samples_buffer
     hfb_output_buf: beamform_hfb_output_buffer_0
   
-21cm:
+hfb:
     kotekan_stage: rawFileWrite
     in_buf: beamform_hfb_output_buffer_0
     file_name: 'hfb_buf'
     file_ext: 'dump'
-    base_dir: '/home/willis/21cm_data'
+    base_dir: '/home/willis/hfb_data'
 
 read_gain:
     kotekan_stage: ReadGain
