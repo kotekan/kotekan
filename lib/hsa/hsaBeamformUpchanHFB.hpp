@@ -57,7 +57,7 @@ class hsaBeamformUpchanHFB : public hsaCommand {
 public:
     /// Constructor, also initializes internal variables from config
     hsaBeamformUpchanHFB(kotekan::Config& config, const string& unique_name,
-                          kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
+                         kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor
     virtual ~hsaBeamformUpchanHFB();

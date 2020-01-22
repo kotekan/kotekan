@@ -6,8 +6,8 @@ using kotekan::Config;
 REGISTER_HSA_COMMAND(hsaBeamformUpchanHFB);
 
 hsaBeamformUpchanHFB::hsaBeamformUpchanHFB(Config& config, const string& unique_name,
-                                             bufferContainer& host_buffers,
-                                             hsaDeviceInterface& device) :
+                                           bufferContainer& host_buffers,
+                                           hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "upchannelize" KERNEL_EXT,
                "upchannelize_flip_hfb.hsaco") {
     command_type = gpuCommandType::KERNEL;
