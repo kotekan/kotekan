@@ -17,10 +17,6 @@
 
 using std::string;
 
-// TODO Where do these live?
-#define likely(x) __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
-
 #define samples_in_frame 3125
 #define num_packet 16
 

@@ -3,7 +3,6 @@
 #include "restClient.hpp"
 #include "restServer.hpp"
 #include "test_utils.hpp"
-#include "visCompression.hpp"
 #include "visUtil.hpp"
 
 #include "json.hpp"
@@ -14,6 +13,8 @@
 
 // the code to test:
 #include "datasetManager.hpp"
+
+#define WAIT_TIME 4000000
 
 using kotekan::Config;
 
@@ -77,6 +78,12 @@ BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, CompareCTypes) {
     dset_id_t ds_id;
     ds_id.set_from_string(line);
 
+    // Add a meaningless state in here. This is designed to trigger a failure
+    // case in older versions where if the local manager already knew about a
+    // state, it didn't bother checking to see if it knew about earlier states
+    // auto state_id = dm.create_state<flagState>("flag_id1").first;
+    // ds_id = dm.add_dataset(state_id, ds_id);
+
     auto freq_state = dm.dataset_state<freqState>(ds_id);
     check_equal(old_freqs, freq_state->get_freqs());
 
@@ -111,5 +118,5 @@ BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, CompareCTypes) {
         std::cout << s.second.state() << " - " << s.second.base_dset() << std::endl;
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(2000000);
+    usleep(WAIT_TIME);
 }

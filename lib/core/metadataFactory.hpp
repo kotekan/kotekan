@@ -21,7 +21,7 @@ public:
     std::map<std::string, struct metadataPool*> build_pools();
 
 private:
-    void build_from_tree(std::map<string, struct metadataPool*>& pools, nlohmann::json& config_tree,
+    void build_from_tree(std::map<string, struct metadataPool*>& pools, const json& config_tree,
                          const std::string& path);
     struct metadataPool* new_pool(const std::string& pool_type, const std::string& location);
 

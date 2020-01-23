@@ -25,8 +25,11 @@ accumulate_params = {
 
 gaussian_params = accumulate_params.copy()
 gaussian_params.update(
-    {"samples_per_data_set": 10000, "num_gpu_frames": 100, "total_frames": 200000}
+    {"samples_per_data_set": 100, "num_gpu_frames": 100, "total_frames": 500000}
 )
+
+drop_frame_params = gaussian_params.copy()
+drop_frame_params.update({"drop_probability": 0.3})
 
 time_params = accumulate_params.copy()
 time_params.update({"integration_time": 5.0})
@@ -93,6 +96,31 @@ def gaussian_data(tmpdir_factory):
         ),
         dump_buffer,
         gaussian_params,
+    )
+
+    test.run()
+
+    yield dump_buffer.load()
+
+
+@pytest.fixture(scope="module")
+def drop_frame_data(tmpdir_factory):
+
+    tmpdir = tmpdir_factory.mktemp("drop_frrame")
+
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
+
+    test = runner.KotekanStageTester(
+        "visAccumulate",
+        {},
+        runner.FakeGPUBuffer(
+            pattern="gaussian",
+            freq=drop_frame_params["freq"],
+            num_frames=drop_frame_params["total_frames"],
+            drop_probability=drop_frame_params["drop_probability"],
+        ),
+        dump_buffer,
+        drop_frame_params,
     )
 
     test.run()
@@ -310,17 +338,43 @@ def test_rfi_total(lostweights_data):
         assert frame.metadata.fpga_total == ((nf // 2) * (2 * ns - b))
 
 
-# Test the the statistics are being calculated correctly
+# Test that the statistics are being calculated correctly
 def test_gaussian(gaussian_data):
+
+    exp_vis = np.identity(4)[np.triu_indices(4)]
+    frac_var = 1.0 / (
+        gaussian_params["samples_per_data_set"] * gaussian_params["num_gpu_frames"]
+    )
 
     vis_set = np.array([frame.vis for frame in gaussian_data])
     weight_set = np.array([frame.weight for frame in gaussian_data])
 
-    assert np.allclose(vis_set.var(axis=0), 1e-6, rtol=1e-1, atol=0)
-    assert np.allclose((1.0 / weight_set).mean(axis=0), 1e-6, rtol=1e-1, atol=0)
-    assert np.allclose(
-        vis_set.mean(axis=0), np.identity(4)[np.triu_indices(4)], atol=1e-4, rtol=0
+    # These tests need a 5 sigma fluctuation to cause failure
+    assert np.allclose(vis_set.mean(axis=0), exp_vis, atol=7e-4, rtol=0)
+    assert np.allclose(vis_set.var(axis=0), frac_var, rtol=7e-2, atol=0)
+    assert np.allclose((1.0 / weight_set).mean(axis=0), frac_var, rtol=1e-2, atol=0)
+    vm = (1.0 / weight_set).mean(axis=0)
+    vv = (1.0 / weight_set).std(axis=0)
+    lv = weight_set.shape[0]
+
+
+# Test that we can deal with whole frames being dropped
+def test_missing_frames(drop_frame_data):
+
+    exp_vis = np.identity(4)[np.triu_indices(4)]
+    frac_var = 1.0 / (
+        drop_frame_params["samples_per_data_set"]
+        * drop_frame_params["num_gpu_frames"]
+        * (1 - drop_frame_params["drop_probability"])
     )
+
+    vis_set = np.array([frame.vis for frame in drop_frame_data])
+    weight_set = np.array([frame.weight for frame in drop_frame_data])
+
+    # These tests need a 5 sigma fluctuation to cause failure
+    assert np.allclose(vis_set.mean(axis=0), exp_vis, atol=7e-4, rtol=0)
+    assert np.allclose(vis_set.var(axis=0), frac_var, rtol=7e-2, atol=0)
+    assert np.allclose((1.0 / weight_set).mean(axis=0), frac_var, rtol=2e-2, atol=0)
 
 
 def test_int_time(time_data):
@@ -383,3 +437,17 @@ def test_pulsar(pulsar_data):
 def test_pulsar_metadata(pulsar_data):
     assert pulsar_data.file_metadata["gating_type"] == "pulsar"
     assert pulsar_data.file_metadata["gating_data"]["pulsar_name"] == "fakepsr"
+    assert pulsar_data.file_metadata["gating_data"]["dm"] == pulsar_params["dm"]
+    assert pulsar_data.file_metadata["gating_data"]["t_ref"] == [pulsar_params["t_ref"]]
+    assert pulsar_data.file_metadata["gating_data"]["phase_ref"] == [
+        pulsar_params["phase_ref"]
+    ]
+    assert (
+        pulsar_data.file_metadata["gating_data"]["rot_freq"]
+        == pulsar_params["rot_freq"]
+    )
+    assert pulsar_data.file_metadata["gating_data"]["segment"] == 100.0
+    assert pulsar_data.file_metadata["gating_data"]["pulse_width"] == pytest.approx(
+        1e-3
+    )
+    assert pulsar_data.file_metadata["gating_data"]["coeff"] == [pulsar_params["coeff"]]

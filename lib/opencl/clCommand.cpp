@@ -27,7 +27,7 @@ clCommand::~clCommand() {
         DEBUG("program Freed");
     }
     free(post_events);
-    DEBUG("post_events Freed: {:s}", unique_name));
+    DEBUG("post_events Freed: {:s}", unique_name);
 }
 
 void clCommand::finalize_frame(int gpu_frame_id) {

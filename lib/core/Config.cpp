@@ -21,21 +21,22 @@ namespace kotekan {
 
 // Instantiation of the most common types to prevent them being built inline
 // everywhere used.
-template float Config::get(const string& base_path, const string& name);
-template double Config::get(const string& base_path, const string& name);
-template uint32_t Config::get(const string& base_path, const string& name);
-template uint64_t Config::get(const string& base_path, const string& name);
-template int32_t Config::get(const string& base_path, const string& name);
-template int16_t Config::get(const string& base_path, const string& name);
-template uint16_t Config::get(const string& base_path, const string& name);
-template bool Config::get(const string& base_path, const string& name);
-template std::string Config::get(const string& base_path, const string& name);
-template std::vector<int32_t> Config::get(const string& base_path, const string& name);
-template std::vector<uint32_t> Config::get(const string& base_path, const string& name);
-template std::vector<float> Config::get(const string& base_path, const string& name);
-template std::vector<std::string> Config::get(const string& base_path, const string& name);
-template std::vector<nlohmann::json> Config::get(const string& base_path, const string& name);
-template std::vector<std::complex<float>> Config::get(const string& base_path, const string& name);
+template float Config::get(const string& base_path, const string& name) const;
+template double Config::get(const string& base_path, const string& name) const;
+template uint32_t Config::get(const string& base_path, const string& name) const;
+template uint64_t Config::get(const string& base_path, const string& name) const;
+template int32_t Config::get(const string& base_path, const string& name) const;
+template int16_t Config::get(const string& base_path, const string& name) const;
+template uint16_t Config::get(const string& base_path, const string& name) const;
+template bool Config::get(const string& base_path, const string& name) const;
+template std::string Config::get(const string& base_path, const string& name) const;
+template std::vector<int32_t> Config::get(const string& base_path, const string& name) const;
+template std::vector<uint32_t> Config::get(const string& base_path, const string& name) const;
+template std::vector<float> Config::get(const string& base_path, const string& name) const;
+template std::vector<std::string> Config::get(const string& base_path, const string& name) const;
+template std::vector<nlohmann::json> Config::get(const string& base_path, const string& name) const;
+template std::vector<std::complex<float>> Config::get(const string& base_path,
+                                                      const string& name) const;
 
 Config::Config() {}
 
@@ -57,7 +58,7 @@ void Config::update_config(json updates) {
     _json = updates;
 }
 
-int32_t Config::num_links_per_gpu(const int32_t& gpu_id) {
+int32_t Config::num_links_per_gpu(const int32_t& gpu_id) const {
 
     int32_t num_links = get<int32_t>("/", "num_links");
     vector<int32_t> link_map = get<std::vector<int32_t>>("/", "link_map");
@@ -70,7 +71,7 @@ int32_t Config::num_links_per_gpu(const int32_t& gpu_id) {
     return gpus_in_link;
 }
 
-json Config::get_value(const string& base_path, const string& name) {
+json Config::get_value(const string& base_path, const string& name) const {
     string search_path = base_path;
     for (;;) {
 
@@ -100,7 +101,7 @@ json Config::get_value(const string& base_path, const string& name) {
                     name, base_path));
 }
 
-bool Config::exists(const string& base_path, const string& name) {
+bool Config::exists(const string& base_path, const string& name) const {
     string search_path;
     if (base_path == "/") {
         search_path = base_path + name;
@@ -133,16 +134,16 @@ void Config::get_value_recursive(const json& j, const std::string& name,
     }
 }
 
-void Config::dump_config() {
+void Config::dump_config() const {
     INFO_NON_OO("Config: {:s}", _json.dump(4));
 }
 
-json& Config::get_full_config_json() {
+const json& Config::get_full_config_json() const {
     return _json;
 }
 
 #ifdef WITH_SSL
-std::string Config::get_md5sum() {
+std::string Config::get_md5sum() const {
     unsigned char md5sum[MD5_DIGEST_LENGTH];
 
     std::vector<std::uint8_t> v_msgpack = json::to_msgpack(_json);

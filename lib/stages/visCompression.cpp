@@ -48,16 +48,12 @@ baselineCompression::baselineCompression(Config& config, const string& unique_na
     out_buf(get_buffer("out_buf")),
     frame_id_in(in_buf),
     frame_id_out(out_buf),
-    frame_counter_global(0),
-    compression_residuals_metric(
-        Metrics::instance().add_gauge("kotekan_baselinecompression_residuals", unique_name,
-                                      {"freq_id", "dataset_id", "thread_id"})),
-    compression_time_seconds_metric(
-        Metrics::instance().add_gauge("kotekan_baselinecompression_time_seconds", unique_name,
-                                      {"freq_id", "dataset_id", "thread_id"})),
-    compression_frame_counter(
-        Metrics::instance().add_gauge("kotekan_baselinecompression_frame_counter", unique_name,
-                                      {"freq_id", "dataset_id", "thread_id"})) {
+    compression_residuals_metric(Metrics::instance().add_gauge(
+        "kotekan_baselinecompression_residuals", unique_name, {"freq_id"})),
+    compression_time_seconds_metric(Metrics::instance().add_gauge(
+        "kotekan_baselinecompression_time_seconds", unique_name, {"thread_id"})),
+    compression_frame_counter(Metrics::instance().add_counter(
+        "kotekan_baselinecompression_frame_total", unique_name, {"thread_id"})) {
 
     register_consumer(in_buf, unique_name.c_str());
     register_producer(out_buf, unique_name.c_str());
@@ -82,10 +78,6 @@ baselineCompression::baselineCompression(Config& config, const string& unique_na
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     if (num_threads == 0)
         throw std::invalid_argument("baselineCompression: num_threads has to be at least 1.");
-    if (in_buf->num_frames % num_threads != 0 || out_buf->num_frames % num_threads != 0)
-        throw std::invalid_argument("baselineCompression: both "
-                                    "the size of the input and output buffer"
-                                    "have to be multiples of num_threads.");
 }
 
 void baselineCompression::main_thread() {
@@ -110,46 +102,56 @@ void baselineCompression::main_thread() {
     }
 }
 
-dset_id_t baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
+void baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
+
+    double start_time = current_time();
+
     auto& dm = datasetManager::instance();
-    state_id_t stack_state_id;
+    auto fprint = dm.fingerprint(input_ds_id, {"inputs", "products"});
 
-    // Get input & prod states synchronoulsy
-    auto input_state = std::async(&datasetManager::dataset_state<inputState>, &dm, input_ds_id);
-    auto prod_state = std::async(&datasetManager::dataset_state<prodState>, &dm, input_ds_id);
+    if (state_map.count(fprint) == 0) {
+        // Get input & prod states synchronously
+        auto istate = std::async(&datasetManager::dataset_state<inputState>, &dm, input_ds_id);
+        auto pstate = std::async(&datasetManager::dataset_state<prodState>, &dm, input_ds_id);
 
-    const inputState* input_state_ptr = input_state.get();
-    prod_state_ptr = prod_state.get();
-    if (input_state_ptr == nullptr || prod_state_ptr == nullptr) {
-        FATAL_ERROR("Set to not use dataset_broker and couldn't find freqState ancestor of dataset "
-                    "{}. Make sure there is a stage upstream in the config, that adds a "
-                    "freqState.\nExiting...",
-                    input_ds_id);
+        auto istate_ptr = istate.get();
+        auto pstate_ptr = pstate.get();
+
+        if (istate_ptr == nullptr || pstate_ptr == nullptr) {
+            FATAL_ERROR("Couldn't find inputState or prodState ancestor of dataset "
+                        "{}. Make sure there is a stage upstream in the config, that adds a "
+                        "freqState.\nExiting...",
+                        input_ds_id);
+        }
+
+        // Calculate stack description and register the state
+        auto sspec = calculate_stack(istate_ptr->get_inputs(), pstate_ptr->get_prods());
+        auto [state_id, sstate_ptr] =
+            dm.create_state<stackState>(sspec.first, std::move(sspec.second));
+
+        // Insert state into map
+        state_map[fprint] = {state_id, sstate_ptr, pstate_ptr};
     }
 
-    auto sspec = calculate_stack(input_state_ptr->get_inputs(), prod_state_ptr->get_prods());
-    auto sstate = std::make_unique<stackState>(sspec.first, std::move(sspec.second));
 
-    std::tie(stack_state_id, stack_state_ptr) = dm.add_state(std::move(sstate));
+    auto [state_id, sstate, pstate] = state_map.at(fprint);
+    auto new_ds_id = dm.add_dataset(state_id, input_ds_id);
 
-    return dm.add_dataset(stack_state_id, input_ds_id);
+    dset_id_map[input_ds_id] = {new_ds_id, sstate, pstate};
+
+    INFO("Created new stack update and registering. Took {:.2f}s", current_time() - start_time);
 }
 
 void baselineCompression::compress_thread(uint32_t thread_id) {
 
     int input_frame_id;
     int output_frame_id;
-    uint64_t frame_counter;
-
-    dset_id_t input_dset_id;
-    dset_id_t output_dset_id = dset_id_t::null;
 
     // Get the current values of the shared frame IDs.
     {
         std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
         output_frame_id = frame_id_out++;
         input_frame_id = frame_id_in++;
-        frame_counter = frame_counter_global++;
     }
 
     // Wait for the input buffer to be filled with data
@@ -158,9 +160,6 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
         return;
     }
     auto input_frame = visFrameView(in_buf, input_frame_id);
-    input_dset_id = input_frame.dataset_id;
-    auto future_output_dset_id =
-        std::async(&baselineCompression::change_dataset_state, this, input_dset_id);
 
     while (!stop_thread) {
 
@@ -174,24 +173,26 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
         // Get a view of the current frame
         auto input_frame = visFrameView(in_buf, input_frame_id);
 
+        dset_id_t new_dset_id;
+        const stackState* sstate_ptr = nullptr;
+        const prodState* pstate_ptr = nullptr;
+
         // If the input dataset has changed construct a new stack spec for the
         // datasetManager
-        if (input_dset_id != input_frame.dataset_id) {
-            input_dset_id = input_frame.dataset_id;
-            future_output_dset_id =
-                std::async(&baselineCompression::change_dataset_state, this, input_dset_id);
+        {
+            std::lock_guard<std::mutex> _lock(m_dset_map);
+            if (dset_id_map.count(input_frame.dataset_id) == 0) {
+                change_dataset_state(input_frame.dataset_id);
+            }
+            std::tie(new_dset_id, sstate_ptr, pstate_ptr) = dset_id_map.at(input_frame.dataset_id);
         }
 
-        // Are we waiting for a new dataset ID?
-        if (future_output_dset_id.valid())
-            output_dset_id = future_output_dset_id.get();
+        const auto& stack_map = sstate_ptr->get_rstack_map();
+        const auto& prods = pstate_ptr->get_prods();
+        auto num_stack = sstate_ptr->get_num_stack();
 
-        const auto& stack_map = stack_state_ptr->get_rstack_map();
-        const auto& prods = prod_state_ptr->get_prods();
-        auto num_stack = stack_state_ptr->get_num_stack();
-
-        std::vector<float> stack_norm(stack_state_ptr->get_num_stack(), 0.0);
-        std::vector<float> stack_v2(stack_state_ptr->get_num_stack(), 0.0);
+        std::vector<float> stack_norm(sstate_ptr->get_num_stack(), 0.0);
+        std::vector<float> stack_v2(sstate_ptr->get_num_stack(), 0.0);
 
         // Wait for the output buffer frame to be free
         if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
@@ -207,7 +208,7 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
         // Copy over the data we won't modify
         output_frame.copy_metadata(input_frame);
         output_frame.copy_data(input_frame, {visField::vis, visField::weight});
-        output_frame.dataset_id = output_dset_id;
+        output_frame.dataset_id = new_dset_id;
 
         // Zero the output frame
         std::fill(std::begin(output_frame.vis), std::end(output_frame.vis), 0.0);
@@ -236,7 +237,7 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
             auto& p = prods[prod_ind];
             auto& s = stack_map[prod_ind];
 
-            // If the weight is zero, completey skip this iteration
+            // If the weight is zero, completely skip this iteration
             if (weight == 0 || flags[p.input_a] == 0 || flags[p.input_b] == 0)
                 continue;
 
@@ -287,27 +288,15 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
 
         // Update prometheus metrics
         double elapsed = current_time() - start_time;
-        compression_residuals_metric
-            .labels({std::to_string(output_frame.freq_id), output_frame.dataset_id.to_string(),
-                     std::to_string(thread_id)})
-            .set(residual);
-        compression_time_seconds_metric
-            .labels({std::to_string(output_frame.freq_id), output_frame.dataset_id.to_string(),
-                     std::to_string(thread_id)})
-            .set(elapsed);
-        // TODO: this feels like it should be a counter, but it's unclear
-        // how `frame_counter` increments exactly
-        compression_frame_counter
-            .labels({std::to_string(output_frame.freq_id), output_frame.dataset_id.to_string(),
-                     std::to_string(thread_id)})
-            .set(frame_counter);
+        compression_residuals_metric.labels({std::to_string(output_frame.freq_id)}).set(residual);
+        compression_time_seconds_metric.labels({std::to_string(thread_id)}).set(elapsed);
+        compression_frame_counter.labels({std::to_string(thread_id)}).inc();
 
         // Get the current values of the shared frame IDs and increment them.
         {
             std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
             output_frame_id = frame_id_out++;
             input_frame_id = frame_id_in++;
-            frame_counter = frame_counter_global++;
         }
 
         DEBUG("Compression time {:.4f}", elapsed);

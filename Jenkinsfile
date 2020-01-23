@@ -37,22 +37,37 @@ pipeline {
                   make -j 4'''
           }
         }
+        stage('Build CHIME kotekan with Clang') {
+          steps {
+            sh '''mkdir -p chime-build-clang
+                  cd chime-build-clang
+                  export CC=clang
+                  export CXX=clang++
+                  cmake -DRTE_SDK=/opt/dpdk \
+                  -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON \
+                  -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
+                  -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
+                  -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+                  make -j 4'''
+          }
+        }
         stage('Build base kotekan') {
           steps {
             sh '''mkdir -p build_base
                   cd build_base
-                  cmake ..
+                  cmake -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
                   make -j 4'''
           }
         }
-        /* stage('Build MacOS kotekan') {
+        stage('Build MacOS kotekan') {
           agent {label 'macos'}
           steps {
             sh '''export PATH=${PATH}:/usr/local/bin/
+                  source ~/.bash_profile
                   mkdir -p build_base
                   cd build_base/
-                  cmake ..
-                  make -j 4
+                  cmake -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+                  make -j
                   cd ..
                   mkdir build_full
                   cd build_full/
@@ -61,9 +76,9 @@ pipeline {
                         -DOPENBLAS_PATH=/usr/local/opt/OpenBLAS \
                         -DUSE_HDF5=ON -DHIGHFIVE_PATH=/usr/local/opt/HighFive \
                         -DCOMPILE_DOCS=ON -DUSE_OPENCL=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
-                  make -j 4'''
+                  make -j'''
           }
-        } */
+        }
         stage('Build docs') {
           steps {
             sh '''export PATH=${PATH}:/var/lib/jenkins/.local/bin/
