@@ -2,8 +2,8 @@
 
 using std::string;
 
-#include "chimeMetadata.h"
 #include "compressData.hpp"
+#include "hfbMetadata.h"
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -267,7 +267,7 @@ void compressData::main_thread() {
 
         // Set compressed size in metadata of frame
         allocate_new_metadata_object(out_buf, out_frame_ID);
-        set_compressed_data_size(out_buf, out_frame_ID, compressed_data_size);
+        set_compressed_data_size_hfb(out_buf, out_frame_ID, compressed_data_size);
 
         mark_frame_full(out_buf, unique_name.c_str(), out_frame_ID);
 
