@@ -7,8 +7,6 @@
 #include <time.h>    // for timespec
 #include <utility>   // for move
 
-struct timespec;
-
 
 REGISTER_GATESPEC(pulsarSpec, "pulsar");
 REGISTER_GATESPEC(uniformSpec, "uniform");

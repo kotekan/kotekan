@@ -1,5 +1,5 @@
 #include "Config.hpp"             // for Config
-#include "StageFactory.hpp"       // for StageFactoryRegistry, StageMaker (ptr only)
+#include "StageFactory.hpp"       // for StageFactoryRegistry, StageMaker
 #include "basebandApiManager.hpp" // for basebandApiManager
 #include "errors.h"               // for get_error_message, get_exit_code, __enable_syslog, exi...
 #include "gpsTime.h"              // for set_global_gps_time
@@ -12,11 +12,13 @@
 #include "visUtil.hpp"            // for regex_split
 
 #include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for basic_json<>::value_type, json
+#include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
 
+#include <algorithm>   // for max
 #include <array>       // for array
 #include <assert.h>    // for assert
 #include <csignal>     // for signal, SIGINT, sig_atomic_t
+#include <cstdint>     // for uint64_t
 #include <exception>   // for exception
 #include <getopt.h>    // for no_argument, getopt_long, required_argument, option
 #include <iostream>    // for endl, basic_ostream, cout, ostream
@@ -24,8 +26,8 @@
 #include <map>         // for map
 #include <memory>      // for allocator, shared_ptr
 #include <mutex>       // for mutex, lock_guard
+#include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error, out_of_range
-#include <stdint.h>    // for uint64_t
 #include <stdio.h>     // for printf, fprintf, feof, fgets, popen, stderr, pclose
 #include <stdlib.h>    // for exit, free
 #include <string.h>    // for strdup

@@ -12,6 +12,7 @@
 #include <atomic>             // for atomic
 #include <condition_variable> // for condition_variable
 #include <event2/buffer.h>    // for evbuffer_iovec
+#include <event2/http.h>      // for evhttp_connection
 #include <event2/util.h>      // for evutil_socket_t
 #include <functional>         // for function
 #include <mutex>              // for mutex
@@ -19,8 +20,6 @@
 #include <string>             // for string, allocator
 #include <thread>             // for thread
 #include <utility>            // for pair
-
-struct evhttp_connection;
 
 
 /**

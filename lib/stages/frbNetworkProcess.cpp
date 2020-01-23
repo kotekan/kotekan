@@ -3,28 +3,31 @@
 #include "Config.hpp"            // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for wait_for_full_frame, mark_frame_empty, register_consumer
-#include "bufferContainer.hpp"   // IWYU pragma: keep
+#include "bufferContainer.hpp"   // for bufferContainer
 #include "frb_functions.h"       // for FRBHeader
 #include "kotekanLogging.hpp"    // for DEBUG, INFO, WARN, FATAL_ERROR, ERROR
 #include "network_functions.hpp" // for receive_ping, send_ping
-#include "restServer.hpp"        // for restServer, HTTP_RESPONSE, connectionInstance, HTTP_RES...
+#include "restServer.hpp"        // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RES...
 #include "tx_utils.hpp"          // for add_nsec, CLOCK_ABS_NANOSLEEP, get_vlan_from_ip, parse_...
 
 #include "fmt.hpp" // for format
 
-#include <algorithm>    // for max_element
+#include <algorithm>    // for max, max_element
 #include <arpa/inet.h>  // for inet_pton
 #include <chrono>       // for steady_clock::time_point, seconds, operator+, steady_clock
 #include <cstring>      // for strerror, memset, size_t
 #include <errno.h>      // for errno, EINTR
+#include <exception>    // for exception
 #include <map>          // for map, map<>::mapped_type
 #include <memory>       // for allocator_traits<>::value_type
 #include <mutex>        // for mutex, unique_lock
 #include <pthread.h>    // for pthread_setaffinity_np
 #include <queue>        // for priority_queue
-#include <random>       // for random_device, uniform_int_distribution, mt19937
+#include <random>       // for mt19937, random_device, uniform_int_distribution
 #include <ratio>        // for ratio
+#include <regex>        // for match_results<>::_Base_type
 #include <sched.h>      // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept>    // for runtime_error
 #include <string>       // for string, allocator
 #include <sys/select.h> // for select, FD_SET, FD_ZERO, FD_ISSET, fd_set
 #include <sys/socket.h> // for AF_INET, bind, socket, sendto, setsockopt, SOCK_DGRAM

@@ -6,9 +6,10 @@
 #ifndef BUFFER_SEND_H
 #define BUFFER_SEND_H
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "prometheusMetrics.hpp" // for Counter
 
 #include <atomic>             // for atomic
 #include <condition_variable> // for condition_variable
@@ -16,12 +17,6 @@
 #include <netinet/in.h>       // for sockaddr_in
 #include <stdint.h>           // for uint32_t
 #include <string>             // for string
-
-namespace kotekan {
-namespace prometheus {
-class Counter;
-} // namespace prometheus
-} // namespace kotekan
 
 /**
  * @struct bufferFrameHeader

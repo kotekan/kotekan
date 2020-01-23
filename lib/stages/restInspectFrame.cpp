@@ -2,15 +2,20 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_full...
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for CHECK_MEM, WARN
 #include "restServer.hpp"      // for restServer, connectionInstance
 
 #include <atomic>     // for atomic_bool
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
 #include <stdlib.h>   // for free, malloc
 #include <string.h>   // for memcpy
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;

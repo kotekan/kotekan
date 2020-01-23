@@ -3,19 +3,22 @@
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
-#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_full...
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "bufferContainer.hpp" // for bufferContainer
 #include "errors.h"            // for TEST_PASSED
 #include "kotekanLogging.hpp"  // for DEBUG, INFO, ERROR, FATAL_ERROR
 
 #include <assert.h>    // for assert
-#include <cmath>       // for abs
+#include <cstdint>     // for int32_t, uint8_t, uint32_t
+#include <exception>   // for exception
 #include <functional>  // for bind
 #include <limits>      // for numeric_limits
-#include <stdint.h>    // for uint8_t, int32_t, uint32_t
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error
 #include <stdlib.h>    // for abs
 #include <string>      // for string, allocator
 #include <type_traits> // for is_same, enable_if
+#include <vector>      // for vector
 
 
 template<typename A_Type>

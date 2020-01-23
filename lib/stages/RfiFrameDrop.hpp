@@ -6,27 +6,20 @@
 #ifndef VALVE_HPP
 #define VALVE_HPP
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "buffer.h"            // IWYU pragma: keep
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily
 
 #include "json.hpp" // for json
 
+#include <atomic>   // for atomic
 #include <memory>   // for shared_ptr
-#include <mutex>    // for mutex
 #include <stddef.h> // for size_t
 #include <string>   // for string
 #include <tuple>    // for tuple
 #include <vector>   // for vector
-
-namespace kotekan {
-namespace prometheus {
-class Counter;
-template<typename T>
-class MetricFamily;
-} // namespace prometheus
-} // namespace kotekan
 
 
 /**

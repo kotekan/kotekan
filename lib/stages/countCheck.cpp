@@ -3,15 +3,19 @@
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR
 #include "visBuffer.hpp"       // for visFrameView
 
 #include <atomic>     // for atomic_bool
+#include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
 #include <stdlib.h>   // for llabs
 #include <time.h>     // for timespec
 #include <tuple>      // for get
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;

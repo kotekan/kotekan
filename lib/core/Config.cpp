@@ -1,8 +1,9 @@
 #include "Config.hpp"
 
 #include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for json, iter_impl, operator>>, basic_json
+#include "json.hpp" // for json, iter_impl, basic_json<>::object_t, operator>>, basic_json
 
+#include <cstdint>   // for int32_t
 #include <fstream>   // for ifstream, istream, size_t
 #include <map>       // for map<>::key_type
 #include <stdexcept> // for runtime_error
@@ -32,8 +33,10 @@ template std::string Config::get(const std::string& base_path, const std::string
 template vector<int32_t> Config::get(const std::string& base_path, const std::string& name) const;
 template vector<uint32_t> Config::get(const std::string& base_path, const std::string& name) const;
 template vector<float> Config::get(const std::string& base_path, const std::string& name) const;
-template vector<std::string> Config::get(const std::string& base_path, const std::string& name) const;
-template vector<nlohmann::json> Config::get(const std::string& base_path, const std::string& name) const;
+template vector<std::string> Config::get(const std::string& base_path,
+                                         const std::string& name) const;
+template vector<nlohmann::json> Config::get(const std::string& base_path,
+                                            const std::string& name) const;
 
 Config::Config() {}
 

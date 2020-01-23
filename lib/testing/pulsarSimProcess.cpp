@@ -1,11 +1,15 @@
 #include <atomic>     // for atomic_bool
-#include <fstream>    // for basic_ostream::operator<<, operator<<, stringstream, basic...
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
+#include <fstream>    // for basic_ostream::operator<<, operator<<, stringstream, basi...
 #include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
 #include <stdlib.h>   // for exit
 #include <string.h>   // for memcpy
 #include <string>     // for allocator, string, char_traits
 #include <sys/time.h> // for timeval
 #include <unistd.h>   // for gethostname
+#include <vector>     // for vector
 
 using std::string;
 
@@ -15,7 +19,7 @@ using std::string;
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for wait_for_empty_frame, mark_frame_full, register_producer
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.h"     // for psrCoord
 #include "kotekanLogging.hpp"  // for INFO, CHECK_MEM
 #include "pulsarSimProcess.hpp"

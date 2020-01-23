@@ -290,7 +290,8 @@ void Config::update_value(const std::string& base_path, const std::string& name,
 }
 
 template<typename T>
-T Config::get_default(const std::string& base_path, const std::string& name, T default_value) const {
+T Config::get_default(const std::string& base_path, const std::string& name,
+                      T default_value) const {
     try {
         T value = get<T>(base_path, name);
         return value;
@@ -441,7 +442,8 @@ extern template int32_t Config::get(const std::string& base_path, const std::str
 extern template int16_t Config::get(const std::string& base_path, const std::string& name) const;
 extern template uint16_t Config::get(const std::string& base_path, const std::string& name) const;
 extern template bool Config::get(const std::string& base_path, const std::string& name) const;
-extern template std::string Config::get(const std::string& base_path, const std::string& name) const;
+extern template std::string Config::get(const std::string& base_path,
+                                        const std::string& name) const;
 extern template std::vector<int32_t> Config::get(const std::string& base_path,
                                                  const std::string& name) const;
 extern template std::vector<uint32_t> Config::get(const std::string& base_path,

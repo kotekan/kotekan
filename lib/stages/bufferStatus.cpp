@@ -9,11 +9,15 @@
 #include "visUtil.hpp"           // for current_time
 
 #include <atomic>     // for atomic_bool
+#include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
 #include <stdint.h>   // for uint32_t
 #include <string>     // for string, allocator
 #include <unistd.h>   // for usleep
 #include <utility>    // for pair
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -6,12 +6,14 @@
 #ifndef RECEIVEFLAGS_H
 #define RECEIVEFLAGS_H
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "buffer.h"            // IWYU pragma: keep
-#include "bufferContainer.hpp" // IWYU pragma: keep
-#include "dataset.hpp"         // for dset_id_t, state_id_t
-#include "updateQueue.hpp"     // for updateQueue
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "dataset.hpp"           // for dset_id_t, state_id_t
+#include "prometheusMetrics.hpp" // for Counter, Gauge
+#include "updateQueue.hpp"       // for updateQueue
+#include "visBuffer.hpp"         // for visFrameView
 
 #include "json.hpp" // for json
 
@@ -22,14 +24,6 @@
 #include <time.h>   // for size_t, timespec
 #include <utility>  // for pair
 #include <vector>   // for vector
-
-class visFrameView;
-namespace kotekan {
-namespace prometheus {
-class Counter;
-class Gauge;
-} // namespace prometheus
-} // namespace kotekan
 
 /**
  * @class ReceiveFlags

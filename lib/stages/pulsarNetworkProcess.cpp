@@ -3,22 +3,25 @@
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for mark_frame_empty, wait_for_full_frame, register_consumer
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO, CHECK_MEM
-#include "tx_utils.hpp"        // for add_nsec, get_vlan_from_ip, parse_chime_host_name, CLOCK_A...
+#include "tx_utils.hpp"        // for add_nsec, get_vlan_from_ip, parse_chime_host_name, CLOCK_...
 #include "vdif_functions.h"    // for VDIFHeader
 
 #include <arpa/inet.h>  // for inet_pton
 #include <atomic>       // for atomic_bool
 #include <cstdio>       // for snprintf
 #include <cstring>      // for memset
+#include <exception>    // for exception
 #include <functional>   // for _Bind_helper<>::type, bind, function
 #include <memory>       // for allocator_traits<>::value_type
 #include <netinet/in.h> // for sockaddr_in, htons, IPPROTO_UDP
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for runtime_error
 #include <stdint.h>     // for int64_t, uint8_t
 #include <stdlib.h>     // for free, malloc
 #include <string>       // for string, allocator
-#include <sys/socket.h> // for AF_INET, bind, sendto, setsockopt, socket, SOCK_DGRAM, SOL...
+#include <sys/socket.h> // for AF_INET, bind, sendto, setsockopt, socket, SOCK_DGRAM
 #include <sys/time.h>   // for CLOCK_MONOTONIC, CLOCK_REALTIME
 #include <time.h>       // for timespec, clock_gettime
 #include <vector>       // for vector

@@ -4,12 +4,16 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "util.h"              // for string_tail
 
+#include <algorithm>    // for max
 #include <chrono>       // for seconds
 #include <cstdlib>      // for abort
 #include <cxxabi.h>     // for __forced_unwind
+#include <exception>    // for exception
 #include <future>       // for async, future, future_status, future_status::timeout, launch
 #include <pthread.h>    // for pthread_setaffinity_np, pthread_setname_np
+#include <regex>        // for match_results<>::_Base_type
 #include <sched.h>      // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept>    // for runtime_error
 #include <system_error> // for system_error
 #include <thread>       // for thread
 

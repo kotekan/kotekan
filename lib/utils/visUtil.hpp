@@ -12,7 +12,7 @@
 #define VIS_UTIL_HPP
 
 
-#include "Config.hpp" // IWYU pragma: keep
+#include "Config.hpp" // for Config
 #include "buffer.h"   // for Buffer
 
 #include "fmt.hpp"      // for format_context, formatter
@@ -25,7 +25,6 @@
 #include <cstdlib>     // for size_t, (anonymous), div
 #include <functional>  // for function
 #include <iosfwd>      // for ostream
-#include <iterator>    // for pair  // IWYU pragma: keep
 #include <map>         // for map
 #include <math.h>      // for fmod
 #include <string>      // for string
@@ -36,9 +35,6 @@
 #include <type_traits> // for enable_if_t, is_integral, make_unsigned
 #include <utility>     // for pair
 #include <vector>      // for vector
-
-struct timespec;
-struct timeval;
 
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;

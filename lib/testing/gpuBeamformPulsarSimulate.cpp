@@ -2,8 +2,8 @@
 
 #include "Config.hpp"              // for Config
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"                // IWYU pragma: keep
-#include "bufferContainer.hpp"     // IWYU pragma: keep
+#include "buffer.h"                // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
+#include "bufferContainer.hpp"     // for bufferContainer
 #include "chimeMetadata.h"         // for psrCoord, get_fpga_seq_num, get_gps_time, get_stream_...
 #include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
 #include "kotekanLogging.hpp"      // for INFO, ERROR
@@ -11,8 +11,12 @@
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
 #include <cmath>      // for cos, sin, fmod, pow, acos, asin, atan2, sqrt
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
-#include <memory>     // for allocator, allocator_traits<>::value_type
+#include <memory>     // for allocator_traits<>::value_type
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
 #include <stdio.h>    // for fclose, fopen, fread, snprintf, FILE
 #include <stdlib.h>   // for free, malloc
 #include <string.h>   // for memcpy

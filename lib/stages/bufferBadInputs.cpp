@@ -8,13 +8,11 @@
 #include "kotekanLogging.hpp" // for DEBUG, ERROR
 #include "visUtil.hpp"        // for parse_reorder_default
 
+#include <cstdint>    // for uint32_t
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <regex>      // for match_results<>::_Base_type
 #include <tuple>      // for get
-
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

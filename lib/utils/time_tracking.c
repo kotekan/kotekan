@@ -2,8 +2,6 @@
 
 #include <sys/time.h> // for timeval
 
-struct timeval;
-
 static uint32_t first_fpga_seq_num;
 static uint64_t first_fpga_seq_num_time;
 

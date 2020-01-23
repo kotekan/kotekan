@@ -4,34 +4,37 @@
 #include "Hash.hpp"              // for Hash, operator<
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for wait_for_full_frame, allocate_new_metadata_object, mark...
-#include "bufferContainer.hpp"   // IWYU pragma: keep
-#include "datasetManager.hpp"    // for datasetManager
-#include "datasetState.hpp"      // for dset_id_t, stackState, prodState, inputState, state_id_t
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, state_id_t, datasetManager
+#include "datasetState.hpp"      // for stackState, prodState, inputState
 #include "kotekanLogging.hpp"    // for INFO, DEBUG, ERROR, FATAL_ERROR
-#include "prometheusMetrics.hpp" // for Metrics, MetricFamily, Gauge, Counter
+#include "prometheusMetrics.hpp" // for Gauge, Counter, Metrics, MetricFamily
 #include "visBuffer.hpp"         // for visFrameView, visField, visField::vis, visField::weight
-#include "visUtil.hpp"           // for rstack_ctype, current_time, modulo, prod_ctype, input_c...
+#include "visUtil.hpp"           // for rstack_ctype, prod_ctype, current_time, modulo, input_c...
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>    // for fill, sort, transform
+#include <algorithm>    // for copy, max, fill, copy_backward, equal, sort, transform
 #include <atomic>       // for atomic_bool
-#include <complex>      // for complex, conj, norm
+#include <complex>      // for complex, norm
 #include <cstdlib>      // for abs
 #include <cxxabi.h>     // for __forced_unwind
-#include <functional>   // for _Bind_helper<>::type, bind, function, _1
+#include <deque>        // for deque
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, bind, function, _1, placeholders
 #include <future>       // for async, future
 #include <iterator>     // for begin, end, back_insert_iterator, back_inserter
 #include <math.h>       // for abs
 #include <memory>       // for allocator_traits<>::value_type
 #include <numeric>      // for iota
 #include <pthread.h>    // for pthread_setaffinity_np
+#include <regex>        // for match_results<>::_Base_type
 #include <sched.h>      // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdexcept>    // for invalid_argument
+#include <stdexcept>    // for invalid_argument, out_of_range, runtime_error
 #include <system_error> // for system_error
 #include <tuple>        // for tuple, make_tuple, operator!=, operator<, tie
-#include <vector>       // for vector
+#include <vector>       // for vector, __alloc_traits<>::value_type
 
 
 using namespace std::placeholders;

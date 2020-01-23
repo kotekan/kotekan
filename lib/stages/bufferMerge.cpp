@@ -8,13 +8,15 @@
 #include "visUtil.hpp"         // for frameID, current_time, double_to_ts, modulo
 
 #include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for json, basic_json<>::iterator, basic_json
+#include "json.hpp" // for json, basic_json<>::iterator, basic_json<>::object_t, bas...
 
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
 #include <cstring>    // for memcpy
+#include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
-#include <stdexcept>  // for invalid_argument, runtime_error
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error, invalid_argument
 
 using nlohmann::json;
 

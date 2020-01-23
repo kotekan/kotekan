@@ -60,7 +60,7 @@ if ! [ $ENABLE_IWYU = "OFF" ]; then
     CXX=clang++ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
     echo "Running iwyu. If it fails make sure to run cmake with
 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON first. This could take a while..."
-    iwyu_tool -j 4 -p . -- --mapping_file=${KOTEKAN_DIR}/iwyu.kotekan.imp --max_line_length=100 | tee iwyu.out
+    iwyu_tool -j 4 -p . -- -Xiwyu --no_fwd_decls -Xiwyu --mapping_file=${KOTEKAN_DIR}/iwyu.kotekan.imp -Xiwyu --max_line_length=100 | tee iwyu.out
     echo "Applying suggested changes..."
     python2 /usr/bin/fix_include --nosafe_headers --comments < iwyu.out
 else

@@ -1,23 +1,26 @@
 #include "pyPlotN2.hpp"
 
-#include "Config.hpp"       // for Config
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"         // for mark_frame_empty, Buffer, register_consumer, wait_for_full_f...
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_empty, Buffer, register_consumer, wait_for_ful...
+#include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.h"     // for get_stream_id_t
-#include "restServer.hpp" // for restServer, HTTP_RESPONSE, HTTP_RESPONSE::OK, connectionInst...
+#include "restServer.hpp"      // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...
 
 #include "json.hpp" // for json_ref, json
 
 #include <atomic>      // for atomic_bool
 #include <cstdio>      // for fwrite, fflush, popen, FILE
+#include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <regex>       // for match_results<>::_Base_type
 #include <stdint.h>    // for uint32_t, uint8_t
 #include <stdlib.h>    // for free, malloc
 #include <string.h>    // for memcpy
 #include <sys/types.h> // for uint
 #include <thread>      // for thread
 #include <unistd.h>    // for usleep
+#include <vector>      // for vector
 
 
 using json = nlohmann::json;

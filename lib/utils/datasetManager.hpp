@@ -1,23 +1,25 @@
 #ifndef DATASET_MANAGER_HPP
 #define DATASET_MANAGER_HPP
 
-#include "Config.hpp"            // IWYU pragma: keep
-#include "Hash.hpp"              // for Hash
-#include "dataset.hpp"           // for state_id_t, dset_id_t, dataset
-#include "datasetState.hpp"      // for datasetState, _factory_aliasdatasetState
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for operator<, Hash
+#include "dataset.hpp"           // for dataset
+#include "datasetState.hpp"      // for datasetState, state_uptr, _factory_aliasdatasetState
 #include "factory.hpp"           // for FACTORY
 #include "kotekanLogging.hpp"    // for WARN_NON_OO, DEBUG_NON_OO, DEBUG2_NON_OO, FATAL_ERROR_N...
 #include "prometheusMetrics.hpp" // for Gauge
 #include "restClient.hpp"        // for restClient::restReply, restClient
+#include "restServer.hpp"        // for connectionInstance
 
 #include "fmt.hpp"  // for fmt
-#include "json.hpp" // for json, basic_json, operator!=, basic_json<>::value_type
+#include "json.hpp" // for json, basic_json<>::object_t, basic_json, operator!=
 
 #include <atomic>             // for atomic, __atomic_base
 #include <chrono>             // for milliseconds
 #include <condition_variable> // for condition_variable
 #include <exception>          // for exception
 #include <functional>         // for function
+#include <iterator>           // for pair
 #include <map>                // for map, _Rb_tree_iterator, operator!=, map<>::iterator
 #include <memory>             // for unique_ptr, allocator, operator==, make_unique
 #include <mutex>              // for mutex, unique_lock, lock_guard
@@ -31,11 +33,6 @@
 #include <typeinfo>           // for type_info
 #include <utility>            // for pair, move, forward
 #include <vector>             // for vector
-
-// Forward declarations
-namespace kotekan {
-class connectionInstance;
-} // namespace kotekan
 
 /// Alias certain types to give semantic meaning to the IDs
 /// These use a 128 bit hash type so there shouldn't be any collisions.

@@ -7,10 +7,14 @@
 #include "kotekanLogging.hpp"  // for FATAL_ERROR
 #include "util.h"              // for e_time
 
-#include <atomic>   // for atomic_bool
-#include <stdint.h> // for uint32_t
-#include <unistd.h> // for usleep, sleep
-#include <utility>  // for pair
+#include <atomic>    // for atomic_bool
+#include <exception> // for exception
+#include <map>       // for map
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error
+#include <stdint.h>  // for uint32_t
+#include <unistd.h>  // for usleep, sleep
+#include <utility>   // for pair
 
 using kotekan::bufferContainer;
 using kotekan::Config;

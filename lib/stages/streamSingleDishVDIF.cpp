@@ -3,17 +3,20 @@
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for ERROR, INFO
 
 #include <arpa/inet.h>  // for inet_aton
 #include <atomic>       // for atomic_bool
+#include <exception>    // for exception
 #include <functional>   // for _Bind_helper<>::type, bind, function
 #include <netinet/in.h> // for sockaddr_in, IPPROTO_UDP, htons
+#include <regex>        // for match_results<>::_Base_type
 #include <stdio.h>      // for size_t
 #include <stdlib.h>     // for exit
 #include <string.h>     // for memset
 #include <sys/socket.h> // for sendto, socket, AF_INET, SOCK_DGRAM
+#include <vector>       // for vector
 
 
 using kotekan::bufferContainer;

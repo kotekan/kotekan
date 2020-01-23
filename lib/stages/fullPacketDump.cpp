@@ -2,21 +2,24 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_full...
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for ERROR, INFO
-#include "restServer.hpp"      // for connectionInstance, restServer, HTTP_RESPONSE, HTTP_RESPON...
+#include "restServer.hpp"      // for connectionInstance, restServer, HTTP_RESPONSE, HTTP_RESPO...
 
 #include "fmt.hpp" // for format, fmt
 
 #include <atomic>     // for atomic_bool
 #include <errno.h>    // for errno
+#include <exception>  // for exception
 #include <fcntl.h>    // for open, O_CREAT, O_WRONLY
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
+#include <regex>      // for match_results<>::_Base_type
 #include <stdio.h>    // for snprintf
 #include <stdlib.h>   // for exit, free, malloc
 #include <string.h>   // for memcpy
 #include <unistd.h>   // for close, gethostname, sleep, write, ssize_t
+#include <vector>     // for vector
 
 
 #define MAX_NUM_PACKETS 100

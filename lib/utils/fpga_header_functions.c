@@ -1,5 +1,7 @@
 #include "fpga_header_functions.h"
 
+#include <stdint.h>
+
 stream_id_t extract_stream_id(const uint16_t encoded_stream_id) {
     stream_id_t stream_id;
 

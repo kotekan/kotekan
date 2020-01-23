@@ -1,15 +1,19 @@
 #include "accumulate.hpp"
 
-#include "Config.hpp"       // for Config
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"         // for Buffer, allocate_new_metadata_object, mark_frame_empty, mark...
-#include "bufferContainer.hpp" // IWYU pragma: keep
-#include "chimeMetadata.h" // for atomic_add_lost_timesamples, get_lost_timesamples, get_first...
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_empty
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.h"     // for atomic_add_lost_timesamples, get_lost_timesamples, get_fi...
 
 #include <atomic>     // for atomic_bool
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
 #include <sys/time.h> // for timeval
 #include <time.h>     // for timespec
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;

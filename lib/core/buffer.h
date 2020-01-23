@@ -29,13 +29,12 @@
 extern "C" {
 #endif
 
+#include "metadata.h" // for metadataPool
+
 #include <pthread.h>   // for pthread_cond_t, pthread_mutex_t
 #include <stdint.h>    // for uint8_t
-#include <stdlib.h>    // for size_t
 #include <sys/types.h> // for ssize_t
-
-struct metadataPool;
-struct timespec;
+#include <time.h>      // for size_t, timespec
 
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"

@@ -7,18 +7,15 @@
 #ifndef BUFFER_BAD_INPUT_DATA
 #define BUFFER_BAD_INPUT_DATA
 
-#include "Stage.hpp" // for Stage
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
 
 #include "json.hpp" // for json
 
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
 #include <vector>   // for vector
-
-namespace kotekan {
-class Config;
-class bufferContainer;
-} // namespace kotekan
 
 /**
  * @class bufferBadInputs

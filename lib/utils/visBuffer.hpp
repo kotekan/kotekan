@@ -7,10 +7,11 @@
 #ifndef VISBUFFER_HPP
 #define VISBUFFER_HPP
 
-#include "Hash.hpp"    // for Hash
-#include "buffer.h"    // IWYU pragma: keep
-#include "dataset.hpp" // for dset_id_t
-#include "visUtil.hpp" // for cfloat
+#include "Hash.hpp"        // for Hash
+#include "buffer.h"        // for Buffer
+#include "chimeMetadata.h" // for chimeMetadata
+#include "dataset.hpp"     // for dset_id_t
+#include "visUtil.hpp"     // for cfloat
 
 #include "gsl-lite.hpp" // for span
 
@@ -20,8 +21,6 @@
 #include <time.h>   // for timespec
 #include <tuple>    // for tuple
 #include <utility>  // for pair
-struct chimeMetadata;
-struct timespec;
 
 
 /**

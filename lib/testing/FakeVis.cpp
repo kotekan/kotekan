@@ -4,35 +4,32 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for allocate_new_metadata_object, mark_frame_full, register_p...
 #include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for dset_id_t, datasetManager, state_id_t
-#include "errors.h"            // for exit_kotekan, ReturnCode, ReturnCode::CLEAN_EXIT
+#include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager
+#include "datasetState.hpp"    // for eigenvalueState, freqState, inputState, metadataState
+#include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
 #include "factory.hpp"         // for FACTORY
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
 #include "version.h"           // for get_git_commit_hash
 #include "visBuffer.hpp"       // for visFrameView
-#include "visUtil.hpp"         // for double_to_ts, current_time, freq_ctype, cfloat, input_ctype
+#include "visUtil.hpp"         // for prod_ctype, input_ctype, double_to_ts, current_time, freq...
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span<>::iterator, span
 
-#include <algorithm>   // for fill, transform
+#include <algorithm>   // for max, fill, transform
 #include <atomic>      // for atomic_bool
 #include <complex>     // for complex
-#include <cstdint>     // for uint32_t, uint64_t
+#include <cstdint>     // for uint32_t, int32_t
 #include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <functional>  // for _Bind_helper<>::type, bind, function, placeholders
 #include <iterator>    // for back_insert_iterator, back_inserter, begin, end
 #include <memory>      // for allocator, unique_ptr
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error
 #include <time.h>      // for nanosleep, timespec
 #include <tuple>       // for get, make_tuple, tuple
 #include <type_traits> // for __decay_and_strip<>::__type
 #include <utility>     // for pair
-
-class eigenvalueState;
-class freqState;
-class inputState;
-class metadataState;
-class prodState;
 
 
 using namespace std::placeholders;

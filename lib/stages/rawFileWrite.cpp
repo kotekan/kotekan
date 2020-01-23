@@ -3,7 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for Buffer, get_metadata_container, mark_frame_empty, regis...
-#include "bufferContainer.hpp"   // IWYU pragma: keep
+#include "bufferContainer.hpp"   // for bufferContainer
 #include "kotekanLogging.hpp"    // for ERROR, INFO
 #include "metadata.h"            // for metadataContainer
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
@@ -11,6 +11,7 @@
 
 #include <atomic>     // for atomic_bool
 #include <errno.h>    // for errno
+#include <exception>  // for exception
 #include <fcntl.h>    // for open, O_CREAT, O_WRONLY
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <stdint.h>   // for uint32_t, int32_t, uint8_t

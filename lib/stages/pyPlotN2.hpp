@@ -7,16 +7,13 @@
 #ifndef PY_PLOT_N2_H
 #define PY_PLOT_N2_H
 
-#include "Config.hpp"              // IWYU pragma: keep
+#include "Config.hpp"              // for Config
 #include "Stage.hpp"               // for Stage
-#include "bufferContainer.hpp"     // IWYU pragma: keep
+#include "bufferContainer.hpp"     // for bufferContainer
 #include "fpga_header_functions.h" // for stream_id_t
+#include "restServer.hpp"          // for connectionInstance
 
 #include <string> // for string
-
-namespace kotekan {
-class connectionInstance;
-} // namespace kotekan
 
 /**
  * @class pyPlotN2

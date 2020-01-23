@@ -4,13 +4,13 @@
 #include "Hash.hpp"              // for Hash, operator<
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "bufferContainer.hpp"   // IWYU pragma: keep
-#include "datasetManager.hpp"    // for datasetManager, fingerprint_t
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, fingerprint_t, datasetManager
 #include "datasetState.hpp"      // for metadataState, freqState, prodState, stackState, _facto...
 #include "factory.hpp"           // for FACTORY
 #include "kotekanLogging.hpp"    // for INFO, ERROR, WARN, FATAL_ERROR, DEBUG, logLevel
-#include "prometheusMetrics.hpp" // for Metrics, Counter, MetricFamily, Gauge
-#include "restServer.hpp"        // for restServer, HTTP_RESPONSE, connectionInstance
+#include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily, Gauge
+#include "restServer.hpp"        // for restServer, connectionInstance, HTTP_RESPONSE
 #include "version.h"             // for get_git_commit_hash
 #include "visBuffer.hpp"         // for visFrameView
 #include "visFile.hpp"           // for visFileBundle, visCalFileBundle, _factory_aliasvisFile
@@ -18,16 +18,18 @@
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for json_ref, json
 
-#include <algorithm>    // for count_if
+#include <algorithm>    // for copy, copy_backward, count_if, equal, max
 #include <atomic>       // for atomic_bool
 #include <cxxabi.h>     // for __forced_unwind
+#include <deque>        // for deque
 #include <exception>    // for exception
 #include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, function
-#include <regex>        // for regex_replace, regex
+#include <regex>        // for match_results<>::_Base_type, regex_replace, regex
+#include <sstream>      // for basic_stringbuf<>::int_type, basic_stringbuf<>::pos_type
 #include <sys/types.h>  // for uint
 #include <system_error> // for system_error
 #include <tuple>        // for get
-#include <vector>       // for operator==, vector
+#include <vector>       // for vector
 
 
 using kotekan::bufferContainer;

@@ -6,12 +6,14 @@
 #ifndef VIS_COMPRESSION_HPP
 #define VIS_COMPRESSION_HPP
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "buffer.h"            // IWYU pragma: keep
-#include "bufferContainer.hpp" // IWYU pragma: keep
-#include "datasetManager.hpp"  // for dset_id_t, state_id_t, fingerprint_t
-#include "visUtil.hpp"         // for input_ctype (ptr only), prod_ctype (ptr only), frameID
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, state_id_t, fingerprint_t
+#include "datasetState.hpp"      // for prodState, stackState
+#include "prometheusMetrics.hpp" // for MetricFamily, Gauge, Counter
+#include "visUtil.hpp"           // for input_ctype, rstack_ctype, prod_ctype, frameID
 
 #include <cstdint>    // for uint32_t, int8_t, int16_t
 #include <functional> // for function
@@ -23,20 +25,6 @@
 #include <tuple>      // for tuple
 #include <utility>    // for pair
 #include <vector>     // for vector
-
-class prodState;
-class stackState;
-
-namespace kotekan {
-
-namespace prometheus {
-class Counter;
-class Gauge;
-template<typename T>
-class MetricFamily;
-} // namespace prometheus
-} // namespace kotekan
-
 
 /**
  * @brief Compress visibility data by stacking together equivalent baselines.

@@ -8,6 +8,7 @@
 
 #include "dataset.hpp"        // for dset_id_t
 #include "kotekanLogging.hpp" // for logLevel
+#include "visBuffer.hpp"      // for visFrameView
 #include "visFile.hpp"        // for visFile
 #include "visUtil.hpp"        // for time_ctype
 
@@ -21,8 +22,6 @@
 #include <string>      // for string
 #include <sys/types.h> // for off_t
 #include <vector>      // for vector
-
-class visFrameView;
 
 
 /** @brief A CHIME correlator file in raw format.

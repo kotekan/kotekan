@@ -3,17 +3,21 @@
 #include "Config.hpp"              // for Config
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"                // for mark_frame_full, register_producer, wait_for_empty_frame
-#include "bufferContainer.hpp"     // IWYU pragma: keep
+#include "bufferContainer.hpp"     // for bufferContainer
 #include "chimeMetadata.h"         // for set_first_packet_recv_time, set_fpga_seq_num, set_str...
 #include "fpga_header_functions.h" // for stream_id_t
 #include "kotekanLogging.hpp"      // for ERROR
 #include "test_data_generation.h"  // for generate_complex_sine_data_set, generate_const_data_set
 
 #include <atomic>     // for atomic_bool
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <pthread.h>  // for pthread_exit
+#include <regex>      // for match_results<>::_Base_type
 #include <stdlib.h>   // for exit
 #include <sys/time.h> // for gettimeofday, timeval
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;

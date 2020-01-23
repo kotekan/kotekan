@@ -7,7 +7,10 @@
 #ifndef READ_GAIN
 #define READ_GAIN
 
-#include "Stage.hpp" // for Stage
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
 #include "json.hpp" // for json
 
@@ -16,12 +19,6 @@
 #include <stdint.h>           // for int32_t, int16_t, uint32_t
 #include <string>             // for string
 #include <vector>             // for vector
-
-namespace kotekan {
-class Config;
-class bufferContainer;
-} // namespace kotekan
-struct Buffer;
 
 using std::vector;
 

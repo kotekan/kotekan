@@ -3,16 +3,19 @@
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for mark_frame_full, register_producer, wait_for_empty_frame
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for INFO
 #include "util.h"              // for e_time
 #include "vdif_functions.h"    // for VDIFHeader
 
 #include <atomic>     // for atomic_bool
+#include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
-#include <random>     // for random_device, uniform_int_distribution, mt19937
+#include <random>     // for mt19937, random_device, uniform_int_distribution
+#include <regex>      // for match_results<>::_Base_type
 #include <string.h>   // for memcpy, memset
 #include <unistd.h>   // for usleep
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;

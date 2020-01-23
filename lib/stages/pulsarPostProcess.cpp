@@ -1,25 +1,28 @@
 #include "pulsarPostProcess.hpp"
 
-#include "BranchPrediction.hpp"
-#include "Config.hpp" // for Config
-#include "StageFactory.hpp"
-#include "buffer.h"                // for mark_frame_empty, wait_for_empty_frame, wait_for_full...
-#include "bufferContainer.hpp"     // IWYU pragma: keep
+#include "BranchPrediction.hpp"    // for likely, unlikely
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for Buffer, mark_frame_empty, wait_for_empty_frame, wait_...
+#include "bufferContainer.hpp"     // for bufferContainer
 #include "chimeMetadata.h"         // for get_fpga_seq_num, psrCoord, get_psr_coord, get_stream...
 #include "fpga_header_functions.h" // for bin_number_chime, stream_id_t
 #include "gpsTime.h"               // for compute_gps_time, is_gps_global_time_set
 #include "kotekanLogging.hpp"      // for DEBUG, ERROR
-#include "vdif_functions.h" // for VDIFHeader#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "vdif_functions.h"        // for VDIFHeader
 
 #include <algorithm>  // for max
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
 #include <cmath>      // for round
-#include <cstdint>    // for uint32_t, uint16_t, uint8_t, int64_t, uint64_t
+#include <cstdint>    // for int64_t, uint64_t
+#include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error
 #include <string.h>   // for memcpy
 #include <string>     // for allocator, string, operator+, to_string
+#include <vector>     // for vector
 
 using std::string;
 

@@ -2,15 +2,17 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for Buffer, mark_frame_full, register_producer, wait_for_empty...
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "buffer.h"            // for Buffer, mark_frame_full, register_producer, wait_for_empt...
+#include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for INFO, ERROR
 
 #include <assert.h>    // for assert
 #include <atomic>      // for atomic_bool
+#include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, bind, function
-#include <memory>      // for allocator, allocator_traits<>::value_type
+#include <memory>      // for allocator_traits<>::value_type
 #include <pthread.h>   // for pthread_setaffinity_np
+#include <regex>       // for match_results<>::_Base_type
 #include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <stdio.h>     // for fclose, fopen, fread, fseek, ftell, rewind, snprintf, FILE
 #include <sys/types.h> // for uint

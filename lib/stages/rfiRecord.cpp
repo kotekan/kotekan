@@ -3,7 +3,7 @@
 #include "Config.hpp"              // for Config
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"                // for Buffer, mark_frame_empty, register_consumer, wait_for...
-#include "bufferContainer.hpp"     // IWYU pragma: keep
+#include "bufferContainer.hpp"     // for bufferContainer
 #include "chimeMetadata.h"         // for get_fpga_seq_num, get_gps_time, get_stream_id_t
 #include "configUpdater.hpp"       // for configUpdater
 #include "fpga_header_functions.h" // for bin_number_chime, stream_id_t
@@ -14,11 +14,14 @@
 #include <exception>  // for exception
 #include <fcntl.h>    // for open, O_APPEND, O_CREAT, O_WRONLY
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
 #include <stdio.h>    // for snprintf
 #include <string.h>   // for strerror
 #include <string>     // for string, allocator
 #include <time.h>     // for gmtime_r, strftime, timespec, tm
 #include <unistd.h>   // for write, close, ssize_t
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;

@@ -7,14 +7,15 @@
 #ifndef VIS_ACCUMULATE_HPP
 #define VIS_ACCUMULATE_HPP
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "buffer.h"            // IWYU pragma: keep
-#include "bufferContainer.hpp" // IWYU pragma: keep
-#include "datasetManager.hpp"  // for dset_id_t
-#include "gateSpec.hpp"        // for gateSpec
-#include "visBuffer.hpp"       // for visFrameView
-#include "visUtil.hpp"         // for frameID, freq_ctype (ptr only), input_ctype (ptr only)
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t
+#include "gateSpec.hpp"          // for gateSpec
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily
+#include "visBuffer.hpp"         // for visFrameView
+#include "visUtil.hpp"           // for frameID, freq_ctype, input_ctype, prod_ctype
 
 #include <cstdint>    // for uint32_t, int32_t
 #include <deque>      // for deque
@@ -23,19 +24,9 @@
 #include <memory>     // for unique_ptr
 #include <mutex>      // for mutex
 #include <string>     // for string
-#include <time.h>     // for size_t
+#include <time.h>     // for size_t, timespec
 #include <utility>    // for pair
 #include <vector>     // for vector
-
-namespace kotekan {
-
-namespace prometheus {
-class Counter;
-template<typename T>
-class MetricFamily;
-} // namespace prometheus
-} // namespace kotekan
-struct timespec;
 
 
 /**

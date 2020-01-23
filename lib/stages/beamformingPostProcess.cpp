@@ -1,23 +1,25 @@
 #include "beamformingPostProcess.hpp"
 
-#include "BranchPrediction.hpp"
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for wait_for_empty_frame, Buffer, mark_frame_empty, ...
-#include "bufferContainer.hpp" // IWYU pragma: keep
-#include "chimeMetadata.h"     // for get_fpga_seq_num, get_first_packet_recv_time, get_stream_id
-#include "vdif_functions.h"    // for VDIFHeader
+#include "BranchPrediction.hpp" // for unlikely, likely
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"             // for Buffer, wait_for_empty_frame, mark_frame_empty, mark_fra...
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chimeMetadata.h"      // for get_fpga_seq_num, get_first_packet_recv_time, get_stream_id
+#include "vdif_functions.h"     // for VDIFHeader
 
 #include "fmt.hpp" // for format, fmt
 
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
-#include <cstdint>    // for uint32_t, int32_t, uint8_t
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <math.h>     // for round
+#include <regex>      // for match_results<>::_Base_type
 #include <stdlib.h>   // for free, malloc
 #include <string.h>   // for memcpy
-#include <string>     // for string
+#include <string>     // for allocator, string
 #include <sys/time.h> // for timeval
 
 using kotekan::bufferContainer;

@@ -3,7 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for Buffer, get_num_full_frames, mark_frame_empty, register...
-#include "bufferContainer.hpp"   // IWYU pragma: keep
+#include "bufferContainer.hpp"   // for bufferContainer
 #include "kotekanLogging.hpp"    // for DEBUG2, ERROR, DEBUG, WARN, INFO
 #include "metadata.h"            // for metadataContainer
 #include "prometheusMetrics.hpp" // for Metrics, Counter
@@ -13,13 +13,16 @@
 #include <arpa/inet.h>  // for inet_addr
 #include <cerrno>       // for errno
 #include <cstring>      // for strerror, size_t
+#include <exception>    // for exception
 #include <functional>   // for _Bind_helper<>::type, bind, ref, function
+#include <regex>        // for match_results<>::_Base_type
 #include <stdexcept>    // for runtime_error
 #include <strings.h>    // for bzero
 #include <sys/socket.h> // for send, MSG_NOSIGNAL, connect, setsockopt, socket, AF_INET
 #include <sys/time.h>   // for timeval
 #include <thread>       // for thread
 #include <unistd.h>     // for close, sleep
+#include <vector>       // for vector
 
 
 // Only Linux supports MSG_NOSIGNAL

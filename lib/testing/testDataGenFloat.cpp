@@ -2,20 +2,24 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for allocate_new_metadata_object, mark_frame_full, register_pr...
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "buffer.h"            // for allocate_new_metadata_object, mark_frame_full, register_p...
+#include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.h"     // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
 #include "kotekanLogging.hpp"  // for DEBUG
 
 #include <assert.h>    // for assert
 #include <atomic>      // for atomic_bool
 #include <cmath>       // for fmod
+#include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, bind, function
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error
 #include <stdint.h>    // for uint64_t
 #include <stdlib.h>    // for rand, srand
 #include <sys/time.h>  // for gettimeofday, timeval
 #include <sys/types.h> // for uint
 #include <unistd.h>    // for usleep
+#include <vector>      // for vector
 
 
 using kotekan::bufferContainer;

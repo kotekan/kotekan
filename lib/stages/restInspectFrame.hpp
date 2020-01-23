@@ -1,17 +1,14 @@
 #ifndef REST_INSPECT_FRAME_HPP
 #define REST_INSPECT_FRAME_HPP
 
-#include "Config.hpp"          // IWYU pragma: keep
+#include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "bufferContainer.hpp" // for bufferContainer
+#include "restServer.hpp"      // for connectionInstance
 
 #include <mutex>    // for mutex
 #include <stdint.h> // for int32_t, uint8_t
 #include <string>   // for string
-
-namespace kotekan {
-class connectionInstance;
-} // namespace kotekan
 
 /**
  * @class restInspectFrame

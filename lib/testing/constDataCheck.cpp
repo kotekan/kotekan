@@ -2,10 +2,14 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_full...
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "bufferContainer.hpp" // for bufferContainer
 #include "errors.h"            // for TEST_PASSED
 #include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, INFO
+
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error
 
 
 REGISTER_KOTEKAN_STAGE(constDataCheck);

@@ -5,10 +5,12 @@
 
 #include "fmt.hpp" // for format, fmt
 
+#include <algorithm>               // for max
 #include <assert.h>                // for assert
-#include <event2/buffer.h>         // for evbuffer_add, evbuffer_peek, evbuffer_free, evbuffe...
-#include <event2/event.h>          // for event_add, event_base_dispatch, event_base_free
-#include <event2/http.h>           // for evhttp_send_reply, evhttp_add_header, evhttp_reques...
+#include <cstdint>                 // for int32_t
+#include <event2/buffer.h>         // for evbuffer_add, evbuffer_peek, iovec, evbuffer_free
+#include <event2/event.h>          // for event_add, event_base_dispatch, event_base_free, even...
+#include <event2/http.h>           // for evhttp_send_reply, evhttp_add_header, evhttp_request_...
 #include <event2/keyvalq_struct.h> // for evkeyvalq, evkeyval, evkeyval::(anonymous)
 #include <event2/thread.h>         // for evthread_use_pthreads
 #include <evhttp.h>                // for evhttp_request
@@ -24,8 +26,6 @@
 #include <sys/time.h>              // for timeval
 #include <utility>                 // for pair
 #include <vector>                  // for vector
-
-struct evbuffer;
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
 #endif

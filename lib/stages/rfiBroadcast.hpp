@@ -6,9 +6,10 @@
 #ifndef RFI_BROADCAST_H
 #define RFI_BROADCAST_H
 
-#include "Config.hpp"          // IWYU pragma: keep
+#include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "bufferContainer.hpp" // for bufferContainer
+#include "restServer.hpp"      // for connectionInstance
 #include "visUtil.hpp"         // for movingAverage
 
 #include "json.hpp" // for json
@@ -16,10 +17,6 @@
 #include <mutex>    // for mutex
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
-
-namespace kotekan {
-class connectionInstance;
-} // namespace kotekan
 
 /*
  * @class rfiBroadcast

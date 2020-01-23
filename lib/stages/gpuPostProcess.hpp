@@ -1,9 +1,10 @@
 #ifndef GPU_POST_PROCESS
 #define GPU_POST_PROCESS
 
-#include "Config.hpp"          // IWYU pragma: keep
+#include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "bufferContainer.hpp" // for bufferContainer
+#include "restServer.hpp"      // for connectionInstance
 
 #include "json.hpp" // for json
 
@@ -11,10 +12,6 @@
 #include <string>     // for string
 #include <sys/time.h> // for timeval
 #include <vector>     // for vector
-
-namespace kotekan {
-class connectionInstance;
-} // namespace kotekan
 
 
 #define MAX_GATE_DESCRIPTION_LEN 127

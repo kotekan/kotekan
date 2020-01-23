@@ -1,28 +1,24 @@
 #include "restClient.hpp"
 
-#include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO, DEBUG_NON_OO, WARN_NON_OO, DEBUG2_NO...
+#include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO, DEBUG_NON_OO, WARN_NON_OO
 
-#include <chrono>               // for operator+, seconds, system_clock, system_clock::time_point
-#include <condition_variable>   // for condition_variable
-#include <cstring>              // for memcpy
-#include <event2/buffer.h>      // for iovec, evbuffer_peek, evbuffer_iovec, evbuffer_commit_space
-#include <event2/bufferevent.h> // for bufferevent_read, bufferevent_free, bufferevent_setcb
-#include <event2/dns.h>         // for evdns_base_free, evdns_base_new
-#include <event2/event.h>       // for event_base_loopbreak, EV_READ, event_add, event_base_dis...
-#include <event2/http.h>        // for evhttp_connection_free, evhttp_request_free, evhttp_add_...
-#include <event2/thread.h>      // for evthread_use_pthreads
-#include <evhttp.h>             // for evhttp_request
-#include <pthread.h>            // for pthread_setname_np
-#include <stdlib.h>             // for free, malloc
-#include <sys/time.h>           // for timeval
-#include <vector>               // for __alloc_traits<>::value_type
-
-struct bufferevent;
-struct evbuffer;
-struct event;
-struct evhttp_connection;
-struct evhttp_request;
-struct evkeyvalq;
+#include <chrono>                      // for operator+, seconds, system_clock, system_clock::t...
+#include <condition_variable>          // for condition_variable
+#include <cstring>                     // for memcpy
+#include <event2/buffer.h>             // for iovec, evbuffer_peek, evbuffer_iovec, evbuffer
+#include <event2/bufferevent.h>        // for bufferevent_read, bufferevent_free, bufferevent_s...
+#include <event2/bufferevent_struct.h> // for bufferevent
+#include <event2/dns.h>                // for evdns_base_free, evdns_base_new
+#include <event2/event.h>              // for event_base_loopbreak, EV_READ, event_add, event_b...
+#include <event2/event_struct.h>       // for event
+#include <event2/http.h>               // for evhttp_connection_free, evhttp_request_free, evht...
+#include <event2/keyvalq_struct.h>     // for evkeyvalq
+#include <event2/thread.h>             // for evthread_use_pthreads
+#include <evhttp.h>                    // for evhttp_request
+#include <pthread.h>                   // for pthread_setname_np
+#include <stdlib.h>                    // for free, malloc
+#include <sys/time.h>                  // for timeval
+#include <vector>                      // for __alloc_traits<>::value_type
 
 
 restClient& restClient::instance() {

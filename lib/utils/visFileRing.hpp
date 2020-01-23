@@ -10,13 +10,12 @@
 #include "dataset.hpp"        // for dset_id_t
 #include "kotekanLogging.hpp" // for logLevel
 #include "visFileRaw.hpp"     // for visFileRaw
+#include "visUtil.hpp"        // for time_ctype
 
 #include <map>      // for map
 #include <stddef.h> // for size_t
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
-
-struct time_ctype;
 
 /** @brief A CHIME correlator ring-style buffer file in raw format.
  *

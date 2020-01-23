@@ -3,27 +3,28 @@
 #include "Config.hpp"            // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for Buffer, allocate_new_metadata_object, buffer_free, buff...
-#include "bufferContainer.hpp"   // IWYU pragma: keep
+#include "bufferContainer.hpp"   // for bufferContainer
 #include "bufferSend.hpp"        // for bufferFrameHeader
 #include "metadata.h"            // for metadataPool
-#include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge, MetricFamily
+#include "prometheusMetrics.hpp" // for Gauge, Metrics, Counter, MetricFamily
 #include "util.h"                // for string_tail
 #include "visUtil.hpp"           // for current_time
 
 #include "fmt.hpp" // for format, fmt
 
-#include <algorithm>       // for find
+#include <algorithm>       // for copy, max, copy_backward, find, equal
 #include <arpa/inet.h>     // for inet_ntop
 #include <assert.h>        // for assert
 #include <atomic>          // for atomic_bool
-#include <cstring>         // for strerror
 #include <errno.h>         // for errno
 #include <event2/thread.h> // for evthread_use_pthreads
-#include <functional>      // for _Bind_helper<>::type, bind, ref, function
+#include <exception>       // for exception
+#include <functional>      // for _Bind_helper<>::type, bind, ref, function, placeholders
 #include <memory>          // for allocator_traits<>::value_type
 #include <netinet/in.h>    // for sockaddr_in, htons, in_addr, ntohs
 #include <pthread.h>       // for pthread_setaffinity_np, pthread_setname_np
 #include <queue>           // for queue
+#include <regex>           // for match_results<>::_Base_type
 #include <sched.h>         // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <stdexcept>       // for runtime_error
 #include <stdlib.h>        // for free, malloc

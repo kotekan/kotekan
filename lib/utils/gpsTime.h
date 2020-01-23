@@ -4,8 +4,6 @@
 #include <stdint.h> // for uint64_t
 #include <time.h>   // for timespec
 
-struct timespec;
-
 #ifdef __cplusplus
 extern "C" {
 #endif

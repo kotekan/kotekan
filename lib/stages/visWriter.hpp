@@ -7,13 +7,15 @@
 #ifndef VIS_WRITER_HPP
 #define VIS_WRITER_HPP
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "buffer.h"            // IWYU pragma: keep
-#include "bufferContainer.hpp" // IWYU pragma: keep
-#include "datasetManager.hpp"  // for dset_id_t, fingerprint_t
-#include "visFile.hpp"         // for visFileBundle, visCalFileBundle (ptr only)
-#include "visUtil.hpp"         // for movingAverage
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, fingerprint_t
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily
+#include "restServer.hpp"        // for connectionInstance
+#include "visFile.hpp"           // for visFileBundle, visCalFileBundle
+#include "visUtil.hpp"           // for movingAverage
 
 #include <cstdint>   // for uint32_t
 #include <errno.h>   // for ENOENT, errno
@@ -27,16 +29,6 @@
 #include <string>    // for string, operator+
 #include <unistd.h>  // for access, F_OK
 #include <utility>   // for pair
-
-namespace kotekan {
-class connectionInstance;
-
-namespace prometheus {
-class Counter;
-template<typename T>
-class MetricFamily;
-} // namespace prometheus
-} // namespace kotekan
 
 
 /**

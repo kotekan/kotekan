@@ -2,13 +2,15 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for allocate_new_metadata_object, mark_frame_full, wait_for_em...
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.h"     // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
 #include "kotekanLogging.hpp"  // for INFO
 
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <sys/time.h> // for gettimeofday, timeval
 #include <unistd.h>   // for usleep

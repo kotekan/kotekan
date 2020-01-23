@@ -7,20 +7,19 @@
 #include "configUpdater.hpp"       // for configUpdater
 #include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
 #include "kotekanLogging.hpp"      // for WARN, INFO, DEBUG
-#include "restServer.hpp"          // for HTTP_RESPONSE, connectionInstance (ptr only), restSer...
+#include "restServer.hpp"          // for HTTP_RESPONSE, connectionInstance, restServer
 #include "visUtil.hpp"             // for current_time
 
 #include <atomic>      // for atomic_bool
 #include <chrono>      // for seconds
+#include <cstdint>     // for int32_t
 #include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, bind, _Placeholder, _1, function
 #include <memory>      // for allocator_traits<>::value_type
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error
 #include <stdio.h>     // for fclose, fopen, fread, snprintf, FILE
 #include <sys/types.h> // for uint
-
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

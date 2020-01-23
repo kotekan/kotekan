@@ -4,28 +4,27 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_empty
 #include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for datasetManager, state_id_t, dset_id_t
+#include "chimeMetadata.h"     // for chimeMetadata
+#include "datasetManager.hpp"  // for state_id_t, datasetManager, dset_id_t
+#include "datasetState.hpp"    // for freqState, inputState, metadataState, prodState
 #include "kotekanLogging.hpp"  // for INFO
 #include "metadata.h"          // for metadataContainer
 #include "version.h"           // for get_git_commit_hash
 #include "visBuffer.hpp"       // for visFrameView
-#include "visUtil.hpp"         // for freq_ctype, copy_vis_triangle, current_time, double_to_ts
+#include "visUtil.hpp"         // for prod_ctype, input_ctype, freq_ctype, copy_vis_triangle
 
 #include "gsl-lite.hpp" // for span<>::iterator, span
 
-#include <algorithm>  // for fill, transform
+#include <algorithm>  // for fill, max, transform
 #include <atomic>     // for atomic_bool
 #include <cstdint>    // for uint32_t
+#include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
-#include <iterator>   // for begin, end, back_insert_iterator, back_inserter
+#include <iterator>   // for back_insert_iterator, begin, end, back_inserter
 #include <numeric>    // for iota
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
 #include <tuple>      // for get, tie, tuple
-
-class freqState;
-class inputState;
-class metadataState;
-class prodState;
-struct chimeMetadata;
 
 
 using kotekan::bufferContainer;

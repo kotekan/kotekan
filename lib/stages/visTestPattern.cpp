@@ -4,13 +4,13 @@
 #include "Hash.hpp"              // for Hash, operator!=
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for wait_for_full_frame, Buffer, mark_frame_empty, mark_fra...
-#include "bufferContainer.hpp"   // IWYU pragma: keep
-#include "datasetManager.hpp"    // for datasetManager
-#include "datasetState.hpp"      // for dset_id_t, freqState, inputState, prodState
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for datasetManager, dset_id_t
+#include "datasetState.hpp"      // for freqState, inputState, prodState
 #include "kotekanLogging.hpp"    // for INFO, DEBUG, DEBUG2, FATAL_ERROR, WARN
 #include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
 #include "restClient.hpp"        // for restClient, restClient::restReply
-#include "restServer.hpp"        // for restServer, HTTP_RESPONSE, connectionInstance, HTTP_RES...
+#include "restServer.hpp"        // for connectionInstance, restServer, HTTP_RESPONSE, HTTP_RES...
 #include "visBuffer.hpp"         // for visFrameView
 
 #include "fmt.hpp"      // for format, fmt
@@ -18,7 +18,8 @@
 
 #include <atomic>       // for atomic_bool
 #include <cmath>        // for log10, sqrt
-#include <complex>      // for conj, operator*, operator-, complex
+#include <complex>      // for operator*, operator-, complex
+#include <cstdint>      // for uint64_t
 #include <cstring>      // for memcpy, strerror
 #include <cxxabi.h>     // for __forced_unwind
 #include <dirent.h>     // for opendir
@@ -29,7 +30,8 @@
 #include <iomanip>      // for operator<<, setprecision
 #include <memory>       // for allocator_traits<>::value_type
 #include <mutex>        // for mutex, lock_guard, unique_lock
-#include <stdexcept>    // for invalid_argument, runtime_error
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for runtime_error, invalid_argument, out_of_range
 #include <sys/stat.h>   // for mkdir, S_IRGRP, S_IROTH, S_IRWXU
 #include <system_error> // for system_error
 #include <time.h>       // for timespec

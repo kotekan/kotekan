@@ -14,9 +14,8 @@
 #include <functional> // for function
 #include <memory>     // for unique_ptr
 #include <string>     // for string
+#include <time.h>     // for timespec
 #include <vector>     // for vector
-
-struct timespec;
 
 
 /**

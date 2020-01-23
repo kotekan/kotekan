@@ -141,7 +141,9 @@ if(IWYU)
     message("IWYU version: ${IWYU_VERSION}")
     set(IWYU_PATH_AND_OPTIONS ${IWYU_PATH}
         -Xiwyu --max_line_length=100
-        -Xiwyu --mapping_file=${IWYU_MAPPING_FILE})
+        -Xiwyu --mapping_file=${IWYU_MAPPING_FILE}
+        -Xiwyu --no_fwd_decls
+        -Xiwyu --cxx17ns)
     set(CMAKE_CXX_INCLUDE_WHAT_YOU_USE ${IWYU_PATH_AND_OPTIONS})
     set(CMAKE_C_INCLUDE_WHAT_YOU_USE ${IWYU_PATH_AND_OPTIONS})
 endif()
@@ -355,14 +357,16 @@ function ( exclude_files_containing var exclude_string )
 endfunction()
 
 if(CLANG_FORMAT_PATH)
-     # Find all .cpp and .hpp files.
+     # Find all .c(pp) and .h(pp) files.
     file( GLOB_RECURSE KOTEKAN_ALL_CPP_FILES *.cpp )
     file( GLOB_RECURSE KOTEKAN_ALL_HPP_FILES *.hpp )
-    file( GLOB_RECURSE KOTEKAN_ALL_CPP_FILES *.c )
-    file( GLOB_RECURSE KOTEKAN_ALL_HPP_FILES *.h )
+    file( GLOB_RECURSE KOTEKAN_ALL_C_FILES *.c )
+    file( GLOB_RECURSE KOTEKAN_ALL_H_FILES *.h )
 
     list ( APPEND FILES_TO_FORMAT ${KOTEKAN_ALL_CPP_FILES} )
     list ( APPEND FILES_TO_FORMAT ${KOTEKAN_ALL_HPP_FILES} )
+    list ( APPEND FILES_TO_FORMAT ${KOTEKAN_ALL_C_FILES} )
+    list ( APPEND FILES_TO_FORMAT ${KOTEKAN_ALL_H_FILES} )
 
     # Exclude all code we don't want auto-formatted (external libs).
     set ( EXCLUDE_DIR "include" )

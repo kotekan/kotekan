@@ -6,8 +6,6 @@
 #include <utility> // for pair
 #include <vector>  // for vector
 
-struct timespec;
-
 
 /**
  * @class Polyco

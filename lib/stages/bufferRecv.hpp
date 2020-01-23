@@ -9,11 +9,12 @@
 #ifndef BUFFER_RECV_H
 #define BUFFER_RECV_H
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // IWYU pragma: keep
-#include "bufferSend.hpp"      // for bufferFrameHeader
-#include "kotekanLogging.hpp"  // for DEBUG2, ERROR, INFO, kotekanLogging
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "bufferSend.hpp"        // for bufferFrameHeader
+#include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, kotekanLogging
+#include "prometheusMetrics.hpp" // for Counter, Gauge, MetricFamily
 
 #include <condition_variable> // for condition_variable
 #include <deque>              // for deque
@@ -31,14 +32,6 @@
 
 // Forward declare
 class connInstance;
-namespace kotekan {
-namespace prometheus {
-class Counter;
-class Gauge;
-template<typename T>
-class MetricFamily;
-} // namespace prometheus
-} // namespace kotekan
 
 /**
  * @brief Receives frames and metadata from other networked kotekan buffers,

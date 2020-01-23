@@ -2,42 +2,36 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_full, reg...
-#include "bufferContainer.hpp" // IWYU pragma: keep
-#include "datasetManager.hpp"  // for datasetManager, state_id_t, dset_id_t
-#include "errors.h"            // for exit_kotekan, ReturnCode, ReturnCode::CLEAN_EXIT
+#include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for state_id_t, datasetManager, dset_id_t
+#include "datasetState.hpp"    // for acqDatasetIdState, eigenvalueState, freqState, inputState
+#include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
 #include "kotekanLogging.hpp"  // for DEBUG, INFO, FATAL_ERROR
 #include "metadata.h"          // for metadataContainer
 #include "version.h"           // for get_git_commit_hash
 #include "visBuffer.hpp"       // for visFrameView, visMetadata
-#include "visUtil.hpp"         // for input_ctype, prod_ctype, rstack_ctype, stack_ctype, time_c...
+#include "visUtil.hpp"         // for freq_ctype, prod_ctype, rstack_ctype, stack_ctype, time_c...
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span<>::iterator, span
-#include "json.hpp"     // for json, basic_json, basic_json<>::value_type, iter_impl
+#include "json.hpp"     // for basic_json<>::object_t, json, basic_json, basic_json<>::v...
 
-#include <algorithm>  // for fill, min
+#include <algorithm>  // for fill, min, max
 #include <atomic>     // for atomic_bool
-#include <cstdint>    // for uint8_t
+#include <cstdint>    // for uint32_t, uint8_t
 #include <cstring>    // for strerror, memcpy
 #include <errno.h>    // for errno
+#include <exception>  // for exception
 #include <fcntl.h>    // for open, O_RDONLY
-#include <fstream>    // for ifstream, ios_base::failure, ios_base, basic_ios, basic_is...
+#include <fstream>    // for ifstream, ios_base::failure, ios_base, basic_ios, basic_i...
 #include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error, invalid_argument
-#include <sys/mman.h> // for madvise, mmap, munmap, MADV_DONTNEED, MADV_WILLNEED, MAP_F...
+#include <sys/mman.h> // for madvise, mmap, munmap, MADV_DONTNEED, MADV_WILLNEED, MAP_...
 #include <sys/stat.h> // for stat
 #include <time.h>     // for nanosleep, timespec
 #include <unistd.h>   // for close, off_t
-
-class acqDatasetIdState;
-class eigenvalueState;
-class freqState;
-class inputState;
-class metadataState;
-class prodState;
-class stackState;
-class timeState;
 
 using kotekan::bufferContainer;
 using kotekan::Config;

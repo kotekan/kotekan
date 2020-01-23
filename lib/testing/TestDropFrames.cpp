@@ -7,9 +7,13 @@
 
 #include <algorithm>  // for find
 #include <atomic>     // for atomic_bool
+#include <cstdint>    // for uint32_t
 #include <cstring>    // for memcpy
+#include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
 #include <random>     // for default_random_engine, bernoulli_distribution, random_device
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
 
 
 using kotekan::bufferContainer;

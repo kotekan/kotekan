@@ -1,23 +1,27 @@
 #include "Config.hpp"       // for Config
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"         // for Buffer, allocate_new_metadata_object, mark_frame_full, reg...
+#include "buffer.h"         // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "chimeMetadata.h"  // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
-#include "errors.h"         // for exit_kotekan, ReturnCode, ReturnCode::CLEAN_EXIT
+#include "errors.h"         // for exit_kotekan, CLEAN_EXIT, ReturnCode
 
 #include <assert.h>    // for assert
 #include <atomic>      // for atomic_bool
 #include <cmath>       // for fmod
+#include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error
 #include <stdint.h>    // for uint8_t, uint64_t
 #include <stdlib.h>    // for rand, srand
 #include <sys/time.h>  // for gettimeofday, timeval
 #include <sys/types.h> // for uint
 #include <unistd.h>    // for usleep
+#include <vector>      // for vector
 // Needed for a bunch of time utilities.
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "bufferContainer.hpp" // for bufferContainer
 #include "gpsTime.h"           // for FPGA_PERIOD_NS
 #include "kotekanLogging.hpp"  // for DEBUG, INFO
-#include "restServer.hpp"      // for restServer, HTTP_RESPONSE, connectionInstance, HTTP_RESPON...
+#include "restServer.hpp"      // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...
 #include "testDataGen.hpp"
 #include "visUtil.hpp" // for current_time
 

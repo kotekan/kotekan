@@ -3,10 +3,10 @@
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.h"     // for get_fpga_seq_num, get_stream_id
 #include "kotekanLogging.hpp"  // for ERROR, INFO, DEBUG
-#include "restServer.hpp"      // for restServer, HTTP_RESPONSE, HTTP_RESPONSE::OK, connectionIn...
+#include "restServer.hpp"      // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...
 #include "rfi_functions.h"     // for RFIHeader
 
 #ifdef DEBUGGING
@@ -15,14 +15,18 @@
 
 #include <arpa/inet.h>  // for inet_aton
 #include <atomic>       // for atomic_bool
-#include <cmath>        // for sqrt, pow
+#include <cmath>        // for pow, sqrt
+#include <exception>    // for exception
 #include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
 #include <mutex>        // for mutex
 #include <netinet/in.h> // for sockaddr_in, IPPROTO_UDP, htons
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for runtime_error
 #include <stdlib.h>     // for free, malloc
 #include <string.h>     // for memcpy, memset
 #include <string>       // for string, allocator, operator+
 #include <sys/socket.h> // for sendto, socket, AF_INET, SOCK_DGRAM
+#include <vector>       // for vector
 
 
 using kotekan::bufferContainer;

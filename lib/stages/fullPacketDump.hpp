@@ -1,19 +1,16 @@
 #ifndef FULL_PACKET_DUMP_HPP
 #define FULL_PACKET_DUMP_HPP
 
-#include "Config.hpp"          // IWYU pragma: keep
+#include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "bufferContainer.hpp" // for bufferContainer
+#include "restServer.hpp"      // for connectionInstance
 
 #include "json.hpp" // for json
 
 #include <mutex>    // for mutex
 #include <stdint.h> // for uint8_t
 #include <string>   // for string
-
-namespace kotekan {
-class connectionInstance;
-} // namespace kotekan
 
 class fullPacketDump : public kotekan::Stage {
 public:

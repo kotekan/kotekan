@@ -2,20 +2,22 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for mark_frame_empty, mark_frame_full, register_consumer, regi...
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "buffer.h"            // for mark_frame_empty, mark_frame_full, register_consumer, reg...
+#include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for DEBUG, ERROR
 #include "vdif_functions.h"    // for VDIFHeader
 
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
 
-#include <immintrin.h> // for __m256i, _mm256_loadu_si256, _mm256_add_epi32, _mm256_stor...
+#include <immintrin.h> // for __m256i, _mm256_loadu_si256, _mm256_add_epi32, _mm256_sto...
 #endif
 #include <atomic>      // for atomic_bool
+#include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, bind, function
-#include <immintrin.h> // for __m256i, _mm256_loadu_si256, _mm256_add_epi32, _mm256_stor...
+#include <immintrin.h> // for __m256i, _mm256_loadu_si256, _mm256_add_epi32, _mm256_sto...
 #include <pthread.h>   // for pthread_setaffinity_np
+#include <regex>       // for match_results<>::_Base_type
 #include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <stdlib.h>    // for free, malloc, srand
 #include <string.h>    // for memset
