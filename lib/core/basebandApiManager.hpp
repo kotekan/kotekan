@@ -22,6 +22,7 @@
 
 namespace kotekan {
 
+/// Implicit conversion for constructing `nlohmann::json` from a `basebandDumpStatus`
 void to_json(nlohmann::json& j, const basebandDumpStatus& s);
 
 
