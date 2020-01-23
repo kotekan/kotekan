@@ -165,7 +165,7 @@ private:
 
     /// Parses the config tree and calls create_endpoint when it encounters
     /// kotekan_update_endpoint in a block
-    void parse_tree(json& config_tree, const string& path);
+    void parse_tree(const json& config_tree, const string& path);
 
     /// unique names of endpoints that the configUpdater controlls
     vector<string> _endpoints;

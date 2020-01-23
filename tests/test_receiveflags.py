@@ -15,7 +15,11 @@ import time
 from kotekan import visbuffer
 from kotekan import runner
 
-params = {
+params = {"num_kept_updates": 1}
+
+global_params = {
+    "wait": True,
+    "dataset_manager": {"use_dataset_broker": False},
     "fakevis_mode": "fill_ij",
     "cadence": 1.0,
     "total_frames": 20,  # make it run long enough to receive REST commands
@@ -25,8 +29,6 @@ params = {
     "out_file": "/tmp/out.csv",
     "buffer_depth": 100,
     "some_static_part_of_the_config": 0,
-    "updatable_config": "/dynamic_attributes/flagging",
-    "num_kept_updates": 1,
     "dynamic_attributes": {
         "flagging": {
             "kotekan_update_endpoint": "json",
@@ -35,8 +37,7 @@ params = {
             "update_id": "initial_test_flags",
         }
     },
-    "wait": True,
-    "dataset_manager": {"use_dataset_broker": False},
+    "updatable_config": "/dynamic_attributes/flagging",
 }
 
 start_time = time.time()
@@ -48,10 +49,10 @@ def run_flagging(tmpdir_factory, cmds):
     tmpdir = tmpdir_factory.mktemp("receiveflags")
 
     fakevis_buffer = runner.FakeVisBuffer(
-        num_frames=params["total_frames"],
-        mode=params["fakevis_mode"],
-        cadence=params["cadence"],
-        wait=params["wait"],
+        num_frames=global_params["total_frames"],
+        mode=global_params["fakevis_mode"],
+        cadence=global_params["cadence"],
+        wait=global_params["wait"],
     )
 
     out_dump_buffer = runner.DumpVisBuffer(str(tmpdir))
@@ -61,7 +62,7 @@ def run_flagging(tmpdir_factory, cmds):
         params,
         buffers_in=fakevis_buffer,
         buffers_out=out_dump_buffer,
-        global_config=params,
+        global_config=global_params,
         rest_commands=cmds,
         expect_failure=True,
     )
@@ -80,7 +81,7 @@ def run_flagging(tmpdir_factory, cmds):
 
 
 def test_clear_flags(tmpdir_factory):
-    n = params["num_elements"]
+    n = global_params["num_elements"]
     num_prod = n * (n + 1) // 2
     flags_set = False
 
@@ -115,7 +116,7 @@ def test_clear_flags(tmpdir_factory):
 
 
 def test_too_many_flags(tmpdir_factory):
-    n = params["num_elements"]
+    n = global_params["num_elements"]
 
     # REST commands
     flags = [0, 1, 2, 3, 4, 5]
@@ -141,8 +142,8 @@ def test_too_many_flags(tmpdir_factory):
 
 
 def test_one_flag(tmpdir_factory):
-    params["num_elements"] = 1
-    n = params["num_elements"]
+    global_params["num_elements"] = 1
+    n = global_params["num_elements"]
     flags_set = False
 
     # REST commands
@@ -158,7 +159,7 @@ def test_one_flag(tmpdir_factory):
             },
         ]
     ]
-    params["dynamic_attributes"]["flagging"]["bad_inputs"] = []
+    global_params["dynamic_attributes"]["flagging"]["bad_inputs"] = []
 
     flags_dump = run_flagging(tmpdir_factory, cmds)
 
@@ -177,8 +178,8 @@ def test_one_flag(tmpdir_factory):
 
 
 def test_out_of_bounds_msg_flag(tmpdir_factory):
-    params["num_elements"] = 1
-    n = params["num_elements"]
+    global_params["num_elements"] = 1
+    n = global_params["num_elements"]
 
     # REST commands
     flags = [2]
@@ -193,7 +194,7 @@ def test_out_of_bounds_msg_flag(tmpdir_factory):
             },
         ]
     ]
-    params["dynamic_attributes"]["flagging"]["bad_inputs"] = [0]
+    global_params["dynamic_attributes"]["flagging"]["bad_inputs"] = [0]
 
     flags_dump = run_flagging(tmpdir_factory, cmds)
 
@@ -205,8 +206,8 @@ def test_out_of_bounds_msg_flag(tmpdir_factory):
 
 
 def test_flags_data_type(tmpdir_factory):
-    params["num_elements"] = 4
-    n = params["num_elements"]
+    global_params["num_elements"] = 4
+    n = global_params["num_elements"]
 
     # REST commands
     flags = ["false_flag"] * 4
@@ -216,12 +217,14 @@ def test_flags_data_type(tmpdir_factory):
             "dynamic_attributes/flagging",
             {
                 "bad_inputs": flags,
-                "start_time": params["dynamic_attributes"]["flagging"]["start_time"],
+                "start_time": global_params["dynamic_attributes"]["flagging"][
+                    "start_time"
+                ],
                 "update_id": "test_flag_update",
             },
         ]
     ]
-    params["dynamic_attributes"]["flagging"]["bad_inputs"] = [0, 1]
+    global_params["dynamic_attributes"]["flagging"]["bad_inputs"] = [0, 1]
 
     flags_dump = run_flagging(tmpdir_factory, cmds)
 
@@ -233,7 +236,7 @@ def test_flags_data_type(tmpdir_factory):
 
 
 def test_flags_extra_arguments(tmpdir_factory):
-    params["num_elements"] = 4
+    global_params["num_elements"] = 4
 
     # REST commands
     flags = [0, 1]
@@ -244,12 +247,14 @@ def test_flags_extra_arguments(tmpdir_factory):
             {
                 "bad_inputs": flags,
                 "foo": "bar",
-                "start_time": params["dynamic_attributes"]["flagging"]["start_time"],
+                "start_time": global_params["dynamic_attributes"]["flagging"][
+                    "start_time"
+                ],
                 "update_id": "test_flag_update",
             },
         ]
     ]
-    params["dynamic_attributes"]["flagging"]["bad_inputs"] = [1, 2]
+    global_params["dynamic_attributes"]["flagging"]["bad_inputs"] = [1, 2]
 
     flags_dump = run_flagging(tmpdir_factory, cmds)
 
@@ -261,7 +266,7 @@ def test_flags_extra_arguments(tmpdir_factory):
 
 
 def test_flags_wrong_argument(tmpdir_factory):
-    params["num_elements"] = 4
+    global_params["num_elements"] = 4
 
     # REST commands
     flags = [0]
@@ -271,12 +276,14 @@ def test_flags_wrong_argument(tmpdir_factory):
             "dynamic_attributes/flagging",
             {
                 "flags_with_a_typo": flags,
-                "start_time": params["dynamic_attributes"]["flagging"]["start_time"],
+                "start_time": global_params["dynamic_attributes"]["flagging"][
+                    "start_time"
+                ],
                 "update_id": "test_flag_update",
             },
         ]
     ]
-    params["dynamic_attributes"]["flagging"]["bad_inputs"] = [0, 1]
+    global_params["dynamic_attributes"]["flagging"]["bad_inputs"] = [0, 1]
 
     flags_dump = run_flagging(tmpdir_factory, cmds)
 
@@ -288,11 +295,11 @@ def test_flags_wrong_argument(tmpdir_factory):
 
 
 def test_flags_no_argument(tmpdir_factory):
-    params["num_elements"] = 4
+    global_params["num_elements"] = 4
 
     # REST commands
     cmds = [["post", "dynamic_attributes/flagging", {}]]
-    params["dynamic_attributes"]["flagging"]["bad_inputs"] = [0, 1]
+    global_params["dynamic_attributes"]["flagging"]["bad_inputs"] = [0, 1]
 
     flags_dump = run_flagging(tmpdir_factory, cmds)
 
@@ -311,16 +318,21 @@ def test_flags_no_argument(tmpdir_factory):
 
 
 def test_start_time(tmpdir_factory):
-    params["total_frames"] = 200
+    global_params["total_frames"] = 200
     params["num_kept_updates"] = 5
-    params["cadence"] = 0.1
-    params["wait"] = True
-    params["num_elements"] = 5
-    params["dynamic_attributes"]["flagging"]["bad_inputs"] = [1, 4]
+    global_params["cadence"] = 0.1
+    global_params["wait"] = True
+    global_params["num_elements"] = 5
+    global_params["dynamic_attributes"]["flagging"]["bad_inputs"] = [1, 4]
     flags_set = 0
 
     # REST commands
-    flags = [params["dynamic_attributes"]["flagging"]["bad_inputs"], [1], [2], [3]]
+    flags = [
+        global_params["dynamic_attributes"]["flagging"]["bad_inputs"],
+        [1],
+        [2],
+        [3],
+    ]
     frame_flags = [[1, 0, 1, 1, 0], [1, 0, 1, 1, 1], [1, 1, 0, 1, 1], [1, 1, 1, 0, 1]]
     ts = [time.time() + 15, time.time() + 17, time.time() + 18.5]
     cmds = [
@@ -356,7 +368,7 @@ def test_start_time(tmpdir_factory):
     flags_dump = run_flagging(tmpdir_factory, cmds)
 
     for frame in flags_dump:
-        assert params["num_elements"] == len(frame.flags)
+        assert global_params["num_elements"] == len(frame.flags)
 
         # we know when the flags should change in this test
         frame_ts = frame.metadata.ctime.tv + frame.metadata.ctime.tv_nsec * 1e-9
@@ -369,15 +381,20 @@ def test_start_time(tmpdir_factory):
 
 
 def test_start_time_out_of_order(tmpdir_factory):
-    params["total_frames"] = 200
+    global_params["total_frames"] = 200
     params["num_kept_updates"] = 5
-    params["cadence"] = 0.1
-    params["num_elements"] = 5
-    params["dynamic_attributes"]["flagging"]["bad_inputs"] = [1, 4]
+    global_params["cadence"] = 0.1
+    global_params["num_elements"] = 5
+    global_params["dynamic_attributes"]["flagging"]["bad_inputs"] = [1, 4]
     flags_set = 0
 
     # REST commands
-    flags = [params["dynamic_attributes"]["flagging"]["bad_inputs"], [1], [2], [3]]
+    flags = [
+        global_params["dynamic_attributes"]["flagging"]["bad_inputs"],
+        [1],
+        [2],
+        [3],
+    ]
     frame_flags = [[1, 0, 1, 1, 0], [1, 0, 1, 1, 1], [1, 1, 0, 1, 1], [1, 1, 1, 0, 1]]
     ts = [time.time() + 15, time.time() + 17, time.time() + 18.5]
 
@@ -416,7 +433,7 @@ def test_start_time_out_of_order(tmpdir_factory):
     flags_dump = run_flagging(tmpdir_factory, cmds)
 
     for frame in flags_dump:
-        assert params["num_elements"] == len(frame.flags)
+        assert global_params["num_elements"] == len(frame.flags)
 
         # we know when the flags should change in this test
         frame_ts = frame.metadata.ctime.tv + frame.metadata.ctime.tv_nsec * 1e-9
@@ -429,15 +446,20 @@ def test_start_time_out_of_order(tmpdir_factory):
 
 
 def test_start_time_new_update(tmpdir_factory):
-    params["total_frames"] = 200
+    global_params["total_frames"] = 200
     params["num_kept_updates"] = 5
-    params["cadence"] = 0.1
-    params["num_elements"] = 5
+    global_params["cadence"] = 0.1
+    global_params["num_elements"] = 5
     flags_set = 0
-    params["dynamic_attributes"]["flagging"]["bad_inputs"] = []
+    global_params["dynamic_attributes"]["flagging"]["bad_inputs"] = []
 
     # REST commands
-    flags = [params["dynamic_attributes"]["flagging"]["bad_inputs"], [1], [2], [3]]
+    flags = [
+        global_params["dynamic_attributes"]["flagging"]["bad_inputs"],
+        [1],
+        [2],
+        [3],
+    ]
     frame_flags = [[1, 1, 1, 1, 1], [1, 0, 1, 1, 1], [1, 1, 0, 1, 1], [1, 1, 1, 0, 1]]
     ts = [time.time() + 15, time.time() + 15, time.time() + 15]
     cmds = [
@@ -484,7 +506,7 @@ def test_start_time_new_update(tmpdir_factory):
     flags_dump = run_flagging(tmpdir_factory, cmds)
 
     for frame in flags_dump:
-        assert params["num_elements"] == len(frame.flags)
+        assert global_params["num_elements"] == len(frame.flags)
 
         # we know when the flags should change in this test
         frame_ts = frame.metadata.ctime.tv + frame.metadata.ctime.tv_nsec * 1e-9
@@ -498,11 +520,11 @@ def test_start_time_new_update(tmpdir_factory):
 
 
 def test_flags_wrong_type(tmpdir_factory):
-    params["total_frames"] = 20
-    params["cadence"] = 0.1
-    params["dynamic_attributes"]["flagging"]["bad_inputs"] = [1, 4]
-    params["num_elements"] = 5
-    n = params["num_elements"]
+    global_params["total_frames"] = 20
+    global_params["cadence"] = 0.1
+    global_params["dynamic_attributes"]["flagging"]["bad_inputs"] = [1, 4]
+    global_params["num_elements"] = 5
+    n = global_params["num_elements"]
     num_prod = n * (n + 1) // 2
     flags_set = False
 
@@ -532,16 +554,21 @@ def test_flags_wrong_type(tmpdir_factory):
 
 
 def test_dset_id_change(tmpdir_factory):
-    params["total_frames"] = 200
+    global_params["total_frames"] = 200
     params["num_kept_updates"] = 5
-    params["cadence"] = 0.1
-    params["wait"] = True
-    params["num_elements"] = 5
-    params["dynamic_attributes"]["flagging"]["bad_inputs"] = [1, 4]
+    global_params["cadence"] = 0.1
+    global_params["wait"] = True
+    global_params["num_elements"] = 5
+    global_params["dynamic_attributes"]["flagging"]["bad_inputs"] = [1, 4]
     flags_set = 0
 
     # REST commands
-    flags = [params["dynamic_attributes"]["flagging"]["bad_inputs"], [1], [2], [3]]
+    flags = [
+        global_params["dynamic_attributes"]["flagging"]["bad_inputs"],
+        [1],
+        [2],
+        [3],
+    ]
     frame_flags = [[1, 0, 1, 1, 0], [1, 0, 1, 1, 1], [1, 1, 0, 1, 1], [1, 1, 1, 0, 1]]
     ts = [time.time() + 15, time.time() + 17, time.time() + 18.5]
     cmds = [
@@ -582,7 +609,7 @@ def test_dset_id_change(tmpdir_factory):
     prev_dset_id = get_dset_id(flags_dump[0])
 
     for frame in flags_dump:
-        assert params["num_elements"] == len(frame.flags)
+        assert global_params["num_elements"] == len(frame.flags)
 
         dset_id = get_dset_id(frame)
 

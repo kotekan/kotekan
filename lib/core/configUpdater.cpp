@@ -42,8 +42,8 @@ void configUpdater::reset() {
     _keys.clear();
 }
 
-void configUpdater::parse_tree(json& config_tree, const std::string& path) {
-    for (json::iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
+void configUpdater::parse_tree(const json& config_tree, const std::string& path) {
+    for (json::const_iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
         // If the item isn't an object we can just ignore it.
         if (!it.value().is_object()) {
             continue;
@@ -67,7 +67,7 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path) {
 
             // Store all keys of this updatable block
             std::vector<std::string> keys;
-            for (json::iterator key = it.value().begin(); key != it.value().end(); key++) {
+            for (json::const_iterator key = it.value().begin(); key != it.value().end(); key++) {
                 if (key.value().dump() != "kotekan_update_endpoint")
                     keys.push_back(key.key());
             }
@@ -75,8 +75,7 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path) {
 
             continue; // no recursive updatable blocks allowed
         } else if (endpoint_type != "none") {
-            throw std::runtime_error("configUpdater: Found an unknown "
-                                     "endpoint type value: "
+            throw std::runtime_error("configUpdater: Found an unknown endpoint type value: "
                                      + endpoint_type);
         }
 
@@ -87,10 +86,6 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path) {
 }
 
 void configUpdater::subscribe(const Stage* subscriber, std::function<bool(json&)> callback) {
-    if (!_config->exists(subscriber->get_unique_name(), "updatable_config"))
-        throw std::runtime_error("configUpdater: key 'updatable_config' was "
-                                 "not found in '"
-                                 + subscriber->get_unique_name() + "' in the config file.");
     subscribe(_config->get<std::string>(subscriber->get_unique_name(), "updatable_config"),
               callback);
 }
@@ -98,10 +93,6 @@ void configUpdater::subscribe(const Stage* subscriber, std::function<bool(json&)
 void configUpdater::subscribe(const Stage* subscriber,
                               std::map<std::string, std::function<bool(json&)>> callbacks) {
     for (auto callback : callbacks) {
-        if (!_config->exists(subscriber->get_unique_name() + "/updatable_config", callback.first))
-            throw std::runtime_error(fmt::format(fmt("configUpdater: key '{:s}' was not found in "
-                                                     "'{:s}/updatable_config' in the config file."),
-                                                 callback.first, subscriber->get_unique_name()));
         subscribe(_config->get<std::string>(subscriber->get_unique_name() + "/updatable_config/",
                                             callback.first),
                   callback.second);
@@ -110,20 +101,16 @@ void configUpdater::subscribe(const Stage* subscriber,
 
 void configUpdater::subscribe(const std::string& name, std::function<bool(json&)> callback) {
     if (!callback)
-        throw std::runtime_error("configUpdater: Was passed a callback "
-                                 "function for endpoint '"
-                                 + name
-                                 + "', that "
-                                   "does not exist.");
+        throw std::runtime_error("configUpdater: Was passed a callback function for endpoint '"
+                                 + name + "' that doesn't exist.");
     _callbacks.insert(std::pair<std::string, std::function<bool(nlohmann::json&)>>(name, callback));
     DEBUG_NON_OO("New subscription to {:s}", name);
 
     // First call to subscriber with initial value from the config
     if (!callback(_init_values[name]))
-        throw std::runtime_error("configUpdater: Failure when calling "
-                                 "subscriber to set initial value at endpoint"
-                                 " '"
-                                 + name + "'.");
+        throw std::runtime_error(
+            "configUpdater: Failure when calling subscriber to set initial value at endpoint '"
+            + name + "'.");
 }
 
 void configUpdater::create_endpoint(const string& name) {

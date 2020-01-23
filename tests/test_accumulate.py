@@ -437,3 +437,17 @@ def test_pulsar(pulsar_data):
 def test_pulsar_metadata(pulsar_data):
     assert pulsar_data.file_metadata["gating_type"] == "pulsar"
     assert pulsar_data.file_metadata["gating_data"]["pulsar_name"] == "fakepsr"
+    assert pulsar_data.file_metadata["gating_data"]["dm"] == pulsar_params["dm"]
+    assert pulsar_data.file_metadata["gating_data"]["t_ref"] == [pulsar_params["t_ref"]]
+    assert pulsar_data.file_metadata["gating_data"]["phase_ref"] == [
+        pulsar_params["phase_ref"]
+    ]
+    assert (
+        pulsar_data.file_metadata["gating_data"]["rot_freq"]
+        == pulsar_params["rot_freq"]
+    )
+    assert pulsar_data.file_metadata["gating_data"]["segment"] == 100.0
+    assert pulsar_data.file_metadata["gating_data"]["pulse_width"] == pytest.approx(
+        1e-3
+    )
+    assert pulsar_data.file_metadata["gating_data"]["coeff"] == [pulsar_params["coeff"]]

@@ -27,10 +27,10 @@ map<string, struct Buffer*> bufferFactory::build_buffers() {
     return buffers;
 }
 
-void bufferFactory::build_from_tree(map<string, struct Buffer*>& buffers, json& config_tree,
+void bufferFactory::build_from_tree(map<string, struct Buffer*>& buffers, const json& config_tree,
                                     const string& path) {
 
-    for (json::iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
+    for (json::const_iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
         // If the item isn't an object we can just ignore it.
         if (!it.value().is_object()) {
             continue;
