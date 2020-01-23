@@ -7,9 +7,9 @@
 #ifndef NETWORK_POWER_STREAM_H
 #define NETWORK_POWER_STREAM_H
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
 #include "powerStreamUtil.hpp" // for IntensityHeader
 
 #include <atomic>      // for atomic_flag

@@ -1,4 +1,4 @@
-#include "StageFactory.hpp" // IWYU pragma: keep
+#include "StageFactory.hpp"
 
 #include "Config.hpp"         // for Config
 #include "kotekanLogging.hpp" // for ERROR_NON_OO

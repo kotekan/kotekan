@@ -10,9 +10,9 @@
 #ifndef STAGE_FACTORY_HPP
 #define STAGE_FACTORY_HPP
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // IWYU pragma: keep
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "Config.hpp"
+#include "Stage.hpp"
+#include "bufferContainer.hpp"
 
 #include "json.hpp" // for json
 

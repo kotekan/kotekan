@@ -1,7 +1,5 @@
 #include "basebandReadoutManager.hpp"
 
-#include <algorithm> // for copy, copy_backward
-
 
 namespace kotekan {
 

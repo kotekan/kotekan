@@ -25,6 +25,7 @@
 #include <cstdlib>     // for size_t, (anonymous), div
 #include <functional>  // for function
 #include <iosfwd>      // for ostream
+#include <iterator>    // for pair
 #include <map>         // for map
 #include <math.h>      // for fmod
 #include <string>      // for string

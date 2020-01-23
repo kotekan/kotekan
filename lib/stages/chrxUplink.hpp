@@ -1,9 +1,9 @@
 #ifndef ACQ_UPLINK_H
 #define ACQ_UPLINK_H
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
 
 #include <stdint.h> // for int32_t
 #include <string>   // for string

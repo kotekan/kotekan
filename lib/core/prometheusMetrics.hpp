@@ -1,7 +1,7 @@
 #ifndef PROMETHEUS_METRICS_HPP
 #define PROMETHEUS_METRICS_HPP
 
-#include "restServer.hpp" // IWYU pragma: keep
+#include "restServer.hpp"
 
 #include <deque>     // for deque
 #include <iosfwd>    // for ostringstream

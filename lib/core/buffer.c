@@ -14,11 +14,11 @@
 #include <stdio.h>    // for snprintf
 #include <stdlib.h>   // for NULL, free, malloc, size_t
 #include <string.h>   // for memset, memcpy, strncmp, strncpy, strdup
-#include <sys/mman.h> // for mlock // IWYU pragma: keep
+#include <sys/mman.h> // for mlock
 #include <time.h>     // for timespec
 
 #ifdef WITH_NUMA
-#include <numa.h> // for numa_alloc_onnode // IWYU pragma: keep
+#include <numa.h> // for numa_alloc_onnode
 #endif
 
 struct zero_frames_thread_args {

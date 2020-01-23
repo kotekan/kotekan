@@ -1,9 +1,8 @@
 #ifndef KOTEKAN_STAGE_H
 #define KOTEKAN_STAGE_H
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "buffer.h"            // for Buffer  // IWYU pragma: keep
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "Config.hpp"          // for Config
+#include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for kotekanLogging
 
 #include <atomic>     // for atomic_bool

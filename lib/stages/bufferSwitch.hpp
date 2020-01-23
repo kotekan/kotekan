@@ -1,10 +1,10 @@
 #ifndef BUFFER_SWITCH_HPP
 #define BUFFER_SWITCH_HPP
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "buffer.h"            // IWYU pragma: keep
-#include "bufferContainer.hpp" // IWYU pragma: keep
-#include "bufferMerge.hpp"     // for bufferMerge
+#include "Config.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
+#include "bufferMerge.hpp" // for bufferMerge
 
 #include "json.hpp" // for json
 

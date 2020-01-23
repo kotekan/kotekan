@@ -7,12 +7,12 @@
 #ifndef BASEBAND_READOUT_H
 #define BASEBAND_READOUT_H
 
-#include "BipBuffer.hpp"              // for BipBuffer
-#include "Config.hpp"                 // IWYU pragma: keep
+#include "BipBuffer.hpp" // for BipBuffer
+#include "Config.hpp"
 #include "Stage.hpp"                  // for Stage
 #include "basebandReadoutManager.hpp" // for basebandDumpData, basebandReadoutManager (ptr only)
-#include "bufferContainer.hpp"        // IWYU pragma: keep
-#include "visUtil.hpp"                // for input_ctype
+#include "bufferContainer.hpp"
+#include "visUtil.hpp" // for input_ctype
 
 #include <mutex>    // for mutex
 #include <stddef.h> // for size_t

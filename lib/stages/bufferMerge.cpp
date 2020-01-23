@@ -10,6 +10,7 @@
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for json, basic_json<>::iterator, basic_json<>::object_t, bas...
 
+#include <algorithm>  // for max
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
 #include <cstring>    // for memcpy

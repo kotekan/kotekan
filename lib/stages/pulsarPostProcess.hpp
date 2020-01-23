@@ -7,10 +7,10 @@
 #ifndef PULSAR_POST_PROCESS
 #define PULSAR_POST_PROCESS
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "buffer.h"            // IWYU pragma: keep
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "buffer.h"
+#include "bufferContainer.hpp"
 
 #include <optional>    // for optional
 #include <stdint.h>    // for uint32_t, uint64_t, uint16_t, uint8_t

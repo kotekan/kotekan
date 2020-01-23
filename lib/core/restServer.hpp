@@ -1,7 +1,7 @@
 #ifndef REST_SERVER_HPP
 #define REST_SERVER_HPP
 
-#include "Config.hpp" // IWYU pragma: keep
+#include "Config.hpp" // for Config
 
 #include "json.hpp" // for json
 
@@ -9,10 +9,10 @@
 #include <event2/util.h> // for evutil_socket_t
 #include <evhttp.h>      // for evhttp  // IWYU pragma: keep
 #include <functional>    // for function
-#include <map>           // for map, allocator
+#include <map>           // for map
 #include <shared_mutex>  // for shared_timed_mutex
 #include <stdint.h>      // for uint8_t
-#include <string>        // for string
+#include <string>        // for string, allocator
 #include <sys/types.h>   // for u_short
 #include <thread>        // for thread
 

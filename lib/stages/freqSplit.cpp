@@ -11,6 +11,7 @@
 #include "visBuffer.hpp"       // for visFrameView
 #include "visUtil.hpp"         // for freq_ctype
 
+#include <algorithm>    // for max
 #include <atomic>       // for atomic_bool
 #include <cxxabi.h>     // for __forced_unwind
 #include <exception>    // for exception

@@ -6,6 +6,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for INFO, ERROR
 
+#include <algorithm>   // for max
 #include <assert.h>    // for assert
 #include <atomic>      // for atomic_bool
 #include <exception>   // for exception

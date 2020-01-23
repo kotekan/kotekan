@@ -6,11 +6,11 @@
 #ifndef REMOVE_EV_HPP
 #define REMOVE_EV_HPP
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "buffer.h"            // IWYU pragma: keep
-#include "bufferContainer.hpp" // IWYU pragma: keep
-#include "datasetManager.hpp"  // for dset_id_t, state_id_t
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "buffer.h"
+#include "bufferContainer.hpp"
+#include "datasetManager.hpp" // for dset_id_t, state_id_t
 
 #include <map>    // for map
 #include <string> // for string

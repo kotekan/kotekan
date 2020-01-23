@@ -7,10 +7,10 @@
 #ifndef COUNT_CHECK_HPP
 #define COUNT_CHECK_HPP
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "buffer.h"            // IWYU pragma: keep
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "buffer.h"
+#include "bufferContainer.hpp"
 
 #include <stdint.h> // for int64_t
 #include <string>   // for string

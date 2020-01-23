@@ -7,7 +7,7 @@
 #define TX_UTILS_HPP
 
 #ifdef MAC_OSX
-#include <chrono> // for clockid_t  //IWYU pragma: keep
+#include <chrono> // for clockid_t
 #endif
 
 

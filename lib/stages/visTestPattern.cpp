@@ -16,6 +16,7 @@
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
 
+#include <algorithm>    // for max
 #include <atomic>       // for atomic_bool
 #include <cmath>        // for log10, sqrt
 #include <complex>      // for operator*, operator-, complex

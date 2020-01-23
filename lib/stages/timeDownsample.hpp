@@ -6,10 +6,10 @@
 #ifndef TIME_DOWNSAMP_HPP
 #define TIME_DOWNSAMP_HPP
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "buffer.h"            // IWYU pragma: keep
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "buffer.h"
+#include "bufferContainer.hpp"
 
 #include <stddef.h> // for size_t
 #include <string>   // for string

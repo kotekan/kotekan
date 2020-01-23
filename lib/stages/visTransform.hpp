@@ -6,12 +6,12 @@
 #ifndef VISTRANSFORM_H
 #define VISTRANSFORM_H
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "buffer.h"            // IWYU pragma: keep
-#include "bufferContainer.hpp" // IWYU pragma: keep
-#include "datasetManager.hpp"  // for dset_id_t
-#include "visUtil.hpp"         // for input_ctype, prod_ctype, freq_ctype (ptr only)
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "buffer.h"
+#include "bufferContainer.hpp"
+#include "datasetManager.hpp" // for dset_id_t
+#include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype (ptr only)
 
 #include <stddef.h> // for size_t
 #include <stdint.h> // for uint32_t

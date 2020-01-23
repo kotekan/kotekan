@@ -7,9 +7,11 @@
 #include "errors.h"            // for TEST_PASSED
 #include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, INFO
 
-#include <exception> // for exception
-#include <regex>     // for match_results<>::_Base_type
-#include <stdexcept> // for runtime_error
+#include <atomic>     // for atomic_bool
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
 
 
 REGISTER_KOTEKAN_STAGE(constDataCheck);

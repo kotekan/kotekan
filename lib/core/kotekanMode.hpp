@@ -1,8 +1,8 @@
 #ifndef KOTEKAN_MODE_HPP
 #define KOTEKAN_MODE_HPP
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // IWYU pragma: keep
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // for bufferContainer
 #include "metadata.h"          // for metadataPool  // IWYU pragma: keep
 

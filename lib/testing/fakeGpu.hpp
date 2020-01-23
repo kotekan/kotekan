@@ -6,11 +6,11 @@
 #ifndef FAKE_GPU_HPP
 #define FAKE_GPU_HPP
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "buffer.h"            // IWYU pragma: keep
-#include "bufferContainer.hpp" // IWYU pragma: keep
-#include "fakeGpuPattern.hpp"  // IWYU pragma: keep
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "buffer.h"
+#include "bufferContainer.hpp"
+#include "fakeGpuPattern.hpp"
 
 #include <memory>   // for unique_ptr
 #include <stdint.h> // for int32_t

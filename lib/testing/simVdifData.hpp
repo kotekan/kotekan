@@ -1,9 +1,9 @@
 #ifndef SIM_VDIF_DATA_H
 #define SIM_VDIF_DATA_H
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
 
 #include <string> // for string
 

@@ -7,9 +7,9 @@
 #ifndef NETWORK_INPUT_POWER_STREAM_H
 #define NETWORK_INPUT_POWER_STREAM_H
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
 
 #include <stdint.h> // for uint32_t
 #include <string>   // for string

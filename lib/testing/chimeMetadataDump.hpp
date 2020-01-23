@@ -6,10 +6,9 @@
 #ifndef CHIME_METADATA_DUMP_HPP
 #define CHIME_METADATA_DUMP_HPP
 
-#include "Config.hpp"          // IWYU pragma: keep
+#include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
-#include "StageFactory.hpp"    // IWYU pragma: keep
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "bufferContainer.hpp" // for bufferContainer
 
 #include <string> // for string
 

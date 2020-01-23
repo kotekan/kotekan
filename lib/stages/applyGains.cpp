@@ -1,16 +1,16 @@
 #include "applyGains.hpp"
 
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"              // for mark_frame_empty, allocate_new_metadata...
-#include "bufferContainer.hpp"   // IWYU pragma: keep
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"         // for mark_frame_empty, allocate_new_metadata...
+#include "bufferContainer.hpp"
 #include "configUpdater.hpp"     // for configUpdater
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
 #include "datasetState.hpp"      // for freqState, gainState (ptr only), inputS...
 #include "kotekanLogging.hpp"    // for WARN, FATAL_ERROR, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
 #include "visBuffer.hpp"         // for visFrameView, visField, visField::vis
-#include "visFileH5.hpp"         // for HighFive::AtomicType<cfloat>  // IWYU pragma: keep
+#include "visFileH5.hpp"         // for HighFive::AtomicType<cfloat>
 #include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double
 
 #include "fmt.hpp"      // for format, fmt

@@ -6,10 +6,10 @@
 #ifndef GPU_BEAMFORM_SIMULATE_HPP
 #define GPU_BEAMFORM_SIMULATE_HPP
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "buffer.h"            // IWYU pragma: keep
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "buffer.h"
+#include "bufferContainer.hpp"
 
 #include <stdint.h> // for int32_t, uint64_t
 #include <string>   // for string

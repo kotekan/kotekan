@@ -5,6 +5,7 @@
 #include "restClient.hpp" // for restClient::restReply, restClient
 #include "restServer.hpp" // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPONSE::...
 
+#include <algorithm>  // for max
 #include <cstdint>    // for int32_t
 #include <functional> // for function, _Bind_helper<>::type, _Placeholder, bind, _1
 #include <iosfwd>     // for streamsize

@@ -6,9 +6,9 @@
 
 #ifndef SIMPLE_AUTOCORR_HPP
 #define SIMPLE_AUTOCORR_HPP
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
 
 #include <string> // for string
 

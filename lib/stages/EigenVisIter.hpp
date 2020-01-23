@@ -14,7 +14,7 @@
 #include <vector>        // for vector
 
 // TODO: figure out how to forward declare eig_t
-#include "LinearAlgebra.hpp"  // for eig_t // IWYU pragma: keep
+#include "LinearAlgebra.hpp"  // for eig_t
 #include "Stage.hpp"          // for Stage
 #include "datasetManager.hpp" // for dset_id_t, state_id_t
 #include "visUtil.hpp"        // for cfloat, movingAverage

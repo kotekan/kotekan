@@ -1,7 +1,7 @@
 #ifndef BUFFER_CONTAINER_H
 #define BUFFER_CONTAINER_H
 
-#include "buffer.h" // IWYU pragma: keep
+#include "buffer.h"
 
 #include <map>    // for map
 #include <string> // for string

@@ -7,10 +7,10 @@
 #ifndef CONST_DATA_CHECK_H
 #define CONST_DATA_CHECK_H
 
-#include "Config.hpp"          // IWYU pragma: keep
+#include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
 #include "StageFactory.hpp"    // IWYU pragma: keep
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "bufferContainer.hpp" // for bufferContainer
 
 #include <atomic>     // for atomic_bool   // IWYU pragma: keep
 #include <cstdint>    // for int32_t
@@ -18,7 +18,6 @@
 #include <string>     // for string
 #include <vector>     // for vector
 
-// IWYU pragma: no_forward_declare Config
 
 /**
  * @class constDataCheck

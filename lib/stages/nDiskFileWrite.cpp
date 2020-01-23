@@ -10,6 +10,7 @@
 
 #include "fmt.hpp" // for format, fmt
 
+#include <algorithm>  // for max
 #include <atomic>     // for atomic_bool
 #include <errno.h>    // for errno
 #include <exception>  // for exception

@@ -7,10 +7,10 @@
 #ifndef VISNOISE_HPP
 #define VISNOISE_HPP
 
-#include "Config.hpp"          // IWYU pragma: keep
-#include "Stage.hpp"           // for Stage
-#include "buffer.h"            // IWYU pragma: keep
-#include "bufferContainer.hpp" // IWYU pragma: keep
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "buffer.h"
+#include "bufferContainer.hpp"
 
 #include <random>   // for default_random_engine
 #include <stddef.h> // for size_t
