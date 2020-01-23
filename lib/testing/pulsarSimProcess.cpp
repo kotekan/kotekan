@@ -1,3 +1,13 @@
+#include "pulsarSimProcess.hpp"
+
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for wait_for_empty_frame, mark_frame_full, register_producer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.h"     // for psrCoord
+#include "kotekanLogging.hpp"  // for INFO, CHECK_MEM
+#include "vdif_functions.h"    // for VDIFHeader
+
 #include <atomic>     // for atomic_bool
 #include <cstdint>    // for int32_t
 #include <exception>  // for exception
@@ -13,22 +23,12 @@
 
 using std::string;
 
-#define samples_in_frame 3125
-#define num_packet 16
-
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for wait_for_empty_frame, mark_frame_full, register_producer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for psrCoord
-#include "kotekanLogging.hpp"  // for INFO, CHECK_MEM
-#include "pulsarSimProcess.hpp"
-#include "vdif_functions.h" // for VDIFHeader
-
-
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+
+#define samples_in_frame 3125
+#define num_packet 16
 
 REGISTER_KOTEKAN_STAGE(pulsarSimProcess);
 pulsarSimProcess::pulsarSimProcess(Config& config_, const std::string& unique_name,

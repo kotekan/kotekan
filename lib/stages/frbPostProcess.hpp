@@ -6,6 +6,7 @@
 
 #ifndef FRB_POST_PROCESS
 #define FRB_POST_PROCESS
+
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
 #include "buffer.h"              // for Buffer
