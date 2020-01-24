@@ -25,6 +25,7 @@
     { include: [ "<highfive/bits/../H5DataType.hpp>", public, "<highfive/H5DataType.hpp>", public ] },
     { include: [ "<highfive/bits/../H5DataSet.hpp>", public, "<highfive/H5DataSet.hpp>", public ] },
     { include: [ "<highfive/bits/../H5DataSpace.hpp>", public, "<highfive/H5DataSpace.hpp>", public ] },
+    { include: [ "<highfive/bits/../H5Object.hpp>", public, "<highfive/H5Object.hpp>", public ] },
     { include: [ "<highfive/bits/../H5Attribute.hpp>", public, "<highfive/H5Attribute.hpp>", public ] },
     { include: [ "<highfive/bits/../H5Exception.hpp>", public, "<highfive/H5Exception.hpp>", public ] },
     { include: [ "<highfive/bits/../H5File.hpp>", public, "<highfive/H5File.hpp>", public ] },

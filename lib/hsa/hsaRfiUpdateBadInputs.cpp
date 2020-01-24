@@ -6,12 +6,15 @@
 #include "chimeMetadata.h"        // for get_rfi_num_bad_inputs, set_rfi_num_bad_inputs
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_IN
 #include "hsaBase.h"              // for hsa_host_free, hsa_host_malloc
-#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 #include "kotekanLogging.hpp"     // for DEBUG, CHECK_MEM
 #include "visUtil.hpp"            // for double_to_ts
 
-#include <iterator> // for begin
-#include <string.h> // for memcpy
+#include <algorithm> // for max
+#include <exception> // for exception
+#include <iterator>  // for begin
+#include <regex>     // for match_results<>::_Base_type
+#include <string.h>  // for memcpy
 
 using kotekan::Config;
 

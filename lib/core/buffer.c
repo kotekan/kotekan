@@ -1,25 +1,20 @@
 #include "buffer.h"
 
 #include "errors.h"    // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, INFO_F, DEBUG_F, WARN_F, DEB...
-#include "metadata.h"  // for decrement_metadata_ref_count, metadataContainer, increment_metada...
+#include "metadata.h"  // for metadataContainer, decrement_metadata_ref_count, increment_metada...
 #include "nt_memset.h" // for nt_memset
 #include "util.h"      // for e_time
 #ifdef WITH_HSA
 #include "hsaBase.h" // for hsa_host_free, hsa_host_malloc
 #endif
 
-#include <assert.h>   // for assert
-#include <errno.h>    // for ETIMEDOUT
-#include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdio.h>    // for snprintf
-#include <stdlib.h>   // for NULL, free, malloc, size_t
-#include <string.h>   // for memset, memcpy, strncmp, strncpy, strdup
-#include <sys/mman.h> // for mlock
-#include <time.h>     // for timespec
-
-#ifdef WITH_NUMA
-#include <numa.h> // for numa_alloc_onnode
-#endif
+#include <assert.h> // for assert
+#include <errno.h>  // for ETIMEDOUT
+#include <sched.h>  // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdio.h>  // for snprintf
+#include <stdlib.h> // for free, malloc
+#include <string.h> // for memset, memcpy, strncmp, strncpy, strdup
+#include <time.h>   // for NULL, size_t, timespec
 
 struct zero_frames_thread_args {
     struct Buffer* buf;

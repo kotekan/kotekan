@@ -14,10 +14,6 @@
 #include <sys/time.h> // for timeval
 #include <time.h>     // for timespec
 
-namespace kotekan {
-class Config;
-} // namespace kotekan
-
 using kotekan::bufferContainer;
 using kotekan::Config;
 

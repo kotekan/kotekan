@@ -1,16 +1,13 @@
 #ifndef GPU_HSA_CORRELATOR_SUBFRAME_COMMAND_H
 #define GPU_HSA_CORRELATOR_SUBFRAME_COMMAND_H
 
-#include "hsaCommand.hpp" // for hsaCommand
+#include "Config.hpp"             // for Config
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsaCommand.hpp"         // for hsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
 #include <stdint.h> // for uint32_t
-#include <string>   // for string
-
-class hsaDeviceInterface;
-namespace kotekan {
-class Config;
-class bufferContainer;
-} // namespace kotekan
+#include <string>   // for allocator, string
 
 class hsaSubframeCommand : public hsaCommand {
 public:

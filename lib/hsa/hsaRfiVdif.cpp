@@ -17,15 +17,15 @@ Notes:
 #include "Config.hpp"             // for Config
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
 #include "hsaBase.h"              // for hsa_host_malloc, HSA_CHECK
-#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 #include "vdif_functions.h"       // for VDIFHeader
 
-#include <cmath>    // for sqrt
-#include <string.h> // for memcpy, memset
-
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
+#include <cmath>     // for sqrt
+#include <cstdint>   // for int32_t
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <string.h>  // for memcpy, memset
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -1,11 +1,8 @@
 #include "gpuDeviceInterface.hpp"
 
-#include <assert.h> // for assert
-#include <utility>  // for pair
-
-namespace kotekan {
-class Config;
-} // namespace kotekan
+#include <algorithm> // for max
+#include <assert.h>  // for assert
+#include <utility>   // for pair
 
 using kotekan::Config;
 

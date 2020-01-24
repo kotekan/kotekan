@@ -5,10 +5,6 @@
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_OUT
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
-namespace kotekan {
-class Config;
-} // namespace kotekan
-
 using kotekan::bufferContainer;
 using kotekan::Config;
 

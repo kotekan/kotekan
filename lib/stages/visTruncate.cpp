@@ -15,10 +15,13 @@
 #include <complex>     // for complex
 #include <cstdint>     // for int32_t
 #include <cstring>     // for memset, size_t
+#include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, bind, function
 #include <immintrin.h> // for _mm256_broadcast_ss, _mm256_div_ps, _mm256_loadu_ps, _mm25...
 #include <mm_malloc.h> // for _mm_free, _mm_malloc
+#include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for invalid_argument
+#include <vector>      // for vector
 
 
 using kotekan::bufferContainer;

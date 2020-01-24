@@ -6,13 +6,16 @@
 #include "chimeMetadata.h"        // for set_rfi_zeroed
 #include "configUpdater.hpp"      // for configUpdater
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
-#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 #include "kotekanLogging.hpp"     // for INFO, WARN
 
 #include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placehol...
 #include <mutex>      // for lock_guard, mutex
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
 #include <string.h>   // for memcpy, memset
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

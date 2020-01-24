@@ -3,20 +3,18 @@
 #include "Config.hpp"             // for Config
 #include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "factory.hpp"            // for FACTORY
+#include "gpuDeviceInterface.hpp" // for gpuDeviceInterface
 #include "gpuEventContainer.hpp"  // for gpuEventContainer
 #include "hsa/hsa.h"              // for hsa_signal_t
 #include "hsaCommand.hpp"         // for hsaCommand, _factory_aliashsaCommand
-#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 #include "hsaEventContainer.hpp"  // for hsaEventContainer
 
-#include <stdint.h> // for uint32_t
-#include <vector>   // for vector
-
-class gpuCommand;
-class gpuDeviceInterface;
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error
+#include <stdint.h>  // for uint32_t
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

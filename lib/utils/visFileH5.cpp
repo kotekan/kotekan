@@ -3,33 +3,37 @@
 
 #include "Hash.hpp"           // for Hash
 #include "datasetManager.hpp" // for datasetManager, dset_id_t
-#include "datasetState.hpp"   // for eigenvalueState, freqState, inputState, prodS...
+#include "datasetState.hpp"   // for eigenvalueState, freqState, inputState, prodState
 #include "visBuffer.hpp"      // for visFrameView
-#include "visUtil.hpp"        // for cfloat, time_ctype, unzip, freq_ctype, input_...
+#include "visUtil.hpp"        // for cfloat, time_ctype, freq_ctype, input_ctype, prod...
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
 
+#include <algorithm>                   // for max
+#include <complex>                     // for complex
 #include <cstdio>                      // for remove
 #include <cxxabi.h>                    // for __forced_unwind
 #include <errno.h>                     // for errno
+#include <exception>                   // for exception
 #include <fcntl.h>                     // for sync_file_range, posix_fadvise, posix_fallocate
 #include <future>                      // for async, future
 #include <highfive/H5Attribute.hpp>    // for Attribute, Attribute::write, Attribute::getSpace
-#include <highfive/H5DataSet.hpp>      // for DataSet, DataSet::resize, AnnotateTraits::cre...
+#include <highfive/H5DataSet.hpp>      // for DataSet, H5Dget_offset, DataSet::resize, Annotate...
 #include <highfive/H5DataSpace.hpp>    // for DataSpace, DataSpace::From, DataSpace::DataSpace
-#include <highfive/H5DataType.hpp>     // for CompoundType, create_datatype, CompoundType::...
-#include <highfive/H5File.hpp>         // for File, File::flush, NodeTraits::exist, NodeTra...
+#include <highfive/H5DataType.hpp>     // for CompoundType, create_datatype, CompoundType::addM...
+#include <highfive/H5File.hpp>         // for File, NodeTraits::createDataSet, File::flush, Nod...
 #include <highfive/H5Group.hpp>        // for Group
-#include <highfive/H5Object.hpp>       // for Object::getId
-#include <highfive/H5PropertyList.hpp> // for Object::getId,H5Pcreate, H5Pset_alloc_time, ...
-#include <highfive/H5Selection.hpp>    // for Selection, SliceTraits::select, SliceTraits::...
+#include <highfive/H5Object.hpp>       // for Object::getId, hid_t, HighFive
+#include <highfive/H5PropertyList.hpp> // for H5Fget_vfd_handle, H5Pcreate, H5Pset_alloc_time
+#include <highfive/H5Selection.hpp>    // for Selection, SliceTraits::write, SliceTraits::select
 #include <numeric>                     // for iota
-#include <stdexcept>                   // for runtime_error
+#include <stdexcept>                   // for runtime_error, out_of_range
 #include <string.h>                    // for strerror
 #include <sys/stat.h>                  // for fstat, stat
 #include <system_error>                // for system_error
-#include <tuple>                       // for make_tuple, get, tuple
+#include <tuple>                       // for make_tuple, tuple, get
+#include <type_traits>                 // for remove_reference<>::type
 #include <unistd.h>                    // for pwrite, TEMP_FAILURE_RETRY
 #include <utility>                     // for move, pair
 

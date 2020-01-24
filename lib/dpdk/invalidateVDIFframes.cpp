@@ -9,11 +9,6 @@
 #include <atomic>     // for atomic_bool
 #include <functional> // for _Bind_helper<>::type, bind, function
 
-namespace kotekan {
-class Config;
-class bufferContainer;
-} // namespace kotekan
-
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;

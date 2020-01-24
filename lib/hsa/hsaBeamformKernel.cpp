@@ -7,13 +7,16 @@
 #include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
 #include "gpuCommand.hpp"          // for gpuCommandType, gpuCommandType::KERNEL
 #include "hsaBase.h"               // for hsa_host_free, hsa_host_malloc
-#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
-#include "restServer.hpp"          // for restServer, HTTP_RESPONSE, connectionInstance, HTTP_R...
+#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface, Config
+#include "restServer.hpp"          // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_R...
 
 #include "fmt.hpp" // for format, fmt
 
 #include <cmath>      // for sin, asin, cos, floor
-#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, _2
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, pla...
+#include <regex>      // for match_results<>::_Base_type
 #include <string.h>   // for memcpy, memset
 
 namespace kotekan {

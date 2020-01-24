@@ -4,16 +4,16 @@
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
 #include "hsaBase.h"              // for hsa_host_free, hsa_host_malloc
 #include "hsaCommand.hpp"         // for kernelParams, REGISTER_HSA_COMMAND, _factory_aliashsaC...
-#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 #include "kotekanLogging.hpp"     // for DEBUG2
 
 #include "fmt.hpp" // for format, fmt
 
-#include <string.h> // for memcpy, memset
-
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
+#include <cstdint>   // for int32_t
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <string.h>  // for memcpy, memset
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

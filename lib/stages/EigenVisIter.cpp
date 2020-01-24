@@ -1,34 +1,33 @@
 #include "EigenVisIter.hpp"
 
 #include "Config.hpp"            // for Config
-#include "Hash.hpp"              // for operator!=
+#include "Hash.hpp"              // for operator!=, operator<
 #include "LinearAlgebra.hpp"     // for EigConvergenceStats, eigen_masked_subspace, to_blaze_herm
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for allocate_new_metadata_object, mark_frame_empty, mark_fr...
-#include "datasetState.hpp"      // for eigenvalueState, state_uptr
+#include "datasetState.hpp"      // for datasetState, eigenvalueState, state_uptr
 #include "kotekanLogging.hpp"    // for DEBUG
-#include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
+#include "prometheusMetrics.hpp" // for Gauge, Metrics, MetricFamily
 #include "visBuffer.hpp"         // for visFrameView, visField, visField::erms, visField::eval
-#include "visUtil.hpp"           // for frameID, cfloat, current_time, modulo, movingAverage
+#include "visUtil.hpp"           // for cfloat, frameID, current_time, modulo, movingAverage
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>     // for min
+#include <algorithm>     // for copy, copy_backward, equal, max, min
 #include <atomic>        // for atomic_bool
-#include <blaze/Blaze.h> // for DynamicMatrix, band, HermitianMatrix, DynamicVector
+#include <blaze/Blaze.h> // for DynamicMatrix, DMatDeclHermExpr, band, HermitianMatrix
 #include <cblas.h>       // for openblas_set_num_threads
 #include <complex>       // for complex
 #include <cstdint>       // for uint32_t, int32_t
+#include <deque>         // for deque
+#include <exception>     // for exception
 #include <functional>    // for _Bind_helper<>::type, bind, function
 #include <iostream>      // for basic_ostream::operator<<, operator<<, basic_ostream<>:...
 #include <memory>        // for make_unique
-#include <stdexcept>     // for runtime_error
+#include <regex>         // for match_results<>::_Base_type
+#include <stdexcept>     // for runtime_error, out_of_range
 #include <tuple>         // for tie, tuple
-
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

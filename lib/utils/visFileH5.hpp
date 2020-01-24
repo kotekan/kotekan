@@ -9,23 +9,20 @@
 
 #include "datasetManager.hpp" // for dset_id_t
 #include "kotekanLogging.hpp" // for logLevel
+#include "visBuffer.hpp"      // for visFrameView
 #include "visFile.hpp"        // for visFile
-#include "visUtil.hpp"        // for time_ctype (ptr only), freq_ctype (ptr only)
+#include "visUtil.hpp"        // for time_ctype, freq_ctype, input_ctype, prod_ctype
 
 #include <cstdint>                 // for uint32_t
 #include <highfive/H5DataSet.hpp>  // for DataSet
 #include <highfive/H5DataType.hpp> // for DataType
+#include <highfive/H5File.hpp>     // for File
 #include <map>                     // for map
 #include <memory>                  // for unique_ptr
 #include <stddef.h>                // for size_t
 #include <string>                  // for string
 #include <sys/types.h>             // for off_t
 #include <vector>                  // for vector
-
-class visFrameView;
-namespace HighFive {
-class File;
-} // namespace HighFive
 
 /** @brief A CHIME correlator file.
  *

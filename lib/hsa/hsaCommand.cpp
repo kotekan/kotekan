@@ -3,17 +3,17 @@
 #include "Config.hpp"             // for Config
 #include "hsa/hsa_ext_amd.h"      // for hsa_amd_profiling_async_copy_time_t, hsa_amd_profiling...
 #include "hsaBase.h"              // for HSA_CHECK, hsa_host_free, hsa_host_malloc
-#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 #include "kotekanLogging.hpp"     // for INFO
 
-#include <assert.h> // for assert
-#include <fstream>  // for ifstream, basic_istream::seekg, ios, basic_istream::read
-#include <stdlib.h> // for free, malloc
-#include <string.h> // for memset
-
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
+#include <assert.h>  // for assert
+#include <exception> // for exception
+#include <fstream>   // for ifstream, operator|, basic_istream::seekg, ios, basic_...
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error
+#include <stdlib.h>  // for free, malloc
+#include <string.h>  // for memset, size_t
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

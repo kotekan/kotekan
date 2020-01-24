@@ -2,13 +2,13 @@
 
 #include "Config.hpp"             // for Config
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
-#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 
-#include <string.h> // for memcpy, memset
-
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
+#include <cstdint>   // for int32_t
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <string.h>  // for memcpy, memset
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

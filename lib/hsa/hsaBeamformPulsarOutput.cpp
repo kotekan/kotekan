@@ -6,10 +6,6 @@
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 #include "kotekanLogging.hpp"     // for DEBUG
 
-namespace kotekan {
-class Config;
-} // namespace kotekan
-
 using kotekan::bufferContainer;
 using kotekan::Config;
 

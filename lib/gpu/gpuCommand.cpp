@@ -2,9 +2,11 @@
 
 #include "Config.hpp" // for Config
 
-#include <assert.h> // for assert
-
-class gpuDeviceInterface;
+#include <assert.h>  // for assert
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

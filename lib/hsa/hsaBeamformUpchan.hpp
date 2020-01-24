@@ -7,18 +7,14 @@
 #ifndef HSA_BEAMFORM_UPCHAN_H
 #define HSA_BEAMFORM_UPCHAN_H
 
-#include "hsa/hsa.h"      // for hsa_signal_t
-#include "hsaCommand.hpp" // for hsaCommand
+#include "Config.hpp"             // for Config
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaCommand.hpp"         // for hsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
 #include <stdint.h> // for int32_t
 #include <string>   // for string
-
-class hsaDeviceInterface;
-namespace kotekan {
-class Config;
-class bufferContainer;
-} // namespace kotekan
-
 /**
  * @class hsaBeamformUpchan
  * @brief hsaCommand to upchannelize and downsample FRB data

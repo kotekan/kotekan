@@ -7,9 +7,13 @@
 #ifndef HSA_PULSAR_UPDATE_PHASE_H
 #define HSA_PULSAR_UPDATE_PHASE_H
 
-#include "chimeMetadata.h" // for psrCoord
-#include "hsa/hsa.h"       // for hsa_signal_t
-#include "hsaCommand.hpp"  // for hsaCommand
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chimeMetadata.h"        // for psrCoord
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaCommand.hpp"         // for hsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
 #include "json.hpp" // for json
 
@@ -18,15 +22,6 @@
 #include <string>      // for string
 #include <sys/types.h> // for uint
 #include <time.h>      // for timespec
-
-class hsaDeviceInterface;
-
-namespace kotekan {
-class Config;
-class bufferContainer;
-} // namespace kotekan
-struct Buffer;
-struct timespec;
 
 /**
  * @class hsaPulsarUpdatePhase

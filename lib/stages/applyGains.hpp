@@ -1,14 +1,16 @@
 #ifndef APPLY_GAINS_HPP
 #define APPLY_GAINS_HPP
 
-#include "Config.hpp"
-#include "Hash.hpp"  // for Hash
-#include "Stage.hpp" // for Stage
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp" // for dset_id_t, state_id_t
-#include "updateQueue.hpp"    // for updateQueue
-#include "visUtil.hpp"        // for cfloat, frameID
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for Hash
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, state_id_t
+#include "prometheusMetrics.hpp" // for Counter, Gauge
+#include "updateQueue.hpp"       // for updateQueue
+#include "visBuffer.hpp"         // for visFrameView
+#include "visUtil.hpp"           // for cfloat, frameID
 
 #include "json.hpp" // for json
 
@@ -23,18 +25,6 @@
 #include <thread>       // for thread
 #include <utility>      // for pair
 #include <vector>       // for vector
-
-class visFrameView;
-
-namespace kotekan {
-
-namespace prometheus {
-class Counter;
-class Gauge;
-} // namespace prometheus
-} // namespace kotekan
-struct timespec;
-
 
 /**
  * @class applyGains

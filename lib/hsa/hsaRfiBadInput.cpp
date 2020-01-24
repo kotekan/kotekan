@@ -2,14 +2,14 @@
 
 #include "Config.hpp"             // for Config
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
-#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
-#include "restServer.hpp"         // for HTTP_RESPONSE, connectionInstance (ptr only), restServ...
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+#include "restServer.hpp"         // for HTTP_RESPONSE, connectionInstance, restServer
 
-#include <string.h> // for memcpy, memset
-
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error
+#include <string.h>  // for memcpy, memset
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

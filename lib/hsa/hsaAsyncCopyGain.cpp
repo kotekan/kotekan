@@ -7,11 +7,8 @@
 #include "kotekanLogging.hpp"     // for DEBUG
 #include "visUtil.hpp"            // for double_to_ts
 
-#include <iterator> // for begin
-
-namespace kotekan {
-class Config;
-} // namespace kotekan
+#include <algorithm> // for max
+#include <iterator>  // for begin
 
 using kotekan::bufferContainer;
 using kotekan::Config;

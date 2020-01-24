@@ -3,18 +3,22 @@
 #include "Config.hpp"         // for Config
 #include "Hash.hpp"           // for operator<<
 #include "dataset.hpp"        // for dataset
-#include "datasetManager.hpp" // for datasetManager, dset_id_t, state_id_t
-#include "datasetState.hpp"   // for datasetState, freqState, inputState, prodState
+#include "datasetManager.hpp" // for datasetManager, state_id_t, dset_id_t
+#include "datasetState.hpp"   // for freqState, inputState, prodState, datasetState
 #include "errors.h"           // for __enable_syslog, _global_log_level
 #include "restClient.hpp"     // for restClient, restClient::restReply
 #include "restServer.hpp"     // for restServer
 #include "test_utils.hpp"     // for CompareCTypes
 #include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype
 
-#include "json.hpp" // for basic_json<>::value_type, json
+#include "json.hpp" // for basic_json<>::object_t, basic_json<>::value...
 
+#include <algorithm>                         // for max
 #include <boost/test/included/unit_test.hpp> // for master_test_suite, BOOST_PP_IIF_1, BOOST_CHECK
+#include <exception>                         // for exception
 #include <iostream>                          // for operator<<, ostream, endl, basic_ostream, cout
+#include <map>                               // for map
+#include <stdexcept>                         // for out_of_range
 #include <stdint.h>                          // for uint32_t
 #include <stdlib.h>                          // for atoi
 #include <string>                            // for operator<<, allocator, string, getline, ope...

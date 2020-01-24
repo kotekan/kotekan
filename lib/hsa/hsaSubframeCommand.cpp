@@ -3,12 +3,10 @@
 #include "Config.hpp"         // for Config
 #include "kotekanLogging.hpp" // for DEBUG2
 
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
 #include <stdexcept> // for runtime_error
-
-class hsaDeviceInterface;
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

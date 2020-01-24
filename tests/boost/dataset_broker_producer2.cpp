@@ -4,19 +4,22 @@
 #include "Hash.hpp"           // for operator<<
 #include "dataset.hpp"        // for dataset
 #include "datasetManager.hpp" // for state_id_t, datasetManager, dset_id_t
-#include "datasetState.hpp"   // for datasetState, freqState, inputState, prodState
+#include "datasetState.hpp"   // for freqState, inputState, prodState, datasetState
 #include "errors.h"           // for __enable_syslog, _global_log_level
 #include "restServer.hpp"     // for restServer
 #include "test_utils.hpp"     // for CompareCTypes
 #include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype
 
-#include "json.hpp" // for basic_json<>::value_type, json
+#include "json.hpp" // for basic_json<>::object_t, basic_json<>::value...
 
 #include <boost/test/included/unit_test.hpp> // for master_test_suite, master_test_suite_t, BOO...
+#include <exception>                         // for exception
 #include <iostream>                          // for operator<<, ostream, endl, basic_ostream, cout
+#include <map>                               // for map
+#include <stdexcept>                         // for out_of_range
 #include <stdint.h>                          // for uint32_t
 #include <stdlib.h>                          // for atoi
-#include <string>                            // for allocator, string, operator<<, getline
+#include <string>                            // for allocator, string, operator<<, getline, str...
 #include <unistd.h>                          // for usleep
 #include <utility>                           // for pair
 #include <vector>                            // for vector

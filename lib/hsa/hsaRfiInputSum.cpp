@@ -5,11 +5,15 @@
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "chimeMetadata.h"        // for get_rfi_num_bad_inputs
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
-#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 #include "kotekanLogging.hpp"     // for DEBUG
-#include "restServer.hpp"         // for HTTP_RESPONSE, connectionInstance (ptr only), restServ...
+#include "restServer.hpp"         // for HTTP_RESPONSE, connectionInstance, restServer
 
-#include <string.h> // for memcpy, memset
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error
+#include <string.h>  // for memcpy, memset
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

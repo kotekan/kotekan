@@ -3,18 +3,17 @@
 #include "Config.hpp"             // for Config
 #include "configUpdater.hpp"      // for configUpdater
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
-#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 #include "kotekanLogging.hpp"     // for DEBUG, INFO, WARN
 #include "visUtil.hpp"            // for parse_reorder_default
 
+#include <cstdint>    // for uint32_t
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
 #include <string.h>   // for memcpy, memset
 #include <tuple>      // for get
-
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -9,16 +9,20 @@
 #include "configUpdater.hpp"       // for configUpdater
 #include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
 #include "hsaBase.h"               // for hsa_host_free, hsa_host_malloc
-#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
+#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface, Config
 #include "kotekanLogging.hpp"      // for DEBUG, WARN, ERROR, INFO
-#include "restServer.hpp"          // for restServer, HTTP_RESPONSE, connectionInstance (ptr only)
+#include "restServer.hpp"          // for restServer, HTTP_RESPONSE, connectionInstance
 #include "visUtil.hpp"             // for double_to_ts
 
-#include <cmath>     // for cos, sin, fmod, pow, acos, asin, atan2, sqrt
-#include <exception> // for exception
-#include <string.h>  // for memcpy
-#include <string>    // for string, allocator, operator+, to_string, char_traits
-#include <time.h>    // for tm, timespec, localtime
+#include <cmath>      // for cos, sin, fmod, acos, asin, sqrt, atan2, pow
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
+#include <functional> // for placeholders
+#include <regex>      // for match_results<>::_Base_type
+#include <string.h>   // for memcpy
+#include <string>     // for string, allocator, operator+, to_string, char_traits
+#include <time.h>     // for tm, timespec, localtime
+#include <vector>     // for vector
 
 #define PI 3.14159265
 #define light 299792458.

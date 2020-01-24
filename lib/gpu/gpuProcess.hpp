@@ -4,22 +4,18 @@
 #define HI_NIBBLE(b) (((b) >> 4) & 0x0F)
 #define LO_NIBBLE(b) ((b)&0x0F)
 
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // for bufferContainer
+#include "Config.hpp"             // for Config
+#include "Stage.hpp"              // for Stage
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "gpuCommand.hpp"         // for gpuCommand
+#include "gpuDeviceInterface.hpp" // for gpuDeviceInterface
+#include "gpuEventContainer.hpp"  // for gpuEventContainer
+#include "restServer.hpp"         // for connectionInstance
 
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
 #include <thread>   // for thread
 #include <vector>   // for vector
-
-class gpuCommand;
-class gpuDeviceInterface;
-class gpuEventContainer;
-
-namespace kotekan {
-class Config;
-class connectionInstance;
-} // namespace kotekan
 
 class gpuProcess : public kotekan::Stage {
 public:

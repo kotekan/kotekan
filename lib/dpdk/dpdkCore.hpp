@@ -14,16 +14,14 @@ extern "C" {
 #include <stdint.h>     // for uint32_t, int32_t, uint8_t
 }
 
-#include "Config.hpp"         // for Config
-#include "Stage.hpp"          // for Stage
-#include "kotekanLogging.hpp" // for kotekanLogging
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for kotekanLogging
 
-#include <string> // for string
-#include <vector> // for vector
-
-namespace kotekan {
-class bufferContainer;
-} // namespace kotekan
+#include <exception> // for exception
+#include <string>    // for string, allocator
+#include <vector>    // for vector
 
 /**
  * @brief Abstract object for processing packets that come from a given NIC port

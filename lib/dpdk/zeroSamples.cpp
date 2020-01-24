@@ -2,16 +2,20 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for mark_frame_full, register_producer, wait_for_empty_frame
+#include "buffer.h"            // for Buffer, mark_frame_full, register_producer, wait_for_empt...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.h"     // for atomic_add_lost_timesamples
 #include "nt_memset.h"         // for nt_memset
 
 #include "json.hpp" // for json, basic_json, basic_json<>::iterator, iter_impl
 
+#include <algorithm>  // for max
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
+#include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
 #include <string.h>   // for memcpy, size_t
 #include <vector>     // for vector
 

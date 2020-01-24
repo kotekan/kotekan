@@ -5,13 +5,18 @@
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "chimeMetadata.h"        // for get_first_packet_recv_time
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_IN
-#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 #include "kotekanLogging.hpp"     // for DEBUG2, INFO
 #include "util.h"                 // for e_time
 
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
 #include <random>     // for mt19937, random_device, uniform_real_distribution
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
 #include <sys/time.h> // for timeval
 #include <unistd.h>   // for usleep
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

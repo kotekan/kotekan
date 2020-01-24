@@ -6,18 +6,15 @@
 #ifndef HSA_INPUT_LOST_SAMPLES_H
 #define HSA_INPUT_LOST_SAMPLES_H
 
-#include "hsa/hsa.h"      // for hsa_signal_t
-#include "hsaCommand.hpp" // for hsaCommand
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaCommand.hpp"         // for hsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
-
-class hsaDeviceInterface;
-namespace kotekan {
-class Config;
-class bufferContainer;
-} // namespace kotekan
-struct Buffer;
 
 /*
  * @class hsaInputLostSamples

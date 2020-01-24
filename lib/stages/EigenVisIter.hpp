@@ -14,22 +14,14 @@
 #include <vector>        // for vector
 
 // TODO: figure out how to forward declare eig_t
-#include "LinearAlgebra.hpp"  // for eig_t
-#include "Stage.hpp"          // for Stage
-#include "datasetManager.hpp" // for dset_id_t, state_id_t
-#include "visUtil.hpp"        // for cfloat, movingAverage
-
-namespace kotekan {
-class Config;
-class bufferContainer;
-
-namespace prometheus {
-class Gauge;
-template<typename T>
-class MetricFamily;
-} // namespace prometheus
-} // namespace kotekan
-struct Buffer;
+#include "Config.hpp"            // for Config
+#include "LinearAlgebra.hpp"     // for EigConvergenceStats
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, state_id_t
+#include "prometheusMetrics.hpp" // for Gauge, MetricFamily
+#include "visUtil.hpp"           // for movingAverage, cfloat
 
 
 /**

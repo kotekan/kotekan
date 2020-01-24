@@ -6,10 +6,6 @@
 #include "hsaCommand.hpp"         // for REGISTER_HSA_COMMAND, _factory_aliashsaCommand, hsaCom...
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
-namespace kotekan {
-class Config;
-} // namespace kotekan
-
 using kotekan::bufferContainer;
 using kotekan::Config;
 

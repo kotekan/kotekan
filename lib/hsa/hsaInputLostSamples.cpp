@@ -4,7 +4,11 @@
 #include "buffer.h"               // for Buffer, mark_frame_empty, wait_for_full_frame
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_IN
-#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -1,33 +1,37 @@
 #include "applyGains.hpp"
 
-#include "Config.hpp"       // for Config
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"         // for mark_frame_empty, allocate_new_metadata...
-#include "bufferContainer.hpp"
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for mark_frame_empty, allocate_new_metadata_object
+#include "bufferContainer.hpp"   // for bufferContainer
 #include "configUpdater.hpp"     // for configUpdater
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
-#include "datasetState.hpp"      // for freqState, gainState (ptr only), inputS...
+#include "datasetState.hpp"      // for gainState, freqState, inputState
 #include "kotekanLogging.hpp"    // for WARN, FATAL_ERROR, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
-#include "visBuffer.hpp"         // for visFrameView, visField, visField::vis
-#include "visFileH5.hpp"         // for HighFive::AtomicType<cfloat>
-#include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double
+#include "visBuffer.hpp"         // for visFrameView, visField, visField::vis, visField...
+#include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double, fra...
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
 
-#include <cmath>                    // for pow, abs
-#include <complex>                  // for operator*, operator+, complex, operator...
+#include <algorithm>                // for copy, max, copy_backward
+#include <cmath>                    // for abs, pow
+#include <complex>                  // for operator*, operator+, complex, operator""if
+#include <cstdint>                  // for uint64_t
 #include <exception>                // for exception
-#include <functional>               // for _Bind_helper<>::type, _Placeholder, bind
+#include <functional>               // for _Bind_helper<>::type, _Placeholder, bind, _1
 #include <highfive/H5DataSet.hpp>   // for DataSet, DataSet::getSpace
 #include <highfive/H5DataSpace.hpp> // for DataSpace, DataSpace::getDimensions
-#include <highfive/H5File.hpp>      // for File, NodeTraits::getDataSet, File::File
+#include <highfive/H5File.hpp>      // for File, NodeTraits::getDataSet, File::File, File:...
+#include <highfive/H5Object.hpp>    // for HighFive
 #include <highfive/H5Selection.hpp> // for SliceTraits::read
+#include <highfive/bits/H5Utils.hpp>  // for type_of_array<>::type
 #include <memory>                   // for allocator_traits<>::value_type
 #include <pthread.h>                // for pthread_setaffinity_np
+#include <regex>                    // for match_results<>::_Base_type
 #include <sched.h>                  // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdexcept>                // for invalid_argument
+#include <stdexcept>                // for invalid_argument, out_of_range, runtime_error
 #include <sys/stat.h>               // for stat
 #include <tuple>                    // for get
 

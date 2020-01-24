@@ -6,11 +6,6 @@
 #include <stdint.h> // for uint32_t, uint8_t, uint64_t
 #include <string.h> // for memset
 
-namespace kotekan {
-class Config;
-class bufferContainer;
-} // namespace kotekan
-
 using kotekan::bufferContainer;
 using kotekan::Config;
 
