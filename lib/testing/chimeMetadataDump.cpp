@@ -7,7 +7,7 @@
 
 #include <time.h>
 
-//REGISTER_KOTEKAN_STAGE(chimeMetadataDump);
+// REGISTER_KOTEKAN_STAGE(chimeMetadataDump);
 
 chimeMetadataDump::chimeMetadataDump(kotekan::Config& config, const string& unique_name,
                                      kotekan::bufferContainer& buffer_container) :
