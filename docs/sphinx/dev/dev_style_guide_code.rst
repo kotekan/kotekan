@@ -157,7 +157,7 @@ kotekan uses the following tools for automatic code formatting:
 
 * `black <black.readthedocs.io>`_: python code formatting. Run it on the kotekan code base with ``black --exclude docs .``.
 * `clang-format <https://clang.llvm.org/docs/ClangFormat.html>`_: C/C++ code formatting. Run it on your code with ``make clang-format`` from the build directory.
-* `iwyu>=0.10 <include-what-you-use.org>`_: include-what-you-use for C/C++. Checks if source files include everything they use and nothing else. Run it on the code by ``cmake -DIWYU=ON .. && make > fix_include --nosafe_headers --comments``.
+* `iwyu 0.12 <include-what-you-use.org>`_: include-what-you-use for C/C++. Checks if source files include everything they use and nothing else. Run it on the code by ``cmake -DIWYU=ON .. && make > fix_include --nosafe_headers --comments``.
 
 .. topic:: Disabling C/C++ Code Formatting
 

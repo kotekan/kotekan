@@ -142,7 +142,8 @@ if(IWYU)
     set(IWYU_PATH_AND_OPTIONS ${IWYU_PATH}
         -Xiwyu --max_line_length=100
         -Xiwyu --mapping_file=${IWYU_MAPPING_FILE}
-        -Xiwyu --no_fwd_decls)
+        -Xiwyu --no_fwd_decls
+        -Xiwyu --cxx17ns)
     set(CMAKE_CXX_INCLUDE_WHAT_YOU_USE ${IWYU_PATH_AND_OPTIONS})
     set(CMAKE_C_INCLUDE_WHAT_YOU_USE ${IWYU_PATH_AND_OPTIONS})
 endif()
