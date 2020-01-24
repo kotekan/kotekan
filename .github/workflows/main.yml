@@ -1,0 +1,35 @@
+name: STATIC_ANALYSIS
+on:
+  pull_request:
+    branches:
+    - rn/iwyu
+  push:
+    branches:
+    - rn/iwyu
+
+jobs:
+  build:
+   runs-on: ubuntu-latest
+
+   steps:
+   - uses: actions/checkout@v1
+   - name: Build docker image using cache
+     uses: whoan/docker-build-with-cache-action@v3
+     with:
+       password: "${{ secrets.GITHUB_TOKEN }}"
+       username: kotekan/kotekan
+       image_name: kotekan
+       image_tag: kotekan
+       registry: docker.pkg.github.com
+       build_extra_args: "--compress=true"
+       dockerfile: tools/iwyu/docker/Dockerfile
+   - name: Run cmake for full CHIME build
+     run: |
+       docker run --rm kotekan cmake -DRTE_SDK=/opt/dpdk -DRTE_TARGET=x86_64-native-linuxapp-gcc \
+                  -DUSE_DPDK=ON -DUSE_HSA=ON -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+                  -DOPENBLAS_PATH=/code/build/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
+                  -DUSE_OMP=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DBOOST_TESTS=ON \
+                  -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_EXPORTCOMPILE_COMMANDS=ON ..
+   - name: Run lint.sh
+     run: |
+       docker run -rm kotekan tools/lint.sh -i ON
