@@ -1,21 +1,17 @@
 #ifndef HSA_PROCESS_H
 #define HSA_PROCESS_H
 
-#include "gpuProcess.hpp"
-#include "hsa/hsa.h"
-#include "hsa/hsa_ext_amd.h"
-#include "hsa/hsa_ext_finalize.h"
-#include "hsaCommand.hpp"
-#include "hsaDeviceInterface.hpp"
-#include "hsaEventContainer.hpp"
+#include "Config.hpp"            // for Config
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "gpuCommand.hpp"        // for gpuCommand
+#include "gpuEventContainer.hpp" // for gpuEventContainer
+#include "gpuProcess.hpp"        // for gpuProcess
 
-#include <condition_variable>
-#include <mutex>
-#include <thread>
+#include <string> // for string
 
 class hsaProcess final : public gpuProcess {
 public:
-    hsaProcess(kotekan::Config& config, const string& unique_name,
+    hsaProcess(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
     virtual ~hsaProcess();
 

@@ -6,9 +6,12 @@
 #ifndef VDIF_RFI_H
 #define VDIF_RFI_H
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "vdif_functions.h"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
+
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
 
 /*
  * @class rfiVDIF
@@ -44,7 +47,7 @@
 class rfiVDIF : public kotekan::Stage {
 public:
     // Constructor, initializes class, sets up config
-    rfiVDIF(kotekan::Config& config, const string& unique_name,
+    rfiVDIF(kotekan::Config& config, const std::string& unique_name,
             kotekan::bufferContainer& buffer_containter);
     // Deconstructor, cleans up, does nothing
     ~rfiVDIF();

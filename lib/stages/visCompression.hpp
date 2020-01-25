@@ -6,29 +6,25 @@
 #ifndef VIS_COMPRESSION_HPP
 #define VIS_COMPRESSION_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "prometheusMetrics.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, state_id_t, fingerprint_t
+#include "datasetState.hpp"      // for prodState, stackState
+#include "prometheusMetrics.hpp" // for MetricFamily, Gauge, Counter
+#include "visUtil.hpp"           // for input_ctype, rstack_ctype, prod_ctype, frameID
 
-#include <atomic>
-#include <cstdint>
-#include <functional>
-#include <iosfwd>
-#include <map>
-#include <string>
-#include <sys/types.h>
-#include <thread>
-#include <utility>
-#include <vector>
-
-// This type is used a lot so let's use an alias
-using json = nlohmann::json;
-
+#include <cstdint>    // for uint32_t, int8_t, int16_t
+#include <functional> // for function
+#include <iosfwd>     // for ostream
+#include <map>        // for map
+#include <mutex>      // for mutex
+#include <string>     // for string
+#include <thread>     // for thread
+#include <tuple>      // for tuple
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 /**
  * @brief Compress visibility data by stacking together equivalent baselines.
@@ -67,7 +63,7 @@ class baselineCompression : public kotekan::Stage {
 
 public:
     // Default constructor
-    baselineCompression(kotekan::Config& config, const string& unique_name,
+    baselineCompression(kotekan::Config& config, const std::string& unique_name,
                         kotekan::bufferContainer& buffer_container);
 
     // Main loop for the stage: Creates n threads that do the compression.

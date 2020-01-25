@@ -1,12 +1,26 @@
 #include "gpuBeamformSimulate.hpp"
 
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chimeMetadata.h"         // for get_stream_id_t
+#include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
+#include "kotekanLogging.hpp"      // for ERROR, INFO
 
-#include <math.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include <assert.h>    // for assert
+#include <atomic>      // for atomic_bool
+#include <cmath>       // for sin, cos, asin, floor, pow
+#include <cstdint>     // for int32_t
+#include <exception>   // for exception
+#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error
+#include <stdio.h>     // for fclose, fopen, fread, snprintf, FILE
+#include <stdlib.h>    // for free, malloc
+#include <string.h>    // for memcpy
+#include <sys/types.h> // for uint
+
 
 #define SWAP(a, b)                                                                                 \
     tempr = (a);                                                                                   \
@@ -25,7 +39,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(gpuBeamformSimulate);
 
-gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const string& unique_name,
+gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const std::string& unique_name,
                                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&gpuBeamformSimulate::main_thread, this)) {
@@ -45,7 +59,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const string& unique_na
         _ew_spacing_c[i] = _ew_spacing[i];
     }
     _gain_dir = config.get<std::string>(unique_name, "gain_dir");
-    vector<float> dg = {0.0, 0.0}; // re,im
+    std::vector<float> dg = {0.0, 0.0}; // re,im
     default_gains = config.get_default<std::vector<float>>(unique_name, "frb_missing_gains", dg);
     scaling = config.get_default<float>(unique_name, "frb_scaling", 1.0);
 
@@ -299,13 +313,13 @@ void gpuBeamformSimulate::main_thread() {
     while (!stop_thread) {
         unsigned char* input =
             (unsigned char*)wait_for_full_frame(input_buf, unique_name.c_str(), input_buf_id);
-        if (input == NULL)
+        if (input == nullptr)
             break;
 
         float* output =
             (float*)wait_for_empty_frame(output_buf, unique_name.c_str(), output_buf_id);
 
-        if (output == NULL)
+        if (output == nullptr)
             break;
 
         for (int i = 0; i < input_len; i++) {
@@ -339,13 +353,13 @@ void gpuBeamformSimulate::main_thread() {
             }
         }
 
-        FILE* ptr_myfile = NULL;
+        FILE* ptr_myfile = nullptr;
         char filename[512];
         snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin", _gain_dir.c_str(),
                  freq_now);
         ptr_myfile = fopen(filename, "rb");
 
-        if (ptr_myfile == NULL) {
+        if (ptr_myfile == nullptr) {
             ERROR("CPU verification code: Cannot open gain file {:s}", filename);
             for (int i = 0; i < 2048; i++) {
                 cpu_gain[i * 2] = default_gains[0] * scaling;

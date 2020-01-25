@@ -9,7 +9,7 @@ int sched_getaffinity(pid_t pid, size_t cpu_size, cpu_set_t* cpu_set) {
 
     int32_t core_count = 0;
     size_t len = sizeof(core_count);
-    int ret = sysctlbyname(SYSCTL_CORE_COUNT, &core_count, &len, 0, 0);
+    int ret = sysctlbyname(SYSCTL_CORE_COUNT, &core_count, &len, nullptr, 0);
     if (ret) {
         ERROR_NON_OO("error while get core count {:d}\n", ret);
         return -1;

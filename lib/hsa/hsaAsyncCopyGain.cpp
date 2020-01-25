@@ -1,18 +1,21 @@
 #include "hsaAsyncCopyGain.hpp"
 
-#include "util.h"
-#include "visUtil.hpp"
+#include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_for_...
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_IN
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "kotekanLogging.hpp"     // for DEBUG
+#include "visUtil.hpp"            // for double_to_ts
 
-#include "fmt.hpp"
-
-#include <random>
+#include <algorithm> // for max
+#include <iterator>  // for begin
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaAsyncCopyGain);
 
-hsaAsyncCopyGain::hsaAsyncCopyGain(Config& config, const string& unique_name,
+hsaAsyncCopyGain::hsaAsyncCopyGain(Config& config, const std::string& unique_name,
                                    bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "hsaAsyncCopyGain", "") {
     command_type = gpuCommandType::COPY_IN;
@@ -39,7 +42,7 @@ int hsaAsyncCopyGain::wait_on_precondition(int gpu_frame_id) {
     if (first_pass) {
         uint8_t* frame =
             wait_for_full_frame(gain_buf, unique_name.c_str(), gain_buf_precondition_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             return -1;
         gain_buf_precondition_id = (gain_buf_precondition_id + 1) % gain_buf->num_frames;
         first_pass = false;

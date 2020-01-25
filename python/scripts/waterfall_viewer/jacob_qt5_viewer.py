@@ -978,9 +978,11 @@ def data_listener():  # Listens to Data and updates
                     print("Lost Connection to port, exiting...")
                     main.connection.close()
                     return
-                data_pkt_frame_idx, data_pkt_elem_idx, data_pkt_samples_summed = struct.unpack(
-                    "III", data[: main.pkt_header]
-                )
+                (
+                    data_pkt_frame_idx,
+                    data_pkt_elem_idx,
+                    data_pkt_samples_summed,
+                ) = struct.unpack("III", data[: main.pkt_header])
                 data_array = np.fromstring(
                     data[int(main.pkt_header) :], dtype=np.uint32
                 )  # Unpack Data

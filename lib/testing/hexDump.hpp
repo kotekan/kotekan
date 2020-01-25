@@ -1,12 +1,12 @@
 #ifndef HEX_DUMP_H
 #define HEX_DUMP_H
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
 
-#include <unistd.h>
+#include <stdint.h> // for int32_t
+#include <string>   // for string
 
 /**
  * @class hexDump
@@ -22,7 +22,7 @@
  */
 class hexDump : public kotekan::Stage {
 public:
-    hexDump(kotekan::Config& config, const string& unique_name,
+    hexDump(kotekan::Config& config, const std::string& unique_name,
             kotekan::bufferContainer& buffer_container);
     ~hexDump();
     void main_thread() override;

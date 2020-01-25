@@ -1,6 +1,11 @@
 #include "gateSpec.hpp"
 
-#include "kotekanLogging.hpp"
+#include "kotekanLogging.hpp" // for WARN, logLevel, INFO
+#include "visUtil.hpp"        // for operator-, ts_to_double
+
+#include <exception> // for exception
+#include <time.h>    // for timespec
+#include <utility>   // for move
 
 
 REGISTER_GATESPEC(pulsarSpec, "pulsar");
@@ -91,7 +96,7 @@ std::function<float(timespec, timespec, float)> pulsarSpec::weight_function(time
 }
 
 
-json pulsarSpec::to_dm_json() const {
+nlohmann::json pulsarSpec::to_dm_json() const {
     return {{"pulsar_name", _pulsar_name},
             {"dm", _dm},
             {"t_ref", _tmid},

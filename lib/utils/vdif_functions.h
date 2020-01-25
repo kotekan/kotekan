@@ -29,10 +29,8 @@ struct VDIFHeader {
 };
 
 
-
 #ifdef __cplusplus
 }
 #endif
 
 #endif /* VDIF_FUNCTIONS_H */
-

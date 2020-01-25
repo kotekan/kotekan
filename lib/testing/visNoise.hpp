@@ -7,9 +7,14 @@
 #ifndef VISNOISE_HPP
 #define VISNOISE_HPP
 
-#include "Stage.hpp"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "buffer.h"
+#include "bufferContainer.hpp"
 
-#include <random>
+#include <random>   // for default_random_engine
+#include <stddef.h> // for size_t
+#include <string>   // for string
 
 /**
  * @brief Adds gaussian noise.
@@ -26,7 +31,7 @@
 class visNoise : public kotekan::Stage {
 public:
     // Default constructor
-    visNoise(kotekan::Config& config, const string& unique_name,
+    visNoise(kotekan::Config& config, const std::string& unique_name,
              kotekan::bufferContainer& buffer_container);
 
     // Main loop for the stage

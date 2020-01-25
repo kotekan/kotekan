@@ -21,11 +21,11 @@
 #ifndef METADATA_H
 #define METADATA_H
 
-#include "errors.h"
-#include <errno.h>
-#include <string.h>
-#include <stdio.h>
-#include <pthread.h>
+#include <pthread.h> // for pthread_mutex_t
+#include <stdint.h>  // for uint32_t
+#include <stdio.h>   // for size_t
+
+struct metadataPool;
 
 #ifdef __cplusplus
 extern "C" {
@@ -48,7 +48,7 @@ extern "C" {
 struct metadataContainer {
 
     /// Pointer to the memory where the actual metadata is stored
-    void * metadata;
+    void* metadata;
     /// The size of the metadata in bytes
     size_t metadata_size;
 
@@ -67,7 +67,7 @@ struct metadataContainer {
     pthread_mutex_t metadata_lock;
 
     /// Reference to metadataPool that this object belongs too.
-    struct metadataPool * parent_pool;
+    struct metadataPool* parent_pool;
 };
 
 /**
@@ -83,13 +83,13 @@ struct metadataContainer {
  * @param[in] parent_pool The pool this container will belong too.
  * @return A @c metadataContainer object with the @c metadata memory allocated
  */
-struct metadataContainer * create_metadata(size_t object_size, struct metadataPool * parent_pool);
+struct metadataContainer* create_metadata(size_t object_size, struct metadataPool* parent_pool);
 
 /**
  * @brief Frees the memory associated with a metadataContainer
  * @param[in] container The @c metadataContainer to free
  */
-void delete_metadata(struct metadataContainer * container);
+void delete_metadata(struct metadataContainer* container);
 
 /**
  * @brief Zeros the metadata memory region.
@@ -98,19 +98,19 @@ void delete_metadata(struct metadataContainer * container);
  *
  * @param container The container to zero memory for.
  */
-void reset_metadata_object(struct metadataContainer * container);
+void reset_metadata_object(struct metadataContainer* container);
 
 /**
  * @brief Increments the metadata ref counter
  * @param[in] container The container to increment the reference counter for.
  */
-void increment_metadata_ref_count(struct metadataContainer * container);
+void increment_metadata_ref_count(struct metadataContainer* container);
 
 /**
  * @brief Decrements the metadata ref counter
  * @param[in] container The container to decrement the reference counter for.
  */
-void decrement_metadata_ref_count(struct metadataContainer * container);
+void decrement_metadata_ref_count(struct metadataContainer* container);
 
 /**
  * @brief Request the lock on the metadata container
@@ -119,13 +119,13 @@ void decrement_metadata_ref_count(struct metadataContainer * container);
  *
  * @param[in] container The container to request the lock for
  */
-void lock_metadata(struct metadataContainer * container);
+void lock_metadata(struct metadataContainer* container);
 
 /**
  * @brief Unlocks the lock associated with the metadata container
  * @param[in] container The container to unlock
  */
-void unlock_metadata(struct metadataContainer * container);
+void unlock_metadata(struct metadataContainer* container);
 
 // *** Metadata pool section ***
 
@@ -146,13 +146,13 @@ void unlock_metadata(struct metadataContainer * container);
  */
 struct metadataPool {
     /// The array of pointer to the metadata container objects.
-    struct metadataContainer ** metadata_objects;
+    struct metadataContainer** metadata_objects;
 
     /**
      * @brief An array to indicate the use state of each pointer in the @c metadata_objects array
      * A value of 1 indicates the pointer is in use and should have a reference count > 0
      */
-    int * in_use;
+    int* in_use;
 
     /// The size of the @c metadataContainer array.
     unsigned int pool_size;
@@ -170,7 +170,7 @@ struct metadataPool {
  * @param[in] object_size The size of the actual metadata contained in each container.
  * @return A metadata pool which can then be associated to one or more buffers.
  */
-struct metadataPool * create_metadata_pool(int num_metadata_objects, size_t object_size);
+struct metadataPool* create_metadata_pool(int num_metadata_objects, size_t object_size);
 
 /**
  * @brief Deletes a memdata pool and frees all memory associated with its containers.
@@ -178,7 +178,7 @@ struct metadataPool * create_metadata_pool(int num_metadata_objects, size_t obje
  * @warning This should only be called once all metadata containers have been
  *          returned to the pool.  After the pipeline has shutdown.
  */
-void delete_metadata_pool(struct metadataPool * pool);
+void delete_metadata_pool(struct metadataPool* pool);
 
 /**
  * @brief Returns a metadata container with a reference count of 1.
@@ -186,14 +186,14 @@ void delete_metadata_pool(struct metadataPool * pool);
  * @return A metadata container, or NULL if no containers are available.
  * @todo For now this asserts when unable to return a container, that should be fixed.
  */
-struct metadataContainer * request_metadata_object(struct metadataPool * pool);
+struct metadataContainer* request_metadata_object(struct metadataPool* pool);
 
 /**
  * @brief Returns a metadata container with a reference count of zero to its pool
  * @param[in] pool The pool to return the container too.
  * @param[in] container The container to return to the pool.
  */
-void return_metadata_to_pool(struct metadataPool * pool, struct metadataContainer * container);
+void return_metadata_to_pool(struct metadataPool* pool, struct metadataContainer* container);
 
 #ifdef __cplusplus
 }

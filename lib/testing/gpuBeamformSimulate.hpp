@@ -6,8 +6,14 @@
 #ifndef GPU_BEAMFORM_SIMULATE_HPP
 #define GPU_BEAMFORM_SIMULATE_HPP
 
-#include "Stage.hpp"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
 #include "buffer.h"
+#include "bufferContainer.hpp"
+
+#include <stdint.h> // for int32_t, uint64_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class gpuBeamformSimulate
@@ -26,7 +32,7 @@
 class gpuBeamformSimulate : public kotekan::Stage {
 public:
     /// Constructor
-    gpuBeamformSimulate(kotekan::Config& config, const string& unique_name,
+    gpuBeamformSimulate(kotekan::Config& config, const std::string& unique_name,
                         kotekan::bufferContainer& buffer_container);
     ~gpuBeamformSimulate();
     void main_thread() override;
@@ -48,19 +54,19 @@ private:
     /// Downsampling factor for the freq axis, set to 8
     int32_t _downsample_freq;
     /// Array of reordering index
-    vector<int32_t> _reorder_map;
+    std::vector<int32_t> _reorder_map;
     /// The desired extent (e.g. 90, 60, 45) of the Northmost beam in degree
     float _northmost_beam;
     /// The reference freq for calcating beam spacing, a function of the input _northmost_beam
     double Freq_ref;
     /// The sky angle of the 4 EW beams in degree
-    vector<float> _ew_spacing;
+    std::vector<float> _ew_spacing;
     float* _ew_spacing_c;
     /// Default gain values if gain file is missing for this freq, currently set to 1+1j
-    vector<float> default_gains;
+    std::vector<float> default_gains;
 
     /// Directory path where gain files are
-    string _gain_dir;
+    std::string _gain_dir;
 
     /// Array of phase delays for E-W brute force beamform, float of size 32
     float* coff;

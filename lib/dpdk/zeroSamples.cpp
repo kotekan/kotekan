@@ -1,17 +1,32 @@
 #include "zeroSamples.hpp"
 
-#include "chimeMetadata.h"
-#include "nt_memset.h"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_full, register_producer, wait_for_empt...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.h"     // for atomic_add_lost_timesamples
+#include "nt_memset.h"         // for nt_memset
 
-#include <vector>
+#include "json.hpp" // for json, basic_json, basic_json<>::iterator, iter_impl
+
+#include <algorithm>  // for max
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <string.h>   // for memcpy, size_t
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using nlohmann::json;
 
 REGISTER_KOTEKAN_STAGE(zeroSamples);
 
-zeroSamples::zeroSamples(Config& config, const string& unique_name,
+zeroSamples::zeroSamples(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&zeroSamples::main_thread, this)) {
 
@@ -48,12 +63,12 @@ void zeroSamples::main_thread() {
         lost_samples = 0;
 
         uint8_t* data_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buf_frame_id);
-        if (data_frame == NULL)
+        if (data_frame == nullptr)
             break;
 
         uint8_t* flag_frame =
             wait_for_full_frame(lost_samples_buf, unique_name.c_str(), lost_samples_buf_frame_id);
-        if (flag_frame == NULL)
+        if (flag_frame == nullptr)
             break;
 
         for (int32_t i = 0; i < lost_samples_buf->frame_size; ++i) {
@@ -69,7 +84,7 @@ void zeroSamples::main_thread() {
             for (size_t i = 0; i < out_lost_sample_bufs.size(); i++) {
                 uint8_t* new_flag_frame = wait_for_empty_frame(
                     out_lost_sample_bufs[i], unique_name.c_str(), lost_samples_buf_frame_id);
-                if (new_flag_frame == NULL)
+                if (new_flag_frame == nullptr)
                     break;
                 memcpy(new_flag_frame, flag_frame, lost_samples_buf->frame_size);
                 mark_frame_full(out_lost_sample_bufs[i], unique_name.c_str(),

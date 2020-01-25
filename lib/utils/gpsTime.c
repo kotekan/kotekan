@@ -1,5 +1,4 @@
 #include "gpsTime.h"
-#include "errors.h"
 
 int gps_time_set = 0;
 // Value stored in nano seconds.

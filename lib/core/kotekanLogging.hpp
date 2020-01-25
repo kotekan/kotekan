@@ -1,15 +1,14 @@
 #ifndef KOTEKAN_LOGGING_H
 #define KOTEKAN_LOGGING_H
 
-#include "errors.h"
+#include "errors.h" // for _global_log_level  // IWYU pragma: keep
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for fmt, basic_string_view, make_format_args, FMT_STRING
 
-#include <stdarg.h>
-#include <string>
-#include <syslog.h>
+#include <errno.h>  // for errno
+#include <string>   // for string
+#include <syslog.h> // for LOG_ERR, LOG_INFO, LOG_WARNING
 
-using std::string;
 
 namespace kotekan {
 
@@ -43,7 +42,7 @@ enum class logLevel {
         exit(errno);                                                                               \
     }
 #define CHECK_MEM(pointer)                                                                         \
-    if (pointer == NULL) {                                                                         \
+    if (pointer == nullptr) {                                                                      \
         internal_logging(LOG_ERR, __log_prefix, fmt("Error at {:s}:{:d}; Null pointer! "),         \
                          __FILE__, __LINE__);                                                      \
         exit(-1);                                                                                  \
@@ -139,8 +138,8 @@ public:
     kotekanLogging();
 
     void set_log_level(const logLevel& log_level);
-    void set_log_level(const string& string_log_level);
-    void set_log_prefix(const string& log_prefix);
+    void set_log_level(const std::string& string_log_level);
+    void set_log_prefix(const std::string& log_prefix);
 
     template<typename... Args>
     static void internal_logging(int type, fmt::basic_string_view<char> log_prefix,
@@ -151,7 +150,7 @@ public:
 
 protected:
     int _member_log_level;
-    string __log_prefix;
+    std::string __log_prefix;
 
 private:
     static void vinternal_logging(int type, fmt::basic_string_view<char> log_prefix,

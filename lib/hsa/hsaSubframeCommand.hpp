@@ -1,7 +1,13 @@
 #ifndef GPU_HSA_CORRELATOR_SUBFRAME_COMMAND_H
 #define GPU_HSA_CORRELATOR_SUBFRAME_COMMAND_H
 
-#include "hsaCommand.hpp"
+#include "Config.hpp"             // for Config
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsaCommand.hpp"         // for hsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+
+#include <stdint.h> // for uint32_t
+#include <string>   // for allocator, string
 
 class hsaSubframeCommand : public hsaCommand {
 public:
@@ -10,10 +16,10 @@ public:
      *        values from the config and possibly other common
      *        variables.
      */
-    hsaSubframeCommand(kotekan::Config& config, const string& unique_name,
+    hsaSubframeCommand(kotekan::Config& config, const std::string& unique_name,
                        kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device,
-                       const string& default_kernel_command = "",
-                       const string& default_kernel_file_name = "");
+                       const std::string& default_kernel_command = "",
+                       const std::string& default_kernel_file_name = "");
     virtual ~hsaSubframeCommand() = default;
 
 protected:

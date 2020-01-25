@@ -7,9 +7,14 @@
 #ifndef N_DISK_FILE_READ_H
 #define N_DISK_FILE_READ_H
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "vdif_functions.h"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
+
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <thread>   // for thread
+#include <vector>   // for vector
 
 /**
  * @class nDiskFileRead
@@ -73,7 +78,7 @@
 class nDiskFileRead : public kotekan::Stage {
 public:
     /// Constructor
-    nDiskFileRead(kotekan::Config& config, const string& unique_name,
+    nDiskFileRead(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& buffer_containter);
 
     /// Destructor, currently does nothing
@@ -103,11 +108,11 @@ private:
     /// A holder for the config parameter starting_file_index
     uint32_t starting_index;
     /// A holder for the config parameter disk_base
-    string disk_base;
+    std::string disk_base;
     /// A holder for the config parameter disk_set
-    string disk_set;
+    std::string disk_set;
     /// A holder for the config parameter capture
-    string capture;
+    std::string capture;
 };
 
 #endif

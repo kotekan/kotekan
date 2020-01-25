@@ -7,22 +7,24 @@
 #ifndef VISTESTPATTERN_HPP
 #define VISTESTPATTERN_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "restServer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "dataset.hpp"         // for dset_id_t
+#include "restServer.hpp"      // for connectionInstance
+#include "visUtil.hpp"         // for cfloat, input_ctype, prod_ctype, freq_ctype
 
-#include "json.hpp"
+#include "json.hpp" // for json
 
-#include <fstream>
-#include <stddef.h>
-#include <string>
-#include <vector>
-
-using json = nlohmann::json;
+#include <fstream>  // for ofstream
+#include <map>      // for map
+#include <mutex>    // for mutex
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint32_t, int8_t
+#include <string>   // for string
+#include <utility>  // for pair
+#include <vector>   // for vector
 
 
 /**
@@ -93,7 +95,7 @@ public:
     void main_thread() override;
 
     /// Callback function to receive updates from configUpdater.
-    void receive_update(kotekan::connectionInstance& conn, json& data);
+    void receive_update(kotekan::connectionInstance& conn, nlohmann::json& data);
 
 private:
     /// Gets the frequency, input and product information from the datasetManager.

@@ -1,16 +1,30 @@
 #include "hsaInputData.hpp"
 
-#include "utils/util.h"
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_for_...
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chimeMetadata.h"        // for get_first_packet_recv_time
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_IN
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+#include "kotekanLogging.hpp"     // for DEBUG2, INFO
+#include "util.h"                 // for e_time
 
-#include <random>
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
+#include <random>     // for mt19937, random_device, uniform_real_distribution
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <sys/time.h> // for timeval
+#include <unistd.h>   // for usleep
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaInputData);
 
-hsaInputData::hsaInputData(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                           hsaDeviceInterface& device) :
+hsaInputData::hsaInputData(Config& config, const std::string& unique_name,
+                           bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "hsaInputData", "") {
     command_type = gpuCommandType::COPY_IN;
 
@@ -53,7 +67,7 @@ int hsaInputData::wait_on_precondition(int gpu_frame_id) {
     // Wait for there to be data in the input (network) buffer.
     uint8_t* frame =
         wait_for_full_frame(network_buf, unique_name.c_str(), network_buffer_precondition_id);
-    if (frame == NULL)
+    if (frame == nullptr)
         return -1;
     // INFO("Got full buffer {:s}[{:d}], gpu[{:d}][{:d}]", network_buf->buffer_name,
     // network_buffer_precondition_id,

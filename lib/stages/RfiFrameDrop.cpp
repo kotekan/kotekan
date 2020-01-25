@@ -1,22 +1,33 @@
 #include "RfiFrameDrop.hpp"
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "chimeMetadata.h"
-#include "configUpdater.hpp"
-#include "prometheusMetrics.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"              // for Config
+#include "Stage.hpp"               // for Stage
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for mark_frame_empty, Buffer, wait_for_full_frame, get_me...
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chimeMetadata.h"         // for chimeMetadata, get_fpga_seq_num
+#include "configUpdater.hpp"       // for configUpdater
+#include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id
+#include "kotekanLogging.hpp"      // for WARN, INFO, DEBUG, DEBUG2
+#include "prometheusMetrics.hpp"   // for Counter, Metrics, MetricFamily
+#include "visUtil.hpp"             // for frameID, modulo
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <cmath>
-#include <csignal>
-#include <cstring>
-#include <functional>
-#include <memory>
-#include <pthread.h>
-#include <string>
+#include <algorithm>  // for max, copy, copy_backward, equal, fill
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic, atomic_bool
+#include <cmath>      // for sqrt, fabs
+#include <cstring>    // for memcpy
+#include <deque>      // for deque
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, function, bind, _Placeholder, _1
+#include <map>        // for map, map<>::mapped_type
+#include <memory>     // for allocator, shared_ptr, __shared_ptr_access, atomic_load
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <stdint.h>   // for uint8_t, int64_t, uint32_t
+#include <string>     // for string, to_string
 
 
 using kotekan::bufferContainer;
@@ -219,7 +230,7 @@ bool RfiFrameDrop::rest_enable_callback(nlohmann::json& update) {
 
     try {
         enable_rfi_zero_new = update.at("rfi_zeroing").get<bool>();
-    } catch (json::exception& e) {
+    } catch (nlohmann::json::exception& e) {
         WARN("Failure parsing update: Can't read 'rfi_zeroing' (bool): {:s}", e.what());
         return false;
     }
@@ -239,7 +250,7 @@ bool RfiFrameDrop::rest_thresholds_callback(nlohmann::json& update) {
     nlohmann::json j;
     try {
         j = update.at("thresholds");
-    } catch (json::exception& e) {
+    } catch (nlohmann::json::exception& e) {
         WARN("Failure parsing update: array 'thresholds' not found: {:s}", e.what());
     }
 
@@ -275,6 +286,7 @@ bool RfiFrameDrop::rest_thresholds_callback(nlohmann::json& update) {
             {threshold, (size_t)(fraction * sk_samples_per_frame), fraction});
     }
 
+    // Resize sk_exceeds to length of thresholds
     thresholds_new->sk_exceeds.resize(thresholds_new->thresholds.size(), 0);
 
     INFO("Setting new RFI excision cuts:");
@@ -283,7 +295,7 @@ bool RfiFrameDrop::rest_thresholds_callback(nlohmann::json& update) {
         INFO("  added cut with threshold={}, fraction={}", threshold, fraction);
     }
 
-    // make the updates available to the main thread by shared pointers
+    // make the updates available to the main thread by shared pointer
     std::atomic_store(&_thresholds, thresholds_new);
 
     return true;

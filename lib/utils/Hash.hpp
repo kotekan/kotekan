@@ -1,21 +1,18 @@
 #ifndef _HASH_HPP
 #define _HASH_HPP
 
-#include "MurmurHash3.hpp"
+#include "MurmurHash3.hpp" // for MurmurHash3_x64_128
 
-#include "fmt.hpp"
-#include "gsl-lite.hpp"
-#include "json.hpp"
+#include "fmt.hpp"      // for formatter
+#include "gsl-lite.hpp" // for span
+#include "json.hpp"     // for json
 
-#include <iostream>
-#include <stdint.h>
-#include <stdio.h>
+#include <iostream> // for istream, ostream
+#include <stdint.h> // for uint64_t
+#include <string>   // for string
 
 // Set a value for the hash seed
 #define _SEED 1420
-
-
-using nlohmann::json;
 
 
 /**
@@ -145,7 +142,7 @@ std::ostream& operator<<(std::ostream& os, const Hash& h);
 std::string to_string(const Hash& h);
 
 // Conversions of the index types to json
-void to_json(json& j, const Hash& h);
-void from_json(const json& j, Hash& h);
+void to_json(nlohmann::json& j, const Hash& h);
+void from_json(const nlohmann::json& j, Hash& h);
 
 #endif

@@ -1,18 +1,26 @@
 #include "vdifStream.hpp"
 
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for ERROR, INFO
+#include "util.h"              // for e_time
 
-#include <arpa/inet.h>
-#include <functional>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <string.h>
-#include <string>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <unistd.h>
+#include <arpa/inet.h>  // for inet_aton
+#include <atomic>       // for atomic_bool
+#include <errno.h>      // for errno
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <netinet/in.h> // for sockaddr_in, IPPROTO_UDP, htons
+#include <regex>        // for match_results<>::_Base_type
+#include <stdio.h>      // for size_t
+#include <string.h>     // for memset, strerror
+#include <string>       // for string, allocator
+#include <sys/socket.h> // for sendto, socket, AF_INET, SOCK_DGRAM
+#include <unistd.h>     // for usleep
+#include <vector>       // for vector
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -20,7 +28,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(vdifStream);
 
-vdifStream::vdifStream(Config& config, const string& unique_name,
+vdifStream::vdifStream(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&vdifStream::main_thread, this)) {
 
@@ -36,7 +44,7 @@ void vdifStream::main_thread() {
     _vdif_server_ip = config.get<std::string>(unique_name, "vdif_server_ip");
 
     int frame_id = {0};
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
 
     double start_t, diff_t;
     int sleep_period = 3000;
@@ -70,7 +78,7 @@ void vdifStream::main_thread() {
 
         // Wait for a full buffer.
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
         // IT - commented out to test performance without INFO calls.
         //        INFO("vdif_stream; got full buffer, sending to VDIF server.");

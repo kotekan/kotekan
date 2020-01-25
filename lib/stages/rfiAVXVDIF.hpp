@@ -6,9 +6,12 @@
 #ifndef RFI_AVX_VDIF_HPP
 #define RFI_AVX_VDIF_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "errors.h"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
+
+#include <stdint.h> // for uint32_t, uint8_t
+#include <string>   // for string
 
 /*
  * @class rfiAVXVDIF
@@ -42,7 +45,7 @@
 class rfiAVXVDIF : public kotekan::Stage {
 public:
     // Constructor, resgister producer/consumer and apply config
-    rfiAVXVDIF(kotekan::Config& config, const string& unique_name,
+    rfiAVXVDIF(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
     // Destructor, do nothing
     ~rfiAVXVDIF();

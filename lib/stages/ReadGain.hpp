@@ -7,12 +7,18 @@
 #ifndef READ_GAIN
 #define READ_GAIN
 
-#include "Stage.hpp"
-#include "restServer.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include <condition_variable>
-#include <mutex>
-#include <vector>
+#include "json.hpp" // for json
+
+#include <condition_variable> // for condition_variable
+#include <mutex>              // for mutex
+#include <stdint.h>           // for int32_t, int16_t, uint32_t
+#include <string>             // for string
+#include <vector>             // for vector
 
 using std::vector;
 
@@ -45,7 +51,7 @@ using std::vector;
 class ReadGain : public kotekan::Stage {
 public:
     /// Constructor.
-    ReadGain(kotekan::Config& config_, const string& unique_name,
+    ReadGain(kotekan::Config& config_, const std::string& unique_name,
              kotekan::bufferContainer& buffer_container);
 
     void main_thread() override;
@@ -72,8 +78,8 @@ private:
     int32_t gain_psr_buf_id;
 
     /// Directory path where gain files are
-    string _gain_dir_frb;
-    vector<string> _gain_dir_psr;
+    std::string _gain_dir_frb;
+    vector<std::string> _gain_dir_psr;
     /// Default gain values if gain file is missing for this freq, currently set to 1+1j
     vector<float> default_gains;
 

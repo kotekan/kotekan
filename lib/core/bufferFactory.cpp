@@ -1,10 +1,19 @@
 #include "bufferFactory.hpp"
 
-#include "Config.hpp"
-#include "metadata.h"
-#include "visBuffer.hpp"
+#include "Config.hpp"         // for Config
+#include "buffer.h"           // for create_buffer
+#include "kotekanLogging.hpp" // for INFO_NON_OO
+#include "metadata.h"         // for metadataPool // IWYU pragma: keep
+#include "visBuffer.hpp"      // for visFrameView
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
+
+#include <cstdint>   // for int32_t, uint32_t
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error
+#include <utility>   // for pair
+#include <vector>    // for vector
 
 using json = nlohmann::json;
 using std::map;

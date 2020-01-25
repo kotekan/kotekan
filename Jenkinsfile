@@ -21,20 +21,24 @@ pipeline {
             sh '''cd build/
                   cmake -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
-                  -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
-                  make -j 4'''
+                  -DUSE_OMP=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                  -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
+                  make -j 2'''
           }
         }
-        stage('Build CHIME kotekan') {
+        stage('Build CHIME kotekan & run IWYU') {
           steps {
+            // The boost tests are done by this build so they are checked by iwyu.
             sh '''mkdir -p chime-build
                   cd chime-build
                   cmake -DRTE_SDK=/opt/dpdk \
                   -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON \
                   -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
-                  -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
-                  make -j 4'''
+                  -DUSE_OMP=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                  -DCMAKE_C_COMPILER_LAUNCHER=ccache -DIWYU=ON -DBOOST_TESTS=ON ..
+                  make -j 8 2> iwyu.out
+                  cat iwyu.out'''
           }
         }
         stage('Build CHIME kotekan with Clang') {
@@ -47,7 +51,8 @@ pipeline {
                   -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON \
                   -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
-                  -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+                  -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                  -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
                   make -j 4'''
           }
         }
@@ -55,8 +60,8 @@ pipeline {
           steps {
             sh '''mkdir -p build_base
                   cd build_base
-                  cmake -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
-                  make -j 4'''
+                  cmake -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
+                  make -j 2'''
           }
         }
         stage('Build MacOS kotekan') {
@@ -75,7 +80,8 @@ pipeline {
                         -DUSE_LAPACK=ON -DBLAZE_PATH=/usr/local/opt/blaze \
                         -DOPENBLAS_PATH=/usr/local/opt/OpenBLAS \
                         -DUSE_HDF5=ON -DHIGHFIVE_PATH=/usr/local/opt/HighFive \
-                        -DCOMPILE_DOCS=ON -DUSE_OPENCL=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+                        -DCOMPILE_DOCS=ON -DUSE_OPENCL=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                        -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
                   make -j'''
           }
         }
@@ -113,6 +119,12 @@ pipeline {
         sh '''ccache -s'''
       }
     }
+    stage('Check results of iwyu') {
+      steps {
+        sh '''cd chime-build
+              python2 /usr/bin/fix_include --dry --comments < iwyu.out'''
+      }
+    }
     stage('Unit Tests') {
         parallel {
             stage('Python Unit Tests') {
@@ -124,7 +136,7 @@ pipeline {
             }
             stage('Boost Unit Tests') {
               steps {
-                sh '''cd build/tests/
+                sh '''cd chime-build/tests/
                       python3 -m pytest -x -vvv'''
               }
             }

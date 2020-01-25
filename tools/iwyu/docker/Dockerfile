@@ -68,6 +68,7 @@ COPY python python/
 COPY tests tests/
 COPY lib lib/
 
+WORKDIR /code/build
 # Do nothing when the container launches
 CMD ["/bin/bash"]
 
