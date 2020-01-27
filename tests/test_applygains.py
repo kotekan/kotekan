@@ -43,8 +43,8 @@ global_params = {
         "update_id": old_update_id,
         "transition_interval": transition_interval,
     },
-    "wait": False,
-    "sleep_before": 3.0,
+    "wait": True,
+    "sleep_before": 2.0,
     "num_threads": 4,
     "dataset_manager": {"use_dataset_broker": False},
 }
