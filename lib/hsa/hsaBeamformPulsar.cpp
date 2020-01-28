@@ -25,8 +25,8 @@ hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const string& unique_name,
     int index = 0;
     for (int b = 0; b < _num_pulsar; b++) {
         for (int n = 0; n < _num_elements; n++) {
-            host_phase[index++] = b / 10.;
-            host_phase[index++] = b / 10.;
+            host_phase[index++] = b / 12.;
+            host_phase[index++] = b / 12.;
         }
     }
 }

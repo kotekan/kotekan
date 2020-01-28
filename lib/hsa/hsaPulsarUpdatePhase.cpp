@@ -80,7 +80,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_
 
     // Register function to listen for new pulsar, and update ra and dec
     using namespace std::placeholders;
-    for (uint beam_id = 0; beam_id < 10; beam_id++) {
+    for (int beam_id = 0; beam_id < _num_beams; beam_id++) {
         configUpdater::instance().subscribe(
             config.get<std::string>(unique_name, "updatable_config/psr_pt") + "/"
                 + std::to_string(beam_id),

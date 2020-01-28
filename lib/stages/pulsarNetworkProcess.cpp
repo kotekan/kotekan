@@ -197,9 +197,9 @@ void pulsarNetworkProcess::main_thread() {
         vdif_last_frame = header->data_frame;
 
         for (int frame = 0; frame < 80; frame++) {
-            for (int beam = 0; beam < 10; beam++) {
+            for (int beam = 0; beam < 12; beam++) {
                 int e_beam = my_sequence_id + beam;
-                e_beam = e_beam % 10;
+                e_beam = e_beam % 12;
                 CLOCK_ABS_NANOSLEEP(CLOCK_MONOTONIC, t1);
                 if (e_beam < number_of_pulsar_links) {
                     sendto(sock_fd[socket_ids[e_beam]],
