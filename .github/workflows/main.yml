@@ -1,4 +1,4 @@
-name: STATIC_ANALYSIS
+name: include-what-you-use
 on:
   pull_request:
     branches:
@@ -13,23 +13,12 @@ jobs:
 
    steps:
    - uses: actions/checkout@v1
-   - name: Build docker image using cache
-     uses: whoan/docker-build-with-cache-action@v3
-     with:
-       password: "${{ secrets.GITHUB_TOKEN }}"
-       username: kotekan/kotekan
-       image_name: kotekan
-       image_tag: kotekan
-       registry: docker.pkg.github.com
-       build_extra_args: "--compress=true"
-       dockerfile: tools/iwyu/docker/Dockerfile
-   - name: Run cmake for full CHIME build
+   - name: Build docker image
      run: |
-       docker run --rm kotekan cmake -DRTE_SDK=/opt/dpdk -DRTE_TARGET=x86_64-native-linuxapp-gcc \
-                  -DUSE_DPDK=ON -DUSE_HSA=ON -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
-                  -DOPENBLAS_PATH=/code/build/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
-                  -DUSE_OMP=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DBOOST_TESTS=ON \
-                  -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_EXPORTCOMPILE_COMMANDS=ON ..
-   - name: Run lint.sh
+       docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+       docker pull --disable-content-trust docker.pkg.github.com/kotekan/kotekan/kotekan:latest
+       docker build --cache-from=rocm/dev-ubuntu-18.04,docker.pkg.github.com/kotekan/kotekan/kotekan:latest -f tools/iwyu/docker/Dockerfile -t docker.pkg.github.com/kotekan/kotekan/kotekan:latest .
+       docker push docker.pkg.github.com/kotekan/kotekan/kotekan:latest
+   - name: Run iwyu
      run: |
-       docker run -rm kotekan tools/lint.sh -i ON
+       docker run --rm docker.pkg.github.com/kotekan/kotekan/kotekan:latest /code/tools/iwyu/docker/iwyu.sh

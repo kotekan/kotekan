@@ -9,8 +9,11 @@ KOTEKAN_DIR="."
 # Flag to enable iwyu (default OFF)
 ENABLE_IWYU="OFF"
 
+# number of jobs for iwyu
+N_JOBS=4
+
 usage() {
-  echo "Usage: $0 [ -d KOTEKAN_DIR ] [ -i ENABLE_IWYU ]
+  echo "Usage: $0 [ -d KOTEKAN_DIR ] [ -i ENABLE_IWYU ] [ -j NUM_JOBS ]
         Run all the linting tools to make sure the code passes kotekan's CI checks.
 
         This includes:
@@ -31,10 +34,13 @@ set -e
 echo "lint.sh: So you don't have to push kotekan twice."
 
 # parse command line arguments
-while getopts ":d:i:" options; do
+while getopts ":d:i:j:" options; do
   case "${options}" in
     d)
-      NAME=${OPTARG}
+      KOTEKAN_DIR=${OPTARG}
+      ;;
+    j)
+      N_JOBS=${OPTARG}
       ;;
     i)
       ENABLE_IWYU=${OPTARG}
@@ -57,10 +63,10 @@ done
 
 # include-what-you-use
 if ! [ $ENABLE_IWYU = "OFF" ]; then
-    CXX=clang++ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
+    #CXX=clang++ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
     echo "Running iwyu. If it fails make sure to run cmake with
--DCMAKE_EXPORT_COMPILE_COMMANDS=ON first. This could take a while..."
-    iwyu_tool -j 4 -p . -- -Xiwyu --no_fwd_decls -Xiwyu --mapping_file=${KOTEKAN_DIR}/iwyu.kotekan.imp -Xiwyu --max_line_length=100 | tee iwyu.out
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON first.\nThis could take a while..."
+    iwyu_tool -j $N_JOBS -p . -- -Xiwyu --no_fwd_decls -Xiwyu --mapping_file=${KOTEKAN_DIR}/iwyu.kotekan.imp -Xiwyu --max_line_length=100 | tee iwyu.out
     echo "Applying suggested changes..."
     python2 /usr/bin/fix_include --nosafe_headers --comments < iwyu.out
 else
@@ -73,7 +79,7 @@ find $KOTEKAN_DIR -type d -name "build" -prune -o -type d -name "include" -prune
 
 # black
 echo "Running black..."
-black --exclude docs $KOTEKAN_DIR
+black --exclude docs --exclude build $KOTEKAN_DIR
 git diff --exit-code
 
 exit 0

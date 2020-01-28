@@ -23,12 +23,11 @@ pipeline {
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
                   -DUSE_OMP=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                   -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
-                  make -j 2'''
+                  make -j 4'''
           }
         }
-        stage('Build CHIME kotekan & run IWYU') {
+        stage('Build CHIME kotekan') {
           steps {
-            // The boost tests are done by this build so they are checked by iwyu.
             sh '''mkdir -p chime-build
                   cd chime-build
                   cmake -DRTE_SDK=/opt/dpdk \
@@ -36,9 +35,8 @@ pipeline {
                   -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
                   -DUSE_OMP=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-                  -DCMAKE_C_COMPILER_LAUNCHER=ccache -DIWYU=ON -DBOOST_TESTS=ON ..
-                  make -j 8 2> iwyu.out
-                  cat iwyu.out'''
+                  -DCMAKE_C_COMPILER_LAUNCHER=ccache -DBOOST_TESTS=ON ..
+                  make -j 4'''
           }
         }
         stage('Build CHIME kotekan with Clang') {
@@ -61,7 +59,7 @@ pipeline {
             sh '''mkdir -p build_base
                   cd build_base
                   cmake -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
-                  make -j 2'''
+                  make -j 4'''
           }
         }
         stage('Build MacOS kotekan') {
@@ -117,12 +115,6 @@ pipeline {
     stage('Post build ccache stats') {
       steps {
         sh '''ccache -s'''
-      }
-    }
-    stage('Check results of iwyu') {
-      steps {
-        sh '''cd chime-build
-              python2 /usr/bin/fix_include --dry --comments < iwyu.out'''
       }
     }
     stage('Unit Tests') {
