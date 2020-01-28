@@ -99,7 +99,7 @@ private:
 
     /// array of socket ids
     int* socket_ids;
-    
+
     /// Number of pulsar beams
     int _num_beams;
 };
