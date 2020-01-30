@@ -21,7 +21,6 @@
 #include <cstdint>    // for uint32_t
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
-#include <lapack.h>   // for lapack_complex_float
 #include <lapacke.h>  // for LAPACKE_cheevr, LAPACK_COL_MAJOR
 #include <map>        // for map, map<>::mapped_type, operator==, map<>::iterator
 #include <memory>     // for make_unique

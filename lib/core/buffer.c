@@ -14,7 +14,11 @@
 #include <stdio.h>  // for snprintf
 #include <stdlib.h> // for free, malloc
 #include <string.h> // for memset, memcpy, strncmp, strncpy, strdup
-#include <time.h>   // for NULL, size_t, timespec
+#include <sys/mman.h>
+#include <time.h> // for NULL, size_t, timespec
+#ifdef WITH_NUMA
+#include <numa.h>
+#endif
 
 struct zero_frames_thread_args {
     struct Buffer* buf;
