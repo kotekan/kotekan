@@ -2,10 +2,12 @@ name: include-what-you-use
 on:
   pull_request:
     branches:
-    - rn/iwyu
+    - develop
+    - master
   push:
     branches:
-    - rn/iwyu
+    - develop
+    - master
 
 jobs:
   build:
