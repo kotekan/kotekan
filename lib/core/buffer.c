@@ -8,16 +8,16 @@
 #include "hsaBase.h" // for hsa_host_free, hsa_host_malloc
 #endif
 
-#include <assert.h> // for assert
-#include <errno.h>  // for ETIMEDOUT
-#include <sched.h>  // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdio.h>  // for snprintf
-#include <stdlib.h> // for free, malloc
-#include <string.h> // for memset, memcpy, strncmp, strncpy, strdup
-#include <sys/mman.h>
-#include <time.h> // for NULL, size_t, timespec
+#include <assert.h>   // for assert
+#include <errno.h>    // for ETIMEDOUT
+#include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdio.h>    // for snprintf
+#include <stdlib.h>   // for free, malloc
+#include <string.h>   // for memset, memcpy, strncmp, strncpy, strdup
+#include <sys/mman.h> // IWYU pragma: keep
+#include <time.h>     // for NULL, size_t, timespec
 #ifdef WITH_NUMA
-#include <numa.h>
+#include <numa.h> // IWYU pragma: keep
 #endif
 
 struct zero_frames_thread_args {
