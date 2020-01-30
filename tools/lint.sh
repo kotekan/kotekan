@@ -12,8 +12,11 @@ ENABLE_IWYU="OFF"
 # number of jobs for iwyu
 N_JOBS=4
 
+# exit if one test fails
+EXIT_ON_FAILURE="ON"
+
 usage() {
-  echo "Usage: $0 [ -d KOTEKAN_DIR ] [ -i ENABLE_IWYU ] [ -j NUM_JOBS ]
+  echo "Usage: $0 [ -d KOTEKAN_DIR ] [ -i ENABLE_IWYU ] [ -j NUM_JOBS ] [-e ENABLE_EXIT_ON_FAILURE]
         Run all the linting tools to make sure the code passes kotekan's CI checks.
 
         This includes:
@@ -21,26 +24,40 @@ usage() {
         - clang-format:       C/C++ code formatting (clang.llvm.org/docs/ClangFormat.html)
         - iwyu (optional):    include-what-you-use for C/C++. Make sure to run cmake with
                               -DCMAKE_EXPORT_COMPILE_COMMANDS=ON first
-                              (include-what-you-use.org)" 1>&2
+                              (include-what-you-use.org)
+
+        -d KOTEKAN_DIR        Path to kotekan root directory
+        -i ENABLE_IWYU        \"ON\" or \"OFF\" to enable or disable include-what-you-use (default:
+                              \"OFF\")
+        -j NUM_JOBS           Number of concurrent jobs for iwyu (Default: 4)
+        -e ENABLE_EXIT_ON_FAILURE
+                              \"ON\" or \"OFF\" to enable or disable  exiting if a test fails
+                              (default: \"ON\")
+" 1>&2
 }
 exit_abnormal() {
   usage
   exit 1
 }
 
-# exit when any command fails
-set -e
-
 echo "lint.sh: So you don't have to push kotekan twice."
 
 # parse command line arguments
-while getopts ":d:i:j:" options; do
+while getopts ":d:i:j:e:" options; do
   case "${options}" in
     d)
       KOTEKAN_DIR=${OPTARG}
       ;;
     j)
       N_JOBS=${OPTARG}
+      ;;
+    e)
+      EXIT_ON_FAILURE=${OPTARG}
+      if ! [ $EXIT_ON_FAILURE = "ON" ] && ! [ $EXIT_ON_FAILURE = "OFF" ] ; then
+        echo "Error: ENABLE_EXIT_ON_FAILURE must be a ON or OFF (was $EXIT_ON_FAILURE)."
+        exit_abnormal
+        exit 1
+      fi
       ;;
     i)
       ENABLE_IWYU=${OPTARG}
@@ -60,6 +77,11 @@ while getopts ":d:i:j:" options; do
       ;;
   esac
 done
+
+if $EXIT_ON_FAILURE ; then
+    # exit when any command fails
+    set -e
+fi
 
 # include-what-you-use
 if ! [ $ENABLE_IWYU = "OFF" ]; then
