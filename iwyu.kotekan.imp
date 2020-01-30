@@ -80,6 +80,9 @@
     { include: [ "<blaze/math/views/band/Dense.h>", public, "<blaze/Blaze.h>", public ] },
     { include: [ "<blaze/math/views/submatrix/Dense.h>", public, "<blaze/Blaze.h>", public ] },
 
+    # LAPACK
+    { include: [ "\"lapack.h\"", public, "<lapacke.h>", public ] },
+
     { include: ["<ext/alloc_traits.h>", "private", "<vector>", "public"] },
     { symbol: [ "FALLOC_FL_KEEP_SIZE", public, "<fcntl.h>", public ] },
 ]

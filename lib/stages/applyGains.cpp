@@ -10,6 +10,7 @@
 #include "kotekanLogging.hpp"    // for WARN, FATAL_ERROR, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
 #include "visBuffer.hpp"         // for visFrameView, visField, visField::vis, visField...
+#include "visFileH5.hpp"         // IWYU pragma: keep
 #include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double, fra...
 
 #include "fmt.hpp"      // for format, fmt

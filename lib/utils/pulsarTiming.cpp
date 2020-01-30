@@ -4,7 +4,6 @@
 
 #include "fmt.hpp" // for format, fmt
 
-#include <algorithm>   // for max
 #include <cmath>       // for floor, pow
 #include <memory>      // for allocator_traits<>::value_type
 #include <stdexcept>   // for runtime_error

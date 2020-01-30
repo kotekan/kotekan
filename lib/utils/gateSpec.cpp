@@ -3,6 +3,7 @@
 #include "kotekanLogging.hpp" // for WARN, logLevel, INFO
 #include "visUtil.hpp"        // for operator-, ts_to_double
 
+#include <algorithm> // for copy
 #include <exception> // for exception
 #include <time.h>    // for timespec
 #include <utility>   // for move

@@ -12,6 +12,7 @@
 
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value...
 
+#include <algorithm>                         // for copy
 #include <boost/test/included/unit_test.hpp> // for master_test_suite, master_test_suite_t, BOO...
 #include <exception>                         // for exception
 #include <iostream>                          // for operator<<, ostream, endl, basic_ostream, cout

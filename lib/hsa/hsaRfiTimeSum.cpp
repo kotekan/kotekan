@@ -7,6 +7,7 @@
 #include "kotekanLogging.hpp"     // for DEBUG, INFO, WARN
 #include "visUtil.hpp"            // for parse_reorder_default
 
+#include <algorithm>  // for copy
 #include <cstdint>    // for uint32_t
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1

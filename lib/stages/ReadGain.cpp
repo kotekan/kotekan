@@ -10,6 +10,7 @@
 #include "restServer.hpp"          // for HTTP_RESPONSE, connectionInstance, restServer
 #include "visUtil.hpp"             // for current_time
 
+#include <algorithm>   // for copy
 #include <atomic>      // for atomic_bool
 #include <chrono>      // for seconds
 #include <cstdint>     // for int32_t

@@ -8,6 +8,7 @@
 #include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
 #include "kotekanLogging.hpp"      // for INFO, ERROR
 
+#include <algorithm>  // for copy
 #include <assert.h>   // for assert
 #include <atomic>     // for atomic_bool
 #include <cmath>      // for cos, sin, fmod, pow, acos, asin, atan2, sqrt

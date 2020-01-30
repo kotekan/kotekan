@@ -9,6 +9,7 @@
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for json, basic_json<>::object_t, json_ref, basic_json, basic_json<>...
 
+#include <algorithm> // for copy
 #include <cstdint>   // for uint32_t
 #include <exception> // for exception
 #include <iosfwd>    // for ostream
