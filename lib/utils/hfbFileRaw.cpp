@@ -25,14 +25,15 @@
 
 
 // Register the raw file writer
-REGISTER_VIS_FILE("raw", hfbFileRaw);
-
+//REGISTER_VIS_FILE("raw", hfbFileRaw);
+REGISTER_NAMED_TYPE_WITH_FACTORY(hfbFile, hfbFileRaw, "raw")
 //
 // Implementation of raw hyperfine beam data file
 //
-void hfbFileRaw::create_file(const std::string& name, const kotekan::logLevel log_level,
-                             const std::map<std::string, std::string>& metadata, dset_id_t dataset,
-                             size_t max_time) {
+hfbFileRaw::hfbFileRaw(const std::string& name, const kotekan::logLevel log_level,
+                       const std::map<std::string, std::string>& metadata, dset_id_t dataset,
+                       size_t max_time, int oflags) :
+    _name(name) {
     set_log_level(log_level);
 
     INFO("Creating new output file {:s}", name);
@@ -43,6 +44,7 @@ void hfbFileRaw::create_file(const std::string& name, const kotekan::logLevel lo
     auto istate_fut = std::async(&datasetManager::dataset_state<inputState>, &dm, dataset);
     auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>, &dm, dataset);
     auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm, dataset);
+    //auto evstate_fut = std::async(&datasetManager::dataset_state<eigenvalueState>, &dm, dataset);
     auto gstate_fut = std::async(&datasetManager::dataset_state<gatingState>, &dm, dataset);
 
     const inputState* istate = istate_fut.get();
@@ -50,7 +52,7 @@ void hfbFileRaw::create_file(const std::string& name, const kotekan::logLevel lo
     const freqState* fstate = fstate_fut.get();
 
     if (!istate || !pstate || !fstate) {
-        ERROR("Required datasetState not found for dataset ID {:#x}\nThe following required states "
+        ERROR("Required datasetState not found for dataset ID {}\nThe following required states "
               "were found:\ninputState - {:p}\nprodState - {:p}\nfreqState - {:p}\n",
               dataset, (void*)istate, (void*)pstate, (void*)fstate);
         throw std::runtime_error("Could not create file.");
@@ -61,6 +63,15 @@ void hfbFileRaw::create_file(const std::string& name, const kotekan::logLevel lo
     file_metadata["index_map"]["freq"] = unzip(fstate->get_freqs()).second;
     file_metadata["index_map"]["input"] = istate->get_inputs();
     file_metadata["index_map"]["prod"] = pstate->get_prods();
+
+    // Create and add eigenvalue index
+    //const eigenvalueState* evstate = evstate_fut.get();
+    //if (evstate) {
+    //    file_metadata["index_map"]["ev"] = evstate->get_ev();
+    //    num_ev = evstate->get_num_ev();
+    //} else {
+    //    num_ev = 0;
+    //}
 
     const stackState* sstate = sstate_fut.get();
     if (sstate) {
@@ -98,13 +109,13 @@ void hfbFileRaw::create_file(const std::string& name, const kotekan::logLevel lo
 
 
     // Create lock file and then open the other files
-    _name = name;
-    lock_filename = create_lockfile(name);
-    metadata_file = std::ofstream(name + ".meta", std::ios::binary);
-    if ((fd = open((name + ".data").c_str(), oflags, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH))
+    lock_filename = create_lockfile(_name);
+    metadata_file = std::ofstream(_name + ".meta", std::ios::binary);
+    if ((fd = open((_name + ".data").c_str(), oflags,
+                   S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH))
         == -1) {
         throw std::runtime_error(
-            fmt::format(fmt("Failed to open file {:s}.data: {:s}."), name, strerror(errno)));
+            fmt::format(fmt("Failed to open file {:s}.data: {:s}."), _name, strerror(errno)));
     }
 
     // Preallocate data file (without increasing the length)

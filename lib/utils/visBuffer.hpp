@@ -11,6 +11,8 @@
 #include "chimeMetadata.h"
 #include "datasetManager.hpp"
 #include "visUtil.hpp"
+#include "frameView.hpp"
+#include "Config.hpp"
 
 #include "gsl-lite.hpp"
 
@@ -84,7 +86,7 @@ struct visMetadata {
  *
  * @author Richard Shaw
  **/
-class visFrameView {
+class visFrameView : public frameView {
 
 public:
     /**
@@ -95,7 +97,8 @@ public:
      * @param buf      The buffer the frame is in.
      * @param frame_id The id of the frame to read.
      */
-    visFrameView(Buffer* buf, int frame_id);
+    //visFrameView(Buffer* buf, int frame_id);
+    visFrameView();
 
     /**
      * @brief Create view and set structure metadata.
@@ -110,7 +113,7 @@ public:
      *
      * @warning The metadata object must already have been allocated.
      **/
-    visFrameView(Buffer* buf, int frame_id, uint32_t num_elements, uint32_t num_ev);
+    visFrameView(Buffer* buf, int frame_id, kotekan::Config config, const string& unique_name);
 
     /**
      * @brief Create view and set structure metadata.
@@ -126,8 +129,8 @@ public:
      *
      * @warning The metadata object must already have been allocated.
      **/
-    visFrameView(Buffer* buf, int frame_id, uint32_t num_elements, uint32_t num_prod,
-                 uint32_t num_ev);
+    //visFrameView(Buffer* buf, int frame_id, uint32_t num_elements, uint32_t num_prod,
+    //             uint32_t num_ev);
 
     /**
      * @brief Copy frame to a new buffer and create view of copied frame
@@ -140,7 +143,7 @@ public:
      *
      * @warning The metadata object must already have been allocated.
      **/
-    visFrameView(Buffer* buf, int frame_id, visFrameView frame_to_copy);
+    visFrameView(Buffer* buf, int frame_id, visFrameView *frame_to_copy);
 
     /**
      * @brief Copy a whole frame from a buffer and create a view of it.
@@ -175,15 +178,23 @@ public:
      *          (i.e. 0) and end (i.e. total size) of the buffer is contained in
      *          `_struct`.
      **/
-    static struct_layout<visField> calculate_buffer_layout(uint32_t num_elements, uint32_t num_prod,
-                                                           uint32_t num_ev);
+    void calculate_buffer_layout(kotekan::Config& config, const string& unique_name) override;
+
+    /**
+     * @brief Get the size of the frame.
+     *
+     * @param config Config file variables.
+     *
+     * @returns Size of frame.
+     **/
+    static size_t calculate_frame_size(kotekan::Config& config, const string& unique_name);
 
     /**
      * @brief Return a summary of the visibility buffer contents.
      *
      * @returns A string summarising the contents.
      **/
-    std::string summary() const;
+    std::string summary() const override;
 
     /**
      * @brief Copy the non-const parts of the metadata.
@@ -193,7 +204,7 @@ public:
      * @param  frame_to_copy  Frame to copy metadata from.
      *
      **/
-    void copy_metadata(visFrameView frame_to_copy);
+    void copy_metadata(visFrameView *frame_to_copy);
 
     /**
      * @brief Copy over the data, skipping specified members.
@@ -234,22 +245,16 @@ public:
     }
 
     /**
-     * @brief Read only access to the frame data.
-     * @returns The data.
+     * @brief Read only access to the buffer layout.
+     * @returns The layout.
      **/
-    const uint8_t* data() const {
-        return _frame;
+    const struct_layout<visField> layout() const {
+        return buffer_layout;
     }
 
 private:
     // References to the buffer and metadata we are viewing
-    Buffer* const buffer;
-    const int id;
     visMetadata* const _metadata;
-
-    // Pointer to frame data. In theory this is redundant as it can be derived
-    // from buffer and id, but it's nice for brevity
-    uint8_t* const _frame;
 
     // The calculated layout of the buffer
     struct_layout<visField> buffer_layout;
