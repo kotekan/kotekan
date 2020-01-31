@@ -148,7 +148,7 @@ void FakeVis::main_thread() {
             // Allocate metadata and get frame
             allocate_new_metadata_object(out_buf, output_frame_id);
             auto output_frame =
-                visFrameView(out_buf, output_frame_id, num_elements, num_eigenvectors);
+                visFrameView(out_buf, output_frame_id, config, unique_name);
 
             output_frame.dataset_id = ds_id;
 
