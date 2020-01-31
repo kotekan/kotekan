@@ -26,24 +26,21 @@ T& bind_scalar(uint8_t* start, std::pair<size_t, size_t> range) {
 // elements of the metadata, but I think there's no other way to share the
 // initialisation list
 hfbFrameView::hfbFrameView(Buffer* buf, int frame_id) :
-    hfbFrameView(buf, frame_id, ((hfbMetadata*)(buf->metadata[frame_id]->metadata))->num_elements,
-                 ((hfbMetadata*)(buf->metadata[frame_id]->metadata))->num_prod) {}
+    hfbFrameView(buf, frame_id, ((hfbMetadata*)(buf->metadata[frame_id]->metadata))->num_beams,
+                 ((hfbMetadata*)(buf->metadata[frame_id]->metadata))->num_subfreq) {}
 
-hfbFrameView::hfbFrameView(Buffer* buf, int frame_id, uint32_t num_elements) :
-    hfbFrameView(buf, frame_id, num_elements, num_elements * (num_elements + 1) / 2) {}
-
-hfbFrameView::hfbFrameView(Buffer* buf, int frame_id, uint32_t n_elements, uint32_t n_prod) :
+hfbFrameView::hfbFrameView(Buffer* buf, int frame_id, uint32_t n_beams, uint32_t n_subfreq) :
     buffer(buf),
     id(frame_id),
     _metadata((hfbMetadata*)buf->metadata[id]->metadata),
     _frame(buffer->frames[id]),
 
     // Calculate the internal buffer layout from the given structure params
-    buffer_layout(calculate_buffer_layout(n_elements, n_prod)),
+    buffer_layout(calculate_buffer_layout(n_beams, n_subfreq)),
 
     // Set the const refs to the structural metadata
-    num_elements(_metadata->num_elements),
-    num_prod(_metadata->num_prod),
+    num_beams(_metadata->num_beams),
+    num_subfreq(_metadata->num_subfreq),
 
     // Set the refs to the general _metadata
     time(std::tie(_metadata->fpga_seq_start, _metadata->ctime)),
@@ -62,8 +59,8 @@ hfbFrameView::hfbFrameView(Buffer* buf, int frame_id, uint32_t n_elements, uint3
     // Initialise the structure if not already done
     // NOTE: the provided structure params have already been used to calculate
     // the layout, but here we need to make sure the metadata tracks them too.
-    _metadata->num_elements = n_elements;
-    _metadata->num_prod = n_prod;
+    _metadata->num_beams = n_beams;
+    _metadata->num_subfreq = n_subfreq;
 
     // Check that the actual buffer size is big enough to contain the calculated
     // view
@@ -73,8 +70,8 @@ hfbFrameView::hfbFrameView(Buffer* buf, int frame_id, uint32_t n_elements, uint3
 
         std::string s =
             fmt::format(fmt("Hyperfine beam buffer [{:s}] too small. Must be a minimum of {:d} bytes "
-                            "for elements={:d}, products={:d}"),
-                        buffer->buffer_name, required_size, n_elements, n_prod);
+                            "for beams={:d}, sub-frequencies={:d}"),
+                        buffer->buffer_name, required_size, n_beams, n_subfreq);
 
         throw std::runtime_error(s);
     }
@@ -82,7 +79,7 @@ hfbFrameView::hfbFrameView(Buffer* buf, int frame_id, uint32_t n_elements, uint3
 
 
 hfbFrameView::hfbFrameView(Buffer* buf, int frame_id, hfbFrameView frame_to_copy) :
-    hfbFrameView(buf, frame_id, frame_to_copy.num_elements, frame_to_copy.num_prod) {
+    hfbFrameView(buf, frame_id, frame_to_copy.num_beams, frame_to_copy.num_subfreq) {
     // Copy over the metadata values
     *_metadata = *(frame_to_copy.metadata());
 
@@ -170,54 +167,54 @@ void hfbFrameView::copy_data(hfbFrameView frame_to_copy, const std::set<hfbField
     // Define some helper methods so we don't need to code up the same checks everywhere
     auto copy_member = [&](hfbField member) { return (skip_members.count(member) == 0); };
 
-    auto check_elements = [&]() {
-        if (num_elements != frame_to_copy.num_elements) {
+    auto check_beams = [&]() {
+        if (num_beams != frame_to_copy.num_beams) {
             auto msg = fmt::format(fmt("Number of inputs don't match for copy [src={}; dest={}]."),
-                                   frame_to_copy.num_elements, num_elements);
+                                   frame_to_copy.num_beams, num_beams);
             throw std::runtime_error(msg);
         }
     };
 
-    auto check_prod = [&]() {
-        if (num_elements != frame_to_copy.num_elements) {
+    auto check_subfreq = [&]() {
+        if (num_beams != frame_to_copy.num_beams) {
             auto msg =
-                fmt::format(fmt("Number of products don't match for copy [src={}; dest={}]."),
-                            frame_to_copy.num_prod, num_prod);
+                fmt::format(fmt("Number of sub-frequencies don't match for copy [src={}; dest={}]."),
+                            frame_to_copy.num_subfreq, num_subfreq);
             throw std::runtime_error(msg);
         }
     };
 
     if (copy_member(hfbField::hfb)) {
-        check_prod();
+        check_subfreq();
         std::copy(frame_to_copy.hfb.begin(), frame_to_copy.hfb.end(), hfb.begin());
     }
 
     if (copy_member(hfbField::weight)) {
-        check_prod();
+        check_subfreq();
         std::copy(frame_to_copy.weight.begin(), frame_to_copy.weight.end(), weight.begin());
     }
 
 
     if (copy_member(hfbField::flags)) {
-        check_elements();
+        check_beams();
         std::copy(frame_to_copy.flags.begin(), frame_to_copy.flags.end(), flags.begin());
     }
 
     if (copy_member(hfbField::gain)) {
-        check_elements();
+        check_beams();
         std::copy(frame_to_copy.gain.begin(), frame_to_copy.gain.end(), gain.begin());
     }
 }
 
-struct_layout<hfbField> hfbFrameView::calculate_buffer_layout(uint32_t num_elements,
-                                                              uint32_t num_prod) {
+struct_layout<hfbField> hfbFrameView::calculate_buffer_layout(uint32_t num_beams,
+                                                              uint32_t num_subfreq) {
     // TODO: get the types of each element using a template on the member
     // definition
     std::vector<std::tuple<hfbField, size_t, size_t>> buffer_members = {
-        std::make_tuple(hfbField::hfb, sizeof(cfloat), num_prod),
-        std::make_tuple(hfbField::weight, sizeof(float), num_prod),
-        std::make_tuple(hfbField::flags, sizeof(float), num_elements),
-        std::make_tuple(hfbField::gain, sizeof(cfloat), num_elements)};
+        std::make_tuple(hfbField::hfb, sizeof(cfloat), num_subfreq),
+        std::make_tuple(hfbField::weight, sizeof(float), num_subfreq),
+        std::make_tuple(hfbField::flags, sizeof(float), num_beams),
+        std::make_tuple(hfbField::gain, sizeof(cfloat), num_beams)};
 
     return struct_alignment(buffer_members);
 }

@@ -47,13 +47,13 @@ struct hfbMetadata {
 
     /// ID of the frequency bin
     uint32_t freq_id;
-    /// ID of the dataset (vis, gatedvisX ...), main vis dataset = 0
+    /// ID of the dataset, main hfb dataset = 0
     uint64_t dataset_id;
 
-    /// Number of elements for data in buffer
-    uint32_t num_elements;
-    /// Number of products for data in buffer
-    uint32_t num_prod;
+    /// Number of beams for data in buffer
+    uint32_t num_beams;
+    /// Number of sub-frequencies for data in buffer
+    uint32_t num_subfreq;
 };
 
 
@@ -92,30 +92,17 @@ public:
     /**
      * @brief Create view and set structure metadata.
      *
-     * This should be used for creating entirely new frames.
-     *
-     * @param buf              The buffer the frame is in.
-     * @param frame_id         The id of the frame to read.
-     * @param num_elements     Number of elements in the data.
-     *
-     * @warning The metadata object must already have been allocated.
-     **/
-    hfbFrameView(Buffer* buf, int frame_id, uint32_t num_elements);
-
-    /**
-     * @brief Create view and set structure metadata.
-     *
      * This should be used for creating entirely new frames. This overload takes
-     * the number of products as a parameter.
+     * the number of sub-frequencies as a parameter.
      *
      * @param buf              The buffer the frame is in.
      * @param frame_id         The id of the frame to read.
-     * @param num_elements     Number of elements in the data.
-     * @param num_prod         Number of products in the data.
+     * @param num_beams     Number of beams in the data.
+     * @param num_subfreq         Number of sub-frequencies in the data.
      *
      * @warning The metadata object must already have been allocated.
      **/
-    hfbFrameView(Buffer* buf, int frame_id, uint32_t num_elements, uint32_t num_prod);
+    hfbFrameView(Buffer* buf, int frame_id, uint32_t num_beams, uint32_t num_subfreq);
 
     /**
      * @brief Copy frame to a new buffer and create view of copied frame
@@ -155,14 +142,14 @@ public:
     /**
      * @brief Get the layout of the buffer from the structural parameters.
      *
-     * @param num_elements     Number of elements.
-     * @param num_prod         Number of products.
+     * @param num_beams     Number of beams.
+     * @param num_subfreq         Number of sub-frequencies.
      *
      * @returns A mnonvis_bufferap from member name to start and end in bytes. The start
      *          (i.e. 0) and end (i.e. total size) of the buffer is contained in
      *          `_struct`.
      **/
-    static struct_layout<hfbField> calculate_buffer_layout(uint32_t num_elements, uint32_t num_prod);
+    static struct_layout<hfbField> calculate_buffer_layout(uint32_t num_beams, uint32_t num_subfreq);
 
     /**
      * @brief Return a summary of the hyperfine beam buffer contents.
@@ -243,10 +230,10 @@ private:
     // NOTE: these need to be defined in a final public block to ensure that they
     // are initialised after the above members.
 public:
-    /// The number of elements in the data (read only).
-    const uint32_t& num_elements;
-    /// The number of products in the data (read only).
-    const uint32_t& num_prod;
+    /// The number of beams in the data (read only).
+    const uint32_t& num_beams;
+    /// The number of sub-frequencies in the data (read only).
+    const uint32_t& num_subfreq;
 
     /// A tuple of references to the underlying time parameters
     std::tuple<uint64_t&, timespec&> time;
