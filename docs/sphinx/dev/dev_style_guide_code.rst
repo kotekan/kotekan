@@ -151,7 +151,7 @@ of that using ``black --exclude docs kotekan/root/dir`` before you commit python
 Automatic code formatting
 -------------------------
 
-.. note:: To do all code linting in one, use `tools/lint.sh <https://github.com/kotekan/kotekan/blob/master/tools/lint.sh>`_. To use the sript as a commit hook, copy it to ``.git/hooks/pre-commit``.
+.. note:: To do all code linting in one, use `tools/lint.sh <https://github.com/kotekan/kotekan/blob/master/tools/lint.sh>`_. To use the script as a commit hook, copy it to ``.git/hooks/pre-commit``.
 
 kotekan uses the following tools for automatic code formatting:
 
