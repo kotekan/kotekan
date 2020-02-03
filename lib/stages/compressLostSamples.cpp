@@ -9,6 +9,8 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
+#define NUM_SETS_OF_SUB_FREQS 3
+
 REGISTER_KOTEKAN_STAGE(compressLostSamples);
 
 compressLostSamples::compressLostSamples(Config& config_, const string& unique_name,
@@ -52,12 +54,12 @@ void compressLostSamples::main_thread() {
         uint32_t total_lost_samples = 0;
 
         // Compress lost samples buffer by checking each sample for a flag
-        for (uint sample = 0; sample < _samples_per_data_set; sample += 3 * _num_sub_freqs) {
-            compressed_lost_samples_frame[sample / (3 * _num_sub_freqs)] = 0;
-            for (uint freq = 0; freq < 3 * _num_sub_freqs; freq++) {
+        for (uint sample = 0; sample < _samples_per_data_set; sample += NUM_SETS_OF_SUB_FREQS * _num_sub_freqs) {
+            compressed_lost_samples_frame[sample / (NUM_SETS_OF_SUB_FREQS * _num_sub_freqs)] = 0;
+            for (uint freq = 0; freq < NUM_SETS_OF_SUB_FREQS * _num_sub_freqs; freq++) {
                 if (lost_samples_frame[sample + freq]) {
-                    compressed_lost_samples_frame[sample / (3 * _num_sub_freqs)] = 1;
-                    total_lost_samples += 3 * _num_sub_freqs;
+                    compressed_lost_samples_frame[sample / (NUM_SETS_OF_SUB_FREQS * _num_sub_freqs)] = 1;
+                    total_lost_samples += NUM_SETS_OF_SUB_FREQS * _num_sub_freqs;
                     break;
                 }
             }
