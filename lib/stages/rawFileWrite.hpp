@@ -18,6 +18,7 @@
  * @conf base_dir  String. Directory to write into.
  * @conf file_name String. Base filename to write.
  * @conf file_ext  String. File extension.
+ * @conf _num_frames_per_file Integer. No of frames to write into a single file.
  *
  * @par Metrics
  * @metric kotekan_rawfilewrite_write_time_seconds
