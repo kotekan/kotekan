@@ -42,7 +42,7 @@ void integrateHFBData::initFirstFrame(float* input_data, float* sum_data,
 
     int64_t fpga_seq_num_start =
         fpga_seq_num_end - (_num_frames_to_integrate - 1) * _samples_per_data_set;
-    memcpy(&sum_data[0], &input_data[0], _num_frb_total_beams * _num_sub_freqs * sizeof(float));
+    memcpy(sum_data, input_data, _num_frb_total_beams * _num_sub_freqs * sizeof(float));
     total_lost_timesamples += get_fpga_seq_num(in_buf, in_buffer_ID) - fpga_seq_num_start;
     // Get the first FPGA sequence no. to check for missing frames
     fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
@@ -98,7 +98,8 @@ void integrateHFBData::main_thread() {
     int64_t fpga_seq_num_end_old;
     total_timesamples = _samples_per_data_set * _num_frames_to_integrate;
     total_lost_timesamples = 0;
-    fpga_seq_num = 0, fpga_seq_num_end = (_num_frames_to_integrate - 1) * _samples_per_data_set;
+    fpga_seq_num = 0;
+    fpga_seq_num_end = (_num_frames_to_integrate - 1) * _samples_per_data_set;
     frame = 0;
 
     // Get the first output buffer which will always be id = 0 to start.
@@ -195,8 +196,9 @@ void integrateHFBData::main_thread() {
                     goto end_loop;
 
                 sum_data = (float*)out_buf->frames[out_buffer_ID];
-            } else
+            } else {
                 DEBUG("Integration discarded. Too many lost samples.");
+            }
 
             // Reset the no. of lost samples and frame counter
             total_lost_timesamples = 0;

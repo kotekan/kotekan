@@ -47,7 +47,7 @@ void rawFileRead::main_thread() {
         char full_path[full_path_len];
 
         snprintf(full_path, full_path_len, "%s/%s_%s_%07d.%s", base_dir.c_str(), hostname,
-            file_name.c_str(), file_num, file_ext.c_str());
+                 file_name.c_str(), file_num, file_ext.c_str());
 
         INFO("Looking for file: {:s}", full_path);
         if (!file_exists(full_path)) {
@@ -75,43 +75,42 @@ void rawFileRead::main_thread() {
         INFO("File size: {:d} bytes, no. of frames: {:d}", fileSize, num_frames_per_file);
 
         // Read each frame from the file and copy into the buffer.
-        for(uint32_t i=0; i<num_frames_per_file; i++) {
+        for (uint32_t i = 0; i < num_frames_per_file; i++) {
 
-          // Get an empty buffer to write into
-          frame = wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
-          if (frame == NULL)
-            break;
+            // Get an empty buffer to write into
+            frame = wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
+            if (frame == NULL)
+                break;
 
-          if (fread((void*)&metadata_size, sizeof(uint32_t), 1, fp) != 1) {
-            ERROR("rawFileRead: Failed to read file {:s} metadata size value, {:s}", full_path,
-                strerror(errno));
-            break;
-          }
-
-          // If metadata exists then lets read it in.
-          if (metadata_size != 0) {
-            allocate_new_metadata_object(buf, frame_id);
-            struct metadataContainer* mc = get_metadata_container(buf, frame_id);
-            assert(metadata_size == mc->metadata_size);
-            if (fread(mc->metadata, metadata_size, 1, fp) != 1) {
-              ERROR("rawFileRead: Failed to read file {:s} metadata,", full_path);
-              break;
+            if (fread((void*)&metadata_size, sizeof(uint32_t), 1, fp) != 1) {
+                ERROR("rawFileRead: Failed to read file {:s} metadata size value, {:s}", full_path,
+                      strerror(errno));
+                break;
             }
-            INFO("rawFileRead: Read in metadata from file {:s}", full_path);
-          }
 
-          int bytes_read = fread((void*)frame, sizeof(char), buf->frame_size, fp);
+            // If metadata exists then lets read it in.
+            if (metadata_size != 0) {
+                allocate_new_metadata_object(buf, frame_id);
+                struct metadataContainer* mc = get_metadata_container(buf, frame_id);
+                assert(metadata_size == mc->metadata_size);
+                if (fread(mc->metadata, metadata_size, 1, fp) != 1) {
+                    ERROR("rawFileRead: Failed to read file {:s} metadata,", full_path);
+                    break;
+                }
+                INFO("rawFileRead: Read in metadata from file {:s}", full_path);
+            }
 
-          if (bytes_read != buf->frame_size) {
-            ERROR("rawFileRead: Failed to read file {:s}!", full_path);
-            break;
-          }
+            int bytes_read = fread((void*)frame, sizeof(char), buf->frame_size, fp);
 
-          INFO("rawFileRead: Read frame data from {:s} into {:s}[{:d}]", full_path, buf->buffer_name,
-              frame_id);
-          mark_frame_full(buf, unique_name.c_str(), frame_id);
-          frame_id = (frame_id + 1) % buf->num_frames;
+            if (bytes_read != buf->frame_size) {
+                ERROR("rawFileRead: Failed to read file {:s}!", full_path);
+                break;
+            }
 
+            INFO("rawFileRead: Read frame data from {:s} into {:s}[{:d}]", full_path,
+                 buf->buffer_name, frame_id);
+            mark_frame_full(buf, unique_name.c_str(), frame_id);
+            frame_id = (frame_id + 1) % buf->num_frames;
         }
 
         fclose(fp);

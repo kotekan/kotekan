@@ -67,7 +67,6 @@ void TestDropFrames::main_thread() {
 
             mark_frame_full(out_buf, unique_name.c_str(), out_buf_id);
             out_buf_id = (out_buf_id + 1) % out_buf->num_frames;
-
         }
 
         mark_frame_empty(in_buf, unique_name.c_str(), in_buf_id);
