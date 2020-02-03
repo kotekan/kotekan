@@ -79,11 +79,11 @@ gen_output_data:
 
 gen_missing_frames:
   missing_frames: [0, 1, 4, 7]
-  testDataGenMissingFrames:
-    kotekan_stage: testDataGenMissingFrames
+  TestDropFrames:
+    kotekan_stage: TestDropFrames
     log_level: debug
-    input_buf: beamform_hfb_input_buffer_0
-    output_buf: beamform_hfb_integrate_buffer_0
+    in_buf: beamform_hfb_input_buffer_0
+    out_buf: beamform_hfb_integrate_buffer_0
 
 # Run stage under test
 hyper_fine_beam:
