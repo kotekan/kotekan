@@ -11,7 +11,7 @@ using kotekan::HTTP_RESPONSE;
 using kotekan::restServer;
 
 clRfiTimeSum::clRfiTimeSum(const char* param_gpuKernel, const char* param_name,
-                           Config& param_config, const string& unique_name) :
+                           Config& param_config, const std::string& unique_name) :
     gpu_command(param_gpuKernel, param_name, param_config, unique_name) {}
 
 clRfiTimeSum::~clRfiTimeSum() {
@@ -56,10 +56,10 @@ void clRfiTimeSum::build(device_interface& param_Device) {
     gpu_command::build(param_Device);
     cl_int err;
     cl_device_id valDeviceID;
-    string cl_options = get_cl_options();
+    std::string cl_options = get_cl_options();
     // Build program
     valDeviceID = param_Device.getDeviceID(param_Device.getGpuID());
-    CHECK_CL_ERROR(clBuildProgram(program, 1, &valDeviceID, cl_options.c_str(), NULL, NULL));
+    CHECK_CL_ERROR(clBuildProgram(program, 1, &valDeviceID, cl_options.c_str(), nullptr, nullptr));
     // Create the kernel
     kernel = clCreateKernel(program, "rfi_chime_timesum", &err);
     CHECK_CL_ERROR(err);
@@ -111,12 +111,12 @@ cl_event clRfiTimeSum::execute(int param_bufferID, device_interface& param_Devic
             }
         }
         CHECK_CL_ERROR(clEnqueueWriteBuffer(param_Device.getQueue(1), mem_input_mask, CL_TRUE, 0,
-                                            mask_len, Input_Mask, 0, NULL, NULL));
+                                            mask_len, Input_Mask, 0, nullptr, nullptr));
     }
     // Set input mask kernel argumnet
     CHECK_CL_ERROR(clSetKernelArg(kernel, 2, sizeof(cl_mem), (void*)&mem_input_mask));
     // Queue kernel for execution
-    CHECK_CL_ERROR(clEnqueueNDRangeKernel(param_Device.getQueue(1), kernel, 3, NULL, gws, lws, 1,
+    CHECK_CL_ERROR(clEnqueueNDRangeKernel(param_Device.getQueue(1), kernel, 3, nullptr, gws, lws, 1,
                                           &param_PrecedeEvent, &postEvent[param_bufferID]));
     // Return post event
     return postEvent[param_bufferID];

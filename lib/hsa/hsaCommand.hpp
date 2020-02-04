@@ -1,29 +1,15 @@
 #ifndef GPU_HSA_COMMAND_H
 #define GPU_HSA_COMMAND_H
 
-#include "Config.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "factory.hpp"
-#include "gpuCommand.hpp"
-#include "hsa/hsa.h"
-#include "hsa/hsa_ext_amd.h"
-#include "hsa/hsa_ext_finalize.h"
-#include "hsaBase.h"
-#include "hsaDeviceInterface.hpp"
-#include "kotekanLogging.hpp"
+#include "Config.hpp"             // for Config
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "factory.hpp"            // for CREATE_FACTORY, Factory, REGISTER_NAMED_TYPE_WITH_FACTORY
+#include "gpuCommand.hpp"         // for gpuCommand, gpuCommandType
+#include "hsa/hsa.h"              // for hsa_signal_t, hsa_packet_type_t
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
-#include <assert.h>
-#include <fstream>
-#include <iostream>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
-#include <unistd.h>
-
+#include <stdint.h> // for uint16_t, uint32_t, uint64_t
+#include <string>   // for string, allocator
 // Use old symbol naming convention if
 // compiled with ROCM version 2.3 or older
 #ifdef USE_OLD_ROCM
@@ -58,10 +44,10 @@ struct kernelParams {
 class hsaCommand : public gpuCommand {
 public:
     // Kernel file name is optional.
-    hsaCommand(kotekan::Config& config, const string& unique_name,
+    hsaCommand(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device,
-               const string& default_kernel_command = "",
-               const string& default_kernel_file_name = "");
+               const std::string& default_kernel_command = "",
+               const std::string& default_kernel_file_name = "");
     virtual ~hsaCommand();
 
     // Adds either a copy or kernel to one of the hardware queues.
@@ -74,12 +60,12 @@ public:
 
     gpuCommandType get_command_type();
 
-    string get_kernel_file_name();
+    std::string get_kernel_file_name();
 
 protected:
     // Extract the code handle for the specified kernelName from the specified fileName
     // Returns a 64-bit code object which can be used with an AQL packet
-    uint64_t load_hsaco_file(string& file_name, string& kernel_name);
+    uint64_t load_hsaco_file(std::string& file_name, std::string& kernel_name);
 
     // Creates the memory needed for the kernel args.
     void allocate_kernel_arg_memory(int max_size);
@@ -111,8 +97,9 @@ protected:
 };
 
 // Create a factory for hsaCommands
-CREATE_FACTORY(hsaCommand, // const string &, const string &,
-               kotekan::Config&, const string&, kotekan::bufferContainer&, hsaDeviceInterface&);
+CREATE_FACTORY(hsaCommand, // const std::string &, const std::string &,
+               kotekan::Config&, const std::string&, kotekan::bufferContainer&,
+               hsaDeviceInterface&);
 #define REGISTER_HSA_COMMAND(newCommand)                                                           \
     REGISTER_NAMED_TYPE_WITH_FACTORY(hsaCommand, newCommand, #newCommand)
 

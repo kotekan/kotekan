@@ -1,7 +1,17 @@
 #include "recvSingleDishVDIF.hpp"
 
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_full, register_producer, wait_for_empt...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO
+
+#include <atomic>     // for atomic_bool
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <vector>     // for vector
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -9,7 +19,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(recvSingleDishVDIF);
 
-recvSingleDishVDIF::recvSingleDishVDIF(Config& config, const string& unique_name,
+recvSingleDishVDIF::recvSingleDishVDIF(Config& config, const std::string& unique_name,
                                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&recvSingleDishVDIF::main_thread, this)) {
@@ -29,7 +39,7 @@ void recvSingleDishVDIF::main_thread() {
 
     int file_num = 0;
     int frame_id = 0;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
 
     const int vdif_header_len = 32;
 
@@ -40,7 +50,7 @@ void recvSingleDishVDIF::main_thread() {
     while (!stop_thread) {
         // Get an empty buffer to write into
         frame = wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         // Send data to remote server.

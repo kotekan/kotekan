@@ -1,12 +1,30 @@
 #include "simpleAutocorr.hpp"
 
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_empty, mark_frame_full, register_consumer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for DEBUG
+
+#include <atomic>      // for atomic_bool
+#include <exception>   // for exception
+#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error
+#include <stdint.h>    // for uint32_t
+#include <stdlib.h>    // for calloc, free
+#include <string.h>    // for memset
+#include <sys/types.h> // for uint
+#include <vector>      // for vector
+
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(simpleAutocorr);
 
-simpleAutocorr::simpleAutocorr(Config& config, const string& unique_name,
+simpleAutocorr::simpleAutocorr(Config& config, const std::string& unique_name,
                                bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&simpleAutocorr::main_thread, this)) {
 
@@ -38,7 +56,7 @@ void simpleAutocorr::main_thread() {
 
     while (!stop_thread) {
         in_local = (float*)wait_for_full_frame(buf_in, unique_name.c_str(), frame_in);
-        if (in_local == NULL)
+        if (in_local == nullptr)
             break;
         for (int j = 0; j < samples_per_frame; j += spectrum_length) {
             for (int i = 0; i < spectrum_length; i++) {

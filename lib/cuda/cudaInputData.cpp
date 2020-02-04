@@ -5,7 +5,7 @@ using kotekan::Config;
 
 REGISTER_CUDA_COMMAND(cudaInputData);
 
-cudaInputData::cudaInputData(Config& config, const string& unique_name,
+cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
                              bufferContainer& host_buffers, cudaDeviceInterface& device) :
     cudaCommand(config, unique_name, host_buffers, device, "", "") {
 
@@ -42,7 +42,7 @@ int cudaInputData::wait_on_precondition(int gpu_frame_id) {
 
     // Wait for there to be data in the input (network) buffer.
     uint8_t* frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_buffer_precondition_id);
-    if (frame == NULL)
+    if (frame == nullptr)
         return -1;
 
     in_buffer_precondition_id = (in_buffer_precondition_id + 1) % in_buf->num_frames;

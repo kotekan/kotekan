@@ -7,7 +7,15 @@
 #ifndef BUFFER_BAD_INPUT_DATA
 #define BUFFER_BAD_INPUT_DATA
 
-#include "Stage.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
+
+#include "json.hpp" // for json
+
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class bufferBadInputs
@@ -30,7 +38,7 @@
 class bufferBadInputs : public kotekan::Stage {
 public:
     /// Constructor.
-    bufferBadInputs(kotekan::Config& config_, const string& unique_name,
+    bufferBadInputs(kotekan::Config& config_, const std::string& unique_name,
                     kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~bufferBadInputs();

@@ -7,8 +7,14 @@
 #ifndef HSA_BEAMFORM_TRANSPOSE_H
 #define HSA_BEAMFORM_TRANSPOSE_H
 
-#include "hsaCommand.hpp"
+#include "Config.hpp"             // for Config
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaCommand.hpp"         // for hsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
+#include <stdint.h> // for int32_t
+#include <string>   // for string
 /**
  * @class hsaBeamformTranspose
  * @brief hsaCommand to transpose FRB data from time-pol-beam to pol-beam-time
@@ -41,7 +47,7 @@
 class hsaBeamformTranspose : public hsaCommand {
 public:
     /// Constructor, initializes internal variables from config
-    hsaBeamformTranspose(kotekan::Config& config, const string& unique_name,
+    hsaBeamformTranspose(kotekan::Config& config, const std::string& unique_name,
                          kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor

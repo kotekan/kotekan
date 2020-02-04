@@ -1,10 +1,11 @@
 #ifndef RAW_FILE_WRITE_H
 #define RAW_FILE_WRITE_H
 
-#include "Stage.hpp"
-#include "buffer.h"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
 
-#include <string>
+#include <string> // for string
 
 /**
  * @class rawFileWrite
@@ -27,7 +28,7 @@
  **/
 class rawFileWrite : public kotekan::Stage {
 public:
-    rawFileWrite(kotekan::Config& config, const string& unique_name,
+    rawFileWrite(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
     virtual ~rawFileWrite();
     void main_thread() override;

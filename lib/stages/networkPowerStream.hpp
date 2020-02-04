@@ -8,12 +8,15 @@
 #define NETWORK_POWER_STREAM_H
 
 #include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "powerStreamUtil.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
+#include "powerStreamUtil.hpp" // for IntensityHeader
 
-#include <atomic>
-#include <sys/socket.h>
+#include <atomic>      // for atomic_flag
+#include <stdint.h>    // for uint32_t, uint64_t
+#include <string>      // for string
+#include <sys/types.h> // for uint
+#include <thread>      // for thread
 
 /**
  * @class networkPowerStream
@@ -49,7 +52,7 @@
 class networkPowerStream : public kotekan::Stage {
 public:
     /// Constructor.
-    networkPowerStream(kotekan::Config& config, const string& unique_name,
+    networkPowerStream(kotekan::Config& config, const std::string& unique_name,
                        kotekan::bufferContainer& buffer_container);
 
     /// Destructor.
@@ -68,9 +71,9 @@ private:
     /// Port of the listening receiver.
     uint32_t dest_port;
     /// IP of the listening receiver.
-    string dest_server_ip;
+    std::string dest_server_ip;
     /// Protocol to use: TCP or UDP. (Only TCP works now)
-    string dest_protocol;
+    std::string dest_protocol;
 
     // Socket handle for link
     int socket_fd;

@@ -7,18 +7,13 @@
 #ifndef PY_PLOT_N2_H
 #define PY_PLOT_N2_H
 
-#include "Stage.hpp"
-#include "accumulate.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
-#include "restServer.hpp"
+#include "Config.hpp"              // for Config
+#include "Stage.hpp"               // for Stage
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "fpga_header_functions.h" // for stream_id_t
+#include "restServer.hpp"          // for connectionInstance
 
-#include <cstdio>
-#include <string>
-#include <sys/stat.h>
-#include <unistd.h>
+#include <string> // for string
 
 /**
  * @class pyPlotN2
@@ -51,7 +46,7 @@
 class pyPlotN2 : public kotekan::Stage {
 public:
     /// Constructor
-    pyPlotN2(kotekan::Config& config, const string& unique_name,
+    pyPlotN2(kotekan::Config& config, const std::string& unique_name,
              kotekan::bufferContainer& buffer_container);
 
     /// Destructor, currently does nothing

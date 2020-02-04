@@ -1,9 +1,26 @@
 #include "FakeVisPattern.hpp"
 
-#include "visUtil.hpp"
+#include "Config.hpp"         // for Config
+#include "Hash.hpp"           // for Hash
+#include "datasetManager.hpp" // for datasetManager, state_id_t, dset_id_t
+#include "datasetState.hpp"   // for flagState, inputState
+#include "visBuffer.hpp"      // for visFrameView
+#include "visUtil.hpp"        // for cfloat, input_ctype, ts_to_double, cmap
 
-#include <inttypes.h>
-#include <vector>
+#include "fmt.hpp"      // for format
+#include "gsl-lite.hpp" // for span
+#include "json.hpp"     // for json, basic_json, basic_json<>::object_t
+
+#include <algorithm> // for copy, max, copy_backward
+#include <complex>   // for complex, operator*
+#include <cstdint>   // for uint32_t, uint16_t
+#include <exception> // for exception
+#include <map>       // for map, map<>::mapped_type
+#include <math.h>    // for cosf, sinf
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for invalid_argument, runtime_error
+#include <tuple>     // for get
+#include <vector>    // for vector, __alloc_traits<>::value_type
 
 
 // Register test patterns

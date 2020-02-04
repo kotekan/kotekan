@@ -1,29 +1,34 @@
 #include "chrxUplink.hpp"
 
-#include "buffer.h"
-#include "errors.h"
-#include "output_formating.h"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for ERROR, INFO
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <arpa/inet.h>
-#include <assert.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include <arpa/inet.h>  // for inet_addr
+#include <atomic>       // for atomic_bool
+#include <errno.h>      // for errno
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <netinet/in.h> // for sockaddr_in, htons, in_addr
+#include <regex>        // for match_results<>::_Base_type
+#include <strings.h>    // for bzero
+#include <sys/socket.h> // for send, connect, socket, AF_INET, SOCK_STREAM
+#include <unistd.h>     // for gethostname, ssize_t
+#include <vector>       // for vector
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using std::string;
 
 REGISTER_KOTEKAN_STAGE(chrxUplink);
 
-chrxUplink::chrxUplink(Config& config, const string& unique_name,
+chrxUplink::chrxUplink(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&chrxUplink::main_thread, this)) {
 
@@ -40,13 +45,13 @@ void chrxUplink::main_thread() {
 
     // Apply config.
     char hostname[1024];
-    string s_port;
+    std::string s_port;
 
     _collection_server_ip = config.get<std::string>(unique_name, "collection_server_ip");
     gethostname(hostname, 1024);
 
-    string s_hostname(hostname);
-    string lastNum = s_hostname.substr(s_hostname.length() - 2, 2);
+    std::string s_hostname(hostname);
+    std::string lastNum = s_hostname.substr(s_hostname.length() - 2, 2);
     s_port = fmt::format(fmt("410{:s}"), lastNum);
 
     _collection_server_port =
@@ -54,8 +59,8 @@ void chrxUplink::main_thread() {
     _enable_gating = config.get<bool>(unique_name, "enable_gating");
 
     int buffer_ID = 0;
-    uint8_t* vis_frame = NULL;
-    uint8_t* gate_frame = NULL;
+    uint8_t* vis_frame = nullptr;
+    uint8_t* gate_frame = nullptr;
 
     // Connect to server.
     struct sockaddr_in ch_acq_addr;
@@ -82,7 +87,7 @@ void chrxUplink::main_thread() {
 
         // This call is blocking!
         vis_frame = wait_for_full_frame(vis_buf, unique_name.c_str(), buffer_ID);
-        if (vis_frame == NULL)
+        if (vis_frame == nullptr)
             break;
 
         // INFO("Sending TCP frame to ch_master. frame size: {:d}", vis_buf->frame_size);
@@ -102,7 +107,7 @@ void chrxUplink::main_thread() {
         if (_enable_gating) {
             //            DEBUG("Getting gated buffer");
             gate_frame = wait_for_full_frame(gate_buf, unique_name.c_str(), buffer_ID);
-            if (gate_frame == NULL)
+            if (gate_frame == nullptr)
                 break;
 
             //            DEBUG("Sending gated buffer");

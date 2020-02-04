@@ -1,10 +1,22 @@
 #include "simVdifData.hpp"
 
-#include "errors.h"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_full, register_producer, wait_for_empty_frame
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO
+#include "util.h"              // for e_time
+#include "vdif_functions.h"    // for VDIFHeader
 
-#include <random>
-#include <sys/time.h>
-#include <unistd.h>
+#include <atomic>     // for atomic_bool
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <random>     // for mt19937, random_device, uniform_int_distribution
+#include <regex>      // for match_results<>::_Base_type
+#include <string.h>   // for memcpy, memset
+#include <unistd.h>   // for usleep
+#include <vector>     // for vector
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -12,7 +24,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(simVdifData);
 
-simVdifData::simVdifData(Config& config, const string& unique_name,
+simVdifData::simVdifData(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&simVdifData::main_thread, this)) {
     buf = get_buffer("network_out_buf");
@@ -20,12 +32,6 @@ simVdifData::simVdifData(Config& config, const string& unique_name,
 }
 
 simVdifData::~simVdifData() {}
-
-double e_time(void) {
-    static struct timeval now;
-    gettimeofday(&now, NULL);
-    return (double)(now.tv_sec + now.tv_usec / 1000000.0);
-}
 
 void simVdifData::main_thread() {
     int times = config.get<int>(unique_name, "samples_per_data_set");
@@ -65,7 +71,7 @@ void simVdifData::main_thread() {
     while (!stop_thread) {
         unsigned char* buf_ptr =
             (unsigned char*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
-        if (buf_ptr == NULL)
+        if (buf_ptr == nullptr)
             break;
         stop_time = e_time();
         double dt = stop_time - start_time;

@@ -1,17 +1,26 @@
 #include "fullPacketDump.hpp"
 
-#include "buffer.h"
-#include "errors.h"
-#include "output_formating.h"
-#include "restServer.hpp"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for ERROR, INFO
+#include "restServer.hpp"      // for connectionInstance, restServer, HTTP_RESPONSE, HTTP_RESPO...
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <fcntl.h>
-#include <functional>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include <atomic>     // for atomic_bool
+#include <errno.h>    // for errno
+#include <exception>  // for exception
+#include <fcntl.h>    // for open, O_CREAT, O_WRONLY
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdio.h>    // for snprintf
+#include <stdlib.h>   // for exit, free, malloc
+#include <string.h>   // for memcpy
+#include <unistd.h>   // for close, gethostname, sleep, write, ssize_t
+#include <vector>     // for vector
+
 
 #define MAX_NUM_PACKETS 100
 
@@ -25,7 +34,7 @@ using kotekan::restServer;
 
 REGISTER_KOTEKAN_STAGE(fullPacketDump);
 
-fullPacketDump::fullPacketDump(Config& config, const string& unique_name,
+fullPacketDump::fullPacketDump(Config& config, const std::string& unique_name,
                                bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&fullPacketDump::main_thread, this)) {
 
@@ -53,7 +62,7 @@ fullPacketDump::~fullPacketDump() {
     free(_packet_frame);
 }
 
-void fullPacketDump::packet_grab_callback(connectionInstance& conn, json& json_request) {
+void fullPacketDump::packet_grab_callback(connectionInstance& conn, nlohmann::json& json_request) {
 
     if (!got_packets) {
         conn.send_error("no packets captured yet.", HTTP_RESPONSE::REQUEST_FAILED);
@@ -86,14 +95,14 @@ void fullPacketDump::main_thread() {
 
 
     int first_time = 1;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
 
     // Wait for, and drop full buffers
     while (!stop_thread) {
 
         // This call is blocking!
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         if (!_dump_to_disk) {

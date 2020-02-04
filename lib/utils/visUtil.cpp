@@ -1,6 +1,15 @@
 #include "visUtil.hpp"
 
-#include <cstring>
+#include "Config.hpp" // for Config
+
+#include <cstring>   // for memset
+#include <exception> // for exception
+#include <iterator>  // for back_insert_iterator, back_inserter
+#include <regex>     // for sregex_token_iterator, match_results<>::_Base_type, _NFA, regex
+#include <sstream>   // for basic_stringbuf<>::int_type, basic_stringbuf<>::pos_type, basic_st...
+#include <stdexcept> // for runtime_error, invalid_argument
+
+using nlohmann::json;
 
 // Initialise the serial from a std::string
 input_ctype::input_ctype() {
@@ -230,7 +239,7 @@ double movingAverage::average() {
 }
 
 std::vector<std::string> regex_split(const std::string input, const std::string reg) {
-    vector<std::string> split_array;
+    std::vector<std::string> split_array;
     std::regex split_regex(reg);
     std::copy(std::sregex_token_iterator(input.begin(), input.end(), split_regex, -1),
               std::sregex_token_iterator(), std::back_inserter(split_array));

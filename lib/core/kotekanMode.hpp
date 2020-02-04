@@ -1,15 +1,14 @@
 #ifndef KOTEKAN_MODE_HPP
 #define KOTEKAN_MODE_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "metadata.h"
-#include "restServer.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
+#include "metadata.h"          // for metadataPool  // IWYU pragma: keep
 
-#include <map>
+#include <map>    // for map
+#include <string> // for string
 
-using std::map;
-using std::string;
 
 // doxygen wants the namespace to be documented somewhere
 /*!
@@ -40,9 +39,9 @@ private:
     Config& config;
     bufferContainer buffer_container;
 
-    map<string, Stage*> stages;
-    map<string, struct metadataPool*> metadata_pools;
-    map<string, struct Buffer*> buffers;
+    std::map<std::string, Stage*> stages;
+    std::map<std::string, struct metadataPool*> metadata_pools;
+    std::map<std::string, struct Buffer*> buffers;
 };
 
 } // namespace kotekan

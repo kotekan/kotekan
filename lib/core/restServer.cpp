@@ -1,15 +1,31 @@
 #include "restServer.hpp"
 
-#include "errors.h"
-#include "kotekanLogging.hpp"
+#include "Config.hpp"         // for Config
+#include "kotekanLogging.hpp" // for ERROR_NON_OO, WARN_NON_OO, INFO_NON_OO, DEBUG_NON_OO
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <event2/keyvalq_struct.h>
-#include <pthread.h>
-#include <sched.h>
-#include <signal.h>
-#include <string>
+#include <algorithm>               // for max
+#include <assert.h>                // for assert
+#include <cstdint>                 // for int32_t
+#include <event2/buffer.h>         // for evbuffer_add, evbuffer_peek, iovec, evbuffer_free
+#include <event2/event.h>          // for event_add, event_base_dispatch, event_base_free, even...
+#include <event2/http.h>           // for evhttp_send_reply, evhttp_add_header, evhttp_request_...
+#include <event2/keyvalq_struct.h> // for evkeyvalq, evkeyval, evkeyval::(anonymous)
+#include <event2/thread.h>         // for evthread_use_pthreads
+#include <evhttp.h>                // for evhttp_request
+#include <exception>               // for exception
+#include <mutex>                   // for unique_lock
+#include <netinet/in.h>            // for sockaddr_in, ntohs
+#include <pthread.h>               // for pthread_setaffinity_np, pthread_setname_np
+#include <sched.h>                 // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept>               // for runtime_error
+#include <stdlib.h>                // for exit, free, malloc, size_t
+#include <string>                  // for string, basic_string, allocator, operator!=, operator+
+#include <sys/socket.h>            // for getsockname, socklen_t
+#include <sys/time.h>              // for timeval
+#include <utility>                 // for pair
+#include <vector>                  // for vector
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
 #endif
@@ -238,7 +254,7 @@ string restServer::get_http_message(struct evhttp_request* request) {
     struct evbuffer_iovec* vec_out;
     size_t written = 0;
     // determine how many chunks we need.
-    int n_vec = evbuffer_peek(input_buffer, datalen, NULL, NULL, 0);
+    int n_vec = evbuffer_peek(input_buffer, datalen, nullptr, nullptr, 0);
     if (n_vec < 0) {
         WARN_NON_OO("restClient: Failure in evbuffer_peek(), assuming no message and returning an "
                     "empty string");
@@ -246,8 +262,8 @@ string restServer::get_http_message(struct evhttp_request* request) {
     }
 
     // Allocate space for the chunks.
-    vec_out = (iovec*)malloc(sizeof(struct evbuffer_iovec) * n_vec);
-    n_vec = evbuffer_peek(input_buffer, datalen, NULL, vec_out, n_vec);
+    vec_out = (evbuffer_iovec*)malloc(sizeof(struct evbuffer_iovec) * n_vec);
+    n_vec = evbuffer_peek(input_buffer, datalen, nullptr, vec_out, n_vec);
     for (int i = 0; i < n_vec; i++) {
         size_t len = vec_out[i].iov_len;
         if (written + len > datalen)

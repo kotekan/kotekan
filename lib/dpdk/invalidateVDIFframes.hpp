@@ -8,11 +8,12 @@
 #ifndef INVALIDATE_VDIF_FRAMES_HPP
 #define INVALIDATE_VDIF_FRAMES_HPP
 
-#include "Stage.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "json.hpp"
-
-#include <vector>
+#include <stdint.h> // for int32_t, uint32_t
+#include <string>   // for string
 
 /**
  * @brief Invalidate VDIF frames in the @c out_buf based on flags in the @c lost_samples_buf
@@ -36,7 +37,7 @@
 class invalidateVDIFframes : public kotekan::Stage {
 public:
     /// Standard constructor
-    invalidateVDIFframes(kotekan::Config& config, const string& unique_name,
+    invalidateVDIFframes(kotekan::Config& config, const std::string& unique_name,
                          kotekan::bufferContainer& buffer_container);
 
     /// Destructor

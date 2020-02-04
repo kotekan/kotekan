@@ -7,11 +7,11 @@
 #define VALVE_HPP
 
 #include "Config.hpp"
-#include "Stage.hpp"
+#include "Stage.hpp" // for Stage
 #include "buffer.h"
 #include "bufferContainer.hpp"
 
-#include <string>
+#include <string> // for string
 
 
 /**

@@ -1,42 +1,50 @@
 #include "visTestPattern.hpp"
 
-#include "StageFactory.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "restClient.hpp"
-#include "restServer.hpp"
-#include "visBuffer.hpp"
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for Hash, operator!=
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for wait_for_full_frame, Buffer, mark_frame_empty, mark_fra...
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for datasetManager, dset_id_t
+#include "datasetState.hpp"      // for freqState, inputState, prodState
+#include "kotekanLogging.hpp"    // for INFO, DEBUG, DEBUG2, FATAL_ERROR, WARN
+#include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
+#include "restClient.hpp"        // for restClient, restClient::restReply
+#include "restServer.hpp"        // for connectionInstance, restServer, HTTP_RESPONSE, HTTP_RES...
+#include "visBuffer.hpp"         // for visFrameView
 
-#include "fmt.hpp"
-#include "gsl-lite.hpp"
+#include "fmt.hpp"      // for format, fmt
+#include "gsl-lite.hpp" // for span
 
-#include <atomic>
-#include <complex>
-#include <cstdint>
-#include <cstring>
-#include <dirent.h>
-#include <exception>
-#include <functional>
-#include <future>
-#include <iomanip>
-#include <math.h>
-#include <mutex>
-#include <regex>
-#include <stdexcept>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <time.h>
-#include <tuple>
+#include <algorithm>    // for max
+#include <atomic>       // for atomic_bool
+#include <cmath>        // for log10, sqrt
+#include <complex>      // for operator*, operator-, complex
+#include <cstdint>      // for uint64_t
+#include <cstring>      // for memcpy, strerror
+#include <cxxabi.h>     // for __forced_unwind
+#include <dirent.h>     // for opendir
+#include <errno.h>      // for errno
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
+#include <future>       // for async, future
+#include <iomanip>      // for operator<<, setprecision
+#include <memory>       // for allocator_traits<>::value_type
+#include <mutex>        // for mutex, lock_guard, unique_lock
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for runtime_error, invalid_argument, out_of_range
+#include <sys/stat.h>   // for mkdir, S_IRGRP, S_IROTH, S_IRWXU
+#include <system_error> // for system_error
+#include <time.h>       // for timespec
+#include <tuple>        // for get
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::HTTP_RESPONSE;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
+using nlohmann::json;
 
 REGISTER_KOTEKAN_STAGE(visTestPattern);
 
@@ -316,7 +324,7 @@ void visTestPattern::main_thread() {
                         json data;
                         data["result"] = "OK";
                         data["name"] = test_name;
-                        restReply reply = restClient::instance().make_request_blocking(
+                        restClient::restReply reply = restClient::instance().make_request_blocking(
                             test_done_path, data, test_done_host, test_done_port);
                         if (!reply.first) {
                             FATAL_ERROR("Failed to report back test completion: {:s}",
@@ -344,7 +352,7 @@ void visTestPattern::main_thread() {
         json data;
         data["result"] = error_msg;
         data["name"] = test_name;
-        restReply reply = restClient::instance().make_request_blocking(
+        restClient::restReply reply = restClient::instance().make_request_blocking(
             test_done_path, data, test_done_host, test_done_port);
         if (!reply.first) {
             FATAL_ERROR("Failed to report back test completion: {:s}", reply.second);

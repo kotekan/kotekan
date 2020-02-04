@@ -1,11 +1,27 @@
 #include "gpuBeamformPulsarSimulate.hpp"
 
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chimeMetadata.h"         // for psrCoord, get_fpga_seq_num, get_gps_time, get_stream_...
+#include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
+#include "kotekanLogging.hpp"      // for INFO, ERROR
 
-#include <math.h>
-#include <time.h>
+#include <algorithm>  // for copy
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <cmath>      // for cos, sin, fmod, pow, acos, asin, atan2, sqrt
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <memory>     // for allocator_traits<>::value_type
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <stdio.h>    // for fclose, fopen, fread, snprintf, FILE
+#include <stdlib.h>   // for free, malloc
+#include <string.h>   // for memcpy
+#include <time.h>     // for tm, timespec, localtime
 
 
 #define HI_NIBBLE(b) (((b) >> 4) & 0x0F)
@@ -26,7 +42,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(gpuBeamformPulsarSimulate);
 
-gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config, const string& unique_name,
+gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config, const std::string& unique_name,
                                                      bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&gpuBeamformPulsarSimulate::main_thread, this)) {
@@ -41,9 +57,9 @@ gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config, const strin
     _source_ra = config.get<std::vector<float>>(unique_name, "source_ra");
     _source_dec = config.get<std::vector<float>>(unique_name, "source_dec");
     _reorder_map = config.get<std::vector<int32_t>>(unique_name, "reorder_map");
-    _gain_dir = config.get<std::vector<string>>(unique_name, "pulsar_gain/pulsar_gain_dir");
+    _gain_dir = config.get<std::vector<std::string>>(unique_name, "pulsar_gain/pulsar_gain_dir");
     INFO("[PSR CPU] start with gain {:s} {:s} {:s}", _gain_dir[0], _gain_dir[1], _gain_dir[2]);
-    vector<float> dg = {0.0, 0.0}; // re,im
+    std::vector<float> dg = {0.0, 0.0}; // re,im
     default_gains = config.get_default<std::vector<float>>(unique_name, "frb_missing_gains", dg);
 
 
@@ -206,11 +222,11 @@ void gpuBeamformPulsarSimulate::main_thread() {
 
         unsigned char* input =
             (unsigned char*)wait_for_full_frame(input_buf, unique_name.c_str(), input_buf_id);
-        if (input == NULL)
+        if (input == nullptr)
             break;
         float* output =
             (float*)wait_for_empty_frame(output_buf, unique_name.c_str(), output_buf_id);
-        if (output == NULL)
+        if (output == nullptr)
             break;
 
         for (int i = 0; i < input_len; i++) {
@@ -233,13 +249,13 @@ void gpuBeamformPulsarSimulate::main_thread() {
 
         // Load in gains (without dynamic update capability like in GPU, just get set once in the
         // beginning)
-        FILE* ptr_myfile = NULL;
+        FILE* ptr_myfile = nullptr;
         char filename[512];
         for (int b = 0; b < _num_pulsar; b++) {
             snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",
                      _gain_dir[b].c_str(), freq_now);
             ptr_myfile = fopen(filename, "rb");
-            if (ptr_myfile == NULL) {
+            if (ptr_myfile == nullptr) {
                 ERROR("CPU verification code: Cannot open gain file {:s}", filename);
                 for (uint i = 0; i < _num_elements; i++) {
                     cpu_gain[(b * _num_elements + i) * 2] = default_gains[0];

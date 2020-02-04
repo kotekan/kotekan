@@ -1,12 +1,26 @@
 #include "timeDownsample.hpp"
 
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for mark_frame_empty, allocate_new_metadata_object, mark_fr...
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "kotekanLogging.hpp"    // for DEBUG
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
+#include "visBuffer.hpp"         // for visFrameView
+#include "visUtil.hpp"           // for frameID, modulo, cfloat, operator-, ts_to_double
 
-#include <time.h>
+#include "gsl-lite.hpp" // for span
+
+#include <atomic>     // for atomic_bool
+#include <complex>    // for complex
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <stdint.h>   // for uint32_t, uint64_t, int32_t
+#include <time.h>     // for timespec
+#include <tuple>      // for get
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;
@@ -16,7 +30,7 @@ using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(timeDownsample);
 
-timeDownsample::timeDownsample(Config& config, const string& unique_name,
+timeDownsample::timeDownsample(Config& config, const std::string& unique_name,
                                bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&timeDownsample::main_thread, this)) {
 

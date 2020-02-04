@@ -7,20 +7,19 @@
 #define _VIS_RAW_READER_HPP
 
 #include "Config.hpp"
-#include "Stage.hpp"
+#include "Stage.hpp" // for Stage
 #include "buffer.h"
 #include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "prometheusMetrics.hpp"
-#include "visUtil.hpp"
+#include "datasetManager.hpp" // for dset_id_t
+#include "visUtil.hpp"        // for freq_ctype (ptr only), input_ctype, prod_ctype, rstack_ctype
 
-#include <stddef.h>
-#include <stdint.h>
-#include <string>
-#include <utility>
-#include <vector>
+#include "json.hpp" // for json
 
-using json = nlohmann::json;
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint32_t, uint8_t
+#include <string>   // for string
+#include <utility>  // for pair
+#include <vector>   // for vector
 
 
 /**
@@ -56,7 +55,7 @@ class visRawReader : public kotekan::Stage {
 
 public:
     /// default constructor
-    visRawReader(kotekan::Config& config, const string& unique_name,
+    visRawReader(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
 
     ~visRawReader();
@@ -109,7 +108,7 @@ public:
     /**
      * @brief Get the metadata saved into the file.
      **/
-    const json& metadata() {
+    const nlohmann::json& metadata() {
         return _metadata;
     }
 
@@ -149,7 +148,7 @@ private:
     Buffer* out_buf;
 
     // The metadata
-    json _metadata;
+    nlohmann::json _metadata;
     std::vector<time_ctype> _times;
     std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
     std::vector<prod_ctype> _prods;

@@ -1,25 +1,28 @@
 #include "freqSplit.hpp"
 
-#include "StageFactory.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "Hash.hpp"            // for operator!=
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for wait_for_full_frame, allocate_new_metadata_object, mark_f...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for dset_id_t, datasetManager, state_id_t
+#include "datasetState.hpp"    // for freqState, datasetState, state_uptr
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO
+#include "visBuffer.hpp"       // for visFrameView
+#include "visUtil.hpp"         // for freq_ctype
 
-#include <atomic>
-#include <cstdint>
-#include <cxxabi.h>
-#include <exception>
-#include <functional>
-#include <inttypes.h>
-#include <memory>
-#include <regex>
-#include <signal.h>
-#include <stddef.h>
-#include <stdexcept>
-#include <tuple>
+#include <algorithm>    // for max
+#include <atomic>       // for atomic_bool
+#include <cxxabi.h>     // for __forced_unwind
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <memory>       // for make_unique, allocator_traits<>::value_type
+#include <regex>        // for match_results<>::_Base_type
+#include <stddef.h>     // for size_t
+#include <stdexcept>    // for out_of_range, runtime_error
+#include <stdint.h>     // for uint32_t
+#include <system_error> // for system_error
+#include <tuple>        // for tie, tuple
 
 
 using kotekan::bufferContainer;
@@ -29,7 +32,8 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(freqSplit);
 
 
-freqSplit::freqSplit(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+freqSplit::freqSplit(Config& config, const std::string& unique_name,
+                     bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&freqSplit::main_thread, this)) {
 
     // Get the list of buffers that this stage shoud connect to
