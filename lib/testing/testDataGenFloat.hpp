@@ -20,6 +20,7 @@ private:
     uint32_t _samples_per_data_set;
     bool _pathfinder_test_mode;
     uint32_t _first_frame_index;
+    bool _gen_all_const_data;
 };
 
 #endif

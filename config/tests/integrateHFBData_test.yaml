@@ -62,6 +62,7 @@ gen_input_data:
   test_data_gen_0:
     value: test_value
     first_frame_index: 21
+    gen_all_const_data: true
     kotekan_stage: testDataGenFloat
     network_out_buf: beamform_hfb_input_buffer_0
   test_data_gen_lost_samples:

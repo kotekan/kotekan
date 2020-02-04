@@ -26,6 +26,7 @@ testDataGenFloat::testDataGenFloat(Config& config, const string& unique_name,
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
     _first_frame_index = config.get_default<uint32_t>(unique_name, "first_frame_index", 0);
+    _gen_all_const_data = config.get_default<bool>(unique_name, "gen_all_const_data", false);
 }
 
 testDataGenFloat::~testDataGenFloat() {}
@@ -93,7 +94,7 @@ void testDataGenFloat::main_thread() {
         } else {
             seq_num += _samples_per_data_set;
         }
-        if (frame_id == 0)
+        if (frame_id == 0 && !_gen_all_const_data)
             finished_seeding_consant = true;
     }
 }
