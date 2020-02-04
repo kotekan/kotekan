@@ -101,10 +101,10 @@ protected:
                  port, stream_id.crate_id, stream_id.slot_id, stream_id.link_id, stream_id.unused,
                  last_seq, seq);
 
-            if (!check_cross_handler_alignment(last_seq)) {
+            /*if (!check_cross_handler_alignment(last_seq)) {
                 FATAL_ERROR("DPDK failed to align packets between handlers, closing kotekan!");
                 return false;
-            }
+            }*/
 
             got_first_packet = true;
 

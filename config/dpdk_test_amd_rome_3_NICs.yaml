@@ -5,17 +5,43 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: debug
 
-buffer_depth: 8
-samples_per_data_set: 49152
-num_elements: 16
-num_local_freq: 128
+buffer_depth: 16
+samples_per_data_set: 32768 * 4
+num_local_freq: 8
+num_elements: 256
+num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
+sizeof_int: 4
+num_gpus: 1
+block_size: 32
+num_data_sets: 1
 
-cpu_affinity: [8, 72, 9, 73, 10, 74, 11, 75]
+cpu_affinity: [8, 72, 9, 73, 10, 74, 11, 75, 12, 76, 12, 77, 13, 78, 14, 79, 15, 80]
 
 # Pool
 main_pool:
     kotekan_metadata_pool: chimeMetadata
     num_metadata_objects: 128 * buffer_depth
+
+gpu_input_merged:
+    kotekan_buffer: standard
+    num_frames: 10 # 24 * 4
+    frame_size: samples_per_data_set * num_elements * num_local_freq
+    metadata_pool: main_pool
+
+gpu_input_merged_1:
+    kotekan_buffer: standard
+    num_frames: 10 # 24 * 4
+    frame_size: samples_per_data_set * num_elements * num_local_freq
+    metadata_pool: main_pool
+
+gpu_output_buffers:
+    num_frames: buffer_depth * 4
+    frame_size: num_local_freq * num_blocks * (block_size*block_size)*2*num_data_sets  * sizeof_int
+    metadata_pool: main_pool
+    gpu_output_buffer:
+        kotekan_buffer: standard
+    gpu_output_buffer_1:
+        kotekan_buffer: standard
 
 # Buffers
 gpu_input_buffers:
@@ -130,7 +156,7 @@ dpdk:
     kotekan_stage: dpdkCore
     # Format is index = lcore, value = cpu core
     lcore_cpu_map: [0,64,1,65,2,66,3,67,4,68,5,69]
-    master_lcore_cpu: 6
+    master_lcore_cpu: 7
     fpga_packet_size: 4680
     alignment: samples_per_data_set
     mbuf_cache_size: 250
@@ -325,3 +351,87 @@ zero_samples:
         out_buf: gpu_input_buffer_23
         lost_samples_buf: lost_samples_buffer_23
 
+# This seems to find the lockup condition
+monitor:
+    kotekan_stage: monitorBuffer
+    bufs:
+        - gpu_input_buffer_0
+        - lost_samples_buffer_0
+    timeout: 10
+    fill_threshold: 0.80
+
+buffer_merge:
+    kotekan_stage: bufferMerge
+    in_bufs:
+        - gpu_input_buffer_0
+        - gpu_input_buffer_1
+        - gpu_input_buffer_2
+        - gpu_input_buffer_3
+        - gpu_input_buffer_4
+        - gpu_input_buffer_5
+        - gpu_input_buffer_6
+        - gpu_input_buffer_7
+    out_buf: gpu_input_merged
+
+buffer_merge_1:
+    kotekan_stage: bufferMerge
+    in_bufs:
+        - gpu_input_buffer_8
+        - gpu_input_buffer_9
+        - gpu_input_buffer_10
+        - gpu_input_buffer_11
+#        - gpu_input_buffer_12
+#        - gpu_input_buffer_13
+#        - gpu_input_buffer_14
+#        - gpu_input_buffer_15
+    out_buf: gpu_input_merged_1
+
+
+#gen_data:
+#    type: const
+#    value: 153
+#    kotekan_stage: testDataGen
+#    out_buf: gpu_input_merged
+#    wait: false
+#
+#gen_data_0:
+#    type: const
+#    value: 153
+#    kotekan_stage: testDataGen
+#    out_buf: gpu_input_merged_1
+#    wait: false
+
+gpu:
+    profiling: true
+    kernel_path: "../../lib/opencl/kernels/"
+    gain_dir: "/etc/kotekan/"
+    #log_level: debug2
+    data_format: "4+4b"
+    frame_arrival_period: samples_per_data_set / 390625.0 / 8
+    commands:
+        - name: clInputData
+        #- name: clPresumZero
+        #- name: clOutputDataZero
+        - name: clPresumKernel
+        #  - name: clPreseedKernel
+        #  - name: clCorrelatorKernel
+        # - name: clKVCorr
+        - name: clOutputData
+    gpu_0:
+        kotekan_stage: clProcess
+        cpu_affinity: [16,17,18,19]
+        gpu_id: 0
+        gpu_thread_id: 0
+        in_buffers:
+            network_buf: gpu_input_merged
+        out_buffers:
+            output_buf: gpu_output_buffer
+#    gpu_1:
+#        kotekan_stage: clProcess
+#        cpu_affinity: [20,21,22,23]
+#        gpu_id: 0
+#        gpu_thread_id: 1
+#        in_buffers:
+#            network_buf: gpu_input_merged_1
+#        out_buffers:
+#            output_buf: gpu_output_buffer_1
