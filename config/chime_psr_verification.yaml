@@ -263,18 +263,18 @@ cpu_simulate:
       beam_out_buf: cpu_output_buffer_0
       pulsar_gain:
         pulsar_gain_dir:
-          - . #/mnt/frb-baseband/GainFiles/Latest_PSR
-          - . #/mnt/frb-baseband/GainFiles/Latest_PSR
-          - . #/mnt/frb-baseband/GainFiles/Latest_PSR
-          - . #/mnt/frb-baseband/GainFiles/Latest_PSR
-          - . #/mnt/frb-baseband/GainFiles/Latest_PSR
-          - . #/mnt/frb-baseband/GainFiles/Latest_PSR
-          - . #/mnt/frb-baseband/GainFiles/Latest_PSR
-          - . #/mnt/frb-baseband/GainFiles/Latest_PSR
-          - . #/mnt/frb-baseband/GainFiles/Latest_PSR
-          - . #/mnt/frb-baseband/GainFiles/Latest_PSR
-          - . #/mnt/frb-baseband/GainFiles/Latest_PSR
-          - . #/mnt/frb-baseband/GainFiles/Latest_PSR
+          - .
+          - .
+          - .
+          - .
+          - .
+          - .
+          - .
+          - .
+          - .
+          - .
+          - .
+          - .
 
 check_data:
   bf_data_check_0:
