@@ -105,7 +105,7 @@ bool ReadGain::update_gains_psr_callback(nlohmann::json& json) {
         _gain_dir_psr = json.at("pulsar_gain_dir").get<std::vector<string>>();
         string output_msg = "[PSR] Updating gains from ";
         for (int i = 0; i < _num_beams; i++) {
-            output_msg += _gain_dir_psr[i].c_str();
+            output_msg += _gain_dir_psr[i];
             output_msg += " ";
         }
         INFO("{:s}", output_msg);
