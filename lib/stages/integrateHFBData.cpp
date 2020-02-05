@@ -104,19 +104,40 @@ void integrateHFBData::main_thread() {
 
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t* out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
-    if (out_frame == NULL)
-        goto end_loop;
+    if (out_frame == nullptr)
+        return; 
 
     while (!stop_thread) {
         // Get an input buffer, This call is blocking!
         in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_buffer_ID);
-        if (in_frame == NULL)
-            goto end_loop;
-
+        if (in_frame == nullptr)
+            return;
         compressed_lost_samples_frame = wait_for_full_frame(
             compressed_lost_samples_buf, unique_name.c_str(), compress_buffer_ID);
-        if (compressed_lost_samples_frame == NULL)
-            goto end_loop;
+        if (compressed_lost_samples_frame == nullptr)
+            return;
+
+        // Try and synchronize up the frames. Even though they arrive at
+        // different rates, this should eventually sync them up.
+        auto hfb_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
+        auto cls_seq_num = get_fpga_seq_num(compressed_lost_samples_buf, compress_buffer_ID);
+
+        if (hfb_seq_num < cls_seq_num) {
+            DEBUG("Dropping incoming HFB frame to sync up. HFB frame: {}; Compressed Lost Samples frame: {}, diff {}",
+                  hfb_seq_num, cls_seq_num, hfb_seq_num - cls_seq_num);
+            mark_frame_empty(in_buf, unique_name.c_str(), in_buffer_ID);
+            in_buffer_ID = (in_buffer_ID + 1) % in_buf->num_frames;
+            continue;
+        }
+        if (cls_seq_num < hfb_seq_num) {
+            DEBUG("Dropping incoming Compressed Lost Samples frame to sync up. HFB frame: {}; Compressed Lost Samples frame: {}, diff {}",
+                  hfb_seq_num, cls_seq_num, hfb_seq_num - cls_seq_num);
+            mark_frame_empty(compressed_lost_samples_buf, unique_name.c_str(), compress_buffer_ID);
+            compress_buffer_ID = (compress_buffer_ID + 1) % compressed_lost_samples_buf->num_frames;
+            continue;
+        }
+        DEBUG2("Frames are synced. HFB frame: {}; Compressed Lost Samples frame: {}, diff {}", hfb_seq_num, cls_seq_num,
+               hfb_seq_num - cls_seq_num);
 
         float* sum_data = (float*)out_buf->frames[out_buffer_ID];
         float* input_data = (float*)in_buf->frames[in_buffer_ID];
@@ -192,8 +213,8 @@ void integrateHFBData::main_thread() {
                 // Get a new output buffer
                 out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
                 out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
-                if (out_frame == NULL)
-                    goto end_loop;
+                if (out_frame == nullptr)
+                    return;
 
                 sum_data = (float*)out_buf->frames[out_buffer_ID];
             } else {
@@ -226,5 +247,4 @@ void integrateHFBData::main_thread() {
         compress_buffer_ID = (compress_buffer_ID + 1) % compressed_lost_samples_buf->num_frames;
 
     } // end stop thread
-end_loop:;
 }
