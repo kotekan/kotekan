@@ -69,6 +69,7 @@ void compressLostSamples::main_thread() {
 
         // Create new metadata
         allocate_new_metadata_object(out_buf, out_buffer_ID);
+        copy_metadata(in_buf, in_buffer_ID, out_buf, out_buffer_ID);
         zero_lost_samples(out_buf, out_buffer_ID);
         atomic_add_lost_timesamples(out_buf, out_buffer_ID, total_lost_samples);
 

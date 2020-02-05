@@ -200,6 +200,7 @@ copy:
   in_buf: compressed_lost_samples_buffer
   out_bufs: 
     - compressed_lost_samples_buffer_cpy
+
 gpu:
   kernel_path: "../lib/hsa/kernels/"
   commands:
