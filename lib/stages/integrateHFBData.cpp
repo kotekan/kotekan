@@ -105,7 +105,7 @@ void integrateHFBData::main_thread() {
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t* out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
     if (out_frame == nullptr)
-        return; 
+        return;
 
     while (!stop_thread) {
         // Get an input buffer, This call is blocking!
@@ -123,21 +123,23 @@ void integrateHFBData::main_thread() {
         auto cls_seq_num = get_fpga_seq_num(compressed_lost_samples_buf, compress_buffer_ID);
 
         if (hfb_seq_num < cls_seq_num) {
-            DEBUG("Dropping incoming HFB frame to sync up. HFB frame: {}; Compressed Lost Samples frame: {}, diff {}",
+            DEBUG("Dropping incoming HFB frame to sync up. HFB frame: {}; Compressed Lost Samples "
+                  "frame: {}, diff {}",
                   hfb_seq_num, cls_seq_num, hfb_seq_num - cls_seq_num);
             mark_frame_empty(in_buf, unique_name.c_str(), in_buffer_ID);
             in_buffer_ID = (in_buffer_ID + 1) % in_buf->num_frames;
             continue;
         }
         if (cls_seq_num < hfb_seq_num) {
-            DEBUG("Dropping incoming Compressed Lost Samples frame to sync up. HFB frame: {}; Compressed Lost Samples frame: {}, diff {}",
+            DEBUG("Dropping incoming Compressed Lost Samples frame to sync up. HFB frame: {}; "
+                  "Compressed Lost Samples frame: {}, diff {}",
                   hfb_seq_num, cls_seq_num, hfb_seq_num - cls_seq_num);
             mark_frame_empty(compressed_lost_samples_buf, unique_name.c_str(), compress_buffer_ID);
             compress_buffer_ID = (compress_buffer_ID + 1) % compressed_lost_samples_buf->num_frames;
             continue;
         }
-        DEBUG2("Frames are synced. HFB frame: {}; Compressed Lost Samples frame: {}, diff {}", hfb_seq_num, cls_seq_num,
-               hfb_seq_num - cls_seq_num);
+        DEBUG2("Frames are synced. HFB frame: {}; Compressed Lost Samples frame: {}, diff {}",
+               hfb_seq_num, cls_seq_num, hfb_seq_num - cls_seq_num);
 
         float* sum_data = (float*)out_buf->frames[out_buffer_ID];
         float* input_data = (float*)in_buf->frames[in_buffer_ID];
