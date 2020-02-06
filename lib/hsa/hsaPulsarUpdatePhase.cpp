@@ -9,6 +9,7 @@
 #include "hsaBase.h"
 #include "restServer.hpp"
 
+#include <algorithm>
 #include <math.h>
 #include <signal.h>
 #include <string>
@@ -173,7 +174,7 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec t
         alt = asin(alt);
         double az = (sin(psr_coord.dec[b] * D2R) - sin(alt) * sin(inst_lat * D2R))
                     / (cos(alt) * cos(inst_lat * D2R));
-        az = acos(az);
+        az = acos(std::clamp(az, -1.0, 1.0));
         if (sin(hour_angle * D2R) >= 0) {
             az = TAU - az;
         }
