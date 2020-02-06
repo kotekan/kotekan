@@ -168,6 +168,12 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec t
     }
     LST = fmod(LST, 24);
     for (int b = 0; b < _num_beams; b++) {
+        if (psr_coord.scaling[b] == 1) {
+            for (uint32_t i = 0; i < _num_elements * 2; ++i) {
+                output[b * _num_elements * 2 + i] = gains[b * _num_elements * 2 + i];
+            }
+            continue;
+        }
         double hour_angle = LST * 15. - psr_coord.ra[b];
         double alt = sin(psr_coord.dec[b] * D2R) * sin(inst_lat * D2R)
                      + cos(psr_coord.dec[b] * D2R) * cos(inst_lat * D2R) * cos(hour_angle * D2R);
