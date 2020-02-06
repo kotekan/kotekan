@@ -177,7 +177,7 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec t
         double hour_angle = LST * 15. - psr_coord.ra[b];
         double alt = sin(psr_coord.dec[b] * D2R) * sin(inst_lat * D2R)
                      + cos(psr_coord.dec[b] * D2R) * cos(inst_lat * D2R) * cos(hour_angle * D2R);
-        alt = asin(alt);
+        alt = asin(std::clamp(alt, -1.0, 1.0));
         double az = (sin(psr_coord.dec[b] * D2R) - sin(alt) * sin(inst_lat * D2R))
                     / (cos(alt) * cos(inst_lat * D2R));
         az = acos(std::clamp(az, -1.0, 1.0));
