@@ -16,9 +16,9 @@ extern "C" {
 #pragma pack()
 
 struct psrCoord {
-  float ra[MAX_NUM_BEAMS];
-  float dec[MAX_NUM_BEAMS];
-  uint32_t scaling[MAX_NUM_BEAMS];
+    float ra[MAX_NUM_BEAMS];
+    float dec[MAX_NUM_BEAMS];
+    uint32_t scaling[MAX_NUM_BEAMS];
 };
 
 struct chimeMetadata {
