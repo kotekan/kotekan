@@ -14,13 +14,26 @@ Notes:
 
 #include "hsaRfiVdif.hpp"
 
+#include "Config.hpp"             // for Config
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaBase.h"              // for hsa_host_malloc, HSA_CHECK
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+#include "vdif_functions.h"       // for VDIFHeader
+
+#include <cmath>     // for sqrt
+#include <cstdint>   // for int32_t
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <string.h>  // for memcpy, memset
+#include <vector>    // for vector
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaRfiVdif);
 
-hsaRfiVdif::hsaRfiVdif(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                       hsaDeviceInterface& device) :
+hsaRfiVdif::hsaRfiVdif(Config& config, const std::string& unique_name,
+                       bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "rfi_vdif" KERNEL_EXT, "rfi_vdif.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
@@ -81,7 +94,7 @@ hsa_signal_t hsaRfiVdif::execute(int gpu_frame_id, hsa_signal_t precede_signal) 
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 
-    hsa_status_t hsa_status = hsa_signal_create(1, 0, NULL, &signals[gpu_frame_id]);
+    hsa_status_t hsa_status = hsa_signal_create(1, 0, nullptr, &signals[gpu_frame_id]);
     HSA_CHECK(hsa_status);
 
     // Obtain the current queue write index.

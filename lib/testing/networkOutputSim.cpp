@@ -1,28 +1,24 @@
 #include "networkOutputSim.hpp"
 
-#include "Config.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "nt_memcpy.h"
-#include "test_data_generation.h"
-#include "time_tracking.h"
-#include "util.h"
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for mark_frame_full, register_producer, wait_for_empty_frame
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chimeMetadata.h"         // for set_first_packet_recv_time, set_fpga_seq_num, set_str...
+#include "fpga_header_functions.h" // for stream_id_t
+#include "kotekanLogging.hpp"      // for ERROR
+#include "test_data_generation.h"  // for generate_complex_sine_data_set, generate_const_data_set
 
-#include <arpa/inet.h>
-#include <assert.h>
-#include <dirent.h>
-#include <errno.h>
-#include <functional>
-#include <inttypes.h>
-#include <memory.h>
-#include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <unistd.h>
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <pthread.h>  // for pthread_exit
+#include <regex>      // for match_results<>::_Base_type
+#include <stdlib.h>   // for exit
+#include <sys/time.h> // for gettimeofday, timeval
+#include <vector>     // for vector
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -30,7 +26,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(networkOutputSim);
 
-networkOutputSim::networkOutputSim(Config& config_, const string& unique_name,
+networkOutputSim::networkOutputSim(Config& config_, const std::string& unique_name,
                                    bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&networkOutputSim::main_thread, this)) {
 
@@ -52,13 +48,13 @@ void networkOutputSim::main_thread() {
     _num_elem = config.get<int32_t>(unique_name, "num_elements");
 
     int frame_id = link_id;
-    unsigned char* frame = NULL;
+    unsigned char* frame = nullptr;
     uint64_t fpga_seq_num = 0;
     int constant = 9;
 
     while (!stop_thread) {
         frame = (unsigned char*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         if ((fpga_seq_num / _samples_per_data_set) % 2 == 0) {
@@ -70,7 +66,7 @@ void networkOutputSim::main_thread() {
         set_stream_id(buf, frame_id, stream_id);
         set_fpga_seq_num(buf, frame_id, fpga_seq_num);
         struct timeval now;
-        gettimeofday(&now, NULL);
+        gettimeofday(&now, nullptr);
         set_first_packet_recv_time(buf, frame_id, now);
 
         // TODO perfect place for lambdas here.

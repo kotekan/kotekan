@@ -1,0 +1,88 @@
+# IWYU mappings for the kotekan project
+[
+    # Make use of mapping files that come with iwyu
+    { ref: "tools/iwyu/iwyu.gcc.imp" },
+    { ref: "tools/iwyu/libcxx.imp" },
+    { ref: "tools/iwyu/boost-1.64-all.imp" },
+
+    # Add what is missing
+    { include: [ "<bits/exception.h>", private, "<exception>", public ] },
+    { include: [ "<bits/types/struct_tm.h>", private, "<time.h>", public ] },
+    { include: [ "<bits/std_abs.h>", private, "<cmath>", public ] },
+    { include: [ "<bits/getopt_core.h>", private, "<unistd.h>", public ] },
+    { include: [ "<bits/types/sig_atomic_t.h>", private, "<csignal>", public ] },
+
+    # Use the main fmt header file only
+    { include: [ "\"fmt/core.h\"", private, "\"fmt.hpp\"", public ] },
+    { include: [ "\"fmt/ostream.h\"", private, "\"fmt.hpp\"", public ] },
+
+    # libevent
+    { symbol: [ "evhttp_request", public, "<evhttp.h>", public ] },
+    { symbol: [ "evbuffer_iovec", public, "<event2/buffer.h>", public ] },
+    { symbol: [ "iovec", public, "<event2/buffer.h>", public ] },
+
+    # highfive
+    { include: [ "<highfive/bits/../H5DataType.hpp>", public, "<highfive/H5DataType.hpp>", public ] },
+    { include: [ "<highfive/bits/../H5DataSet.hpp>", public, "<highfive/H5DataSet.hpp>", public ] },
+    { include: [ "<highfive/bits/../H5DataSpace.hpp>", public, "<highfive/H5DataSpace.hpp>", public ] },
+    { include: [ "<highfive/bits/../H5Object.hpp>", public, "<highfive/H5Object.hpp>", public ] },
+    { include: [ "<highfive/bits/../H5Attribute.hpp>", public, "<highfive/H5Attribute.hpp>", public ] },
+    { include: [ "<highfive/bits/../H5Exception.hpp>", public, "<highfive/H5Exception.hpp>", public ] },
+    { include: [ "<highfive/bits/../H5File.hpp>", public, "<highfive/H5File.hpp>", public ] },
+    { include: [ "<highfive/bits/../H5Group.hpp>", public, "<highfive/H5Group.hpp>", public ] },
+    { include: [ "<highfive/bits/../H5Selection.hpp>", public, "<highfive/H5Selection.hpp>", public ] },
+    { include: [ "<highfive/bits/H5Annotate_traits_misc.hpp>", public, "<highfive/H5DataSet.hpp>", public ] },
+    { include: [ "<highfive/bits/H5Attribute_misc.hpp>", public, "<highfive/H5Attribute.hpp>", public ] },
+    { include: [ "<highfive/bits/H5DataSet_misc.hpp>", public, "<highfive/H5DataSet.hpp>", public ] },
+    { include: [ "<highfive/bits/H5DataType_misc.hpp>", public, "<highfive/H5DataType.hpp>", public ] },
+    { include: [ "<highfive/bits/H5Dataspace_misc.hpp>", public, "<highfive/H5DataSpace.hpp>", public ] },
+    { include: [ "<highfive/bits/H5Exception_misc.hpp>", public, "<highfive/H5Exception.hpp>", public ] },
+    { include: [ "<highfive/bits/H5File_misc.hpp>", public, "<highfive/H5File.hpp>", public ] },
+    { include: [ "<highfive/bits/H5Node_traits_misc.hpp>", public, "<highfive/H5File.hpp>", public ] },
+    { include: [ "<highfive/bits/H5Object_misc.hpp>", public, "<highfive/H5Object.hpp>", public ] },
+    { include: [ "<highfive/bits/H5Slice_traits_misc.hpp>", public, "<highfive/H5Selection.hpp>", public ] },
+    { include: [ "\"H5Ppublic.h\"", public, "<highfive/H5PropertyList.hpp>", public ] },
+    { include: [ "\"H5Dpublic.h\"", public, "<highfive/H5DataSet.hpp>", public ] },
+    { include: [ "\"H5Ipublic.h\"", public, "<highfive/H5Object.hpp>", public ] },
+    { include: [ "\"H5Zpublic.h\"", public, "<highfive/H5Object.hpp>", public ] },
+    { include: [ "\"H5public.h\"", public, "<highfive/H5Object.hpp>", public ] },
+    { include: [ "\"H5Tpublic.h\"", public, "<highfive/H5DataType.hpp>", public ] },
+    { include: [ "\"H5Fpublic.h>\"", public, "<highfive/H5File.hpp>", public ] },
+    { include: [ "<H5Ppublic.h>", public, "<highfive/H5PropertyList.hpp>", public ] },
+
+
+    # Boost unit tests
+    { include: [ "<boost/preprocessor/comparison/not_equal.hpp>", private, "<boost/test/included/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/control/iif.hpp>", private, "<boost/test/included/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/logical/bool.hpp>", private, "<boost/test/included/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/logical/compl.hpp>", private, "<boost/test/included/unit_test.hpp>", public ] },
+    { include: [ "<boost/test/unit_test_suite.hpp>", public, "<boost/test/included/unit_test.hpp>", public ] },
+    { include: [ "<boost/test/tools/old/interface.hpp>", public, "<boost/test/included/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/arithmetic/dec.hpp>", private, "<boost/test/included/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/control/expr_iif.hpp>", private, "<boost/test/included/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/repetition/for.hpp>", public, "<boost/test/included/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/seq/elem.hpp>", private, "<boost/test/included/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/seq/size.hpp>", private, "<boost/test/included/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/seq/enum.hpp>", private, "<boost/test/included/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/tuple/elem.hpp>", public, "<boost/test/included/unit_test.hpp>", public ] },
+    { include: [ "<boost/preprocessor/variadic/elem.hpp>", private, "<boost/test/included/unit_test.hpp>", public ] },
+    { include: [ "<boost/test/tree/test_unit.hpp>", public, "<boost/test/included/unit_test.hpp>", public ] },
+
+    # Blaze
+    { include: [ "<blaze/math/adaptors/hermitianmatrix/Dense.h>", public, "<blaze/Blaze.h>", public ] },
+    { include: [ "<blaze/math/StorageOrder.h>", public, "<blaze/Blaze.h>", public ] },
+    { include: [ "<blaze/math/dense/DynamicMatrix.h>", public, "<blaze/Blaze.h>", public ] },
+    { include: [ "<blaze/math/dense/DynamicVector.h>", public, "<blaze/Blaze.h>", public ] },
+    { include: [ "<blaze/math/expressions/DMatDeclHermExpr.h>", public, "<blaze/Blaze.h>", public ] },
+    { include: [ "<blaze/math/expressions/Matrix.h>", public, "<blaze/Blaze.h>", public ] },
+    { include: [ "<blaze/math/views/Band.h>", public, "<blaze/Blaze.h>", public ] },
+    { include: [ "<blaze/math/views/Submatrix.h>", public, "<blaze/Blaze.h>", public ] },
+    { include: [ "<blaze/math/views/band/Dense.h>", public, "<blaze/Blaze.h>", public ] },
+    { include: [ "<blaze/math/views/submatrix/Dense.h>", public, "<blaze/Blaze.h>", public ] },
+
+    # LAPACK
+    { include: [ "\"lapack.h\"", public, "<lapacke.h>", public ] },
+
+    { include: ["<ext/alloc_traits.h>", "private", "<vector>", "public"] },
+    { symbol: [ "FALLOC_FL_KEEP_SIZE", public, "<fcntl.h>", public ] },
+]

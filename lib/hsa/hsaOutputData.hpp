@@ -1,13 +1,19 @@
 #ifndef HSA_OUTPUT_DATA_H
 #define HSA_OUTPUT_DATA_H
 
-#include "hsaSubframeCommand.hpp"
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "hsaSubframeCommand.hpp" // for hsaSubframeCommand
 
-#include <string>
+#include <stdint.h> // for int32_t
+#include <string>   // for string
 
 class hsaOutputData : public hsaSubframeCommand {
 public:
-    hsaOutputData(kotekan::Config& config, const string& unique_name,
+    hsaOutputData(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaOutputData();

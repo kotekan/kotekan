@@ -6,7 +6,7 @@
 
 class clKVCorr : public clCommand {
 public:
-    clKVCorr(kotekan::Config& config, const string& unique_name,
+    clKVCorr(kotekan::Config& config, const std::string& unique_name,
              kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
     ~clKVCorr();
     virtual void build() override;
@@ -38,7 +38,7 @@ private:
     /// GPU work items.
     int32_t _block_size;
     /// Allow different options for the input data ordering. Current just 4+4b vs dot4b.
-    string _data_format;
+    std::string _data_format;
     /// This will enable use of the AMD-intrinsic-laden overly-complex & optimized kernel.
     bool _full_complicated;
 };

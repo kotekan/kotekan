@@ -1,11 +1,22 @@
 #include "hsaBeamformPulsar.hpp"
 
+#include "Config.hpp"             // for Config
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaBase.h"              // for hsa_host_free, hsa_host_malloc
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+
+#include <cstdint>   // for int32_t
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <string.h>  // for memcpy, memset
+#include <vector>    // for vector
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaBeamformPulsar);
 
-hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const string& unique_name,
+hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const std::string& unique_name,
                                      bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "pulsarbf_float" KERNEL_EXT,
                "pulsar_beamformer_nbeam.hsaco") {

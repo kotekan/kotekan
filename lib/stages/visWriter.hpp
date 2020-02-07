@@ -7,27 +7,28 @@
 #ifndef VIS_WRITER_HPP
 #define VIS_WRITER_HPP
 
-#include "Config.hpp"
-#include "Hash.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "restServer.hpp"
-#include "visFile.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, fingerprint_t
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily
+#include "restServer.hpp"        // for connectionInstance
+#include "visFile.hpp"           // for visFileBundle, visCalFileBundle
+#include "visUtil.hpp"           // for movingAverage
 
-#include <cstdint>
-#include <errno.h>
-#include <future>
-#include <map>
-#include <memory>
-#include <mutex>
-#include <stdexcept>
-#include <stdio.h>
-#include <string>
-#include <unistd.h>
-#include <utility>
+#include <cstdint>   // for uint32_t
+#include <errno.h>   // for ENOENT, errno
+#include <future>    // for future
+#include <map>       // for map
+#include <memory>    // for shared_ptr, unique_ptr
+#include <mutex>     // for mutex
+#include <set>       // for set
+#include <stdexcept> // for runtime_error
+#include <stdio.h>   // for size_t, remove
+#include <string>    // for string, operator+
+#include <unistd.h>  // for access, F_OK
+#include <utility>   // for pair
 
 
 /**
@@ -98,7 +99,7 @@
  */
 class visWriter : public kotekan::Stage {
 public:
-    visWriter(kotekan::Config& config, const string& unique_name,
+    visWriter(kotekan::Config& config, const std::string& unique_name,
               kotekan::bufferContainer& buffer_container);
 
     void main_thread() override;
@@ -261,7 +262,7 @@ private:
  **/
 class visCalWriter : public visWriter {
 public:
-    visCalWriter(kotekan::Config& config, const string& unique_name,
+    visCalWriter(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
 
     ~visCalWriter();

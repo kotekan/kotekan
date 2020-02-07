@@ -1,6 +1,17 @@
 #include "visFileRing.hpp"
 
-#include <unistd.h>
+#include "visFile.hpp" // for REGISTER_VIS_FILE, _factory_aliasvisFile
+#include "visUtil.hpp" // for time_ctype
+
+#include "json.hpp" // for basic_json<>::value_type, json
+
+#include <errno.h>     // for errno
+#include <fcntl.h>     // for O_CREAT, O_WRONLY
+#include <ostream>     // for ofstream, basic_ostream::flush, basic_ostream::seekp, basi...
+#include <string.h>    // for size_t, strerror
+#include <sys/types.h> // for uint
+#include <unistd.h>    // for pwrite, TEMP_FAILURE_RETRY
+#include <vector>      // for vector
 
 // Register the HDF5 file writers
 REGISTER_VIS_FILE("ring", visFileRing);
@@ -64,7 +75,7 @@ void visFileRing::write_metadata() {
     // Update the metadata file
     file_metadata["structure"]["ntime"] = num_time();
     file_metadata["index_map"]["time"] = times;
-    std::vector<uint8_t> t = json::to_msgpack(file_metadata);
+    std::vector<uint8_t> t = nlohmann::json::to_msgpack(file_metadata);
     metadata_file.write((const char*)&t[0], t.size());
     metadata_file.flush();
     // Reset file position for next write

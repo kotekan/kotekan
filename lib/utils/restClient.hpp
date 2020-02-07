@@ -5,22 +5,22 @@
 #ifndef RESTCLIENT_HPP
 #define RESTCLIENT_HPP
 
-#include "Config.hpp"
-#include "restServer.hpp"
+#include "restServer.hpp" // for PORT_REST_SERVER
 
-#include "json.hpp"
+#include "json.hpp" // for json
 
-#include <atomic>
-#include <condition_variable>
-#include <event2/util.h>
-#include <functional>
-#include <mutex>
-#include <string>
-#include <thread>
-#include <utility>
+#include <atomic>             // for atomic
+#include <condition_variable> // for condition_variable
+#include <event2/buffer.h>    // for evbuffer_iovec
+#include <event2/http.h>      // for evhttp_connection
+#include <event2/util.h>      // for evutil_socket_t
+#include <functional>         // for function
+#include <mutex>              // for mutex
+#include <stddef.h>           // for size_t
+#include <string>             // for string, allocator
+#include <thread>             // for thread
+#include <utility>            // for pair
 
-// The reply of a request: a pair with a success boolean and the reply string
-using restReply = std::pair<bool, std::string>;
 
 /**
  * @class restClient
@@ -70,6 +70,9 @@ using restReply = std::pair<bool, std::string>;
  */
 class restClient {
 public:
+    /// The reply of a request: a pair with a success boolean and the reply string
+    using restReply = std::pair<bool, std::string>;
+
     /**
      * @brief Returns an instance of the rest client.
      *

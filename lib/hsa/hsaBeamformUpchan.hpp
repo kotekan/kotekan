@@ -7,8 +7,14 @@
 #ifndef HSA_BEAMFORM_UPCHAN_H
 #define HSA_BEAMFORM_UPCHAN_H
 
-#include "hsaCommand.hpp"
+#include "Config.hpp"             // for Config
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaCommand.hpp"         // for hsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
+#include <stdint.h> // for int32_t
+#include <string>   // for string
 /**
  * @class hsaBeamformUpchan
  * @brief hsaCommand to upchannelize and downsample FRB data
@@ -49,7 +55,7 @@
 class hsaBeamformUpchan : public hsaCommand {
 public:
     /// Constructor, also initializes internal variables from config
-    hsaBeamformUpchan(kotekan::Config& config, const string& unique_name,
+    hsaBeamformUpchan(kotekan::Config& config, const std::string& unique_name,
                       kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor

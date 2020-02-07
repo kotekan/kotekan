@@ -6,7 +6,7 @@
 
 class clPresumKernel : public clCommand {
 public:
-    clPresumKernel(kotekan::Config& config, const string& unique_name,
+    clPresumKernel(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
     ~clPresumKernel();
     virtual void build() override;

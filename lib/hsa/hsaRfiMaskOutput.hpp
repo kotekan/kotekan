@@ -6,7 +6,15 @@
 #ifndef HSA_RFI_MASK_OUTPUT_H
 #define HSA_RFI_MASK_OUTPUT_H
 
-#include "hsaSubframeCommand.hpp"
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "hsaSubframeCommand.hpp" // for hsaSubframeCommand
+
+#include <stdint.h> // for int32_t
+#include <string>   // for string
 
 /*
  * @class hsaRfiMaskOutput
@@ -30,7 +38,7 @@
 class hsaRfiMaskOutput : public hsaSubframeCommand {
 public:
     /// Constructor
-    hsaRfiMaskOutput(kotekan::Config& config, const string& unique_name,
+    hsaRfiMaskOutput(kotekan::Config& config, const std::string& unique_name,
                      kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor
     virtual ~hsaRfiMaskOutput();

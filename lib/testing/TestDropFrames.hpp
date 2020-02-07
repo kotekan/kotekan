@@ -6,8 +6,13 @@
 #ifndef TEST_DROP_FRAMES_HPP
 #define TEST_DROP_FRAMES_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
+
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class TestDropFrames
@@ -33,7 +38,7 @@
 class TestDropFrames : public kotekan::Stage {
 public:
     /// Constructor
-    TestDropFrames(kotekan::Config& config, const string& unique_name,
+    TestDropFrames(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
     ~TestDropFrames() = default;
     void main_thread() override;

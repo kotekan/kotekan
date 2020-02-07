@@ -1,19 +1,13 @@
 #ifndef GPU_HSA_DEVICE_INTERFACE_H
 #define GPU_HSA_DEVICE_INTERFACE_H
 
-#include "gpuDeviceInterface.hpp"
-#include "hsa/hsa.h"
-#include "hsa/hsaBase.h"
-#include "hsa/hsa_ext_amd.h"
-#include "hsa/hsa_ext_finalize.h"
+#include "Config.hpp"
+#include "gpuDeviceInterface.hpp" // for Config, gpuDeviceInterface
+#include "hsa/hsa.h"              // for hsa_agent_t, hsa_signal_t, hsa_status_t, hsa_region_t
+#include "hsa/hsa_ext_amd.h"      // for hsa_amd_memory_pool_t
 
-#include <map>
-#include <string>
-#include <sys/mman.h>
-#include <vector>
+#include <stdint.h> // for uint32_t, uint64_t, int32_t
 
-using std::string;
-using std::vector;
 
 // Parameters for the get_gpu_agent function
 struct gpu_config_t {

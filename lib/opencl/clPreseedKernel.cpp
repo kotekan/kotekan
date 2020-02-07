@@ -5,7 +5,7 @@ using kotekan::Config;
 
 REGISTER_CL_COMMAND(clPreseedKernel);
 
-clPreseedKernel::clPreseedKernel(Config& config, const string& unique_name,
+clPreseedKernel::clPreseedKernel(Config& config, const std::string& unique_name,
                                  bufferContainer& host_buffers, clDeviceInterface& device) :
     clCommand(config, unique_name, host_buffers, device, "preseed", "preseed_multifreq.cl") {
     _num_elements = config.get<int>(unique_name, "num_elements");
@@ -32,12 +32,12 @@ void clPreseedKernel::build() {
 
     cl_device_id dev_id = device.get_id();
 
-    string cl_options = "";
+    std::string cl_options = "";
     cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_elements);
     cl_options += " -D NUM_BLOCKS=" + std::to_string(_num_blocks);
     cl_options += " -D NUM_TIMESAMPLES=" + std::to_string(_samples_per_data_set);
 
-    CHECK_CL_ERROR(clBuildProgram(program, 1, &dev_id, cl_options.c_str(), NULL, NULL));
+    CHECK_CL_ERROR(clBuildProgram(program, 1, &dev_id, cl_options.c_str(), nullptr, nullptr));
 
     kernel = clCreateKernel(program, kernel_command.c_str(), &err);
     CHECK_CL_ERROR(err);
@@ -47,9 +47,9 @@ void clPreseedKernel::build() {
 
     CHECK_CL_ERROR(clSetKernelArg(kernel, 3, sizeof(id_y_map), (void*)&id_y_map));
 
-    CHECK_CL_ERROR(clSetKernelArg(kernel, 4, 64 * sizeof(cl_uint), NULL));
+    CHECK_CL_ERROR(clSetKernelArg(kernel, 4, 64 * sizeof(cl_uint), nullptr));
 
-    CHECK_CL_ERROR(clSetKernelArg(kernel, 5, 64 * sizeof(cl_uint), NULL));
+    CHECK_CL_ERROR(clSetKernelArg(kernel, 5, 64 * sizeof(cl_uint), nullptr));
 
     // Pre-seed kernel global and local work space sizes.
     gws[0] = 8 * _num_data_sets;
@@ -74,7 +74,7 @@ cl_event clPreseedKernel::execute(int gpu_frame_id, cl_event pre_event) {
     setKernelArg(0, presum_memory);
     setKernelArg(1, output_memory_frame);
 
-    CHECK_CL_ERROR(clEnqueueNDRangeKernel(device.getQueue(1), kernel, 3, NULL, gws, lws, 1,
+    CHECK_CL_ERROR(clEnqueueNDRangeKernel(device.getQueue(1), kernel, 3, nullptr, gws, lws, 1,
                                           &pre_event, &post_events[gpu_frame_id]));
 
     return post_events[gpu_frame_id];

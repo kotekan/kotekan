@@ -1,3 +1,5 @@
+![](https://github.com/kotekan/kotekan/workflows/include-what-you-use/badge.svg?branch=develop)
+
 # Documentation
 
 Compiled docs are currently available at http://lwlab.dunlap.utoronto.ca/kotekan.

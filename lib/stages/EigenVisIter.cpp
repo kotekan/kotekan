@@ -1,18 +1,33 @@
 #include "EigenVisIter.hpp"
 
-#include "LinearAlgebra.hpp"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for operator!=, operator<
+#include "LinearAlgebra.hpp"     // for EigConvergenceStats, eigen_masked_subspace, to_blaze_herm
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for allocate_new_metadata_object, mark_frame_empty, mark_fr...
+#include "datasetState.hpp"      // for datasetState, eigenvalueState, state_uptr
+#include "kotekanLogging.hpp"    // for DEBUG
+#include "prometheusMetrics.hpp" // for Gauge, Metrics, MetricFamily
+#include "visBuffer.hpp"         // for visFrameView, visField, visField::erms, visField::eval
+#include "visUtil.hpp"           // for cfloat, frameID, current_time, modulo, movingAverage
 
-#include "fmt.hpp"
+#include "fmt.hpp"      // for format, fmt
+#include "gsl-lite.hpp" // for span
 
-#include <algorithm>
-#include <blaze/Blaze.h>
-#include <cblas.h>
+#include <algorithm>     // for copy, copy_backward, equal, max, min
+#include <atomic>        // for atomic_bool
+#include <blaze/Blaze.h> // for DynamicMatrix, DMatDeclHermExpr, band, HermitianMatrix
+#include <cblas.h>       // for openblas_set_num_threads
+#include <complex>       // for complex
+#include <cstdint>       // for uint32_t, int32_t
+#include <deque>         // for deque
+#include <exception>     // for exception
+#include <functional>    // for _Bind_helper<>::type, bind, function
+#include <iostream>      // for basic_ostream::operator<<, operator<<, basic_ostream<>:...
+#include <memory>        // for make_unique
+#include <regex>         // for match_results<>::_Base_type
+#include <stdexcept>     // for runtime_error, out_of_range
+#include <tuple>         // for tie, tuple
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -21,7 +36,7 @@ using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(EigenVisIter);
 
-EigenVisIter::EigenVisIter(Config& config, const string& unique_name,
+EigenVisIter::EigenVisIter(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&EigenVisIter::main_thread, this)),
     comp_time_seconds_metric(

@@ -1,5 +1,8 @@
 #include "hsaBase.h"
-#include <sys/mman.h>
+
+#include "hsa/hsa_ext_amd.h" // for hsa_amd_memory_pool_get_info, hsa_amd_memory_pool_t, hsa_am...
+
+#include <sys/mman.h> // for mlock
 
 #define MAX_NUMA 4
 
@@ -21,8 +24,7 @@ static hsa_status_t get_cpu_agent(hsa_agent_t agent, void* data) {
     }
 
     uint32_t numa_node = 255;
-    hsa_error_code =
-        hsa_agent_get_info(agent, HSA_AGENT_INFO_NODE, &numa_node);
+    hsa_error_code = hsa_agent_get_info(agent, HSA_AGENT_INFO_NODE, &numa_node);
     if (hsa_error_code != HSA_STATUS_SUCCESS) {
         return hsa_error_code;
     }
@@ -47,11 +49,10 @@ static hsa_status_t get_device_memory_region(hsa_amd_memory_pool_t region, void*
 
     hsa_amd_memory_pool_global_flag_t flags;
     hsa_amd_memory_pool_get_info(region, HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS, &flags);
-    if ((flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_FINE_GRAINED) ||
-        (flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED))
-    {
+    if ((flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_FINE_GRAINED)
+        || (flags & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED)) {
         INFO_F("Found device region, flags=%x", flags);
-        hsa_amd_memory_pool_t* ret = (hsa_amd_memory_pool_t*) data;
+        hsa_amd_memory_pool_t* ret = (hsa_amd_memory_pool_t*)data;
         *ret = region;
         return HSA_STATUS_INFO_BREAK;
     }
@@ -85,8 +86,8 @@ void kotekan_hsa_start() {
     }
 }
 
-void * hsa_host_malloc(size_t len, uint32_t numa_node) {
-    void * ptr;
+void* hsa_host_malloc(size_t len, uint32_t numa_node) {
+    void* ptr;
 
     assert(numa_node < MAX_NUMA);
 
@@ -94,7 +95,7 @@ void * hsa_host_malloc(size_t len, uint32_t numa_node) {
     hsa_status = hsa_amd_memory_pool_allocate(host_region[numa_node], len, 0, &ptr);
     HSA_CHECK(hsa_status);
 
-    if ( mlock(ptr, len) != 0 ) {
+    if (mlock(ptr, len) != 0) {
         ERROR_F("Error locking memory - check ulimit -a to check memlock limits");
         return NULL;
     }
@@ -102,7 +103,7 @@ void * hsa_host_malloc(size_t len, uint32_t numa_node) {
     return ptr;
 }
 
-void hsa_host_free(void *ptr) {
+void hsa_host_free(void* ptr) {
     hsa_status_t hsa_status;
     hsa_status = hsa_amd_memory_pool_free(ptr);
     HSA_CHECK(hsa_status);
@@ -111,4 +112,3 @@ void hsa_host_free(void *ptr) {
 void kotekan_hsa_stop() {
     hsa_shut_down();
 }
-

@@ -6,7 +6,15 @@
 #ifndef HSA_INPUT_LOST_SAMPLES_H
 #define HSA_INPUT_LOST_SAMPLES_H
 
-#include "hsaCommand.hpp"
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaCommand.hpp"         // for hsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
 
 /*
  * @class hsaInputLostSamples
@@ -29,7 +37,7 @@
 class hsaInputLostSamples : public hsaCommand {
 public:
     /// Constructor, applies config, initializes variables
-    hsaInputLostSamples(kotekan::Config& config, const string& unique_name,
+    hsaInputLostSamples(kotekan::Config& config, const std::string& unique_name,
                         kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     // Destructor, cleans up local allocs
     virtual ~hsaInputLostSamples();
