@@ -2,7 +2,6 @@
 
 #include "Config.hpp"             // for Config
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
-#include "hsaBase.h"              // for hsa_host_free, hsa_host_malloc
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 
 #include <cstdint>   // for int32_t
