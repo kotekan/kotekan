@@ -21,7 +21,7 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(eigenWriter);
 
 
-eigenWriter::eigenWriter(Config& config, const string& unique_name,
+eigenWriter::eigenWriter(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&eigenWriter::main_thread, this)) {
 

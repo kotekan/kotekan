@@ -6,14 +6,11 @@
 
 #ifndef SIMPLE_AUTOCORR_HPP
 #define SIMPLE_AUTOCORR_HPP
-#include "Stage.hpp"
-#include "buffer.h"
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
 
-#include <string>
-#include <unistd.h>
-using std::string;
+#include <string> // for string
 
 /**
  * @class simpleAutocorr
@@ -45,7 +42,7 @@ using std::string;
 class simpleAutocorr : public kotekan::Stage {
 public:
     /// Constructor, also initializes FFTW and values from config yaml.
-    simpleAutocorr(kotekan::Config& config, const string& unique_name,
+    simpleAutocorr(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
 
     /// Destructor, frees local allocs and exits FFTW.

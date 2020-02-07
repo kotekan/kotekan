@@ -1,17 +1,24 @@
 #include "rawFileWrite.hpp"
 
-#include "buffer.h"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for Buffer, get_metadata_container, mark_frame_empty, regis...
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "kotekanLogging.hpp"    // for ERROR, INFO
+#include "metadata.h"            // for metadataContainer
+#include "prometheusMetrics.hpp" // for Metrics, Gauge
+#include "visUtil.hpp"           // for current_time
 
-#include <errno.h>
-#include <fcntl.h>
-#include <functional>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
+#include <atomic>     // for atomic_bool
+#include <errno.h>    // for errno
+#include <exception>  // for exception
+#include <fcntl.h>    // for open, O_CREAT, O_WRONLY
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <stdint.h>   // for uint32_t, int32_t, uint8_t
+#include <stdio.h>    // for snprintf
+#include <stdlib.h>   // for exit
+#include <unistd.h>   // for write, close, gethostname, ssize_t
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -20,7 +27,7 @@ using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(rawFileWrite);
 
-rawFileWrite::rawFileWrite(Config& config, const string& unique_name,
+rawFileWrite::rawFileWrite(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&rawFileWrite::main_thread, this)) {
 
@@ -40,7 +47,7 @@ void rawFileWrite::main_thread() {
     int file_num = 0;
     int frame_id = 0;
     uint32_t frame_ctr = 0;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
     char hostname[64];
     gethostname(hostname, 64);
     bool isFileOpen = false;
@@ -54,7 +61,7 @@ void rawFileWrite::main_thread() {
 
         // This call is blocking.
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         // Start timing the write time
@@ -78,7 +85,7 @@ void rawFileWrite::main_thread() {
         // Write the meta data to disk
         uint32_t metadata_size = 0;
         struct metadataContainer* mc = get_metadata_container(buf, frame_id);
-        if (mc != NULL) {
+        if (mc != nullptr) {
             metadata_size = mc->metadata_size;
         }
         // Write metadata size to disk, if there is no metadata in the frame, then
@@ -88,7 +95,7 @@ void rawFileWrite::main_thread() {
             ERROR("Failed to write metadata_size to disk for file {:s}", full_path);
             exit(-1);
         }
-        if (mc != NULL) {
+        if (mc != nullptr) {
             if (write(fd, mc->metadata, mc->metadata_size) != (int32_t)mc->metadata_size) {
                 ERROR("Failed to write metadata_size to disk for file {:s}", full_path);
                 exit(-1);

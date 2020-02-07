@@ -1,15 +1,23 @@
 #include "chimeMetadataDump.hpp"
 
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
-#include "util.h"
+#include "Config.hpp"
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp"     //
+#include "chimeMetadata.h"         // for get_first_packet_recv_time, get_fpga_seq_num, get_gps...
+#include "fpga_header_functions.h" // for bin_number_chime, stream_id_t, freq_from_bin
+#include "kotekanLogging.hpp"      // for INFO
 
-#include <time.h>
+#include <atomic>     // for atomic_bool
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <stdint.h>   // for uint64_t, uint8_t
+#include <sys/time.h> // for timeval
+#include <time.h>     // for gmtime, strftime, timespec, time_t
+
 
 REGISTER_KOTEKAN_STAGE(chimeMetadataDump);
 
-chimeMetadataDump::chimeMetadataDump(kotekan::Config& config, const string& unique_name,
+chimeMetadataDump::chimeMetadataDump(kotekan::Config& config, const std::string& unique_name,
                                      kotekan::bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&chimeMetadataDump::main_thread, this)) {
 
@@ -22,12 +30,12 @@ chimeMetadataDump::~chimeMetadataDump() {}
 void chimeMetadataDump::main_thread() {
 
     int frame_id = 0;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
 
     while (!stop_thread) {
 
         frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         uint64_t fpga_seq = get_fpga_seq_num(in_buf, frame_id);

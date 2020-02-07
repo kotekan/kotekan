@@ -1,10 +1,23 @@
 #include "bufferMerge.hpp"
 
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, get_num_consumers, get_num_producers, mark_frame_...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO, DEBUG2, FATAL_ERROR
+#include "visUtil.hpp"         // for frameID, current_time, double_to_ts, modulo
 
-#include "json.hpp"
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for json, basic_json<>::iterator, basic_json<>::object_t, bas...
 
-#include <signal.h>
+#include <algorithm>  // for max
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <cstring>    // for memcpy
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error, invalid_argument
 
 using nlohmann::json;
 
@@ -14,7 +27,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(bufferMerge);
 
-bufferMerge::bufferMerge(Config& config, const string& unique_name,
+bufferMerge::bufferMerge(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferMerge::main_thread, this)) {
 
@@ -87,7 +100,7 @@ void bufferMerge::main_thread() {
                 DEBUG2("Waiting for {:s}[{:d}]", in_buf->buffer_name, in_frame_id);
                 uint8_t* input_frame =
                     wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
-                if (input_frame == NULL)
+                if (input_frame == nullptr)
                     goto exit_loop; // Shutdown condition
             } else {
                 auto timeout = double_to_ts(current_time() + _timeout);
@@ -103,7 +116,7 @@ void bufferMerge::main_thread() {
 
                 uint8_t* output_frame =
                     wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
-                if (output_frame == NULL)
+                if (output_frame == nullptr)
                     break;
 
                 // Move the metadata over to the new frame

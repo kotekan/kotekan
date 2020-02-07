@@ -6,23 +6,23 @@
 #ifndef VIS_FILE_RAW_HPP
 #define VIS_FILE_RAW_HPP
 
-#include "Config.hpp"
-#include "datasetManager.hpp"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
-#include "visFile.hpp"
-#include "visUtil.hpp"
+#include "dataset.hpp"        // for dset_id_t
+#include "kotekanLogging.hpp" // for logLevel
+#include "visBuffer.hpp"      // for visFrameView
+#include "visFile.hpp"        // for visFile
+#include "visUtil.hpp"        // for time_ctype
 
-#include <cstdint>
-#include <fcntl.h>
-#include <fstream>
-#include <map>
-#include <stddef.h>
-#include <string>
-#include <sys/types.h>
-#include <vector>
+#include "json.hpp" // for json
 
-using json = nlohmann::json;
+#include <cstdint>     // for uint32_t
+#include <fcntl.h>     // for O_CREAT, O_EXCL, O_WRONLY
+#include <fstream>     // for ofstream
+#include <map>         // for map
+#include <stddef.h>    // for size_t
+#include <string>      // for string
+#include <sys/types.h> // for off_t
+#include <vector>      // for vector
+
 
 /** @brief A CHIME correlator file in raw format.
  *
@@ -127,7 +127,7 @@ protected:
     void flush_raw_sync(int ind);
 
     // The metadata we will write into the file
-    json file_metadata;
+    nlohmann::json file_metadata;
 
     // Save the sizes
     size_t nfreq, data_size, metadata_size, frame_size;

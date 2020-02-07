@@ -13,7 +13,7 @@ void* clEventContainer::get() {
 }
 
 void clEventContainer::unset() {
-    signal = NULL;
+    signal = nullptr;
 }
 
 void clEventContainer::wait() {

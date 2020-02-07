@@ -1,23 +1,37 @@
 #include "fakeGpu.hpp"
 
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
-#include "visUtil.hpp"
+#include "Config.hpp"              // for Config
+#include "Stage.hpp"               // for Stage
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "chimeMetadata.h"         // for set_first_packet_recv_time, set_fpga_seq_num, set_gps...
+#include "errors.h"                // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "factory.hpp"             // for FACTORY
+#include "fakeGpuPattern.hpp"      // for FakeGpuPattern, _factory_aliasFakeGpuPattern
+#include "fpga_header_functions.h" // for stream_id_t
+#include "kotekanLogging.hpp"      // for DEBUG, ERROR, INFO
+#include "metadata.h"              // for metadataContainer
+#include "visUtil.hpp"             // for frameID, gpu_N2_size, modulo, operator+
 
-#include "gsl-lite.hpp"
+#include "gsl-lite.hpp" // for span
 
-#include <csignal>
-#include <iterator>
-#include <random>
-#include <sys/time.h>
-#include <time.h>
-#include <unistd.h>
+#include <atomic>     // for atomic_bool
+#include <csignal>    // for raise, SIGINT
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <random>     // for mt19937, random_device, uniform_real_distribution
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <string>     // for string
+#include <sys/time.h> // for CLOCK_REALTIME, TIMESPEC_TO_TIMEVAL, timeval
+#include <time.h>     // for timespec, clock_gettime, nanosleep
+#include <vector>     // for vector
 
 
 REGISTER_KOTEKAN_STAGE(FakeGpu);
 
-FakeGpu::FakeGpu(kotekan::Config& config, const string& unique_name,
+FakeGpu::FakeGpu(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container) :
     kotekan::Stage(config, unique_name, buffer_container, std::bind(&FakeGpu::main_thread, this)) {
 
@@ -40,7 +54,7 @@ FakeGpu::FakeGpu(kotekan::Config& config, const string& unique_name,
     // Fetch the correct fill function
     std::string pattern_name = config.get<std::string>(unique_name, "pattern");
 
-    // Validate and creeate test pattern
+    // Validate and create test pattern
     if (!FACTORY(FakeGpuPattern)::exists(pattern_name)) {
         ERROR("Test pattern \"%s\" does not exist.", pattern_name.c_str());
         std::raise(SIGINT);
@@ -109,7 +123,7 @@ void FakeGpu::main_thread() {
         } else {
 
             int32_t* output = (int*)wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id);
-            if (output == NULL)
+            if (output == nullptr)
                 break;
 
             DEBUG("Simulating GPU buffer in {}[{}]", out_buf->buffer_name, frame_id);

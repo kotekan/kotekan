@@ -10,11 +10,12 @@
 #ifndef BIP_BUFFER_HPP
 #define BIP_BUFFER_HPP
 
-#include "gsl-lite.hpp"
+#include "gsl-lite.hpp" // for span
 
-#include <atomic>
-#include <memory>
-#include <vector>
+#include <atomic>   // for atomic_size_t
+#include <cstdint>  // for uint8_t
+#include <memory>   // for unique_ptr, make_unique
+#include <stddef.h> // for size_t
 
 /**
  * @class BipBuffer

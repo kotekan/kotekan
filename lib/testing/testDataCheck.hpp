@@ -1,19 +1,30 @@
 #ifndef TEST_DATA_CHECK_H
 #define TEST_DATA_CHECK_H
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "errors.h"            // for TEST_PASSED
+#include "kotekanLogging.hpp"  // for DEBUG, INFO, ERROR, FATAL_ERROR
 
-#include <cmath>
-#include <type_traits>
-#include <unistd.h>
+#include <assert.h>    // for assert
+#include <cstdint>     // for int32_t, uint8_t, uint32_t
+#include <exception>   // for exception
+#include <functional>  // for bind
+#include <limits>      // for numeric_limits
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error
+#include <stdlib.h>    // for abs
+#include <string>      // for string, allocator
+#include <type_traits> // for is_same, enable_if
+#include <vector>      // for vector
+
 
 template<typename A_Type>
 class testDataCheck : public kotekan::Stage {
 public:
-    testDataCheck(kotekan::Config& config, const string& unique_name,
+    testDataCheck(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& buffer_container);
     ~testDataCheck();
     void main_thread() override;
@@ -27,7 +38,7 @@ private:
 };
 
 template<typename A_Type>
-testDataCheck<A_Type>::testDataCheck(kotekan::Config& config, const string& unique_name,
+testDataCheck<A_Type>::testDataCheck(kotekan::Config& config, const std::string& unique_name,
                                      kotekan::bufferContainer& buffer_container) :
     kotekan::Stage(config, unique_name, buffer_container,
                    std::bind(&testDataCheck::main_thread, this)) {
@@ -65,12 +76,12 @@ void testDataCheck<A_Type>::main_thread() {
 
         // Get both full frames
         uint8_t* first_frame = wait_for_full_frame(first_buf, unique_name.c_str(), first_buf_id);
-        if (first_frame == NULL)
+        if (first_frame == nullptr)
             break;
         DEBUG("testDataCheck: Got the first buffer {:s}[{:d}]", first_buf->buffer_name,
               first_buf_id);
         uint8_t* second_frame = wait_for_full_frame(second_buf, unique_name.c_str(), second_buf_id);
-        if (second_frame == NULL)
+        if (second_frame == nullptr)
             break;
         DEBUG("testDataCheck: Got the second buffer {:s}[{:d}]", second_buf->buffer_name,
               second_buf_id);

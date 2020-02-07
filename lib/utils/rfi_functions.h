@@ -11,7 +11,7 @@ extern "C" {
  * @struct RFIHeader
  * @brief A structure that contains the header attached to each rfiBroadcast packet.
  */
-struct __attribute__ ((packed)) RFIHeader {
+struct __attribute__((packed)) RFIHeader {
     /// uint8_t indicating whether or not the SK value was summed over inputs.
     uint8_t rfi_combined;
     /// uint32_t indicating the time intergration length of the SK values.
@@ -37,4 +37,3 @@ struct __attribute__ ((packed)) RFIHeader {
 #endif
 
 #endif /* RFI_FUNCTIONS_H */
-

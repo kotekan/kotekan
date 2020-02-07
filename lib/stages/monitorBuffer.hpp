@@ -8,10 +8,13 @@
 #ifndef MONITOR_BUFFER_H
 #define MONITOR_BUFFER_H
 
-#include "Stage.hpp"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
 #include "bufferContainer.hpp"
 
-#include <vector>
+#include <string> // for string
+#include <vector> // for vector
+
 
 /**
  * @class monitorBuffer
@@ -34,7 +37,7 @@
 class monitorBuffer : public kotekan::Stage {
 public:
     /// Common constructor
-    monitorBuffer(kotekan::Config& config, const string& unique_name,
+    monitorBuffer(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& buffer_container);
 
     /// Destructor

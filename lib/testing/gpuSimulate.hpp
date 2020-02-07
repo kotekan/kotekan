@@ -1,12 +1,17 @@
 #ifndef GPU_SIMULATE_HPP
 #define GPU_SIMULATE_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
+
+#include <stdint.h>    // for int32_t, uint32_t
+#include <string>      // for string
+#include <sys/types.h> // for uint
 
 class gpuSimulate : public kotekan::Stage {
 public:
-    gpuSimulate(kotekan::Config& config, const string& unique_name,
+    gpuSimulate(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& buffer_container);
     ~gpuSimulate();
     void main_thread() override;
@@ -25,7 +30,7 @@ private:
     int32_t _samples_per_data_set;
     int32_t _num_blocks;
     int32_t _block_size;
-    string _data_format;
+    std::string _data_format;
 };
 
 #endif

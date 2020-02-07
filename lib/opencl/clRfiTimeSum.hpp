@@ -58,7 +58,7 @@ class clRfiTimeSum : public gpu_command {
 public:
     // Constructor
     clRfiTimeSum(const char* param_gpuKernel, const char* param_name, kotekan::Config& config,
-                 const string& unique_name);
+                 const std::string& unique_name);
     // Destructor
     ~clRfiTimeSum();
     // Builds the program/kernel
@@ -86,7 +86,7 @@ private:
     /// The input mask array
     uint8_t* Input_Mask;
     /// String to hold endpoint name
-    string endpoint;
+    std::string endpoint;
 };
 
 #endif

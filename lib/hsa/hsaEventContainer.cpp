@@ -1,9 +1,8 @@
 #include "hsaEventContainer.hpp"
 
-#include "errors.h"
-#include "kotekanLogging.hpp"
+#include "kotekanLogging.hpp" // for ERROR_NON_OO
 
-#include <unistd.h>
+#include <stdint.h> // for UINT64_MAX
 
 
 void hsaEventContainer::set(void* sig) {
@@ -15,7 +14,7 @@ void* hsaEventContainer::get() {
 }
 
 void hsaEventContainer::unset() {
-    // signal = 0;//*(hsa_signal_t*)NULL;
+    // signal = 0;//*(hsa_signal_t*)nullptr;
 }
 
 void hsaEventContainer::wait() {

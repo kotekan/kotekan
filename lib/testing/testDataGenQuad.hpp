@@ -7,8 +7,13 @@
 #ifndef TEST_DATA_GEN_QUAD_H
 #define TEST_DATA_GEN_QUAD_H
 
-#include "Stage.hpp"
-#include "buffer.h"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
+
+#include <stdint.h> // for int32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 
 /**
@@ -45,7 +50,7 @@
 class testDataGenQuad : public kotekan::Stage {
 public:
     /// Constructor, also initializes internal variables from config.
-    testDataGenQuad(kotekan::Config& config, const string& unique_name,
+    testDataGenQuad(kotekan::Config& config, const std::string& unique_name,
                     kotekan::bufferContainer& buffer_container);
 
     /// Destructor, cleans up local allocs.
@@ -57,7 +62,7 @@ public:
 private:
     struct Buffer* buf[4];
     std::string type;
-    vector<int32_t> value;
+    std::vector<int32_t> value;
 };
 
 #endif

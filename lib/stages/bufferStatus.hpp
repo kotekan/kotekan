@@ -1,8 +1,13 @@
 #ifndef BUFFER_STATUS_H
 #define BUFFER_STATUS_H
 
-#include "Stage.hpp"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "buffer.h"
 #include "bufferContainer.hpp"
+
+#include <map>    // for map
+#include <string> // for string
 
 /**
  * @class bufferStatus
@@ -32,13 +37,13 @@
  */
 class bufferStatus : public kotekan::Stage {
 public:
-    bufferStatus(kotekan::Config& config, const string& unique_name,
+    bufferStatus(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
     virtual ~bufferStatus();
     void main_thread() override;
 
 private:
-    map<string, Buffer*> buffers;
+    std::map<std::string, Buffer*> buffers;
 
     /// The time in microseconds between print updates,
     /// only used if print_status == true

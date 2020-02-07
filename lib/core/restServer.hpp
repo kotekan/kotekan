@@ -1,22 +1,23 @@
 #ifndef REST_SERVER_HPP
 #define REST_SERVER_HPP
 
-#include "Config.hpp"
-#include "kotekanLogging.hpp"
+#include "Config.hpp" // for Config
 
-#include "json.hpp"
+#include "json.hpp" // for json
 
-#include <atomic>
-#include <event2/event.h>
-#include <event2/http.h>
-#include <event2/thread.h>
-#include <evhttp.h>
-#include <functional>
-#include <map>
-#include <shared_mutex>
-#include <thread>
+#include <atomic>        // for atomic
+#include <event2/util.h> // for evutil_socket_t
+#include <evhttp.h>      // for evhttp  // IWYU pragma: keep
+#include <functional>    // for function
+#include <map>           // for map
+#include <shared_mutex>  // for shared_timed_mutex
+#include <stdint.h>      // for uint8_t
+#include <string>        // for string, allocator
+#include <sys/types.h>   // for u_short
+#include <thread>        // for thread
 
 namespace kotekan {
+
 
 enum class HTTP_RESPONSE {
     OK = 200,
@@ -294,7 +295,7 @@ private:
      * @param request The libevent http request object
      * @return string The http message if it exists, or an empty string
      */
-    static string get_http_message(struct evhttp_request* request);
+    static std::string get_http_message(struct evhttp_request* request);
 
     /**
      * @brief Generates a string message to match one of the response codes
@@ -303,7 +304,7 @@ private:
      * @param status The responce code enum
      * @return string The string message matching that code
      */
-    static string get_http_responce_code_text(const HTTP_RESPONSE& status);
+    static std::string get_http_responce_code_text(const HTTP_RESPONSE& status);
 
     /**
      * @brief Returns the aliases map
@@ -316,7 +317,7 @@ private:
     std::map<std::string, std::function<void(connectionInstance&)>> get_callbacks;
 
     /// Map of JSON POST callbacks
-    std::map<std::string, std::function<void(connectionInstance&, json&)>> json_callbacks;
+    std::map<std::string, std::function<void(connectionInstance&, nlohmann::json&)>> json_callbacks;
 
     /// Alias map
     std::map<std::string, std::string> aliases;

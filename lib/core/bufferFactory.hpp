@@ -1,15 +1,14 @@
 #ifndef BUFFER_FACTORY_HPP
 #define BUFFER_FACTORY_HPP
 
-#include "Config.hpp"
-#include "buffer.h"
-#include "kotekanLogging.hpp"
-#include "metadata.h"
+#include "Config.hpp" // for Config
+#include "buffer.h"   // for Buffer // IWYU pragma: keep
+#include "metadata.h" // for metadataPool // IWYU pragma: keep
 
-#include "json.hpp"
+#include "json.hpp" // for json
 
-#include <map>
-#include <string>
+#include <map>    // for map
+#include <string> // for string
 
 namespace kotekan {
 

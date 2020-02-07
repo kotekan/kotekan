@@ -1,10 +1,26 @@
 #include "rawFileRead.hpp"
 
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, allocate_new_metadata_object, get_metadata_container
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for ERROR, INFO, FATAL_ERROR
+#include "metadata.h"          // for metadataContainer
 
-#include <csignal>
-#include <errno.h>
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <cstdio>     // for fread, fclose, fopen, snprintf, FILE
+#include <errno.h>    // for errno
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <stdint.h>   // for uint32_t, uint8_t
+#include <string.h>   // for strerror
+#include <sys/stat.h> // for stat
+#include <unistd.h>   // for sleep
+#include <vector>     // for vector
+
 
 inline bool file_exists(char* name) {
     struct stat buf;
@@ -17,7 +33,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(rawFileRead);
 
-rawFileRead::rawFileRead(Config& config, const string& unique_name,
+rawFileRead::rawFileRead(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&rawFileRead::main_thread, this)) {
 
@@ -37,7 +53,7 @@ void rawFileRead::main_thread() {
 
     int file_num = 0;
     int frame_id = 0;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
     char hostname[64];
     gethostname(hostname, 64);
 

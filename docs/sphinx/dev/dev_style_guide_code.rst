@@ -140,28 +140,27 @@ For more details, compare the `kotekan clang-format file
 <https://clang.llvm.org/docs/ClangFormatStyleOptions.html>`_
 
 
-Automatic code formatting
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-If you have `clang-format <https://clang.llvm.org/docs/ClangFormat.html>`_,
-you can get free auto-formatting of that messy code you just wrote with
-`make clang-format`.
-
-So it doesn't happen again, you should check if there is `clang-format`
-integration for your favourite editor and point it at kotekan's `.clang-format
-file <https://github.com/kotekan/kotekan/blob/master/.clang-format>`_.
-
-
-Disabling Code Formatting
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-If you write a piece of code that you want to be excluded from auto-formatting,
-you can prepend ``// clang-format off`` or ``/* clang-format off */`` and append
-``// clang-format on`` or ``/* clang-format on */``.
-
 Python Code Formatting
 ----------------------
 
-All python code in this project should be formatted accoring to the `black code style
-<https://black.readthedocs.io/en/stable/the_black_code_style.html>_`. You can let black take care
-of that using `black --exclude docs kotekan/root/dir` before you commit python code.
+All python code in this project should be formatted accoring to the
+`black code style <https://black.readthedocs.io/en/stable/the_black_code_style.html>`_. You can let black take care
+of that using ``black --exclude docs kotekan/root/dir`` before you commit python code.
+
+
+Automatic code formatting
+-------------------------
+
+.. note:: To do all code linting in one, use `tools/lint.sh <https://github.com/kotekan/kotekan/blob/master/tools/lint.sh>`_. To use the script as a commit hook, copy it to ``.git/hooks/pre-commit``.
+
+kotekan uses the following tools for automatic code formatting:
+
+* `black <black.readthedocs.io>`_: python code formatting. Run it on the kotekan code base with ``black --exclude docs .``.
+* `clang-format <https://clang.llvm.org/docs/ClangFormat.html>`_: C/C++ code formatting. Run it on your code with ``make clang-format`` from the build directory.
+* `iwyu>=0.10 <include-what-you-use.org>`_: include-what-you-use for C/C++. Checks if source files include everything they use and nothing else. Run it on the code by ``cmake -DIWYU=ON .. && make > fix_include --nosafe_headers --comments``.
+
+.. topic:: Disabling C/C++ Code Formatting
+
+    If you write a piece of code that you want to be excluded from auto-formatting,
+    you can prepend ``// clang-format off`` or ``/* clang-format off */`` and append
+    ``// clang-format on`` or ``/* clang-format on */``.

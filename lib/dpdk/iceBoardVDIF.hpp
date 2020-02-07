@@ -7,9 +7,12 @@
 #ifndef ICE_BOARD_VDIF
 #define ICE_BOARD_VDIF
 
+#include "Config.hpp"
 #include "buffer.h"
+#include "bufferContainer.hpp"
 #include "iceBoardHandler.hpp"
 #include "packet_copy.h"
+#include "restServer.hpp"
 #include "util.h"
 #include "vdif_functions.h"
 
@@ -124,11 +127,11 @@ iceBoardVDIF::iceBoardVDIF(kotekan::Config& config, const std::string& unique_na
     }
 
     std::string endpoint_name = unique_name + "/port_data";
-    kotekan::restServer::instance().register_get_callback(endpoint_name,
-                                                          [&](kotekan::connectionInstance& conn) {
-                                                              json info = get_json_port_info();
-                                                              conn.send_json_reply(info);
-                                                          });
+    kotekan::restServer::instance().register_get_callback(
+        endpoint_name, [&](kotekan::connectionInstance& conn) {
+            nlohmann::json info = get_json_port_info();
+            conn.send_json_reply(info);
+        });
 }
 
 int iceBoardVDIF::handle_packet(struct rte_mbuf* mbuf) {
@@ -173,7 +176,7 @@ int iceBoardVDIF::handle_packet(struct rte_mbuf* mbuf) {
 
 bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
     struct timeval now;
-    gettimeofday(&now, NULL);
+    gettimeofday(&now, nullptr);
 
     // Advance the frame
     if (!first_time) {
@@ -184,7 +187,7 @@ bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
     }
 
     out_buf_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buf_frame_id);
-    if (out_buf_frame == NULL)
+    if (out_buf_frame == nullptr)
         return false;
 
     // Setup the VDIF time offsets from the seq number
@@ -225,7 +228,7 @@ bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
     }
     lost_samples_frame =
         wait_for_empty_frame(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
-    if (lost_samples_frame == NULL)
+    if (lost_samples_frame == nullptr)
         return false;
 
     return true;

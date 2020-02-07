@@ -1,13 +1,19 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#define EVER ;;
+#include <stdint.h> // for int64_t, int32_t
+
+#define EVER                                                                                       \
+    ;                                                                                              \
+    ;
 
 #ifndef MAC_OSX
-#define MIN(a,b) \
-    ({ __typeof__ (a) _a = (a); \
-    __typeof__ (b) _b = (b); \
-    _a < _b ? _a : _b; })
+#define MIN(a, b)                                                                                  \
+    ({                                                                                             \
+        __typeof__(a) _a = (a);                                                                    \
+        __typeof__(b) _b = (b);                                                                    \
+        _a < _b ? _a : _b;                                                                         \
+    })
 #endif
 
 #ifdef __cplusplus
@@ -33,13 +39,14 @@ inline std::string string_tail(std::string const& str, size_t const N) {
 extern "C" {
 #endif
 
-void make_rfi_dirs(int streamID, const char * write_to, const char* time_dir);
-void make_dirs(char * disk_base, char * data_set, int num_disks);
-void make_raw_dirs(const char * disk_base, const char * disk_set, const char * data_set, int num_disks);
-int cp(const char *to, const char *from);
+void make_rfi_dirs(int streamID, const char* write_to, const char* time_dir);
+void make_dirs(char* disk_base, char* data_set, int num_disks);
+void make_raw_dirs(const char* disk_base, const char* disk_set, const char* data_set,
+                   int num_disks);
+int cp(const char* to, const char* from);
 int64_t mod(int64_t a, int64_t b);
 double e_time(void);
-void hex_dump (const int rows, void *addr, int len);
+void hex_dump(const int rows, void* addr, int len);
 
 //! A complex integer datatype.
 typedef struct {

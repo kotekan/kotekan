@@ -1,16 +1,25 @@
 #include "hsaOutputData.hpp"
 
-#include "gpsTime.h"
-#include "visUtil.hpp"
+#include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_for_...
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chimeMetadata.h"        // for atomic_add_lost_timesamples, get_first_packet_recv_time
+#include "gpsTime.h"              // for compute_gps_time
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_OUT
+#include "hsaCommand.hpp"         // for REGISTER_HSA_COMMAND, _factory_aliashsaCommand, hsaCom...
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "visUtil.hpp"            // for double_to_tv, tv_to_double
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
+
+#include <sys/time.h> // for timeval
+#include <time.h>     // for timespec
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaOutputData);
 
-hsaOutputData::hsaOutputData(Config& config, const string& unique_name,
+hsaOutputData::hsaOutputData(Config& config, const std::string& unique_name,
                              bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaSubframeCommand(config, unique_name, host_buffers, device, "hsaOutputData", "") {
     command_type = gpuCommandType::COPY_OUT;
@@ -46,18 +55,18 @@ int hsaOutputData::wait_on_precondition(int gpu_frame_id) {
     // We want to make sure we have some space to put our results.
     uint8_t* frame = wait_for_empty_frame(output_buffer, static_unique_name.c_str(),
                                           output_buffer_precondition_id);
-    if (frame == NULL)
+    if (frame == nullptr)
         return -1;
     output_buffer_precondition_id =
         (output_buffer_precondition_id + _num_sub_frames) % output_buffer->num_frames;
     if (_sub_frame_index == 0) {
         frame = wait_for_full_frame(network_buffer, static_unique_name.c_str(),
                                     network_buffer_precondition_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             return -1;
         frame = wait_for_full_frame(lost_samples_buf, static_unique_name.c_str(),
                                     lost_samples_buf_precondition_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             return -1;
         network_buffer_precondition_id =
             (network_buffer_precondition_id + 1) % network_buffer->num_frames;

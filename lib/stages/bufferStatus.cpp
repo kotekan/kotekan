@@ -1,18 +1,23 @@
 #include "bufferStatus.hpp"
 
-#include "buffer.h"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for get_num_full_frames, print_buffer_status, Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "kotekanLogging.hpp"    // for INFO
+#include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
+#include "visUtil.hpp"           // for current_time
 
-#include <fcntl.h>
-#include <functional>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string>
-#include <thread>
-#include <time.h>
-#include <unistd.h>
+#include <atomic>     // for atomic_bool
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <stdint.h>   // for uint32_t
+#include <string>     // for string, allocator
+#include <unistd.h>   // for usleep
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -21,7 +26,7 @@ using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(bufferStatus);
 
-bufferStatus::bufferStatus(Config& config, const string& unique_name,
+bufferStatus::bufferStatus(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferStatus::main_thread, this)) {
     buffers = buffer_container.get_buffer_map();
@@ -51,7 +56,7 @@ void bufferStatus::main_thread() {
 
         for (auto& buf_entry : buffers) {
             uint32_t num_full_frames = get_num_full_frames(buf_entry.second);
-            string buffer_name = buf_entry.first;
+            std::string buffer_name = buf_entry.first;
             full_frames_counter.labels({buffer_name}).set(num_full_frames);
             frames_counter.labels({buffer_name}).set(buf_entry.second->num_frames);
         }

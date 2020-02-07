@@ -1,25 +1,33 @@
-#include "gpsTime.h"
+#include "pulsarPostProcess.hpp"
 
-#include <assert.h>
-#include <functional>
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
+#include "BranchPrediction.hpp"    // for likely, unlikely
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for Buffer, mark_frame_empty, wait_for_empty_frame, wait_...
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chimeMetadata.h"         // for get_fpga_seq_num, psrCoord, get_psr_coord, get_stream...
+#include "fpga_header_functions.h" // for bin_number_chime, stream_id_t
+#include "gpsTime.h"               // for compute_gps_time, is_gps_global_time_set
+#include "kotekanLogging.hpp"      // for DEBUG, ERROR
+#include "vdif_functions.h"        // for VDIFHeader
+
+#include <algorithm>  // for max
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <cmath>      // for round
+#include <cstdint>    // for int64_t, uint64_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <string.h>   // for memcpy
+#include <string>     // for allocator, string, operator+, to_string
+#include <vector>     // for vector
 
 using std::string;
 
 #define udp_pulsar_header_size 32
 
-#include "BranchPrediction.hpp"
-#include "Config.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
-#include "pulsarPostProcess.hpp"
-#include "util.h"
-#include "vdif_functions.h"
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -27,7 +35,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(pulsarPostProcess);
 
-pulsarPostProcess::pulsarPostProcess(Config& config_, const string& unique_name,
+pulsarPostProcess::pulsarPostProcess(Config& config_, const std::string& unique_name,
                                      bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container,
           std::bind(&pulsarPostProcess::main_thread, this)) {
@@ -163,7 +171,7 @@ void pulsarPostProcess::main_thread() {
     struct psrCoord psr_coord[_num_gpus];
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t* out_frame = wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
-    if (out_frame == NULL)
+    if (out_frame == nullptr)
         goto end_loop;
 
     while (!stop_thread) {
@@ -255,7 +263,7 @@ void pulsarPostProcess::main_thread() {
                         out_buffer_ID = (out_buffer_ID + 1) % pulsar_buf->num_frames;
                         out_frame =
                             wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
-                        if (out_frame == NULL)
+                        if (out_frame == nullptr)
                             goto end_loop;
                         // Fill the headers of the new buffer
                         fpga_seq_num += _timesamples_per_pulsar_packet * _num_packet_per_stream;
@@ -330,7 +338,7 @@ end_loop:;
 std::optional<uint64_t> pulsarPostProcess::sync_input_buffers() {
     for (unsigned i = 0; i < _num_gpus; i++) {
         in_frame[i] = wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
-        if (in_frame[i] == NULL)
+        if (in_frame[i] == nullptr)
             return std::nullopt;
     }
     while (!stop_thread) {
@@ -348,7 +356,7 @@ std::optional<uint64_t> pulsarPostProcess::sync_input_buffers() {
                 mark_frame_empty(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
                 in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
                 in_frame[i] = wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
-                if (in_frame[i] == NULL)
+                if (in_frame[i] == nullptr)
                     return std::nullopt;
             }
             if (max_fpga_count != get_fpga_seq_num(in_buf[i], in_buffer_ID[i])) {
