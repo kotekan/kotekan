@@ -2,8 +2,8 @@
 
 using std::string;
 
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "chimeMetadata.h"
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "compressLostSamples.hpp"
 
 using kotekan::bufferContainer;

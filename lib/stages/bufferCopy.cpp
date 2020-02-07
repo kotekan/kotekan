@@ -1,7 +1,9 @@
 #include "bufferCopy.hpp"
+
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "visUtil.hpp"
+
 #include "json.hpp"
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 
 #include <signal.h>
 

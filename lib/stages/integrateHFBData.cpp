@@ -1,10 +1,11 @@
-#include <string>
+#include "integrateHFBData.hpp"
 
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "chimeMetadata.h"
 #include "gpsTime.h"
 #include "hfbMetadata.h"
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "integrateHFBData.hpp"
+
+#include <string>
 
 using kotekan::bufferContainer;
 using kotekan::Config;

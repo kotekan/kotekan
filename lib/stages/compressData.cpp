@@ -1,6 +1,7 @@
 #include "compressData.hpp"
+
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "hfbMetadata.h"
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 
 using kotekan::bufferContainer;
 using kotekan::Config;
