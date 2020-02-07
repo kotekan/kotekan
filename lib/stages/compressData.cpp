@@ -1,9 +1,6 @@
-#include <string>
-
-using std::string;
-
 #include "compressData.hpp"
 #include "hfbMetadata.h"
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -11,7 +8,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(compressData);
 
-compressData::compressData(Config& config_, const string& unique_name,
+compressData::compressData(Config& config_, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&compressData::main_thread, this)) {
 

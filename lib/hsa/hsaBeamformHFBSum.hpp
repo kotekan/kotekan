@@ -44,7 +44,7 @@
 class hsaBeamformHFBSum : public hsaCommand {
 public:
     /// Constructor, also initializes internal variables from config
-    hsaBeamformHFBSum(kotekan::Config& config, const string& unique_name,
+    hsaBeamformHFBSum(kotekan::Config& config, const std::string& unique_name,
                       kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor

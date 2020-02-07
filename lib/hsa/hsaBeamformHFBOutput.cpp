@@ -5,7 +5,7 @@ using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaBeamformHFBOutputData);
 
-hsaBeamformHFBOutputData::hsaBeamformHFBOutputData(Config& config, const string& unique_name,
+hsaBeamformHFBOutputData::hsaBeamformHFBOutputData(Config& config, const std::string& unique_name,
                                                    bufferContainer& host_buffers,
                                                    hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "hsaBeamformHFBOutputData", "") {

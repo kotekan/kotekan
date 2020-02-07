@@ -1,10 +1,9 @@
 #include <string>
 
-using std::string;
-
 #include "chimeMetadata.h"
 #include "gpsTime.h"
 #include "hfbMetadata.h"
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "integrateHFBData.hpp"
 
 using kotekan::bufferContainer;
@@ -13,7 +12,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(integrateHFBData);
 
-integrateHFBData::integrateHFBData(Config& config_, const string& unique_name,
+integrateHFBData::integrateHFBData(Config& config_, const std::string& unique_name,
                                    bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&integrateHFBData::main_thread, this)) {
 

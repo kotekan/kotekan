@@ -3,6 +3,7 @@
 using std::string;
 
 #include "chimeMetadata.h"
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "compressLostSamples.hpp"
 
 using kotekan::bufferContainer;
@@ -13,7 +14,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(compressLostSamples);
 
-compressLostSamples::compressLostSamples(Config& config_, const string& unique_name,
+compressLostSamples::compressLostSamples(Config& config_, const std::string& unique_name,
                                          bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container,
           std::bind(&compressLostSamples::main_thread, this)) {

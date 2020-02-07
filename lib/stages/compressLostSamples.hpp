@@ -35,7 +35,7 @@ using std::vector;
 class compressLostSamples : public kotekan::Stage {
 public:
     /// Constructor.
-    compressLostSamples(kotekan::Config& config_, const string& unique_name,
+    compressLostSamples(kotekan::Config& config_, const std::string& unique_name,
                         kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~compressLostSamples();

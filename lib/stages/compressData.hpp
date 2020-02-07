@@ -10,9 +10,6 @@
 #include "Stage.hpp"
 
 #include <csignal>
-#include <vector>
-
-using std::vector;
 
 /**
  * @class compressData
@@ -40,7 +37,7 @@ using std::vector;
 class compressData : public kotekan::Stage {
 public:
     /// Constructor.
-    compressData(kotekan::Config& config_, const string& unique_name,
+    compressData(kotekan::Config& config_, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~compressData();

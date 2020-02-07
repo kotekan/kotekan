@@ -5,10 +5,6 @@
 #include "buffer.h"
 #include "visUtil.hpp"
 
-//#include <string>
-//#include <tuple>
-//#include <vector>
-
 /**
  * @brief Copies frames from one buffer into many buffers.
  *
@@ -40,7 +36,7 @@
 class bufferCopy : public kotekan::Stage {
 public:
     /// Constructor
-    bufferCopy(kotekan::Config& config, const string& unique_name,
+    bufferCopy(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
     /// Destructor

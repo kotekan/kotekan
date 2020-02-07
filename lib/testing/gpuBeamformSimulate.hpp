@@ -64,7 +64,7 @@ private:
     std::vector<float> _ew_spacing;
     float* _ew_spacing_c;
     /// Default gain values if gain file is missing for this freq, currently set to 1+1j
-    vector<float> default_gains;
+    std::vector<float> default_gains;
     /// No. of sub frequencies
     uint32_t _num_sub_freqs;
     /// No. of beams

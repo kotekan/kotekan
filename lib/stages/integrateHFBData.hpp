@@ -7,11 +7,7 @@
 #ifndef INTEGRATE_HFB_DATA_PROCESS
 #define INTEGRATE_HFB_DATA_PROCESS
 
-#include "Stage.hpp"
-
-#include <vector>
-
-using std::vector;
+#include "Stage.hpp" // for Stage
 
 /**
  * @class integrateHFBData
@@ -41,7 +37,7 @@ using std::vector;
 class integrateHFBData : public kotekan::Stage {
 public:
     /// Constructor.
-    integrateHFBData(kotekan::Config& config_, const string& unique_name,
+    integrateHFBData(kotekan::Config& config_, const std::string& unique_name,
                      kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~integrateHFBData();

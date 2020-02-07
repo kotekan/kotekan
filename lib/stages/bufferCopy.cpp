@@ -1,8 +1,7 @@
 #include "bufferCopy.hpp"
-
 #include "visUtil.hpp"
-
 #include "json.hpp"
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 
 #include <signal.h>
 
@@ -14,7 +13,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(bufferCopy);
 
-bufferCopy::bufferCopy(Config& config, const string& unique_name,
+bufferCopy::bufferCopy(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferCopy::main_thread, this)) {
 

@@ -30,7 +30,7 @@
 class hsaBeamformHFBOutputData : public hsaCommand {
 public:
     /// Constructor
-    hsaBeamformHFBOutputData(kotekan::Config& config, const string& unique_name,
+    hsaBeamformHFBOutputData(kotekan::Config& config, const std::string& unique_name,
                              kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor
