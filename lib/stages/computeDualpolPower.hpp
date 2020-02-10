@@ -1,13 +1,16 @@
 #ifndef COMPUTE_DUALPOL_POWER
 #define COMPUTE_DUALPOL_POWER
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "errors.h"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
+
+#include <string>      // for string
+#include <sys/types.h> // for uint
 
 class computeDualpolPower : public kotekan::Stage {
 public:
-    computeDualpolPower(kotekan::Config& config, const string& unique_name,
+    computeDualpolPower(kotekan::Config& config, const std::string& unique_name,
                         kotekan::bufferContainer& buffer_container);
     ~computeDualpolPower();
     void main_thread() override;

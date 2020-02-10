@@ -1,37 +1,41 @@
 #include "visAccumulate.hpp"
 
-#include "StageFactory.hpp"
-#include "chimeMetadata.h"
-#include "configUpdater.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "factory.hpp"
-#include "metadata.h"
-#include "prometheusMetrics.hpp"
-#include "version.h"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for register_producer, Buffer, allocate_new_metadata_object
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chimeMetadata.h"         // for chimeMetadata, get_fpga_seq_num, get_lost_timesamples
+#include "configUpdater.hpp"       // for configUpdater
+#include "datasetManager.hpp"      // for state_id_t, datasetManager, dset_id_t
+#include "datasetState.hpp"        // for eigenvalueState, freqState, gatingState, inputState
+#include "factory.hpp"             // for FACTORY
+#include "fpga_header_functions.h" // for freq_from_bin
+#include "kotekanLogging.hpp"      // for FATAL_ERROR, INFO, logLevel, DEBUG
+#include "metadata.h"              // for metadataContainer
+#include "prometheusMetrics.hpp"   // for Counter, MetricFamily, Metrics
+#include "version.h"               // for get_git_commit_hash
+#include "visBuffer.hpp"           // for visFrameView
+#include "visUtil.hpp"             // for prod_ctype, frameID, input_ctype, modulo, operator+
 
-#include "fmt.hpp"
-#include "gsl-lite.hpp"
-#include "json.hpp"
+#include "fmt.hpp"      // for format, fmt
+#include "gsl-lite.hpp" // for span<>::iterator, span
+#include "json.hpp"     // for json, basic_json, iteration_proxy_value, basic_json<>...
 
-#include <algorithm>
-#include <atomic>
-#include <complex>
-#include <csignal>
-#include <cstring>
-#include <exception>
-#include <fstream>
-#include <iterator>
-#include <mutex>
-#include <numeric>
-#include <regex>
-#include <stdexcept>
-#include <time.h>
-#include <tuple>
-#include <vector>
+#include <algorithm> // for max, fill, copy, copy_backward, equal, transform
+#include <assert.h>  // for assert
+#include <atomic>    // for atomic_bool
+#include <cmath>     // for pow
+#include <complex>   // for operator*, complex
+#include <cstring>   // for memcpy
+#include <exception> // for exception
+#include <iterator>  // for back_insert_iterator, begin, end, back_inserter
+#include <mutex>     // for lock_guard, mutex
+#include <numeric>   // for iota
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error, invalid_argument
+#include <time.h>    // for size_t, timespec
+#include <tuple>     // for get
+#include <vector>    // for vector, vector<>::iterator, __alloc_traits<>::value_type
 
 
 using namespace std::placeholders;
@@ -45,7 +49,7 @@ using kotekan::prometheus::Metrics;
 REGISTER_KOTEKAN_STAGE(visAccumulate);
 
 
-visAccumulate::visAccumulate(Config& config, const string& unique_name,
+visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
                              bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&visAccumulate::main_thread, this)),
     skipped_frame_counter(Metrics::instance().add_counter(

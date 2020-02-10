@@ -7,8 +7,15 @@
 #ifndef HSA_BEAMFORM_REORDER_H
 #define HSA_BEAMFORM_REORDER_H
 
-#include "hsaCommand.hpp"
+#include "Config.hpp"             // for Config
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaCommand.hpp"         // for hsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
+#include <stdint.h> // for int32_t
+#include <string>   // for string
+#include <vector>   // for vector
 /**
  * @class hsaBeamformReorder
  * @brief hsaCommand to reorder input for FRB beamform
@@ -57,7 +64,7 @@ class hsaBeamformReorder : public hsaCommand {
 public:
     /// Constructor, also initializes internal variables from config and initializes the array of
     /// reordering index.
-    hsaBeamformReorder(kotekan::Config& config, const string& unique_name,
+    hsaBeamformReorder(kotekan::Config& config, const std::string& unique_name,
                        kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor, cleans up local allocs.
@@ -81,7 +88,7 @@ private:
     /// Number of sample per data set, current set at 128*128*3
     int32_t _samples_per_data_set;
     /// Array of reordering index
-    vector<int32_t> _reorder_map;
+    std::vector<int32_t> _reorder_map;
     /// Array of reordering index in C style for backwards compatibility.
     int* _reorder_map_c;
 };

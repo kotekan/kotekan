@@ -1,19 +1,27 @@
 #include "hsaRfiTimeSum.hpp"
 
-#include "configUpdater.hpp"
-#include "hsaBase.h"
-#include "visUtil.hpp"
+#include "Config.hpp"             // for Config
+#include "configUpdater.hpp"      // for configUpdater
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+#include "kotekanLogging.hpp"     // for DEBUG, INFO, WARN
+#include "visUtil.hpp"            // for parse_reorder_default
 
-#include <math.h>
-#include <mutex>
-#include <unistd.h>
+#include <algorithm>  // for copy
+#include <cstdint>    // for uint32_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <string.h>   // for memcpy, memset
+#include <tuple>      // for get
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaRfiTimeSum);
 
-hsaRfiTimeSum::hsaRfiTimeSum(Config& config, const string& unique_name,
+hsaRfiTimeSum::hsaRfiTimeSum(Config& config, const std::string& unique_name,
                              bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_timesum" KERNEL_EXT,
                "rfi_chime_timesum_private.hsaco") {

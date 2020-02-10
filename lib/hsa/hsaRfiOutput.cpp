@@ -1,12 +1,17 @@
 #include "hsaRfiOutput.hpp"
 
+#include "buffer.h"               // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_OUT
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaRfiOutput);
 
-hsaRfiOutput::hsaRfiOutput(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                           hsaDeviceInterface& device) :
+hsaRfiOutput::hsaRfiOutput(Config& config, const std::string& unique_name,
+                           bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "hsaRfiOutput", "") {
     command_type = gpuCommandType::COPY_OUT;
     // Get buffers
@@ -29,7 +34,7 @@ int hsaRfiOutput::wait_on_precondition(int gpu_frame_id) {
     // We want to make sure we have some space to put our results.
     uint8_t* frame =
         wait_for_empty_frame(_rfi_output_buf, unique_name.c_str(), _rfi_output_buf_precondition_id);
-    if (frame == NULL)
+    if (frame == nullptr)
         return -1;
 
     frame = wait_for_full_frame(_network_buf, unique_name.c_str(), _network_buf_precondition_id);

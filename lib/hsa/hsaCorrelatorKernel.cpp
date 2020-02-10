@@ -1,11 +1,26 @@
 #include "hsaCorrelatorKernel.hpp"
 
+#include "Config.hpp"             // for Config
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaBase.h"              // for hsa_host_free, hsa_host_malloc
+#include "hsaCommand.hpp"         // for kernelParams, REGISTER_HSA_COMMAND, _factory_aliashsaC...
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+#include "kotekanLogging.hpp"     // for DEBUG2
+
+#include "fmt.hpp" // for format, fmt
+
+#include <cstdint>   // for int32_t
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <string.h>  // for memcpy, memset
+#include <vector>    // for vector
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaCorrelatorKernel);
 
-hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const string& unique_name,
+hsaCorrelatorKernel::hsaCorrelatorKernel(Config& config, const std::string& unique_name,
                                          bufferContainer& host_buffers,
                                          hsaDeviceInterface& device) :
     hsaSubframeCommand(config, unique_name, host_buffers, device, "CHIME_X", "N2.hsaco") {

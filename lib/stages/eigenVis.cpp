@@ -1,17 +1,35 @@
 #include "eigenVis.hpp"
 
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for operator!=
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for mark_frame_empty, allocate_new_metadata_object, mark_fr...
+#include "datasetState.hpp"      // for datasetState, eigenvalueState, state_uptr
+#include "kotekanLogging.hpp"    // for DEBUG, ERROR, INFO
+#include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
+#include "visBuffer.hpp"         // for visFrameView, visField, visField::erms, visField::eval
+#include "visUtil.hpp"           // for cfloat, frameID, modulo, current_time, cmap, movingAverage
 
-#include "fmt.hpp"
+#include "fmt.hpp"      // for format, fmt
+#include "gsl-lite.hpp" // for span
 
-#include <cblas.h>
-#include <lapacke.h>
-#include <time.h>
+#include <algorithm>  // for fill, max, lower_bound, remove
+#include <atomic>     // for atomic_bool
+#include <cblas.h>    // for openblas_set_num_threads
+#include <cmath>      // for pow, sqrt
+#include <complex>    // for operator*, norm, complex
+#include <cstdint>    // for uint32_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <lapacke.h>  // for LAPACKE_cheevr, LAPACK_COL_MAJOR
+#include <map>        // for map, map<>::mapped_type, operator==, map<>::iterator
+#include <memory>     // for make_unique
+#include <numeric>    // for iota
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <time.h>     // for size_t
+#include <tuple>      // for forward_as_tuple
+#include <utility>    // for move, pair, piecewise_construct
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -20,7 +38,8 @@ using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(eigenVis);
 
-eigenVis::eigenVis(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+eigenVis::eigenVis(Config& config, const std::string& unique_name,
+                   bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&eigenVis::main_thread, this)) {
 
     input_buffer = get_buffer("in_buf");
@@ -156,7 +175,7 @@ void eigenVis::main_thread() {
         info = LAPACKE_cheevr(LAPACK_COL_MAJOR, 'V', 'I', 'L', nside,
                               (lapack_complex_float*)vis_square.data(), nside, 0.0, 0.0,
                               nside - nev + 1, nside, 0.0, &ev_found, evals.data(),
-                              (lapack_complex_float*)evecs.data(), nside, NULL);
+                              (lapack_complex_float*)evecs.data(), nside, nullptr);
 
         DEBUG("LAPACK exit status: {:d}", info);
         if (info) {

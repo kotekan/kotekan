@@ -8,12 +8,10 @@
 #define INTEGRATE_POWER_STREAM_H
 
 #include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "powerStreamUtil.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
 
-#include <atomic>
-#include <sys/socket.h>
+#include <string> // for string
 
 /**
  * @class integratePowerStream
@@ -42,7 +40,7 @@
 class integratePowerStream : public kotekan::Stage {
 public:
     /// Constructor.
-    integratePowerStream(kotekan::Config& config, const string& unique_name,
+    integratePowerStream(kotekan::Config& config, const std::string& unique_name,
                          kotekan::bufferContainer& buffer_container);
 
     /// Destructor.

@@ -1,14 +1,22 @@
 #include "kotekanMode.hpp"
 
-#include "StageFactory.hpp"
-#include "buffer.h"
-#include "bufferFactory.hpp"
-#include "configUpdater.hpp"
-#include "datasetManager.hpp"
-#include "metadataFactory.hpp"
-#include "restServer.hpp"
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "StageFactory.hpp"      // for StageFactory
+#include "buffer.h"              // for delete_buffer, send_shutdown_signal
+#include "bufferFactory.hpp"     // for bufferFactory
+#include "configUpdater.hpp"     // for configUpdater
+#include "datasetManager.hpp"    // for datasetManager
+#include "kotekanLogging.hpp"    // for INFO_NON_OO
+#include "metadata.h"            // for delete_metadata_pool
+#include "metadataFactory.hpp"   // for metadataFactory
+#include "prometheusMetrics.hpp" // for Metrics
+#include "restServer.hpp"        // for restServer, connectionInstance
 
-#include "json.hpp"
+#include "json.hpp" // for basic_json<>::object_t, json, basic_json<>::value_type
+
+#include <stdlib.h> // for free
+#include <utility>  // for pair
 
 namespace kotekan {
 

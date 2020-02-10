@@ -1,11 +1,19 @@
 #include "hsaRfiInputSum.hpp"
 
-#include "hsaBase.h"
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_for_...
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chimeMetadata.h"        // for get_rfi_num_bad_inputs
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+#include "kotekanLogging.hpp"     // for DEBUG
+#include "restServer.hpp"         // for HTTP_RESPONSE, connectionInstance, restServer
 
-#include "fmt.hpp"
-
-#include <math.h>
-#include <mutex>
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error
+#include <string.h>  // for memcpy, memset
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -16,7 +24,7 @@ using kotekan::restServer;
 
 REGISTER_HSA_COMMAND(hsaRfiInputSum);
 
-hsaRfiInputSum::hsaRfiInputSum(Config& config, const string& unique_name,
+hsaRfiInputSum::hsaRfiInputSum(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, hsaDeviceInterface& device) :
     // Note, the rfi_chime_inputsum_private.hsaco kernel may be used in the future.
     hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_inputsum" KERNEL_EXT,

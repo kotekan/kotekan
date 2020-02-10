@@ -5,19 +5,17 @@
 #ifndef GATE_SPEC_HPP
 #define GATE_SPEC_HPP
 
-#include "buffer.h"
-#include "factory.hpp"
-#include "kotekanLogging.hpp"
-#include "pulsarTiming.hpp"
-#include "visUtil.hpp"
+#include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
+#include "kotekanLogging.hpp" // for logLevel, kotekanLogging
+#include "pulsarTiming.hpp"   // for SegmentedPolyco
 
-#include "json.hpp"
+#include "json.hpp" // for json
 
-#include <cstdint>
-#include <fstream>
-#include <functional>
-#include <memory>
-#include <time.h>
+#include <functional> // for function
+#include <memory>     // for unique_ptr
+#include <string>     // for string
+#include <time.h>     // for timespec
+#include <vector>     // for vector
 
 
 /**
@@ -110,7 +108,7 @@ public:
      *
      * @return  Serialized config.
      **/
-    virtual json to_dm_json() const {
+    virtual nlohmann::json to_dm_json() const {
         return {};
     }
 
@@ -172,7 +170,7 @@ public:
      *
      * @return  JSON config.
      **/
-    json to_dm_json() const override;
+    nlohmann::json to_dm_json() const override;
 
 private:
     // Config parameters for pulsar gating
@@ -183,6 +181,7 @@ private:
     float _seg;                     // length of polyco segments in s
     std::vector<double> _tmid;      // in MJD
     std::vector<double> _phase_ref; // in number of rotations
+    std::vector<std::vector<float>> _coeff;
     SegmentedPolyco _polycos;
 };
 

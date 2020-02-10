@@ -14,7 +14,6 @@
 #include <fftw3.h>
 #include <string>
 #include <unistd.h>
-using std::string;
 
 /**
  * @class fftwEngine
@@ -49,7 +48,7 @@ using std::string;
 class fftwEngine : public kotekan::Stage {
 public:
     /// Constructor, also initializes FFTW and values from config yaml.
-    fftwEngine(kotekan::Config& config, const string& unique_name,
+    fftwEngine(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
     /// Destructor, frees local allocs and exits FFTW.
     virtual ~fftwEngine();

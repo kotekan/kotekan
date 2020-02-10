@@ -1,6 +1,12 @@
 #include "gateSpec.hpp"
 
-#include "kotekanLogging.hpp"
+#include "kotekanLogging.hpp" // for WARN, logLevel, INFO
+#include "visUtil.hpp"        // for operator-, ts_to_double
+
+#include <algorithm> // for copy
+#include <exception> // for exception
+#include <time.h>    // for timespec
+#include <utility>   // for move
 
 
 REGISTER_GATESPEC(pulsarSpec, "pulsar");
@@ -35,11 +41,10 @@ bool pulsarSpec::update_spec(nlohmann::json& json) {
         return true;
     }
 
-    std::vector<std::vector<float>> coeff;
     try {
         // Get gating specifications from config
         _pulsar_name = json.at("pulsar_name").get<std::string>();
-        coeff = json.at("coeff").get<std::vector<std::vector<float>>>();
+        _coeff = json.at("coeff").get<std::vector<std::vector<float>>>();
         _dm = json.at("dm").get<float>();
         _tmid = json.at("t_ref").get<std::vector<double>>();
         _phase_ref = json.at("phase_ref").get<std::vector<double>>();
@@ -51,7 +56,7 @@ bool pulsarSpec::update_spec(nlohmann::json& json) {
         return false;
     }
     try {
-        _polycos = SegmentedPolyco(_rot_freq, _dm, _seg, _tmid, _phase_ref, coeff);
+        _polycos = SegmentedPolyco(_rot_freq, _dm, _seg, _tmid, _phase_ref, _coeff);
     } catch (std::exception& e) {
         WARN("Could not generate polyco from config parameters: {:s}", e.what());
         return false;
@@ -92,8 +97,15 @@ std::function<float(timespec, timespec, float)> pulsarSpec::weight_function(time
 }
 
 
-json pulsarSpec::to_dm_json() const {
-    return {{"pulsar_name", _pulsar_name}};
+nlohmann::json pulsarSpec::to_dm_json() const {
+    return {{"pulsar_name", _pulsar_name},
+            {"dm", _dm},
+            {"t_ref", _tmid},
+            {"phase_ref", _phase_ref},
+            {"rot_freq", _rot_freq},
+            {"segment", _seg},
+            {"pulse_width", _pulse_width},
+            {"coeff", _coeff}};
 }
 
 

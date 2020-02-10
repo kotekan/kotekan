@@ -305,10 +305,10 @@ if __name__ == "__main__":
         )
         cbar_ax = fig.add_axes([0.915, 0.32, 0.03, 0.58])
         cbar = fig.colorbar(im, cax=cbar_ax, label="Median Faulty Frames")
-        med_plot, = ax[1, 0].plot(
+        (med_plot,) = ax[1, 0].plot(
             np.arange(waterfall.shape[1]), np.nanmedian(waterfall, axis=0)
         )
-        med_plot_input, = ax[0, 1].plot(
+        (med_plot_input,) = ax[0, 1].plot(
             np.nanmean(waterfall, axis=1),
             800 - 400.0 / 1024.0 * np.arange(waterfall.shape[0]),
             "o",
@@ -351,11 +351,11 @@ if __name__ == "__main__":
         ax[0, 0].xaxis.set_major_formatter(date_format)
         ax[1, 0].xaxis.set_major_formatter(date_format)
         fig.autofmt_xdate()
-        med_plot, = ax[1, 0].plot(
+        (med_plot,) = ax[1, 0].plot(
             np.linspace(x_lims[0], x_lims[1], num=waterfall.shape[1]),
             np.nanmedian(waterfall, axis=0),
         )
-        med_plot_input, = ax[0, 1].plot(
+        (med_plot_input,) = ax[0, 1].plot(
             np.nanmean(waterfall, axis=1),
             800 - 400.0 / 1024.0 * np.arange(waterfall.shape[0]),
         )

@@ -21,7 +21,8 @@ pipeline {
             sh '''cd build/
                   cmake -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
-                  -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+                  -DUSE_OMP=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                  -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
                   make -j 4'''
           }
         }
@@ -33,7 +34,8 @@ pipeline {
                   -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON \
                   -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
-                  -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+                  -DUSE_OMP=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                  -DCMAKE_C_COMPILER_LAUNCHER=ccache -DBOOST_TESTS=ON ..
                   make -j 4'''
           }
         }
@@ -47,7 +49,8 @@ pipeline {
                   -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_HSA=ON \
                   -DCMAKE_BUILD_TYPE=Debug -DUSE_HDF5=ON -DHIGHFIVE_PATH=/opt/HighFive \
                   -DOPENBLAS_PATH=/opt/OpenBLAS/build -DUSE_LAPACK=ON -DBLAZE_PATH=/opt/blaze \
-                  -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+                  -DUSE_OMP=ON -DBOOST_TESTS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                  -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
                   make -j 4'''
           }
         }
@@ -55,7 +58,7 @@ pipeline {
           steps {
             sh '''mkdir -p build_base
                   cd build_base
-                  cmake -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+                  cmake -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
                   make -j 4'''
           }
         }
@@ -75,7 +78,8 @@ pipeline {
                         -DUSE_LAPACK=ON -DBLAZE_PATH=/usr/local/opt/blaze \
                         -DOPENBLAS_PATH=/usr/local/opt/OpenBLAS \
                         -DUSE_HDF5=ON -DHIGHFIVE_PATH=/usr/local/opt/HighFive \
-                        -DCOMPILE_DOCS=ON -DUSE_OPENCL=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+                        -DCOMPILE_DOCS=ON -DUSE_OPENCL=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                        -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
                   make -j'''
           }
         }
@@ -124,7 +128,7 @@ pipeline {
             }
             stage('Boost Unit Tests') {
               steps {
-                sh '''cd build/tests/
+                sh '''cd chime-build/tests/
                       python3 -m pytest -x -vvv'''
               }
             }

@@ -7,10 +7,13 @@
 #ifndef COUNT_CHECK_HPP
 #define COUNT_CHECK_HPP
 
-#include "Stage.hpp"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
 #include "buffer.h"
+#include "bufferContainer.hpp"
 
-#include <unistd.h>
+#include <stdint.h> // for int64_t
+#include <string>   // for string
 
 
 /**
@@ -38,7 +41,7 @@ class countCheck : public kotekan::Stage {
 
 public:
     // Default constructor
-    countCheck(kotekan::Config& config, const string& unique_name,
+    countCheck(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
     // Main loop for the stage

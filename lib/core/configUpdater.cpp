@@ -1,15 +1,20 @@
 #include "configUpdater.hpp"
 
-#include "Stage.hpp"
-#include "errors.h"
-#include "restServer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"         // for Config
+#include "Stage.hpp"          // for Stage
+#include "kotekanLogging.hpp" // for WARN_NON_OO, DEBUG_NON_OO, INFO_NON_OO, ERROR_NON_OO, FATA...
+#include "restServer.hpp"     // for connectionInstance, HTTP_RESPONSE, HTTP_RESPONSE::BAD_REQUEST
+#include "visUtil.hpp"        // for json_type_name
 
-#include "fmt.hpp"
-#include "json.hpp"
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for json, basic_json<>::iterator, basic_json, iter_impl, basic...
 
-#include <iostream>
-#include <signal.h>
+#include <algorithm> // for find, count
+#include <exception> // for exception
+#include <stdexcept> // for runtime_error
+#include <utility>   // for pair
+
+using nlohmann::json;
 
 namespace kotekan {
 
@@ -42,8 +47,8 @@ void configUpdater::reset() {
     _keys.clear();
 }
 
-void configUpdater::parse_tree(json& config_tree, const std::string& path) {
-    for (json::iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
+void configUpdater::parse_tree(const nlohmann::json& config_tree, const std::string& path) {
+    for (json::const_iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
         // If the item isn't an object we can just ignore it.
         if (!it.value().is_object()) {
             continue;
@@ -51,8 +56,8 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path) {
 
         // Check if this is a kotekan_update_endpoint block, and if so create
         // the endpoint
-        string endpoint_type = it.value().value("kotekan_update_endpoint", "none");
-        string unique_name = fmt::format(fmt("{:s}/{:s}"), path, it.key());
+        std::string endpoint_type = it.value().value("kotekan_update_endpoint", "none");
+        std::string unique_name = fmt::format(fmt("{:s}/{:s}"), path, it.key());
         if (endpoint_type == "json") {
             if (std::count(_endpoints.begin(), _endpoints.end(), unique_name) != 0) {
                 throw std::runtime_error(fmt::format(fmt("configUpdater: An endpoint with the path "
@@ -67,7 +72,7 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path) {
 
             // Store all keys of this updatable block
             std::vector<std::string> keys;
-            for (json::iterator key = it.value().begin(); key != it.value().end(); key++) {
+            for (json::const_iterator key = it.value().begin(); key != it.value().end(); key++) {
                 if (key.value().dump() != "kotekan_update_endpoint")
                     keys.push_back(key.key());
             }
@@ -75,8 +80,7 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path) {
 
             continue; // no recursive updatable blocks allowed
         } else if (endpoint_type != "none") {
-            throw std::runtime_error("configUpdater: Found an unknown "
-                                     "endpoint type value: "
+            throw std::runtime_error("configUpdater: Found an unknown endpoint type value: "
                                      + endpoint_type);
         }
 
@@ -87,10 +91,6 @@ void configUpdater::parse_tree(json& config_tree, const std::string& path) {
 }
 
 void configUpdater::subscribe(const Stage* subscriber, std::function<bool(json&)> callback) {
-    if (!_config->exists(subscriber->get_unique_name(), "updatable_config"))
-        throw std::runtime_error("configUpdater: key 'updatable_config' was "
-                                 "not found in '"
-                                 + subscriber->get_unique_name() + "' in the config file.");
     subscribe(_config->get<std::string>(subscriber->get_unique_name(), "updatable_config"),
               callback);
 }
@@ -98,10 +98,6 @@ void configUpdater::subscribe(const Stage* subscriber, std::function<bool(json&)
 void configUpdater::subscribe(const Stage* subscriber,
                               std::map<std::string, std::function<bool(json&)>> callbacks) {
     for (auto callback : callbacks) {
-        if (!_config->exists(subscriber->get_unique_name() + "/updatable_config", callback.first))
-            throw std::runtime_error(fmt::format(fmt("configUpdater: key '{:s}' was not found in "
-                                                     "'{:s}/updatable_config' in the config file."),
-                                                 callback.first, subscriber->get_unique_name()));
         subscribe(_config->get<std::string>(subscriber->get_unique_name() + "/updatable_config/",
                                             callback.first),
                   callback.second);
@@ -110,23 +106,19 @@ void configUpdater::subscribe(const Stage* subscriber,
 
 void configUpdater::subscribe(const std::string& name, std::function<bool(json&)> callback) {
     if (!callback)
-        throw std::runtime_error("configUpdater: Was passed a callback "
-                                 "function for endpoint '"
-                                 + name
-                                 + "', that "
-                                   "does not exist.");
+        throw std::runtime_error("configUpdater: Was passed a callback function for endpoint '"
+                                 + name + "', that does not exist.");
     _callbacks.insert(std::pair<std::string, std::function<bool(nlohmann::json&)>>(name, callback));
     DEBUG_NON_OO("New subscription to {:s}", name);
 
     // First call to subscriber with initial value from the config
     if (!callback(_init_values[name]))
-        throw std::runtime_error("configUpdater: Failure when calling "
-                                 "subscriber to set initial value at endpoint"
-                                 " '"
-                                 + name + "'.");
+        throw std::runtime_error(
+            "configUpdater: Failure when calling subscriber to set initial value at endpoint '"
+            + name + "'.");
 }
 
-void configUpdater::create_endpoint(const string& name) {
+void configUpdater::create_endpoint(const std::string& name) {
     // register POST endpoint
     // this will add any missing / in the beginning of the name
     restServer::instance().register_post_callback(name, std::bind(&configUpdater::rest_callback,

@@ -1,6 +1,22 @@
 #include "gpuSimulate.hpp"
 
-#include "errors.h"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for DEBUG, INFO
+
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <stdio.h>    // for printf
+#include <stdlib.h>   // for free, malloc
+#include <vector>     // for vector
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -8,7 +24,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(gpuSimulate);
 
-gpuSimulate::gpuSimulate(Config& config, const string& unique_name,
+gpuSimulate::gpuSimulate(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&gpuSimulate::main_thread, this)) {
 
@@ -18,7 +34,7 @@ gpuSimulate::gpuSimulate(Config& config, const string& unique_name,
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     _num_blocks = config.get<int32_t>(unique_name, "num_blocks");
     _block_size = config.get<int32_t>(unique_name, "block_size");
-    _data_format = config.get_default<string>(unique_name, "data_format", "4+4b");
+    _data_format = config.get_default<std::string>(unique_name, "data_format", "4+4b");
 
     input_buf = get_buffer("network_in_buf");
     register_consumer(input_buf, unique_name.c_str());
@@ -61,10 +77,10 @@ void gpuSimulate::main_thread() {
 
     while (!stop_thread) {
         char* input = (char*)wait_for_full_frame(input_buf, unique_name.c_str(), input_frame_id);
-        if (input == NULL)
+        if (input == nullptr)
             break;
         int* output = (int*)wait_for_empty_frame(output_buf, unique_name.c_str(), output_frame_id);
-        if (output == NULL)
+        if (output == nullptr)
             break;
 
         // TODO adjust to allow for more than one frequency.

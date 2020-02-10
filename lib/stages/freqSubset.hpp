@@ -7,15 +7,15 @@
 #define FREQ_SUBSET_HPP
 
 #include "Config.hpp"
-#include "Stage.hpp"
+#include "Stage.hpp" // for Stage
 #include "buffer.h"
 #include "bufferContainer.hpp"
-#include "datasetManager.hpp"
+#include "datasetManager.hpp" // for dset_id_t, state_id_t, fingerprint_t
 
-#include <future>
-#include <stdint.h>
-#include <string>
-#include <vector>
+#include <map>      // for map
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 
 /**
@@ -42,7 +42,7 @@ class freqSubset : public kotekan::Stage {
 
 public:
     /// Default constructor
-    freqSubset(kotekan::Config& config, const string& unique_name,
+    freqSubset(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
     /// Main loop for the stage

@@ -1,9 +1,18 @@
 #include "removeEv.hpp"
 
-#include "datasetManager.hpp"
-#include "errors.h"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "Hash.hpp"            // for operator<
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for allocate_new_metadata_object, mark_frame_empty, mark_fram...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for dset_id_t, datasetManager, state_id_t
+#include "datasetState.hpp"    // for eigenvalueState
+#include "visBuffer.hpp"       // for visField, visFrameView, visField::erms, visField::eval
+#include "visUtil.hpp"         // for frameID, modulo
+
+#include <atomic>     // for atomic_bool
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <utility>    // for pair
 
 
 using kotekan::bufferContainer;
@@ -12,7 +21,8 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(removeEv);
 
-removeEv::removeEv(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+removeEv::removeEv(Config& config, const std::string& unique_name,
+                   bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&removeEv::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");

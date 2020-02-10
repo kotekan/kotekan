@@ -7,18 +7,20 @@
 #ifndef VISBUFFER_HPP
 #define VISBUFFER_HPP
 
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "datasetManager.hpp"
-#include "visUtil.hpp"
+#include "Hash.hpp"        // for Hash
+#include "buffer.h"        // for Buffer
+#include "chimeMetadata.h" // for chimeMetadata
+#include "dataset.hpp"     // for dset_id_t
+#include "visUtil.hpp"     // for cfloat
 
-#include "gsl-lite.hpp"
+#include "gsl-lite.hpp" // for span
 
-#include <complex>
-#include <set>
-#include <sys/time.h>
-#include <time.h>
-#include <tuple>
+#include <set>      // for set
+#include <stdint.h> // for uint32_t, uint64_t, uint8_t
+#include <string>   // for string
+#include <time.h>   // for timespec
+#include <tuple>    // for tuple
+#include <utility>  // for pair
 
 
 /**

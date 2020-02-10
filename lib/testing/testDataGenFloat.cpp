@@ -1,11 +1,26 @@
 #include "testDataGenFloat.hpp"
 
-#include "chimeMetadata.h"
-#include "errors.h"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for allocate_new_metadata_object, mark_frame_full, register_p...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.h"     // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "kotekanLogging.hpp"  // for DEBUG
 
-#include <random>
-#include <sys/time.h>
-#include <unistd.h>
+#include <assert.h>    // for assert
+#include <atomic>      // for atomic_bool
+#include <cmath>       // for fmod
+#include <exception>   // for exception
+#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error
+#include <stdint.h>    // for uint64_t
+#include <stdlib.h>    // for rand, srand
+#include <sys/time.h>  // for gettimeofday, timeval
+#include <sys/types.h> // for uint
+#include <unistd.h>    // for usleep
+#include <vector>      // for vector
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -13,7 +28,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(testDataGenFloat);
 
-testDataGenFloat::testDataGenFloat(Config& config, const string& unique_name,
+testDataGenFloat::testDataGenFloat(Config& config, const std::string& unique_name,
                                    bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&testDataGenFloat::main_thread, this)) {
 
@@ -31,7 +46,7 @@ testDataGenFloat::~testDataGenFloat() {}
 void testDataGenFloat::main_thread() {
 
     int frame_id = 0;
-    float* frame = NULL;
+    float* frame = nullptr;
     uint64_t seq_num = 0;
     bool finished_seeding_consant = false;
     static struct timeval now;
@@ -40,7 +55,7 @@ void testDataGenFloat::main_thread() {
 
     while (!stop_thread) {
         frame = (float*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         allocate_new_metadata_object(buf, frame_id);
@@ -48,7 +63,7 @@ void testDataGenFloat::main_thread() {
         // TODO This should be dynamic/config controlled.
         set_stream_id(buf, frame_id, 0);
 
-        gettimeofday(&now, NULL);
+        gettimeofday(&now, nullptr);
         set_first_packet_recv_time(buf, frame_id, now);
 
         // std::random_device rd;

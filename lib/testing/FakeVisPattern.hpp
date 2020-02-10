@@ -14,13 +14,20 @@
 #ifndef FAKE_VIS_PATTERN_HPP
 #define FAKE_VIS_PATTERN_HPP
 
-#include "Config.hpp"
-#include "factory.hpp"
-#include "kotekanLogging.hpp"
-#include "visBuffer.hpp"
+#include "Config.hpp"         // for Config
+#include "dataset.hpp"        // for state_id_t, dset_id_t
+#include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
+#include "kotekanLogging.hpp" // for kotekanLogging
+#include "visBuffer.hpp"      // for visFrameView
+#include "visUtil.hpp"        // for cfloat
 
-#include <stdint.h>
-#include <string>
+#include <deque>      // for deque
+#include <functional> // for function
+#include <optional>   // for optional
+#include <stddef.h>   // for size_t
+#include <string>     // for string
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 /**
  * @class FakeVisPattern

@@ -1,18 +1,22 @@
 #include "integratePowerStream.hpp"
 
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_empty, mark_frame_full, register_consumer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "powerStreamUtil.hpp" // for IntensityPacketHeader
 
-#include <arpa/inet.h>
-#include <functional>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <string.h>
-#include <string>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <unistd.h>
+#include <atomic>      // for atomic_bool
+#include <exception>   // for exception
+#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <regex>       // for match_results<>::_Base_type
+#include <stdint.h>    // for uint8_t
+#include <stdlib.h>    // for malloc, calloc
+#include <string.h>    // for memcpy, memset
+#include <string>      // for string, allocator
+#include <sys/types.h> // for uint
+#include <vector>      // for vector
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -20,7 +24,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(integratePowerStream);
 
-integratePowerStream::integratePowerStream(Config& config, const string& unique_name,
+integratePowerStream::integratePowerStream(Config& config, const std::string& unique_name,
                                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&integratePowerStream::main_thread, this)) {
@@ -37,9 +41,9 @@ integratePowerStream::~integratePowerStream() {}
 
 void integratePowerStream::main_thread() {
     int in_buf_id = 0;
-    uint8_t* in_frame = NULL;
+    uint8_t* in_frame = nullptr;
     int out_buf_id = 0;
-    uint8_t* out_frame = NULL;
+    uint8_t* out_frame = nullptr;
     uint packet_length = freqs * sizeof(float) + sizeof(IntensityPacketHeader);
     uint packets_per_buffer = in_buf->frame_size / packet_length;
 
@@ -55,7 +59,7 @@ void integratePowerStream::main_thread() {
     // IntensityPacketHeader *header_in;
     while (!stop_thread) {
         in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_buf_id);
-        if (in_frame == NULL)
+        if (in_frame == nullptr)
             break;
 
         for (uint i = 0; i < packets_per_buffer; i++) {
@@ -74,7 +78,7 @@ void integratePowerStream::main_thread() {
                 //                INFO("Integrated sample! {:d}", integrated_samples[e]);
                 integrated_samples[e] = 0;
                 out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buf_id);
-                if (out_frame == NULL)
+                if (out_frame == nullptr)
                     goto end_loop;
 
                 memcpy(out_frame, (char*)accum_buffer + e * packet_length, packet_length);

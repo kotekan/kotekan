@@ -1,11 +1,16 @@
 #ifndef CONFIGUPDATER_H
 #define CONFIGUPDATER_H
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "restServer.hpp"
+#include "Config.hpp"     // for Config
+#include "Stage.hpp"      // for Stage
+#include "restServer.hpp" // for connectionInstance
 
-#include "json.hpp"
+#include "json.hpp" // for json
+
+#include <functional> // for function
+#include <map>        // for map, multimap
+#include <string>     // for string
+#include <vector>     // for vector
 
 namespace kotekan {
 
@@ -81,6 +86,7 @@ namespace kotekan {
  *
  * @author Rick Nitsche
  */
+
 class configUpdater {
 public:
     /**
@@ -121,7 +127,7 @@ public:
      * @param subscriber Reference to the subscribing stage.
      * @param callback   Callback function for attribute updates.
      */
-    void subscribe(const Stage* subscriber, std::function<bool(json&)> callback);
+    void subscribe(const kotekan::Stage* subscriber, std::function<bool(nlohmann::json&)> callback);
 
     /**
      * @brief Subscribe to all updatable blocks of a Kotekan Stage.
@@ -136,8 +142,8 @@ public:
      * @param subscriber Reference to the subscribing stage.
      * @param callbacks  Map of value names and callback functions.
      */
-    void subscribe(const Stage* subscriber,
-                   std::map<std::string, std::function<bool(json&)>> callbacks);
+    void subscribe(const kotekan::Stage* subscriber,
+                   std::map<std::string, std::function<bool(nlohmann::json&)>> callbacks);
 
     /**
      * @brief Subscribe to an updatable block.
@@ -151,7 +157,7 @@ public:
      * @param name       Name of the dynamic attribute.
      * @param callback   Callback function for attribute updates.
      */
-    void subscribe(const std::string& name, std::function<bool(json&)> callback);
+    void subscribe(const std::string& name, std::function<bool(nlohmann::json&)> callback);
 
     /// This should be called by restServer
     void rest_callback(connectionInstance& con, nlohmann::json& json);
@@ -161,18 +167,18 @@ private:
     configUpdater() : _config(nullptr) {}
 
     /// Creates a new endpoint with a given name
-    void create_endpoint(const string& name);
+    void create_endpoint(const std::string& name);
 
     /// Parses the config tree and calls create_endpoint when it encounters
     /// kotekan_update_endpoint in a block
-    void parse_tree(json& config_tree, const string& path);
+    void parse_tree(const nlohmann::json& config_tree, const std::string& path);
 
     /// unique names of endpoints that the configUpdater controlls
-    vector<string> _endpoints;
+    std::vector<std::string> _endpoints;
 
     /// mmap of all subscriber callback functions for the registered dynamic
     /// attributes
-    std::multimap<std::string, std::function<bool(json&)>> _callbacks;
+    std::multimap<std::string, std::function<bool(nlohmann::json&)>> _callbacks;
 
     /// Initial values found in config yaml file
     std::map<std::string, nlohmann::json> _init_values;

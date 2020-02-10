@@ -6,14 +6,24 @@
 #ifndef RECEIVEFLAGS_H
 #define RECEIVEFLAGS_H
 
-#include "Stage.hpp"
-#include "datasetManager.hpp"
-#include "prometheusMetrics.hpp"
-#include "updateQueue.hpp"
-#include "visBuffer.hpp"
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "dataset.hpp"           // for dset_id_t, state_id_t
+#include "prometheusMetrics.hpp" // for Counter, Gauge
+#include "updateQueue.hpp"       // for updateQueue
+#include "visBuffer.hpp"         // for visFrameView
 
-#include <mutex>
-#include <vector>
+#include "json.hpp" // for json
+
+#include <map>      // for map
+#include <mutex>    // for mutex
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <time.h>   // for size_t, timespec
+#include <utility>  // for pair
+#include <vector>   // for vector
 
 /**
  * @class ReceiveFlags
@@ -55,7 +65,7 @@
 class ReceiveFlags : public kotekan::Stage {
 public:
     /// Constructor
-    ReceiveFlags(kotekan::Config& config, const string& unique_name,
+    ReceiveFlags(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
 
     /// Main loop, saves flags in the frames

@@ -6,10 +6,18 @@
 #ifndef HSA_RFI_ZERO_DATA_H
 #define HSA_RFI_ZERO_DATA_H
 
-#include "hsaCommand.hpp"
-#include "restServer.hpp"
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaCommand.hpp"         // for hsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
-#include <mutex>
+#include "json.hpp" // for json
+
+#include <mutex>    // for mutex
+#include <stdint.h> // for uint32_t, int32_t
+#include <string>   // for string
 
 /*
  * @class hsaRfiZeroData
@@ -42,7 +50,7 @@ class hsaRfiZeroData : public hsaCommand {
 
 public:
     /// Constructor, initializes internal variables.
-    hsaRfiZeroData(kotekan::Config& config, const string& unique_name,
+    hsaRfiZeroData(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiZeroData();

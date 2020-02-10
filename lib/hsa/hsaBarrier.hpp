@@ -1,11 +1,17 @@
 #ifndef HSA_BARRIER_H
 #define HSA_BARRIER_H
 
-#include "hsaCommand.hpp"
+#include "Config.hpp"             // for Config
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaCommand.hpp"         // for hsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+
+#include <string> // for string
 
 class hsaBarrier : public hsaCommand {
 public:
-    hsaBarrier(kotekan::Config& config, const string& unique_name,
+    hsaBarrier(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaBarrier();

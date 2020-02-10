@@ -1,11 +1,14 @@
 #ifndef REST_INSPECT_FRAME_HPP
 #define REST_INSPECT_FRAME_HPP
 
-#include "Stage.hpp"
-#include "restServer.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
+#include "restServer.hpp"      // for connectionInstance
 
-#include <mutex>
-#include <string>
+#include <mutex>    // for mutex
+#include <stdint.h> // for int32_t, uint8_t
+#include <string>   // for string
 
 /**
  * @class restInspectFrame
@@ -45,7 +48,7 @@
 class restInspectFrame : public kotekan::Stage {
 public:
     /// Constructor
-    restInspectFrame(kotekan::Config& config, const string& unique_name,
+    restInspectFrame(kotekan::Config& config, const std::string& unique_name,
                      kotekan::bufferContainer& buffer_container);
 
     /// Destructor

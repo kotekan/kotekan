@@ -4,17 +4,22 @@
 #define HI_NIBBLE(b) (((b) >> 4) & 0x0F)
 #define LO_NIBBLE(b) ((b)&0x0F)
 
-#include "Stage.hpp"
-#include "gpuCommand.hpp"
-#include "gpuDeviceInterface.hpp"
-#include "gpuEventContainer.hpp"
-#include "restServer.hpp"
+#include "Config.hpp"             // for Config
+#include "Stage.hpp"              // for Stage
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "gpuCommand.hpp"         // for gpuCommand
+#include "gpuDeviceInterface.hpp" // for gpuDeviceInterface
+#include "gpuEventContainer.hpp"  // for gpuEventContainer
+#include "restServer.hpp"         // for connectionInstance
 
-#include "json.hpp"
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <thread>   // for thread
+#include <vector>   // for vector
 
 class gpuProcess : public kotekan::Stage {
 public:
-    gpuProcess(kotekan::Config& config, const string& unique_name,
+    gpuProcess(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
     virtual ~gpuProcess();
     void main_thread() override;
@@ -28,7 +33,7 @@ protected:
     void results_thread();
     void init(void);
 
-    vector<gpuEventContainer*> final_signals;
+    std::vector<gpuEventContainer*> final_signals;
     kotekan::bufferContainer local_buffer_container;
 
     bool log_profiling;

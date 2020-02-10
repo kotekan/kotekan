@@ -1,11 +1,20 @@
 #ifndef HSA_ASYNC_COPY_GAIN_H
 #define HSA_ASYNC_COPY_GAIN_H
 
-#include "hsaCommand.hpp"
+#include "Config.hpp"             // for Config
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaCommand.hpp"         // for hsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+
+#include <mutex>    // for mutex
+#include <stdint.h> // for int32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 class hsaAsyncCopyGain : public hsaCommand {
 public:
-    hsaAsyncCopyGain(kotekan::Config& config, const string& unique_name,
+    hsaAsyncCopyGain(kotekan::Config& config, const std::string& unique_name,
                      kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaAsyncCopyGain();
