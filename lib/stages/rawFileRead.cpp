@@ -88,9 +88,9 @@ void rawFileRead::main_thread() {
         rewind(fp);
 
         if (fread((void*)&metadata_size, sizeof(uint32_t), 1, fp) != 1) {
-          ERROR("rawFileRead: Failed to read file {:s} metadata size value, {:s}", full_path,
-              strerror(errno));
-          break;
+            ERROR("rawFileRead: Failed to read file {:s} metadata size value, {:s}", full_path,
+                  strerror(errno));
+            break;
         }
 
         num_frames_per_file = fileSize / (metadata_size + buf->frame_size);
