@@ -21,7 +21,7 @@ struct FRBHeader {
     /*Here are some dynamic paramters of the header
       that I have to allocate in frbPostProcess.cpp*/
 
-    // uint16_t * beam_ids = NULL; //size of [nbeams]
+    // uint16_t * beam_ids = nullptr; //size of [nbeams]
     // uint16_t * coarse_freq_ids; //size of [nfreq_coarse];
     // float *scale ; //size of [nbeams * nfreq_coarse];
     // float *offset ; //size of [nbeams * nfreq_coarse] ;

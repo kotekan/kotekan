@@ -35,7 +35,7 @@ int hsaInputCompressLostSamples::wait_on_precondition(int gpu_frame_id) {
     // Wait for there to be data in the input buffer.
     uint8_t* frame = wait_for_full_frame(compressed_lost_samples_buf, unique_name.c_str(),
                                          compressed_lost_samples_buffer_precondition_id);
-    if (frame == NULL)
+    if (frame == nullptr)
         return -1;
     compressed_lost_samples_buffer_precondition_id =
         (compressed_lost_samples_buffer_precondition_id + 1)

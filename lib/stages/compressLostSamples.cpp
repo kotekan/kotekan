@@ -40,13 +40,13 @@ void compressLostSamples::main_thread() {
 
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t* out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
-    if (out_frame == NULL)
+    if (out_frame == nullptr)
         goto end_loop;
 
     while (!stop_thread) {
         // Get an input buffer, This call is blocking!
         in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_buffer_ID);
-        if (in_frame == NULL)
+        if (in_frame == nullptr)
             goto end_loop;
 
         // Information on dropped packets
@@ -79,7 +79,7 @@ void compressLostSamples::main_thread() {
         // Get a new output buffer
         out_buffer_ID = (out_buffer_ID + 1) % out_buf->num_frames;
         out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
-        if (out_frame == NULL)
+        if (out_frame == nullptr)
             goto end_loop;
 
         // Release the input buffers

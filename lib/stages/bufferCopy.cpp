@@ -70,7 +70,7 @@ void bufferCopy::main_thread() {
 
     while (!stop_thread) {
         uint8_t* input_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
-        if (input_frame == NULL)
+        if (input_frame == nullptr)
             break;
 
         for (auto& buffer_info : out_bufs) {
@@ -89,11 +89,11 @@ void bufferCopy::main_thread() {
             DEBUG2("Waiting for {:s}[{:d}]", out_buf->buffer_name, out_frame_id);
             uint8_t* output_frame =
                 wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
-            if (output_frame == NULL)
+            if (output_frame == nullptr)
                 goto exit_loop; // Shutdown condition
 
             // Either make a deep copy or pass the metadata depending if the flag is set
-            if (get_metadata_container(in_buf, in_frame_id) != NULL) {
+            if (get_metadata_container(in_buf, in_frame_id) != nullptr) {
                 if (_copy_metadata) {
                     allocate_new_metadata_object(out_buf, out_frame_id);
                     copy_metadata(in_buf, in_frame_id, out_buf, out_frame_id);

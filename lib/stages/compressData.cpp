@@ -165,13 +165,13 @@ void compressData::main_thread() {
 
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t* out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_ID);
-    if (out_frame == NULL)
+    if (out_frame == nullptr)
         goto end_loop;
 
     while (!stop_thread) {
         // Get an input buffer, This call is blocking!
         in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_buffer_ID);
-        if (in_frame == NULL)
+        if (in_frame == nullptr)
             goto end_loop;
 
         float* input_data = (float*)in_buf->frames[in_buffer_ID];
@@ -200,7 +200,7 @@ void compressData::main_thread() {
 
         // Reallocate to achieve the actual space savings.
         compressed_data = (uint32_t*)realloc(compressed_data, compressed_data_size);
-        if (compressed_data == NULL) {
+        if (compressed_data == nullptr) {
             INFO("failed to reallocate the data");
         }
 
@@ -272,7 +272,7 @@ void compressData::main_thread() {
         // Get a new output buffer
         out_frame_ID = (out_frame_ID + 1) % out_buf->num_frames;
         out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_ID);
-        if (out_frame == NULL)
+        if (out_frame == nullptr)
             goto end_loop;
 
         // Release the input buffers

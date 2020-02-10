@@ -95,7 +95,7 @@ void rawFileRead::main_thread() {
 
             // Get an empty buffer to write into
             frame = wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
-            if (frame == NULL)
+            if (frame == nullptr)
                 break;
 
             if (fread((void*)&metadata_size, sizeof(uint32_t), 1, fp) != 1) {
