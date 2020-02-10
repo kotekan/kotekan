@@ -79,13 +79,20 @@ void rawFileRead::main_thread() {
         }
 
         FILE* fp = fopen(full_path, "rb");
-        uint32_t metadata_size;
+        uint32_t metadata_size = 0;
         uint32_t fileSize, num_frames_per_file;
 
-        // Work out the file size and no. of frames per file.
+        // Work out the file size, metadata size and no. of frames per file.
         fseek(fp, 0, SEEK_END);
         fileSize = ftell(fp);
         rewind(fp);
+
+        if (fread((void*)&metadata_size, sizeof(uint32_t), 1, fp) != 1) {
+          ERROR("rawFileRead: Failed to read file {:s} metadata size value, {:s}", full_path,
+              strerror(errno));
+          break;
+        }
+
         num_frames_per_file = fileSize / (metadata_size + buf->frame_size);
 
         INFO("File size: {:d} bytes, no. of frames: {:d}", fileSize, num_frames_per_file);
@@ -97,12 +104,6 @@ void rawFileRead::main_thread() {
             frame = wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
             if (frame == nullptr)
                 break;
-
-            if (fread((void*)&metadata_size, sizeof(uint32_t), 1, fp) != 1) {
-                ERROR("rawFileRead: Failed to read file {:s} metadata size value, {:s}", full_path,
-                      strerror(errno));
-                break;
-            }
 
             // If metadata exists then lets read it in.
             if (metadata_size != 0) {
