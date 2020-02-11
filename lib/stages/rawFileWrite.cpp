@@ -37,6 +37,7 @@ rawFileWrite::rawFileWrite(Config& config, const std::string& unique_name,
     file_name = config.get<std::string>(unique_name, "file_name");
     file_ext = config.get<std::string>(unique_name, "file_ext");
     _num_frames_per_file = config.get_default<uint32_t>(unique_name, "num_frames_per_file", 1);
+    prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
 }
 
 rawFileWrite::~rawFileWrite() {}
@@ -68,8 +69,14 @@ void rawFileWrite::main_thread() {
         double st = current_time();
 
         if (!isFileOpen) {
-            snprintf(full_path, full_path_len, "%s/%s_%s_%07d.%s", base_dir.c_str(), hostname,
-                     file_name.c_str(), file_num, file_ext.c_str());
+
+            if (prefix_hostname) {
+                snprintf(full_path, full_path_len, "%s/%s_%s_%07d.%s", base_dir.c_str(), hostname,
+                         file_name.c_str(), file_num, file_ext.c_str());
+            } else {
+                snprintf(full_path, full_path_len, "%s/%s_%07d.%s", base_dir.c_str(),
+                         file_name.c_str(), file_num, file_ext.c_str());
+            }
 
             fd = open(full_path, O_WRONLY | O_CREAT, 0666);
 

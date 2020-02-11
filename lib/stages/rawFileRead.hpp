@@ -39,6 +39,8 @@ private:
     std::string base_dir;
     std::string file_name;
     std::string file_ext;
+    // Read file with a prefixed hostname or not
+    bool prefix_hostname;
     // Interrupt Kotekan if run out of files to read
     bool end_interrupt;
 };

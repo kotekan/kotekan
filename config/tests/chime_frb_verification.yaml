@@ -257,6 +257,7 @@ hfb_read:
     kotekan_stage: rawFileRead
     buf: beamform_hfb_output_buffer_read
     file_name: 'hfb_buf'
+    prefix_hostname: true 
     file_ext: 'dump'
     base_dir: '/home/willis/hfb_data'
 

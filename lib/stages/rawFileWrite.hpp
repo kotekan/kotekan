@@ -40,6 +40,8 @@ private:
     std::string file_name;
     std::string file_ext;
     uint32_t _num_frames_per_file;
+    // Prefix file name with hostname or not
+    bool prefix_hostname;
 };
 
 #endif
