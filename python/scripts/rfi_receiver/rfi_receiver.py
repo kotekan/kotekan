@@ -36,7 +36,7 @@ import requests
 import json
 import imp
 
-_version = imp.load_source('get_versions', '../../_version.py')
+_version = imp.load_source("get_versions", "../../_version.py")
 
 __version__ = _version.get_versions()["version"]
 del _version
