@@ -21,10 +21,10 @@ def data(tmpdir_factory):
     test = runner.KotekanStageTester("stageUnderTest", {}, fakevis_buffer, dump_buffer, params)
 
 
-test.run()
+    test.run()
 
-# here the data that the stage under test put out is passed on to test the stage
-yield dump_buffer.load()
+    # here the data that the stage under test put out is passed on to test the stage
+    yield dump_buffer.load()
 
 # this is the actual test (give a name to it)
 def test_<name>(data):
