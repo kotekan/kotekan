@@ -1,4 +1,11 @@
 #include "hsaBeamformUpchanHFB.hpp"
+#include "gpuCommand.hpp"           // for gpuCommandType, gpuCommandType::KERNEL
+
+#include <string.h>  // for memcpy, memset
+#include <cstdint>   // for int32_t
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
