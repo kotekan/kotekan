@@ -41,7 +41,8 @@ visFrameView::visFrameView(Buffer* buf, int frame_id) :
     _metadata((visMetadata*)buf->metadata[id]->metadata),
 
     // Calculate the internal buffer layout from the given structure params
-    buffer_layout(calculate_buffer_layout(_metadata->num_elements, _metadata->num_prod, _metadata->num_ev)),
+    buffer_layout(
+        calculate_buffer_layout(_metadata->num_elements, _metadata->num_prod, _metadata->num_ev)),
 
     // Set the const refs to the structural metadata
     num_elements(_metadata->num_elements),
@@ -80,7 +81,6 @@ visFrameView::visFrameView(Buffer* buf, int frame_id) :
         throw std::runtime_error(s);
     }
 }
-
 
 
 visFrameView visFrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
@@ -226,8 +226,8 @@ struct_layout<visField> visFrameView::calculate_buffer_layout(uint32_t num_eleme
     return struct_alignment(buffer_members);
 }
 
-size_t visFrameView::calculate_frame_size(uint32_t num_elements,
-                                                              uint32_t num_prod, uint32_t num_ev) {
+size_t visFrameView::calculate_frame_size(uint32_t num_elements, uint32_t num_prod,
+                                          uint32_t num_ev) {
     // TODO: get the types of each element using a template on the member
     // definition
     std::vector<std::tuple<visField, size_t, size_t>> buffer_members = {

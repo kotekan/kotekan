@@ -11,8 +11,9 @@
 #include "buffer.h"        // for Buffer
 #include "chimeMetadata.h" // for chimeMetadata
 #include "dataset.hpp"     // for dset_id_t
-#include "visUtil.hpp"     // for cfloat
 #include "frameView.hpp"   // for frameView
+#include "visUtil.hpp"     // for cfloat
+
 #include "gsl-lite.hpp" // for span
 
 #include <set>      // for set
@@ -143,8 +144,7 @@ public:
      *
      * @returns Size of frame.
      **/
-    static size_t calculate_frame_size(uint32_t num_elements, uint32_t num_prod,
-                                                           uint32_t num_ev);
+    static size_t calculate_frame_size(uint32_t num_elements, uint32_t num_prod, uint32_t num_ev);
 
     /**
      * @brief Copy the non-const parts of the metadata.

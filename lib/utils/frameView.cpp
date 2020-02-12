@@ -1,5 +1,7 @@
 #include "frameView.hpp"
+
 #include "gpsTime.h"
+
 #include "fmt.hpp"
 
 #include <set>
@@ -20,4 +22,6 @@ T& bind_scalar(uint8_t* start, std::pair<size_t, size_t> range) {
 }
 
 frameView::frameView(Buffer* buf, int frame_id) :
-    buffer(buf), id(frame_id), _frame(buffer->frames[id]) {} 
+    buffer(buf),
+    id(frame_id),
+    _frame(buffer->frames[id]) {}
