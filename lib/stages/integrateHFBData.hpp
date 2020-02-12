@@ -7,7 +7,12 @@
 #ifndef INTEGRATE_HFB_DATA_PROCESS
 #define INTEGRATE_HFB_DATA_PROCESS
 
-#include "Stage.hpp" // for Stage
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
+
+#include <stdint.h> // for uint32_t, int64_t
+#include <string>   // for string
 
 /**
  * @class integrateHFBData

@@ -1,5 +1,7 @@
 #include "hsaBeamformHFBOutput.hpp"
 
+#include "gpuCommand.hpp" // for gpuCommandType, gpuCommandType::COPY_OUT
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 

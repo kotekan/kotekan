@@ -7,9 +7,14 @@
 #ifndef COMPRESS_LOST_SAMPLES_PROCESS
 #define COMPRESS_LOST_SAMPLES_PROCESS
 
+#include "Config.hpp" // for Config
 #include "Stage.hpp"
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include <vector>
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <vector>   // for vector
+
 
 using std::vector;
 

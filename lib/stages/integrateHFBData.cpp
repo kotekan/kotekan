@@ -1,11 +1,22 @@
 #include "integrateHFBData.hpp"
 
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"         // for mark_frame_empty, Buffer, register_consumer, wait_for...
 #include "chimeMetadata.h"
+#include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, stream_id_t
 #include "gpsTime.h"
 #include "hfbMetadata.h"
+#include "kotekanLogging.hpp" // for DEBUG, DEBUG2
 
-#include <string>
+#include <atomic>      // for atomic_bool
+#include <exception>   // for exception
+#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error
+#include <string.h>    // for memcpy
+#include <string>      // for string
+#include <sys/types.h> // for uint
+#include <vector>      // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

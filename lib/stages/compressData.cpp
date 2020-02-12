@@ -1,7 +1,20 @@
 #include "compressData.hpp"
 
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"         // for wait_for_empty_frame, Buffer, allocate_new_metadata_object
 #include "hfbMetadata.h"
+#include "kotekanLogging.hpp" // for INFO
+
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <chrono>     // for duration, operator-, high_resolution_clock, time_point
+#include <csignal>    // for raise, SIGINT
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdlib.h>   // for malloc, free, realloc
+#include <string.h>   // for memcpy
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

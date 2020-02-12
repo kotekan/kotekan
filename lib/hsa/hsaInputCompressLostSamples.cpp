@@ -1,8 +1,10 @@
 #include "hsaInputCompressLostSamples.hpp"
 
-#include "utils/util.h"
+#include "gpuCommand.hpp" // for gpuCommandType, gpuCommandType::COPY_IN
 
-#include <random>
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

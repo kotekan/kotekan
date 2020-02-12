@@ -1,5 +1,14 @@
 #include "hsaBeamformHFBSum.hpp"
 
+#include "gpuCommand.hpp" // for gpuCommandType, gpuCommandType::KERNEL
+
+#include <cstdint>   // for int32_t, uint32_t, uint8_t
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <string.h>  // for memcpy, memset
+#include <vector>    // for vector
+
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 

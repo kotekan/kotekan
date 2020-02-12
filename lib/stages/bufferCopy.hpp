@@ -1,9 +1,15 @@
 #ifndef BUFFER_COPY_HPP
 #define BUFFER_COPY_HPP
 
+#include "Config.hpp" // for Config
 #include "Stage.hpp"
 #include "buffer.h"
+#include "bufferContainer.hpp" // for bufferContainer
 #include "visUtil.hpp"
+
+#include <string> // for string
+#include <tuple>  // for tuple
+#include <vector> // for vector
 
 /**
  * @brief Copies frames from one buffer into many buffers.

@@ -7,7 +7,14 @@
 #ifndef HSA_BEAMFORM_HFB_SUM_H
 #define HSA_BEAMFORM_HFB_SUM_H
 
+#include "Config.hpp"          // for Config
+#include "bufferContainer.hpp" // for bufferContainer
+#include "hsa/hsa.h"           // for hsa_signal_t
 #include "hsaCommand.hpp"
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
 
 /**
  * @class hsaBeamformHFBSum

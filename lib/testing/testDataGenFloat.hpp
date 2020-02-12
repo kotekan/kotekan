@@ -5,7 +5,8 @@
 #include "Stage.hpp" // for Stage
 #include "bufferContainer.hpp"
 
-#include <string> // for string
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
 
 // Type: one of "random", "const"
 // Value: the value of the constant

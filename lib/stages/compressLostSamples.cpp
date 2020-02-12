@@ -1,14 +1,21 @@
-#include <string>
-
-using std::string;
+#include "compressLostSamples.hpp"
 
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"         // for wait_for_empty_frame, Buffer, allocate_new_metadata_object
 #include "chimeMetadata.h"
-#include "compressLostSamples.hpp"
+
+#include <atomic>      // for atomic_bool
+#include <exception>   // for exception
+#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <regex>       // for match_results<>::_Base_type
+#include <string>      // for string
+#include <sys/types.h> // for uint
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using std::string;
 
 #define NUM_SETS_OF_SUB_FREQS 3
 

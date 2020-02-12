@@ -7,7 +7,15 @@
 #ifndef HSA_BEAMFORM_HFB_OUTPUT_DATA_H
 #define HSA_BEAMFORM_HFB_OUTPUT_DATA_H
 
+#include "Config.hpp"          // for Config
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "hsa/hsa.h"           // for hsa_signal_t
 #include "hsaCommand.hpp"
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+
+#include <stdint.h> // for int32_t
+#include <string>   // for string
 
 /**
  * @class hsaBeamformHFBOutput

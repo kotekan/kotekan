@@ -7,9 +7,13 @@
 #ifndef COMPRESS_DATA_PROCESS
 #define COMPRESS_DATA_PROCESS
 
+#include "Config.hpp" // for Config
 #include "Stage.hpp"
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include <csignal>
+#include <stdint.h>    // for uint32_t, uint8_t
+#include <string>      // for string
+#include <sys/types.h> // for ssize_t
 
 /**
  * @class compressData

@@ -14,10 +14,13 @@
 #include <exception>  // for exception
 #include <fcntl.h>    // for open, O_CREAT, O_WRONLY
 #include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
 #include <stdint.h>   // for uint32_t, int32_t, uint8_t
 #include <stdio.h>    // for snprintf
 #include <stdlib.h>   // for exit
 #include <unistd.h>   // for write, close, gethostname, ssize_t
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;

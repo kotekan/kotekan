@@ -6,7 +6,15 @@
 #ifndef HSA_INPUT_COMPRESS_LOST_SAMPLES_H
 #define HSA_INPUT_COMPRESS_LOST_SAMPLES_H
 
+#include "Config.hpp"          // for Config
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "hsa/hsa.h"           // for hsa_signal_t
 #include "hsaCommand.hpp"
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
 
 /*
  * @class hsaInputCompressLostSamples
