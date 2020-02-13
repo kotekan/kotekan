@@ -125,7 +125,8 @@ void freqSubset::main_thread() {
             allocate_new_metadata_object(out_buf, output_frame_id);
 
             // Copy frame and create view
-            auto output_frame = visFrameView::copy_frame(in_buf, input_frame_id, out_buf, output_frame_id);
+            auto output_frame =
+                visFrameView::copy_frame(in_buf, input_frame_id, out_buf, output_frame_id);
 
             // Wait for the dataset ID for the outgoing frame
             if (change_dset_fut.valid())

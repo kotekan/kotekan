@@ -440,9 +440,10 @@ bool visAccumulate::initialise_output(visAccumulate::internalState& state, int i
         }
 
         allocate_new_metadata_object(state.buf, state.frame_id + freq_ind);
-        visMetadata* vismetadata = (visMetadata*)state.buf->metadata[state.frame_id + freq_ind]->metadata;
+        visMetadata* vismetadata =
+            (visMetadata*)state.buf->metadata[state.frame_id + freq_ind]->metadata;
         vismetadata->num_elements = num_elements;
-        vismetadata->num_prod = num_elements * (num_elements + 1) / 2; 
+        vismetadata->num_prod = num_elements * (num_elements + 1) / 2;
         vismetadata->num_ev = 0;
 
         state.frames.emplace_back(state.buf, state.frame_id + freq_ind);

@@ -148,12 +148,11 @@ void prodSubset::main_thread() {
 
         visMetadata* metadata = (visMetadata*)out_buf->metadata[output_frame_id]->metadata;
         metadata->num_elements = input_frame.num_elements;
-        metadata->num_prod = subset_num_prod; 
+        metadata->num_prod = subset_num_prod;
         metadata->num_ev = input_frame.num_ev;
 
         // Create view to output frame
-        auto output_frame =
-          visFrameView(out_buf, output_frame_id);
+        auto output_frame = visFrameView(out_buf, output_frame_id);
 
         // Copy over subset of visibilities
         for (size_t i = 0; i < subset_num_prod; i++) {

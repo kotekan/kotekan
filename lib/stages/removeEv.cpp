@@ -63,11 +63,10 @@ void removeEv::main_thread() {
         allocate_new_metadata_object(out_buf, out_frame_id);
         visMetadata* metadata = (visMetadata*)out_buf->metadata[out_frame_id]->metadata;
         metadata->num_elements = input_frame.num_elements;
-        metadata->num_prod = input_frame.num_prod; 
+        metadata->num_prod = input_frame.num_prod;
         metadata->num_ev = 0;
 
-        auto output_frame =
-          visFrameView(out_buf, out_frame_id);
+        auto output_frame = visFrameView(out_buf, out_frame_id);
 
         // check if the input dataset has changed
         if (dset_id_map.count(input_frame.dataset_id) == 0) {
