@@ -281,8 +281,9 @@ void visRawReader::main_thread() {
             ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->num_ev = _ev.size();
             ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->num_elements = _inputs.size();
             // Fill data with zeros
-            size_t num_vis = _stack.size() > 0 ? _stack.size() : _prods.size();
-            auto frame = visFrameView(out_buf, frame_id, _inputs.size(), num_vis, _ev.size());
+            //size_t num_vis = _stack.size() > 0 ? _stack.size() : _prods.size();
+            // JSW: Do we want num_prod to be _prods.size() or _stack.size()?
+            auto frame = visFrameView(out_buf, frame_id);
             std::fill(frame.vis.begin(), frame.vis.end(), 0.0);
             std::fill(frame.weight.begin(), frame.weight.end(), 0.0);
             std::fill(frame.eval.begin(), frame.eval.end(), 0.0);

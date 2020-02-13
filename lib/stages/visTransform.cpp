@@ -138,9 +138,13 @@ void visTransform::main_thread() {
                 break;
             }
             allocate_new_metadata_object(out_buf, output_frame_id);
+            visMetadata* metadata = (visMetadata*)out_buf->metadata[output_frame_id]->metadata;
+            metadata->num_elements = num_elements;
+            metadata->num_prod = num_elements * (num_elements + 1) / 2; 
+            metadata->num_ev = num_eigenvectors;
 
             auto output_frame =
-                visFrameView(out_buf, output_frame_id, num_elements, num_eigenvectors);
+                visFrameView(out_buf, output_frame_id);
 
             // Copy over the metadata
             output_frame.fill_chime_metadata(

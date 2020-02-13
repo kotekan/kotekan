@@ -150,8 +150,13 @@ void FakeVis::main_thread() {
 
             // Allocate metadata and get frame
             allocate_new_metadata_object(out_buf, output_frame_id);
+            visMetadata* metadata = (visMetadata*)out_buf->metadata[output_frame_id]->metadata;
+            metadata->num_elements = num_elements;
+            metadata->num_prod = num_elements * (num_elements + 1) / 2; 
+            metadata->num_ev = num_eigenvectors;
+
             auto output_frame =
-                visFrameView(out_buf, output_frame_id, num_elements, num_eigenvectors);
+                visFrameView(out_buf, output_frame_id);
 
             output_frame.dataset_id = ds_id;
 
@@ -274,8 +279,7 @@ void ReplaceVis::main_thread() {
         auto input_frame = visFrameView(in_buf, input_frame_id);
 
         // Copy input frame to output frame and create view
-        allocate_new_metadata_object(out_buf, output_frame_id);
-        auto output_frame = visFrameView(out_buf, output_frame_id, input_frame);
+        auto output_frame = visFrameView::copy_frame(in_buf, input_frame_id, out_buf, output_frame_id);
 
         for (uint32_t i = 0; i < output_frame.num_prod; i++) {
             float real = (i % 2 == 0 ? output_frame.freq_id : std::get<0>(output_frame.time));

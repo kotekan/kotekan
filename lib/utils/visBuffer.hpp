@@ -147,6 +147,13 @@ public:
     static size_t calculate_frame_size(uint32_t num_elements, uint32_t num_prod, uint32_t num_ev);
 
     /**
+     * @brief Return a summary of the visibility buffer contents.
+     *
+     * @returns A string summarising the contents.
+     **/
+    std::string summary() const;
+
+    /**
      * @brief Copy the non-const parts of the metadata.
      *
      * Transfers all the non-structural metadata from the source frame.

@@ -144,7 +144,7 @@ void freqSplit::main_thread() {
         allocate_new_metadata_object(buf, frame_id);
 
         // Copy frame and create view
-        auto frame = visFrameView(buf, frame_id, input_frame);
+        auto frame = visFrameView::copy_frame(in_buf, input_frame_id, buf, frame_id);
 
         // Are we waiting for a new dataset ID?
         if (_output_dset_id.valid())

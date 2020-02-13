@@ -82,6 +82,16 @@ visFrameView::visFrameView(Buffer* buf, int frame_id) :
     }
 }
 
+std::string visFrameView::summary() const {
+
+    struct tm* tm = std::gmtime(&(std::get<1>(time).tv_sec));
+
+    std::string s =
+        fmt::format("visBuffer[name={:s}]: freq={:d} dataset={} fpga_start={:d} time={:%F %T}",
+                    buffer->buffer_name, freq_id, dataset_id, std::get<0>(time), *tm);
+
+    return s;
+}
 
 visFrameView visFrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
                                       int frame_id_dest) {
