@@ -199,7 +199,7 @@ void RfiFrameDrop::main_thread() {
 }
 
 
-// mostly copied from visFrameView
+// mostly copied from VisFrameView
 void RfiFrameDrop::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
                               int frame_id_dest) {
 

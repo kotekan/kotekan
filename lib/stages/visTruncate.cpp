@@ -5,7 +5,7 @@
 #include "buffer.h"           // for wait_for_full_frame, allocate_new_metadata_object, mark_fr...
 #include "kotekanLogging.hpp" // for DEBUG
 #include "truncate.hpp"       // for bit_truncate_float
-#include "visBuffer.hpp"      // for visFrameView
+#include "visBuffer.hpp"      // for VisFrameView
 #include "visUtil.hpp"        // for cfloat
 
 #include "gsl-lite.hpp" // for span
@@ -74,7 +74,7 @@ void visTruncate::main_thread() {
     // (we don't mark it empty, so it's read again in the main loop)
     if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr)
         return;
-    auto frame = visFrameView(in_buf, frame_id);
+    auto frame = VisFrameView(in_buf, frame_id);
 
     // reserve enough memory for all err_r to be computed per frame
     // 32byte-aligned memory allocation (_m256_store_ps() asks for it)
@@ -86,7 +86,7 @@ void visTruncate::main_thread() {
         if ((wait_for_full_frame(in_buf, unique_name.c_str(), frame_id)) == nullptr) {
             break;
         }
-        auto frame = visFrameView(in_buf, frame_id);
+        auto frame = VisFrameView(in_buf, frame_id);
 
         // Wait for empty frame
         if ((wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id)) == nullptr) {
@@ -95,7 +95,7 @@ void visTruncate::main_thread() {
 
         // Copy frame into output buffer
         allocate_new_metadata_object(out_buf, output_frame_id);
-        auto output_frame = visFrameView(out_buf, output_frame_id, frame);
+        auto output_frame = VisFrameView(out_buf, output_frame_id, frame);
 
         // truncate visibilities and weights (8 at a time)
         for (i_vec = 0; i_vec < int32_t(frame.num_prod) - 7; i_vec += 8) {
