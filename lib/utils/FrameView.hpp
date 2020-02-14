@@ -2,7 +2,7 @@
 @file
 @brief Code for using the visBuffer formatted data.
 - visMetadata
-- frameView
+- FrameView
 *****************************************/
 #ifndef FRAMEVIEW_HPP
 #define FRAMEVIEW_HPP
@@ -24,7 +24,7 @@
 
 
 /**
- * @class frameView
+ * @class FrameView
  * @brief Provide a structured view of a visibility buffer.
  *
  * This class sets up a view on a visibility buffer with the ability to
@@ -42,7 +42,7 @@
  *
  * @author Richard Shaw
  **/
-class frameView {
+class FrameView {
 
 public:
     /**
@@ -53,7 +53,7 @@ public:
      * @param buf      The buffer the frame is in.
      * @param frame_id The id of the frame to read.
      */
-    frameView(Buffer* buf, int frame_id);
+    FrameView(Buffer* buf, int frame_id);
 
     /**
      * @brief Read only access to the frame data.
@@ -80,7 +80,7 @@ protected:
 };
 
 template<typename T>
-gsl::span<T> frameView::bind_span(uint8_t* start, std::pair<size_t, size_t> range) {
+gsl::span<T> FrameView::bind_span(uint8_t* start, std::pair<size_t, size_t> range) {
     T* span_start = (T*)(start + range.first);
     T* span_end = (T*)(start + range.second);
 
@@ -88,7 +88,7 @@ gsl::span<T> frameView::bind_span(uint8_t* start, std::pair<size_t, size_t> rang
 }
 
 template<typename T>
-T& frameView::bind_scalar(uint8_t* start, std::pair<size_t, size_t> range) {
+T& FrameView::bind_scalar(uint8_t* start, std::pair<size_t, size_t> range) {
     T* loc = (T*)(start + range.first);
 
     return *loc;

@@ -10,7 +10,7 @@
 #include "kotekanLogging.hpp"  // for DEBUG, INFO, FATAL_ERROR
 #include "metadata.h"          // for metadataContainer
 #include "version.h"           // for get_git_commit_hash
-#include "visBuffer.hpp"       // for visFrameView, visMetadata
+#include "visBuffer.hpp"       // for VisFrameView, visMetadata
 #include "visUtil.hpp"         // for freq_ctype, prod_ctype, rstack_ctype, stack_ctype, time_c...
 
 #include "fmt.hpp"      // for format, fmt
@@ -283,7 +283,7 @@ void visRawReader::main_thread() {
             // Fill data with zeros
             // size_t num_vis = _stack.size() > 0 ? _stack.size() : _prods.size();
             // JSW: Do we want num_prod to be _prods.size() or _stack.size()?
-            auto frame = visFrameView(out_buf, frame_id);
+            auto frame = VisFrameView(out_buf, frame_id);
             std::fill(frame.vis.begin(), frame.vis.end(), 0.0);
             std::fill(frame.weight.begin(), frame.weight.end(), 0.0);
             std::fill(frame.eval.begin(), frame.eval.end(), 0.0);

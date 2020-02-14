@@ -21,7 +21,7 @@
 #include <tuple>      // for tie, tuple
 #include <utility>    // for forward, pair
 
-class visFrameView;
+class VisFrameView;
 
 /** @brief A base class for files holding correlator data.
  *
@@ -78,7 +78,7 @@ public:
      * @param freq_ind Frequency index to write into.
      * @param frame Frame to write out.
      **/
-    virtual void write_sample(uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame) = 0;
+    virtual void write_sample(uint32_t time_ind, uint32_t freq_ind, const VisFrameView& frame) = 0;
 
     /**
      * @brief Return the current number of current time samples.

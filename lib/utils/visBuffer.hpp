@@ -2,7 +2,7 @@
 @file
 @brief Code for using the visBuffer formatted data.
 - visMetadata
-- visFrameView
+- VisFrameView
 *****************************************/
 #ifndef VISBUFFER_HPP
 #define VISBUFFER_HPP
@@ -11,7 +11,7 @@
 #include "buffer.h"        // for Buffer
 #include "chimeMetadata.h" // for chimeMetadata
 #include "dataset.hpp"     // for dset_id_t
-#include "frameView.hpp"   // for frameView
+#include "FrameView.hpp"   // for FrameView
 #include "visUtil.hpp"     // for cfloat
 
 #include "gsl-lite.hpp" // for span
@@ -69,7 +69,7 @@ struct visMetadata {
 
 
 /**
- * @class visFrameView
+ * @class VisFrameView
  * @brief Provide a structured view of a visibility buffer.
  *
  * This class sets up a view on a visibility buffer with the ability to
@@ -87,7 +87,7 @@ struct visMetadata {
  *
  * @author Richard Shaw
  **/
-class visFrameView : public frameView {
+class VisFrameView : public FrameView {
 
 public:
     /**
@@ -98,7 +98,7 @@ public:
      * @param buf      The buffer the frame is in.
      * @param frame_id The id of the frame to read.
      */
-    visFrameView(Buffer* buf, int frame_id);
+    VisFrameView(Buffer* buf, int frame_id);
 
     /**
      * @brief Copy a whole frame from a buffer and create a view of it.
@@ -116,10 +116,10 @@ public:
      * @param buf_dest       The buffer to copy into.
      * @param frame_id_dest  The buffer location to copy into.
      *
-     * @returns A visFrameView of the copied frame.
+     * @returns A VisFrameView of the copied frame.
      *
      **/
-    static visFrameView copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
+    static VisFrameView copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
                                    int frame_id_dest);
 
     /**
@@ -161,7 +161,7 @@ public:
      * @param  frame_to_copy  Frame to copy metadata from.
      *
      **/
-    void copy_metadata(visFrameView frame_to_copy);
+    void copy_metadata(VisFrameView frame_to_copy);
 
     /**
      * @brief Copy over the data, skipping specified members.
@@ -177,7 +177,7 @@ public:
      * @param  skip_members   Specify a set of data members to *not* copy.
      *
      **/
-    void copy_data(visFrameView frame_to_copy, const std::set<visField>& skip_members);
+    void copy_data(VisFrameView frame_to_copy, const std::set<visField>& skip_members);
 
     // TODO: CHIME specific
     /**

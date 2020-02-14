@@ -9,7 +9,7 @@
 #include "datasetManager.hpp"    // for dset_id_t, state_id_t
 #include "prometheusMetrics.hpp" // for Counter, Gauge
 #include "updateQueue.hpp"       // for updateQueue
-#include "visBuffer.hpp"         // for visFrameView
+#include "visBuffer.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for cfloat, frameID
 
 #include "json.hpp" // for json
@@ -150,7 +150,7 @@ private:
 
     /// Test that the frame is valid. On failure it will call FATAL_ERROR and
     /// return false
-    bool validate_frame(const visFrameView& frame);
+    bool validate_frame(const VisFrameView& frame);
 
     /// Test that the gain is valid. On failure it will call FATAL_ERROR and
     /// return false. Gains failing this *should* have already been rejected,

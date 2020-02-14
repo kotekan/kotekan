@@ -4,7 +4,7 @@
 #include "buffer.h"           // for create_buffer
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.h"         // for metadataPool // IWYU pragma: keep
-#include "visBuffer.hpp"      // for visFrameView
+#include "visBuffer.hpp"      // for VisFrameView
 
 #include "fmt.hpp" // for format, fmt
 
@@ -100,7 +100,7 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
             num_prod = num_elements * (num_elements + 1) / 2;
         }
 
-        size_t frame_size = visFrameView::calculate_frame_size(num_elements, num_prod, num_ev);
+        size_t frame_size = VisFrameView::calculate_frame_size(num_elements, num_prod, num_ev);
 
         INFO_NON_OO("Creating visBuffer named {:s} with {:d} frames, frame size of {:d} and "
                     "metadata pool {:s}",

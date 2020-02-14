@@ -18,7 +18,7 @@
  * @class visDebug
  * @brief Output some useful properties about the buffer for debugging
  *
- * The output is produced by calling ``visFrameView::summary``
+ * The output is produced by calling ``VisFrameView::summary``
  *
  * @par Buffers
  * @buffer in_buf The buffer to debug

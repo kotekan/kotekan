@@ -9,7 +9,7 @@
 #include "datasetState.hpp"      // for gainState, freqState, inputState
 #include "kotekanLogging.hpp"    // for WARN, FATAL_ERROR, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
-#include "visBuffer.hpp"         // for visFrameView, visField, visField::vis, visField...
+#include "visBuffer.hpp"         // for VisFrameView, visField, visField::vis, visField...
 #include "visFileH5.hpp"         // IWYU pragma: keep
 #include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double, fra...
 
@@ -213,7 +213,7 @@ void applyGains::apply_thread() {
         }
 
         // Create view to input frame
-        auto input_frame = visFrameView(in_buf, input_frame_id);
+        auto input_frame = VisFrameView(in_buf, input_frame_id);
 
         // Check that the input frame has the right sizes
         if (!validate_frame(input_frame))
@@ -325,7 +325,7 @@ void applyGains::apply_thread() {
         metadata->num_ev = input_frame.num_ev;
 
         // Copy frame and create view
-        auto output_frame = visFrameView(out_buf, output_frame_id);
+        auto output_frame = VisFrameView(out_buf, output_frame_id);
 
         // Copy over the data we won't modify
         output_frame.copy_metadata(input_frame);
@@ -439,7 +439,7 @@ std::optional<applyGains::GainData> applyGains::read_gain_file(std::string updat
 }
 
 
-bool applyGains::validate_frame(const visFrameView& frame) {
+bool applyGains::validate_frame(const VisFrameView& frame) {
 
     // TODO: this should validate that the hashes of the input and frequencies
     // dataset states have not changed whenever the dataset_id changes

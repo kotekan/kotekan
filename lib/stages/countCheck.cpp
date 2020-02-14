@@ -5,7 +5,7 @@
 #include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR
-#include "visBuffer.hpp"       // for visFrameView
+#include "visBuffer.hpp"       // for VisFrameView
 
 #include <atomic>     // for atomic_bool
 #include <exception>  // for exception
@@ -53,7 +53,7 @@ void countCheck::main_thread() {
         }
 
         // Create view to input frame
-        auto input_frame = visFrameView(in_buf, input_frame_id);
+        auto input_frame = VisFrameView(in_buf, input_frame_id);
 
         int64_t fpga_seq = std::get<0>(input_frame.time);
         int64_t utime = std::get<1>(input_frame.time).tv_sec;

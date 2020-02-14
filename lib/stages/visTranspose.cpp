@@ -11,7 +11,7 @@
 #include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, logLevel, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 #include "version.h"             // for get_git_commit_hash
-#include "visBuffer.hpp"         // for visFrameView
+#include "visBuffer.hpp"         // for VisFrameView
 #include "visFileArchive.hpp"    // for visFileArchive
 
 #include "fmt.hpp"      // for format
@@ -189,7 +189,7 @@ void visTranspose::main_thread() {
     if ((wait_for_full_frame(in_buf, unique_name.c_str(), 0)) == nullptr) {
         return;
     }
-    auto frame = visFrameView(in_buf, 0);
+    auto frame = VisFrameView(in_buf, 0);
     dset_id_t ds_id = frame.dataset_id;
     auto future_ds_state = std::async(&visTranspose::get_dataset_state, this, ds_id);
 
@@ -225,7 +225,7 @@ void visTranspose::main_thread() {
         if ((wait_for_full_frame(in_buf, unique_name.c_str(), frame_id)) == nullptr) {
             break;
         }
-        auto frame = visFrameView(in_buf, frame_id);
+        auto frame = VisFrameView(in_buf, frame_id);
 
         if (frame.dataset_id != ds_id) {
             FATAL_ERROR("Dataset ID of incoming frames changed from {} to {}. Changing  ID "

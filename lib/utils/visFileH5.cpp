@@ -4,7 +4,7 @@
 #include "Hash.hpp"           // for Hash
 #include "datasetManager.hpp" // for datasetManager, dset_id_t
 #include "datasetState.hpp"   // for eigenvalueState, freqState, inputState, prodState
-#include "visBuffer.hpp"      // for visFrameView
+#include "visBuffer.hpp"      // for VisFrameView
 #include "visUtil.hpp"        // for cfloat, time_ctype, freq_ctype, input_ctype, prod...
 
 #include "fmt.hpp"      // for format, fmt
@@ -258,7 +258,7 @@ uint32_t visFileH5::extend_time(time_ctype new_time) {
 }
 
 
-void visFileH5::write_sample(uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame) {
+void visFileH5::write_sample(uint32_t time_ind, uint32_t freq_ind, const VisFrameView& frame) {
 
     // TODO: consider adding checks for all dims
     if (frame.num_ev != num_ev) {
@@ -488,7 +488,7 @@ void visFileH5Fast::deactivate_time(uint32_t time_ind) {
     }
 }
 
-void visFileH5Fast::write_sample(uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame) {
+void visFileH5Fast::write_sample(uint32_t time_ind, uint32_t freq_ind, const VisFrameView& frame) {
 
     // TODO: consider adding checks for all dims
     if (frame.num_ev != num_ev) {

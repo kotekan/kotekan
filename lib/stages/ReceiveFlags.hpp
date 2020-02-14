@@ -13,7 +13,7 @@
 #include "dataset.hpp"           // for dset_id_t, state_id_t
 #include "prometheusMetrics.hpp" // for Counter, Gauge
 #include "updateQueue.hpp"       // for updateQueue
-#include "visBuffer.hpp"         // for visFrameView
+#include "visBuffer.hpp"         // for VisFrameView
 
 #include "json.hpp" // for json
 
@@ -77,7 +77,7 @@ public:
 private:
     /// Copy the freshest flags into the frame or return false if no valid update for
     /// this frame is available
-    bool copy_flags_into_frame(const visFrameView& frame_out);
+    bool copy_flags_into_frame(const VisFrameView& frame_out);
 
     // this is faster than std::queue/deque
     /// The bad_input chan_id's and when to start applying them in a FIFO

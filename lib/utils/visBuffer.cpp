@@ -3,7 +3,7 @@
 #include "buffer.h"                // for Buffer, allocate_new_metadata_object, swap_frames
 #include "chimeMetadata.h"         // for chimeMetadata
 #include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, stream_id_t
-#include "frameView.hpp"           // for metadataContainer
+#include "FrameView.hpp"           // for metadataContainer
 #include "gpsTime.h"               // for is_gps_global_time_set
 #include "metadata.h"              // for metadataContainer
 
@@ -21,8 +21,8 @@
 #include <type_traits> // for __decay_and_strip<>::__type
 #include <vector>      // for vector
 
-visFrameView::visFrameView(Buffer* buf, int frame_id) :
-    frameView(buf, frame_id),
+VisFrameView::VisFrameView(Buffer* buf, int frame_id) :
+    FrameView(buf, frame_id),
     _metadata((visMetadata*)buf->metadata[id]->metadata),
 
     // Calculate the internal buffer layout from the given structure params
@@ -67,7 +67,7 @@ visFrameView::visFrameView(Buffer* buf, int frame_id) :
     }
 }
 
-std::string visFrameView::summary() const {
+std::string VisFrameView::summary() const {
 
     struct tm* tm = std::gmtime(&(std::get<1>(time).tv_sec));
 
@@ -78,7 +78,7 @@ std::string visFrameView::summary() const {
     return s;
 }
 
-visFrameView visFrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
+VisFrameView VisFrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
                                       int frame_id_dest) {
     allocate_new_metadata_object(buf_dest, frame_id_dest);
 
@@ -123,12 +123,12 @@ visFrameView visFrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer*
                 buf_src->metadata[frame_id_src]->metadata,
                 buf_src->metadata[frame_id_src]->metadata_size);
 
-    return visFrameView(buf_dest, frame_id_dest);
+    return VisFrameView(buf_dest, frame_id_dest);
 }
 
 
 // Copy the non-const parts of the metadata
-void visFrameView::copy_metadata(visFrameView frame_to_copy) {
+void VisFrameView::copy_metadata(VisFrameView frame_to_copy) {
     _metadata->fpga_seq_start = frame_to_copy.metadata()->fpga_seq_start;
     _metadata->fpga_seq_length = frame_to_copy.metadata()->fpga_seq_length;
     _metadata->fpga_seq_total = frame_to_copy.metadata()->fpga_seq_total;
@@ -139,7 +139,7 @@ void visFrameView::copy_metadata(visFrameView frame_to_copy) {
 }
 
 // Copy the non-visibility parts of the buffer
-void visFrameView::copy_data(visFrameView frame_to_copy, const std::set<visField>& skip_members) {
+void VisFrameView::copy_data(VisFrameView frame_to_copy, const std::set<visField>& skip_members) {
 
     // Define some helper methods so we don't need to code up the same checks everywhere
     auto copy_member = [&](visField member) { return (skip_members.count(member) == 0); };
@@ -205,7 +205,7 @@ void visFrameView::copy_data(visFrameView frame_to_copy, const std::set<visField
     }
 }
 
-struct_layout<visField> visFrameView::calculate_buffer_layout(uint32_t num_elements,
+struct_layout<visField> VisFrameView::calculate_buffer_layout(uint32_t num_elements,
                                                               uint32_t num_prod, uint32_t num_ev) {
     // TODO: get the types of each element using a template on the member
     // definition
@@ -221,7 +221,7 @@ struct_layout<visField> visFrameView::calculate_buffer_layout(uint32_t num_eleme
     return struct_alignment(buffer_members);
 }
 
-size_t visFrameView::calculate_frame_size(uint32_t num_elements, uint32_t num_prod,
+size_t VisFrameView::calculate_frame_size(uint32_t num_elements, uint32_t num_prod,
                                           uint32_t num_ev) {
     // TODO: get the types of each element using a template on the member
     // definition
@@ -239,7 +239,7 @@ size_t visFrameView::calculate_frame_size(uint32_t num_elements, uint32_t num_pr
     return buf_layout.first;
 }
 
-void visFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata) {
+void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata) {
 
     // Set to zero as there's no information in chimeMetadata about it.
     dataset_id = dset_id_t::null;

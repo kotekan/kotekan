@@ -14,7 +14,7 @@
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "dataset.hpp"         // for dset_id_t
-#include "visBuffer.hpp"       // for visFrameView
+#include "visBuffer.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for cfloat
 
 #include <memory>   // for unique_ptr
@@ -28,7 +28,7 @@
  *
  * This stage produces fake visibility data that can be used to feed
  * downstream kotekan stages for testing. It fills its buffer with frames in
- * the ``visFrameView`` format. Frames are generated for a set of frequencies
+ * the ``VisFrameView`` format. Frames are generated for a set of frequencies
  * and a cadence specified in the config.
  *
  * @par Buffers
@@ -122,7 +122,7 @@ private:
     double sleep_after;
 
     /// Fill non vis components. A helper for the fill_mode functions.
-    void fill_non_vis(visFrameView& frame);
+    void fill_non_vis(VisFrameView& frame);
 
     // Use a fixed (configured) dataset ID in the output frames
     bool _fixed_dset_id;

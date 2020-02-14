@@ -10,7 +10,7 @@
 #include "factory.hpp"         // for FACTORY
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
 #include "version.h"           // for get_git_commit_hash
-#include "visBuffer.hpp"       // for visFrameView
+#include "visBuffer.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for prod_ctype, input_ctype, double_to_ts, current_time, freq...
 
 #include "fmt.hpp"      // for format, fmt
@@ -155,7 +155,7 @@ void FakeVis::main_thread() {
             metadata->num_prod = num_elements * (num_elements + 1) / 2;
             metadata->num_ev = num_eigenvectors;
 
-            auto output_frame = visFrameView(out_buf, output_frame_id);
+            auto output_frame = VisFrameView(out_buf, output_frame_id);
 
             output_frame.dataset_id = ds_id;
 
@@ -218,7 +218,7 @@ void FakeVis::main_thread() {
 }
 
 
-void FakeVis::fill_non_vis(visFrameView& frame) {
+void FakeVis::fill_non_vis(VisFrameView& frame) {
     // Set ev section
     for (uint32_t i = 0; i < num_eigenvectors; i++) {
         for (uint32_t j = 0; j < num_elements; j++) {
@@ -275,11 +275,11 @@ void ReplaceVis::main_thread() {
             break;
         }
         // Create view to input frame
-        auto input_frame = visFrameView(in_buf, input_frame_id);
+        auto input_frame = VisFrameView(in_buf, input_frame_id);
 
         // Copy input frame to output frame and create view
         auto output_frame =
-            visFrameView::copy_frame(in_buf, input_frame_id, out_buf, output_frame_id);
+            VisFrameView::copy_frame(in_buf, input_frame_id, out_buf, output_frame_id);
 
         for (uint32_t i = 0; i < output_frame.num_prod; i++) {
             float real = (i % 2 == 0 ? output_frame.freq_id : std::get<0>(output_frame.time));

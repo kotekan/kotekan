@@ -7,7 +7,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for dset_id_t, datasetManager, state_id_t
 #include "datasetState.hpp"    // for eigenvalueState
-#include "visBuffer.hpp"       // for visField, visFrameView, visField::erms, visField::eval
+#include "visBuffer.hpp"       // for visField, VisFrameView, visField::erms, visField::eval
 #include "visUtil.hpp"         // for frameID, modulo
 
 #include <atomic>     // for atomic_bool
@@ -53,7 +53,7 @@ void removeEv::main_thread() {
         if (wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id) == nullptr) {
             break;
         }
-        auto input_frame = visFrameView(in_buf, in_frame_id);
+        auto input_frame = VisFrameView(in_buf, in_frame_id);
 
         // Get output buffer for visibilities. Essentially identical to input buffers.
         if (wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id) == nullptr) {
@@ -66,7 +66,7 @@ void removeEv::main_thread() {
         metadata->num_prod = input_frame.num_prod;
         metadata->num_ev = 0;
 
-        auto output_frame = visFrameView(out_buf, out_frame_id);
+        auto output_frame = VisFrameView(out_buf, out_frame_id);
 
         // check if the input dataset has changed
         if (dset_id_map.count(input_frame.dataset_id) == 0) {

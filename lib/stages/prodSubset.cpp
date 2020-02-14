@@ -8,7 +8,7 @@
 #include "datasetManager.hpp"  // for dset_id_t, state_id_t, datasetManager
 #include "datasetState.hpp"    // for prodState
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, WARN
-#include "visBuffer.hpp"       // for visFrameView, visField, visField::vis, visField::weight
+#include "visBuffer.hpp"       // for VisFrameView, visField, visField::vis, visField::weight
 #include "visUtil.hpp"         // for prod_ctype, frameID, cmap, icmap, modulo, cfloat
 
 #include "gsl-lite.hpp" // for span
@@ -123,7 +123,7 @@ void prodSubset::main_thread() {
         }
 
         // Get a view of the current frame
-        auto input_frame = visFrameView(in_buf, input_frame_id);
+        auto input_frame = VisFrameView(in_buf, input_frame_id);
 
         // check if the input dataset has changed
         if (dset_id_map.count(input_frame.dataset_id) == 0) {
@@ -152,7 +152,7 @@ void prodSubset::main_thread() {
         metadata->num_ev = input_frame.num_ev;
 
         // Create view to output frame
-        auto output_frame = visFrameView(out_buf, output_frame_id);
+        auto output_frame = VisFrameView(out_buf, output_frame_id);
 
         // Copy over subset of visibilities
         for (size_t i = 0; i < subset_num_prod; i++) {
