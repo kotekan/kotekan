@@ -3,6 +3,7 @@
 #include "buffer.h"                // for Buffer, allocate_new_metadata_object, swap_frames
 #include "chimeMetadata.h"         // for chimeMetadata
 #include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, stream_id_t
+#include "frameView.hpp"           // for metadataContainer
 #include "gpsTime.h"               // for is_gps_global_time_set
 #include "metadata.h"              // for metadataContainer
 
@@ -19,22 +20,6 @@
 #include <sys/time.h>  // for TIMEVAL_TO_TIMESPEC
 #include <type_traits> // for __decay_and_strip<>::__type
 #include <vector>      // for vector
-
-
-template<typename T>
-gsl::span<T> bind_span(uint8_t* start, std::pair<size_t, size_t> range) {
-    T* span_start = (T*)(start + range.first);
-    T* span_end = (T*)(start + range.second);
-
-    return gsl::span<T>(span_start, span_end);
-}
-
-template<typename T>
-T& bind_scalar(uint8_t* start, std::pair<size_t, size_t> range) {
-    T* loc = (T*)(start + range.first);
-
-    return *loc;
-}
 
 visFrameView::visFrameView(Buffer* buf, int frame_id) :
     frameView(buf, frame_id),
