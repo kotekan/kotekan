@@ -94,7 +94,7 @@ void visTruncate::main_thread() {
 
         // Copy frame into output buffer
         allocate_new_metadata_object(out_buf, output_frame_id);
-        auto output_frame = visFrameView(out_buf, output_frame_id, frame);
+        auto output_frame = visFrameView::copy_frame(in_buf, frame_id, out_buf, output_frame_id);
 
         // truncate visibilities and weights (8 at a time)
         for (i_vec = 0; i_vec < int32_t(frame.num_prod) - 7; i_vec += 8) {

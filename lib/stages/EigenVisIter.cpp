@@ -163,8 +163,12 @@ void EigenVisIter::main_thread() {
             break;
         }
         allocate_new_metadata_object(out_buf, output_frame_id);
-        auto output_frame = visFrameView(out_buf, output_frame_id, input_frame.num_elements,
-                                         input_frame.num_prod, _num_eigenvectors);
+        visMetadata* metadata = (visMetadata*)out_buf->metadata[output_frame_id]->metadata;
+        metadata->num_elements = input_frame.num_elements;
+        metadata->num_prod = input_frame.num_prod;
+        metadata->num_ev = _num_eigenvectors;
+
+        auto output_frame = visFrameView(out_buf, output_frame_id);
 
         // Copy over metadata and data, but skip all ev members which may not be
         // defined

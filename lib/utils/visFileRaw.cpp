@@ -97,8 +97,8 @@ visFileRaw::visFileRaw(const std::string& name, const kotekan::logLevel log_leve
     alignment = 4; // Align on page boundaries
 
     // Calculate the file structure
-    auto layout = visFrameView::calculate_buffer_layout(ninput, nvis, num_ev);
-    data_size = layout.first;
+    data_size = visFrameView::calculate_frame_size(ninput, nvis, num_ev);
+
     metadata_size = sizeof(visMetadata);
     frame_size = _member_alignment(data_size + metadata_size + 1, alignment * 1024);
 

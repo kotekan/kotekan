@@ -100,8 +100,7 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
             num_prod = num_elements * (num_elements + 1) / 2;
         }
 
-        auto layout = visFrameView::calculate_buffer_layout(num_elements, num_prod, num_ev);
-        uint32_t frame_size = layout.first;
+        size_t frame_size = visFrameView::calculate_frame_size(num_elements, num_prod, num_ev);
 
         INFO_NON_OO("Creating visBuffer named {:s} with {:d} frames, frame size of {:d} and "
                     "metadata pool {:s}",
