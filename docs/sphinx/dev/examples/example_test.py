@@ -1,7 +1,7 @@
 import pytest
 from kotekan import runner
 
-# this is the equivalent of the config file for kotekan to run your test
+# this is the equivalent of the pipeline config file for kotekan to run your test
 params = {
     "num_elements": 7,
     "num_ev": 0,
@@ -18,15 +18,19 @@ def data(tmpdir_factory):
     # keep all the data this test produces in a tmp directory
     tmpdir = tmpdir_factory.mktemp("name_of_the_test_case")
 
-    # you can use FakeVisBuffer to produce fake data
+    # you can use FakeVisBuffer as a mock producer stage
+    # to produce a Kotekan buffer with fake data
     fakevis_buffer = runner.FakeVisBuffer(
         num_frames=params["total_frames"], mode=params["mode"]
     )
 
-    # DumpVisBuffer can be used to dump data for testing
+    # DumpVisBuffer can be used to dump data
+    # afterwards for asserting expectations
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
-    # KotekanStageTester is used to run kotekan with your config
+    # KotekanStageTester is used to run your
+    # kotekan stage with your config
+    # Replace stage_type with the name of your stage
     test = runner.KotekanStageTester(
         stage_type="stageUnderTest",
         stage_config={},
@@ -37,7 +41,8 @@ def data(tmpdir_factory):
 
     test.run()
 
-    # here the data that the stage under test put out is passed on to test the stage
+    # here the data that the stage under test
+    # put out is passed on to test the stage
     yield dump_buffer.load()
 
 
