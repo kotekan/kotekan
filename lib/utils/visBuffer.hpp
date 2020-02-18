@@ -194,6 +194,17 @@ public:
     void fill_chime_metadata(const chimeMetadata* chime_metadata);
 
     /**
+     * @brief Populate metadata.
+     *
+     * @param num_elements     Number of elements.
+     * @param num_prod         Number of products.
+     * @param num_ev           Number of eigenvectors.
+     *
+     **/
+    static void set_metadata(visMetadata* metadata, const uint32_t num_elements,
+                             const uint32_t num_prod, const uint32_t num_ev);
+
+    /**
      * @brief Read only access to the metadata.
      * @returns The metadata.
      **/

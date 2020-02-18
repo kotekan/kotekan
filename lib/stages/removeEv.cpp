@@ -61,10 +61,8 @@ void removeEv::main_thread() {
         }
 
         allocate_new_metadata_object(out_buf, out_frame_id);
-        visMetadata* metadata = (visMetadata*)out_buf->metadata[out_frame_id]->metadata;
-        metadata->num_elements = input_frame.num_elements;
-        metadata->num_prod = input_frame.num_prod;
-        metadata->num_ev = 0;
+        VisFrameView::set_metadata((visMetadata*)out_buf->metadata[out_frame_id]->metadata,
+                                   input_frame.num_elements, input_frame.num_prod, 0);
 
         auto output_frame = VisFrameView(out_buf, out_frame_id);
 

@@ -263,3 +263,10 @@ void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata) {
 
     time = std::make_tuple(fpga_seq, ts);
 }
+
+void VisFrameView::set_metadata(visMetadata* metadata, const uint32_t num_elements,
+                                const uint32_t num_prod, const uint32_t num_ev) {
+    metadata->num_elements = num_elements;
+    metadata->num_prod = num_prod;
+    metadata->num_ev = num_ev;
+}

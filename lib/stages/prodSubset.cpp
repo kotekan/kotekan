@@ -146,10 +146,8 @@ void prodSubset::main_thread() {
 
         size_t subset_num_prod = prod_ind.size();
 
-        visMetadata* metadata = (visMetadata*)out_buf->metadata[output_frame_id]->metadata;
-        metadata->num_elements = input_frame.num_elements;
-        metadata->num_prod = subset_num_prod;
-        metadata->num_ev = input_frame.num_ev;
+        VisFrameView::set_metadata((visMetadata*)out_buf->metadata[output_frame_id]->metadata,
+                                   input_frame.num_elements, subset_num_prod, input_frame.num_ev);
 
         // Create view to output frame
         auto output_frame = VisFrameView(out_buf, output_frame_id);

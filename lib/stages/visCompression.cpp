@@ -208,10 +208,8 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
 
         // Allocate metadata and get output frame
         allocate_new_metadata_object(out_buf, output_frame_id);
-        visMetadata* metadata = (visMetadata*)out_buf->metadata[output_frame_id]->metadata;
-        metadata->num_elements = input_frame.num_elements;
-        metadata->num_prod = num_stack;
-        metadata->num_ev = input_frame.num_ev;
+        VisFrameView::set_metadata((visMetadata*)out_buf->metadata[output_frame_id]->metadata,
+                                   input_frame.num_elements, num_stack, input_frame.num_ev);
 
         // Create view to output frame
         auto output_frame = VisFrameView(out_buf, output_frame_id);
