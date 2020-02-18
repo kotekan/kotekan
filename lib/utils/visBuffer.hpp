@@ -7,11 +7,11 @@
 #ifndef VISBUFFER_HPP
 #define VISBUFFER_HPP
 
+#include "FrameView.hpp"   // for FrameView
 #include "Hash.hpp"        // for Hash
 #include "buffer.h"        // for Buffer
 #include "chimeMetadata.h" // for chimeMetadata
 #include "dataset.hpp"     // for dset_id_t
-#include "FrameView.hpp"   // for FrameView
 #include "visUtil.hpp"     // for cfloat
 
 #include "gsl-lite.hpp" // for span
