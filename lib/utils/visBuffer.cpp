@@ -239,6 +239,32 @@ size_t VisFrameView::calculate_frame_size(uint32_t num_elements, uint32_t num_pr
     return buf_layout.first;
 }
 
+size_t VisFrameView::calculate_frame_size(kotekan::Config& config, const std::string& unique_name) {
+
+    const int num_elements = config.get<int>(unique_name, "num_elements");
+    const int num_ev = config.get<int>(unique_name, "num_ev");
+    int num_prod = config.get_default<int>(unique_name, "num_prod", -1);
+
+    if (num_prod < 0) {
+        num_prod = num_elements * (num_elements + 1) / 2;
+    }
+
+    // TODO: get the types of each element using a template on the member
+    // definition
+    std::vector<std::tuple<visField, size_t, size_t>> buffer_members = {
+        std::make_tuple(visField::vis, sizeof(cfloat), num_prod),
+        std::make_tuple(visField::weight, sizeof(float), num_prod),
+        std::make_tuple(visField::flags, sizeof(float), num_elements),
+        std::make_tuple(visField::eval, sizeof(float), num_ev),
+        std::make_tuple(visField::evec, sizeof(cfloat), num_ev * num_elements),
+        std::make_tuple(visField::erms, sizeof(float), 1),
+        std::make_tuple(visField::gain, sizeof(cfloat), num_elements)};
+
+    struct_layout<visField> buf_layout = struct_alignment(buffer_members);
+
+    return buf_layout.first;
+}
+
 void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata) {
 
     // Set to zero as there's no information in chimeMetadata about it.

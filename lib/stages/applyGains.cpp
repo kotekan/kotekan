@@ -319,8 +319,9 @@ void applyGains::apply_thread() {
             break;
         }
         allocate_new_metadata_object(out_buf, output_frame_id);
-        set_metadata((visMetadata*)out_buf->metadata[output_frame_id]->metadata,
-                     input_frame.num_elements, input_frame.num_prod, input_frame.num_ev);
+        VisFrameView::set_metadata((visMetadata*)out_buf->metadata[output_frame_id]->metadata,
+                                   input_frame.num_elements, input_frame.num_prod,
+                                   input_frame.num_ev);
 
         // Copy frame and create view
         auto output_frame = VisFrameView(out_buf, output_frame_id);

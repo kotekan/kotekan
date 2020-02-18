@@ -92,15 +92,7 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
     }
 
     if (type_name == "vis") {
-        int num_elements = config.get<int>(location, "num_elements");
-        int num_ev = config.get<int>(location, "num_ev");
-        int num_prod = config.get_default<int>(location, "num_prod", -1);
-
-        if (num_prod < 0) {
-            num_prod = num_elements * (num_elements + 1) / 2;
-        }
-
-        size_t frame_size = VisFrameView::calculate_frame_size(num_elements, num_prod, num_ev);
+        size_t frame_size = VisFrameView::calculate_frame_size(config, location);
 
         INFO_NON_OO("Creating visBuffer named {:s} with {:d} frames, frame size of {:d} and "
                     "metadata pool {:s}",

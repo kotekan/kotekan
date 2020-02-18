@@ -258,8 +258,9 @@ void eigenVis::main_thread() {
             break;
         }
         allocate_new_metadata_object(output_buffer, output_frame_id);
-        set_metadata((visMetadata*)output_buffer->metadata[output_frame_id]->metadata,
-                     input_frame.num_elements, input_frame.num_prod, num_eigenvectors);
+        VisFrameView::set_metadata((visMetadata*)output_buffer->metadata[output_frame_id]->metadata,
+                                   input_frame.num_elements, input_frame.num_prod,
+                                   num_eigenvectors);
 
         auto output_frame = VisFrameView(output_buffer, output_frame_id);
 
