@@ -1,10 +1,11 @@
+#include "HfbFrameView.hpp"
+
 #include "FrameView.hpp"           // for metadataContainer
 #include "buffer.h"                // for Buffer, allocate_new_metadata_object, swap_frames
 #include "chimeMetadata.h"         // for chimeMetadata
 #include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, stream_id_t
 #include "gpsTime.h"               // for is_gps_global_time_set
 #include "metadata.h"              // for metadataContainer
-#include "HfbFrameView.hpp"
 
 #include "fmt.hpp" // for format, fmt
 
@@ -25,8 +26,7 @@ HfbFrameView::HfbFrameView(Buffer* buf, int frame_id) :
     _metadata((hfbMetadata*)buf->metadata[id]->metadata),
 
     // Calculate the internal buffer layout from the given structure params
-    buffer_layout(
-        calculate_buffer_layout(_metadata->num_beams, _metadata->num_subfreq)),
+    buffer_layout(calculate_buffer_layout(_metadata->num_beams, _metadata->num_subfreq)),
 
     // Set the const refs to the structural metadata
     num_beams(_metadata->num_beams),
@@ -50,10 +50,10 @@ HfbFrameView::HfbFrameView(Buffer* buf, int frame_id) :
 
     if (required_size > (uint32_t)buffer->frame_size) {
 
-        std::string s =
-            fmt::format(fmt("Hyper fine beam buffer [{:s}] too small. Must be a minimum of {:d} bytes "
-                            "for beams={:d}, sub-frequencies={:d}"),
-                        buffer->buffer_name, required_size, num_beams, num_subfreq);
+        std::string s = fmt::format(
+            fmt("Hyper fine beam buffer [{:s}] too small. Must be a minimum of {:d} bytes "
+                "for beams={:d}, sub-frequencies={:d}"),
+            buffer->buffer_name, required_size, num_beams, num_subfreq);
 
         throw std::runtime_error(s);
     }
@@ -63,9 +63,8 @@ std::string HfbFrameView::summary() const {
 
     struct tm* tm = std::gmtime(&(time.tv_sec));
 
-    std::string s =
-        fmt::format("hfbBuffer[name={:s}]: freq={:d} fpga_start={:d} time={:%F %T}",
-                    buffer->buffer_name, freq_id, fpga_seq_num, *tm);
+    std::string s = fmt::format("hfbBuffer[name={:s}]: freq={:d} fpga_start={:d} time={:%F %T}",
+                                buffer->buffer_name, freq_id, fpga_seq_num, *tm);
 
     return s;
 }
@@ -122,12 +121,12 @@ HfbFrameView HfbFrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer*
 
 // Copy the non-const parts of the metadata
 void HfbFrameView::copy_metadata(HfbFrameView frame_to_copy) {
-   _metadata->gps_time = frame_to_copy.metadata()->gps_time;
-   _metadata->fpga_seq_num = frame_to_copy.metadata()->fpga_seq_num;
-   _metadata->norm_frac = frame_to_copy.metadata()->norm_frac;
-   _metadata->num_samples_integrated = frame_to_copy.metadata()->num_samples_integrated;
-   _metadata->num_samples_expected = frame_to_copy.metadata()->num_samples_expected;
-   _metadata->freq_bin_num = frame_to_copy.metadata()->freq_bin_num;
+    _metadata->gps_time = frame_to_copy.metadata()->gps_time;
+    _metadata->fpga_seq_num = frame_to_copy.metadata()->fpga_seq_num;
+    _metadata->norm_frac = frame_to_copy.metadata()->norm_frac;
+    _metadata->num_samples_integrated = frame_to_copy.metadata()->num_samples_integrated;
+    _metadata->num_samples_expected = frame_to_copy.metadata()->num_samples_expected;
+    _metadata->freq_bin_num = frame_to_copy.metadata()->freq_bin_num;
 }
 
 // Copy the non-hfb parts of the buffer
@@ -146,9 +145,9 @@ void HfbFrameView::copy_data(HfbFrameView frame_to_copy, const std::set<hfbField
 
     auto check_subfreq = [&]() {
         if (num_subfreq != frame_to_copy.num_subfreq) {
-            auto msg =
-                fmt::format(fmt("Number of sub-frequencies doesn't match for copy [src={}; dest={}]."),
-                            frame_to_copy.num_subfreq, num_subfreq);
+            auto msg = fmt::format(
+                fmt("Number of sub-frequencies doesn't match for copy [src={}; dest={}]."),
+                frame_to_copy.num_subfreq, num_subfreq);
             throw std::runtime_error(msg);
         }
     };
@@ -158,7 +157,6 @@ void HfbFrameView::copy_data(HfbFrameView frame_to_copy, const std::set<hfbField
         check_subfreq();
         std::copy(frame_to_copy.hfb.begin(), frame_to_copy.hfb.end(), hfb.begin());
     }
-
 }
 
 struct_layout<hfbField> HfbFrameView::calculate_buffer_layout(uint32_t num_beams,
@@ -167,8 +165,8 @@ struct_layout<hfbField> HfbFrameView::calculate_buffer_layout(uint32_t num_beams
     // definition
     std::vector<std::tuple<hfbField, size_t, size_t>> buffer_members = {
         std::make_tuple(hfbField::hfb, sizeof(float), num_beams * num_subfreq)};
-    
-    //std::vector<std::tuple<hfbField, size_t, size_t, size_t>> buffer_members = {
+
+    // std::vector<std::tuple<hfbField, size_t, size_t, size_t>> buffer_members = {
     //    std::make_tuple(hfbField::hfb, sizeof(float), num_beams, num_subfreq)};
 
     return struct_alignment(buffer_members);

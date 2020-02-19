@@ -7,12 +7,12 @@
 #ifndef HFBBUFFER_HPP
 #define HFBBUFFER_HPP
 
-#include "FrameView.hpp"   // for FrameView
-#include "Hash.hpp"        // for Hash
-#include "buffer.h"        // for Buffer
-#include "hfbMetadata.h"   // for hfbMetadata
-#include "dataset.hpp"     // for dset_id_t
-#include "visUtil.hpp"     // for cfloat
+#include "FrameView.hpp" // for FrameView
+#include "Hash.hpp"      // for Hash
+#include "buffer.h"      // for Buffer
+#include "dataset.hpp"   // for dset_id_t
+#include "hfbMetadata.h" // for hfbMetadata
+#include "visUtil.hpp"   // for cfloat
 
 #include "gsl-lite.hpp" // for span
 
@@ -64,7 +64,7 @@ public:
      */
     HfbFrameView(Buffer* buf, int frame_id);
 
-   /**
+    /**
      * @brief Copy a whole frame from a buffer and create a view of it.
      *
      * This will attempt to do a zero copy transfer of the frame for speed, and
@@ -86,7 +86,7 @@ public:
     static HfbFrameView copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
                                    int frame_id_dest);
 
-   /**
+    /**
      * @brief Get the layout of the buffer from the structural parameters.
      *
      * @param num_beams   Number of beams.
@@ -96,7 +96,8 @@ public:
      *          (i.e. 0) and end (i.e. total size) of the buffer is contained in
      *          `_struct`.
      **/
-    static struct_layout<hfbField> calculate_buffer_layout(uint32_t num_beams, uint32_t num_subfreq);
+    static struct_layout<hfbField> calculate_buffer_layout(uint32_t num_beams,
+                                                           uint32_t num_subfreq);
 
     /**
      * @brief Get the size of the frame.
