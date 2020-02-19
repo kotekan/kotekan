@@ -63,6 +63,26 @@ public:
         return _frame;
     }
 
+    /**
+     * @brief Copy a whole frame from a buffer and create a view of it.
+     *
+     * This will attempt to do a zero copy transfer of the frame for speed, and
+     * fall back on a full copy if any other stages consume from the input
+     * buffer.
+     *
+     * @note This will allocate metadata for the destination.
+     *
+     * @warning This may invalidate anything pointing at the input buffer.
+     *
+     * @param buf_src        The buffer to copy from.
+     * @param frame_id_src   The buffer location to copy from.
+     * @param buf_dest       The buffer to copy into.
+     * @param frame_id_dest  The buffer location to copy into.
+     *
+     **/
+    static void copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, int frame_id_dest);
+
+
     template<typename T>
     gsl::span<T> bind_span(uint8_t* start, std::pair<size_t, size_t> range);
 
