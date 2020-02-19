@@ -221,7 +221,10 @@ bool visFileRaw::write_raw(off_t offset, size_t nb, const void* data) {
     return true;
 }
 
-void visFileRaw::write_sample(uint32_t time_ind, uint32_t freq_ind, const VisFrameView& frame) {
+void visFileRaw::write_sample(uint32_t time_ind, uint32_t freq_ind, const FrameView& frame_view) {
+
+    const VisFrameView& frame = static_cast<const VisFrameView&>(frame_view);
+    
     // TODO: consider adding checks for all dims
     if (frame.num_ev != num_ev) {
         throw std::runtime_error(fmt::format(fmt("Number of eigenvalues don't match for write (got "

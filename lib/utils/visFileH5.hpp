@@ -12,6 +12,7 @@
 #include "visBuffer.hpp"      // for VisFrameView
 #include "visFile.hpp"        // for visFile
 #include "visUtil.hpp"        // for time_ctype, freq_ctype, input_ctype, prod_ctype
+#include "FrameView.hpp"      // for FrameView
 
 #include <cstdint>                 // for uint32_t
 #include <highfive/H5DataSet.hpp>  // for DataSet
@@ -67,7 +68,7 @@ public:
      * @param freq_ind Frequency index to write into.
      * @param frame Frame to write out.
      **/
-    void write_sample(uint32_t time_ind, uint32_t freq_ind, const VisFrameView& frame) override;
+    void write_sample(uint32_t time_ind, uint32_t freq_ind, const FrameView& frame) override;
 
     /**
      * @brief Return the current number of current time samples.
@@ -172,7 +173,7 @@ public:
      * @param freq_ind Frequency index to write into.
      * @param frame Frame to write out.
      **/
-    void write_sample(uint32_t time_ind, uint32_t freq_ind, const VisFrameView& frame) override;
+    void write_sample(uint32_t time_ind, uint32_t freq_ind, const FrameView& frame) override;
 
     size_t num_time() override;
 

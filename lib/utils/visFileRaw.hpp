@@ -83,7 +83,7 @@ public:
      * @param freq_ind Frequency index to write into.
      * @param frame Frame to write out.
      **/
-    void write_sample(uint32_t time_ind, uint32_t freq_ind, const VisFrameView& frame) override;
+    void write_sample(uint32_t time_ind, uint32_t freq_ind, const FrameView& frame) override;
 
     /**
      * @brief Return the current number of current time samples.
