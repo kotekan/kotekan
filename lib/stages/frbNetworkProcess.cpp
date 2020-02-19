@@ -407,7 +407,7 @@ void frbNetworkProcess::initialize_pinging_sockets() {
         auto now = std::chrono::steady_clock::now();
         auto next_check = now + std::chrono::milliseconds(dis(gen));
         DEBUG("Check host {} in {:%M:%S}", dst.host, next_check - now);
-        dest_by_ip[ipaddr] = {&dst, now, next_check};
+        dest_by_ip[ipaddr] = {&dst, now - _ping_interval, next_check};
     }
 
 }
@@ -431,56 +431,44 @@ void frbNetworkProcess::ping_destinations() {
     uint16_t ping_seq = 0;
     while (!stop_thread) {
         DestIpSocketTime& lru_dest = dest_by_time.top();
-        bool recent_response = lru_dest.last_responded > lru_dest.last_checked;
-
         auto now = std::chrono::steady_clock::now();
         const auto time_since_last_live = now - lru_dest.last_responded;
 
         DEBUG("Checking: {}", lru_dest.dst->host);
         DEBUG("Last responded: {:%M:%S} ago", time_since_last_live);
 
-        if (recent_response) {
-            DEBUG("Mark live because it responded recently");
-            lru_dest.dst->live = true;
-        }
-
-        // when the node replies, we only need to ping every `_ping_interval`
-        if (now - lru_dest.last_checked >= _ping_interval || !recent_response) {
+        if (time_since_last_live >= _ping_interval) {
+            // time to ping again
             if (send_ping(ping_src_fd[lru_dest.dst->sending_socket], lru_dest.dst->addr, ping_seq)) {
+                DEBUG("Pinged {}", lru_dest.dst->host);
                 lru_dest.last_checked = now;
-                // check for the response in case we need to switch to quick-ping mode
-                lru_dest.next_check = now + _quick_ping_interval;
                 lru_dest.ping_seq = ping_seq;
             } else {
-                // sending the ping failed, we should try again (very) soon
-                lru_dest.next_check = now + std::chrono::milliseconds(100);
+                DEBUG("Pinging {} failed, will retry soon", lru_dest.dst->host);
             }
             ping_seq++;
         } else {
-            if (!recent_response && lru_dest.dst->live) {
-                /*
-                 * If a node has stopped responding recently, we switch to an accelerated check
-                 * schedule. Otherwise, give up and mark it dead.
-                 */
-                if (time_since_last_live < _ping_interval + _ping_dead_threshold) {
-                    DEBUG("Live host {} has not responded, schedule a backup check in {}",
-                          lru_dest.dst->host, _quick_ping_interval);
-                    lru_dest.next_check = now + _quick_ping_interval;
-                } else {
-                    INFO("Too long since last ping response ({:%M:%S}), mark host {} dead.",
-                         time_since_last_live, lru_dest.dst->host);
-                    lru_dest.dst->live = false;
-                    lru_dest.next_check = now + _ping_interval;
-                }
-            } else {
-                DEBUG("Schedule a regular check for host {} in {}", lru_dest.dst->host, _ping_interval);
-                lru_dest.next_check = lru_dest.last_checked + _ping_interval;
-            }
+            DEBUG("Skip pinging {}", lru_dest.dst->host);
         }
 
         // Schedule the next check for the node
         dest_by_time.pop();
-        // could add another `std::chrono::milliseconds(dis(gen))` random delay to next_check
+        if (lru_dest.dst->live && time_since_last_live >= _ping_interval) {
+            if (time_since_last_live < _ping_interval + _ping_dead_threshold) {
+                DEBUG("Live host {} has not responded, schedule a backup check in {}",
+                      lru_dest.dst->host, _quick_ping_interval);
+                lru_dest.next_check = now + _quick_ping_interval;
+            } else {
+                INFO("Too long since last ping response ({:%M:%S}), mark host {} dead.",
+                     time_since_last_live, lru_dest.dst->host);
+                lru_dest.dst->live = false;
+                lru_dest.next_check = now + _ping_interval;
+            }
+        } else {
+            DEBUG("Schedule a regular check for host {} in {}", lru_dest.dst->host, _ping_interval);
+            lru_dest.next_check = lru_dest.last_checked + _ping_interval;
+        }
+        // NOTE: could add a small random delay to next_check
         dest_by_time.push(lru_dest);
 
         // sleep until the next host is due
@@ -544,11 +532,11 @@ void frbNetworkProcess::receive_ping_responses() {
                                 DEBUG("Received ping response from: {}. Update `last_responded`.",
                                       src.dst->host);
                                 src.last_responded = now;
-                                // if (!src.dst->live) {
-                                //     INFO("Host {} is responding to pings again, mark live.",
-                                //          src.dst->host);
-                                //     src.dst->live = true;
-                                // }
+                                if (!src.dst->live) {
+                                    INFO("Host {} is responding to pings again, mark live.",
+                                         src.dst->host);
+                                    src.dst->live = true;
+                                }
                             } else {
                                 DEBUG(
                                     "Ignore ping reply with old sequence number ({}) from host {}",
