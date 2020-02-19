@@ -13,6 +13,7 @@ set ( KOTEKAN_UTIL_SOURCES
       type.cpp
       util.c
       FrameView.cpp
+      HfbFrameView.cpp
       visBuffer.cpp
       visUtil.cpp
       visFile.cpp
