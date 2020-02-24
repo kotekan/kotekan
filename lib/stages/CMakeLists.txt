@@ -35,7 +35,7 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       visCompression.cpp
       timeDownsample.cpp
       frbPostProcess.cpp
-      visWriter.cpp
+      Writer.cpp
       visRawReader.cpp
       restInspectFrame.cpp
       frbNetworkProcess.cpp
