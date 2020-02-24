@@ -188,6 +188,8 @@ public:
     uint32_t& num_samples_expected;
     /// A reference to the frequency ID.
     uint32_t& freq_id;
+    /// A reference to the dataset ID.
+    dset_id_t& dataset_id;
 
     /// View of the hyperfine beam data.
     const gsl::span<float> hfb;

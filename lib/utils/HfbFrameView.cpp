@@ -39,6 +39,7 @@ HfbFrameView::HfbFrameView(Buffer* buf, int frame_id) :
     num_samples_integrated(_metadata->num_samples_integrated),
     num_samples_expected(_metadata->num_samples_expected),
     freq_id(_metadata->freq_bin_num),
+    dataset_id(_metadata->dataset_id),
 
     // Bind the regions of the buffer to spans and references on the view
     hfb(bind_span<float>(_frame, buffer_layout.second[hfbField::hfb]))
