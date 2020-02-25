@@ -197,6 +197,9 @@ struct Buffer {
 
     /// The name of the buffer for use in debug messages.
     char* buffer_name;
+    
+    /// The type of the buffer for use in writing data.
+    char* buffer_type;
 };
 
 /**
@@ -214,7 +217,7 @@ struct Buffer {
  * @returns A buffer object.
  */
 struct Buffer* create_buffer(int num_frames, int frame_size, struct metadataPool* pool,
-                             const char* buffer_name, int numa_node);
+                             const char* buffer_name, const char* buffer_type, int numa_node);
 
 /**
  * @brief Deletes a buffer object and frees all frame memory

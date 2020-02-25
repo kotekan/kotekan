@@ -141,6 +141,20 @@ size_t HfbFrameView::calculate_frame_size(uint32_t num_beams, uint32_t num_subfr
     return buf_layout.first;
 }
 
+size_t HfbFrameView::calculate_frame_size(kotekan::Config& config, const std::string& unique_name) {
+
+    const uint32_t num_beams = config.get<uint32_t>(unique_name, "num_beams");
+    const uint32_t num_subfreq = config.get<uint32_t>(unique_name, "num_subfreq");
+
+    // TODO: get the types of each element using a template on the member
+    // definition
+    std::vector<std::tuple<hfbField, size_t, size_t>> buffer_members = {
+        std::make_tuple(hfbField::hfb, sizeof(float), num_beams * num_subfreq)};
+
+    struct_layout<hfbField> buf_layout = struct_alignment(buffer_members);
+
+    return buf_layout.first;
+}
 void HfbFrameView::set_metadata(hfbMetadata* metadata, const uint32_t num_beams,
                                 const uint32_t num_subfreq) {
     metadata->num_beams = num_beams;
