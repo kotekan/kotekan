@@ -230,7 +230,8 @@ include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
 # Note that -lrt here is needed on some versions of CentOS but not Clang
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-       set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrt " )
+    add_compile_options("-lrt")
+    link_libraries("-lrt")
 endif ()
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
@@ -244,11 +245,6 @@ endif()
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
-
-# Note that -lrt here is needed on some versions of CentOS but not Clang
-if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
-       set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrt " )
-endif ()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wextra -Werror -Wzero-as-null-pointer-constant -march=native -mtune=native -I/opt/rocm/include")
 
