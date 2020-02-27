@@ -15,6 +15,8 @@ from kotekan import runner
 writer_params = {
     "num_elements": 4,
     "num_ev": 2,
+    "num_frb_total_beams": 12,
+    "num_sub_freqs": 6,
     "cadence": 5.0,
     "total_frames": 10,  # One extra sample to ensure we actually get 256
     "freq": [3, 777, 554],
@@ -37,7 +39,7 @@ def written_data(tmpdir_factory):
     params["root_path"] = tmpdir
 
     test = runner.KotekanStageTester(
-        "visWriter",
+        "Writer",
         {"node_mode": False, "file_type": "raw"},
         fakevis_buffer,
         None,
@@ -76,7 +78,7 @@ def critical_state_data(tmpdir_factory):
     params["root_path"] = tmpdir
 
     test = runner.KotekanStageTester(
-        "visWriter",
+        "Writer",
         {"node_mode": False, "file_type": "raw"},
         fakevis_buffer,
         None,

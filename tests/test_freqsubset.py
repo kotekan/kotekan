@@ -17,6 +17,8 @@ from kotekan import runner
 params = {
     "num_elements": 5,
     "num_ev": 0,
+    "num_frb_total_beams": 12,
+    "num_sub_freqs": 6,
     "total_frames": 16,
     "cadence": 10.0,
     "mode": "default",

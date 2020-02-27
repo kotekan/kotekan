@@ -22,6 +22,8 @@ if not runner.has_hdf5():
 writer_params = {
     "num_elements": 4,
     "num_ev": 2,
+    "num_frb_total_beams": 12,
+    "num_sub_freqs": 6,
     "cadence": 5.0,
     "total_frames": 10,  # One extra sample to ensure we actually get 256
     "freq": [3, 777, 554],
@@ -35,6 +37,8 @@ writer_params = {
 stack_params = {
     "num_elements": 2048,
     "num_ev": 2,
+    "num_frb_total_beams": 12,
+    "num_sub_freqs": 6,
     "cadence": 5.0,
     "file_length": 3,
     "freq": [3, 777, 554],
@@ -97,12 +101,12 @@ def transpose(tmpdir_factory):
     params["root_path"] = tmpdir
 
     writer = runner.KotekanStageTester(
-        "visWriter",
+        "Writer",
         {"node_mode": False, "write_ev": True, "file_type": "raw"},
         fakevis_buffer,
         None,
         params,
-        parallel_stage_type="visWriter",
+        parallel_stage_type="Writer",
         parallel_stage_config=dumph5_conf,
         noise="random",
     )
@@ -227,7 +231,7 @@ def transpose_stack(tmpdir_factory):
     params["root_path"] = tmpdir
 
     writer = runner.KotekanStageTester(
-        "visWriter",
+        "Writer",
         {"node_mode": False, "write_ev": True, "file_type": "raw"},
         fakevis_buffer,
         None,

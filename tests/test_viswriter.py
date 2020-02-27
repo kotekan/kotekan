@@ -20,6 +20,8 @@ if not runner.has_hdf5():
 writer_params = {
     "num_elements": 4,
     "num_ev": 2,
+    "num_frb_total_beams": 12,
+    "num_sub_freqs": 6,
     "cadence": 5.0,
     "total_frames": 10,
     "freq": [3, 777, 554],
@@ -47,7 +49,7 @@ def written_data_base(outdir, stage_extra=None, root_extra=None):
         stage_params.update(stage_extra)
 
     test = runner.KotekanStageTester(
-        "visWriter", stage_params, fakevis_buffer, None, root_params
+        "Writer", stage_params, fakevis_buffer, None, root_params
     )
 
     test.run()

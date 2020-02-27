@@ -14,6 +14,8 @@ from kotekan import runner
 accumulate_params = {
     "num_elements": 4,
     "num_ev": 0,
+    "num_frb_total_beams": 12,
+    "num_sub_freqs": 6,
     "samples_per_data_set": 32768,
     "int_frames": 64,
     "num_gpu_frames": 64,
