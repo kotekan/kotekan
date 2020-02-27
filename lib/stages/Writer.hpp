@@ -16,6 +16,7 @@
 #include "restServer.hpp"        // for connectionInstance
 #include "visFile.hpp"           // for visFileBundle, visCalFileBundle
 #include "visUtil.hpp"           // for movingAverage
+#include "HfbFrameView.hpp"      // for HfbFrameView
 
 #include <cstdint>   // for uint32_t
 #include <errno.h>   // for ENOENT, errno
@@ -113,7 +114,7 @@ public:
 protected:
     /// Setup the acquisition
     // NOTE: must be called from with a region locked by acqs_mutex
-    virtual void init_acq(dset_id_t ds_id);
+    virtual void init_acq(dset_id_t ds_id, std::map<std::string, std::string> metadata);
 
     /// Construct the set of metadata
     std::map<std::string, std::string> make_metadata(dset_id_t ds_id);
@@ -136,6 +137,9 @@ protected:
      *                `ignore_version` is set.
      **/
     bool check_git_version(dset_id_t ds_id);
+
+    void write_vis_data(VisFrameView frame, auto& write_time_metric, std::unique_lock<std::mutex>& acqs_lock);
+    void write_hfb_data(HfbFrameView frame, auto& write_time_metric, std::unique_lock<std::mutex>& acqs_lock);
 
     // Parameters saved from the config files
     std::string root_path;
@@ -172,6 +176,9 @@ protected:
 
         /// Number of products
         size_t num_vis;
+        
+        /// Number of beams
+        size_t num_beams;
 
         /// Last update
         double last_update;
@@ -208,9 +215,9 @@ private:
 
 /**
  * @class visCalWriter
- * @brief Extension to visWriter for exporting calibration data.
+ * @brief Extension to Writer for exporting calibration data.
  *
- * This stage is based off visWriter, but is meant for generating a
+ * This stage is based off Writer, but is meant for generating a
  * fixed-length ring-buffer-like file for storing the last samples of
  * the calibration data stream. To ensure consistent reads while the
  * stage is continuously writing to a file, a REST endpoint is provided
@@ -275,7 +282,7 @@ public:
 
 protected:
     // Override function to make visCalFileBundle and set its file name
-    void init_acq(dset_id_t ds_id) override;
+    void init_acq(dset_id_t ds_id, std::map<std::string, std::string> metadata) override;
 
     // Disable closing old acqs
     void close_old_acqs() override{};

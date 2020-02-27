@@ -26,7 +26,7 @@
 
 
 // Register the raw file writer
-REGISTER_VIS_FILE("raw", hfbFileRaw);
+REGISTER_VIS_FILE("hfbraw", hfbFileRaw);
 
 //
 // Implementation of raw visibility data file

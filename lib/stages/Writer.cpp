@@ -13,6 +13,7 @@
 #include "restServer.hpp"        // for restServer, connectionInstance, HTTP_RESPONSE
 #include "version.h"             // for get_git_commit_hash
 #include "visBuffer.hpp"         // for VisFrameView
+#include "HfbFrameView.hpp"      // for HfbFrameView
 #include "visFile.hpp"           // for visFileBundle, visCalFileBundle, _factory_aliasvisFile
 
 #include "fmt.hpp"  // for format, fmt
@@ -114,67 +115,13 @@ void Writer::main_thread() {
         }
 
         // Get a view of the current frame
-        auto frame = VisFrameView(in_buf, frame_id);
-        dset_id_t dataset_id = frame.dataset_id;
-        uint32_t freq_id = frame.freq_id;
-        auto ftime = frame.time;
-
-        acqs_lock.lock();
-        // Check the dataset ID hasn't changed
-        if (acqs.count(dataset_id) == 0) {
-            init_acq(dataset_id);
+        if(!strcmp(in_buf->buffer_type, "vis")) {
+          auto frame = VisFrameView(in_buf, frame_id);
+          write_vis_data(frame, write_time_metric, acqs_lock);
         }
-
-        // Get the acquisition we are writing into
-        auto& acq = *(acqs.at(dataset_id));
-        acqs_lock.unlock();
-
-
-        // If the dataset is bad, skip the frame and move onto the next
-        if (acq.bad_dataset) {
-            bad_dataset_frame_counter.labels({dataset_id.to_string()}).inc();
-
-            // Check if the frequency we are receiving is on the list of frequencies
-            // we are processing
-            // TODO: this should probably be reported to prometheus
-        } else if (acq.freq_id_map.count(freq_id) == 0) {
-            WARN("Frequency id={:d} not enabled for Writer, discarding frame", freq_id);
-
-            // Check that the number of visibilities matches what we expect
-        } else if (frame.num_prod != acq.num_vis) {
-            FATAL_ERROR("Number of products in frame doesn't match state or file ({:d} != {:d}).",
-                        frame.num_prod, acq.num_vis);
-            return;
-
-        } else {
-
-            // Get the time and frequency of the frame
-
-            time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
-            uint32_t freq_ind = acq.freq_id_map.at(freq_id);
-
-            // Add all the new information to the file.
-            bool late;
-            double start = current_time();
-
-            // Lock and write data
-            {
-                std::lock_guard<std::mutex> lock(write_mutex);
-                late = acq.file_bundle->add_sample(t, freq_ind, frame);
-            }
-            acq.last_update = current_time();
-            double elapsed = acq.last_update - start;
-
-            DEBUG("Written frequency {:d} in {:.5f} s", freq_id, elapsed);
-
-            // Increase metric count if we dropped a frame at write time
-            if (late) {
-                late_frame_counter.labels({std::to_string(freq_id)}).inc();
-            }
-
-            // Update average write time in prometheus
-            write_time.add_sample(elapsed);
-            write_time_metric.set(write_time.average());
+        else if(!strcmp(in_buf->buffer_type, "hfb")) {
+          auto frame = HfbFrameView(in_buf, frame_id);
+          write_hfb_data(frame, write_time_metric, acqs_lock);
         }
 
         // Mark the buffer and move on
@@ -185,6 +132,133 @@ void Writer::main_thread() {
     }
 }
 
+void Writer::write_vis_data(VisFrameView frame, auto& write_time_metric, std::unique_lock<std::mutex>& acqs_lock) {
+
+    dset_id_t dataset_id = frame.dataset_id;
+    uint32_t freq_id = frame.freq_id;
+    auto ftime = frame.time;
+
+    acqs_lock.lock();
+    // Check the dataset ID hasn't changed
+    if (acqs.count(dataset_id) == 0) {
+      init_acq(dataset_id, make_metadata(dataset_id));
+    }
+
+    // Get the acquisition we are writing into
+    auto& acq = *(acqs.at(dataset_id));
+    acqs_lock.unlock();
+
+    // If the dataset is bad, skip the frame and move onto the next
+    if (acq.bad_dataset) {
+      bad_dataset_frame_counter.labels({dataset_id.to_string()}).inc();
+
+      // Check if the frequency we are receiving is on the list of frequencies
+      // we are processing
+      // TODO: this should probably be reported to prometheus
+    } else if (acq.freq_id_map.count(freq_id) == 0) {
+      WARN("Frequency id={:d} not enabled for Writer, discarding frame", freq_id);
+
+      // Check that the number of visibilities matches what we expect
+    } else if (frame.num_prod != acq.num_vis) {
+      FATAL_ERROR("Number of products in frame doesn't match state or file ({:d} != {:d}).",
+          frame.num_prod, acq.num_vis);
+      return;
+
+    } else {
+
+      // Get the time and frequency of the frame
+      time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
+      uint32_t freq_ind = acq.freq_id_map.at(freq_id);
+
+      // Add all the new information to the file.
+      bool late;
+      double start = current_time();
+
+      // Lock and write data
+      {
+        std::lock_guard<std::mutex> lock(write_mutex);
+        late = acq.file_bundle->add_sample(t, freq_ind, frame);
+      }
+      acq.last_update = current_time();
+      double elapsed = acq.last_update - start;
+
+      DEBUG("Written frequency {:d} in {:.5f} s", freq_id, elapsed);
+
+      // Increase metric count if we dropped a frame at write time
+      if (late) {
+        late_frame_counter.labels({std::to_string(freq_id)}).inc();
+      }
+
+      // Update average write time in prometheus
+      write_time.add_sample(elapsed);
+      write_time_metric.set(write_time.average());
+    }
+}
+
+void Writer::write_hfb_data(HfbFrameView frame, auto& write_time_metric, std::unique_lock<std::mutex>& acqs_lock) {
+
+    dset_id_t dataset_id = frame.dataset_id;
+    uint32_t freq_id = frame.freq_id;
+    auto time = frame.time;
+    uint64_t fpga_seq_num = frame.fpga_seq_num;
+  
+    acqs_lock.lock();
+    // Check the dataset ID hasn't changed
+    if (acqs.count(dataset_id) == 0) {
+      init_acq(dataset_id, make_hfb_metadata());
+    }
+  
+    // Get the acquisition we are writing into
+    auto& acq = *(acqs.at(dataset_id));
+    acqs_lock.unlock();
+  
+    // If the dataset is bad, skip the frame and move onto the next
+    if (acq.bad_dataset) {
+      bad_dataset_frame_counter.labels({dataset_id.to_string()}).inc();
+  
+      // Check if the frequency we are receiving is on the list of frequencies
+      // we are processing
+      // TODO: this should probably be reported to prometheus
+    } else if (acq.freq_id_map.count(freq_id) == 0) {
+      WARN("Frequency id={:d} not enabled for Writer, discarding frame", freq_id);
+  
+      // Check that the number of visibilities matches what we expect
+    } else if (frame.num_beams != acq.num_beams) {
+      FATAL_ERROR("Number of beams in frame doesn't match state or file ({:d} != {:d}).",
+          frame.num_beams, acq.num_beams);
+      return;
+  
+    } else {
+  
+      // Get the time and frequency of the frame
+  
+      time_ctype t = {fpga_seq_num, ts_to_double(time)};
+      uint32_t freq_ind = acq.freq_id_map.at(freq_id);
+  
+      // Add all the new information to the file.
+      bool late;
+      double start = current_time();
+  
+      // Lock and write data
+      {
+        std::lock_guard<std::mutex> lock(write_mutex);
+        late = acq.file_bundle->add_sample(t, freq_ind, frame);
+      }
+      acq.last_update = current_time();
+      double elapsed = acq.last_update - start;
+  
+      DEBUG("Written frequency {:d} in {:.5f} s", freq_id, elapsed);
+  
+      // Increase metric count if we dropped a frame at write time
+      if (late) {
+        late_frame_counter.labels({std::to_string(freq_id)}).inc();
+      }
+  
+      // Update average write time in prometheus
+      write_time.add_sample(elapsed);
+      write_time_metric.set(write_time.average());
+    }
+}
 
 void Writer::close_old_acqs() {
 
@@ -267,6 +341,7 @@ void Writer::get_dataset_state(dset_id_t ds_id) {
             acq->freq_id_map[f.first] = ind++;
 
         acq->num_vis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
+        acq->num_beams = config.get<uint32_t>(unique_name, "num_frb_total_beams");
     }
 }
 
@@ -297,7 +372,7 @@ bool Writer::check_git_version(dset_id_t ds_id) {
 }
 
 
-void Writer::init_acq(dset_id_t ds_id) {
+void Writer::init_acq(dset_id_t ds_id, std::map<std::string, std::string> metadata) {
 
     // Create the new acqState
     auto fp = datasetManager::instance().fingerprint(ds_id, critical_state_types);
@@ -329,9 +404,6 @@ void Writer::init_acq(dset_id_t ds_id) {
 
     // TODO: chunk ID is not really supported now. Just set it to zero.
     uint32_t chunk_id = 0;
-
-    // Construct metadata
-    auto metadata = make_metadata(ds_id);
 
     try {
         acq.file_bundle = std::make_unique<visFileBundle>(
@@ -366,6 +438,8 @@ std::map<std::string, std::string> Writer::make_metadata(dset_id_t ds_id) {
     metadata["git_version_tag"] = get_git_commit_hash();
     metadata["system_user"] = user;
     metadata["collection_server"] = hostname;
+    metadata["num_beams"] = std::to_string(config.get<uint32_t>(unique_name, "num_frb_total_beams"));
+    metadata["num_subfreq"] = std::to_string(config.get<uint32_t>(unique_name, "num_sub_freqs"));
 
     return metadata;
 }
@@ -466,7 +540,7 @@ void visCalWriter::rest_callback(connectionInstance& conn) {
 }
 
 
-void visCalWriter::init_acq(dset_id_t ds_id) {
+void visCalWriter::init_acq(dset_id_t ds_id, std::map<std::string, std::string> metadata) {
 
     // Create the new acqState
     auto fp = datasetManager::instance().fingerprint(ds_id, critical_state_types);
@@ -511,9 +585,6 @@ void visCalWriter::init_acq(dset_id_t ds_id) {
 
     // TODO: chunk ID is not really supported now. Just set it to zero.
     uint32_t chunk_id = 0;
-
-    // Construct metadata
-    auto metadata = make_metadata(ds_id);
 
     // Create the derived class visCalFileBundle, and save to the instance, then
     // return as a unique_ptr
