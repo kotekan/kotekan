@@ -388,7 +388,7 @@ class VisWriterBuffer(OutputBuffer):
     output_dir : string
         Temporary directory to output to. The dumped files are not removed.
     file_type : string
-        File type to write into (see visWriter documentation)
+        File type to write into (see Writer documentation)
     in_buf : string
         Optionally specify the name of an input buffer instead of creating one.
     """
@@ -419,7 +419,7 @@ class VisWriterBuffer(OutputBuffer):
             self.buffer_block = {}
 
         stage_config = {
-            "kotekan_stage": "visWriter",
+            "kotekan_stage": "Writer",
             "in_buf": buf_name,
             "file_name": self.name,
             "file_type": file_type,
@@ -443,7 +443,7 @@ class VisWriterBuffer(OutputBuffer):
 
         # For now assume only one file is found
         # TODO: Might be nice to be able to check the file is the right one.
-        # But visWriter creates the acquisition and file names on the flight
+        # But Writer creates the acquisition and file names on the flight
         flnm = glob.glob(self.output_dir + "/*/*.data")[0]
         return visbuffer.VisRaw(os.path.splitext(flnm)[0])
 

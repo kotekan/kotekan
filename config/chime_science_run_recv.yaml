@@ -304,33 +304,33 @@ archive_writers:
   root_path: /data/untransposed/
 
   n2_mf:
-    kotekan_stage: visWriter
+    kotekan_stage: Writer
     in_buf: visbuf_10s_mfreq
     instrument_name: chimeN2
 
   chimestack:
-    kotekan_stage: visWriter
+    kotekan_stage: Writer
     in_buf: visbuf_10s_stack_ne
     instrument_name: chimestack
 
   26m:
-    kotekan_stage: visWriter
+    kotekan_stage: Writer
     in_buf: visbuf_5s_26m_ungated_post
     instrument_name: chime26m
 
   26mgated:
-    kotekan_stage: visWriter
+    kotekan_stage: Writer
     in_buf: visbuf_5s_26m_gated_post
     instrument_name: chime26mgated
 
   cal:
-    kotekan_stage: visWriter
+    kotekan_stage: Writer
     in_buf: visbuf_10s_cal
     instrument_name: chimecal
     file_length: 256
 
   timing:
-    kotekan_stage: visWriter
+    kotekan_stage: Writer
     in_buf: visbuf_10s_timing_ne
     instrument_name: chimetiming
 
