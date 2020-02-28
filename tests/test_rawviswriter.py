@@ -39,11 +39,7 @@ def written_data(tmpdir_factory):
     params["root_path"] = tmpdir
 
     test = runner.KotekanStageTester(
-        "Writer",
-        {"node_mode": False, "file_type": "raw"},
-        fakevis_buffer,
-        None,
-        params,
+        "Writer", {"node_mode": False, "file_type": "raw"}, fakevis_buffer, None, params
     )
 
     test.run()
@@ -78,11 +74,7 @@ def critical_state_data(tmpdir_factory):
     params["root_path"] = tmpdir
 
     test = runner.KotekanStageTester(
-        "Writer",
-        {"node_mode": False, "file_type": "raw"},
-        fakevis_buffer,
-        None,
-        params,
+        "Writer", {"node_mode": False, "file_type": "raw"}, fakevis_buffer, None, params
     )
 
     test.run()
