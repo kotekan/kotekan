@@ -323,12 +323,11 @@ void Writer::get_dataset_state(dset_id_t ds_id) {
               "nullptr: ",
               ds_id);
         if (!pstate)
-            ERROR("prodstate is a nullptr");
+            FATAL_ERROR("prodstate is a nullptr");
         if (!mstate)
-            ERROR("metadataState is a nullptr");
+            FATAL_ERROR("metadataState is a nullptr");
         if (!fstate)
-            ERROR("metadataState is a nullptr");
-        ERROR("Exiting...");
+            FATAL_ERROR("freqState is a nullptr");
     }
 
     {
@@ -341,7 +340,7 @@ void Writer::get_dataset_state(dset_id_t ds_id) {
             acq->freq_id_map[f.first] = ind++;
 
         acq->num_vis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
-        acq->num_beams = config.get<uint32_t>(unique_name, "num_frb_total_beams");
+        acq->num_beams = config.get_default<uint32_t>(unique_name, "num_frb_total_beams", 1024);
     }
 }
 
@@ -463,7 +462,7 @@ std::map<std::string, std::string> Writer::make_hfb_metadata() {
     metadata["system_user"] = user;
     metadata["collection_server"] = hostname;
     metadata["num_beams"] = std::to_string(config.get<uint32_t>(unique_name, "num_frb_total_beams"));
-    metadata["num_subfreq"] = std::to_string(config.get<uint32_t>(unique_name, "num_sub_freqs"));
+    metadata["num_sub_freqs"] = std::to_string(config.get<uint32_t>(unique_name, "num_sub_freqs"));
 
     return metadata;
 }

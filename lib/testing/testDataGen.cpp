@@ -2,6 +2,7 @@
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"         // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "chimeMetadata.h"  // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "hfbMetadata.h"    // for set_dataset_id
 #include "errors.h"         // for exit_kotekan, CLEAN_EXIT, ReturnCode
 
 #include <assert.h>    // for assert
@@ -22,8 +23,11 @@
 #include "gpsTime.h"           // for FPGA_PERIOD_NS
 #include "kotekanLogging.hpp"  // for DEBUG, INFO
 #include "restServer.hpp"      // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...
+#include "visUtil.hpp"         // for current_time
+#include "datasetManager.hpp"  // for datasetManager
+#include "dataset.hpp"         // for dset_id_t
+#include "version.h"           // for get_git_commit_hash
 #include "testDataGen.hpp"
-#include "visUtil.hpp" // for current_time
 
 
 using kotekan::bufferContainer;
@@ -60,6 +64,18 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     rest_mode = config.get_default<std::string>(unique_name, "rest_mode", "none");
     assert(rest_mode == "none" || rest_mode == "start" || rest_mode == "step");
     step_to_frame = 0;
+
+    if (config.exists(unique_name, "dataset_id")) {
+        _dset_id = config.get<dset_id_t>(unique_name, "dataset_id");
+        _fixed_dset_id = true;
+    } else
+        _fixed_dset_id = false;
+
+    num_elements = config.get_default<size_t>(unique_name, "num_elements", 4);
+    num_eigenvectors = config.get_default<size_t>(unique_name, "num_ev", 0);
+    std::vector<uint32_t> freq_default{0};
+    freq = config.get_default<std::vector<uint32_t>>(unique_name, "freq_ids", freq_default);
+    num_beams = config.get_default<uint32_t>(unique_name, "num_beams", 1024);
 
     endpoint = unique_name + "/generate_test_data";
     using namespace std::placeholders;
@@ -108,6 +124,41 @@ void testDataGen::main_thread() {
 
     int link_id = 0;
 
+    dset_id_t ds_id = dset_id_t::null;
+    auto& dm = datasetManager::instance();
+
+    // Generate dataset_id
+    if (_fixed_dset_id) {
+        ds_id = _dset_id;
+    } else {
+        std::vector<state_id_t> states;
+        states.push_back(
+            dm.create_state<metadataState>("not set", "FakeVis", get_git_commit_hash()).first);
+
+        std::vector<std::pair<uint32_t, freq_ctype>> fspec;
+        // TODO: CHIME specific
+        std::transform(std::begin(freq), std::end(freq), std::back_inserter(fspec),
+                       [](const uint32_t& id) -> std::pair<uint32_t, freq_ctype> {
+                           return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
+                       });
+        states.push_back(dm.create_state<freqState>(fspec).first);
+
+        std::vector<input_ctype> ispec;
+        for (uint32_t i = 0; i < num_elements; i++)
+            ispec.emplace_back((uint32_t)i, fmt::format(fmt("dm_input_{:d}"), i));
+        states.push_back(dm.create_state<inputState>(ispec).first);
+
+        std::vector<prod_ctype> pspec;
+        for (uint16_t i = 0; i < num_elements; i++)
+            for (uint16_t j = i; j < num_elements; j++)
+                pspec.push_back({i, j});
+        states.push_back(dm.create_state<prodState>(pspec).first);
+        states.push_back(dm.create_state<eigenvalueState>(num_eigenvectors).first);
+
+        // Register a root state
+        ds_id = dm.add_dataset(states);
+    }
+
     while (!stop_thread) {
         double start_time = current_time();
 
@@ -122,7 +173,15 @@ void testDataGen::main_thread() {
 
         allocate_new_metadata_object(buf, frame_id);
         set_fpga_seq_num(buf, frame_id, seq_num);
-        set_stream_id(buf, frame_id, stream_id);
+
+        // Set metadata based on buffer type
+        if(!strcmp(buf->buffer_type, "vis")) {
+            set_stream_id(buf, frame_id, stream_id);
+        }
+        else if(!strcmp(buf->buffer_type, "hfb")) {
+            set_dataset_id(buf, frame_id, ds_id);
+            set_num_beams(buf, frame_id, num_beams);
+        }
 
         gettimeofday(&now, nullptr);
         set_first_packet_recv_time(buf, frame_id, now);

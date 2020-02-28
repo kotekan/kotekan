@@ -5,6 +5,7 @@
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // for bufferContainer
 #include "restServer.hpp"      // for connectionInstance
+#include "dataset.hpp"         // for dset_id_t
 
 #include "json.hpp" // for json
 
@@ -67,6 +68,13 @@ private:
     std::string rest_mode;
     int num_frames;
     int stream_id;
+    bool _fixed_dset_id;
+    dset_id_t _dset_id;
+    /// Parameters saved from the config files
+    size_t num_elements, num_eigenvectors;
+    uint32_t num_beams;
+    /// List of frequencies for this buffer
+    std::vector<uint32_t> freq;
 };
 
 #endif
