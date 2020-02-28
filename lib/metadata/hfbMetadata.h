@@ -3,6 +3,7 @@
 
 #include "buffer.h"
 #include "metadata.h"
+#include "dataset.hpp"     // for dset_id_t
 
 #include <sys/time.h>
 
