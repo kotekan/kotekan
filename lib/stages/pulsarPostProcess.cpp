@@ -27,7 +27,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(pulsarPostProcess);
 
-pu::pulsarPostProcess(Config& config_, const string& unique_name,
+pulsarPostProcess::pulsarPostProcess(Config& config_, const string& unique_name,
                                      bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container,
           std::bind(&pulsarPostProcess::main_thread, this)) {

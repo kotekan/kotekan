@@ -168,7 +168,7 @@ void testDataGen::main_thread() {
         if (wait) {
             double time = current_time();
             double frame_end_time =
-                (start_time + (float)samples_per_data_set * FPGA_PERIOD_NS * 1e-9);
+                (start_time + (float)samples_per_data_set * FPGA_PERIOD_NS * 1e-9 / 16);
             if (time < frame_end_time)
                 usleep((int)(1e6 * (frame_end_time - time)));
         }

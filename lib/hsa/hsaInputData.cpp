@@ -88,6 +88,7 @@ hsa_signal_t hsaInputData::execute(int gpu_frame_id, hsa_signal_t precede_signal
     void* host_memory_frame = (void*)network_buf->frames[network_buffer_id];
 
     // Do the input data copy.
+    WARN("Called copy!");
     device.async_copy_host_to_gpu(gpu_memory_frame, host_memory_frame, input_frame_len,
                                   precede_signal, signals[gpu_frame_id]);
 
@@ -98,6 +99,7 @@ hsa_signal_t hsaInputData::execute(int gpu_frame_id, hsa_signal_t precede_signal
 
 void hsaInputData::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
+    WARN("Finalize called!");
     mark_frame_empty(network_buf, unique_name.c_str(), network_buffer_finalize_id);
     network_buffer_finalize_id = (network_buffer_finalize_id + 1) % network_buf->num_frames;
 }
