@@ -108,7 +108,7 @@ public:
      * @returns Size of frame.
      **/
     static size_t calculate_frame_size(uint32_t num_beams, uint32_t num_subfreq);
-    
+
     /**
      * @brief Get the size of the frame using the config file.
      *

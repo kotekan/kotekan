@@ -2,8 +2,8 @@
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"         // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "chimeMetadata.h"  // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
-#include "hfbMetadata.h"    // for set_dataset_id
 #include "errors.h"         // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "hfbMetadata.h"    // for set_dataset_id
 
 #include <assert.h>    // for assert
 #include <atomic>      // for atomic_bool
@@ -20,14 +20,14 @@
 #include <vector>      // for vector
 // Needed for a bunch of time utilities.
 #include "bufferContainer.hpp" // for bufferContainer
+#include "dataset.hpp"         // for dset_id_t
+#include "datasetManager.hpp"  // for datasetManager
 #include "gpsTime.h"           // for FPGA_PERIOD_NS
 #include "kotekanLogging.hpp"  // for DEBUG, INFO
 #include "restServer.hpp"      // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...
-#include "visUtil.hpp"         // for current_time
-#include "datasetManager.hpp"  // for datasetManager
-#include "dataset.hpp"         // for dset_id_t
-#include "version.h"           // for get_git_commit_hash
 #include "testDataGen.hpp"
+#include "version.h"   // for get_git_commit_hash
+#include "visUtil.hpp" // for current_time
 
 
 using kotekan::bufferContainer;
@@ -175,10 +175,9 @@ void testDataGen::main_thread() {
         set_fpga_seq_num(buf, frame_id, seq_num);
 
         // Set metadata based on buffer type
-        if(!strcmp(buf->buffer_type, "vis")) {
+        if (!strcmp(buf->buffer_type, "vis")) {
             set_stream_id(buf, frame_id, stream_id);
-        }
-        else if(!strcmp(buf->buffer_type, "hfb")) {
+        } else if (!strcmp(buf->buffer_type, "hfb")) {
             set_dataset_id(buf, frame_id, ds_id);
             set_num_beams(buf, frame_id, num_beams);
         }

@@ -7,12 +7,12 @@
 #ifndef VIS_FILE_H5_HPP
 #define VIS_FILE_H5_HPP
 
+#include "FrameView.hpp"      // for FrameView
 #include "datasetManager.hpp" // for dset_id_t
 #include "kotekanLogging.hpp" // for logLevel
 #include "visBuffer.hpp"      // for VisFrameView
 #include "visFile.hpp"        // for visFile
 #include "visUtil.hpp"        // for time_ctype, freq_ctype, input_ctype, prod_ctype
-#include "FrameView.hpp"      // for FrameView
 
 #include <cstdint>                 // for uint32_t
 #include <highfive/H5DataSet.hpp>  // for DataSet

@@ -7,11 +7,11 @@
 #ifndef VIS_FILE_HPP
 #define VIS_FILE_HPP
 
+#include "FrameView.hpp"      // for FrameView
 #include "dataset.hpp"        // for dset_id_t
 #include "factory.hpp"        // for CREATE_FACTORY, FACTORY, Factory, REGISTER_NAMED_TYPE_WITH...
 #include "kotekanLogging.hpp" // for logLevel, kotekanLogging, DEBUG
 #include "visUtil.hpp"        // for time_ctype
-#include "FrameView.hpp"      // for FrameView
 
 #include <cstdint>    // for uint32_t
 #include <functional> // for function

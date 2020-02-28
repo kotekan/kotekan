@@ -4,8 +4,8 @@
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // for bufferContainer
-#include "restServer.hpp"      // for connectionInstance
 #include "dataset.hpp"         // for dset_id_t
+#include "restServer.hpp"      // for connectionInstance
 
 #include "json.hpp" // for json
 

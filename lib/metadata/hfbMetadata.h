@@ -2,8 +2,8 @@
 #define HFB_METADATA
 
 #include "buffer.h"
+#include "dataset.hpp" // for dset_id_t
 #include "metadata.h"
-#include "dataset.hpp"     // for dset_id_t
 
 #include <sys/time.h>
 

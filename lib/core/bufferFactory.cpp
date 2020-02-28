@@ -1,11 +1,11 @@
 #include "bufferFactory.hpp"
 
 #include "Config.hpp"         // for Config
+#include "HfbFrameView.hpp"   // for HfbFrameView
 #include "buffer.h"           // for create_buffer
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.h"         // for metadataPool // IWYU pragma: keep
 #include "visBuffer.hpp"      // for VisFrameView
-#include "HfbFrameView.hpp"   // for HfbFrameView
 
 #include "fmt.hpp" // for format, fmt
 
@@ -89,7 +89,8 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
                     "and metadata pool {:s} on numa_node {:d}",
                     name, num_frames, frame_size, metadataPool_name, numa_node);
 
-        return create_buffer(num_frames, frame_size, pool, name.c_str(), type_name.c_str(), numa_node);
+        return create_buffer(num_frames, frame_size, pool, name.c_str(), type_name.c_str(),
+                             numa_node);
     }
 
     if (type_name == "vis") {
@@ -98,16 +99,18 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
         INFO_NON_OO("Creating visBuffer named {:s} with {:d} frames, frame size of {:d} and "
                     "metadata pool {:s}",
                     name, num_frames, frame_size, metadataPool_name);
-        return create_buffer(num_frames, frame_size, pool, name.c_str(), type_name.c_str(), numa_node);
+        return create_buffer(num_frames, frame_size, pool, name.c_str(), type_name.c_str(),
+                             numa_node);
     }
-    
+
     if (type_name == "hfb") {
         size_t frame_size = HfbFrameView::calculate_frame_size(config, location);
 
         INFO_NON_OO("Creating hfbBuffer named {:s} with {:d} frames, frame size of {:d} and "
                     "metadata pool {:s}",
                     name, num_frames, frame_size, metadataPool_name);
-        return create_buffer(num_frames, frame_size, pool, name.c_str(), type_name.c_str(), numa_node);
+        return create_buffer(num_frames, frame_size, pool, name.c_str(), type_name.c_str(),
+                             numa_node);
     }
 
     // No metadata found

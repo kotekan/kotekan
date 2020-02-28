@@ -2,9 +2,9 @@
 #include "hfbFileRaw.hpp"
 
 #include "Hash.hpp"           // for Hash
+#include "HfbFrameView.hpp"   // for HfbFrameView, hfbMetadata
 #include "datasetManager.hpp" // for datasetManager, dset_id_t
 #include "datasetState.hpp"   // for stackState, eigenvalueState, freqState, gatingState, input...
-#include "HfbFrameView.hpp"   // for HfbFrameView, hfbMetadata
 
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
@@ -179,12 +179,13 @@ bool hfbFileRaw::write_raw(off_t offset, size_t nb, const void* data) {
 }
 
 void hfbFileRaw::write_sample(uint32_t time_ind, uint32_t freq_ind, const FrameView& frame_view) {
-    
+
     const HfbFrameView& frame = static_cast<const HfbFrameView&>(frame_view);
-    
+
     // TODO: consider adding checks for all dims
-    //if (frame.num_ev != num_ev) {
-    //    throw std::runtime_error(fmt::format(fmt("Number of eigenvalues don't match for write (got "
+    // if (frame.num_ev != num_ev) {
+    //    throw std::runtime_error(fmt::format(fmt("Number of eigenvalues don't match for write (got
+    //    "
     //                                             "{:d}, expected {:d})"),
     //                                         frame.num_ev, num_ev));
     //}

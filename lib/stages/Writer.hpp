@@ -8,6 +8,7 @@
 #define WRITER_HPP
 
 #include "Config.hpp"            // for Config
+#include "HfbFrameView.hpp"      // for HfbFrameView
 #include "Stage.hpp"             // for Stage
 #include "buffer.h"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
@@ -16,7 +17,6 @@
 #include "restServer.hpp"        // for connectionInstance
 #include "visFile.hpp"           // for visFileBundle, visCalFileBundle
 #include "visUtil.hpp"           // for movingAverage
-#include "HfbFrameView.hpp"      // for HfbFrameView
 
 #include <cstdint>   // for uint32_t
 #include <errno.h>   // for ENOENT, errno
@@ -101,7 +101,7 @@
 class Writer : public kotekan::Stage {
 public:
     Writer(kotekan::Config& config, const std::string& unique_name,
-              kotekan::bufferContainer& buffer_container);
+           kotekan::bufferContainer& buffer_container);
 
     void main_thread() override;
 
@@ -118,7 +118,7 @@ protected:
 
     /// Construct the set of metadata
     std::map<std::string, std::string> make_metadata(dset_id_t ds_id);
-    
+
     /// Construct the HFB metadata
     std::map<std::string, std::string> make_hfb_metadata();
 
@@ -138,8 +138,10 @@ protected:
      **/
     bool check_git_version(dset_id_t ds_id);
 
-    void write_vis_data(VisFrameView frame, auto& write_time_metric, std::unique_lock<std::mutex>& acqs_lock);
-    void write_hfb_data(HfbFrameView frame, auto& write_time_metric, std::unique_lock<std::mutex>& acqs_lock);
+    void write_vis_data(VisFrameView frame, auto& write_time_metric,
+                        std::unique_lock<std::mutex>& acqs_lock);
+    void write_hfb_data(HfbFrameView frame, auto& write_time_metric,
+                        std::unique_lock<std::mutex>& acqs_lock);
 
     // Parameters saved from the config files
     std::string root_path;
@@ -176,7 +178,7 @@ protected:
 
         /// Number of products
         size_t num_vis;
-        
+
         /// Number of beams
         size_t num_beams;
 

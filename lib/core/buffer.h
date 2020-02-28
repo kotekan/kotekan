@@ -197,7 +197,7 @@ struct Buffer {
 
     /// The name of the buffer for use in debug messages.
     char* buffer_name;
-    
+
     /// The type of the buffer for use in writing data.
     char* buffer_type;
 };
