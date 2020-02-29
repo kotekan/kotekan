@@ -44,13 +44,14 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     buf = get_buffer("out_buf");
     register_producer(buf, unique_name.c_str());
     type = config.get<std::string>(unique_name, "type");
-    assert(type == "const" || type == "random" || type == "ramp" || type == "tpluse");
+    assert(type == "const" || type == "random" || type == "ramp" || type == "tpluse" || type == "tpluseplusf");
     if (type == "const" || type == "random" || type == "ramp")
         value = config.get<int>(unique_name, "value");
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
 
     samples_per_data_set = config.get_default<int>(unique_name, "samples_per_data_set", 32768);
     stream_id = config.get_default<int>(unique_name, "stream_id", 0);
+    num_local_freq = config.get_default<int>(unique_name,"num_local_freq",1);
     num_frames = config.get_default<int>(unique_name, "num_frames", -1);
     // Try to generate data based on `samples_per_dataset` cadence or else just generate it as
     // fast as possible.
@@ -133,6 +134,7 @@ void testDataGen::main_thread() {
         if (type == "random")
             srand(value);
         unsigned char temp_output;
+        stream_id_t real_stream_id = extract_stream_id(stream_id); //get the stream_id object from the encoded stream_id
         int num_elements = buf->frame_size / sizeof(uint8_t) / samples_per_data_set;
         for (uint j = 0; j < buf->frame_size / sizeof(uint8_t); ++j) {
             if (type == "const") {
@@ -150,7 +152,12 @@ void testDataGen::main_thread() {
                 temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
                 frame[j] = temp_output;
             } else if (type == "tpluse") {
-                frame[j] = seq_num + j / num_elements + j % num_elements;
+                frame[j] = seq_num + j /num_elements + j % num_elements;
+                // seq_num (frame offset, usu. ==0) + element number (I think)
+            }  else if (type == "tpluseplusf") {
+                frame[j] = seq_num + j/(num_local_freq*num_elements) + bin_number(&real_stream_id,(j % (num_local_freq * num_elements)) /num_elements) + j % num_elements; //Kiyo's code
+                //frame[j] = seq_num + j/(samples_per_data_set*num_elements) + (j /  num_elements) + j % num_elements; //Calvin's scratchwork
+                // seq_num (frame offset, usu. ==0) + element number (I think) + freq_id(stream_id, freq_idx) +
             }
         }
         DEBUG("Generated a {:s} test data set in {:s}[{:d}]", type, buf->buffer_name, frame_id);
