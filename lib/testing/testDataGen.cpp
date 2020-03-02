@@ -76,6 +76,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     std::vector<uint32_t> freq_default{0};
     freq = config.get_default<std::vector<uint32_t>>(unique_name, "freq_ids", freq_default);
     num_beams = config.get_default<uint32_t>(unique_name, "num_beams", 1024);
+    _init_dataset_manager = config.get_default<bool>(unique_name, "init_dm", false);
 
     endpoint = unique_name + "/generate_test_data";
     using namespace std::placeholders;
@@ -125,38 +126,40 @@ void testDataGen::main_thread() {
     int link_id = 0;
 
     dset_id_t ds_id = dset_id_t::null;
-    auto& dm = datasetManager::instance();
+    if (_init_dataset_manager) {
+        auto& dm = datasetManager::instance();
 
-    // Generate dataset_id
-    if (_fixed_dset_id) {
-        ds_id = _dset_id;
-    } else {
-        std::vector<state_id_t> states;
-        states.push_back(
-            dm.create_state<metadataState>("not set", "FakeVis", get_git_commit_hash()).first);
+        // Generate dataset_id
+        if (_fixed_dset_id) {
+            ds_id = _dset_id;
+        } else {
+            std::vector<state_id_t> states;
+            states.push_back(
+                dm.create_state<metadataState>("not set", "FakeVis", get_git_commit_hash()).first);
 
-        std::vector<std::pair<uint32_t, freq_ctype>> fspec;
-        // TODO: CHIME specific
-        std::transform(std::begin(freq), std::end(freq), std::back_inserter(fspec),
-                       [](const uint32_t& id) -> std::pair<uint32_t, freq_ctype> {
-                           return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
-                       });
-        states.push_back(dm.create_state<freqState>(fspec).first);
+            std::vector<std::pair<uint32_t, freq_ctype>> fspec;
+            // TODO: CHIME specific
+            std::transform(std::begin(freq), std::end(freq), std::back_inserter(fspec),
+                           [](const uint32_t& id) -> std::pair<uint32_t, freq_ctype> {
+                               return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
+                           });
+            states.push_back(dm.create_state<freqState>(fspec).first);
 
-        std::vector<input_ctype> ispec;
-        for (uint32_t i = 0; i < num_elements; i++)
-            ispec.emplace_back((uint32_t)i, fmt::format(fmt("dm_input_{:d}"), i));
-        states.push_back(dm.create_state<inputState>(ispec).first);
+            std::vector<input_ctype> ispec;
+            for (uint32_t i = 0; i < num_elements; i++)
+                ispec.emplace_back((uint32_t)i, fmt::format(fmt("dm_input_{:d}"), i));
+            states.push_back(dm.create_state<inputState>(ispec).first);
 
-        std::vector<prod_ctype> pspec;
-        for (uint16_t i = 0; i < num_elements; i++)
-            for (uint16_t j = i; j < num_elements; j++)
-                pspec.push_back({i, j});
-        states.push_back(dm.create_state<prodState>(pspec).first);
-        states.push_back(dm.create_state<eigenvalueState>(num_eigenvectors).first);
+            std::vector<prod_ctype> pspec;
+            for (uint16_t i = 0; i < num_elements; i++)
+                for (uint16_t j = i; j < num_elements; j++)
+                    pspec.push_back({i, j});
+            states.push_back(dm.create_state<prodState>(pspec).first);
+            states.push_back(dm.create_state<eigenvalueState>(num_eigenvectors).first);
 
-        // Register a root state
-        ds_id = dm.add_dataset(states);
+            // Register a root state
+            ds_id = dm.add_dataset(states);
+        }
     }
 
     while (!stop_thread) {
