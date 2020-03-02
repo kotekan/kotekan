@@ -3,7 +3,7 @@
 #include "buffer.h"         // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "chimeMetadata.h"  // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
 #include "errors.h"         // for exit_kotekan, CLEAN_EXIT, ReturnCode
-#include "hfbMetadata.h"    // for set_dataset_id
+#include "hfbMetadata.hpp"  // for set_fpga_seq_num, set_dataset_id, set_num_beams
 
 #include <assert.h>    // for assert
 #include <atomic>      // for atomic_bool
