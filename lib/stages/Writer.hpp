@@ -138,9 +138,9 @@ protected:
      **/
     bool check_git_version(dset_id_t ds_id);
 
-    void write_vis_data(VisFrameView frame, auto& write_time_metric,
+    void write_vis_data(VisFrameView frame, kotekan::prometheus::Gauge& write_time_metric,
                         std::unique_lock<std::mutex>& acqs_lock);
-    void write_hfb_data(HfbFrameView frame, auto& write_time_metric,
+    void write_hfb_data(HfbFrameView frame, kotekan::prometheus::Gauge& write_time_metric,
                         std::unique_lock<std::mutex>& acqs_lock);
 
     // Parameters saved from the config files

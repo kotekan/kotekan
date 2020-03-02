@@ -101,7 +101,7 @@ void Writer::main_thread() {
 
     frameID frame_id(in_buf);
 
-    auto& write_time_metric =
+    kotekan::prometheus::Gauge& write_time_metric =
         Metrics::instance().add_gauge("kotekan_writer_write_time_seconds", unique_name);
 
     std::unique_lock<std::mutex> acqs_lock(acqs_mutex, std::defer_lock);
@@ -130,7 +130,7 @@ void Writer::main_thread() {
     }
 }
 
-void Writer::write_vis_data(VisFrameView frame, auto& write_time_metric,
+void Writer::write_vis_data(VisFrameView frame, kotekan::prometheus::Gauge& write_time_metric,
                             std::unique_lock<std::mutex>& acqs_lock) {
 
     dset_id_t dataset_id = frame.dataset_id;
@@ -194,7 +194,7 @@ void Writer::write_vis_data(VisFrameView frame, auto& write_time_metric,
     }
 }
 
-void Writer::write_hfb_data(HfbFrameView frame, auto& write_time_metric,
+void Writer::write_hfb_data(HfbFrameView frame, kotekan::prometheus::Gauge& write_time_metric,
                             std::unique_lock<std::mutex>& acqs_lock) {
 
     dset_id_t dataset_id = frame.dataset_id;
