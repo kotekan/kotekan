@@ -5,7 +5,7 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: debug
 
-buffer_depth: 12
+buffer_depth: 24
 samples_per_data_set: 32768 * 4
 num_local_freq: 8
 num_elements: 256
@@ -24,37 +24,39 @@ main_pool:
 
 gpu_input_merged_0:
     kotekan_buffer: standard
-    num_frames: 12
+    num_frames: 12 * 16
     frame_size: samples_per_data_set * num_elements * num_local_freq
     metadata_pool: main_pool
 
-gpu_input_merged_1:
-    kotekan_buffer: standard
-    num_frames: 12
-    frame_size: samples_per_data_set * num_elements * num_local_freq
-    metadata_pool: main_pool
-
-gpu_input_merged_2:
-    kotekan_buffer: standard
-    num_frames: 12
-    frame_size: samples_per_data_set * num_elements * num_local_freq
-    metadata_pool: main_pool
-
-gpu_input_merged_3:
-    kotekan_buffer: standard
-    num_frames: 12
-    frame_size: samples_per_data_set * num_elements * num_local_freq
-    metadata_pool: main_pool
-
-gpu_input_merged_4:
-    kotekan_buffer: standard
-    num_frames: 12
-    frame_size: samples_per_data_set * num_elements * num_local_freq
-    metadata_pool: main_pool
+#gpu_input_merged_1:
+#    kotekan_buffer: standard
+#    num_frames: 12
+#    frame_size: samples_per_data_set * num_elements * num_local_freq
+#    metadata_pool: main_pool
+#
+#gpu_input_merged_2:
+#    kotekan_buffer: standard
+#    num_frames: 12
+#    frame_size: samples_per_data_set * num_elements * num_local_freq
+#    metadata_pool: main_pool
+#
+#gpu_input_merged_3:
+#    kotekan_buffer: standard
+#    num_frames: 12
+#    frame_size: samples_per_data_set * num_elements * num_local_freq
+#    metadata_pool: main_pool
+#
+#gpu_input_merged_4:
+#    kotekan_buffer: standard
+#    num_frames: 12
+#    frame_size: samples_per_data_set * num_elements * num_local_freq
+#    metadata_pool: main_pool
 
 gpu_output_buffers:
     num_frames: buffer_depth * 4
-    frame_size: num_local_freq * num_blocks * (block_size*block_size)*2*num_data_sets  * sizeof_int
+
+    frame_size: samples_per_data_set * num_elements * num_local_freq * 3 / 4
+    #frame_size: num_local_freq * num_blocks * (block_size*block_size)*2*num_data_sets  * sizeof_int
     metadata_pool: main_pool
     gpu_output_buffer:
         kotekan_buffer: standard
@@ -98,22 +100,22 @@ gpu_input_buffers:
         kotekan_buffer: standard
     gpu_input_buffer_15:
         kotekan_buffer: standard
-    gpu_input_buffer_16:
-        kotekan_buffer: standard
-    gpu_input_buffer_17:
-        kotekan_buffer: standard
-    gpu_input_buffer_18:
-        kotekan_buffer: standard
-    gpu_input_buffer_19:
-        kotekan_buffer: standard
-    gpu_input_buffer_20:
-        kotekan_buffer: standard
-    gpu_input_buffer_21:
-        kotekan_buffer: standard
-    gpu_input_buffer_22:
-        kotekan_buffer: standard
-    gpu_input_buffer_23:
-        kotekan_buffer: standard
+#    gpu_input_buffer_16:
+#        kotekan_buffer: standard
+#    gpu_input_buffer_17:
+#        kotekan_buffer: standard
+#    gpu_input_buffer_18:
+#        kotekan_buffer: standard
+#    gpu_input_buffer_19:
+#        kotekan_buffer: standard
+#    gpu_input_buffer_20:
+#        kotekan_buffer: standard
+#    gpu_input_buffer_21:
+#        kotekan_buffer: standard
+#    gpu_input_buffer_22:
+#        kotekan_buffer: standard
+#    gpu_input_buffer_23:
+#        kotekan_buffer: standard
 
 
 lost_samples_buffers:
@@ -152,22 +154,22 @@ lost_samples_buffers:
         kotekan_buffer: standard
     lost_samples_buffer_15:
         kotekan_buffer: standard
-    lost_samples_buffer_16:
-        kotekan_buffer: standard
-    lost_samples_buffer_17:
-        kotekan_buffer: standard
-    lost_samples_buffer_18:
-        kotekan_buffer: standard
-    lost_samples_buffer_19:
-        kotekan_buffer: standard
-    lost_samples_buffer_20:
-        kotekan_buffer: standard
-    lost_samples_buffer_21:
-        kotekan_buffer: standard
-    lost_samples_buffer_22:
-        kotekan_buffer: standard
-    lost_samples_buffer_23:
-        kotekan_buffer: standard
+#    lost_samples_buffer_16:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_17:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_18:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_19:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_20:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_21:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_22:
+#        kotekan_buffer: standard
+#    lost_samples_buffer_23:
+#        kotekan_buffer: standard
 
 
 dpdk:
@@ -176,6 +178,7 @@ dpdk:
     lcore_cpu_map: [0,64,1,65,2,66,3,67,4,68,5,69]
     master_lcore_cpu: 7
     fpga_packet_size: 4680
+    num_mem_channels: 8
     alignment: samples_per_data_set
     mbuf_cache_size: 250
     # Format is index = lcore, value = array of port IDs
@@ -190,10 +193,10 @@ dpdk:
         - [10,11]
         - [12,13]
         - [14,15]
-        - [16,17]
-        - [18,19]
-        - [20,21]
-        - [22,23]
+#        - [16,17]
+#        - [18,19]
+#        - [20,21]
+#        - [22,23]
 
     # One handler must be given per port on the system.
     handlers:
@@ -245,30 +248,30 @@ dpdk:
         - dpdk_handler: iceBoardStandard
           out_buf: gpu_input_buffer_15
           lost_samples_buf: lost_samples_buffer_15
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_16
-          lost_samples_buf: lost_samples_buffer_16
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_17
-          lost_samples_buf: lost_samples_buffer_17
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_18
-          lost_samples_buf: lost_samples_buffer_18
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_19
-          lost_samples_buf: lost_samples_buffer_19
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_20
-          lost_samples_buf: lost_samples_buffer_20
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_21
-          lost_samples_buf: lost_samples_buffer_21
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_22
-          lost_samples_buf: lost_samples_buffer_22
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_23
-          lost_samples_buf: lost_samples_buffer_23
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_16
+#          lost_samples_buf: lost_samples_buffer_16
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_17
+#          lost_samples_buf: lost_samples_buffer_17
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_18
+#          lost_samples_buf: lost_samples_buffer_18
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_19
+#          lost_samples_buf: lost_samples_buffer_19
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_20
+#          lost_samples_buf: lost_samples_buffer_20
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_21
+#          lost_samples_buf: lost_samples_buffer_21
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_22
+#          lost_samples_buf: lost_samples_buffer_22
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_23
+#          lost_samples_buf: lost_samples_buffer_23
 
 
 zero_samples:
@@ -336,38 +339,38 @@ zero_samples:
         kotekan_stage: zeroSamples
         out_buf: gpu_input_buffer_15
         lost_samples_buf: lost_samples_buffer_15
-    zero_16:
-        kotekan_stage: zeroSamples
-        out_buf: gpu_input_buffer_16
-        lost_samples_buf: lost_samples_buffer_16
-    zero_17:
-        kotekan_stage: zeroSamples
-        out_buf: gpu_input_buffer_17
-        lost_samples_buf: lost_samples_buffer_17
-    zero_18:
-        kotekan_stage: zeroSamples
-        out_buf: gpu_input_buffer_18
-        lost_samples_buf: lost_samples_buffer_18
-    zero_19:
-        kotekan_stage: zeroSamples
-        out_buf: gpu_input_buffer_19
-        lost_samples_buf: lost_samples_buffer_19
-    zero_20:
-        kotekan_stage: zeroSamples
-        out_buf: gpu_input_buffer_20
-        lost_samples_buf: lost_samples_buffer_20
-    zero_21:
-        kotekan_stage: zeroSamples
-        out_buf: gpu_input_buffer_21
-        lost_samples_buf: lost_samples_buffer_21
-    zero_22:
-        kotekan_stage: zeroSamples
-        out_buf: gpu_input_buffer_22
-        lost_samples_buf: lost_samples_buffer_22
-    zero_23:
-        kotekan_stage: zeroSamples
-        out_buf: gpu_input_buffer_23
-        lost_samples_buf: lost_samples_buffer_23
+#    zero_16:
+#        kotekan_stage: zeroSamples
+#        out_buf: gpu_input_buffer_16
+#        lost_samples_buf: lost_samples_buffer_16
+#    zero_17:
+#        kotekan_stage: zeroSamples
+#        out_buf: gpu_input_buffer_17
+#        lost_samples_buf: lost_samples_buffer_17
+#    zero_18:
+#        kotekan_stage: zeroSamples
+#        out_buf: gpu_input_buffer_18
+#        lost_samples_buf: lost_samples_buffer_18
+#    zero_19:
+#        kotekan_stage: zeroSamples
+#        out_buf: gpu_input_buffer_19
+#        lost_samples_buf: lost_samples_buffer_19
+#    zero_20:
+#        kotekan_stage: zeroSamples
+#        out_buf: gpu_input_buffer_20
+#        lost_samples_buf: lost_samples_buffer_20
+#    zero_21:
+#        kotekan_stage: zeroSamples
+#        out_buf: gpu_input_buffer_21
+#        lost_samples_buf: lost_samples_buffer_21
+#    zero_22:
+#        kotekan_stage: zeroSamples
+#        out_buf: gpu_input_buffer_22
+#        lost_samples_buf: lost_samples_buffer_22
+#    zero_23:
+#        kotekan_stage: zeroSamples
+#        out_buf: gpu_input_buffer_23
+#        lost_samples_buf: lost_samples_buffer_23
 
 # This seems to find the lockup condition
 #monitor:
@@ -389,47 +392,17 @@ buffer_merge_0:
         - gpu_input_buffer_5
         - gpu_input_buffer_6
         - gpu_input_buffer_7
-#        - gpu_input_buffer_8
-#        - gpu_input_buffer_9
-#        - gpu_input_buffer_10
-#        - gpu_input_buffer_11
-#        - gpu_input_buffer_12
-#        - gpu_input_buffer_13
-#        - gpu_input_buffer_14
-#        - gpu_input_buffer_15
+        - gpu_input_buffer_8
+        - gpu_input_buffer_9
+        - gpu_input_buffer_10
+        - gpu_input_buffer_11
+        - gpu_input_buffer_12
+        - gpu_input_buffer_13
+        - gpu_input_buffer_14
+        - gpu_input_buffer_15
     out_buf: gpu_input_merged_0
 
-buffer_merge_1:
-    kotekan_stage: bufferMerge
-    in_bufs:
-            - gpu_input_buffer_8
-            - gpu_input_buffer_9
-            - gpu_input_buffer_10
-            - gpu_input_buffer_11
-            - gpu_input_buffer_12
-            - gpu_input_buffer_13
-            - gpu_input_buffer_14
-            - gpu_input_buffer_15
-    out_buf: gpu_input_merged_1
-
-copy_compress_lost_samples_buffers:
-    kotekan_stage: bufferCopy
-    in_buf: gpu_input_merged_0
-    out_bufs:
-        - gpu_input_merged_2
-
-copy_compress_lost_samples_buffers_1:
-    kotekan_stage: bufferCopy
-    in_buf: gpu_input_merged_1
-    out_bufs:
-        - gpu_input_merged_3
-
-buffer_merge_2:
-    kotekan_stage: bufferMerge
-    in_bufs:
-        - gpu_input_merged_2
-        - gpu_input_merged_3
-    out_buf: gpu_input_merged_4
+#
 
 #
 #buffer_merge_1:
@@ -450,7 +423,7 @@ buffer_merge_2:
 #    type: const
 #    value: 153
 #    kotekan_stage: testDataGen
-#    out_buf: gpu_input_merged
+#    out_buf: gpu_input_merged_0
 #    wait: true
 
 #gen_data_0:
@@ -460,50 +433,51 @@ buffer_merge_2:
 #    out_buf: gpu_input_merged_1
 #    wait: false
 
-#gpu:
-#    profiling: true
-#    frame_arrival_period: samples_per_data_set / 390625.0 / 12
-#    commands:
-#        - name: cudaInputData
-##        - name: cudaCorrelatorKernel
-#        - name: cudaOutputData
-#    gpu_0:
-#        kotekan_stage: cudaProcess
-#        gpu_id: 0
-#        in_buffers:
-#            in_buf: gpu_input_merged
-#        out_buffers:
-#            output_buf: gpu_output_buffer
+gpu:
+    profiling: true
+    frame_arrival_period: samples_per_data_set / 390625.0 / 16
+    buffer_depth: 4
+    commands:
+        - name: hipInputData
+#        - name: cudaCorrelatorKernel
+        - name: hipOutputData
+    gpu_0:
+        kotekan_stage: hipProcess
+        gpu_id: 0
+        in_buffers:
+            in_buf: gpu_input_merged_0
+        out_buffers:
+            output_buf: gpu_output_buffer
 
 num_sub_frames: 1
 
-gpu:
-    profiling: true
-    kernel_path: "../lib/hsa/kernels/"
-    gain_dir: "/etc/kotekan/"
-    #log_level: debug2
-    data_format: "4+4b"
-    frame_arrival_period: samples_per_data_set / 390625.0 / 8
-    commands:
-        - name: hsaInputData
-        #- name: clPresumZero
-        #- name: clOutputDataZero
-        #- name: hsaBarrier
-        #- name: hsaPresumKernel
-        #  - name: clPreseedKernel
-        #  - name: clCorrelatorKernel
-        # - name: clKVCorr
-        # - name: hsaOutputData
-    gpu_0:
-        kotekan_stage: hsaProcess
-        buffer_depth: 4
-        cpu_affinity: [16,17,18,19]
-        gpu_id: 0
-        gpu_thread_id: 0
-        in_buffers:
-            network_buf: gpu_input_merged_4
-        out_buffers:
-            output_buf: gpu_output_buffer
+#gpu:
+#    profiling: true
+#    kernel_path: "../lib/hsa/kernels/"
+#    gain_dir: "/etc/kotekan/"
+#    #log_level: debug2
+#    data_format: "4+4b"
+#    frame_arrival_period: samples_per_data_set / 390625.0 / 8
+#    commands:
+#        - name: hsaInputData
+#        #- name: clPresumZero
+#        #- name: clOutputDataZero
+#        #- name: hsaBarrier
+#        #- name: hsaPresumKernel
+#        #  - name: clPreseedKernel
+#        #  - name: clCorrelatorKernel
+#        # - name: clKVCorr
+#        # - name: hsaOutputData
+#    gpu_0:
+#        kotekan_stage: hsaProcess
+#        buffer_depth: 4
+#        cpu_affinity: [16,17,18,19]
+#        gpu_id: 0
+#        gpu_thread_id: 0
+#        in_buffers:
+#            network_buf: gpu_input_merged_4
+#        out_buffers:
+#            output_buf: gpu_output_buffer
 
 #gpu:
 #    profiling: false

@@ -21,6 +21,7 @@ option(USE_HSA "Build HSA GPU Framework" OFF)
 option(USE_CLOC "Use the CL offline compiler" OFF)
 option(USE_OPENCL "Build OpenCL GPU Framework" OFF)
 option(USE_CUDA "Build CUDA GPU Framework" OFF)
+option(USE_HIP "Build HIP GPU Framework" OFF)
 option(USE_DPDK "Enable DPDK Framework" OFF)
 option(USE_HDF5 "Build HDF5 output stages" OFF)
 option(USE_OMP "Enable OpenMP" OFF)
@@ -65,6 +66,12 @@ if (${USE_CUDA})
   set(USE_CUDA ${CUDA_FOUND})
   enable_language( CUDA )
 endif ()
+
+if (${USE_HIP})
+    #set(CMAKE_MODULE_PATH "/opt/rocm/hip/cmake" ${CMAKE_MODULE_PATH})
+    find_package(HIP)
+    set(USE_HIP ${CUDA_FOUND})
+endif()
 
 if (${USE_AIRSPY})
   find_package( LibAirSpy )
@@ -151,6 +158,13 @@ if (${USE_CUDA})
   add_definitions(-DWITH_CUDA)
   set(GPU_MODULES ${GPU_MODULES} "CUDA ")
 endif ()
+if (${USE_HIP})
+    include_directories (${KOTEKAN_SOURCE_DIR}/lib/hip)
+    include_directories( ${HIP_INCLUDE_DIRS} )
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lstdc++")
+    add_definitions(-DWITH_HIP)
+    set(GPU_MODULES ${GPU_MODULES} "HIP ")
+endif ()
 MESSAGE("GPU Modules Included: " ${GPU_MODULES})
 
 set(INPUT_MODULES "")
@@ -229,7 +243,7 @@ if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT ${CMAKE_CXX_COMPILER_ID} M
        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrt " )
 endif ()
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3  -march=native -mtune=native -I/opt/rocm/include")
 
 # dpdk uses the register keyword that got removed in C++17 because it wasn't doing anything
 #TODO remove this line when dpdk people fix this: https://mails.dpdk.org/archives/dev/2018-July/107950.html

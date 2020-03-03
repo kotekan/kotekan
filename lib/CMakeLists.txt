@@ -15,6 +15,7 @@ include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/dpdk)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/cuda)
+include_directories (${KOTEKAN_SOURCE_DIR}/lib/hip)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/version)
 include_directories (${KOTEKAN_SOURCE_DIR}/kotekan/opencl/kernels)
 
@@ -57,6 +58,11 @@ if (${USE_HSA} OR ${USE_OPENCL} OR ${USE_CUDA})
     add_subdirectory(gpu)
 endif ()
 
+if (${USE_HIP})
+    add_subdirectory(gpu)
+endif ()
+
+
 if (${USE_HSA})
     add_subdirectory(hsa)
     link_directories ( /opt/rocm/hsa/lib/ )
@@ -75,6 +81,11 @@ if (${USE_CUDA})
     add_subdirectory(cuda)
     target_link_libraries( kotekan_libs INTERFACE kotekan_cuda kotekan_gpu )
     target_link_libraries( kotekan_libs INTERFACE ${CUDA_LIBRARIES} )
+endif ()
+
+if (${USE_HIP})
+    add_subdirectory(hip)
+    target_link_libraries( kotekan_libs INTERFACE kotekan_hip kotekan_gpu )
 endif ()
 
 if (${USE_DPDK})

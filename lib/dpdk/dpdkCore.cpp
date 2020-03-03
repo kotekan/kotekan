@@ -130,7 +130,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
                 mbuf_size, mbuf_cache_size, sizeof(struct rte_pktmbuf_pool_private),
                 rte_pktmbuf_pool_init, NULL, rte_pktmbuf_init, NULL, node_id, 0);
             if (pool == NULL) {
-                throw std::runtime_error("Cannot create DPDK mbuf pool.");
+                throw std::runtime_error("Cannot create DPDK mbuf pool." + std::string(rte_strerror(rte_errno)));
             }
         }
         mbuf_pools.push_back(pool);

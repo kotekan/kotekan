@@ -14,6 +14,7 @@ sizeof_int: 4
 num_gpus: 1
 block_size: 32
 num_data_sets: 1
+numa_node: 1
 
 cpu_affinity: [8, 72, 9, 73, 10, 74, 11, 75, 12, 76, 12, 77, 13, 78, 14, 79, 15, 80]
 
@@ -24,7 +25,7 @@ main_pool:
 
 gpu_input_merged:
     kotekan_buffer: standard
-    num_frames: 10 # 24 * 4
+    num_frames: 700
     frame_size: samples_per_data_set * num_elements * num_local_freq
     metadata_pool: main_pool
 
@@ -81,49 +82,49 @@ lost_samples_buffers:
 
 
 
-dpdk:
-    kotekan_stage: dpdkCore
-    # Format is index = lcore, value = cpu core
-    lcore_cpu_map: [0,64,1,65,2,66,3,67,4,68,5,69]
-    master_lcore_cpu: 7
-    fpga_packet_size: 4680
-    alignment: samples_per_data_set
-    mbuf_cache_size: 250
-    # Format is index = lcore, value = array of port IDs
-    # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
-    # and lcore 1 to service ports 2 and 3.
-    lcore_port_map:
-        - [0,1]
-        - [2,3]
-        - [4,5]
-        - [6,7]
-
-    # One handler must be given per port on the system.
-    handlers:
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_0
-          lost_samples_buf: lost_samples_buffer_0
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_1
-          lost_samples_buf: lost_samples_buffer_1
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_2
-          lost_samples_buf: lost_samples_buffer_2
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_3
-          lost_samples_buf: lost_samples_buffer_3
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_4
-          lost_samples_buf: lost_samples_buffer_4
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_5
-          lost_samples_buf: lost_samples_buffer_5
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_6
-          lost_samples_buf: lost_samples_buffer_6
-        - dpdk_handler: iceBoardStandard
-          out_buf: gpu_input_buffer_7
-          lost_samples_buf: lost_samples_buffer_7
+#dpdk:
+#    kotekan_stage: dpdkCore
+#    # Format is index = lcore, value = cpu core
+#    lcore_cpu_map: [0,64,1,65,2,66,3,67,4,68,5,69]
+#    master_lcore_cpu: 7
+#    fpga_packet_size: 4680
+#    alignment: samples_per_data_set
+#    mbuf_cache_size: 250
+#    # Format is index = lcore, value = array of port IDs
+#    # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
+#    # and lcore 1 to service ports 2 and 3.
+#    lcore_port_map:
+#        - [0,1]
+#        - [2,3]
+#        - [4,5]
+#        - [6,7]
+#
+#    # One handler must be given per port on the system.
+#    handlers:
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_0
+#          lost_samples_buf: lost_samples_buffer_0
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_1
+#          lost_samples_buf: lost_samples_buffer_1
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_2
+#          lost_samples_buf: lost_samples_buffer_2
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_3
+#          lost_samples_buf: lost_samples_buffer_3
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_4
+#          lost_samples_buf: lost_samples_buffer_4
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_5
+#          lost_samples_buf: lost_samples_buffer_5
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_6
+#          lost_samples_buf: lost_samples_buffer_6
+#        - dpdk_handler: iceBoardStandard
+#          out_buf: gpu_input_buffer_7
+#          lost_samples_buf: lost_samples_buffer_7
 
 
 zero_samples:
@@ -162,33 +163,33 @@ zero_samples:
 
 
 # This seems to find the lockup condition
-monitor:
-    kotekan_stage: monitorBuffer
-    bufs:
-        - gpu_input_buffer_0
-        - lost_samples_buffer_0
-    timeout: 10
-    fill_threshold: 0.80
-
-buffer_merge:
-    kotekan_stage: bufferMerge
-    in_bufs:
-        - gpu_input_buffer_0
-        - gpu_input_buffer_1
-        - gpu_input_buffer_2
-        - gpu_input_buffer_3
-        - gpu_input_buffer_4
-        - gpu_input_buffer_5
-        - gpu_input_buffer_6
-        - gpu_input_buffer_7
-    out_buf: gpu_input_merged
-
-#gen_data:
-#    type: const
-#    value: 153
-#    kotekan_stage: testDataGen
+#monitor:
+#    kotekan_stage: monitorBuffer
+#    bufs:
+#        - gpu_input_buffer_0
+#        - lost_samples_buffer_0
+#    timeout: 10
+#    fill_threshold: 0.80
+#
+#buffer_merge:
+#    kotekan_stage: bufferMerge
+#    in_bufs:
+#        - gpu_input_buffer_0
+#        - gpu_input_buffer_1
+#        - gpu_input_buffer_2
+#        - gpu_input_buffer_3
+#        - gpu_input_buffer_4
+#        - gpu_input_buffer_5
+#        - gpu_input_buffer_6
+#        - gpu_input_buffer_7
 #    out_buf: gpu_input_merged
-#    wait: false
+
+gen_data:
+    type: const
+    value: 153
+    kotekan_stage: testDataGen
+    out_buf: gpu_input_merged
+    wait: true
 #
 #gen_data_0:
 #    type: const
@@ -227,13 +228,14 @@ buffer_merge:
 # CUDA
 gpu:
     profiling: true
-    frame_arrival_period: samples_per_data_set / 390625.0 / 8
+    frame_arrival_period: samples_per_data_set / 390625.0 / 16
+    buffer_depth: 4
     commands:
-        - name: cudaInputData
+        - name: hipInputData
 #        - name: cudaCorrelatorKernel
-        - name: cudaOutputData
+        - name: hipOutputData
     gpu_0:
-        kotekan_stage: cudaProcess
+        kotekan_stage: hipProcess
         gpu_id: 0
         buffer_depth: 4
         in_buffers:
