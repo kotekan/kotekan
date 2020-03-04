@@ -171,7 +171,7 @@ void basebandReadout::main_thread() {
             //freq_id = bin_number_chime(&stream_id);
             lt = std::make_unique<std::thread>([&] { this->readout_thread(freq_ids, mgrs); });
 
-            wt = std::make_unique<std::thread>([&] { this->writeout_thread(*mgr); });
+            wt = std::make_unique<std::thread>([&] { this->writeout_thread(mgrs); });
         }
 
         int done_frame = add_replace_frame(frame_id);
@@ -302,58 +302,55 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
                     // actual sizes. This is done in `get_data` as it verifies what
                     // is available in the current buffers.
                 }
-            
+                // Copying the data from the ring buffer is done in *this* thread. Writing the data
+                // out is done by another thread. This keeps the number of threads that can lock out
+                // the main buffer limited to 2 (listen and main).
+                //basebandDumpData data =
+                //    get_data(request.event_id, request.start_fpga,
+                //             std::min((int64_t)request.length_fpga, _max_dump_samples));
+                // At this point we know how much of the requested data we managed to read from the
+                // buffer (which may be nothing if the request as received too late).
+                dumps_to_write_vec.push_back(get_data((basebandDumpStatuses[freqidx]->request).event_id, 
+                                                       (basebandDumpStatuses[freqidx]->request).start_fpga,                             
+                                                       std::min((int64_t)(basebandDumpStatuses[freqidx]->request).length_fpga, _max_dump_samples),
+                                                       freqidx));
+                auto data = dumps_to_write_vec.back();
+                {
+                    std::lock_guard<std::mutex> lock(*(request_mtxs[freqidx]));
+                    dump_status.bytes_total = data.num_elements * data.data_length_fpga;
+                    dump_status.bytes_remaining = dump_status.bytes_total;
+                    if (data.status != basebandDumpData::Status::Ok) {
+                        INFO("Captured no data for event {:d} and freq {:d}.", request.event_id, freq_ids[freqidx]);
+                        dump_status.state = basebandDumpStatus::State::ERROR;
+                        dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
+                            std::chrono::system_clock::now());
+                        switch (data.status) {
+                            case basebandDumpData::Status::TooLong:
+                                dump_status.reason = "Request length exceeds the configured limit.";
+                                break;
+                            case basebandDumpData::Status::Late:
+                                dump_status.reason = "No data captured.";
+                                request_no_data_counters[0]->inc();
+                                break;
+                            case basebandDumpData::Status::ReserveFailed:
+                                dump_status.reason = "No free space in the baseband buffer";
+                                break;
+                            case basebandDumpData::Status::Cancelled:
+                                dump_status.reason = "Kotekan exiting.";
+                                break;
+                            default:
+                                INFO("Unknown dump status: {}", int(data.status));
+                                throw std::runtime_error(
+                                    "Unhandled basebandDumpData::Status case in a switch statement.");
+                        }
+                    } else {
+                        INFO("Captured {:d} samples for event {:d} and freq {:d}.",
+                             data.data_length_fpga, data.event_id, data.freq_id);
 
-
-            // Copying the data from the ring buffer is done in *this* thread. Writing the data
-            // out is done by another thread. This keeps the number of threads that can lock out
-            // the main buffer limited to 2 (listen and main).
-            //basebandDumpData data =
-            //    get_data(request.event_id, request.start_fpga,
-            //             std::min((int64_t)request.length_fpga, _max_dump_samples));
-            // At this point we know how much of the requested data we managed to read from the
-            // buffer (which may be nothing if the request as received too late).
-            dumps_to_write_vec.push_back(get_data((basebandDumpStatuses[freqidx]->request).event_id, 
-                                                   (basebandDumpStatuses[freqidx]->request).start_fpga,                             
-                                                   std::min((int64_t)(basebandDumpStatuses[freqidx]->request).length_fpga, _max_dump_samples),
-                                                   freqidx));
-            auto data = dumps_to_write_vec.back();
-            {
-                std::lock_guard<std::mutex> lock(*(request_mtxs[freqidx]));
-                dump_status.bytes_total = data.num_elements * data.data_length_fpga;
-                dump_status.bytes_remaining = dump_status.bytes_total;
-                if (data.status != basebandDumpData::Status::Ok) {
-                    INFO("Captured no data for event {:d} and freq {:d}.", request.event_id, freq_ids[freqidx]);
-                    dump_status.state = basebandDumpStatus::State::ERROR;
-                    dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
-                        std::chrono::system_clock::now());
-                    switch (data.status) {
-                        case basebandDumpData::Status::TooLong:
-                            dump_status.reason = "Request length exceeds the configured limit.";
-                            break;
-                        case basebandDumpData::Status::Late:
-                            dump_status.reason = "No data captured.";
-                            request_no_data_counters[0]->inc();
-                            break;
-                        case basebandDumpData::Status::ReserveFailed:
-                            dump_status.reason = "No free space in the baseband buffer";
-                            break;
-                        case basebandDumpData::Status::Cancelled:
-                            dump_status.reason = "Kotekan exiting.";
-                            break;
-                        default:
-                            INFO("Unknown dump status: {}", int(data.status));
-                            throw std::runtime_error(
-                                "Unhandled basebandDumpData::Status case in a switch statement.");
+                        // we are done copying the samples into the readout buffer
+                        mgrs[freqidx]->ready({dump_status, data}); //TODO: Can we use data or do we need dumps_to_write_vec.back()?
                     }
-                } else {
-                    INFO("Captured {:d} samples for event {:d} and freq {:d}.",
-                         data.data_length_fpga, data.event_id, data.freq_id);
-
-                    // we are done copying the samples into the readout buffer
-                    mgrs[freqidx]->ready({dump_status, data}); //TODO: Can we use data or do we need dumps_to_write_vec.back()?
                 }
-            }
             milliseconds ms_after = duration_cast<milliseconds>(
                     system_clock::now().time_since_epoch());
             INFO("memcpy() call: %d = %d-%d ms", ms_after.count() - ms_before.count(),ms_after.count(),ms_before.count());
@@ -362,7 +359,9 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
     }
 }
 
-void basebandReadout::writeout_thread(basebandReadoutManager& mgr) {
+//void basebandReadout::writeout_thread(basebandReadoutManager& mgr) {
+void basebandReadout::writeout_thread(basebandReadoutManager *mgrs[]) {
+    basebandReadoutManager& mgr = *(mgrs[_num_local_freq - 1]);
 
     while (!stop_thread) {
         auto next_request = mgr.get_next_ready_request();
