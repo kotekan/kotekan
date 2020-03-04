@@ -94,10 +94,9 @@ void visSharedMemWriter::main_thread() {
 
     frameID frame_id(in_buf);
 
-    // file_frame_size; metadata_size; data_size; nfreq; ntime
-
     size_t i = 0;
 
+    // Set up the structure of the access record shared memory
     struct timeval timestamp;
     uint64_t time_us;
     size_t access_record_size = sizeof(time_us);
@@ -105,10 +104,37 @@ void visSharedMemWriter::main_thread() {
 
     record_addr = assign_memory<uint64_t*>(fname_access_record, ntime * access_record_size, record_addr);
 
-    // memory_size should be ntime * nfreq * file_frame_size (data + metadata)
-    buf_addr = assign_memory<uint8_t*>(fname_buf, ntime * 8, buf_addr);
-    INFO("Created the shared memory segments\n");
+    // Set up the structure of the ring buffer shared memory
+    // Get one frame for reference
+    wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
 
+    // Get a view of the current frame
+    // TODO: this frame is not getting written anywhere yet.
+    auto frame = visFrameView(in_buf, frame_id);
+
+    // dset_id_t ds_id -> frame.dataset_id
+    // Frequency IDs that we are expecting
+    std::map<uint64_t, uint64_t> freq_id_map;
+    auto& dm = datasetManager::instance();
+
+    // Build the frequency index
+    auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm, frame.dataset_id);
+    const freqState* fstate = fstate_fut.get();
+    uint ind = 0;
+    for (auto& f : fstate->get_freqs())
+        freq_id_map[f.first] = ind++;
+
+
+    // Figure out the structure of the ring buffer
+    const uint8_t ONE = 1;
+    size_t nfreq = fstate->get_freqs().size();
+    size_t metadata_size = sizeof(visMetadata);
+    size_t data_size = sizeof(uint8_t);
+    size_t frame_size = data_size + metadata_size + sizeof(ONE);
+
+    // memory_size should be ntime * nfreq * file_frame_size (data + metadata)
+    buf_addr = assign_memory<uint8_t*>(fname_buf, ntime * nfreq * frame_size, buf_addr);
+    INFO("Created the shared memory segments\n");
     CHECK(sem_post(sem));
 
     // gets called once when kotekan is running
@@ -125,14 +151,6 @@ void visSharedMemWriter::main_thread() {
 
         // dset_id_t ds_id -> frame.dataset_id
         // Frequency IDs that we are expecting
-        std::map<uint64_t, uint64_t> freq_id_map;
-        auto& dm = datasetManager::instance();
-        auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm, frame.dataset_id);
-        const freqState* fstate = fstate_fut.get();
-
-        uint ind = 0;
-        for (auto& f : fstate->get_freqs())
-            freq_id_map[f.first] = ind++;
 
         // Get the time and frequency of the frame
         auto ftime = frame.time;
@@ -155,7 +173,9 @@ void visSharedMemWriter::main_thread() {
         memcpy(record_addr + i, &in_progress, access_record_size);
         CHECK(sem_post(sem));
 
-        memcpy(buf_addr + i, frame.data(), sizeof(uint8_t));
+        memcpy(buf_addr + i * frame_size, &ONE, sizeof(uint8_t));
+        memcpy(buf_addr + i * frame_size + 1, frame.metadata(), metadata_size);
+        memcpy(buf_addr + i * frame_size + metadata_size + 1, frame.data(), data_size);
 
         gettimeofday(&timestamp, nullptr);
         time_us = timestamp.tv_sec * 1000000 + timestamp.tv_usec;
