@@ -18,9 +18,9 @@ visSharedMemWriter::visSharedMemWriter(Config& config, const std::string& unique
         // Fetch any simple configuration
         root_path = config.get_default<std::string>(unique_name, "root_path", "/dev/shm/");
         sem_name = config.get_default<std::string>(unique_name, "sem_name", "kotekan");
-        fname_met = config.get_default<std::string>(unique_name, "fname_met", "calBufferMetadata");
+        fname_access_record = config.get_default<std::string>(unique_name, "fname_access_record", "calBufferAccessRecord");
         fname_buf = config.get_default<std::string>(unique_name, "fname_buf", "calBuffer");
-        nsamples = config.get_default<size_t>(unique_name, "nsamples", 4096);
+        ntime = config.get_default<size_t>(unique_name, "nsamples", 512);
 
         // Setup the input vector
         in_buf = get_buffer("in_buf");
@@ -29,7 +29,7 @@ visSharedMemWriter::visSharedMemWriter(Config& config, const std::string& unique
         // Check if any of the old buffer files exist
         DEBUG("Checking for and removing old buffer files...");
         check_remove(root_path + "sem." + sem_name);
-        check_remove(root_path + fname_met);
+        check_remove(root_path + fname_access_record);
         check_remove(root_path + fname_buf);
 
         // Create the semaphore, and gain first access to it
@@ -47,9 +47,12 @@ visSharedMemWriter::visSharedMemWriter(Config& config, const std::string& unique
 
         INFO("Semaphore created.\n");
 
+        // Acquire semaphore until shared memory is created
+        CHECK(sem_wait(sem));
+
         // memory_size should be ntime * nfreq * file_frame_size (data + metadata)
-        met_addr = assign_memory<uint64_t*>(fname_met, nsamples * 64, met_addr);
-        buf_addr = assign_memory<uint8_t*>(fname_buf, nsamples * 8, buf_addr);
+        record_addr = assign_memory<uint64_t*>(fname_access_record, ntime * 64, record_addr);
+        buf_addr = assign_memory<uint8_t*>(fname_buf, ntime * 8, buf_addr);
         INFO("Created the shared memory segments\n");
 
 }
@@ -91,10 +94,22 @@ void visSharedMemWriter::main_thread() {
 
     frameID frame_id(in_buf);
 
+    // file_frame_size; metadata_size; data_size; nfreq; ntime
+
     size_t i = 0;
+
     struct timeval timestamp;
     uint64_t time_us;
+    size_t access_record_size = sizeof(time_us);
     const uint64_t in_progress = -1;
+
+    record_addr = assign_memory<uint64_t*>(fname_access_record, ntime * access_record_size, record_addr);
+
+    // memory_size should be ntime * nfreq * file_frame_size (data + metadata)
+    buf_addr = assign_memory<uint8_t*>(fname_buf, ntime * 8, buf_addr);
+    INFO("Created the shared memory segments\n");
+
+    CHECK(sem_post(sem));
 
     // gets called once when kotekan is running
     while (!stop_thread) {
@@ -110,7 +125,7 @@ void visSharedMemWriter::main_thread() {
 
         // dset_id_t ds_id -> frame.dataset_id
         // Frequency IDs that we are expecting
-        /*std::map<uint64_t, uint64_t> freq_id_map;
+        std::map<uint64_t, uint64_t> freq_id_map;
         auto& dm = datasetManager::instance();
         auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm, frame.dataset_id);
         const freqState* fstate = fstate_fut.get();
@@ -122,7 +137,7 @@ void visSharedMemWriter::main_thread() {
         // Get the time and frequency of the frame
         auto ftime = frame.time;
         time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
-        uint64_t freq_ind = freq_id_map.at(frame.freq_id); */
+        uint64_t freq_ind = freq_id_map.at(frame.freq_id);
 
         // acq.file_bundle->add_sample(t, freq_ind, frame); then does the writing to disk/buffer
 
@@ -130,14 +145,14 @@ void visSharedMemWriter::main_thread() {
         // class called frame_id in visutil -> does all the cyclic
 
         // Check whether the next value written is within the buffer bounds
-        if (i * sizeof(uint64_t) + sizeof(uint64_t) > nsamples * 64) {
+        if (i * access_record_size + access_record_size > ntime * access_record_size) {
             INFO("Setting back to 0!");
             i = 0;
         }
 
 
         CHECK(sem_wait(sem));
-        memcpy(met_addr + i, &in_progress, sizeof(uint64_t));
+        memcpy(record_addr + i, &in_progress, access_record_size);
         CHECK(sem_post(sem));
 
         memcpy(buf_addr + i, frame.data(), sizeof(uint8_t));
@@ -147,10 +162,10 @@ void visSharedMemWriter::main_thread() {
         INFO("Data written to location at {} us", time_us);
 
         CHECK(sem_wait(sem));
-        memcpy(met_addr + i, &time_us, sizeof(uint64_t));
+        memcpy(record_addr + i, &time_us, access_record_size);
         CHECK(sem_post(sem));
 
-        i += 1;
+        ++i;
 
         // marks the buffer and moves on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);

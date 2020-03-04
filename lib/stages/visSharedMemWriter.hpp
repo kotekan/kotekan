@@ -56,18 +56,18 @@ protected:
     // Output every set number of frames
     int _output_period;
 
-    // Semaphore for updating metadata
+    // Semaphore for updating access record
     sem_t *sem;
 
-    // Pointers to shared memory addresses for metadata and ringBuffer
-    uint64_t *met_addr;
+    // Pointers to shared memory addresses for access record and ringBuffer
+    uint64_t *record_addr;
     uint8_t *buf_addr;
-    size_t nsamples;
+    size_t ntime;
 
     template<typename T>
     T assign_memory(std::string shm_name, int shm_size, T addr);
 
-    std::string root_path, sem_name, fname_met, fname_buf;
+    std::string root_path, sem_name, fname_access_record, fname_buf;
 };
 
 inline void check_remove(std::string fname) {
