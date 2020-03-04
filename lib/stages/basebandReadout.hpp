@@ -91,7 +91,7 @@ private:
     /**
      * @brief Loops over requests whose data has been read out and writes it to a file
      */
-    void writeout_thread(kotekan::basebandReadoutManager& readout_manager);
+    void writeout_thread(kotekan::basebandReadoutManager *readout_managers[]);
     void write_dump(kotekan::basebandDumpData data, kotekan::basebandDumpStatus& dump_status,
                     std::mutex& request_mtx);
     int add_replace_frame(int frame_id);
