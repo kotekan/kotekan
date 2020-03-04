@@ -194,14 +194,17 @@ void basebandReadout::main_thread() {
 }
 
 void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutManager *mgrs[]) {
-    uint32_t freq_id = freq_ids[_num_local_freq - 1];
+    //uint32_t freq_id = freq_ids[_num_local_freq - 1];
     //basebandReadoutManager& mgr = *(mgrs[_num_local_freq - 1]);
-
-    auto& request_no_data_counter = readout_counter.labels({std::to_string(freq_id), "no_data"});
-    //TODO: Ask davor about request_no_data_counter()
-
     std::unique_ptr<basebandReadoutManager::requestStatusMutex> next_requests[_num_local_freq];
     std::shared_ptr<basebandReadoutManager::requestStatusMutex> next_request;
+    kotekan::prometheus::Counter *request_no_data_counters[_num_local_freq]; 
+    for(int freqidx = 0; freqidx < _num_local_freq; freqidx++){
+        request_no_data_counters[freqidx] = &(readout_counter.labels({std::to_string(freq_ids[freqidx]), "no_data"}));
+    }
+
+    //TODO: Ask davor about request_no_data_counter()
+
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
         // Latency is *key* here. We want to call get_data within 100ms
@@ -211,7 +214,7 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
             INFO("Non-null request for freq_ids[idx]: {:d}", freq_ids[0]);
             basebandDumpStatus& dump_status = std::get<0>(*next_requests[0]);
             //std::mutex& request_mtx = std::get<1>(*next_requests[0]);
-            const basebandRequest request = dump_status.request;
+            basebandRequest request = dump_status.request;
             // std::time_t tt = std::chrono::system_clock::to_time_t(request.received);
             INFO("Received baseband dump request for event {:d}: {:d} samples starting at count "
                  "{:d}. (next_frame: {:d})",
@@ -256,14 +259,14 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
             int stat_rc = stat((_base_dir + request.file_path).c_str(), &path_status);
             if (!(stat_rc == 0 && path_status.st_mode & S_IFDIR)) {
                 WARN("Baseband destination path {} for request {:d} is not valid",
-                     request.file_path, request.event_id);
+                     basebandRequests[0]->file_path, basebandRequests[0]->event_id);
                 std::lock_guard<std::mutex> lock(*(request_mtxs[0]));
                 dump_status.finished = dump_status.started =
                     std::make_shared<std::chrono::system_clock::time_point>(
                         std::chrono::system_clock::now());
                 dump_status.state = basebandDumpStatus::State::ERROR;
                 dump_status.reason = "Destination does not exist or is not a directory: "
-                                     + _base_dir + request.file_path;
+                                     + _base_dir + basebandRequests[0]->file_path;
                 continue;
             }
 
@@ -278,6 +281,7 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
             }
 
             DEBUG("Ready to copy samples into the baseband readout buffer");
+            INFO("requests[0]==requests? {:d}", basebandRequests[0] == &request);
 
             // Copying the data from the ring buffer is done in *this* thread. Writing the data
             // out is done by another thread. This keeps the number of threads that can lock out
@@ -303,7 +307,7 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
                             break;
                         case basebandDumpData::Status::Late:
                             dump_status.reason = "No data captured.";
-                            request_no_data_counter.inc();
+                            request_no_data_counters[0]->inc();
                             break;
                         case basebandDumpData::Status::ReserveFailed:
                             dump_status.reason = "No free space in the baseband buffer";
