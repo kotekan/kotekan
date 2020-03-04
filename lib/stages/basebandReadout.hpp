@@ -109,7 +109,7 @@ private:
      * an empty one if the frame data was not availabe for the time requested
      */
     kotekan::basebandDumpData get_data(uint64_t event_id, int64_t trigger_start_fpga,
-                                       int64_t trigger_length_fpga);
+                                       int64_t trigger_length_fpga,int freqidx);
 
     /// baseband data array
     BipBuffer data_buffer;
