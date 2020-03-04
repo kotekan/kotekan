@@ -263,6 +263,20 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
                      freq_ids[freqidx],
                      basebandRequests[freqidx]->length_fpga, 
                      basebandRequests[freqidx]->start_fpga, next_frame);
+                struct stat path_status;
+                int stat_rc = stat((_base_dir + request.file_path).c_str(), &path_status);
+                if (!(stat_rc == 0 && path_status.st_mode & S_IFDIR)) {
+                    WARN("Baseband destination path {} for request {:d} is not valid",
+                         _base_dir + basebandRequests[freqidx]->file_path, basebandRequests[freqidx]->event_id);
+                    std::lock_guard<std::mutex> lock(*(request_mtxs[freqidx]));
+                    dump_status.finished = dump_status.started =
+                        std::make_shared<std::chrono::system_clock::time_point>(
+                            std::chrono::system_clock::now());
+                    dump_status.state = basebandDumpStatus::State::ERROR;
+                    dump_status.reason = "Destination does not exist or is not a directory: "
+                                         + _base_dir + basebandRequests[freqidx]->file_path;
+                    continue;
+                }
             }
 
             // Checks if the destination directory exists, and if it doesn't, stop processing the
@@ -270,49 +284,46 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
             //
             // TODO: once API manager is a Stage, this would naturally belong in REST request
             // callback
-            struct stat path_status;
-            int stat_rc = stat((_base_dir + request.file_path).c_str(), &path_status);
-            if (!(stat_rc == 0 && path_status.st_mode & S_IFDIR)) {
-                WARN("Baseband destination path {} for request {:d} is not valid",
-                     basebandRequests[0]->file_path, basebandRequests[0]->event_id);
-                std::lock_guard<std::mutex> lock(*(request_mtxs[0]));
-                dump_status.finished = dump_status.started =
-                    std::make_shared<std::chrono::system_clock::time_point>(
-                        std::chrono::system_clock::now());
-                dump_status.state = basebandDumpStatus::State::ERROR;
-                dump_status.reason = "Destination does not exist or is not a directory: "
-                                     + _base_dir + basebandRequests[0]->file_path;
-                continue;
-            }
-
-            {
-                std::lock_guard<std::mutex> lock(*(request_mtxs[0]));
-                dump_status.state = basebandDumpStatus::State::INPROGRESS;
-                dump_status.started = std::make_shared<std::chrono::system_clock::time_point>(
-                    std::chrono::system_clock::now());
-                // Note: the length of the dump still needs to be set with
-                // actual sizes. This is done in `get_data` as it verifies what
-                // is available in the current buffers.
-            }
-
             DEBUG("Ready to copy samples into the baseband readout buffer");
             INFO("dump_statuses[{:d}]==&dump_status? {:d}", _num_local_freq - 1, basebandDumpStatuses[_num_local_freq - 1] == &dump_status);
+            std::vector<basebandDumpData> dumps_to_write_vec;
+            using namespace std::chrono;
+            milliseconds ms_before = duration_cast<milliseconds>(
+                   system_clock::now().time_since_epoch());
+
+            for(int freqidx = 0; freqidx < _num_local_freq; freqidx++){
+
+                {
+                    std::lock_guard<std::mutex> lock(*(request_mtxs[freqidx]));
+                    basebandDumpStatuses[freqidx]->state = basebandDumpStatus::State::INPROGRESS;
+                    basebandDumpStatuses[freqidx]->started = std::make_shared<std::chrono::system_clock::time_point>(
+                        std::chrono::system_clock::now());
+                    // Note: the length of the dump still needs to be set with
+                    // actual sizes. This is done in `get_data` as it verifies what
+                    // is available in the current buffers.
+                }
+            
+
 
             // Copying the data from the ring buffer is done in *this* thread. Writing the data
             // out is done by another thread. This keeps the number of threads that can lock out
             // the main buffer limited to 2 (listen and main).
-            basebandDumpData data =
-                get_data(request.event_id, request.start_fpga,
-                         std::min((int64_t)request.length_fpga, _max_dump_samples));
-
+            //basebandDumpData data =
+            //    get_data(request.event_id, request.start_fpga,
+            //             std::min((int64_t)request.length_fpga, _max_dump_samples));
             // At this point we know how much of the requested data we managed to read from the
             // buffer (which may be nothing if the request as received too late).
+            dumps_to_write_vec.push_back(get_data((basebandDumpStatuses[freqidx]->request).event_id, 
+                                                   (basebandDumpStatuses[freqidx]->request).start_fpga,                             
+                                                   std::min((int64_t)(basebandDumpStatuses[freqidx]->request).length_fpga, _max_dump_samples),
+                                                   freqidx));
+            auto data = dumps_to_write_vec.back();
             {
-                std::lock_guard<std::mutex> lock(*(request_mtxs[0]));
+                std::lock_guard<std::mutex> lock(*(request_mtxs[freqidx]));
                 dump_status.bytes_total = data.num_elements * data.data_length_fpga;
                 dump_status.bytes_remaining = dump_status.bytes_total;
                 if (data.status != basebandDumpData::Status::Ok) {
-                    INFO("Captured no data for event {:d} and freq {:d}.", request.event_id, freq_ids[0]);
+                    INFO("Captured no data for event {:d} and freq {:d}.", request.event_id, freq_ids[freqidx]);
                     dump_status.state = basebandDumpStatus::State::ERROR;
                     dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
                         std::chrono::system_clock::now());
@@ -340,9 +351,13 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
                          data.data_length_fpga, data.event_id, data.freq_id);
 
                     // we are done copying the samples into the readout buffer
-                    mgrs[0]->ready({dump_status, data});
+                    mgrs[freqidx]->ready({dump_status, data}); //TODO: Can we use data or do we need dumps_to_write_vec.back()?
                 }
             }
+            milliseconds ms_after = duration_cast<milliseconds>(
+                    system_clock::now().time_since_epoch());
+            INFO("memcpy() call: %d = %d-%d ms", ms_after.count() - ms_before.count(),ms_after.count(),ms_before.count());
+            }    
         }
     }
 }
@@ -354,7 +369,7 @@ void basebandReadout::writeout_thread(basebandReadoutManager& mgr) {
         if (!next_request)
             continue;
 
-        basebandDumpStatus& dump_status = std::get<0>(std::get<0>(*next_request));
+        basebandDumpStatus& dump_status = std::get<0>(std::get<0>(*next_request)); 
         basebandDumpData dump_data = std::get<1>(std::get<0>(*next_request));
         // Sanity check
         if (dump_status.request.event_id != dump_data.event_id) {
@@ -430,10 +445,11 @@ int basebandReadout::add_replace_frame(int frame_id) {
 
 
 basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_start_fpga,
-                                           int64_t trigger_length_fpga) {
+                                           int64_t trigger_length_fpga, int freqidx) {
     // This assumes that the frame's timestamps are in order, but not that they
     // are necessarily contiguous.
 
+    INFO("get_data(): Using freqidx {:d}",freqidx);
     int dump_start_frame = 0;
     int dump_end_frame = 0;
     int64_t trigger_end_fpga = trigger_start_fpga + trigger_length_fpga;
