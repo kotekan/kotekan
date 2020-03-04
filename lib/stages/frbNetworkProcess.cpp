@@ -437,7 +437,7 @@ void frbNetworkProcess::ping_destinations() {
         DEBUG("Checking: {}", lru_dest.dst->host);
         DEBUG("Last responded: {:%M:%S} ago", time_since_last_live);
 
-        if (time_since_last_live >= _ping_interval) {
+        if (time_since_last_live >= (_ping_interval - _quick_ping_interval)) {
             // time to ping again
             if (send_ping(ping_src_fd[lru_dest.dst->sending_socket], lru_dest.dst->addr, ping_seq)) {
                 DEBUG("Pinged {}", lru_dest.dst->host);
@@ -453,7 +453,7 @@ void frbNetworkProcess::ping_destinations() {
 
         // Schedule the next check for the node
         dest_by_time.pop();
-        if (lru_dest.dst->live && time_since_last_live >= _ping_interval) {
+        if (lru_dest.dst->live && time_since_last_live >= (_ping_interval - _quick_ping_interval)) {
             if (time_since_last_live < _ping_interval + _ping_dead_threshold) {
                 DEBUG("Live host {} has not responded, schedule a backup check in {}",
                       lru_dest.dst->host, _quick_ping_interval);
