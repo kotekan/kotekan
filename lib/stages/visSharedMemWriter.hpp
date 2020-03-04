@@ -1,31 +1,19 @@
 #ifndef VISSHAREDMEMWRITER_HPP
 #define VISSHAREDMEMWRITER_HPP
 
-#include "Config.hpp"               // for Config
-#include "StageFactory.hpp"         // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Stage.hpp"                // for Stage
-#include <future>                   // for async
-#include "datasetManager.hpp"       // for dset_id_t, datasetManager
-#include "datasetState.hpp"         // for freqState
-#include "buffer.h"                 // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "bufferContainer.hpp"      // for bufferContainer
-#include "visBuffer.hpp"            // for visFrameView
-#include "kotekanLogging.hpp"       // for INFO, ERROR, WARN, FATAL_ERROR, DEBUG, logLevel
-
-#include <cstdint>
-#include <map>                      // for map
-#include <string>                   // for string, operator+
-#include <errno.h>                  // for ENOENT, errno
-
-#include <semaphore.h>              // for sem_open, sem_wait, SEM_FAILED, sem_post
-#include <sys/types.h>              // Type definitions
-#include <sys/time.h>               // Time-related functions
-#include <fcntl.h>
-#include <unistd.h>                 // System calls, access, F_OK
-#include <stdio.h>                  // size_t, remove
-#include <sys/stat.h>
-
-#include <sys/mman.h>               //mmap
+#include <errno.h>              // for ENOENT, errno
+#include <semaphore.h>          // for sem_t
+#include <stdio.h>              // for perror, remove, size_t
+#include <stdlib.h>             // for exit, EXIT_FAILURE
+#include <unistd.h>             // for access, F_OK
+#include <cstdint>              // for uint64_t, uint8_t
+#include <stdexcept>            // for runtime_error
+#include <string>               // for string, operator+
+#include "Config.hpp"           // for Config
+#include "visBuffer.hpp"        // for visFrameView
+#include "Stage.hpp"            // for Stage
+#include "buffer.h"             // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
 
 #define CHECK(EXPR) ({ \
     int _r = EXPR; \

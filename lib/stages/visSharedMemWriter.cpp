@@ -1,9 +1,31 @@
 #include "visSharedMemWriter.hpp"
 
-#include "errors.h"
-
-#include "fmt.hpp"
-
+#include "visSharedMemWriter.hpp"
+#include <cxxabi.h>            // for __forced_unwind
+#include <fcntl.h>             // for O_CREAT
+#include <string.h>            // for memcpy, strerror
+#include <sys/mman.h>          // for mmap, shm_open, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE
+#include <sys/stat.h>          // for S_IRUSR, S_IWUSR
+#include <sys/time.h>          // for gettimeofday, timeval
+#include <sys/types.h>         // for uint
+#include <atomic>              // for atomic_bool
+#include <exception>           // for exception
+#include <functional>          // for _Bind_helper<>::type, bind, function
+#include <future>              // for async, future
+#include <map>                 // for map
+#include <regex>               // for match_results<>::_Base_type
+#include <system_error>        // for system_error
+#include <tuple>               // for get
+#include <utility>             // for pair
+#include <vector>              // for vector
+#include "Hash.hpp"            // for Hash
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "datasetManager.hpp"  // for datasetManager
+#include "datasetState.hpp"    // for freqState
+#include "fmt.hpp"             // for format, fmt
+#include "kotekanLogging.hpp"  // for INFO, DEBUG
+#include "visBuffer.hpp"       // for visFrameView, visMetadata
+#include "visUtil.hpp"         // for frameID
 
 using kotekan::bufferContainer;
 using kotekan::Config;
