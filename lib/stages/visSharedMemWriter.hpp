@@ -64,8 +64,18 @@ protected:
     uint8_t *buf_addr;
     size_t ntime;
 
+    const uint8_t ONE = 1;
+    const uint64_t in_progress = -1;
+
+    size_t access_record_size;
+    size_t metadata_size;
+    size_t data_size;
+    size_t frame_size;
+
     template<typename T>
     T assign_memory(std::string shm_name, int shm_size, T addr);
+
+    void write_to_memory(const visFrameView& frame, size_t index);
 
     std::string root_path, sem_name, fname_access_record, fname_buf;
 };
