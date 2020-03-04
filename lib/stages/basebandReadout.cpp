@@ -69,6 +69,7 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
     _base_dir(config.get_default<std::string>(unique_name, "base_dir", "./")),
     _num_frames_buffer(config.get<int>(unique_name, "num_frames_buffer")),
     _num_elements(config.get<int>(unique_name, "num_elements")),
+    _num_local_freq(config.get<int>(unique_name, "num_local_freq")),
     _samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
     _max_dump_samples(config.get_default<uint64_t>(unique_name, "max_dump_samples", 1 << 30)),
     _write_throttle(config.get_default<float>(unique_name, "write_throttle", 0.)),
@@ -77,7 +78,7 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
     oldest_frame(-1),
     frame_locks(_num_frames_buffer),
     // Over allocate so we can align the memory and can't get stuck halfway in BipBuffer
-    data_buffer(2 * (_num_elements * _max_dump_samples + 16)),
+    data_buffer(2 * (_num_elements * _max_dump_samples + 16) * _num_local_freq),
     readout_counter(kotekan::prometheus::Metrics::instance().add_counter(
         "kotekan_baseband_readout_total", unique_name, {"freq_id", "status"})),
     readout_in_progress_metric(kotekan::prometheus::Metrics::instance().add_gauge(
@@ -102,6 +103,7 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
 
     register_consumer(buf, unique_name.c_str());
 
+    INFO("Registered consumer baseband!!");
     // Ensure input buffer is long enough.
     if (buf->num_frames <= _num_frames_buffer) {
         // This process of creating an error std::string is rediculous. Figure out what
@@ -128,8 +130,10 @@ void basebandReadout::main_thread() {
 
     std::unique_ptr<std::thread> wt;
     std::unique_ptr<std::thread> lt;
+    basebandReadoutManager *mgrs[_num_local_freq];
 
     basebandReadoutManager* mgr = nullptr;
+    uint32_t freq_ids[_num_local_freq];
     while (!stop_thread) {
 
         if (wait_for_full_frame(buf, unique_name.c_str(), frame_id % buf->num_frames) == nullptr) {
@@ -141,16 +145,30 @@ void basebandReadout::main_thread() {
             auto first_meta = (chimeMetadata*)buf->metadata[buf_frame]->metadata;
 
             stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
-            uint32_t freq_id = bin_number_chime(&stream_id);
-
-            DEBUG("Initialize baseband metrics for freq_id: {:d}", freq_id);
-            readout_counter.labels({std::to_string(freq_id), "done"});
-            readout_counter.labels({std::to_string(freq_id), "error"});
-            readout_counter.labels({std::to_string(freq_id), "no_data"});
-            readout_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
-
-            INFO("Starting request-listening thread for freq_id: {:d}", freq_id);
+            INFO("slot_id:{:d}",stream_id.slot_id);            
+            INFO("link_id:{:d}",stream_id.link_id);            
+            uint32_t freq_id;
+		for(int freqidx=0; freqidx < _num_local_freq;freqidx++){
+		    // XXX Map stream IDs to freq IDs with bin_number() (for Pathfinder) or bin_number_chime()
+		    // XXX Use num_local_freqs to figure out if we're running on CHIME or PF
+		    if (_num_local_freq == 1){
+			freq_id = bin_number_chime(&stream_id);
+		    } else { // more than one freq per stream
+			freq_id = bin_number(&stream_id,freqidx);
+		    }
+		    freq_ids[freqidx] = freq_id;
+		    mgrs[freqidx] = &(basebandApiManager::instance().register_readout_stage(freq_ids[freqidx]));//TODO: Check register_readout_stage
+		    DEBUG("Initialize baseband metrics for freq_id: {:d}", freq_id);
+		    readout_counter.labels({std::to_string(freq_id), "done"});
+		    readout_counter.labels({std::to_string(freq_id), "error"});
+		    readout_counter.labels({std::to_string(freq_id), "no_data"});
+		    readout_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
+		    INFO("Starting request-listening thread for freq_id: {:d}", freq_id);
+		}
             mgr = &basebandApiManager::instance().register_readout_stage(freq_id);
+	    INFO("freq_id: {:d}",freq_id);
+	    INFO("mgr==mgrs[{:d}]? {:d}",_num_local_freq-1,mgr==mgrs[_num_local_freq-1]);
+            //freq_id = bin_number_chime(&stream_id);
             lt = std::make_unique<std::thread>([&] { this->readout_thread(freq_id, *mgr); });
 
             wt = std::make_unique<std::thread>([&] { this->writeout_thread(*mgr); });
