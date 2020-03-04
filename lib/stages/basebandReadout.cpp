@@ -165,7 +165,7 @@ void basebandReadout::main_thread() {
 		    readout_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
 		    INFO("Starting request-listening thread for freq_id: {:d}", freq_id);
 		}
-            mgr = &basebandApiManager::instance().register_readout_stage(freq_id);
+            mgr = mgrs[_num_local_freq-1];//&basebandApiManager::instance().register_readout_stage(freq_id);
 	    INFO("freq_id: {:d}",freq_id);
 	    INFO("mgr==mgrs[{:d}]? {:d}",_num_local_freq-1,mgr==mgrs[_num_local_freq-1]);
             //freq_id = bin_number_chime(&stream_id);
@@ -181,8 +181,14 @@ void basebandReadout::main_thread() {
 
         frame_id++;
     }
-    if (mgr) {
-        mgr->stop();
+    if (mgrs[0]) {
+        //mgr->stop();
+        for(int freqidx = 0; freqidx < _num_local_freq; freqidx++){
+            if (mgrs[freqidx]){
+                mgrs[freqidx]->stop(); // stop all the managers that were started
+            }
+        }
+        
     }
 
     if (lt) {
@@ -211,14 +217,6 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
         // of L4 sending the trigger.
         next_requests[0] = mgrs[0]->get_next_waiting_request();
         if (next_requests[0]) {
-            INFO("Non-null request for freq_ids[idx]: {:d}", freq_ids[0]);
-            basebandDumpStatus& dump_status = std::get<0>(*next_requests[0]);
-            //std::mutex& request_mtx = std::get<1>(*next_requests[0]);
-            basebandRequest request = dump_status.request;
-            // std::time_t tt = std::chrono::system_clock::to_time_t(request.received);
-            INFO("Received baseband dump request for event {:d}: {:d} samples starting at count "
-                 "{:d}. (next_frame: {:d})",
-                 request.event_id, request.length_fpga, request.start_fpga, next_frame);
 
 
             for(int freqidx = 1; freqidx < _num_local_freq; freqidx++){
@@ -227,8 +225,24 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
 
                 INFO("Non-null request for freq_ids[idx]: {:d}", freq_ids[freqidx]);
                 }
+            
+            // Do just the last one individually
+            basebandDumpStatus& dump_status = std::get<0>(*next_requests[_num_local_freq - 1]);
+            //std::mutex& request_mtx = std::get<1>(*next_requests[_num_local_freq - 1]);
+            basebandRequest request = dump_status.request;
+            INFO("Received baseband dump request for event {:d} and freq_id {:d}: {:d} samples starting at count "
+                 "{:d}. (next_frame: {:d})",
+                 request.event_id, 
+                 freq_ids[_num_local_freq - 1],
+                 request.length_fpga, 
+                 request.start_fpga, next_frame);
+
+            // std::time_t tt = std::chrono::system_clock::to_time_t(request.received);
             //basebandDumpStatus& dump_status = std::get<0>(*next_request);
             //std::mutex& request_mtx = std::get<1>(*next_request);
+            // 
+            // Do all dumpStatus, requests, mutexs
+            //
             basebandDumpStatus *basebandDumpStatuses[_num_local_freq];
             std::mutex *request_mtxs[_num_local_freq];
             const basebandRequest *basebandRequests[_num_local_freq];
@@ -243,9 +257,10 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
                 //basebandRequest request = dump_status.request;
                 basebandRequests[freqidx] = &(basebandDumpStatuses[freqidx]->request);
                 // std::time_t tt = std::chrono::system_clock::to_time_t(request.received);
-                INFO("Received baseband dump request for event {:d}: {:d} samples starting at count "
+                INFO("Received baseband dump request for event {:d} and freq_id {:d}: {:d} samples starting at count "
                      "{:d}. (next_frame: {:d})",
                      basebandRequests[freqidx]->event_id, 
+                     freq_ids[freqidx],
                      basebandRequests[freqidx]->length_fpga, 
                      basebandRequests[freqidx]->start_fpga, next_frame);
             }
@@ -281,7 +296,7 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
             }
 
             DEBUG("Ready to copy samples into the baseband readout buffer");
-            INFO("requests[0]==requests? {:d}", basebandRequests[0] == &request);
+            INFO("dump_statuses[{:d}]==&dump_status? {:d}", _num_local_freq - 1, basebandDumpStatuses[_num_local_freq - 1] == &dump_status);
 
             // Copying the data from the ring buffer is done in *this* thread. Writing the data
             // out is done by another thread. This keeps the number of threads that can lock out
