@@ -195,29 +195,57 @@ void basebandReadout::main_thread() {
 
 void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutManager *mgrs[]) {
     uint32_t freq_id = freq_ids[_num_local_freq - 1];
-    basebandReadoutManager& mgr = *(mgrs[_num_local_freq - 1]);
+    //basebandReadoutManager& mgr = *(mgrs[_num_local_freq - 1]);
 
     auto& request_no_data_counter = readout_counter.labels({std::to_string(freq_id), "no_data"});
+    //TODO: Ask davor about request_no_data_counter()
 
+    std::unique_ptr<basebandReadoutManager::requestStatusMutex> next_requests[_num_local_freq];
+    std::shared_ptr<basebandReadoutManager::requestStatusMutex> next_request;
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
         // Latency is *key* here. We want to call get_data within 100ms
         // of L4 sending the trigger.
-
-        auto next_request = mgr.get_next_waiting_request();
-
-        if (next_request) {
-            basebandDumpStatus& dump_status = std::get<0>(*next_request);
-            std::mutex& request_mtx = std::get<1>(*next_request);
-
-            // This should be safe even without a lock, as there is nothing else
-            // yet that can change the dump_status object
+        next_requests[0] = mgrs[0]->get_next_waiting_request();
+        if (next_requests[0]) {
+            INFO("Non-null request for freq_ids[idx]: {:d}", freq_ids[0]);
+            basebandDumpStatus& dump_status = std::get<0>(*next_requests[0]);
+            //std::mutex& request_mtx = std::get<1>(*next_requests[0]);
             const basebandRequest request = dump_status.request;
             // std::time_t tt = std::chrono::system_clock::to_time_t(request.received);
-            const uint64_t event_id = request.event_id;
             INFO("Received baseband dump request for event {:d}: {:d} samples starting at count "
                  "{:d}. (next_frame: {:d})",
-                 event_id, request.length_fpga, request.start_fpga, next_frame);
+                 request.event_id, request.length_fpga, request.start_fpga, next_frame);
+
+
+            for(int freqidx = 1; freqidx < _num_local_freq; freqidx++){
+                next_requests[freqidx] = mgrs[freqidx]->get_next_waiting_request();
+
+
+                INFO("Non-null request for freq_ids[idx]: {:d}", freq_ids[freqidx]);
+                }
+            //basebandDumpStatus& dump_status = std::get<0>(*next_request);
+            //std::mutex& request_mtx = std::get<1>(*next_request);
+            basebandDumpStatus *basebandDumpStatuses[_num_local_freq];
+            std::mutex *request_mtxs[_num_local_freq];
+            const basebandRequest *basebandRequests[_num_local_freq];
+
+            for(int freqidx = 0; freqidx < _num_local_freq; freqidx++){
+            
+                basebandDumpStatuses[freqidx] = &(std::get<0>(*next_requests[freqidx]));
+                request_mtxs[freqidx] = &(std::get<1>(*next_requests[freqidx]));
+            
+                // This should be safe even without a lock, as there is nothing else
+                // yet that can change the dump_status object
+                //basebandRequest request = dump_status.request;
+                basebandRequests[freqidx] = &(basebandDumpStatuses[freqidx]->request);
+                // std::time_t tt = std::chrono::system_clock::to_time_t(request.received);
+                INFO("Received baseband dump request for event {:d}: {:d} samples starting at count "
+                     "{:d}. (next_frame: {:d})",
+                     basebandRequests[freqidx]->event_id, 
+                     basebandRequests[freqidx]->length_fpga, 
+                     basebandRequests[freqidx]->start_fpga, next_frame);
+            }
 
             // Checks if the destination directory exists, and if it doesn't, stop processing the
             // request with an error before trying to read out the samples.
@@ -228,8 +256,8 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
             int stat_rc = stat((_base_dir + request.file_path).c_str(), &path_status);
             if (!(stat_rc == 0 && path_status.st_mode & S_IFDIR)) {
                 WARN("Baseband destination path {} for request {:d} is not valid",
-                     request.file_path, event_id);
-                std::lock_guard<std::mutex> lock(request_mtx);
+                     request.file_path, request.event_id);
+                std::lock_guard<std::mutex> lock(*(request_mtxs[0]));
                 dump_status.finished = dump_status.started =
                     std::make_shared<std::chrono::system_clock::time_point>(
                         std::chrono::system_clock::now());
@@ -240,7 +268,7 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
             }
 
             {
-                std::lock_guard<std::mutex> lock(request_mtx);
+                std::lock_guard<std::mutex> lock(*(request_mtxs[0]));
                 dump_status.state = basebandDumpStatus::State::INPROGRESS;
                 dump_status.started = std::make_shared<std::chrono::system_clock::time_point>(
                     std::chrono::system_clock::now());
@@ -255,17 +283,17 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
             // out is done by another thread. This keeps the number of threads that can lock out
             // the main buffer limited to 2 (listen and main).
             basebandDumpData data =
-                get_data(event_id, request.start_fpga,
+                get_data(request.event_id, request.start_fpga,
                          std::min((int64_t)request.length_fpga, _max_dump_samples));
 
             // At this point we know how much of the requested data we managed to read from the
             // buffer (which may be nothing if the request as received too late).
             {
-                std::lock_guard<std::mutex> lock(request_mtx);
+                std::lock_guard<std::mutex> lock(*(request_mtxs[0]));
                 dump_status.bytes_total = data.num_elements * data.data_length_fpga;
                 dump_status.bytes_remaining = dump_status.bytes_total;
                 if (data.status != basebandDumpData::Status::Ok) {
-                    INFO("Captured no data for event {:d} and freq {:d}.", event_id, freq_id);
+                    INFO("Captured no data for event {:d} and freq {:d}.", request.event_id, freq_ids[0]);
                     dump_status.state = basebandDumpStatus::State::ERROR;
                     dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
                         std::chrono::system_clock::now());
@@ -293,7 +321,7 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
                          data.data_length_fpga, data.event_id, data.freq_id);
 
                     // we are done copying the samples into the readout buffer
-                    mgr.ready({dump_status, data});
+                    mgrs[0]->ready({dump_status, data});
                 }
             }
         }
