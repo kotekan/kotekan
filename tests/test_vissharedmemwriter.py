@@ -82,5 +82,7 @@ def test_sharedmem(vis_data, semaphore, mem_map_access_record, memory_map_buf):
     for i in range(0, 100):
         semaphore.acquire()
         print(struct.unpack("<c", memory_map_buf.read(1))[0])
+        print(struct.unpack("<c", memory_map_buf.read(1))[0])
+        print(struct.unpack("<c", memory_map_buf.read(1))[0])
         semaphore.release()
         print(struct.unpack("<Q", mem_map_access_record.read(8))[0])
