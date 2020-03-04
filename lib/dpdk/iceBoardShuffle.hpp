@@ -373,7 +373,7 @@ inline bool iceBoardShuffle::check_stream_id() {
 inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     struct timeval now;
     gettimeofday(&now, nullptr);
-            
+
     struct timespec gps_time;
     gps_time.tv_sec = 0;
     gps_time.tv_nsec = 0;
@@ -417,7 +417,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         set_fpga_seq_num(lost_samples_buf, lost_samples_frame_id, new_seq);
         set_first_packet_recv_time(lost_samples_buf, lost_samples_frame_id, now);
         set_gps_time(lost_samples_buf, lost_samples_frame_id, gps_time);
-        
+
         mark_frame_full(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
         lost_samples_frame_id = (lost_samples_frame_id + 1) % lost_samples_buf->num_frames;
     }
