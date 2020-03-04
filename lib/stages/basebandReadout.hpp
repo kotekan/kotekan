@@ -87,7 +87,7 @@ private:
     /**
      * @brief Process incoming requests by copying the baseband data from the ring buffer
      */
-    void readout_thread(const uint32_t freq_id, kotekan::basebandReadoutManager& readout_manager);
+    void readout_thread(const uint32_t freq_ids[], kotekan::basebandReadoutManager *readout_managers[]);
     /**
      * @brief Loops over requests whose data has been read out and writes it to a file
      */
