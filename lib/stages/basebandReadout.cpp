@@ -243,19 +243,19 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
             // 
             // Do all dumpStatus, requests, mutexs
             //
-            basebandDumpStatus *basebandDumpStatuses[_num_local_freq];
+            basebandDumpStatus *dump_statuses[_num_local_freq];
             std::mutex *request_mtxs[_num_local_freq];
             const basebandRequest *basebandRequests[_num_local_freq];
 
             for(int freqidx = 0; freqidx < _num_local_freq; freqidx++){
             
-                basebandDumpStatuses[freqidx] = &(std::get<0>(*next_requests[freqidx]));
+                dump_statuses[freqidx] = &(std::get<0>(*next_requests[freqidx]));
                 request_mtxs[freqidx] = &(std::get<1>(*next_requests[freqidx]));
             
                 // This should be safe even without a lock, as there is nothing else
                 // yet that can change the dump_status object
                 //basebandRequest request = dump_status.request;
-                basebandRequests[freqidx] = &(basebandDumpStatuses[freqidx]->request);
+                basebandRequests[freqidx] = &(dump_statuses[freqidx]->request);
                 // std::time_t tt = std::chrono::system_clock::to_time_t(request.received);
                 INFO("Received baseband dump request for event {:d} and freq_id {:d}: {:d} samples starting at count "
                      "{:d}. (next_frame: {:d})",
@@ -269,11 +269,11 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
                     WARN("Baseband destination path {} for request {:d} is not valid",
                          _base_dir + basebandRequests[freqidx]->file_path, basebandRequests[freqidx]->event_id);
                     std::lock_guard<std::mutex> lock(*(request_mtxs[freqidx]));
-                    dump_status.finished = dump_status.started =
+                    dump_statuses[freqidx]->finished = dump_statuses[freqidx]->started =
                         std::make_shared<std::chrono::system_clock::time_point>(
                             std::chrono::system_clock::now());
-                    dump_status.state = basebandDumpStatus::State::ERROR;
-                    dump_status.reason = "Destination does not exist or is not a directory: "
+                    dump_statuses[freqidx]->state = basebandDumpStatus::State::ERROR;
+                    dump_statuses[freqidx]->reason = "Destination does not exist or is not a directory: "
                                          + _base_dir + basebandRequests[freqidx]->file_path;
                     continue;
                 }
@@ -285,7 +285,7 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
             // TODO: once API manager is a Stage, this would naturally belong in REST request
             // callback
             DEBUG("Ready to copy samples into the baseband readout buffer");
-            INFO("dump_statuses[{:d}]==&dump_status? {:d}", _num_local_freq - 1, basebandDumpStatuses[_num_local_freq - 1] == &dump_status);
+            INFO("dump_statuses[{:d}]==&dump_status? {:d}", _num_local_freq - 1, dump_statuses[_num_local_freq - 1] == &dump_status);
             std::vector<basebandDumpData> dumps_to_write_vec;
             using namespace std::chrono;
             milliseconds ms_before = duration_cast<milliseconds>(
@@ -295,8 +295,8 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
 
                 {
                     std::lock_guard<std::mutex> lock(*(request_mtxs[freqidx]));
-                    basebandDumpStatuses[freqidx]->state = basebandDumpStatus::State::INPROGRESS;
-                    basebandDumpStatuses[freqidx]->started = std::make_shared<std::chrono::system_clock::time_point>(
+                    dump_statuses[freqidx]->state = basebandDumpStatus::State::INPROGRESS;
+                    dump_statuses[freqidx]->started = std::make_shared<std::chrono::system_clock::time_point>(
                         std::chrono::system_clock::now());
                     // Note: the length of the dump still needs to be set with
                     // actual sizes. This is done in `get_data` as it verifies what
@@ -310,33 +310,33 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
                 //             std::min((int64_t)request.length_fpga, _max_dump_samples));
                 // At this point we know how much of the requested data we managed to read from the
                 // buffer (which may be nothing if the request as received too late).
-                dumps_to_write_vec.push_back(get_data((basebandDumpStatuses[freqidx]->request).event_id, 
-                                                       (basebandDumpStatuses[freqidx]->request).start_fpga,                             
-                                                       std::min((int64_t)(basebandDumpStatuses[freqidx]->request).length_fpga, _max_dump_samples),
+                dumps_to_write_vec.push_back(get_data((dump_statuses[freqidx]->request).event_id, 
+                                                       (dump_statuses[freqidx]->request).start_fpga,                             
+                                                       std::min((int64_t)(dump_statuses[freqidx]->request).length_fpga, _max_dump_samples),
                                                        freqidx));
                 auto data = dumps_to_write_vec.back();
                 {
                     std::lock_guard<std::mutex> lock(*(request_mtxs[freqidx]));
-                    dump_status.bytes_total = data.num_elements * data.data_length_fpga;
-                    dump_status.bytes_remaining = dump_status.bytes_total;
+                    dump_statuses[freqidx]->bytes_total = data.num_elements * data.data_length_fpga;
+                    dump_statuses[freqidx]->bytes_remaining = dump_statuses[freqidx]->bytes_total;
                     if (data.status != basebandDumpData::Status::Ok) {
                         INFO("Captured no data for event {:d} and freq {:d}.", request.event_id, freq_ids[freqidx]);
-                        dump_status.state = basebandDumpStatus::State::ERROR;
-                        dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
+                        dump_statuses[freqidx]->state = basebandDumpStatus::State::ERROR;
+                        dump_statuses[freqidx]->finished = std::make_shared<std::chrono::system_clock::time_point>(
                             std::chrono::system_clock::now());
                         switch (data.status) {
                             case basebandDumpData::Status::TooLong:
-                                dump_status.reason = "Request length exceeds the configured limit.";
+                                dump_statuses[freqidx]->reason = "Request length exceeds the configured limit.";
                                 break;
                             case basebandDumpData::Status::Late:
-                                dump_status.reason = "No data captured.";
+                                dump_statuses[freqidx]->reason = "No data captured.";
                                 request_no_data_counters[0]->inc();
                                 break;
                             case basebandDumpData::Status::ReserveFailed:
-                                dump_status.reason = "No free space in the baseband buffer";
+                                dump_statuses[freqidx]->reason = "No free space in the baseband buffer";
                                 break;
                             case basebandDumpData::Status::Cancelled:
-                                dump_status.reason = "Kotekan exiting.";
+                                dump_statuses[freqidx]->reason = "Kotekan exiting.";
                                 break;
                             default:
                                 INFO("Unknown dump status: {}", int(data.status));
@@ -348,12 +348,12 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
                              data.data_length_fpga, data.event_id, data.freq_id);
 
                         // we are done copying the samples into the readout buffer
-                        mgrs[freqidx]->ready({dump_status, data}); //TODO: Can we use data or do we need dumps_to_write_vec.back()?
+                        mgrs[freqidx]->ready({*(dump_statuses[freqidx]), dumps_to_write_vec.back()}); //TODO: Can we use data or do we need dumps_to_write_vec.back()?
                     }
                 }
             milliseconds ms_after = duration_cast<milliseconds>(
                     system_clock::now().time_since_epoch());
-            INFO("memcpy() call: %d = %d-%d ms", ms_after.count() - ms_before.count(),ms_after.count(),ms_before.count());
+            INFO("memcpy() call: {:d} = {:d}-{:d} ms", ms_after.count() - ms_before.count(),ms_after.count(),ms_before.count());
             }    
         }
     }
@@ -361,63 +361,68 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
 
 //void basebandReadout::writeout_thread(basebandReadoutManager& mgr) {
 void basebandReadout::writeout_thread(basebandReadoutManager *mgrs[]) {
-    basebandReadoutManager& mgr = *(mgrs[_num_local_freq - 1]);
+    //basebandReadoutManager& mgr = *(mgrs[_num_local_freq - 1]);
 
     while (!stop_thread) {
-        auto next_request = mgr.get_next_ready_request();
-        if (!next_request)
-            continue;
+        //auto last_request = mgrs[_num_local_freq - 1]->get_next_ready_request(); // generically, requests with higher freqidxs arrive later.
+        //if (!last_request)
+        //    continue;
+        for(int freqidx = 0; freqidx < _num_local_freq ; freqidx++){ // a massive for loop
+            auto next_request = mgrs[freqidx]->get_next_ready_request(); // don't think this allocation has to be outside...
+            if (!next_request)
+                continue;
+            basebandDumpStatus& dump_status = std::get<0>(std::get<0>(*next_request)); 
+            basebandDumpData dump_data = std::get<1>(std::get<0>(*next_request));
+            // Sanity check
+            if (dump_status.request.event_id != dump_data.event_id) {
+                ERROR("Mismatched event ids: {:d} - {:d}", dump_status.request.event_id,
+                      dump_data.event_id);
+                throw std::runtime_error("Mismatched id - abort");
+            }
+            std::mutex& request_mtx = std::get<1>(*next_request);
+            readout_in_progress_metric.labels({std::to_string(dump_data.freq_id)}).set(1);
 
-        basebandDumpStatus& dump_status = std::get<0>(std::get<0>(*next_request)); 
-        basebandDumpData dump_data = std::get<1>(std::get<0>(*next_request));
-        // Sanity check
-        if (dump_status.request.event_id != dump_data.event_id) {
-            ERROR("Mismatched event ids: {:d} - {:d}", dump_status.request.event_id,
-                  dump_data.event_id);
-            throw std::runtime_error("Mismatched id - abort");
-        }
-        std::mutex& request_mtx = std::get<1>(*next_request);
-        readout_in_progress_metric.labels({std::to_string(dump_data.freq_id)}).set(1);
+            // first, get read access to the underlying BipBuffer segment
+            BipBufferReader reader(data_buffer);
+            auto rr = reader.access(dump_data.reservation_length);
+            if (!rr) {
+                ERROR("No matching buffer reader reservation for the baseband dump data");
+                throw std::runtime_error("Not able to get reader reservation");
+            }
 
-        // first, get read access to the underlying BipBuffer segment
-        BipBufferReader reader(data_buffer);
-        auto rr = reader.access(dump_data.reservation_length);
-        if (!rr) {
-            ERROR("No matching buffer reader reservation for the baseband dump data");
-            throw std::runtime_error("Not able to get reader reservation");
-        }
+            // Sanity check that the read reservation points to the same memory used by the writer
+            DEBUG("Read reservation: starting at {}, length {}, freq_id {:d}",
+                  rr->data.data() - data_buffer.data.get(), rr->length,dump_data.freq_id);
+            // Ugly workaround to lose the read-only view of the ReadReservation, for consumption by
+            // `span_from_length_aligned`
+            auto reader_data_span = basebandDumpData::span_from_length_aligned(
+                gsl::span<uint8_t>((uint8_t*)rr->data.data(), rr->data.size()));
+            DEBUG("Read data starts alignment at: {}",
+                  reader_data_span.data() - data_buffer.data.get());
+            if (reader_data_span != dump_data.data) {
+                ERROR("Baseband dump data doesn't have matching buffer writer and reader reservations "
+                      "after alignment: writer ({}, {}); reader ({}, {})",
+                      dump_data.data.data(), dump_data.data.length(), reader_data_span.data(),
+                      reader_data_span.length());
+                throw std::runtime_error("reader and writer data spans don't align.");
+            }
 
-        // Sanity check that the read reservation points to the same memory used by the writer
-        DEBUG("Read reservation: starting at {}, length {}",
-              rr->data.data() - data_buffer.data.get(), rr->length);
-        // Ugly workaround to lose the read-only view of the ReadReservation, for consumption by
-        // `span_from_length_aligned`
-        auto reader_data_span = basebandDumpData::span_from_length_aligned(
-            gsl::span<uint8_t>((uint8_t*)rr->data.data(), rr->data.size()));
-        DEBUG("Read data starts alignment at: {}",
-              reader_data_span.data() - data_buffer.data.get());
-        if (reader_data_span != dump_data.data) {
-            ERROR("Baseband dump data doesn't have matching buffer writer and reader reservations "
-                  "after alignment: writer ({}, {}); reader ({}, {})",
-                  dump_data.data.data(), dump_data.data.length(), reader_data_span.data(),
-                  reader_data_span.length());
-            throw std::runtime_error("reader and writer data spans don't align.");
+            // write out the data
+            try {
+                INFO("dump_status.request.file_name = {}",dump_status.request.file_name);
+                write_dump(dump_data, dump_status, request_mtx);
+            } catch (HighFive::FileException& e) {
+                INFO("Writing Baseband dump file failed with hdf5 error.");
+                std::lock_guard<std::mutex> lock(request_mtx);
+                dump_status.state = basebandDumpStatus::State::ERROR;
+                dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
+                    std::chrono::system_clock::now());
+                dump_status.reason = e.what();
+                readout_counter.labels({std::to_string(dump_data.freq_id), "error"}).inc();
+            }
+            reader.advance(*rr);
+            readout_in_progress_metric.labels({std::to_string(dump_data.freq_id)}).set(0);
         }
-
-        // write out the data
-        try {
-            write_dump(dump_data, dump_status, request_mtx);
-        } catch (HighFive::FileException& e) {
-            INFO("Writing Baseband dump file failed with hdf5 error.");
-            std::lock_guard<std::mutex> lock(request_mtx);
-            dump_status.state = basebandDumpStatus::State::ERROR;
-            dump_status.finished = std::make_shared<std::chrono::system_clock::time_point>(
-                std::chrono::system_clock::now());
-            dump_status.reason = e.what();
-            readout_counter.labels({std::to_string(dump_data.freq_id), "error"}).inc();
-        }
-        reader.advance(*rr);
-        readout_in_progress_metric.labels({std::to_string(dump_data.freq_id)}).set(0);
     }
 }
 
@@ -448,7 +453,10 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
     // This assumes that the frame's timestamps are in order, but not that they
     // are necessarily contiguous.
 
-    INFO("get_data(): Using freqidx {:d}",freqidx);
+    INFO("get_data(): Got freqidx {:d}",freqidx);
+    int freqidx_orig = freqidx;
+    //INFO("get_data(): Got freqidx {:d} but replacing it with 0",freqidx);
+    //freqidx = 0;
     int dump_start_frame = 0;
     int dump_end_frame = 0;
     int64_t trigger_end_fpga = trigger_start_fpga + trigger_length_fpga;
@@ -539,7 +547,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
     if (_num_local_freq == 1){
         freq_id = bin_number_chime(&stream_id);
     } else { // more than one freq per stream
-        freq_id = bin_number(&stream_id,freqidx);
+        freq_id = bin_number(&stream_id,freqidx_orig);
     }
 
     // Figure out how much data we have.
@@ -596,7 +604,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
                       (frame_ind_end - frame_ind_start) * _num_elements);
             milliseconds ms_after = duration_cast<milliseconds>(
                     system_clock::now().time_since_epoch());
-            INFO("memcpy() call: %d = %d-%d ms", ms_after.count() - ms_before.count(),ms_after.count(),ms_before.count());
+            INFO("memcpy() call: {:d} = {:d}-{:d} ms", ms_after.count() - ms_before.count(),ms_after.count(),ms_before.count());
 
         } else if (_num_local_freq > 1){
             using namespace std::chrono;
@@ -609,7 +617,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
             }
             milliseconds ms_after = duration_cast<milliseconds>(
                   system_clock::now().time_since_epoch());
-            INFO("memcpy() call: %d = %d-%d ms", ms_after.count() - ms_before.count(),ms_after.count(),ms_before.count());
+            INFO("memcpy() call: {:d} = {:d}-{:d} ms", ms_after.count() - ms_before.count(),ms_after.count(),ms_before.count());
         }
         // What data index are we expecting on the next iteration.
         next_data_ind = data_ind_start + frame_ind_end - frame_ind_start;
