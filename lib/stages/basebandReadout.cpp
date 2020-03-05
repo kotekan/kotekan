@@ -532,7 +532,15 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
     auto first_meta = (chimeMetadata*)buf->metadata[buf_frame]->metadata;
 
     stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
-    uint32_t freq_id = bin_number_chime(&stream_id);
+    // XXX Map stream IDs to freq IDs with bin_number() (for Pathfinder) or bin_number_chime()
+    // XXX Use num_local_freqs to figure out if we're running on CHIME or PF
+
+    uint32_t freq_id;
+    if (_num_local_freq == 1){
+        freq_id = bin_number_chime(&stream_id);
+    } else { // more than one freq per stream
+        freq_id = bin_number(&stream_id,freqidx);
+    }
 
     // Figure out how much data we have.
     int64_t data_start_fpga = std::max(trigger_start_fpga, first_meta->fpga_seq_num);
@@ -558,8 +566,10 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
 
     DEBUG("Write reservation: starting at {}, length {}", wr->data.data() - data_buffer.data.get(),
           wr->length);
+
     basebandDumpData dump(event_id, freq_id, _num_elements, data_start_fpga,
                           data_end_fpga - data_start_fpga, packet_time0, wr->data);
+    //TODO: Does the alignment value change for a subspan?
     DEBUG("Write data starts alignment at: {}", dump.data.data() - data_buffer.data.get());
 
     // Fill in the data.
@@ -577,9 +587,30 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
         nt_memset(&dump.data[next_data_ind * _num_elements], 0,
                   (data_ind_start - next_data_ind) * _num_elements);
         // Now copy in the frame data.
-        nt_memcpy(&dump.data[data_ind_start * _num_elements],
-                  &buf_data[frame_ind_start * _num_elements],
-                  (frame_ind_end - frame_ind_start) * _num_elements);
+        if (_num_local_freq == 1){
+            using namespace std::chrono;
+            milliseconds ms_before = duration_cast<milliseconds>(
+                    system_clock::now().time_since_epoch());
+            nt_memcpy(&dump.data[data_ind_start * _num_elements],
+                      &buf_data[frame_ind_start * _num_elements],
+                      (frame_ind_end - frame_ind_start) * _num_elements);
+            milliseconds ms_after = duration_cast<milliseconds>(
+                    system_clock::now().time_since_epoch());
+            INFO("memcpy() call: %d = %d-%d ms", ms_after.count() - ms_before.count(),ms_after.count(),ms_before.count());
+
+        } else if (_num_local_freq > 1){
+            using namespace std::chrono;
+            milliseconds ms_before = duration_cast<milliseconds>(
+                    system_clock::now().time_since_epoch());
+            for(int timeidx = 0; timeidx < (frame_ind_end - frame_ind_start); timeidx++){
+                nt_memcpy(&dump.data[(data_ind_start + timeidx) * _num_elements],
+                          &buf_data[((frame_ind_start + timeidx) * _num_local_freq + freqidx) * _num_elements],
+                          _num_elements);
+            }
+            milliseconds ms_after = duration_cast<milliseconds>(
+                  system_clock::now().time_since_epoch());
+            INFO("memcpy() call: %d = %d-%d ms", ms_after.count() - ms_before.count(),ms_after.count(),ms_before.count());
+        }
         // What data index are we expecting on the next iteration.
         next_data_ind = data_ind_start + frame_ind_end - frame_ind_start;
         // Done with this frame. Allow it to participate in the ring buffer.
