@@ -254,7 +254,7 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
                 //basebandRequest request = dump_status.request;
                 basebandRequests[freqidx] = &(dump_statuses[freqidx]->request);
                 // std::time_t tt = std::chrono::system_clock::to_time_t(request.received);
-                INFO("Received baseband dump request for event {:d} and freq_id {:d}: {:d} frames starting at count "
+                INFO("Received baseband dump request for event {:d} and freq_id {:d}: {:d} frames (2.56 us) starting at count "
                      "{:d}. (next_frame: {:d})",
                      basebandRequests[freqidx]->event_id, 
                      freq_ids[freqidx],
@@ -576,7 +576,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
     basebandDumpData dump(event_id, freq_id, _num_elements, data_start_fpga,
                           data_end_fpga - data_start_fpga, packet_time0, wr->data);
     //TODO: Does the alignment value change for a subspan?
-    DEBUG("Write data starts alignment at: {}", dump.data.data() - data_buffer.data.get());
+    DEBUG("Write data starts alignment at: {}, length {}", dump.data.data() - data_buffer.data.get(),dump.data.size());
 
     // Fill in the data.
     int64_t next_data_ind = 0;
@@ -590,10 +590,10 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
             std::min(data_end_fpga - frame_fpga_seq, (int64_t)_samples_per_data_set);
         int64_t data_ind_start = frame_fpga_seq - data_start_fpga + frame_ind_start;
         // The following copy has 0 length unless there is a missing frame.
-        INFO("Before nt_memset() call");
+        //INFO("Before nt_memset() call");
         nt_memset(&dump.data[next_data_ind * _num_elements], 0,
                   (data_ind_start - next_data_ind) * _num_elements);
-        INFO("After nt_memset() call");
+        //INFO("After nt_memset() call");
         // Now copy in the frame data.
         if (_num_local_freq == 1){
             using namespace std::chrono;
@@ -616,10 +616,13 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
                 memcpy(&dump.data[(data_ind_start + timeidx) * _num_elements],
                           &buf_data[((frame_ind_start + timeidx) * _num_local_freq + freqidx) * _num_elements],
                           _num_elements);
+                if ((timeidx + 1)%1024 == 0) {
+                    INFO("{:d}th memcpy() call",timeidx); 
+                }
             }
             milliseconds ms_after = duration_cast<milliseconds>(
                   system_clock::now().time_since_epoch());
-            INFO("memcpy() call: {:d} = {:d}-{:d} ms", ms_after.count() - ms_before.count(),ms_after.count(),ms_before.count());
+        INFO("elapsed {:d} = {:d}-{:d} ms",ms_after.count() - ms_before.count(),ms_after.count(),ms_before.count());
         }
         // What data index are we expecting on the next iteration.
         next_data_ind = data_ind_start + frame_ind_end - frame_ind_start;
