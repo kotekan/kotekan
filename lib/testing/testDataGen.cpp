@@ -89,6 +89,7 @@ void testDataGen::rest_callback(connectionInstance& conn, nlohmann::json& reques
     int num_frames;
     try {
         num_frames = request["num_frames"];
+        INFO("Request returned num_frames = {:d}", num_frames);
     } catch (...) {
         conn.send_error("Could not parse number of frames.", HTTP_RESPONSE::BAD_REQUEST);
         return;
@@ -135,7 +136,7 @@ void testDataGen::main_thread() {
             srand(value);
         unsigned char temp_output;
         stream_id_t real_stream_id = extract_stream_id(stream_id); //get the stream_id object from the encoded stream_id
-        int num_elements = buf->frame_size / sizeof(uint8_t) / samples_per_data_set;
+        int num_elements = buf->frame_size / samples_per_data_set / num_local_freq / sizeof(uint8_t);
         for (uint j = 0; j < buf->frame_size / sizeof(uint8_t); ++j) {
             if (type == "const") {
                 if (finished_seeding_consant)
@@ -153,12 +154,14 @@ void testDataGen::main_thread() {
                 frame[j] = temp_output;
             } else if (type == "tpluse") {
                 frame[j] = seq_num + j /num_elements + j % num_elements;
-                // seq_num (frame offset, usu. ==0) + element number (I think)
             }  else if (type == "tpluseplusf") {
-                frame[j] = seq_num + j/(num_local_freq*num_elements) + bin_number(&real_stream_id,(j % (num_local_freq * num_elements)) /num_elements) + j % num_elements; //Kiyo's code
-                //frame[j] = seq_num + j/(samples_per_data_set*num_elements) + (j /  num_elements) + j % num_elements; //Calvin's scratchwork
-                // seq_num (frame offset, usu. ==0) + element number (I think) + freq_id(stream_id, freq_idx) +
+                frame[j] = seq_num + j/(num_local_freq*num_elements) + bin_number(&real_stream_id,(j % (num_local_freq * num_elements)) /num_elements) + j % num_elements; 
+            }  else if (type == "tpluseplusfprime") {
+                frame[j] = 2* (seq_num + j/(num_local_freq*num_elements))
+                         + 3* (bin_number_multifreq(&real_stream_id,num_local_freq,(j % (num_local_freq * num_elements)) /num_elements))
+                         + 5* (j % num_elements); 
             }
+
         }
         DEBUG("Generated a {:s} test data set in {:s}[{:d}]", type, buf->buffer_name, frame_id);
 
@@ -166,7 +169,7 @@ void testDataGen::main_thread() {
 
         frame_id_abs += 1;
         if (num_frames >= 0 && frame_id_abs >= num_frames) {
-            INFO("Frame ID greater than the no. of frames");
+            INFO("Frame ID ({:d}) greater than the no. of frames ({:d})",frame_id_abs,num_frames);
             exit_kotekan(ReturnCode::CLEAN_EXIT);
             break;
         };
