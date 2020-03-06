@@ -270,7 +270,6 @@ def scrape_freqid(string):
 
 def test_basic_multifreq(tmpdir_factory):
     # Eight frequencies
-
     rest_commands = [
             command_rest_frames(1), # generate 1 frame = 1024 time samples x 256 feeds
             wait(0.5), # in seconds?
@@ -286,23 +285,25 @@ def test_basic_multifreq(tmpdir_factory):
             'stream_id': 3
             }
     dump_files = run_baseband(tmpdir_factory, params, rest_commands)
-    assert len(dump_files) == (3*params['num_local_freq']) # we want one dump per trigger.
-
+    assert len(dump_files) == (3*params['num_local_freq']), f'Incorrect number ({len(dump_files)}) of files dumped.'
     num_elements = default_params['num_elements']
     filenames = sorted(dump_files)
+    print(filenames)
     files = [h5py.File(filename, 'r') for filename in filenames] #makes it easier to debug across frequencies
 
     for ii, f in enumerate(files):
         command_idx = 2 + ii/params['num_local_freq']
         freq_idx = ii % params['num_local_freq']
         shape = f['baseband'].shape
-        assert f.attrs['time0_fpga_count'] * 2560 == rest_commands[2 + ii/params['num_local_freq']][2]['start_unix_nano'] # makes sure time0_fpga_count is recorded properly?
-        assert f.attrs['event_id'] == rest_commands[2 + ii/params['num_local_freq']][2]['event_id'] # ii / num_local_freq indexing because there are many frequency files for each event
+        assert f.attrs['time0_fpga_count'] * 2560 == rest_commands[2 + int(ii/params['num_local_freq'])][2]['start_unix_nano'], f'time0_fpga_count not recorded properly for trigger {ii}!' # makes sure time0_fpga_count is recorded properly?
+        assert f.attrs['event_id'] == rest_commands[2 + int(ii/params['num_local_freq'])][2]['event_id'] # ii / num_local_freq indexing because there are many frequency files for each event
         assert f.attrs['freq_id'] == scrape_freqid(f.filename) # where is this defined? not in run_baseband or default_params.
-        assert shape == (rest_commands[2 + ii/params['num_local_freq']][2]['duration_nano']/2560, num_elements) # axes: [time samples][feed]. Eventually want [time][freq][feed] as [slow][med][fast]
+        eshape = (rest_commands[2 + int(ii/params['num_local_freq'])][2]['duration_nano']/2560, num_elements)
+        assert shape == eshape,"Shape ({shape}) incorrect; expected  {eshape}" # axes: [time samples][feed]. Eventually want [time][freq][feed] as [slow][med][fast]
         assert np.all(f['index_map/input'][:]['chan_id']
-                      == np.arange(num_elements))
+                      == np.arange(num_elements)),"index_map/input incorrect."
         edata = f.attrs['time0_fpga_count'] + f.attrs['freq_id'] + np.arange(shape[0], dtype=int) # increment freq_idx every time
         edata = edata[:, None] + np.arange(shape[1], dtype=int)
         edata = edata % 256
-        assert np.all(f['baseband'][:] == edata)
+        assert np.all(f['baseband'][:] == edata), "contents don't correspond to t + e + f !"
+        print('Done!')
