@@ -612,6 +612,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
                     system_clock::now().time_since_epoch());
             INFO("Right before memcpy()");
             for(int timeidx = 0; timeidx < (frame_ind_end - frame_ind_start); timeidx++){
+                // XXX: Try to use memcpy instead of nt_memcpy for short stretches of data of length n_e.
                 memcpy(&dump.data[(data_ind_start + timeidx) * _num_elements],
                           &buf_data[((frame_ind_start + timeidx) * _num_local_freq + freqidx) * _num_elements],
                           _num_elements);
