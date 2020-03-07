@@ -3,6 +3,7 @@
 #include "buffer.h"         // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "chimeMetadata.h"  // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
 #include "errors.h"         // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "fpga_header_functions.h" // for bin_number_multifreq, extract_stream_id
 
 #include <assert.h>    // for assert
 #include <atomic>      // for atomic_bool
@@ -155,7 +156,7 @@ void testDataGen::main_thread() {
             } else if (type == "tpluse") {
                 frame[j] = seq_num + j /num_elements + j % num_elements;
             }  else if (type == "tpluseplusf") {
-                frame[j] = seq_num + j/(num_local_freq*num_elements) + bin_number(&real_stream_id,(j % (num_local_freq * num_elements)) /num_elements) + j % num_elements; 
+                frame[j] = seq_num + j/(num_local_freq*num_elements) + bin_number_multifreq(&real_stream_id,num_local_freq,(j % (num_local_freq * num_elements)) /num_elements) + j % num_elements; 
             }  else if (type == "tpluseplusfprime") {
                 frame[j] = 2* (seq_num + j/(num_local_freq*num_elements))
                          + 3* (bin_number_multifreq(&real_stream_id,num_local_freq,(j % (num_local_freq * num_elements)) /num_elements))
