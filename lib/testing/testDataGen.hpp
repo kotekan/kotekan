@@ -9,7 +9,8 @@
 
 #include "json.hpp" // for json
 
-#include <string> // for string
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
 
 // Type: one of "random", "const"
 // Value: the value of the constant
@@ -68,6 +69,7 @@ private:
     std::string rest_mode;
     int num_frames;
     int stream_id;
+    uint32_t _first_frame_index;
     bool _fixed_dset_id;
     dset_id_t _dset_id;
     /// Parameters saved from the config files
@@ -76,6 +78,7 @@ private:
     /// List of frequencies for this buffer
     std::vector<uint32_t> freq;
     bool _init_dataset_manager;
+
 };
 
 #endif

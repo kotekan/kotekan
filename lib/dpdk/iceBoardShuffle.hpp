@@ -374,6 +374,13 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     struct timeval now;
     gettimeofday(&now, nullptr);
 
+    struct timespec gps_time;
+    gps_time.tv_sec = 0;
+    gps_time.tv_nsec = 0;
+    if (is_gps_global_time_set()) {
+        gps_time = compute_gps_time(new_seq);
+    }
+
     for (uint32_t i = 0; i < shuffle_size; ++i) {
         if (!first_time) {
             mark_frame_full(out_bufs[i], unique_name.c_str(), out_buf_frame_ids[i]);
@@ -390,11 +397,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         allocate_new_metadata_object(out_bufs[i], out_buf_frame_ids[i]);
 
         set_first_packet_recv_time(out_bufs[i], out_buf_frame_ids[i], now);
-
-        if (is_gps_global_time_set() == 1) {
-            struct timespec gps_time = compute_gps_time(new_seq);
-            set_gps_time(out_bufs[i], out_buf_frame_ids[i], gps_time);
-        }
+        set_gps_time(out_bufs[i], out_buf_frame_ids[i], gps_time);
 
         // We take the stream ID only from the first pair of crates,
         // to avoid overwriting it on different ports.
@@ -410,6 +413,11 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     }
 
     if (!first_time) {
+        allocate_new_metadata_object(lost_samples_buf, lost_samples_frame_id);
+        set_fpga_seq_num(lost_samples_buf, lost_samples_frame_id, new_seq);
+        set_first_packet_recv_time(lost_samples_buf, lost_samples_frame_id, now);
+        set_gps_time(lost_samples_buf, lost_samples_frame_id, gps_time);
+
         mark_frame_full(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
         lost_samples_frame_id = (lost_samples_frame_id + 1) % lost_samples_buf->num_frames;
     }

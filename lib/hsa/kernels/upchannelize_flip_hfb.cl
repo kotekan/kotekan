@@ -11,21 +11,24 @@
 #define scaling 400.
 
 __constant float BP[16] = { 0.52225748 , 0.58330915 , 0.6868705 , 0.80121821 , 0.89386546 , 0.95477358 , 0.98662733 , 0.99942558 , 0.99988676 , 0.98905127 , 0.95874124 , 0.90094667 , 0.81113021 , 0.6999944 , 0.59367968 , 0.52614263};
+__constant float HFB_BP[16] = { 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
 
 #define BIT_REVERSE_7_BITS(index) ((( ( (((index) * 0x0802) & 0x22110) | (((index) * 0x8020)&0x88440) ) * 0x10101 ) >> 17) & 0x7F)
 //input data is float2 with beam-pol-time, try to do 3 N=128 at once so that we can sum 3 time samples
-//LWS = {     64 ,  1  }
-//GWS = {nsamp/6*, 1024}
+// Also extracts HFB data. Before downsampling occurs the data is summed over all time and both polarisations, then output as HFB data which retains the full frequency resolution.
+//LWS = {     64 ,  1  } (factor_upchan / 2, 1) 
+//GWS = {nsamp/6*, 1024} (nsamp / 6, num_frb_total_beams)
 
-__kernel void upchannelize(__global float2 *data, __global float *results_array){
+__kernel void upchannelize(__global float2 *data, __global float *results_array, __global float *hfb_output_array){
 
   uint nbeam = get_global_size(1);
   uint nsamp = get_global_size(0)*6+32;
   uint nsamp_out = get_global_size(0)*6/128/3;
   __local float2 local_data[384];
   uint local_address = get_local_id(0);
-  float outtmp;
-  outtmp = 0;
+  float outtmp = 0.f;
+  const int work_offset = get_local_id(0) * 2;
+  float time_sum_1 = 0.f, time_sum_2 = 0.f;
 
   // Loop over 2 polarisations
   for (int p=0;p<2;p++){
@@ -265,24 +268,43 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array)
 
     barrier(CLK_LOCAL_MEM_FENCE);
 
+    //Downsample: sum all time and both polarisations (amplitude Re*Re + Im*Im)
+    //Each work item processes 2 frequencies
+    //so write out 128 numbers only
+    for (int freq=0; freq<3; freq++) {
+        //Offset of work item ID + stride in memory of freq + first or second freq being worked on
+        const int time_offset_1 = freq*128 + work_offset;
+        const int time_offset_2 = freq*128 + work_offset + 1;
+
+        time_sum_1 += local_data[time_offset_1].REAL * local_data[time_offset_1].REAL + 
+            local_data[time_offset_1].IMAG * local_data[time_offset_1].IMAG;
+        time_sum_2 += local_data[time_offset_2].REAL * local_data[time_offset_2].REAL + 
+            local_data[time_offset_2].IMAG * local_data[time_offset_2].IMAG;
+    }
 
     //Downsample sum every 8 frequencies and 3 time, and sum Re Im
     //so write out 16 numbers only
-
     if (get_local_id(0) < 16){ //currently only 16 out of 64 has work to do. not ideal
       for (int j=0;j<3;j++){
         for (int i=0;i<8;i++){
-          outtmp += local_data[ get_local_id(0)*8 +j*128 +i].REAL*local_data[ get_local_id(0)*8 +j*128 +i].REAL+local_data[ get_local_id(0)*8 +j*128 +i].IMAG*local_data[ get_local_id(0)*8 +j*128 +i].IMAG;
+          outtmp += local_data[ get_local_id(0)*8 +j*128 +i].REAL * local_data[ get_local_id(0)*8 +j*128 +i].REAL + 
+                    local_data[ get_local_id(0)*8 +j*128 +i].IMAG * local_data[ get_local_id(0)*8 +j*128 +i].IMAG;
         }
       }
       barrier(CLK_LOCAL_MEM_FENCE);
-      if (p == 1) {
-        outtmp = outtmp/48.;
-        //FFT shift by (id+8)%16
-        results_array[get_global_id(1)*nsamp_out*16+get_group_id(0)*16+ ((get_local_id(0)+8)%16) ] = outtmp/BP[((get_local_id(0)+8)%16)] ;
-      }
     }
-  } //end loop of 2 pol
+  } //end loop of 2 polarisations
+  
+  // Write data to global
+  // JSW TODO: Bandpass filter to be applied in the post-processing stage
+  hfb_output_array[(get_group_id(0) * 1024 * 128) + get_group_id(1) * 128 + work_offset] = time_sum_1 / 6.f / HFB_BP[((get_local_id(0)+8)%16)];
+  hfb_output_array[(get_group_id(0) * 1024 * 128) + get_group_id(1) * 128 + work_offset + 1] = time_sum_2 / 6.f / HFB_BP[((get_local_id(0)+8)%16)];
+  
+  if (get_local_id(0) < 16){ //currently only 16 out of 64 has work to do. not ideal
+      outtmp = outtmp/48.; // Divide by 48 as we want the average of 48 summed elements
+      //FFT shift by (id+8)%16
+      results_array[get_global_id(1)*nsamp_out*16+get_group_id(0)*16+ ((get_local_id(0)+8)%16) ] = outtmp/BP[((get_local_id(0)+8)%16)] ;
+  }
 }
 
 

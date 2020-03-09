@@ -41,6 +41,7 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       frbNetworkProcess.cpp
       pulsarNetworkProcess.cpp
       bufferMerge.cpp
+      bufferCopy.cpp
       bufferSwitch.cpp
       #RFI Pipeline Processes
       rfiVDIF.cpp
@@ -55,6 +56,9 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       visTestPattern.cpp
       visDebug.cpp
       removeEv.cpp
+      integrateHFBData.cpp
+      compressLostSamples.cpp
+      compressData.cpp
       bufferBadInputs.cpp
       RfiFrameDrop.cpp
     )

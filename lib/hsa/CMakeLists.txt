@@ -18,6 +18,7 @@ set ( KOTEKAN_HSA_SOURCES
 # Copy-in & general-purpose:
       hsaInputData.cpp
       hsaInputLostSamples.cpp
+      hsaInputCompressLostSamples.cpp
       hsaBarrier.cpp
       hsaAsyncCopyGain.cpp
 
@@ -45,7 +46,10 @@ set ( KOTEKAN_HSA_SOURCES
       hsaBeamformKernel.cpp
       hsaBeamformTranspose.cpp
       hsaBeamformUpchan.cpp
+      hsaBeamformUpchanHFB.cpp
       hsaBeamformOutput.cpp
+      hsaBeamformHFBOutput.cpp
+      hsaBeamformHFBSum.cpp
 
 # CHIME/Pulsar Kernels & copy-out:
       hsaBeamformPulsar.cpp
