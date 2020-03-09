@@ -19,7 +19,7 @@ cpu_affinity: [2,3,8,9]
 # Constants
 sizeof_float: 4
 num_frb_total_beams: 1024
-num_sub_freqs: 128
+factor_upchan: 128
 num_frames_to_integrate: 8
 good_samples_threshold: 0.50
 test_value: 2
@@ -37,7 +37,7 @@ hfb_pool:
 # Buffers
 cpu_hfb_output_buffers:
     num_frames: buffer_depth
-    frame_size: num_sub_freqs * num_frb_total_beams * sizeof_float
+    frame_size: factor_upchan * num_frb_total_beams * sizeof_float
     metadata_pool: main_pool
     beamform_hfb_input_buffer_0:
         num_frames: num_frames_to_integrate
@@ -59,7 +59,7 @@ lost_samples_buffer:
 compressed_lost_samples_buffer:
     kotekan_buffer: standard
     num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set / num_sub_freqs / 3
+    frame_size: samples_per_data_set / factor_upchan / 3
     metadata_pool: main_pool
 
 # Generate input data for integrateHFBData stage

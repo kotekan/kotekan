@@ -26,7 +26,6 @@ hsaBeamformUpchanHFB::hsaBeamformUpchanHFB(Config& config, const std::string& un
     _downsample_time = config.get<int32_t>(unique_name, "downsample_time");
     _downsample_freq = config.get<int32_t>(unique_name, "downsample_freq");
     _num_frb_total_beams = config.get<int32_t>(unique_name, "num_frb_total_beams");
-    _num_sub_freqs = config.get<uint32_t>(unique_name, "num_sub_freqs");
     _factor_upchan = config.get<int32_t>(unique_name, "factor_upchan");
 
     input_frame_len = _num_elements * (_samples_per_data_set + 32) * 2 * sizeof(float);
@@ -34,7 +33,7 @@ hsaBeamformUpchanHFB::hsaBeamformUpchanHFB(Config& config, const std::string& un
                        * (_samples_per_data_set / _downsample_time / _downsample_freq)
                        * sizeof(float);
     output_hfb_frame_len =
-        _num_frb_total_beams * _num_sub_freqs
+        _num_frb_total_beams * _factor_upchan
         * (_samples_per_data_set / _factor_upchan / _downsample_time) // No. of samples per beam
         * sizeof(float);
 }

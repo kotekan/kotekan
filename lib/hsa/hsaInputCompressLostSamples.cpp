@@ -19,8 +19,8 @@ hsaInputCompressLostSamples::hsaInputCompressLostSamples(Config& config,
     command_type = gpuCommandType::COPY_IN;
 
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
-    _num_sub_freqs = config.get<uint32_t>(unique_name, "num_sub_freqs");
-    input_frame_len = _samples_per_data_set / _num_sub_freqs / 3 * sizeof(uint8_t);
+    _factor_upchan = config.get<uint32_t>(unique_name, "factor_upchan");
+    input_frame_len = _samples_per_data_set / _factor_upchan / 3 * sizeof(uint8_t);
 
     compressed_lost_samples_buf = host_buffers.get_buffer("compressed_lost_samples_buf");
     register_consumer(compressed_lost_samples_buf, unique_name.c_str());

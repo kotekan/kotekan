@@ -29,7 +29,7 @@ compressData::compressData(Config& config_, const std::string& unique_name,
     // Apply config.
     _num_frb_total_beams = config.get<uint32_t>(unique_name, "num_frb_total_beams");
     _num_frames_to_integrate = config.get<uint32_t>(unique_name, "num_frames_to_integrate");
-    _num_sub_freqs = config.get<uint32_t>(unique_name, "num_sub_freqs");
+    _factor_upchan = config.get<uint32_t>(unique_name, "factor_upchan");
 
     in_buf = get_buffer("input_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -174,7 +174,7 @@ void compressData::main_thread() {
     uint in_buffer_ID = 0; // Process only 1 GPU buffer, cycle through buffer depth
     uint8_t* in_frame;
     int out_frame_ID = 0;
-    const uint32_t num_elements = _num_frb_total_beams * _num_sub_freqs;
+    const uint32_t num_elements = _num_frb_total_beams * _factor_upchan;
 
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t* out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_ID);

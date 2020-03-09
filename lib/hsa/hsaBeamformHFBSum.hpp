@@ -32,7 +32,7 @@
  *     @gpu_mem_type            static
  *     @gpu_mem_format          Array of @c float
  * @gpu_mem  compressed_lost_samples Array indicating if a given timestep was zeroed, size:
- *           samples_per_data_set / num_sub_freqs
+ *           samples_per_data_set / factor_upchan
  *     @gpu_mem_type         staging
  *     @gpu_mem_format       Array of @c uint8_t
  *     @gpu_mem_metadata     chimeMetadata
@@ -41,8 +41,9 @@
  *     @gpu_mem_format          Array of @c float
  *
  * @conf   num_frb_total_beams  Int (default 1024). Number of total FRB formed beams
- * @conf   num_sub_freqs  Int (default 128). Number of sub frequencies
+ * @conf   factor_upchan  Int (default 128). Upchannelise factor
  * @conf   samples_per_data_set Int. Number of time samples in a data set.
+ * @conf   num_samples Int. Number of samples per HFB frame.
  *
  * @author James Willis
  *
@@ -61,20 +62,20 @@ public:
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
 private:
-    /// Input length, num_frb_total_beams x num_sub_freqs x 10
+    /// Input length, num_frb_total_beams x factor_upchan x 10
     uint32_t input_frame_len;
-    /// Output length, num_frb_total_beams x num_sub_freqs
+    /// Output length, num_frb_total_beams x factor_upchan
     uint32_t output_frame_len;
     /// Length of the compressed lost samples frame
     uint32_t compressed_lost_samples_frame_len;
 
     /// Total number of FRB formed beams, should be 1024
     uint32_t _num_frb_total_beams;
-    /// Total number of sub frequencies, should be 128
-    uint32_t _num_sub_freqs;
+    /// Upchannelise factor, should be 128
+    uint32_t _factor_upchan;
     /// Number of time samples per frame (Usually 32768 or 49152)
     uint32_t _samples_per_data_set;
-    /// Number of samples per frame
+    /// Number of samples per HFB frame
     uint32_t _num_samples;
 };
 

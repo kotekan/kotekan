@@ -1,6 +1,9 @@
-// Input data is float with sample-beam-freq, sum each frequency across samples
-//LWS = {64,  1  }
-//GWS = {64, 1024}
+// Input data is float with sample-beam-freq, sum each frequency across all samples.
+// Excluding samples from the sum where there is >=1 in the lost samples. A vector reduction is performed to get the sum.
+// Each work group is comprised of 64 work items, where each work item sums samples for 2 frequencies. The grid size is 64 x 1024, so each group works on 1 beam.
+//
+//LWS = {64,  1  } (num_sub_freq / 2, 1)
+//GWS = {64, 1024} (num_sub_freq / 2, num_frb_total_beams)
 
 #define NUM_SUB_FREQS 128
 
@@ -30,6 +33,7 @@ __kernel void sum_hfb(__global float *data, __constant uchar *compressed_lost_sa
           data_2.s2 = data[1024*NUM_SUB_FREQS*(sample + 2) + beam*NUM_SUB_FREQS + freq + 1];
           data_2.s3 = data[1024*NUM_SUB_FREQS*(sample + 3) + beam*NUM_SUB_FREQS + freq + 1];
  
+          // Add vectors
           freq_sum_1 += data_1;
           freq_sum_2 += data_2;
       }

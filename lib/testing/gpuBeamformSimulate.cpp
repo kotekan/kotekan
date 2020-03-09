@@ -55,7 +55,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const std::string& uniq
     _northmost_beam = config.get<float>(unique_name, "northmost_beam");
     Freq_ref = (light * (128) / (sin(_northmost_beam * PI / 180.) * feed_sep * 256)) / 1.e6;
     _ew_spacing = config.get<std::vector<float>>(unique_name, "ew_spacing");
-    _num_sub_freqs = config.get<uint32_t>(unique_name, "num_sub_freqs");
+    _factor_upchan = config.get<uint32_t>(unique_name, "factor_upchan");
     _num_frb_total_beams = config.get<int32_t>(unique_name, "num_frb_total_beams");
     _ew_spacing_c = (float*)malloc(4 * sizeof(float));
     for (int i = 0; i < 4; i++) {
@@ -78,7 +78,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const std::string& uniq
     input_len_padded = input_len * 2;
     transposed_len = (_samples_per_data_set + 32) * _num_elements * 2;
     output_len = _num_elements * (_samples_per_data_set / _downsample_time / _downsample_freq / 2);
-    hfb_output_len = _num_frb_total_beams * _num_sub_freqs;
+    hfb_output_len = _num_frb_total_beams * _factor_upchan;
 
     input_unpacked = (double*)malloc(input_len * sizeof(double));
     input_unpacked_padded = (double*)malloc(input_len_padded * sizeof(double));
@@ -493,7 +493,7 @@ void gpuBeamformSimulate::main_thread() {
                             1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
 
         // Downsample
-        int nfreq_out = _num_sub_freqs;
+        int nfreq_out = _factor_upchan;
         int nsamp_out = _samples_per_data_set / _factor_upchan / _downsample_time;
 
         // Loop over every beam

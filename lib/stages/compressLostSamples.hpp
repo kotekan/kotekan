@@ -20,7 +20,7 @@ using std::vector;
 
 /**
  * @class compressLostSamples
- * @brief Compresses the lost samples buffer by checking samples in blocks of num_sub_freqs * 3, if
+ * @brief Compresses the lost samples buffer by checking samples in blocks of factor_upchan * 3, if
  * any are flagged place a 1 in the compressed lost samples frame. samples_per_data_set /
  * num_sub_freq / 3 = 49152 / 128 / 3
  *
@@ -31,7 +31,7 @@ using std::vector;
  *     @buffer_format Array of @c chars
  *
  * @conf   samples_per_data_set Int. No. of samples.
- * @conf   num_sub_freqs  Int. No. of sub frequencies (should be 128).
+ * @conf   factor_upchan  Int. Upchannelise factor (should be 128).
  *
  * @author James Willis
  *
@@ -57,7 +57,7 @@ private:
 
     /// Config variables
     uint32_t _samples_per_data_set;
-    uint32_t _num_sub_freqs;
+    uint32_t _factor_upchan;
 };
 
 #endif

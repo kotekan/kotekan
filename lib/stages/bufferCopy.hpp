@@ -25,15 +25,9 @@
  *        @buffer_metadata Matches the output buffers
  * @buffer out_bufs Array of output buffers to copy frames into.
  *                 This is a named array of output buffers in the format:
- *                 - internal_name_0: buffer_name_0
- *                 - internal_name_1: buffer_name_1
- *                 .
- *                 Or it can be provided without internal names:
  *                 - buffer_name_0
  *                 - buffer_name_1
  *                 .
- *                 The use of internal names is only needed if a subclass
- *                 of this function requires internal names to select frame.
  *        @buffer_format any, but all must be the same type.
  *        @buffer_metadata any, but all must be the same type.
  *

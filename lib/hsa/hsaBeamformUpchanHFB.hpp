@@ -54,7 +54,7 @@
  * @conf   downsample_time      Int (default 3). Downsample factor in time
  * @conf   downsample_freq      Int (default 8). Downsample factor in freq
  * @conf   num_frb_total_beams  Int (default 1024). Number of total FRB formed beams
- * @conf   num_sub_freqs        Int (default 128). Number of sub frequencies
+ * @conf   factor_upchan        Int (default 128). Upchannelise factor
  *
  * @author Cherry Ng and James Willis
  *
@@ -77,7 +77,7 @@ private:
     int32_t input_frame_len;
     /// Output length, num_frb_total_beams x (nsamp/downsample_time/downsample_freq)
     int32_t output_frame_len;
-    /// Output length, num_frb_total_beams x num_sub_freqs x nsamp
+    /// Output length, num_frb_total_beams x factor_upchan x nsamp
     int32_t output_hfb_frame_len;
 
     /// Number of elements, should be 2048
@@ -90,8 +90,6 @@ private:
     int32_t _downsample_freq;
     /// Total number of FRB formed beams, should be 1024
     int32_t _num_frb_total_beams;
-    /// Total number of sub frequencies, should be 128
-    int32_t _num_sub_freqs;
     /// Upchannelize factor, should be 128
     int32_t _factor_upchan;
 };

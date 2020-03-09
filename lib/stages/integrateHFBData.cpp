@@ -32,7 +32,7 @@ integrateHFBData::integrateHFBData(Config& config_, const std::string& unique_na
     _num_frb_total_beams = config.get<uint32_t>(unique_name, "num_frb_total_beams");
     _num_frames_to_integrate =
         config.get_default<uint32_t>(unique_name, "num_frames_to_integrate", 80);
-    _num_sub_freqs = config.get<uint32_t>(unique_name, "num_sub_freqs");
+    _factor_upchan = config.get<uint32_t>(unique_name, "factor_upchan");
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
     _good_samples_threshold = config.get<float>(unique_name, "good_samples_threshold");
 
@@ -53,7 +53,7 @@ void integrateHFBData::initFirstFrame(float* input_data, float* sum_data,
 
     int64_t fpga_seq_num_start =
         fpga_seq_num_end - (_num_frames_to_integrate - 1) * _samples_per_data_set;
-    memcpy(sum_data, input_data, _num_frb_total_beams * _num_sub_freqs * sizeof(float));
+    memcpy(sum_data, input_data, _num_frb_total_beams * _factor_upchan * sizeof(float));
     total_lost_timesamples += get_fpga_seq_num(in_buf, in_buffer_ID) - fpga_seq_num_start;
     // Get the first FPGA sequence no. to check for missing frames
     fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
@@ -72,8 +72,8 @@ void integrateHFBData::integrateFrame(float* input_data, float* sum_data,
 
     // Integrates data from the input buffer to the output buffer.
     for (uint beam = 0; beam < _num_frb_total_beams; beam++) {
-        for (uint freq = 0; freq < _num_sub_freqs; freq++) {
-            sum_data[beam * _num_sub_freqs + freq] += input_data[beam * _num_sub_freqs + freq];
+        for (uint freq = 0; freq < _factor_upchan; freq++) {
+            sum_data[beam * _factor_upchan + freq] += input_data[beam * _factor_upchan + freq];
         }
     }
 
@@ -87,8 +87,8 @@ float integrateHFBData::normaliseFrame(float* sum_data, const uint32_t in_buffer
         (float)total_timesamples / (total_timesamples - total_lost_timesamples);
 
     for (uint beam = 0; beam < _num_frb_total_beams; beam++) {
-        for (uint freq = 0; freq < _num_sub_freqs; freq++) {
-            sum_data[beam * _num_sub_freqs + freq] *= normalise_frac;
+        for (uint freq = 0; freq < _factor_upchan; freq++) {
+            sum_data[beam * _factor_upchan + freq] *= normalise_frac;
         }
     }
 

@@ -37,7 +37,6 @@ downsample_freq: 8
 factor_upchan: 128
 factor_upchan_out: 16
 num_frb_total_beams: 1024
-num_sub_freqs: 128
 frb_missing_gains: [1.0,0.0]
 frb_scaling: 1.0
 reorder_map: [32,33,34,35,40,41,42,43,48,49,50,51,56,57,58,59,96,97,98,99,
@@ -113,7 +112,7 @@ gain_psr_buffer:
 
 gpu_beamform_hfb_output_buffers:
   num_frames: buffer_depth
-  frame_size: num_data_sets * num_sub_freqs * num_frb_total_beams * sizeof_float
+  frame_size: num_data_sets * factor_upchan * num_frb_total_beams * sizeof_float
   metadata_pool: main_pool
   gpu_beamform_hfb_output_buffer_0:
     kotekan_buffer: standard
@@ -129,7 +128,7 @@ cpu_output_buffers:
 
 cpu_hfb_output_buffers:
     num_frames: buffer_depth
-    frame_size: num_data_sets * num_sub_freqs * num_frb_total_beams * sizeof_float
+    frame_size: num_data_sets * factor_upchan * num_frb_total_beams * sizeof_float
     metadata_pool: main_pool
     cpu_hfb_output_buffer_0:
         kotekan_buffer: standard
@@ -149,13 +148,13 @@ lost_samples_buffer:
 compressed_lost_samples_buffer:
     kotekan_buffer: standard
     num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set / num_sub_freqs * num_data_sets / 3
+    frame_size: samples_per_data_set / factor_upchan * num_data_sets / 3
     metadata_pool: main_pool
 
 compressed_lost_samples_buffer_cpy:
     kotekan_buffer: standard
     num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set / num_sub_freqs * num_data_sets / 3
+    frame_size: samples_per_data_set / factor_upchan * num_data_sets / 3
     metadata_pool: main_pool
 
 cpu_affinity: [2,3,8,9]

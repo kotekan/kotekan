@@ -15,7 +15,7 @@ log_level: info
 buffer_depth: 64
 cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
 num_frb_total_beams: 1024
-num_sub_freqs: 128
+factor_upchan: 128
 
 # Constants
 sizeof_float: 4
@@ -28,7 +28,7 @@ hfb_pool:
 beamform_hfb_output_buffer_merge:
   kotekan_buffer: standard
   num_frames: buffer_depth * 6
-  frame_size: num_sub_freqs * num_frb_total_beams * sizeof_float
+  frame_size: factor_upchan * num_frb_total_beams * sizeof_float
   metadata_pool: hfb_pool
 
 # Kotekan stages

@@ -27,7 +27,7 @@
  *
  * @par GPU Memory
  * @gpu_mem  compressed_lost_samples Array indicating if a given timestep was zeroed, size:
- * samples_per_data_set / num_sub_freqs
+ * samples_per_data_set / factor_upchan
  *     @gpu_mem_type         staging
  *     @gpu_mem_format       Array of @c uint8_t
  *     @gpu_mem_metadata     chimeMetadata
@@ -62,8 +62,8 @@ private:
     /// Kotekan Config Variables
     /// Samples per data set, used for computing frame length
     uint32_t _samples_per_data_set;
-    /// Total number of sub frequencies, should be 128
-    uint32_t _num_sub_freqs;
+    /// Upchannelise factor, should be 128
+    uint32_t _factor_upchan;
 };
 
 #endif /*HSA_INPUT_COMPRESS_LOST_SAMPLES_H*/

@@ -33,7 +33,7 @@
  *
  * @conf   num_frames_to_integrate Int. No. of frames to integrate over.
  * @conf   num_frb_total_beams  Int. No. of total FRB beams (should be 1024).
- * @conf   num_sub_freqs  Int. No. of sub frequencies (should be 128).
+ * @conf   factor_upchan  Int. Upchannelise factor (should be 128).
  *
  * @author James Willis
  *
@@ -64,7 +64,7 @@ private:
     /// Config variables
     uint32_t _num_frames_to_integrate;
     uint32_t _num_frb_total_beams;
-    uint32_t _num_sub_freqs;
+    uint32_t _factor_upchan;
     uint32_t _samples_per_data_set;
     float _good_samples_threshold;
 

@@ -28,7 +28,7 @@ compressLostSamples::compressLostSamples(Config& config_, const std::string& uni
 
     // Apply config.
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
-    _num_sub_freqs = config.get<uint32_t>(unique_name, "num_sub_freqs");
+    _factor_upchan = config.get<uint32_t>(unique_name, "factor_upchan");
 
     in_buf = get_buffer("lost_samples_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -63,13 +63,13 @@ void compressLostSamples::main_thread() {
 
         // Compress lost samples buffer by checking each sample for a flag
         for (uint sample = 0; sample < _samples_per_data_set;
-             sample += NUM_SETS_OF_SUB_FREQS * _num_sub_freqs) {
-            compressed_lost_samples_frame[sample / (NUM_SETS_OF_SUB_FREQS * _num_sub_freqs)] = 0;
-            for (uint freq = 0; freq < NUM_SETS_OF_SUB_FREQS * _num_sub_freqs; freq++) {
+             sample += NUM_SETS_OF_SUB_FREQS * _factor_upchan) {
+            compressed_lost_samples_frame[sample / (NUM_SETS_OF_SUB_FREQS * _factor_upchan)] = 0;
+            for (uint freq = 0; freq < NUM_SETS_OF_SUB_FREQS * _factor_upchan; freq++) {
                 if (lost_samples_frame[sample + freq]) {
                     compressed_lost_samples_frame[sample
-                                                  / (NUM_SETS_OF_SUB_FREQS * _num_sub_freqs)] = 1;
-                    total_lost_samples += NUM_SETS_OF_SUB_FREQS * _num_sub_freqs;
+                                                  / (NUM_SETS_OF_SUB_FREQS * _factor_upchan)] = 1;
+                    total_lost_samples += NUM_SETS_OF_SUB_FREQS * _factor_upchan;
                     break;
                 }
             }

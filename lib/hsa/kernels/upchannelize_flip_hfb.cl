@@ -15,8 +15,9 @@ __constant float HFB_BP[16] = { 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f
 
 #define BIT_REVERSE_7_BITS(index) ((( ( (((index) * 0x0802) & 0x22110) | (((index) * 0x8020)&0x88440) ) * 0x10101 ) >> 17) & 0x7F)
 //input data is float2 with beam-pol-time, try to do 3 N=128 at once so that we can sum 3 time samples
-//LWS = {     64 ,  1  } 
-//GWS = {nsamp/6*, 1024} 
+// Also extracts HFB data. Before downsampling occurs the data is summed over all time and both polarisations, then output as HFB data which retains the full frequency resolution.
+//LWS = {     64 ,  1  } (factor_upchan / 2, 1) 
+//GWS = {nsamp/6*, 1024} (nsamp / 6, num_frb_total_beams)
 
 __kernel void upchannelize(__global float2 *data, __global float *results_array, __global float *hfb_output_array){
 

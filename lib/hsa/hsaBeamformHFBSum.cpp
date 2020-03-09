@@ -21,18 +21,17 @@ hsaBeamformHFBSum::hsaBeamformHFBSum(Config& config, const std::string& unique_n
 
     // Read parameters from config file.
     _num_frb_total_beams = config.get<int32_t>(unique_name, "num_frb_total_beams");
-    _num_sub_freqs = config.get<uint32_t>(unique_name, "num_sub_freqs");
+    _factor_upchan = config.get<uint32_t>(unique_name, "factor_upchan");
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
-    uint32_t _factor_upchan = config.get<uint32_t>(unique_name, "factor_upchan");
     uint32_t _downsample_time = config.get<uint32_t>(unique_name, "downsample_time");
     _num_samples = _samples_per_data_set / _factor_upchan / _downsample_time;
 
-    input_frame_len = _num_frb_total_beams * _num_sub_freqs
+    input_frame_len = _num_frb_total_beams * _factor_upchan
                       * _num_samples // No. of samples per beam
                       * sizeof(float);
-    output_frame_len = _num_frb_total_beams * _num_sub_freqs * sizeof(float);
+    output_frame_len = _num_frb_total_beams * _factor_upchan * sizeof(float);
     compressed_lost_samples_frame_len =
-        sizeof(uint8_t) * _samples_per_data_set / _num_sub_freqs / 3;
+        sizeof(uint8_t) * _samples_per_data_set / _factor_upchan / 3;
 }
 
 hsaBeamformHFBSum::~hsaBeamformHFBSum() {}
