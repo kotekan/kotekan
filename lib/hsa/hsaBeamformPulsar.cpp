@@ -1,6 +1,7 @@
 #include "hsaBeamformPulsar.hpp"
 
 #include "Config.hpp"             // for Config
+#include "chimeMetadata.h"        // for MAX_NUM_BEAMS
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 
@@ -30,6 +31,11 @@ hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const std::string& unique_n
     output_frame_len = _samples_per_data_set * _num_beams * _num_pol * 2 * sizeof(float);
 
     phase_len = _num_elements * _num_beams * 2 * sizeof(float);
+
+    if (_num_beams > MAX_NUM_BEAMS)
+        throw std::runtime_error(
+            fmt::format(fmt("Too many beams (_num_beams: {:d}). Max allowed is: {:d}"), _num_beams,
+                        MAX_NUM_BEAMS));
 }
 
 hsaBeamformPulsar::~hsaBeamformPulsar() {}
