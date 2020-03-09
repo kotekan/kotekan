@@ -5,9 +5,12 @@
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 
+#include "fmt.hpp" // for format, fmt
+
 #include <cstdint>   // for int32_t
 #include <exception> // for exception
 #include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error
 #include <string.h>  // for memcpy, memset
 #include <vector>    // for vector
 
