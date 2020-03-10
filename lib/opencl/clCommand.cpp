@@ -20,7 +20,7 @@ clCommand::clCommand(Config& config_, const string& unique_name_, bufferContaine
 }
 
 clCommand::~clCommand() {
-    if (kernel_command != "") {
+    if (kernel_command != "" && get_command_type() == gpuCommandType::KERNEL) {
         CHECK_CL_ERROR(clReleaseKernel(kernel));
         DEBUG("kernel Freed");
         CHECK_CL_ERROR(clReleaseProgram(program));
