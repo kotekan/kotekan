@@ -12,7 +12,7 @@ link_directories (${KOTEKAN_BINARY_DIR}/lib)
 
 ADD_DEFINITIONS(-mssse3 -D__STDC_LIMIT_MACROS)
 
-if (${WITH_HIP})
+if (${USE_HIP})
     HIP_ADD_EXECUTABLE(kotekan ${SOURCE_EXE})
 else()
     ADD_EXECUTABLE(kotekan ${SOURCE_EXE})
