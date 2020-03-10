@@ -12,7 +12,11 @@ link_directories (${KOTEKAN_BINARY_DIR}/lib)
 
 ADD_DEFINITIONS(-mssse3 -D__STDC_LIMIT_MACROS)
 
-HIP_ADD_EXECUTABLE(kotekan ${SOURCE_EXE})
+if (${WITH_HIP})
+    HIP_ADD_EXECUTABLE(kotekan ${SOURCE_EXE})
+else()
+    ADD_EXECUTABLE(kotekan ${SOURCE_EXE})
+endif()
 
 if (${NUMA_FOUND})
     target_link_libraries( kotekan numa )

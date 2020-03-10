@@ -7,7 +7,7 @@ REGISTER_CL_COMMAND(clInputData);
 
 clInputData::clInputData(Config& config, const string& unique_name, bufferContainer& host_buffers,
                          clDeviceInterface& device) :
-    clCommand(config, unique_name, host_buffers, device, "", "") {
+    clCommand(config, unique_name, host_buffers, device, "", "clInputData") {
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_local_freq = config.get<int>(unique_name, "num_local_freq");
     _samples_per_data_set = config.get<int>(unique_name, "samples_per_data_set");
@@ -61,4 +61,10 @@ void clInputData::finalize_frame(int frame_id) {
     clCommand::finalize_frame(frame_id);
     mark_frame_empty(network_buf, unique_name.c_str(), network_buffer_finalize_id);
     network_buffer_finalize_id = (network_buffer_finalize_id + 1) % network_buf->num_frames;
+}
+
+std::string clInputData::get_performance_metric_string() {
+    double transfer_speed = (double)network_buf->frame_size
+                            / (double)get_last_gpu_execution_time() / 1000000000;
+    return "Speed: " + std::to_string(transfer_speed) + " Gb/s";
 }

@@ -208,11 +208,11 @@ void gpuProcess::results_thread() {
         if (log_profiling) {
             string output = "";
             for (uint32_t i = 0; i < commands.size(); ++i) {
-                output = fmt::format(fmt("{:s}kernel: {:s} time: {:f}; \n"), output,
+                output = fmt::format(fmt("{:s}command: {:s} metrics: {:s}; \n"), output,
                                      commands[i]->get_name(),
-                                     commands[i]->get_last_gpu_execution_time());
+                                     commands[i]->get_performance_metric_string());
             }
-            INFO("GPU[{:d}] Profiling: {:s}", gpu_id, output);
+            INFO("GPU[{:d}] Profiling: \n{:s}", gpu_id, output);
         }
 
         final_signals[gpu_frame_id]->reset();

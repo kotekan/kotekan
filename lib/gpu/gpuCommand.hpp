@@ -89,6 +89,10 @@ public:
     /// Get to distinguish the flavour of command (copy,kernel,etc)
     gpuCommandType get_command_type();
 
+    virtual std::string get_performance_metric_string() {
+        return "Time: " + std::to_string(get_last_gpu_execution_time()) + " seconds";
+    }
+
 protected:
     /// A unique name used for the gpu command. Used in indexing commands in a list and referencing
     /// them by this value.

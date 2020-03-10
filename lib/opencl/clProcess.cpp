@@ -45,5 +45,5 @@ void clProcess::queue_commands(int gpu_frame_id) {
         signal = ((clCommand*)command)->execute(gpu_frame_id, signal);
     }
     final_signals[gpu_frame_id]->set_signal(signal);
-    INFO("Commands executed.");
+    DEBUG("Commands executed.");
 }

@@ -12,6 +12,7 @@ public:
     cl_event execute(int gpu_frame_id, cl_event pre_event) override;
     void finalize_frame(int frame_id) override;
 
+    std::string get_performance_metric_string();
 
 protected:
     cl_event* data_staged_event;
