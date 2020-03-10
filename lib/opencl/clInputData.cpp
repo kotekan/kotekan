@@ -66,5 +66,5 @@ void clInputData::finalize_frame(int frame_id) {
 std::string clInputData::get_performance_metric_string() {
     double transfer_speed = (double)network_buf->frame_size
                             / (double)get_last_gpu_execution_time() / 1000000000;
-    return "Speed: " + std::to_string(transfer_speed) + " Gb/s";
+    return "Speed: " + std::to_string(transfer_speed) + " GB/s";
 }
