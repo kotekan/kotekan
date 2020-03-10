@@ -396,6 +396,7 @@ void frbNetworkProcess::initialize_pinging_sockets() {
     std::mt19937 gen(rd()); // Standard mersenne_twister_engine seeded with rd()
     std::uniform_int_distribution<> dis(3000, 30000);
 
+    auto now = std::chrono::steady_clock::now();
     for (auto& ipaddr_dst : dest_sockets) {
         // don't even check the inactive destinations
         DestIpSocket& dst = std::get<1>(ipaddr_dst);
@@ -404,10 +405,9 @@ void frbNetworkProcess::initialize_pinging_sockets() {
         }
         uint32_t ipaddr = std::get<0>(ipaddr_dst);
         // jitter the initial check by a random amount 3-30 s
-        auto now = std::chrono::steady_clock::now();
         auto next_check = now + std::chrono::milliseconds(dis(gen));
         DEBUG("Check host {} in {:%M:%S}", dst.host, next_check - now);
-        dest_by_ip[ipaddr] = {&dst, now - _ping_interval, next_check};
+        dest_by_ip[ipaddr] = {&dst, now, next_check};
     }
 
 }
@@ -423,6 +423,8 @@ void frbNetworkProcess::ping_destinations() {
         DestIpSocketTime& dest_ping_info = std::get<1>(ipaddr_dst);
         dest_by_time.push(dest_ping_info);
     }
+    const auto startup_time = dest_by_time.top().get().last_responded;
+    bool startup_phase = true;
 
     // it's silly to have a mutex local to a thread, but we need it for the condition variable used
     // by the main_thread to interrupt this thread's sleep to notify of Kotekan stopping
@@ -430,14 +432,38 @@ void frbNetworkProcess::ping_destinations() {
     std::unique_lock<std::mutex> lock(mtx);
     uint16_t ping_seq = 0;
     while (!stop_thread) {
+        // sleep until the next host is due
         DestIpSocketTime& lru_dest = dest_by_time.top();
         auto now = std::chrono::steady_clock::now();
+        while (!stop_thread && lru_dest.next_check > now) {
+            DEBUG("Sleep for {:%M:%S} before checking the next host {}",
+                  lru_dest.next_check - now, lru_dest.dst->host);
+
+            // continue sleeping if received a spurious wakeup, i.e., neither the stage was stopped
+            // nor timeout occurred
+            if (ping_cv.wait_for(lock, lru_dest.next_check - now) == std::cv_status::timeout) {
+                break;
+            }
+            now = std::chrono::steady_clock::now();
+        }
         const auto time_since_last_live = now - lru_dest.last_responded;
 
-        DEBUG("Checking: {}", lru_dest.dst->host);
-        DEBUG("Last responded: {:%M:%S} ago", time_since_last_live);
+        /*
+         * The startup phase lasts for the first `_ping_interval`. During this
+         * time, we send out pings on a quick_check schedule even though the
+         * host is not live yet.
+        */
+        if (startup_phase && (now - startup_time > _ping_interval)) {
+            startup_phase = false;
+        }
+        // special handling for hosts during the startup phase until they go live
+        const bool host_startup = startup_phase && !lru_dest.dst->live;
 
-        if (time_since_last_live >= (_ping_interval - _quick_ping_interval)) {
+        DEBUG("Checking: {} ({}, last responded {:%M:%S} ago)", lru_dest.dst->host,
+              (lru_dest.dst->live ? "LIVE" : "DEAD"), time_since_last_live);
+
+        if (host_startup ||
+            time_since_last_live >= (_ping_interval - _quick_ping_interval)) {
             // time to ping again
             if (send_ping(ping_src_fd[lru_dest.dst->sending_socket], lru_dest.dst->addr, ping_seq)) {
                 DEBUG("Pinged {}", lru_dest.dst->host);
@@ -448,47 +474,35 @@ void frbNetworkProcess::ping_destinations() {
             }
             ping_seq++;
         } else {
-            DEBUG("Skip pinging {}", lru_dest.dst->host);
+            DEBUG("Don't need to ping {} yet", lru_dest.dst->host);
         }
 
         // Schedule the next check for the node
         dest_by_time.pop();
-        if (lru_dest.dst->live && time_since_last_live >= (_ping_interval - _quick_ping_interval)) {
-            if (lru_dest.last_checked == now) {
-                DEBUG("Follow-up check for host {} in {}",
-                      lru_dest.dst->host, _quick_ping_interval);
-                lru_dest.next_check = now + _quick_ping_interval;
-            } else if (time_since_last_live < _ping_interval + _ping_dead_threshold) {
-                DEBUG("Live host {} has not responded, schedule a backup check in {}",
-                      lru_dest.dst->host, _quick_ping_interval);
-                lru_dest.next_check = now + _quick_ping_interval;
-            } else {
+        if (host_startup) {
+            DEBUG("Schedule a follow-up check for starting-up host {} in {}",
+                  lru_dest.dst->host, _quick_ping_interval);
+            lru_dest.next_check = now + _quick_ping_interval;
+        } else if (lru_dest.dst->live) {
+            if (time_since_last_live >= _ping_interval + _ping_dead_threshold) {
                 INFO("Too long since last ping response ({:%M:%S}), mark host {} dead.",
                      time_since_last_live, lru_dest.dst->host);
                 lru_dest.dst->live = false;
                 lru_dest.next_check = now + _ping_interval;
+            } else if (time_since_last_live >= _ping_interval - _ping_dead_threshold) {
+                DEBUG("Live host {} has not responded recently, schedule a backup check in {}",
+                      lru_dest.dst->host, _quick_ping_interval);
+                lru_dest.next_check = now + _quick_ping_interval;
+            } else {
+                DEBUG("Schedule a regular check for live host {} in {}", lru_dest.dst->host, _ping_interval);
+                lru_dest.next_check = lru_dest.last_checked + _ping_interval;
             }
         } else {
-            DEBUG("Schedule a regular check for host {} in {}", lru_dest.dst->host, _ping_interval);
+            DEBUG("Schedule a regular check for dead host {} in {}", lru_dest.dst->host, _ping_interval);
             lru_dest.next_check = lru_dest.last_checked + _ping_interval;
         }
         // NOTE: could add a small random delay to next_check
         dest_by_time.push(lru_dest);
-
-        // sleep until the next host is due
-        DestIpSocketTime& next_lru_dest = dest_by_time.top();
-        now = std::chrono::steady_clock::now();
-        while (!stop_thread && next_lru_dest.next_check > now) {
-            DEBUG("Sleep for {:%M:%S} before checking the next host {}",
-                  next_lru_dest.next_check - now, next_lru_dest.dst->host);
-
-            // continue sleeping if received a spurious wakeup, i.e., neither the stage was stopped
-            // nor timeout occurred
-            if (ping_cv.wait_for(lock, next_lru_dest.next_check - now) == std::cv_status::timeout) {
-                break;
-            }
-            now = std::chrono::steady_clock::now();
-        }
     }
 }
 
