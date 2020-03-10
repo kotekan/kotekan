@@ -1,14 +1,14 @@
 #include "integrateHFBData.hpp"
 
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"                // for mark_frame_empty, Buffer, register_consumer, wait_for...
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"         // for mark_frame_empty, Buffer, register_consumer, wait_for...
 #include "chimeMetadata.h"
+#include "datasetManager.hpp"      // for state_id_t, datasetManager, dset_id_t
 #include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, stream_id_t
 #include "gpsTime.h"
 #include "hfbMetadata.hpp"
-#include "kotekanLogging.hpp"      // for DEBUG, DEBUG2
-#include "visUtil.hpp"             // for freq_ctype
-#include "datasetManager.hpp"      // for state_id_t, datasetManager, dset_id_t
+#include "kotekanLogging.hpp" // for DEBUG, DEBUG2
+#include "visUtil.hpp"        // for freq_ctype
 
 #include <atomic>      // for atomic_bool
 #include <exception>   // for exception
@@ -74,7 +74,6 @@ integrateHFBData::integrateHFBData(Config& config_, const std::string& unique_na
 
     // register root dataset
     ds_id = dm.add_dataset(base_states);
-
 }
 
 integrateHFBData::~integrateHFBData() {}

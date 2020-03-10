@@ -78,7 +78,6 @@ private:
     /// List of frequencies for this buffer
     std::vector<uint32_t> freq;
     bool _init_dataset_manager;
-
 };
 
 #endif

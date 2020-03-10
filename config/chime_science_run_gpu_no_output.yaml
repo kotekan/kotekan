@@ -331,8 +331,6 @@ cpu_hfb_output_buffers:
       kotekan_buffer: standard
     beamform_hfb_output_buffer_3:
       kotekan_buffer: standard
-    beamform_hfb_output_buffer_merge:
-      kotekan_buffer: standard
 
 gain_frb_buffers:
   num_frames: 5
@@ -831,26 +829,25 @@ hyper_fine_beam:
     hfb_output_buf: beamform_hfb_output_buffer_3
     compressed_lost_samples_buf: compressed_lost_samples_buf_3
  
-# Merge HFB integrated data from each GPU
-hfb_merge:
-  kotekan_stage: bufferMerge
-  timeout: 0.1
-  in_bufs:
-    - beamform_hfb_output_buffer_0
-    - beamform_hfb_output_buffer_1
-    - beamform_hfb_output_buffer_2
-    - beamform_hfb_output_buffer_3
-  out_buf: beamform_hfb_output_buffer_merge
-
 # Transmit all the HFB data to Moose
 #buffer_send_hfb:
 #  server_ip: 10.1.50.10
+#  server_port: 11027
 #  reconnect_time: 20
 #  log_level: warn
-#  hfb:
+#  hfb_0:
 #    kotekan_stage: bufferSend
-#    buf: beamform_hfb_output_buffer_merge
-#    server_port: 11027
+#    buf: beamform_hfb_output_buffer_0
+#  hfb_1:
+#    kotekan_stage: bufferSend
+#    buf: beamform_hfb_output_buffer_1
+#  hfb_2:
+#    kotekan_stage: bufferSend
+#    buf: beamform_hfb_output_buffer_2
+#  hfb_3:
+#    kotekan_stage: bufferSend
+#    buf: beamform_hfb_output_buffer_3
+
 
 # This set of stages takes information from the packet loss mask
 # and RFI mask and updates the metadata in the output N2 buffers
