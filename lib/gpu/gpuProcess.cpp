@@ -140,7 +140,7 @@ void gpuProcess::main_thread() {
         // INFO("Waiting on preconditions for GPU[{:d}][{:d}]", gpu_id, gpu_frame_id);
         for (auto& command : commands) {
             if (command->wait_on_precondition(gpu_frame_id) != 0) {
-                INFO("Received exit in GPU command precondition! (Command '{:s}')",
+                INFO("Received exit signal from GPU command precondition (Command '{:s}')",
                      command->get_name());
                 goto exit_loop;
             }
