@@ -10,6 +10,7 @@
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // for bufferContainer
+#include "dataset.hpp"         // for dset_id_t
 
 #include <stdint.h> // for uint32_t, int64_t
 #include <string>   // for string
@@ -74,6 +75,7 @@ private:
     uint32_t frame;
     int64_t fpga_seq_num;
     int64_t fpga_seq_num_end;
+    dset_id_t ds_id;
 };
 
 #endif
