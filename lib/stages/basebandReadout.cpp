@@ -70,6 +70,7 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
     _num_frames_buffer(config.get<int>(unique_name, "num_frames_buffer")),
     _num_elements(config.get<int>(unique_name, "num_elements")),
     _num_local_freq(config.get<int>(unique_name, "num_local_freq")),
+    _board_id(config.get_default<int>(unique_name, "board_id",0)),
     _samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
     _max_dump_samples(config.get_default<uint64_t>(unique_name, "max_dump_samples", 1 << 30)),
     _write_throttle(config.get_default<float>(unique_name, "write_throttle", 0.)),
@@ -153,7 +154,7 @@ void basebandReadout::main_thread() {
                 // XXX Use num_local_freqs to figure out if we're running on CHIME or PF
                 freq_id = bin_number_multifreq(&stream_id,_num_local_freq,freqidx);
                 freq_ids[freqidx] = freq_id;
-                mgrs[freqidx] = &(basebandApiManager::instance().register_readout_stage(freq_ids[freqidx]));//TODO: Check register_readout_stage
+                mgrs[freqidx] = &(basebandApiManager::instance().register_readout_stage(_board_id * 1048576 + freq_ids[freqidx]));//_board_id is used in 16 element mode to distinguish between identical boards running without a backplane. We will identify data managers by their board_id as well as their freq_id =< 1024.
                 DEBUG("Initialize baseband metrics for freq_id: {:d}", freq_id);
                 readout_counter.labels({std::to_string(freq_id), "done"});
                 readout_counter.labels({std::to_string(freq_id), "error"});
@@ -613,12 +614,17 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
             INFO("Right before memcpy()");
             for(int timeidx = 0; timeidx < (frame_ind_end - frame_ind_start); timeidx++){
                 // XXX: Try to use memcpy instead of nt_memcpy for short stretches of data of length n_e.
+                if (timeidx % 1024 == 0) {
+                    INFO("memcpy: #{:d}, freqidx: {:d}, buf_data[{:d}]->dump_data[{:d}],len: {:d}",
+                            timeidx, 
+                            freqidx,
+                            ((frame_ind_start + timeidx) * _num_local_freq + freqidx) * _num_elements,
+                            (data_ind_start + timeidx) * _num_elements,
+                            _num_elements); 
+                }
                 memcpy(&dump.data[(data_ind_start + timeidx) * _num_elements],
                           &buf_data[((frame_ind_start + timeidx) * _num_local_freq + freqidx) * _num_elements],
                           _num_elements);
-                if ((timeidx + 1)%1024 == 0) {
-                    INFO("{:d}th memcpy() call",timeidx); 
-                }
             }
             milliseconds ms_after = duration_cast<milliseconds>(
                   system_clock::now().time_since_epoch());
