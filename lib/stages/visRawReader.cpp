@@ -235,9 +235,8 @@ int visRawReader::position_map(int ind) {
         int ti = ri * chunk_t + ((ind % row_size) % (t_width * chunk_f)) / f_width;
 
         return ti * nfreq + fi;
-    } else {
-        return ind;
     }
+    return ind;
 }
 
 void visRawReader::main_thread() {

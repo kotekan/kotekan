@@ -276,8 +276,6 @@ template<>
 inline AtomicType<dset_id_str>::AtomicType() {
     _hid = H5Tcopy(H5T_C_S1);
     H5Tset_size(_hid, DSET_ID_LEN);
-    // define encoding to UTF-8 by default
-    // H5Tset_cset(_hid, H5T_CSET_UTF8);
 }
 // \endcond
 }; // namespace HighFive
