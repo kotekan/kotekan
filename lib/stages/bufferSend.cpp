@@ -223,6 +223,7 @@ void bufferSend::connect_to_server() {
         // Notify that connection is established
         connection_state_cv.notify_one();
 
+        // wait for connection to get closed
         std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
         connection_state_cv.wait(connection_lock, [&]() { return !connected || stop_thread; });
     }

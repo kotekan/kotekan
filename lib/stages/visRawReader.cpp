@@ -435,7 +435,7 @@ void ensureOrdered::main_thread() {
     frameID frame_id(in_buf);
     frameID output_frame_id(out_buf);
     // The index of the current frame relative to the first frame
-    uint32_t output_ind = 0;
+    size_t output_ind = 0;
 
     // Frequency and time indices
     size_t fi, ti;

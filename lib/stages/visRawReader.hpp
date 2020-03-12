@@ -119,16 +119,10 @@ public:
 
 private:
     /**
-     * @brief Tells the datasetManager about all the datasetStates of the data
-     * that is read.
+     * @brief Get dataset states from the broker and add a timeState.
      *
-     * Adds the following states: metadata, time, prod, freq, input, eigenvalue
-     * and, if the data is stacked, stack.
-     * Sets the dataset ID that should be given to the dataset coming from
-     * the file that is read.
-     *
-     * If the dataset broker is being used, add a timeState to existing dataset
-     * and pass that on.
+     * If not using the broker, create the following states: metadata, time, prod,
+     * freq, input, eigenvalue and, if the data is stacked, stack.
      */
     void get_dataset_state(dset_id_t ds_id);
 
@@ -198,7 +192,7 @@ private:
     // the dataset state for the time axis
     state_id_t tstate_id;
 
-    // Store dataset IDs present in file for quick access
+    // Map input to output dataset IDs for quick access
     std::map<dset_id_t, dset_id_t> ds_in_file;
 
     // The read rate
@@ -208,6 +202,11 @@ private:
     double sleep_time;
 };
 
+/**
+ * @class ensureOrdered
+ * @brief Check frames are coming through in order and reorder them otherwise.
+ *        Not used presently.
+ */
 class ensureOrdered : public kotekan::Stage {
 
 public:
