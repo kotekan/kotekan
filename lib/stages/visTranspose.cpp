@@ -120,7 +120,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     if (timed_out) {
         ERROR("Communication with dataset broker timed out for datatset id {}.", ds_id);
         dm.stop();
-        exit_kotekan(ReturnCode::TIMEOUT);
+        exit_kotekan(ReturnCode::DATASET_MANAGER_FAILURE);
         return false;
     }
 
@@ -430,7 +430,7 @@ dset_id_t visTranspose::base_dset(dset_id_t ds_id) {
         if (ready == std::future_status::timeout) {
             ERROR("Communication with dataset broker timed out for datatset id {}.", ds_id);
             dm.stop();
-            exit_kotekan(ReturnCode::TIMEOUT);
+            exit_kotekan(ReturnCode::DATASET_MANAGER_FAILURE);
             return ds_id;
         }
         const metadataState* mstate = mstate_fut.get();
