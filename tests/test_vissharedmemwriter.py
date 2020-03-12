@@ -71,18 +71,14 @@ def mem_map_access_record():
     os.close(memory.fd)
     yield mapfile
     mapfile.close()
-    #posix_ipc.unlink_shared_memory(fname_access_record)
+    posix_ipc.unlink_shared_memory(fname_access_record)
 
 
-def test_sharedmem(vis_data, semaphore, mem_map_access_record, memory_map_buf):
-    for memory_map in [mem_map_access_record, memory_map_buf]:
-        memory_map.seek(0)
+def test_sharedmem(vis_data, semaphore, memory_map_buf):
+    memory_map_buf.seek(0)
     import struct
 
     for i in range(0, 100):
         semaphore.acquire()
-        print(struct.unpack("<c", memory_map_buf.read(1))[0])
-        print(struct.unpack("<c", memory_map_buf.read(1))[0])
-        print(struct.unpack("<c", memory_map_buf.read(1))[0])
+        print(struct.unpack("<Q", memory_map_buf.read(8))[0])
         semaphore.release()
-        print(struct.unpack("<Q", mem_map_access_record.read(8))[0])

@@ -247,8 +247,6 @@ void visSharedMemWriter::main_thread() {
     // Set up the structure of the access record shared memory
     size_t access_record_size = sizeof(uint64_t);
 
-    record_addr = (uint64_t*) assign_memory(fname_access_record, ntime * access_record_size);
-
     // Get properties of stream from first frame and datasetManager
     std::map<uint32_t, uint32_t> freq_id_map;
     auto& dm = datasetManager::instance();
@@ -300,7 +298,10 @@ void visSharedMemWriter::main_thread() {
     frame_size = _member_alignment(data_size + metadata_size + 4, alignment * 1024);
 
     // memory_size should be ntime * nfreq * file_frame_size (data + metadata)
-    buf_addr = assign_memory(fname_buf, ntime * nfreq * frame_size);
+    buf_addr = assign_memory(fname_buf, (ntime * access_record_size) + (ntime * nfreq * frame_size));
+    record_addr = (uint64_t*) buf_addr;
+    buf_addr += ntime;
+
     INFO("Created the shared memory segments\n");
     if (sem_post(sem) == -1) {
         FATAL_ERROR("Failed to release semaphore {}", sem_name);
