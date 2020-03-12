@@ -216,9 +216,9 @@ void visTranspose::main_thread() {
 
     uint64_t frame_size = 0;
 
-    bool found_frame = false;
+    // wait for a non-empty frame to get dataset ID from
     uint32_t first_ind = 0;
-    while (!found_frame) {
+    while (true) {
         // Wait for a frame in the input buffer in order to get the dataset ID
         if ((wait_for_full_frame(in_buf, unique_name.c_str(), first_ind)) == nullptr) {
             return;
@@ -227,18 +227,18 @@ void visTranspose::main_thread() {
         if (frame.fpga_seq_length == 0) {
             INFO("Got empty frame ({:d}).", first_ind);
             first_ind++;
-            continue;
+        } else {
+            ds_id = frame.dataset_id;
+            break;
         }
-        found_frame = true;
+    }
 
-        ds_id = frame.dataset_id;
-        if (!get_dataset_state(ds_id)) {
-            ERROR("Couldn't find ancestor of dataset {}. "
-                  "Make sure there is a stage upstream in the config, that adds the dataset "
-                  "states.\nExiting...",
-                  ds_id);
-            return;
-        }
+    if (!get_dataset_state(ds_id)) {
+        FATAL_ERROR("Couldn't find ancestor of dataset {}. "
+                    "Make sure there is a stage upstream in the config, that adds the dataset "
+                    "states.\nExiting...",
+                    ds_id);
+        return;
     }
 
     // Get the original dataset ID (before adding time axis)
