@@ -10,7 +10,7 @@ import posix_ipc
 import mmap
 import os
 
-from kotekan import runner
+from kotekan import runner, shared_memory_buffer
 
 sem_name = "kotekan"
 fname_access_record = "calBufferAccessRecord"
@@ -55,34 +55,42 @@ def semaphore():
     sem.unlink()
 
 
-@pytest.fixture(scope="module")
-def memory_map_buf():
-    memory = posix_ipc.SharedMemory(fname_buf)
-    mapfile = mmap.mmap(memory.fd, memory.size, prot=mmap.PROT_READ)
-    os.close(memory.fd)
-    yield mapfile
-    mapfile.close()
-    posix_ipc.unlink_shared_memory(fname_buf)
+# @pytest.fixture(scope="module")
+# def memory_map_buf():
+#     memory = posix_ipc.SharedMemory(fname_buf)
+#     mapfile = mmap.mmap(memory.fd, memory.size, prot=mmap.PROT_READ)
+#     os.close(memory.fd)
+#     yield mapfile
+#     mapfile.close()
+#     posix_ipc.unlink_shared_memory(fname_buf)
+#
+# @pytest.fixture(scope="module")
+# def mem_map_access_record():
+#     memory = posix_ipc.SharedMemory(fname_access_record)
+#     mapfile = mmap.mmap(memory.fd, memory.size, prot=mmap.PROT_READ)
+#     os.close(memory.fd)
+#     yield mapfile
+#     mapfile.close()
+#     posix_ipc.unlink_shared_memory(fname_access_record)
 
-@pytest.fixture(scope="module")
-def mem_map_access_record():
-    memory = posix_ipc.SharedMemory(fname_access_record)
-    mapfile = mmap.mmap(memory.fd, memory.size, prot=mmap.PROT_READ)
-    os.close(memory.fd)
-    yield mapfile
-    mapfile.close()
-    posix_ipc.unlink_shared_memory(fname_access_record)
+
+@pytest.fixture()
+def buffer():
+    yield shared_memory_buffer.SharedMemoryReader(sem_name, fname_buf)
 
 
-def test_sharedmem(vis_data, semaphore, mem_map_access_record, memory_map_buf):
-    for memory_map in [mem_map_access_record, memory_map_buf]:
-        memory_map.seek(0)
-    import struct
+def test_shared_mem_buffer(vis_data, buffer):
+    assert buffer
 
-    for i in range(0, 100):
-        semaphore.acquire()
-        print(struct.unpack("<c", memory_map_buf.read(1))[0])
-        print(struct.unpack("<c", memory_map_buf.read(1))[0])
-        print(struct.unpack("<c", memory_map_buf.read(1))[0])
-        semaphore.release()
-        print(struct.unpack("<Q", mem_map_access_record.read(8))[0])
+# def test_sharedmem(vis_data, semaphore, mem_map_access_record, memory_map_buf):
+#     for memory_map in [mem_map_access_record, memory_map_buf]:
+#         memory_map.seek(0)
+#     import struct
+#
+#     for i in range(0, 100):
+#         semaphore.acquire()
+#         print(struct.unpack("<c", memory_map_buf.read(1))[0])
+#         print(struct.unpack("<c", memory_map_buf.read(1))[0])
+#         print(struct.unpack("<c", memory_map_buf.read(1))[0])
+#         semaphore.release()
+#         print(struct.unpack("<Q", mem_map_access_record.read(8))[0])
