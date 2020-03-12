@@ -71,7 +71,7 @@ def mem_map_access_record():
     os.close(memory.fd)
     yield mapfile
     mapfile.close()
-    posix_ipc.unlink_shared_memory(fname_access_record)
+    #posix_ipc.unlink_shared_memory(fname_access_record)
 
 
 def test_sharedmem(vis_data, semaphore, mem_map_access_record, memory_map_buf):
