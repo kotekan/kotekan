@@ -410,7 +410,7 @@ bool ensureOrdered::get_dataset_state(dset_id_t ds_id) {
     const freqState* fstate = fstate_fut.get();
 
     if (tstate == nullptr || fstate == nullptr) {
-        INFO("One of time or freq dataset states is null.");
+        ERROR("One of time or freq dataset states is null for dataset {}.", ds_id);
         return false;
     }
 
@@ -445,9 +445,8 @@ void ensureOrdered::main_thread() {
     dset_id_t ds_id;
 
     // Get axes from dataset state
-    bool found_frame = false;
     uint32_t first_ind = 0;
-    while (!found_frame) {
+    while (true) {
         // Wait for a frame in the input buffer in order to get the dataset ID
         if ((wait_for_full_frame(in_buf, unique_name.c_str(), first_ind)) == nullptr) {
             return;
@@ -456,20 +455,19 @@ void ensureOrdered::main_thread() {
         if (frame.fpga_seq_length == 0) {
             INFO("Got empty frame ({:d}).", first_ind);
             first_ind++;
-            continue;
+        } else {
+            ds_id = frame.dataset_id;
+            break;
         }
-        found_frame = true;
+    }
 
-        ds_id = frame.dataset_id;
-        auto future_ds_state = std::async(&ensureOrdered::get_dataset_state, this, ds_id);
-
-        if (!future_ds_state.get()) {
-            FATAL_ERROR("Couldn't find ancestor of dataset {}. "
-                        "Make sure there is a stage upstream in the config, that adds the dataset "
-                        "states.\nExiting...",
-                        ds_id);
-            return;
-        }
+    auto future_ds_state = std::async(&ensureOrdered::get_dataset_state, this, ds_id);
+    if (!future_ds_state.get()) {
+        FATAL_ERROR("Couldn't find ancestor of dataset {}. "
+                    "Make sure there is a stage upstream in the config, that adds the dataset "
+                    "states.\nExiting...",
+                    ds_id);
+        return;
     }
 
     // main loop:
@@ -514,7 +512,7 @@ void ensureOrdered::main_thread() {
 
         // Check if any of the waiting frames are ready
         auto ready = waiting.find(output_ind);
-        if (ready != waiting.end()) {
+        while (ready != waiting.end()) {
             // remove this index from waiting map
             uint32_t waiting_id = ready->second;
             waiting.erase(ready);
@@ -530,6 +528,8 @@ void ensureOrdered::main_thread() {
 
             mark_frame_empty(in_buf, unique_name.c_str(), waiting_id);
             output_ind++;
+
+            ready = waiting.find(output_ind);
         }
     }
 }
