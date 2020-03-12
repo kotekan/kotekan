@@ -132,9 +132,11 @@ def data_listener():
             output_file = open(dest_file, "ab")
             output_file.write(data)
             output_file.close()
-            data_pkt_frame_idx, data_pkt_elem_idx, data_pkt_samples_summed = struct.unpack(
-                "III", data[:pkt_header]
-            )
+            (
+                data_pkt_frame_idx,
+                data_pkt_elem_idx,
+                data_pkt_samples_summed,
+            ) = struct.unpack("III", data[:pkt_header])
             d[:, data_pkt_elem_idx] += (
                 np.fromstring(data[pkt_header:], dtype=np.uint32)
                 * 1.0

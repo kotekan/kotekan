@@ -1,19 +1,30 @@
 #ifndef APPLY_GAINS_HPP
 #define APPLY_GAINS_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "datasetManager.hpp"
-#include "errors.h"
-#include "fpga_header_functions.h"
-#include "updateQueue.hpp"
-#include "util.h"
-#include "visFile.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for Hash
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, state_id_t
+#include "prometheusMetrics.hpp" // for Counter, Gauge
+#include "updateQueue.hpp"       // for updateQueue
+#include "visBuffer.hpp"         // for visFrameView
+#include "visUtil.hpp"           // for cfloat, frameID
 
-#include <shared_mutex>
-#include <unistd.h>
+#include "json.hpp" // for json
 
+#include <atomic>       // for atomic
+#include <ctime>        // for timespec, size_t
+#include <map>          // for map
+#include <mutex>        // for mutex
+#include <optional>     // for optional
+#include <shared_mutex> // for shared_mutex
+#include <stdint.h>     // for uint32_t, uint64_t
+#include <string>       // for string
+#include <thread>       // for thread
+#include <utility>      // for pair
+#include <vector>       // for vector
 
 /**
  * @class applyGains
@@ -64,7 +75,7 @@ class applyGains : public kotekan::Stage {
 
 public:
     /// Default constructor
-    applyGains(kotekan::Config& config, const string& unique_name,
+    applyGains(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
     /// Main loop for the stage

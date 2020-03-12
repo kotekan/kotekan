@@ -6,17 +6,17 @@
 #ifndef RFI_BROADCAST_H
 #define RFI_BROADCAST_H
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "powerStreamUtil.hpp"
-#include "prometheusMetrics.hpp"
-#include "restServer.hpp"
-#include "rfi_functions.h"
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
+#include "restServer.hpp"      // for connectionInstance
+#include "visUtil.hpp"         // for movingAverage
 
-#include <sys/socket.h>
+#include "json.hpp" // for json
+
+#include <mutex>    // for mutex
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
 
 /*
  * @class rfiBroadcast
@@ -43,7 +43,7 @@
  *
  * @conf   num_elements         Int . Number of elements.
  * @conf   num_local_freq       Int . Number of local freq.
- * @conf   num_local_freq       Int (default 1024). Number of total freq.
+ * @conf   num_total_freq       Int (default 1024). Number of total freq.
  * @conf   samples_per_data_set Int . Number of time samples in a data set.
  * @conf   sk_step              Int (default 256). Length of time integration in SK estimate.
  * @conf   frames_per_packet    Int (default 1). The Number of frames to average over before sending
@@ -61,14 +61,14 @@
 class rfiBroadcast : public kotekan::Stage {
 public:
     // Constructor
-    rfiBroadcast(kotekan::Config& config, const string& unique_name,
+    rfiBroadcast(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
     // Deconstructor, cleans up / does nothing
     virtual ~rfiBroadcast();
     // Primary loop, reads buffer and sends out UDP stream
     void main_thread() override;
     // Callback function called by rest server
-    void rest_callback(kotekan::connectionInstance& conn, json& json_request);
+    void rest_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
     // Callback function called by rest server
     void rest_zero(kotekan::connectionInstance& conn);
 
@@ -101,9 +101,9 @@ private:
     /// The port for UDP stream to be sent to
     uint32_t dest_port;
     /// The address for UDP stream to be sent to
-    string dest_server_ip;
+    std::string dest_server_ip;
     /// The streaming protocol, only UDP is supported
-    string dest_protocol;
+    std::string dest_protocol;
     /// Internal socket error holder
     int socket_fd;
     /// Rest server callback mutex
@@ -111,9 +111,9 @@ private:
     /// Rest server callback mutex
     std::mutex rest_zero_callback_mutex;
     /// String to hold endpoint
-    string endpoint;
+    std::string endpoint;
     /// String to hold endpoint
-    string endpoint_zero;
+    std::string endpoint_zero;
     /// Moving average of frame zeroing percentage to send to prometheus
     movingAverage perc_zeroed;
 };

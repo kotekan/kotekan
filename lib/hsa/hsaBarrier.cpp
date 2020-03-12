@@ -1,14 +1,18 @@
 #include "hsaBarrier.hpp"
 
-#include <unistd.h>
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::BARRIER
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+
+#include <stdint.h> // for uint32_t, uint8_t, uint64_t
+#include <string.h> // for memset
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaBarrier);
 
-hsaBarrier::hsaBarrier(Config& config, const string& unique_name, bufferContainer& host_buffers,
-                       hsaDeviceInterface& device) :
+hsaBarrier::hsaBarrier(Config& config, const std::string& unique_name,
+                       bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "", "") {
     command_type = gpuCommandType::BARRIER;
 }

@@ -1,22 +1,40 @@
 #include "bufferRecv.hpp"
 
-#include "bufferSend.hpp"
-#include "nt_memcpy.h"
-#include "prometheusMetrics.hpp"
-#include "util.h"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for Buffer, allocate_new_metadata_object, buffer_free, buff...
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "bufferSend.hpp"        // for bufferFrameHeader
+#include "metadata.h"            // for metadataPool
+#include "prometheusMetrics.hpp" // for Gauge, Metrics, Counter, MetricFamily
+#include "util.h"                // for string_tail
+#include "visUtil.hpp"           // for current_time
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <cstring>
-#include <errno.h>
-#include <exception>
-#include <functional>
-#include <memory.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <string>
-#include <sys/mman.h>
+#include <algorithm>       // for copy, max, copy_backward, find, equal
+#include <arpa/inet.h>     // for inet_ntop
+#include <assert.h>        // for assert
+#include <atomic>          // for atomic_bool
+#include <errno.h>         // for errno
+#include <event2/thread.h> // for evthread_use_pthreads
+#include <exception>       // for exception
+#include <functional>      // for _Bind_helper<>::type, bind, ref, function, placeholders
+#include <memory>          // for allocator_traits<>::value_type
+#include <netinet/in.h>    // for sockaddr_in, htons, in_addr, ntohs
+#include <pthread.h>       // for pthread_setaffinity_np, pthread_setname_np
+#include <queue>           // for queue
+#include <regex>           // for match_results<>::_Base_type
+#include <sched.h>         // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept>       // for runtime_error
+#include <stdlib.h>        // for free, malloc
+#include <string>          // for string, allocator, operator+
+#include <sys/select.h>    // for FD_SETSIZE
+#include <sys/socket.h>    // for AF_INET, accept, bind, listen, setsockopt, socket, sock...
+
+namespace kotekan {
+class connectionInstance;
+} // namespace kotekan
 
 using namespace std::placeholders;
 using std::mutex;
@@ -32,7 +50,7 @@ using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(bufferRecv);
 
-bufferRecv::bufferRecv(Config& config, const string& unique_name,
+bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferRecv::main_thread, this)),
     dropped_frame_counter(
@@ -101,7 +119,7 @@ void bufferRecv::increment_droped_frame_count() {
     dropped_frame_counter.inc();
 }
 
-void bufferRecv::set_transfer_time_seconds(const string& source_label, const double elapsed) {
+void bufferRecv::set_transfer_time_seconds(const std::string& source_label, const double elapsed) {
     std::lock_guard<mutex> lock(transfer_time_seconds_mutex);
     transfer_time_seconds.labels({source_label}).set(elapsed);
 }
@@ -258,7 +276,7 @@ void bufferRecv::main_thread() {
     // in the base loop thread, but this needs to be tested more.
     listener_event = event_new(base, listener, EV_READ | EV_PERSIST, bufferRecv::accept_connection,
                                (void*)&args);
-    event_add(listener_event, NULL);
+    event_add(listener_event, nullptr);
 
     // Create a timer to check for the exit condition
     struct event* timer_event;
@@ -296,8 +314,8 @@ int bufferRecv::get_next_frame() {
     return last_frame_id;
 }
 
-connInstance::connInstance(const string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
-                           const string& client_ip, int port, struct timeval read_timeout,
+connInstance::connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
+                           const std::string& client_ip, int port, struct timeval read_timeout,
                            bool drop_frames) :
     producer_name(producer_name),
     buf(buf),
@@ -450,7 +468,7 @@ void connInstance::internal_read_callback() {
                 // This call cannot be blocking because we checked that
                 // the frame is empty in get_next_frame()
                 uint8_t* frame = wait_for_empty_frame(buf, producer_name.c_str(), frame_id);
-                if (frame == NULL)
+                if (frame == nullptr)
                     return;
 
                 allocate_new_metadata_object(buf, frame_id);
@@ -461,7 +479,7 @@ void connInstance::internal_read_callback() {
                 // We could also swap the metadata,
                 // but this is more complex, and mucher lower overhead to just memcpy here.
                 void* metadata = get_metadata(buf, frame_id);
-                if (metadata != NULL)
+                if (metadata != nullptr)
                     memcpy(metadata, metadata_space, buf_frame_header.metadata_size);
 
                 mark_frame_full(buf, producer_name.c_str(), frame_id);

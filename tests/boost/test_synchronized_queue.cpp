@@ -1,9 +1,10 @@
 #define BOOST_TEST_MODULE "test_SynchronizedQueue"
 
-#include "SynchronizedQueue.hpp"
+#include "SynchronizedQueue.hpp" // for SynchronizedQueue
 
-#include <boost/test/included/unit_test.hpp>
-#include <thread>
+#include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_CHECK, BOOST_PP_BOOL_2
+#include <memory>                            // for operator==, unique_ptr
+#include <thread>                            // for thread
 
 /*
  * A basic check that you `get` what you `put` into the queue.

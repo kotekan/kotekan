@@ -6,20 +6,10 @@
 #ifndef TX_UTILS_HPP
 #define TX_UTILS_HPP
 
+#ifdef MAC_OSX
+#include <chrono> // for clockid_t
+#endif
 
-#include <assert.h>
-#include <chrono>
-#include <cmath>
-#include <cstdlib>
-#include <cstring>
-#include <fstream>
-#include <functional>
-#include <iostream>
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
-#include <unistd.h>
 
 /** @brief parse the gethostname() return string to the IP address of the node
  *
@@ -52,7 +42,7 @@ int get_vlan_from_ip(const char* ip_address);
 void osx_clock_abs_nanosleep(clockid_t clock, struct timespec ts);
 #define CLOCK_ABS_NANOSLEEP(clock, ts) osx_clock_abs_nanosleep(clock, ts)
 #else
-#define CLOCK_ABS_NANOSLEEP(clock, ts) clock_nanosleep(clock, TIMER_ABSTIME, &ts, NULL)
+#define CLOCK_ABS_NANOSLEEP(clock, ts) clock_nanosleep(clock, TIMER_ABSTIME, &ts, nullptr)
 #endif
 
 #endif

@@ -1,11 +1,16 @@
 #include "hsaBeamformOutput.hpp"
 
+#include "buffer.h"               // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_OUT
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaBeamformOutputData);
 
-hsaBeamformOutputData::hsaBeamformOutputData(Config& config, const string& unique_name,
+hsaBeamformOutputData::hsaBeamformOutputData(Config& config, const std::string& unique_name,
                                              bufferContainer& host_buffers,
                                              hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "hsaBeamformOutputData", "") {
@@ -30,13 +35,13 @@ int hsaBeamformOutputData::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
     uint8_t* frame =
         wait_for_empty_frame(output_buffer, unique_name.c_str(), output_buffer_precondition_id);
-    if (frame == NULL)
+    if (frame == nullptr)
         return -1;
     output_buffer_precondition_id = (output_buffer_precondition_id + 1) % output_buffer->num_frames;
 
     frame =
         wait_for_full_frame(network_buffer, unique_name.c_str(), network_buffer_precondition_id);
-    if (frame == NULL)
+    if (frame == nullptr)
         return -1;
     network_buffer_precondition_id =
         (network_buffer_precondition_id + 1) % network_buffer->num_frames;

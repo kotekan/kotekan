@@ -1,34 +1,41 @@
 #include "visCompression.hpp"
 
-#include "StageFactory.hpp"
-#include "datasetManager.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for Hash, operator<
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for wait_for_full_frame, allocate_new_metadata_object, mark...
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, state_id_t, datasetManager
+#include "datasetState.hpp"      // for stackState, prodState, inputState
+#include "kotekanLogging.hpp"    // for INFO, DEBUG, ERROR, FATAL_ERROR
+#include "prometheusMetrics.hpp" // for Gauge, Counter, Metrics, MetricFamily
+#include "visBuffer.hpp"         // for visFrameView, visField, visField::vis, visField::weight
+#include "visUtil.hpp"           // for rstack_ctype, prod_ctype, current_time, modulo, input_c...
 
-#include "fmt.hpp"
-#include "gsl-lite.hpp"
+#include "fmt.hpp"      // for format, fmt
+#include "gsl-lite.hpp" // for span
 
-#include <algorithm>
-#include <complex>
-#include <cstdlib>
-#include <cxxabi.h>
-#include <exception>
-#include <functional>
-#include <future>
-#include <inttypes.h>
-#include <iostream>
-#include <iterator>
-#include <memory>
-#include <numeric>
-#include <pthread.h>
-#include <regex>
-#include <sched.h>
-#include <signal.h>
-#include <stdexcept>
-#include <tuple>
-#include <vector>
+#include <algorithm>    // for copy, max, fill, copy_backward, equal, sort, transform
+#include <atomic>       // for atomic_bool
+#include <complex>      // for complex, norm
+#include <cstdlib>      // for abs
+#include <cxxabi.h>     // for __forced_unwind
+#include <deque>        // for deque
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, bind, function, _1, placeholders
+#include <future>       // for async, future
+#include <iterator>     // for begin, end, back_insert_iterator, back_inserter
+#include <math.h>       // for abs
+#include <memory>       // for allocator_traits<>::value_type
+#include <numeric>      // for iota
+#include <pthread.h>    // for pthread_setaffinity_np
+#include <regex>        // for match_results<>::_Base_type
+#include <sched.h>      // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept>    // for invalid_argument, out_of_range, runtime_error
+#include <system_error> // for system_error
+#include <tuple>        // for tuple, make_tuple, operator!=, operator<, tie
+#include <vector>       // for vector, __alloc_traits<>::value_type
+
 
 using namespace std::placeholders;
 
@@ -40,7 +47,7 @@ using kotekan::prometheus::Metrics;
 REGISTER_KOTEKAN_STAGE(baselineCompression);
 
 
-baselineCompression::baselineCompression(Config& config, const string& unique_name,
+baselineCompression::baselineCompression(Config& config, const std::string& unique_name,
                                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&baselineCompression::main_thread, this)),
@@ -48,16 +55,12 @@ baselineCompression::baselineCompression(Config& config, const string& unique_na
     out_buf(get_buffer("out_buf")),
     frame_id_in(in_buf),
     frame_id_out(out_buf),
-    frame_counter_global(0),
-    compression_residuals_metric(
-        Metrics::instance().add_gauge("kotekan_baselinecompression_residuals", unique_name,
-                                      {"freq_id", "dataset_id", "thread_id"})),
-    compression_time_seconds_metric(
-        Metrics::instance().add_gauge("kotekan_baselinecompression_time_seconds", unique_name,
-                                      {"freq_id", "dataset_id", "thread_id"})),
-    compression_frame_counter(
-        Metrics::instance().add_gauge("kotekan_baselinecompression_frame_counter", unique_name,
-                                      {"freq_id", "dataset_id", "thread_id"})) {
+    compression_residuals_metric(Metrics::instance().add_gauge(
+        "kotekan_baselinecompression_residuals", unique_name, {"freq_id"})),
+    compression_time_seconds_metric(Metrics::instance().add_gauge(
+        "kotekan_baselinecompression_time_seconds", unique_name, {"thread_id"})),
+    compression_frame_counter(Metrics::instance().add_counter(
+        "kotekan_baselinecompression_frame_total", unique_name, {"thread_id"})) {
 
     register_consumer(in_buf, unique_name.c_str());
     register_producer(out_buf, unique_name.c_str());
@@ -82,10 +85,6 @@ baselineCompression::baselineCompression(Config& config, const string& unique_na
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     if (num_threads == 0)
         throw std::invalid_argument("baselineCompression: num_threads has to be at least 1.");
-    if (in_buf->num_frames % num_threads != 0 || out_buf->num_frames % num_threads != 0)
-        throw std::invalid_argument("baselineCompression: both "
-                                    "the size of the input and output buffer"
-                                    "have to be multiples of num_threads.");
 }
 
 void baselineCompression::main_thread() {
@@ -118,7 +117,7 @@ void baselineCompression::change_dataset_state(dset_id_t input_ds_id) {
     auto fprint = dm.fingerprint(input_ds_id, {"inputs", "products"});
 
     if (state_map.count(fprint) == 0) {
-        // Get input & prod states synchronoulsy
+        // Get input & prod states synchronously
         auto istate = std::async(&datasetManager::dataset_state<inputState>, &dm, input_ds_id);
         auto pstate = std::async(&datasetManager::dataset_state<prodState>, &dm, input_ds_id);
 
@@ -154,14 +153,12 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
 
     int input_frame_id;
     int output_frame_id;
-    uint64_t frame_counter;
 
     // Get the current values of the shared frame IDs.
     {
         std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
         output_frame_id = frame_id_out++;
         input_frame_id = frame_id_in++;
-        frame_counter = frame_counter_global++;
     }
 
     // Wait for the input buffer to be filled with data
@@ -170,9 +167,6 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
         return;
     }
     auto input_frame = visFrameView(in_buf, input_frame_id);
-    // input_dset_id = input_frame.dataset_id;
-    // auto future_output_dset_id =
-    //     std::async(&baselineCompression::change_dataset_state, this, input_dset_id);
 
     while (!stop_thread) {
 
@@ -250,7 +244,7 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
             auto& p = prods[prod_ind];
             auto& s = stack_map[prod_ind];
 
-            // If the weight is zero, completey skip this iteration
+            // If the weight is zero, completely skip this iteration
             if (weight == 0 || flags[p.input_a] == 0 || flags[p.input_b] == 0)
                 continue;
 
@@ -301,27 +295,15 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
 
         // Update prometheus metrics
         double elapsed = current_time() - start_time;
-        compression_residuals_metric
-            .labels({std::to_string(output_frame.freq_id), output_frame.dataset_id.to_string(),
-                     std::to_string(thread_id)})
-            .set(residual);
-        compression_time_seconds_metric
-            .labels({std::to_string(output_frame.freq_id), output_frame.dataset_id.to_string(),
-                     std::to_string(thread_id)})
-            .set(elapsed);
-        // TODO: this feels like it should be a counter, but it's unclear
-        // how `frame_counter` increments exactly
-        compression_frame_counter
-            .labels({std::to_string(output_frame.freq_id), output_frame.dataset_id.to_string(),
-                     std::to_string(thread_id)})
-            .set(frame_counter);
+        compression_residuals_metric.labels({std::to_string(output_frame.freq_id)}).set(residual);
+        compression_time_seconds_metric.labels({std::to_string(thread_id)}).set(elapsed);
+        compression_frame_counter.labels({std::to_string(thread_id)}).inc();
 
         // Get the current values of the shared frame IDs and increment them.
         {
             std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
             output_frame_id = frame_id_out++;
             input_frame_id = frame_id_in++;
-            frame_counter = frame_counter_global++;
         }
 
         DEBUG("Compression time {:.4f}", elapsed);

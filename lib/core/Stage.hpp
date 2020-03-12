@@ -1,16 +1,19 @@
 #ifndef KOTEKAN_STAGE_H
 #define KOTEKAN_STAGE_H
 
-#include "Config.hpp"
-#include "StageFactory.hpp"
-#include "bufferContainer.hpp"
-#include "kotekanLogging.hpp"
+#include "Config.hpp"          // for Config
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for kotekanLogging
 
-#include <atomic>
-#include <functional>
-#include <mutex>
-#include <thread>
-#include <vector>
+#include <atomic>     // for atomic_bool
+#include <functional> // for function
+#include <mutex>      // for mutex
+#include <stdint.h>   // for uint32_t
+#include <string>     // for string
+#include <thread>     // for thread
+#include <vector>     // for vector
+
+
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
 
@@ -21,7 +24,7 @@ namespace kotekan {
 
 class Stage : public kotekanLogging {
 public:
-    Stage(Config& config, const string& unique_name, bufferContainer& buffer_container,
+    Stage(Config& config, const std::string& unique_name, bufferContainer& buffer_container,
           std::function<void(const Stage&)> main_thread_ref);
     virtual ~Stage();
     virtual void start();
@@ -94,7 +97,7 @@ private:
 /// Helper defined to reduce the boiler plate needed to crate the
 /// standarized constructor in sub classes
 #define STAGE_CONSTRUCTOR(T)                                                                       \
-    T::T(Config& config, const string& unique_name, bufferContainer& buffer_container) :           \
+    T::T(Config& config, const std::string& unique_name, bufferContainer& buffer_container) :      \
         Stage(config, unique_name, buffer_container, std::bind(&T::main_thread, this))
 
 #endif /* KOTEKAN_STAGE_H */

@@ -1,24 +1,41 @@
 #include "applyGains.hpp"
 
-#include "Stage.hpp"
-#include "configUpdater.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
-#include "visFileH5.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for mark_frame_empty, allocate_new_metadata_object
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "configUpdater.hpp"     // for configUpdater
+#include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
+#include "datasetState.hpp"      // for gainState, freqState, inputState
+#include "kotekanLogging.hpp"    // for WARN, FATAL_ERROR, INFO
+#include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
+#include "visBuffer.hpp"         // for visFrameView, visField, visField::vis, visField...
+#include "visFileH5.hpp"         // IWYU pragma: keep
+#include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double, fra...
 
-#include "fmt.hpp"
+#include "fmt.hpp"      // for format, fmt
+#include "gsl-lite.hpp" // for span
 
-#include <algorithm>
-#include <csignal>
-#include <exception>
-#include <highfive/H5DataSet.hpp>
-#include <highfive/H5DataSpace.hpp>
-#include <highfive/H5File.hpp>
-#include <sys/stat.h>
+#include <algorithm>                 // for copy, max, copy_backward
+#include <cmath>                     // for abs, pow
+#include <complex>                   // for operator*, operator+, complex, operator""if
+#include <cstdint>                   // for uint64_t
+#include <exception>                 // for exception
+#include <functional>                // for _Bind_helper<>::type, _Placeholder, bind, _1
+#include <highfive/H5DataSet.hpp>    // for DataSet, DataSet::getSpace
+#include <highfive/H5DataSpace.hpp>  // for DataSpace, DataSpace::getDimensions
+#include <highfive/H5File.hpp>       // for File, NodeTraits::getDataSet, File::File, File:...
+#include <highfive/H5Object.hpp>     // for HighFive
+#include <highfive/H5Selection.hpp>  // for SliceTraits::read
+#include <highfive/bits/H5Utils.hpp> // for type_of_array<>::type
+#include <memory>                    // for allocator_traits<>::value_type
+#include <pthread.h>                 // for pthread_setaffinity_np
+#include <regex>                     // for match_results<>::_Base_type
+#include <sched.h>                   // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept>                 // for invalid_argument, out_of_range, runtime_error
+#include <sys/stat.h>                // for stat
+#include <tuple>                     // for get
+
 
 using namespace HighFive;
 using namespace std::placeholders;
@@ -33,7 +50,7 @@ using kotekan::prometheus::Metrics;
 REGISTER_KOTEKAN_STAGE(applyGains);
 
 
-applyGains::applyGains(Config& config, const string& unique_name,
+applyGains::applyGains(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&applyGains::main_thread, this)),
     in_buf(get_buffer("in_buf")),
@@ -67,10 +84,6 @@ applyGains::applyGains(Config& config, const string& unique_name,
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     if (num_threads == 0)
         throw std::invalid_argument("applyGains: num_threads has to be at least 1.");
-    if (in_buf->num_frames % num_threads != 0 || out_buf->num_frames % num_threads != 0)
-        throw std::invalid_argument("applyGains: both the size of the input "
-                                    "and output buffer have to be multiples "
-                                    "of num_threads.");
 
     // FIFO for gains and weights updates
     gains_fifo = updateQueue<GainUpdate>(num_kept_updates);

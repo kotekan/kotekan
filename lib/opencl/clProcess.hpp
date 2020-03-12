@@ -11,7 +11,7 @@
 
 class clProcess final : public gpuProcess {
 public:
-    clProcess(kotekan::Config& config, const string& unique_name,
+    clProcess(kotekan::Config& config, const std::string& unique_name,
               kotekan::bufferContainer& buffer_container);
     virtual ~clProcess();
 

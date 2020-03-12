@@ -4,7 +4,7 @@
 
 include(FindPackageHandleStandardArgs)
 
-set(LIBAIRSPY_SEARCH_PATHS /usr/include /usr/local/include)
+set(LIBAIRSPY_SEARCH_PATHS /usr/include /usr/local/include /usr/local/Cellar)
 
 find_path(LIBAIRSPY_INCLUDE_DIR NAMES airspy.h
           PATHS ${LIBAIRSPY_SEARCH_PATHS}

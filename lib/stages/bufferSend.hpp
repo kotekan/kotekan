@@ -6,23 +6,17 @@
 #ifndef BUFFER_SEND_H
 #define BUFFER_SEND_H
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "util.h"
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "prometheusMetrics.hpp" // for Counter
 
-#include <arpa/inet.h>
-#include <atomic>
-#include <condition_variable>
-#include <mutex>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <string.h>
-#include <string>
-#include <sys/socket.h>
-#include <thread>
-#include <unistd.h>
+#include <atomic>             // for atomic
+#include <condition_variable> // for condition_variable
+#include <mutex>              // for mutex
+#include <netinet/in.h>       // for sockaddr_in
+#include <stdint.h>           // for uint32_t
+#include <string>             // for string
 
 /**
  * @struct bufferFrameHeader
@@ -72,7 +66,7 @@ struct bufferFrameHeader {
 class bufferSend : public kotekan::Stage {
 public:
     /// Standard constructor
-    bufferSend(kotekan::Config& config, const string& unique_name,
+    bufferSend(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
     /// Destructor

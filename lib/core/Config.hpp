@@ -6,25 +6,23 @@
 #ifndef CONFIG_HPP
 #define CONFIG_HPP
 
-#include "errors.h"
-#include "kotekanLogging.hpp"
+#include "kotekanLogging.hpp" // for ERROR_NON_OO
 
-#include "fmt.hpp"
-#include "json.hpp"
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for json
 
-#include <complex>
-#include <cxxabi.h>
-#include <exception>
-#include <list>
-#include <regex>
-#include <string>
-#include <type_traits>
-#include <vector>
+#include <complex>     // for complex  // IWYU pragma: keep
+#include <cxxabi.h>    // for __cxa_demangle
+#include <exception>   // for exception
+#include <list>        // for list
+#include <regex>       // for regex, cmatch, regex_match, sregex_token_iterator
+#include <stdexcept>   // for runtime_error
+#include <stdint.h>    // for int32_t
+#include <string>      // for string, operator==, allocator, stod
+#include <type_traits> // for is_arithmetic, enable_if, is_same
+#include <typeinfo>    // for type_info
+#include <vector>      // for vector
 
-// Name space includes.
-using json = nlohmann::json;
-using std::string;
-using std::vector;
 
 namespace kotekan {
 
@@ -56,8 +54,8 @@ public:
      * @return  The requested value.
      */
     template<class T, typename std::enable_if<std::is_arithmetic<T>::value, T>::type* = nullptr>
-    T get(const string& base_path, const string& name) {
-        json json_value = get_value(base_path, name);
+    T get(const std::string& base_path, const std::string& name) const {
+        nlohmann::json json_value = get_value(base_path, name);
         T value;
         try {
             // If the expected type is a number and the value
@@ -81,7 +79,7 @@ public:
             int status;
             throw std::runtime_error(fmt::format(
                 fmt("The value {:s} in path {:s} is not of type '{:s}' or doesn't exist."), name,
-                base_path, abi::__cxa_demangle(typeid(T).name(), NULL, NULL, &status)));
+                base_path, abi::__cxa_demangle(typeid(T).name(), nullptr, nullptr, &status)));
         }
 
         return value;
@@ -94,8 +92,8 @@ public:
      * @return  The requested value.
      */
     template<class T, typename std::enable_if<!std::is_arithmetic<T>::value, T>::type* = nullptr>
-    T get(const string& base_path, const string& name) {
-        json json_value = get_value(base_path, name);
+    T get(const std::string& base_path, const std::string& name) const {
+        nlohmann::json json_value = get_value(base_path, name);
         T value;
         try {
             value = json_value.get<T>();
@@ -103,7 +101,7 @@ public:
             int status;
             throw std::runtime_error(fmt::format(
                 fmt("The value {:s} in path {:s} is not of type '{:s}' or doesn't exist"), name,
-                base_path, abi::__cxa_demangle(typeid(T).name(), NULL, NULL, &status)));
+                base_path, abi::__cxa_demangle(typeid(T).name(), nullptr, nullptr, &status)));
         }
 
         return value;
@@ -120,7 +118,7 @@ public:
      * @return  The value requested or the default value.
      */
     template<typename T>
-    T get_default(const string& base_path, const string& name, T default_value);
+    T get_default(const std::string& base_path, const std::string& name, T default_value) const;
 
     /**
      * @brief Checks if a value exists at the given location "base_path" + "name"
@@ -129,24 +127,24 @@ public:
      * @param name The name of the value (the key)
      * @return true if the key exists in the path, and false otherwise.
      */
-    bool exists(const string& base_path, const string& name);
+    bool exists(const std::string& base_path, const std::string& name) const;
 
     /**
      * @brief Reads the config from a JSON file.
      *
      * @param file_name The file containing the JSON config.
      */
-    void parse_file(const string& file_name);
+    void parse_file(const std::string& file_name);
 
     /**
      * @brief Updates the config with a new JSON string
      *
      * @param updates Json object with values to be replaced.
      */
-    void update_config(json updates);
+    void update_config(nlohmann::json updates);
 
     // This function should be moved, it doesn't really belong here...
-    int32_t num_links_per_gpu(const int32_t& gpu_id);
+    int32_t num_links_per_gpu(const int32_t& gpu_id) const;
 
     /**
      * @brief Finds the value with key "name" starts looking at the
@@ -161,7 +159,7 @@ public:
      *
      * @return              The value that was found.
      **/
-    json get_value(const string& base_pointer, const string& name);
+    nlohmann::json get_value(const std::string& base_pointer, const std::string& name) const;
 
     /**
      * @brief Finds all values with key "name". Searches the whole config tree.
@@ -174,7 +172,7 @@ public:
      *
      * @return      The values found or an empty list if nothing was found.
      **/
-    std::vector<json> get_value(const std::string& name) const;
+    std::vector<nlohmann::json> get_value(const std::string& name) const;
 
     /**
      * @brief Updates a config value at an existing config option
@@ -196,7 +194,7 @@ public:
      * @param value The value to assign to the json pointer formed by base_path/name
      */
     template<typename T>
-    void update_value(const string& base_path, const string& name, const T& value);
+    void update_value(const std::string& base_path, const std::string& name, const T& value);
 
 #ifdef WITH_SSL
     /**
@@ -209,7 +207,7 @@ public:
      *
      * @return The MD5sum as 32 char hex std::string
      */
-    std::string get_md5sum();
+    std::string get_md5sum() const;
 #endif
 
     /**
@@ -217,16 +215,16 @@ public:
      * @warning This shouldn't be called outside of the core framework
      * @return A reference to the full JSON
      */
-    json& get_full_config_json();
+    const nlohmann::json& get_full_config_json() const;
 
     /**
      * @brief Dumps the config to INFO in JSON format.
      */
-    void dump_config();
+    void dump_config() const;
 
 private:
     /// Internal json object
-    json _json;
+    nlohmann::json _json;
 
     /**
      * @brief Finds all values with key "name". Searches the given json.
@@ -235,8 +233,8 @@ private:
      * @param name      The name of the property i.e. num_frequencies
      * @param results   Vector found values are added to.
      **/
-    void get_value_recursive(const json& j, const std::string& name,
-                             std::vector<json>& results) const;
+    void get_value_recursive(const nlohmann::json& j, const std::string& name,
+                             std::vector<nlohmann::json>& results) const;
 
     /**
      * @brief Helper class, gets an arithmetic expression from the config.
@@ -254,14 +252,14 @@ private:
     class configEval {
 
     public:
-        configEval(Config& _config, const std::string& base_path, const std::string& name);
+        configEval(const Config& _config, const std::string& base_path, const std::string& name);
 
         ~configEval();
 
         Type compute_result();
 
     private:
-        Config& config;
+        const Config& config;
         std::string unique_name;
 
         bool isNumber();
@@ -279,9 +277,9 @@ private:
 };
 
 template<typename T>
-void Config::update_value(const string& base_path, const string& name, const T& value) {
-    string update_path = fmt::format(fmt("{:s}/{:s}"), base_path, name);
-    json::json_pointer path(update_path);
+void Config::update_value(const std::string& base_path, const std::string& name, const T& value) {
+    std::string update_path = fmt::format(fmt("{:s}/{:s}"), base_path, name);
+    nlohmann::json::json_pointer path(update_path);
 
     try {
         _json.at(path) = value;
@@ -292,7 +290,8 @@ void Config::update_value(const string& base_path, const string& name, const T& 
 }
 
 template<typename T>
-T Config::get_default(const string& base_path, const string& name, T default_value) {
+T Config::get_default(const std::string& base_path, const std::string& name,
+                      T default_value) const {
     try {
         T value = get<T>(base_path, name);
         return value;
@@ -302,12 +301,12 @@ T Config::get_default(const string& base_path, const string& name, T default_val
 }
 
 template<class Type>
-Config::configEval<Type>::configEval(Config& _config, const std::string& base_path,
+Config::configEval<Type>::configEval(const Config& _config, const std::string& base_path,
                                      const std::string& name) :
     config(_config),
     unique_name(base_path) {
 
-    json value = config.get_value(base_path, name);
+    nlohmann::json value = config.get_value(base_path, name);
 
     if (!(value.is_string() || value.is_number())) {
         throw std::runtime_error(fmt::format(
@@ -435,23 +434,26 @@ Type Config::configEval<Type>::factor() {
 // Tell the compiler that all those are instantiated in Config.cpp,
 // so that they are not built inline everywhere they are used
 // (would add >60MB to the binary).
-extern template float Config::get(const string& base_path, const string& name);
-extern template double Config::get(const string& base_path, const string& name);
-extern template uint32_t Config::get(const string& base_path, const string& name);
-extern template uint64_t Config::get(const string& base_path, const string& name);
-extern template int32_t Config::get(const string& base_path, const string& name);
-extern template int16_t Config::get(const string& base_path, const string& name);
-extern template uint16_t Config::get(const string& base_path, const string& name);
-extern template bool Config::get(const string& base_path, const string& name);
-extern template std::string Config::get(const string& base_path, const string& name);
-extern template std::vector<int32_t> Config::get(const string& base_path, const string& name);
-extern template std::vector<uint32_t> Config::get(const string& base_path, const string& name);
-extern template std::vector<float> Config::get(const string& base_path, const string& name);
-extern template std::vector<std::string> Config::get(const string& base_path, const string& name);
-extern template std::vector<nlohmann::json> Config::get(const string& base_path,
-                                                        const string& name);
-extern template std::vector<std::complex<float>> Config::get(const string& base_path,
-                                                             const string& name);
+extern template float Config::get(const std::string& base_path, const std::string& name) const;
+extern template double Config::get(const std::string& base_path, const std::string& name) const;
+extern template uint32_t Config::get(const std::string& base_path, const std::string& name) const;
+extern template uint64_t Config::get(const std::string& base_path, const std::string& name) const;
+extern template int32_t Config::get(const std::string& base_path, const std::string& name) const;
+extern template int16_t Config::get(const std::string& base_path, const std::string& name) const;
+extern template uint16_t Config::get(const std::string& base_path, const std::string& name) const;
+extern template bool Config::get(const std::string& base_path, const std::string& name) const;
+extern template std::string Config::get(const std::string& base_path,
+                                        const std::string& name) const;
+extern template std::vector<int32_t> Config::get(const std::string& base_path,
+                                                 const std::string& name) const;
+extern template std::vector<uint32_t> Config::get(const std::string& base_path,
+                                                  const std::string& name) const;
+extern template std::vector<float> Config::get(const std::string& base_path,
+                                               const std::string& name) const;
+extern template std::vector<std::string> Config::get(const std::string& base_path,
+                                                     const std::string& name) const;
+extern template std::vector<nlohmann::json> Config::get(const std::string& base_path,
+                                                        const std::string& name) const;
 
 } // namespace kotekan
 

@@ -1,6 +1,9 @@
 #include "datasetState.hpp"
 
 
+using nlohmann::json;
+
+
 state_uptr datasetState::from_json(const json& data) {
 
     // Fetch the required properties from the json

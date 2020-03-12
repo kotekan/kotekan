@@ -6,10 +6,16 @@
 #ifndef EIGENVIS_HPP
 #define EIGENVIS_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "datasetManager.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for dset_id_t, state_id_t
+#include "visUtil.hpp"         // for movingAverage
+
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class eigenVis
@@ -56,7 +62,7 @@
 class eigenVis : public kotekan::Stage {
 
 public:
-    eigenVis(kotekan::Config& config, const string& unique_name,
+    eigenVis(kotekan::Config& config, const std::string& unique_name,
              kotekan::bufferContainer& buffer_container);
     virtual ~eigenVis() = default;
     void main_thread() override;

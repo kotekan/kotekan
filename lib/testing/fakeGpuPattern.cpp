@@ -1,8 +1,19 @@
 #include "fakeGpuPattern.hpp"
 
-#include "visUtil.hpp"
+#include "Config.hpp"              // for Config
+#include "chimeMetadata.h"         // for chimeMetadata
+#include "fpga_header_functions.h" // for freq_from_bin
+#include "visUtil.hpp"             // for prod_index
 
-#include <random>
+#include "gsl-lite.hpp" // for span, span<>::iterator
+
+#include <algorithm> // for fill
+#include <cmath>     // for lroundf, pow
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error
+#include <time.h>    // for timespec  // IWYU pragma: keep
+#include <vector>    // for vector
 
 // Register test patterns
 REGISTER_FAKE_GPU_PATTERN(BlockGpuPattern, "block");
@@ -136,7 +147,10 @@ void AccumulateGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadat
 
 
 GaussianGpuPattern::GaussianGpuPattern(kotekan::Config& config, const std::string& path) :
-    FakeGpuPattern(config, path) {}
+    FakeGpuPattern(config, path),
+    rd(),
+    gen(rd()),
+    gaussian(0, 1) {}
 
 
 void GaussianGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata, int frame_number,
@@ -146,10 +160,6 @@ void GaussianGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata,
     (void)frame_number;
     (void)freq_id;
 
-    std::random_device rd{};
-    std::mt19937 gen{rd()};
-    std::normal_distribution<float> gaussian{0, 1};
-
     float f_auto = pow(_samples_per_data_set, 0.5);
     float f_cross = pow(_samples_per_data_set / 2, 0.5);
 
@@ -158,11 +168,11 @@ void GaussianGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata,
             uint32_t bi = prod_index(i, j, _block_size, _num_elements);
 
             if (i == j) {
-                data[2 * bi + 1] = _samples_per_data_set + (int32_t)(f_auto * gaussian(gen));
+                data[2 * bi + 1] = (int32_t)lroundf(_samples_per_data_set + f_auto * gaussian(gen));
                 data[2 * bi] = 0;
             } else {
-                data[2 * bi + 1] = (int32_t)(f_cross * gaussian(gen));
-                data[2 * bi] = (int32_t)(f_cross * gaussian(gen));
+                data[2 * bi + 1] = (int32_t)lroundf(f_cross * gaussian(gen));
+                data[2 * bi] = (int32_t)lroundf(f_cross * gaussian(gen));
             }
         }
     }

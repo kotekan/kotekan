@@ -7,7 +7,15 @@
 #ifndef BUFFER_BAD_INPUT_DATA
 #define BUFFER_BAD_INPUT_DATA
 
-#include "Stage.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
+
+#include "json.hpp" // for json
+
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class bufferBadInputs
@@ -30,7 +38,7 @@
 class bufferBadInputs : public kotekan::Stage {
 public:
     /// Constructor.
-    bufferBadInputs(kotekan::Config& config_, const string& unique_name,
+    bufferBadInputs(kotekan::Config& config_, const std::string& unique_name,
                     kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~bufferBadInputs();
@@ -42,7 +50,6 @@ public:
     bool update_bad_inputs_callback(nlohmann::json& json);
 
 private:
-    struct Buffer* in_buf;
     struct Buffer* out_buf;
 
     /// Stage variables
@@ -55,10 +62,6 @@ private:
 
     /// The size of the bad input mask.
     uint32_t input_mask_len;
-
-    /// The host memory region which holds the input mask
-    /// Note 1 means the element is good, 0 means flagged.
-    uint8_t* host_mask;
 
     /// The mapping from correlator to cylinder element indexing.
     std::vector<uint32_t> input_remap;

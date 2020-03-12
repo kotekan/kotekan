@@ -7,14 +7,11 @@
 #define VISDEBUG_HPP
 
 #include "Config.hpp"
-#include "Stage.hpp"
+#include "Stage.hpp" // for Stage
 #include "buffer.h"
 #include "bufferContainer.hpp"
 
-#include <cstdint>
-#include <map>
-#include <string>
-#include <utility>
+#include <string> // for string
 
 
 /**
@@ -32,8 +29,10 @@
  *                           Default is every 1000 frames.
  *
  * @par Metrics
- * @metric kotekan_visdebug_frame_total
- *         The total frames seen per frequency and dataset (given as labelled).
+ * @metric kotekan_visdebug_frames_by_freq_total
+ *         The total frames seen per frequency.
+ * @metric kotekan_visdebug_frames_by_dataset_total
+ *         The total frames seen per dataset.
  *
  * @author Richard Shaw
  */

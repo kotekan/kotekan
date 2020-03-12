@@ -1,20 +1,32 @@
 /*****************************************
 @file
 @brief Receive and set flags for the visibility data.
-- receiveFlags : public kotekan::Stage
+- ReceiveFlags : public kotekan::Stage
 *****************************************/
 #ifndef RECEIVEFLAGS_H
 #define RECEIVEFLAGS_H
 
-#include "Stage.hpp"
-#include "datasetManager.hpp"
-#include "prometheusMetrics.hpp"
-#include "updateQueue.hpp"
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "dataset.hpp"           // for dset_id_t, state_id_t
+#include "prometheusMetrics.hpp" // for Counter, Gauge
+#include "updateQueue.hpp"       // for updateQueue
+#include "visBuffer.hpp"         // for visFrameView
 
-#include <mutex>
+#include "json.hpp" // for json
+
+#include <map>      // for map
+#include <mutex>    // for mutex
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <time.h>   // for size_t, timespec
+#include <utility>  // for pair
+#include <vector>   // for vector
 
 /**
- * @class receiveFlags
+ * @class ReceiveFlags
  * @brief Receives input flags and adds them to the output buffer.
  *
  * This stage registeres as a subscriber to an updatable config block. The
@@ -50,10 +62,10 @@
  *
  * @author Rick Nitsche
  */
-class receiveFlags : public kotekan::Stage {
+class ReceiveFlags : public kotekan::Stage {
 public:
     /// Constructor
-    receiveFlags(kotekan::Config& config, const string& unique_name,
+    ReceiveFlags(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
 
     /// Main loop, saves flags in the frames
@@ -63,6 +75,10 @@ public:
     bool flags_callback(nlohmann::json& json);
 
 private:
+    /// Copy the freshest flags into the frame or return false if no valid update for
+    /// this frame is available
+    bool copy_flags_into_frame(const visFrameView& frame_out);
+
     // this is faster than std::queue/deque
     /// The bad_input chan_id's and when to start applying them in a FIFO
     /// (len set by config)
@@ -84,6 +100,12 @@ private:
 
     /// Timestamp of the current frame
     timespec ts_frame = {0, 0};
+
+    /// Number of frames received late
+    kotekan::prometheus::Counter& receiveflags_late_frame_counter;
+
+    /// Update ages
+    kotekan::prometheus::Gauge& receiveflags_update_age_metric;
 
     /// Number of updates received too late
     kotekan::prometheus::Counter& late_updates_counter;

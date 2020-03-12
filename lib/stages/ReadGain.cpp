@@ -1,14 +1,26 @@
 #include "ReadGain.hpp"
 
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "chimeMetadata.h"
-#include "configUpdater.hpp"
-#include "errors.h"
-#include "visUtil.hpp"
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for mark_frame_full, register_producer, wait_for_empty_frame
+#include "chimeMetadata.h"         // for get_stream_id_t
+#include "configUpdater.hpp"       // for configUpdater
+#include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
+#include "kotekanLogging.hpp"      // for WARN, INFO, DEBUG
+#include "restServer.hpp"          // for HTTP_RESPONSE, connectionInstance, restServer
+#include "visUtil.hpp"             // for current_time
 
-#include <chrono>
-#include <functional>
+#include <algorithm>   // for copy
+#include <atomic>      // for atomic_bool
+#include <chrono>      // for seconds
+#include <cstdint>     // for int32_t
+#include <exception>   // for exception
+#include <functional>  // for _Bind_helper<>::type, bind, _Placeholder, _1, function
+#include <memory>      // for allocator_traits<>::value_type
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error
+#include <stdio.h>     // for fclose, fopen, fread, snprintf, FILE
+#include <sys/types.h> // for uint
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -64,13 +76,14 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     using namespace std::placeholders;
 
     // listen for gain updates FRB
-    string gainfrb = config.get_default<std::string>(unique_name, "updatable_config/gain_frb", "");
+    std::string gainfrb =
+        config.get_default<std::string>(unique_name, "updatable_config/gain_frb", "");
     if (gainfrb.length() > 0)
         configUpdater::instance().subscribe(
             gainfrb, std::bind(&ReadGain::update_gains_frb_callback, this, _1));
 
     // listen for gain updates PSR
-    string gainpsr = config.get<std::string>(unique_name, "updatable_config/gain_psr");
+    std::string gainpsr = config.get<std::string>(unique_name, "updatable_config/gain_psr");
     if (gainpsr.length() > 0)
         configUpdater::instance().subscribe(
             gainpsr, std::bind(&ReadGain::update_gains_psr_callback, this, _1));
@@ -102,12 +115,13 @@ bool ReadGain::update_gains_psr_callback(nlohmann::json& json) {
         return true;
     }
     try {
-        _gain_dir_psr = json.at("pulsar_gain_dir").get<std::vector<string>>();
-        INFO("[PSR] Updating gains from {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s}",
-             _gain_dir_psr[0].c_str(), _gain_dir_psr[1].c_str(), _gain_dir_psr[2].c_str(),
-             _gain_dir_psr[3].c_str(), _gain_dir_psr[4].c_str(), _gain_dir_psr[5].c_str(),
-             _gain_dir_psr[6].c_str(), _gain_dir_psr[7].c_str(), _gain_dir_psr[8].c_str(),
-             _gain_dir_psr[9].c_str());
+        _gain_dir_psr = json.at("pulsar_gain_dir").get<std::vector<std::string>>();
+        std::string output_msg = "[PSR] Updating gains from ";
+        for (int i = 0; i < _num_beams; i++) {
+            output_msg += _gain_dir_psr[i];
+            output_msg += " ";
+        }
+        INFO("{:s}", output_msg);
     } catch (std::exception const& e) {
         WARN("[PSR] Fail to read gain_dir {:s}", e.what());
         return false;

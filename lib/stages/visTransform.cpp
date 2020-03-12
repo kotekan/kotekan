@@ -1,29 +1,30 @@
 #include "visTransform.hpp"
 
-#include "StageFactory.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "chimeMetadata.h"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "metadata.h"
-#include "version.h"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_empty
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.h"     // for chimeMetadata
+#include "datasetManager.hpp"  // for state_id_t, datasetManager, dset_id_t
+#include "datasetState.hpp"    // for freqState, inputState, metadataState, prodState
+#include "kotekanLogging.hpp"  // for INFO
+#include "metadata.h"          // for metadataContainer
+#include "version.h"           // for get_git_commit_hash
+#include "visBuffer.hpp"       // for visFrameView
+#include "visUtil.hpp"         // for prod_ctype, input_ctype, freq_ctype, copy_vis_triangle
 
-#include "gsl-lite.hpp"
+#include "gsl-lite.hpp" // for span<>::iterator, span
 
-#include <algorithm>
-#include <atomic>
-#include <cstdint>
-#include <exception>
-#include <functional>
-#include <iterator>
-#include <memory>
-#include <numeric>
-#include <regex>
-#include <stdexcept>
-#include <tuple>
+#include <algorithm>  // for fill, max, transform
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for uint32_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <iterator>   // for back_insert_iterator, begin, end, back_inserter
+#include <numeric>    // for iota
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <tuple>      // for get, tie, tuple
 
 
 using kotekan::bufferContainer;

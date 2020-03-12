@@ -7,26 +7,28 @@
 #ifndef VIS_WRITER_HPP
 #define VIS_WRITER_HPP
 
-#include "Config.hpp"
-#include "Hash.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "restServer.hpp"
-#include "visFile.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, fingerprint_t
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily
+#include "restServer.hpp"        // for connectionInstance
+#include "visFile.hpp"           // for visFileBundle, visCalFileBundle
+#include "visUtil.hpp"           // for movingAverage
 
-#include <cstdint>
-#include <errno.h>
-#include <future>
-#include <map>
-#include <memory>
-#include <mutex>
-#include <stdexcept>
-#include <stdio.h>
-#include <string>
-#include <utility>
+#include <cstdint>   // for uint32_t
+#include <errno.h>   // for ENOENT, errno
+#include <future>    // for future
+#include <map>       // for map
+#include <memory>    // for shared_ptr, unique_ptr
+#include <mutex>     // for mutex
+#include <set>       // for set
+#include <stdexcept> // for runtime_error
+#include <stdio.h>   // for size_t, remove
+#include <string>    // for string, operator+
+#include <unistd.h>  // for access, F_OK
+#include <utility>   // for pair
 
 
 /**
@@ -88,14 +90,16 @@
  * @metric kotekan_viswriter_write_time_seconds
  *         The write time of the HDF5 writer. An exponential moving average over ~10
  *         samples.
- * @metric kotekan_viswriter_dropped_frame_total
- *         The number of frames dropped while attempting to write.
+ * @metric kotekan_viswriter_late_frame_total
+ *         The number of frames dropped while attempting to write as they are too late.
+ * @metric kotekan_viswriter_bad_dataset_frame_total
+ *         The number of frames dropped as they belong to a bad dataset.
  *
  * @author Richard Shaw
  */
 class visWriter : public kotekan::Stage {
 public:
-    visWriter(kotekan::Config& config, const string& unique_name,
+    visWriter(kotekan::Config& config, const std::string& unique_name,
               kotekan::bufferContainer& buffer_container);
 
     void main_thread() override;
@@ -130,16 +134,6 @@ protected:
      **/
     bool check_git_version(dset_id_t ds_id);
 
-    /**
-     * Report a dropped frame to prometheus.
-     *
-     * @param  ds_id    Dataset ID of frame.
-     * @param  freq_id  Freq ID of frame.
-     * @param  reason   Reason frame was dropped.
-     **/
-    void report_dropped_frame(dset_id_t ds_id, uint32_t freq_id, droppedType reason);
-
-
     // Parameters saved from the config files
     std::string root_path;
     std::string instrument_name;
@@ -169,9 +163,6 @@ protected:
 
         /// The current set of files we are writing
         std::unique_ptr<visFileBundle> file_bundle;
-
-        /// Dropped frame counts per freq ID
-        std::map<std::pair<uint32_t, droppedType>, uint64_t> dropped_frame_count;
 
         /// Frequency IDs that we are expecting
         std::map<uint32_t, uint32_t> freq_id_map;
@@ -208,8 +199,8 @@ private:
     /// Keep track of the average write time
     movingAverage write_time;
 
-    /// TODO: document
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& dropped_frame_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& late_frame_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& bad_dataset_frame_counter;
 };
 
 /**
@@ -271,7 +262,7 @@ private:
  **/
 class visCalWriter : public visWriter {
 public:
-    visCalWriter(kotekan::Config& config, const string& unique_name,
+    visCalWriter(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
 
     ~visCalWriter();
@@ -295,6 +286,10 @@ protected:
 
 
 inline void check_remove(std::string fname) {
+    // Check if we need to remove anything
+    if (access(fname.c_str(), F_OK) != 0)
+        return;
+    // Remove
     if (remove(fname.c_str()) != 0) {
         if (errno != ENOENT)
             throw std::runtime_error("Could not remove file " + fname);

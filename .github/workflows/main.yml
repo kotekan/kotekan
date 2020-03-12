@@ -1,0 +1,26 @@
+name: include-what-you-use
+on:
+  pull_request:
+    branches:
+    - develop
+    - master
+  push:
+    branches:
+    - develop
+    - master
+
+jobs:
+  build:
+   runs-on: ubuntu-latest
+
+   steps:
+   - uses: actions/checkout@v1
+   - name: Build docker image
+     run: |
+       docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+       docker pull --disable-content-trust docker.pkg.github.com/kotekan/kotekan/kotekan:latest
+       docker build --cache-from=rocm/dev-ubuntu-18.04,docker.pkg.github.com/kotekan/kotekan/kotekan:latest -f tools/iwyu/docker/Dockerfile -t docker.pkg.github.com/kotekan/kotekan/kotekan:latest .
+       docker push docker.pkg.github.com/kotekan/kotekan/kotekan:latest
+   - name: Run iwyu
+     run: |
+       docker run --rm docker.pkg.github.com/kotekan/kotekan/kotekan:latest /code/tools/iwyu/docker/iwyu.sh

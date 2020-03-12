@@ -34,10 +34,10 @@ void cudaDeviceInterface::free_gpu_memory(void* ptr) {
 }
 
 
-void* cudaDeviceInterface::get_gpu_memory(const string& name, const uint32_t len) {
+void* cudaDeviceInterface::get_gpu_memory(const std::string& name, const uint32_t len) {
     return gpuDeviceInterface::get_gpu_memory(name, len);
 }
-void* cudaDeviceInterface::get_gpu_memory_array(const string& name, const uint32_t index,
+void* cudaDeviceInterface::get_gpu_memory_array(const std::string& name, const uint32_t index,
                                                 const uint32_t len) {
     return gpuDeviceInterface::get_gpu_memory_array(name, index, len);
 }

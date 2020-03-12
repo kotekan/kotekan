@@ -1,8 +1,11 @@
 #define BOOST_TEST_MODULE "test_updateQueue"
 
-#include "prometheusMetrics.hpp"
+#include "prometheusMetrics.hpp" // for Metrics, MetricFamily, Counter, Gauge
 
-#include <boost/test/included/unit_test.hpp>
+#include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_CHECK, BOOST_PP_BOOL_2
+#include <iostream>                          // for cout, ostream
+#include <string>                            // for string, allocator, basic_string, operator==
+
 using kotekan::prometheus::Metrics;
 
 

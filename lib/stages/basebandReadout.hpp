@@ -7,20 +7,19 @@
 #ifndef BASEBAND_READOUT_H
 #define BASEBAND_READOUT_H
 
-#include "BipBuffer.hpp"
-#include "Stage.hpp"
-#include "basebandReadoutManager.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "gpsTime.h"
-#include "prometheusMetrics.hpp"
-#include "visUtil.hpp"
+#include "BipBuffer.hpp"              // for BipBuffer
+#include "Config.hpp"                 // for Config
+#include "Stage.hpp"                  // for Stage
+#include "basebandReadoutManager.hpp" // for basebandDumpData, basebandReadoutManager, baseband...
+#include "bufferContainer.hpp"        // for bufferContainer
+#include "prometheusMetrics.hpp"      // for MetricFamily, Counter, Gauge
+#include "visUtil.hpp"                // for input_ctype
 
-#include <highfive/H5DataSet.hpp>
-#include <highfive/H5DataSpace.hpp>
-#include <highfive/H5File.hpp>
-#include <mutex>
-#include <string>
+#include <mutex>    // for mutex
+#include <stddef.h> // for size_t
+#include <stdint.h> // for int64_t, uint32_t, uint64_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 
 constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
@@ -63,7 +62,7 @@ constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
  */
 class basebandReadout : public kotekan::Stage {
 public:
-    basebandReadout(kotekan::Config& config, const string& unique_name,
+    basebandReadout(kotekan::Config& config, const std::string& unique_name,
                     kotekan::bufferContainer& buffer_container);
     virtual ~basebandReadout();
     void main_thread() override;

@@ -119,7 +119,7 @@ class eigenWriter : public kotekan::Stage {
 
 public:
     /// Constructor. Loads config options. Creates output file.
-    eigenWriter(kotekan::Config& config, const string& unique_name,
+    eigenWriter(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& buffer_container);
 
     /// Destructor. Flushes file contents to disk.

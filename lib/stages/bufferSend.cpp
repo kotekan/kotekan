@@ -1,14 +1,29 @@
 #include "bufferSend.hpp"
 
-#include "chimeMetadata.h"
-#include "prometheusMetrics.hpp"
-#include "util.h"
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for Buffer, get_num_full_frames, mark_frame_empty, register...
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "kotekanLogging.hpp"    // for DEBUG2, ERROR, DEBUG, WARN, INFO
+#include "metadata.h"            // for metadataContainer
+#include "prometheusMetrics.hpp" // for Metrics, Counter
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <cerrno>
+#include <arpa/inet.h>  // for inet_addr
+#include <cerrno>       // for errno
+#include <cstring>      // for strerror, size_t
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, bind, ref, function
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for runtime_error
+#include <strings.h>    // for bzero
+#include <sys/socket.h> // for send, MSG_NOSIGNAL, connect, setsockopt, socket, AF_INET
+#include <sys/time.h>   // for timeval
+#include <thread>       // for thread
+#include <unistd.h>     // for close, sleep
+#include <vector>       // for vector
 #include <chrono>
-#include <cstring>
 
 // Only Linux supports MSG_NOSIGNAL
 #ifndef __linux__
@@ -22,7 +37,7 @@ using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(bufferSend);
 
-bufferSend::bufferSend(Config& config, const string& unique_name,
+bufferSend::bufferSend(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferSend::main_thread, this)),
     dropped_frame_counter(
@@ -60,7 +75,7 @@ void bufferSend::main_thread() {
     while (!stop_thread) {
 
         uint8_t* frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         uint32_t num_full_frames = get_num_full_frames(buf);

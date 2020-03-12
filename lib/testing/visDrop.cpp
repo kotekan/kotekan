@@ -1,15 +1,20 @@
 #include "visDrop.hpp"
 
-#include "StageFactory.hpp"
-#include "errors.h"
-#include "visBuffer.hpp"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_empty, Buffer, mark_frame_full, register_consumer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for DEBUG, INFO
+#include "visBuffer.hpp"       // for visFrameView
 
-#include <algorithm>
-#include <atomic>
-#include <cstdint>
-#include <exception>
-#include <functional>
-#include <stdexcept>
+#include <algorithm>  // for find
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for uint32_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -17,7 +22,8 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(visDrop);
 
-visDrop::visDrop(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+visDrop::visDrop(Config& config, const std::string& unique_name,
+                 bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&visDrop::main_thread, this)) {
 
     // Setup the buffers

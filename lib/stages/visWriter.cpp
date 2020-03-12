@@ -1,32 +1,35 @@
 #include "visWriter.hpp"
 
-#include "StageFactory.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "version.h"
-#include "visBuffer.hpp"
-#include "visCompression.hpp"
-#include "visFile.hpp"
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for Hash, operator<
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, fingerprint_t, datasetManager
+#include "datasetState.hpp"      // for metadataState, freqState, prodState, stackState, _facto...
+#include "factory.hpp"           // for FACTORY
+#include "kotekanLogging.hpp"    // for INFO, ERROR, WARN, FATAL_ERROR, DEBUG, logLevel
+#include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily, Gauge
+#include "restServer.hpp"        // for restServer, connectionInstance, HTTP_RESPONSE
+#include "version.h"             // for get_git_commit_hash
+#include "visBuffer.hpp"         // for visFrameView
+#include "visFile.hpp"           // for visFileBundle, visCalFileBundle, _factory_aliasvisFile
 
-#include "fmt.hpp"
-#include "json.hpp"
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for json_ref, json
 
-#include <atomic>
-#include <cxxabi.h>
-#include <exception>
-#include <functional>
-#include <inttypes.h>
-#include <regex>
-#include <signal.h>
-#include <sstream>
-#include <stdexcept>
-#include <sys/types.h>
-#include <time.h>
-#include <tuple>
-#include <unistd.h>
-#include <vector>
+#include <algorithm>    // for copy, copy_backward, count_if, equal, max
+#include <atomic>       // for atomic_bool
+#include <cxxabi.h>     // for __forced_unwind
+#include <deque>        // for deque
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <regex>        // for match_results<>::_Base_type, regex_replace, regex
+#include <sstream>      // for basic_stringbuf<>::int_type, basic_stringbuf<>::pos_type
+#include <sys/types.h>  // for uint
+#include <system_error> // for system_error
+#include <tuple>        // for get
+#include <vector>       // for vector
 
 
 using kotekan::bufferContainer;
@@ -42,16 +45,13 @@ REGISTER_KOTEKAN_STAGE(visWriter);
 REGISTER_KOTEKAN_STAGE(visCalWriter);
 
 
-// Define the string name of the bad frame types, required for the prometheus output
-std::map<visWriter::droppedType, std::string> visWriter::dropped_type_map = {
-    {visWriter::droppedType::late, "late"}, {visWriter::droppedType::bad_dataset, "bad_dataset"}};
-
-
-visWriter::visWriter(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+visWriter::visWriter(Config& config, const std::string& unique_name,
+                     bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&visWriter::main_thread, this)),
-    dropped_frame_counter(Metrics::instance().add_counter("kotekan_viswriter_dropped_frame_total",
-                                                          unique_name,
-                                                          {"freq_id", "dataset_id", "reason"})) {
+    late_frame_counter(Metrics::instance().add_counter("kotekan_viswriter_late_frame_total",
+                                                       unique_name, {"freq_id"})),
+    bad_dataset_frame_counter(Metrics::instance().add_counter(
+        "kotekan_viswriter_bad_dataset_frame_total", unique_name, {"dataset_id"})) {
 
     // Fetch any simple configuration
     root_path = config.get_default<std::string>(unique_name, "root_path", ".");
@@ -129,7 +129,7 @@ void visWriter::main_thread() {
 
         // If the dataset is bad, skip the frame and move onto the next
         if (acq.bad_dataset) {
-            report_dropped_frame(frame.dataset_id, frame.freq_id, droppedType::bad_dataset);
+            bad_dataset_frame_counter.labels({frame.dataset_id.to_string()}).inc();
 
             // Check if the frequency we are receiving is on the list of frequencies
             // we are processing
@@ -166,7 +166,7 @@ void visWriter::main_thread() {
 
             // Increase metric count if we dropped a frame at write time
             if (late) {
-                report_dropped_frame(frame.dataset_id, frame.freq_id, droppedType::late);
+                late_frame_counter.labels({std::to_string(frame.freq_id)}).inc();
             }
 
             // Update average write time in prometheus
@@ -180,23 +180,6 @@ void visWriter::main_thread() {
         // Clean out any acquisitions that have been inactive long
         close_old_acqs();
     }
-}
-
-
-void visWriter::report_dropped_frame(dset_id_t ds_id, uint32_t freq_id, droppedType reason) {
-
-    std::lock_guard<std::mutex> _lock(acqs_mutex);
-
-    // Get acquisition
-    auto acq = acqs.at(ds_id);
-
-    // Relies on the fact that insertion zero intialises
-    auto key = std::make_pair(freq_id, reason);
-    // TODO: check if this is necessary
-    acq->dropped_frame_count[key] += 1;
-    dropped_frame_counter
-        .labels({std::to_string(freq_id), ds_id.to_string(), dropped_type_map.at(reason)})
-        .inc();
 }
 
 
@@ -385,7 +368,7 @@ std::map<std::string, std::string> visWriter::make_metadata(dset_id_t ds_id) {
 }
 
 
-visCalWriter::visCalWriter(Config& config, const string& unique_name,
+visCalWriter::visCalWriter(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     visWriter::visWriter(config, unique_name, buffer_container) {
 
@@ -404,17 +387,14 @@ visCalWriter::visCalWriter(Config& config, const string& unique_name,
     file_type = "ring";
 
     // Check if any of these files exist
+    DEBUG("Checking for and removing old buffer files...");
     std::string full_path = root_path + "/" + acq_name + "/";
-    if ((access((full_path + fname_base + "_A.data").c_str(), F_OK) == 0)
-        || (access((full_path + fname_base + "_B.data").c_str(), F_OK) == 0)) {
-        INFO("Clobering files in {:s}", full_path);
-        check_remove(full_path + fname_base + "_A.data");
-        check_remove("." + full_path + fname_base + "_A.lock");
-        check_remove(full_path + fname_base + "_A.meta");
-        check_remove(full_path + fname_base + "_B.data");
-        check_remove("." + full_path + fname_base + "_B.lock");
-        check_remove(full_path + fname_base + "_B.meta");
-    }
+    check_remove(full_path + fname_base + "_A.data");
+    check_remove(full_path + "." + fname_base + "_A.lock");
+    check_remove(full_path + fname_base + "_A.meta");
+    check_remove(full_path + fname_base + "_B.data");
+    check_remove(full_path + "." + fname_base + "_B.lock");
+    check_remove(full_path + fname_base + "_B.meta");
 
     file_cal_bundle = nullptr;
 
@@ -452,7 +432,8 @@ void visCalWriter::rest_callback(connectionInstance& conn) {
     }
 
     // Respond with frozen file path
-    json reply{"file_path", fmt::format(fmt("{:s}/{:s}/{:s}"), root_path, acq_name, fname_frozen)};
+    nlohmann::json reply{"file_path",
+                         fmt::format(fmt("{:s}/{:s}/{:s}"), root_path, acq_name, fname_frozen)};
     conn.send_json_reply(reply);
     INFO("Done. Resuming write loop.");
 }

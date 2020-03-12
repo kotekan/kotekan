@@ -53,7 +53,7 @@ class clRfiInputSum : public gpu_command {
 public:
     // Constructor
     clRfiInputSum(const char* param_gpuKernel, const char* param_name, kotekan::Config& config,
-                  const string& unique_name);
+                  const std::string& unique_name);
     // Destructor
     ~clRfiInputSum();
     // Builds the program/kernel
@@ -76,7 +76,7 @@ private:
     /// Mutex for rest server callback
     std::mutex rest_callback_mutex;
     /// String to hold endpoint name
-    string endpoint;
+    std::string endpoint;
 };
 
 #endif

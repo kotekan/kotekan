@@ -3,7 +3,7 @@
 
 #include "version.h"
 
-char * __kotekan_version = "@KOTEKAN_VERSION@";
+char * __kotekan_version = "@FULL_KOTEKAN_VERSION@";
 
 char * __git_branch = "@GIT_BRANCH@";
 

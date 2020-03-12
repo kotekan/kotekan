@@ -1,21 +1,14 @@
 
 #include "visFile.hpp"
 
-#include "errors.h"
-#include "version.h"
+#include "fmt.hpp" // for format, fmt
 
-#include "fmt.hpp"
-
-#include <algorithm>
-#include <fcntl.h>
-#include <fstream>
-#include <iomanip>
-#include <iostream>
-#include <libgen.h>
-#include <stdexcept>
-#include <sys/stat.h>
-#include <time.h>
-#include <unistd.h>
+#include <ctime>      // for gmtime, time_t
+#include <fstream>    // for basic_ostream::operator<<, ofstream, endl, basic_ostream, basic_os...
+#include <iterator>   // for reverse_iterator
+#include <libgen.h>   // for dirname, basename
+#include <sys/stat.h> // for mkdir
+#include <unistd.h>   // for getpid
 
 
 visFileBundle::~visFileBundle() {
@@ -108,7 +101,7 @@ void visFileBundle::add_file(time_ctype first_time) {
 
         // Create acquisition directory. Don't bother checking if it already exists, just let it
         // transparently fail
-        mkdir((root_path + "/" + acq_name).c_str(), 0755);
+        mkdir((root_path + "/" + acq_name).c_str(), 0775);
     }
 
     // Construct the name of the new file

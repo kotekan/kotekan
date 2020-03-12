@@ -7,24 +7,23 @@
 #ifndef BASEBAND_API_MANAGER_HPP
 #define BASEBAND_API_MANAGER_HPP
 
-#include "basebandReadoutManager.hpp"
-#include "gpsTime.h"
-#include "prometheusMetrics.hpp"
-#include "restServer.hpp"
+#include "basebandReadoutManager.hpp" // for basebandReadoutManager, basebandDumpStatus
+#include "gpsTime.h"                  // for FPGA_PERIOD_NS
+#include "prometheusMetrics.hpp"      // for Counter
+#include "restServer.hpp"             // for connectionInstance, restServer
 
-#include "json.hpp"
+#include "json.hpp" // for json
 
-#include <chrono>
-#include <condition_variable>
-#include <deque>
-#include <map>
-#include <memory>
+#include <map>      // for map, map<>::iterator
+#include <math.h>   // for M_PI
+#include <mutex>    // for mutex
+#include <stdint.h> // for uint32_t, int64_t, uint64_t
 
 
 namespace kotekan {
 
 /// Implicit conversion for constructing `nlohmann::json` from a `basebandDumpStatus`
-void to_json(json& j, const basebandDumpStatus& s);
+void to_json(nlohmann::json& j, const basebandDumpStatus& s);
 
 
 /**
@@ -160,7 +159,7 @@ public:
      * @param conn The connection instance to send results to
      * @param request JSON dictionary with the request data
      */
-    void handle_request_callback(connectionInstance& conn, json& request);
+    void handle_request_callback(connectionInstance& conn, nlohmann::json& request);
 
     /**
      * @brief Register a readout stage for specified frequency

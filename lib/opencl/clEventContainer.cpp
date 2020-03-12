@@ -1,6 +1,6 @@
 #include "clEventContainer.hpp"
 
-#include "errors.h"
+#include "kotekanLogging.hpp"
 
 #include <unistd.h>
 
@@ -13,11 +13,11 @@ void* clEventContainer::get() {
 }
 
 void clEventContainer::unset() {
-    signal = NULL;
+    signal = nullptr;
 }
 
 void clEventContainer::wait() {
     if (clWaitForEvents(1, &signal) != CL_SUCCESS) {
-        FATAL_ERROR("***** ERROR **** Unexpected event value **** ERROR **** ");
+        FATAL_ERROR_NON_OO("***** ERROR **** Unexpected event value **** ERROR **** ");
     }
 }

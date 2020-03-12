@@ -1,17 +1,22 @@
 #include "visDebug.hpp"
 
-#include "StageFactory.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "dataset.hpp"           // for dset_id_t
+#include "kotekanLogging.hpp"    // for DEBUG, INFO
+#include "prometheusMetrics.hpp" // for Metrics, Counter, MetricFamily
+#include "visBuffer.hpp"         // for visFrameView
 
-#include "fmt.hpp"
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for uint64_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <vector>     // for vector
 
-#include <atomic>
-#include <functional>
-#include <stdint.h>
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -21,7 +26,8 @@ using kotekan::prometheus::Metrics;
 REGISTER_KOTEKAN_STAGE(visDebug);
 
 
-visDebug::visDebug(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+visDebug::visDebug(Config& config, const std::string& unique_name,
+                   bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&visDebug::main_thread, this)) {
 
     // Setup the input vector
@@ -37,8 +43,11 @@ void visDebug::main_thread() {
 
     uint64_t num_frames = 0;
 
-    auto& frame_counter = Metrics::instance().add_counter("kotekan_visdebug_frame_total",
-                                                          unique_name, {"freq_id", "dataset_id"});
+    auto& frame_freq_counter = Metrics::instance().add_counter(
+        "kotekan_visdebug_frames_by_freq_total", unique_name, {"freq_id"});
+
+    auto& frame_dataset_counter = Metrics::instance().add_counter(
+        "kotekan_visdebug_frames_by_dataset_total", unique_name, {"dataset_id"});
     while (!stop_thread) {
 
         // Wait for the buffer to be filled with data
@@ -52,8 +61,8 @@ void visDebug::main_thread() {
         auto frame = visFrameView(in_buf, frame_id);
         DEBUG("{:s}", frame.summary());
 
-        frame_counter.labels({std::to_string(frame.freq_id), frame.dataset_id.to_string()}).inc();
-        frame_counter.labels({std::to_string(frame.freq_id), "all"}).inc();
+        frame_freq_counter.labels({std::to_string(frame.freq_id)}).inc();
+        frame_dataset_counter.labels({frame.dataset_id.to_string()}).inc();
 
         // Mark the buffers and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
