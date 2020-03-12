@@ -298,9 +298,17 @@ void visSharedMemWriter::main_thread() {
     frame_size = _member_alignment(data_size + metadata_size + 4, alignment * 1024);
 
     // memory_size should be ntime * nfreq * file_frame_size (data + metadata)
-    buf_addr = assign_memory(fname_buf, (ntime * access_record_size) + (ntime * nfreq * frame_size));
-    record_addr = (uint64_t*) buf_addr;
+    buf_addr = assign_memory(fname_buf, 320 + (ntime * access_record_size) + (ntime * nfreq * frame_size));
+    uint64_t* frame_metadata_addr = (uint64_t*) buf_addr;
+    record_addr = frame_metadata_addr + 5;
     buf_addr += ntime;
+
+    // Record structure of data
+    memcpy(frame_metadata_addr, &ntime, sizeof(ntime));
+    memcpy(frame_metadata_addr + 1, &nfreq, sizeof(nfreq));
+    memcpy(frame_metadata_addr + 2, &frame_size, sizeof(frame_size));
+    memcpy(frame_metadata_addr + 3, &metadata_size, sizeof(metadata_size));
+    memcpy(frame_metadata_addr + 4, &data_size, sizeof(data_size));
 
     INFO("Created the shared memory segments\n");
     if (sem_post(sem) == -1) {
