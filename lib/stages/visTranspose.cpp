@@ -276,12 +276,12 @@ void visTranspose::main_thread() {
                 INFO("Got an empty frame.");
             } else {
                 // TODO assuming that dataset ID changes here never change dataset dimensions
-                INFO("Dataset ID has changed from {} to {}. Getting base dataset ID from "
-                     "broker...",
-                     ds_id, frame.dataset_id);
+                DEBUG("Dataset ID has changed from {} to {}. Getting base dataset ID from "
+                      "broker...",
+                      ds_id, frame.dataset_id);
                 ds_id = frame.dataset_id;
                 base_ds_id = base_dset(ds_id);
-                INFO("Got base dataset ID {}.", base_ds_id);
+                DEBUG("Got base dataset ID {}.", base_ds_id);
             }
         }
 
@@ -423,7 +423,7 @@ dset_id_t visTranspose::base_dset(dset_id_t ds_id) {
     try {
         return dm.datasets().at(ds_id).base_dset();
     } catch (std::out_of_range& e) {
-        INFO("Fetching metadata state...");
+        DEBUG("Fetching metadata state...");
         // fetch a metadata state just to ensure we have a copy of that dataset
         auto mstate_fut = std::async(&datasetManager::dataset_state<metadataState>, &dm, ds_id);
         auto ready = mstate_fut.wait_for(timeout);
