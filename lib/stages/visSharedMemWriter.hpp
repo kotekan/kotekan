@@ -39,7 +39,7 @@ protected:
     uint8_t *buf_addr;
     size_t ntime;
 
-    const uint32_t one = 1;
+    const uint64_t one = 1;
     const int64_t in_progress = -1;
 
     size_t access_record_size;
@@ -51,8 +51,7 @@ protected:
 
     std::map<time_ctype, size_t> vis_time_ind_map;
 
-    template<typename T>
-    T assign_memory(std::string shm_name, int shm_size, T addr);
+    uint8_t* assign_memory(std::string shm_name, size_t shm_size);
 
     bool add_sample(const visFrameView& frame, time_ctype t, uint32_t freq_ind);
 

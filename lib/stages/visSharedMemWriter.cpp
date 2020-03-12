@@ -62,8 +62,9 @@ visSharedMemWriter::~visSharedMemWriter() {
 }
 
 // takes the name of a shared memory address opens it, and maps the memory to the provided address pointer
-template <typename T>
-T visSharedMemWriter::assign_memory(std::string shm_name, int shm_size, T addr) {
+uint8_t* visSharedMemWriter::assign_memory(std::string shm_name, size_t shm_size) {
+        uint8_t* addr;
+
         int fd = shm_open(shm_name.c_str(), (O_CREAT | O_RDWR), (S_IRUSR | S_IWUSR));
 
         if (fd == -1) {
@@ -78,7 +79,7 @@ T visSharedMemWriter::assign_memory(std::string shm_name, int shm_size, T addr) 
         }
         INFO("Resized to {} bytes\n", (long) shm_size);
 
-        addr = (T) mmap(nullptr, shm_size, (PROT_READ | PROT_WRITE), MAP_SHARED, fd, 0);
+        addr = (uint8_t*) mmap(nullptr, shm_size, (PROT_READ | PROT_WRITE), MAP_SHARED, fd, 0);
         if (addr == MAP_FAILED) {
             throw std::runtime_error(
                 fmt::format(fmt("Failed to map shm {:s} to memory: {:s}."), shm_name, strerror(errno)));
@@ -246,8 +247,6 @@ void visSharedMemWriter::main_thread() {
     // Set up the structure of the access record shared memory
     size_t access_record_size = sizeof(uint64_t);
 
-    record_addr = assign_memory<uint64_t*>(fname_access_record, ntime * access_record_size, record_addr);
-
     // Get properties of stream from first frame and datasetManager
     std::map<uint32_t, uint32_t> freq_id_map;
     auto& dm = datasetManager::instance();
@@ -263,7 +262,7 @@ void visSharedMemWriter::main_thread() {
     const freqState* fstate = fstate_fut.get();
     const eigenvalueState* evstate = evstate_fut.get();
 
-    
+
     if (!istate || !pstate || !fstate) {
         ERROR("Required datasetState not found for dataset ID {}\nThe following required states "
                 "were found:\ninputState - {:p}\nprodState - {:p}\nfreqState - {:p}\n",
@@ -299,7 +298,18 @@ void visSharedMemWriter::main_thread() {
     frame_size = _member_alignment(data_size + metadata_size + 4, alignment * 1024);
 
     // memory_size should be ntime * nfreq * file_frame_size (data + metadata)
-    buf_addr = assign_memory<uint8_t*>(fname_buf, ntime * nfreq * frame_size, buf_addr);
+    buf_addr = assign_memory(fname_buf, 320 + (ntime * access_record_size) + (ntime * nfreq * frame_size));
+    uint64_t* frame_metadata_addr = (uint64_t*) buf_addr;
+    record_addr = frame_metadata_addr + 5;
+    buf_addr += ntime;
+
+    // Record structure of data
+    memcpy(frame_metadata_addr, &ntime, sizeof(ntime));
+    memcpy(frame_metadata_addr + 1, &nfreq, sizeof(nfreq));
+    memcpy(frame_metadata_addr + 2, &frame_size, sizeof(frame_size));
+    memcpy(frame_metadata_addr + 3, &metadata_size, sizeof(metadata_size));
+    memcpy(frame_metadata_addr + 4, &data_size, sizeof(data_size));
+
     INFO("Created the shared memory segments\n");
     if (sem_post(sem) == -1) {
         FATAL_ERROR("Failed to release semaphore {}", sem_name);
