@@ -100,3 +100,4 @@ def buffer():
 def test_shared_mem_buffer(vis_data, buffer):
     assert buffer.num_time == params_writer_stage["nsamples"]
     assert buffer.num_freq == len(params_fakevis["freq_ids"])
+    print(buffer._access_record())
