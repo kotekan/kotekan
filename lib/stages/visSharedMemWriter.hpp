@@ -35,13 +35,16 @@ protected:
     sem_t *sem;
 
     // Pointers to shared memory addresses for access record and ringBuffer
-    uint64_t *record_addr;
+    uint64_t* structured_data_addr;
+    uint64_t *access_record_addr;
     uint8_t *buf_addr;
     size_t ntime;
 
     const uint8_t valid = 1;
     size_t valid_size = 4;
     const int64_t in_progress = -1;
+    uint64_t num_writes = 0;
+    size_t structured_data_num = 6;
 
     size_t access_record_size;
     size_t metadata_size;
