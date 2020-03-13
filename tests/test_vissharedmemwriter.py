@@ -25,9 +25,11 @@ params = {
     "dataset_manager": {"use_dataset_broker": False},
 }
 
-params_fakevis = {"freq_ids": [0, 1, 2],
-                  "num_frames": params["total_frames"],
-                  "mode": params["mode"]}
+params_fakevis = {
+    "freq_ids": [0, 1, 2],
+    "num_frames": params["total_frames"],
+    "mode": params["mode"],
+}
 
 params_writer_stage = {"nsamples": 512}
 
@@ -68,6 +70,7 @@ def memory_map_buf():
     mapfile.close()
     posix_ipc.unlink_shared_memory(fname_buf)
 
+
 @pytest.fixture(scope="module")
 def mem_map_access_record():
     memory = posix_ipc.SharedMemory(fname_access_record)
@@ -76,6 +79,7 @@ def mem_map_access_record():
     yield mapfile
     mapfile.close()
     posix_ipc.unlink_shared_memory(fname_access_record)
+
 
 def test_sharedmem(vis_data, semaphore, memory_map_buf):
     memory_map_buf.seek(0)
@@ -91,6 +95,7 @@ def test_sharedmem(vis_data, semaphore, memory_map_buf):
 @pytest.fixture()
 def buffer():
     yield shared_memory_buffer.SharedMemoryReader(sem_name, fname_buf)
+
 
 def test_shared_mem_buffer(vis_data, buffer):
     assert buffer.num_time == params_writer_stage["nsamples"]
