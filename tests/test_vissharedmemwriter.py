@@ -73,14 +73,14 @@ def memory_map_buf():
 
 
 def test_structural_data(vis_data, memory_map_buf):
-    time_of_last_change = struct.unpack("<Q", memory_map_buf.read(8))[0]
+    num_writes = struct.unpack("<Q", memory_map_buf.read(8))[0]
     num_times = struct.unpack("<Q", memory_map_buf.read(8))[0]
     num_freq = struct.unpack("<Q", memory_map_buf.read(8))[0]
     size_frame = struct.unpack("<Q", memory_map_buf.read(8))[0]
     size_frame_meta = struct.unpack("<Q", memory_map_buf.read(8))[0]
     size_frame_data = struct.unpack("<Q", memory_map_buf.read(8))[0]
 
-    assert time_of_last_change >= 0
+    assert num_writes >= 0
     assert num_times == params_writer_stage["nsamples"]
     assert num_freq == len(params_fakevis["freq_ids"])
     print("TODO: test if frame size should be {}".format(size_frame))
