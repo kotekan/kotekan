@@ -15,6 +15,7 @@
 
 #include "json.hpp" // for json
 
+#include <map>      // for map
 #include <stddef.h> // for size_t
 #include <stdint.h> // for uint32_t, uint8_t
 #include <string>   // for string

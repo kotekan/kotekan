@@ -1,6 +1,7 @@
 #include "visRawReader.hpp"
 
 #include "Config.hpp"          // for Config
+#include "Hash.hpp"            // for Hash, operator!=, operator<
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "bufferContainer.hpp" // for bufferContainer
@@ -21,18 +22,22 @@
 #include <atomic>     // for atomic_bool
 #include <cstdint>    // for uint32_t, uint8_t
 #include <cstring>    // for strerror, memcpy
+#include <cxxabi.h>   // for __forced_unwind
 #include <errno.h>    // for errno
-#include <future>
 #include <exception>  // for exception
 #include <fcntl.h>    // for open, O_RDONLY
 #include <fstream>    // for ifstream, ios_base::failure, ios_base, basic_ios, basic_i...
 #include <functional> // for _Bind_helper<>::type, bind, function
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error, invalid_argument
-#include <sys/mman.h> // for madvise, mmap, munmap, MADV_DONTNEED, MADV_WILLNEED, MAP_...
-#include <sys/stat.h> // for stat
-#include <time.h>     // for nanosleep, timespec
-#include <unistd.h>   // for close, off_t
+#include <future>
+#include <memory>       // for allocator_traits<>::value_type
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for runtime_error, invalid_argument
+#include <sys/mman.h>   // for madvise, mmap, munmap, MADV_DONTNEED, MADV_WILLNEED, MAP_...
+#include <sys/stat.h>   // for stat
+#include <system_error> // for system_error
+#include <time.h>       // for nanosleep, timespec
+#include <tuple>        // for get
+#include <unistd.h>     // for close, off_t
 
 using kotekan::bufferContainer;
 using kotekan::Config;

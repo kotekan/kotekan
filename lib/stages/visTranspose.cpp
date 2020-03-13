@@ -5,6 +5,7 @@
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for wait_for_full_frame, mark_frame_empty, register_consumer
 #include "bufferContainer.hpp"   // for bufferContainer
+#include "dataset.hpp"           // for dataset
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager
 #include "datasetState.hpp"      // for metadataState, stackState, acqDatasetIdState, eigenvalu...
 #include "errors.h"              // for exit_kotekan, CLEAN_EXIT, ReturnCode
@@ -26,6 +27,8 @@
 #include <functional>   // for _Bind_helper<>::type, bind, function
 #include <future>       // for async, future
 #include <iterator>     // for make_move_iterator, move_iterator, operator!=
+#include <map>          // for map
+#include <regex>        // for match_results<>::_Base_type
 #include <stdexcept>    // for out_of_range, invalid_argument
 #include <stdint.h>     // for uint32_t, uint64_t
 #include <sys/types.h>  // for uint
