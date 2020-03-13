@@ -39,7 +39,8 @@ protected:
     uint8_t *buf_addr;
     size_t ntime;
 
-    const uint64_t one = 1;
+    const uint8_t valid = 1;
+    size_t valid_size = 4;
     const int64_t in_progress = -1;
 
     size_t access_record_size;
