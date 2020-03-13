@@ -140,7 +140,7 @@ bool visSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
 void visSharedMemWriter::reset_memory(uint32_t time_ind) {
 
     uint8_t *buf_write_pos = buf_addr + (time_ind * nfreq * frame_size);
-    uint64_t *record_write_pos = record_addr + time_ind;
+    uint64_t *record_write_pos = record_addr + (time_ind * nfreq);
 
     // each time, we block off an entire time_ind
 
@@ -148,23 +148,27 @@ void visSharedMemWriter::reset_memory(uint32_t time_ind) {
         FATAL_ERROR("Failed to acquire semaphore {}", sem_name);
         return;
     }
-    memcpy(record_write_pos, &in_progress, sizeof(in_progress));
+    std::vector<char> in_progress_vector(nfreq * access_record_size, in_progress);
+    char* tmp = in_progress_vector.data();
+    memcpy(record_write_pos, &tmp, nfreq * access_record_size);
     if (sem_post(sem) == -1) {
         FATAL_ERROR("Failed to post semaphore {}", sem_name);
         return;
     }
 
     std::vector<char> zeros(nfreq * frame_size, 0);
-    char* tmp = zeros.data();
+    tmp = zeros.data();
     memcpy(buf_write_pos, &tmp, nfreq * frame_size);
 
     int64_t invalid = -1;
+    std::vector<char> invalid_vector(nfreq * access_record_size, invalid);
+    tmp = invalid_vector.data();
 
     if (sem_wait(sem) == -1) {
         FATAL_ERROR("Failed to acquire semaphore {}", sem_name);
         return;
     }
-    memcpy(record_write_pos, &invalid, sizeof(invalid));
+    memcpy(record_write_pos, &tmp, nfreq * access_record_size);
     if (sem_post(sem) == -1) {
         FATAL_ERROR("Failed to post semaphore {}", sem_name);
         return;
@@ -174,9 +178,7 @@ void visSharedMemWriter::reset_memory(uint32_t time_ind) {
 void visSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t time_ind, uint32_t freq_ind) {
 
     uint8_t *buf_write_pos = buf_addr + ((time_ind * nfreq + freq_ind) * frame_size);
-    uint64_t *record_write_pos = record_addr + time_ind;
-
-    // each time, we block off an entire time_ind
+    uint64_t *record_write_pos = record_addr + (time_ind * nfreq + freq_ind);
 
     if (sem_wait(sem) == -1) {
         FATAL_ERROR("Failed to acquire semaphore {}", sem_name);
@@ -298,10 +300,10 @@ void visSharedMemWriter::main_thread() {
     frame_size = _member_alignment(data_size + metadata_size + valid_size, alignment * 1024);
 
     // memory_size should be ntime * nfreq * file_frame_size (data + metadata)
-    buf_addr = assign_memory(fname_buf, 320 + (ntime * access_record_size) + (ntime * nfreq * frame_size));
+    buf_addr = assign_memory(fname_buf, 320 + (ntime * nfreq * access_record_size) + (ntime * nfreq * frame_size));
     uint64_t* frame_metadata_addr = (uint64_t*) buf_addr;
     record_addr = frame_metadata_addr + 5;
-    buf_addr += ntime;
+    buf_addr += ntime * nfreq * access_record_size;
 
     // Record structure of data
     memcpy(frame_metadata_addr, &ntime, sizeof(ntime));
