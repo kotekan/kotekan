@@ -1,0 +1,32 @@
+cpu_affinity: []
+dataset_manager:
+  ds_broker_host: 10.5.0.3
+  use_dataset_broker: false
+log_level: debug
+num_elements: 2048
+num_ev: 4
+num_local_freq: 1
+num_frb_total_beams: 1024
+num_sub_freqs: 128
+read_buffer:
+  kotekan_buffer: hfb
+  metadata_pool: hfb_pool
+  num_frames: '4096'
+  num_prod: 2048
+read_raw:
+#  chunk_size:
+#  - 64
+#  - 66
+#  - 128
+  infile:  /home/willis/hfb_data/moose_data/00000000_0000
+  kotekan_stage: hfbRawReader
+  max_read_rate: 0.0
+  out_buf: read_buffer
+  readahead_blocks: 4
+  ignore_versions: True
+hfb_pool:
+  kotekan_metadata_pool: hfbMetadata
+  num_metadata_objects: '655360'
+vis_debug:
+  kotekan_stage: visDebug
+  in_buf: read_buffer

@@ -37,6 +37,7 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       frbPostProcess.cpp
       Writer.cpp
       visRawReader.cpp
+      hfbRawReader.cpp
       restInspectFrame.cpp
       frbNetworkProcess.cpp
       pulsarNetworkProcess.cpp
