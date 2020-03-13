@@ -52,13 +52,12 @@ class SharedMemoryReader:
             self.size_frame_data,
         ) = self._read_structural_data()
 
-        if self.time_of_last_change == -1:
+        if self.num_writes == -1:
             raise SharedMemoryError(
                 "The shared memory referenced by '{}' was marked as invalid by the writer.".format(
                     self.shared_mem_name
                 )
             )
-        self.time_of_last_change = 0
 
         self.len_data = self.num_freq * self.num_freq
 
@@ -71,7 +70,7 @@ class SharedMemoryReader:
         os.close(shared_mem.fd)
 
     def _read_structural_data(self):
-        time_of_last_change = struct.unpack_from(
+        num_writes = struct.unpack_from(
             FMT_UINT64_T, self.shared_mem.read(SIZE_UINT64_T)
         )[0]
         num_time = struct.unpack_from(
@@ -90,7 +89,7 @@ class SharedMemoryReader:
             FMT_UINT64_T, self.shared_mem.read(SIZE_UINT64_T)
         )[0]
         return (
-            time_of_last_change,
+            num_writes,
             num_time,
             num_freq,
             size_frame,
@@ -147,7 +146,7 @@ class SharedMemoryReader:
         """
 
         (
-            time_of_last_change,
+            num_writes,
             num_time,
             num_freq,
             size_frame,
@@ -155,7 +154,7 @@ class SharedMemoryReader:
             size_frame_data,
         ) = self._read_structural_data()
 
-        if time_of_last_change == -1:
+        if num_writes == -1:
             raise SharedMemoryError(
                 "The shared memory referenced by '{}' was marked as invalid by the writer.".format(
                     self.shared_mem_name
@@ -181,9 +180,9 @@ class SharedMemoryReader:
             self.size_frame_data, size_frame_data, "size of the frame data"
         )
 
-        if self.time_of_last_change == time_of_last_change:
+        if self.num_writes == num_writes:
             raise NoNewDataError()
-        self.time_of_last_change = time_of_last_change
+        self.num_writes = num_writes
 
     # def _update(self):
     # """
