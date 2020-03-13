@@ -188,9 +188,9 @@ void visSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
         return;
     }
 
-    memcpy(buf_write_pos + 4, frame.metadata(), metadata_size);
-    memcpy(buf_write_pos + metadata_size + 4, frame.data(), data_size);
-    memcpy(buf_write_pos, &one, 4);
+    memcpy(buf_write_pos + valid_size, frame.metadata(), metadata_size);
+    memcpy(buf_write_pos + metadata_size + valid_size, frame.data(), data_size);
+    memcpy(buf_write_pos, &valid, sizeof(valid));
 
     uint64_t fpga_seq = frame.metadata()->fpga_seq_start;
 
@@ -295,7 +295,7 @@ void visSharedMemWriter::main_thread() {
     auto layout = visFrameView::calculate_buffer_layout(ninput, nvis, num_ev);
     data_size = layout.first;
     metadata_size = sizeof(visMetadata);
-    frame_size = _member_alignment(data_size + metadata_size + 4, alignment * 1024);
+    frame_size = _member_alignment(data_size + metadata_size + valid_size, alignment * 1024);
 
     // memory_size should be ntime * nfreq * file_frame_size (data + metadata)
     buf_addr = assign_memory(fname_buf, 320 + (ntime * access_record_size) + (ntime * nfreq * frame_size));
