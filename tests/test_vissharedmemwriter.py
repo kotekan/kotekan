@@ -9,6 +9,7 @@ import pytest
 import posix_ipc
 import mmap
 import os
+import struct
 
 from kotekan import runner, shared_memory_buffer
 
@@ -71,25 +72,34 @@ def memory_map_buf():
     posix_ipc.unlink_shared_memory(fname_buf)
 
 
-@pytest.fixture(scope="module")
-def mem_map_access_record():
-    memory = posix_ipc.SharedMemory(fname_access_record)
-    mapfile = mmap.mmap(memory.fd, memory.size, prot=mmap.PROT_READ)
-    os.close(memory.fd)
-    yield mapfile
-    mapfile.close()
-    posix_ipc.unlink_shared_memory(fname_access_record)
+def test_structural_data(vis_data, memory_map_buf):
+    time_of_last_change = struct.unpack("<Q", memory_map_buf.read(8))[0]
+    num_times = struct.unpack("<Q", memory_map_buf.read(8))[0]
+    num_freq = struct.unpack("<Q", memory_map_buf.read(8))[0]
+    size_frame = struct.unpack("<Q", memory_map_buf.read(8))[0]
+    size_frame_meta = struct.unpack("<Q", memory_map_buf.read(8))[0]
+    size_frame_data = struct.unpack("<Q", memory_map_buf.read(8))[0]
+
+    assert time_of_last_change >= 0
+    assert num_times == params_writer_stage["nsamples"]
+    assert num_freq == len(params_fakevis["freq_ids"])
+    print("TODO: test if frame size should be {}".format(size_frame))
+    print("TODO: test if frame metadata size should be {}".format(size_frame_meta))
+    print("TODO: test if frame data size should be {}".format(size_frame_data))
 
 
-def test_sharedmem(vis_data, semaphore, memory_map_buf):
-    memory_map_buf.seek(0)
-    import struct
+def test_access_record(vis_data, memory_map_buf):
+    size_of_uint64 = 8
+    num_structural_params = 6
+    pos_access_record = size_of_uint64 * num_structural_params
 
-    for i in range(0, 100):
-        semaphore.acquire()
-        print(struct.unpack("<Q", memory_map_buf.read(8))[0])
-        semaphore.release()
+    num_time = params_writer_stage["nsamples"]
+    num_freq = len(params_fakevis["freq_ids"])
 
+    for t in range(num_time):
+        for f in range(num_freq):
+            access_record = struct.unpack("<Q", memory_map_buf.read(size_of_uint64))[0]
+            assert access_record == (800e6 / 2048 * params["cadence"])
 
 # test using the python reader:
 @pytest.fixture()

@@ -12,10 +12,23 @@ SIZE_UINT64_T = 8
 
 logger = logging.getLogger(__name__)
 
+
+class SharedMemoryError(Exception):
+    """An error has occurred when trying to access the shared memory."""
+
+    pass
+
+
+class NoNewDataError(Exception):
+    """The data in the shared memory has not changed since the last time checked."""
+
+    pass
+
+
 class SharedMemoryReader:
     """Reader for the shared memory region."""
 
-    num_structural_params = 5
+    num_structural_params = 6
     size_structural_data = SIZE_UINT64_T * num_structural_params
     size_access_record_entry = SIZE_UINT64_T
     valid_field_padding = 3
@@ -28,17 +41,24 @@ class SharedMemoryReader:
         shared_mem = posix_ipc.SharedMemory(shared_memory_name)
 
         # 0 means entire file
-        self.shared_mem = mmap.mmap(
-            shared_mem.fd, 0, prot=mmap.PROT_READ
-        )
+        self.shared_mem = mmap.mmap(shared_mem.fd, 0, prot=mmap.PROT_READ)
 
         (
+            self.time_of_last_change,
             self.num_time,
             self.num_freq,
             self.size_frame,
             self.size_frame_meta,
             self.size_frame_data,
         ) = self._read_structural_data()
+
+        if self.time_of_last_change == -1:
+            raise SharedMemoryError(
+                "The shared memory referenced by '{}' was marked as invalid by the writer.".format(
+                    self.shared_mem_name
+                )
+            )
+        self.time_of_last_change = 0
 
         self.len_data = self.num_freq * self.num_freq
 
@@ -51,6 +71,9 @@ class SharedMemoryReader:
         os.close(shared_mem.fd)
 
     def _read_structural_data(self):
+        time_of_last_change = struct.unpack_from(
+            FMT_UINT64_T, self.shared_mem.read(SIZE_UINT64_T)
+        )[0]
         num_time = struct.unpack_from(
             FMT_UINT64_T, self.shared_mem.read(SIZE_UINT64_T)
         )[0]
@@ -66,7 +89,14 @@ class SharedMemoryReader:
         size_data = struct.unpack_from(
             FMT_UINT64_T, self.shared_mem.read(SIZE_UINT64_T)
         )[0]
-        return (num_time, num_freq, size_frame, size_meta, size_data)
+        return (
+            time_of_last_change,
+            num_time,
+            num_freq,
+            size_frame,
+            size_meta,
+            size_data,
+        )
 
     def __del__(self):
         self.semaphore.release()
@@ -79,7 +109,9 @@ class SharedMemoryReader:
         try:
             posix_ipc.unlink_shared_memory(self.shared_mem_name)
         except posix_ipc.ExistentialError:
-            logger.debug("Shared memory file did not exist when trying to unlink from it.")
+            logger.debug(
+                "Shared memory file did not exist when trying to unlink from it."
+            )
 
     def read_last(n: int):
         pass
@@ -90,10 +122,79 @@ class SharedMemoryReader:
         # return visRaw()
 
     def _access_record(self):
-        record = np.ndarray((self.num_freq, self.num_time), np.uint64, self.shared_mem, self.pos_access_record, order="C")
+        record = np.ndarray(
+            (self.num_freq, self.num_time),
+            np.uint64,
+            self.shared_mem,
+            self.pos_access_record,
+            order="C",
+        )
         return record
 
+    def _validate_shm(self):
+        """
+        Validate the shared memory.
+
+        Check structural parameters as well as the last-time-changed timestamp.
+
+        Raises
+        ------
+        NoNewDataError
+            If there has not been a recorded write since the last check.
+        SharedMemoryError
+            If the shared memory is marked as invalid by the writer or if the structural parameters
+            have changed.
+        """
+
+        (
+            time_of_last_change,
+            num_time,
+            num_freq,
+            size_frame,
+            size_frame_meta,
+            size_frame_data,
+        ) = self._read_structural_data()
+
+        if time_of_last_change == -1:
+            raise SharedMemoryError(
+                "The shared memory referenced by '{}' was marked as invalid by the writer.".format(
+                    self.shared_mem_name
+                )
+            )
+
+        def _check_structure(old, new, name):
+            """Compare old and new structural value and raise if not the same."""
+            if old != new:
+                raise SharedMemoryError(
+                    "The structural value describing the {} has changed from {} to {} since last read time.".format(
+                        name, old, new
+                    )
+                )
+
+        _check_structure(self.num_time, num_time, "number of time samples")
+        _check_structure(self.num_freq, num_freq, "number of frequencies")
+        _check_structure(self.size_frame, size_frame, "size of a frame")
+        _check_structure(
+            self.size_frame_meta, size_frame_meta, "size of the frame metadata"
+        )
+        _check_structure(
+            self.size_frame_data, size_frame_data, "size of the frame data"
+        )
+
+        if self.time_of_last_change == time_of_last_change:
+            raise NoNewDataError()
+        self.time_of_last_change = time_of_last_change
+
     # def _update(self):
+    # """
+    #     Raises
+    #     ------
+    #     NoNewDataError
+    #         If there has not been a recorded write since the last check.
+    #     SharedMemoryError
+    #         If the shared memory is marked as invalid by the writer or if the structural parameters
+    #         have changed.
+    # """
     #     self._validate_shm()
     #
     #     with self.semaphore:
