@@ -112,11 +112,44 @@ class SharedMemoryReader:
                 "Shared memory file did not exist when trying to unlink from it."
             )
 
-    def read_last(n: int):
+    def read_last(self, n: int):
+        """
+        Read last n time samples from the buffer.
+
+        Only copies from buffer if not read previously.
+
+        Parameters
+        ----------
+        n : int
+            Number of time samples to read.
+
+        Returns
+        -------
+        VisRaw
+            Last n time samples.
+        """
+
+        self._validate_shm()
+        access_record = self._access_record()
         pass
         # return visRaw()
 
     def read_new_since(self, timestamp):
+        """
+        Read all new time samples since a given time.
+
+        Only copies from buffer if not read previously.
+
+        Parameters
+        ----------
+        timestamp : int
+            Timestamp of oldest sample to read.
+
+        Returns
+        -------
+        VisRaw
+            Time samples read from buffer.
+        """
         pass
         # return visRaw()
 
