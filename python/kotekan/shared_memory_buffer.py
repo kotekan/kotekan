@@ -26,15 +26,13 @@ class SharedMemoryReader:
             shared_mem.fd, self.size_structural_data, prot=mmap.PROT_READ
         )
 
-        print("structural data:")
-        print(self._read_structural_data())
-        # (
-        #     self.num_time,
-        #     self.num_freq,
-        #     self.size_frame,
-        #     self.size_meta,
-        #     self.size_data,
-        # ) = self._read_structural_data()
+        (
+            self.num_time,
+            self.num_freq,
+            self.size_frame,
+            self.size_meta,
+            self.size_data,
+        ) = self._read_structural_data()
 
         os.close(shared_mem.fd)
 
