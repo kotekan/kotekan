@@ -43,7 +43,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     tx_ring_size = config.get_default<uint32_t>(unique_name, "tx_ring_size", 512);
 
     num_mem_channels = config.get_default<uint32_t>(unique_name, "num_mem_channels", 4);
-    init_mem_alloc = config.get_default<uint32_t>(unique_name, "init_mem_alloc", 256);
+    init_mem_alloc = config.get_default<std::string>(unique_name, "init_mem_alloc", "256");
 
     // Setup the lcore mappings
     // Basically this is mapping the DPDK EAL framework way of assigning threads
@@ -214,10 +214,10 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t master_lcore_cpu) {
     char* arg4 = (char*)malloc(dpdk_lcore_map.length() + 1);
     strncpy(arg4, dpdk_lcore_map.c_str(), dpdk_lcore_map.length() + 1);
     // Initial memory allocation
-    char arg5[] = "-m";
-    char* arg6 = (char*)malloc(std::to_string(init_mem_alloc).length() + 1);
-    strncpy(arg6, std::to_string(init_mem_alloc).c_str(),
-            std::to_string(init_mem_alloc).length() + 1);
+    char arg5[] = "--socket-mem";
+    //char arg6[] = "512,512";
+    char* arg6 = (char*)malloc(init_mem_alloc.length() + 1);
+    strncpy(arg6, init_mem_alloc.c_str(), init_mem_alloc.length() + 1);
     // Generate final options string for EAL initialization
     char* argv2[] = {&arg0[0], &arg1[0], &arg2[0], &arg3[0], &arg4[0], &arg5[0], &arg6[0], NULL};
     int argc2 = (int)(sizeof(argv2) / sizeof(argv2[0])) - 1;

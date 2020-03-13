@@ -78,7 +78,7 @@ void gpuProcess::init() {
 }
 
 void gpuProcess::profile_callback(connectionInstance& conn) {
-    DEBUG(" *** *** *** Profile call made.");
+    //DEBUG(" *** *** *** Profile call made.");
 
     json reply;
 

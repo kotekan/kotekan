@@ -240,7 +240,7 @@ private:
     uint32_t num_mem_channels;
 
     /// Initial memory allocation in MB
-    uint32_t init_mem_alloc;
+    std::string init_mem_alloc;
 
     /// One of these exists per system port
     dpdkRXhandler** handlers;

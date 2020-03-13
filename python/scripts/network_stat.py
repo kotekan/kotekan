@@ -56,7 +56,7 @@ class Port(object):
         ret["loss_percent"] = (
             100.0
             * float(rx_lost_packets_diff)
-            / float(rx_packets_diff + rx_lost_packets_diff)
+            / float(rx_packets_diff + rx_lost_packets_diff + 0.0001)
         )
         ret["pps"] = rx_packets_diff / time_diff
 
