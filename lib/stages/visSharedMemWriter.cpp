@@ -59,6 +59,8 @@ visSharedMemWriter::visSharedMemWriter(Config& config, const std::string& unique
 // make a deconstructor in which to deconstruct semaphores and shared memory
 visSharedMemWriter::~visSharedMemWriter() {
     // make sure to unlink the semaphore and unmap the mappings
+    num_writes = 0;
+    memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
 }
 
 // takes the name of a shared memory address opens it, and maps the memory to the provided address pointer
@@ -140,7 +142,7 @@ bool visSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
 void visSharedMemWriter::reset_memory(uint32_t time_ind) {
 
     uint8_t *buf_write_pos = buf_addr + (time_ind * nfreq * frame_size);
-    uint64_t *record_write_pos = record_addr + (time_ind * nfreq);
+    uint64_t *access_record_write_pos = access_record_addr + (time_ind * nfreq);
 
     // each time, we block off an entire time_ind
 
@@ -150,7 +152,7 @@ void visSharedMemWriter::reset_memory(uint32_t time_ind) {
     }
     std::vector<char> in_progress_vector(nfreq * access_record_size, in_progress);
     char* tmp = in_progress_vector.data();
-    memcpy(record_write_pos, &tmp, nfreq * access_record_size);
+    memcpy(access_record_write_pos, &tmp, nfreq * access_record_size);
     if (sem_post(sem) == -1) {
         FATAL_ERROR("Failed to post semaphore {}", sem_name);
         return;
@@ -168,7 +170,7 @@ void visSharedMemWriter::reset_memory(uint32_t time_ind) {
         FATAL_ERROR("Failed to acquire semaphore {}", sem_name);
         return;
     }
-    memcpy(record_write_pos, &tmp, nfreq * access_record_size);
+    memcpy(access_record_write_pos, &tmp, nfreq * access_record_size);
     if (sem_post(sem) == -1) {
         FATAL_ERROR("Failed to post semaphore {}", sem_name);
         return;
@@ -178,13 +180,13 @@ void visSharedMemWriter::reset_memory(uint32_t time_ind) {
 void visSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t time_ind, uint32_t freq_ind) {
 
     uint8_t *buf_write_pos = buf_addr + ((time_ind * nfreq + freq_ind) * frame_size);
-    uint64_t *record_write_pos = record_addr + (time_ind * nfreq + freq_ind);
+    uint64_t *access_record_write_pos = access_record_addr + (time_ind * nfreq + freq_ind);
 
     if (sem_wait(sem) == -1) {
         FATAL_ERROR("Failed to acquire semaphore {}", sem_name);
         return;
     }
-    memcpy(record_write_pos, &in_progress, sizeof(in_progress));
+    memcpy(access_record_write_pos, &in_progress, sizeof(in_progress));
     if (sem_post(sem) == -1) {
         FATAL_ERROR("Failed to release semaphore {}", sem_name);
         return;
@@ -196,18 +198,23 @@ void visSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
 
     uint64_t fpga_seq = frame.metadata()->fpga_seq_start;
 
+
     if (sem_wait(sem) == -1) {
         FATAL_ERROR("Failed to acquire semaphore {}", sem_name);
         return;
     }
 
     INFO("Writing fpga_seq {} to index {}", fpga_seq, time_ind);
-    memcpy(record_write_pos, &fpga_seq, sizeof(fpga_seq));
+    memcpy(access_record_write_pos, &fpga_seq, sizeof(fpga_seq));
 
     if (sem_post(sem) == -1) {
         FATAL_ERROR("Failed to release semaphore {}", sem_name);
         return;
     }
+
+    // update last_changed
+    num_writes++;
+    memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
 }
 
 
@@ -300,17 +307,19 @@ void visSharedMemWriter::main_thread() {
     frame_size = _member_alignment(data_size + metadata_size + valid_size, alignment * 1024);
 
     // memory_size should be ntime * nfreq * file_frame_size (data + metadata)
-    buf_addr = assign_memory(fname_buf, 320 + (ntime * nfreq * access_record_size) + (ntime * nfreq * frame_size));
-    uint64_t* frame_metadata_addr = (uint64_t*) buf_addr;
-    record_addr = frame_metadata_addr + 5;
+    size_t structured_data_single_size = 64;
+    buf_addr = assign_memory(fname_buf, (structured_data_single_size * structured_data_num) + (ntime * nfreq * access_record_size) + (ntime * nfreq * frame_size));
+    structured_data_addr = (uint64_t*) buf_addr;
+    access_record_addr = structured_data_addr + structured_data_num;
     buf_addr += ntime * nfreq * access_record_size;
 
     // Record structure of data
-    memcpy(frame_metadata_addr, &ntime, sizeof(ntime));
-    memcpy(frame_metadata_addr + 1, &nfreq, sizeof(nfreq));
-    memcpy(frame_metadata_addr + 2, &frame_size, sizeof(frame_size));
-    memcpy(frame_metadata_addr + 3, &metadata_size, sizeof(metadata_size));
-    memcpy(frame_metadata_addr + 4, &data_size, sizeof(data_size));
+    memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
+    memcpy(structured_data_addr + 1, &ntime, sizeof(ntime));
+    memcpy(structured_data_addr + 2, &nfreq, sizeof(nfreq));
+    memcpy(structured_data_addr + 3, &frame_size, sizeof(frame_size));
+    memcpy(structured_data_addr + 4, &metadata_size, sizeof(metadata_size));
+    memcpy(structured_data_addr + 5, &data_size, sizeof(data_size));
 
     INFO("Created the shared memory segments\n");
     if (sem_post(sem) == -1) {
