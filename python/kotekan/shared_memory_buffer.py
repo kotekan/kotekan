@@ -44,7 +44,7 @@ class SharedMemoryReader:
         self.shared_mem = mmap.mmap(shared_mem.fd, 0, prot=mmap.PROT_READ)
 
         (
-            self.time_of_last_change,
+            self.num_writes,
             self.num_time,
             self.num_freq,
             self.size_frame,
