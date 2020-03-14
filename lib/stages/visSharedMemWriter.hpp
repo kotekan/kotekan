@@ -46,11 +46,11 @@ protected:
     uint64_t num_writes = 0;
     size_t structured_data_num = 6;
 
-    size_t access_record_size;
-    size_t metadata_size;
-    size_t data_size;
-    size_t frame_size;
-    size_t nfreq;
+    uint64_t access_record_size;
+    uint64_t metadata_size;
+    uint64_t data_size;
+    uint64_t frame_size;
+    uint64_t nfreq;
     uint32_t cur_pos;
 
     std::map<time_ctype, size_t> vis_time_ind_map;

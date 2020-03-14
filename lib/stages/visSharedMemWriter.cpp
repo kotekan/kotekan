@@ -327,14 +327,6 @@ void visSharedMemWriter::main_thread() {
         return;
     }
 
-    // Get the time and frequency of the frame
-    time_ctype t = {std::get<0>(frame.time), ts_to_double(std::get<1>(frame.time))};
-    uint32_t freq_ind = freq_id_map.at(frame.freq_id);
-
-    add_sample(frame, t, freq_ind);
-
-    mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
-
     // gets called once when kotekan is running
     while (!stop_thread) {
 
