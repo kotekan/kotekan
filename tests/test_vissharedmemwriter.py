@@ -96,6 +96,7 @@ def test_access_record(vis_data, memory_map_buf):
     num_time = params_writer_stage["nsamples"]
     num_freq = len(params_fakevis["freq_ids"])
 
+    memory_map_buf.seek(pos_access_record)
     for t in range(num_time):
         for f in range(num_freq):
             access_record = struct.unpack("<Q", memory_map_buf.read(size_of_uint64))[0]
