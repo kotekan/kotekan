@@ -58,13 +58,18 @@ protected:
     // Messages
     // Indicates that the written frame is valid
     const uint8_t valid = 1;
-    // Size of the "valid byte"
+    // Space that the "valid byte" takes up
     size_t valid_size = 4;
+    // Indicates that the ring buffer frames at those time_ind and freq_ind are
+    // invalid
+    int64_t invalid = -1;
     // Indicates that the ring buffer is being written to for that time sample
     const int64_t in_progress = -1;
 
     // The number of elements in the structured data
     size_t structured_data_num = 6;
+    // the size of each element
+    size_t structured_data_size = sizeof(uint64_t);
 
     // The size of each record address
     uint64_t access_record_size;
@@ -76,6 +81,8 @@ protected:
     std::map<time_ctype, size_t> vis_time_ind_map;
 
     uint8_t* assign_memory(std::string shm_name, size_t shm_size);
+
+    uint64_t get_data_size(const visFrameView& frame);
 
     bool add_sample(const visFrameView& frame, time_ctype t, uint32_t freq_ind);
 

@@ -39,7 +39,6 @@ visSharedMemWriter::visSharedMemWriter(Config& config, const std::string& unique
         // Fetch any simple configuration
         root_path = config.get_default<std::string>(unique_name, "root_path", "/dev/shm/");
         sem_name = config.get_default<std::string>(unique_name, "sem_name", "kotekan");
-        fname_access_record = config.get_default<std::string>(unique_name, "fname_access_record", "calBufferAccessRecord");
         fname_buf = config.get_default<std::string>(unique_name, "fname_buf", "calBuffer");
         ntime = config.get_default<size_t>(unique_name, "nsamples", 512);
 
@@ -48,23 +47,25 @@ visSharedMemWriter::visSharedMemWriter(Config& config, const std::string& unique
         register_consumer(in_buf, unique_name.c_str());
 
         // Check if any of the old buffer files exist
+        // Remove them, if they do
         DEBUG("Checking for and removing old buffer files...");
         check_remove(root_path + "sem." + sem_name);
-        check_remove(root_path + fname_access_record);
         check_remove(root_path + fname_buf);
 
 
 }
 
-// make a deconstructor in which to deconstruct semaphores and shared memory
 visSharedMemWriter::~visSharedMemWriter() {
     // make sure to unlink the semaphore and unmap the mappings
+    // We are setting num_writes to 0 in the structured data,
+    // to communicate to readers that the ring buffer is not being written to
     num_writes = 0;
     memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
 }
 
-// takes the name of a shared memory address opens it, and maps the memory to the provided address pointer
 uint8_t* visSharedMemWriter::assign_memory(std::string shm_name, size_t shm_size) {
+    // takes the name of a shared memory address, opens a shared memory of the provided size, and maps the memory to a uint8_t* address pointer
+
         uint8_t* addr;
 
         int fd = shm_open(shm_name.c_str(), (O_CREAT | O_RDWR), (S_IRUSR | S_IWUSR));
@@ -97,7 +98,9 @@ uint8_t* visSharedMemWriter::assign_memory(std::string shm_name, size_t shm_size
 }
 
 bool visSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uint32_t freq_ind) {
-    // process the time sample
+    // calculate the time index for time sample t, add the frame for time sample t at position frequency index
+    //
+    // curr_pos always points to the ring buffer index for the most recent time
 
     if ( vis_time_ind_map.count(t) != 0) {
         // if the time is already indexed, write to memory at that location
@@ -113,6 +116,7 @@ bool visSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
         return true;
     }
 
+    // obtain the most recent and oldest time
     time_ctype max_time = vis_time_ind_map.rbegin()->first;
     time_ctype min_time = vis_time_ind_map.begin()->first;
 
@@ -125,15 +129,17 @@ bool visSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
 
     else if (t > max_time) {
         // we need to drop the oldest time
-        // and replace it with the new time index
         cur_pos++;
         reset_memory(cur_pos);
         vis_time_ind_map.erase(min_time);
+
+        // and replace it with the new most recent time
         vis_time_ind_map[t] = cur_pos;
         write_to_memory(frame, vis_time_ind_map.at(t), freq_ind);
         return true;
     }
     else {
+        // if the time sample is not indexed, and is between the min_time and max_time, we are going to just drop it
         INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (only accepting new times greater than {:d})", t.fpga_count, max_time.fpga_count);
         return false;
     }
@@ -141,11 +147,12 @@ bool visSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
 
 void visSharedMemWriter::reset_memory(uint32_t time_ind) {
 
+    // resets all memory at time_ind to 0s
+
     uint8_t *buf_write_pos = buf_addr + (time_ind * nfreq * frame_size);
     uint64_t *access_record_write_pos = access_record_addr + (time_ind * nfreq);
 
-    // each time, we block off an entire time_ind
-
+    // notify that the entire time_ind is being written to, by setting time_ind in the access record to in_progress
     if (sem_wait(sem) == -1) {
         FATAL_ERROR("Failed to acquire semaphore {}", sem_name);
         return;
@@ -158,18 +165,21 @@ void visSharedMemWriter::reset_memory(uint32_t time_ind) {
         return;
     }
 
+    // set the full time_ind to 0 in the ring buffer
     std::vector<char> zeros(nfreq * frame_size, 0);
     tmp = zeros.data();
     memcpy(buf_write_pos, &tmp, nfreq * frame_size);
 
-    int64_t invalid = -1;
-    std::vector<char> invalid_vector(nfreq * access_record_size, invalid);
-    tmp = invalid_vector.data();
 
+    // document in the access record
+    // that the frames in position time_ind and freq_ind in the ring buffer
+    // are invalid
     if (sem_wait(sem) == -1) {
         FATAL_ERROR("Failed to acquire semaphore {}", sem_name);
         return;
     }
+    std::vector<char> invalid_vector(nfreq * access_record_size, invalid);
+    tmp = invalid_vector.data();
     memcpy(access_record_write_pos, &tmp, nfreq * access_record_size);
     if (sem_post(sem) == -1) {
         FATAL_ERROR("Failed to post semaphore {}", sem_name);
@@ -178,10 +188,13 @@ void visSharedMemWriter::reset_memory(uint32_t time_ind) {
 }
 
 void visSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t time_ind, uint32_t freq_ind) {
+    // write frame to ring buffer at time_ind and freq_ind
 
     uint8_t *buf_write_pos = buf_addr + ((time_ind * nfreq + freq_ind) * frame_size);
     uint64_t *access_record_write_pos = access_record_addr + (time_ind * nfreq + freq_ind);
 
+    // notify that time_ind and freq_ind are being written to, by setting that
+    // location to in_progress in the access record
     if (sem_wait(sem) == -1) {
         FATAL_ERROR("Failed to acquire semaphore {}", sem_name);
         return;
@@ -192,10 +205,13 @@ void visSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
         return;
     }
 
+    // first write the metadata, then the data, then the valid byte
+    // add valid_size amount of padding
     memcpy(buf_write_pos + valid_size, frame.metadata(), metadata_size);
     memcpy(buf_write_pos + metadata_size + valid_size, frame.data(), data_size);
     memcpy(buf_write_pos, &valid, sizeof(valid));
 
+    // Document the fpga sequence counter for that frame in the access record
     uint64_t fpga_seq = frame.metadata()->fpga_seq_start;
 
 
@@ -212,17 +228,60 @@ void visSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
         return;
     }
 
-    // update last_changed
+    // update num_writes
     num_writes++;
     memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
 }
 
+uint64_t visSharedMemWriter::get_data_size(const visFrameView& frame) {
+
+    auto& dm = datasetManager::instance();
+
+    // Get properties of stream from first frame and datasetManager
+    // If we can get the data_size in other ways, we will not need
+    // ninput, nvis, or num_ev anymore
+    auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>, &dm, frame.dataset_id);
+    auto istate_fut = std::async(&datasetManager::dataset_state<inputState>, &dm, frame.dataset_id);
+    auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>, &dm, frame.dataset_id);
+
+    auto evstate_fut = std::async(&datasetManager::dataset_state<eigenvalueState>, &dm, frame.dataset_id);
+
+    const inputState* istate = istate_fut.get();
+    const prodState* pstate = pstate_fut.get();
+    const stackState* sstate = sstate_fut.get();
+    const eigenvalueState* evstate = evstate_fut.get();
+
+
+    if (!istate || !pstate) {
+        ERROR("Required datasetState not found for dataset ID {}\nThe following required states "
+                "were found:\ninputState - {:p}\nprodState - {:p}\n",
+                frame.dataset_id, (void*)istate, (void*)pstate);
+        throw std::runtime_error("Could not write to shared memory.");
+    }
+
+    // Count the eigenvalue index
+    size_t num_ev;
+    if (evstate) {
+        num_ev = evstate->get_num_ev();
+    } else {
+        num_ev = 0;
+    }
+
+    size_t ninput = istate->get_inputs().size();
+    size_t nvis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
+
+    auto layout = visFrameView::calculate_buffer_layout(ninput, nvis, num_ev);
+
+    return layout.first;
+}
 
 void visSharedMemWriter::main_thread() {
     INFO("Reached main thread");
 
     frameID frame_id(in_buf);
 
+    // The current position in the ring buffer of the most recent time sample
+    // from 0 -> ntime
     cur_pos = modulo<int>(ntime);
 
     // Create the semaphore, and gain first access to it
@@ -234,8 +293,8 @@ void visSharedMemWriter::main_thread() {
         );
 
     if (sem == SEM_FAILED) {
-        perror("sem_open");
-        exit(errno);
+        FATAL_ERROR("Failed to create semaphore {}", sem_name);
+        return;
     }
 
     INFO("Semaphore created.\n");
@@ -246,7 +305,6 @@ void visSharedMemWriter::main_thread() {
         return;
     }
 
-
     // Set up the structure of the ring buffer shared memory
     // Get one frame for reference
     wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
@@ -254,64 +312,41 @@ void visSharedMemWriter::main_thread() {
     auto frame = visFrameView(in_buf, frame_id);
 
     // Set up the structure of the access record shared memory
-    size_t access_record_size = sizeof(uint64_t);
-
-    // Get properties of stream from first frame and datasetManager
-    std::map<uint32_t, uint32_t> freq_id_map;
-    auto& dm = datasetManager::instance();
-    auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>, &dm, frame.dataset_id);
-    auto istate_fut = std::async(&datasetManager::dataset_state<inputState>, &dm, frame.dataset_id);
-    auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>, &dm, frame.dataset_id);
-    auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm, frame.dataset_id);
-    auto evstate_fut = std::async(&datasetManager::dataset_state<eigenvalueState>, &dm, frame.dataset_id);
-
-    const inputState* istate = istate_fut.get();
-    const prodState* pstate = pstate_fut.get();
-    const stackState* sstate = sstate_fut.get();
-    const freqState* fstate = fstate_fut.get();
-    const eigenvalueState* evstate = evstate_fut.get();
-
-
-    if (!istate || !pstate || !fstate) {
-        ERROR("Required datasetState not found for dataset ID {}\nThe following required states "
-                "were found:\ninputState - {:p}\nprodState - {:p}\nfreqState - {:p}\n",
-                frame.dataset_id, (void*)istate, (void*)pstate, (void*)fstate);
-        throw std::runtime_error("Could not write to shared memory.");
-    }
+    access_record_size = sizeof(uint64_t);
 
     // Build the frequency index
+    std::map<uint32_t, uint32_t> freq_id_map;
+    auto& dm = datasetManager::instance();
+
+    auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm, frame.dataset_id);
+
+    const freqState* fstate = fstate_fut.get();
+
     uint ind = 0;
     for (auto& f : fstate->get_freqs())
         freq_id_map[f.first] = ind++;
 
-    // Count the eigenvalue index
-    size_t num_ev;
-    if (evstate) {
-        num_ev = evstate->get_num_ev();
-    } else {
-        num_ev = 0;
-    }
 
     // Figure out the ring buffer structure
     nfreq = fstate->get_freqs().size();
-    size_t ninput = istate->get_inputs().size();
-    size_t nvis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
 
     // Set the alignment (in kB)
-    size_t alignment = 4; // Align on page boundaries
+    size_t alignment = 4096; // Align on page boundaries
 
-    // Calculate the ring buffer stricture
-    auto layout = visFrameView::calculate_buffer_layout(ninput, nvis, num_ev);
-    data_size = layout.first;
+    // Calculate the ring buffer structure
+
+    data_size = get_data_size(frame);
     metadata_size = sizeof(visMetadata);
-    frame_size = _member_alignment(data_size + metadata_size + valid_size, alignment * 1024);
+    // Alligns the frame along page size
+    frame_size = _member_alignment(data_size + metadata_size + valid_size, alignment);
 
     // memory_size should be ntime * nfreq * file_frame_size (data + metadata)
-    size_t structured_data_single_size = 64;
-    buf_addr = assign_memory(fname_buf, (structured_data_single_size * structured_data_num) + (ntime * nfreq * access_record_size) + (ntime * nfreq * frame_size));
+    buf_addr = assign_memory(fname_buf, (structured_data_size * structured_data_num) + (ntime * nfreq * access_record_size) + (ntime * nfreq * frame_size));
+
+    // The elements contained in the structured data and access record are each 64 bytes
     structured_data_addr = (uint64_t*) buf_addr;
     access_record_addr = structured_data_addr + structured_data_num;
-    buf_addr += ntime * nfreq * access_record_size;
+    buf_addr += (structured_data_size * structured_data_num) + (ntime * nfreq * access_record_size);
 
     // Record structure of data
     memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
