@@ -34,25 +34,45 @@ protected:
     // Semaphore for updating access record
     sem_t *sem;
 
-    // Pointers to shared memory addresses for access record and ringBuffer
+    // Pointers to shared memory addresses for structured data, access record and ringBuffer
     uint64_t* structured_data_addr;
     uint64_t *access_record_addr;
     uint8_t *buf_addr;
-    size_t ntime;
 
-    const uint8_t valid = 1;
-    size_t valid_size = 4;
-    const int64_t in_progress = -1;
+    // Parameters that define structure of ring buffer
+
+    // Counter for the number of writes to the ring buffer
+    // Set to 0, upon stage shut-down
     uint64_t num_writes = 0;
+    // The number of time samples contained in ring buffer
+    size_t ntime;
+    // The number of frequencies contained in each time sample
+    uint64_t nfreq;
+    // The size of each frame (valid byte + metadata + data + page alignment padding)
+    uint64_t frame_size;
+    // The size of each metadata section
+    uint64_t metadata_size;
+    // The size of each data section
+    uint64_t data_size;
+
+    // Messages
+    // Indicates that the written frame is valid
+    const uint8_t valid = 1;
+    // Size of the "valid byte"
+    size_t valid_size = 4;
+    // Indicates that the ring buffer is being written to for that time sample
+    const int64_t in_progress = -1;
+
+    // The number of elements in the structured data
     size_t structured_data_num = 6;
 
+    // The size of each record address
     uint64_t access_record_size;
-    uint64_t metadata_size;
-    uint64_t data_size;
-    uint64_t frame_size;
-    uint64_t nfreq;
+
+    // The current position in the ring buffer of the most recent time sample
     uint32_t cur_pos;
 
+    // Map of indices for time samples and positions within the ring buffer
     std::map<time_ctype, size_t> vis_time_ind_map;
 
     uint8_t* assign_memory(std::string shm_name, size_t shm_size);
@@ -63,7 +83,7 @@ protected:
 
     void reset_memory(uint32_t time_ind);
 
-    std::string root_path, sem_name, fname_access_record, fname_buf;
+    std::string root_path, sem_name, fname_buf;
 };
 
 inline void check_remove(std::string fname) {
