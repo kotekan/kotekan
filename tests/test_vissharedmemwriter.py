@@ -5,13 +5,13 @@ from future.builtins.disabled import *  # noqa pylint: disable=W0401, W0614
 
 # == End Python 2/3 compatibility
 
-import pytest
-import posix_ipc
 import mmap
 import os
+import posix_ipc
+import pytest
 import struct
 
-from kotekan import runner, shared_memory_buffer
+from kotekan import runner
 
 sem_name = "kotekan"
 fname_access_record = "calBufferAccessRecord"
@@ -20,7 +20,7 @@ fname_buf = "calBuffer"
 params = {
     "num_elements": 7,
     "num_ev": 0,
-    "total_frames": 128,
+    "total_frames": 512,
     "cadence": 10.0,
     "mode": "default",
     "dataset_manager": {"use_dataset_broker": False},
@@ -100,21 +100,6 @@ def test_access_record(vis_data, memory_map_buf):
     fpga_seq = 0
     for t in range(num_time):
         for f in range(num_freq):
-            access_record = struct.unpack("<Q", memory_map_buf.read(size_of_uint64))[0]
+            access_record = struct.unpack("Q", memory_map_buf.read(size_of_uint64))[0]
             assert access_record == fpga_seq
         fpga_seq += 800e6 / 2048 * params["cadence"]
-
-
-# test using the python reader:
-@pytest.fixture()
-def buffer():
-    yield shared_memory_buffer.SharedMemoryReader(sem_name, fname_buf)
-
-
-def test_shared_mem_buffer(vis_data, buffer):
-    assert buffer.num_time == params_writer_stage["nsamples"]
-    assert buffer.num_freq == len(params_fakevis["freq_ids"])
-
-    print(buffer._access_record())
-
-    print(buffer.read_last(7))

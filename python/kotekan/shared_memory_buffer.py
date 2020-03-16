@@ -189,6 +189,9 @@ class SharedMemoryReader:
             1
         ]
 
+        # delete the rest
+        self._data[idxs[n:]][:] = None
+
         return self._data[idxs[:n]][:]
 
     def _filter_last(self, access_record, n):
