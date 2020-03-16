@@ -127,12 +127,73 @@ class SharedMemoryReader:
         -------
         VisRaw
             Last n time samples.
+
+        Raises
+        ------
+        SharedMemoryError
+            If the shared memory is marked as invalid by the writer or if the structural parameters
+            have changed.
+        """
+        try:
+            self._validate_shm()
+        except NoNewDataError:
+            logger.debug("No new data in ringbuffer in last {} time samples.".format(n))
+        else:
+            # get a data update from the ringbuffer
+            access_record = self._access_record()
+
+            times, freqs = self._filter_last(access_record, n)
+
+            for t in times:
+                for f in freqs:
+                    if access_record[t][f] == -1:
+                        self._data[t][f] = None
+                    elif access_record[t][f] > self._last_access_record[t][f]:
+                        self._data[t][f] = np.ndarray(
+                            (1,),
+                            np.uint64,
+                            self.shared_mem,
+                            self.pos_data + t * self.num_freq + f,
+                            order="C",
+                        )
+
+            access_record_after_copy = self._access_record()
+            for t in times:
+                for f in freqs:
+                    if access_record_after_copy[t][f] != access_record[t][f]:
+                        self._data[t][f] = None
+
+            self._last_access_record = access_record_after_copy
+
+        # return visRaw()
+        return self._return_data_copy_since(self, n)
+
+    def _filter_last(self, access_record, n):
+        """Get the indexes of the data for the n time slots with most recent changes.
+
+        Parameters
+        ----------
+        access_record : numpy array
+            Access record of the ring buffer.
+        n : int
+            Last n time samples to filer.
+
+        Returns
+        -------
+        list(int), slice(none)
         """
 
-        self._validate_shm()
-        access_record = self._access_record()
-        pass
-        # return visRaw()
+        # get the most recent timestamp for each time slot
+        last_ts = [None] * self.num_time
+        for t in range(self.num_time):
+            for f in range(self.num_freq):
+                if last_ts[t] is None or access_record[t][f] > last_ts[t]:
+                    last_ts[t] = access_record[t][f]
+
+        # sort them
+        last_ts, idxs = list(zip(*sorted([(val, i) for i, val in enumerate(last_ts)])))[1]
+
+        return idxs[:n], slice(None)
 
     def read_new_since(self, timestamp):
         """
@@ -150,17 +211,25 @@ class SharedMemoryReader:
         VisRaw
             Time samples read from buffer.
         """
-        pass
+        try:
+            self._validate_shm()
+        except NoNewDataError:
+            logger.debug("No new data in ringbuffer since {}.".format(timestamp))
+        else:
+            access_record = self._access_record()
+
         # return visRaw()
+        return self._return_data_copy_since(self, timestamp)
 
     def _access_record(self):
-        record = np.ndarray(
-            (self.num_freq, self.num_time),
-            np.uint64,
-            self.shared_mem,
-            self.pos_access_record,
-            order="C",
-        )
+        with self.semaphore:
+            record = np.ndarray(
+                (self.num_freq, self.num_time),
+                np.uint64,
+                self.shared_mem,
+                self.pos_access_record,
+                order="C",
+            )
         return record
 
     def _validate_shm(self):
