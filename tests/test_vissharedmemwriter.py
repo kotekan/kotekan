@@ -102,7 +102,8 @@ def test_access_record(vis_data, memory_map_buf):
         for f in range(num_freq):
             access_record = struct.unpack("<Q", memory_map_buf.read(size_of_uint64))[0]
             assert access_record == fpga_seq
-        fpga_seq += (800e6 / 2048 * params["cadence"])
+        fpga_seq += 800e6 / 2048 * params["cadence"]
+
 
 # test using the python reader:
 @pytest.fixture()

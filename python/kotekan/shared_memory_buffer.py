@@ -69,6 +69,9 @@ class SharedMemoryReader:
 
         os.close(shared_mem.fd)
 
+        self._data = None
+        self._last_access_record = None
+
     def _read_structural_data(self):
         num_writes = struct.unpack_from(
             FMT_UINT64_T, self.shared_mem.read(SIZE_UINT64_T)
@@ -168,10 +171,25 @@ class SharedMemoryReader:
             self._last_access_record = access_record_after_copy
 
         # return visRaw()
-        return self._return_data_copy_last(self, n)
+        return self._return_data_copy_last(n)
 
     def _return_data_copy_last(self, n):
-        pass
+        if self._data is None or self._last_access_record is None:
+            return None
+
+        # get the most recent timestamp for each time slot
+        last_ts = [None] * self.num_time
+        for t in range(self.num_time):
+            for f in range(self.num_freq):
+                if last_ts[t] is None or self._last_access_record[t][f] > last_ts[t]:
+                    last_ts[t] = self._last_access_record[t][f]
+
+        # sort them
+        last_ts, idxs = list(zip(*sorted([(val, i) for i, val in enumerate(last_ts)])))[
+            1
+        ]
+
+        return self._data[idxs[:n]][:]
 
     def _filter_last(self, access_record, n):
         """Get the indexes of the data for the n time slots with most recent changes.
@@ -196,7 +214,9 @@ class SharedMemoryReader:
                     last_ts[t] = access_record[t][f]
 
         # sort them
-        last_ts, idxs = list(zip(*sorted([(val, i) for i, val in enumerate(last_ts)])))[1]
+        last_ts, idxs = list(zip(*sorted([(val, i) for i, val in enumerate(last_ts)])))[
+            1
+        ]
 
         return idxs[:n], slice(None)
 
