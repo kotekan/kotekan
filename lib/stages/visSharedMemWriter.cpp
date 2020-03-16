@@ -1,7 +1,6 @@
 #include "visSharedMemWriter.hpp"
 #include <cxxabi.h>             // for _forced_unwind
 #include <fcntl.h>              // for O_CREAT, O_EXCL, O_RDWR
-#include <stdlib.h>             // for exit
 #include <string.h>             // for memcpy, strerror
 #include <sys/mman.h>           // for mmap, shm_open, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE
 #include <sys/stat.h>           // for S_IRUSR, S_IWUSR
