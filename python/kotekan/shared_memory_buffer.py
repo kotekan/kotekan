@@ -168,7 +168,10 @@ class SharedMemoryReader:
             self._last_access_record = access_record_after_copy
 
         # return visRaw()
-        return self._return_data_copy_since(self, n)
+        return self._return_data_copy_last(self, n)
+
+    def _return_data_copy_last(self, n):
+        pass
 
     def _filter_last(self, access_record, n):
         """Get the indexes of the data for the n time slots with most recent changes.
