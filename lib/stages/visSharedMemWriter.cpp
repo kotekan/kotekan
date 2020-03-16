@@ -107,6 +107,12 @@ bool visSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
         write_to_memory(frame, vis_time_ind_map.at(t), freq_ind);
         return true;
     }
+    else if (vis_time_ind_map.size() == 0) {
+        // the first sample added, so we do not increment by 1
+        vis_time_ind_map[t] = cur_pos;
+        write_to_memory(frame, vis_time_ind_map.at(t), freq_ind);
+        return true;
+    }
     else if (vis_time_ind_map.size() < ntime) {
         // if there is still empty space in the shared buffer
         // add an additional time index
