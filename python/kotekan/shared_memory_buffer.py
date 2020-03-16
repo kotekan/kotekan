@@ -134,6 +134,8 @@ class SharedMemoryReader:
             If the shared memory is marked as invalid by the writer or if the structural parameters
             have changed.
         """
+        self.shared_mem.seek(0)
+
         try:
             self._validate_shm()
         except NoNewDataError:
@@ -211,6 +213,8 @@ class SharedMemoryReader:
         VisRaw
             Time samples read from buffer.
         """
+        self.shared_mem.seek(0)
+
         try:
             self._validate_shm()
         except NoNewDataError:
