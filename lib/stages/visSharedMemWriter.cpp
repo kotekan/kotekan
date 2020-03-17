@@ -159,13 +159,13 @@ void visSharedMemWriter::reset_memory(uint32_t time_ind) {
 
     INFO("Resetting access_record memory at position time_ind: {}\n", time_ind);
 
-    // notify that the entire time_ind is being written to, by setting time_ind in the access record to in_progress
+    // notify that the entire time_ind is invalid, by setting time_ind in the access record to invalid
     if (sem_wait(sem) == -1) {
         FATAL_ERROR("Failed to acquire semaphore {}", sem_name);
         return;
     }
-    std::vector<char> in_progress_vector(nfreq * access_record_size, in_progress);
-    char* tmp = in_progress_vector.data();
+    std::vector<char> invalid_vector(nfreq * access_record_size, invalid);
+    char* tmp = invalid_vector.data();
     memcpy(access_record_write_pos, &tmp, sizeof(tmp));
     if (sem_post(sem) == -1) {
         FATAL_ERROR("Failed to post semaphore {}", sem_name);
@@ -177,22 +177,6 @@ void visSharedMemWriter::reset_memory(uint32_t time_ind) {
     std::vector<char> zeros(nfreq * frame_size, 0);
     tmp = zeros.data();
     memcpy(buf_write_pos, &tmp, sizeof(tmp));
-
-
-    // document in the access record
-    // that the frames in position time_ind and freq_ind in the ring buffer
-    // are invalid
-    if (sem_wait(sem) == -1) {
-        FATAL_ERROR("Failed to acquire semaphore {}", sem_name);
-        return;
-    }
-    std::vector<char> invalid_vector(nfreq * access_record_size, invalid);
-    tmp = invalid_vector.data();
-    memcpy(access_record_write_pos, &tmp, sizeof(tmp));
-    if (sem_post(sem) == -1) {
-        FATAL_ERROR("Failed to post semaphore {}", sem_name);
-        return;
-    }
 
     INFO("Memory reset\n");
 }
@@ -206,12 +190,12 @@ void visSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
     INFO("Writing ringbuffer to time_ind {} and freq_ind {}\n", time_ind, freq_ind);
 
     // notify that time_ind and freq_ind are being written to, by setting that
-    // location to in_progress in the access record
+    // location to invalid in the access record
     if (sem_wait(sem) == -1) {
         FATAL_ERROR("Failed to acquire semaphore {}", sem_name);
         return;
     }
-    memcpy(access_record_write_pos, &in_progress, sizeof(in_progress));
+    memcpy(access_record_write_pos, &invalid, sizeof(invalid));
     if (sem_post(sem) == -1) {
         FATAL_ERROR("Failed to release semaphore {}", sem_name);
         return;
@@ -367,6 +351,11 @@ void visSharedMemWriter::main_thread() {
     memcpy(structured_data_addr + 3, &frame_size, sizeof(frame_size));
     memcpy(structured_data_addr + 4, &metadata_size, sizeof(metadata_size));
     memcpy(structured_data_addr + 5, &data_size, sizeof(data_size));
+
+    // initially set the address records with -1
+    std::vector<char> invalid_vector(ntime * nfreq * access_record_size, invalid);
+    char* tmp = invalid_vector.data();
+    memcpy(access_record_addr, &tmp, sizeof(tmp));
 
     INFO("Created the shared memory segments\n");
     if (sem_post(sem) == -1) {
