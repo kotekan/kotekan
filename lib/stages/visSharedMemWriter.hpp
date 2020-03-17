@@ -62,9 +62,7 @@ protected:
     size_t valid_size = 4;
     // Indicates that the ring buffer frames at those time_ind and freq_ind are
     // invalid
-    int64_t invalid = -1;
-    // Indicates that the ring buffer is being written to for that time sample
-    const int64_t in_progress = -1;
+    const int64_t invalid = -1;
 
     // The number of elements in the structured data
     size_t structured_data_num = 6;

@@ -11,7 +11,6 @@ import pytest
 from kotekan import runner, shared_memory_buffer
 
 sem_name = "kotekan"
-fname_access_record = "calBufferAccessRecord"
 fname_buf = "calBuffer"
 
 
