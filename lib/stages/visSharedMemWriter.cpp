@@ -128,7 +128,7 @@ bool visSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
     if (t < min_time) {
         // this data is older than anything else in the map, so we should
         // just drop it
-        INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (minimum in pool {:d})", t.fpga_count, min_time.fpga_count);
+        INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (minimum in pool {:d})\n", t.fpga_count, min_time.fpga_count);
         return false;
     }
 
@@ -145,7 +145,7 @@ bool visSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
     }
     else {
         // if the time sample is not indexed, and is between the min_time and max_time, we are going to just drop it
-        INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (only accepting new times greater than {:d})", t.fpga_count, max_time.fpga_count);
+        INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (only accepting new times greater than {:d})\n", t.fpga_count, max_time.fpga_count);
         return false;
     }
 }
@@ -155,7 +155,9 @@ void visSharedMemWriter::reset_memory(uint32_t time_ind) {
     // resets all memory at time_ind to 0s
 
     uint8_t *buf_write_pos = buf_addr + (time_ind * nfreq * frame_size);
-    uint64_t *access_record_write_pos = access_record_addr + (time_ind * nfreq);
+    uint64_t *access_record_write_pos = access_record_addr + (time_ind * nfreq * access_record_size);
+
+    INFO("Resetting access_record memory at position time_ind: {}\n", time_ind);
 
     // notify that the entire time_ind is being written to, by setting time_ind in the access record to in_progress
     if (sem_wait(sem) == -1) {
@@ -164,16 +166,17 @@ void visSharedMemWriter::reset_memory(uint32_t time_ind) {
     }
     std::vector<char> in_progress_vector(nfreq * access_record_size, in_progress);
     char* tmp = in_progress_vector.data();
-    memcpy(access_record_write_pos, &tmp, nfreq * access_record_size);
+    memcpy(access_record_write_pos, &tmp, sizeof(tmp));
     if (sem_post(sem) == -1) {
         FATAL_ERROR("Failed to post semaphore {}", sem_name);
         return;
     }
 
+    INFO("Resetting ring buffer memory at position time_ind: {}\n", time_ind);
     // set the full time_ind to 0 in the ring buffer
     std::vector<char> zeros(nfreq * frame_size, 0);
     tmp = zeros.data();
-    memcpy(buf_write_pos, &tmp, nfreq * frame_size);
+    memcpy(buf_write_pos, &tmp, sizeof(tmp));
 
 
     // document in the access record
@@ -185,11 +188,13 @@ void visSharedMemWriter::reset_memory(uint32_t time_ind) {
     }
     std::vector<char> invalid_vector(nfreq * access_record_size, invalid);
     tmp = invalid_vector.data();
-    memcpy(access_record_write_pos, &tmp, nfreq * access_record_size);
+    memcpy(access_record_write_pos, &tmp, sizeof(tmp));
     if (sem_post(sem) == -1) {
         FATAL_ERROR("Failed to post semaphore {}", sem_name);
         return;
     }
+
+    INFO("Memory reset\n");
 }
 
 void visSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t time_ind, uint32_t freq_ind) {
@@ -197,6 +202,8 @@ void visSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
 
     uint8_t *buf_write_pos = buf_addr + ((time_ind * nfreq + freq_ind) * frame_size);
     uint64_t *access_record_write_pos = access_record_addr + (time_ind * nfreq + freq_ind);
+
+    INFO("Writing ringbuffer to time_ind {} and freq_ind {}\n", time_ind, freq_ind);
 
     // notify that time_ind and freq_ind are being written to, by setting that
     // location to in_progress in the access record
@@ -225,7 +232,7 @@ void visSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
         return;
     }
 
-    INFO("Writing fpga_seq {} to index {}", fpga_seq, time_ind);
+    INFO("Writing fpga_seq {} to time index {}\n", fpga_seq, time_ind);
     memcpy(access_record_write_pos, &fpga_seq, sizeof(fpga_seq));
 
     if (sem_post(sem) == -1) {
@@ -281,7 +288,7 @@ uint64_t visSharedMemWriter::get_data_size(const visFrameView& frame) {
 }
 
 void visSharedMemWriter::main_thread() {
-    INFO("Reached main thread");
+    INFO("Reached main thread\n");
 
     frameID frame_id(in_buf);
 
