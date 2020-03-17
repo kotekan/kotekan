@@ -254,7 +254,7 @@ class SharedMemoryReader:
     def _access_record(self):
         with self.semaphore:
             record = np.ndarray(
-                (self.num_freq, self.num_time),
+                (self.num_time, self.num_freq),
                 np.uint64,
                 self.shared_mem,
                 self.pos_access_record,
