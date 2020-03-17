@@ -227,7 +227,7 @@ updatable_config:
   rfi_zeroing_second_stage:
     enable:
       kotekan_update_endpoint: json
-      rfi_zeroing: false
+      rfi_zeroing: true
     thresholds:
       kotekan_update_endpoint: json
       thresholds:
@@ -637,7 +637,6 @@ compress_lost_samples:
 #    - compressed_lost_samples_buf_2
 #    - compressed_lost_samples_buf_3
 
-
 # GPU processing section
 gpu:
   kernel_path: "/var/lib/kotekan/hsa_kernels/"
@@ -733,7 +732,7 @@ gpu:
       gain_psr_buf: gain_psr_buffer_0
       lost_samples_buf: lost_samples_buffer
       bad_inputs_buf: bad_inputs_buffer
-      compressed_lost_samples_buf: compressed_lost_samples_buf_0
+      #compressed_lost_samples_buf: compressed_lost_samples_buf_0
     out_buffers:
       output_buf: gpu_n2_output_buffer_0
       beamform_output_buf: gpu_beamform_output_buffer_0
