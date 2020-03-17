@@ -75,7 +75,7 @@ protected:
     uint64_t access_record_size;
 
     // The current position in the ring buffer of the most recent time sample
-    uint32_t cur_pos;
+    modulo<int> cur_pos;
 
     // Map of indices for time samples and positions within the ring buffer
     std::map<time_ctype, size_t> vis_time_ind_map;
