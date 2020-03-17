@@ -147,13 +147,13 @@ class SharedMemoryReader:
             # get a data update from the ringbuffer
             access_record = self._access_record()
 
-            times, freqs = self._filter_last(access_record, n)
+            times = self._filter_last(access_record, n)
 
             for t in times:
-                for f in freqs:
+                for f in range(self.num_freq):
                     if access_record[t][f] == -1:
                         self._data[t][f] = None
-                    elif access_record[t][f] > self._last_access_record[t][f]:
+                    elif self._last_access_record is None or access_record[t][f] > self._last_access_record[t][f]:
                         self._data[t][f] = np.ndarray(
                             (1,),
                             np.uint64,
@@ -164,7 +164,7 @@ class SharedMemoryReader:
 
             access_record_after_copy = self._access_record()
             for t in times:
-                for f in freqs:
+                for f in range(self.num_freq):
                     if access_record_after_copy[t][f] != access_record[t][f]:
                         self._data[t][f] = None
 
@@ -195,7 +195,7 @@ class SharedMemoryReader:
         return self._data[idxs[:n]][:]
 
     def _filter_last(self, access_record, n):
-        """Get the indexes of the data for the n time slots with most recent changes.
+        """Get the time indexes of the data for the n time slots with most recent changes.
 
         Parameters
         ----------
@@ -206,7 +206,7 @@ class SharedMemoryReader:
 
         Returns
         -------
-        list(int), slice(none)
+        list(int)
         """
 
         # get the most recent timestamp for each time slot
@@ -217,11 +217,11 @@ class SharedMemoryReader:
                     last_ts[t] = access_record[t][f]
 
         # sort them
-        last_ts, idxs = list(zip(*sorted([(val, i) for i, val in enumerate(last_ts)])))[
-            1
-        ]
+        for i, val in enumerate(last_ts):
+            if val != -1:
+                last_ts, idxs = list(zip(*sorted([(val, i)])))
 
-        return idxs[:n], slice(None)
+        return idxs[:n]
 
     def read_new_since(self, timestamp):
         """
