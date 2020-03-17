@@ -20,18 +20,22 @@ using std::vector;
 
 /**
  * @class compressLostSamples
- * @brief Compresses the lost samples buffer by checking samples in blocks of factor_upchan * 3, if
- * any are flagged place a 1 in the compressed lost samples frame. samples_per_data_set /
- * num_sub_freq / 3 = 49152 / 128 / 3
+ * @brief Compresses the lost samples buffer into an array of
+ *        @c samples_per_data_set/compression_factor values with the number of individual
+ *        samples lost in each block of @c compression_factor values.
  *
  * @par Buffers
  * @buffer in_buf Kotekan buffer of lost samples.
  *     @buffer_format Array of @c chars
  * @buffer out_buf Kotekan buffer of compressed lost samples.
- *     @buffer_format Array of @c chars
+ *     @buffer_format Array of @c uint32_t
  *
- * @conf   samples_per_data_set Int. No. of samples.
- * @conf   factor_upchan  Int. Upchannelise factor (should be 128).
+ * @conf   samples_per_data_set  Int.    No. of samples.
+ * @conf   compression_factor    Int.    Number of samples to group.
+ * @conf   zero_all_in_group     bool.   If this set to true then one or more samples is lost in
+ *                                       a @c compression_factor group, then consider that to be
+ *                                       a total of @c compression_factor lost samples for the
+ *                                       metadata lost_samples value.
  *
  * @author James Willis
  *
@@ -57,7 +61,8 @@ private:
 
     /// Config variables
     uint32_t _samples_per_data_set;
-    uint32_t _factor_upchan;
+    uint32_t _compression_factor;
+    bool _zero_all_in_group;
 };
 
 #endif

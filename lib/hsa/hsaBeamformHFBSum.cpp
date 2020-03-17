@@ -31,7 +31,7 @@ hsaBeamformHFBSum::hsaBeamformHFBSum(Config& config, const std::string& unique_n
                       * sizeof(float);
     output_frame_len = _num_frb_total_beams * _factor_upchan * sizeof(float);
     compressed_lost_samples_frame_len =
-        sizeof(uint8_t) * _samples_per_data_set / _factor_upchan / 3;
+        sizeof(uint32_t) * _samples_per_data_set / _factor_upchan / 3;
 }
 
 hsaBeamformHFBSum::~hsaBeamformHFBSum() {}

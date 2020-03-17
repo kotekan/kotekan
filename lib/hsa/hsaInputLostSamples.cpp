@@ -22,7 +22,7 @@ hsaInputLostSamples::hsaInputLostSamples(Config& config, const std::string& uniq
     command_type = gpuCommandType::COPY_IN;
 
     _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
-    input_frame_len = _samples_per_data_set * sizeof(uint8_t);
+    input_frame_len = _samples_per_data_set * sizeof(uint32_t);
 
     lost_samples_buf = host_buffers.get_buffer("lost_samples_buf");
     lost_samples_buffer_id = 0;

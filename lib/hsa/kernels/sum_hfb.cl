@@ -7,7 +7,7 @@
 
 #define NUM_SUB_FREQS 128
 
-__kernel void sum_hfb(__global float *data, __constant uchar *compressed_lost_samples_buf, __global float *hfb_sum_output_array, const uint num_samples){
+__kernel void sum_hfb(__global float *data, __constant uint *compressed_lost_samples_buf, __global float *hfb_sum_output_array, const uint num_samples){
     
   uint local_address = get_local_id(0);
 
