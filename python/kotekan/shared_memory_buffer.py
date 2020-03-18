@@ -34,7 +34,13 @@ class SharedMemoryReader:
     valid_field_padding = 3
     size_valid_field = 1
 
-    def __init__(self, semaphore_name, shared_memory_name):
+    def __init__(self, semaphore_name, shared_memory_name, buffer_size):
+        # number of times kept in data copy
+        self.buffer_size = buffer_size
+
+        # maps from access record timestamp to index (0..buffer_size)
+        self.time_index_map = {}
+
         self.semaphore = posix_ipc.Semaphore(semaphore_name)
 
         self.shared_mem_name = shared_memory_name
@@ -69,7 +75,7 @@ class SharedMemoryReader:
 
         os.close(shared_mem.fd)
 
-        self._data = None
+        self._data = np.ndarray(buffer_size)
         self._last_access_record = None
 
     def _read_structural_data(self):
@@ -137,6 +143,9 @@ class SharedMemoryReader:
             If the shared memory is marked as invalid by the writer or if the structural parameters
             have changed.
         """
+        if n > self.buffer_size:
+            raise SharedMemoryError("Can't read more than {0} last time slots, because buffer size is set to {0} (Tried to read last {1} time slots.).".format(self.buffer_size, n))
+
         self.shared_mem.seek(0)
 
         try:
@@ -149,6 +158,7 @@ class SharedMemoryReader:
 
             times = self._filter_last(access_record, n)
 
+            # copy data updates within the last n time slots
             for t in times:
                 for f in range(self.num_freq):
                     if access_record[t][f] == -1:
@@ -174,7 +184,7 @@ class SharedMemoryReader:
         return self._return_data_copy_last(n)
 
     def _return_data_copy_last(self, n):
-        if self._data is None or self._last_access_record is None:
+        if self._last_access_record is None:
             return None
 
         # get the most recent timestamp for each time slot
@@ -185,9 +195,7 @@ class SharedMemoryReader:
                     last_ts[t] = self._last_access_record[t][f]
 
         # sort them
-        last_ts, idxs = list(zip(*sorted([(val, i) for i, val in enumerate(last_ts)])))[
-            1
-        ]
+        last_ts, idxs = list(zip(*sorted([(val, i) for i, val in enumerate(last_ts)])))
 
         # delete the rest
         self._data[idxs[n:]][:] = None
@@ -195,7 +203,8 @@ class SharedMemoryReader:
         return self._data[idxs[:n]][:]
 
     def _filter_last(self, access_record, n):
-        """Get the time indexes of the data for the n time slots with most recent changes.
+        """
+        Get the time indexes of the data for the n time slots with most recent changes.
 
         Parameters
         ----------
@@ -217,11 +226,14 @@ class SharedMemoryReader:
                     last_ts[t] = access_record[t][f]
 
         # sort them
-        for i, val in enumerate(last_ts):
-            if val != -1:
-                last_ts, idxs = list(zip(*sorted([(val, i)])))
+        last_ts, idxs = list(zip(*sorted([(val, i) for i, val in enumerate(last_ts) if val != -1])))
 
-        return idxs[:n]
+        # there should not be multiple similar entries
+        if len(last_ts) != len(set(last_ts)):
+            raise SharedMemoryError("Found duplicate timestamps in access record: {}".format(last_ts))
+
+        # return last n
+        return idxs[n:]
 
     def read_new_since(self, timestamp):
         """
