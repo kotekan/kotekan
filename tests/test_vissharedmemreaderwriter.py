@@ -7,6 +7,8 @@ from future.builtins.disabled import *  # noqa pylint: disable=W0401, W0614
 
 import posix_ipc
 import pytest
+import threading
+from time import sleep
 
 from kotekan import runner, shared_memory_buffer
 
@@ -25,7 +27,7 @@ def semaphore():
 params = {
     "num_elements": 7,
     "num_ev": 0,
-    "total_frames": 6,
+    "total_frames": 10,
     "cadence": 1.0,
     "mode": "default",
     "dataset_manager": {"use_dataset_broker": False},
@@ -38,14 +40,10 @@ params_fakevis = {
     "wait": True,
 }
 
-params_writer_stage = {"nsamples": 2}
+params_writer_stage = {"nsamples": 5}
 
-# test using the python reader:
+
 @pytest.fixture()
-def buffer(vis_data_slow):
-    yield shared_memory_buffer.SharedMemoryReader(sem_name, fname_buf)
-
-@pytest.fixture(scope="module")
 def vis_data_slow(tmpdir_factory):
 
     # keeping all the data this test produced here (probably do not need it)
@@ -60,14 +58,23 @@ def vis_data_slow(tmpdir_factory):
         buffers_out=None,
         global_config=params,
     )
+    yield test
 
-    test.run()
 
+def test_shared_mem_buffer(vis_data_slow):
+    threading.Thread(target=vis_data_slow.run).start()
+    sleep(3)
+    buffer = shared_memory_buffer.SharedMemoryReader(sem_name, fname_buf, 5)
 
-def test_shared_mem_buffer(vis_data_slow, buffer):
     assert buffer.num_time == params_writer_stage["nsamples"]
     assert buffer.num_freq == len(params_fakevis["freq_ids"])
 
+    # access_record = []
+    # for t in
+    # assert buffer._access_record() == access_record
     print(buffer._access_record())
 
-    print(buffer.read_last(7))
+    while True:
+        sleep(1)
+        print(buffer._access_record())
+        print(buffer.read_last(5))
