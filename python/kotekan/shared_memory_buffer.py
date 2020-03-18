@@ -144,7 +144,11 @@ class SharedMemoryReader:
             have changed.
         """
         if n > self.buffer_size:
-            raise SharedMemoryError("Can't read more than {0} last time slots, because buffer size is set to {0} (Tried to read last {1} time slots.).".format(self.buffer_size, n))
+            raise SharedMemoryError(
+                "Can't read more than {0} last time slots, because buffer size is set to {0} (Tried to read last {1} time slots.).".format(
+                    self.buffer_size, n
+                )
+            )
 
         self.shared_mem.seek(0)
 
@@ -163,7 +167,10 @@ class SharedMemoryReader:
                 for f in range(self.num_freq):
                     if access_record[t][f] == -1:
                         self._data[t][f] = None
-                    elif self._last_access_record is None or access_record[t][f] > self._last_access_record[t][f]:
+                    elif (
+                        self._last_access_record is None
+                        or access_record[t][f] > self._last_access_record[t][f]
+                    ):
                         self._data[t][f] = np.ndarray(
                             (1,),
                             np.uint64,
@@ -226,11 +233,15 @@ class SharedMemoryReader:
                     last_ts[t] = access_record[t][f]
 
         # sort them
-        last_ts, idxs = list(zip(*sorted([(val, i) for i, val in enumerate(last_ts) if val != -1])))
+        last_ts, idxs = list(
+            zip(*sorted([(val, i) for i, val in enumerate(last_ts) if val != -1]))
+        )
 
         # there should not be multiple similar entries
         if len(last_ts) != len(set(last_ts)):
-            raise SharedMemoryError("Found duplicate timestamps in access record: {}".format(last_ts))
+            raise SharedMemoryError(
+                "Found duplicate timestamps in access record: {}".format(last_ts)
+            )
 
         # return last n
         return idxs[n:]
