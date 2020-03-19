@@ -445,7 +445,7 @@ class VisWriterBuffer(OutputBuffer):
         # TODO: Might be nice to be able to check the file is the right one.
         # But visWriter creates the acquisition and file names on the flight
         flnm = glob.glob(self.output_dir + "/*/*.data")[0]
-        return visbuffer.VisRaw(os.path.splitext(flnm)[0])
+        return visbuffer.VisRaw.form_file(os.path.splitext(flnm)[0])
 
 
 class ReadVisBuffer(InputBuffer):

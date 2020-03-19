@@ -50,7 +50,7 @@ def written_data(tmpdir_factory):
 
     files = sorted(glob.glob(tmpdir + "/20??????T??????Z_*_corr/*.meta"))
 
-    yield [visbuffer.VisRaw(fname) for fname in files]
+    yield [visbuffer.VisRaw.from_file(fname) for fname in files]
 
 
 @pytest.fixture(scope="module")
@@ -89,7 +89,7 @@ def critical_state_data(tmpdir_factory):
 
     files = sorted(glob.glob(tmpdir + "/20??????T??????Z_*_corr/*.meta"))
 
-    yield [visbuffer.VisRaw(fname) for fname in files]
+    yield [visbuffer.VisRaw.from_file(fname) for fname in files]
 
 
 def test_vis(written_data):
@@ -206,4 +206,4 @@ def test_dataset_changes(critical_state_data):
 
         assert vr.num_time == num_time[ii]
         assert len(unique_ds) == num_states[ii]
-        assert vr.file_metadata["attributes"]["acquisition_name"] == acq_name[ii]
+        assert vr.metadata["attributes"]["acquisition_name"] == acq_name[ii]

@@ -279,12 +279,13 @@ class VisRaw(object):
 
     Parameters
     ----------
-    filename : str
-        Name of file to open.
-    mode : str, optional
-        Mode to open file in. Defaults to read only.
-    mmap : bool, optional
-        Use an mmap to open the file to avoid loading it all into memory.
+    TODO
+    num_time
+    num_freq
+    metadata
+    time
+    index_map
+    data
 
     Attributes
     ----------
@@ -299,38 +300,105 @@ class VisRaw(object):
         Is the array of times, in the usual correlator file format.
     """
 
-    def __init__(self, filename, mode="r", mmap=False):
+    def __init__(self, num_time, num_freq, metadata, time, index_map, data):
+        self.num_time = num_time
+        self.num_freq = num_freq
+        self.metadata = metadata
+        self.time = time
+        self.index_map = index_map
+        self.data = data
 
+    @classmethod
+    def from_nparray(
+        cls,
+        array,
+        size_frame,
+        num_time,
+        num_freq,
+        time,
+        num_elements,
+        num_stack,
+        num_ev,
+    ):
+        layout = VisBuffer._calculate_layout(num_elements, num_stack, num_ev)
+
+        # TODO: remove this when we have fixed the alignment issue in kotekan (see self.from_file)
+        dtype_layout = {"names": [], "formats": [], "offsets": []}
+        for member in layout["members"]:
+            dtype_layout["names"].append(member["name"])
+            dtype_layout["offsets"].append(member["start"])
+            if member["num"] == 1:
+                dtype_layout["formats"].append((member["dtype"]))
+            else:
+                dtype_layout["formats"].append((member["dtype"], member["num"]))
+        dtype_layout["itemsize"] = layout["size"]
+        data_struct = np.dtype(dtype_layout)
+
+        frame_struct = np.dtype(
+            {
+                "names": ["valid", "metadata", "data"],
+                "formats": [np.uint8, VisMetadata, data_struct],
+                "itemsize": size_frame,
+            }
+        )
+
+        # TODO: Python 3 - use native_str for compatibility
+        # Load data into on-disk numpy array
+        raw = array.view(dtype=frame_struct)
+        data = raw["data"]
+        metadata = raw["metadata"]
+        valid_frames = raw["valid"]
+
+        return cls(num_time, num_freq, metadata, time, index_map=None, data=data)
+
+    def from_file(cls, filename, mode="r", mmap=False):
+        """Read correlator files in the raw format.
+
+        Parses the structure of the binary files and loads them
+        into an memmap-ed numpy array.
+
+        Parameters
+        ----------
+        filename : str
+            Name of file to open.
+        mode : str, optional
+            Mode to open file in. Defaults to read only.
+        mmap : bool, optional
+            Currently ignored. Use an mmap to open the file to avoid loading it all into memory.
+
+        Returns
+        -------
+        VisRaw
+            A VisRaw object giving access to the given file.
+        """
         import msgpack
 
         # Get filenames
-        self.filename = self._parse_filename(filename)
-        self.meta_path = self.filename + ".meta"
-        self.data_path = self.filename + ".data"
+        filename = VisRaw._parse_filename(filename)
+        meta_path = filename + ".meta"
+        data_path = filename + ".data"
 
         # Read file metadata
-        with io.open(self.meta_path, "rb") as fh:
+        with io.open(meta_path, "rb") as fh:
             metadata = msgpack.load(fh, raw=False)
 
-        self.index_map = metadata["index_map"]
+        index_map = metadata["index_map"]
 
         # TODO: (Python 3) Used native_str for compatibility here
-        self.time = np.array(
-            [(t["fpga_count"], t["ctime"]) for t in self.index_map["time"]],
+        time = np.array(
+            [(t["fpga_count"], t["ctime"]) for t in index_map["time"]],
             dtype=[
                 (native_str("fpga_count"), np.uint64),
                 (native_str("ctime"), np.float64),
             ],
         )
 
-        self.num_freq = metadata["structure"]["nfreq"]
-        self.num_time = metadata["structure"]["ntime"]
-        self.num_prod = len(self.index_map["prod"])
-        self.num_stack = (
-            len(self.index_map["stack"]) if "stack" in self.index_map else self.num_prod
-        )
-        self.num_elements = len(self.index_map["input"])
-        self.num_ev = len(self.index_map["ev"])
+        num_freq = metadata["structure"]["nfreq"]
+        num_time = metadata["structure"]["ntime"]
+        num_prod = len(index_map["prod"])
+        num_stack = len(index_map["stack"]) if "stack" in index_map else num_prod
+        num_elements = len(index_map["input"])
+        num_ev = len(index_map["ev"])
 
         # TODO: this doesn't work at the moment because kotekan and numpy
         # disagree on how the struct should be aligned. It turns out (as of
@@ -348,12 +416,10 @@ class VisRaw(object):
         # ]
         # data_struct = np.dtype([(native_str(d[0]),) + d[1:] for d in data_struct], align=True)
 
-        layout = VisBuffer._calculate_layout(
-            self.num_elements, self.num_stack, self.num_ev
-        )
-        dtype_layout = {"names": [], "formats": [], "offsets": []}
+        layout = VisBuffer._calculate_layout(num_elements, num_stack, num_ev)
 
         # TODO: remove this when we have fixed the alignment issue in kotekan
+        dtype_layout = {"names": [], "formats": [], "offsets": []}
         for member in layout["members"]:
             dtype_layout["names"].append(member["name"])
             dtype_layout["offsets"].append(member["start"])
@@ -371,16 +437,17 @@ class VisRaw(object):
 
         # TODO: Python 3 - use native_str for compatibility
         # Load data into on-disk numpy array
-        self.raw = np.memmap(
-            native_str(self.data_path),
+        raw = np.memmap(
+            native_str(data_path),
             dtype=frame_struct,
             mode=mode,
-            shape=(self.num_time, self.num_freq),
+            shape=(num_time, num_freq),
         )
-        self.data = self.raw["data"]
-        self.metadata = self.raw["metadata"]
-        self.valid_frames = self.raw["valid"]
-        self.file_metadata = metadata
+        data = raw["data"]
+        metadata = raw["metadata"]
+        valid_frames = raw["valid"]
+
+        return cls(num_time, metadata, time, index_map, data)
 
     @staticmethod
     def _parse_filename(fname):
@@ -471,7 +538,7 @@ class VisRaw(object):
             msgpack.dump(metadata, fh)
 
         # Open the rawfile
-        rawfile = cls(name, mode="w+")
+        rawfile = cls.from_file(name, mode="w+")
 
         # Set the metadata on the frames that we already have
         rawfile.valid_frames[:] = 1

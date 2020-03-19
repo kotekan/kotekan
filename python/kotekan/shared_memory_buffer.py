@@ -7,7 +7,10 @@ import os
 import posix_ipc
 import struct
 
+from kotekan.visbuffer import VisRaw
+
 FMT_UINT64_T = "Q"
+FMT_INT64_T = "q"
 SIZE_UINT64_T = 8
 
 logger = logging.getLogger(__name__)
@@ -19,6 +22,12 @@ class SharedMemoryError(Exception):
     pass
 
 
+class SharedMemoryReaderUsageError(Exception):
+    """There was an error in the usage of SharedMemoryReader."""
+
+    pass
+
+
 class NoNewDataError(Exception):
     """The data in the shared memory has not changed since the last time checked."""
 
@@ -26,20 +35,34 @@ class NoNewDataError(Exception):
 
 
 class SharedMemoryReader:
-    """Reader for the shared memory region."""
+    """
+    Reader for the shared memory region.
+
+    Parameters
+    ----------
+    semaphore_name : str
+        Full path and file name of semaphore.
+    shared_memory_name : int
+        Full path and file name of shared memory.
+    buffer_size : int
+        Number of time slots to keep in local copy of data. Increase if large amount of data is to
+        be read repeatedly. Decrease for less memory usage.
+    """
 
     num_structural_params = 6
     size_structural_data = SIZE_UINT64_T * num_structural_params
     size_access_record_entry = SIZE_UINT64_T
     valid_field_padding = 3
     size_valid_field = 1
+    invalid_value = 0
 
     def __init__(self, semaphore_name, shared_memory_name, buffer_size):
-        # number of times kept in data copy
+        if buffer_size < 1:
+            raise NotImplementedError("Buffer size of 0 is not implemented yet.")
         self.buffer_size = buffer_size
 
         # maps from access record timestamp to index (0..buffer_size)
-        self.time_index_map = {}
+        self._time_index_map = {}
 
         self.semaphore = posix_ipc.Semaphore(semaphore_name)
 
@@ -58,7 +81,7 @@ class SharedMemoryReader:
             self.size_frame_data,
         ) = self._read_structural_data()
 
-        if self.num_writes == -1:
+        if self.num_writes == self.invalid_value:
             raise SharedMemoryError(
                 "The shared memory referenced by '{}' was marked as invalid by the writer.".format(
                     self.shared_mem_name
@@ -75,7 +98,12 @@ class SharedMemoryReader:
 
         os.close(shared_mem.fd)
 
-        self._data = np.ndarray(buffer_size)
+        self._data = np.ndarray(
+            (buffer_size, self.num_freq), dtype=np.dtype(np.void, self.size_frame)
+        )
+        logger.debug(
+            "Created buffer for copy of data (size: {})".format(self._data.shape)
+        )
         self._last_access_record = None
 
     def _read_structural_data(self):
@@ -144,10 +172,9 @@ class SharedMemoryReader:
             have changed.
         """
         if n > self.buffer_size:
-            raise SharedMemoryError(
-                "Can't read more than {0} last time slots, because buffer size is set to {0} (Tried to read last {1} time slots.).".format(
-                    self.buffer_size, n
-                )
+            raise SharedMemoryReaderUsageError(
+                "Can't read more than {0} last time slots, because buffer size is set to {0} "
+                "(Tried to read last {1} time slots.).".format(self.buffer_size, n)
             )
 
         self.shared_mem.seek(0)
@@ -161,53 +188,108 @@ class SharedMemoryReader:
             access_record = self._access_record()
 
             times = self._filter_last(access_record, n)
+            logger.debug(
+                "Reading last {} time slots: {}".format(n, times)
+            )
 
             # copy data updates within the last n time slots
             for t in times:
-                for f in range(self.num_freq):
-                    if access_record[t][f] == -1:
-                        self._data[t][f] = None
-                    elif (
+                for f_i in range(self.num_freq):
+                    # check if this value should be copied: only if the access record changed and
+                    # is not set to invalid
+                    if access_record[t][f_i] != self.invalid_value and (
                         self._last_access_record is None
-                        or access_record[t][f] > self._last_access_record[t][f]
+                        or access_record[t][f_i] > self._last_access_record[t][f_i]
                     ):
-                        self._data[t][f] = np.ndarray(
+                        logger.debug("Copying value at time={}, freq={}".format(t, f_i))
+                        # check if this time slot is in local copy of data
+                        try:
+                            t_i = self._time_index_map[access_record[t][f_i]]
+                        except KeyError:
+                            if len(self._time_index_map) == self.buffer_size:
+                                t_i = self._remove_oldest_time_slot()
+                            else:
+                                t_i = self._find_free_time_slot()
+                                if t_i is None:
+                                    raise SharedMemoryError(
+                                        "Can't find a free slot in buffer (has keys {}).".format(
+                                            self._time_index_map.keys()
+                                        )
+                                    )
+                            logger.debug(
+                                "Setting time index map [{}] to {}.".format(
+                                    access_record[t][f_i], t_i
+                                )
+                            )
+                            self._time_index_map[access_record[t][f_i]] = t_i
+
+                        # copy the value
+                        # TODO: eliminate extra copy
+                        n = np.ndarray(
                             (1,),
-                            np.uint64,
+                            np.dtype((np.void, self.size_frame)),
                             self.shared_mem,
-                            self.pos_data + t * self.num_freq + f,
+                            self.pos_data + (t * self.num_freq + f_i) * self.size_frame,
                             order="C",
                         )
+                        self._data[t_i, f_i] = n[:]
 
+            # check if any data became invalid while reading it
             access_record_after_copy = self._access_record()
             for t in times:
                 for f in range(self.num_freq):
                     if access_record_after_copy[t][f] != access_record[t][f]:
-                        self._data[t][f] = None
-
-            self._last_access_record = access_record_after_copy
+                        self._data[self._time_index_map[t], f] = None
+            if self._last_access_record is None:
+                self._last_access_record = np.ndarray((self.num_time, self.num_freq))
+            self._last_access_record[times, :] = access_record_after_copy[times, :]
 
         # return visRaw()
         return self._return_data_copy_last(n)
 
+    def _remove_oldest_time_slot(self):
+        """
+        Remove the oldest time slot from the time index map.
+
+        Returns
+        -------
+        int or None
+            Index of deleted time slot.
+        """
+        oldest = sorted(self._time_index_map.keys())[-1]
+        return self._time_index_map.pop(oldest)
+
+    def _find_free_time_slot(self):
+        """
+        Find a free time slot in the time index map.
+
+        Returns
+        -------
+        int or None
+            Index of free time slot.
+        """
+        for i in range(self.buffer_size):
+            if i not in self._time_index_map.values():
+                logger.debug("Found free time slot: {}".format(i))
+                return i
+        return None
+
     def _return_data_copy_last(self, n):
-        if self._last_access_record is None:
+        if not self._time_index_map:
             return None
 
-        # get the most recent timestamp for each time slot
-        last_ts = [None] * self.num_time
-        for t in range(self.num_time):
-            for f in range(self.num_freq):
-                if last_ts[t] is None or self._last_access_record[t][f] > last_ts[t]:
-                    last_ts[t] = self._last_access_record[t][f]
-
-        # sort them
-        last_ts, idxs = list(zip(*sorted([(val, i) for i, val in enumerate(last_ts)])))
-
-        # delete the rest
-        self._data[idxs[n:]][:] = None
-
-        return self._data[idxs[:n]][:]
+        # sort time index map
+        last_ts, idxs = list(zip(*sorted(self._time_index_map.items())))
+        return VisRaw.from_nparray(
+            self._data[idxs, :],
+            self.size_frame,
+            len(idxs),
+            self.num_freq,
+            time=None,
+            num_elements=7,
+            num_stack=0,
+            num_ev=0,
+        )
 
     def _filter_last(self, access_record, n):
         """
@@ -223,6 +305,11 @@ class SharedMemoryReader:
         Returns
         -------
         list(int)
+
+        Raises
+        ------
+        SharedMemoryError
+            If duplicate time slots are found in the access record.
         """
 
         # get the most recent timestamp for each time slot
@@ -234,7 +321,15 @@ class SharedMemoryReader:
 
         # sort them
         last_ts, idxs = list(
-            zip(*sorted([(val, i) for i, val in enumerate(last_ts) if val != -1]))
+            zip(
+                *sorted(
+                    [
+                        (val, i)
+                        for i, val in enumerate(last_ts)
+                        if val != self.invalid_value
+                    ]
+                )
+            )
         )
 
         # there should not be multiple similar entries
@@ -244,7 +339,7 @@ class SharedMemoryReader:
             )
 
         # return last n
-        return idxs[n:]
+        return idxs[-n:]
 
     def read_new_since(self, timestamp):
         """
@@ -309,7 +404,7 @@ class SharedMemoryReader:
             size_frame_data,
         ) = self._read_structural_data()
 
-        if num_writes == -1:
+        if num_writes == self.invalid_value:
             raise SharedMemoryError(
                 "The shared memory referenced by '{}' was marked as invalid by the writer.".format(
                     self.shared_mem_name
@@ -320,9 +415,8 @@ class SharedMemoryReader:
             """Compare old and new structural value and raise if not the same."""
             if old != new:
                 raise SharedMemoryError(
-                    "The structural value describing the {} has changed from {} to {} since last read time.".format(
-                        name, old, new
-                    )
+                    "The structural value describing the {} has changed from {} to {} since last "
+                    "read time.".format(name, old, new)
                 )
 
         _check_structure(self.num_time, num_time, "number of time samples")

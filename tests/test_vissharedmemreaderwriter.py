@@ -5,6 +5,7 @@ from future.builtins.disabled import *  # noqa pylint: disable=W0401, W0614
 
 # == End Python 2/3 compatibility
 
+import logging
 import posix_ipc
 import pytest
 import threading
@@ -14,6 +15,8 @@ from kotekan import runner, shared_memory_buffer
 
 sem_name = "kotekan"
 fname_buf = "calBuffer"
+
+logging.basicConfig(level=logging.DEBUG)
 
 
 @pytest.fixture(scope="module")
@@ -64,7 +67,7 @@ def vis_data_slow(tmpdir_factory):
 def test_shared_mem_buffer(vis_data_slow):
     threading.Thread(target=vis_data_slow.run).start()
     sleep(3)
-    buffer = shared_memory_buffer.SharedMemoryReader(sem_name, fname_buf, 5)
+    buffer = shared_memory_buffer.SharedMemoryReader(sem_name, fname_buf, 4)
 
     assert buffer.num_time == params_writer_stage["nsamples"]
     assert buffer.num_freq == len(params_fakevis["freq_ids"])
@@ -74,7 +77,12 @@ def test_shared_mem_buffer(vis_data_slow):
     # assert buffer._access_record() == access_record
     print(buffer._access_record())
 
-    while True:
-        sleep(1)
-        print(buffer._access_record())
-        print(buffer.read_last(5))
+    i = 0
+    with pytest.raises(shared_memory_buffer.SharedMemoryError):
+        while True:
+            print("round {}".format(i))
+            sleep(1)
+            print(buffer._access_record())
+            print(buffer.read_last(3))
+            i += 1
+    assert i >= 2
