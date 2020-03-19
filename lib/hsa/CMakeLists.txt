@@ -1,6 +1,5 @@
 project( libkotekan_hsa )
 
-include_directories (${KOTEKAN_SOURCE_DIR}/include)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/gpu)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/hsa)
@@ -60,6 +59,7 @@ set ( KOTEKAN_HSA_SOURCES
 add_library ( kotekan_hsa
               ${KOTEKAN_HSA_SOURCES})
 
+target_link_libraries( kotekan_hsa libexternal )
 target_link_libraries( kotekan_hsa kotekan_utils )
 
 add_subdirectory(kernels)
