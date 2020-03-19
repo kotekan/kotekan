@@ -99,7 +99,7 @@ class SharedMemoryReader:
         os.close(shared_mem.fd)
 
         self._data = np.ndarray(
-            (buffer_size, self.num_freq), dtype=np.dtype(np.void, self.size_frame)
+            (buffer_size, self.num_freq), dtype=np.dtype((np.void, self.size_frame))
         )
         logger.debug(
             "Created buffer for copy of data (size: {})".format(self._data.shape)
@@ -188,9 +188,7 @@ class SharedMemoryReader:
             access_record = self._access_record()
 
             times = self._filter_last(access_record, n)
-            logger.debug(
-                "Reading last {} time slots: {}".format(n, times)
-            )
+            logger.debug("Reading last {} time slots: {}".format(n, times))
 
             # copy data updates within the last n time slots
             for t in times:
@@ -225,14 +223,14 @@ class SharedMemoryReader:
 
                         # copy the value
                         # TODO: eliminate extra copy
-                        n = np.ndarray(
+                        tmp = np.ndarray(
                             (1,),
                             np.dtype((np.void, self.size_frame)),
                             self.shared_mem,
                             self.pos_data + (t * self.num_freq + f_i) * self.size_frame,
                             order="C",
                         )
-                        self._data[t_i, f_i] = n[:]
+                        self._data[t_i, f_i] = tmp[:]
 
             # check if any data became invalid while reading it
             access_record_after_copy = self._access_record()
@@ -280,6 +278,10 @@ class SharedMemoryReader:
 
         # sort time index map
         last_ts, idxs = list(zip(*sorted(self._time_index_map.items())))
+
+        # select last n time slots
+        idxs = idxs[-n:]
+
         return VisRaw.from_nparray(
             self._data[idxs, :],
             self.size_frame,
@@ -287,7 +289,7 @@ class SharedMemoryReader:
             self.num_freq,
             time=None,
             num_elements=7,
-            num_stack=0,
+            num_stack=7 * 6,
             num_ev=0,
         )
 

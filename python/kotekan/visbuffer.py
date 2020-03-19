@@ -343,7 +343,6 @@ class VisRaw(object):
         )
 
         # TODO: Python 3 - use native_str for compatibility
-        # Load data into on-disk numpy array
         raw = array.view(dtype=frame_struct)
         data = raw["data"]
         metadata = raw["metadata"]
