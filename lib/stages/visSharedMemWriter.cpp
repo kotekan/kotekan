@@ -155,7 +155,7 @@ void visSharedMemWriter::reset_memory(uint32_t time_ind) {
     // resets all memory at time_ind to 0s
 
     uint8_t *buf_write_pos = buf_addr + (time_ind * nfreq * frame_size);
-    uint64_t *access_record_write_pos = access_record_addr + (time_ind * nfreq * access_record_size);
+    int64_t *access_record_write_pos = access_record_addr + (time_ind * nfreq);
 
     INFO("Resetting access_record memory at position time_ind: {}\n", time_ind);
 
@@ -164,9 +164,9 @@ void visSharedMemWriter::reset_memory(uint32_t time_ind) {
         FATAL_ERROR("Failed to acquire semaphore {}", sem_name);
         return;
     }
-    std::vector<char> invalid_vector(nfreq * access_record_size, invalid);
-    char* tmp = invalid_vector.data();
-    memcpy(access_record_write_pos, &tmp, sizeof(tmp));
+    int64_t invalid_vector[nfreq];
+    std::fill_n(invalid_vector, nfreq, invalid);
+    memcpy(access_record_write_pos, invalid_vector, nfreq * sizeof *invalid_vector);
     if (sem_post(sem) == -1) {
         FATAL_ERROR("Failed to post semaphore {}", sem_name);
         return;
@@ -175,7 +175,7 @@ void visSharedMemWriter::reset_memory(uint32_t time_ind) {
     INFO("Resetting ring buffer memory at position time_ind: {}\n", time_ind);
     // set the full time_ind to 0 in the ring buffer
     std::vector<char> zeros(nfreq * frame_size, 0);
-    tmp = zeros.data();
+    char* tmp = zeros.data();
     memcpy(buf_write_pos, &tmp, sizeof(tmp));
 
     INFO("Memory reset\n");
@@ -185,7 +185,7 @@ void visSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
     // write frame to ring buffer at time_ind and freq_ind
 
     uint8_t *buf_write_pos = buf_addr + ((time_ind * nfreq + freq_ind) * frame_size);
-    uint64_t *access_record_write_pos = access_record_addr + (time_ind * nfreq + freq_ind);
+    int64_t *access_record_write_pos = access_record_addr + (time_ind * nfreq + freq_ind);
 
     INFO("Writing ringbuffer to time_ind {} and freq_ind {}\n", time_ind, freq_ind);
 
@@ -307,9 +307,6 @@ void visSharedMemWriter::main_thread() {
 
     auto frame = visFrameView(in_buf, frame_id);
 
-    // Set up the structure of the access record shared memory
-    access_record_size = sizeof(uint64_t);
-
     // Build the frequency index
     std::map<uint32_t, uint32_t> freq_id_map;
     auto& dm = datasetManager::instance();
@@ -341,7 +338,7 @@ void visSharedMemWriter::main_thread() {
 
     // The elements contained in the structured data and access record are each 64 bytes
     structured_data_addr = (uint64_t*) buf_addr;
-    access_record_addr = structured_data_addr + structured_data_num;
+    access_record_addr = (int64_t*) (structured_data_addr + structured_data_num);
     buf_addr += (structured_data_size * structured_data_num) + (ntime * nfreq * access_record_size);
 
     // Record structure of data
@@ -353,9 +350,10 @@ void visSharedMemWriter::main_thread() {
     memcpy(structured_data_addr + 5, &data_size, sizeof(data_size));
 
     // initially set the address records with -1
-    std::vector<char> invalid_vector(ntime * nfreq * access_record_size, invalid);
-    char* tmp = invalid_vector.data();
-    memcpy(access_record_addr, &tmp, sizeof(tmp));
+    // std::fill_n(array, 100, -1);
+    int64_t invalid_vector [ntime * nfreq];
+    std::fill_n(invalid_vector, ntime*nfreq, invalid);
+    memcpy(access_record_addr, invalid_vector, ntime * nfreq * sizeof *invalid_vector);
 
     INFO("Created the shared memory segments\n");
     if (sem_post(sem) == -1) {
