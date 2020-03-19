@@ -35,8 +35,8 @@ protected:
     sem_t *sem;
 
     // Pointers to shared memory addresses for structured data, access record and ringBuffer
-    uint64_t* structured_data_addr;
-    uint64_t *access_record_addr;
+    uint64_t *structured_data_addr;
+    int64_t *access_record_addr;
     uint8_t *buf_addr;
 
     // Parameters that define structure of ring buffer
@@ -65,12 +65,12 @@ protected:
     const int64_t invalid = -1;
 
     // The number of elements in the structured data
-    size_t structured_data_num = 6;
+    const size_t structured_data_num = 6;
     // the size of each element
-    size_t structured_data_size = sizeof(uint64_t);
+    const size_t structured_data_size = sizeof(uint64_t);
 
     // The size of each record address
-    uint64_t access_record_size;
+    const size_t access_record_size = 8;
 
     // The current position in the ring buffer of the most recent time sample
     modulo<int> cur_pos;
