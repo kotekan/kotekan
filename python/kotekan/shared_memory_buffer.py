@@ -241,8 +241,7 @@ class SharedMemoryReader:
                             self.pos_data,
                             (t * self.num_freq + f_i),
                             self.size_frame,
-                            self.pos_data
-                            + (t * self.num_freq + f_i) * self.size_frame,
+                            self.pos_data + (t * self.num_freq + f_i) * self.size_frame,
                             self.pos_data
                             + (t * self.num_freq + f_i) * self.size_frame
                             + self.size_frame,
