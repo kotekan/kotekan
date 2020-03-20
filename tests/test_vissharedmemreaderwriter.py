@@ -7,10 +7,18 @@ from future.builtins.disabled import *  # noqa pylint: disable=W0401, W0614
 
 import logging
 import numpy as np
+import os
 import posix_ipc
 import pytest
+import re
+import signal
+from subprocess import Popen
+import shutil
+import tempfile
 import threading
 from time import sleep
+
+from comet import Manager
 
 from kotekan import runner, shared_memory_buffer
 
@@ -18,6 +26,47 @@ sem_name = "kotekan"
 fname_buf = "calBuffer"
 
 logging.basicConfig(level=logging.DEBUG)
+
+
+@pytest.fixture()
+def comet_broker():
+    broker_path = shutil.which("comet")
+    if not broker_path:
+        pytest.skip(
+            "Make sure PYTHONPATH is set to where the comet dataset broker is installed."
+        )
+
+    with tempfile.NamedTemporaryFile(mode="w") as f_out:
+        # Start comet with a random port
+        broker = Popen(
+            [broker_path, "-p", "0", "--recover", "False"], stdout=f_out, stderr=f_out
+        )
+        sleep(3)
+
+        # Find port in the log
+        regex = re.compile("Selected random port: ([0-9]+)$")
+        log = open(f_out.name, "r").read().split("\n")
+        port = None
+        for line in log:
+            print(line)
+            match = regex.search(line)
+            if match:
+                port = match.group(1)
+                print("Test found comet port in log: %s" % port)
+                break
+        if not match:
+            print("Could not find comet port in logs.")
+            exit(1)
+
+        try:
+            yield port
+        finally:
+            pid = broker.pid
+            os.kill(pid, signal.SIGINT)
+            broker.terminate()
+            log = open(f_out.name, "r").read().split("\n")
+            for line in log:
+                print(line)
 
 
 @pytest.fixture(scope="module")
@@ -34,11 +83,11 @@ params = {
     "total_frames": 11,
     "cadence": 1.0,
     "mode": "default",
-    "dataset_manager": {"use_dataset_broker": False},
+    "dataset_manager": {"use_dataset_broker": True},
 }
 
 params_fakevis = {
-    "freq_ids": [0, 1, 2],
+    "freq_ids": [1, 2, 3, 4, 7, 10],
     "num_frames": params["total_frames"],
     "mode": params["mode"],
     "wait": True,
@@ -48,11 +97,14 @@ params_writer_stage = {"nsamples": 5}
 
 
 @pytest.fixture()
-def vis_data_slow(tmpdir_factory):
+def vis_data_slow(tmpdir_factory, comet_broker):
 
     # keeping all the data this test produced here (probably do not need it)
     # using FakeVisBuffer to produce fake data
     fakevis_buffer = runner.FakeVisBuffer(**params_fakevis)
+
+    # pass comet port to kotekan
+    params["dataset_manager"]["ds_broker_port"] = comet_broker
 
     # KotekanStageTester is used to run kotekan with my config
     test = runner.KotekanStageTester(
@@ -65,7 +117,7 @@ def vis_data_slow(tmpdir_factory):
     yield test
 
 
-def test_shared_mem_buffer(vis_data_slow):
+def test_shared_mem_buffer(vis_data_slow, comet_broker):
     num_freq = len(params_fakevis["freq_ids"])
     num_ev = params["num_ev"]
     num_elements = params["num_elements"]
@@ -83,10 +135,12 @@ def test_shared_mem_buffer(vis_data_slow):
 
     n_times_to_read = 3
 
+    ds_manager = Manager("localhost", comet_broker)
+
     i = 0
     with pytest.raises(shared_memory_buffer.SharedMemoryError):
         while True:
-            sleep(1)
+            sleep(0.5)
             print(buffer._access_record())
             visraw = buffer.read_last(n_times_to_read)
             assert visraw.num_freq == len(params_fakevis["freq_ids"])
@@ -94,6 +148,12 @@ def test_shared_mem_buffer(vis_data_slow):
 
             ds = np.array(visraw.metadata["dataset_id"]).copy().view("u8,u8")
             unique_ds = np.unique(ds)
+            datasets = []
+            for foo in unique_ds:
+                for bar in foo:
+                    datasets.append(bar.item())
+            for ds in datasets:
+                print("{:x}".format(ds))
 
             evals = visraw.data["eval"]
             evecs = visraw.data["evec"]
