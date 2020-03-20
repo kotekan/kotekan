@@ -88,13 +88,15 @@ class SharedMemoryReader:
                 )
             )
 
-        self.len_data = self.num_freq * self.num_freq
+        self.len_data = self.num_freq * self.num_time
 
         self.size_access_record = self.len_data * self.size_access_record_entry
         self.pos_access_record = self.size_structural_data
 
-        self.size_data = self.len_data * self.num_time
+        self.size_data = self.len_data * self.size_frame
         self.pos_data = self.pos_access_record + self.size_access_record
+
+        self._initial_validation()
 
         os.close(shared_mem.fd)
 
@@ -105,6 +107,17 @@ class SharedMemoryReader:
             "Created buffer for copy of data (size: {})".format(self._data.shape)
         )
         self._last_access_record = None
+
+    def _initial_validation(self):
+        shared_mem_size = (
+            self.size_structural_data + self.size_access_record + self.size_data
+        )
+        if shared_mem_size != self.shared_mem.size():
+            raise SharedMemoryError(
+                "Expected shared memory to have size {} (but has {}).".format(
+                    shared_mem_size, self.shared_mem.size()
+                )
+            )
 
     def _read_structural_data(self):
         num_writes = struct.unpack_from(
