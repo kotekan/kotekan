@@ -54,7 +54,7 @@ class SharedMemoryReader:
     size_access_record_entry = SIZE_UINT64_T
     valid_field_padding = 3
     size_valid_field = 1
-    invalid_value = 0
+    invalid_value = -1
 
     def __init__(self, semaphore_name, shared_memory_name, buffer_size):
         if buffer_size < 1:
@@ -406,7 +406,7 @@ class SharedMemoryReader:
             size_frame_data,
         ) = self._read_structural_data()
 
-        if num_writes == self.invalid_value:
+        if num_writes == 0 and self.num_writes > 0:
             raise SharedMemoryError(
                 "The shared memory referenced by '{}' was marked as invalid by the writer.".format(
                     self.shared_mem_name
