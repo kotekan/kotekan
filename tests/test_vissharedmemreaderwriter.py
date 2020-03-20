@@ -231,7 +231,8 @@ def test_shared_mem_buffer_read_since(vis_data_slow):
                 # Check that the datasets have the correct values
                 assert (evals == np.arange(num_ev)[np.newaxis, np.newaxis, :]).all()
                 assert (
-                    evecs.real == np.arange(num_ev)[np.newaxis, np.newaxis, :, np.newaxis]
+                    evecs.real
+                    == np.arange(num_ev)[np.newaxis, np.newaxis, :, np.newaxis]
                 ).all()
                 assert (
                     evecs.imag

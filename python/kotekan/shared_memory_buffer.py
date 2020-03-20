@@ -313,7 +313,9 @@ class SharedMemoryReader:
         access_record = self._access_record()
 
         times = self._filter_since(access_record, timestamp)
-        logger.debug("Reading {} time slots since {}: {}".format(len(times), timestamp, times))
+        logger.debug(
+            "Reading {} time slots since {}: {}".format(len(times), timestamp, times)
+        )
 
         self._copy_from_shm(times, access_record)
 
@@ -367,8 +369,12 @@ class SharedMemoryReader:
         self._check_for_identical_timestamps(last_ts)
 
         # return timestamps newer than the given one
-        ll = [i for i,v in enumerate(last_ts) if v > timestamp]
-        logger.debug("Found {} time slots that are newer than {} in {}: {}.".format(len(ll), timestamp, last_ts, ll))
+        ll = [i for i, v in enumerate(last_ts) if v > timestamp]
+        logger.debug(
+            "Found {} time slots that are newer than {} in {}: {}.".format(
+                len(ll), timestamp, last_ts, ll
+            )
+        )
         return ll
 
     def _return_data_copy_since(self, timestamp):
