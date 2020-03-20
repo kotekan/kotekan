@@ -179,3 +179,65 @@ def test_shared_mem_buffer(vis_data_slow, comet_broker):
 
             i += 1
     assert i >= 2
+
+
+def test_shared_mem_buffer_read_since(vis_data_slow):
+    num_freq = len(params_fakevis["freq_ids"])
+    num_ev = params["num_ev"]
+    num_elements = params["num_elements"]
+
+    threading.Thread(target=vis_data_slow.run).start()
+    sleep(2)
+    buffer = shared_memory_buffer.SharedMemoryReader(sem_name, fname_buf, 4)
+
+    assert buffer.num_time == params_writer_stage["nsamples"]
+    assert buffer.num_freq == num_freq
+
+    # access_record = []
+    # for t in
+    # assert buffer._access_record() == access_record
+
+    timestamp = 0
+
+    i = 0
+    with pytest.raises(shared_memory_buffer.SharedMemoryError):
+        while True:
+            sleep(0.5)
+            print(buffer._access_record())
+            visraw = buffer.read_since(timestamp)
+
+            if visraw is not None:
+                timestamp = visraw.time[-1][0]
+                print("Next timestamp is {}.".format(timestamp))
+
+                assert visraw.num_freq == len(params_fakevis["freq_ids"])
+                num_time = visraw.num_time
+                print("num times read: {}".format(num_time))
+
+                ds = np.array(visraw.metadata["dataset_id"]).copy().view("u8,u8")
+                unique_ds = np.unique(ds)
+
+                evals = visraw.data["eval"]
+                evecs = visraw.data["evec"]
+                erms = visraw.data["erms"]
+
+                # Check datasets are present
+                assert evals.shape == (num_time, num_freq, num_ev)
+                assert evecs.shape == (num_time, num_freq, num_ev * num_elements)
+                assert erms.shape == (num_time, num_freq)
+
+                evecs = evecs.reshape(num_time, num_freq, num_ev, num_elements)
+
+                # Check that the datasets have the correct values
+                assert (evals == np.arange(num_ev)[np.newaxis, np.newaxis, :]).all()
+                assert (
+                    evecs.real == np.arange(num_ev)[np.newaxis, np.newaxis, :, np.newaxis]
+                ).all()
+                assert (
+                    evecs.imag
+                    == np.arange(num_elements)[np.newaxis, np.newaxis, np.newaxis, :]
+                ).all()
+                # assert (erms == 1.0).all()
+
+            i += 1
+    assert i >= 2

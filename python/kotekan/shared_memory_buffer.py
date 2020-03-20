@@ -200,62 +200,7 @@ class SharedMemoryReader:
         times = self._filter_last(access_record, n)
         logger.debug("Reading last {} time slots: {}".format(n, times))
 
-        # copy data updates within the last n time slots
-        for t in times:
-            for f_i in range(self.num_freq):
-                # check if this value should be copied: only if the access record changed and
-                # is not set to invalid
-                if access_record[t][f_i] != self.invalid_value and (
-                    self._last_access_record is None
-                    or access_record[t][f_i] > self._last_access_record[t][f_i]
-                ):
-                    logger.debug("Copying value at time={}, freq={}".format(t, f_i))
-                    # check if this time slot is in local copy of data
-                    try:
-                        t_i = self._time_index_map[access_record[t][f_i]]
-                    except KeyError:
-                        if len(self._time_index_map) == self.buffer_size:
-                            t_i = self._remove_oldest_time_slot()
-                        else:
-                            t_i = self._find_free_time_slot()
-                            if t_i is None:
-                                raise SharedMemoryError(
-                                    "Can't find a free slot in buffer (has keys {}).".format(
-                                        self._time_index_map.keys()
-                                    )
-                                )
-                        logger.debug(
-                            "Setting time index map [{}] to {}.".format(
-                                access_record[t][f_i], t_i
-                            )
-                        )
-                        self._time_index_map[access_record[t][f_i]] = t_i
-
-                    # copy the value
-                    # TODO: eliminate extra copy
-                    print(
-                        "Copying block of size {} from t={}, f={} ({} + {} * {} = {} [ends at {}]) from shared mem: {}".format(
-                            self.size_frame,
-                            t,
-                            f_i,
-                            self.pos_data,
-                            (t * self.num_freq + f_i),
-                            self.size_frame,
-                            self.pos_data + (t * self.num_freq + f_i) * self.size_frame,
-                            self.pos_data
-                            + (t * self.num_freq + f_i) * self.size_frame
-                            + self.size_frame,
-                            self.shared_mem.size(),
-                        )
-                    )
-                    tmp = np.ndarray(
-                        1,
-                        np.dtype((np.void, self.size_frame)),
-                        self.shared_mem,
-                        self.pos_data + (t * self.num_freq + f_i) * self.size_frame,
-                        order="C",
-                    )
-                    self._data[t_i, f_i] = tmp[:]
+        self._copy_from_shm(times, access_record)
 
         # check if any data became invalid while reading it
         access_record_after_copy = self._access_record()
@@ -306,13 +251,11 @@ class SharedMemoryReader:
 
         # select last n time slots
         idxs = idxs[-n:]
-
         return VisRaw.from_nparray(
             self._data[idxs, :],
             self.size_frame,
             len(idxs),
             self.num_freq,
-            time=None,
             num_elements=7,
             num_stack=7 * 6,
             num_ev=0,
@@ -339,38 +282,14 @@ class SharedMemoryReader:
             If duplicate time slots are found in the access record.
         """
 
-        # get the most recent timestamp for each time slot
-        last_ts = [None] * self.num_time
-        for t in range(self.num_time):
-            for f in range(self.num_freq):
-                if (
-                    last_ts[t] is None and access_record[t][f] != self.invalid_value
-                ) or (last_ts[t] is None or access_record[t][f] > last_ts[t]):
-                    last_ts[t] = access_record[t][f]
-
-        # sort them
-        last_ts, idxs = list(
-            zip(
-                *sorted(
-                    [
-                        (val, i)
-                        for i, val in enumerate(last_ts)
-                        if val != self.invalid_value
-                    ]
-                )
-            )
-        )
-
-        # there should not be multiple similar entries
-        if len(last_ts) != len(set(last_ts)):
-            raise SharedMemoryError(
-                "Found duplicate timestamps in access record: {}".format(last_ts)
-            )
+        last_ts = self._max_ts_per_freq(access_record)
+        last_ts, idxs = self._sort_timestamps(last_ts)
+        self._check_for_identical_timestamps(last_ts)
 
         # return last n
         return idxs[-n:]
 
-    def read_new_since(self, timestamp):
+    def read_since(self, timestamp):
         """
         Read all new time samples since a given time.
 
@@ -388,15 +307,115 @@ class SharedMemoryReader:
         """
         self.shared_mem.seek(0)
 
-        try:
-            self._validate_shm()
-        except NoNewDataError:
-            logger.debug("No new data in ringbuffer since {}.".format(timestamp))
-        else:
-            access_record = self._access_record()
+        self._validate_shm()
+
+        # get a data update from the ringbuffer
+        access_record = self._access_record()
+
+        times = self._filter_since(access_record, timestamp)
+        logger.debug("Reading {} time slots since {}: {}".format(len(times), timestamp, times))
+
+        self._copy_from_shm(times, access_record)
+
+        # check if any data became invalid while reading it
+        access_record_after_copy = self._access_record()
+        for t in times:
+            for f in range(self.num_freq):
+                if access_record_after_copy[t][f] != access_record[t][f]:
+                    self._data[self._time_index_map[t], f] = None
+        if self._last_access_record is None:
+            self._last_access_record = np.ndarray((self.num_time, self.num_freq))
+        self._last_access_record[times, :] = access_record_after_copy[times, :]
 
         # return visRaw()
-        return self._return_data_copy_since(self, timestamp)
+        return self._return_data_copy_since(timestamp)
+
+    def _max_ts_per_freq(self, access_record):
+        # get the most recent timestamp for each time slot
+        last_ts = [None] * self.num_time
+        for t in range(self.num_time):
+            for f in range(self.num_freq):
+                if (
+                    last_ts[t] is None and access_record[t][f] != self.invalid_value
+                ) or (last_ts[t] is None or access_record[t][f] > last_ts[t]):
+                    last_ts[t] = access_record[t][f]
+        return last_ts
+
+    def _sort_timestamps(self, timestamps):
+        timestamp_sorted, idxs = list(
+            zip(
+                *sorted(
+                    [
+                        (val, i)
+                        for i, val in enumerate(timestamps)
+                        if val != self.invalid_value
+                    ]
+                )
+            )
+        )
+        return timestamp_sorted, idxs
+
+    def _check_for_identical_timestamps(self, timestmaps):
+        # there should not be multiple identical entries
+        if len(timestmaps) != len(set(timestmaps)):
+            raise SharedMemoryError(
+                "Found duplicate timestamps in access record: {}".format(timestmaps)
+            )
+
+    def _filter_since(self, access_record, timestamp):
+        last_ts = self._max_ts_per_freq(access_record)
+        self._check_for_identical_timestamps(last_ts)
+
+        # return timestamps newer than the given one
+        ll = [i for i,v in enumerate(last_ts) if v > timestamp]
+        logger.debug("Found {} time slots that are newer than {} in {}: {}.".format(len(ll), timestamp, last_ts, ll))
+        return ll
+
+    def _return_data_copy_since(self, timestamp):
+        pass
+
+    def _copy_from_shm(self, times, access_record):
+        # copy data updates within the last n time slots
+        for t in times:
+            for f_i in range(self.num_freq):
+                # check if this value should be copied: only if the access record changed and
+                # is not set to invalid
+                if access_record[t][f_i] != self.invalid_value and (
+                    self._last_access_record is None
+                    or access_record[t][f_i] > self._last_access_record[t][f_i]
+                ):
+                    logger.debug("Copying value at time={}, freq={}".format(t, f_i))
+                    # check if this time slot is in local copy of data
+                    try:
+                        t_i = self._time_index_map[access_record[t][f_i]]
+                    except KeyError:
+                        if len(self._time_index_map) == self.buffer_size:
+                            t_i = self._remove_oldest_time_slot()
+                        else:
+                            t_i = self._find_free_time_slot()
+                            if t_i is None:
+                                raise SharedMemoryError(
+                                    "Can't find a free slot in buffer (has keys {}).".format(
+                                        self._time_index_map.keys()
+                                    )
+                                )
+                        logger.debug(
+                            "Setting time index map [{}] to {}.".format(
+                                access_record[t][f_i], t_i
+                            )
+                        )
+                        self._time_index_map[access_record[t][f_i]] = t_i
+
+                    # copy the value
+                    # TODO: eliminate extra copy
+                    tmp = np.ndarray(
+                        1,
+                        np.dtype((np.void, self.size_frame)),
+                        self.shared_mem,
+                        self.pos_data + (t * self.num_freq + f_i) * self.size_frame,
+                        order="C",
+                    )
+                    self._data[t_i, f_i] = tmp[:]
 
     def _access_record(self):
         with self.semaphore:

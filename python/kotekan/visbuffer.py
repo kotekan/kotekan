@@ -300,13 +300,14 @@ class VisRaw(object):
         Is the array of times, in the usual correlator file format.
     """
 
-    def __init__(self, num_time, num_freq, metadata, time, index_map, data):
+    def __init__(self, num_time, num_freq, metadata, time, index_map, data, valid_frames):
         self.num_time = num_time
         self.num_freq = num_freq
         self.metadata = metadata
         self.time = time
         self.index_map = index_map
         self.data = data
+        self.valid_frames = valid_frames
 
     @classmethod
     def from_nparray(
@@ -315,7 +316,6 @@ class VisRaw(object):
         size_frame,
         num_time,
         num_freq,
-        time,
         num_elements,
         num_stack,
         num_ev,
@@ -348,7 +348,21 @@ class VisRaw(object):
         metadata = raw["metadata"]
         valid_frames = raw["valid"]
 
-        return cls(num_time, num_freq, metadata, time, index_map=None, data=data)
+        ctime = metadata["ctime"]
+        fpga_seq = metadata["fpga_seq"]
+        time = []
+        for t in range(num_time):
+            for f in range(num_freq):
+                time.append((fpga_seq[t,f], ctime[t,f]))
+        time = np.array(
+            time,
+            dtype=[
+                (native_str("fpga_count"), np.uint64),
+                (native_str("ctime"), time_spec),
+            ],
+        )
+
+        return cls(num_time, num_freq, metadata, time, index_map=None, data=data, valid_frames=valid_frames)
 
     def from_file(cls, filename, mode="r", mmap=False):
         """Read correlator files in the raw format.
