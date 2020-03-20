@@ -318,7 +318,9 @@ class SharedMemoryReader:
         last_ts = [None] * self.num_time
         for t in range(self.num_time):
             for f in range(self.num_freq):
-                if last_ts[t] is None or access_record[t][f] > last_ts[t]:
+                if (
+                    last_ts[t] is None and access_record[t][f] != self.invalid_value
+                ) or (last_ts[t] is None or access_record[t][f] > last_ts[t]):
                     last_ts[t] = access_record[t][f]
 
         # sort them
