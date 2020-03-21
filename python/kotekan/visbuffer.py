@@ -301,10 +301,19 @@ class VisRaw(object):
     """
 
     def __init__(
-        self, num_time, num_freq, metadata, time, index_map, data, valid_frames
+        self,
+        num_time,
+        num_freq,
+        num_prod,
+        metadata,
+        time,
+        index_map,
+        data,
+        valid_frames,
     ):
         self.num_time = num_time
         self.num_freq = num_freq
+        self.num_prod = num_prod
         self.metadata = metadata
         self.time = time
         self.index_map = index_map
@@ -348,6 +357,7 @@ class VisRaw(object):
 
         ctime = metadata["ctime"]
         fpga_seq = metadata["fpga_seq"]
+        num_prod = metadata["num_prod"]
         time = []
         for t in range(num_time):
             for f in range(num_freq):
@@ -363,6 +373,7 @@ class VisRaw(object):
         return cls(
             num_time,
             num_freq,
+            num_prod,
             metadata,
             time,
             index_map=None,
@@ -466,7 +477,7 @@ class VisRaw(object):
         metadata = raw["metadata"]
         valid_frames = raw["valid"]
 
-        return cls(num_time, metadata, time, index_map, data)
+        return cls(num_time, num_freq, num_prod, metadata, time, index_map, data)
 
     @staticmethod
     def _parse_filename(fname):

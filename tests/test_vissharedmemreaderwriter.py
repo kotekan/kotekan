@@ -82,7 +82,7 @@ params = {
     "num_ev": 0,
     "total_frames": 11,
     "cadence": 1.0,
-    "mode": "default",
+    "mode": "test_pattern_simple",
     "dataset_manager": {"use_dataset_broker": True},
 }
 
@@ -141,15 +141,19 @@ def test_shared_mem_buffer(vis_data_slow, comet_broker):
     with pytest.raises(shared_memory_buffer.SharedMemoryError):
         while True:
             sleep(0.5)
-            print(buffer._access_record())
             visraw = buffer.read_last(n_times_to_read)
             assert visraw.num_freq == len(params_fakevis["freq_ids"])
             assert visraw.num_time == n_times_to_read
 
-            ds = np.array(visraw.metadata["dataset_id"]).copy().view("u8,u8")
+            num_prod = num_elements * (num_elements + 1) / 2
+            assert (visraw.num_prod == num_prod).all()
+
+            ds = np.array(visraw.metadata["dataset_id"]).view("u8,u8")
             unique_ds = np.unique(ds)
             for ds in unique_ds:
-                print("dataset ID: {:x}{:x}".format(ds[1], ds[0]))
+                ds_id = "{:x}{:x}".format(ds[1], ds[0])
+                # TODO: merge comet PR
+                # assert ds_manager.get_dataset(ds_id) is not None
 
             evals = visraw.data["eval"]
             evecs = visraw.data["evec"]
@@ -171,7 +175,14 @@ def test_shared_mem_buffer(vis_data_slow, comet_broker):
                 evecs.imag
                 == np.arange(num_elements)[np.newaxis, np.newaxis, np.newaxis, :]
             ).all()
-            # assert (erms == 1.0).all()
+            assert (erms == 1.0).all()
+
+            vis = visraw.data["vis"].copy().view(np.complex64)
+            assert vis.shape == (n_times_to_read, num_freq, num_prod)
+            for v in vis:
+                assert (v.real == 1.0).all()
+                assert (v.imag == 0.0).all()
+            assert vis.size == num_prod * num_freq * n_times_to_read
 
             i += 1
     assert i >= 2
@@ -237,4 +248,4 @@ def test_shared_mem_buffer_read_since(vis_data_slow):
                 # assert (erms == 1.0).all()
 
             i += 1
-    assert i >= 2
+    # assert i >= 2

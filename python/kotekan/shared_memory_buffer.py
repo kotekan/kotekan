@@ -207,6 +207,11 @@ class SharedMemoryReader:
         for t in times:
             for f in range(self.num_freq):
                 if access_record_after_copy[t][f] != access_record[t][f]:
+                    logger.debug(
+                        "Data at t={}, f={} became invalid while reading it.".format(
+                            t, f
+                        )
+                    )
                     self._data[self._time_index_map[t], f] = None
         if self._last_access_record is None:
             self._last_access_record = np.ndarray((self.num_time, self.num_freq))
@@ -257,7 +262,7 @@ class SharedMemoryReader:
             len(idxs),
             self.num_freq,
             num_elements=7,
-            num_stack=7 * 6,
+            num_stack=28,
             num_ev=0,
         )
 
