@@ -329,10 +329,13 @@ class VisRaw(object):
         dtype_layout["itemsize"] = layout["size"]
         data_struct = np.dtype(dtype_layout)
 
+        # the valid vield (1 byte) is 4-byte-aligned
+        align_valid = 4
         frame_struct = np.dtype(
             {
                 "names": ["valid", "metadata", "data"],
                 "formats": [np.uint8, VisMetadata, data_struct],
+                "offsets": [0, align_valid, align_valid + ctypes.sizeof(VisMetadata)],
                 "itemsize": size_frame,
             }
         )

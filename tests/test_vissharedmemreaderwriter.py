@@ -148,12 +148,8 @@ def test_shared_mem_buffer(vis_data_slow, comet_broker):
 
             ds = np.array(visraw.metadata["dataset_id"]).copy().view("u8,u8")
             unique_ds = np.unique(ds)
-            datasets = []
-            for foo in unique_ds:
-                for bar in foo:
-                    datasets.append(bar.item())
-            for ds in datasets:
-                print("{:x}".format(ds))
+            for ds in unique_ds:
+                print("dataset ID: {:x}{:x}".format(ds[1], ds[0]))
 
             evals = visraw.data["eval"]
             evecs = visraw.data["evec"]
