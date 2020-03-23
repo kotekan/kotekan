@@ -247,35 +247,29 @@ uint64_t VisSharedMemWriter::get_data_size(const visFrameView& frame) {
     // Get properties of stream from first frame and datasetManager
     // If we can get the data_size in other ways, we will not need
     // ninput, nvis, or num_ev anymore
-    auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>, &dm, frame.dataset_id);
-    auto istate_fut = std::async(&datasetManager::dataset_state<inputState>, &dm, frame.dataset_id);
-    auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>, &dm, frame.dataset_id);
+    const stackState* stack_state = dm.dataset_state<stackState>(frame.dataset_id);
+    const inputState* input_state = dm.dataset_state<inputState>(frame.dataset_id);
+    const prodState* prod_state = dm.dataset_state<prodState>(frame.dataset_id);
 
-    auto evstate_fut = std::async(&datasetManager::dataset_state<eigenvalueState>, &dm, frame.dataset_id);
+    const eigenvalueState* eigenvalue_state = dm.dataset_state<eigenvalueState>(frame.dataset_id);
 
-    const inputState* istate = istate_fut.get();
-    const prodState* pstate = pstate_fut.get();
-    const stackState* sstate = sstate_fut.get();
-    const eigenvalueState* evstate = evstate_fut.get();
-
-
-    if (!istate || !pstate) {
+    if (!input_state || !prod_state) {
         ERROR("Required datasetState not found for dataset ID {}\nThe following required states "
                 "were found:\ninputState - {:p}\nprodState - {:p}\n",
-                frame.dataset_id, (void*)istate, (void*)pstate);
+                frame.dataset_id, (void*)input_state, (void*)prod_state);
         throw std::runtime_error("Could not write to shared memory.");
     }
 
     // Count the eigenvalue index
     size_t num_ev;
-    if (evstate) {
-        num_ev = evstate->get_num_ev();
+    if (eigenvalue_state) {
+        num_ev = eigenvalue_state->get_num_ev();
     } else {
         num_ev = 0;
     }
 
-    size_t ninput = istate->get_inputs().size();
-    size_t nvis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
+    size_t ninput = input_state->get_inputs().size();
+    size_t nvis = stack_state ? stack_state->get_num_stack() : prod_state->get_prods().size();
 
     auto layout = visFrameView::calculate_buffer_layout(ninput, nvis, num_ev);
 
@@ -283,7 +277,7 @@ uint64_t VisSharedMemWriter::get_data_size(const visFrameView& frame) {
 }
 
 void VisSharedMemWriter::main_thread() {
-    INFO("Reached main thread\n");
+    DEBUG("Reached main thread\n");
 
     frameID frame_id(in_buf);
 
@@ -304,7 +298,7 @@ void VisSharedMemWriter::main_thread() {
         return;
     }
 
-    INFO("Semaphore created.\n");
+    DEBUG("Semaphore created.\n");
 
     // Acquire semaphore until shared memory is created
     if (sem_wait(sem) == -1) {
@@ -322,17 +316,15 @@ void VisSharedMemWriter::main_thread() {
     std::map<uint32_t, uint32_t> freq_id_map;
     auto& dm = datasetManager::instance();
 
-    auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm, frame.dataset_id);
-
-    const freqState* fstate = fstate_fut.get();
+    const freqState* freq_state = dm.dataset_state<freqState>(frame.dataset_id);
 
     uint ind = 0;
-    for (auto& f : fstate->get_freqs())
+    for (auto& f : freq_state->get_freqs())
         freq_id_map[f.first] = ind++;
 
 
     // Figure out the ring buffer structure
-    nfreq = fstate->get_freqs().size();
+    nfreq = freq_state->get_freqs().size();
 
     // Set the alignment (in kB)
     size_t alignment = 4096; // Align on page boundaries
