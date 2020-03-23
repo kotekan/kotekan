@@ -50,7 +50,7 @@ global num_frames
 params_writer_stage = {"nsamples": 7}
 
 
-@pytest.fixture(scope="function", params=[params_fakevis, params_fakevis_small, params_fakevis_large])
+@pytest.fixture(scope="module", params=[params_fakevis, params_fakevis_small, params_fakevis_large])
 def vis_data(tmpdir_factory, request):
     global num_frames
 
@@ -70,15 +70,15 @@ def vis_data(tmpdir_factory, request):
 
     test.run()
 
-@pytest.fixture(scope="function")
-def semaphore():
+@pytest.fixture(scope="module")
+def semaphore(vis_data):
     sem = posix_ipc.Semaphore(sem_name)
     yield sem
     sem.release()
     sem.unlink()
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="module")
 def memory_map_buf(vis_data):
     memory = posix_ipc.SharedMemory(fname_buf)
     mapfile = mmap.mmap(memory.fd, memory.size, prot=mmap.PROT_READ)
@@ -87,11 +87,13 @@ def memory_map_buf(vis_data):
     mapfile.close()
     posix_ipc.unlink_shared_memory(fname_buf)
 
-def test_access_record(memory_map_buf):
+def test_access_record(semaphore, memory_map_buf):
     global num_frames
     size_of_uint64 = 8
     num_structural_params = 6
     pos_access_record = size_of_uint64 * num_structural_params
+
+    semaphore.acquire()
 
     num_writes = struct.unpack("<Q", memory_map_buf.read(8))[0]
     num_time = struct.unpack("<Q", memory_map_buf.read(8))[0]
@@ -147,4 +149,6 @@ def test_access_record(memory_map_buf):
                     assert access_record == fpga_seqs[-1]
                 else:
                     assert access_record == fpga_seqs[t]
+
+        semaphore.release()
 
