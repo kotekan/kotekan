@@ -371,6 +371,14 @@ class SharedMemoryReader:
 
     def _filter_since(self, access_record, timestamp):
         last_ts = self._max_ts_per_freq(access_record)
+
+        # remove invalid timestmaps
+        try:
+            while last_ts.remove(self.invalid_value):
+                pass
+        except ValueError:
+            pass
+
         self._check_for_identical_timestamps(last_ts)
 
         # return timestamps newer than the given one
@@ -383,7 +391,30 @@ class SharedMemoryReader:
         return ll
 
     def _return_data_copy_since(self, timestamp):
-        pass
+        if not self._time_index_map:
+            return None
+
+        # sort time index map
+        last_ts, idxs = list(zip(*sorted(self._time_index_map.items())))
+
+        # get indexes of timestamps newer than the given on
+        idxs = [i for i, v in zip(idxs, last_ts) if v > timestamp]
+        logger.debug(
+            "Found {} time slots that are newer than {} in {}: {}.".format(
+                len(idxs), timestamp, last_ts, idxs
+            )
+        )
+
+        # select last n time slots
+        return VisRaw.from_nparray(
+            self._data[idxs, :],
+            self.size_frame,
+            len(idxs),
+            self.num_freq,
+            num_elements=7,
+            num_stack=28,
+            num_ev=0,
+        )
 
     def _copy_from_shm(self, times, access_record):
         # copy data updates within the last n time slots

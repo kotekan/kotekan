@@ -200,26 +200,20 @@ def test_shared_mem_buffer_read_since(vis_data_slow):
     assert buffer.num_time == params_writer_stage["nsamples"]
     assert buffer.num_freq == num_freq
 
-    # access_record = []
-    # for t in
-    # assert buffer._access_record() == access_record
-
     timestamp = 0
 
     i = 0
     with pytest.raises(shared_memory_buffer.SharedMemoryError):
         while True:
             sleep(0.5)
-            print(buffer._access_record())
             visraw = buffer.read_since(timestamp)
 
             if visraw is not None:
-                timestamp = visraw.time[-1][0]
-                print("Next timestamp is {}.".format(timestamp))
+                if visraw.time.size > 0:
+                    timestamp = visraw.time[-1][0]
 
                 assert visraw.num_freq == len(params_fakevis["freq_ids"])
                 num_time = visraw.num_time
-                print("num times read: {}".format(num_time))
 
                 ds = np.array(visraw.metadata["dataset_id"]).copy().view("u8,u8")
                 unique_ds = np.unique(ds)
@@ -245,7 +239,7 @@ def test_shared_mem_buffer_read_since(vis_data_slow):
                     evecs.imag
                     == np.arange(num_elements)[np.newaxis, np.newaxis, np.newaxis, :]
                 ).all()
-                # assert (erms == 1.0).all()
+                assert (erms == 1.0).all()
 
             i += 1
-    # assert i >= 2
+    assert i >= 2
