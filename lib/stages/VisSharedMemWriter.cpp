@@ -1,4 +1,4 @@
-#include "visSharedMemWriter.hpp"
+#include "VisSharedMemWriter.hpp"
 #include <cxxabi.h>             // for _forced_unwind
 #include <fcntl.h>              // for O_CREAT, O_EXCL, O_RDWR
 #include <string.h>             // for memcpy, strerror
@@ -30,16 +30,16 @@ using kotekan::Config;
 using kotekan::Stage;
 
 
-REGISTER_KOTEKAN_STAGE(visSharedMemWriter);
+REGISTER_KOTEKAN_STAGE(VisSharedMemWriter);
 
-visSharedMemWriter::visSharedMemWriter(Config& config, const std::string& unique_name, bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&visSharedMemWriter::main_thread, this)) {
+VisSharedMemWriter::VisSharedMemWriter(Config& config, const std::string& unique_name, bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&VisSharedMemWriter::main_thread, this)) {
 
         // Fetch any simple configuration
-        root_path = config.get_default<std::string>(unique_name, "root_path", "/dev/shm/");
-        sem_name = config.get_default<std::string>(unique_name, "sem_name", "kotekan");
-        fname_buf = config.get_default<std::string>(unique_name, "fname_buf", "calBuffer");
-        ntime = config.get_default<size_t>(unique_name, "nsamples", 512);
+        _root_path = config.get_default<std::string>(unique_name, "root_path", "/dev/shm/");
+        _sem_name = config.get_default<std::string>(unique_name, "sem_name", "kotekan");
+        _fname_buf = config.get_default<std::string>(unique_name, "fname_buf", "calBuffer");
+        _ntime = config.get_default<size_t>(unique_name, "nsamples", 512);
 
         // Setup the input vector
         in_buf = get_buffer("in_buf");
@@ -48,31 +48,31 @@ visSharedMemWriter::visSharedMemWriter(Config& config, const std::string& unique
         // Check if any of the old buffer files exist
         // Remove them, if they do
         DEBUG("Checking for and removing old buffer files...");
-        check_remove(root_path + "sem." + sem_name);
-        check_remove(root_path + fname_buf);
+        check_remove(_root_path + "sem." + _sem_name);
+        check_remove(_root_path + _fname_buf);
 
 
 }
 
-visSharedMemWriter::~visSharedMemWriter() {
+VisSharedMemWriter::~VisSharedMemWriter() {
     // make sure to unlink the semaphore and unmap the mappings
     // We are setting num_writes to 0 in the structured data,
     // to communicate to readers that the ring buffer is not being written to
 
     if (sem_wait(sem) == -1) {
-        FATAL_ERROR("Failed to acquire semaphore {}", sem_name);
+        FATAL_ERROR("Failed to acquire semaphore {}", _sem_name);
         return;
     }
     num_writes = 0;
     memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
 
     if (sem_post(sem) == -1) {
-        FATAL_ERROR("Failed to release semaphore {}", sem_name);
+        FATAL_ERROR("Failed to release semaphore {}", _sem_name);
         return;
     }
 }
 
-uint8_t* visSharedMemWriter::assign_memory(std::string shm_name, size_t shm_size) {
+uint8_t* VisSharedMemWriter::assign_memory(std::string shm_name, size_t shm_size) {
     // takes the name of a shared memory address, opens a shared memory of the provided size, and maps the memory to a uint8_t* address pointer
 
         uint8_t* addr;
@@ -106,7 +106,7 @@ uint8_t* visSharedMemWriter::assign_memory(std::string shm_name, size_t shm_size
         return addr;
 }
 
-bool visSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uint32_t freq_ind) {
+bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uint32_t freq_ind) {
     // calculate the time index for time sample t, add the frame for time sample t at position frequency index
     //
     // curr_pos always points to the ring buffer index for the most recent time
@@ -122,7 +122,7 @@ bool visSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
         write_to_memory(frame, vis_time_ind_map.at(t), freq_ind);
         return true;
     }
-    else if (vis_time_ind_map.size() < ntime) {
+    else if (vis_time_ind_map.size() < _ntime) {
         // if there is still empty space in the shared buffer
         // add an additional time index
         cur_pos++;
@@ -160,7 +160,7 @@ bool visSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
     }
 }
 
-void visSharedMemWriter::reset_memory(uint32_t time_ind) {
+void VisSharedMemWriter::reset_memory(uint32_t time_ind) {
 
     // resets all memory at time_ind to 0s
 
@@ -171,14 +171,14 @@ void visSharedMemWriter::reset_memory(uint32_t time_ind) {
 
     // notify that the entire time_ind is invalid, by setting time_ind in the access record to invalid
     if (sem_wait(sem) == -1) {
-        FATAL_ERROR("Failed to acquire semaphore {}", sem_name);
+        FATAL_ERROR("Failed to acquire semaphore {}", _sem_name);
         return;
     }
     int64_t invalid_vector[nfreq];
     std::fill_n(invalid_vector, nfreq, invalid);
     memcpy(access_record_write_pos, invalid_vector, nfreq * sizeof *invalid_vector);
     if (sem_post(sem) == -1) {
-        FATAL_ERROR("Failed to post semaphore {}", sem_name);
+        FATAL_ERROR("Failed to post semaphore {}", _sem_name);
         return;
     }
 
@@ -191,7 +191,7 @@ void visSharedMemWriter::reset_memory(uint32_t time_ind) {
     INFO("Memory reset\n");
 }
 
-void visSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t time_ind, uint32_t freq_ind) {
+void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t time_ind, uint32_t freq_ind) {
     // write frame to ring buffer at time_ind and freq_ind
 
     uint8_t *buf_write_pos = buf_addr + ((time_ind * nfreq + freq_ind) * frame_size);
@@ -202,12 +202,12 @@ void visSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
     // notify that time_ind and freq_ind are being written to, by setting that
     // location to invalid in the access record
     if (sem_wait(sem) == -1) {
-        FATAL_ERROR("Failed to acquire semaphore {}", sem_name);
+        FATAL_ERROR("Failed to acquire semaphore {}", _sem_name);
         return;
     }
     memcpy(access_record_write_pos, &invalid, sizeof(invalid));
     if (sem_post(sem) == -1) {
-        FATAL_ERROR("Failed to release semaphore {}", sem_name);
+        FATAL_ERROR("Failed to release semaphore {}", _sem_name);
         return;
     }
 
@@ -222,7 +222,7 @@ void visSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
 
 
     if (sem_wait(sem) == -1) {
-        FATAL_ERROR("Failed to acquire semaphore {}", sem_name);
+        FATAL_ERROR("Failed to acquire semaphore {}", _sem_name);
         return;
     }
 
@@ -234,13 +234,13 @@ void visSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
     memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
 
     if (sem_post(sem) == -1) {
-        FATAL_ERROR("Failed to release semaphore {}", sem_name);
+        FATAL_ERROR("Failed to release semaphore {}", _sem_name);
         return;
     }
 
 }
 
-uint64_t visSharedMemWriter::get_data_size(const visFrameView& frame) {
+uint64_t VisSharedMemWriter::get_data_size(const visFrameView& frame) {
 
     auto& dm = datasetManager::instance();
 
@@ -282,25 +282,25 @@ uint64_t visSharedMemWriter::get_data_size(const visFrameView& frame) {
     return layout.first;
 }
 
-void visSharedMemWriter::main_thread() {
+void VisSharedMemWriter::main_thread() {
     INFO("Reached main thread\n");
 
     frameID frame_id(in_buf);
 
     // The current position in the ring buffer of the most recent time sample
-    // from 0 -> ntime
-    cur_pos = modulo<int>(ntime);
+    // from 0 -> _ntime
+    cur_pos = modulo<int>(_ntime);
 
     // Create the semaphore, and gain first access to it
     sem = sem_open(
-            sem_name.c_str(),
+            _sem_name.c_str(),
             (O_CREAT | O_EXCL),
             (S_IRUSR | S_IWUSR),
             1
         );
 
     if (sem == SEM_FAILED) {
-        FATAL_ERROR("Failed to create semaphore {}", sem_name);
+        FATAL_ERROR("Failed to create semaphore {}", _sem_name);
         return;
     }
 
@@ -308,7 +308,7 @@ void visSharedMemWriter::main_thread() {
 
     // Acquire semaphore until shared memory is created
     if (sem_wait(sem) == -1) {
-        FATAL_ERROR("Failed to acquire semaphore {}", sem_name);
+        FATAL_ERROR("Failed to acquire semaphore {}", _sem_name);
         return;
     }
 
@@ -344,17 +344,17 @@ void visSharedMemWriter::main_thread() {
     // Alligns the frame along page size
     frame_size = _member_alignment(data_size + metadata_size + valid_size, alignment);
 
-    // memory_size should be ntime * nfreq * file_frame_size (data + metadata)
-    buf_addr = assign_memory(fname_buf, (structured_data_size * structured_data_num) + (ntime * nfreq * access_record_size) + (ntime * nfreq * frame_size));
+    // memory_size should be _ntime * nfreq * file_frame_size (data + metadata)
+    buf_addr = assign_memory(_fname_buf, (structured_data_size * structured_data_num) + (_ntime * nfreq * access_record_size) + (_ntime * nfreq * frame_size));
 
     // The elements contained in the structured data and access record are each 64 bytes
     structured_data_addr = (uint64_t*) buf_addr;
     access_record_addr = (int64_t*) (structured_data_addr + structured_data_num);
-    buf_addr += (structured_data_size * structured_data_num) + (ntime * nfreq * access_record_size);
+    buf_addr += (structured_data_size * structured_data_num) + (_ntime * nfreq * access_record_size);
 
     // Record structure of data
     memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
-    memcpy(structured_data_addr + 1, &ntime, sizeof(ntime));
+    memcpy(structured_data_addr + 1, &_ntime, sizeof(_ntime));
     memcpy(structured_data_addr + 2, &nfreq, sizeof(nfreq));
     memcpy(structured_data_addr + 3, &frame_size, sizeof(frame_size));
     memcpy(structured_data_addr + 4, &metadata_size, sizeof(metadata_size));
@@ -362,13 +362,13 @@ void visSharedMemWriter::main_thread() {
 
     // initially set the address records with -1
     // std::fill_n(array, 100, -1);
-    int64_t invalid_vector [ntime * nfreq];
-    std::fill_n(invalid_vector, ntime*nfreq, invalid);
-    memcpy(access_record_addr, invalid_vector, ntime * nfreq * sizeof *invalid_vector);
+    int64_t invalid_vector [_ntime * nfreq];
+    std::fill_n(invalid_vector, _ntime*nfreq, invalid);
+    memcpy(access_record_addr, invalid_vector, _ntime * nfreq * sizeof *invalid_vector);
 
     INFO("Created the shared memory segments\n");
     if (sem_post(sem) == -1) {
-        FATAL_ERROR("Failed to release semaphore {}", sem_name);
+        FATAL_ERROR("Failed to release semaphore {}", _sem_name);
         return;
     }
 

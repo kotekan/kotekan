@@ -16,13 +16,13 @@
 #include "visBuffer.hpp"        // for visFrameView
 #include "visUtil.hpp"          // for time_ctype
 
-class visSharedMemWriter : public kotekan::Stage {
+class VisSharedMemWriter : public kotekan::Stage {
 
 public:
-    visSharedMemWriter(kotekan::Config& config, const std::string& unique_name,
+    VisSharedMemWriter(kotekan::Config& config, const std::string& unique_name,
              kotekan::bufferContainer& buffer_container);
 
-    ~visSharedMemWriter();
+    ~VisSharedMemWriter();
 
     void main_thread() override;
 
@@ -45,7 +45,7 @@ protected:
     // Set to 0, upon stage shut-down
     uint64_t num_writes = 0;
     // The number of time samples contained in ring buffer
-    size_t ntime;
+    size_t _ntime;
     // The number of frequencies contained in each time sample
     uint64_t nfreq;
     // The size of each frame (valid byte + metadata + data + page alignment padding)
@@ -88,7 +88,7 @@ protected:
 
     void reset_memory(uint32_t time_ind);
 
-    std::string root_path, sem_name, fname_buf;
+    std::string _root_path, _sem_name, _fname_buf;
 };
 
 inline void check_remove(std::string fname) {
