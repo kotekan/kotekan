@@ -313,7 +313,6 @@ class SharedMemoryReader:
         self.shared_mem.seek(0)
 
         self._validate_shm()
-
         # get a data update from the ringbuffer
         access_record = self._access_record()
 
@@ -373,11 +372,11 @@ class SharedMemoryReader:
         last_ts = self._max_ts_per_freq(access_record)
 
         # remove invalid timestmaps
-        try:
-            while last_ts.remove(self.invalid_value):
-                pass
-        except ValueError:
-            pass
+        while True:
+            try:
+                last_ts.remove(self.invalid_value)
+            except ValueError:
+                break
 
         self._check_for_identical_timestamps(last_ts)
 

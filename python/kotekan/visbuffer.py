@@ -340,6 +340,7 @@ class VisRaw(object):
 
         # the valid vield (1 byte) is 4-byte-aligned
         align_valid = 4
+
         frame_struct = np.dtype(
             {
                 "names": ["valid", "metadata", "data"],

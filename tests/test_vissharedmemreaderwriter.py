@@ -80,7 +80,7 @@ def semaphore():
 params = {
     "num_elements": 7,
     "num_ev": 0,
-    "total_frames": 11,
+    "total_frames": 4,
     "cadence": 1.0,
     "mode": "test_pattern_simple",
     "dataset_manager": {"use_dataset_broker": True},
@@ -97,7 +97,7 @@ params_writer_stage = {"nsamples": 5}
 
 
 @pytest.fixture()
-def vis_data_slow(tmpdir_factory, comet_broker):
+def vis_data(tmpdir_factory, comet_broker):
 
     # keeping all the data this test produced here (probably do not need it)
     # using FakeVisBuffer to produce fake data
@@ -117,24 +117,19 @@ def vis_data_slow(tmpdir_factory, comet_broker):
     yield test
 
 
-def test_shared_mem_buffer(vis_data_slow, comet_broker):
+def test_shared_mem_buffer(vis_data, comet_broker):
     num_freq = len(params_fakevis["freq_ids"])
     num_ev = params["num_ev"]
     num_elements = params["num_elements"]
 
-    threading.Thread(target=vis_data_slow.run).start()
+    threading.Thread(target=vis_data.run).start()
     sleep(2)
     buffer = shared_memory_buffer.SharedMemoryReader(sem_name, fname_buf, 4)
 
     assert buffer.num_time == params_writer_stage["nsamples"]
     assert buffer.num_freq == num_freq
 
-    # access_record = []
-    # for t in
-    # assert buffer._access_record() == access_record
-
-    n_times_to_read = 3
-
+    n_times_to_read = 2
     ds_manager = Manager("localhost", comet_broker)
 
     i = 0
@@ -142,58 +137,20 @@ def test_shared_mem_buffer(vis_data_slow, comet_broker):
         while True:
             sleep(0.5)
             visraw = buffer.read_last(n_times_to_read)
-            assert visraw.num_freq == len(params_fakevis["freq_ids"])
             assert visraw.num_time == n_times_to_read
 
-            num_prod = num_elements * (num_elements + 1) / 2
-            assert (visraw.num_prod == num_prod).all()
-
-            ds = np.array(visraw.metadata["dataset_id"]).view("u8,u8")
-            unique_ds = np.unique(ds)
-            for ds in unique_ds:
-                ds_id = "{:x}{:x}".format(ds[1], ds[0])
-                # TODO: merge comet PR
-                # assert ds_manager.get_dataset(ds_id) is not None
-
-            evals = visraw.data["eval"]
-            evecs = visraw.data["evec"]
-            erms = visraw.data["erms"]
-
-            # Check datasets are present
-            assert evals.shape == (n_times_to_read, num_freq, num_ev)
-            assert evecs.shape == (n_times_to_read, num_freq, num_ev * num_elements)
-            assert erms.shape == (n_times_to_read, num_freq)
-
-            evecs = evecs.reshape(n_times_to_read, num_freq, num_ev, num_elements)
-
-            # Check that the datasets have the correct values
-            assert (evals == np.arange(num_ev)[np.newaxis, np.newaxis, :]).all()
-            assert (
-                evecs.real == np.arange(num_ev)[np.newaxis, np.newaxis, :, np.newaxis]
-            ).all()
-            assert (
-                evecs.imag
-                == np.arange(num_elements)[np.newaxis, np.newaxis, np.newaxis, :]
-            ).all()
-            assert (erms == 1.0).all()
-
-            vis = visraw.data["vis"].copy().view(np.complex64)
-            assert vis.shape == (n_times_to_read, num_freq, num_prod)
-            for v in vis:
-                assert (v.real == 1.0).all()
-                assert (v.imag == 0.0).all()
-            assert vis.size == num_prod * num_freq * n_times_to_read
+            check_visraw(visraw, num_freq, num_ev, num_elements, ds_manager)
 
             i += 1
-    assert i >= 2
+    assert i >= params["total_frames"] / 2
 
 
-def test_shared_mem_buffer_read_since(vis_data_slow):
+def test_shared_mem_buffer_read_since(vis_data, comet_broker):
     num_freq = len(params_fakevis["freq_ids"])
     num_ev = params["num_ev"]
     num_elements = params["num_elements"]
 
-    threading.Thread(target=vis_data_slow.run).start()
+    threading.Thread(target=vis_data.run).start()
     sleep(2)
     buffer = shared_memory_buffer.SharedMemoryReader(sem_name, fname_buf, 4)
 
@@ -201,45 +158,71 @@ def test_shared_mem_buffer_read_since(vis_data_slow):
     assert buffer.num_freq == num_freq
 
     timestamp = 0
+    total_time = 0
 
-    i = 0
+    ds_manager = Manager("localhost", comet_broker)
     with pytest.raises(shared_memory_buffer.SharedMemoryError):
         while True:
             sleep(0.5)
             visraw = buffer.read_since(timestamp)
+            if visraw is None:
+                continue
 
-            if visraw is not None:
-                if visraw.time.size > 0:
-                    timestamp = visraw.time[-1][0]
+            num_time, new_ts = check_visraw(visraw, num_freq, num_ev, num_elements, ds_manager)
+            if new_ts is not None:
+                timestamp = new_ts
+            total_time += num_time
+    assert total_time >= params["total_frames"] / 2
+    assert total_time <= params["total_frames"]
 
-                assert visraw.num_freq == len(params_fakevis["freq_ids"])
-                num_time = visraw.num_time
 
-                ds = np.array(visraw.metadata["dataset_id"]).copy().view("u8,u8")
-                unique_ds = np.unique(ds)
+def check_visraw(visraw, num_freq, num_ev, num_elements, ds_manager):
+    num_time = visraw.num_time
+    assert visraw.num_freq == len(params_fakevis["freq_ids"])
 
-                evals = visraw.data["eval"]
-                evecs = visraw.data["evec"]
-                erms = visraw.data["erms"]
+    num_prod = num_elements * (num_elements + 1) / 2
+    assert (visraw.num_prod == num_prod).all()
 
-                # Check datasets are present
-                assert evals.shape == (num_time, num_freq, num_ev)
-                assert evecs.shape == (num_time, num_freq, num_ev * num_elements)
-                assert erms.shape == (num_time, num_freq)
+    ds = np.array(visraw.metadata["dataset_id"]).view("u8,u8")
+    unique_ds = np.unique(ds)
+    for ds in unique_ds:
+        ds_id = "{:x}{:x}".format(ds[1], ds[0])
+        assert ds_manager.get_dataset(ds_id) is not None
+        assert ds_manager.get_state("inputs", ds_id) is not None
+        assert ds_manager.get_state("products", ds_id) is not None
+        assert ds_manager.get_state("metadata", ds_id) is not None
+        assert ds_manager.get_state("frequencies", ds_id) is not None
+        assert ds_manager.get_state("eigenvalues", ds_id) is not None
 
-                evecs = evecs.reshape(num_time, num_freq, num_ev, num_elements)
+    evals = visraw.data["eval"]
+    evecs = visraw.data["evec"]
+    erms = visraw.data["erms"]
 
-                # Check that the datasets have the correct values
-                assert (evals == np.arange(num_ev)[np.newaxis, np.newaxis, :]).all()
-                assert (
-                    evecs.real
-                    == np.arange(num_ev)[np.newaxis, np.newaxis, :, np.newaxis]
-                ).all()
-                assert (
-                    evecs.imag
-                    == np.arange(num_elements)[np.newaxis, np.newaxis, np.newaxis, :]
-                ).all()
-                assert (erms == 1.0).all()
+    # Check datasets are present
+    assert evals.shape == (num_time, num_freq, num_ev)
+    assert evecs.shape == (num_time, num_freq, num_ev * num_elements)
+    assert erms.shape == (num_time, num_freq)
 
-            i += 1
-    assert i >= 2
+    evecs = evecs.reshape(num_time, num_freq, num_ev, num_elements)
+
+    # Check that the datasets have the correct values
+    assert (evals == np.arange(num_ev)[np.newaxis, np.newaxis, :]).all()
+    assert (
+        evecs.real
+        == np.arange(num_ev)[np.newaxis, np.newaxis, :, np.newaxis]
+    ).all()
+    assert (
+        evecs.imag
+        == np.arange(num_elements)[np.newaxis, np.newaxis, np.newaxis, :]
+    ).all()
+    assert (erms == 1.0).all()
+
+    vis = visraw.data["vis"].copy().view(np.complex64)
+    assert vis.shape == (num_time, num_freq, num_prod)
+    for v in vis:
+        assert (v.real == 1.0).all()
+        assert (v.imag == 0.0).all()
+
+    if num_time > 0:
+        return num_time, visraw.time[-1][0]
+    return 0, None
