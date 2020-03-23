@@ -58,8 +58,18 @@ visSharedMemWriter::~visSharedMemWriter() {
     // make sure to unlink the semaphore and unmap the mappings
     // We are setting num_writes to 0 in the structured data,
     // to communicate to readers that the ring buffer is not being written to
+
+    if (sem_wait(sem) == -1) {
+        FATAL_ERROR("Failed to acquire semaphore {}", sem_name);
+        return;
+    }
     num_writes = 0;
     memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
+
+    if (sem_post(sem) == -1) {
+        FATAL_ERROR("Failed to release semaphore {}", sem_name);
+        return;
+    }
 }
 
 uint8_t* visSharedMemWriter::assign_memory(std::string shm_name, size_t shm_size) {
@@ -219,14 +229,15 @@ void visSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
     INFO("Writing fpga_seq {} to time index {}\n", fpga_seq, time_ind);
     memcpy(access_record_write_pos, &fpga_seq, sizeof(fpga_seq));
 
+    // update num_writes
+    num_writes++;
+    memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
+
     if (sem_post(sem) == -1) {
         FATAL_ERROR("Failed to release semaphore {}", sem_name);
         return;
     }
 
-    // update num_writes
-    num_writes++;
-    memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
 }
 
 uint64_t visSharedMemWriter::get_data_size(const visFrameView& frame) {
