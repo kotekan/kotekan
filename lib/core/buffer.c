@@ -870,6 +870,7 @@ uint8_t* buffer_malloc(ssize_t len, int numa_node) {
     }
 #endif
 
+#ifndef WITH_NO_MEMLOCK
     // Ask that all pages be kept in memory
     err = mlock((void*)frame, len);
 
@@ -878,6 +879,9 @@ uint8_t* buffer_malloc(ssize_t len, int numa_node) {
         free(frame);
         return NULL;
     }
+#else
+    (void)err;
+#endif
 #endif
     // Zero the new frame
     memset(frame, 0x0, len);

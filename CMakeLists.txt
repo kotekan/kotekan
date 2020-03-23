@@ -300,6 +300,12 @@ if (${COMPILE_DOCS})
     add_subdirectory(docs EXCLUDE_FROM_ALL)
 endif()
 
+# Turn off memlocking of buffers. This is useful when running in restricted
+# environments e.g. Docker containers
+if (${NO_MEMLOCK})
+  MESSAGE("Do not lock buffer memory.")
+  add_definitions(-DWITH_NO_MEMLOCK)
+endif ()
 
 # Improve debugging by turning off all optimisations.
 if (${SUPERDEBUG})
