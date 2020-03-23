@@ -168,7 +168,9 @@ def test_shared_mem_buffer_read_since(vis_data, comet_broker):
             if visraw is None:
                 continue
 
-            num_time, new_ts = check_visraw(visraw, num_freq, num_ev, num_elements, ds_manager)
+            num_time, new_ts = check_visraw(
+                visraw, num_freq, num_ev, num_elements, ds_manager
+            )
             if new_ts is not None:
                 timestamp = new_ts
             total_time += num_time
@@ -208,12 +210,10 @@ def check_visraw(visraw, num_freq, num_ev, num_elements, ds_manager):
     # Check that the datasets have the correct values
     assert (evals == np.arange(num_ev)[np.newaxis, np.newaxis, :]).all()
     assert (
-        evecs.real
-        == np.arange(num_ev)[np.newaxis, np.newaxis, :, np.newaxis]
+        evecs.real == np.arange(num_ev)[np.newaxis, np.newaxis, :, np.newaxis]
     ).all()
     assert (
-        evecs.imag
-        == np.arange(num_elements)[np.newaxis, np.newaxis, np.newaxis, :]
+        evecs.imag == np.arange(num_elements)[np.newaxis, np.newaxis, np.newaxis, :]
     ).all()
     assert (erms == 1.0).all()
 

@@ -50,7 +50,9 @@ global num_frames
 params_writer_stage = {"nsamples": 7}
 
 
-@pytest.fixture(scope="module", params=[params_fakevis, params_fakevis_small, params_fakevis_large])
+@pytest.fixture(
+    scope="module", params=[params_fakevis, params_fakevis_small, params_fakevis_large]
+)
 def vis_data(tmpdir_factory, request):
     global num_frames
 
@@ -70,6 +72,7 @@ def vis_data(tmpdir_factory, request):
 
     test.run()
 
+
 @pytest.fixture(scope="module")
 def semaphore(vis_data):
     sem = posix_ipc.Semaphore(sem_name)
@@ -86,6 +89,7 @@ def memory_map_buf(vis_data):
     yield mapfile
     mapfile.close()
     posix_ipc.unlink_shared_memory(fname_buf)
+
 
 def test_access_record(semaphore, memory_map_buf):
     global num_frames
@@ -110,7 +114,6 @@ def test_access_record(semaphore, memory_map_buf):
     print("TODO: test if frame data size should be {}".format(size_frame_data))
     print("NUMBER OF FRAMES" + str(num_frames))
 
-
     memory_map_buf.seek(pos_access_record)
     fpga_seq = 0
 
@@ -118,7 +121,9 @@ def test_access_record(semaphore, memory_map_buf):
         # if ring buffer is the same size as the number of frames
         for t in range(num_time):
             for f in range(num_freq):
-                access_record = struct.unpack("q", memory_map_buf.read(size_of_uint64))[0]
+                access_record = struct.unpack("q", memory_map_buf.read(size_of_uint64))[
+                    0
+                ]
                 assert access_record == fpga_seq
             fpga_seq += 800e6 / 2048 * params["cadence"]
 
@@ -126,7 +131,9 @@ def test_access_record(semaphore, memory_map_buf):
         # if ring buffer is larger than the number of frames
         for t in range(num_time):
             for f in range(num_freq):
-                access_record = struct.unpack("q", memory_map_buf.read(size_of_uint64))[0]
+                access_record = struct.unpack("q", memory_map_buf.read(size_of_uint64))[
+                    0
+                ]
                 assert access_record == fpga_seq
             if t + 1 < num_frames:
                 fpga_seq += 800e6 / 2048 * params["cadence"]
@@ -144,11 +151,12 @@ def test_access_record(semaphore, memory_map_buf):
 
         for t in range(num_time):
             for f in range(num_freq):
-                access_record = struct.unpack("q", memory_map_buf.read(size_of_uint64))[0]
+                access_record = struct.unpack("q", memory_map_buf.read(size_of_uint64))[
+                    0
+                ]
                 if t == 0:
                     assert access_record == fpga_seqs[-1]
                 else:
                     assert access_record == fpga_seqs[t]
 
         semaphore.release()
-
