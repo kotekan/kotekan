@@ -7,4 +7,4 @@ requests
 pyyaml
 tabulate
 comet @ git+ssh://git@github.com/chime-experiment/comet.git
-posix_ipc @ git+https://github.com/osvenskan/posix_ipc.git
+posix_ipc
