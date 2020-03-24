@@ -183,4 +183,4 @@ jobs:
     - name: Run iwyu
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_IWYU})
-        docker run "${OPTS[@]}" /code/tools/iwyu/docker/iwyu.sh
+        docker run "${OPTS[@]}" /code/kotekan/tools/iwyu/docker/iwyu.sh
