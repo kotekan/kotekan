@@ -80,13 +80,11 @@ private:
 
     /// Length of the array of phases for beamforming, should be 10 psr * 2048 elem * 2 for complex
     int32_t phase_len;
-    /// pointer to the phase array
-    float* host_phase;
 
     /// numbler of elements, should be 2048
     int32_t _num_elements;
     /// number of pulsar beams to be formed, should be 10
-    int32_t _num_pulsar;
+    int32_t _num_beams;
     /// number of polarizations in the data, should be 2
     int32_t _num_pol;
     /// number of samples

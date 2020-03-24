@@ -46,8 +46,6 @@
  * @conf   downsample_freq      Int (default 8). Downsample factor in freq
  * @conf   num_frb_total_beams  Int (default 1024). Number of total FRB formed beams
  *
- * @todo   Check that the 16 freq axis has the correct orientation
- *
  * @author Cherry Ng
  *
  */

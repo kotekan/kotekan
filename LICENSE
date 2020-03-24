@@ -37,8 +37,8 @@ THE SOFTWARE.
 ===== Formatting library for C++ =====
 
 Files:
-  include/ftm.hpp
-  include/ftm/*
+  include/fmt.hpp
+  include/fmt/*
 
 ===
 Formatting library for C++
@@ -172,7 +172,7 @@ DEALINGS WITH THE SOFTWARE.
 ===== FindHCC.cmake =====
 
 Files:
-  camke/FindHCC.cmake
+  cmake/FindHCC.cmake
 
 ===
 Copyright (C) 2016 Advanced Micro Devices, Inc. All rights reserved.
@@ -195,3 +195,17 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNE-
 CTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ===
 
+
+===== FindLAPACKE.cmake =====
+
+Files:
+    cmake/FindLAPACKE.cmake
+
+===
+Copyright 2016 Hans J. Johnson <hans-johnson@uiowa.edu>
+
+Distributed under the OSI-approved BSD License (the "License")
+
+This software is distributed WITHOUT ANY WARRANTY; without even the
+implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+===

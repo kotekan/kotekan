@@ -20,6 +20,20 @@ producer2_path = "../build/tests/boost/dataset_broker_producer2"
 consumer_path = "../build/tests/boost/dataset_broker_consumer"
 
 
+def has_redis(host="localhost", port=6379):
+    """Check if redis is available."""
+
+    try:
+        import redis
+        r = redis.Redis(host, port)
+        return r.ping()
+
+    except Exception as e:
+        print(e)
+        return False
+
+
+@pytest.mark.serial
 def test_produce_consume():
     broker_path = shutil.which("comet")
     if (
@@ -32,6 +46,8 @@ def test_produce_consume():
         pytest.skip(
             "Make sure PYTHONPATH is set to where the comet dataset broker is installed."
         )
+    if not has_redis():
+        pytest.skip("Redis is not available and so comet will fail.")
 
     with tempfile.NamedTemporaryFile(mode="w") as f_out:
         # Start comet with a random port
