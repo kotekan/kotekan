@@ -33,6 +33,7 @@ def has_redis(host="localhost", port=6379):
         return False
 
 
+@pytest.mark.serial
 def test_produce_consume():
     broker_path = shutil.which("comet")
     if (

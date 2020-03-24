@@ -49,6 +49,9 @@ RUN python3.7 -m pip install "msgpack>=0.6.1" click future requests pyyaml \
     apt-get install -y mysql-client libmysqlclient-dev && \
     python3.7 -m pip install git+https://github.com/chime-experiment/comet.git
 
+# Install redis for comet tests
+RUN apt-get install -y redis
+
 # Set ccache to store things sensibly
 ENV CCACHE_NOHASHDIR 1
 ENV CCACHE_BASEDIR /code/kotekan/

@@ -109,12 +109,12 @@ jobs:
     - name: Run parallel python tests
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
-        docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile -x -m "not serial"
+        docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile -x -m 'not serial'
 
     - name: Run serial python tests
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
-        docker run "${OPTS[@]}" pytest -v -x -m serial
+        docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x -m serial"
 
     - name: Run boost tests
       run: |
