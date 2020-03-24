@@ -14,6 +14,7 @@
 #include "restServer.hpp"          // for restServer, HTTP_RESPONSE, connectionInstance
 #include "visUtil.hpp"             // for double_to_ts
 
+#include <algorithm>
 #include <cmath>      // for cos, sin, fmod, acos, asin, sqrt, atan2, pow
 #include <cstdint>    // for int32_t
 #include <exception>  // for exception
@@ -173,13 +174,19 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec t
     }
     LST = fmod(LST, 24);
     for (int b = 0; b < _num_beams; b++) {
+        if (psr_coord.scaling[b] == 1) {
+            for (uint32_t i = 0; i < _num_elements * 2; ++i) {
+                output[b * _num_elements * 2 + i] = gains[b * _num_elements * 2 + i];
+            }
+            continue;
+        }
         double hour_angle = LST * 15. - psr_coord.ra[b];
         double alt = sin(psr_coord.dec[b] * D2R) * sin(inst_lat * D2R)
                      + cos(psr_coord.dec[b] * D2R) * cos(inst_lat * D2R) * cos(hour_angle * D2R);
-        alt = asin(alt);
+        alt = asin(std::clamp(alt, -1.0, 1.0));
         double az = (sin(psr_coord.dec[b] * D2R) - sin(alt) * sin(inst_lat * D2R))
                     / (cos(alt) * cos(inst_lat * D2R));
-        az = acos(az);
+        az = acos(std::clamp(az, -1.0, 1.0));
         if (sin(hour_angle * D2R) >= 0) {
             az = TAU - az;
         }
