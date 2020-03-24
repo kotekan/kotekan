@@ -173,14 +173,16 @@ jobs:
         docker run "${OPTS[@]}" \
           cmake -DCMAKE_BUILD_TYPE=Debug \
             -DUSE_DPDK=ON \
+            -DUSE_HSA=ON \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
             -DARCH=haswell \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
-            -DBOOST_TESTS=OFF \
+            -DBOOST_TESTS=ON \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
 
     - name: Run iwyu
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_IWYU})
-        docker run "${OPTS[@]}" /code/tools/iwyu/docker/iwyu.sh
+        docker run "${OPTS[@]}" /code/kotekan/tools/iwyu/docker/iwyu.sh
