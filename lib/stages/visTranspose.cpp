@@ -82,13 +82,20 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     datasetManager& dm = datasetManager::instance();
 
     // Get the states synchronously.
+    // Set by visFileRaw.cpp
     auto tstate_fut = std::async(&datasetManager::dataset_state<timeState>, &dm, ds_id);
-    auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>, &dm, ds_id);
+
+    // Set by visAccumulate.cpp
     auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm, ds_id);
     auto istate_fut = std::async(&datasetManager::dataset_state<inputState>, &dm, ds_id);
+    auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>, &dm, ds_id);
     auto evstate_fut = std::async(&datasetManager::dataset_state<eigenvalueState>, &dm, ds_id);
     auto mstate_fut = std::async(&datasetManager::dataset_state<metadataState>, &dm, ds_id);
+
+    // Set by visCompression???
     auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>, &dm, ds_id);
+    
+    // Set by visRawReader.cpp
     auto idstate_fut = std::async(&datasetManager::dataset_state<acqDatasetIdState>, &dm, ds_id);
 
     const stackState* sstate = sstate_fut.get();
