@@ -23,8 +23,16 @@ samples_per_data_set: 32768
 buffer_depth: 64
 num_gpu_frames: 128
 block_size: 32
-cpu_affinity: [1,6,7,9,14,15]
 num_ev: 4
+
+# CPU affinity for most processes
+#
+# Only core 7 is unused by the high priority processes. /stacking and
+# /apply_gains each have three threads and three dedicated cores (1, 2, 3 for
+# stacking, 4, 5, 6 for apply_gains), however as each of these needs only about
+# 2.5 cores of conpute power, we have opened up one of the hyperthread pairs to
+# other stages (11 and 14, twinned with 3 and 6 respectively)
+cpu_affinity: [7, 11, 14, 15]
 
 dataset_manager:
   use_dataset_broker: True
@@ -44,16 +52,18 @@ vis_buffer:
     buffer_depth: 384  # Before slow stage
   visbuf_10s_flags:
     kotekan_buffer: vis
-    buffer_depth: 256  # Before slow stage
+    buffer_depth: 384  # Before slow stage
   visbuf_10s_stack:
     kotekan_buffer: vis
     num_prod: 17000  # Approximation to the correct size
+    buffer_depth: 2048
   visbuf_10s_stack_ne:
     kotekan_buffer: vis
     num_ev: 0
     num_prod: 17000  # Approximation to the correct size
   visbuf_10s_mfreq:
     kotekan_buffer: vis
+    buffer_depth: 16
   visbuf_10s_stack_mfreq:
     kotekan_buffer: vis
     num_prod: 17000  # Approximation to the correct size
@@ -104,12 +114,18 @@ updatable_config:
   flagging:
     kotekan_update_endpoint: "json"
     start_time: 1535048997.
-    tag: "initial_flags"
-    bad_inputs: [ ]
+    update_id: "initial_flags"
+    bad_inputs: [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
+                  370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
+                  807,  855,  944,  960,  971,  981,  986, 1005, 1010, 1020, 1023,
+                 1058, 1166, 1225, 1280, 1281, 1285, 1314, 1343, 1380, 1381, 1521,
+                 1523, 1543, 1642, 1687, 1738, 1792, 1794, 1910, 1912, 1943, 1945,
+                 1950, 1982, 1984, 1987, 2032, 2034]
   gains:
     kotekan_update_endpoint: "json"
-    start_time: 1541039597.
-    tag: "gain_20181101T023317.440691Z_cyga"
+    start_time: 1575950518.4
+    update_id: "gain_20191210T040158.382942Z_casa_ref_cyga"
+    transition_interval: 300.0
   26m_gated:
     kotekan_update_endpoint: "json"
     enabled: false
@@ -119,6 +135,7 @@ updatable_config:
 
 # Kotekan stages
 buffer_recv:
+  log_level: warn
   n2:
     kotekan_stage: bufferRecv
     buf: visbuf_10s_all
@@ -148,8 +165,8 @@ switch_26m_gated:
   out_buf: visbuf_5s_26m_gated_post
   updatable_config: "/updatable_config/26m_gated"
 
-apply_flags:
-  kotekan_stage: receiveFlags
+receive_flags:
+  kotekan_stage: ReceiveFlags
   in_buf: visbuf_10s_all
   out_buf: visbuf_10s_flags
   updatable_config: "/updatable_config/flagging"
@@ -177,8 +194,8 @@ count_check:
     in_buf: visbuf_5s_26m_gated
 
 apply_gains:
-  cpu_affinity: [4, 5]
-  num_threads: 2
+  num_threads: 3
+  cpu_affinity: [4, 5, 6]
   kotekan_stage: applyGains
   in_buf: visbuf_10s_flags
   out_buf: visbuf_10s_gain
@@ -186,6 +203,8 @@ apply_gains:
   updatable_config: "/updatable_config/gains"
 
 stacking:
+  num_threads: 3
+  cpu_affinity: [1, 2, 3]
   kotekan_stage: baselineCompression
   in_buf: visbuf_10s_gain
   out_buf: visbuf_10s_stack
@@ -193,8 +212,6 @@ stacking:
   exclude_inputs: [
     46, 142, 688, 944, 960, 1058, 1166, 1225, 1314, 1521, 1543, 2032, 2034
   ]
-  num_threads: 2
-  cpu_affinity: [2, 3]
 
 buffer_status:
   kotekan_stage: bufferStatus
@@ -247,7 +264,6 @@ buffer_writers:
     dir_name: timing
 
 remove_ev:
-
   chimestack:
     kotekan_stage: removeEv
     in_buf: visbuf_10s_stack
@@ -257,6 +273,28 @@ remove_ev:
     kotekan_stage: removeEv
     in_buf: visbuf_10s_timing
     out_buf: visbuf_10s_timing_ne
+
+
+# This stage is here to track the output dataset IDs in prometheus
+vis_dset_tracking:
+  n2_mf:
+    kotekan_stage: visDebug
+    in_buf: visbuf_10s_mfreq
+  chimestack:
+    kotekan_stage: visDebug
+    in_buf: visbuf_10s_stack_ne
+  26m:
+    kotekan_stage: visDebug
+    in_buf: visbuf_5s_26m_ungated_post
+  26mgated:
+    kotekan_stage: visDebug
+    in_buf: visbuf_5s_26m_gated_post
+  cal:
+    kotekan_stage: visDebug
+    in_buf: visbuf_10s_cal
+  timing:
+    kotekan_stage: visDebug
+    in_buf: visbuf_10s_timing_ne
 
 
 archive_writers:
@@ -300,8 +338,8 @@ archive_writers:
 # Transmit part of the stack to the recv1 for testing
 buffer_send:
   server_ip: 10.1.50.11
+  log_level: warn
   stack_mfreq:
     kotekan_stage: bufferSend
     buf: visbuf_10s_stack_mfreq
     server_port: 14096
-

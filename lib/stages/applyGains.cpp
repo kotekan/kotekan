@@ -1,26 +1,42 @@
 #include "applyGains.hpp"
 
-#include "Stage.hpp"
-#include "configUpdater.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
-#include "visFileH5.hpp"
-#include "visUtil.hpp"
-#include "restClient.hpp"
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for mark_frame_empty, allocate_new_metadata_object
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "configUpdater.hpp"     // for configUpdater
+#include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
+#include "datasetState.hpp"      // for gainState, freqState, inputState
+#include "kotekanLogging.hpp"    // for WARN, FATAL_ERROR, INFO
+#include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
+#include "visBuffer.hpp"         // for visFrameView, visField, visField::vis, visField...
+#include "visFileH5.hpp"         // IWYU pragma: keep
+#include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double, fra...
 
-#include "fmt.hpp"
+#include "fmt.hpp"      // for format, fmt
+#include "gsl-lite.hpp" // for span
 #include "libbase64.h"
 
-#include <algorithm>
-#include <csignal>
-#include <exception>
-#include <highfive/H5DataSet.hpp>
-#include <highfive/H5DataSpace.hpp>
-#include <highfive/H5File.hpp>
-#include <sys/stat.h>
+#include <algorithm>                 // for copy, max, copy_backward
+#include <cmath>                     // for abs, pow
+#include <complex>                   // for operator*, operator+, complex, operator""if
+#include <cstdint>                   // for uint64_t
+#include <exception>                 // for exception
+#include <functional>                // for _Bind_helper<>::type, _Placeholder, bind, _1
+#include <highfive/H5DataSet.hpp>    // for DataSet, DataSet::getSpace
+#include <highfive/H5DataSpace.hpp>  // for DataSpace, DataSpace::getDimensions
+#include <highfive/H5File.hpp>       // for File, NodeTraits::getDataSet, File::File, File:...
+#include <highfive/H5Object.hpp>     // for HighFive
+#include <highfive/H5Selection.hpp>  // for SliceTraits::read
+#include <highfive/bits/H5Utils.hpp> // for type_of_array<>::type
+#include <memory>                    // for allocator_traits<>::value_type
+#include <pthread.h>                 // for pthread_setaffinity_np
+#include <regex>                     // for match_results<>::_Base_type
+#include <sched.h>                   // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept>                 // for invalid_argument, out_of_range, runtime_error
+#include <sys/stat.h>                // for stat
+#include <tuple>                     // for get
+
 
 using namespace HighFive;
 using namespace std::placeholders;
@@ -35,7 +51,7 @@ using kotekan::prometheus::Metrics;
 REGISTER_KOTEKAN_STAGE(applyGains);
 
 
-applyGains::applyGains(Config& config, const string& unique_name,
+applyGains::applyGains(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&applyGains::main_thread, this)),
     in_buf(get_buffer("in_buf")),
@@ -47,8 +63,7 @@ applyGains::applyGains(Config& config, const string& unique_name,
     late_update_counter(
         Metrics::instance().add_counter("kotekan_applygains_late_update_count", unique_name)),
     late_frames_counter(
-        Metrics::instance().add_counter("kotekan_applygains_late_frame_count", unique_name)),
-    client(restClient::instance()) {
+        Metrics::instance().add_counter("kotekan_applygains_late_frame_count", unique_name)) {
 
     // Setup the input buffer
     register_consumer(in_buf, unique_name.c_str());
@@ -63,12 +78,6 @@ applyGains::applyGains(Config& config, const string& unique_name,
         throw std::invalid_argument("applyGains: config: num_kept_updates has"
                                     "to be equal or greater than one (is "
                                     + std::to_string(num_kept_updates) + ").");
-    // Time to blend old and new gains in seconds. Default is 5 minutes.
-    t_combine_default = config.get_default<float>(unique_name, "combine_gains_time", 5 * 60);
-    if (t_combine_default < 0)
-        throw std::invalid_argument("applyGains: config: combine_gains_time has"
-                                    "to be positive (is "
-                                    + std::to_string(t_combine_default) + ").");
 
     // Get the calibration broker gains endpoint
     gains_dir = config.get<std::string>(unique_name, "gains_dir");
@@ -79,10 +88,6 @@ applyGains::applyGains(Config& config, const string& unique_name,
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     if (num_threads == 0)
         throw std::invalid_argument("applyGains: num_threads has to be at least 1.");
-    if (in_buf->num_frames % num_threads != 0 || out_buf->num_frames % num_threads != 0)
-        throw std::invalid_argument("applyGains: both the size of the input "
-                                    "and output buffer have to be multiples "
-                                    "of num_threads.");
 
     // FIFO for gains and weights updates
     gains_fifo = updateQueue<GainUpdate>(num_kept_updates);
@@ -104,10 +109,12 @@ bool applyGains::fexists(const std::string& filename) const {
 
 bool applyGains::receive_update(nlohmann::json& json) {
 
+    auto& dm = datasetManager::instance();
+
     double new_ts;
     std::string gains_path;
-    std::string gtag;
-    double t_combine;
+    std::string update_id;
+    double transition_interval;
 
     // receive new gains timestamp ("start_time" might move to "start_time")
     try {
@@ -131,22 +138,24 @@ bool applyGains::receive_update(nlohmann::json& json) {
         late_update_counter.inc();
     }
 
-    // receive new gains tag
+    // receive new gains update
     try {
-        if (!json.at("tag").is_string())
-            throw std::invalid_argument(fmt::format(fmt("applyGains: received bad gains tag: {:s}"),
-                                                    json.at("tag").dump()));
-        gtag = json.at("tag").get<std::string>();
+        if (!json.at("update_id").is_string())
+            throw std::invalid_argument(
+                fmt::format(fmt("applyGains: received bad gains update_id: {:s}"),
+                            json.at("update_id").dump()));
+        update_id = json.at("update_id").get<std::string>();
     } catch (std::exception& e) {
-        WARN("Failure reading 'tag' from update: {:s}", e.what());
+        WARN("Failure reading 'update_id' from update: {:s}", e.what());
         return false;
     }
 
     // Read the interval to blend over
     try {
-        t_combine = json.at("t_combine").get<double>();
+        transition_interval = json.at("transition_interval").get<double>();
     } catch (std::exception& e) {
-        t_combine = t_combine_default;
+        WARN("Failure reading 'transition_interval' from update: {:s}", e.what());
+        return false;
     }
 
     // Signal to fetch thread to get gains from broker
@@ -270,7 +279,9 @@ void applyGains::apply_thread() {
                 // Now we know how long to combine over, we can see if there's
                 // another gain update within that time window
                 auto update_old =
-                    gains_fifo.get_update(double_to_ts(frame_time - update_new->t_combine)).second;
+                    gains_fifo
+                        .get_update(double_to_ts(frame_time - update_new->transition_interval))
+                        .second;
 
                 auto& new_gain = update_new->data.gain.at(freq_ind);
                 if (update_old == nullptr || update_new == update_old) {
@@ -282,7 +293,7 @@ void applyGains::apply_thread() {
                         return;
 
                     auto& old_gain = update_old->data.gain.at(freq_ind);
-                    float coeff_new = age / update_new->t_combine;
+                    float coeff_new = age / update_new->transition_interval;
                     float coeff_old = 1 - coeff_new;
 
                     for (uint32_t ii = 0; ii < input_frame.num_elements; ii++) {
@@ -442,7 +453,7 @@ void applyGains::fetch_thread() {
 }
 
 
-std::optional<applyGains::GainData> applyGains::read_gain_file(std::string tag) const {
+std::optional<applyGains::GainData> applyGains::read_gain_file(std::string update_id) const {
 
     // Define the output arrays
     std::vector<std::vector<cfloat>> gain_read;
@@ -450,11 +461,11 @@ std::optional<applyGains::GainData> applyGains::read_gain_file(std::string tag) 
 
     // Get the gains for this timestamp
     // TODO: For now, assume the update_id is the gain file name.
-    std::string gains_path = fmt::format(fmt("{:s}/{:s}.h5"), gains_dir, tag);
+    std::string gains_path = fmt::format(fmt("{:s}/{:s}.h5"), gains_dir, update_id);
     // Check if file exists
     if (!fexists(gains_path)) {
         // Try a different extension
-        gains_path = fmt::format(fmt("{:s}/{:s}.hdf5"), gains_dir, tag);
+        gains_path = fmt::format(fmt("{:s}/{:s}.hdf5"), gains_dir, update_id);
         if (!fexists(gains_path)) {
             WARN("Could not update gains. File not found: {:s}", gains_path)
             return {};
@@ -596,6 +607,8 @@ bool applyGains::validate_frame(const visFrameView& frame) {
     // TODO: this should validate that the hashes of the input and frequencies
     // dataset states have not changed whenever the dataset_id changes
 
+    std::unique_lock _lock(freqmap_mtx);
+
     if (!num_freq || !num_elements) {
         auto& dm = datasetManager::instance();
         auto* fstate = dm.dataset_state<freqState>(frame.dataset_id);
@@ -646,7 +659,7 @@ bool applyGains::validate_gain(const applyGains::GainData& data) const {
     // check. This should not happen.
     if (!num_freq || !num_elements) {
         WARN("Can't validate gain data as num_freq and num_elements not yet known.")
-        return true;
+        return false;
     }
 
     if (data.gain.size() != num_freq.value()) {

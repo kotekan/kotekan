@@ -1,10 +1,19 @@
 #include "bufferFactory.hpp"
 
-#include "Config.hpp"
-#include "metadata.h"
-#include "visBuffer.hpp"
+#include "Config.hpp"         // for Config
+#include "buffer.h"           // for create_buffer
+#include "kotekanLogging.hpp" // for INFO_NON_OO
+#include "metadata.h"         // for metadataPool // IWYU pragma: keep
+#include "visBuffer.hpp"      // for visFrameView
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
+
+#include <cstdint>   // for int32_t, uint32_t
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error
+#include <utility>   // for pair
+#include <vector>    // for vector
 
 using json = nlohmann::json;
 using std::map;
@@ -27,10 +36,10 @@ map<string, struct Buffer*> bufferFactory::build_buffers() {
     return buffers;
 }
 
-void bufferFactory::build_from_tree(map<string, struct Buffer*>& buffers, json& config_tree,
+void bufferFactory::build_from_tree(map<string, struct Buffer*>& buffers, const json& config_tree,
                                     const string& path) {
 
-    for (json::iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
+    for (json::const_iterator it = config_tree.begin(); it != config_tree.end(); ++it) {
         // If the item isn't an object we can just ignore it.
         if (!it.value().is_object()) {
             continue;

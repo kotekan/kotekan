@@ -1,7 +1,14 @@
 #ifndef HSA_CORRELATOR_KERNEL_H
 #define HSA_CORRELATOR_KERNEL_H
 
-#include "hsaSubframeCommand.hpp"
+#include "Config.hpp"             // for Config
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "hsaSubframeCommand.hpp" // for hsaSubframeCommand
+
+#include <stdint.h> // for int32_t, uint32_t
+#include <string>   // for string
 
 #pragma pack(4)
 struct corr_kernel_config_t {
@@ -14,7 +21,7 @@ struct corr_kernel_config_t {
 
 class hsaCorrelatorKernel : public hsaSubframeCommand {
 public:
-    hsaCorrelatorKernel(kotekan::Config& config, const string& unique_name,
+    hsaCorrelatorKernel(kotekan::Config& config, const std::string& unique_name,
                         kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaCorrelatorKernel();

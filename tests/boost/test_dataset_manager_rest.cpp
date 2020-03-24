@@ -1,19 +1,35 @@
 
 #define BOOST_TEST_MODULE "test_datasetManager_REST"
 
-#include "restClient.hpp"
-#include "restServer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"         // for Config
+#include "Hash.hpp"           // for operator<<, hash, operator==, Hash
+#include "dataset.hpp"        // for dataset
+#include "datasetManager.hpp" // for state_id_t, datasetManager, dset_id_t
+#include "datasetState.hpp"   // for freqState, inputState, prodState, state_uptr
+#include "errors.h"           // for __enable_syslog, _global_log_level
+#include "kotekanLogging.hpp" // for DEBUG_NON_OO
+#include "restServer.hpp"     // for restServer, connectionInstance
+#include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype
 
-#include "fmt.hpp"
-#include "json.hpp"
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for basic_json<>::object_t, basic_json<>::value...
 
-#include <boost/test/included/unit_test.hpp>
-#include <iostream>
-#include <string>
+#include <algorithm>                         // for max
+#include <atomic>                            // for atomic, __atomic_base
+#include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_BOOL_2, BOOST_TEST...
+#include <exception>                         // for exception
+#include <functional>                        // for _Bind_helper<>::type, _Placeholder, bind, _1
+#include <iostream>                          // for operator<<, endl, ostream, basic_ostream, cout
+#include <map>                               // for map
+#include <memory>                            // for allocator, make_unique, unique_ptr
+#include <stddef.h>                          // for size_t
+#include <stdint.h>                          // for uint32_t
+#include <string>                            // for string, operator<<, string_literals
+#include <sys/types.h>                       // for u_short, ushort
+#include <unistd.h>                          // for usleep
+#include <utility>                           // for pair
+#include <vector>                            // for vector
 
-// the code to test:
-#include "datasetManager.hpp"
 
 using kotekan::connectionInstance;
 using kotekan::restServer;
@@ -47,15 +63,14 @@ struct TestContext {
             js.at("hash");
         } catch (std::exception& e) {
             std::string error =
-                fmt::format("Failure parsing register state message from datasetManager: "
-                            "{}\n{}.",
+                fmt::format("Failure parsing register state message from datasetManager: {}\n{}.",
                             js.dump(), e.what());
             reply["result"] = error;
             con.send_json_reply(reply);
             BOOST_CHECK_MESSAGE(false, error);
         }
 
-        BOOST_CHECK(js.at("hash").is_number());
+        BOOST_CHECK(js.at("hash").is_string());
         reply["request"] = "get_state";
         reply["hash"] = js.at("hash");
         reply["result"] = "success";
@@ -80,20 +95,29 @@ struct TestContext {
             BOOST_CHECK_MESSAGE(false, error);
         }
 
-        BOOST_CHECK(js.at("hash").is_number());
+        BOOST_CHECK(js.at("hash").is_string());
 
         // check the received state
-        std::vector<input_ctype> inputs = {input_ctype(1, "1"), input_ctype(2, "2"),
-                                           input_ctype(3, "3")};
-        std::vector<prod_ctype> prods = {{1, 1}, {2, 2}, {3, 3}};
-        std::vector<std::pair<uint32_t, freq_ctype>> freqs = {
+        static std::vector<input_ctype> inputs = {input_ctype(1, "1"), input_ctype(2, "2"),
+                                                  input_ctype(3, "3")};
+        static std::vector<prod_ctype> prods = {{1, 1}, {2, 2}, {3, 3}};
+        static std::vector<std::pair<uint32_t, freq_ctype>> freqs = {
             {1, {1.1, 1}}, {2, {2, 2.2}}, {3, {3, 3}}};
 
-        state_uptr same_state = std::make_unique<inputState>(
-            inputs, std::make_unique<prodState>(prods, std::make_unique<freqState>(freqs)));
+        static state_uptr states[3] = {std::make_unique<inputState>(inputs),
+                                       std::make_unique<prodState>(prods),
+                                       std::make_unique<freqState>(freqs)};
+        static bool pass[3] = {false, false, false};
         state_uptr received_state = datasetState::from_json(js.at("state"));
 
-        BOOST_CHECK(same_state->to_json() == received_state->to_json());
+        for (ushort i = 0; i < 4; i++) {
+            BOOST_CHECK(i < 4);
+            if (states[i]->to_json() == received_state->to_json()) {
+                BOOST_CHECK(pass[i] == false);
+                pass[i] = true;
+                break;
+            }
+        }
 
         reply["result"] = "success";
         con.send_json_reply(reply);
@@ -120,16 +144,13 @@ struct TestContext {
             BOOST_CHECK_MESSAGE(false, error);
         }
 
-        BOOST_CHECK(js_ds.at("state").is_number());
+        BOOST_CHECK(js_ds.at("state").is_string());
         if (!js_ds.at("is_root"))
-            BOOST_CHECK(js_ds.at("base_dset").is_number());
+            BOOST_CHECK(js_ds.at("base_dset").is_string());
         BOOST_CHECK(js_ds.at("is_root").is_boolean());
-        BOOST_CHECK(js.at("hash").is_number());
+        BOOST_CHECK(js.at("hash").is_string());
 
-        dataset recvd(js_ds);
-
-        static std::hash<std::string> hash_function;
-        BOOST_CHECK(hash_function(recvd.to_json().dump()) == js.at("hash"));
+        BOOST_CHECK(hash(js_ds.dump()) == Hash::from_string(js.at("hash")));
 
         reply["result"] = "success";
         con.send_json_reply(reply);
@@ -144,13 +165,16 @@ BOOST_FIXTURE_TEST_CASE(_dataset_manager_general, TestContext) {
     json json_config;
     json_config["use_dataset_broker"] = true;
 
-    // kotekan restServer endpoints defined above
-    json_config["ds_broker_port"] = 12048;
-    restServer::instance().start("127.0.0.1");
+    // kotekan restServer endpoints defined above. Start with random free port.
+    restServer::instance().start("127.0.0.1", 0);
+    usleep(10000);
+    json_config["ds_broker_port"] = restServer::instance().port;
+    std::cout << "Running RESTserver on port " << json_config["ds_broker_port"] << " for dM test."
+              << std::endl;
 
     TestContext::init();
 
-    Config conf;
+    kotekan::Config conf;
     conf.update_config(json_config);
     datasetManager& dm = datasetManager::instance(conf);
 

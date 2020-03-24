@@ -1,18 +1,25 @@
 #include "networkInputPowerStream.hpp"
 
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_full, wait_for_empty_frame, register_producer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for ERROR
+#include "powerStreamUtil.hpp" // for IntensityHeader, IntensityPacketHeader
 
-#include <arpa/inet.h>
-#include <functional>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <string.h>
-#include <string>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <unistd.h>
+#include <atomic>       // for atomic_bool
+#include <errno.h>      // for errno
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <netinet/in.h> // for sockaddr_in, INADDR_ANY, htonl, htons, in_addr, IPPROTO_TCP
+#include <regex>        // for match_results<>::_Base_type
+#include <stdlib.h>     // for free, malloc, calloc
+#include <string.h>     // for memcpy, memset
+#include <string>       // for string, allocator, operator==
+#include <sys/socket.h> // for bind, socket, accept, listen, recv, recvfrom, AF_INET
+#include <sys/types.h>  // for uint, ssize_t
+#include <vector>       // for vector
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -20,7 +27,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(networkInputPowerStream);
 
-networkInputPowerStream::networkInputPowerStream(Config& config, const string& unique_name,
+networkInputPowerStream::networkInputPowerStream(Config& config, const std::string& unique_name,
                                                  bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&networkInputPowerStream::main_thread, this)) {
@@ -62,7 +69,7 @@ void networkInputPowerStream::receive_packet(void* buffer, int length, int socke
 
 void networkInputPowerStream::main_thread() {
     int frame_id = 0;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
 
     if (protocol == "UDP") {
         int socket_fd;
@@ -83,12 +90,13 @@ void networkInputPowerStream::main_thread() {
 
         while (!stop_thread) {
             frame = wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id);
-            if (frame == NULL)
+            if (frame == nullptr)
                 break;
 
             for (int t = 0; t < times; t++) {
                 for (int e = 0; e < elems; e++) {
-                    uint32_t len = recvfrom(socket_fd, local_buf, packet_length, 0, NULL, 0);
+                    uint32_t len =
+                        recvfrom(socket_fd, local_buf, packet_length, 0, nullptr, nullptr);
                     if (len != packet_length) {
                         ERROR("BAD UDP PACKET! {:d} {:d}", len, errno)
                     } else {
@@ -140,7 +148,7 @@ void networkInputPowerStream::main_thread() {
         while (!stop_thread) {
             unsigned char* buf_ptr =
                 (unsigned char*)wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id);
-            if (buf_ptr == NULL)
+            if (buf_ptr == nullptr)
                 break;
 
             for (int t = 0; t < times; t++) {

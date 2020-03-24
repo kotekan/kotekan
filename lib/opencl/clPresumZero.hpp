@@ -7,7 +7,7 @@
 
 class clPresumZero : public clCommand {
 public:
-    clPresumZero(kotekan::Config& config, const string& unique_name,
+    clPresumZero(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
     ~clPresumZero();
     cl_event execute(int param_bufferID, cl_event param_PrecedeEvent) override;

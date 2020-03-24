@@ -1,44 +1,46 @@
 #include "visRawReader.hpp"
 
-#include "StageFactory.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "metadata.h"
-#include "version.h"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for state_id_t, datasetManager, dset_id_t
+#include "datasetState.hpp"    // for acqDatasetIdState, eigenvalueState, freqState, inputState
+#include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "kotekanLogging.hpp"  // for DEBUG, INFO, FATAL_ERROR
+#include "metadata.h"          // for metadataContainer
+#include "version.h"           // for get_git_commit_hash
+#include "visBuffer.hpp"       // for visFrameView, visMetadata
+#include "visUtil.hpp"         // for freq_ctype, prod_ctype, rstack_ctype, stack_ctype, time_c...
 
-#include "fmt.hpp"
-#include "gsl-lite.hpp"
-#include "json.hpp"
+#include "fmt.hpp"      // for format, fmt
+#include "gsl-lite.hpp" // for span<>::iterator, span
+#include "json.hpp"     // for basic_json<>::object_t, json, basic_json, basic_json<>::v...
 
-#include <algorithm>
-#include <atomic>
-#include <cstdint>
-#include <cstring>
-#include <errno.h>
-#include <exception>
-#include <fcntl.h>
-#include <fstream>
-#include <functional>
-#include <iostream>
-#include <memory>
-#include <regex>
-#include <signal.h>
-#include <stdexcept>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <time.h>
-#include <unistd.h>
-
+#include <algorithm>  // for fill, min, max
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for uint32_t, uint8_t
+#include <cstring>    // for strerror, memcpy
+#include <errno.h>    // for errno
+#include <exception>  // for exception
+#include <fcntl.h>    // for open, O_RDONLY
+#include <fstream>    // for ifstream, ios_base::failure, ios_base, basic_ios, basic_i...
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error, invalid_argument
+#include <sys/mman.h> // for madvise, mmap, munmap, MADV_DONTNEED, MADV_WILLNEED, MAP_...
+#include <sys/stat.h> // for stat
+#include <time.h>     // for nanosleep, timespec
+#include <unistd.h>   // for close, off_t
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using nlohmann::json;
 
 REGISTER_KOTEKAN_STAGE(visRawReader);
 
-visRawReader::visRawReader(Config& config, const string& unique_name,
+visRawReader::visRawReader(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&visRawReader::main_thread, this)) {
 
@@ -156,7 +158,7 @@ visRawReader::visRawReader(Config& config, const string& unique_name,
             fmt::format(fmt("Failed to open file {:s}.data: {:s}."), filename, strerror(errno)));
     }
     mapped_file =
-        (uint8_t*)mmap(NULL, ntime * nfreq * file_frame_size, PROT_READ, MAP_SHARED, fd, 0);
+        (uint8_t*)mmap(nullptr, ntime * nfreq * file_frame_size, PROT_READ, MAP_SHARED, fd, 0);
     if (mapped_file == MAP_FAILED)
         throw std::runtime_error(fmt::format(fmt("Failed to map file {:s}.data to memory: {:s}."),
                                              filename, strerror(errno)));
@@ -318,7 +320,7 @@ void visRawReader::main_thread() {
         DEBUG("Sleep time {}", sleep_time);
         if (sleep_time > 0) {
             auto ts = double_to_ts(sleep_time);
-            nanosleep(&ts, NULL);
+            nanosleep(&ts, nullptr);
         }
     }
 

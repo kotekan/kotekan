@@ -8,22 +8,20 @@
 #ifndef FAKE_VIS
 #define FAKE_VIS
 
-#include "Config.hpp"
-#include "FakeVisPattern.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "kotekanLogging.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "FakeVisPattern.hpp"  // for FakeVisPattern
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "dataset.hpp"         // for dset_id_t
+#include "visBuffer.hpp"       // for visFrameView
+#include "visUtil.hpp"         // for cfloat
 
-#include <functional>
-#include <map>
-#include <stddef.h>
-#include <stdint.h>
-#include <string>
-#include <vector>
+#include <memory>   // for unique_ptr
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint32_t, int32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @brief Generate fake visibility data into a ``visBuffer``.
@@ -51,7 +49,7 @@
  * @conf  cadence       Float. The interval of time (in seconds) between
  *                      frames.
  * @conf  mode          String. How to fill the visibility array. See
- *                      fakeVis::fill_mode_X routines for documentation.
+ *                      the set of FakeVisPattern implementations for details.
  * @conf  wait          Bool. Sleep to try and output data at roughly
  *                      the correct cadence.
  * @conf  num_frames    Exit after num_frames have been produced. If
@@ -80,7 +78,7 @@ class FakeVis : public kotekan::Stage {
 
 public:
     /// Constructor. Loads config options.
-    FakeVis(kotekan::Config& config, const string& unique_name,
+    FakeVis(kotekan::Config& config, const std::string& unique_name,
             kotekan::bufferContainer& buffer_container);
 
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
@@ -150,7 +148,7 @@ class ReplaceVis : public kotekan::Stage {
 
 public:
     /// Constructor. Loads config options.
-    ReplaceVis(kotekan::Config& config, const string& unique_name,
+    ReplaceVis(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.

@@ -1,11 +1,22 @@
 #include "hsaBeamformReorder.hpp"
 
+#include "Config.hpp"             // for Config
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaBase.h"              // for hsa_host_free, hsa_host_malloc
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+
+#include <cstdint>     // for int32_t
+#include <exception>   // for exception
+#include <regex>       // for match_results<>::_Base_type
+#include <string.h>    // for memcpy, memset
+#include <sys/types.h> // for uint
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaBeamformReorder);
 
-hsaBeamformReorder::hsaBeamformReorder(Config& config, const string& unique_name,
+hsaBeamformReorder::hsaBeamformReorder(Config& config, const std::string& unique_name,
                                        bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "reorder" KERNEL_EXT, "reorder.hsaco") {
     command_type = gpuCommandType::KERNEL;

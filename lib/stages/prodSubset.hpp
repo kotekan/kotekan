@@ -7,18 +7,18 @@
 #define PROD_SUB_HPP
 
 #include "Config.hpp"
-#include "Stage.hpp"
+#include "Stage.hpp" // for Stage
 #include "buffer.h"
 #include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "visUtil.hpp"
+#include "datasetManager.hpp" // for dset_id_t, state_id_t, fingerprint_t
+#include "visUtil.hpp"        // for prod_ctype
 
-#include <future>
-#include <stddef.h>
-#include <stdint.h>
-#include <string>
-#include <tuple>
-#include <vector>
+#include <map>      // for map
+#include <stddef.h> // for size_t
+#include <string>   // for string
+#include <tuple>    // for tuple
+#include <utility>  // for pair
+#include <vector>   // for vector
 
 
 /**
@@ -46,15 +46,15 @@
  * @par Buffers
  * @buffer in_buf The kotekan buffer from which the visibilities are read, can be any size.
  *     @buffer_format visBuffer structured
-+*     @buffer_metadata visMetadata
+ *     @buffer_metadata visMetadata
  * @buffer out_buf The kotekan buffer which will be fed the subset of visibilities.
  *     @buffer_format visBuffer structured
-+*     @buffer_metadata visMetadata
+ *     @buffer_metadata visMetadata
  *
  * @conf  prod_subset_type      string. Type of product subset to perform.
  * @conf  num_elements          int. The number of elements (i.e. inputs) in the
-+*                              correlator data
-+* @conf  num_ev                int. The number of eigenvectors to be stored
+ *                              correlator data
+ * @conf  num_ev                int. The number of eigenvectors to be stored
  * @conf  max_ew_baseline       int. The maximum baseline length along the EW
  *                              direction to include in subset (in units of the
  *                              shortest EW baseline)
@@ -74,7 +74,7 @@ class prodSubset : public kotekan::Stage {
 
 public:
     /// Constructor. Loads config options. Defines subset of products.
-    prodSubset(kotekan::Config& config, const string& unique_name,
+    prodSubset(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
     /// Primary loop: sorts products and passes them on to output buffer.
@@ -84,11 +84,7 @@ private:
     /// keeps track of the input dataset ID
     /// and gets new output dataset ID from manager
     ///
-    dset_id_t change_dataset_state(dset_id_t ds_id, std::vector<prod_ctype>& prod_subset,
-                                   std::vector<size_t>& prod_ind, size_t& subset_num_prod);
-
-    /// Number of products in subset
-    size_t subset_num_prod;
+    void change_dataset_state(dset_id_t ds_id);
 
     /// Input buffer
     Buffer* in_buf;
@@ -96,14 +92,15 @@ private:
     /// Output buffer to receive baseline subset visibilities
     Buffer* out_buf;
 
-    /// Vector of indices for subset of products
-    std::vector<size_t> prod_ind;
+    /// Vector of indices for subset of products (before subsetting on the products in data)
+    std::vector<size_t> _base_prod_ind;
 
     /// Vector of subset of products
-    std::vector<prod_ctype> prod_subset;
+    std::vector<prod_ctype> _base_prod_subset;
 
-    // dataset IDs
-    std::future<dset_id_t> future_output_dset_id;
+    // Maps for determining the dataset ID to use
+    std::map<dset_id_t, std::pair<dset_id_t, std::vector<size_t>>> dset_id_map;
+    std::map<fingerprint_t, std::pair<state_id_t, std::vector<size_t>>> states_map;
 };
 
 

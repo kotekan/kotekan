@@ -1,29 +1,35 @@
-#include <assert.h>
-#include <functional>
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
-
-using std::string;
-
-// TODO Where do these live?
-#define likely(x) __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
-
 #include "beamformingPostProcess.hpp"
-#include "errors.h"
-#include "time_tracking.h"
-#include "util.h"
-#include "vdif_functions.h"
+
+#include "BranchPrediction.hpp" // for unlikely, likely
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"             // for Buffer, wait_for_empty_frame, mark_frame_empty, mark_fra...
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chimeMetadata.h"      // for get_fpga_seq_num, get_first_packet_recv_time, get_stream_id
+#include "vdif_functions.h"     // for VDIFHeader
+
+#include "fmt.hpp" // for format, fmt
+
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <math.h>     // for round
+#include <regex>      // for match_results<>::_Base_type
+#include <stdlib.h>   // for free, malloc
+#include <string.h>   // for memcpy
+#include <string>     // for allocator, string
+#include <sys/time.h> // for timeval
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using std::string;
 
 REGISTER_KOTEKAN_STAGE(beamformingPostProcess);
 
-beamformingPostProcess::beamformingPostProcess(Config& config, const string& unique_name,
+beamformingPostProcess::beamformingPostProcess(Config& config, const std::string& unique_name,
                                                bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&beamformingPostProcess::main_thread, this)) {
@@ -134,7 +140,7 @@ void beamformingPostProcess::main_thread() {
             // This call is blocking!
             in_frame[i] =
                 wait_for_full_frame(in_buf[gpu_id], unique_name.c_str(), in_buffer_ID[gpu_id]);
-            if (in_frame[i] == NULL)
+            if (in_frame[i] == nullptr)
                 goto end_loop;
 
             if (i == 0) {
@@ -191,7 +197,7 @@ void beamformingPostProcess::main_thread() {
                         out_buffer_ID = (out_buffer_ID + 1) % vdif_buf->num_frames;
                         vdif_frame =
                             wait_for_empty_frame(vdif_buf, unique_name.c_str(), out_buffer_ID);
-                        if (vdif_frame == NULL)
+                        if (vdif_frame == nullptr)
                             goto end_loop;
 
                         // Fill the headers of the new buffer

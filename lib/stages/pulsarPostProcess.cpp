@@ -1,28 +1,33 @@
-#include "gpsTime.h"
+#include "pulsarPostProcess.hpp"
 
-#include <assert.h>
-#include <functional>
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
+#include "BranchPrediction.hpp"    // for likely, unlikely
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for Buffer, mark_frame_empty, wait_for_empty_frame, wait_...
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chimeMetadata.h"         // for get_fpga_seq_num, psrCoord, get_psr_coord, get_stream...
+#include "fpga_header_functions.h" // for bin_number_chime, stream_id_t
+#include "gpsTime.h"               // for compute_gps_time, is_gps_global_time_set
+#include "kotekanLogging.hpp"      // for DEBUG, ERROR
+#include "vdif_functions.h"        // for VDIFHeader
+
+#include <algorithm>  // for max
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <cmath>      // for round
+#include <cstdint>    // for int64_t, uint64_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <string.h>   // for memcpy
+#include <string>     // for allocator, string, operator+, to_string
+#include <vector>     // for vector
 
 using std::string;
 
-// TODO Where do these live?
-#define likely(x) __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
-
 #define udp_pulsar_header_size 32
 
-#include "Config.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
-#include "pulsarPostProcess.hpp"
-#include "util.h"
-#include "vdif_functions.h"
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -30,7 +35,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(pulsarPostProcess);
 
-pulsarPostProcess::pulsarPostProcess(Config& config_, const string& unique_name,
+pulsarPostProcess::pulsarPostProcess(Config& config_, const std::string& unique_name,
                                      bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container,
           std::bind(&pulsarPostProcess::main_thread, this)) {
@@ -48,7 +53,10 @@ pulsarPostProcess::pulsarPostProcess(Config& config_, const string& unique_name,
 
     assert(_timesamples_per_pulsar_packet == 625 || _timesamples_per_pulsar_packet == 3125);
 
-    in_buf = (struct Buffer**)malloc(_num_gpus * sizeof(struct Buffer*));
+    in_buf = new Buffer*[_num_gpus];
+    in_buffer_ID = new uint[_num_gpus]; // 4 of these , cycle through buffer depth
+    in_frame = new uint8_t*[_num_gpus];
+
     for (uint32_t i = 0; i < _num_gpus; ++i) {
         in_buf[i] = get_buffer("network_input_buffer_" + std::to_string(i));
         register_consumer(in_buf[i], unique_name.c_str());
@@ -58,13 +66,17 @@ pulsarPostProcess::pulsarPostProcess(Config& config_, const string& unique_name,
 }
 
 pulsarPostProcess::~pulsarPostProcess() {
-    free(in_buf);
+    delete[] in_buf;
+    delete[] in_buffer_ID;
+    delete[] in_frame;
 }
 
 void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* vdif_header,
                                      const uint64_t fpga_seq_num, struct timespec* time_now,
                                      struct psrCoord* psr_coord, uint16_t* freq_ids) {
     uint freqloop = _num_stream / _num_pulsar;
+    DEBUG("Filling headers starting at {} ({}.{:09d})", fpga_seq_num, time_now->tv_sec,
+          time_now->tv_nsec);
     for (uint i = 0; i < _num_packet_per_stream; ++i) { // 16 or 80 frames in a stream
         uint64_t fpga_now = (fpga_seq_num + _timesamples_per_pulsar_packet * i);
         vdif_header->seconds = time_now->tv_sec - unix_offset;
@@ -115,8 +127,6 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* 
 
 void pulsarPostProcess::main_thread() {
 
-    uint in_buffer_ID[_num_gpus]; // 4 of these , cycle through buffer depth
-    uint8_t* in_frame[_num_gpus];
     int out_buffer_ID = 0;
     int startup = 1; // related to the likely & unlikely
     uint16_t freq_ids[_num_gpus];
@@ -124,6 +134,7 @@ void pulsarPostProcess::main_thread() {
     for (uint32_t i = 0; i < _num_gpus; ++i) {
         in_buffer_ID[i] = 0;
     }
+    uint64_t frame_fpga_seq_num = 0;     // sample starting the current input frame
     uint32_t current_input_location = 0; // goes from 0 to _samples_per_data_set
 
     struct VDIFHeader vdif_header;
@@ -160,65 +171,87 @@ void pulsarPostProcess::main_thread() {
     struct psrCoord psr_coord[_num_gpus];
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t* out_frame = wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
-    if (out_frame == NULL)
+    if (out_frame == nullptr)
         goto end_loop;
 
     while (!stop_thread) {
         // Get an input buffer, This call is blocking!
-        for (uint32_t i = 0; i < _num_gpus; ++i) {
-            in_frame[i] = wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
-            if (in_frame[i] == NULL)
-                goto end_loop;
+        auto new_frame_fpga_seq_num = sync_input_buffers();
+        if (!new_frame_fpga_seq_num.has_value())
+            return;
 
+        for (uint32_t i = 0; i < _num_gpus; ++i) {
             psr_coord[i] = get_psr_coord(in_buf[i], in_buffer_ID[i]);
-        }
-        uint64_t first_seq_number = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
-
-        for (uint32_t i = 0; i < _num_gpus; ++i) {
-            assert(first_seq_number == (uint64_t)get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
-
             stream_id_t stream_id = get_stream_id_t(in_buf[i], in_buffer_ID[i]);
             freq_ids[i] = bin_number_chime(&stream_id);
         }
+
+        bool skipped_frames =
+            (new_frame_fpga_seq_num.value() - frame_fpga_seq_num) > _samples_per_data_set;
+        frame_fpga_seq_num = new_frame_fpga_seq_num.value();
 
         // If this is the first time wait until we get the start of an interger second period.
         if (unlikely(startup == 1)) {
             startup = 0;
 
-            // GPS time, need ch_master
-            time_now = get_gps_time(in_buf[0], in_buffer_ID[0]);
-
-            struct timespec time_now_from_compute2 = compute_gps_time(first_seq_number);
-            if (time_now.tv_sec != time_now_from_compute2.tv_sec) {
-                ERROR("[Time Check] mismatch in execute time_now.tv_sec={:d}"
-                      " time_now_from_compute2.tv_sec={:d}",
-                      time_now.tv_sec, time_now_from_compute2.tv_sec);
-            }
-            if (time_now.tv_nsec != time_now_from_compute2.tv_nsec) {
-                ERROR("[Time Check] mismatch in execute time_now.tv_nsec={:d}"
-                      " time_now_from_compute2.tv_nsec={:d}",
-                      time_now.tv_nsec, time_now_from_compute2.tv_nsec);
-            }
             if (is_gps_global_time_set() != 1) {
                 ERROR("[Time Check] gps global time not set ({:d})", is_gps_global_time_set());
             }
+            time_now = compute_gps_time(frame_fpga_seq_num);
             uint32_t pkt_length_in_ns = _timesamples_per_pulsar_packet * 2560;
             uint32_t ns_offset = pkt_length_in_ns - (time_now.tv_nsec % pkt_length_in_ns);
             float seq_number_offset_float = ns_offset / 2560.;
             uint seq_number_offset = round(seq_number_offset_float);
 
             current_input_location = seq_number_offset;
-            first_seq_number = first_seq_number + seq_number_offset;
-            time_now = compute_gps_time(first_seq_number);
+            fpga_seq_num = frame_fpga_seq_num + seq_number_offset;
+            time_now.tv_nsec += seq_number_offset * 2560;
+            while (time_now.tv_nsec >= 1e9) {
+                time_now.tv_sec += 1;
+                time_now.tv_nsec -= 1e9;
+            }
+            skipped_frames = false;
 
             // Fill the first output buffer headers
-            fpga_seq_num = first_seq_number;
-            fill_headers((unsigned char*)out_frame, &vdif_header, first_seq_number, &time_now,
+            fill_headers((unsigned char*)out_frame, &vdif_header, fpga_seq_num, &time_now,
                          psr_coord, (uint16_t*)freq_ids);
         }
 
-        // This loop which takes data from the input buffer and formats the output.
+        // Take data from the input buffer and format the output
         if (likely(startup == 0)) {
+            // Adjust the output position and in-frame time when we skip any input frames
+            if (skipped_frames) {
+                // TODO this section duplicates the code in startup, look into combining them
+                fpga_seq_num = frame_fpga_seq_num;
+                DEBUG("Skipped frames to {}; current output packet {} / {}", fpga_seq_num, frame,
+                      in_frame_location);
+                time_now = compute_gps_time(fpga_seq_num);
+                DEBUG("GPS clock {}.{:09d}, fpga_seq_num: {}", time_now.tv_sec, time_now.tv_nsec,
+                      fpga_seq_num);
+
+                uint32_t pkt_length_in_ns = _timesamples_per_pulsar_packet * 2560;
+                uint32_t ns_offset = pkt_length_in_ns - (time_now.tv_nsec % pkt_length_in_ns);
+                float seq_number_offset_float = ns_offset / 2560.;
+                uint seq_number_offset = round(seq_number_offset_float);
+
+                current_input_location = seq_number_offset;
+                fpga_seq_num += seq_number_offset;
+                time_now.tv_nsec += seq_number_offset * 2560;
+                while (time_now.tv_nsec >= 1e9) {
+                    time_now.tv_sec += 1;
+                    time_now.tv_nsec -= 1e9;
+                }
+                DEBUG("Advanced the clock to {}.{:09d}", time_now.tv_sec, time_now.tv_nsec);
+
+                frame = 0;
+                in_frame_location = 0;
+
+                // Fill the headers of the new buffer
+                fill_headers((unsigned char*)out_frame, &vdif_header, fpga_seq_num, &time_now,
+                             psr_coord, (uint16_t*)freq_ids);
+            }
+
+
             for (uint i = current_input_location; i < _samples_per_data_set; ++i) {
                 if (in_frame_location == _timesamples_per_pulsar_packet) { // last sample
                     in_frame_location = 0;
@@ -230,7 +263,7 @@ void pulsarPostProcess::main_thread() {
                         out_buffer_ID = (out_buffer_ID + 1) % pulsar_buf->num_frames;
                         out_frame =
                             wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
-                        if (out_frame == NULL)
+                        if (out_frame == nullptr)
                             goto end_loop;
                         // Fill the headers of the new buffer
                         fpga_seq_num += _timesamples_per_pulsar_packet * _num_packet_per_stream;
@@ -299,4 +332,43 @@ void pulsarPostProcess::main_thread() {
         }
     } // end stop thread
 end_loop:;
+}
+
+
+std::optional<uint64_t> pulsarPostProcess::sync_input_buffers() {
+    for (unsigned i = 0; i < _num_gpus; i++) {
+        in_frame[i] = wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
+        if (in_frame[i] == nullptr)
+            return std::nullopt;
+    }
+    while (!stop_thread) {
+        // Get all input buffers in sync by fpga_seq_no: find the one that's the
+        // furthest along, and keep advancing others until they all match. (Keep in
+        // mind that advancing one of the others may put it ahead of the current
+        // largest fpga_seq_no, in which case we have to repeat the process.)
+        auto max_fpga_count = get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
+        for (unsigned i = 1; i < _num_gpus; i++) {
+            max_fpga_count = std::max(max_fpga_count, get_fpga_seq_num(in_buf[i], in_buffer_ID[i]));
+        }
+        bool fpga_seq_in_sync = true;
+        for (unsigned i = 0; i < _num_gpus; ++i) {
+            while (max_fpga_count > get_fpga_seq_num(in_buf[i], in_buffer_ID[i])) {
+                mark_frame_empty(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
+                in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
+                in_frame[i] = wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
+                if (in_frame[i] == nullptr)
+                    return std::nullopt;
+            }
+            if (max_fpga_count != get_fpga_seq_num(in_buf[i], in_buffer_ID[i])) {
+                fpga_seq_in_sync = false;
+            }
+        }
+        if (fpga_seq_in_sync) {
+            break;
+        }
+    }
+    if (stop_thread)
+        return std::nullopt;
+
+    return get_fpga_seq_num(in_buf[0], in_buffer_ID[0]);
 }

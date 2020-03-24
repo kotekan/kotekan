@@ -1,26 +1,37 @@
 #include "rfiBroadcast.hpp"
 
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "util.h"
-#include "visUtil.hpp"
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chimeMetadata.h"         // for get_fpga_seq_num, get_stream_id
+#include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, stream_id_t
+#include "kotekanLogging.hpp"      // for ERROR, DEBUG, INFO
+#include "prometheusMetrics.hpp"   // for Metrics, Gauge, MetricFamily
+#include "restServer.hpp"          // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_R...
+#include "rfi_functions.h"         // for RFIHeader
+#include "visUtil.hpp"             // for movingAverage
 
-#include "fmt.hpp"
+#ifdef DEBUGGING
+#include "util.h" // for e_time
+#endif
 
-#include <arpa/inet.h>
-#include <errno.h>
-#include <functional>
-#include <mutex>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <string.h>
-#include <string>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <time.h>
-#include <unistd.h>
+#include "fmt.hpp" // for format, fmt
+
+#include <arpa/inet.h>  // for inet_aton
+#include <atomic>       // for atomic_bool
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, fun...
+#include <mutex>        // for mutex, lock_guard
+#include <netinet/in.h> // for sockaddr_in, IPPROTO_UDP, htons
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for runtime_error
+#include <stdlib.h>     // for free, malloc
+#include <string.h>     // for memcpy, memset
+#include <string>       // for string, allocator, to_string, operator+, operator==
+#include <sys/socket.h> // for sendto, socket, AF_INET, SOCK_DGRAM
+#include <vector>       // for vector
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -33,7 +44,7 @@ using kotekan::restServer;
 
 REGISTER_KOTEKAN_STAGE(rfiBroadcast);
 
-rfiBroadcast::rfiBroadcast(Config& config, const string& unique_name,
+rfiBroadcast::rfiBroadcast(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&rfiBroadcast::main_thread, this)) {
     // Get buffer from framework
@@ -76,7 +87,7 @@ rfiBroadcast::~rfiBroadcast() {
     restServer::instance().remove_json_callback(endpoint_zero);
 }
 
-void rfiBroadcast::rest_callback(connectionInstance& conn, json& json_request) {
+void rfiBroadcast::rest_callback(connectionInstance& conn, nlohmann::json& json_request) {
     // Notify that request was received
     INFO("RFI Callback Received... Changing Parameters")
     // Lock mutex
@@ -94,7 +105,7 @@ void rfiBroadcast::rest_zero(connectionInstance& conn) {
     std::lock_guard<std::mutex> lock(rest_zero_callback_mutex);
     // Notify that request was received
     INFO("RFI Broadcast: Current Zeroing Percentage Sent")
-    json reply;
+    nlohmann::json reply;
     reply["percentage_zeroed"] = perc_zeroed.average();
     conn.send_json_reply(reply);
 }
@@ -105,8 +116,8 @@ void rfiBroadcast::main_thread() {
     uint32_t frame_mask_id = 0;
     uint32_t i, j, f;
     uint32_t bytes_sent = 0;
-    uint8_t* frame = NULL;
-    uint8_t* frame_mask = NULL;
+    uint8_t* frame = nullptr;
+    uint8_t* frame_mask = nullptr;
     uint32_t link_id = 0;
     uint16_t StreamIDs[total_links];
     uint64_t fake_seq = 0;
@@ -133,6 +144,7 @@ void rfiBroadcast::main_thread() {
         socket_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
         if (socket_fd == -1) {
             ERROR("Could not create UDP socket for output stream");
+            free(packet_buffer);
             return;
         }
         memset((char*)&saddr_remote, 0, sizeof(sockaddr_in));
@@ -159,11 +171,11 @@ void rfiBroadcast::main_thread() {
             for (f = 0; f < _frames_per_packet * total_links; f++) {
                 // Get Frame of Mask
                 frame_mask = wait_for_full_frame(rfi_mask_buf, unique_name.c_str(), frame_mask_id);
-                if (frame_mask == NULL)
+                if (frame_mask == nullptr)
                     break;
                 // Get Frame
                 frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
-                if (frame == NULL)
+                if (frame == nullptr)
                     break;
                 // Copy frame data to array
                 memcpy(rfi_data[link_id], frame, rfi_buf->frame_size);

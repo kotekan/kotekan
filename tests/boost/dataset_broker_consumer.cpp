@@ -1,19 +1,33 @@
 #define BOOST_TEST_MODULE "test_dataset_broker_consumer"
 
-#include "restClient.hpp"
-#include "restServer.hpp"
-#include "test_utils.hpp"
-#include "visCompression.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"         // for Config
+#include "Hash.hpp"           // for operator<<
+#include "dataset.hpp"        // for dataset
+#include "datasetManager.hpp" // for datasetManager, state_id_t, dset_id_t
+#include "datasetState.hpp"   // for freqState, inputState, prodState, datasetState
+#include "errors.h"           // for __enable_syslog, _global_log_level
+#include "restClient.hpp"     // for restClient, restClient::restReply
+#include "restServer.hpp"     // for restServer
+#include "test_utils.hpp"     // for CompareCTypes
+#include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype
 
-#include "json.hpp"
+#include "json.hpp" // for basic_json<>::object_t, basic_json<>::value...
 
-#include <boost/test/included/unit_test.hpp>
-#include <iostream>
-#include <string>
+#include <algorithm>                         // for max
+#include <boost/test/included/unit_test.hpp> // for master_test_suite, BOOST_PP_IIF_1, BOOST_CHECK
+#include <exception>                         // for exception
+#include <iostream>                          // for operator<<, ostream, endl, basic_ostream, cout
+#include <map>                               // for map
+#include <stdexcept>                         // for out_of_range
+#include <stdint.h>                          // for uint32_t
+#include <stdlib.h>                          // for atoi
+#include <string>                            // for operator<<, allocator, string, getline, ope...
+#include <unistd.h>                          // for usleep
+#include <utility>                           // for pair
+#include <vector>                            // for vector
 
-// the code to test:
-#include "datasetManager.hpp"
+
+#define WAIT_TIME 4000000
 
 using kotekan::Config;
 
@@ -23,16 +37,37 @@ using namespace std::string_literals;
 
 dset_id_t second_root_update;
 
+int read_from_argv() {
+    // The randomly chosen port for the dataset broker is passed to this test as a command line
+    // argument.
+    // At some point boost stopped requiring the `--` to pass command line arguments, so we
+    // should be ready for both.
+    BOOST_CHECK(boost::unit_test::framework::master_test_suite().argc >= 2);
+    int broker_port;
+    if (!std::string("--").compare(boost::unit_test::framework::master_test_suite().argv[1])) {
+        BOOST_CHECK(boost::unit_test::framework::master_test_suite().argc == 3);
+        broker_port = atoi(boost::unit_test::framework::master_test_suite().argv[2]);
+    } else {
+        BOOST_CHECK(boost::unit_test::framework::master_test_suite().argc == 2);
+        broker_port = atoi(boost::unit_test::framework::master_test_suite().argv[1]);
+    }
+    BOOST_CHECK(broker_port);
+    return broker_port;
+}
+
 BOOST_FIXTURE_TEST_CASE(_ask_broker_for_ancestors, CompareCTypes) {
+    int broker_port = read_from_argv();
+
     _global_log_level = 4;
     __enable_syslog = 0;
 
     // We have to start the restServer here, because the datasetManager uses it.
-    kotekan::restServer::instance().start("127.0.0.1");
+    kotekan::restServer::instance().start("127.0.0.1", 0);
 
     json json_config;
     json json_config_dm;
     json_config_dm["use_dataset_broker"] = true;
+    json_config_dm["ds_broker_port"] = broker_port;
     json_config["dataset_manager"] = json_config_dm;
 
     Config conf;
@@ -62,7 +97,7 @@ BOOST_FIXTURE_TEST_CASE(_ask_broker_for_ancestors, CompareCTypes) {
     } else
         std::cout << "Unable to open file DS_ID2.txt\n";
     dset_id_t ds_id;
-    std::stringstream(line) >> ds_id;
+    ds_id.set_from_string(line);
 
     auto i = dm.dataset_state<inputState>(ds_id);
     check_equal(i->get_inputs(), inputs);
@@ -83,16 +118,19 @@ BOOST_FIXTURE_TEST_CASE(_ask_broker_for_ancestors, CompareCTypes) {
     check_equal(p->get_prods(), prods);
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(500000);
+    usleep(WAIT_TIME);
 }
 
 BOOST_AUTO_TEST_CASE(_dataset_manager_second_root_update) {
+    int broker_port = read_from_argv();
+
     _global_log_level = 5;
     __enable_syslog = 0;
 
     json json_config;
     json json_config_dm;
     json_config_dm["use_dataset_broker"] = true;
+    json_config_dm["ds_broker_port"] = broker_port;
     json_config["dataset_manager"] = json_config_dm;
 
     Config conf;
@@ -119,21 +157,24 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_second_root_update) {
     } else
         std::cout << "Unable to open file SECOND_ROOT.txt\n";
     dset_id_t second_root;
-    std::stringstream(line) >> second_root;
+    second_root.set_from_string(line);
 
     second_root_update = dm.add_dataset(states, second_root);
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(1000000);
+    usleep(WAIT_TIME);
 }
 
 BOOST_FIXTURE_TEST_CASE(_ask_broker_for_second_root, CompareCTypes) {
+    int broker_port = read_from_argv();
+
     _global_log_level = 4;
     __enable_syslog = 0;
 
     json json_config;
     json json_config_dm;
     json_config_dm["use_dataset_broker"] = true;
+    json_config_dm["ds_broker_port"] = broker_port;
     json_config["dataset_manager"] = json_config_dm;
 
     Config conf;
@@ -163,7 +204,7 @@ BOOST_FIXTURE_TEST_CASE(_ask_broker_for_second_root, CompareCTypes) {
     } else
         std::cout << "Unable to open file SECOND_ROOT.txt\n";
     dset_id_t second_root;
-    std::stringstream(line) >> second_root;
+    second_root.set_from_string(line);
 
     auto i = dm.dataset_state<inputState>(second_root);
     check_equal(i->get_inputs(), inputs);
@@ -183,16 +224,19 @@ BOOST_FIXTURE_TEST_CASE(_ask_broker_for_second_root, CompareCTypes) {
         std::cout << s.second.state() << " - " << s.second.base_dset() << std::endl;
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(500000);
+    usleep(WAIT_TIME);
 }
 
 BOOST_FIXTURE_TEST_CASE(_ask_broker_for_second_root_update, CompareCTypes) {
+    int broker_port = read_from_argv();
+
     _global_log_level = 4;
     __enable_syslog = 0;
 
     json json_config;
     json json_config_dm;
     json_config_dm["use_dataset_broker"] = true;
+    json_config_dm["ds_broker_port"] = broker_port;
     json_config["dataset_manager"] = json_config_dm;
 
     Config conf;
@@ -230,11 +274,12 @@ BOOST_FIXTURE_TEST_CASE(_ask_broker_for_second_root_update, CompareCTypes) {
         std::cout << s.second.state() << " - " << s.second.base_dset() << std::endl;
 
     // Force the dM to register everything again.
-    restReply reply = restClient::instance().make_request_blocking("/dataset-manager/force-update");
+    restClient::restReply reply = restClient::instance().make_request_blocking(
+        "/dataset-manager/force-update", {}, "127.0.0.1", kotekan::restServer::instance().port);
     BOOST_CHECK(reply.first == true);
     BOOST_CHECK(reply.second == "");
 
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(600000);
+    usleep(WAIT_TIME);
 }

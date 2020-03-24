@@ -16,6 +16,8 @@ import time
 import json
 
 from . import visbuffer
+from . import frbbuffer
+from . import psrbuffer
 
 
 class KotekanRunner(object):
@@ -120,12 +122,12 @@ class KotekanRunner(object):
                 import json
 
                 attempt = 0
-                wait = 1
+                wait = 0.2
 
                 # Wait for REST server to start
-                while attempt < 10:
+                while attempt < 100:
 
-                    if attempt == 9:
+                    if attempt == 99:
                         print("Could not find kotekan REST server address in logs")
                         exit(1)
 
@@ -159,6 +161,9 @@ class KotekanRunner(object):
 
                 # the requests module needs the address wrapped in http://*/
                 rest_addr = "http://" + rest_addr + "/"
+
+                # wait a moment for the restServer to start
+                time.sleep(1)
 
                 for rtype, endpoint, data in self._rest_commands:
                     if rtype == "wait":
@@ -200,7 +205,7 @@ class KotekanRunner(object):
 
             while self.debug and None == p.poll():
                 time.sleep(10)
-                print(file(f_out.name).read())
+                print(open(f_out.name, "r").read())
 
             # Wait for kotekan to finish and capture the output
             p.wait()
@@ -227,6 +232,34 @@ class OutputBuffer(object):
     """Base class for an output buffer consumer."""
 
     name = None
+
+
+class FakeLostSamplesBuffer(InputBuffer):
+    """Provide an input buffer for the `lost_samples_buf` config parameter."""
+
+    def __init__(self, **kwargs):
+        self.name = "lost_samples_buffer"
+        self.buffer_block = {
+            self.name: {
+                "kotekan_buffer": "standard",
+                "sizeof_int": 4,
+                "frame_size": "sizeof_int * num_freq_in_frame * ((num_elements * num_elements) + (num_elements * block_size))",
+                "metadata_pool": "main_pool",
+                "num_frames": "buffer_depth",
+            }
+        }
+        stage_name = kwargs.get("stage_name", "fake_lost_samples")
+        stage_config = {
+            "kotekan_stage": "FakeGpu",
+            "out_buf": self.name,
+            "pattern": "lostsamples",
+            "wait": "false",
+            "freq": 0,
+            "pre_accumulate": "true",
+        }
+        stage_config.update(kwargs)
+
+        self.stage_block = {stage_name: stage_config}
 
 
 class FakeNetworkBuffer(InputBuffer):
@@ -508,6 +541,259 @@ class DumpVisBuffer(OutputBuffer):
         )
 
 
+class FakeFrbBeamformBuffer(InputBuffer):
+    """Create an input FRB beamform-format buffer using a fake testDataGen network data
+
+    Parameters
+    ----------
+    cpu : bool (default: True)
+        Use CPU beamformer (note: very slow for large inputs) instead of GPU kernels
+
+    **kwargs : dict
+        Parameters fed straight into the stage config.
+    """
+
+    _buf_ind = 0
+
+    def __init__(self, cpu=True, **kwargs):
+
+        self.name = "fakefrbbeamform_buf%i" % self._buf_ind
+        gpu_input_name = "fakefrbbeamform_in_buf%i" % self._buf_ind
+        gpu_input_stage_name = "fakefrbbeamform_in%i" % self._buf_ind
+        stage_name = "fakefrbbeamform%i" % self._buf_ind
+        read_gain_stage_name = "fakereadgain%i" % self._buf_ind
+        gain_frb_buffer = "fakegain_frb_buf%i" % self._buf_ind
+        gain_psr_buffer = "fakegain_psr_buf%i" % self._buf_ind
+        num_psr_beams = 10
+        gpu_id = self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.buffer_block = {
+            gpu_input_name: {
+                "num_frames": "buffer_depth",
+                "frame_size": "samples_per_data_set * num_elements * num_local_freq * num_data_sets",
+                "metadata_pool": "main_pool",
+                "kotekan_buffer": "standard",
+            },
+            self.name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "main_pool",
+                "sizeof_float": 4,
+                "frame_size": (
+                    "num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float"
+                ),
+                "num_frames": "buffer_depth",
+            },
+        }
+
+        cpu_stage_config = {
+            "kotekan_stage": "gpuBeamformSimulate",
+            "network_in_buf": gpu_input_name,
+            "beam_out_buf": self.name,
+            "northmost_beam": 90.0,
+            "gain_dir": "../../gains/",
+            "frb_missing_gains": [1.0, 1.0],
+            "ew_spacing": [0, 0, 0, 0],
+            # fmt: off
+            "reorder_map": [
+                32, 33, 34, 35, 40, 41, 42, 43, 48, 49, 50, 51, 56, 57, 58, 59,
+                96, 97, 98, 99, 104, 105, 106, 107, 112, 113, 114, 115, 120, 121, 122, 123,
+                67, 66, 65, 64, 75, 74, 73, 72, 83, 82, 81, 80, 91, 90, 89, 88,
+                3, 2, 1, 0, 11, 10, 9, 8, 19, 18, 17, 16, 27, 26, 25, 24,
+                152, 153, 154, 155, 144, 145, 146, 147, 136, 137, 138, 139, 128, 129, 130, 131,
+                216, 217, 218, 219, 208, 209, 210, 211, 200, 201, 202, 203, 192, 193, 194, 195,
+                251, 250, 249, 248, 243, 242, 241, 240, 235, 234, 233, 232, 227, 226, 225, 224,
+                187, 186, 185, 184, 179, 178, 177, 176, 171, 170, 169, 168, 163, 162, 161, 160,
+                355, 354, 353, 352, 363, 362, 361, 360, 371, 370, 369, 368, 379, 378, 377, 376,
+                291, 290, 289, 288, 299, 298, 297, 296, 307, 306, 305, 304, 315, 314, 313, 312,
+                259, 258, 257, 256, 264, 265, 266, 267, 272, 273, 274, 275, 280, 281, 282, 283,
+                323, 322, 321, 320, 331, 330, 329, 328, 339, 338, 337, 336, 347, 346, 345, 344,
+                408, 409, 410, 411, 400, 401, 402, 403, 392, 393, 394, 395, 384, 385, 386, 387,
+                472, 473, 474, 475, 464, 465, 466, 467, 456, 457, 458, 459, 448, 449, 450, 451,
+                440, 441, 442, 443, 432, 433, 434, 435, 424, 425, 426, 427, 416, 417, 418, 419,
+                504, 505, 506, 507, 496, 497, 498, 499, 488, 489, 490, 491, 480, 481, 482, 483,
+                36, 37, 38, 39, 44, 45, 46, 47, 52, 53, 54, 55, 60, 61, 62, 63,
+                100, 101, 102, 103, 108, 109, 110, 111, 116, 117, 118, 119, 124, 125, 126, 127,
+                71, 70, 69, 68, 79, 78, 77, 76, 87, 86, 85, 84, 95, 94, 93, 92,
+                7, 6, 5, 4, 15, 14, 13, 12, 23, 22, 21, 20, 31, 30, 29, 28,
+                156, 157, 158, 159, 148, 149, 150, 151, 140, 141, 142, 143, 132, 133, 134, 135,
+                220, 221, 222, 223, 212, 213, 214, 215, 204, 205, 206, 207, 196, 197, 198, 199,
+                255, 254, 253, 252, 247, 246, 245, 244, 239, 238, 237, 236, 231, 230, 229, 228,
+                191, 190, 189, 188, 183, 182, 181, 180, 175, 174, 173, 172, 167, 166, 165, 164,
+                359, 358, 357, 356, 367, 366, 365, 364, 375, 374, 373, 372, 383, 382, 381, 380,
+                295, 294, 293, 292, 303, 302, 301, 300, 311, 310, 309, 308, 319, 318, 317, 316,
+                263, 262, 261, 260, 268, 269, 270, 271, 276, 277, 278, 279, 284, 285, 286, 287,
+                327, 326, 325, 324, 335, 334, 333, 332, 343, 342, 341, 340, 351, 350, 349, 348,
+                412, 413, 414, 415, 404, 405, 406, 407, 396, 397, 398, 399, 388, 389, 390, 391,
+                476, 477, 478, 479, 468, 469, 470, 471, 460, 461, 462, 463, 452, 453, 454, 455,
+                444, 445, 446, 447, 436, 437, 438, 439, 428, 429, 430, 431, 420, 421, 422, 423,
+                508, 509, 510, 511, 500, 501, 502, 503, 492, 493, 494, 495, 484, 485, 486, 487,
+            ],
+            # fmt: on
+        }
+        gpu_stage_config = {
+            "kotekan_stage": "hsaProcess",
+            "commands": [
+                {"name": "hsaInputData"},
+                {"name": "hsaOutputDataZero"},
+                {"name": "hsaAsyncCopyGain"},
+                {"name": "hsaBarrier"},
+                {"name": "hsaBeamformReorder"},
+                {"name": "hsaBeamformKernel"},
+                {"name": "hsaBeamformTranspose"},
+                {"name": "hsaBeamformUpchan"},
+                {"name": "hsaBeamformOutputData"},
+            ],
+            "kernel_path": "../../build/lib/hsa/kernels",
+            "in_buffers": {
+                "network_buf": gpu_input_name,
+                "gain_frb_buf": gain_frb_buffer,
+            },
+            "out_buffers": {"beamform_output_buf": self.name},
+            "gpu_id": gpu_id,
+            "frame_arrival_period": "samples_per_data_set / 390625",
+            "block_size": 32,
+            "buffer_depth": 3,
+            "northmost_beam": 90.0,
+            "gain_dir": "../../gains/",
+            "ew_spacing": [0, 0, 0, 0],
+            "enable_delay": True,
+            "delay_max_fraction": 2.0,
+            "n_intg": 24576,
+            # fmt: off
+            "reorder_map": [
+                32, 33, 34, 35, 40, 41, 42, 43, 48, 49, 50, 51, 56, 57, 58, 59,
+                96, 97, 98, 99, 104, 105, 106, 107, 112, 113, 114, 115, 120, 121, 122, 123,
+                67, 66, 65, 64, 75, 74, 73, 72, 83, 82, 81, 80, 91, 90, 89, 88,
+                3, 2, 1, 0, 11, 10, 9, 8, 19, 18, 17, 16, 27, 26, 25, 24,
+                152, 153, 154, 155, 144, 145, 146, 147, 136, 137, 138, 139, 128, 129, 130, 131,
+                216, 217, 218, 219, 208, 209, 210, 211, 200, 201, 202, 203, 192, 193, 194, 195,
+                251, 250, 249, 248, 243, 242, 241, 240, 235, 234, 233, 232, 227, 226, 225, 224,
+                187, 186, 185, 184, 179, 178, 177, 176, 171, 170, 169, 168, 163, 162, 161, 160,
+                355, 354, 353, 352, 363, 362, 361, 360, 371, 370, 369, 368, 379, 378, 377, 376,
+                291, 290, 289, 288, 299, 298, 297, 296, 307, 306, 305, 304, 315, 314, 313, 312,
+                259, 258, 257, 256, 264, 265, 266, 267, 272, 273, 274, 275, 280, 281, 282, 283,
+                323, 322, 321, 320, 331, 330, 329, 328, 339, 338, 337, 336, 347, 346, 345, 344,
+                408, 409, 410, 411, 400, 401, 402, 403, 392, 393, 394, 395, 384, 385, 386, 387,
+                472, 473, 474, 475, 464, 465, 466, 467, 456, 457, 458, 459, 448, 449, 450, 451,
+                440, 441, 442, 443, 432, 433, 434, 435, 424, 425, 426, 427, 416, 417, 418, 419,
+                504, 505, 506, 507, 496, 497, 498, 499, 488, 489, 490, 491, 480, 481, 482, 483,
+                36, 37, 38, 39, 44, 45, 46, 47, 52, 53, 54, 55, 60, 61, 62, 63,
+                100, 101, 102, 103, 108, 109, 110, 111, 116, 117, 118, 119, 124, 125, 126, 127,
+                71, 70, 69, 68, 79, 78, 77, 76, 87, 86, 85, 84, 95, 94, 93, 92,
+                7, 6, 5, 4, 15, 14, 13, 12, 23, 22, 21, 20, 31, 30, 29, 28,
+                156, 157, 158, 159, 148, 149, 150, 151, 140, 141, 142, 143, 132, 133, 134, 135,
+                220, 221, 222, 223, 212, 213, 214, 215, 204, 205, 206, 207, 196, 197, 198, 199,
+                255, 254, 253, 252, 247, 246, 245, 244, 239, 238, 237, 236, 231, 230, 229, 228,
+                191, 190, 189, 188, 183, 182, 181, 180, 175, 174, 173, 172, 167, 166, 165, 164,
+                359, 358, 357, 356, 367, 366, 365, 364, 375, 374, 373, 372, 383, 382, 381, 380,
+                295, 294, 293, 292, 303, 302, 301, 300, 311, 310, 309, 308, 319, 318, 317, 316,
+                263, 262, 261, 260, 268, 269, 270, 271, 276, 277, 278, 279, 284, 285, 286, 287,
+                327, 326, 325, 324, 335, 334, 333, 332, 343, 342, 341, 340, 351, 350, 349, 348,
+                412, 413, 414, 415, 404, 405, 406, 407, 396, 397, 398, 399, 388, 389, 390, 391,
+                476, 477, 478, 479, 468, 469, 470, 471, 460, 461, 462, 463, 452, 453, 454, 455,
+                444, 445, 446, 447, 436, 437, 438, 439, 428, 429, 430, 431, 420, 421, 422, 423,
+                508, 509, 510, 511, 500, 501, 502, 503, 492, 493, 494, 495, 484, 485, 486, 487,
+            ],
+            # fmt: on
+        }
+        if cpu:
+            stage_config = cpu_stage_config
+        else:
+            stage_config = gpu_stage_config
+        stage_config.update(kwargs)
+
+        self.stage_block = {
+            stage_name: stage_config,
+            gpu_input_stage_name: {
+                "kotekan_stage": "testDataGen",
+                "type": "random",
+                "stream_id": 12432,
+                "value": 153,
+                "out_buf": gpu_input_name,
+            },
+        }
+        if not cpu:
+            self.buffer_block[gain_frb_buffer] = {
+                "num_frames": "buffer_depth",
+                "frame_size": "2048 * 2 * sizeof_float",
+                "metadata_pool": "main_pool",
+                "kotekan_buffer": "standard",
+            }
+            self.buffer_block[gain_psr_buffer] = {
+                "num_frames": "buffer_depth",
+                "frame_size": "2048 * 2 * num_beams * sizeof_float",
+                "metadata_pool": "main_pool",
+                "kotekan_buffer": "standard",
+                "num_beams": num_psr_beams,
+            }
+            self.stage_block[read_gain_stage_name] = {
+                "kotekan_stage": "ReadGain",
+                "in_buf": gpu_input_name,
+                "gain_frb_buf": gain_frb_buffer,
+                "gain_psr_buf": gain_psr_buffer,
+                "num_beams": num_psr_beams,
+                "updatable_config": {
+                    "gain_frb": "/updatable_config/frb_gain",
+                    "gain_psr": "/updatable_config/pulsar_gain",
+                },
+                "frb_missing_gains": [1.0, 1.0],
+            }
+            self.stage_block["updatable_config"] = {
+                "frb_gain": {
+                    "kotekan_update_endpoint": "json",
+                    "frb_gain_dir": "/nonexistent",
+                },
+                "pulsar_gain": {
+                    "kotekan_update_endpoint": "json",
+                    "pulsar_gain_dir": ["/nonexistent"] * num_psr_beams,
+                },
+            }
+
+
+class ReadRawBeamformBuffer(InputBuffer):
+    """Read a beamformed buffer saved to a file and stream it as an input
+
+    Parameters
+    ----------
+    input_dir : string
+        Directory to read the input files from.
+    """
+
+    _buf_ind = 0
+
+    def __init__(self, input_dir, **kwargs):
+
+        self.name = "rawfileread_buf%i" % self._buf_ind
+        stage_name = "rawfileread%i" % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.input_dir = input_dir
+
+        self.buffer_block = {
+            self.name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "main_pool",
+                "sizeof_float": 4,
+                "frame_size": (
+                    "num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float"
+                ),
+                "num_frames": "buffer_depth",
+            }
+        }
+
+        stage_config = {
+            "kotekan_stage": "rawFileRead",
+            "buf": self.name,
+            "base_dir": input_dir,
+            "file_name": self.name,
+            "file_ext": "dump",
+        }
+        stage_config.update(kwargs)
+
+        self.stage_block = {stage_name: stage_config}
+
+
 class ReadRawBuffer(InputBuffer):
 
     _buf_ind = 0
@@ -533,6 +819,139 @@ class ReadRawBuffer(InputBuffer):
             "chunk_size": chunk_size,
             "readahead_blocks": 4,
         }
+
+        self.stage_block = {stage_name: stage_config}
+
+
+class DumpFrbPostProcessBuffer(InputBuffer):
+    """Consume a FRB output buffer and provide its contents as a list of `frbbuffer.FrbPacket`s.
+
+    Parameters
+    ----------
+    output_dir : string
+        Temporary directory to output to. The dumped files are not removed.
+    """
+
+    def __init__(self, output_dir, **kwargs):
+        self.name = "frb_post_process_buffer"
+        self.output_dir = output_dir
+
+        self.buffer_block = {
+            self.name: {
+                "num_frames": "buffer_depth + 4",
+                "frame_size": "(samples_per_data_set / downsample_time / factor_upchan / timesamples_per_frb_packet)"
+                "* 256 * (num_beams_per_frb_packet * num_gpus "
+                "* factor_upchan_out * timesamples_per_frb_packet "
+                "+ 24 + sizeof_short * num_beams_per_frb_packet + sizeof_short * num_gpus "
+                "+ sizeof_float * num_beams_per_frb_packet * num_gpus "
+                "+ sizeof_float * num_beams_per_frb_packet * num_gpus)",
+                "sizeof_short": 2,
+                "sizeof_float": 4,
+                "kotekan_buffer": "standard",
+                "metadata_pool": "main_pool",
+            }
+        }
+
+        stage_name = kwargs.get("stage_name", "dump_frb_post_process")
+        stage_config = {
+            "kotekan_stage": "rawFileWrite",
+            "in_buf": self.name,
+            "file_name": self.name,
+            "file_ext": "dump",
+            "base_dir": self.output_dir,
+        }
+        stage_config.update(kwargs)
+
+        self.stage_block = {stage_name: stage_config}
+
+    def load(self):
+        """Load the output data from the frbPostProcess buffer.
+
+        Returns
+        -------
+        dumps : list of lists of FrbPacket
+            The buffer output, one list per frame, a list of packets within the frame.
+        """
+        return frbbuffer.FrbPacket.load_files(
+            "{}/*{}*.dump".format(self.output_dir, self.name)
+        )
+
+
+class DumpPsrPostProcessBuffer(InputBuffer):
+    """Consume a Pulsar output buffer and provide its contents as a list of `psrbuffer.PsrPacket`s.
+
+    Parameters
+    ----------
+    output_dir : string
+        Temporary directory to output to. The dumped files are not removed.
+    """
+
+    def __init__(self, output_dir, **kwargs):
+        self.name = "psr_post_process_buffer"
+        self.output_dir = output_dir
+
+        self.buffer_block = {
+            self.name: {
+                "num_frames": "buffer_depth + 4",
+                "frame_size": "udp_pulsar_packet_size * num_stream * num_packet_per_stream",
+                "kotekan_buffer": "standard",
+                "metadata_pool": "main_pool",
+            }
+        }
+
+        stage_name = kwargs.get("stage_name", "dump_psr_post_process")
+        stage_config = {
+            "kotekan_stage": "rawFileWrite",
+            "in_buf": self.name,
+            "file_name": self.name,
+            "file_ext": "dump",
+            "base_dir": self.output_dir,
+        }
+        stage_config.update(kwargs)
+
+        self.stage_block = {stage_name: stage_config}
+
+    def load(self):
+        """Load the output data from the frbPostProcess buffer.
+
+        Returns
+        -------
+        dumps : list of lists of PsrPacket
+            The buffer output, one list per frame, a list of packets within the frame.
+        """
+        return psrbuffer.PsrPacket.load_files(
+            "{}/*{}*.dump".format(self.output_dir, self.name)
+        )
+
+
+class DropFramesBuffer(InputBuffer):
+
+    _buf_ind = 0
+
+    def __init__(self, input_buffer, missing_frames=[], **kwargs):
+
+        self.name = "dropframes_buf%i" % self._buf_ind
+        stage_name = "dropframes%i" % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.input_buffer = input_buffer
+
+        self.buffer_block = {
+            self.name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "main_pool",
+                "num_frames": "buffer_depth",
+            }
+        }
+        self.buffer_block[self.name].update(kwargs)
+
+        stage_config = {
+            "kotekan_stage": "TestDropFrames",
+            "missing_frames": missing_frames,
+            "in_buf": input_buffer.name,
+            "out_buf": self.name,
+        }
+        stage_config.update(kwargs)
 
         self.stage_block = {stage_name: stage_config}
 

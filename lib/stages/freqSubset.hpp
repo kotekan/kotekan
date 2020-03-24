@@ -7,15 +7,15 @@
 #define FREQ_SUBSET_HPP
 
 #include "Config.hpp"
-#include "Stage.hpp"
+#include "Stage.hpp" // for Stage
 #include "buffer.h"
 #include "bufferContainer.hpp"
-#include "datasetManager.hpp"
+#include "datasetManager.hpp" // for dset_id_t, state_id_t, fingerprint_t
 
-#include <future>
-#include <stdint.h>
-#include <string>
-#include <vector>
+#include <map>      // for map
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 
 /**
@@ -42,7 +42,7 @@ class freqSubset : public kotekan::Stage {
 
 public:
     /// Default constructor
-    freqSubset(kotekan::Config& config, const string& unique_name,
+    freqSubset(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
     /// Main loop for the stage
@@ -50,7 +50,7 @@ public:
 
 private:
     /// adds state and dataset and gets a new output dataset ID from manager
-    dset_id_t change_dataset_state(dset_id_t input_dset_id, std::vector<uint32_t>& subset_list);
+    void change_dataset_state(dset_id_t input_dset_id);
 
     // List of frequencies for the subset
     std::vector<uint32_t> _subset_list;
@@ -60,8 +60,9 @@ private:
     /// Input buffer with all frequencies
     Buffer* in_buf;
 
-    // dataset IDs
-    std::future<dset_id_t> _output_dset_id;
+    // Maps for determining the dataset ID to use
+    std::map<dset_id_t, dset_id_t> dset_id_map;
+    std::map<fingerprint_t, state_id_t> states_map;
 };
 
 

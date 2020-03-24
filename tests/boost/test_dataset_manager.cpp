@@ -1,23 +1,37 @@
 #define BOOST_TEST_MODULE "test_datasetManager"
 
-#include "Config.hpp"
-#include "test_utils.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"         // for Config
+#include "Hash.hpp"           // for operator<<
+#include "dataset.hpp"        // for dataset
+#include "datasetManager.hpp" // for state_id_t, datasetManager, dset_id_t
+#include "datasetState.hpp"   // for inputState, prodState, freqState, datasetState
+#include "errors.h"           // for _global_log_level, __enable_syslog
+#include "test_utils.hpp"     // for CompareCTypes
+#include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype
 
-#include "json.hpp"
+#include "json.hpp" // for basic_json<>::object_t, basic_json<>::value...
 
-#include <boost/test/included/unit_test.hpp>
-#include <iostream>
-#include <string>
+#include <algorithm>                         // for max
+#include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...
+#include <exception>                         // for exception
+#include <iostream>                          // for endl, operator<<, ostream, basic_ostream, cout
+#include <map>                               // for map
+#include <memory>                            // for allocator, make_unique, unique_ptr
+#include <stdexcept>                         // for out_of_range
+#include <stdint.h>                          // for uint32_t
+#include <string>                            // for string, operator<<, string_literals
+#include <utility>                           // for pair
+#include <vector>                            // for vector
 
-// the code to test:
-#include "datasetManager.hpp"
 
 using kotekan::Config;
 
 using json = nlohmann::json;
 
 using namespace std::string_literals;
+
+// The datasetManager uses the restServer, but it's not started by this test.
+// That leads to a warnings message from the restServer on exit we can ignore.
 
 
 BOOST_FIXTURE_TEST_CASE(_general, CompareCTypes) {

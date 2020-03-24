@@ -23,7 +23,7 @@
  */
 class cudaOutputData : public cudaCommand {
 public:
-    cudaOutputData(kotekan::Config& config, const string& unique_name,
+    cudaOutputData(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaOutputData();
     int wait_on_precondition(int gpu_frame_id) override;

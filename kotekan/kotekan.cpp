@@ -1,57 +1,49 @@
-#include <array>
-#include <assert.h>
-#include <atomic>
-#include <csignal>
-#include <cstdio>
-#include <errno.h>
-#include <fcntl.h>
-#include <fstream>
-#include <getopt.h>
-#include <iostream>
-#include <math.h>
-#include <memory.h>
-#include <memory>
-#include <mutex>
-#include <stdexcept>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
-#include <strings.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <vector>
+#include "Config.hpp"             // for Config
+#include "StageFactory.hpp"       // for StageFactoryRegistry, StageMaker
+#include "basebandApiManager.hpp" // for basebandApiManager
+#include "errors.h"               // for get_error_message, get_exit_code, __enable_syslog, exi...
+#include "gpsTime.h"              // for set_global_gps_time
+#include "kotekanLogging.hpp"     // for INFO_NON_OO, logLevel, ERROR_NON_OO, FATAL_ERROR_NON_OO
+#include "kotekanMode.hpp"        // for kotekanMode
+#include "prometheusMetrics.hpp"  // for Metrics, Gauge
+#include "restServer.hpp"         // for connectionInstance, HTTP_RESPONSE, restServer, HTTP_RE...
+#include "util.h"                 // for EVER
+#include "version.h"              // for get_kotekan_version, get_cmake_build_options, get_git_...
+#include "visUtil.hpp"            // for regex_split
 
-extern "C" {
-#include <pthread.h>
-}
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "StageFactory.hpp"
-#include "basebandApiManager.hpp"
-#include "buffer.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
-#include "gpsTime.h"
-#include "kotekanLogging.hpp"
-#include "kotekanMode.hpp"
-#include "prometheusMetrics.hpp"
-#include "restServer.hpp"
-#include "util.h"
-#include "version.h"
-#include "visUtil.hpp"
-
-#include "fmt.hpp"
-#include "json.hpp"
+#include <algorithm>   // for max
+#include <array>       // for array
+#include <assert.h>    // for assert
+#include <csignal>     // for signal, SIGINT, sig_atomic_t
+#include <cstdint>     // for uint64_t
+#include <exception>   // for exception
+#include <getopt.h>    // for no_argument, getopt_long, required_argument, option
+#include <iostream>    // for endl, basic_ostream, cout, ostream
+#include <iterator>    // for reverse_iterator
+#include <map>         // for map
+#include <memory>      // for allocator, shared_ptr
+#include <mutex>       // for mutex, lock_guard
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error, out_of_range
+#include <stdio.h>     // for printf, fprintf, feof, fgets, popen, stderr, pclose
+#include <stdlib.h>    // for exit, free
+#include <string.h>    // for strdup
+#include <string>      // for string, basic_string, operator!=, operator<<, operator==
+#include <strings.h>   // for strcasecmp
+#include <syslog.h>    // for closelog, openlog, LOG_CONS, LOG_LOCAL1, LOG_NDELAY
+#include <type_traits> // for __underlying_type_impl<>::type, underlying_type
+#include <unistd.h>    // for optarg, sleep
+#include <utility>     // for pair
+#include <vector>      // for vector
 
 #ifdef WITH_HSA
 #include "hsaBase.h"
 #endif
 
+using std::string;
 using json = nlohmann::json;
 using namespace kotekan;
 
@@ -227,7 +219,7 @@ json get_json_version_info() {
     version_json["branch"] = get_git_branch();
     version_json["git_commit_hash"] = get_git_commit_hash();
     version_json["cmake_build_settings"] = parse_cmake_options();
-    vector<string> available_stages;
+    std::vector<std::string> available_stages;
     std::map<std::string, StageMaker*> known_stages = StageFactoryRegistry::get_registered_stages();
     for (auto& stage_maker : known_stages)
         available_stages.push_back(stage_maker.first);
@@ -246,7 +238,7 @@ std::string exec(const std::string& cmd) {
     if (!pipe)
         throw std::runtime_error(fmt::format(fmt("popen() for the command {:s} failed!"), cmd));
     while (!feof(pipe.get())) {
-        if (fgets(buffer.data(), 256, pipe.get()) != NULL)
+        if (fgets(buffer.data(), 256, pipe.get()) != nullptr)
             result += buffer.data();
     }
     return result;
@@ -336,7 +328,6 @@ int main(int argc, char** argv) {
 
     std::signal(SIGINT, signal_handler);
 
-    int opt_val = 0;
     char* config_file_name = (char*)"none";
     int log_options = LOG_CONS | LOG_PID | LOG_NDELAY;
     bool gps_time = false;
@@ -352,21 +343,21 @@ int main(int argc, char** argv) {
     __enable_syslog = 0;
 
     for (;;) {
-        static struct option long_options[] = {{"config", required_argument, 0, 'c'},
-                                               {"bind-address", required_argument, 0, 'b'},
-                                               {"gps-time", no_argument, 0, 'g'},
-                                               {"gps-time-source", required_argument, 0, 't'},
-                                               {"help", no_argument, 0, 'h'},
-                                               {"syslog", no_argument, 0, 's'},
-                                               {"no-stderr", no_argument, 0, 'n'},
-                                               {"version", no_argument, 0, 'v'},
-                                               {"version-json", no_argument, 0, 'j'},
-                                               {"print-config", no_argument, 0, 'p'},
-                                               {0, 0, 0, 0}};
+        static struct option long_options[] = {{"config", required_argument, nullptr, 'c'},
+                                               {"bind-address", required_argument, nullptr, 'b'},
+                                               {"gps-time", no_argument, nullptr, 'g'},
+                                               {"gps-time-source", required_argument, nullptr, 't'},
+                                               {"help", no_argument, nullptr, 'h'},
+                                               {"syslog", no_argument, nullptr, 's'},
+                                               {"no-stderr", no_argument, nullptr, 'n'},
+                                               {"version", no_argument, nullptr, 'v'},
+                                               {"version-json", no_argument, nullptr, 'j'},
+                                               {"print-config", no_argument, nullptr, 'p'},
+                                               {nullptr, 0, nullptr, 0}};
 
         int option_index = 0;
 
-        opt_val = getopt_long(argc, argv, "gt:hc:b:snvp", long_options, &option_index);
+        int opt_val = getopt_long(argc, argv, "gt:hc:b:snvp", long_options, &option_index);
 
         // End of args
         if (opt_val == -1) {
@@ -460,7 +451,7 @@ int main(int argc, char** argv) {
                 fmt::format(fmt("python -c '{:s}' {:s}"), yaml_to_json, config_file_name);
         }
         std::string json_string = exec(exec_command.c_str());
-        json config_json = json::parse(json_string.c_str());
+        json config_json = json::parse(json_string);
         config.update_config(config_json);
         try {
             start_new_kotekan_mode(config, gps_time, dump_config);

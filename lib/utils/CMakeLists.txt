@@ -19,12 +19,14 @@ set ( KOTEKAN_UTIL_SOURCES
       visFileRing.cpp
       tx_utils.cpp
       datasetManager.cpp
+      dataset.cpp
       pulsarTiming.cpp
       datasetState.cpp
       restClient.cpp
       BipBuffer.cpp
       Hash.cpp
       MurmurHash3.cpp
+      network_functions.cpp
     )
 
 if (${USE_HDF5})
@@ -41,7 +43,7 @@ add_library ( kotekan_utils
 # HDF5 stuff
 if (${USE_HDF5})
   include_directories (${HDF5_INCLUDE_DIRS})
-  include_directories (/kotekan/HighFive/include/)
+  include_directories (SYSTEM /kotekan/HighFive/include/)
   target_link_libraries ( kotekan_utils ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )
   add_dependencies (kotekan_utils highfive)
 endif ()

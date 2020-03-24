@@ -25,10 +25,10 @@ start_time = 1_500_000_000
 old_timestamp = start_time - 10.0
 new_timestamp = start_time + 5.0
 
-old_tag = f"gains{old_timestamp}"
-new_tag = f"gains{new_timestamp}"
+old_update_id = f"gains{old_timestamp}"
+new_update_id = f"gains{new_timestamp}"
 
-t_combine = 10.0
+transition_interval = 10.0
 
 global_params = {
     "num_elements": 16,
@@ -43,10 +43,10 @@ global_params = {
     "gains": {
         "kotekan_update_endpoint": "json",
         "start_time": old_timestamp,
-        "tag": old_tag,
-        "t_combine": t_combine,
+        "update_id": old_update_id,
+        "transition_interval": transition_interval,
     },
-    "wait": False,
+    "wait": True,
     "sleep_before": 2.0,
     "num_threads": 4,
     "dataset_manager": {"use_dataset_broker": False},
@@ -119,7 +119,7 @@ def old_gains(gain_path):
 def new_gains(gain_path):
 
     # Get the name of the file to write
-    fname = str(gain_path / f"{new_tag}.h5")
+    fname = str(gain_path / f"{new_update_id}.h5")
 
     freq = np.linspace(800.0, 400.0, 1024)[global_params["freq_ids"]]
 
@@ -133,10 +133,10 @@ def cal_broker(request, old_gains, new_gains):
     @app.route("/gain", methods=["POST"])
     def gain_app():
         content = flask_req.get_json()
-        tag = content["update_id"]
-        if tag == new_tag:
+        update_id = content["update_id"]
+        if update_id == new_update_id:
             gains = encode_gains(*new_gains)
-        elif tag == old_tag:
+        elif update_id == old_update_id:
             gains = encode_gains(*old_gains)
         else:
             raise Exception("Did not recognize tag {}.".format(tag))
@@ -161,7 +161,11 @@ def apply_data(tmp_path_factory, gain_path, old_gains, new_gains, cal_broker):
         [
             "post",
             "gains",
-            {"tag": new_tag, "start_time": new_timestamp, "t_combine": t_combine},
+            {
+                "update_id": new_update_id,
+                "start_time": new_timestamp,
+                "transition_interval": transition_interval,
+            },
         ]
     ]
 
@@ -201,14 +205,14 @@ def apply_data(tmp_path_factory, gain_path, old_gains, new_gains, cal_broker):
     return in_dump, out_dump_buffer.load()
 
 
-def combine_gains(t_frame, t_combine, new_ts, old_ts, new_gains, old_gains):
+def combine_gains(t_frame, transition_interval, new_ts, old_ts, new_gains, old_gains):
     if t_frame < old_ts:
         raise ValueError("Definitely shouldn't get in here.")
     elif t_frame < new_ts:
         return old_gains
-    elif t_frame < new_ts + t_combine:
+    elif t_frame < new_ts + transition_interval:
         age = t_frame - new_ts
-        new_coeff = age / t_combine
+        new_coeff = age / transition_interval
         old_coeff = 1.0 - new_coeff
         return new_coeff * new_gains + old_coeff * old_gains
     else:
@@ -265,7 +269,7 @@ def test_gain(apply_data, old_gains, new_gains):
         output_frame_timestamp = visutil.ts_to_double(output_frame.metadata.ctime)
         gains = combine_gains(
             output_frame_timestamp,
-            t_combine,
+            transition_interval,
             new_timestamp,
             old_timestamp,
             new_gain,
@@ -296,7 +300,7 @@ def test_dataset_ids(apply_data):
     new_ds_id = None
 
     def dataset_id(frame):
-        return bytes(frame.metadata.dataset_id).hex()
+        return bytes(frame.metadata.dataset_id)[::-1].hex()
 
     for input_frame, output_frame in zip(*apply_data):
 

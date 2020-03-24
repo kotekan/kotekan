@@ -1,8 +1,22 @@
 #include "constDataCheck.hpp"
 
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "errors.h"            // for TEST_PASSED
+#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, INFO
+
+#include <atomic>     // for atomic_bool
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+
+
 REGISTER_KOTEKAN_STAGE(constDataCheck);
 
-constDataCheck::constDataCheck(kotekan::Config& config, const string& unique_name,
+constDataCheck::constDataCheck(kotekan::Config& config, const std::string& unique_name,
                                kotekan::bufferContainer& buffer_container) :
     kotekan::Stage(config, unique_name, buffer_container,
                    std::bind(&constDataCheck::main_thread, this)) {
@@ -19,7 +33,7 @@ constDataCheck::~constDataCheck() {}
 void constDataCheck::main_thread() {
 
     int frame_id = 0;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
     int num_errors = 0;
 
     int framect = 0;
@@ -27,7 +41,7 @@ void constDataCheck::main_thread() {
     while (!stop_thread) {
 
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         DEBUG("constDataCheck: Got buffer {:s}[{:d}]", buf->buffer_name, frame_id);

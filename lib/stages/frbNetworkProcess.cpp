@@ -1,31 +1,44 @@
-#include <arpa/inet.h>
-#include <assert.h>
-#include <chrono>
-#include <cmath>
-#include <cstdlib>
-#include <cstring>
-#include <fstream>
-#include <functional>
-#include <iostream>
-#include <math.h>
-#include <netinet/in.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
-#include <sys/socket.h>
-#include <unistd.h>
+#include "frbNetworkProcess.hpp"
+
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for wait_for_full_frame, mark_frame_empty, register_consumer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "frb_functions.h"       // for FRBHeader
+#include "kotekanLogging.hpp"    // for DEBUG, INFO, WARN, FATAL_ERROR, ERROR
+#include "network_functions.hpp" // for receive_ping, send_ping
+#include "restServer.hpp"        // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RES...
+#include "tx_utils.hpp"          // for add_nsec, CLOCK_ABS_NANOSLEEP, get_vlan_from_ip, parse_...
+
+#include "fmt.hpp" // for format
+
+#include <algorithm>    // for max, max_element
+#include <arpa/inet.h>  // for inet_pton
+#include <chrono>       // for steady_clock::time_point, seconds, operator+, steady_clock
+#include <cstring>      // for strerror, memset, size_t
+#include <errno.h>      // for errno, EINTR
+#include <exception>    // for exception
+#include <map>          // for map, map<>::mapped_type
+#include <memory>       // for allocator_traits<>::value_type
+#include <mutex>        // for mutex, unique_lock
+#include <pthread.h>    // for pthread_setaffinity_np
+#include <queue>        // for priority_queue
+#include <random>       // for mt19937, random_device, uniform_int_distribution
+#include <ratio>        // for ratio
+#include <regex>        // for match_results<>::_Base_type
+#include <sched.h>      // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept>    // for runtime_error
+#include <string>       // for string, allocator
+#include <sys/select.h> // for select, FD_SET, FD_ZERO, FD_ISSET, fd_set
+#include <sys/socket.h> // for AF_INET, bind, socket, sendto, setsockopt, SOCK_DGRAM
+#include <sys/time.h>   // for CLOCK_MONOTONIC, CLOCK_REALTIME, timeval
+#include <thread>       // for thread
+#include <time.h>       // for clock_gettime, timespec
+#include <unistd.h>     // for close
+#include <utility>      // for move, get
+
 
 using std::string;
-
-#include "Config.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
-#include "frbNetworkProcess.hpp"
-#include "tx_utils.hpp"
-#include "util.h"
 
 // Update beam_offset parameter with:
 // curl localhost:12048/frb/update_beam_offset -X POST -H 'Content-Type: application/json' -d
@@ -41,10 +54,16 @@ using kotekan::restServer;
 
 REGISTER_KOTEKAN_STAGE(frbNetworkProcess);
 
-frbNetworkProcess::frbNetworkProcess(Config& config_, const string& unique_name,
+frbNetworkProcess::frbNetworkProcess(Config& config_, const std::string& unique_name,
                                      bufferContainer& buffer_container) :
-    Stage(config_, unique_name, buffer_container,
-          std::bind(&frbNetworkProcess::main_thread, this)) {
+    Stage(config_, unique_name, buffer_container, std::bind(&frbNetworkProcess::main_thread, this)),
+    _ping_interval{
+        std::chrono::seconds(config_.get_default<uint32_t>(unique_name, "ping_interval", 360))},
+    _quick_ping_interval{
+        std::chrono::seconds(config_.get_default<uint32_t>(unique_name, "quick_ping_interval", 5))},
+    _ping_dead_threshold{std::chrono::seconds(
+        config_.get_default<uint32_t>(unique_name, "ping_dead_threshold", 30))} {
+
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 
@@ -58,25 +77,24 @@ frbNetworkProcess::frbNetworkProcess(Config& config_, const string& unique_name,
     time_interval = config.get_default<unsigned long>(unique_name, "time_interval", 125829120);
     column_mode = config.get_default<bool>(unique_name, "column_mode", false);
     samples_per_packet = config.get_default<int>(unique_name, "timesamples_per_frb_packet", 16);
-
-    my_host_name = (char*)malloc(sizeof(char) * 100);
-    CHECK_MEM(my_host_name);
+    if (_ping_dead_threshold != std::chrono::seconds::zero()) {
+        INFO("Pinging every {} / {}", _quick_ping_interval, _ping_interval);
+    } else {
+        INFO("L1 ping check is disabled");
+    }
 }
 
 frbNetworkProcess::~frbNetworkProcess() {
     restServer::instance().remove_json_callback("/frb/update_beam_offset");
-    free(my_host_name);
-    for (int i = 0; i < number_of_subnets; i++)
-        free(my_ip_address[i]);
-    free(my_ip_address);
-    free(ip_socket);
-    free(myaddr);
-    free(server_address);
-    free(sock_fd);
+
+    for (auto src : src_sockets) {
+        close(src.socket_fd);
+    }
 }
 
 
-void frbNetworkProcess::update_offset_callback(connectionInstance& conn, json& json_request) {
+void frbNetworkProcess::update_offset_callback(connectionInstance& conn,
+                                               nlohmann::json& json_request) {
     // no need for a lock here, beam_offset copied into a local variable for use
     try {
         beam_offset = json_request["beam_offset"];
@@ -90,91 +108,28 @@ void frbNetworkProcess::update_offset_callback(connectionInstance& conn, json& j
 }
 
 void frbNetworkProcess::main_thread() {
-    int rack, node, nos, my_node_id;
-    // reading the L1 ip addresses from the config file
-    std::vector<std::string> link_ip =
-        config.get<std::vector<std::string>>(unique_name, "L1_node_ips");
+    DEBUG("number of subnets {:d}\n", number_of_subnets);
 
-    int number_of_l1_links = link_ip.size();
+    int my_sequence_id = initialize_source_sockets();
+    // check for errors initializing
+    if (my_sequence_id < 0)
+        return;
+
+    int number_of_l1_links = initialize_destinations();
     INFO("number_of_l1_links: {:d}", number_of_l1_links);
 
-    // Allocating buffers
-    my_ip_address = (char**)malloc(sizeof(char*) * number_of_subnets);
-    for (int i = 0; i < number_of_subnets; i++)
-        my_ip_address[i] = (char*)malloc(sizeof(char) * 100);
+    auto ping_thread = std::thread([&] { this->ping_destinations(); });
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    for (auto& i : config.get<std::vector<int>>(unique_name, "cpu_affinity"))
+        CPU_SET(i, &cpuset);
 
-    // initializing sockets for all the subnets (in this case these are .6 .7 .8 .9
-    sock_fd = (int*)malloc(sizeof(int) * number_of_subnets);
-
-    server_address = (sockaddr_in*)malloc(sizeof(sockaddr_in) * number_of_l1_links);
-    myaddr = (sockaddr_in*)malloc(sizeof(sockaddr_in) * number_of_l1_links);
-    ip_socket = (int*)malloc(sizeof(int) * number_of_l1_links);
-
-
-    INFO("number of subnets {:d}\n", number_of_subnets);
-
-
-    // parsing the host name
-    parse_chime_host_name(rack, node, nos, my_node_id);
-    for (int i = 0; i < number_of_subnets; i++) {
-        if (std::snprintf(my_ip_address[i], 100, "10.%d.%d.1%d", i + 6, nos + rack, node) > 100) {
-            FATAL_ERROR("Network Thread: buffer spillover: {:s}", strerror(errno));
-            return;
-        }
-        INFO("{:s} ", my_ip_address[i]);
-    }
-
-    // declaring and initializing variables for the buffers
-    int frame_id = 0;
-    uint8_t* packet_buffer = NULL;
-
-
-    for (int i = 0; i < number_of_subnets; i++) {
-        sock_fd[i] = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-
-        if (sock_fd[i] < 0) {
-            FATAL_ERROR("Network Thread: socket() failed: {:s} ", strerror(errno));
-            return;
-        }
-    }
-
-
-    for (int i = 0; i < number_of_subnets; i++) {
-        std::memset((char*)&myaddr[i], 0, sizeof(myaddr[i]));
-
-        myaddr[i].sin_family = AF_INET;
-        inet_pton(AF_INET, my_ip_address[i], &myaddr[i].sin_addr);
-
-        myaddr[i].sin_port = htons(udp_frb_port_number);
-
-        // Binding port to the socket
-        if (bind(sock_fd[i], (struct sockaddr*)&myaddr[i], sizeof(myaddr[i])) < 0) {
-            FATAL_ERROR("port binding failed ");
-            return;
-        }
-    }
-
-
-    for (int i = 0; i < number_of_l1_links; i++) {
-        memset(&server_address[i], 0, sizeof(server_address[i]));
-        server_address[i].sin_family = AF_INET;
-        inet_pton(AF_INET, link_ip[i].c_str(), &server_address[i].sin_addr);
-        server_address[i].sin_port = htons(udp_frb_port_number);
-        ip_socket[i] = get_vlan_from_ip(link_ip[i].c_str()) - 6;
-    }
-
-    int n = 256 * 1024 * 1024;
-    for (int i = 0; i < number_of_subnets; i++) {
-        if (setsockopt(sock_fd[i], SOL_SOCKET, SO_SNDBUF, (void*)&n, sizeof(n)) < 0) {
-            FATAL_ERROR("Network Thread: setsockopt() failed: %s ", strerror(errno));
-            return;
-        }
-    }
+    pthread_setaffinity_np(ping_thread.native_handle(), sizeof(cpu_set_t), &cpuset);
 
     // rest server
     using namespace std::placeholders;
     restServer& rest_server = restServer::instance();
-    string endpoint = "/frb/update_beam_offset";
+    std::string endpoint = "/frb/update_beam_offset";
     rest_server.register_post_callback(
         endpoint, std::bind(&frbNetworkProcess::update_offset_callback, this, _1, _2));
 
@@ -185,23 +140,17 @@ void frbNetworkProcess::main_thread() {
     t0.tv_sec = 0;
     t0.tv_nsec = 0; /*  nanoseconds */
 
-    unsigned long time_interval =
-        samples_per_packet * packets_per_stream * 384 * 2560; // time per buffer frame in ns
     // 384 is integration factor and 2560 fpga sampling time in ns
+    const unsigned samples_per_frame =
+        samples_per_packet * packets_per_stream * 384;      // number of FPGA samples in each frame
+    unsigned long time_interval = samples_per_frame * 2560; // time per buffer frame in ns
 
     long count = 0;
 
-    /* every node is introducing packets to the network. To achive load balancing a sequece_id is
-    computed for each node this will make sure none of the catalyst switches are overloaded with
-    traffic at a given point of time ofcourse this will be usefull when chrony is suffucuently
-    synchronized across all nodes..
-    */
 
-    int my_sequence_id =
-        (int)(my_node_id / 128) + 2 * ((my_node_id % 128) / 8) + 32 * (my_node_id % 8);
-
-    packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-    if (packet_buffer == NULL)
+    int frame_id = 0;
+    uint8_t* packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+    if (packet_buffer == nullptr)
         return;
 
     // waiting for atleast two frames for the buffer to fill up takes care of the random delay at
@@ -229,28 +178,41 @@ void frbNetworkProcess::main_thread() {
     CLOCK_ABS_NANOSLEEP(CLOCK_REALTIME, t0);
 
     clock_gettime(CLOCK_MONOTONIC, &t0);
-    uint64_t* packet_buffer_uint64 = reinterpret_cast<uint64_t*>(packet_buffer);
-    uint64_t initial_fpga_count = packet_buffer_uint64[1];
     uint64_t initial_nsec = t0.tv_sec * 1e9 + t0.tv_nsec;
+
+    FRBHeader* header = reinterpret_cast<FRBHeader*>(packet_buffer);
+    const uint64_t initial_fpga_count = header->fpga_count;
+    uint64_t last_fpga_count = initial_fpga_count;
 
     while (!stop_thread) {
 
         // reading the next frame and comparing the fpga clock with the monotonic clock.
         if (count != 0) {
             packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-            if (packet_buffer == NULL)
+            if (packet_buffer == nullptr)
                 break;
-            packet_buffer_uint64 = reinterpret_cast<uint64_t*>(packet_buffer);
+
             clock_gettime(CLOCK_MONOTONIC, &t1);
 
             add_nsec(t0, time_interval);
 
             // discipline the monotonic clock with the fpga time stamps
+            header = reinterpret_cast<FRBHeader*>(packet_buffer);
+            const uint64_t fpga_samples_skipped =
+                header->fpga_count - last_fpga_count - samples_per_frame;
+            if (fpga_samples_skipped) {
+                const auto frames_skipped = fpga_samples_skipped / samples_per_frame;
+                INFO("Adjust pacing clock for {} skipped frames", frames_skipped);
+                uint64_t nanos_skipped = frames_skipped * time_interval;
+                add_nsec(t0, nanos_skipped);
+            }
             uint64_t offset = (t0.tv_sec * 1e9 + t0.tv_nsec - initial_nsec)
-                              - (packet_buffer_uint64[1] - initial_fpga_count) * 2560;
+                              - (header->fpga_count - initial_fpga_count) * 2560;
             if (offset != 0)
                 WARN("OFFSET in not zero ");
             add_nsec(t0, -1 * offset);
+
+            last_fpga_count = header->fpga_count;
         }
 
         t1 = t0;
@@ -277,11 +239,15 @@ void frbNetworkProcess::main_thread() {
 
                 for (int link = 0; link < number_of_l1_links; link++) {
                     if (e_stream == local_beam_offset / 4 + link) {
-                        sendto(sock_fd[ip_socket[link]],
-                               &packet_buffer[(e_stream * packets_per_stream + frame)
-                                              * udp_frb_packet_size],
-                               udp_frb_packet_size, 0, (struct sockaddr*)&server_address[link],
-                               sizeof(server_address[link]));
+                        DestIpSocket& dst = stream_dest[link];
+                        if (dst.active
+                            && (_ping_dead_threshold == std::chrono::seconds::zero() || dst.live)) {
+                            sendto(src_sockets[dst.sending_socket].socket_fd,
+                                   &packet_buffer[(e_stream * packets_per_stream + frame)
+                                                  * udp_frb_packet_size],
+                                   udp_frb_packet_size, 0, (struct sockaddr*)&dst.addr,
+                                   sizeof(dst.addr));
+                        }
                     }
                 }
                 long wait_per_packet = (long)(50000);
@@ -298,5 +264,313 @@ void frbNetworkProcess::main_thread() {
         frame_id = (frame_id + 1) % in_buf->num_frames;
         count++;
     }
-    return;
+    ping_cv.notify_all();
+    ping_thread.join();
 }
+
+int frbNetworkProcess::initialize_source_sockets() {
+    int rack, node, nos, my_node_id;
+    parse_chime_host_name(rack, node, nos, my_node_id);
+    for (int i = 0; i < number_of_subnets; i++) {
+        // construct an local address for each of the four VLANs 10.6.0.0/16..10.9.0.0/16
+        std::string ip_addr = fmt::format("10.{:d}.{:d}.1{:d}", i + 6, nos + rack, node);
+        DEBUG("{} ", ip_addr);
+
+        // parse the local address and port into a `sockaddr` struct
+        struct sockaddr_in addr;
+        std::memset((char*)&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET;
+        inet_pton(AF_INET, ip_addr.c_str(), &addr.sin_addr);
+        addr.sin_port = htons(udp_frb_port_number);
+
+        // bind a sending UDP socket to the local address and port
+        int sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+        if (sock_fd < 0) {
+            FATAL_ERROR("Network Thread: socket() failed: {:s} ", strerror(errno));
+            return -1;
+        }
+        if (bind(sock_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+            FATAL_ERROR("port binding failed ");
+            return -1;
+        }
+
+        // use a larger send buffer for the socket
+        const int n = 256 * 1024 * 1024;
+        if (setsockopt(sock_fd, SOL_SOCKET, SO_SNDBUF, (void*)&n, sizeof(n)) < 0) {
+            FATAL_ERROR("Network Thread: setsockopt() failed: %s ", strerror(errno));
+            return -1;
+        }
+
+        src_sockets.push_back({addr, sock_fd});
+    }
+
+    /* every node is introducing packets to the network. To achive load balancing a sequece_id is
+       computed for each node this will make sure none of the catalyst switches are overloaded with
+       traffic at a given point of time ofcourse this will be usefull when chrony is sufficuently
+       synchronized across all nodes..
+    */
+
+    int my_sequence_id =
+        (int)(my_node_id / 128) + 2 * ((my_node_id % 128) / 8) + 32 * (my_node_id % 8);
+    return my_sequence_id;
+}
+
+
+int frbNetworkProcess::initialize_destinations() {
+    // reading the L1 ip addresses from the config file
+    const std::vector<std::string> link_ip =
+        config.get<std::vector<std::string>>(unique_name, "L1_node_ips");
+    for (size_t i = 0; i < link_ip.size(); i++) {
+        sockaddr_in addr;
+        memset(&addr, 0, sizeof(addr));
+        if (!link_ip[i].empty()) {
+            addr.sin_family = AF_INET;
+            inet_pton(AF_INET, link_ip[i].c_str(), &addr.sin_addr);
+            if (!dest_sockets.count(addr.sin_addr.s_addr)) {
+                // new destination, initialize the entry in `dest_sockets`
+                addr.sin_port = htons(udp_frb_port_number);
+                int sending_socket = get_vlan_from_ip(link_ip[i].c_str()) - 6;
+                dest_sockets.insert(
+                    {addr.sin_addr.s_addr, DestIpSocket{link_ip[i], addr, sending_socket}});
+            }
+        } else {
+            if (!dest_sockets.count(0)) {
+                dest_sockets.insert({0, DestIpSocket{link_ip[i], addr, -1, false}});
+            }
+        }
+        stream_dest.push_back(std::ref(dest_sockets.at(addr.sin_addr.s_addr)));
+    }
+    return link_ip.size();
+}
+
+
+// internal data type for keeping track of host checks and replies
+struct DestIpSocketTime {
+    DestIpSocket* dst;
+    std::chrono::steady_clock::time_point last_responded;
+    std::chrono::steady_clock::time_point next_check;
+    std::chrono::steady_clock::time_point last_checked = last_responded;
+    uint16_t ping_seq = 0;
+    friend bool operator<(const DestIpSocketTime& l, const DestIpSocketTime& r) {
+        if (l.next_check == r.next_check) {
+            // break check time ties by host address
+            return l.dst->addr.sin_addr.s_addr > r.dst->addr.sin_addr.s_addr;
+        } else
+            return l.next_check > r.next_check;
+    }
+};
+
+using RefDestIpSocketTime = std::reference_wrapper<DestIpSocketTime>;
+
+void frbNetworkProcess::ping_destinations() {
+    if (_ping_dead_threshold == std::chrono::seconds::zero()) {
+        return;
+    }
+
+    // raw sockets used as sources for outgoing pings
+    std::vector<int> ping_src_fd;
+
+    // initialize pinging sockets
+    {
+        bool err = false;
+
+        for (auto& src : src_sockets) {
+            int s = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+            if (s < 0) {
+                ERROR(
+                    "Cannot create source socket for FRB host pings (requires root). Stopping the "
+                    "pings.");
+                err = true;
+            } else if (bind(s, (struct sockaddr*)&src.addr, sizeof(src.addr)) < 0) {
+                ERROR("Cannot bind source socket for FRB host pings (requires root). Stopping the "
+                      "pings.");
+                err = true;
+            } else {
+                ping_src_fd.push_back(s);
+            }
+        }
+
+        if (err) {
+            // close any pinging sockets that were already created
+            for (auto fd : ping_src_fd) {
+                close(fd);
+            }
+            return;
+        }
+    }
+    const int max_ping_src_fd = *std::max_element(ping_src_fd.begin(), ping_src_fd.end());
+    // Random number generators to jitter the first ping time between hosts (3-30 s)
+    std::random_device rd;  // Will be used to obtain a seed for the random number engine
+    std::mt19937 gen(rd()); // Standard mersenne_twister_engine seeded with rd()
+    std::uniform_int_distribution<> dis(3000, 30000);
+
+    // quick destination lookup by IP address
+    std::map<uint32_t, DestIpSocketTime> dest_by_ip;
+    // quick destination lookup by next scheduled check time
+    std::priority_queue<RefDestIpSocketTime> dest_by_time;
+    for (auto& ipaddr_dst : dest_sockets) {
+        // don't even check the inactive destinations
+        DestIpSocket& dst = std::get<1>(ipaddr_dst);
+        if (!dst.active) {
+            continue;
+        }
+        uint32_t ipaddr = std::get<0>(ipaddr_dst);
+        // jitter the initial check by a random amount 3-30 s
+        auto now = std::chrono::steady_clock::now();
+        auto next_check = now + std::chrono::milliseconds(dis(gen));
+        DEBUG("Check host {} in {:%M:%S}", dst.host, next_check - now);
+        DestIpSocketTime& dest_ping_info = dest_by_ip[ipaddr] = {&dst, now, next_check};
+        dest_by_time.push(dest_ping_info);
+    }
+
+    // it's silly to have a mutex local to a thread, but we need it for the condition variable used
+    // by the main_thread to interrupt this thread's sleep to notify of Kotekan stopping
+    std::mutex mtx;
+    std::unique_lock<std::mutex> lock(mtx);
+    uint16_t ping_seq = 0;
+    while (!stop_thread) {
+        DestIpSocketTime& lru_dest = dest_by_time.top();
+        auto time_since_last_live = std::chrono::steady_clock::now() - lru_dest.last_responded;
+
+        DEBUG("Checking: {}", lru_dest.dst->host);
+        DEBUG("Last responded: {:%M:%S} ago", time_since_last_live);
+
+        // NOTE: we don't ping if the host is not active, but behave as if it were checked
+        if (send_ping(ping_src_fd[lru_dest.dst->sending_socket], lru_dest.dst->addr, ping_seq)) {
+            lru_dest.last_checked = std::chrono::steady_clock::now();
+            lru_dest.ping_seq = ping_seq;
+            ping_seq++;
+        }
+
+        // initialize the listening set of sockets for `select`
+        fd_set rfds;
+        FD_ZERO(&rfds);
+        for (int s : ping_src_fd) {
+            FD_SET(s, &rfds);
+        }
+        bool lru_dest_responded = false;
+        /*
+         * Minimally-blocking check for ping responses received on any of the `ping_src_fd` sockets:
+         * wait for a response for no more than 0.7 s, which should be enough to receive replies
+         * from nodes on the cluster, and then process all sockets that `select` marked as ready to
+         * be read.
+         */
+        struct timeval tv = {0, 700'000}; // Don't wait more than 0.7s for a socket to be ready
+        while (int rc = select(max_ping_src_fd + 1, &rfds, nullptr, nullptr, &tv) != 0) {
+            if (stop_thread)
+                break;
+            if (rc < 0) {
+                if (errno == EINTR) {
+                    DEBUG("Select interrupted, try again");
+                    continue;
+                } else {
+                    // TODO: stop the pinging thread entirely?
+                    WARN("Ping listening error: {}.", errno);
+                    break;
+                }
+            }
+            for (int s : ping_src_fd) {
+#ifdef DEBUGGING
+                char src_addr_str[INET_ADDRSTRLEN
+                                  + 1]; // Used for decoding host IP in logging statements
+#endif                                  // DEBUGGING
+                if (FD_ISSET(s, &rfds)) {
+                    sockaddr_in from; // out-param for `recv_from(2)`
+                    int reply_ping_seq = receive_ping(s, from);
+                    if (reply_ping_seq >= 0) {
+                        if (dest_by_ip.count(from.sin_addr.s_addr)) {
+                            DestIpSocketTime& src = dest_by_ip[from.sin_addr.s_addr];
+                            if (reply_ping_seq == src.ping_seq) {
+                                auto now = std::chrono::steady_clock::now();
+                                DEBUG("Received ping response from: {}. Update `last_responded`.",
+                                      inet_ntop(AF_INET, &from.sin_addr, src_addr_str,
+                                                INET_ADDRSTRLEN + 1));
+                                src.last_responded = now;
+                                if (!src.dst->live) {
+                                    INFO("Host {} is responding to pings again, mark live.",
+                                         src.dst->host);
+                                    src.dst->live = true;
+                                }
+                                if (from.sin_addr.s_addr == lru_dest.dst->addr.sin_addr.s_addr) {
+                                    lru_dest_responded = true;
+                                }
+                            } else {
+                                DEBUG(
+                                    "Ignore ping reply with old sequence number ({}) from host {}",
+                                    reply_ping_seq, src.dst->host);
+                            }
+                        } else {
+                            DEBUG("Received ping response from unknown host: {}. Ignored.",
+                                  inet_ntop(AF_INET, &from.sin_addr, src_addr_str,
+                                            INET_ADDRSTRLEN + 1));
+                        }
+                    }
+                }
+            }
+            tv = {0, 300'000}; // reduce the wait for additional replies
+            FD_ZERO(&rfds);
+            for (int s : ping_src_fd) {
+                FD_SET(s, &rfds);
+            }
+        }
+
+        // Schedule the next check for the node
+        dest_by_time.pop();
+        if (!lru_dest_responded && lru_dest.dst->live) {
+            /*
+             * If a node has stopped responding recently, we switch to an accelerated check
+             * schedule. Otherwise, give up and mark it dead.
+             */
+            time_since_last_live = std::chrono::steady_clock::now() - lru_dest.last_responded;
+            if (time_since_last_live < _ping_interval + _ping_dead_threshold) {
+                DEBUG("Live host {} has not responded, schedule a backup check in {}",
+                      lru_dest.dst->host, _quick_ping_interval);
+                lru_dest.next_check = std::chrono::steady_clock::now() + _quick_ping_interval;
+            } else {
+                INFO("Too long since last ping response ({:%M:%S}), mark host {} dead.",
+                     time_since_last_live, lru_dest.dst->host);
+                lru_dest.dst->live = false;
+                lru_dest.next_check = std::chrono::steady_clock::now() + _ping_interval;
+            }
+        } else {
+            DEBUG("Schedule a regular check for host {} in {}", lru_dest.dst->host, _ping_interval);
+            lru_dest.next_check = std::chrono::steady_clock::now() + _ping_interval;
+        }
+        // could add another `std::chrono::milliseconds(dis(gen))` random delay to next_check
+        dest_by_time.push(lru_dest);
+
+        // sleep until the next host is due
+        DestIpSocketTime& next_lru_dest = dest_by_time.top();
+        auto now = std::chrono::steady_clock::now();
+        while (!stop_thread && next_lru_dest.next_check > now) {
+            DEBUG("Sleep for {:%M:%S} before checking the next host {}",
+                  next_lru_dest.next_check - now, next_lru_dest.dst->host);
+
+            // continue sleeping if received a spurious wakeup, i.e., neither the stage was stopped
+            // nor timeout occurred
+            if (ping_cv.wait_for(lock, next_lru_dest.next_check - now) == std::cv_status::timeout) {
+                break;
+            }
+            now = std::chrono::steady_clock::now();
+        }
+    }
+
+    // close pinging sockets
+    for (auto fd : ping_src_fd) {
+        close(fd);
+    }
+}
+
+DestIpSocket::DestIpSocket(std::string host, sockaddr_in addr, int s, bool active) :
+    host(std::move(host)),
+    addr(std::move(addr)),
+    sending_socket(s),
+    active(active),
+    live(false) {}
+
+DestIpSocket::DestIpSocket(DestIpSocket&& other) :
+    host(std::move(other.host)),
+    addr(std::move(other.addr)),
+    sending_socket(other.sending_socket),
+    active(other.active),
+    live(other.live.load()) {}

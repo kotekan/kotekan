@@ -9,30 +9,26 @@
 #ifndef BUFFER_RECV_H
 #define BUFFER_RECV_H
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferSend.hpp"
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "bufferSend.hpp"        // for bufferFrameHeader
+#include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, kotekanLogging
+#include "prometheusMetrics.hpp" // for Counter, Gauge, MetricFamily
 
-#include <arpa/inet.h>
-#include <atomic>
-#include <condition_variable>
-#include <event2/buffer.h>
-#include <event2/bufferevent.h>
-#include <event2/event.h>
-#include <event2/thread.h>
-#include <functional>
-#include <mutex>
-#include <netinet/in.h>
-#include <queue>
-#include <stdio.h>
-#include <string.h>
-#include <string>
-#include <sys/socket.h>
-#include <thread>
-#include <unistd.h>
-#include <unordered_map>
+#include <condition_variable> // for condition_variable
+#include <deque>              // for deque
+#include <event2/event.h>     // for event_add
+#include <event2/util.h>      // for evutil_socket_t
+#include <mutex>              // for mutex
+#include <stdint.h>           // for uint32_t, uint8_t
+#include <stdio.h>            // for size_t
+#include <string.h>           // for strerror
+#include <string>             // for string
+#include <sys/time.h>         // for timeval
+#include <thread>             // for thread
+#include <unistd.h>           // for ssize_t
+#include <vector>             // for vector
 
 // Forward declare
 class connInstance;
@@ -74,13 +70,16 @@ class connInstance;
  * @author Andre Renard
  */
 class bufferRecv : public kotekan::Stage {
+    friend class connInstance;
+
 public:
     /// Constructor
-    bufferRecv(kotekan::Config& config, const string& unique_name,
+    bufferRecv(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
     ~bufferRecv();
     void main_thread() override;
 
+private:
     /**
      * @brief Returns a buffer ID of the next empty buffer, this must be filled
      *        and returned promptly.  Used internally by worker threads.
@@ -96,12 +95,17 @@ public:
     void increment_droped_frame_count();
 
     /**
+     * @brief Updates the prometheus metric with time it took to receive the data.
+     *        Thread safe.  Called only by worker threads
+     */
+    void set_transfer_time_seconds(const std::string& source_label, const double elapsed);
+
+    /**
      * @brief Used only by worker threads to check if they should stop.
      * @return True if they should stop, false otherwise.
      */
     bool get_worker_stop_thread();
 
-private:
     /// The output buffer
     struct Buffer* buf;
 
@@ -152,6 +156,12 @@ private:
     // TODO: move locking to prometheusMetrics?
     std::mutex dropped_frame_count_mutex;
 
+    /// Time to receive the data
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& transfer_time_seconds;
+
+    /// A lock on the `transfer_time_seconds`
+    std::mutex transfer_time_seconds_mutex;
+
     // Worker threads (thread pool section)
 
     /// The number of worker threads to spawn
@@ -198,10 +208,10 @@ struct acceptArgs {
     bufferRecv* buffer_recv;
 
     /// Just copy the unique_name of the stage
-    string unique_name;
+    std::string unique_name;
 
     /// The log level to use.
-    string log_level;
+    std::string log_level;
 };
 
 /**
@@ -216,8 +226,8 @@ struct acceptArgs {
 class connInstance : public kotekan::kotekanLogging {
 public:
     /// Constructor
-    connInstance(const string& producer_name, struct Buffer* buf, bufferRecv* buffer_recv,
-                 const string& client_ip, int port, struct timeval read_timeout);
+    connInstance(const std::string& producer_name, struct Buffer* buf, bufferRecv* buffer_recv,
+                 const std::string& client_ip, int port, struct timeval read_timeout);
 
     /// Destructor
     ~connInstance();
@@ -251,8 +261,8 @@ public:
      */
     void close_instance();
 
-    /// The name of the parient kotekan_stage
-    string producer_name;
+    /// The name of the parent kotekan_stage
+    std::string producer_name;
 
     /// The kotekan buffer to transfer data into
     struct Buffer* buf;
@@ -261,7 +271,7 @@ public:
     bufferRecv* buffer_recv;
 
     /// The client IP address for this instance
-    string client_ip;
+    std::string client_ip;
 
     /// The port the client is connected on.
     int port;

@@ -1,6 +1,9 @@
 #include "datasetState.hpp"
 
 
+using nlohmann::json;
+
+
 state_uptr datasetState::from_json(const json& data) {
 
     // Fetch the required properties from the json
@@ -36,7 +39,6 @@ std::ostream& operator<<(std::ostream& out, const datasetState& dt) {
     return out;
 }
 
-// TODO: this is a very weird place for this routine to be. Put it somewhere more sane.
 std::vector<stack_ctype> invert_stack(uint32_t num_stack,
                                       const std::vector<rstack_ctype>& stack_map) {
     std::vector<stack_ctype> res(num_stack);
@@ -59,5 +61,5 @@ REGISTER_DATASET_STATE(timeState, "time");
 REGISTER_DATASET_STATE(metadataState, "metadata");
 REGISTER_DATASET_STATE(gatingState, "gating");
 REGISTER_DATASET_STATE(acqDatasetIdState, "acq_dataset_id");
-REGISTER_DATASET_STATE(flagState, "flag");
-REGISTER_DATASET_STATE(gainState, "gain");
+REGISTER_DATASET_STATE(flagState, "flags");
+REGISTER_DATASET_STATE(gainState, "gains");

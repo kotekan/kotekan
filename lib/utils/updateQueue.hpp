@@ -11,8 +11,10 @@
  *
  * This class wraps std::deque to keep updates and their timestamps in a FIFO
  * queue. A timestamp is understood as "apply this update to all frames that
- * have a timestamp later than the one associated to this update". The queue is
- * ordered by the updates timestamps.
+ * have a timestamp later than (or equal to) the one associated to this
+ * update". The queue is ordered by the updates timestamps. No future update
+ * will ever be returned, that is if the only available updates have future
+ * timestamps, nothing will be returned.
  *
  * @author Rick Nitsche
  */
@@ -45,12 +47,12 @@ public:
     /**
      * @brief Get the current size of the queue.
      *
+<<<<<<< HEAD
      * This may be less than the length if not enough updates have been posted.
-     *
-     * @returns  size  The current size.
-     **/
+=======
+     * This may be less than the maximum size if not enough updates have been posted.
+>>>>>>> develop
     size_t size() const {
-        return values.size();
     }
 
 
@@ -113,6 +115,15 @@ public:
         return std::pair<timespec, const T*>(u->first, &(u->second));
     };
 
+    /**
+     * @brief Get all updates stored by the queue and their timestamps.
+     *
+     * @return A const reference to an std::deque holding all updates and their timestamps.
+     */
+    const std::deque<std::pair<timespec, T>>& get_all_updates() const {
+        return values;
+    }
+
 private:
     // The updates with their timestamps ("use this value for frames with
     // timestamps later than this").
@@ -120,6 +131,26 @@ private:
 
     // Length of the queue.
     size_t _len;
+};
+
+// Define a custom fmt formatter that prints the timestamps
+template<typename T>
+struct fmt::formatter<updateQueue<T>> {
+    template<typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
+
+    template<typename FormatContext>
+    auto format(const updateQueue<T>& q, FormatContext& ctx) {
+        auto it = q.get_all_updates().begin();
+        auto pos = ctx.out();
+        while (it != q.get_all_updates().end()) {
+            pos = format_to(pos, "{:f} ", ts_to_double(it->first));
+            *it++;
+        }
+        return pos;
+    }
 };
 
 #endif // UPDATEQUEUE_HPP

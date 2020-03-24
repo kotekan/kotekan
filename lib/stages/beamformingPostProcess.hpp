@@ -2,17 +2,17 @@
 #define BEAMFORMING_POST_PROCESS
 
 #include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
 
-#include <vector>
+#include <stdint.h> // for uint32_t, int32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
-using std::vector;
 
 class beamformingPostProcess : public kotekan::Stage {
 public:
-    beamformingPostProcess(kotekan::Config& config, const string& unique_name,
+    beamformingPostProcess(kotekan::Config& config, const std::string& unique_name,
                            kotekan::bufferContainer& buffer_container);
     virtual ~beamformingPostProcess();
     void main_thread() override;
@@ -28,7 +28,7 @@ private:
     uint32_t _num_fpga_links;
     uint32_t _samples_per_data_set;
     uint32_t _num_data_sets;
-    vector<int32_t> _link_map;
+    std::vector<int32_t> _link_map;
     uint32_t _num_local_freq;
     uint32_t _num_gpus;
 };

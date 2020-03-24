@@ -11,22 +11,30 @@
 #ifndef VIS_UTIL_HPP
 #define VIS_UTIL_HPP
 
-#include "Config.hpp"
-#include "buffer.h"
 
-#include "gsl-lite.hpp"
-#include "json.hpp"
+#include "Config.hpp" // for Config
+#include "buffer.h"   // for Buffer
 
-#include <complex>
-#include <cstdint>
-#include <functional>
-#include <string>
-#include <sys/time.h>
-#include <time.h>
-#include <type_traits>
-#include <vector>
+#include "fmt.hpp"      // for format_context, formatter
+#include "gsl-lite.hpp" // for span
+#include "json.hpp"     // for json
 
-using json = nlohmann::json;
+#include <algorithm>   // for max
+#include <complex>     // for complex, imag, real
+#include <cstdint>     // for uint32_t, uint16_t, int64_t, int32_t, uint64_t
+#include <cstdlib>     // for size_t, (anonymous), div
+#include <functional>  // for function
+#include <iosfwd>      // for ostream
+#include <map>         // for map
+#include <math.h>      // for fmod
+#include <string>      // for string
+#include <sys/time.h>  // for timeval, CLOCK_REALTIME
+#include <sys/types.h> // for __syscall_slong_t, suseconds_t, time_t
+#include <time.h>      // for timespec, clock_gettime
+#include <tuple>       // for tuple, tie
+#include <type_traits> // for enable_if_t, is_integral, make_unsigned
+#include <utility>     // for pair
+#include <vector>      // for vector
 
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;
@@ -147,29 +155,29 @@ inline bool operator>(const time_ctype& a, const time_ctype& b) {
 }
 
 // Conversions of the index types to json
-void to_json(json& j, const freq_ctype& f);
-void to_json(json& j, const input_ctype& f);
-void to_json(json& j, const prod_ctype& f);
-void to_json(json& j, const time_ctype& f);
-void to_json(json& j, const stack_ctype& f);
-void to_json(json& j, const rstack_ctype& f);
+void to_json(nlohmann::json& j, const freq_ctype& f);
+void to_json(nlohmann::json& j, const input_ctype& f);
+void to_json(nlohmann::json& j, const prod_ctype& f);
+void to_json(nlohmann::json& j, const time_ctype& f);
+void to_json(nlohmann::json& j, const stack_ctype& f);
+void to_json(nlohmann::json& j, const rstack_ctype& f);
 
-void from_json(const json& j, freq_ctype& f);
-void from_json(const json& j, input_ctype& f);
-void from_json(const json& j, prod_ctype& f);
-void from_json(const json& j, time_ctype& f);
-void from_json(const json& j, stack_ctype& f);
-void from_json(const json& j, rstack_ctype& f);
+void from_json(const nlohmann::json& j, freq_ctype& f);
+void from_json(const nlohmann::json& j, input_ctype& f);
+void from_json(const nlohmann::json& j, prod_ctype& f);
+void from_json(const nlohmann::json& j, time_ctype& f);
+void from_json(const nlohmann::json& j, stack_ctype& f);
+void from_json(const nlohmann::json& j, rstack_ctype& f);
 
 // Conversion of std::complex<T> to and from json
 namespace std {
 template<class T>
-void to_json(json& j, const std::complex<T>& p) {
-    j = json{p.real(), p.imag()};
+void to_json(nlohmann::json& j, const std::complex<T>& p) {
+    j = nlohmann::json{p.real(), p.imag()};
 }
 
 template<class T>
-void from_json(const json& j, std::complex<T>& p) {
+void from_json(const nlohmann::json& j, std::complex<T>& p) {
     p = std::complex<T>{j.at(0).get<T>(), j.at(1).get<T>()};
 }
 } // namespace std

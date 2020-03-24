@@ -1,29 +1,31 @@
 #include "prodSubset.hpp"
 
-#include "StageFactory.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "Hash.hpp"            // for operator<
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for allocate_new_metadata_object, mark_frame_empty, mark_fram...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for dset_id_t, state_id_t, datasetManager
+#include "datasetState.hpp"    // for prodState
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, WARN
+#include "visBuffer.hpp"       // for visFrameView, visField, visField::vis, visField::weight
+#include "visUtil.hpp"         // for prod_ctype, frameID, cmap, icmap, modulo, cfloat
 
-#include "gsl-lite.hpp"
+#include "gsl-lite.hpp" // for span
 
-#include <algorithm>
-#include <atomic>
-#include <complex>
-#include <cstdint>
-#include <cxxabi.h>
-#include <exception>
-#include <functional>
-#include <inttypes.h>
-#include <iterator>
-#include <memory>
-#include <regex>
-#include <signal.h>
-#include <stdexcept>
-#include <utility>
+#include <algorithm>    // for max, binary_search, copy, sort
+#include <atomic>       // for atomic_bool
+#include <complex>      // for complex
+#include <cxxabi.h>     // for __forced_unwind
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <future>       // for future, async
+#include <iterator>     // for back_insert_iterator, back_inserter
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for out_of_range, runtime_error
+#include <stdint.h>     // for uint16_t, uint32_t
+#include <system_error> // for system_error
+#include <utility>      // for pair, tuple_element<>::type
 
 
 using kotekan::bufferContainer;
@@ -32,7 +34,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(prodSubset);
 
-prodSubset::prodSubset(Config& config, const string& unique_name,
+prodSubset::prodSubset(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&prodSubset::main_thread, this)) {
 
@@ -45,75 +47,73 @@ prodSubset::prodSubset(Config& config, const string& unique_name,
     register_producer(out_buf, unique_name.c_str());
 
     auto subset_list = parse_prod_subset(config, unique_name);
-    prod_ind = std::get<0>(subset_list);
-    prod_subset = std::get<1>(subset_list);
-
-    subset_num_prod = prod_ind.size();
+    _base_prod_ind = std::get<0>(subset_list);
+    _base_prod_subset = std::get<1>(subset_list);
 }
 
-dset_id_t prodSubset::change_dataset_state(dset_id_t ds_id, std::vector<prod_ctype>& prod_subset,
-                                           std::vector<size_t>& prod_ind, size_t& subset_num_prod) {
+void prodSubset::change_dataset_state(dset_id_t ds_id) {
+
     auto& dm = datasetManager::instance();
 
-    // create new product dataset state
-    const prodState* prod_state_ptr = dm.dataset_state<prodState>(ds_id);
-    if (prod_state_ptr == nullptr) {
-        FATAL_ERROR("Set to not use dataset_broker and couldn't find freqState ancestor of dataset "
-                    "{}. Make sure there is a stage upstream in the config, that adds a "
-                    "freqState.\nExiting...",
-                    ds_id);
-    }
+    auto fprint = dm.fingerprint(ds_id, {"products"});
 
-    // get a copy of input prods
-    const std::vector<prod_ctype>& input_prods = prod_state_ptr->get_prods();
-    std::vector<prod_ctype> input_prods_copy;
-    std::copy(input_prods.begin(), input_prods.end(), std::back_inserter(input_prods_copy));
+    if (states_map.count(fprint) == 0) {
 
-    // Compare function to help sort input_ctypes.
-    auto compare_prods = [](const prod_ctype& a, const prod_ctype& b) {
-        return (a.input_a < b.input_a) || (a.input_a == b.input_a && a.input_b < b.input_b);
-    };
-
-    // sort them for binary search
-    std::sort(input_prods_copy.begin(), input_prods_copy.end(), compare_prods);
-
-    // check if prod_subset is a subset of the prodState
-    for (size_t i = 0; i < prod_subset.size(); i++) {
-        // so we can use binary search
-        if (!std::binary_search(input_prods_copy.begin(), input_prods_copy.end(), prod_subset.at(i),
-                                compare_prods)) {
-            WARN("prodSubset: Product ID {:d} is configured to be in the subset, but is missing in "
-                 "dataset {}. Deleting it from subset.",
-                 prod_ind.at(i), ds_id);
-            prod_subset.erase(prod_subset.cbegin() + i);
-            prod_ind.erase(prod_ind.cbegin() + i);
+        // create new product dataset state
+        const prodState* prod_state_ptr = dm.dataset_state<prodState>(ds_id);
+        if (prod_state_ptr == nullptr) {
+            FATAL_ERROR(
+                "Set to not use dataset_broker and couldn't find freqState ancestor of dataset "
+                "{}. Make sure there is a stage upstream in the config, that adds a "
+                "freqState.\nExiting...",
+                ds_id);
         }
+
+        // Compare function to help sort input_ctypes.
+        auto compare_prods = [](const prod_ctype& a, const prod_ctype& b) {
+            return (a.input_a < b.input_a) || (a.input_a == b.input_a && a.input_b < b.input_b);
+        };
+
+        // get a sorted copy of input prods
+        const std::vector<prod_ctype>& input_prods = prod_state_ptr->get_prods();
+        std::vector<prod_ctype> input_prods_copy;
+        std::copy(input_prods.begin(), input_prods.end(), std::back_inserter(input_prods_copy));
+        std::sort(input_prods_copy.begin(), input_prods_copy.end(), compare_prods);
+
+        std::vector<size_t> new_prod_ind;
+        std::vector<prod_ctype> new_prod_subset;
+
+        // check if prod_subset is a subset of the prodState
+        for (size_t i = 0; i < _base_prod_subset.size(); i++) {
+            // so we can use binary search
+            if (std::binary_search(input_prods_copy.begin(), input_prods_copy.end(),
+                                   _base_prod_subset.at(i), compare_prods)) {
+                new_prod_ind.push_back(_base_prod_ind[i]);
+                new_prod_subset.push_back(_base_prod_subset[i]);
+            } else {
+                WARN("prodSubset: Product ID {:d} is configured to be in the subset, but is "
+                     "missing in "
+                     "dataset {}. Deleting it from subset.",
+                     _base_prod_ind.at(i), ds_id);
+            }
+        }
+
+        auto state_id = dm.create_state<prodState>(new_prod_subset).first;
+
+        states_map[fprint] = {state_id, new_prod_ind};
     }
 
-    // in case we deleted sth, save new size
-    subset_num_prod = prod_subset.size();
-
-    state_uptr pstate = std::make_unique<prodState>(prod_subset);
-    state_id_t prod_state_id = dm.add_state(std::move(pstate)).first;
-    return dm.add_dataset(prod_state_id, ds_id);
+    auto [state_id, prod_ind] = states_map.at(fprint);
+    dset_id_map[ds_id] = {dm.add_dataset(state_id, ds_id), prod_ind};
 }
 
 void prodSubset::main_thread() {
 
-    unsigned int output_frame_id = 0;
-    unsigned int input_frame_id = 0;
 
-    dset_id_t input_dset_id;
-    dset_id_t output_dset_id = dset_id_t::null;
+    frameID input_frame_id(in_buf);
+    frameID output_frame_id(out_buf);
 
-    // Wait for a frame in the input buffer in order to get the dataset ID
-    if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
-        return;
-    }
-    input_dset_id = visFrameView(in_buf, input_frame_id).dataset_id;
-    future_output_dset_id =
-        std::async(&prodSubset::change_dataset_state, this, input_dset_id, std::ref(prod_subset),
-                   std::ref(prod_ind), std::ref(subset_num_prod));
+    std::future<void> change_dset_fut;
 
     while (!stop_thread) {
 
@@ -126,11 +126,9 @@ void prodSubset::main_thread() {
         auto input_frame = visFrameView(in_buf, input_frame_id);
 
         // check if the input dataset has changed
-        if (input_dset_id != input_frame.dataset_id) {
-            input_dset_id = input_frame.dataset_id;
-            future_output_dset_id =
-                std::async(&prodSubset::change_dataset_state, this, input_dset_id,
-                           std::ref(prod_subset), std::ref(prod_ind), std::ref(subset_num_prod));
+        if (dset_id_map.count(input_frame.dataset_id) == 0) {
+            change_dset_fut =
+                std::async(&prodSubset::change_dataset_state, this, input_frame.dataset_id);
         }
 
         // Wait for the output buffer frame to be free
@@ -141,9 +139,12 @@ void prodSubset::main_thread() {
         // Allocate metadata and get output frame
         allocate_new_metadata_object(out_buf, output_frame_id);
 
-        // Are we waiting for a new dataset ID?
-        if (future_output_dset_id.valid())
-            output_dset_id = future_output_dset_id.get();
+        if (change_dset_fut.valid())
+            change_dset_fut.wait();
+
+        auto& [new_dset_id, prod_ind] = dset_id_map.at(input_frame.dataset_id);
+
+        size_t subset_num_prod = prod_ind.size();
 
         // Create view to output frame
         auto output_frame = visFrameView(out_buf, output_frame_id, input_frame.num_elements,
@@ -157,19 +158,14 @@ void prodSubset::main_thread() {
 
         // Copy metadata
         output_frame.copy_metadata(input_frame);
+        output_frame.dataset_id = new_dset_id;
+
         // Copy the non-visibility parts of the buffer
         output_frame.copy_data(input_frame, {visField::vis, visField::weight});
 
-        // set the dataset ID in the outgoing frame
-        output_frame.dataset_id = output_dset_id;
-
         // Mark the buffers and move on
-        mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);
-        mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id);
-
-        // Advance the current frame id
-        output_frame_id = (output_frame_id + 1) % out_buf->num_frames;
-        input_frame_id = (input_frame_id + 1) % in_buf->num_frames;
+        mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
+        mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id++);
     }
 }
 

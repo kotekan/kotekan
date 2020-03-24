@@ -1,5 +1,23 @@
 #include "restInspectFrame.hpp"
 
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for CHECK_MEM, WARN
+#include "restServer.hpp"      // for restServer, connectionInstance
+
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <stdlib.h>   // for free, malloc
+#include <string.h>   // for memcpy
+#include <vector>     // for vector
+
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
@@ -9,7 +27,7 @@ using kotekan::restServer;
 
 REGISTER_KOTEKAN_STAGE(restInspectFrame);
 
-restInspectFrame::restInspectFrame(Config& config, const string& unique_name,
+restInspectFrame::restInspectFrame(Config& config, const std::string& unique_name,
                                    bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&restInspectFrame::main_thread, this)) {
 
@@ -49,12 +67,12 @@ void restInspectFrame::rest_callback(connectionInstance& conn) {
 
 void restInspectFrame::main_thread() {
 
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
     uint32_t frame_id = 0;
 
     while (!stop_thread) {
         frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         if (frame_copy_lock.try_lock()) {

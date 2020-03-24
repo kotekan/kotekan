@@ -7,11 +7,17 @@
 #ifndef PULSAR_POST_PROCESS
 #define PULSAR_POST_PROCESS
 
-#include "Stage.hpp"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "buffer.h"
+#include "bufferContainer.hpp"
 
-#include <vector>
+#include <optional>    // for optional
+#include <stdint.h>    // for uint32_t, uint64_t, uint16_t, uint8_t
+#include <string>      // for string
+#include <sys/types.h> // for uint
+#include <time.h>      // for timespec
 
-using std::vector;
 
 /**
  * @class pulsarPostProcess
@@ -64,7 +70,7 @@ using std::vector;
 class pulsarPostProcess : public kotekan::Stage {
 public:
     /// Constructor.
-    pulsarPostProcess(kotekan::Config& config_, const string& unique_name,
+    pulsarPostProcess(kotekan::Config& config_, const std::string& unique_name,
                       kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~pulsarPostProcess();
@@ -77,7 +83,24 @@ private:
                       const uint64_t fpga_seq_num, struct timespec* time_now,
                       struct psrCoord* psr_coord, uint16_t* freq_ids);
 
-    struct Buffer** in_buf;
+    /**
+     * @brief Requests a full frame for each of the input buffers until all start with the same @c
+     * fpga_seq_num.
+     *
+     * On exit, `in_buf`s will be synced up, `in_frame`s will point to the correct current frame,
+     * and `in_buffer_ID`s have the current `frame_id`.
+     *
+     * @returns No value if the stage should exit, otherwise the wrapped @c fpga_seq_num that starts
+     * the synced frames.
+     */
+    std::optional<uint64_t> sync_input_buffers();
+
+    /// Pointer to the input buffer for each of the GPUs
+    Buffer** in_buf;
+    /// Current @c frame_id for each of the `in_buf`s
+    uint* in_buffer_ID;
+    /// Pointer to the current frame for each of the `in_buf`s
+    uint8_t** in_frame;
     struct Buffer* pulsar_buf;
 
     /// Config variables

@@ -1,10 +1,13 @@
 #include "pulsarTiming.hpp"
 
-#include "visUtil.hpp"
+#include "visUtil.hpp" // for add_nsec
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <math.h>
+#include <cmath>       // for floor, pow
+#include <memory>      // for allocator_traits<>::value_type
+#include <stdexcept>   // for runtime_error
+#include <sys/types.h> // for uint
 
 Polyco::Polyco(double t, float d, double p, double f0, std::vector<float> c) :
     tmid(t),

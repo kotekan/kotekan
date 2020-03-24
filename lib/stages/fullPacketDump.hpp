@@ -1,20 +1,25 @@
 #ifndef FULL_PACKET_DUMP_HPP
 #define FULL_PACKET_DUMP_HPP
 
-#include "Stage.hpp"
-#include "restServer.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
+#include "restServer.hpp"      // for connectionInstance
 
-#include <mutex>
-#include <string>
+#include "json.hpp" // for json
+
+#include <mutex>    // for mutex
+#include <stdint.h> // for uint8_t
+#include <string>   // for string
 
 class fullPacketDump : public kotekan::Stage {
 public:
-    fullPacketDump(kotekan::Config& config, const string& unique_name,
+    fullPacketDump(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
     virtual ~fullPacketDump();
     void main_thread() override;
 
-    void packet_grab_callback(kotekan::connectionInstance& conn, json& json_request);
+    void packet_grab_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
 
 private:
     struct Buffer* buf;

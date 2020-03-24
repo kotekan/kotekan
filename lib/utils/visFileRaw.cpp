@@ -1,27 +1,28 @@
 
 #include "visFileRaw.hpp"
 
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "visCompression.hpp"
+#include "Hash.hpp"           // for Hash
+#include "datasetManager.hpp" // for datasetManager, dset_id_t
+#include "datasetState.hpp"   // for stackState, eigenvalueState, freqState, gatingState, input...
+#include "visBuffer.hpp"      // for visFrameView, visMetadata
 
-#include "json.hpp"
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
 
-#include <cstdio>
-#include <cxxabi.h>
-#include <errno.h>
-#include <exception>
-#include <fmt.hpp>
-#include <fstream>
-#include <future>
-#include <inttypes.h>
-#include <numeric>
-#include <stdexcept>
-#include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <utility>
+#include <algorithm>    // for max
+#include <cstdio>       // for remove
+#include <cxxabi.h>     // for __forced_unwind
+#include <errno.h>      // for errno
+#include <exception>    // for exception
+#include <fcntl.h>      // for fallocate, sync_file_range, open, posix_fadvise, FALLOC_FL...
+#include <fstream>      // for ofstream, basic_ostream::write, ios
+#include <future>       // for async, future
+#include <stdexcept>    // for out_of_range, runtime_error
+#include <string.h>     // for strerror
+#include <sys/stat.h>   // for S_IRGRP, S_IROTH, S_IRUSR, S_IWGRP, S_IWUSR
+#include <system_error> // for system_error
+#include <unistd.h>     // for close, pwrite, TEMP_FAILURE_RETRY
+#include <utility>      // for pair
 
 
 // Register the raw file writer
@@ -111,7 +112,8 @@ visFileRaw::visFileRaw(const std::string& name, const kotekan::logLevel log_leve
     // Create lock file and then open the other files
     lock_filename = create_lockfile(_name);
     metadata_file = std::ofstream(_name + ".meta", std::ios::binary);
-    if ((fd = open((_name + ".data").c_str(), oflags, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH))
+    if ((fd = open((_name + ".data").c_str(), oflags,
+                   S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH))
         == -1) {
         throw std::runtime_error(
             fmt::format(fmt("Failed to open file {:s}.data: {:s}."), _name, strerror(errno)));
@@ -137,7 +139,7 @@ visFileRaw::~visFileRaw() {
     // Finalize the metadata file
     file_metadata["structure"]["ntime"] = num_time();
     file_metadata["index_map"]["time"] = times;
-    std::vector<uint8_t> t = json::to_msgpack(file_metadata);
+    std::vector<uint8_t> t = nlohmann::json::to_msgpack(file_metadata);
     metadata_file.write((const char*)&t[0], t.size());
     metadata_file.close();
 

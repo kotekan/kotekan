@@ -3,16 +3,17 @@
 
 #include "restServer.hpp"
 
-#include "json.hpp"
+#include <deque>     // for deque
+#include <iosfwd>    // for ostringstream
+#include <map>       // for map
+#include <memory>    // for shared_ptr
+#include <mutex>     // for mutex, lock_guard
+#include <stdexcept> // for runtime_error
+#include <stdint.h>  // for uint64_t
+#include <string>    // for string
+#include <tuple>     // for tuple
+#include <vector>    // for vector
 
-#include <map>
-#include <mutex>
-#include <string>
-#include <tuple>
-
-using nlohmann::json;
-using std::map;
-using std::string;
 
 namespace kotekan {
 namespace prometheus {
@@ -23,14 +24,14 @@ namespace prometheus {
  */
 class Metric {
 public:
-    Metric(const std::vector<string>& label_values);
+    Metric(const std::vector<std::string>& label_values);
     virtual ~Metric() = default;
 
     /// @brief Returns the stored value as a string.
-    virtual string to_string() = 0;
+    virtual std::string to_string() = 0;
     /// @brief Formats the stored value as a string into the given output stream.
     virtual std::ostringstream& to_string(std::ostringstream& out) = 0;
-    const std::vector<string> label_values;
+    const std::vector<std::string> label_values;
 
 protected:
     /// Metric updating lock
@@ -47,9 +48,9 @@ protected:
  */
 class Counter : public Metric {
 public:
-    Counter(const std::vector<string>&);
+    Counter(const std::vector<std::string>&);
     void inc();
-    string to_string() override;
+    std::string to_string() override;
     std::ostringstream& to_string(std::ostringstream& out) override;
 
 private:
@@ -67,9 +68,9 @@ private:
  */
 class Gauge : public Metric {
 public:
-    Gauge(const std::vector<string>&);
+    Gauge(const std::vector<std::string>&);
     void set(const double);
-    string to_string() override;
+    std::string to_string() override;
     std::ostringstream& to_string(std::ostringstream& out) override;
 
 private:
@@ -97,7 +98,7 @@ struct Serializable {
      * documentation](https://prometheus.io/docs/instrumenting/exposition_formats/) for the precise
      * format specification.
      */
-    virtual string serialize() = 0;
+    virtual std::string serialize() = 0;
 };
 
 /**
@@ -114,7 +115,8 @@ public:
         Untyped,
     };
 
-    MetricFamily(const string& name, const string& stage, const std::vector<string>& label_names,
+    MetricFamily(const std::string& name, const std::string& stage,
+                 const std::vector<std::string>& label_names,
                  const MetricType metric_type = MetricType::Untyped);
 
     /**
@@ -128,7 +130,7 @@ public:
      * @ @throw std::runtime_error if the number of label values doesn't match the length of the
      * family's label names
      */
-    T& labels(const std::vector<string>& label_values) {
+    T& labels(const std::vector<std::string>& label_values) {
         if (label_names.size() != label_values.size()) {
             throw std::runtime_error("Label values don't match the names");
         }
@@ -145,16 +147,16 @@ public:
     }
 
 
-    string serialize() override;
+    std::string serialize() override;
 
     /// metric name
-    const string name;
+    const std::string name;
 
     /// stage name
-    const string stage_name;
+    const std::string stage_name;
 
     /// label names
-    const std::vector<string> label_names;
+    const std::vector<std::string> label_names;
 
 private:
     /// metric instances for label combinations observed so far
@@ -228,7 +230,7 @@ public:
      *
      * @return A string representation of the metrics
      */
-    string serialize();
+    std::string serialize();
 
     /**
      * @brief Adds a new metric of type gauge and no labels
@@ -238,7 +240,7 @@ public:
      * @return a reference to the newly created @c Gauge instance
      * @throw std::runtime_error if the metric with that name is already registered.
      */
-    Gauge& add_gauge(const string& name, const string& stage_name);
+    Gauge& add_gauge(const std::string& name, const std::string& stage_name);
 
     /**
      * @brief Adds a new metric family of type gauge
@@ -249,8 +251,8 @@ public:
      * @return a reference to the newly created @c MetricFamily<Gauge> instance
      * @throw std::runtime_error if the metric with that name is already registered.
      */
-    MetricFamily<Gauge>& add_gauge(const string& name, const string& stage_name,
-                                   const std::vector<string>& label_names);
+    MetricFamily<Gauge>& add_gauge(const std::string& name, const std::string& stage_name,
+                                   const std::vector<std::string>& label_names);
 
     /**
      * @brief Adds a new metric of type counter and no labels
@@ -260,7 +262,7 @@ public:
      * @return a reference to the newly created @c Counter instance
      * @throw std::runtime_error if the metric with that name is already registered.
      */
-    Counter& add_counter(const string& name, const string& stage_name);
+    Counter& add_counter(const std::string& name, const std::string& stage_name);
 
     /**
      * @brief Adds a new metric family of type counter
@@ -271,8 +273,8 @@ public:
      * @return a reference to the newly created @c MetricFamily<Counter> instance
      * @throw std::runtime_error if the metric with that name is already registered.
      */
-    MetricFamily<Counter>& add_counter(const string& name, const string& stage_name,
-                                       const std::vector<string>& label_names);
+    MetricFamily<Counter>& add_counter(const std::string& name, const std::string& stage_name,
+                                       const std::vector<std::string>& label_names);
 
     /**
      * @brief Remove all registered stage metrics
@@ -288,7 +290,7 @@ public:
      *
      * @param stage_name The stage name used in metric declaration, normally @c unique_name.
      */
-    void remove_stage_metrics(const string& stage_name);
+    void remove_stage_metrics(const std::string& stage_name);
 
 private:
     /// Constructor, not used directly
@@ -312,13 +314,14 @@ private:
      * @throw std::runtime_error if the metric with that name is already registered or if the
      * ``name`` or ``stage_name`` are left empty.
      */
-    void add(const string name, const string stage_name, std::shared_ptr<Serializable>);
+    void add(const std::string name, const std::string stage_name,
+             std::shared_ptr<Serializable> metric);
 
     /**
      * The metric storage object with the format:
      * <<metric_name, stage_name>, MetricFamily>
      */
-    map<std::tuple<string, string>, std::shared_ptr<Serializable>> families;
+    std::map<std::tuple<std::string, std::string>, std::shared_ptr<Serializable>> families;
 
     /// Metric updating lock
     std::mutex metrics_lock;

@@ -14,13 +14,20 @@
 #ifndef FAKE_VIS_PATTERN_HPP
 #define FAKE_VIS_PATTERN_HPP
 
-#include "Config.hpp"
-#include "factory.hpp"
-#include "kotekanLogging.hpp"
-#include "visBuffer.hpp"
+#include "Config.hpp"         // for Config
+#include "dataset.hpp"        // for state_id_t, dset_id_t
+#include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
+#include "kotekanLogging.hpp" // for kotekanLogging
+#include "visBuffer.hpp"      // for visFrameView
+#include "visUtil.hpp"        // for cfloat
 
-#include <stdint.h>
-#include <string>
+#include <deque>      // for deque
+#include <functional> // for function
+#include <optional>   // for optional
+#include <stddef.h>   // for size_t
+#include <string>     // for string
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 /**
  * @class FakeVisPattern
@@ -214,4 +221,38 @@ private:
     std::vector<cfloat> test_pattern_value;
 };
 
+
+/**
+ * @brief Send out some data but change the dataset IDs
+ *
+ * @conf  state_changes  A series of timestamp-state type pairs. Supported state types are `inputs`
+ *and `flags`.
+ *
+ **/
+class ChangeStatePattern : public DefaultVisPattern {
+public:
+    /// @sa FakeVisPattern::FakeVisPattern
+    ChangeStatePattern(kotekan::Config& config, const std::string& path);
+
+    /// @sa FakeVisPattern::fill
+    void fill(visFrameView& frame);
+
+private:
+    // Alias for the type of a function that will generate the state
+    using gen_state = std::function<state_id_t()>;
+
+    std::deque<std::pair<double, gen_state>> _dataset_changes;
+
+    // Methods to generate state changes. These should not change any structural
+    // parameters.
+    state_id_t gen_state_inputs();
+    state_id_t gen_state_flags();
+
+    std::optional<dset_id_t> current_dset_id;
+
+    size_t num_elements;
+
+    size_t _input_update_ind = 0;
+    size_t _flag_update_ind = 0;
+};
 #endif // FAKE_VIS_PATTERN

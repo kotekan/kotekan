@@ -17,6 +17,7 @@ set ( KOTEKAN_TESTING_SOURCES
       testDataGen.cpp
       testDataGenQuad.cpp
       testDataGenFloat.cpp
+      TestDropFrames.cpp
       test_data_generation.c
       pulsarSimProcess.cpp
       visNoise.cpp

@@ -1,39 +1,42 @@
-#include <arpa/inet.h>
-#include <assert.h>
-#include <chrono>
-#include <cmath>
-#include <cstdlib>
-#include <cstring>
-#include <fstream>
-#include <functional>
-#include <iostream>
-#include <math.h>
-#include <netinet/in.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
-#include <sys/socket.h>
-#include <unistd.h>
-
-using std::string;
-
-#include "Config.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
 #include "pulsarNetworkProcess.hpp"
-#include "tx_utils.hpp"
-#include "util.h"
+
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_empty, wait_for_full_frame, register_consumer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO, CHECK_MEM
+#include "tx_utils.hpp"        // for add_nsec, get_vlan_from_ip, parse_chime_host_name, CLOCK_...
+#include "vdif_functions.h"    // for VDIFHeader
+
+#include <arpa/inet.h>  // for inet_pton
+#include <atomic>       // for atomic_bool
+#include <cstdio>       // for snprintf
+#include <cstring>      // for memset
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <memory>       // for allocator_traits<>::value_type
+#include <netinet/in.h> // for sockaddr_in, htons, IPPROTO_UDP
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for runtime_error
+#include <stdint.h>     // for int64_t, uint8_t
+#include <stdlib.h>     // for free, malloc
+#include <string>       // for string, allocator
+#include <sys/socket.h> // for AF_INET, bind, sendto, setsockopt, socket, SOCK_DGRAM
+#include <sys/time.h>   // for CLOCK_MONOTONIC, CLOCK_REALTIME
+#include <time.h>       // for timespec, clock_gettime
+#include <vector>       // for vector
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
+using std::string;
+
+
 REGISTER_KOTEKAN_STAGE(pulsarNetworkProcess);
 
-pulsarNetworkProcess::pulsarNetworkProcess(Config& config_, const string& unique_name,
+pulsarNetworkProcess::pulsarNetworkProcess(Config& config_, const std::string& unique_name,
                                            bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container,
           std::bind(&pulsarNetworkProcess::main_thread, this)) {
@@ -48,6 +51,7 @@ pulsarNetworkProcess::pulsarNetworkProcess(Config& config_, const string& unique
     timesamples_per_pulsar_packet =
         config.get_default<int>(unique_name, "timesamples_per_pulsar_packet", 625);
     num_packet_per_stream = config.get_default<int>(unique_name, "num_packet_per_stream", 80);
+    _num_beams = config.get<int>(unique_name, "num_beams");
 
     my_host_name = (char*)malloc(sizeof(char) * 100);
     CHECK_MEM(my_host_name);
@@ -99,7 +103,7 @@ void pulsarNetworkProcess::main_thread() {
     }
 
     int frame_id = 0;
-    uint8_t* packet_buffer = NULL;
+    uint8_t* packet_buffer = nullptr;
 
     for (int i = 0; i < number_of_subnets; i++) {
         sock_fd[i] = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -154,7 +158,7 @@ void pulsarNetworkProcess::main_thread() {
         (int)(my_node_id / 128) + 2 * ((my_node_id % 128) / 8) + 32 * (my_node_id % 8);
 
     packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-    if (packet_buffer == NULL)
+    if (packet_buffer == nullptr)
         return;
     mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
     frame_id = (frame_id + 1) % in_buf->num_frames;
@@ -172,20 +176,33 @@ void pulsarNetworkProcess::main_thread() {
     CLOCK_ABS_NANOSLEEP(CLOCK_REALTIME, t0);
 
     clock_gettime(CLOCK_MONOTONIC, &t0);
-    while (!stop_thread) {
-        add_nsec(t0, time_interval);
 
+    // added to take care of the missed frames
+    VDIFHeader* header = reinterpret_cast<VDIFHeader*>(packet_buffer);
+    int64_t vdif_last_seconds = header->seconds;
+    int64_t vdif_last_frame = header->data_frame;
+
+    while (!stop_thread) {
+        packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+        if (packet_buffer == nullptr)
+            break;
+
+        header = reinterpret_cast<VDIFHeader*>(packet_buffer);
+        time_interval = 2560
+                        * (390625 * (header->seconds - vdif_last_seconds)
+                           + 625 * (header->data_frame - vdif_last_frame));
+
+        add_nsec(t0, time_interval);
         t1.tv_sec = t0.tv_sec;
         t1.tv_nsec = t0.tv_nsec;
 
-        packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-        if (packet_buffer == NULL)
-            break;
+        vdif_last_seconds = header->seconds;
+        vdif_last_frame = header->data_frame;
 
         for (int frame = 0; frame < 80; frame++) {
-            for (int beam = 0; beam < 10; beam++) {
+            for (int beam = 0; beam < _num_beams; beam++) {
                 int e_beam = my_sequence_id + beam;
-                e_beam = e_beam % 10;
+                e_beam = e_beam % _num_beams;
                 CLOCK_ABS_NANOSLEEP(CLOCK_MONOTONIC, t1);
                 if (e_beam < number_of_pulsar_links) {
                     sendto(sock_fd[socket_ids[e_beam]],

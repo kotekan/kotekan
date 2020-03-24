@@ -26,6 +26,9 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "env(name): mark test to run only on named environment"
     )
+    config.addinivalue_line(
+        "markers", "serial: mark test to not run in parallel with other tests"
+    )
 
 
 def pytest_runtest_setup(item):

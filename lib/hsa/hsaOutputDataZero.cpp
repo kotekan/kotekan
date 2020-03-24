@@ -1,13 +1,25 @@
 #include "hsaOutputDataZero.hpp"
 
-#include "fmt.hpp"
+#include "Config.hpp"             // for Config
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_IN
+#include "hsaBase.h"              // for hsa_host_free, hsa_host_malloc
+#include "hsaCommand.hpp"         // for REGISTER_HSA_COMMAND, _factory_aliashsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+#include "kotekanLogging.hpp"     // for INFO
+
+#include "fmt.hpp" // for format, fmt
+
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <string.h>  // for memset
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaOutputDataZero);
 
-hsaOutputDataZero::hsaOutputDataZero(Config& config, const string& unique_name,
+hsaOutputDataZero::hsaOutputDataZero(Config& config, const std::string& unique_name,
                                      bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaSubframeCommand(config, unique_name, host_buffers, device, "hsaOutputDataZero", "") {
     command_type = gpuCommandType::COPY_IN;

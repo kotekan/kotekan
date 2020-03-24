@@ -1,11 +1,14 @@
 #include "Hash.hpp"
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format
 
-#include <inttypes.h>
-#include <iostream>
-#include <stdint.h>
-#include <stdio.h>
+#include <inttypes.h> // for SCNx64
+#include <iostream>   // for istream, ostream, basic_istream::read
+#include <stdexcept>  // for invalid_argument
+#include <stdio.h>    // for sscanf
+
+
+using nlohmann::json;
 
 
 // Define the null Hash

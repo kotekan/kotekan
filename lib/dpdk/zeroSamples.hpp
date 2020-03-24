@@ -1,11 +1,14 @@
 #ifndef ZERO_SAMPLES_HPP
 #define ZERO_SAMPLES_HPP
 
-#include "Stage.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "json.hpp"
-
-#include <vector>
+#include <stdint.h> // for int32_t, uint32_t, uint8_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @brief Zeros samples in the @c out_buf based on flags in the @c lost_samples_buf
@@ -44,7 +47,7 @@
 class zeroSamples : public kotekan::Stage {
 public:
     /// Standard constructor
-    zeroSamples(kotekan::Config& config, const string& unique_name,
+    zeroSamples(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& buffer_container);
 
     /// Destructor
@@ -73,7 +76,7 @@ private:
     bool _duplicate_ls_buffer;
 
     /// Vector to hold all duplicate lost sample buffers
-    vector<Buffer*> out_lost_sample_bufs;
+    std::vector<Buffer*> out_lost_sample_bufs;
 
     /// The int8 "zero" value
     uint8_t zero_value;

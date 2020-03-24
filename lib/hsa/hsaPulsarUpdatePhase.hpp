@@ -7,11 +7,21 @@
 #ifndef HSA_PULSAR_UPDATE_PHASE_H
 #define HSA_PULSAR_UPDATE_PHASE_H
 
-#include "hsaCommand.hpp"
-#include "restServer.hpp"
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chimeMetadata.h"        // for psrCoord
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaCommand.hpp"         // for hsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
-#include <mutex>
-#include <thread>
+#include "json.hpp" // for json
+
+#include <mutex>       // for mutex
+#include <stdint.h>    // for int32_t, int16_t, uint32_t, uint8_t
+#include <string>      // for string
+#include <sys/types.h> // for uint
+#include <time.h>      // for timespec
 
 /**
  * @class hsaPulsarUpdatePhase
@@ -54,7 +64,7 @@ class hsaPulsarUpdatePhase : public hsaCommand {
 public:
     /// Constructor, also initializes internal variables from config, allocates
     /// host_phase_0, host_pahse_1, and set up 2 endpoints
-    hsaPulsarUpdatePhase(kotekan::Config& config, const string& unique_name,
+    hsaPulsarUpdatePhase(kotekan::Config& config, const std::string& unique_name,
                          kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor, cleans up local allocs.
@@ -71,7 +81,7 @@ public:
     /// Load gain, update phases every second by alternating the use of 2 banks.
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
-    void finalize_frame(int frame_id);
+    void finalize_frame(int frame_id) override;
 
     /// Endpoint for providing new pulsar target (RA, Dec, sacling factor, beam_id)
     bool pulsar_grab_callback(nlohmann::json& json, const uint8_t beamID);
@@ -142,7 +152,7 @@ private:
     std::string endpoint_psrcoord;
 
     /// Config base (@todo this is a huge hack replace with updatable config)
-    string config_base;
+    std::string config_base;
 };
 
 #endif

@@ -1,15 +1,31 @@
 #include "restServer.hpp"
 
-#include "errors.h"
-#include "kotekanLogging.hpp"
+#include "Config.hpp"         // for Config
+#include "kotekanLogging.hpp" // for ERROR_NON_OO, WARN_NON_OO, INFO_NON_OO, DEBUG_NON_OO
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <event2/keyvalq_struct.h>
-#include <pthread.h>
-#include <sched.h>
-#include <signal.h>
-#include <string>
+#include <algorithm>               // for max
+#include <assert.h>                // for assert
+#include <cstdint>                 // for int32_t
+#include <event2/buffer.h>         // for evbuffer_add, evbuffer_peek, iovec, evbuffer_free
+#include <event2/event.h>          // for event_add, event_base_dispatch, event_base_free, even...
+#include <event2/http.h>           // for evhttp_send_reply, evhttp_add_header, evhttp_request_...
+#include <event2/keyvalq_struct.h> // for evkeyvalq, evkeyval, evkeyval::(anonymous)
+#include <event2/thread.h>         // for evthread_use_pthreads
+#include <evhttp.h>                // for evhttp_request
+#include <exception>               // for exception
+#include <mutex>                   // for unique_lock
+#include <netinet/in.h>            // for sockaddr_in, ntohs
+#include <pthread.h>               // for pthread_setaffinity_np, pthread_setname_np
+#include <sched.h>                 // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept>               // for runtime_error
+#include <stdlib.h>                // for exit, free, malloc, size_t
+#include <string>                  // for string, basic_string, allocator, operator!=, operator+
+#include <sys/socket.h>            // for getsockname, socklen_t
+#include <sys/time.h>              // for timeval
+#include <utility>                 // for pair
+#include <vector>                  // for vector
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
 #endif
@@ -26,7 +42,7 @@ restServer& restServer::instance() {
     return server_instance;
 }
 
-restServer::restServer() : main_thread() {
+restServer::restServer() : port(_port), main_thread() {
     stop_thread = false;
 }
 
@@ -43,7 +59,7 @@ restServer::~restServer() {
 void restServer::start(const std::string& bind_address, u_short port) {
 
     this->bind_address = bind_address;
-    this->port = port;
+    this->_port = port;
 
     main_thread = std::thread(&restServer::http_server_thread, this);
 
@@ -89,7 +105,7 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
         if (request->type == EVHTTP_REQ_POST) {
             connectionInstance conn(request);
             if (!server->json_callbacks.count(url)) {
-                DEBUG_NON_OO("restServer: Endpoint {:s} called, but not found", url);
+                DEBUG_NON_OO("restServer: POST Endpoint {:s} called, but not found", url);
                 conn.send_error("Not Found", HTTP_RESPONSE::NOT_FOUND);
                 return;
             }
@@ -125,7 +141,7 @@ void restServer::register_get_callback(string endpoint,
         }
         get_callbacks[endpoint] = callback;
     }
-    INFO_NON_OO("restServer: Adding REST endpoint: {:s}", endpoint);
+    INFO_NON_OO("restServer: Adding GET endpoint: {:s}", endpoint);
 }
 
 void restServer::register_post_callback(string endpoint,
@@ -142,7 +158,7 @@ void restServer::register_post_callback(string endpoint,
         }
         json_callbacks[endpoint] = callback;
     }
-    INFO_NON_OO("restServer: Adding REST endpoint: {:s}", endpoint);
+    INFO_NON_OO("restServer: Adding POST endpoint: {:s}", endpoint);
 }
 
 void restServer::remove_get_callback(string endpoint) {
@@ -238,7 +254,7 @@ string restServer::get_http_message(struct evhttp_request* request) {
     struct evbuffer_iovec* vec_out;
     size_t written = 0;
     // determine how many chunks we need.
-    int n_vec = evbuffer_peek(input_buffer, datalen, NULL, NULL, 0);
+    int n_vec = evbuffer_peek(input_buffer, datalen, nullptr, nullptr, 0);
     if (n_vec < 0) {
         WARN_NON_OO("restClient: Failure in evbuffer_peek(), assuming no message and returning an "
                     "empty string");
@@ -246,8 +262,8 @@ string restServer::get_http_message(struct evhttp_request* request) {
     }
 
     // Allocate space for the chunks.
-    vec_out = (iovec*)malloc(sizeof(struct evbuffer_iovec) * n_vec);
-    n_vec = evbuffer_peek(input_buffer, datalen, NULL, vec_out, n_vec);
+    vec_out = (evbuffer_iovec*)malloc(sizeof(struct evbuffer_iovec) * n_vec);
+    n_vec = evbuffer_peek(input_buffer, datalen, nullptr, vec_out, n_vec);
     for (int i = 0; i < n_vec; i++) {
         size_t len = vec_out[i].iov_len;
         if (written + len > datalen)
@@ -345,7 +361,6 @@ void restServer::http_server_thread() {
         // Use exit() not raise() since this happens early in startup before
         // the signal handlers are all in place.
         exit(1);
-        return;
     }
 
     // Create the server
@@ -353,7 +368,6 @@ void restServer::http_server_thread() {
     if (ev_server == nullptr) {
         ERROR_NON_OO("restServer: Failed to create libevent base");
         exit(1);
-        return;
     }
 
     // Currently allow only GET and POST requests
@@ -364,27 +378,25 @@ void restServer::http_server_thread() {
 
     // Bind to the IP and port
     struct evhttp_bound_socket* ev_sock =
-        evhttp_bind_socket_with_handle(ev_server, bind_address.c_str(), port);
+        evhttp_bind_socket_with_handle(ev_server, bind_address.c_str(), _port);
     if (ev_sock == nullptr) {
-        ERROR_NON_OO("restServer: Failed to bind to {:s}:{:d}", bind_address, port);
+        ERROR_NON_OO("restServer: Failed to bind to {:s}:{:d}", bind_address, _port);
         exit(1);
-        return;
     }
 
     // if port was set to random, find port socket is listening on
-    if (port == 0) {
+    if (_port == 0) {
         evutil_socket_t sock = evhttp_bound_socket_get_fd(ev_sock);
         struct sockaddr_in sin;
         socklen_t len = sizeof(sin);
         if (getsockname(sock, (struct sockaddr*)&sin, &len) == -1) {
-            ERROR_NON_OO("restServer: Failed getting socket name ({:s}:{:d})", bind_address, port);
+            ERROR_NON_OO("restServer: Failed getting socket name ({:s}:{:d})", bind_address, _port);
             exit(1);
-            return;
         }
-        port = ntohs(sin.sin_port);
+        _port = ntohs(sin.sin_port);
     }
     // This INFO line is parsed by the python runner to get the RESTserver port. Don't edit.
-    INFO_NON_OO("restServer: started server on address:port {:s}:{:d}", bind_address, port);
+    INFO_NON_OO("restServer: started server on address:port {:s}:{:d}", bind_address, _port);
 
     // Create a timer to check for the exit condition
     struct event* timer_event;

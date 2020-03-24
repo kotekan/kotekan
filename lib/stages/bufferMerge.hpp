@@ -1,13 +1,16 @@
 #ifndef BUFFER_MERGE_HPP
 #define BUFFER_MERGE_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "visUtil.hpp"         // for frameID
 
-#include <string>
-#include <tuple>
-#include <vector>
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <tuple>    // for tuple
+#include <vector>   // for vector
 
 /**
  * @brief Merges frames from many buffers into one buffer.
@@ -51,7 +54,7 @@
 class bufferMerge : public kotekan::Stage {
 public:
     /// Constructor
-    bufferMerge(kotekan::Config& config, const string& unique_name,
+    bufferMerge(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& buffer_container);
 
     /// Destructor

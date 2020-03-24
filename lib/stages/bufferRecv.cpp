@@ -1,22 +1,40 @@
 #include "bufferRecv.hpp"
 
-#include "bufferSend.hpp"
-#include "nt_memcpy.h"
-#include "prometheusMetrics.hpp"
-#include "util.h"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for Buffer, allocate_new_metadata_object, buffer_free, buff...
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "bufferSend.hpp"        // for bufferFrameHeader
+#include "metadata.h"            // for metadataPool
+#include "prometheusMetrics.hpp" // for Gauge, Metrics, Counter, MetricFamily
+#include "util.h"                // for string_tail
+#include "visUtil.hpp"           // for current_time
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <cstring>
-#include <errno.h>
-#include <exception>
-#include <functional>
-#include <memory.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <string>
-#include <sys/mman.h>
+#include <algorithm>       // for copy, max, copy_backward, find, equal
+#include <arpa/inet.h>     // for inet_ntop
+#include <assert.h>        // for assert
+#include <atomic>          // for atomic_bool
+#include <errno.h>         // for errno
+#include <event2/thread.h> // for evthread_use_pthreads
+#include <exception>       // for exception
+#include <functional>      // for _Bind_helper<>::type, bind, ref, function, placeholders
+#include <memory>          // for allocator_traits<>::value_type
+#include <netinet/in.h>    // for sockaddr_in, htons, in_addr, ntohs
+#include <pthread.h>       // for pthread_setaffinity_np, pthread_setname_np
+#include <queue>           // for queue
+#include <regex>           // for match_results<>::_Base_type
+#include <sched.h>         // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept>       // for runtime_error
+#include <stdlib.h>        // for free, malloc
+#include <string>          // for string, allocator, operator+
+#include <sys/select.h>    // for FD_SETSIZE
+#include <sys/socket.h>    // for AF_INET, accept, bind, listen, setsockopt, socket, sock...
+
+namespace kotekan {
+class connectionInstance;
+} // namespace kotekan
 
 using namespace std::placeholders;
 using std::mutex;
@@ -32,11 +50,13 @@ using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(bufferRecv);
 
-bufferRecv::bufferRecv(Config& config, const string& unique_name,
+bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferRecv::main_thread, this)),
     dropped_frame_counter(
-        Metrics::instance().add_counter("kotekan_buffer_recv_dropped_frame_total", unique_name)) {
+        Metrics::instance().add_counter("kotekan_buffer_recv_dropped_frame_total", unique_name)),
+    transfer_time_seconds(Metrics::instance().add_gauge("kotekan_buffer_recv_transfer_time_seconds",
+                                                        unique_name, {"source"})) {
 
     listen_port = config.get_default<uint32_t>(unique_name, "listen_port", 11024);
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
@@ -96,6 +116,11 @@ void bufferRecv::accept_connection(int listener, short event, void* arg) {
 void bufferRecv::increment_droped_frame_count() {
     std::lock_guard<mutex> lock(dropped_frame_count_mutex);
     dropped_frame_counter.inc();
+}
+
+void bufferRecv::set_transfer_time_seconds(const std::string& source_label, const double elapsed) {
+    std::lock_guard<mutex> lock(transfer_time_seconds_mutex);
+    transfer_time_seconds.labels({source_label}).set(elapsed);
 }
 
 void bufferRecv::internal_accept_connection(evutil_socket_t listener, short event, void* arg) {
@@ -177,7 +202,7 @@ void bufferRecv::main_thread() {
     struct sockaddr_in server_addr;
     struct event* listener_event;
 
-    INFO("libevent version: {:s}", event_get_version());
+    DEBUG("libevent version: {:s}", event_get_version());
 
     if (evthread_use_pthreads()) {
         ERROR("Cannot use pthreads with libevent!");
@@ -238,7 +263,7 @@ void bufferRecv::main_thread() {
     // in the base loop thread, but this needs to be tested more.
     listener_event = event_new(base, listener, EV_READ | EV_PERSIST, bufferRecv::accept_connection,
                                (void*)&args);
-    event_add(listener_event, NULL);
+    event_add(listener_event, nullptr);
 
     // Create a timer to check for the exit condition
     struct event* timer_event;
@@ -276,8 +301,8 @@ int bufferRecv::get_next_frame() {
     return last_frame_id;
 }
 
-connInstance::connInstance(const string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
-                           const string& client_ip, int port, struct timeval read_timeout) :
+connInstance::connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
+                           const std::string& client_ip, int port, struct timeval read_timeout) :
     producer_name(producer_name),
     buf(buf),
     buffer_recv(buffer_recv),
@@ -293,7 +318,7 @@ connInstance::connInstance(const string& producer_name, Buffer* buf, bufferRecv*
 }
 
 connInstance::~connInstance() {
-    INFO("Closing FD");
+    DEBUG("Closing FD");
     close(fd);
     event_free(event_read);
     buffer_free(frame_space, buf->aligned_frame_size);
@@ -327,29 +352,6 @@ void connInstance::close_instance() {
 
 void connInstance::internal_read_callback() {
     DEBUG2("Read Callback");
-
-    // cache for metrics `kotekan_buffer_recv_transfer_time_seconds` because
-    // prometheusMap requires a unique (metric_name, stage_name) key, and the
-    // "producer_name" that we use as the "stage" comes from (potentially many)
-    // external source(s), so there is no guarantee of its uniqueness.
-    static std::mutex producer_transfer_time_map_lock;
-    static std::unordered_map<
-        std::string, std::shared_ptr<kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>>>
-        producer_transfer_time_map;
-
-    // Look up the metric for this instance's producer, or create a new one
-    std::shared_ptr<kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>>
-        transfer_time_seconds_metric;
-    {
-        std::lock_guard<std::mutex> lock(producer_transfer_time_map_lock);
-        if (producer_transfer_time_map.count(producer_name) == 0) {
-            auto& m = Metrics::instance().add_gauge("kotekan_buffer_recv_transfer_time_seconds",
-                                                    producer_name, {"source"});
-            producer_transfer_time_map[producer_name] =
-                std::shared_ptr<kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>>(&m);
-        }
-        transfer_time_seconds_metric = producer_transfer_time_map.at(producer_name);
-    }
 
     // Locking the instance should be equivalent to locking the bufferevent
     // since the callback which includes a given bev has a unique instance
@@ -443,7 +445,7 @@ void connInstance::internal_read_callback() {
             DEBUG2("Finished state");
             int frame_id = buffer_recv->get_next_frame();
             if (frame_id == -1) {
-                WARN("No free buffer frames, dropping data from {:s}", client_ip);
+                DEBUG("No free buffer frames, dropping data from {:s}", client_ip);
 
                 // Update dropped frame count in prometheus
                 buffer_recv->increment_droped_frame_count();
@@ -451,7 +453,7 @@ void connInstance::internal_read_callback() {
                 // This call cannot be blocking because we checked that
                 // the frame is empty in get_next_frame()
                 uint8_t* frame = wait_for_empty_frame(buf, producer_name.c_str(), frame_id);
-                if (frame == NULL)
+                if (frame == nullptr)
                     return;
 
                 allocate_new_metadata_object(buf, frame_id);
@@ -462,7 +464,7 @@ void connInstance::internal_read_callback() {
                 // We could also swap the metadata,
                 // but this is more complex, and mucher lower overhead to just memcpy here.
                 void* metadata = get_metadata(buf, frame_id);
-                if (metadata != NULL)
+                if (metadata != nullptr)
                     memcpy(metadata, metadata_space, buf_frame_header.metadata_size);
 
                 mark_frame_full(buf, producer_name.c_str(), frame_id);
@@ -472,7 +474,7 @@ void connInstance::internal_read_callback() {
                 // TODO: having IP:port as the "source" label is a **bad**
                 // Prometheus practice and of dubious usefulness
                 std::string source_label = fmt::format(fmt("{:s}:{:d}"), client_ip, port);
-                transfer_time_seconds_metric->labels({source_label}).set(elapsed);
+                buffer_recv->set_transfer_time_seconds(source_label, elapsed);
 
                 DEBUG("Received data from client: {:s}:{:d} into frame: {:s}[{:d}]", client_ip,
                       port, buf->buffer_name, frame_id);
