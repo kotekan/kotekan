@@ -87,14 +87,13 @@ endif()
 
 include(CheckIncludeFileCXX)
 if (${USE_LAPACK})
-  # Check OpenBLAS is installed
-  if (DEFINED OPENBLAS_PATH)
-    if (NOT EXISTS ${OPENBLAS_PATH})
-      MESSAGE( "OPENBLAS_PATH: \"${OPENBLAS_PATH}\" does not exist" )
-    endif()
-  endif()
-  find_package( OpenBLAS REQUIRED
-                HINTS ${OPENBLAS_PATH})
+
+  find_package( BLAS REQUIRED )
+  MESSAGE("Using BLAS ${BLAS_LIBRARIES}")
+  find_package( LAPACK REQUIRED )
+  MESSAGE("Using LAPACK ${LAPACK_LIBRARIES}")
+  find_package( LAPACKE REQUIRED )
+  MESSAGE("Using LAPACKE ${LAPACKE_LIBRARIES}")
 
   # Check Blaze is installed
   if (DEFINED BLAZE_PATH)

@@ -1,4 +1,13 @@
-name: include-what-you-use
+# NOTE:
+# When we build kotekan on the Github VM we need to take into account a few
+# limitations: first we can't lock very much memory so we need to disable
+# mlock the buffers. Second, the VMs run across a range of CPU
+# architectures (from Haswell to Skylake-AVX512 as of 2020/03). Because our
+# use of ccache shares compiled objects we must target our build for the
+# lowest architecture available or we will occasionally crash with SIGILL
+# when a newer instruction is called than is available.
+
+name: kotekan-ci-test
 on:
   pull_request:
     branches:
@@ -9,18 +18,169 @@ on:
     - develop
     - master
 
-jobs:
-  build:
-   runs-on: ubuntu-latest
+env:
+  IMG_CORE: docker.pkg.github.com/kotekan/kotekan/kotekan-core:latest
+  IMG_IWYU: docker.pkg.github.com/kotekan/kotekan/kotekan-iwyu:latest
 
-   steps:
-   - uses: actions/checkout@v1
-   - name: Build docker image
-     run: |
-       docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
-       docker pull --disable-content-trust docker.pkg.github.com/kotekan/kotekan/kotekan:latest
-       docker build --cache-from=rocm/dev-ubuntu-18.04,docker.pkg.github.com/kotekan/kotekan/kotekan:latest -f tools/iwyu/docker/Dockerfile -t docker.pkg.github.com/kotekan/kotekan/kotekan:latest .
-       docker push docker.pkg.github.com/kotekan/kotekan/kotekan:latest
-   - name: Run iwyu
-     run: |
-       docker run --rm docker.pkg.github.com/kotekan/kotekan/kotekan:latest /code/tools/iwyu/docker/iwyu.sh
+jobs:
+
+  # Build the docker images
+  build-docker:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+
+    - name: Build docker images
+      run: |
+        SECONDS=0
+        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}" | while read line ; do echo "$SECONDS s | $line";  done;
+        docker pull --disable-content-trust ${IMG_CORE} | while read line ; do echo "$SECONDS s | $line";  done;
+        docker pull --disable-content-trust ${IMG_IWYU} | while read line ; do echo "$SECONDS s | $line";  done;
+        docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE} -t ${IMG_CORE} - < tools/docker/Dockerfile | while read line ; do echo "$SECONDS s | $line";  done;
+        docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE},${IMG_IWYU} -t ${IMG_IWYU} - < tools/iwyu/docker/Dockerfile | while read line ; do echo "$SECONDS s | $line";  done;
+        docker push ${IMG_CORE} | while read line ; do echo "$SECONDS s| $line";  done;
+        docker push ${IMG_IWYU} | while read line ; do echo "$SECONDS s| $line";  done;
+
+
+  # Build a basic version of kotekan
+  build-base:
+    runs-on: ubuntu-latest
+    needs: build-docker
+
+    steps:
+    - uses: actions/checkout@v1
+
+    - name: Cache ccache files
+      uses: actions/cache@v1
+      with:
+        path: .ccache
+        key: ccache-base-build-${{ github.sha }}
+        restore-keys: |
+          ccache-base-build
+          ccache-full-build
+
+    - name: Build kotekan
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CORE})
+        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+        docker run "${OPTS[@]}" ccache -s
+        docker run "${OPTS[@]}" \
+          cmake -DCMAKE_BUILD_TYPE=Debug \
+            -DARCH=haswell \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+        docker run "${OPTS[@]}" make -j 2
+        docker run "${OPTS[@]}" ccache -s
+
+
+  # Build a full version of kotekan and run the unit tests
+  build-full-test:
+    runs-on: ubuntu-latest
+    needs: build-docker
+
+    steps:
+    - uses: actions/checkout@v1
+
+    - name: Cache ccache files
+      uses: actions/cache@v1
+      with:
+        path: .ccache
+        key: ccache-full-build-${{ github.sha }}
+        restore-keys: |
+          ccache-full-build
+          ccache-base-build
+
+    - name: Build kotekan
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CORE})
+        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+        docker run "${OPTS[@]}" ccache -s
+        docker run "${OPTS[@]}" \
+          cmake -DCMAKE_BUILD_TYPE=Debug \
+            -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+            -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
+            -DARCH=haswell \
+            -DNO_MEMLOCK=ON \
+            -DUSE_OMP=ON \
+            -DBOOST_TESTS=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+        docker run "${OPTS[@]}" make -j 2
+        docker run "${OPTS[@]}" ccache -s
+
+    - name: Run parallel python tests
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
+        docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile -x -m "not serial"
+
+    - name: Run serial python tests
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
+        docker run "${OPTS[@]}" pytest -v -x -m serial
+
+    - name: Run boost tests
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
+        docker run "${OPTS[@]}" pytest -v -x
+
+
+  # Build a full CHIME version of kotekan
+  build-chime:
+    runs-on: ubuntu-latest
+    needs: build-docker
+
+    steps:
+    - uses: actions/checkout@v1
+
+    - name: Cache ccache files
+      uses: actions/cache@v1
+      with:
+        path: .ccache
+        key: ccache-chime-build-${{ github.sha }}
+        restore-keys: |
+          ccache-chime-build
+          ccache-full-build
+
+    - name: Build kotekan
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CORE})
+        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+        docker run "${OPTS[@]}" ccache -s
+        docker run "${OPTS[@]}" \
+          cmake -DCMAKE_BUILD_TYPE=Debug \
+            -DUSE_DPDK=ON -DRTE_TARGET=x86_64-native-linuxapp-gcc \
+            -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+            -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
+            -DARCH=haswell \
+            -DNO_MEMLOCK=ON \
+            -DUSE_OMP=ON \
+            -DBOOST_TESTS=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+        docker run "${OPTS[@]}" make -j 2
+        docker run "${OPTS[@]}" ccache -s
+
+
+  iwyu:
+    runs-on: ubuntu-latest
+    needs: build-docker
+    if: github.base_ref == 'master'
+
+    steps:
+    - uses: actions/checkout@v1
+
+    - name: Configure kotekan
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_IWYU})
+        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+        docker run "${OPTS[@]}" \
+          cmake -DCMAKE_BUILD_TYPE=Debug \
+            -DUSE_DPDK=ON -DRTE_TARGET=x86_64-native-linuxapp-gcc
+            -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
+            -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
+            -DARCH=haswell \
+            -DNO_MEMLOCK=ON \
+            -DUSE_OMP=ON \
+            -DBOOST_TESTS=OFF \
+
+    - name: Run iwyu
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_IWYU})
+        docker run "${OPTS[@]}" /code/tools/iwyu/docker/iwyu.sh
