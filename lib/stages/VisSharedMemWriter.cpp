@@ -340,6 +340,12 @@ void VisSharedMemWriter::main_thread() {
         // Get a view of the current frame
         auto frame = visFrameView(in_buf, frame_id);
 
+        if (frame.data_size != data_size) {
+            FATAL_ERROR("The size of the data has changed. Buffer expects: {}. Current frame's size: {}",
+                    data_size, frame.data_size);
+            return;
+        }
+
         // Get the time and frequency of the frame
         time_ctype t = {std::get<0>(frame.time), ts_to_double(std::get<1>(frame.time))};
         uint32_t freq_ind = freq_id_map.at(frame.freq_id);
