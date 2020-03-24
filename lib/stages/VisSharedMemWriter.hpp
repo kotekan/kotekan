@@ -86,6 +86,8 @@ protected:
 
     void reset_memory(uint32_t time_ind);
 
+    bool wait_for_semaphore();
+
     std::string _root_path, _sem_name, _fname_buf;
 };
 

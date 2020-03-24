@@ -59,10 +59,7 @@ VisSharedMemWriter::~VisSharedMemWriter() {
     // We are setting num_writes to 0 in the structured data,
     // to communicate to readers that the ring buffer is not being written to
 
-    if (sem_wait(sem) == -1) {
-        FATAL_ERROR("Failed to acquire semaphore {}", _sem_name);
-        return;
-    }
+    wait_for_semaphore();
     num_writes = 0;
     memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
 
@@ -70,6 +67,28 @@ VisSharedMemWriter::~VisSharedMemWriter() {
         FATAL_ERROR("Failed to release semaphore {}", _sem_name);
         return;
     }
+}
+
+bool VisSharedMemWriter::wait_for_semaphore() {
+    // handles timed waits for semaphores
+    // does a standard wait if the system clock is not accessible
+
+    struct timespec ts;
+    if (clock_gettime(CLOCK_REALTIME, &ts) == -1){
+        DEBUG("Failed to get system time.\n Not using timed semaphores.");
+        if (sem_wait(sem) == -1) {
+            FATAL_ERROR("Failed to acquire semaphore {}", _sem_name);
+            return false;
+        }
+        return true;
+    }
+
+    ts.tv_sec += 2;
+    if (sem_timedwait(sem, &ts) == -1) {
+        DEBUG("sem_timedwait() timed out\n");
+        return false;
+    }
+    return true;
 }
 
 uint8_t* VisSharedMemWriter::assign_memory(std::string shm_name, size_t shm_size) {
@@ -170,7 +189,7 @@ void VisSharedMemWriter::reset_memory(uint32_t time_ind) {
     DEBUG("Resetting access_record memory at position time_ind: {}\n", time_ind);
 
     // notify that the entire time_ind is invalid, by setting time_ind in the access record to invalid
-    if (sem_wait(sem) == -1) {
+    if (wait_for_semaphore() == false) {
         FATAL_ERROR("Failed to acquire semaphore {}", _sem_name);
         return;
     }
@@ -201,8 +220,8 @@ void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
 
     // notify that time_ind and freq_ind are being written to, by setting that
     // location to invalid in the access record
-    if (sem_wait(sem) == -1) {
-        FATAL_ERROR("Failed to acquire semaphore {}", _sem_name);
+    if (wait_for_semaphore() == false) {
+        DEBUG("Failed to acquire semaphore {}. Dropping frame.\n", _sem_name);
         return;
     }
     memcpy(access_record_write_pos, &invalid, sizeof(invalid));
@@ -221,8 +240,8 @@ void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
     uint64_t fpga_seq = frame.metadata()->fpga_seq_start;
 
 
-    if (sem_wait(sem) == -1) {
-        FATAL_ERROR("Failed to acquire semaphore {}", _sem_name);
+    if (wait_for_semaphore() == false) {
+        FATAL_ERROR("Failed to acquire semaphore {} before metadata was updated.\n", _sem_name);
         return;
     }
 
@@ -265,7 +284,7 @@ void VisSharedMemWriter::main_thread() {
     DEBUG("Semaphore created.\n");
 
     // Acquire semaphore until shared memory is created
-    if (sem_wait(sem) == -1) {
+    if (wait_for_semaphore() == false) {
         FATAL_ERROR("Failed to acquire semaphore {}", _sem_name);
         return;
     }
