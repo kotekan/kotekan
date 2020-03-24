@@ -146,7 +146,7 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
           cmake -DCMAKE_BUILD_TYPE=Debug \
-            -DUSE_DPDK=ON -DRTE_TARGET=x86_64-native-linuxapp-gcc \
+            -DUSE_DPDK=ON \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
             -DARCH=haswell \
@@ -172,7 +172,7 @@ jobs:
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" \
           cmake -DCMAKE_BUILD_TYPE=Debug \
-            -DUSE_DPDK=ON -DRTE_TARGET=x86_64-native-linuxapp-gcc
+            -DUSE_DPDK=ON \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
             -DARCH=haswell \
