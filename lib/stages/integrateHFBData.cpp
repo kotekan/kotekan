@@ -1,14 +1,15 @@
 #include "integrateHFBData.hpp"
 
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"         // for mark_frame_empty, Buffer, register_consumer, wait_for...
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for mark_frame_empty, Buffer, register_consumer, wait_for...
 #include "chimeMetadata.h"
 #include "datasetManager.hpp"      // for state_id_t, datasetManager, dset_id_t
 #include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, stream_id_t
 #include "gpsTime.h"
 #include "hfbMetadata.hpp"
-#include "kotekanLogging.hpp" // for DEBUG, DEBUG2
-#include "visUtil.hpp"        // for freq_ctype
+#include "kotekanLogging.hpp"      // for DEBUG, DEBUG2
+#include "version.h"               // for get_git_commit_hash
+#include "visUtil.hpp"             // for freq_ctype
 
 #include <atomic>      // for atomic_bool
 #include <exception>   // for exception
@@ -47,6 +48,12 @@ integrateHFBData::integrateHFBData(Config& config_, const std::string& unique_na
     out_buf = get_buffer("hfb_output_buf");
     register_producer(out_buf, unique_name.c_str());
 
+    // weight calculation is hardcoded, so is the weight type name
+    const std::string weight_type = "hfb_weight_type";
+    const std::string git_tag = get_git_commit_hash();
+    const std::string instrument_name =
+        config.get_default<std::string>(unique_name, "instrument_name", "chime");
+
     std::vector<uint32_t> freq_ids;
 
     // Get the frequency IDs that are on this stream, check the config or just
@@ -71,6 +78,8 @@ integrateHFBData::integrateHFBData(Config& config_, const std::string& unique_na
     datasetManager& dm = datasetManager::instance();
     std::vector<state_id_t> base_states;
     base_states.push_back(dm.create_state<freqState>(freqs).first);
+    base_states.push_back(
+        dm.create_state<metadataState>(weight_type, instrument_name, git_tag).first);
 
     // register root dataset
     ds_id = dm.add_dataset(base_states);
