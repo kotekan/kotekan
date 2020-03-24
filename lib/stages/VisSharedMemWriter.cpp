@@ -167,7 +167,7 @@ void VisSharedMemWriter::reset_memory(uint32_t time_ind) {
     uint8_t *buf_write_pos = buf_addr + (time_ind * nfreq * frame_size);
     int64_t *access_record_write_pos = access_record_addr + (time_ind * nfreq);
 
-    INFO("Resetting access_record memory at position time_ind: {}\n", time_ind);
+    DEBUG("Resetting access_record memory at position time_ind: {}\n", time_ind);
 
     // notify that the entire time_ind is invalid, by setting time_ind in the access record to invalid
     if (sem_wait(sem) == -1) {
@@ -176,7 +176,7 @@ void VisSharedMemWriter::reset_memory(uint32_t time_ind) {
     }
     int64_t invalid_vector[nfreq];
     std::fill_n(invalid_vector, nfreq, invalid);
-    memcpy(access_record_write_pos, invalid_vector, nfreq * sizeof *invalid_vector);
+    memcpy(access_record_write_pos, invalid_vector, nfreq * sizeof(invalid_vector[0]));
     if (sem_post(sem) == -1) {
         FATAL_ERROR("Failed to post semaphore {}", _sem_name);
         return;
@@ -197,7 +197,7 @@ void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
     uint8_t *buf_write_pos = buf_addr + ((time_ind * nfreq + freq_ind) * frame_size);
     int64_t *access_record_write_pos = access_record_addr + (time_ind * nfreq + freq_ind);
 
-    INFO("Writing ringbuffer to time_ind {} and freq_ind {}\n", time_ind, freq_ind);
+    DEBUG("Writing ringbuffer to time_ind {} and freq_ind {}\n", time_ind, freq_ind);
 
     // notify that time_ind and freq_ind are being written to, by setting that
     // location to invalid in the access record
@@ -356,7 +356,7 @@ void VisSharedMemWriter::main_thread() {
     // std::fill_n(array, 100, -1);
     int64_t invalid_vector [_ntime * nfreq];
     std::fill_n(invalid_vector, _ntime*nfreq, invalid);
-    memcpy(access_record_addr, invalid_vector, _ntime * nfreq * sizeof *invalid_vector);
+    memcpy(access_record_addr, invalid_vector, _ntime * nfreq * sizeof(invalid_vector[0]));
 
     INFO("Created the shared memory segments\n");
     if (sem_post(sem) == -1) {
