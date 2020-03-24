@@ -40,8 +40,21 @@ hfbFileRaw::hfbFileRaw(const std::string& name, const kotekan::logLevel log_leve
 
     INFO("Creating new output file {:s}", name);
 
+    // Get properties of stream from datasetManager
+    auto& dm = datasetManager::instance();
+    auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm, dataset);
+    const freqState* fstate = fstate_fut.get();
+
+    if (!fstate) {
+        ERROR("Required datasetState not found for dataset ID {}\nThe following required states "
+              "were found:\nfreqState - {:p}\n",
+              dataset, (void*)fstate);
+        throw std::runtime_error("Could not create file.");
+    }
+    
     // Set the axis metadata
     file_metadata["attributes"] = metadata;
+    file_metadata["index_map"]["freq"] = unzip(fstate->get_freqs()).second;
 
     // Calculate the file structure
     nfreq = 1024;
