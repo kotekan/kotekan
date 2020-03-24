@@ -94,9 +94,6 @@ hfbRawReader::hfbRawReader(Config& config, const std::string& unique_name,
     _metadata = _t["attributes"];
     _times = _t["index_map"]["time"].get<std::vector<time_ctype>>();
     //auto freqs = _t["index_map"]["freq"].get<std::vector<freq_ctype>>();
-    //_inputs = _t["index_map"]["input"].get<std::vector<input_ctype>>();
-    //_prods = _t["index_map"]["prod"].get<std::vector<prod_ctype>>();
-    //_ev = _t["index_map"]["ev"].get<std::vector<uint32_t>>();
     if (_t.at("index_map").find("stack") != _t.at("index_map").end()) {
         _stack = _t.at("index_map").at("stack").get<std::vector<stack_ctype>>();
         _rstack = _t.at("reverse_map").at("stack").get<std::vector<rstack_ctype>>();

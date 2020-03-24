@@ -122,7 +122,7 @@ private:
     // The metadata
     nlohmann::json _metadata;
     std::vector<time_ctype> _times;
-    //std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
+    std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
     //std::vector<prod_ctype> _prods;
     //std::vector<input_ctype> _inputs;
     std::vector<stack_ctype> _stack;

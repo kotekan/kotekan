@@ -81,7 +81,7 @@ endif ()
 
 # HDF5 and OpenMP
 if (${USE_HDF5} AND ${USE_OMP})
-  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visTranspose.cpp)
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} visTranspose.cpp hfbTranspose.cpp)
 endif()
 
 # OpenMP
