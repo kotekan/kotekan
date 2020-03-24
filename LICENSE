@@ -37,8 +37,7 @@ THE SOFTWARE.
 ===== Formatting library for C++ =====
 
 Files:
-  include/fmt.hpp
-  include/fmt/*
+  external/fmt/*
 
 ===
 Formatting library for C++
@@ -70,7 +69,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ===== gsl-lite =====
 
 Files:
-  include/gsl-light.hpp
+  external/gsl/gsl-light.hpp
 
 ===
 gsl-lite is based on GSL: Guideline Support Library.
@@ -93,7 +92,7 @@ THE SOFTWARE.
 ===== JSON for Modern C++ =====
 
 Files:
-  include/json.hpp
+  external/json/json.hpp
 
 ===
     __ _____ _____ _____
@@ -208,4 +207,15 @@ Distributed under the OSI-approved BSD License (the "License")
 
 This software is distributed WITHOUT ANY WARRANTY; without even the
 implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+===
+
+
+===== MurmurHash3 =====
+
+Files:
+    external/MurmurHash3/*
+
+===
+MurmurHash3 was written by Austin Appleby, and is placed in the public
+domain. The author hereby disclaims copyright to this source code.
 ===
