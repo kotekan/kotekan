@@ -295,7 +295,7 @@ void VisSharedMemWriter::main_thread() {
 
     // Calculate the ring buffer structure
 
-    data_size = frame.get_data_size();
+    data_size = frame.data_size;
     metadata_size = sizeof(visMetadata);
     // Alligns the frame along page size
     frame_size = _member_alignment(data_size + metadata_size + valid_size, alignment);

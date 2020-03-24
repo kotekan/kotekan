@@ -61,6 +61,7 @@ visFrameView::visFrameView(Buffer* buf, int frame_id, uint32_t n_elements, uint3
     num_elements(_metadata->num_elements),
     num_prod(_metadata->num_prod),
     num_ev(_metadata->num_ev),
+    data_size(buffer_layout.first),
 
     // Set the refs to the general _metadata
     time(std::tie(_metadata->fpga_seq_start, _metadata->ctime)),
