@@ -80,8 +80,6 @@ protected:
 
     uint8_t* assign_memory(std::string shm_name, size_t shm_size);
 
-    uint64_t get_data_size(const visFrameView& frame);
-
     bool add_sample(const visFrameView& frame, time_ctype t, uint32_t freq_ind);
 
     void write_to_memory(const visFrameView& frame, uint32_t time_ind, uint32_t freq_ind);

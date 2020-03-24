@@ -108,7 +108,7 @@ def vis_data(tmpdir_factory, comet_broker):
 
     # KotekanStageTester is used to run kotekan with my config
     test = runner.KotekanStageTester(
-        stage_type="visSharedMemWriter",
+        stage_type="VisSharedMemWriter",
         stage_config=params_writer_stage,
         buffers_in=fakevis_buffer,
         buffers_out=None,

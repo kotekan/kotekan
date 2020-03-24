@@ -240,42 +240,6 @@ void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
 
 }
 
-uint64_t VisSharedMemWriter::get_data_size(const visFrameView& frame) {
-
-    auto& dm = datasetManager::instance();
-
-    // Get properties of stream from first frame and datasetManager
-    // If we can get the data_size in other ways, we will not need
-    // ninput, nvis, or num_ev anymore
-    const stackState* stack_state = dm.dataset_state<stackState>(frame.dataset_id);
-    const inputState* input_state = dm.dataset_state<inputState>(frame.dataset_id);
-    const prodState* prod_state = dm.dataset_state<prodState>(frame.dataset_id);
-
-    const eigenvalueState* eigenvalue_state = dm.dataset_state<eigenvalueState>(frame.dataset_id);
-
-    if (!input_state || !prod_state) {
-        ERROR("Required datasetState not found for dataset ID {}\nThe following required states "
-                "were found:\ninputState - {:p}\nprodState - {:p}\n",
-                frame.dataset_id, (void*)input_state, (void*)prod_state);
-        throw std::runtime_error("Could not write to shared memory.");
-    }
-
-    // Count the eigenvalue index
-    size_t num_ev;
-    if (eigenvalue_state) {
-        num_ev = eigenvalue_state->get_num_ev();
-    } else {
-        num_ev = 0;
-    }
-
-    size_t ninput = input_state->get_inputs().size();
-    size_t nvis = stack_state ? stack_state->get_num_stack() : prod_state->get_prods().size();
-
-    auto layout = visFrameView::calculate_buffer_layout(ninput, nvis, num_ev);
-
-    return layout.first;
-}
-
 void VisSharedMemWriter::main_thread() {
     DEBUG("Reached main thread\n");
 
@@ -331,7 +295,7 @@ void VisSharedMemWriter::main_thread() {
 
     // Calculate the ring buffer structure
 
-    data_size = get_data_size(frame);
+    data_size = frame.get_data_size();
     metadata_size = sizeof(visMetadata);
     // Alligns the frame along page size
     frame_size = _member_alignment(data_size + metadata_size + valid_size, alignment);
