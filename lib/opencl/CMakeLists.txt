@@ -2,8 +2,6 @@ project( kotekan_opencl )
 
 include_directories(${OpenCL_INCLUDE_DIR})
 
-include_directories (${KOTEKAN_SOURCE_DIR}/include)
-
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/gpu)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/opencl)
@@ -44,6 +42,8 @@ set ( KOTEKAN_OPENCL_SOURCES
     )
 
 add_library ( kotekan_opencl ${KOTEKAN_OPENCL_SOURCES} )
+
+target_link_libraries(kotekan_opencl libexternal)
 
 add_custom_target(kernel_copy
     COMMAND ${CMAKE_COMMAND} -E copy_directory

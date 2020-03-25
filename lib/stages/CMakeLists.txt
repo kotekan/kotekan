@@ -121,4 +121,6 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     target_link_libraries ( kotekan_stages -latomic )
 endif()
 
+target_link_libraries( kotekan_stages libexternal )
+
 target_link_libraries( kotekan_stages kotekan_utils kotekan_core )
