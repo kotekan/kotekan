@@ -73,7 +73,7 @@ bool VisSharedMemWriter::wait_for_semaphore() {
     // handles timed waits for semaphores
     // does a standard wait if the system clock is not accessible
 
-    struct timespec ts;
+    timespec ts;
     if (clock_gettime(CLOCK_REALTIME, &ts) == -1){
         WARN("Failed to get system time. {:d} ({:s})\n Not using timed semaphores.", errno, std::strerror(errno));
         if (sem_wait(sem) == -1) {
