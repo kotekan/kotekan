@@ -206,7 +206,7 @@ class SharedMemoryReader:
         access_record_after_copy = self._access_record()
         for t in times:
             for f in range(self.num_freq):
-                if access_record_after_copy[t][f] != access_record[t][f]:
+                if access_record_after_copy[t, f] != access_record[t, f]:
                     logger.debug(
                         "Data at t={}, f={} became invalid while reading it.".format(
                             t, f
@@ -327,7 +327,7 @@ class SharedMemoryReader:
         access_record_after_copy = self._access_record()
         for t in times:
             for f in range(self.num_freq):
-                if access_record_after_copy[t][f] != access_record[t][f]:
+                if access_record_after_copy[t, f] != access_record[t, f]:
                     self._data[self._time_index_map[t], f] = None
         if self._last_access_record is None:
             self._last_access_record = np.ndarray((self.num_time, self.num_freq))
@@ -342,9 +342,9 @@ class SharedMemoryReader:
         for t in range(self.num_time):
             for f in range(self.num_freq):
                 if (
-                    last_ts[t] is None and access_record[t][f] != self.invalid_value
-                ) or (last_ts[t] is None or access_record[t][f] > last_ts[t]):
-                    last_ts[t] = access_record[t][f]
+                    last_ts[t] is None and access_record[t, f] != self.invalid_value
+                ) or (last_ts[t] is None or access_record[t, f] > last_ts[t]):
+                    last_ts[t] = access_record[t, f]
         return last_ts
 
     def _sort_timestamps(self, timestamps):
@@ -421,14 +421,14 @@ class SharedMemoryReader:
             for f_i in range(self.num_freq):
                 # check if this value should be copied: only if the access record changed and
                 # is not set to invalid
-                if access_record[t][f_i] != self.invalid_value and (
+                if access_record[t, f_i] != self.invalid_value and (
                     self._last_access_record is None
-                    or access_record[t][f_i] > self._last_access_record[t][f_i]
+                    or access_record[t, f_i] > self._last_access_record[t, f_i]
                 ):
                     logger.debug("Copying value at time={}, freq={}".format(t, f_i))
                     # check if this time slot is in local copy of data
                     try:
-                        t_i = self._time_index_map[access_record[t][f_i]]
+                        t_i = self._time_index_map[access_record[t, f_i]]
                     except KeyError:
                         if len(self._time_index_map) == self.buffer_size:
                             t_i = self._remove_oldest_time_slot()
@@ -442,10 +442,10 @@ class SharedMemoryReader:
                                 )
                         logger.debug(
                             "Setting time index map [{}] to {}.".format(
-                                access_record[t][f_i], t_i
+                                access_record[t, f_i], t_i
                             )
                         )
-                        self._time_index_map[access_record[t][f_i]] = t_i
+                        self._time_index_map[access_record[t, f_i]] = t_i
 
                     # copy the value
                     # TODO: eliminate extra copy
