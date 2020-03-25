@@ -162,7 +162,7 @@ class SharedMemoryReader:
                 "Shared memory file did not exist when trying to unlink from it."
             )
 
-    def read_last(self, n: int):
+    def read_last(self, n):
         """
         Read last n time samples from the buffer.
 
