@@ -27,6 +27,9 @@ RUN python3.7 -m pip install --upgrade pip && \
 RUN mkdir -p /code/build
 WORKDIR /code/build
 
+# So tzdata package doesn't ask for user interaction
+ARG DEBIAN_FRONTEND=noninteractive
+
 # Install h5py from source for bitshuffle, and clone HighFive for kotekan build
 RUN git clone https://github.com/h5py/h5py.git h5py && \
     cd h5py && \
@@ -51,6 +54,11 @@ RUN python3.7 -m pip install "msgpack>=0.6.1" click future requests pyyaml \
 
 # Install redis for comet tests
 RUN apt-get install -y redis
+
+# Install documentation dependencies
+RUN apt-get -y install doxygen graphviz python-sphinx python-breathe && \
+    python3.7 -m pip install sphinx_rtd_theme sphinxcontrib-plantuml && \
+    wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar -P plantuml
 
 # Set ccache to store things sensibly
 ENV CCACHE_NOHASHDIR 1
