@@ -310,6 +310,7 @@ class VisRaw(object):
         index_map,
         data,
         valid_frames,
+        file_metadata=None,
     ):
         self.num_time = num_time
         self.num_freq = num_freq
@@ -319,6 +320,7 @@ class VisRaw(object):
         self.index_map = index_map
         self.data = data
         self.valid_frames = valid_frames
+        self.file_metadata = file_metadata
 
     @classmethod
     def from_nparray(
@@ -382,6 +384,7 @@ class VisRaw(object):
             valid_frames=valid_frames,
         )
 
+    @classmethod
     def from_file(cls, filename, mode="r", mmap=False):
         """Read correlator files in the raw format.
 
@@ -469,6 +472,8 @@ class VisRaw(object):
             }
         )
 
+        file_metadata = metadata
+
         # TODO: Python 3 - use native_str for compatibility
         # Load data into on-disk numpy array
         raw = np.memmap(
@@ -481,7 +486,17 @@ class VisRaw(object):
         metadata = raw["metadata"]
         valid_frames = raw["valid"]
 
-        return cls(num_time, num_freq, num_prod, metadata, time, index_map, data)
+        return cls(
+            num_time,
+            num_freq,
+            num_prod,
+            metadata,
+            time,
+            index_map,
+            data,
+            valid_frames,
+            file_metadata,
+        )
 
     @staticmethod
     def _parse_filename(fname):
