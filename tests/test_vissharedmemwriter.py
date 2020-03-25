@@ -10,12 +10,15 @@ import os
 import posix_ipc
 import pytest
 import struct
+import tempfile
 
 from kotekan import runner
 
-sem_name = "kotekan"
-fname_access_record = "calBufferAccessRecord"
-fname_buf = "calBuffer"
+# use tempfile creation to get exclusive random strings
+useless_file = tempfile.NamedTemporaryFile()
+sem_name = "kotekan_" + os.path.split(useless_file.name)[-1]
+fname_buf = "calBuffer_" + os.path.split(useless_file.name)[-1]
+
 page_size = 4096
 
 params = {
@@ -47,7 +50,7 @@ params_fakevis_large = {
 
 global num_frames
 
-params_writer_stage = {"nsamples": 7}
+params_writer_stage = {"nsamples": 7, "sem_name": sem_name, "fname_buf": fname_buf}
 
 
 @pytest.fixture(

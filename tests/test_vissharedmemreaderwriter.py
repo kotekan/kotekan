@@ -22,8 +22,10 @@ from comet import Manager
 
 from kotekan import runner, shared_memory_buffer
 
-sem_name = "kotekan"
-fname_buf = "calBuffer"
+# use tempfile creation to get exclusive random strings
+useless_file = tempfile.NamedTemporaryFile()
+sem_name = "kotekan_" + os.path.split(useless_file.name)[-1]
+fname_buf = "calBuffer_" + os.path.split(useless_file.name)[-1]
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -93,7 +95,7 @@ params_fakevis = {
     "wait": True,
 }
 
-params_writer_stage = {"nsamples": 5}
+params_writer_stage = {"nsamples": 5, "sem_name": sem_name, "fname_buf": fname_buf}
 
 
 @pytest.fixture()
