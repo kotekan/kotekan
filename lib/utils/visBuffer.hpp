@@ -243,14 +243,6 @@ public:
         return _frame;
     }
 
-    /**
-     * @brief Size of the frame data.
-     * @returns The data size.
-     **/
-    size_t get_data_size() const {
-        return buffer_layout.first;
-    }
-
 private:
     // References to the buffer and metadata we are viewing
     Buffer* const buffer;

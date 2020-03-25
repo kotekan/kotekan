@@ -1,6 +1,9 @@
 #include "VisSharedMemWriter.hpp"
 #include <cxxabi.h>             // for _forced_unwind
 #include <fcntl.h>              // for O_CREAT, O_EXCL, O_RDWR
+#include <errno.h>              // for ENOENT, errno
+#include <stdio.h>              // for remove
+#include <unistd.h>             // for access, F_OK
 #include <string.h>             // for memcpy, strerror
 #include <sys/mman.h>           // for mmap, shm_open, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE
 #include <sys/stat.h>           // for S_IRUSR, S_IWUSR
@@ -31,6 +34,17 @@ using kotekan::Stage;
 
 
 REGISTER_KOTEKAN_STAGE(VisSharedMemWriter);
+
+void check_remove(std::string fname) {
+    // Check if we need to remove anything
+    if (access(fname.c_str(), F_OK) != 0)
+        return;
+    // Remove
+    if (remove(fname.c_str()) != 0) {
+        if (errno != ENOENT)
+            throw std::runtime_error("Could not remove file " + fname);
+    }
+}
 
 VisSharedMemWriter::VisSharedMemWriter(Config& config, const std::string& unique_name, bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&VisSharedMemWriter::main_thread, this)) {
@@ -401,3 +415,4 @@ void VisSharedMemWriter::main_thread() {
 
     }
 }
+
