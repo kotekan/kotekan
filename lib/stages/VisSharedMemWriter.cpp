@@ -104,27 +104,23 @@ uint8_t* VisSharedMemWriter::assign_memory(std::string shm_name, size_t shm_size
         int fd = shm_open(shm_name.c_str(), (O_CREAT | O_RDWR), (S_IRUSR | S_IWUSR));
 
         if (fd == -1) {
-            throw std::runtime_error(
-                fmt::format(fmt("Cannot open shared memory named {:s}: {:s}"), shm_name, strerror(errno)));
+            FATAL_ERROR("Cannot open shared memory named {:s}: {:s}", shm_name, strerror(errno));
         }
 
         // Resize object to hold buffer
         if (ftruncate(fd, shm_size) == -1) {
-            throw std::runtime_error(
-                fmt::format(fmt("Failed to expand shared memory named {:s}: {:s}"), shm_name, strerror(errno)));
+            FATAL_ERROR("Failed to expand shared memory named {:s}: {:s}", shm_name, strerror(errno));
         }
         INFO("Resized to {} bytes\n", (long) shm_size);
 
         addr = (uint8_t*) mmap(nullptr, shm_size, (PROT_READ | PROT_WRITE), MAP_SHARED, fd, 0);
         if (addr == MAP_FAILED) {
-            throw std::runtime_error(
-                fmt::format(fmt("Failed to map shm {:s} to memory: {:s}."), shm_name, strerror(errno)));
+            FATAL_ERROR("Failed to map shm {:s} to memory: {:s}.", shm_name, strerror(errno));
         }
 
         // fd is no longer needed
         if (close(fd) == -1) {
-            throw std::runtime_error(
-                fmt::format(fmt("Failed to close file descriptor for shm {:s}: {:s}."), shm_name, strerror(errno)));
+            FATAL_ERROR("Failed to close file descriptor for shm {:s}: {:s}.", shm_name, strerror(errno));
         }
 
         return addr;
