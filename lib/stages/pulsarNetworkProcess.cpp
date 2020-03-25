@@ -51,6 +51,7 @@ pulsarNetworkProcess::pulsarNetworkProcess(Config& config_, const std::string& u
     timesamples_per_pulsar_packet =
         config.get_default<int>(unique_name, "timesamples_per_pulsar_packet", 625);
     num_packet_per_stream = config.get_default<int>(unique_name, "num_packet_per_stream", 80);
+    _num_beams = config.get<int>(unique_name, "num_beams");
 
     my_host_name = (char*)malloc(sizeof(char) * 100);
     CHECK_MEM(my_host_name);
@@ -199,9 +200,9 @@ void pulsarNetworkProcess::main_thread() {
         vdif_last_frame = header->data_frame;
 
         for (int frame = 0; frame < 80; frame++) {
-            for (int beam = 0; beam < 10; beam++) {
+            for (int beam = 0; beam < _num_beams; beam++) {
                 int e_beam = my_sequence_id + beam;
-                e_beam = e_beam % 10;
+                e_beam = e_beam % _num_beams;
                 CLOCK_ABS_NANOSLEEP(CLOCK_MONOTONIC, t1);
                 if (e_beam < number_of_pulsar_links) {
                     sendto(sock_fd[socket_ids[e_beam]],

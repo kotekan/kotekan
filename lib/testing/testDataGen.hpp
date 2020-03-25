@@ -8,7 +8,8 @@
 
 #include "json.hpp" // for json
 
-#include <string> // for string
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
 
 // Type: one of "random", "const"
 // Value: the value of the constant
@@ -68,6 +69,7 @@ private:
     int num_frames;
     int stream_id;
     int num_local_freq;
+    uint32_t _first_frame_index;
 };
 
 #endif

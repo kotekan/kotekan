@@ -15,4 +15,4 @@ service entries for a gpu node and a receiver node that can be used as templates
 additional services (which spawn containers). The kotekan config that will be provided
 to the node is specified by the KOTEKAN_CONFIG environment variable
 3. Start the Docker containers with the command
-`docker-compose -f docker-compose-example.yaml up`, substiting in your own yaml file.
+`docker-compose -f docker-compose-example.yaml up`, substituting in your own yaml file.

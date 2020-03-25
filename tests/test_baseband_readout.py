@@ -5,6 +5,7 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 
 # === End Python 2/3 compatibility
 
+import os
 import glob
 import random
 import pytest
@@ -14,11 +15,19 @@ import h5py
 
 from kotekan import runner
 
-
 # Skip if HDF5 support not built into kotekan
 if not runner.has_hdf5():
     pytest.skip("HDF5 support not available.", allow_module_level=True)
 
+def is_docker():
+    path = '/proc/self/cgroup'
+    return (
+        os.path.exists('/.dockerenv') or
+        os.path.isfile(path) and any('docker' in line for line in open(path))
+    )
+
+if is_docker():
+    pytest.skip("Does not work in Github Actions docker run.", allow_module_level=True)
 
 default_params = {
     "max_dump_samples": 3500,
