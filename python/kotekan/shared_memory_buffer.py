@@ -1,16 +1,14 @@
 """Python interface for the kotekan ring buffer using a shared memory region."""
 
+import ctypes
 import logging
 import mmap
 import numpy as np
 import os
 import posix_ipc
-import struct
 
 from kotekan.visbuffer import VisRaw
 
-FMT_UINT64_T = "Q"
-FMT_INT64_T = "q"
 SIZE_UINT64_T = 8
 
 logger = logging.getLogger(__name__)
@@ -32,6 +30,19 @@ class NoNewDataError(Exception):
     """The data in the shared memory has not changed since the last time checked."""
 
     pass
+
+
+class Structure(ctypes.Structure):
+    """Structural parameters of the shared memory reagion."""
+
+    _fields_ = [
+        ("num_writes", ctypes.c_ulonglong),
+        ("num_time", ctypes.c_ulonglong),
+        ("num_freq", ctypes.c_ulonglong),
+        ("size_frame", ctypes.c_ulonglong),
+        ("size_meta", ctypes.c_ulonglong),
+        ("size_data", ctypes.c_ulonglong),
+    ]
 
 
 class SharedMemoryReader:
@@ -72,14 +83,13 @@ class SharedMemoryReader:
         # 0 means entire file
         self.shared_mem = mmap.mmap(shared_mem.fd, 0, prot=mmap.PROT_READ)
 
-        (
-            self.num_writes,
-            self.num_time,
-            self.num_freq,
-            self.size_frame,
-            self.size_frame_meta,
-            self.size_frame_data,
-        ) = self._read_structural_data()
+        structure = self._read_structural_data()
+        self.num_writes = structure.num_writes
+        self.num_time = structure.num_time
+        self.num_freq = structure.num_freq
+        self.size_frame = structure.size_frame
+        self.size_frame_meta = structure.size_meta
+        self.size_frame_data = structure.size_data
 
         if self.num_writes == self.invalid_value:
             raise SharedMemoryError(
@@ -120,32 +130,7 @@ class SharedMemoryReader:
             )
 
     def _read_structural_data(self):
-        num_writes = struct.unpack_from(
-            FMT_UINT64_T, self.shared_mem.read(SIZE_UINT64_T)
-        )[0]
-        num_time = struct.unpack_from(
-            FMT_UINT64_T, self.shared_mem.read(SIZE_UINT64_T)
-        )[0]
-        num_freq = struct.unpack_from(
-            FMT_UINT64_T, self.shared_mem.read(SIZE_UINT64_T)
-        )[0]
-        size_frame = struct.unpack_from(
-            FMT_UINT64_T, self.shared_mem.read(SIZE_UINT64_T)
-        )[0]
-        size_meta = struct.unpack_from(
-            FMT_UINT64_T, self.shared_mem.read(SIZE_UINT64_T)
-        )[0]
-        size_data = struct.unpack_from(
-            FMT_UINT64_T, self.shared_mem.read(SIZE_UINT64_T)
-        )[0]
-        return (
-            num_writes,
-            num_time,
-            num_freq,
-            size_frame,
-            size_meta,
-            size_data,
-        )
+        return Structure.from_buffer_copy(self.shared_mem)
 
     def __del__(self):
         self.semaphore.release()
@@ -484,14 +469,13 @@ class SharedMemoryReader:
             have changed.
         """
 
-        (
-            num_writes,
-            num_time,
-            num_freq,
-            size_frame,
-            size_frame_meta,
-            size_frame_data,
-        ) = self._read_structural_data()
+        structure = self._read_structural_data()
+        num_writes = structure.num_writes
+        num_time = structure.num_time
+        num_freq = structure.num_freq
+        size_frame = structure.size_frame
+        size_frame_meta = structure.size_meta
+        size_frame_data = structure.size_data
 
         if num_writes == 0 and self.num_writes > 0:
             raise SharedMemoryError(
