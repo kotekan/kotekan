@@ -120,7 +120,7 @@ class VisBuffer(object):
 
         _data = self._buffer[ctypes.sizeof(VisMetadata) :]
 
-        layout = self.__class__._calculate_layout(
+        layout = self.__class__.calculate_layout(
             self.metadata.num_elements, self.metadata.num_prod, self.metadata.num_ev
         )
 
@@ -132,7 +132,7 @@ class VisBuffer(object):
             setattr(self, member["name"], arr)
 
     @classmethod
-    def _calculate_layout(cls, num_elements, num_prod, num_ev):
+    def calculate_layout(cls, num_elements, num_prod, num_ev):
         """Calculate the buffer layout.
 
         Parameters
@@ -251,7 +251,7 @@ class VisBuffer(object):
         buffer : VisBuffer
         """
 
-        layout = cls._calculate_layout(num_elements, num_prod, num_ev)
+        layout = cls.calculate_layout(num_elements, num_prod, num_ev)
         meta_size = ctypes.sizeof(VisMetadata)
 
         buf = np.zeros(meta_size + layout["size"], dtype=np.uint8)
@@ -326,7 +326,7 @@ class VisRaw(object):
     def from_nparray(
         cls, array, size_frame, num_time, num_freq, num_elements, num_stack, num_ev,
     ):
-        layout = VisBuffer._calculate_layout(num_elements, num_stack, num_ev)
+        layout = VisBuffer.calculate_layout(num_elements, num_stack, num_ev)
 
         # TODO: remove this when we have fixed the alignment issue in kotekan (see self.from_file)
         dtype_layout = {"names": [], "formats": [], "offsets": []}
@@ -450,7 +450,7 @@ class VisRaw(object):
         # ]
         # data_struct = np.dtype([(native_str(d[0]),) + d[1:] for d in data_struct], align=True)
 
-        layout = VisBuffer._calculate_layout(num_elements, num_stack, num_ev)
+        layout = VisBuffer.calculate_layout(num_elements, num_stack, num_ev)
 
         # TODO: remove this when we have fixed the alignment issue in kotekan
         dtype_layout = {"names": [], "formats": [], "offsets": []}
@@ -558,7 +558,7 @@ class VisRaw(object):
         ntime = len(time)
 
         msize = ctypes.sizeof(VisMetadata)
-        dsize = VisBuffer._calculate_layout(ninput, nstack, nev)["size"]
+        dsize = VisBuffer.calculate_layout(ninput, nstack, nev)["size"]
 
         structure = {
             "nfreq": nfreq,
