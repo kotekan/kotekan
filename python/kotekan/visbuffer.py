@@ -454,7 +454,10 @@ class VisRaw(object):
         for member in layout["members"]:
             dtype_layout["names"].append(member["name"])
             dtype_layout["offsets"].append(member["start"])
-            dtype_layout["formats"].append((member["dtype"], member["num"]))
+            if member["num"] == 1:
+                dtype_layout["formats"].append(member["dtype"])
+            else:
+                dtype_layout["formats"].append((member["dtype"], member["num"]))
         dtype_layout["itemsize"] = layout["size"]
         data_struct = np.dtype(dtype_layout)
 
