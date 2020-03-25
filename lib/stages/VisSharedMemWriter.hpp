@@ -46,6 +46,8 @@ protected:
     uint64_t num_writes = 0;
     // The number of time samples contained in ring buffer
     size_t _ntime;
+    // The semaphore wait time before a timeout, in seconds
+    size_t _sem_wait_time;
     // The number of frequencies contained in each time sample
     uint64_t nfreq;
     // The size of each frame (valid byte + metadata + data + page alignment padding)
@@ -82,9 +84,9 @@ protected:
 
     bool add_sample(const visFrameView& frame, time_ctype t, uint32_t freq_ind);
 
-    void write_to_memory(const visFrameView& frame, uint32_t time_ind, uint32_t freq_ind);
+    bool write_to_memory(const visFrameView& frame, uint32_t time_ind, uint32_t freq_ind);
 
-    void reset_memory(uint32_t time_ind);
+    bool reset_memory(uint32_t time_ind);
 
     bool wait_for_semaphore();
 
