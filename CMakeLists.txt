@@ -231,8 +231,6 @@ endif()
 
 find_package(Threads REQUIRED)
 
-include_directories (${KOTEKAN_SOURCE_DIR}/include)
-
 # Note that -lrt here is needed on some versions of CentOS but not Clang
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options("-lrt")
@@ -326,7 +324,7 @@ endif()
 add_subdirectory(lib)
 add_subdirectory(kotekan)
 add_subdirectory(scripts)
-add_subdirectory(include)
+add_subdirectory(external)
 add_subdirectory(config)
 
 # Testing with boost
