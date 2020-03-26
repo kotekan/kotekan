@@ -81,11 +81,13 @@ protected:
 
     bool add_sample(const visFrameView& frame, time_ctype t, uint32_t freq_ind);
 
-    bool write_to_memory(const visFrameView& frame, uint32_t time_ind, uint32_t freq_ind);
+    void write_to_memory(const visFrameView& frame, uint32_t time_ind, uint32_t freq_ind);
 
-    bool reset_memory(uint32_t time_ind);
+    void reset_memory(uint32_t time_ind);
 
-    bool wait_for_semaphore();
+    void wait_for_semaphore();
+
+    void release_semaphore();
 
     std::string _root_path, _sem_name, _fname_buf;
 };
