@@ -136,7 +136,9 @@ def test_shared_mem_buffer(vis_data, comet_broker):
 
     i = 0
     with pytest.raises(shared_memory_buffer.SharedMemoryError):
-        while True:
+        # Give this some extra time, because maybe it's just reading nothing a few times, but make
+        # sure it eventually raises because the shared memory got removed by the writer.
+        while i <= params["total_frames"] * 2:
             sleep(0.5)
             visraw = buffer.read_last(n_times_to_read)
             assert visraw.num_time == n_times_to_read
@@ -173,6 +175,7 @@ def test_shared_mem_buffer_read_since(vis_data, comet_broker):
             num_time, new_ts = check_visraw(
                 visraw, num_freq, num_ev, num_elements, ds_manager
             )
+
             if new_ts is not None:
                 timestamp = new_ts
             total_time += num_time
@@ -181,11 +184,15 @@ def test_shared_mem_buffer_read_since(vis_data, comet_broker):
 
 
 def check_visraw(visraw, num_freq, num_ev, num_elements, ds_manager):
+    """Test content of valid frames."""
+
     num_time = visraw.num_time
     assert visraw.num_freq == len(params_fakevis["freq_ids"])
 
     num_prod = num_elements * (num_elements + 1) / 2
-    assert (visraw.num_prod == num_prod).all()
+
+    # check valid frames only
+    assert np.array_equal(visraw.num_prod, num_prod * visraw.valid_frames)
 
     ds = np.array(visraw.metadata["dataset_id"]).view("u8,u8")
     unique_ds = np.unique(ds)
@@ -217,14 +224,18 @@ def check_visraw(visraw, num_freq, num_ev, num_elements, ds_manager):
     assert (
         evecs.imag == np.arange(num_elements)[np.newaxis, np.newaxis, np.newaxis, :]
     ).all()
-    assert (erms == 1.0).all()
+    assert np.array_equal(erms, visraw.valid_frames)
 
     vis = visraw.data["vis"].copy().view(np.complex64)
     assert vis.shape == (num_time, num_freq, num_prod)
-    for v in vis:
-        assert (v.real == 1.0).all()
-        assert (v.imag == 0.0).all()
+    for time_slot_vis, time_slot_valid in zip(vis, visraw.valid_frames):
+        for frame, valid in zip(time_slot_vis, time_slot_valid):
+            if valid:
+                assert (frame.real == 1.0).all()
+                assert (frame.imag == 0.0).all()
 
     if num_time > 0:
-        return num_time, visraw.time[-1][0]
+        # find last valid timestamp
+        valid_times = visraw.time[visraw.valid_frames]
+        return num_time, valid_times[-1, 0]["fpga_count"]
     return 0, None

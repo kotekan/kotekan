@@ -110,9 +110,28 @@ class SharedMemoryReader:
 
         os.close(shared_mem.fd)
 
-        self._data = np.ndarray(
-            (buffer_size, self.num_freq), dtype=np.dtype((np.void, self.size_frame))
+        # Assign simplified frame structure to data in order to access valid field.
+        # The valid field is 4byte-aligned.
+        align_valid = 4
+        self._frame_struct = np.dtype(
+            {
+                "names": ["valid", "metadata", "data"],
+                "formats": [
+                    np.uint8,
+                    (np.void, self.size_frame_meta),
+                    (np.void, self.size_frame_data),
+                ],
+                "offsets": [0, align_valid, align_valid + self.size_frame_meta],
+                "itemsize": self.size_frame,
+            }
         )
+
+        # Create buffer for frames kept by this module
+        self._data = np.ndarray((buffer_size, self.num_freq), dtype=self._frame_struct)
+
+        # initialize valid fields
+        self._data["valid"][:, :] = 0
+
         logger.debug(
             "Created buffer for copy of data (size: {})".format(self._data.shape)
         )
@@ -401,6 +420,15 @@ class SharedMemoryReader:
         )
 
     def _copy_from_shm(self, times, access_record):
+        # first gather all indexes, then copy all data at once
+
+        # indexes of data to copy from shared mem
+        idxs_shm = []
+
+        # indexes for where to put the data in the buffer of this module
+        # -> one list of indexes for time, one for frequency
+        idxs_buf = ([], [])
+
         # copy data updates within the last n time slots
         for t in times:
             for f_i in range(self.num_freq):
@@ -417,6 +445,9 @@ class SharedMemoryReader:
                     except KeyError:
                         if len(self._time_index_map) == self.buffer_size:
                             t_i = self._remove_oldest_time_slot()
+
+                            # mark frames at all other frequencies for this time slot as invalid
+                            self._data[t_i, :].valid = [0] * self.num_freq
                         else:
                             t_i = self._find_free_time_slot()
                             if t_i is None:
@@ -432,16 +463,21 @@ class SharedMemoryReader:
                         )
                         self._time_index_map[access_record[t, f_i]] = t_i
 
-                    # copy the value
-                    # TODO: eliminate extra copy
-                    tmp = np.ndarray(
-                        1,
-                        np.dtype((np.void, self.size_frame)),
-                        self.shared_mem,
-                        self.pos_data + (t * self.num_freq + f_i) * self.size_frame,
-                        order="C",
-                    )
-                    self._data[t_i, f_i] = tmp[:]
+                    # remember index that we want to copy (from and to)
+                    idxs_shm.append(t * self.num_freq + f_i)
+                    idxs_buf[0].append(t_i)
+                    idxs_buf[1].append(f_i)
+
+        # get a view to the data section in the shared memory region
+        tmp = np.ndarray(
+            self.num_time * self.num_freq,
+            self._frame_struct,
+            self.shared_mem,
+            self.pos_data,
+            order="C",
+        )
+        # copy all the values at once
+        self._data[idxs_buf[0], idxs_buf[1]] = tmp[idxs_shm].copy()
 
     def _access_record(self):
         with self.semaphore:
@@ -451,7 +487,7 @@ class SharedMemoryReader:
                 self.shared_mem,
                 self.pos_access_record,
                 order="C",
-            )
+            ).copy()
         return record
 
     def _validate_shm(self):
