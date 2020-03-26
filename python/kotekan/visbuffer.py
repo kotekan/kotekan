@@ -323,9 +323,29 @@ class VisRaw(object):
         self.file_metadata = file_metadata
 
     @classmethod
-    def from_nparray(
-        cls, array, size_frame, num_time, num_freq, num_elements, num_stack, num_ev,
-    ):
+    def frame_struct(cls, size_frame, num_elements, num_stack, num_ev, align_valid):
+        """
+        Construct frame struct.
+
+        Parameters
+        ----------
+        size_frame : int
+            Total size of a frame in bytes.
+        num_elements : int
+            Number of elements in a frame.
+        num_stack : int
+            Number of stacks / products in a frame.
+        num_ev : int
+            Number of eigenvalues in a frame.
+        align_valid : int
+            If `True`, the valid field of the frame will be padded with 3 bytes to be aligned to 4
+            bytes.
+
+        Returns
+        -------
+        numpy.dtype
+            Frame structure.
+        """
         layout = VisBuffer.calculate_layout(num_elements, num_stack, num_ev)
 
         # TODO: remove this when we have fixed the alignment issue in kotekan (see self.from_file)
@@ -340,8 +360,11 @@ class VisRaw(object):
         dtype_layout["itemsize"] = layout["size"]
         data_struct = np.dtype(dtype_layout)
 
-        # the valid vield (1 byte) is 4-byte-aligned
-        align_valid = 4
+        if align_valid:
+            # the valid vield (1 byte) is 4-byte-aligned
+            align_valid = 4
+        else:
+            align_valid = 1
 
         frame_struct = np.dtype(
             {
@@ -350,6 +373,15 @@ class VisRaw(object):
                 "offsets": [0, align_valid, align_valid + ctypes.sizeof(VisMetadata)],
                 "itemsize": size_frame,
             }
+        )
+        return frame_struct
+
+    @classmethod
+    def from_nparray(
+        cls, array, size_frame, num_time, num_freq, num_elements, num_stack, num_ev,
+    ):
+        frame_struct = cls.frame_struct(
+            size_frame, num_elements, num_stack, num_ev, align_valid=True
         )
 
         # TODO: Python 3 - use native_str for compatibility
@@ -450,26 +482,12 @@ class VisRaw(object):
         # ]
         # data_struct = np.dtype([(native_str(d[0]),) + d[1:] for d in data_struct], align=True)
 
-        layout = VisBuffer.calculate_layout(num_elements, num_stack, num_ev)
-
-        # TODO: remove this when we have fixed the alignment issue in kotekan
-        dtype_layout = {"names": [], "formats": [], "offsets": []}
-        for member in layout["members"]:
-            dtype_layout["names"].append(member["name"])
-            dtype_layout["offsets"].append(member["start"])
-            if member["num"] == 1:
-                dtype_layout["formats"].append(member["dtype"])
-            else:
-                dtype_layout["formats"].append((member["dtype"], member["num"]))
-        dtype_layout["itemsize"] = layout["size"]
-        data_struct = np.dtype(dtype_layout)
-
-        frame_struct = np.dtype(
-            {
-                "names": ["valid", "metadata", "data"],
-                "formats": [np.uint8, VisMetadata, data_struct],
-                "itemsize": metadata["structure"]["frame_size"],
-            }
+        frame_struct = cls.frame_struct(
+            metadata["structure"]["frame_size"],
+            num_elements,
+            num_stack,
+            num_ev,
+            align_valid=False,
         )
 
         file_metadata = metadata
