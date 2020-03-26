@@ -119,6 +119,9 @@ def vis_data(tmpdir_factory, comet_broker):
     yield test
 
 
+# This test still needs to run alone, because several comet instances have conflicts accessing
+# redis.
+@pytest.mark.serial
 def test_shared_mem_buffer(vis_data, comet_broker):
     num_freq = len(params_fakevis["freq_ids"])
     num_ev = params["num_ev"]
@@ -149,6 +152,9 @@ def test_shared_mem_buffer(vis_data, comet_broker):
     assert i >= params["total_frames"] / 2
 
 
+# This test still needs to run alone, because several comet instances have conflicts accessing
+# redis.
+@pytest.mark.serial
 def test_shared_mem_buffer_read_since(vis_data, comet_broker):
     num_freq = len(params_fakevis["freq_ids"])
     num_ev = params["num_ev"]
