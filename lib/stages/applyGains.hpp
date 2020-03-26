@@ -112,9 +112,6 @@ private:
     /// Number of gains updates to maintain
     uint64_t num_kept_updates;
 
-    /// Time over which to blend old and new gains in seconds. Default is 5 minutes.
-    double t_combine_default;
-
     /// Host and port of calibration broker
     std::string broker_host;
     unsigned int broker_port;
