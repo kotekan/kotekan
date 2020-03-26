@@ -420,7 +420,6 @@ class SharedMemoryReader:
         )
 
     def _copy_from_shm(self, times, access_record):
-        # first gather all indexes, then copy all data at once
 
         # indexes of data to copy from shared mem
         idxs_shm = []
@@ -429,7 +428,7 @@ class SharedMemoryReader:
         # -> one list of indexes for time, one for frequency
         idxs_buf = ([], [])
 
-        # copy data updates within the last n time slots
+        # gather all indexes
         for t in times:
             for f_i in range(self.num_freq):
                 # check if this value should be copied: only if the access record changed and
