@@ -206,4 +206,4 @@ def test_dataset_changes(critical_state_data):
 
         assert vr.num_time == num_time[ii]
         assert len(unique_ds) == num_states[ii]
-        assert vr.metadata["attributes"]["acquisition_name"] == acq_name[ii]
+        assert vr.file_metadata["attributes"]["acquisition_name"] == acq_name[ii]
