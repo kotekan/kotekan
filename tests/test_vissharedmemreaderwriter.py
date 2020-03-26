@@ -119,8 +119,8 @@ def vis_data(tmpdir_factory, comet_broker):
     yield test
 
 
-# This test still needs to run alone, because several comet instances have conflicts accessing
-# redis.
+# This test still needs to run alone, because multiple comet instances would have conflicts
+# accessing redis.
 @pytest.mark.serial
 def test_shared_mem_buffer(vis_data, comet_broker):
     num_freq = len(params_fakevis["freq_ids"])
@@ -152,8 +152,8 @@ def test_shared_mem_buffer(vis_data, comet_broker):
     assert i >= params["total_frames"] / 2
 
 
-# This test still needs to run alone, because several comet instances have conflicts accessing
-# redis.
+# This test still needs to run alone, because multiple comet instances would have conflicts
+# accessing redis.
 @pytest.mark.serial
 def test_shared_mem_buffer_read_since(vis_data, comet_broker):
     num_freq = len(params_fakevis["freq_ids"])
@@ -198,7 +198,7 @@ def check_visraw(visraw, num_freq, num_ev, num_elements, ds_manager):
     num_prod = num_elements * (num_elements + 1) / 2
 
     # check valid frames only
-    assert np.array_equal(visraw.num_prod, num_prod * visraw.valid_frames)
+    assert (visraw.num_prod[visraw.valid_frames.astype(np.bool)] == num_prod).all()
 
     ds = np.array(visraw.metadata["dataset_id"]).view("u8,u8")
     unique_ds = np.unique(ds)
@@ -230,7 +230,7 @@ def check_visraw(visraw, num_freq, num_ev, num_elements, ds_manager):
     assert (
         evecs.imag == np.arange(num_elements)[np.newaxis, np.newaxis, np.newaxis, :]
     ).all()
-    assert np.array_equal(erms, visraw.valid_frames)
+    assert (erms[visraw.valid_frames.astype(np.bool)] == 1).all()
 
     vis = visraw.data["vis"].copy().view(np.complex64)
     assert vis.shape == (num_time, num_freq, num_prod)
@@ -242,6 +242,6 @@ def check_visraw(visraw, num_freq, num_ev, num_elements, ds_manager):
 
     if num_time > 0:
         # find last valid timestamp
-        valid_times = visraw.time[visraw.valid_frames]
-        return num_time, valid_times[-1, 0]["fpga_count"]
+        valid_times = visraw.time[visraw.valid_frames.astype(np.bool)]
+        return num_time, valid_times[-1]["fpga_count"]
     return 0, None

@@ -393,17 +393,17 @@ class VisRaw(object):
         ctime = metadata["ctime"]
         fpga_seq = metadata["fpga_seq"]
         num_prod = metadata["num_prod"]
-        time = []
-        for t in range(num_time):
-            for f in range(num_freq):
-                time.append((fpga_seq[t, f], ctime[t, f]))
-        time = np.array(
-            time,
+
+        time = np.ndarray(
+            shape=(num_time, num_freq),
             dtype=[
                 (native_str("fpga_count"), np.uint64),
                 (native_str("ctime"), time_spec),
             ],
         )
+        for t in range(num_time):
+            for f in range(num_freq):
+                time[t, f] = (fpga_seq[t, f], ctime[t, f])
 
         return cls(
             num_time,
