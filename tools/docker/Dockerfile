@@ -56,8 +56,8 @@ RUN python3.7 -m pip install "msgpack>=0.6.1" click future requests pyyaml \
 RUN apt-get install -y redis
 
 # Install documentation dependencies
-RUN apt-get -y install doxygen graphviz python-sphinx python-breathe && \
-    python3.7 -m pip install sphinx_rtd_theme sphinxcontrib-plantuml && \
+RUN apt-get -y install doxygen graphviz python-sphinx && \
+    python3.7 -m pip install python-breathe sphinx_rtd_theme sphinxcontrib-plantuml && \
     wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar -P plantuml
 
 # Set ccache to store things sensibly
