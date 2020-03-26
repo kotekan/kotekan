@@ -1,10 +1,7 @@
 #ifndef VISSHAREDMEMWRITER_HPP
 #define VISSHAREDMEMWRITER_HPP
 
-#include <errno.h>              // for ENOENT, errno
 #include <semaphore.h>          // for sem_t
-#include <stdio.h>              // for perror, remove
-#include <unistd.h>             // for access, F_OK
 #include <cstdint>              // for uint32_t, uint64_t, uint8_t
 #include <map>                  // for map
 #include <stdexcept>            // for runtime_error
@@ -46,6 +43,8 @@ protected:
     uint64_t num_writes = 0;
     // The number of time samples contained in ring buffer
     size_t _ntime;
+    // The semaphore wait time before a timeout, in seconds
+    size_t _sem_wait_time;
     // The number of frequencies contained in each time sample
     uint64_t nfreq;
     // The size of each frame (valid byte + metadata + data + page alignment padding)
@@ -86,20 +85,11 @@ protected:
 
     void reset_memory(uint32_t time_ind);
 
-    bool wait_for_semaphore();
+    void wait_for_semaphore();
+
+    void release_semaphore();
 
     std::string _root_path, _sem_name, _fname_buf;
 };
-
-inline void check_remove(std::string fname) {
-    // Check if we need to remove anything
-    if (access(fname.c_str(), F_OK) != 0)
-        return;
-    // Remove
-    if (remove(fname.c_str()) != 0) {
-        if (errno != ENOENT)
-            throw std::runtime_error("Could not remove file " + fname);
-    }
-}
 
 #endif // VISSHAREDMEMWRITER_HPP
