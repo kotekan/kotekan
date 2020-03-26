@@ -63,3 +63,5 @@ REGISTER_DATASET_STATE(gatingState, "gating");
 REGISTER_DATASET_STATE(acqDatasetIdState, "acq_dataset_id");
 REGISTER_DATASET_STATE(flagState, "flags");
 REGISTER_DATASET_STATE(gainState, "gains");
+REGISTER_DATASET_STATE(beamState, "beams");
+REGISTER_DATASET_STATE(subfreqState, "sub_frequencies");

@@ -738,4 +738,102 @@ private:
     std::string _update_id;
 };
 
+/**
+ * @brief A dataset state that keeps the beam information of a datatset.
+ *
+ * @author James Willis
+ */
+class beamState : public datasetState {
+public:
+    /**
+     * @brief Constructor
+     * @param data  The beam information as serialized by
+     *              beamState::to_json().
+     */
+    beamState(const nlohmann::json& data) {
+        try {
+            _beams = data.get<std::vector<uint32_t>>();
+        } catch (std::exception& e) {
+            throw std::runtime_error(fmt::format(
+                fmt("beamState: Failure parsing json data ({:s}): {:s}"), data.dump(4), e.what()));
+        }
+    };
+
+    /**
+     * @brief Constructor
+     * @param beams The beam information as a vector of
+     *              beam index maps.
+
+     */
+    beamState(std::vector<uint32_t> beams) : _beams(beams){};
+
+    /**
+     * @brief Get beam information (read only).
+     *
+     * @return The beam information as a vector of beam index maps.
+     */
+    const std::vector<uint32_t>& get_beams() const {
+        return _beams;
+    }
+
+private:
+    /// Serialize the data of this state in a json object
+    nlohmann::json data_to_json() const override {
+        nlohmann::json j(_beams);
+        return j;
+    }
+
+    /// Time index map of the dataset state.
+    std::vector<uint32_t> _beams;
+};
+
+/**
+ * @brief A dataset state that keeps the sub-frequency information of a datatset.
+ *
+ * @author James Willis
+ */
+class subfreqState : public datasetState {
+public:
+    /**
+     * @brief Constructor
+     * @param data  The sub-frequency information as serialized by
+     *              subfreqState::to_json().
+     */
+    subfreqState(const nlohmann::json& data) {
+        try {
+            _subfreqs = data.get<std::vector<freq_ctype>>();
+        } catch (std::exception& e) {
+            throw std::runtime_error(fmt::format(
+                fmt("subfreqState: Failure parsing json data ({:s}): {:s}"), data.dump(4), e.what()));
+        }
+    };
+
+    /**
+     * @brief Constructor
+     * @param subfreqs The sub-frequency information as a vector of
+     *              subfreq index maps.
+
+     */
+    subfreqState(std::vector<freq_ctype> subfreqs) : _subfreqs(subfreqs){};
+
+    /**
+     * @brief Get sub-frequency information (read only).
+     *
+     * @return The sub-frequency information as a vector of subfreq index maps.
+     */
+    const std::vector<freq_ctype>& get_subfreqs() const {
+        return _subfreqs;
+    }
+
+private:
+    /// Serialize the data of this state in a json object
+    nlohmann::json data_to_json() const override {
+        nlohmann::json j(_subfreqs);
+        return j;
+    }
+
+    /// Time index map of the dataset state.
+    std::vector<freq_ctype> _subfreqs;
+};
+
 #endif // DATASETSTATE_HPP
