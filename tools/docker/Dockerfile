@@ -8,7 +8,7 @@ RUN apt-get update && \
     apt-get install -y software-properties-common && \
     add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && \
-    apt-get upgrade -y && \
+    apt-get upgrade && \
     apt-get install -y python3.7 python3-setuptools python3-pip python3.7-distutils python3.7-dev \
                        build-essential git coreutils ccache pkg-config \
                        gcc cmake clang-9 clang-format-8 \
@@ -72,4 +72,4 @@ ENV CCACHE_MAXSIZE 1G
 ENV HDF5_PLUGIN_PATH /usr/local/hdf5/lib/plugin
 
 # Do nothing when the container launches
-CMD ["/bin/bash"]
+#CMD ["/bin/bash"]
