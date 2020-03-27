@@ -1,0 +1,14 @@
+[Unit]
+Description=kotekan RFI receiver
+After=syslog.target remote-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/bin/rfi_receiver.py -d -m chime -c /etc/kotekan/chime_science_run_gpu.yaml -r 10.1.13.1:41215 -s 10.1.13.1:41214
+ExecReload=/bin/kill -HUP $MAINPID
+
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target
