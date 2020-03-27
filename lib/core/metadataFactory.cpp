@@ -2,6 +2,7 @@
 
 #include "Config.hpp"         // for Config
 #include "chimeMetadata.h"    // for chimeMetadata
+#include "hfbMetadata.h"      // for hfbMetadata
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.h"         // for create_metadata_pool
 #include "visBuffer.hpp"      // for visMetadata
@@ -76,6 +77,10 @@ struct metadataPool* metadataFactory::new_pool(const std::string& pool_type,
 
     if (pool_type == "visMetadata") {
         return create_metadata_pool(num_metadata_objects, sizeof(struct visMetadata));
+    }
+
+    if (pool_type == "hfbMetadata") {
+        return create_metadata_pool(num_metadata_objects, sizeof(struct hfbMetadata));
     }
     // No metadata found
     throw std::runtime_error(fmt::format(fmt("No metadata object named: {:s}"), pool_type));

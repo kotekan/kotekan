@@ -1,13 +1,16 @@
 #include "hsaBeamformPulsar.hpp"
 
 #include "Config.hpp"             // for Config
+#include "chimeMetadata.h"        // for MAX_NUM_BEAMS
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
-#include "hsaBase.h"              // for hsa_host_free, hsa_host_malloc
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+
+#include "fmt.hpp" // for format, fmt
 
 #include <cstdint>   // for int32_t
 #include <exception> // for exception
 #include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error
 #include <string.h>  // for memcpy, memset
 #include <vector>    // for vector
 
@@ -23,28 +26,22 @@ hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const std::string& unique_n
     command_type = gpuCommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
-    _num_pulsar = config.get<int32_t>(unique_name, "num_beams");
+    _num_beams = config.get<int32_t>(unique_name, "num_beams");
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     _num_pol = config.get<int32_t>(unique_name, "num_pol");
 
     input_frame_len = _num_elements * _samples_per_data_set;
-    output_frame_len = _samples_per_data_set * _num_pulsar * _num_pol * 2 * sizeof(float);
+    output_frame_len = _samples_per_data_set * _num_beams * _num_pol * 2 * sizeof(float);
 
-    phase_len = _num_elements * _num_pulsar * 2 * sizeof(float);
-    host_phase = (float*)hsa_host_malloc(phase_len, device.get_gpu_numa_node());
+    phase_len = _num_elements * _num_beams * 2 * sizeof(float);
 
-    int index = 0;
-    for (int b = 0; b < _num_pulsar; b++) {
-        for (int n = 0; n < _num_elements; n++) {
-            host_phase[index++] = b / 10.;
-            host_phase[index++] = b / 10.;
-        }
-    }
+    if (_num_beams > MAX_NUM_BEAMS)
+        throw std::runtime_error(
+            fmt::format(fmt("Too many beams (_num_beams: {:d}). Max allowed is: {:d}"), _num_beams,
+                        MAX_NUM_BEAMS));
 }
 
-hsaBeamformPulsar::~hsaBeamformPulsar() {
-    hsa_host_free(host_phase);
-}
+hsaBeamformPulsar::~hsaBeamformPulsar() {}
 
 hsa_signal_t hsaBeamformPulsar::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
     // Unused parameter, suppress warning
@@ -69,7 +66,7 @@ hsa_signal_t hsaBeamformPulsar::execute(int gpu_frame_id, hsa_signal_t precede_s
     params.workgroup_size_y = 1;
     params.workgroup_size_z = 1;
     params.grid_size_x = 128; // 512;
-    params.grid_size_y = _num_pulsar;
+    params.grid_size_y = _num_beams;
     params.grid_size_z = _samples_per_data_set / 64; // 32;
     params.num_dims = 3;
 

@@ -1,7 +1,5 @@
 project( kotekan_utils )
 
-include_directories (${KOTEKAN_SOURCE_DIR}/include)
-
 set ( KOTEKAN_UTIL_SOURCES
       fpga_header_functions.c
       gateSpec.cpp
@@ -25,7 +23,6 @@ set ( KOTEKAN_UTIL_SOURCES
       restClient.cpp
       BipBuffer.cpp
       Hash.cpp
-      MurmurHash3.cpp
       network_functions.cpp
     )
 
@@ -39,6 +36,8 @@ endif ()
 
 add_library ( kotekan_utils
               ${KOTEKAN_UTIL_SOURCES})
+
+target_link_libraries( kotekan_utils libexternal )
 
 # HDF5 stuff
 if (${USE_HDF5})
