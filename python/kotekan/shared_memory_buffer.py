@@ -365,7 +365,8 @@ class SharedMemoryReader:
         )
         return timestamp_sorted, idxs
 
-    def _check_for_identical_timestamps(self, timestmaps):
+    @staticmethod
+    def _check_for_identical_timestamps(timestmaps):
         # there should not be multiple identical entries
         if len(timestmaps) != len(set(timestmaps)):
             raise SharedMemoryError(
