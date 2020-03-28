@@ -82,7 +82,7 @@ def semaphore():
 params = {
     "num_elements": 7,
     "num_ev": 0,
-    "total_frames": 4,
+    "total_frames": 8,
     "cadence": 1.0,
     "mode": "test_pattern_simple",
     "dataset_manager": {"use_dataset_broker": True},
@@ -127,66 +127,36 @@ def test_shared_mem_buffer(vis_data, comet_broker):
     num_ev = params["num_ev"]
     num_elements = params["num_elements"]
 
+    view_size1 = 4
     threading.Thread(target=vis_data.run).start()
     sleep(2)
-    buffer = shared_memory_buffer.SharedMemoryReader(sem_name, fname_buf, 4)
+    reader = []
+    view_size = [2, 8, 17]
 
-    assert buffer.num_time == params_writer_stage["nsamples"]
-    assert buffer.num_freq == num_freq
+    for i in range(len(view_size)):
+        reader.append(
+            shared_memory_buffer.SharedMemoryReader(sem_name, fname_buf, view_size[i])
+        )
 
-    n_times_to_read = 2
+    for i in range(len(reader)):
+        assert reader[i].num_time == params_writer_stage["nsamples"]
+        assert reader[i].num_freq == num_freq
+
     ds_manager = Manager("localhost", comet_broker)
 
     i = 0
+    visraw = [None] * len(view_size)
     with pytest.raises(shared_memory_buffer.SharedMemoryError):
         # Give this some extra time, because maybe it's just reading nothing a few times, but make
         # sure it eventually raises because the shared memory got removed by the writer.
         while i <= params["total_frames"] * 2:
             sleep(0.5)
-            visraw = buffer.read_last(n_times_to_read)
-            assert visraw.num_time == n_times_to_read
-
-            check_visraw(visraw, num_freq, num_ev, num_elements, ds_manager)
-
+            for j in range(len(reader)):
+                visraw[j] = reader[j].update()
+                assert visraw[j].num_time == view_size[j]
+                check_visraw(visraw[j], num_freq, num_ev, num_elements, ds_manager)
             i += 1
     assert i >= params["total_frames"] / 2
-
-
-# This test still needs to run alone, because multiple comet instances would have conflicts
-# accessing redis.
-@pytest.mark.serial
-def test_shared_mem_buffer_read_since(vis_data, comet_broker):
-    num_freq = len(params_fakevis["freq_ids"])
-    num_ev = params["num_ev"]
-    num_elements = params["num_elements"]
-
-    threading.Thread(target=vis_data.run).start()
-    sleep(2)
-    buffer = shared_memory_buffer.SharedMemoryReader(sem_name, fname_buf, 4)
-
-    assert buffer.num_time == params_writer_stage["nsamples"]
-    assert buffer.num_freq == num_freq
-
-    timestamp = 0
-    total_time = 0
-
-    ds_manager = Manager("localhost", comet_broker)
-    with pytest.raises(shared_memory_buffer.SharedMemoryError):
-        while True:
-            sleep(0.5)
-            visraw = buffer.read_since(timestamp)
-            if visraw is None:
-                continue
-
-            num_time, new_ts = check_visraw(
-                visraw, num_freq, num_ev, num_elements, ds_manager
-            )
-
-            if new_ts is not None:
-                timestamp = new_ts
-            total_time += num_time
-    assert total_time >= params["total_frames"] / 2
-    assert total_time <= params["total_frames"]
 
 
 def check_visraw(visraw, num_freq, num_ev, num_elements, ds_manager):
