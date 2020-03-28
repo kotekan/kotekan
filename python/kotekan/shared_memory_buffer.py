@@ -49,17 +49,24 @@ class SharedMemoryReader:
     """
     Reader for the shared memory region.
 
+    Every time `update()` is called, the reader will return a view of the last time slots in the
+    shared memory via a copy this module keeps. The number of time slots updated and made
+    accessible is set by `view_size`.
+
+    The reader keeps a copy of frames in a buffer between calls and only copies new frames on the
+    next `update()` call.
+
     Parameters
     ----------
     semaphore_name : str
         Full path and file name of semaphore.
     shared_memory_name : int
         Full path and file name of shared memory.
-    buffer_size : int
-        Number of time slots to keep in local copy of data. Increase if large amount of data is to
-        be read repeatedly. Decrease for less memory usage.
+    view_size : int
+        Number of time slots to give access to. Default 0 (as many as possible).
     """
 
+    # useful constant values
     num_structural_params = 6
     size_structural_data = SIZE_UINT64_T * num_structural_params
     size_access_record_entry = SIZE_UINT64_T
@@ -67,12 +74,10 @@ class SharedMemoryReader:
     size_valid_field = 1
     invalid_value = -1
 
-    def __init__(self, semaphore_name, shared_memory_name, buffer_size):
-        if buffer_size < 1:
-            raise NotImplementedError("Buffer size of 0 is not implemented yet.")
-        self.buffer_size = buffer_size
+    def __init__(self, semaphore_name, shared_memory_name, view_size):
+        self.view_size = view_size
 
-        # maps from access record timestamp to index (0..buffer_size)
+        # maps from access record timestamp to index (0..view_size)
         self._time_index_map = {}
 
         self.semaphore = posix_ipc.Semaphore(semaphore_name)
@@ -91,6 +96,9 @@ class SharedMemoryReader:
         self.size_frame_meta = structure.size_meta
         self.size_frame_data = structure.size_data
 
+        # index to write to next in self._data
+        self._write_idx = 0
+
         if self.num_writes == self.invalid_value:
             raise SharedMemoryError(
                 "The shared memory referenced by '{}' was marked as invalid by the writer.".format(
@@ -99,6 +107,20 @@ class SharedMemoryReader:
             )
 
         self.len_data = self.num_freq * self.num_time
+
+        if view_size == 0:
+            logger.info(
+                "Setting `view_size` to size of shared memory buffer ({}).".format(
+                    self.num_time
+                )
+            )
+            self.view_size = self.num_time
+        elif self.num_time < self.view_size:
+            logger.info(
+                "The value `view_size` of the SharedMemoryReader was set to {}, but it "
+                "will never return that many time samples, because the shared memory "
+                "buffer only has size {}.".format(self.view_size, self.num_time)
+            )
 
         self.size_access_record = self.len_data * self.size_access_record_entry
         self.pos_access_record = self.size_structural_data
@@ -127,7 +149,7 @@ class SharedMemoryReader:
         )
 
         # Create buffer for frames kept by this module
-        self._data = np.ndarray((buffer_size, self.num_freq), dtype=self._frame_struct)
+        self._data = np.ndarray((view_size, self.num_freq), dtype=self._frame_struct)
 
         # initialize valid fields
         self._data["valid"][:, :] = 0
@@ -166,21 +188,22 @@ class SharedMemoryReader:
                 "Shared memory file did not exist when trying to unlink from it."
             )
 
-    def read_last(self, n):
+    def update(self):
         """
-        Read last n time samples from the buffer.
+        Read last time samples from the buffer.
 
-        Only copies from buffer if not read previously.
+        The number of time samples to read is set by the constructor.
+        Only copies frames from the buffer if they haven't been read previously.
 
-        Parameters
-        ----------
-        n : int
-            Number of time samples to read.
+        The returned view is guaranteed to be sorted by the frames timestamps. It may be
+        incomplete, though: Timesamples may be missing and frequencies may be missing. It may
+        contain less timesamples than requested.
 
         Returns
         -------
-        VisRaw
-            Last n time samples.
+        VisRaw or None
+            Last n time samples, where n is set by `SharedMemoryReader()` or `None` if the shared
+            memory buffer is empty.
 
         Raises
         ------
@@ -188,12 +211,6 @@ class SharedMemoryReader:
             If the shared memory is marked as invalid by the writer or if the structural parameters
             have changed.
         """
-        if n > self.buffer_size:
-            raise SharedMemoryReaderUsageError(
-                "Can't read more than {0} last time slots, because buffer size is set to {0} "
-                "(Tried to read last {1} time slots.).".format(self.buffer_size, n)
-            )
-
         self.shared_mem.seek(0)
 
         self._validate_shm()
@@ -201,8 +218,8 @@ class SharedMemoryReader:
         # get a data update from the ringbuffer
         access_record = self._access_record()
 
-        times = self._filter_last(access_record, n)
-        logger.debug("Reading last {} time slots: {}".format(n, times))
+        times = self._filter_last(access_record, self.view_size)
+        logger.debug("Reading last {} time slots: {}".format(self.view_size, times))
 
         self._copy_from_shm(times, access_record)
 
@@ -219,8 +236,12 @@ class SharedMemoryReader:
             self._last_access_record = np.ndarray((self.num_time, self.num_freq))
         self._last_access_record[times, :] = access_record_after_copy[times, :]
 
-        # return visRaw()
-        return self._return_data_copy_last(n)
+        if self._time_index_map == {}:
+            return None
+
+        return VisRaw.from_buffer(
+            self._data, self.size_frame, self.view_size, self.num_freq
+        )
 
     def _remove_oldest_time_slot(self):
         """
@@ -228,11 +249,28 @@ class SharedMemoryReader:
 
         Returns
         -------
-        int or None
+        int
             Index of deleted time slot.
         """
-        oldest = sorted(self._time_index_map.keys())[-1]
-        return self._time_index_map.pop(oldest)
+        # it would be expensive to pop the from the index_map by value, so we might as well find it
+        # by sorting the keys and verify that we are overwriting the oldest data in the buffer
+        oldest = sorted(self._time_index_map.keys())[0]
+        idx = self._time_index_map.pop(oldest)
+        if idx != self._write_idx:
+            raise SharedMemoryError(
+                "Buffer index to overwrite next should have the oldest time"
+                "stamp ({} at {}), but write index points to {} instead.".format(
+                    oldest, idx, self._write_idx
+                )
+            )
+
+        # increment
+        self._write_idx = (self._write_idx + 1) % self.view_size
+
+        # mark frames at all other frequencies for this time slot as invalid
+        self._data["valid"][idx, :] = [0] * self.num_freq
+
+        return idx
 
     def _find_free_time_slot(self):
         """
@@ -243,30 +281,9 @@ class SharedMemoryReader:
         int or None
             Index of free time slot.
         """
-        for i in range(self.buffer_size):
-            if i not in self._time_index_map.values():
-                logger.debug("Found free time slot: {}".format(i))
-                return i
-        return None
-
-    def _return_data_copy_last(self, n):
-        if not self._time_index_map:
-            return None
-
-        # sort time index map
-        last_ts, idxs = list(zip(*sorted(self._time_index_map.items())))
-
-        # select last n time slots
-        idxs = idxs[-n:]
-        return VisRaw.from_nparray(
-            self._data[idxs, :],
-            self.size_frame,
-            len(idxs),
-            self.num_freq,
-            num_elements=7,
-            num_stack=28,
-            num_ev=0,
-        )
+        idx = self._write_idx
+        self._write_idx = (self._write_idx + 1) % self.view_size
+        return idx
 
     def _filter_last(self, access_record, n):
         """
@@ -282,6 +299,7 @@ class SharedMemoryReader:
         Returns
         -------
         list(int)
+            Time indexes of n time slots that were written to last. Sorted from old to new.
 
         Raises
         ------
@@ -295,48 +313,6 @@ class SharedMemoryReader:
 
         # return last n
         return idxs[-n:]
-
-    def read_since(self, timestamp):
-        """
-        Read all new time samples since a given time.
-
-        Only copies from buffer if not read previously.
-
-        Parameters
-        ----------
-        timestamp : int
-            Timestamp of oldest sample to read.
-
-        Returns
-        -------
-        VisRaw
-            Time samples read from buffer.
-        """
-        self.shared_mem.seek(0)
-
-        self._validate_shm()
-        # get a data update from the ringbuffer
-        access_record = self._access_record()
-
-        times = self._filter_since(access_record, timestamp)
-        logger.debug(
-            "Reading {} time slots since {}: {}".format(len(times), timestamp, times)
-        )
-
-        self._copy_from_shm(times, access_record)
-
-        # check if any data became invalid while reading it
-        access_record_after_copy = self._access_record()
-        for t in times:
-            for f in range(self.num_freq):
-                if access_record_after_copy[t, f] != access_record[t, f]:
-                    self._data[self._time_index_map[t], f] = None
-        if self._last_access_record is None:
-            self._last_access_record = np.ndarray((self.num_time, self.num_freq))
-        self._last_access_record[times, :] = access_record_after_copy[times, :]
-
-        # return visRaw()
-        return self._return_data_copy_since(timestamp)
 
     def _max_ts_per_freq(self, access_record):
         # get the most recent timestamp for each time slot
@@ -371,53 +347,6 @@ class SharedMemoryReader:
                 "Found duplicate timestamps in access record: {}".format(timestmaps)
             )
 
-    def _filter_since(self, access_record, timestamp):
-        last_ts = self._max_ts_per_freq(access_record)
-
-        # remove invalid timestmaps
-        while True:
-            try:
-                last_ts.remove(self.invalid_value)
-            except ValueError:
-                break
-
-        self._check_for_identical_timestamps(last_ts)
-
-        # return timestamps newer than the given one
-        ll = [i for i, v in enumerate(last_ts) if v > timestamp]
-        logger.debug(
-            "Found {} time slots that are newer than {} in {}: {}.".format(
-                len(ll), timestamp, last_ts, ll
-            )
-        )
-        return ll
-
-    def _return_data_copy_since(self, timestamp):
-        if not self._time_index_map:
-            return None
-
-        # sort time index map
-        last_ts, idxs = list(zip(*sorted(self._time_index_map.items())))
-
-        # get indexes of timestamps newer than the given on
-        idxs = [i for i, v in zip(idxs, last_ts) if v > timestamp]
-        logger.debug(
-            "Found {} time slots that are newer than {} in {}: {}.".format(
-                len(idxs), timestamp, last_ts, idxs
-            )
-        )
-
-        # select last n time slots
-        return VisRaw.from_nparray(
-            self._data[idxs, :],
-            self.size_frame,
-            len(idxs),
-            self.num_freq,
-            num_elements=7,
-            num_stack=28,
-            num_ev=0,
-        )
-
     def _copy_from_shm(self, times, access_record):
 
         # indexes of data to copy from shared mem
@@ -439,21 +368,14 @@ class SharedMemoryReader:
                     logger.debug("Copying value at time={}, freq={}".format(t, f_i))
                     # check if this time slot is in local copy of data
                     try:
+                        # this is a new frequency in a known time slot
                         t_i = self._time_index_map[access_record[t, f_i]]
                     except KeyError:
-                        if len(self._time_index_map) == self.buffer_size:
+                        # this is a new time slot for the local buffer
+                        if len(self._time_index_map) == self.view_size:
                             t_i = self._remove_oldest_time_slot()
-
-                            # mark frames at all other frequencies for this time slot as invalid
-                            self._data[t_i, :].valid = [0] * self.num_freq
                         else:
                             t_i = self._find_free_time_slot()
-                            if t_i is None:
-                                raise SharedMemoryError(
-                                    "Can't find a free slot in buffer (has keys {}).".format(
-                                        self._time_index_map.keys()
-                                    )
-                                )
                         logger.debug(
                             "Setting time index map [{}] to {}.".format(
                                 access_record[t, f_i], t_i
@@ -537,21 +459,3 @@ class SharedMemoryReader:
         _check_structure(
             self.size_frame_data, size_frame_data, "size of the frame data"
         )
-
-    # def _update(self):
-    # """
-    #     Raises
-    #     ------
-    #     NoNewDataError
-    #         If there has not been a recorded write since the last check.
-    #     SharedMemoryError
-    #         If the shared memory is marked as invalid by the writer or if the structural parameters
-    #         have changed.
-    # """
-    #     self._validate_shm()
-    #
-    #     with self.semaphore:
-    #         for freq_id in self.freq_ids:
-    #             for time_slot in self.time_slots:
-    #                 if _frame_changed():
-    #                     struct.unpack_from("@c", memory_map_buf.read(1))[0]

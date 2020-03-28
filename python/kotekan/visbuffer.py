@@ -377,15 +377,80 @@ class VisRaw(object):
         return frame_struct
 
     @classmethod
-    def from_nparray(
-        cls, array, size_frame, num_time, num_freq, num_elements, num_stack, num_ev,
-    ):
+    def from_buffer(cls, buffer, size_frame, num_time, num_freq):
+        """
+        Create a VisRaw object from a buffer.
+
+        Parameters
+        ----------
+        buffer
+            Input data.
+        size_frame
+            Size of a frame in bytes.
+        num_time
+            Number of time samples in the buffer.
+        num_freq
+            Number of frequencies in the buffer.
+
+        Returns
+        -------
+        VisRaw
+            VisRaw viewing the data in the buffer.
+
+        Raises
+        ------
+        ValueError
+            If there was a problem parsing the buffer into the VisRaw structure.
+        """
+        # Create a simple struct to access the metadata (num_elements, num_prod, num_ev)
+        align_valid = 4  # valid field is 4 byte aligned
+        frame_struct_simple = np.dtype(
+            {
+                "names": ["valid", "metadata", "data"],
+                "formats": [
+                    np.uint8,
+                    VisMetadata,
+                    (np.void, size_frame - align_valid - ctypes.sizeof(VisMetadata)),
+                ],
+                "offsets": [0, align_valid, align_valid + ctypes.sizeof(VisMetadata)],
+                "itemsize": size_frame,
+            }
+        )
+        raw = buffer.view(dtype=frame_struct_simple)
+        num_elements = np.unique(
+            raw["metadata"][raw["valid"].astype(np.bool)]["num_elements"]
+        )
+        if len(num_elements) > 1:
+            raise ValueError(
+                "Found more than 1 value for `num_elements` in numpy ndarray: {}.".format(
+                    num_elements
+                )
+            )
+        num_elements = num_elements[0]
+        num_prod = np.unique(raw["metadata"][raw["valid"].astype(np.bool)]["num_prod"])
+        if len(num_prod) > 1:
+            raise ValueError(
+                "Found more than 1 value for `num_prod` in numpy ndarray: {}.".format(
+                    num_prod
+                )
+            )
+        num_prod = num_prod[0]
+        num_ev = np.unique(raw["metadata"][raw["valid"].astype(np.bool)]["num_ev"])
+        if len(num_ev) > 1:
+            raise ValueError(
+                "Found more than 1 value for `num_ev` in numpy ndarray: {}.".format(
+                    num_ev
+                )
+            )
+        num_ev = num_ev[0]
+
+        # Now that we have some metadata, we can really parse the data...
         frame_struct = cls.frame_struct(
-            size_frame, num_elements, num_stack, num_ev, align_valid=True
+            size_frame, num_elements, num_prod, num_ev, align_valid=True
         )
 
         # TODO: Python 3 - use native_str for compatibility
-        raw = array.view(dtype=frame_struct)
+        raw = buffer.view(dtype=frame_struct)
         data = raw["data"]
         metadata = raw["metadata"]
         valid_frames = raw["valid"]
