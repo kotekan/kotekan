@@ -133,13 +133,14 @@ def cal_broker(request, old_gains, new_gains):
     @app.route("/gain", methods=["POST"])
     def gain_app():
         content = flask_req.get_json()
-        tag = content["update_id"]
-        if tag == new_tag:
+        update_id = content["update_id"]
+        if update_id == new_update_id:
             gains = encode_gains(*new_gains)
-        elif tag == old_tag:
+        elif update_id == old_update_id:
             gains = encode_gains(*old_gains)
         else:
-            raise Exception("Did not recognize tag {}.".format(tag))
+            raise Exception("Did not recognize update_id {}.".format(update_id))
+        print(f"Served gains with {update_id}")
 
         return jsonify(gains)
 
@@ -158,6 +159,7 @@ def apply_data(request, tmp_path_factory, gain_path, old_gains, new_gains, cal_b
 
     output_dir = str(tmp_path_factory.mktemp("output"))
     global_params["gains_dir"] = str(gain_path)
+    global_params["read_from_file"] = (True if request.param == "file" else False)
 
     # REST commands
     cmds = [
@@ -199,7 +201,6 @@ def apply_data(request, tmp_path_factory, gain_path, old_gains, new_gains, cal_b
         rest_commands=cmds,
         parallel_stage_type="rawFileWrite",
         parallel_stage_config=fakevis_dump_conf,
-        read_from_file=(True if request.params == "file" else False),
     )
 
     test.run()

@@ -8,6 +8,7 @@
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, state_id_t
 #include "prometheusMetrics.hpp" // for Counter, Gauge
+#include "SynchronizedQueue.hpp"
 #include "updateQueue.hpp"       // for updateQueue
 #include "visBuffer.hpp"         // for visFrameView
 #include "visUtil.hpp"           // for cfloat, frameID
@@ -75,7 +76,7 @@
  *     seconds between the current frame being processed and the time stamp of
  *     the gains update being applied.
  *
- * @author Mateus Fandino
+ * @author Mateus Fandino, Tristan Pinsonneault-Marotte and Richard Shaw
  */
 class applyGains : public kotekan::Stage {
 
@@ -141,9 +142,6 @@ private:
     /// Thread for getting gains from cal broker
     void fetch_thread();
 
-    /// Vector to hold the thread handles
-    std::vector<std::thread> thread_handles;
-
     /// Number of parallel threads accessing the same buffers (default 1)
     uint32_t num_threads;
 
@@ -167,18 +165,36 @@ private:
     /// Fetch gains from calibration broker
     std::optional<GainData> fetch_gains(std::string tag) const;
 
+    /// Used to indicate to other threads when incoming data has arrived and we
+    /// are processing
+    std::atomic<bool> started = false;
+
     /// Condition variable used to communicate new gains
-    std::condition_variable received_update_cv;
-    std::mutex update_mtx;
-    /// Identity of gain update to insert. Should only be modified with update_mtx held.
-    std::tuple<std::string, double, double> new_update;
+    using update_t = std::tuple<std::string, double, double>;
+    SynchronizedQueue<update_t> update_fetch_queue;
+
 
     /// REST client for communication with cal broker
     restClient& client;
 
+
+    /// Wait until the first frame comes in and read its metadata to determine
+    /// what frequencies and inputs we will get
+    void initialise();
+
+    /// Calculate the gain for this time and frequency
+    /// Returns false if there was no appropriate gain and we need to skip
+    std::tuple<bool, double, state_id_t> calculate_gain(
+        double timestamp,
+        uint32_t freq_id,
+        std::vector<cfloat>& gain,
+        std::vector<cfloat>& gain_conj,
+        std::vector<float>& weight_factor
+    ) const;
+
     /// Test that the frame is valid. On failure it will call FATAL_ERROR and
     /// return false
-    bool validate_frame(const visFrameView& frame);
+    bool validate_frame(const visFrameView& frame) const;
 
     /// Test that the gain is valid. On failure it will call FATAL_ERROR and
     /// return false. Gains failing this *should* have already been rejected,
