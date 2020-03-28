@@ -11,6 +11,7 @@ import h5py
 
 from kotekan import visbuffer
 from kotekan import runner
+from kotekan import testing
 
 writer_params = {
     "num_elements": 4,
@@ -96,28 +97,7 @@ def test_vis(written_data):
 
     for vr in written_data:
 
-        # Construct vis array
-        vis = vr.data["vis"]
-
-        # Extract metadata
-        ftime = vr.time["fpga_count"]
-        ctime = vr.time["ctime"]
-        freq = np.array([f["centre"] for f in vr.index_map["freq"]])
-
-        # Check the diagonals are correct
-        pi = 0
-        for ii in range(writer_params["num_elements"]):
-            assert (vis[:, :, pi].imag == ii).all()
-            pi += writer_params["num_elements"] - ii
-
-        # Check the times are correct
-        assert (vis[:, :, 0].real == ftime[:, np.newaxis].astype(np.float32)).all()
-        assert (vis[:, :, 1].real == ctime[:, np.newaxis].astype(np.float32)).all()
-
-        # Check the frequencies are correct
-        vfreq = 800.0 - 400.0 * vis[:, :, 2].real / 1024
-        assert (vfreq == freq[np.newaxis, :]).all()
-
+        testing.validate(vr)
 
 def test_metadata(written_data):
 

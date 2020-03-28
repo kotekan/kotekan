@@ -12,7 +12,7 @@ import pytest
 import struct
 import tempfile
 
-from kotekan import runner
+from kotekan import runner, shared_memory_buffer
 
 # use tempfile creation to get exclusive random strings
 useless_file = tempfile.NamedTemporaryFile()
@@ -59,6 +59,7 @@ params_writer_stage = {"nsamples": global_params["total_frames"], "sem_name": se
 size_of_uint64 = 8
 num_structural_params = 6
 pos_access_record = size_of_uint64 * num_structural_params
+pos_ring_buffer = pos_access_record + size_of_uint64 * params_writer_stage["nsamples"] * len(global_params["freq"])
 
 @pytest.fixture(
     scope="module", params=[params_fakevis, params_fakevis_small, params_fakevis_large]
@@ -87,8 +88,6 @@ def vis_data(tmpdir_factory, request):
 def semaphore(vis_data):
     sem = posix_ipc.Semaphore(sem_name)
     yield sem
-    sem.release()
-    sem.unlink()
 
 
 @pytest.fixture(scope="module")
@@ -97,8 +96,6 @@ def memory_map_buf(vis_data):
     mapfile = mmap.mmap(memory.fd, memory.size, prot=mmap.PROT_READ)
     os.close(memory.fd)
     yield mapfile
-    mapfile.close()
-    posix_ipc.unlink_shared_memory(fname_buf)
 
 def test_structured_data(semaphore, memory_map_buf):
     semaphore.acquire()
@@ -175,3 +172,13 @@ def test_access_record(semaphore, memory_map_buf):
                     assert access_record == fpga_seqs[t]
 
         semaphore.release()
+
+def test_ring_buffer(vis_data):
+    global num_frames
+
+    num_time = params_writer_stage["nsamples"]
+    num_freq = len(global_params["freq"])
+    num_ev = global_params["num_ev"]
+    num_elements = global_params["num_elements"]
+
+    ring_buffer = shared_memory_buffer.SharedMemoryReader(sem_name, fname_buf, params_writer_stage["nsamples"])
