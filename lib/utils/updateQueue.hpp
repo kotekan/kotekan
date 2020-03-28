@@ -38,6 +38,9 @@ public:
      * @param len   The new size.
      */
     void resize(const size_t len) {
+        // Lock the queue
+        std::scoped_lock _lock(update_lock);
+
         _len = len;
 
         while (values.size() > _len)
@@ -66,6 +69,10 @@ public:
      * @param update         The value of the inserted update.
      */
     void insert(timespec timestamp, T&& update) {
+
+        // Lock the queue
+        std::scoped_lock _lock(update_lock);
+
         // usually just push update to the back of the queue
         if (!values.size() || timestamp > values.crbegin()->first)
             values.push_back(std::pair<timespec, T>(timestamp, std::move(update)));
@@ -101,7 +108,11 @@ public:
      *           and the timestamp associated to the update. If the queue is empty, or
      *           all updates are in the future, a nullptr is returned as update.
      */
-    std::pair<timespec, const T*> get_update(timespec timestamp) {
+    std::pair<timespec, const T*> get_update(timespec timestamp) const {
+
+        // Lock the queue
+        std::scoped_lock _lock(update_lock);
+
         auto u = values.crbegin();
 
         while (u != values.crend() && u->first > timestamp) {
@@ -131,6 +142,9 @@ private:
 
     // Length of the queue.
     size_t _len;
+
+    // A mutex to ensure updates and fetches from this FIFO are thread safe
+    mutable std::mutex update_lock;
 };
 
 // Define a custom fmt formatter that prints the timestamps
