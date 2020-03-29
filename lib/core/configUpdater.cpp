@@ -99,7 +99,8 @@ void configUpdater::subscribe(const Stage* subscriber,
                               std::map<std::string, std::function<bool(json&)>> callbacks) {
 
     // If no callbacks are passed, then we don't need to find any updatable_config blocks
-    if (callbacks.size() == 0) return;
+    if (callbacks.size() == 0)
+        return;
 
     // Find the nearest updatable config block
     auto updatable_config_paths = _config->get<std::map<std::string, std::string>>(

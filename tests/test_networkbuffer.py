@@ -53,9 +53,9 @@ def test_send_receive(tmpdir_factory):
     )
 
     # TODO: network buffer processes should use in_buf and out_buf to please the test framework
-    receiver._stages["bufferRecv_test"]["buf"] = receiver._stages[
-        "bufferRecv_test"
-    ]["out_buf"]
+    receiver._stages["bufferRecv_test"]["buf"] = receiver._stages["bufferRecv_test"][
+        "out_buf"
+    ]
 
     # Run kotekan bufferRecv in another thread
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -76,9 +76,9 @@ def test_send_receive(tmpdir_factory):
         )
 
         # TODO: network buffer processes should use in_buf and out_buf to please the test framework
-        sender._stages["bufferSend_test"]["buf"] = sender._stages[
-            "bufferSend_test"
-        ]["in_buf"]
+        sender._stages["bufferSend_test"]["buf"] = sender._stages["bufferSend_test"][
+            "in_buf"
+        ]
 
         # run kotekan bufferSend
         sender.run()
