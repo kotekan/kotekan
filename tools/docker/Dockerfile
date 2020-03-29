@@ -72,4 +72,4 @@ ENV CCACHE_MAXSIZE 1G
 ENV HDF5_PLUGIN_PATH /usr/local/hdf5/lib/plugin
 
 # Do nothing when the container launches
-#CMD ["/bin/bash"]
+CMD ["/bin/bash"]
