@@ -135,9 +135,9 @@ void FakeVis::main_thread() {
     timespec ts_sleep = double_to_ts(sleep_before);
     nanosleep(&ts_sleep, nullptr);
 
-    while (!stop_thread) {
+    double start = current_time();
 
-        double start = current_time();
+    while (!stop_thread) {
 
         for (auto f : freq) {
 
@@ -206,7 +206,7 @@ void FakeVis::main_thread() {
         // If requested sleep for the extra time required to produce a fake vis
         // at the correct cadence
         if (this->wait) {
-            double diff = cadence - (current_time() - start);
+            double diff = cadence * frame_count - (current_time() - start);
             timespec ts_diff = double_to_ts(diff);
             nanosleep(&ts_diff, nullptr);
         }
