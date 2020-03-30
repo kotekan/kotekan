@@ -97,7 +97,7 @@ def test_vis(written_data):
 
     for vr in written_data:
 
-        testing.validate(vr)
+        testing.validate(vr, writer_params)
 
 
 def test_metadata(written_data):
