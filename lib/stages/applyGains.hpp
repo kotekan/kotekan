@@ -1,14 +1,14 @@
 #ifndef APPLY_GAINS_HPP
 #define APPLY_GAINS_HPP
 
-#include "Config.hpp"            // for Config
-#include "Hash.hpp"              // for Hash
-#include "Stage.hpp"             // for Stage
+#include "Config.hpp" // for Config
+#include "Hash.hpp"   // for Hash
+#include "Stage.hpp"  // for Stage
+#include "SynchronizedQueue.hpp"
 #include "buffer.h"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, state_id_t
 #include "prometheusMetrics.hpp" // for Counter, Gauge
-#include "SynchronizedQueue.hpp"
 #include "updateQueue.hpp"       // for updateQueue
 #include "visBuffer.hpp"         // for visFrameView
 #include "visUtil.hpp"           // for cfloat, frameID
@@ -184,13 +184,10 @@ private:
 
     /// Calculate the gain for this time and frequency
     /// Returns false if there was no appropriate gain and we need to skip
-    std::tuple<bool, double, state_id_t> calculate_gain(
-        double timestamp,
-        uint32_t freq_id,
-        std::vector<cfloat>& gain,
-        std::vector<cfloat>& gain_conj,
-        std::vector<float>& weight_factor
-    ) const;
+    std::tuple<bool, double, state_id_t> calculate_gain(double timestamp, uint32_t freq_id,
+                                                        std::vector<cfloat>& gain,
+                                                        std::vector<cfloat>& gain_conj,
+                                                        std::vector<float>& weight_factor) const;
 
     /// Test that the frame is valid. On failure it will call FATAL_ERROR and
     /// return false

@@ -1,22 +1,22 @@
 #include "applyGains.hpp"
 
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"              // for mark_frame_empty, allocate_new_metadata_object
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "configUpdater.hpp"     // for configUpdater
-#include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
-#include "datasetState.hpp"      // for gainState, freqState, inputState
-#include "kotekanLogging.hpp"    // for WARN, FATAL_ERROR, INFO
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_empty, allocate_new_metadata_object
+#include "bufferContainer.hpp" // for bufferContainer
+#include "configUpdater.hpp"   // for configUpdater
+#include "datasetManager.hpp"  // for dset_id_t, datasetManager, state_id_t
+#include "datasetState.hpp"    // for gainState, freqState, inputState
+#include "kotekanLogging.hpp"  // for WARN, FATAL_ERROR, INFO
+#include "modp_b64.hpp"
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
 #include "restClient.hpp"
-#include "visBuffer.hpp"         // for visFrameView, visField, visField::vis, visField...
-#include "visFileH5.hpp"         // IWYU pragma: keep
-#include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double, fra...
+#include "visBuffer.hpp" // for visFrameView, visField, visField::vis, visField...
+#include "visFileH5.hpp" // IWYU pragma: keep
+#include "visUtil.hpp"   // for cfloat, modulo, double_to_ts, ts_to_double, fra...
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
-#include "modp_b64.hpp"
 
 #include <algorithm>                 // for copy, max, copy_backward
 #include <cmath>                     // for abs, pow
@@ -193,7 +193,8 @@ void applyGains::main_thread() {
     }
 
     // Join the threads
-    for (auto& thread : apply_thread_handles) thread.join();
+    for (auto& thread : apply_thread_handles)
+        thread.join();
 
     // Join fetch thread
     update_fetch_queue.cancel();
@@ -244,7 +245,8 @@ void applyGains::apply_thread() {
         auto frame_time = ts_to_double(std::get<1>(input_frame.time));
 
         // Calculate the gain factors we need to apply to this frame
-        auto [late, age, state_id] = calculate_gain(frame_time, freq_ind, gain, gain_conj, weight_factor);
+        auto [late, age, state_id] =
+            calculate_gain(frame_time, freq_ind, gain, gain_conj, weight_factor);
 
         // Report number of frames received late and skip the frame entirely
         if (late) {
@@ -336,7 +338,8 @@ void applyGains::fetch_thread() {
 
         // Block for an update, and check if we should just exit
         auto update = update_fetch_queue.get();
-        if (!update) break;
+        if (!update)
+            break;
 
         auto [update_id, transition_interval, new_ts] = *update;
 
@@ -398,7 +401,8 @@ std::optional<applyGains::GainData> applyGains::read_gain_file(std::string updat
     GainData g{std::move(gain_read), std::move(weight_read)};
 
     // Check that the gains read are the correct sizes and if not, reject the update
-    if (!validate_gain(g)) return std::nullopt;
+    if (!validate_gain(g))
+        return std::nullopt;
 
     return g;
 }
@@ -414,17 +418,13 @@ std::pair<std::vector<T>, std::vector<uint32_t>> json_base64_to_array(const json
         throw std::runtime_error("Value for data key must be a string.");
     }
 
-    auto string_data = data_json.get_ref<const json::string_t &>();
+    auto string_data = data_json.get_ref<const json::string_t&>();
     auto enc_size = string_data.size();
 
     // Must be a multiple of 4 bytes to be base64 decodable
     if (enc_size % 4 != 0) {
-        throw std::runtime_error(
-            fmt::format(
-                "base64 encoded data must be a multiple of four bytes. Length: {}.",
-                enc_size
-            )
-        );
+        throw std::runtime_error(fmt::format(
+            "base64 encoded data must be a multiple of four bytes. Length: {}.", enc_size));
     }
 
     // Decode the base64 data into a temporary buffer
@@ -437,16 +437,14 @@ std::pair<std::vector<T>, std::vector<uint32_t>> json_base64_to_array(const json
 
     // Calculate the total array size
     uint64_t size = 1;
-    for (const auto& axsize : shape) size *= axsize;
+    for (const auto& axsize : shape)
+        size *= axsize;
     auto size_bytes = size * sizeof(T);
 
     if (dec_len != size_bytes) {
-        throw std::runtime_error(
-            fmt::format(
-                "Size of decoded data different from expectation."
-                "Got {}, expected {}", dec_len, size_bytes
-            )
-        );
+        throw std::runtime_error(fmt::format("Size of decoded data different from expectation."
+                                             "Got {}, expected {}",
+                                             dec_len, size_bytes));
     }
 
     // Copy data into a vector of the correct length and alignment,
@@ -461,12 +459,8 @@ template<typename T, typename U = T>
 std::vector<std::vector<U>> unpack_2d(const std::vector<T>& arr1d, uint32_t nr, uint32_t nc) {
 
     if (nr * nc != arr1d.size()) {
-        throw std::runtime_error(
-            fmt::format(
-                "Size of arr1d ({}) does not match number of rows and columns ({} x {}).",
-                nr, nc
-            )
-        );
+        throw std::runtime_error(fmt::format(
+            "Size of arr1d ({}) does not match number of rows and columns ({} x {}).", nr, nc));
     }
 
     std::vector<std::vector<U>> arr2d;
@@ -486,7 +480,8 @@ std::optional<applyGains::GainData> applyGains::fetch_gains(std::string update_i
     // query cal broker
     json json_request;
     json_request["update_id"] = update_id;
-    restClient::restReply reply = client.make_request_blocking("/gain", json_request, broker_host, broker_port);
+    restClient::restReply reply =
+        client.make_request_blocking("/gain", json_request, broker_host, broker_port);
     if (!reply.first) {
         WARN("Failed to retrieve gains from calibration broker. ({})", reply.second);
         return std::nullopt;
@@ -518,13 +513,12 @@ std::optional<applyGains::GainData> applyGains::fetch_gains(std::string update_i
         return std::nullopt;
     }
 
-    GainData g{
-        unpack_2d(gains_1d, g_shape[0], g_shape[1]),
-        unpack_2d<uint8_t, float>(weights_1d, w_shape[0], w_shape[1])
-    };
+    GainData g{unpack_2d(gains_1d, g_shape[0], g_shape[1]),
+               unpack_2d<uint8_t, float>(weights_1d, w_shape[0], w_shape[1])};
 
     // Check that the gains read are the correct sizes and if not, reject the update
-    if (!validate_gain(g)) return std::nullopt;
+    if (!validate_gain(g))
+        return std::nullopt;
 
     return g;
 }
@@ -606,8 +600,8 @@ bool applyGains::validate_gain(const applyGains::GainData& data) const {
     }
 
     // Check that the components have consistent sizes
-    if ((data.gain.size() != data.weight.size()) ||
-        (data.gain.size() && data.gain[0].size() != data.weight[0].size())) {
+    if ((data.gain.size() != data.weight.size())
+        || (data.gain.size() && data.gain[0].size() != data.weight[0].size())) {
         return false;
     }
 
@@ -627,12 +621,10 @@ bool applyGains::validate_gain(const applyGains::GainData& data) const {
     return true;
 }
 
-std::tuple<bool, double, state_id_t> applyGains::calculate_gain(double timestamp,
-                    uint32_t freq_ind,
-                    std::vector<cfloat>& gain,
-                    std::vector<cfloat>& gain_conj,
-                    std::vector<float>& weight_factor) const
-{
+std::tuple<bool, double, state_id_t>
+applyGains::calculate_gain(double timestamp, uint32_t freq_ind, std::vector<cfloat>& gain,
+                           std::vector<cfloat>& gain_conj,
+                           std::vector<float>& weight_factor) const {
     using namespace std::complex_literals;
 
     size_t num_elem = num_elements.value();
@@ -664,9 +656,7 @@ std::tuple<bool, double, state_id_t> applyGains::calculate_gain(double timestamp
     // Now we know how long to combine over, we can see if there's
     // another gain update within that time window
     const auto update_old =
-        gains_fifo
-            .get_update(double_to_ts(timestamp - update_new->transition_interval))
-            .second;
+        gains_fifo.get_update(double_to_ts(timestamp - update_new->transition_interval)).second;
 
     const auto& new_gain = update_new->data.gain.at(freq_ind);
     const auto& weights = update_new->data.weight.at(freq_ind);

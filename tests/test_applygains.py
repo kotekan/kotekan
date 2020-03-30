@@ -130,6 +130,7 @@ def new_gains(gain_path):
 def cal_broker(request, old_gains, new_gains):
     # Create a basic flask server
     app = Flask("cal_broker")
+
     @app.route("/gain", methods=["POST"])
     def gain_app():
         content = flask_req.get_json()
@@ -151,7 +152,6 @@ def cal_broker(request, old_gains, new_gains):
     yield server
 
     server.stop()
-    #request.addfinalizer(server.stop)
 
 
 @pytest.fixture(scope="session", params=["file", "network"])
@@ -159,7 +159,7 @@ def apply_data(request, tmp_path_factory, gain_path, old_gains, new_gains, cal_b
 
     output_dir = str(tmp_path_factory.mktemp("output"))
     global_params["gains_dir"] = str(gain_path)
-    global_params["read_from_file"] = (True if request.param == "file" else False)
+    global_params["read_from_file"] = True if request.param == "file" else False
 
     # REST commands
     cmds = [
