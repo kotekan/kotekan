@@ -57,13 +57,7 @@ private:
     uint32_t compressed_lost_samples_buffer_finalize_id;
     /// Lost samples buffer
     Buffer* compressed_lost_samples_buf;
-    /// Length of compressed lost samples frame
-    uint32_t input_frame_len;
-    /// Kotekan Config Variables
-    /// Samples per data set, used for computing frame length
-    uint32_t _samples_per_data_set;
-    /// Upchannelise factor, should be 128
-    uint32_t _factor_upchan;
+
 };
 
 #endif /*HSA_INPUT_COMPRESS_LOST_SAMPLES_H*/

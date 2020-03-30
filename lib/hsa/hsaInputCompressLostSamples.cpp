@@ -18,12 +18,9 @@ hsaInputCompressLostSamples::hsaInputCompressLostSamples(Config& config,
     hsaCommand(config, unique_name, host_buffers, device, "", "") {
     command_type = gpuCommandType::COPY_IN;
 
-    _samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
-    _factor_upchan = config.get<uint32_t>(unique_name, "factor_upchan");
-    input_frame_len = _samples_per_data_set / _factor_upchan / 3 * sizeof(uint8_t);
-
     compressed_lost_samples_buf = host_buffers.get_buffer("compressed_lost_samples_buf");
     register_consumer(compressed_lost_samples_buf, unique_name.c_str());
+
     compressed_lost_samples_buffer_id = 0;
     compressed_lost_samples_buffer_precondition_id = 0;
     compressed_lost_samples_buffer_finalize_id = 0;
@@ -48,12 +45,14 @@ int hsaInputCompressLostSamples::wait_on_precondition(int gpu_frame_id) {
 hsa_signal_t hsaInputCompressLostSamples::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
     // Get the gpu and cpu memory pointers.
     void* gpu_memory_frame =
-        device.get_gpu_memory_array("compressed_lost_samples", gpu_frame_id, input_frame_len);
+        device.get_gpu_memory_array("compressed_lost_samples", gpu_frame_id,
+            compressed_lost_samples_buf->frame_size);
     void* host_memory_frame =
         (void*)compressed_lost_samples_buf->frames[compressed_lost_samples_buffer_id];
 
     // Do the input data copy.
-    device.async_copy_host_to_gpu(gpu_memory_frame, host_memory_frame, input_frame_len,
+    device.async_copy_host_to_gpu(gpu_memory_frame, host_memory_frame,
+                                  compressed_lost_samples_buf->frame_size,
                                   precede_signal, signals[gpu_frame_id]);
     compressed_lost_samples_buffer_id =
         (compressed_lost_samples_buffer_id + 1) % compressed_lost_samples_buf->num_frames;

@@ -68,7 +68,7 @@ void compressLostSamples::main_thread() {
 
         // Compress lost samples buffer by checking each sample for a flag
         for (uint32_t sample = 0; sample < _samples_per_data_set; sample += _compression_factor) {
-            assert(sample/_compression_factor < (uint32_t)out_buf->frame_size);
+            //assert(sample/_compression_factor < (uint32_t)out_buf->frame_size);
             out_frame[sample/_compression_factor] = 0;
             for (uint32_t sub_index = 0; sub_index < _compression_factor; sub_index++) {
                 out_frame[sample/_compression_factor] += in_frame[sample + sub_index];

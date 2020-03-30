@@ -186,11 +186,11 @@ updatable_config:
     rfi_zeroing: True
   rfi_sk_record:
     kotekan_update_endpoint: json
-    output_dir: /mnt/gong/RFI/test_lost_samples_sk/
+    output_dir: /mnt/gong/RFI/20200317_lost_samples_sk/
     write_to_disk: true
   rfi_var_record:
     kotekan_update_endpoint: json
-    output_dir: /mnt/gong/RFI/test_lost_samples/
+    output_dir: /mnt/gong/RFI/20200317_lost_samples/
     write_to_disk: true
   rfi_var_element_index:
     kotekan_update_endpoint: json
@@ -520,12 +520,12 @@ compressed_lost_samples_buffers:
   metadata_pool: main_pool
   compressed_lost_samples_buf_0:
     kotekan_buffer: standard
-#  compressed_lost_samples_buf_1:
-#    kotekan_buffer: standard
-#  compressed_lost_samples_buf_2:
-#    kotekan_buffer: standard
-#  compressed_lost_samples_buf_3:
-#    kotekan_buffer: standard
+  compressed_lost_samples_buf_1:
+    kotekan_buffer: standard
+  compressed_lost_samples_buf_2:
+    kotekan_buffer: standard
+  compressed_lost_samples_buf_3:
+    kotekan_buffer: standard
 
 #duplicate_lost_samples_buffers:
 #  num_frames: 2 * buffer_depth
@@ -629,13 +629,13 @@ compress_lost_samples:
   in_buf: lost_samples_buffer
   out_buf: compressed_lost_samples_buf_0
 
-#copy_compress_lost_samples_buffers:
-#  kotekan_stage: bufferCopy
-#  in_buf: compressed_lost_samples_buf_0
-#  out_bufs:
-#    - compressed_lost_samples_buf_1
-#    - compressed_lost_samples_buf_2
-#    - compressed_lost_samples_buf_3
+copy_compress_lost_samples_buffers:
+  kotekan_stage: bufferCopy
+  in_buf: compressed_lost_samples_buf_0
+  out_bufs:
+    - compressed_lost_samples_buf_1
+    - compressed_lost_samples_buf_2
+    - compressed_lost_samples_buf_3
 
 # GPU processing section
 gpu:
@@ -643,7 +643,7 @@ gpu:
   commands: &command_list
     # Copy in queue
     - name: hsaInputData
-    #- name: hsaInputCompressLostSamples
+    - name: hsaInputCompressLostSamples
     - name: hsaPresumZero
       sub_frame_index: 0
     - name: hsaPresumZero
