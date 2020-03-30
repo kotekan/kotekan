@@ -377,7 +377,7 @@ if(CLANG_FORMAT_PATH)
     list ( APPEND FILES_TO_FORMAT ${KOTEKAN_ALL_H_FILES} )
 
     # Exclude all code we don't want auto-formatted (external libs).
-    set ( EXCLUDE_DIR "include" )
+    set ( EXCLUDE_DIR "external" )
     exclude_files_containing ( FILES_TO_FORMAT
                                ${EXCLUDE_DIR}
                                ${FILES_TO_FORMAT} )

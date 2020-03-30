@@ -25,6 +25,7 @@ def has_redis(host="localhost", port=6379):
 
     try:
         import redis
+
         r = redis.Redis(host, port)
         return r.ping()
 

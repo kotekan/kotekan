@@ -186,3 +186,25 @@ jobs:
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_IWYU})
         docker run "${OPTS[@]}" /code/kotekan/tools/iwyu/docker/iwyu.sh
+
+
+  lint:
+    runs-on: ubuntu-latest
+    needs: build-docker
+
+    steps:
+    - uses: actions/checkout@v1
+
+    - name: Run clang-format
+      run: |
+        mkdir -p build-check-format
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-check-format/ ${IMG_CORE})
+        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+        docker run "${OPTS[@]}" cmake ..
+        docker run "${OPTS[@]}" make clang-format
+        git diff --exit-code
+
+    - name: Run black
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${IMG_CORE})
+        docker run "${OPTS[@]}" black --exclude docs --check .

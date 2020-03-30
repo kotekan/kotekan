@@ -19,12 +19,15 @@ from kotekan import runner
 if not runner.has_hdf5():
     pytest.skip("HDF5 support not available.", allow_module_level=True)
 
+
 def is_docker():
-    path = '/proc/self/cgroup'
+    path = "/proc/self/cgroup"
     return (
-        os.path.exists('/.dockerenv') or
-        os.path.isfile(path) and any('docker' in line for line in open(path))
+        os.path.exists("/.dockerenv")
+        or os.path.isfile(path)
+        and any("docker" in line for line in open(path))
     )
+
 
 if is_docker():
     pytest.skip("Does not work in Github Actions docker run.", allow_module_level=True)
