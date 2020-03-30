@@ -1,32 +1,35 @@
 #include "VisSharedMemWriter.hpp"
-#include <cxxabi.h>             // for _forced_unwind
-#include <fcntl.h>              // for O_CREAT, O_EXCL, O_RDWR
-#include <errno.h>              // for ENOENT, errno
-#include <stdio.h>              // for remove
-#include <unistd.h>             // for access, F_OK
-#include <string.h>             // for memcpy, strerror
-#include <sys/mman.h>           // for mmap, shm_open, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE
-#include <sys/stat.h>           // for S_IRUSR, S_IWUSR
-#include <sys/types.h>          // for uint
-#include <atomic>               // for atomic_bool
-#include <exception>            // for exception
-#include <functional>           // for _Bind_helper<>::type, bind, function
-#include <future>               // for async, future
-#include <iterator>             // for reverse_iterator
-#include <map>                  // for map, _Rb_tree_iterator
-#include <regex>                // for match_results<>::_Base_type
-#include <system_error>         // for system_error
-#include <tuple>                // for get
-#include <utility>              // for pair
-#include <vector>               // for vector
-#include "Hash.hpp"             // for Hash
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "datasetManager.hpp"   // for datasetManager
-#include "datasetState.hpp"     // for freqState, eigenvalueState, inputState, prodState, stackState
-#include "fmt.hpp"              // for format, fmt
-#include "kotekanLogging.hpp"   // for INFO, DEBUG, ERROR, FATAL_ERROR
-#include "visBuffer.hpp"        // for visFrameView, visMetadata
-#include "visUtil.hpp"          // for time_ctype, frameID, ts_to_double
+
+#include "Hash.hpp"           // for Hash
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "datasetManager.hpp" // for datasetManager
+#include "datasetState.hpp"   // for freqState, eigenvalueState, inputState, prodState, stackState
+#include "kotekanLogging.hpp" // for INFO, DEBUG, ERROR, FATAL_ERROR
+#include "visBuffer.hpp"      // for visFrameView, visMetadata
+#include "visUtil.hpp"        // for time_ctype, frameID, ts_to_double
+
+#include "fmt.hpp" // for format, fmt
+
+#include <atomic>       // for atomic_bool
+#include <cxxabi.h>     // for _forced_unwind
+#include <errno.h>      // for ENOENT, errno
+#include <exception>    // for exception
+#include <fcntl.h>      // for O_CREAT, O_EXCL, O_RDWR
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <future>       // for async, future
+#include <iterator>     // for reverse_iterator
+#include <map>          // for map, _Rb_tree_iterator
+#include <regex>        // for match_results<>::_Base_type
+#include <stdio.h>      // for remove
+#include <string.h>     // for memcpy, strerror
+#include <sys/mman.h>   // for mmap, shm_open, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE
+#include <sys/stat.h>   // for S_IRUSR, S_IWUSR
+#include <sys/types.h>  // for uint
+#include <system_error> // for system_error
+#include <tuple>        // for get
+#include <unistd.h>     // for access, F_OK
+#include <utility>      // for pair
+#include <vector>       // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -46,27 +49,27 @@ void check_remove(std::string fname) {
     }
 }
 
-VisSharedMemWriter::VisSharedMemWriter(Config& config, const std::string& unique_name, bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&VisSharedMemWriter::main_thread, this)) {
+VisSharedMemWriter::VisSharedMemWriter(Config& config, const std::string& unique_name,
+                                       bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container,
+          std::bind(&VisSharedMemWriter::main_thread, this)) {
 
-        // Fetch any simple configuration
-        _root_path = config.get_default<std::string>(unique_name, "root_path", "/dev/shm/");
-        _sem_name = config.get_default<std::string>(unique_name, "sem_name", "kotekan");
-        _fname_buf = config.get_default<std::string>(unique_name, "fname_buf", "calBuffer");
-        _ntime = config.get_default<size_t>(unique_name, "nsamples", 512);
-        _sem_wait_time = config.get_default<size_t>(unique_name, "sem_wait_time", 120);
+    // Fetch any simple configuration
+    _root_path = config.get_default<std::string>(unique_name, "root_path", "/dev/shm/");
+    _sem_name = config.get_default<std::string>(unique_name, "sem_name", "kotekan");
+    _fname_buf = config.get_default<std::string>(unique_name, "fname_buf", "calBuffer");
+    _ntime = config.get_default<size_t>(unique_name, "nsamples", 512);
+    _sem_wait_time = config.get_default<size_t>(unique_name, "sem_wait_time", 120);
 
-        // Setup the input vector
-        in_buf = get_buffer("in_buf");
-        register_consumer(in_buf, unique_name.c_str());
+    // Setup the input vector
+    in_buf = get_buffer("in_buf");
+    register_consumer(in_buf, unique_name.c_str());
 
-        // Check if any of the old buffer files exist
-        // Remove them, if they do
-        DEBUG("Checking for and removing old buffer files...");
-        check_remove(_root_path + "sem." + _sem_name);
-        check_remove(_root_path + _fname_buf);
-
-
+    // Check if any of the old buffer files exist
+    // Remove them, if they do
+    DEBUG("Checking for and removing old buffer files...");
+    check_remove(_root_path + "sem." + _sem_name);
+    check_remove(_root_path + _fname_buf);
 }
 
 VisSharedMemWriter::~VisSharedMemWriter() {
@@ -87,8 +90,9 @@ void VisSharedMemWriter::wait_for_semaphore() {
     // does a standard wait if the system clock is not accessible
 
     timespec ts;
-    if (clock_gettime(CLOCK_REALTIME, &ts) == -1){
-        WARN("Failed to get system time. {:d} ({:s})\n Not using timed semaphores.\n", errno, std::strerror(errno));
+    if (clock_gettime(CLOCK_REALTIME, &ts) == -1) {
+        WARN("Failed to get system time. {:d} ({:s})\n Not using timed semaphores.\n", errno,
+             std::strerror(errno));
         if (sem_wait(sem) == -1) {
             FATAL_ERROR("Failed to acquire semaphore {}\n", _sem_name);
             return;
@@ -112,37 +116,40 @@ void VisSharedMemWriter::release_semaphore() {
 }
 
 uint8_t* VisSharedMemWriter::assign_memory(std::string shm_name, size_t shm_size) {
-    // takes the name of a shared memory address, opens a shared memory of the provided size, and maps the memory to a uint8_t* address pointer
+    // takes the name of a shared memory address, opens a shared memory of the provided size, and
+    // maps the memory to a uint8_t* address pointer
 
-        uint8_t* addr;
+    uint8_t* addr;
 
-        int fd = shm_open(shm_name.c_str(), (O_CREAT | O_RDWR), (S_IRUSR | S_IWUSR));
+    int fd = shm_open(shm_name.c_str(), (O_CREAT | O_RDWR), (S_IRUSR | S_IWUSR));
 
-        if (fd == -1) {
-            FATAL_ERROR("Cannot open shared memory named {:s}: {:s}", shm_name, strerror(errno));
-        }
+    if (fd == -1) {
+        FATAL_ERROR("Cannot open shared memory named {:s}: {:s}", shm_name, strerror(errno));
+    }
 
-        // Resize object to hold buffer
-        if (ftruncate(fd, shm_size) == -1) {
-            FATAL_ERROR("Failed to expand shared memory named {:s}: {:s}", shm_name, strerror(errno));
-        }
-        INFO("Resized to {} bytes\n", (long) shm_size);
+    // Resize object to hold buffer
+    if (ftruncate(fd, shm_size) == -1) {
+        FATAL_ERROR("Failed to expand shared memory named {:s}: {:s}", shm_name, strerror(errno));
+    }
+    INFO("Resized to {} bytes\n", (long)shm_size);
 
-        addr = (uint8_t*) mmap(nullptr, shm_size, (PROT_READ | PROT_WRITE), MAP_SHARED, fd, 0);
-        if (addr == MAP_FAILED) {
-            FATAL_ERROR("Failed to map shm {:s} to memory: {:s}.", shm_name, strerror(errno));
-        }
+    addr = (uint8_t*)mmap(nullptr, shm_size, (PROT_READ | PROT_WRITE), MAP_SHARED, fd, 0);
+    if (addr == MAP_FAILED) {
+        FATAL_ERROR("Failed to map shm {:s} to memory: {:s}.", shm_name, strerror(errno));
+    }
 
-        // fd is no longer needed
-        if (close(fd) == -1) {
-            FATAL_ERROR("Failed to close file descriptor for shm {:s}: {:s}.", shm_name, strerror(errno));
-        }
+    // fd is no longer needed
+    if (close(fd) == -1) {
+        FATAL_ERROR("Failed to close file descriptor for shm {:s}: {:s}.", shm_name,
+                    strerror(errno));
+    }
 
-        return addr;
+    return addr;
 }
 
 bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uint32_t freq_ind) {
-    // calculate the time index for time sample t, add the frame for time sample t at position frequency index
+    // calculate the time index for time sample t, add the frame for time sample t at position
+    // frequency index
     //
     // curr_pos always points to the ring buffer index for the most recent time
 
@@ -150,14 +157,12 @@ bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
         // if the time is already indexed, write to memory at that location
         write_to_memory(frame, vis_time_ind_map.at(t), freq_ind);
         return true;
-    }
-    else if (vis_time_ind_map.size() == 0) {
+    } else if (vis_time_ind_map.size() == 0) {
         // the first sample added, so we do not increment by 1
         vis_time_ind_map[t] = cur_pos;
         write_to_memory(frame, vis_time_ind_map.at(t), freq_ind);
         return true;
-    }
-    else if (vis_time_ind_map.size() < _ntime) {
+    } else if (vis_time_ind_map.size() < _ntime) {
         // if there is still empty space in the shared buffer
         // add an additional time index
         cur_pos++;
@@ -173,7 +178,9 @@ bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
     if (t < min_time) {
         // this data is older than anything else in the map, so we should
         // just drop it
-        INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (minimum in pool {:d})\n", t.fpga_count, min_time.fpga_count);
+        INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (minimum in pool "
+             "{:d})\n",
+             t.fpga_count, min_time.fpga_count);
         return false;
     }
 
@@ -187,10 +194,12 @@ bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
         vis_time_ind_map[t] = cur_pos;
         write_to_memory(frame, vis_time_ind_map.at(t), freq_ind);
         return true;
-    }
-    else {
-        // if the time sample is not indexed, and is between the min_time and max_time, we are going to just drop it
-        INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (only accepting new times greater than {:d})\n", t.fpga_count, max_time.fpga_count);
+    } else {
+        // if the time sample is not indexed, and is between the min_time and max_time, we are going
+        // to just drop it
+        INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (only accepting "
+             "new times greater than {:d})\n",
+             t.fpga_count, max_time.fpga_count);
         return false;
     }
 }
@@ -199,12 +208,13 @@ void VisSharedMemWriter::reset_memory(uint32_t time_ind) {
 
     // resets all memory at time_ind to 0s
 
-    uint8_t *buf_write_pos = buf_addr + (time_ind * nfreq * frame_size);
-    int64_t *access_record_write_pos = access_record_addr + (time_ind * nfreq);
+    uint8_t* buf_write_pos = buf_addr + (time_ind * nfreq * frame_size);
+    int64_t* access_record_write_pos = access_record_addr + (time_ind * nfreq);
 
     DEBUG("Resetting access_record memory at position time_ind: {}\n", time_ind);
 
-    // notify that the entire time_ind is invalid, by setting time_ind in the access record to invalid
+    // notify that the entire time_ind is invalid, by setting time_ind in the access record to
+    // invalid
     wait_for_semaphore();
 
     int64_t invalid_vector[nfreq];
@@ -222,11 +232,12 @@ void VisSharedMemWriter::reset_memory(uint32_t time_ind) {
     DEBUG("Memory reset\n");
 }
 
-void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t time_ind, uint32_t freq_ind) {
+void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t time_ind,
+                                         uint32_t freq_ind) {
     // write frame to ring buffer at time_ind and freq_ind
 
-    uint8_t *buf_write_pos = buf_addr + ((time_ind * nfreq + freq_ind) * frame_size);
-    int64_t *access_record_write_pos = access_record_addr + (time_ind * nfreq + freq_ind);
+    uint8_t* buf_write_pos = buf_addr + ((time_ind * nfreq + freq_ind) * frame_size);
+    int64_t* access_record_write_pos = access_record_addr + (time_ind * nfreq + freq_ind);
 
     DEBUG("Writing ringbuffer to time_ind {} and freq_ind {}\n", time_ind, freq_ind);
 
@@ -259,7 +270,6 @@ void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
 
     release_semaphore();
     return;
-
 }
 
 void VisSharedMemWriter::main_thread() {
@@ -272,12 +282,7 @@ void VisSharedMemWriter::main_thread() {
     cur_pos = modulo<int>(_ntime);
 
     // Create the semaphore, and gain first access to it
-    sem = sem_open(
-            _sem_name.c_str(),
-            (O_CREAT | O_EXCL),
-            (S_IRUSR | S_IWUSR),
-            1
-        );
+    sem = sem_open(_sem_name.c_str(), (O_CREAT | O_EXCL), (S_IRUSR | S_IWUSR), 1);
 
     if (sem == SEM_FAILED) {
         FATAL_ERROR("Failed to create semaphore {}", _sem_name);
@@ -320,12 +325,15 @@ void VisSharedMemWriter::main_thread() {
     frame_size = _member_alignment(data_size + metadata_size + valid_size, alignment);
 
     // memory_size should be _ntime * nfreq * file_frame_size (data + metadata)
-    buf_addr = assign_memory(_fname_buf, (structured_data_size * structured_data_num) + (_ntime * nfreq * access_record_size) + (_ntime * nfreq * frame_size));
+    buf_addr = assign_memory(_fname_buf, (structured_data_size * structured_data_num)
+                                             + (_ntime * nfreq * access_record_size)
+                                             + (_ntime * nfreq * frame_size));
 
     // The elements contained in the structured data and access record are each 64 bytes
-    structured_data_addr = (uint64_t*) buf_addr;
-    access_record_addr = (int64_t*) (structured_data_addr + structured_data_num);
-    buf_addr += (structured_data_size * structured_data_num) + (_ntime * nfreq * access_record_size);
+    structured_data_addr = (uint64_t*)buf_addr;
+    access_record_addr = (int64_t*)(structured_data_addr + structured_data_num);
+    buf_addr +=
+        (structured_data_size * structured_data_num) + (_ntime * nfreq * access_record_size);
 
     // Record structure of data
     memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
@@ -337,8 +345,8 @@ void VisSharedMemWriter::main_thread() {
 
     // initially set the address records with -1
     // std::fill_n(array, 100, -1);
-    int64_t invalid_vector [_ntime * nfreq];
-    std::fill_n(invalid_vector, _ntime*nfreq, invalid);
+    int64_t invalid_vector[_ntime * nfreq];
+    std::fill_n(invalid_vector, _ntime * nfreq, invalid);
     memcpy(access_record_addr, invalid_vector, _ntime * nfreq * sizeof(invalid_vector[0]));
 
     INFO("Created the shared memory segments\n");
@@ -357,8 +365,9 @@ void VisSharedMemWriter::main_thread() {
         auto frame = visFrameView(in_buf, frame_id);
 
         if (frame.data_size != data_size) {
-            FATAL_ERROR("The size of the data has changed. Buffer expects: {}. Current frame's size: {}",
-                    data_size, frame.data_size);
+            FATAL_ERROR(
+                "The size of the data has changed. Buffer expects: {}. Current frame's size: {}",
+                data_size, frame.data_size);
             return;
         }
 
@@ -371,7 +380,5 @@ void VisSharedMemWriter::main_thread() {
 
         // marks the buffer and moves on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
-
     }
 }
-

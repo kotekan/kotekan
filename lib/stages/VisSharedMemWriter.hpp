@@ -1,23 +1,24 @@
 #ifndef VISSHAREDMEMWRITER_HPP
 #define VISSHAREDMEMWRITER_HPP
 
-#include <semaphore.h>          // for sem_t
-#include <cstdint>              // for uint32_t, uint64_t, uint8_t
-#include <map>                  // for map
-#include <stdexcept>            // for runtime_error
-#include <string>               // for string, operator+
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "buffer.h"             // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "visBuffer.hpp"        // for visFrameView
-#include "visUtil.hpp"          // for time_ctype
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "visBuffer.hpp"       // for visFrameView
+#include "visUtil.hpp"         // for time_ctype
+
+#include <cstdint>     // for uint32_t, uint64_t, uint8_t
+#include <map>         // for map
+#include <semaphore.h> // for sem_t
+#include <stdexcept>   // for runtime_error
+#include <string>      // for string, operator+
 
 class VisSharedMemWriter : public kotekan::Stage {
 
 public:
     VisSharedMemWriter(kotekan::Config& config, const std::string& unique_name,
-             kotekan::bufferContainer& buffer_container);
+                       kotekan::bufferContainer& buffer_container);
 
     ~VisSharedMemWriter();
 
@@ -29,12 +30,12 @@ protected:
     Buffer* in_buf;
 
     // Semaphore for updating access record
-    sem_t *sem;
+    sem_t* sem;
 
     // Pointers to shared memory addresses for structured data, access record and ringBuffer
-    uint64_t *structured_data_addr;
-    int64_t *access_record_addr;
-    uint8_t *buf_addr;
+    uint64_t* structured_data_addr;
+    int64_t* access_record_addr;
+    uint8_t* buf_addr;
 
     // Parameters that define structure of ring buffer
 

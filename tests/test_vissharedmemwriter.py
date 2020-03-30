@@ -54,12 +54,19 @@ params_fakevis_large = {
 
 global num_frames
 
-params_writer_stage = {"nsamples": global_params["total_frames"], "sem_name": sem_name, "fname_buf": fname_buf}
+params_writer_stage = {
+    "nsamples": global_params["total_frames"],
+    "sem_name": sem_name,
+    "fname_buf": fname_buf,
+}
 
 size_of_uint64 = 8
 num_structural_params = 6
 pos_access_record = size_of_uint64 * num_structural_params
-pos_ring_buffer = pos_access_record + size_of_uint64 * params_writer_stage["nsamples"] * len(global_params["freq"])
+pos_ring_buffer = pos_access_record + size_of_uint64 * params_writer_stage[
+    "nsamples"
+] * len(global_params["freq"])
+
 
 @pytest.fixture(
     scope="module", params=[params_fakevis, params_fakevis_small, params_fakevis_large]
@@ -96,6 +103,7 @@ def memory_map_buf(vis_data):
     mapfile = mmap.mmap(memory.fd, memory.size, prot=mmap.PROT_READ)
     os.close(memory.fd)
     yield mapfile
+
 
 def test_structured_data(semaphore, memory_map_buf):
     semaphore.acquire()
@@ -173,6 +181,7 @@ def test_access_record(semaphore, memory_map_buf):
 
         semaphore.release()
 
+
 def test_ring_buffer(vis_data):
     global num_frames
 
@@ -181,4 +190,6 @@ def test_ring_buffer(vis_data):
     num_ev = global_params["num_ev"]
     num_elements = global_params["num_elements"]
 
-    ring_buffer = shared_memory_buffer.SharedMemoryReader(sem_name, fname_buf, params_writer_stage["nsamples"])
+    ring_buffer = shared_memory_buffer.SharedMemoryReader(
+        sem_name, fname_buf, params_writer_stage["nsamples"]
+    )

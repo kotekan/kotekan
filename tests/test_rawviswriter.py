@@ -99,6 +99,7 @@ def test_vis(written_data):
 
         testing.validate(vr)
 
+
 def test_metadata(written_data):
 
     nt = writer_params["total_frames"]
