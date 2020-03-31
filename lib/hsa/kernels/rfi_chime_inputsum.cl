@@ -46,9 +46,10 @@ rfi_chime_inputsum(
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
+
     // Compute spectral kurtosis estimate and add to output
     if (lx == 0) {
-        float n = sk_step - lost_samples[gz];
+        float n = (float)sk_step - lost_samples[gz];
         float cf = n / sk_step;
         float N = (float)(num_elements - num_bad_inputs);
         uint address = gy + gz * gy_size;
@@ -56,10 +57,9 @@ rfi_chime_inputsum(
             output[address] = -1.0;
             output_mask[address] = 1;
         } else {
-            float new_sq_power_across_input = sq_power_across_input[0]; // * cf * cf;
+            float new_sq_power_across_input = sq_power_across_input[0] * cf * cf;
             float SK = ((n + 1) / (n - 1)) * ((new_sq_power_across_input / (n * N)) - 1);
             output[address] = SK;
-            //output[address] = lost_samples[gz];
             float sigma = sqrt((double)((4 * n * n)/(N * (n - 1) * (n + 2) * (n + 3))));
             if (SK > 1 + rfi_sigma_cut * sigma || SK < 1 - rfi_sigma_cut * sigma)
                 output_mask[address] = 1;

@@ -116,7 +116,7 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
     params.grid_size_z = _samples_per_data_set / _sk_step;
     params.num_dims = 3;
     params.private_segment_size = 0;
-    params.group_segment_size = 16384;
+    params.group_segment_size = 1024;
     // Parameters for rfi_chime_inputsum_private.hsaco, for easy switching if needed in future
     /*    params.workgroup_size_x = _num_local_freq;
         params.workgroup_size_y = 1;
