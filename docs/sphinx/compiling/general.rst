@@ -121,12 +121,12 @@ Documentation:
 
 * PlantUml::
 
-    sudo wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar
-    sudo mkdir /opt/plantuml; sudo mv plantuml.jar /opt/plantuml
+    sudo wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar -P /opt/plantuml
+    sudo apt-get install default-jre
 
 * Breathe::
 
-    sudo apt-get install -y python-breathe
+    sudo pip install breathe
 
 * Black::
 
