@@ -33,7 +33,7 @@ set ( KOTEKAN_UTIL_SOURCES
     )
 
 if (${USE_HDF5})
-    set (KOTEKAN_UTIL_SOURCES ${KOTEKAN_UTIL_SOURCES} visFileH5.cpp visFileArchive.cpp)
+    set (KOTEKAN_UTIL_SOURCES ${KOTEKAN_UTIL_SOURCES} visFileH5.cpp hfbFileH5.cpp visFileArchive.cpp hfbFileArchive.cpp)
 endif ()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
