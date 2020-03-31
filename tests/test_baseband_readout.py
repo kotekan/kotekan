@@ -270,57 +270,34 @@ def test_overload_no_crash(tmpdir_factory):
 
     run_baseband(tmpdir_factory, params, rest_commands)
 
-def scrape_freqid(string):
+def scrape_freq_id(string):
+    # returns freq_id from a filename
     # e.g.: str = 'baseband_17_640.h5'
-    freqid = ''
-    for length in range(5): # up to 5 digits!
-        try:
-            freqid = int(string[-4-length:-3])
-        except:
-            break
-    return freqid
+    # e.g.: str = 'baseband_1234567890_1024_board_13.h5' in 16-element mode
+    chunks = string.split('_')
+    if len(chunks) == 3:
+        return int(chunks[2][0:-3])
+    elif len(chunks) == 5:
+        return int(chunks[2])
+    else:
+        raise NameError(f"Could not scrape freq_id from {string}.")
+        return 0
 
-def test_basic_multifreq(tmpdir_factory):
-    # Eight frequencies
-    rest_commands = [
-            command_rest_frames(1), # generate 1 frame = 1024 time samples x 256 feeds
-            wait(0.5), # in seconds?
-            command_trigger(1437, 1839, 10), # capture ~1839 time samples starting at t = 3.67 ms(=1437 x 2.56us) with event id=10
-            command_trigger(20457, 3237, 17), #similar to above
-            command_trigger(41039, 2091, 31),
-            wait(0.1),
-            command_rest_frames(60),
-            ]
-    params = {
-            'num_local_freq': 8,
-            'type': 'tpluseplusf',
-            'stream_id': 3
-            }
-    dump_files = run_baseband(tmpdir_factory, params, rest_commands)
-    assert len(dump_files) == (3*params['num_local_freq']), f'Incorrect number ({len(dump_files)}) of files dumped.'
-    num_elements = default_params['num_elements']
-    filenames = sorted(dump_files)
-    print(filenames)
-    files = [h5py.File(filename, 'r') for filename in filenames] #makes it easier to debug across frequencies
+def scrape_board_id(string):
+    # returns board_id from a filename
+    # e.g.: str = 'baseband_17_640.h5'
+    # e.g.: str = 'baseband_1234567890_1024_board_13.h5' in 16-element mode
+    chunks = string.split('_')
+    if len(chunks) == 3:
+        return 0 # board_id = 0 by default!
+    elif len(chunks) == 5:
+        return int(chunks[4][0:-3]) # board_id is non-zero in 16-element mode if more than one FPGA is used.
+    else:
+        raise NameError(f"Could not scrape board_id from {string}.")
+        return 0
 
-    for ii, f in enumerate(files):
-        command_idx = 2 + ii/params['num_local_freq']
-        freq_idx = ii % params['num_local_freq']
-        shape = f['baseband'].shape
-        assert f.attrs['time0_fpga_count'] * 2560 == rest_commands[2 + int(ii/params['num_local_freq'])][2]['start_unix_nano'], f'time0_fpga_count not recorded properly for trigger {ii}!' # makes sure time0_fpga_count is recorded properly?
-        assert f.attrs['event_id'] == rest_commands[2 + int(ii/params['num_local_freq'])][2]['event_id'] # ii / num_local_freq indexing because there are many frequency files for each event
-        assert f.attrs['freq_id'] == scrape_freqid(f.filename) # where is this defined? not in run_baseband or default_params.
-        eshape = (int(rest_commands[2 + int(ii/params['num_local_freq'])][2]['duration_nano']/2560), num_elements)
-        assert shape == eshape,"Shape ({shape}) incorrect; expected  {eshape}" # axes: [time samples][feed]. Eventually want [time][freq][feed] as [slow][med][fast]
-        assert np.all(f['index_map/input'][:]['chan_id']
-                      == np.arange(num_elements)),"index_map/input incorrect."
-        edata = f.attrs['time0_fpga_count'] + f.attrs['freq_id'] + np.arange(shape[0], dtype=int) # increment freq_idx every time
-        edata = edata[:, None] + np.arange(shape[1], dtype=int)
-        edata = edata % 256
-        assert np.all(f['baseband'][:] == edata), "contents don't correspond to t + e + f !"
-
-def test_robust_multifreq(tmpdir_factory):
-    # Eight frequencies
+def test_8_multifreq(tmpdir_factory):
+    # Eight frequencies, one stage.
     rest_commands = [
             command_rest_frames(1), # generate 1 frame = 1024 time samples x 256 feeds
             wait(0.5), # in seconds?
@@ -348,7 +325,7 @@ def test_robust_multifreq(tmpdir_factory):
         shape = f['baseband'].shape
         assert f.attrs['time0_fpga_count'] * 2560 == rest_commands[2 + int(ii/params['num_local_freq'])][2]['start_unix_nano'], f'time0_fpga_count not recorded properly for trigger {ii}!' # makes sure time0_fpga_count is recorded properly?
         assert f.attrs['event_id'] == rest_commands[2 + int(ii/params['num_local_freq'])][2]['event_id'] # ii / num_local_freq indexing because there are many frequency files for each event
-        assert f.attrs['freq_id'] == scrape_freqid(f.filename) # where is this defined? not in run_baseband or default_params.
+        assert f.attrs['freq_id'] == scrape_freq_id(f.filename) # where is this defined? not in run_baseband or default_params.
         eshape = (rest_commands[2 + int(ii/params['num_local_freq'])][2]['duration_nano']/2560, num_elements)
         assert shape == eshape,"Shape ({shape}) incorrect; expected  {eshape}" # axes: [time samples][feed]. Eventually want [time][freq][feed] as [slow][med][fast]
         assert np.all(f['index_map/input'][:]['chan_id']
@@ -358,8 +335,9 @@ def test_robust_multifreq(tmpdir_factory):
         edata = edata % 256
         assert np.all(f['baseband'][:] == edata), "contents don't correspond to 2 t + 3 e + 5 f !"
 
+
 def test_128_multifreq(tmpdir_factory):
-    # Eight frequencies
+    # 128 frequencies, 1 stage, 2t + 3f + 5e.
     rest_commands = [
             command_rest_frames(1), # generate 1 frame = 1024 time samples x 256 feeds
             wait(0.5), # in seconds?
@@ -388,7 +366,51 @@ def test_128_multifreq(tmpdir_factory):
         shape = f['baseband'].shape
         assert f.attrs['time0_fpga_count'] * 2560 == rest_commands[2 + int(ii/params['num_local_freq'])][2]['start_unix_nano'], f'time0_fpga_count not recorded properly for trigger {ii}!' # makes sure time0_fpga_count is recorded properly?
         assert f.attrs['event_id'] == rest_commands[2 + int(ii/params['num_local_freq'])][2]['event_id'] # ii / num_local_freq indexing because there are many frequency files for each event
-        assert f.attrs['freq_id'] == scrape_freqid(f.filename) # where is this defined? not in run_baseband or default_params.
+        assert f.attrs['freq_id'] == scrape_freq_id(f.filename) # where is this defined? not in run_baseband or default_params.
+        eshape = (int(rest_commands[2 + int(ii/params['num_local_freq'])][2]['duration_nano']/2560),
+                num_elements)
+        assert shape == eshape,"Shape ({shape}) incorrect; expected  {eshape}" # axes: [time samples][feed]. Eventually want [time][freq][feed] as [slow][med][fast]
+        assert np.all(f['index_map/input'][:]['chan_id']
+                      == np.arange(num_elements)),"index_map/input incorrect."
+        edata = 2 * (f.attrs['time0_fpga_count'] +  np.arange(shape[0], dtype=int)) + 3 * f.attrs['freq_id']  # increment freq_idx every time
+        edata = edata[:, None] + 5 * np.arange(shape[1], dtype=int)
+        edata = edata % 256
+        assert np.all(f['baseband'][:] == edata), "contents don't correspond to 2t + 3f + 5e !"
+
+def test_128_multifreq_board_id(tmpdir_factory):
+    # 128 frequencies, let's test board_id = 1
+    rest_commands = [
+            command_rest_frames(1), # generate 1 frame = 1024 time samples x 256 feeds
+            wait(0.5), # in seconds?
+            command_trigger(1437, 1839, 10), # capture ~1839 time samples starting at t = 3.67 ms(=1437 x 2.56us) with event id=10
+            command_trigger(20457, 3237, 17), #similar to above
+            command_trigger(41039, 2091, 31),
+            wait(0.1),
+            command_rest_frames(60),
+            ]
+    params = {
+            'num_local_freq': 128,
+            'num_elements': 16,
+            'type': 'tpluseplusfprime',
+            'stream_id': 3,
+            'board_id' : 12 # some random board ID
+            }
+    dump_files = run_baseband(tmpdir_factory, params, rest_commands)
+    assert len(dump_files) == (3*params['num_local_freq']), f'Incorrect number ({len(dump_files)}) of files dumped.'
+    num_elements = params['num_elements']
+    filenames = sorted(dump_files)
+    print(filenames)
+    files = [h5py.File(filename, 'r') for filename in filenames] #makes it easier to debug across frequencies
+    for board_id_from_filename in [scrape_board_id(f) for f in filenames]:
+        assert params['board_id'] == board_id_from_filename
+
+    for ii, f in enumerate(files):
+        command_idx = 2 + ii/params['num_local_freq']
+        freq_idx = ii % params['num_local_freq']
+        shape = f['baseband'].shape
+        assert f.attrs['time0_fpga_count'] * 2560 == rest_commands[2 + int(ii/params['num_local_freq'])][2]['start_unix_nano'], f'time0_fpga_count not recorded properly for trigger {ii}!'
+        assert f.attrs['event_id'] == rest_commands[2 + int(ii/params['num_local_freq'])][2]['event_id'] # ii / num_local_freq indexing because there are many frequency files for each event
+        assert f.attrs['freq_id'] == scrape_freq_id(f.filename)
         eshape = (int(rest_commands[2 + int(ii/params['num_local_freq'])][2]['duration_nano']/2560),
                 num_elements)
         assert shape == eshape,"Shape ({shape}) incorrect; expected  {eshape}" # axes: [time samples][feed]. Eventually want [time][freq][feed] as [slow][med][fast]
