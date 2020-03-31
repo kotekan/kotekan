@@ -77,6 +77,7 @@ def semaphore():
     sem.release()
     sem.unlink()
 
+
 # number of frames to ignore in validation
 ignore_frames = 3
 # maximum timing error to accept (in seconds)
@@ -134,7 +135,16 @@ def test_shared_mem_buffer(vis_data, comet_broker):
     config = copy.copy(params)
     config.update(params_fakevis)
     config.update(params_writer_stage)
-    validation = shared_memory_buffer.ValidationTest(params["total_frames"] - ignore_frames, config, 3, sem_name, fname_buf, view_size, params["mode"], update_interval)
+    validation = shared_memory_buffer.ValidationTest(
+        params["total_frames"] - ignore_frames,
+        config,
+        3,
+        sem_name,
+        fname_buf,
+        view_size,
+        params["mode"],
+        update_interval,
+    )
     validation.run()
 
     # test validation results
