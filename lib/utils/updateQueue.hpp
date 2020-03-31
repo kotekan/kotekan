@@ -4,6 +4,7 @@
 #include "visUtil.hpp"
 
 #include <deque>
+#include <mutex>
 
 /**
  * @class updateQueue
