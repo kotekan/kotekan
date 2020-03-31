@@ -1,12 +1,15 @@
 """Python interface for the kotekan ring buffer using a shared memory region."""
 
 import ctypes
+import copy
 import logging
 import mmap
 import numpy as np
 import os
 import posix_ipc
+import time
 
+from kotekan import testing
 from kotekan.visbuffer import VisRaw
 
 SIZE_UINT64_T = 8
@@ -459,3 +462,212 @@ class SharedMemoryReader:
         _check_structure(
             self.size_frame_data, size_frame_data, "size of the frame data"
         )
+
+
+class ValidationTest:
+    """
+    A validation test starting a number of readers and validating read frames.
+
+    Parameters
+    ----------
+    config : dict
+        Kotekan config used.
+    num_readers : int
+        Number of readers to run.
+    semaphore_name : str
+        Full path and file name of semaphore.
+    shared_memory_name : int
+        Full path and file name of shared memory.
+    view_sizes : int or list(int)
+        Number of time slots to give access to. 0 means as many as possible (= size of shared memory buffer). If it should be different per reader, use a list of ints.
+    test_pattern : str
+        Name of the test pattern to expect in the frames.
+    update_interval : int or list(int)
+        Number of seconds to wait between update() calls. If it should be different per reader, use a list of ints.
+
+    Attributes
+    ----------
+    time_total : list(int)
+        Number of seconds spent by each readers update() calls.
+    updates_total : list(int
+        Number of updates performed by each reader.
+    delay : list(list(float))
+        Delays of frames (time between frame creation and validation) for each reader.
+
+    """
+
+    test_patterns = testing.test_patterns
+
+    def __init__(
+        self,
+        config,
+        num_readers,
+        semaphore_name,
+        shared_memory_name,
+        view_sizes,
+        test_pattern,
+        update_interval,
+    ):
+        # TODO: allow these to be on lower level
+        if "cadence" not in config:
+            raise ValueError("Variable 'cadence' not found in config.")
+        self.cadence = config["cadence"]
+        if "nsamples" not in config:
+            raise ValueError("Variable 'nsamples' not found in config.")
+        self.shm_size = config["nsamples"]
+
+        self.config = config
+
+        self.num_readers = num_readers
+
+        if test_pattern not in self.test_patterns:
+            raise ValueError(
+                "Test pattern '{}' is currently not supported, choose one of {}.".format(
+                    test_pattern, self.test_patterns
+                )
+            )
+        self.test_pattern = test_pattern
+
+        if isinstance(view_sizes, int):
+            self.view_sizes = [view_sizes] * num_readers
+        else:
+            self.view_sizes = view_sizes
+        if len(self.view_sizes) != num_readers:
+            raise ValueError(
+                "Expected {} view sizes (= num_readers), but received {}.".format(
+                    num_readers, len(self.view_sizes)
+                )
+            )
+
+        if isinstance(update_interval, int):
+            self.update_interval = [update_interval] * num_readers
+        else:
+            self.update_interval = update_interval
+        if len(self.update_interval) != num_readers:
+            raise ValueError(
+                "Expected {} update intervals (= num_readers), but received {}.".format(
+                    num_readers, len(self.update_interval)
+                )
+            )
+
+        # Start readers and metrics
+        self._readers = list()
+        self.time_total = list()
+        self.updates_total = list()
+        self.delay = list()
+        self._next_check = copy.copy(self.update_interval)
+        for i in range(num_readers):
+            view_size = self.view_sizes[i]
+            self._readers.append(
+                SharedMemoryReader(semaphore_name, shared_memory_name, view_size)
+            )
+            self.time_total.append(0)
+            self.updates_total.append(0)
+            self.delay.append([])
+
+        self._first_update(semaphore_name, shared_memory_name)
+
+    def _first_update(self, semaphore_name, shared_memory_name):
+        """Get a minimal first update to get a start time."""
+        visraw = SharedMemoryReader(semaphore_name, shared_memory_name, 1).update()
+        assert visraw.time.shape[1] == visraw.num_freq
+        times = np.unique(visraw.time)
+        assert len(times) == 1
+        timestamp = visraw.time[0, 0]
+        self.start_time = self._timeval_to_seconds(timestamp["ctime"])
+        fpga_seq = timestamp["fpga_count"]
+        ctime = time.ctime(self.start_time)
+        age = time.time() - self.start_time
+        logger.info(
+            "Starting validation with fpga_seq {} from {} (age {} seconds).".format(
+                fpga_seq, ctime, age
+            )
+        )
+        self._last_update_time = [self.start_time] * self.num_readers
+
+    @staticmethod
+    def _timeval_to_seconds(timeval):
+        if timeval["tv"] < 0 or timeval["tv_nsec"] > 10e9:
+            raise ValueError(
+                "Can't convert {} to seconds: nanoseconds are out of range "
+                "[0..1000000000].".format(timeval)
+            )
+        return timeval["tv"] + timeval["tv_nsec"] / 10e9
+
+    def run(self):
+        while True:
+            next_check = min(self._next_check)
+            logger.info("Waiting {}s for next update.".format(next_check))
+            time.sleep(next_check)
+            for r in range(self.num_readers):
+                self._next_check[r] -= next_check
+                if self._next_check[r] <= 0:
+                    self._check(r)
+                    self._next_check[r] = self.update_interval[r]
+
+    def _check(self, r):
+        logger.info("Updating reader {}.".format(r))
+        reader = self._readers[r]
+        time0 = time.time()
+        visraw = reader.update()
+        self.time_total[r] += time.time() - time0
+        self.updates_total[r] += 1
+
+        self._validate_time(visraw, r)
+        testing.validate(visraw, self.config, self.test_pattern)
+
+    def _validate_time(self, visraw, r):
+        assert visraw.time.shape[1] == visraw.num_freq
+        times = np.unique(visraw.time)
+        assert len(times) == self.view_sizes[r]
+
+        # check first time slot
+        timestamp = times[0]
+
+        seconds = self._timeval_to_seconds(timestamp["ctime"])
+        fpga_seq = timestamp["fpga_count"]
+        ctime = time.ctime(seconds)
+        age = time.time() - self._last_update_time[r]
+        logger.info(
+            "Validating fpga_seq {} from {} (age {}s).".format(fpga_seq, ctime, age)
+        )
+
+        # determine if this age is acceptable
+        cadence = self.cadence
+        if np.isclose(age, 0):
+            logger.info("all good: age == 0")
+        elif np.isclose(age, cadence):
+            logger.info("all good: age == cadence")
+        else:
+            # calculate how much data we missed given cadence, limited buffer size and update frequency
+            u_interval = self.update_interval[r]
+            frames_per_update = np.ceil(u_interval // cadence)
+            missed_frames = frames_per_update - self.shm_size
+            missed_time = missed_frames * cadence
+            error = age - missed_time
+            logger.info("Time error: {}".format(error))
+            self.delay[r].append(error)
+
+        # check the rest
+        for t in range(1, self.view_sizes[r]):
+            timestamp = times[r]
+
+            seconds = self._timeval_to_seconds(timestamp["ctime"])
+            fpga_seq = timestamp["fpga_count"]
+            ctime = time.ctime(seconds)
+            age = time.time() - self._last_update_time[r]
+            logger.info(
+                "Validating fpga_seq {} from {} (age {}s).".format(fpga_seq, ctime, age)
+            )
+
+            # determine if this age is acceptable
+            cadence = self.cadence
+            if np.isclose(age, 0):
+                logger.info("all good: age == 0")
+            elif np.isclose(age, cadence):
+                logger.info("all good: age == cadence")
+            else:
+                logger.info("Time error: {}".format(age))
+                self.delay[r].append(age)
+
+        self._last_update_time[r] = seconds
