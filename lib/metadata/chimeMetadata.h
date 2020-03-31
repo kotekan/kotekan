@@ -7,6 +7,8 @@
 
 #include <sys/time.h>
 
+#define MAX_NUM_BEAMS 20
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -14,9 +16,9 @@ extern "C" {
 #pragma pack()
 
 struct psrCoord {
-    float ra[10];
-    float dec[10];
-    uint32_t scaling[10];
+    float ra[MAX_NUM_BEAMS];
+    float dec[MAX_NUM_BEAMS];
+    uint32_t scaling[MAX_NUM_BEAMS];
 };
 
 struct chimeMetadata {

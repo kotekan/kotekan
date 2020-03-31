@@ -62,6 +62,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     rest_mode = config.get_default<std::string>(unique_name, "rest_mode", "none");
     assert(rest_mode == "none" || rest_mode == "start" || rest_mode == "step");
     step_to_frame = 0;
+    _first_frame_index = config.get_default<uint32_t>(unique_name, "first_frame_index", 0);
 
     endpoint = unique_name + "/generate_test_data";
     using namespace std::placeholders;
@@ -105,7 +106,7 @@ void testDataGen::main_thread() {
     int frame_id = 0;
     int frame_id_abs = 0;
     uint8_t* frame = nullptr;
-    uint64_t seq_num = 0;
+    uint64_t seq_num = samples_per_data_set * _first_frame_index;
     bool finished_seeding_consant = false;
     static struct timeval now;
 

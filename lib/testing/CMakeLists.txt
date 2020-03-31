@@ -25,3 +25,5 @@ set ( KOTEKAN_TESTING_SOURCES
     )
 
 add_library ( kotekan_testing ${KOTEKAN_TESTING_SOURCES} )
+
+target_link_libraries( kotekan_testing libexternal )

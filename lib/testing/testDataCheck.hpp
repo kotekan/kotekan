@@ -33,6 +33,7 @@ private:
     struct Buffer* first_buf;
     struct Buffer* second_buf;
     int num_frames_to_test;
+    int max_num_errors;
     double epsilon;
 };
 
@@ -47,6 +48,7 @@ testDataCheck<A_Type>::testDataCheck(kotekan::Config& config, const std::string&
     register_consumer(second_buf, unique_name.c_str());
 
     num_frames_to_test = config.get_default<int32_t>(unique_name, "num_frames_to_test", 0);
+    max_num_errors = config.get_default<int32_t>(unique_name, "max_num_errors", 100);
     epsilon = config.get_default<double>(unique_name, "epsilon",
                                          std::numeric_limits<A_Type>::epsilon() * 5);
 }
@@ -99,7 +101,7 @@ void testDataCheck<A_Type>::main_thread() {
                 if (!almost_equal((double)first_value, (double)second_value, epsilon)) {
                     error = true;
                     num_errors += 1;
-                    if (num_errors < 20) {
+                    if (num_errors < max_num_errors) {
                         FATAL_ERROR("{:s}[{:d}][{:d}] != {:s}[{:d}][{:d}]; values: ({:f}, {:f}), "
                                     "epsilon: {:f}, "
                                     "abs(x-y): {:f}, epsilon * abs(x+y): {:f}",
@@ -113,7 +115,7 @@ void testDataCheck<A_Type>::main_thread() {
             } else { // N2 numbers are int
                 // INFO("Checking non float numbers-----------");
                 if (first_value != second_value) {
-                    if (num_errors++ < 10000)
+                    if (num_errors++ < max_num_errors)
                         ERROR("{:s}[{:d}][{:d}] != {:s}[{:d}][{:d}]; values: ({:f}, {:f})",
                               first_buf->buffer_name, first_buf_id, i, second_buf->buffer_name,
                               second_buf_id, i, (double)first_value, (double)second_value);

@@ -7,6 +7,7 @@ import signal
 
 from kotekan import runner
 
+from test_dataset_broker import has_redis
 
 params = {
     "num_elements": 5,
@@ -43,6 +44,8 @@ def subset_data(tmpdir_factory):
         pytest.skip(
             "Make sure PYTHONPATH is set to where the comet dataset broker is installed."
         )
+    if not has_redis():
+        pytest.skip("Redis is not available and so comet will fail")
 
     # run the dataset broker
     broker = Popen([broker_path, "--recover", "False"])

@@ -60,6 +60,10 @@ To build with OpenCL and DPDK:
 
     cmake -DRTE_SDK=/opt/dpdk-stable-16.11.4/ -DRTE_TARGET=x86_64-native-linuxapp-gcc -DUSE_DPDK=ON -DUSE_OPENCL=ON ..
 
+To build with HDF5, DPDK, and debug symbols:
+
+    cmake .. -DUSE_HDF5=ON -DHIGHFIVE_PATH=/path/to/HighFive -DUSE_DPDK=ON -DCMAKE_BUILD_TYPE=Debug -DRTE_SDK=/usr/share/dpdk/x86_64-default-linuxapp-gcc -DRTE_TARGET=x86_64-native-linuxapp-gcc
+    
 To install kotekan (only works on CentOS at the moment):
 
 	make install
