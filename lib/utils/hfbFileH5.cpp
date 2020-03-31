@@ -2,9 +2,9 @@
 #include "hfbFileH5.hpp"
 
 #include "Hash.hpp"           // for Hash
+#include "HfbFrameView.hpp"   // for HfbFrameView
 #include "datasetManager.hpp" // for datasetManager, dset_id_t
 #include "datasetState.hpp"   // for eigenvalueState, freqState, inputState, prodState
-#include "HfbFrameView.hpp"   // for HfbFrameView
 #include "visUtil.hpp"        // for cfloat, time_ctype, freq_ctype, input_ctype, prod...
 
 #include "fmt.hpp"      // for format, fmt
@@ -263,21 +263,21 @@ void hfbFileH5::write_sample(uint32_t time_ind, uint32_t freq_ind, const FrameVi
     const HfbFrameView& frame = static_cast<const HfbFrameView&>(frame_view);
 
     // TODO: consider adding checks for all dims
-    //if (frame.num_ev != num_ev) {
+    // if (frame.num_ev != num_ev) {
     //    throw std::runtime_error(fmt::format(
     //        fmt("Number of eigenvalues don't match for write (got {:d}, expected {:d})"),
     //        frame.num_ev, num_ev));
     //}
 
     // Get the current dimensions
-    size_t nprod = length("prod"), ninput = length("input");//, nev = length("ev");
+    size_t nprod = length("prod"), ninput = length("input"); //, nev = length("ev");
 
     std::vector<cfloat> gain_coeff(ninput, {1, 0});
     std::vector<int32_t> gain_exp(ninput, 0);
 
     dset("hfb").select({time_ind, freq_ind, 0}, {1, 1, nprod}).write(frame.hfb.data());
 
-    //if (num_ev != 0) {
+    // if (num_ev != 0) {
     //    dset("eval").select({time_ind, freq_ind, 0}, {1, 1, nev}).write(frame.eval.data());
     //    dset("evec")
     //        .select({time_ind, freq_ind, 0, 0}, {1, 1, nev, ninput})
@@ -492,7 +492,7 @@ void hfbFileH5Fast::write_sample(uint32_t time_ind, uint32_t freq_ind,
     const HfbFrameView& frame = static_cast<const HfbFrameView&>(frame_view);
 
     // TODO: consider adding checks for all dims
-    //if (frame.num_ev != num_ev) {
+    // if (frame.num_ev != num_ev) {
     //    throw std::runtime_error(fmt::format(
     //        fmt("Number of eigenvalues don't match for write (got {:d}, expected {:d})"),
     //        frame.num_ev, num_ev));
@@ -502,11 +502,11 @@ void hfbFileH5Fast::write_sample(uint32_t time_ind, uint32_t freq_ind,
     std::vector<int32_t> gain_exp(ninput, 0);
 
     write_raw(hfb_offset, time_ind * nfreq + freq_ind, nprod, frame.hfb.data());
-    //write_raw(weight_offset, time_ind * nfreq + freq_ind, nprod, frame.weight.data());
-    //write_raw(gcoeff_offset, time_ind * nfreq + freq_ind, ninput, gain_coeff);
-    //write_raw(gexp_offset, time_ind, ninput, gain_exp);
+    // write_raw(weight_offset, time_ind * nfreq + freq_ind, nprod, frame.weight.data());
+    // write_raw(gcoeff_offset, time_ind * nfreq + freq_ind, ninput, gain_coeff);
+    // write_raw(gexp_offset, time_ind, ninput, gain_exp);
 
-    //if (num_ev != 0) {
+    // if (num_ev != 0) {
     //    write_raw(eval_offset, time_ind * nfreq + freq_ind, nev, frame.eval.data());
     //    write_raw(evec_offset, time_ind * nfreq + freq_ind, nev * ninput, frame.evec.data());
     //    write_raw(erms_offset, time_ind * nfreq + freq_ind, 1, (const float*)&frame.erms);

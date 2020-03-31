@@ -1,9 +1,9 @@
 #ifndef HFB_FILE_ARCHIVE_HPP
 #define HFB_FILE_ARCHIVE_HPP
 
+#include "FileArchive.hpp"
 #include "kotekanLogging.hpp" // for logLevel, kotekanLogging
 #include "visUtil.hpp"        // for freq_ctype, prod_ctype, time_ctype, input_ctype
-#include "FileArchive.hpp"    
 
 #include <highfive/H5DataSet.hpp>  // for DataSet
 #include <highfive/H5DataType.hpp> // for DataType
@@ -129,7 +129,6 @@ private:
     // Whether the products have been compressed via baseline stacking
     bool stacked = false;
 };
-
 
 
 // TODO: these should be included from hfbFileH5

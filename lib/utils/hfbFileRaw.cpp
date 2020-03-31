@@ -55,7 +55,7 @@ hfbFileRaw::hfbFileRaw(const std::string& name, const kotekan::logLevel log_leve
               dataset, (void*)fstate, (void*)bstate, (void*)sfstate);
         throw std::runtime_error("Could not create file.");
     }
-    
+
     // Set the axis metadata
     file_metadata["attributes"] = metadata;
     file_metadata["index_map"]["freq"] = unzip(fstate->get_freqs()).second;

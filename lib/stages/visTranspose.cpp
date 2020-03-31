@@ -94,7 +94,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
 
     // Set by visCompression???
     auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>, &dm, ds_id);
-    
+
     // Set by visRawReader.cpp
     auto idstate_fut = std::async(&datasetManager::dataset_state<acqDatasetIdState>, &dm, ds_id);
 

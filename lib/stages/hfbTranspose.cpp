@@ -2,17 +2,17 @@
 
 #include "Config.hpp"            // for Config
 #include "Hash.hpp"              // for Hash, operator!=
+#include "HfbFrameView.hpp"      // for HfbFrameView
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for wait_for_full_frame, mark_frame_empty, register_consumer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager
 #include "datasetState.hpp"      // for metadataState, stackState, acqDatasetIdState, eigenvalu...
 #include "errors.h"              // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "hfbFileArchive.hpp"    // for hfbFileArchive
 #include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, logLevel, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 #include "version.h"             // for get_git_commit_hash
-#include "HfbFrameView.hpp"      // for HfbFrameView
-#include "hfbFileArchive.hpp"    // for hfbFileArchive
 
 #include "fmt.hpp"      // for format
 #include "gsl-lite.hpp" // for span
@@ -90,10 +90,10 @@ bool hfbTranspose::get_dataset_state(dset_id_t ds_id) {
     auto bstate_fut = std::async(&datasetManager::dataset_state<beamState>, &dm, ds_id);
     auto sfstate_fut = std::async(&datasetManager::dataset_state<subfreqState>, &dm, ds_id);
     auto mstate_fut = std::async(&datasetManager::dataset_state<metadataState>, &dm, ds_id);
-    
+
     // Set by visCompression.cpp???
     auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>, &dm, ds_id);
-    
+
     // Set by hfbRawReader.cpp???
     auto idstate_fut = std::async(&datasetManager::dataset_state<acqDatasetIdState>, &dm, ds_id);
 
@@ -106,8 +106,7 @@ bool hfbTranspose::get_dataset_state(dset_id_t ds_id) {
     const acqDatasetIdState* idstate = idstate_fut.get();
 
 
-    if (mstate == nullptr || tstate == nullptr || fstate == nullptr || 
-        idstate == nullptr)
+    if (mstate == nullptr || tstate == nullptr || fstate == nullptr || idstate == nullptr)
         return false;
 
     // TODO split instrument_name up into the real instrument name,
@@ -135,7 +134,7 @@ bool hfbTranspose::get_dataset_state(dset_id_t ds_id) {
          it != end; ++it) {
         freqs.push_back(std::move(it->second));
     }
-    
+
     // unzip the vector of pairs in subfreqState
     auto subfreq_pairs = sfstate->get_subfreqs();
     for (auto it = std::make_move_iterator(subfreq_pairs.begin()),
@@ -159,8 +158,8 @@ bool hfbTranspose::get_dataset_state(dset_id_t ds_id) {
     // the dimension of the visibilities is different for stacked data
     eff_data_dim = (stack.size() > 0) ? stack.size() : num_beams * 128;
 
-    DEBUG("Dataset {} has {:d} times, {:d} frequencies, {:d} beams, {:d} sub-frequencies", ds_id, num_time, num_freq,
-          num_beams, num_subfreq);
+    DEBUG("Dataset {} has {:d} times, {:d} frequencies, {:d} beams, {:d} sub-frequencies", ds_id,
+          num_time, num_freq, num_beams, num_subfreq);
 
     // Ensure chunk_size not too large
     chunk_t = std::min(chunk_t, num_time);
@@ -255,7 +254,7 @@ void hfbTranspose::main_thread() {
 
             // export prometheus metric
             if (frame_size == 0)
-                //TODO: num_subfreq should be 128 when passed to calc_frame_size()
+                // TODO: num_subfreq should be 128 when passed to calc_frame_size()
                 frame_size = HfbFrameView::calculate_frame_size(num_beams, num_subfreq);
             transposed_bytes_metric.set(frame_size * frames_so_far);
         }

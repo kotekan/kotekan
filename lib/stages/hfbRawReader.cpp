@@ -1,6 +1,7 @@
 #include "hfbRawReader.hpp"
 
 #include "Config.hpp"          // for Config
+#include "HfbFrameView.hpp"    // for HfbFrameView, hfbMetadata
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "bufferContainer.hpp" // for bufferContainer
@@ -10,7 +11,6 @@
 #include "kotekanLogging.hpp"  // for DEBUG, INFO, FATAL_ERROR
 #include "metadata.h"          // for metadataContainer
 #include "version.h"           // for get_git_commit_hash
-#include "HfbFrameView.hpp"    // for HfbFrameView, hfbMetadata
 #include "visUtil.hpp"         // for freq_ctype, prod_ctype, rstack_ctype, stack_ctype, time_c...
 
 #include "fmt.hpp"      // for format, fmt
@@ -102,7 +102,7 @@ hfbRawReader::hfbRawReader(Config& config, const std::string& unique_name,
         _num_stack = _t.at("structure").at("num_stack").get<uint32_t>();
     }
 
-    //for (auto f : freqs) {
+    // for (auto f : freqs) {
     //    // TODO: add freq IDs to raw file format instead of restoring them here
     //    // TODO: CHIME specific.
     //    uint32_t freq_id = 1024.0 / 400.0 * (800.0 - f.centre);
@@ -126,7 +126,9 @@ hfbRawReader::hfbRawReader(Config& config, const std::string& unique_name,
     nbeam = _t["structure"]["num_beams"].get<size_t>();
     nsubfreq = _t["structure"]["num_subfreq"].get<size_t>();
 
-    INFO("Metadata fields. frame_size: {}, metadata_size: {}, data_size: {}, nfreq: {}, ntime: {}, nbeam: {}, nsubfreq: {}", file_frame_size, metadata_size, data_size, nfreq, ntime, nbeam, nsubfreq);
+    INFO("Metadata fields. frame_size: {}, metadata_size: {}, data_size: {}, nfreq: {}, ntime: {}, "
+         "nbeam: {}, nsubfreq: {}",
+         file_frame_size, metadata_size, data_size, nfreq, ntime, nbeam, nsubfreq);
 
     if (chunked) {
         // Special case if dimensions less than chunk size
@@ -184,12 +186,12 @@ void hfbRawReader::change_dataset_state(dset_id_t ds_id) {
     std::vector<state_id_t> states;
     if (!_stack.empty())
         states.push_back(dm.create_state<stackState>(_num_stack, std::move(_rstack)).first);
-    //states.push_back(dm.create_state<inputState>(_inputs).first);
-    //states.push_back(dm.create_state<eigenvalueState>(_ev).first);
-    //states.push_back(dm.create_state<freqState>(_freqs).first);
-    //states.push_back(dm.create_state<prodState>(_prods).first);
+    // states.push_back(dm.create_state<inputState>(_inputs).first);
+    // states.push_back(dm.create_state<eigenvalueState>(_ev).first);
+    // states.push_back(dm.create_state<freqState>(_freqs).first);
+    // states.push_back(dm.create_state<prodState>(_prods).first);
     states.push_back(dm.create_state<timeState>(_times).first);
-    //states.push_back(dm.create_state<metadataState>(_metadata.at("instrument_name"),
+    // states.push_back(dm.create_state<metadataState>(_metadata.at("instrument_name"),
     //                                                _metadata.at("git_version_tag"))
     //                     .first);
     states.push_back(dm.create_state<acqDatasetIdState>(ds_id).first);
@@ -283,7 +285,8 @@ void hfbRawReader::main_thread() {
             // Set metadata if file contained an empty frame
             //((hfbMetadata*)(out_buf->metadata[frame_id]->metadata))->num_prod = _prods.size();
             //((hfbMetadata*)(out_buf->metadata[frame_id]->metadata))->num_ev = _ev.size();
-            //((hfbMetadata*)(out_buf->metadata[frame_id]->metadata))->num_elements = _inputs.size();
+            //((hfbMetadata*)(out_buf->metadata[frame_id]->metadata))->num_elements =
+            //_inputs.size();
             // Fill data with zeros
             // size_t num_vis = _stack.size() > 0 ? _stack.size() : _prods.size();
             // JSW: Do we want num_prod to be _prods.size() or _stack.size()?

@@ -1,15 +1,15 @@
 #include "integrateHFBData.hpp"
 
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"                // for mark_frame_empty, Buffer, register_consumer, wait_for...
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"         // for mark_frame_empty, Buffer, register_consumer, wait_for...
 #include "chimeMetadata.h"
 #include "datasetManager.hpp"      // for state_id_t, datasetManager, dset_id_t
 #include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, stream_id_t
 #include "gpsTime.h"
 #include "hfbMetadata.hpp"
-#include "kotekanLogging.hpp"      // for DEBUG, DEBUG2
-#include "version.h"               // for get_git_commit_hash
-#include "visUtil.hpp"             // for freq_ctype
+#include "kotekanLogging.hpp" // for DEBUG, DEBUG2
+#include "version.h"          // for get_git_commit_hash
+#include "visUtil.hpp"        // for freq_ctype
 
 #include <atomic>      // for atomic_bool
 #include <exception>   // for exception
@@ -78,7 +78,7 @@ integrateHFBData::integrateHFBData(Config& config_, const std::string& unique_na
     std::vector<uint32_t> beams;
     beams.resize(_num_frb_total_beams);
     std::iota(std::begin(beams), std::end(beams), 0);
-    
+
     // Create the sub-frequencies specification
     std::vector<std::pair<uint32_t, freq_ctype>> sub_freqs;
     sub_freqs.resize(1024 * _factor_upchan);
@@ -86,9 +86,10 @@ integrateHFBData::integrateHFBData(Config& config_, const std::string& unique_na
     uint32_t index = 0;
     double freq_width = 400.0 / 1024;
     double sub_freq_width = freq_width / _factor_upchan;
-    for(auto const &f : freqs) {
-        for(uint32_t sub_freq_index = 0; sub_freq_index<_factor_upchan; sub_freq_index++) {
-            double sub_freq_centre = (f.second.centre - 0.5 * freq_width) + (sub_freq_index * sub_freq_width) + (0.5 * sub_freq_width);
+    for (auto const& f : freqs) {
+        for (uint32_t sub_freq_index = 0; sub_freq_index < _factor_upchan; sub_freq_index++) {
+            double sub_freq_centre = (f.second.centre - 0.5 * freq_width)
+                                     + (sub_freq_index * sub_freq_width) + (0.5 * sub_freq_width);
             sub_freqs.push_back({index++, {sub_freq_centre, sub_freq_width}});
         }
     }

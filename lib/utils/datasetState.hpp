@@ -803,8 +803,9 @@ public:
         try {
             _subfreqs = data.get<std::vector<std::pair<uint32_t, freq_ctype>>>();
         } catch (std::exception& e) {
-            throw std::runtime_error(fmt::format(
-                fmt("subfreqState: Failure parsing json data ({:s}): {:s}"), data.dump(4), e.what()));
+            throw std::runtime_error(
+                fmt::format(fmt("subfreqState: Failure parsing json data ({:s}): {:s}"),
+                            data.dump(4), e.what()));
         }
     };
 

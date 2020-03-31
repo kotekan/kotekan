@@ -1,9 +1,9 @@
 #ifndef VIS_FILE_ARCHIVE_HPP
 #define VIS_FILE_ARCHIVE_HPP
 
+#include "FileArchive.hpp"
 #include "kotekanLogging.hpp" // for logLevel, kotekanLogging
 #include "visUtil.hpp"        // for freq_ctype, prod_ctype, time_ctype, input_ctype
-#include "FileArchive.hpp"    
 
 #include <highfive/H5DataSet.hpp>  // for DataSet
 #include <highfive/H5DataType.hpp> // for DataType
@@ -22,7 +22,7 @@
  *
  * @author Richard Shaw
  **/
-class visFileArchive : public FileArchive{
+class visFileArchive : public FileArchive {
 
 public:
     /**
