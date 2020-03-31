@@ -155,13 +155,13 @@ void basebandApiManager::status_callback_single_event(const uint64_t event_id,
     std::vector<json> event_status;
 
     for (auto& element : readout_registry) {
-        uint32_t freq_id = element.first;
+        uint32_t readout_id = element.first;
         auto& readout_manager = element.second;
 
         auto event = readout_manager.find(event_id);
         if (event) {
             json j(*event);
-            j["freq_id"] = freq_id;
+            j["freq_id"] = readout_id; //XXX: readout_id = freq_id + 1048576 * board_id
             event_status.push_back(j);
         }
     }
@@ -219,17 +219,23 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
 
         json response = json::object({});
         for (auto& element : readout_registry) {
-            const uint32_t freq_id = element.first;
+            // Break readout_id into a freq_id and a board_id
+            const uint32_t freq_id = element.first % 1048576;
+            const uint32_t board_id = element.first / 1048576;
             auto& readout_entry = element.second;
 
-            const std::string readout_file_name =
+            std::string readout_file_name =
                 fmt::format(fmt("baseband_{:d}_{:d}.h5"), event_id, freq_id);
+            if (board_id != 0) {
+                    readout_file_name =
+                    fmt::format(fmt("baseband_{:d}_{:d}_board_{:d}.h5"), event_id, freq_id, board_id);
+                }
 
             const auto readout_slice =
                 translate_trigger(start_fpga, duration_fpga, dm, dm_error, freq_id);
             readout_entry.add({event_id, readout_slice.start_fpga, readout_slice.length_fpga,
                                file_path, readout_file_name, now});
-            response[std::to_string(freq_id)] = json{{"file_name", readout_file_name},
+            response[std::to_string(element.first)] = json{{"file_name", readout_file_name},
                                                      {"start_fpga", readout_slice.start_fpga},
                                                      {"length_fpga", readout_slice.length_fpga}};
         }
@@ -244,8 +250,8 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
 }
 
 
-basebandReadoutManager& basebandApiManager::register_readout_stage(const uint32_t freq_id) {
-    return readout_registry[freq_id];
+basebandReadoutManager& basebandApiManager::register_readout_stage(const uint32_t readout_id) {
+    return readout_registry[readout_id];
 }
 
 } // namespace kotekan
