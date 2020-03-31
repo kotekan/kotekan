@@ -279,19 +279,28 @@ class VisRaw(object):
 
     Parameters
     ----------
-    TODO
-    num_time
-    num_freq
-    metadata
-    time
+    num_time : int
+        Number of time samples.
+    num_freq : int
+        Number of frequencies.
+    metadata : VisMetadata
+        Metadata
+    time : np.ndarray
+        Is the array of times, in the usual correlator file format.
     index_map
-    data
+        Index maps.
+    data : np.ndarray
+        Data.
+    valid_frames : np.ndarray
+        Validity flags for each frame in data.
+    file_metadata
+        From .meta raw file (optional).
 
     Attributes
     ----------
     data : np.ndarray
         Contains the datasets. Accessed as a numpy record array.
-    metadata : dict
+    metadata : VisMetadata
         Holds associated metadata, including the index_map.
     valid_frames : np.ndarray
         Indicates whether each frame is populated with valid (1) or not (0)
