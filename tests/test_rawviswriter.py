@@ -98,7 +98,17 @@ def test_vis(written_data):
 
     for vr in written_data:
 
-        testing.validate(vr, writer_params)
+        vis = vr.data["vis"]
+
+        # Extract the metadata
+        ftime = vr.time["fpga_count"]
+        ctime = vr.time["ctime"]
+        freq = np.array([f["centre"] for f in vr.index_map["freq"]])
+        num_elements = writer_params["num_elements"]
+        cadence = writer_params["cadence"]
+
+
+        testing.validate_vis(vis, num_elements, ftime, ctime, freq, cadence)
 
 
 def test_metadata(written_data):
@@ -131,41 +141,13 @@ def test_metadata(written_data):
 
 def test_eigenvectors(written_data):
 
+    nt = writer_params["total_frames"]
+    nf = len(writer_params["freq_ids"])
+    ne = writer_params["num_ev"]
+    ni = writer_params["num_elements"]
+
     for vr in written_data:
-
-        nt = writer_params["total_frames"]
-        nf = len(writer_params["freq"])
-        ne = writer_params["num_ev"]
-        ni = writer_params["num_elements"]
-
-        evals = vr.data["eval"]
-        evecs = vr.data["evec"]
-        erms = vr.data["erms"]
-
-        # Check datasets are present
-        assert evals.shape == (nt, nf, ne)
-        assert evecs.shape == (nt, nf, ne * ni)
-        assert erms.shape == (nt, nf)
-
-        evecs = evecs.reshape(nt, nf, ne, ni)
-
-        im_ev = np.array(vr.index_map["ev"])
-
-        print(im_ev, ne)
-
-        # Check that the index map is there correctly
-        assert (im_ev == np.arange(ne)).all()
-
-        # Check that the datasets have the correct values
-        assert (evals == np.arange(ne)[np.newaxis, np.newaxis, :]).all()
-        assert (
-            evecs.real == np.arange(ne)[np.newaxis, np.newaxis, :, np.newaxis]
-        ).all()
-        assert (
-            evecs.imag == np.arange(ni)[np.newaxis, np.newaxis, np.newaxis, :]
-        ).all()
-        assert (erms == 1.0).all()
-
+        testing.validate_eigenvectors(vr, nt, nf, ne, ni)
 
 def test_dataset_changes(critical_state_data):
     """Test that changing the dataset ID only causes a new acq if there is a
