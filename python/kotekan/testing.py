@@ -4,7 +4,7 @@ import numpy as np
 
 from kotekan.visbuffer import VisRaw
 
-test_patterns = ["DefaultVisPattern"]
+test_patterns = ["default"]
 
 
 def validate(vis_raw, config, pattern_name=""):
@@ -44,7 +44,7 @@ def validate(vis_raw, config, pattern_name=""):
 
     cadence = config.get("cadence", None)
 
-    if pattern_name == "DefaultVisPattern":
+    if pattern_name == "default":
         validate_vis(vis, num_elements, ftime, ctime, freq, cadence)
         validate_eigenvectors(vis_raw, num_time, num_freq, num_ev, num_elements)
 
