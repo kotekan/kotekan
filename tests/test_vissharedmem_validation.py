@@ -19,8 +19,6 @@ import tempfile
 import threading
 from time import sleep
 
-from comet import Manager
-
 from kotekan import runner, shared_memory_buffer
 
 # use tempfile creation to get exclusive random strings
@@ -79,7 +77,10 @@ def semaphore():
     sem.release()
     sem.unlink()
 
-
+# number of frames to ignore in validation
+ignore_frames = 3
+# maximum timing error to accept (in seconds)
+error_threshold = 5
 params = {
     "num_elements": 23,
     "num_ev": 1,
@@ -127,12 +128,18 @@ def test_shared_mem_buffer(vis_data, comet_broker):
     # start kotekan writer in a thread, to read before it's done (it will delete the shm on exit)
     threading.Thread(target=vis_data.run).start()
     sleep(2)
-    reader = []
     view_size = [1, 2, 3]
     update_interval = [0.1, 1, 2]
 
     config = copy.copy(params)
     config.update(params_fakevis)
     config.update(params_writer_stage)
-    validation = shared_memory_buffer.ValidationTest(config, 3, sem_name, fname_buf, view_size, params["mode"], update_interval)
+    validation = shared_memory_buffer.ValidationTest(params["total_frames"] - ignore_frames, config, 3, sem_name, fname_buf, view_size, params["mode"], update_interval)
     validation.run()
+
+    # test validation results
+    for delays, expected in zip(validation.delay, validation.expected_delay):
+        delay = np.array(delays)
+        expected_delay = np.array(expected)
+        error = np.subtract(delay, expected_delay)
+        assert np.all(error < error_threshold)

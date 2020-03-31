@@ -473,6 +473,8 @@ class ValidationTest:
 
     Parameters
     ----------
+    len_test : int
+        Number of time slots to validate before ending the test.
     config : dict
         Kotekan config used.
     num_readers : int
@@ -490,19 +492,21 @@ class ValidationTest:
 
     Attributes
     ----------
-    time_total : list(int)
+    update_time : list(list(int))
         Number of seconds spent by each readers update() calls.
-    updates_total : list(int
-        Number of updates performed by each reader.
     delay : list(list(float))
         Delays of frames (time between frame creation and validation) for each reader.
-
+    expected_delay : list(list(float))
+        Expected delays of frames (time between frame creation and validation) for each reader.
+        This includes an estimate of missed frames due to buffer and view sizes in config and the
+        time it took the reader to update
     """
 
     test_patterns = testing.test_patterns
 
     def __init__(
         self,
+        len_test,
         config,
         num_readers,
         semaphore_name,
@@ -522,6 +526,7 @@ class ValidationTest:
         self.config = config
 
         self.num_readers = num_readers
+        self.len_test = len_test
 
         if test_pattern not in self.test_patterns:
             raise ValueError(
@@ -555,20 +560,21 @@ class ValidationTest:
 
         # Start readers and metrics
         self._readers = list()
-        self.time_total = list()
-        self.updates_total = list()
         self.delay = list()
+        self.expected_delay = list()
+        self.update_time = list()
         self._next_check = copy.copy(self.update_interval)
         for i in range(num_readers):
             view_size = self.view_sizes[i]
             self._readers.append(
                 SharedMemoryReader(semaphore_name, shared_memory_name, view_size)
             )
-            self.time_total.append(0)
-            self.updates_total.append(0)
             self.delay.append([])
+            self.expected_delay.append([])
+            self.update_time.append([])
 
         self._first_update(semaphore_name, shared_memory_name)
+        self.validated_fpga_seqs = set()
 
     def _first_update(self, semaphore_name, shared_memory_name):
         """Get a minimal first update to get a start time."""
@@ -598,14 +604,16 @@ class ValidationTest:
         return timeval["tv"] + timeval["tv_nsec"] / 10e9
 
     def run(self):
-        while True:
+        while self.len_test > len(self.validated_fpga_seqs):
             next_check = min(self._next_check)
             logger.info("Waiting {}s for next update.".format(next_check))
             time.sleep(next_check)
             for r in range(self.num_readers):
                 self._next_check[r] -= next_check
                 if self._next_check[r] <= 0:
-                    self._check(r)
+                    self.validated_fpga_seqs = self.validated_fpga_seqs.union(
+                        self._check(r)
+                    )
                     self._next_check[r] = self.update_interval[r]
 
     def _check(self, r):
@@ -613,13 +621,16 @@ class ValidationTest:
         reader = self._readers[r]
         time0 = time.time()
         visraw = reader.update()
-        self.time_total[r] += time.time() - time0
-        self.updates_total[r] += 1
+        self.update_time[r].append(time.time() - time0)
 
         self._validate_time(visraw, r)
         testing.validate(visraw, self.config, self.test_pattern)
 
+        return set(np.unique(visraw.time)[:]["fpga_count"])
+
     def _validate_time(self, visraw, r):
+        age = time.time() - self._last_update_time[r]
+
         assert visraw.time.shape[1] == visraw.num_freq
         times = np.unique(visraw.time)
         assert len(times) == self.view_sizes[r]
@@ -630,26 +641,27 @@ class ValidationTest:
         seconds = self._timeval_to_seconds(timestamp["ctime"])
         fpga_seq = timestamp["fpga_count"]
         ctime = time.ctime(seconds)
-        age = time.time() - self._last_update_time[r]
         logger.info(
             "Validating fpga_seq {} from {} (age {}s).".format(fpga_seq, ctime, age)
         )
 
         # determine if this age is acceptable
         cadence = self.cadence
-        if np.isclose(age, 0):
-            logger.info("all good: age == 0")
-        elif np.isclose(age, cadence):
-            logger.info("all good: age == cadence")
-        else:
-            # calculate how much data we missed given cadence, limited buffer size and update frequency
-            u_interval = self.update_interval[r]
-            frames_per_update = np.ceil(u_interval // cadence)
-            missed_frames = frames_per_update - self.shm_size
-            missed_time = missed_frames * cadence
-            error = age - missed_time
+
+        # calculate how much data we missed given cadence, limited buffer size and update frequency
+        # TODO: handle case where no new frames since last update expected
+        u_interval = self.update_interval[r]
+        frames_per_update = np.ceil(u_interval // cadence)
+        missed_frames = frames_per_update - self.shm_size
+        if missed_frames < 0:
+            missed_frames = 0
+        missed_time = missed_frames * cadence
+        expected_delay = missed_time + self.update_time[r][-1]
+        error = age - expected_delay
+        if error > cadence:
             logger.info("Time error: {}".format(error))
-            self.delay[r].append(error)
+        self.expected_delay[r].append(expected_delay)
+        self.delay[r].append(age)
 
         # check the rest
         for t in range(1, self.view_sizes[r]):
@@ -665,12 +677,11 @@ class ValidationTest:
 
             # determine if this age is acceptable
             cadence = self.cadence
-            if np.isclose(age, 0):
-                logger.info("all good: age == 0")
-            elif np.isclose(age, cadence):
-                logger.info("all good: age == cadence")
-            else:
-                logger.info("Time error: {}".format(age))
-                self.delay[r].append(age)
+            expected_delay = cadence + self.update_time[r][-1] + self.update_interval[r]
+            error = age - expected_delay
+            if error > 0:
+                logger.warning("Time error: {}".format(error))
+            self.delay[r].append(age)
+            self.expected_delay[r].append(expected_delay)
 
         self._last_update_time[r] = seconds
