@@ -25,14 +25,6 @@
 
 using namespace HighFive;
 
-
-// Bitshuffle parameters
-H5Z_filter_t H5Z_BITSHUFFLE = 32008;
-unsigned int BSHUF_H5_COMPRESS_LZ4 = 2;
-unsigned int BSHUF_BLOCK = 0; // let bitshuffle choose
-const std::vector<unsigned int> BSHUF_CD = {BSHUF_BLOCK, BSHUF_H5_COMPRESS_LZ4};
-
-
 // Create an archive file for uncompressed products
 visFileArchive::visFileArchive(const std::string& name,
                                const std::map<std::string, std::string>& metadata,

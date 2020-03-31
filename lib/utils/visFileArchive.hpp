@@ -3,6 +3,7 @@
 
 #include "kotekanLogging.hpp" // for logLevel, kotekanLogging
 #include "visUtil.hpp"        // for freq_ctype, prod_ctype, time_ctype, input_ctype
+#include "FileArchive.hpp"    
 
 #include <highfive/H5DataSet.hpp>  // for DataSet
 #include <highfive/H5DataType.hpp> // for DataType
@@ -21,7 +22,7 @@
  *
  * @author Richard Shaw
  **/
-class visFileArchive : public kotekan::kotekanLogging {
+class visFileArchive : public FileArchive{
 
 public:
     /**
