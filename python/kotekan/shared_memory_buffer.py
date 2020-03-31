@@ -231,7 +231,10 @@ class SharedMemoryReader:
         idxs_invalid = np.where(access_record_after_copy != access_record)
         if len(idxs_invalid[0]) > 0:
             # translate time from timestamp to buffer index
-            idxs_invalid = [(self._time_index_map[t], f) for t, f in idxs_invalid]
+            idxs_invalid = [
+                (self._time_index_map[t], f)
+                for t, f in zip(idxs_invalid[0], idxs_invalid[1])
+            ]
             # mark as invalid
             self._data["valid"][idxs_invalid] = 0
 
