@@ -43,23 +43,29 @@ hfbFileRaw::hfbFileRaw(const std::string& name, const kotekan::logLevel log_leve
     // Get properties of stream from datasetManager
     auto& dm = datasetManager::instance();
     auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm, dataset);
+    auto bstate_fut = std::async(&datasetManager::dataset_state<beamState>, &dm, dataset);
+    auto sfstate_fut = std::async(&datasetManager::dataset_state<subfreqState>, &dm, dataset);
     const freqState* fstate = fstate_fut.get();
+    const beamState* bstate = bstate_fut.get();
+    const subfreqState* sfstate = sfstate_fut.get();
 
-    if (!fstate) {
+    if (!fstate || !bstate || !sfstate) {
         ERROR("Required datasetState not found for dataset ID {}\nThe following required states "
-              "were found:\nfreqState - {:p}\n",
-              dataset, (void*)fstate);
+              "were found:\nfreqState - {:p}\nbeamState - {:p}\nsubfreqState - {:p}\n",
+              dataset, (void*)fstate, (void*)bstate, (void*)sfstate);
         throw std::runtime_error("Could not create file.");
     }
     
     // Set the axis metadata
     file_metadata["attributes"] = metadata;
     file_metadata["index_map"]["freq"] = unzip(fstate->get_freqs()).second;
+    file_metadata["index_map"]["beam"] = bstate->get_beams();
+    file_metadata["index_map"]["subfreq"] = unzip(sfstate->get_subfreqs()).second;
 
     // Calculate the file structure
-    nfreq = 1024;
-    num_beams = std::stoi(metadata.at("num_beams"));
-    num_subfreq = std::stoi(metadata.at("num_sub_freqs"));
+    nfreq = fstate->get_freqs().size();
+    num_beams = bstate->get_beams().size();
+    num_subfreq = sfstate->get_subfreqs().size();
 
     // Set the alignment (in kB)
     // TODO: find some way of getting this from config
