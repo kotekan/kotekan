@@ -2,7 +2,7 @@
 #define FILE_ARCHIVE_HPP
 
 #include <highfive/H5PropertyList.hpp> // for H5Pcreate, H5Pset_chunk, H5Pset_filter, H5P_DATAS...
-
+#include "kotekanLogging.hpp" // for logLevel, kotekanLogging
 
 class FileArchive : public kotekan::kotekanLogging {
 
