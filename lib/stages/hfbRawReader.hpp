@@ -123,11 +123,10 @@ private:
     nlohmann::json _metadata;
     std::vector<time_ctype> _times;
     std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
-    //std::vector<prod_ctype> _prods;
-    //std::vector<input_ctype> _inputs;
+    std::vector<uint32_t> _beams;
+    std::vector<std::pair<uint32_t, freq_ctype>> _subfreqs;
     std::vector<stack_ctype> _stack;
     std::vector<rstack_ctype> _rstack;
-    //std::vector<uint32_t> _ev;
     uint32_t _num_stack;
 
     // whether to read in chunks
@@ -148,7 +147,7 @@ private:
     int fd;
     uint8_t* mapped_file;
 
-    size_t file_frame_size, metadata_size, data_size, nfreq, ntime;
+    size_t file_frame_size, metadata_size, data_size, nfreq, ntime, nbeam, nsubfreq;
 
     // Number of blocks to read ahead while reading from disk
     size_t readahead_blocks;

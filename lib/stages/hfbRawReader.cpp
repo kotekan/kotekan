@@ -93,7 +93,9 @@ hfbRawReader::hfbRawReader(Config& config, const std::string& unique_name,
     // Extract the attributes and index maps
     _metadata = _t["attributes"];
     _times = _t["index_map"]["time"].get<std::vector<time_ctype>>();
-    //auto freqs = _t["index_map"]["freq"].get<std::vector<freq_ctype>>();
+    auto freqs = _t["index_map"]["freq"].get<std::vector<freq_ctype>>();
+    auto beams = _t["index_map"]["beam"].get<std::vector<uint32_t>>();
+    auto subfreqs = _t["index_map"]["subfreq"].get<std::vector<freq_ctype>>();
     if (_t.at("index_map").find("stack") != _t.at("index_map").end()) {
         _stack = _t.at("index_map").at("stack").get<std::vector<stack_ctype>>();
         _rstack = _t.at("reverse_map").at("stack").get<std::vector<rstack_ctype>>();
@@ -121,8 +123,10 @@ hfbRawReader::hfbRawReader(Config& config, const std::string& unique_name,
     data_size = _t["structure"]["data_size"].get<size_t>();
     nfreq = _t["structure"]["nfreq"].get<size_t>();
     ntime = _t["structure"]["ntime"].get<size_t>();
+    nbeam = _t["structure"]["num_beams"].get<size_t>();
+    nsubfreq = _t["structure"]["num_subfreq"].get<size_t>();
 
-    INFO("Metadata fields. frame_size: {}, metadata_size: {}, data_size: {}, nfreq: {}, ntime: {}", file_frame_size, metadata_size, data_size, nfreq, ntime);
+    INFO("Metadata fields. frame_size: {}, metadata_size: {}, data_size: {}, nfreq: {}, ntime: {}, nbeam: {}, nsubfreq: {}", file_frame_size, metadata_size, data_size, nfreq, ntime, nbeam, nsubfreq);
 
     if (chunked) {
         // Special case if dimensions less than chunk size
