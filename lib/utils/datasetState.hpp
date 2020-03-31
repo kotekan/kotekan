@@ -801,7 +801,7 @@ public:
      */
     subfreqState(const nlohmann::json& data) {
         try {
-            _subfreqs = data.get<std::vector<freq_ctype>>();
+            _subfreqs = data.get<std::vector<std::pair<uint32_t, freq_ctype>>>();
         } catch (std::exception& e) {
             throw std::runtime_error(fmt::format(
                 fmt("subfreqState: Failure parsing json data ({:s}): {:s}"), data.dump(4), e.what()));
@@ -814,14 +814,14 @@ public:
      *              subfreq index maps.
 
      */
-    subfreqState(std::vector<freq_ctype> subfreqs) : _subfreqs(subfreqs){};
+    subfreqState(std::vector<std::pair<uint32_t, freq_ctype>> subfreqs) : _subfreqs(subfreqs){};
 
     /**
      * @brief Get sub-frequency information (read only).
      *
      * @return The sub-frequency information as a vector of subfreq index maps.
      */
-    const std::vector<freq_ctype>& get_subfreqs() const {
+    const std::vector<std::pair<uint32_t, freq_ctype>>& get_subfreqs() const {
         return _subfreqs;
     }
 
@@ -833,7 +833,7 @@ private:
     }
 
     /// Time index map of the dataset state.
-    std::vector<freq_ctype> _subfreqs;
+    std::vector<std::pair<uint32_t, freq_ctype>> _subfreqs;
 };
 
 #endif // DATASETSTATE_HPP
