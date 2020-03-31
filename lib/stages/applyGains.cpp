@@ -83,11 +83,14 @@ applyGains::applyGains(Config& config, const std::string& unique_name,
                                     "to be equal or greater than one (is "
                                     + std::to_string(num_kept_updates) + ").");
 
-    // Get the calibration broker gains endpoint
-    gains_dir = config.get<std::string>(unique_name, "gains_dir");
-    broker_host = config.get<std::string>(unique_name, "broker_host");
-    broker_port = config.get<unsigned int>(unique_name, "broker_port");
+    // Get the parameters for how to fetch gains from the cal_broker
     read_from_file = config.get_default<bool>(unique_name, "read_from_file", false);
+    if (read_from_file) {
+        gains_dir = config.get<std::string>(unique_name, "gains_dir");
+    } else {
+        broker_host = config.get<std::string>(unique_name, "broker_host");
+        broker_port = config.get<unsigned int>(unique_name, "broker_port");
+    }
 
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     if (num_threads == 0)
@@ -238,8 +241,7 @@ void applyGains::apply_thread() {
         // get the frames timestamp
         ts_frame.store(std::get<1>(input_frame.time));
 
-        // Get the frequency index of this ID. The map will have been set in the first
-        // validate_frame
+        // Get the frequency index of this ID. The map will have been set by initialise
         // Also get the UNIX timestamp
         auto freq_ind = freq_map.at(input_frame.freq_id);
         auto frame_time = ts_to_double(std::get<1>(input_frame.time));
@@ -345,10 +347,10 @@ void applyGains::fetch_thread() {
 
         std::optional<applyGains::GainData> gain_data;
         if (read_from_file) {
-            INFO("Reading gains from file...");
+            DEBUG("Reading gains from file...");
             gain_data = read_gain_file(update_id);
         } else {
-            INFO("Fetching gains...");
+            DEBUG("Fetching gains...");
             gain_data = fetch_gains(update_id);
         }
         if (!gain_data) {

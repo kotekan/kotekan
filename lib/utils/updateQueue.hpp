@@ -56,6 +56,7 @@ public:
      * @returns  size  The current size.
      **/
     size_t size() const {
+        std::scoped_lock _lock(update_lock);
         return values.size();
     }
 
@@ -132,7 +133,8 @@ public:
      *
      * @return A const reference to an std::deque holding all updates and their timestamps.
      */
-    const std::deque<std::pair<timespec, std::shared_ptr<const T>>>& get_all_updates() const {
+    std::deque<std::pair<timespec, std::shared_ptr<const T>>> get_all_updates() const {
+        std::scoped_lock _lock(update_lock);
         return values;
     }
 

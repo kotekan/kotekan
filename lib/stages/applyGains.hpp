@@ -169,7 +169,7 @@ private:
     /// are processing
     std::atomic<bool> started = false;
 
-    /// Condition variable used to communicate new gains
+    /// Queue used to send updates into the fetch thread
     using update_t = std::tuple<std::string, double, double>;
     SynchronizedQueue<update_t> update_fetch_queue;
 
