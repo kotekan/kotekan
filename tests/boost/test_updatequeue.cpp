@@ -10,9 +10,9 @@
 #include <ctime>                             // for timespec
 #include <iostream>                          // for cout, ostream, std
 #include <memory>
-#include <string>                            // for operator<<
-#include <utility>                           // for pair
-#include <vector>                            // for vector
+#include <string>  // for operator<<
+#include <utility> // for pair
+#include <vector>  // for vector
 
 struct timespec;
 
