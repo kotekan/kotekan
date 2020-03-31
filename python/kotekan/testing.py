@@ -21,7 +21,7 @@ def validate(vis_raw, config, pattern_name=''):
 
 
     # Check that the config contains the required information
-    for param in ['num_elements', 'num_ev', 'freq', 'total_frames']:
+    for param in ['num_elements', 'num_ev', 'freq_ids', 'total_frames']:
         assert param in config.keys(), 'parameter {} is missing from config'.format(param)
 
     # i believe this is for the "DefaultVisPattern
@@ -37,13 +37,13 @@ def validate(vis_raw, config, pattern_name=''):
     # Extract metadata
     ftime = vis_raw.time["fpga_count"]
     ctime = vis_raw.time["ctime"]
-    freq = np.array([f["centre"] for f in vis_raw.index_map["freq"]])
+    freq = 800.0 - 400.0 * np.array(config["freq_ids"]) / 1024
     input_a = np.array([p[0] for p in vis_raw.index_map["prod"]])
     input_b = np.array([p[1] for p in vis_raw.index_map["prod"]])
 
     num_elements = config["num_elements"]
     num_ev = config["num_ev"]
-    num_freq = len(config["freq"])
+    num_freq = len(config["freq_ids"])
     num_time = vis_raw.num_time
     total_frames = config["total_frames"]
 
