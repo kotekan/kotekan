@@ -39,6 +39,16 @@ class time_spec(ctypes.Structure):
         ts.tv_nsec = ((v % 1.0) * 1e9).astype(np.int64)
         return ts
 
+    def to_float(self):
+        """
+        Create a float from a time_spec.
+
+        Returns
+        -------
+        float
+        """
+        return self.tv + self.tv_nsec / 1e9
+
 
 class timeval(ctypes.Structure):
     """Struct repr of a timeval type."""
@@ -472,12 +482,15 @@ class VisRaw(object):
             shape=(num_time, num_freq),
             dtype=[
                 (native_str("fpga_count"), np.uint64),
-                (native_str("ctime"), time_spec),
+                (native_str("ctime"), np.float64),
             ],
         )
         for t in range(num_time):
             for f in range(num_freq):
-                time[t, f] = (fpga_seq[t, f], ctime[t, f])
+                time[t, f] = (
+                    fpga_seq[t, f],
+                    time_spec.from_buffer_copy(ctime[t, f]).to_float(),
+                )
 
         return cls(
             num_time,

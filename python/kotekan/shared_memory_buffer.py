@@ -583,7 +583,7 @@ class ValidationTest:
         times = np.unique(visraw.time)
         assert len(times) == 1
         timestamp = visraw.time[0, 0]
-        self.start_time = self._timeval_to_seconds(timestamp["ctime"])
+        self.start_time = timestamp["ctime"]
         fpga_seq = timestamp["fpga_count"]
         ctime = time.ctime(self.start_time)
         age = time.time() - self.start_time
@@ -593,15 +593,6 @@ class ValidationTest:
             )
         )
         self._last_update_time = [self.start_time] * self.num_readers
-
-    @staticmethod
-    def _timeval_to_seconds(timeval):
-        if timeval["tv"] < 0 or timeval["tv_nsec"] > 10e9:
-            raise ValueError(
-                "Can't convert {} to seconds: nanoseconds are out of range "
-                "[0..1000000000].".format(timeval)
-            )
-        return timeval["tv"] + timeval["tv_nsec"] / 10e9
 
     def run(self):
         while self.len_test > len(self.validated_fpga_seqs):
@@ -638,7 +629,7 @@ class ValidationTest:
         # check first time slot
         timestamp = times[0]
 
-        seconds = self._timeval_to_seconds(timestamp["ctime"])
+        seconds = timestamp["ctime"]
         fpga_seq = timestamp["fpga_count"]
         ctime = time.ctime(seconds)
         logger.info(
@@ -667,7 +658,7 @@ class ValidationTest:
         for t in range(1, self.view_sizes[r]):
             timestamp = times[r]
 
-            seconds = self._timeval_to_seconds(timestamp["ctime"])
+            seconds = timestamp["ctime"]
             fpga_seq = timestamp["fpga_count"]
             ctime = time.ctime(seconds)
             age = time.time() - self._last_update_time[r]
