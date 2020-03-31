@@ -116,11 +116,12 @@ bool ReadGain::update_gains_psr_callback(nlohmann::json& json) {
     }
     try {
         _gain_dir_psr = json.at("pulsar_gain_dir").get<std::vector<std::string>>();
-        INFO("[PSR] Updating gains from {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s}",
-             _gain_dir_psr[0].c_str(), _gain_dir_psr[1].c_str(), _gain_dir_psr[2].c_str(),
-             _gain_dir_psr[3].c_str(), _gain_dir_psr[4].c_str(), _gain_dir_psr[5].c_str(),
-             _gain_dir_psr[6].c_str(), _gain_dir_psr[7].c_str(), _gain_dir_psr[8].c_str(),
-             _gain_dir_psr[9].c_str());
+        std::string output_msg = "[PSR] Updating gains from ";
+        for (int i = 0; i < _num_beams; i++) {
+            output_msg += _gain_dir_psr[i];
+            output_msg += " ";
+        }
+        INFO("{:s}", output_msg);
     } catch (std::exception const& e) {
         WARN("[PSR] Fail to read gain_dir {:s}", e.what());
         return false;

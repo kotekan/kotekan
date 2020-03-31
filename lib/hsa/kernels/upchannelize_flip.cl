@@ -6,7 +6,7 @@
 #define PI64 0.04908738521234052f
 #define REAL    x
 #define IMAG    y
-#define offset 128
+#define CHUNK_OFFSET 128
 #define n_all 256
 #define scaling 400.
 
@@ -27,6 +27,7 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array)
   float outtmp;
   outtmp = 0;
 
+  // Loop over 2 polarisations
   for (int p=0;p<2;p++){
     uint address_in = (p*nbeam*nsamp)+get_global_id(1)*nsamp+get_group_id(0)*384 + local_address;
     //read from global
@@ -41,10 +42,10 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array)
     uint index_1 = index_0 + 1; //these two indices span 128 entries
     index_0 = BIT_REVERSE_7_BITS(index_0);
     index_1 = BIT_REVERSE_7_BITS(index_1);
-    uint index_2 = index_0 + offset; //repeat with offset
-    uint index_3 = index_1 + offset;
-    uint index_4 = index_2 + offset; //repeat with offset
-    uint index_5 = index_3 + offset;
+    uint index_2 = index_0 + CHUNK_OFFSET; //repeat with CHUNK_OFFSET
+    uint index_3 = index_1 + CHUNK_OFFSET;
+    uint index_4 = index_2 + CHUNK_OFFSET; //repeat with CHUNK_OFFSET
+    uint index_5 = index_3 + CHUNK_OFFSET;
 
     barrier(CLK_LOCAL_MEM_FENCE);
 
@@ -57,12 +58,12 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array)
     temp_4 = local_data[index_4]; //load according to bit reversed addresses
     temp_5 = local_data[index_5];
 
-    local_data[local_address * 2             ] = temp_0+temp_1;
-    local_data[local_address * 2 + 1         ] = temp_0-temp_1;
-    local_data[local_address * 2 + offset    ] = temp_2+temp_3; 
-    local_data[local_address * 2 + offset + 1] = temp_2-temp_3;
-    local_data[local_address * 2 + 2*offset    ] = temp_4+temp_5; 
-    local_data[local_address * 2 + 2*offset + 1] = temp_4-temp_5;
+    local_data[local_address * 2                     ] = temp_0+temp_1;
+    local_data[local_address * 2 + 1                 ] = temp_0-temp_1;
+    local_data[local_address * 2 + CHUNK_OFFSET      ] = temp_2+temp_3; 
+    local_data[local_address * 2 + CHUNK_OFFSET + 1  ] = temp_2-temp_3;
+    local_data[local_address * 2 + 2*CHUNK_OFFSET    ] = temp_4+temp_5; 
+    local_data[local_address * 2 + 2*CHUNK_OFFSET + 1] = temp_4-temp_5;
 
     barrier(CLK_LOCAL_MEM_FENCE);
 
@@ -71,10 +72,10 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array)
     float theta;
     index_0 = (((local_address<<1) & 0x7c) + (local_address & 0x1));
     index_1 = index_0+2;
-    index_2 = index_0 + offset;
-    index_3 = index_1 + offset;
-    index_4 = index_2 + offset;
-    index_5 = index_3 + offset;
+    index_2 = index_0 + CHUNK_OFFSET;
+    index_3 = index_1 + CHUNK_OFFSET;
+    index_4 = index_2 + CHUNK_OFFSET;
+    index_5 = index_3 + CHUNK_OFFSET;
     temp_0 = local_data[index_0];
     temp_1 = local_data[index_1];
     temp_2 = local_data[index_2];
@@ -102,10 +103,10 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array)
     //stage 2
     index_0 = (((local_address<<1) & 0x78) + (local_address & 0x3));
     index_1 = index_0 + 4;
-    index_2 = index_0 + offset;
-    index_3 = index_1 + offset;
-    index_4 = index_2 + offset;
-    index_5 = index_3 + offset;
+    index_2 = index_0 + CHUNK_OFFSET;
+    index_3 = index_1 + CHUNK_OFFSET;
+    index_4 = index_2 + CHUNK_OFFSET;
+    index_5 = index_3 + CHUNK_OFFSET;
     temp_0 = local_data[index_0];
     temp_1 = local_data[index_1];
     theta = (local_address & 0x3)*PI4;
@@ -135,10 +136,10 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array)
     //stage 3
     index_0 = (((local_address << 1) & 0x70) + (local_address & 0x7));
     index_1 = index_0 + 8;
-    index_2 = index_0 + offset;
-    index_3 = index_1 + offset;
-    index_4 = index_2 + offset;
-    index_5 = index_3 + offset;
+    index_2 = index_0 + CHUNK_OFFSET;
+    index_3 = index_1 + CHUNK_OFFSET;
+    index_4 = index_2 + CHUNK_OFFSET;
+    index_5 = index_3 + CHUNK_OFFSET;
     temp_0 = local_data[index_0];
     temp_1 = local_data[index_1];
     theta = (local_address & 0x7)*PI8;
@@ -168,10 +169,10 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array)
     //stage 4
     index_0 = (((local_address << 1) & 0x60) + (local_address & 0xf));
     index_1 = index_0 + 16;
-    index_2 = index_0 + offset;
-    index_3 = index_1 + offset;
-    index_4 = index_2 + offset;
-    index_5 = index_3 + offset;
+    index_2 = index_0 + CHUNK_OFFSET;
+    index_3 = index_1 + CHUNK_OFFSET;
+    index_4 = index_2 + CHUNK_OFFSET;
+    index_5 = index_3 + CHUNK_OFFSET;
     temp_0 = local_data[index_0];
     temp_1 = local_data[index_1];
     theta = (local_address & 0xf)*PI16;
@@ -201,10 +202,10 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array)
     //stage 5
     index_0 = (((local_address << 1) & 0x40) + (local_address & 0x1f));
     index_1 = index_0 + 32;
-    index_2 = index_0 + offset;
-    index_3 = index_1 + offset;
-    index_4 = index_2 + offset;
-    index_5 = index_3 + offset;
+    index_2 = index_0 + CHUNK_OFFSET;
+    index_3 = index_1 + CHUNK_OFFSET;
+    index_4 = index_2 + CHUNK_OFFSET;
+    index_5 = index_3 + CHUNK_OFFSET;
     temp_0 = local_data[index_0];
     temp_1 = local_data[index_1];
     theta = (local_address & 0x1f)*PI32;
@@ -234,10 +235,10 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array)
     //stage 6
     index_0 = (local_address & 0x3f);
     index_1 = index_0 + 64;
-    index_2 = index_0 + offset;
-    index_3 = index_1 + offset;
-    index_4 = index_2 + offset;
-    index_5 = index_3 + offset;
+    index_2 = index_0 + CHUNK_OFFSET;
+    index_3 = index_1 + CHUNK_OFFSET;
+    index_4 = index_2 + CHUNK_OFFSET;
+    index_5 = index_3 + CHUNK_OFFSET;
     temp_0 = local_data[index_0];
     temp_1 = local_data[index_1];
     theta = (local_address & 0x3f)*PI64;

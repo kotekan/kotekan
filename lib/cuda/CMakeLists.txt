@@ -2,8 +2,6 @@ project( kotekan_cuda )
 
 include_directories(${CUDA_INCLUDE_DIR})
 
-include_directories (${KOTEKAN_SOURCE_DIR}/include)
-
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/gpu)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/cuda)
@@ -25,6 +23,8 @@ set ( KOTEKAN_CUDA_SOURCES
     )
 
 add_library ( kotekan_cuda ${KOTEKAN_CUDA_SOURCES} )
+
+target_link_libraries(kotekan_cuda libexternal)
 
 target_compile_options(kotekan_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-gencode arch=compute_75,code=sm_75 -lineinfo>)
 
