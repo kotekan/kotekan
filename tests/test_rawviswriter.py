@@ -107,7 +107,6 @@ def test_vis(written_data):
         num_elements = writer_params["num_elements"]
         cadence = writer_params["cadence"]
 
-
         testing.validate_vis(vis, num_elements, ftime, ctime, freq, cadence)
 
 
@@ -148,6 +147,7 @@ def test_eigenvectors(written_data):
 
     for vr in written_data:
         testing.validate_eigenvectors(vr, nt, nf, ne, ni)
+
 
 def test_dataset_changes(critical_state_data):
     """Test that changing the dataset ID only causes a new acq if there is a
