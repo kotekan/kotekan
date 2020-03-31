@@ -48,8 +48,9 @@ RUN apt-get -y install libopenblas-dev liblapack-dev liblapacke-dev && \
     git clone https://bitbucket.org/blaze-lib/blaze.git blaze
 
 # Install kotekan python dependencies
-RUN python3.7 -m pip install "msgpack>=0.6.1" click future requests pyyaml \
-                 tabulate pytest==5.3.0 pytest-xdist pytest-cpp posix_ipc && \
+RUN python3.7 -m pip install "msgpack>=0.6.1" click future requests pyyaml tabulate \
+                             pytest==5.3.0 pytest-xdist pytest-cpp pytest-localserver flask \
+                             posix_ipc && \
     apt-get install -y mysql-client libmysqlclient-dev && \
     python3.7 -m pip install git+https://github.com/chime-experiment/comet.git
 
