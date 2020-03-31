@@ -9,7 +9,6 @@ include_directories (${KOTEKAN_SOURCE_DIR}/lib/utils)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/core)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/metadata)
-include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
 set ( KOTEKAN_BOOST_TEST_SOURCES
       test_bip_buffer.cpp
@@ -57,5 +56,6 @@ endforeach(testSrc)
 foreach(testSrc ${KOTEKAN_BROKER_TEST_SOURCES})
 	get_filename_component(testName ${testSrc} NAME_WE)
     add_executable(${testName} ${testSrc})
+    target_link_libraries(${testName} libexternal)
     target_link_libraries(${testName} kotekan_utils kotekan_core dl m pthread)
 endforeach(testSrc)

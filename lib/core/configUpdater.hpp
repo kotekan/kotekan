@@ -121,8 +121,9 @@ public:
      * The callback function has to return True on success and False
      * otherwise.
      * The block of the calling stage in the configuration file should have
-     * a key named "updatable_block" that defines the full path to the
-     * updatable block.
+     * a key named "updatable_config" that defines the full path to the
+     * updatable block. As usual if not found at that level, it will search up
+     * the tree.
      *
      * @param subscriber Reference to the subscribing stage.
      * @param callback   Callback function for attribute updates.
@@ -134,10 +135,12 @@ public:
      *
      * The callback functions have to return True on success and False
      * otherwise.
-     * The block of the calling stage in the configuration file should have
-     * an object named "updatable_block" with values that define the full
-     * path to an updatable block, each. The names in the callbacks map refer
-     * to the names of these values.
+     * The block of the calling stage in the configuration file should have an
+     * object named "updatable_config" with values that define the full path to
+     * an updatable block, each. The names in the callbacks map refer to the
+     * names of these values. If an "updatable_config" block is not found in
+     * the current stage it will search up the config tree, but all callback
+     * keys must be contained within this single block.
      *
      * @param subscriber Reference to the subscribing stage.
      * @param callbacks  Map of value names and callback functions.
