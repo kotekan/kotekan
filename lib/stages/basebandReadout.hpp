@@ -105,6 +105,7 @@ private:
      * @param event_id unique identifier of the event in the FRB pipeline
      * @param trigger_start_fpga start time, or -1 to use the earliest data available
      * @param trigger_length_fpga number of FPGA samples to include in the dump
+     * @int freqidx a pointer arithmetic offset that ranges from zero to num_local_freq when dumping multiple frequencies from one stream.
      *
      * @return A fully initialized `basebandDumpData` if the call succeeded, or
      * an empty one if the frame data was not availabe for the time requested
