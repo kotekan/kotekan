@@ -4,6 +4,8 @@ import numpy as np
 
 from kotekan.visbuffer import VisRaw
 
+test_patterns = ["DefaultVisPattern"]
+
 
 def validate(vis_raw, config, pattern_name=""):
     """Validate an input `vis_raw` filled using `pattern_name` with `config`.
