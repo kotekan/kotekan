@@ -160,10 +160,34 @@ visRawReader::visRawReader(Config& config, const std::string& unique_name,
         throw std::runtime_error(msg);
     }
 
-    // Register a state for the time axis
+    // Register a state for the time axis if using comet, or register the replacement dataset ID if
+    // using
     if (update_dataset_id) {
+
         datasetManager& dm = datasetManager::instance();
         tstate_id = dm.create_state<timeState>(_times).first;
+
+        if (!use_comet) {
+            // Add the states: metadata, time, prod, freq, input,
+            // eigenvalue and stack.
+            std::vector<state_id_t> states;
+            if (!_stack.empty())
+                states.push_back(dm.create_state<stackState>(_num_stack, std::move(_rstack)).first);
+            states.push_back(dm.create_state<inputState>(_inputs).first);
+            states.push_back(dm.create_state<eigenvalueState>(_ev).first);
+            states.push_back(dm.create_state<freqState>(_freqs).first);
+            states.push_back(dm.create_state<prodState>(_prods).first);
+            states.push_back(tstate_id);
+            states.push_back(dm.create_state<metadataState>(_metadata.at("weight_type"),
+                                                            _metadata.at("instrument_name"),
+                                                            _metadata.at("git_version_tag"))
+                                 .first);
+            // register it as root dataset
+            static_out_dset_id = dm.add_dataset(states);
+
+            WARN("Updating the dataset IDs without comet is not recommended "
+                 "as it will not preserve dataset ID changes.");
+        }
     }
 
     // Open up the data file and mmap it
@@ -188,43 +212,29 @@ visRawReader::~visRawReader() {
     close(fd);
 }
 
-void visRawReader::get_dataset_state(dset_id_t ds_id) {
+dset_id_t visRawReader::get_dataset_state(dset_id_t ds_id) {
 
-    if (!update_dataset_id) {
-        out_dset_id = ds_id;
-        return;
-    }
+    // See if we've already processed this ds_id...
+    auto got_it = ds_in_file.find(ds_id);
 
-    datasetManager& dm = datasetManager::instance();
+    // ... if we have, just return the corresponding output
+    if (got_it != ds_in_file.end())
+        return got_it->second;
 
-    if (use_comet) {
-        // Add time dataset state and register with dataset broker
-        auto got_it = ds_in_file.find(ds_id);
-        if (got_it == ds_in_file.end()) {
-            INFO("Registering new dataset with broker based on {}.", ds_id);
-            out_dset_id = dm.add_dataset(dm.create_state<timeState>(_times).first, ds_id);
-            ds_in_file[ds_id] = out_dset_id;
-        } else {
-            out_dset_id = got_it->second;
-        }
+    dset_id_t new_id;
+
+    if (!update_dataset_id || ds_id == dset_id_t::null) {
+        new_id = ds_id;
+    } else if (use_comet) {
+        INFO("Registering new dataset with broker based on {}.", ds_id);
+        datasetManager& dm = datasetManager::instance();
+        new_id = dm.add_dataset(tstate_id, ds_id);
     } else {
-        // Add the states: metadata, time, prod, freq, input,
-        // eigenvalue and stack.
-        std::vector<state_id_t> states;
-        if (!_stack.empty())
-            states.push_back(dm.create_state<stackState>(_num_stack, std::move(_rstack)).first);
-        states.push_back(dm.create_state<inputState>(_inputs).first);
-        states.push_back(dm.create_state<eigenvalueState>(_ev).first);
-        states.push_back(dm.create_state<freqState>(_freqs).first);
-        states.push_back(dm.create_state<prodState>(_prods).first);
-        states.push_back(dm.create_state<timeState>(_times).first);
-        states.push_back(dm.create_state<metadataState>(_metadata.at("weight_type"),
-                                                        _metadata.at("instrument_name"),
-                                                        _metadata.at("git_version_tag"))
-                             .first);
-        // register it as root dataset
-        out_dset_id = dm.add_dataset(states);
+        new_id = static_out_dset_id;
     }
+
+    ds_in_file[ds_id] = new_id;
+    return new_id;
 }
 
 void visRawReader::read_ahead(int ind) {
@@ -260,10 +270,6 @@ void visRawReader::main_thread() {
     double start_time, end_time;
     size_t frame_id = 0;
     uint8_t* frame;
-    dset_id_t dset_id; // dataset ID stored in the frame
-    dset_id_t cur_dset_id =
-        dset_id_t::null; // current dataset ID: used to identify changes in frames coming in
-    bool got_first_frame = false;
 
     size_t ind = 0, read_ind = 0, file_ind;
 
@@ -312,46 +318,35 @@ void visRawReader::main_thread() {
             std::memcpy(frame, mapped_file + file_ind * file_frame_size + metadata_size + 1,
                         data_size);
 
-            // Update the dataset ID. If not using comet, only need to do this once.
-            dset_id = ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id;
-            if (!got_first_frame) {
-                get_dataset_state(dset_id);
-                cur_dset_id = dset_id;
-                got_first_frame = true;
-            } else if (dset_id != cur_dset_id) {
-                if (!use_comet) {
-                    WARN("Dataset ID of incoming frames changed from {} to {}. Changing  ID "
-                         "not supported without dataset broker. Ignoring.",
-                         cur_dset_id, dset_id);
-                } else {
-                    get_dataset_state(dset_id);
-                }
-                cur_dset_id = dset_id;
-            }
         } else {
-            // Set metadata if file contained an empty frame
-            ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->num_prod = _prods.size();
-            ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->num_ev = _ev.size();
-            ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->num_elements = _inputs.size();
-            // Fill data with zeros
+            // Create frame and set structural metadata
             size_t num_vis = _stack.size() > 0 ? _stack.size() : _prods.size();
             auto frame = visFrameView(out_buf, frame_id, _inputs.size(), num_vis, _ev.size());
+
+            // Fill data with zeros
             std::fill(frame.vis.begin(), frame.vis.end(), 0.0);
             std::fill(frame.weight.begin(), frame.weight.end(), 0.0);
             std::fill(frame.eval.begin(), frame.eval.end(), 0.0);
             std::fill(frame.evec.begin(), frame.evec.end(), 0.0);
             std::fill(frame.gain.begin(), frame.gain.end(), 0.0);
             std::fill(frame.flags.begin(), frame.flags.end(), 0.0);
-            frame.freq_id = 0;
             frame.erms = 0;
-            frame.dataset_id = out_dset_id;
+
+            // Set non-structural metadata
+            frame.freq_id = 0;
+            frame.dataset_id = dset_id_t::null;
+            frame.time = std::make_tuple(0, timespec{0, 0});
+
             // mark frame as empty by ensuring this is 0
             frame.fpga_seq_length = 0;
+            frame.fpga_seq_total = 0;
+
             DEBUG("visRawReader: Reading empty frame: {:d}", frame_id);
         }
 
         // Set the dataset ID to the updated value
-        ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id = out_dset_id;
+        dset_id_t& ds_id = ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id;
+        ds_id = get_dataset_state(ds_id);
 
         // Try and clear out the cached data as we don't need it again
         if (madvise(mapped_file + file_ind * file_frame_size, file_frame_size, MADV_DONTNEED) == -1)
