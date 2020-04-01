@@ -366,10 +366,10 @@ void visRawReader::main_thread() {
         // Get the end time for the loop and sleep for long enough to satisfy
         // the max rate
         end_time = current_time();
-        double sleep_time = min_read_time - (end_time - start_time);
-        DEBUG("Sleep time {}", sleep_time);
+        double sleep_time_this_frame = min_read_time - (end_time - start_time);
+        DEBUG("Sleep time {}", sleep_time_this_frame);
         if (sleep_time > 0) {
-            auto ts = double_to_ts(sleep_time);
+            auto ts = double_to_ts(sleep_time_this_frame);
             nanosleep(&ts, nullptr);
         }
     }
