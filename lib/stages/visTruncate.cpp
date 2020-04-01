@@ -72,7 +72,8 @@ void visTruncate::main_thread() {
 
     // get the first frame (just to find out about num_prod)
     // (we don't mark it empty, so it's read again in the main loop)
-    wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+    if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr)
+        return;
     auto frame = visFrameView(in_buf, frame_id);
 
     // reserve enough memory for all err_r to be computed per frame

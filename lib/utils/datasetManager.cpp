@@ -84,6 +84,11 @@ datasetManager::~datasetManager() {
 }
 
 
+void datasetManager::stop() {
+    INFO_NON_OO("Stopping request threads...");
+    _stop_request_threads = true;
+}
+
 // TODO: 0 is not a good sentinel value. Move to std::optional typing when we use C++17
 dset_id_t datasetManager::add_dataset(state_id_t state, dset_id_t base_dset) {
     datasetState* t = nullptr;
@@ -450,7 +455,7 @@ void datasetManager::update_datasets(dset_id_t ds_id) {
         PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host, _ds_broker_port, _retries_rest_client,
         _timeout_rest_client_s);
 
-    while (!parse_reply_dataset_update(reply)) {
+    while (!_stop_request_threads && !parse_reply_dataset_update(reply)) {
         std::this_thread::sleep_for(std::chrono::milliseconds(_retry_wait_time_ms));
         reply = _rest_client.make_request_blocking(PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host,
                                                    _ds_broker_port, _retries_rest_client,
