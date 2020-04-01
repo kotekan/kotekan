@@ -229,15 +229,31 @@ class SharedMemoryReader:
 
         # check if any data became invalid while reading it
         access_record_after_copy = self._access_record()
-        idxs_invalid = np.where(access_record_after_copy != access_record)
-        if len(idxs_invalid[0]) > 0:
-            # translate time from timestamp to buffer index
-            idxs_invalid = [
-                (self._time_index_map[t], f)
-                for t, f in zip(idxs_invalid[0], idxs_invalid[1])
-            ]
-            # mark as invalid
-            self._data["valid"][idxs_invalid] = 0
+        invalid = np.where(access_record_after_copy != access_record)
+        if len(invalid[0]) > 0:
+            # get fpga_seq's of invalid frames
+            fpga_seq_invalid = access_record[invalid]
+
+            # filter out frames we didn't copy (including invalid ones)
+            filter = [fpga_seq in self._time_index_map for fpga_seq in fpga_seq_invalid]
+            fpga_seq_invalid = fpga_seq_invalid[filter]
+            invalid = (invalid[0][filter], invalid[1][filter])
+
+            if len(fpga_seq_invalid) > 0:
+                logger.debug(
+                    "{} frames became invalid while reading: (fpga_seq={}, freq_id={})".format(
+                        len(invalid[0]), fpga_seq_invalid, invalid[1]
+                    )
+                )
+
+                # translate time from timestamp to buffer index
+                buf_idxs_invalid = (
+                    [self._time_index_map[f] for f in fpga_seq_invalid],
+                    invalid[1],
+                )
+
+                # mark as invalid
+                self._data["valid"][buf_idxs_invalid] = 0
 
         if self._last_access_record is None:
             self._last_access_record = np.ndarray((self.num_time, self.num_freq))
