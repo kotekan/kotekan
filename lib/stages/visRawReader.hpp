@@ -51,6 +51,8 @@
  * @conf    sleep_time          Float. After the data is read pause this long in
  *                              seconds before sending shutdown. If < 0, never
  *                              send a shutdown signal. Default is -1.
+ * @conf    update_dataset_id   Bool. Update the dataset ID with information about the
+                                file, for example which time samples does it contain.
  * @conf    use_dataset_broker  Bool. Restore dataset ID from dataset broker (i.e. comet).
  *                              Should be disabled only for testing. Default is true.
  *
@@ -162,6 +164,9 @@ private:
 
     // whether to read in chunks
     bool chunked;
+
+    // whether to update the dataset ID with info about the file
+    bool update_dataset_id;
 
     // whether to use comet to track dataset IDs
     bool use_comet;
