@@ -7,8 +7,6 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 
 # === End Python 2/3 compatibility
 
-from future.utils import native_str
-
 import ctypes
 import os
 import io
@@ -474,7 +472,6 @@ class VisRaw(object):
             size_frame, num_elements, num_prod, num_ev, align_valid=True
         )
 
-        # TODO: Python 3 - use native_str for compatibility
         raw = buffer.view(dtype=frame_struct)
         data = raw["data"]
         metadata = raw["metadata"]
@@ -482,14 +479,12 @@ class VisRaw(object):
 
         ctime = metadata["ctime"]
         fpga_seq = metadata["fpga_seq"]
+
         num_prod = metadata["num_prod"]
 
         time = np.ndarray(
             shape=(num_time, num_freq),
-            dtype=[
-                (native_str("fpga_count"), np.uint64),
-                (native_str("ctime"), np.float64),
-            ],
+            dtype=[("fpga_count", np.uint64), ("ctime", np.float64),],
         )
         for t in range(num_time):
             for f in range(num_freq):
@@ -543,13 +538,9 @@ class VisRaw(object):
 
         index_map = metadata["index_map"]
 
-        # TODO: (Python 3) Used native_str for compatibility here
         time = np.array(
             [(t["fpga_count"], t["ctime"]) for t in index_map["time"]],
-            dtype=[
-                (native_str("fpga_count"), np.uint64),
-                (native_str("ctime"), np.float64),
-            ],
+            dtype=[("fpga_count", np.uint64), ("ctime", np.float64),],
         )
 
         num_freq = metadata["structure"]["nfreq"]
@@ -573,7 +564,7 @@ class VisRaw(object):
         #     ("erms", np.float32,  1),
         #     ("gain", np.complex64, self.num_elements),
         # ]
-        # data_struct = np.dtype([(native_str(d[0]),) + d[1:] for d in data_struct], align=True)
+        # data_struct = np.dtype([(d[0],) + d[1:] for d in data_struct], align=True)
 
         frame_struct = cls.frame_struct(
             metadata["structure"]["frame_size"],
@@ -585,13 +576,9 @@ class VisRaw(object):
 
         file_metadata = metadata
 
-        # TODO: Python 3 - use native_str for compatibility
         # Load data into on-disk numpy array
         raw = np.memmap(
-            native_str(data_path),
-            dtype=frame_struct,
-            mode=mode,
-            shape=(num_time, num_freq),
+            data_path, dtype=frame_struct, mode=mode, shape=(num_time, num_freq),
         )
         data = raw["data"]
         metadata = raw["metadata"]
