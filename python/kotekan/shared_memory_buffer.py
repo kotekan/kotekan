@@ -259,8 +259,9 @@ class SharedMemoryReader:
             self._last_access_record = np.ndarray((self.num_time, self.num_freq))
         self._last_access_record[times, :] = access_record_after_copy[times, :]
 
-        if self._time_index_map == {}:
-            return None
+        # TODO: make sure this works when there's no data in the buffer yet
+        # if self._time_index_map == {}:
+        #     return None
 
         return VisRaw.from_buffer(
             self._data, self.size_frame, self.view_size, self.num_freq
