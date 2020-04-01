@@ -231,7 +231,8 @@ class connInstance : public kotekan::kotekanLogging {
 public:
     /// Constructor
     connInstance(const std::string& producer_name, struct Buffer* buf, bufferRecv* buffer_recv,
-                 const std::string& client_ip, int port, struct timeval read_timeout, bool drop_frames);
+                 const std::string& client_ip, int port, struct timeval read_timeout,
+                 bool drop_frames);
 
     /// Destructor
     ~connInstance();

@@ -9,7 +9,14 @@
 #include <cerrno>
 #endif
 
-enum ReturnCode { CLEAN_EXIT = 0, FATAL_ERROR = 1, TEST_PASSED, TEST_FAILED, RETURN_CODE_COUNT, DATASET_MANAGER_FAILURE };
+enum ReturnCode {
+    CLEAN_EXIT = 0,
+    FATAL_ERROR = 1,
+    TEST_PASSED,
+    TEST_FAILED,
+    RETURN_CODE_COUNT,
+    DATASET_MANAGER_FAILURE
+};
 
 #ifdef __cplusplus
 extern "C" {

@@ -10,8 +10,9 @@
 
 #include "fmt.hpp" // for format, fmt
 
-#include <arpa/inet.h>  // for inet_addr
-#include <cerrno>       // for errno
+#include <arpa/inet.h> // for inet_addr
+#include <cerrno>      // for errno
+#include <chrono>
 #include <cstring>      // for strerror, size_t
 #include <exception>    // for exception
 #include <functional>   // for _Bind_helper<>::type, bind, ref, function
@@ -23,7 +24,6 @@
 #include <thread>       // for thread
 #include <unistd.h>     // for close, sleep
 #include <vector>       // for vector
-#include <chrono>
 
 // Only Linux supports MSG_NOSIGNAL
 #ifndef __linux__
