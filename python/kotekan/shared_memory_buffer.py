@@ -116,11 +116,13 @@ class SharedMemoryReader:
             )
             self.view_size = self.num_time
         elif self.num_time < self.view_size:
-            logger.info(
-                "The value `view_size` of the SharedMemoryReader was set to {}, but it "
-                "will never return that many time samples, because the shared memory "
-                "buffer only has size {}.".format(self.view_size, self.num_time)
+            logger.warning(
+                "The value `view_size` of the SharedMemoryReader was set to {}, but the shared "
+                "memory buffer only has size {}. Setting `view_size` to {}.".format(
+                    self.view_size, self.num_time, self.num_time
+                )
             )
+            self.view_size = self.num_time
 
         self.size_access_record = self.len_data * self.size_access_record_entry
         self.pos_access_record = self.size_structural_data
@@ -149,7 +151,9 @@ class SharedMemoryReader:
         )
 
         # Create buffer for frames kept by this module
-        self._data = np.ndarray((view_size, self.num_freq), dtype=self._frame_struct)
+        self._data = np.ndarray(
+            (self.view_size, self.num_freq), dtype=self._frame_struct
+        )
 
         # initialize valid fields
         self._data["valid"][:, :] = 0
