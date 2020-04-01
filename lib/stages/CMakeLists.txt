@@ -73,8 +73,6 @@ endif ()
 
 # HDF5 stuff
 if (${USE_HDF5})
-  # Disable for the moment as requires too modern HDF5 not available in most computers
-  #set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} calibration_io.cpp)
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} basebandReadout.cpp applyGains.cpp)
 endif ()
 
@@ -112,13 +110,17 @@ if (${USE_EVENT})
 endif ()
 
 if (${USE_LAPACK})
-  include_directories (${OpenBLAS_INCLUDE_DIRS} ${LAPACK_INCLUDE_DIRS})
-  target_link_libraries ( kotekan_stages  ${OpenBLAS_LIBRARIES} ${LAPACK_LIBRARIES})
+  include_directories( ${LAPACKE_INCLUDE_DIRS} )
+  target_link_libraries( kotekan_stages ${BLAS_LIBRARIES} )
+  target_link_libraries( kotekan_stages ${LAPACK_LIBRARIES} )
+  target_link_libraries( kotekan_stages ${LAPACKE_LIBRARIES} )
 endif ()
 
 # Add atomic for building against GCC
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     target_link_libraries ( kotekan_stages -latomic )
 endif()
+
+target_link_libraries( kotekan_stages libexternal )
 
 target_link_libraries( kotekan_stages kotekan_utils kotekan_core )

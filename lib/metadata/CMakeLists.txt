@@ -3,6 +3,4 @@
 # back into a standard CMake library
 project( kotekan_metadata )
 
-include_directories (${KOTEKAN_SOURCE_DIR}/include)
-
 add_library ( kotekan_metadata INTERFACE )
