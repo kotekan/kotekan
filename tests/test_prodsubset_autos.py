@@ -17,7 +17,7 @@ subset_params = {
     "num_elements": 16,
     "num_ev": 2,
     "num_frb_total_beams": 12,
-    "num_sub_freqs": 6,
+    "factor_upchan": 6,
     "total_frames": 128,
     "cadence": 5.0,
     "mode": "fill_ij",

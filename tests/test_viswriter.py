@@ -21,7 +21,7 @@ writer_params = {
     "num_elements": 4,
     "num_ev": 2,
     "num_frb_total_beams": 12,
-    "num_sub_freqs": 6,
+    "factor_upchan": 6,
     "cadence": 5.0,
     "total_frames": 10,
     "freq": [3, 777, 554],

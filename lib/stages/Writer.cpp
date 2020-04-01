@@ -439,7 +439,7 @@ std::map<std::string, std::string> Writer::make_metadata(dset_id_t ds_id) {
     metadata["collection_server"] = hostname;
     metadata["num_beams"] =
         std::to_string(config.get<uint32_t>(unique_name, "num_frb_total_beams"));
-    metadata["num_subfreq"] = std::to_string(config.get<uint32_t>(unique_name, "num_sub_freqs"));
+    metadata["num_subfreq"] = std::to_string(config.get<uint32_t>(unique_name, "factor_upchan"));
 
     return metadata;
 }
@@ -464,7 +464,7 @@ std::map<std::string, std::string> Writer::make_hfb_metadata() {
     metadata["collection_server"] = hostname;
     metadata["num_beams"] =
         std::to_string(config.get<uint32_t>(unique_name, "num_frb_total_beams"));
-    metadata["num_sub_freqs"] = std::to_string(config.get<uint32_t>(unique_name, "num_sub_freqs"));
+    metadata["num_sub_freqs"] = std::to_string(config.get<uint32_t>(unique_name, "factor_upchan"));
 
     return metadata;
 }

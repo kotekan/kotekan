@@ -7,7 +7,7 @@ num_elements: 2048
 num_ev: 4
 num_local_freq: 1
 num_frb_total_beams: 1024
-num_sub_freqs: 128
+factor_upchan: 128
 
 dataset_manager:
   ds_broker_host: 10.5.0.3

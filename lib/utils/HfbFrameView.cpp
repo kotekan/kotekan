@@ -144,7 +144,7 @@ size_t HfbFrameView::calculate_frame_size(uint32_t num_beams, uint32_t num_subfr
 size_t HfbFrameView::calculate_frame_size(kotekan::Config& config, const std::string& unique_name) {
 
     const uint32_t num_beams = config.get<uint32_t>(unique_name, "num_frb_total_beams");
-    const uint32_t num_subfreq = config.get<uint32_t>(unique_name, "num_sub_freqs");
+    const uint32_t num_subfreq = config.get<uint32_t>(unique_name, "factor_upchan");
 
     // TODO: get the types of each element using a template on the member
     // definition
