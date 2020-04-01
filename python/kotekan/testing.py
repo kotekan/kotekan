@@ -200,6 +200,8 @@ class SharedMemValidationTest:
             self._readers.append(
                 SharedMemoryReader(semaphore_name, shared_memory_name, view_size)
             )
+            # allow the view size to be set/changed by the reader
+            self.view_sizes[i] = self._readers[i].view_size
             self.delay.append([])
             self.expected_delay.append([])
             self.update_time.append([])
