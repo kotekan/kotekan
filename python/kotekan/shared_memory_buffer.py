@@ -321,15 +321,8 @@ class SharedMemoryReader:
         return idxs[-n:]
 
     def _max_ts_per_freq(self, access_record):
-        # get the most recent timestamp for each time slot
-        last_ts = [None] * self.num_time
-        for t in range(self.num_time):
-            for f in range(self.num_freq):
-                if (
-                    last_ts[t] is None and access_record[t, f] != self.invalid_value
-                ) or (last_ts[t] is None or access_record[t, f] > last_ts[t]):
-                    last_ts[t] = access_record[t, f]
-        return last_ts
+        """ Get the most recent timestamp for each time slot."""
+        return access_record.max(axis=1)
 
     def _sort_timestamps(self, timestamps):
         timestamp_sorted, idxs = list(
