@@ -66,8 +66,8 @@ def validate_vis(vis, num_elements, ftime, ctime, freq):
         pi += num_elements - ii
 
     # Check that the times are correct
-    assert (vis[:, :, 0].real == ftime[:, np.newaxis].astype(np.float32)).all()
-    assert (vis[:, :, 1].real == ctime[:, np.newaxis].astype(np.float32)).all()
+    assert (vis[:, :, 0].real == ftime[:].astype(np.float32)).all()
+    assert (vis[:, :, 1].real == ctime[:].astype(np.float32)).all()
 
     # Check that the frequencies are correct
     vfreq = 800.0 - 400.0 * vis[:, :, 2].real / 1024
