@@ -184,7 +184,13 @@ class VisBuffer(object):
             end = member["start"] + num * size
             member["end"] = end
             member["size"] = num * size
-            member["num"] = num
+
+            # make sure this dimension doesn't get squashed out if it's 1 (for everything but erms)
+            if name == "erms":
+                member["num"] = num
+            else:
+                member["num"] = (num,)
+
             member["dtype"] = dtype
             member["name"] = name
 
