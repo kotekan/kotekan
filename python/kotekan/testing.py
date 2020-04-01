@@ -62,7 +62,7 @@ def validate_vis(vis, num_elements, ftime, ctime, freq):
 
     # Check that the times are correct
     assert (vis[:, :, 0].real == ftime[:].astype(np.float32)).all(), 'expected: {}\n actual: {}'.format(ftime[:].astype(np.float32), vis[:, :, 0].real)
-    assert (vis[:, :, 1].real == ctime[:, np.newaxis].astype(np.float32)).all(), 'expected: {}\n actual: {}'.format(ctime[:, np.newaxis].astype(np.float32), vis[:, :, 1].real)
+    assert (vis[:, :, 1].real == ctime[:].astype(np.float32)).all(), 'expected: {}\n actual: {}'.format(ctime[:].astype(np.float32), vis[:, :, 1].real)
 
     # Check that the frequencies are correct
     vfreq = 800.0 - 400.0 * vis[:, :, 2].real / 1024
