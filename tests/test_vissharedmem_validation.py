@@ -19,7 +19,7 @@ import tempfile
 import threading
 from time import sleep
 
-from kotekan import runner, shared_memory_buffer
+from kotekan import runner, testing
 
 # use tempfile creation to get exclusive random strings
 useless_file = tempfile.NamedTemporaryFile()
@@ -135,7 +135,7 @@ def test_shared_mem_buffer(vis_data, comet_broker):
     config = copy.copy(params)
     config.update(params_fakevis)
     config.update(params_writer_stage)
-    validation = shared_memory_buffer.ValidationTest(
+    validation = testing.SharedMemValidationTest(
         params["total_frames"] - ignore_frames,
         config,
         3,
