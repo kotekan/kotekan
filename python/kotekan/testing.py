@@ -194,7 +194,7 @@ class SharedMemValidationTest:
         self.delay = list()
         self.expected_delay = list()
         self.update_time = list()
-        self._next_check = copy.copy(self.update_interval)
+        self._next_check = [0] * self.num_readers
         for i in range(num_readers):
             view_size = self.view_sizes[i]
             self._readers.append(
