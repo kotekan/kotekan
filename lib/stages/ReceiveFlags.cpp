@@ -61,7 +61,7 @@ ReceiveFlags::ReceiveFlags(Config& config, const std::string& unique_name,
     num_kept_updates = config.get_default<uint32_t>(unique_name, "num_kept_updates", 5);
 
     /// FIFO for flags updates
-    flags = updateQueue<std::pair<state_id_t, std::vector<float>>>(num_kept_updates);
+    flags.resize(num_kept_updates);
 
     // we are ready to receive updates with the callback function now!
     // register as a subscriber with configUpdater

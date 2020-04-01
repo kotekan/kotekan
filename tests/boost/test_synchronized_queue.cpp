@@ -56,7 +56,7 @@ BOOST_AUTO_TEST_CASE(cancel) {
     SynchronizedQueue<int> q;
     q.put(42);
     q.cancel();
-    BOOST_CHECK(q.get() == nullptr);
+    BOOST_CHECK(!q.get());
 }
 
 /*
@@ -64,8 +64,8 @@ BOOST_AUTO_TEST_CASE(cancel) {
  */
 BOOST_AUTO_TEST_CASE(cancel_with_threads) {
     SynchronizedQueue<int> q;
-    std::thread t1([&q]() { BOOST_CHECK(q.get() == nullptr); });
-    std::thread t2([&q]() { BOOST_CHECK(q.get() == nullptr); });
+    std::thread t1([&q]() { BOOST_CHECK(!q.get()); });
+    std::thread t2([&q]() { BOOST_CHECK(!q.get()); });
     q.cancel();
 
     t1.join();
