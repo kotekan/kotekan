@@ -217,17 +217,13 @@ void VisSharedMemWriter::reset_memory(uint32_t time_ind) {
     // invalid
     wait_for_semaphore();
 
-    int64_t invalid_vector[nfreq];
-    std::fill_n(invalid_vector, nfreq, invalid);
-    memcpy(access_record_write_pos, invalid_vector, nfreq * sizeof(invalid_vector[0]));
+    std::fill_n(access_record_write_pos, nfreq, invalid);
 
     release_semaphore();
 
     INFO("Resetting ring buffer memory at position time_ind: {}\n", time_ind);
     // set the full time_ind to 0 in the ring buffer
-    std::vector<char> zeros(nfreq * frame_size, 0);
-    char* tmp = zeros.data();
-    memcpy(buf_write_pos, &tmp, sizeof(tmp));
+    memset(buf_write_pos, 0, nfreq * frame_size);
 
     DEBUG("Memory reset\n");
 }
@@ -251,9 +247,9 @@ void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
 
     // first write the metadata, then the data, then the valid byte
     // add valid_size amount of padding
+    *buf_write_pos = valid;
     memcpy(buf_write_pos + valid_size, frame.metadata(), metadata_size);
     memcpy(buf_write_pos + metadata_size + valid_size, frame.data(), data_size);
-    memcpy(buf_write_pos, &valid, sizeof(valid));
 
     // Document the fpga sequence counter for that frame in the access record
     uint64_t fpga_seq = frame.metadata()->fpga_seq_start;
@@ -344,10 +340,7 @@ void VisSharedMemWriter::main_thread() {
     memcpy(structured_data_addr + 5, &data_size, sizeof(data_size));
 
     // initially set the address records with -1
-    // std::fill_n(array, 100, -1);
-    int64_t invalid_vector[_ntime * nfreq];
-    std::fill_n(invalid_vector, _ntime * nfreq, invalid);
-    memcpy(access_record_addr, invalid_vector, _ntime * nfreq * sizeof(invalid_vector[0]));
+    std::fill_n(access_record_addr, _ntime * nfreq, invalid);
 
     INFO("Created the shared memory segments\n");
     release_semaphore();

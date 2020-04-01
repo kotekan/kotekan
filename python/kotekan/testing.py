@@ -42,14 +42,12 @@ def validate(vis_raw, config, pattern_name=""):
     num_time = vis_raw.num_time
     total_frames = config["total_frames"]
 
-    cadence = config.get("cadence", None)
-
     if pattern_name == "default":
-        validate_vis(vis, num_elements, ftime, ctime, freq, cadence)
+        validate_vis(vis, num_elements, ftime, ctime, freq)
         validate_eigenvectors(vis_raw, num_time, num_freq, num_ev, num_elements)
 
 
-def validate_vis(vis, num_elements, ftime, ctime, freq, cadence=None):
+def validate_vis(vis, num_elements, ftime, ctime, freq):
     """Tests that visibility array is populated with integers increasing from zero
     on the diagonal (imaginary part)
     and FPGA sequence number, timestamp, frequency, and frame ID in the first
@@ -65,9 +63,6 @@ def validate_vis(vis, num_elements, ftime, ctime, freq, cadence=None):
     # Check that the times are correct
     assert (vis[:, :, 0].real == ftime[:, np.newaxis].astype(np.float32)).all()
     assert (vis[:, :, 1].real == ctime[:, np.newaxis].astype(np.float32)).all()
-
-    if cadence is not None:
-        assert np.allclose(np.diff(ctime), cadence)
 
     # Check that the frequencies are correct
     vfreq = 800.0 - 400.0 * vis[:, :, 2].real / 1024
