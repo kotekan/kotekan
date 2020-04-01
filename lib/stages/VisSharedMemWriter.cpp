@@ -61,6 +61,18 @@ VisSharedMemWriter::VisSharedMemWriter(Config& config, const std::string& unique
     _ntime = config.get_default<size_t>(unique_name, "nsamples", 512);
     _sem_wait_time = config.get_default<size_t>(unique_name, "sem_wait_time", 120);
 
+    // Set the list of critical states
+    critical_state_types = {"frequencies", "inputs",        "products",
+                            "stack",        "eigenvalues", "metadata"};
+    auto t = config.get_default<std::vector<std::string>>(unique_name, "critical_states", {});
+    for (const auto& state : t) {
+        if (!FACTORY(datasetState)::exists(state)) {
+            FATAL_ERROR("Unknown datasetState type '{}' given as `critical_state`", state);
+            return;
+        }
+        critical_state_types.insert(state);
+    }
+
     // Setup the input vector
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -306,6 +318,10 @@ void VisSharedMemWriter::main_thread() {
     for (auto& f : freq_state->get_freqs())
         freq_id_map[f.first] = ind++;
 
+    // Calculate the fingerprint
+    stream_fingerprint = dm.fingerprint(frame.dataset_id, critical_state_types);
+
+    unique_dataset_ids.insert(frame.dataset_id);
 
     // Figure out the ring buffer structure
     nfreq = freq_state->get_freqs().size();
@@ -356,6 +372,20 @@ void VisSharedMemWriter::main_thread() {
 
         // Get a view of the current frame
         auto frame = visFrameView(in_buf, frame_id);
+
+        // Check that the dataset ID hasn't chaned
+        if (unique_dataset_ids.count(frame.dataset_id) == 0) {
+            // Check whether the fingerprint has changed
+            auto frame_fingerprint = datasetManager::instance().fingerprint(frame.dataset_id, critical_state_types);
+
+            if (frame_fingerprint == stream_fingerprint) {
+                INFO("Got a new dataset ID={}, with known fingerprint={}", frame.dataset_id, stream_fingerprint);
+                unique_dataset_ids.insert(frame.dataset_id);
+            } else {
+                FATAL_ERROR("Got a new dataset ID={}, but FINGERPRINT HAS CHANGED. Known fingerprint={}; Received fingerprint={}", frame.dataset_id, stream_fingerprint, frame_fingerprint);
+                return;
+            }
+        }
 
         if (frame.data_size != data_size) {
             FATAL_ERROR(

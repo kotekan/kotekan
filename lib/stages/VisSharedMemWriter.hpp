@@ -7,6 +7,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "visBuffer.hpp"       // for visFrameView
 #include "visUtil.hpp"         // for time_ctype
+#include "datasetManager.hpp"  // for dset_id_t, fingerprint_t
 
 #include <cstdint>     // for uint32_t, uint64_t, uint8_t
 #include <map>         // for map
@@ -91,6 +92,15 @@ protected:
     void release_semaphore();
 
     std::string _root_path, _sem_name, _fname_buf;
+
+    // List of critical states, if changed they will trigger an error
+    std::set<std::string> critical_state_types;
+
+    // List of unique dataset ids, whose fingerprints all match
+    std::set<dset_id_t> unique_dataset_ids;
+
+    // The stream's keyed fingerprint
+    fingerprint_t stream_fingerprint;
 };
 
 #endif // VISSHAREDMEMWRITER_HPP
