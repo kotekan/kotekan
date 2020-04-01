@@ -35,14 +35,14 @@ uint32_t bin_number_16_elem(const stream_id_t* stream_id, const int index) {
     return stream_id->link_id + index * 8;
 }
 
-uint32_t bin_number_multifreq(const stream_id_t* stream_id, const int num_local_freq, int freqidx){
+uint32_t bin_number_multifreq(const stream_id_t* stream_id, const int num_local_freq, int freqidx) {
     uint32_t freq_id;
-    switch (num_local_freq){
+    switch (num_local_freq) {
         case 8:
             freq_id = bin_number(stream_id, freqidx);
             break;
         case 128:
-            freq_id = bin_number_16_elem(stream_id,freqidx);
+            freq_id = bin_number_16_elem(stream_id, freqidx);
             break;
         default:
             freq_id = bin_number_chime(stream_id);

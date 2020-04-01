@@ -162,7 +162,8 @@ public:
     void handle_request_callback(connectionInstance& conn, nlohmann::json& request);
 
     /**
-     * @brief Register a readout stage for specified readout_id, which we defined to be readout_id = freq_id + board_id * 1048576
+     * @brief Register a readout stage for specified readout_id, which we defined to be readout_id =
+     * freq_id + board_id * 1048576
      *
      * @return a shared_ptr to the mutex used to guard access to the baseband
      * dump currently in progress.

@@ -45,14 +45,15 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     buf = get_buffer("out_buf");
     register_producer(buf, unique_name.c_str());
     type = config.get<std::string>(unique_name, "type");
-    assert(type == "const" || type == "random" || type == "ramp" || type == "tpluse" || type == "tpluseplusf" || type == "tpluseplusfprime");
+    assert(type == "const" || type == "random" || type == "ramp" || type == "tpluse"
+           || type == "tpluseplusf" || type == "tpluseplusfprime");
     if (type == "const" || type == "random" || type == "ramp")
         value = config.get<int>(unique_name, "value");
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
 
     samples_per_data_set = config.get_default<int>(unique_name, "samples_per_data_set", 32768);
     stream_id = config.get_default<int>(unique_name, "stream_id", 0);
-    num_local_freq = config.get_default<int>(unique_name,"num_local_freq",1);
+    num_local_freq = config.get_default<int>(unique_name, "num_local_freq", 1);
     num_frames = config.get_default<int>(unique_name, "num_frames", -1);
     // Try to generate data based on `samples_per_dataset` cadence or else just generate it as
     // fast as possible.
@@ -137,8 +138,10 @@ void testDataGen::main_thread() {
         if (type == "random")
             srand(value);
         unsigned char temp_output;
-        stream_id_t real_stream_id = extract_stream_id(stream_id); //get the stream_id object from the encoded stream_id
-        int num_elements = buf->frame_size / samples_per_data_set / num_local_freq / sizeof(uint8_t);
+        stream_id_t real_stream_id =
+            extract_stream_id(stream_id); // get the stream_id object from the encoded stream_id
+        int num_elements =
+            buf->frame_size / samples_per_data_set / num_local_freq / sizeof(uint8_t);
         for (uint j = 0; j < buf->frame_size / sizeof(uint8_t); ++j) {
             if (type == "const") {
                 if (finished_seeding_consant)
@@ -155,15 +158,21 @@ void testDataGen::main_thread() {
                 temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
                 frame[j] = temp_output;
             } else if (type == "tpluse") {
-                frame[j] = seq_num + j /num_elements + j % num_elements;
-            }  else if (type == "tpluseplusf") {
-                frame[j] = seq_num + j/(num_local_freq*num_elements) + bin_number_multifreq(&real_stream_id,num_local_freq,(j % (num_local_freq * num_elements)) /num_elements) + j % num_elements; 
-            }  else if (type == "tpluseplusfprime") {
-                frame[j] = 2* (seq_num + j/(num_local_freq*num_elements))
-                         + 3* (bin_number_multifreq(&real_stream_id,num_local_freq,(j % (num_local_freq * num_elements)) /num_elements))
-                         + 5* (j % num_elements); 
+                frame[j] = seq_num + j / num_elements + j % num_elements;
+            } else if (type == "tpluseplusf") {
+                frame[j] =
+                    seq_num + j / (num_local_freq * num_elements)
+                    + bin_number_multifreq(&real_stream_id, num_local_freq,
+                                           (j % (num_local_freq * num_elements)) / num_elements)
+                    + j % num_elements;
+            } else if (type == "tpluseplusfprime") {
+                frame[j] = 2 * (seq_num + j / (num_local_freq * num_elements))
+                           + 3
+                                 * (bin_number_multifreq(&real_stream_id, num_local_freq,
+                                                         (j % (num_local_freq * num_elements))
+                                                             / num_elements))
+                           + 5 * (j % num_elements);
             }
-
         }
         DEBUG("Generated a {:s} test data set in {:s}[{:d}]", type, buf->buffer_name, frame_id);
 
@@ -171,7 +180,7 @@ void testDataGen::main_thread() {
 
         frame_id_abs += 1;
         if (num_frames >= 0 && frame_id_abs >= num_frames) {
-            INFO("Frame ID ({:d}) greater than the no. of frames ({:d})",frame_id_abs,num_frames);
+            INFO("Frame ID ({:d}) greater than the no. of frames ({:d})", frame_id_abs, num_frames);
             exit_kotekan(ReturnCode::CLEAN_EXIT);
             break;
         };

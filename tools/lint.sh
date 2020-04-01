@@ -4,7 +4,7 @@
 CLANG_FORMAT=clang-format-8
 
 # kotekan root directory
-KOTEKAN_DIR="."
+KOTEKAN_DIR="/home/masuilab/kotekan-new/kotekan"
 
 # Flag to enable iwyu (default OFF)
 ENABLE_IWYU="OFF"

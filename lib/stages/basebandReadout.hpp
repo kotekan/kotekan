@@ -88,11 +88,12 @@ private:
     /**
      * @brief Process incoming requests by copying the baseband data from the ring buffer
      */
-    void readout_thread(const uint32_t freq_ids[], kotekan::basebandReadoutManager *readout_managers[]);
+    void readout_thread(const uint32_t freq_ids[],
+                        kotekan::basebandReadoutManager* readout_managers[]);
     /**
      * @brief Loops over requests whose data has been read out and writes it to a file
      */
-    void writeout_thread(kotekan::basebandReadoutManager *readout_managers[]);
+    void writeout_thread(kotekan::basebandReadoutManager* readout_managers[]);
     void write_dump(kotekan::basebandDumpData data, kotekan::basebandDumpStatus& dump_status,
                     std::mutex& request_mtx);
     int add_replace_frame(int frame_id);
@@ -105,12 +106,13 @@ private:
      * @param event_id unique identifier of the event in the FRB pipeline
      * @param trigger_start_fpga start time, or -1 to use the earliest data available
      * @param trigger_length_fpga number of FPGA samples to include in the dump
-     * @param freqidx a pointer arithmetic offset that ranges from zero to num_local_freq when dumping multiple frequencies from one stream. 
+     * @param freqidx a pointer arithmetic offset that ranges from zero to num_local_freq when
+     * dumping multiple frequencies from one stream.
      * @return A fully initialized `basebandDumpData` if the call succeeded, or
      * an empty one if the frame data was not availabe for the time requested
      */
     kotekan::basebandDumpData get_data(uint64_t event_id, int64_t trigger_start_fpga,
-                                       int64_t trigger_length_fpga,int freqidx);
+                                       int64_t trigger_length_fpga, int freqidx);
 
     /// baseband data array
     BipBuffer data_buffer;

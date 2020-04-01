@@ -161,7 +161,7 @@ void basebandApiManager::status_callback_single_event(const uint64_t event_id,
         auto event = readout_manager.find(event_id);
         if (event) {
             json j(*event);
-            j["freq_id"] = readout_id; //XXX: readout_id = freq_id + 1048576 * board_id
+            j["freq_id"] = readout_id; // XXX: readout_id = freq_id + 1048576 * board_id
             event_status.push_back(j);
         }
     }
@@ -227,17 +227,18 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
             std::string readout_file_name =
                 fmt::format(fmt("baseband_{:d}_{:d}.h5"), event_id, freq_id);
             if (board_id != 0) {
-                    readout_file_name =
-                    fmt::format(fmt("baseband_{:d}_{:d}_board_{:d}.h5"), event_id, freq_id, board_id);
-                }
+                readout_file_name = fmt::format(fmt("baseband_{:d}_{:d}_board_{:d}.h5"), event_id,
+                                                freq_id, board_id);
+            }
 
             const auto readout_slice =
                 translate_trigger(start_fpga, duration_fpga, dm, dm_error, freq_id);
             readout_entry.add({event_id, readout_slice.start_fpga, readout_slice.length_fpga,
                                file_path, readout_file_name, now});
-            response[std::to_string(element.first)] = json{{"file_name", readout_file_name},
-                                                     {"start_fpga", readout_slice.start_fpga},
-                                                     {"length_fpga", readout_slice.length_fpga}};
+            response[std::to_string(element.first)] =
+                json{{"file_name", readout_file_name},
+                     {"start_fpga", readout_slice.start_fpga},
+                     {"length_fpga", readout_slice.length_fpga}};
         }
 
         request_counter.inc();
