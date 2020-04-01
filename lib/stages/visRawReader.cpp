@@ -268,7 +268,7 @@ int visRawReader::position_map(int ind) {
 void visRawReader::main_thread() {
 
     double start_time, end_time;
-    size_t frame_id = 0;
+    frameID frame_id(out_buf);
     uint8_t* frame;
 
     size_t ind = 0, read_ind = 0, file_ind;
@@ -353,8 +353,7 @@ void visRawReader::main_thread() {
             DEBUG("madvise failed: {:s}", strerror(errno));
 
         // Release the frame and advance all the counters
-        mark_frame_full(out_buf, unique_name.c_str(), frame_id);
-        frame_id = (frame_id + 1) % out_buf->num_frames;
+        mark_frame_full(out_buf, unique_name.c_str(), frame_id++);
         read_ind++;
         ind++;
 
