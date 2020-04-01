@@ -73,8 +73,9 @@ private:
     bool _fixed_dset_id;
     dset_id_t _dset_id;
     /// Parameters saved from the config files
-    size_t num_elements, num_eigenvectors;
-    uint32_t num_beams;
+    size_t _num_elements, _num_eigenvectors;
+    uint32_t _num_beams;
+    uint32_t _factor_upchan;
     /// List of frequencies for this buffer
     std::vector<uint32_t> freq;
     bool _init_dataset_manager;

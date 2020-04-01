@@ -72,11 +72,12 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     } else
         _fixed_dset_id = false;
 
-    num_elements = config.get_default<size_t>(unique_name, "num_elements", 4);
-    num_eigenvectors = config.get_default<size_t>(unique_name, "num_ev", 0);
+    _num_elements = config.get_default<size_t>(unique_name, "num_elements", 4);
+    _num_eigenvectors = config.get_default<size_t>(unique_name, "num_ev", 0);
     std::vector<uint32_t> freq_default{0};
     freq = config.get_default<std::vector<uint32_t>>(unique_name, "freq_ids", freq_default);
-    num_beams = config.get_default<uint32_t>(unique_name, "num_beams", 1024);
+    _num_beams = config.get_default<uint32_t>(unique_name, "num_frb_total_beams", 1024);
+    _factor_upchan = config.get_default<uint32_t>(unique_name, "factor_upchan", 128);
     _init_dataset_manager = config.get_default<bool>(unique_name, "init_dm", false);
 
     endpoint = unique_name + "/generate_test_data";
@@ -147,16 +148,38 @@ void testDataGen::main_thread() {
             states.push_back(dm.create_state<freqState>(fspec).first);
 
             std::vector<input_ctype> ispec;
-            for (uint32_t i = 0; i < num_elements; i++)
+            for (uint32_t i = 0; i < _num_elements; i++)
                 ispec.emplace_back((uint32_t)i, fmt::format(fmt("dm_input_{:d}"), i));
             states.push_back(dm.create_state<inputState>(ispec).first);
 
             std::vector<prod_ctype> pspec;
-            for (uint16_t i = 0; i < num_elements; i++)
-                for (uint16_t j = i; j < num_elements; j++)
+            for (uint16_t i = 0; i < _num_elements; i++)
+                for (uint16_t j = i; j < _num_elements; j++)
                     pspec.push_back({i, j});
             states.push_back(dm.create_state<prodState>(pspec).first);
-            states.push_back(dm.create_state<eigenvalueState>(num_eigenvectors).first);
+            states.push_back(dm.create_state<eigenvalueState>(_num_eigenvectors).first);
+
+            // Create the beam indices
+            std::vector<uint32_t> beams;
+            beams.resize(_num_beams);
+            std::iota(std::begin(beams), std::end(beams), 0);
+            states.push_back(dm.create_state<beamState>(beams).first);
+
+            // Create the sub-frequencies specification
+            std::vector<std::pair<uint32_t, freq_ctype>> sub_freqs;
+            sub_freqs.resize(1024 * _factor_upchan);
+
+            uint32_t index = 0;
+            double freq_width = 400.0 / 1024;
+            double sub_freq_width = freq_width / _factor_upchan;
+            for (auto const& f : fspec) {
+              for (uint32_t sub_freq_index = 0; sub_freq_index < _factor_upchan; sub_freq_index++) {
+                double sub_freq_centre = (f.second.centre - 0.5 * freq_width)
+                  + (sub_freq_index * sub_freq_width) + (0.5 * sub_freq_width);
+                sub_freqs.push_back({index++, {sub_freq_centre, sub_freq_width}});
+              }
+            }
+            states.push_back(dm.create_state<subfreqState>(sub_freqs).first);
 
             // Register a root state
             ds_id = dm.add_dataset(states);
@@ -183,7 +206,7 @@ void testDataGen::main_thread() {
             set_stream_id(buf, frame_id, stream_id);
         } else if (!strcmp(buf->buffer_type, "hfb")) {
             set_dataset_id(buf, frame_id, ds_id);
-            set_num_beams(buf, frame_id, num_beams);
+            set_num_beams(buf, frame_id, _num_beams);
         }
 
         gettimeofday(&now, nullptr);
