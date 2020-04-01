@@ -55,6 +55,7 @@ visRawReader::visRawReader(Config& config, const std::string& unique_name,
     readahead_blocks = config.get<size_t>(unique_name, "readahead_blocks");
     max_read_rate = config.get_default<double>(unique_name, "max_read_rate", 0.0);
     sleep_time = config.get_default<float>(unique_name, "sleep_time", -1);
+    update_dataset_id = config.get_default<bool>(unique_name, "update_dataset_id", true);
     use_comet = config.get_default<bool>(DS_UNIQUE_NAME, "use_dataset_broker", true);
 
     chunked = config.exists(unique_name, "chunk_size");
@@ -160,8 +161,10 @@ visRawReader::visRawReader(Config& config, const std::string& unique_name,
     }
 
     // Register a state for the time axis
-    datasetManager& dm = datasetManager::instance();
-    tstate_id = dm.create_state<timeState>(_times).first;
+    if (update_dataset_id) {
+        datasetManager& dm = datasetManager::instance();
+        tstate_id = dm.create_state<timeState>(_times).first;
+    }
 
     // Open up the data file and mmap it
     INFO("Opening data file: {:s}.data", filename);
@@ -186,6 +189,12 @@ visRawReader::~visRawReader() {
 }
 
 void visRawReader::get_dataset_state(dset_id_t ds_id) {
+
+    if (!update_dataset_id) {
+        out_dset_id = ds_id;
+        return;
+    }
+
     datasetManager& dm = datasetManager::instance();
 
     if (use_comet) {
