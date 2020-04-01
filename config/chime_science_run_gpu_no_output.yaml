@@ -186,11 +186,11 @@ updatable_config:
     rfi_zeroing: True
   rfi_sk_record:
     kotekan_update_endpoint: json
-    output_dir: /mnt/gong/RFI/20200330_sk_5/
+    output_dir: /mnt/gong/RFI/20200401_sk/
     write_to_disk: true
   rfi_var_record:
     kotekan_update_endpoint: json
-    output_dir: /mnt/gong/RFI/20200330_pkt_loss_5/
+    output_dir: /mnt/gong/RFI/20200401_pkt_loss/
     write_to_disk: true
   rfi_var_element_index:
     kotekan_update_endpoint: json
