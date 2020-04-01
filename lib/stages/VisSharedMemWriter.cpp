@@ -92,7 +92,7 @@ VisSharedMemWriter::~VisSharedMemWriter() {
     wait_for_semaphore();
 
     num_writes = 0;
-    memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
+    *structured_data_addr = num_writes;
 
     release_semaphore();
 }
@@ -253,7 +253,7 @@ void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
     // location to invalid in the access record
     wait_for_semaphore();
 
-    memcpy(access_record_write_pos, &invalid, sizeof(invalid));
+    *access_record_write_pos = invalid;
 
     release_semaphore();
 
@@ -270,11 +270,11 @@ void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
     wait_for_semaphore();
 
     DEBUG("Writing fpga_seq {} to time index {}\n", fpga_seq, time_ind);
-    memcpy(access_record_write_pos, &fpga_seq, sizeof(fpga_seq));
+    *access_record_write_pos = fpga_seq;
 
     // update num_writes
     num_writes++;
-    memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
+    *structured_data_addr = num_writes;
 
     release_semaphore();
     return;
@@ -348,7 +348,7 @@ void VisSharedMemWriter::main_thread() {
         (structured_data_size * structured_data_num) + (_ntime * nfreq * access_record_size);
 
     // Record structure of data
-    memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
+    *structured_data_addr = num_writes;
     memcpy(structured_data_addr + 1, &_ntime, sizeof(_ntime));
     memcpy(structured_data_addr + 2, &nfreq, sizeof(nfreq));
     memcpy(structured_data_addr + 3, &frame_size, sizeof(frame_size));
