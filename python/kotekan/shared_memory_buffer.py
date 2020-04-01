@@ -39,12 +39,12 @@ class Structure(ctypes.Structure):
     """Structural parameters of the shared memory reagion."""
 
     _fields_ = [
-        ("num_writes", ctypes.c_ulonglong),
-        ("num_time", ctypes.c_ulonglong),
-        ("num_freq", ctypes.c_ulonglong),
-        ("size_frame", ctypes.c_ulonglong),
-        ("size_meta", ctypes.c_ulonglong),
-        ("size_data", ctypes.c_ulonglong),
+        ("num_writes", ctypes.c_uint64),
+        ("num_time", ctypes.c_uint64),
+        ("num_freq", ctypes.c_uint64),
+        ("size_frame", ctypes.c_uint64),
+        ("size_meta", ctypes.c_uint64),
+        ("size_data", ctypes.c_uint64),
     ]
 
 
