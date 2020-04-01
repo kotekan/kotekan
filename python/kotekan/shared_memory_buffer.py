@@ -274,7 +274,7 @@ class SharedMemoryReader:
         self._write_idx = (self._write_idx + 1) % self.view_size
 
         # mark frames at all other frequencies for this time slot as invalid
-        self._data["valid"][idx, :] = [0] * self.num_freq
+        self._data["valid"][idx, :] = 0
 
         return idx
 
