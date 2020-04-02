@@ -51,7 +51,9 @@ visRawReader::visRawReader(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&visRawReader::main_thread, this)) {
 
+
     filename = config.get<std::string>(unique_name, "infile");
+    ring = config.get_default<bool>(unique_name, "ring", false);
     readahead_blocks = config.get<size_t>(unique_name, "readahead_blocks");
     max_read_rate = config.get_default<double>(unique_name, "max_read_rate", 0.0);
     sleep_time = config.get_default<float>(unique_name, "sleep_time", -1);
@@ -203,6 +205,9 @@ visRawReader::visRawReader(Config& config, const std::string& unique_name,
     if (mapped_file == MAP_FAILED)
         throw std::runtime_error(fmt::format(fmt("Failed to map file {:s}.data to memory: {:s}."),
                                              filename, strerror(errno)));
+
+    if (ring)
+        ring_offset = 0;
 }
 
 visRawReader::~visRawReader() {
