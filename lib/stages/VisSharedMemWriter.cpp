@@ -58,7 +58,7 @@ VisSharedMemWriter::VisSharedMemWriter(Config& config, const std::string& unique
     _root_path = config.get_default<std::string>(unique_name, "root_path", "/dev/shm/");
     _sem_name = config.get_default<std::string>(unique_name, "sem_name", "kotekan");
     _fname_buf = config.get_default<std::string>(unique_name, "fname_buf", "calBuffer");
-    _ntime = config.get_default<size_t>(unique_name, "nsamples", 512);
+    rbs._ntime = config.get_default<uint64_t>(unique_name, "nsamples", 512);
     _sem_wait_time = config.get_default<size_t>(unique_name, "sem_wait_time", 120);
 
     // Set the list of critical states
@@ -174,7 +174,7 @@ bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
         vis_time_ind_map[t] = cur_pos;
         write_to_memory(frame, vis_time_ind_map.at(t), freq_ind);
         return true;
-    } else if (vis_time_ind_map.size() < _ntime) {
+    } else if (vis_time_ind_map.size() < rbs._ntime) {
         // if there is still empty space in the shared buffer
         // add an additional time index
         cur_pos++;
@@ -220,8 +220,8 @@ void VisSharedMemWriter::reset_memory(uint32_t time_ind) {
 
     // resets all memory at time_ind to 0s
 
-    uint8_t* buf_write_pos = buf_addr + (time_ind * nfreq * frame_size);
-    int64_t* access_record_write_pos = access_record_addr + (time_ind * nfreq);
+    uint8_t* buf_write_pos = buf_addr + (time_ind * rbs.nfreq * rbs.frame_size);
+    int64_t* access_record_write_pos = access_record_addr + (time_ind * rbs.nfreq);
 
     DEBUG("Resetting access_record memory at position time_ind: {}\n", time_ind);
 
@@ -229,13 +229,13 @@ void VisSharedMemWriter::reset_memory(uint32_t time_ind) {
     // invalid
     wait_for_semaphore();
 
-    std::fill_n(access_record_write_pos, nfreq, invalid);
+    std::fill_n(access_record_write_pos, rbs.nfreq, invalid);
 
     release_semaphore();
 
     INFO("Resetting ring buffer memory at position time_ind: {}\n", time_ind);
     // set the full time_ind to 0 in the ring buffer
-    memset(buf_write_pos, 0, nfreq * frame_size);
+    memset(buf_write_pos, 0, rbs.nfreq * rbs.frame_size);
 
     DEBUG("Memory reset\n");
 }
@@ -244,8 +244,8 @@ void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
                                          uint32_t freq_ind) {
     // write frame to ring buffer at time_ind and freq_ind
 
-    uint8_t* buf_write_pos = buf_addr + ((time_ind * nfreq + freq_ind) * frame_size);
-    int64_t* access_record_write_pos = access_record_addr + (time_ind * nfreq + freq_ind);
+    uint8_t* buf_write_pos = buf_addr + ((time_ind * rbs.nfreq + freq_ind) * rbs.frame_size);
+    int64_t* access_record_write_pos = access_record_addr + (time_ind * rbs.nfreq + freq_ind);
 
     DEBUG("Writing ringbuffer to time_ind {} and freq_ind {}\n", time_ind, freq_ind);
 
@@ -260,8 +260,8 @@ void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
     // first write the metadata, then the data, then the valid byte
     // add valid_size amount of padding
     *buf_write_pos = valid;
-    memcpy(buf_write_pos + valid_size, frame.metadata(), metadata_size);
-    memcpy(buf_write_pos + metadata_size + valid_size, frame.data(), data_size);
+    memcpy(buf_write_pos + valid_size, frame.metadata(), rbs.metadata_size);
+    memcpy(buf_write_pos + rbs.metadata_size + valid_size, frame.data(), rbs.data_size);
 
     // Document the fpga sequence counter for that frame in the access record
     uint64_t fpga_seq = frame.metadata()->fpga_seq_start;
@@ -287,7 +287,7 @@ void VisSharedMemWriter::main_thread() {
 
     // The current position in the ring buffer of the most recent time sample
     // from 0 -> _ntime
-    cur_pos = modulo<int>(_ntime);
+    cur_pos = modulo<int>(rbs._ntime);
 
     // Create the semaphore, and gain first access to it
     sem = sem_open(_sem_name.c_str(), (O_CREAT | O_EXCL), (S_IRUSR | S_IWUSR), 1);
@@ -324,39 +324,35 @@ void VisSharedMemWriter::main_thread() {
     unique_dataset_ids.insert(frame.dataset_id);
 
     // Figure out the ring buffer structure
-    nfreq = freq_state->get_freqs().size();
+    rbs.nfreq = freq_state->get_freqs().size();
 
     // Set the alignment (in kB)
     size_t alignment = 4096; // Align on page boundaries
 
     // Calculate the ring buffer structure
 
-    data_size = frame.data_size;
-    metadata_size = sizeof(visMetadata);
+    rbs.data_size = frame.data_size;
+    rbs.metadata_size = sizeof(visMetadata);
     // Alligns the frame along page size
-    frame_size = _member_alignment(data_size + metadata_size + valid_size, alignment);
+    rbs.frame_size = _member_alignment(rbs.data_size + rbs.metadata_size + valid_size, alignment);
 
     // memory_size should be _ntime * nfreq * file_frame_size (data + metadata)
     buf_addr = assign_memory(_fname_buf, (structured_data_size * structured_data_num)
-                                             + (_ntime * nfreq * access_record_size)
-                                             + (_ntime * nfreq * frame_size));
+                                             + (rbs._ntime * rbs.nfreq * access_record_size)
+                                             + (rbs._ntime * rbs.nfreq * rbs.frame_size));
 
     // The elements contained in the structured data and access record are each 64 bytes
     structured_data_addr = (uint64_t*)buf_addr;
     access_record_addr = (int64_t*)(structured_data_addr + structured_data_num);
     buf_addr +=
-        (structured_data_size * structured_data_num) + (_ntime * nfreq * access_record_size);
+        (structured_data_size * structured_data_num) + (rbs._ntime * rbs.nfreq * access_record_size);
 
     // Record structure of data
     *structured_data_addr = num_writes;
-    memcpy(structured_data_addr + 1, &_ntime, sizeof(_ntime));
-    memcpy(structured_data_addr + 2, &nfreq, sizeof(nfreq));
-    memcpy(structured_data_addr + 3, &frame_size, sizeof(frame_size));
-    memcpy(structured_data_addr + 4, &metadata_size, sizeof(metadata_size));
-    memcpy(structured_data_addr + 5, &data_size, sizeof(data_size));
+    *((RingBufferStructure*)(structured_data_addr + 1)) = rbs;
 
     // initially set the address records with -1
-    std::fill_n(access_record_addr, _ntime * nfreq, invalid);
+    std::fill_n(access_record_addr, rbs._ntime * rbs.nfreq, invalid);
 
     INFO("Created the shared memory segments\n");
     release_semaphore();
@@ -387,10 +383,10 @@ void VisSharedMemWriter::main_thread() {
             }
         }
 
-        if (frame.data_size != data_size) {
+        if (frame.data_size != rbs.data_size) {
             FATAL_ERROR(
                 "The size of the data has changed. Buffer expects: {}. Current frame's size: {}",
-                data_size, frame.data_size);
+                rbs.data_size, frame.data_size);
             return;
         }
 

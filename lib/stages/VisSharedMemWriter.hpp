@@ -39,22 +39,29 @@ protected:
     uint8_t* buf_addr;
 
     // Parameters that define structure of ring buffer
+    //
+    struct RingBufferStructure
+    {
+        // The number of time samples contained in ring buffer
+        uint64_t _ntime;
+        // The number of frequencies contained in each time sample
+        uint64_t nfreq;
+        // The size of each frame (valid byte + metadata + data + page alignment padding)
+        uint64_t frame_size;
+        // The size of each metadata section
+        uint64_t metadata_size;
+        // The size of each data section
+        uint64_t data_size;
+
+    };
+
+    RingBufferStructure rbs;
 
     // Counter for the number of writes to the ring buffer
     // Set to 0, upon stage shut-down
     uint64_t num_writes = 0;
-    // The number of time samples contained in ring buffer
-    size_t _ntime;
     // The semaphore wait time before a timeout, in seconds
     size_t _sem_wait_time;
-    // The number of frequencies contained in each time sample
-    uint64_t nfreq;
-    // The size of each frame (valid byte + metadata + data + page alignment padding)
-    uint64_t frame_size;
-    // The size of each metadata section
-    uint64_t metadata_size;
-    // The size of each data section
-    uint64_t data_size;
 
     // Messages
     // Indicates that the written frame is valid
