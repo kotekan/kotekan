@@ -157,6 +157,12 @@ class ValidationFailed(Exception):
     pass
 
 
+def assert_equal(a, b):
+    """Raise `ValidationFailed` if a != b."""
+    if a != b:
+        raise ValidationFailed("{} != {}".format(a, b))
+
+
 class SharedMemValidationTest:
     """
     A validation test starting a number of readers and validating read frames.
@@ -271,7 +277,7 @@ class SharedMemValidationTest:
                 )
             )
         times = np.unique(visraw.time)
-        assert len(times) == 1
+        assert_equal(len(times), 1)
         timestamp = visraw.time[0, 0]
         self.start_time = timestamp["ctime"]
         fpga_seq = timestamp["fpga_count"]
@@ -311,14 +317,16 @@ class SharedMemValidationTest:
 
     def _validate_time(self, visraw, r):
         age = time.time() - self._last_update_time[r]
+        time_valid = visraw.time[visraw.valid_frames.astype(np.bool)]
 
-        assert visraw.time.shape[1] == visraw.num_freq, "{} != {}".format(
-            visraw.time.shape[1], visraw.num_freq
-        )
-        times = np.unique(visraw.time)
-        assert len(times) == self.view_sizes[r], "{} != {} (times={})".format(
-            len(times), self.view_sizes[r], times
-        )
+        assert_equal(visraw.time.shape[1], visraw.num_freq)
+        times = np.unique(time_valid)
+
+        if len(times) > self.view_sizes[r]:
+            raise ValidationFailed("More time samples in visraw than reader view size ({} > {})."
+                                   .format(len(times), self.view_sizes[r]))
+
+        assert_equal(visraw.time.shape[0], self.view_sizes[r])
 
         # check first time slot
         timestamp = times[0]
@@ -355,8 +363,8 @@ class SharedMemValidationTest:
         self.delay[r].append(age)
 
         # check the rest
-        for t in range(1, self.view_sizes[r]):
-            timestamp = times[r]
+        for t in range(1, len(times)):
+            timestamp = times[t]
 
             seconds = timestamp["ctime"]
             fpga_seq = timestamp["fpga_count"]
