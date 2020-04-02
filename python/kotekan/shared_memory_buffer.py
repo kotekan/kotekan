@@ -177,21 +177,9 @@ class SharedMemoryReader:
     def __del__(self):
         if hasattr(self, "semaphore"):
             self.semaphore.release()
-            try:
-                self.semaphore.unlink()
-            except posix_ipc.ExistentialError:
-                logger.debug(
-                    "Semaphore file did not exist when trying to unlink from it."
-                )
 
         if hasattr(self, "shared_mem"):
             self.shared_mem.close()
-            try:
-                posix_ipc.unlink_shared_memory(self.shared_mem_name)
-            except posix_ipc.ExistentialError:
-                logger.debug(
-                    "Shared memory file did not exist when trying to unlink from it."
-                )
 
     def update(self):
         """
