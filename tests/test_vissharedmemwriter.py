@@ -180,14 +180,3 @@ def test_access_record(semaphore, memory_map_buf):
         semaphore.release()
 
 
-def test_ring_buffer(vis_data):
-    global num_frames
-
-    num_time = params_writer_stage["nsamples"]
-    num_freq = len(global_params["freq"])
-    num_ev = global_params["num_ev"]
-    num_elements = global_params["num_elements"]
-
-    ring_buffer = shared_memory_buffer.SharedMemoryReader(
-        fname, params_writer_stage["nsamples"]
-    )
