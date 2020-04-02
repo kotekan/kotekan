@@ -144,6 +144,7 @@ def test_shared_mem_buffer(vis_data, comet_broker):
         view_size,
         params["mode"],
         update_interval,
+        error_threshold=1
     )
     validation.run()
 

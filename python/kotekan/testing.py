@@ -99,6 +99,11 @@ def validate_eigenvectors(vis_raw, num_time, num_freq, num_ev, num_elements):
     assert (erms == 1.0).all()
 
 
+class ValidationFailed(Exception):
+    """TheValidation failed."""
+    pass
+
+
 class SharedMemValidationTest:
     """
     A validation test starting a number of readers and validating read frames.
@@ -121,6 +126,9 @@ class SharedMemValidationTest:
         Name of the test pattern to expect in the frames.
     update_interval : int or list(int)
         Number of seconds to wait between update() calls. If it should be different per reader, use a list of ints.
+    error_threshold : float
+        Error thresholds in seconds. If a timing error greater than the threshold is detected,
+        a `ValidationFailed` is raised. If set to a negative value, no exception is raised.
 
     Attributes
     ----------
@@ -144,7 +152,9 @@ class SharedMemValidationTest:
         view_sizes,
         test_pattern,
         update_interval,
+        error_threshold
     ):
+        self.error_threshold = error_threshold
         # TODO: allow these to be on lower level
         if "cadence" not in config:
             raise ValueError("Variable 'cadence' not found in config.")
@@ -287,6 +297,8 @@ class SharedMemValidationTest:
         error = age - expected_delay
         if error > cadence:
             logger.info("Time error: {}".format(error))
+            if 0 < self.error_threshold < error:
+                raise ValidationFailed("Time error of {}s in frame {} (age={})".format(error, fpga_seq, age))
         self.expected_delay[r].append(expected_delay)
         self.delay[r].append(age)
 
@@ -297,7 +309,6 @@ class SharedMemValidationTest:
             seconds = timestamp["ctime"]
             fpga_seq = timestamp["fpga_count"]
             ctime = time.ctime(seconds)
-            age = time.time() - self._last_update_time[r]
             logger.info(
                 "Validating fpga_seq {} from {} (age {}s).".format(fpga_seq, ctime, age)
             )
@@ -308,6 +319,9 @@ class SharedMemValidationTest:
             error = age - expected_delay
             if error > 0:
                 logger.warning("Time error: {}".format(error))
+                if 0 < self.error_threshold < error:
+                    raise ValidationFailed(
+                        "Time error of {}s in frame {} (age={})".format(error, fpga_seq, age))
             self.delay[r].append(age)
             self.expected_delay[r].append(expected_delay)
 
