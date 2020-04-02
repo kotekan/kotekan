@@ -157,10 +157,10 @@ void basebandReadout::main_thread() {
                 freq_ids[freqidx] = freq_id;
                 mgrs[freqidx] = &(basebandApiManager::instance().register_readout_stage(
                     _board_id * 1048576
-                    + freq_ids[freqidx])); //_board_id is used in 16 element mode to distinguish
-                                           //between identical boards running without a backplane.
-                                           //We will identify data managers by their board_id as
-                                           //well as their freq_id =< 1024.
+                    + freq_ids[freqidx])); // _board_id is used in 16 element mode to distinguish
+                                           // between identical boards running without a backplane.
+                                           // We will identify data managers by their board_id as
+                                           // well as their freq_id =< 1024.
                 DEBUG("Initialize baseband metrics for freq_id: {:d}", freq_id);
                 readout_counter.labels({std::to_string(freq_id), "done"});
                 readout_counter.labels({std::to_string(freq_id), "error"});
