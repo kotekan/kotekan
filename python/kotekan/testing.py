@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 test_patterns = ["default"]
 
+
 def get_from_config(name, config):
     """
     Get value from any level of config dict.
@@ -32,8 +33,9 @@ def get_from_config(name, config):
         Todo: offer passing in (partial) path as solution.
     """
     if not isinstance(config, dict):
-        raise ValueError("Expected 'config' of type 'dict' (got '{}')."
-                         .format(type(config).__name__))
+        raise ValueError(
+            "Expected 'config' of type 'dict' (got '{}').".format(type(config).__name__)
+        )
     result = None
     try:
         result = config[name]
@@ -45,8 +47,11 @@ def get_from_config(name, config):
                     if result is None:
                         result = recursive_result
                     else:
-                        raise ValueError("Config contained at least 2 entries named {}: {} and {}."
-                                         .format(name, recursive_result, result))
+                        raise ValueError(
+                            "Config contained at least 2 entries named {}: {} and {}.".format(
+                                name, recursive_result, result
+                            )
+                        )
             elif isinstance(value, list):
                 for entry in value:
                     if isinstance(entry, dict):
@@ -56,8 +61,10 @@ def get_from_config(name, config):
                                 result = recursive_result
                             else:
                                 raise ValueError(
-                                    "Config contained at least 2 entries named {}: {} and {}."
-                                    .format(name, recursive_result, result))
+                                    "Config contained at least 2 entries named {}: {} and {}.".format(
+                                        name, recursive_result, result
+                                    )
+                                )
     return result
 
 
@@ -146,6 +153,7 @@ def validate_eigenvectors(vis_raw, num_time, num_freq, num_ev, num_elements):
 
 class ValidationFailed(Exception):
     """TheValidation failed."""
+
     pass
 
 
@@ -197,7 +205,7 @@ class SharedMemValidationTest:
         view_sizes,
         test_pattern,
         update_interval,
-        error_threshold
+        error_threshold,
     ):
         # search config for everything we need
         self.cadence = get_from_config("cadence", config)
@@ -338,7 +346,11 @@ class SharedMemValidationTest:
         if error > cadence:
             logger.info("Time error: {}".format(error))
             if 0 < self.error_threshold < error:
-                raise ValidationFailed("Time error of {}s in frame {} (age={})".format(error, fpga_seq, age))
+                raise ValidationFailed(
+                    "Time error of {}s in frame {} (age={})".format(
+                        error, fpga_seq, age
+                    )
+                )
         self.expected_delay[r].append(expected_delay)
         self.delay[r].append(age)
 
@@ -361,7 +373,10 @@ class SharedMemValidationTest:
                 logger.warning("Time error: {}".format(error))
                 if 0 < self.error_threshold < error:
                     raise ValidationFailed(
-                        "Time error of {}s in frame {} (age={})".format(error, fpga_seq, age))
+                        "Time error of {}s in frame {} (age={})".format(
+                            error, fpga_seq, age
+                        )
+                    )
             self.delay[r].append(age)
             self.expected_delay[r].append(expected_delay)
 
