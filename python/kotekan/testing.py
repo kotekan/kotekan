@@ -259,8 +259,8 @@ class SharedMemValidationTest:
             visraw.time.shape[1], visraw.num_freq
         )
         times = np.unique(visraw.time)
-        assert len(times) == self.view_sizes[r], "{} != {}".format(
-            len(times), self.view_sizes[r]
+        assert len(times) == self.view_sizes[r], "{} != {} (times={})".format(
+            len(times), self.view_sizes[r], times
         )
 
         # check first time slot
