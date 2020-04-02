@@ -146,7 +146,7 @@ def test_shared_mem_buffer(vis_data, comet_broker):
             sleep(0.5)
             for j in range(len(reader)):
                 visraw[j] = reader[j].update()
-                assert visraw[j].num_time == view_size[j]
+                assert visraw[j].num_time == reader[j].view_size
                 check_visraw(visraw[j], ds_manager)
             i += 1
     assert i >= params["total_frames"] / 2
