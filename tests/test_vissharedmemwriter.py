@@ -178,5 +178,3 @@ def test_access_record(semaphore, memory_map_buf):
                     assert access_record == fpga_seqs[t]
 
         semaphore.release()
-
-

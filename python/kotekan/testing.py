@@ -264,7 +264,12 @@ class SharedMemValidationTest:
     def _first_update(self, shared_memory_name):
         """Get a minimal first update to get a start time."""
         visraw = SharedMemoryReader(shared_memory_name, 1).update()
-        assert visraw.time.shape[1] == visraw.num_freq
+        if visraw.time.shape[1] != visraw.num_freq:
+            raise ValidationFailed(
+                "visRaw.time was expected to have size {} in frequency dimension, but has size {}.".format(
+                    visraw.num_freq, visraw.time.shape[1]
+                )
+            )
         times = np.unique(visraw.time)
         assert len(times) == 1
         timestamp = visraw.time[0, 0]
