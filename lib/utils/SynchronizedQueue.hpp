@@ -8,8 +8,8 @@
 
 #include <condition_variable>
 #include <deque>
-#include <memory>
 #include <mutex>
+#include <optional>
 
 
 /**
@@ -54,19 +54,20 @@ public:
      * blocks until an element is available. Blocked callers will be interrupted when the `cancel`
      * method is called on the queue.
      *
-     * @returns nullptr if the queue is cancelled, and a unique_ptr to the element otherwise
+     * @returns std::nullopt if the queue is cancelled, and the element otherwise
      */
-    std::unique_ptr<T> get() {
+    std::optional<T> get() {
+
         std::unique_lock<std::mutex> lock(mtx);
 
         while (queue.empty() && !stop) {
             cv.wait(lock);
         }
         if (stop) {
-            return nullptr;
+            return std::nullopt;
         }
 
-        auto v = std::make_unique<T>(queue.front());
+        auto v = queue.front();
         queue.pop_front();
         return v;
     }

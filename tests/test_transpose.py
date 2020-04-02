@@ -128,6 +128,7 @@ def transpose(tmpdir_factory):
             "outfile": outfile,
             "infile": infile,
             "chunk_size": writer_params["chunk_size"],
+            "comet_timeout": 120.0,
         },
         raw_buf,
         None,
@@ -176,6 +177,7 @@ def test_transpose(transpose):
     assert f_tr["flags/inputs"].shape == (n_elems, n_t)
     assert f_tr["flags/frac_lost"].shape == (n_f, n_t)
     assert f_tr["flags/frac_rfi"].shape == (n_f, n_t)
+    assert f_tr["flags/dataset_id"].shape == (n_f, n_t)
 
     assert (f_tr["flags/frac_lost"][: n_f - 1, :] == 0.0).all()
     assert np.allclose(f_tr["flags/frac_lost"][-1:, :], frac_lost, rtol=1e-3)
@@ -250,6 +252,7 @@ def transpose_stack(tmpdir_factory):
             "outfile": outfile,
             "infile": infile,
             "chunk_size": writer_params["chunk_size"],
+            "comet_timeout": 120.0,
         },
         raw_buf,
         None,
@@ -291,6 +294,8 @@ def test_transpose_stack(transpose_stack):
     assert f["gain"].shape == (n_f, n_elems, n_t)
     assert f["flags/inputs"].shape == (n_elems, n_t)
     assert f["flags/frac_lost"].shape == (n_f, n_t)
+    assert f["flags/frac_rfi"].shape == (n_f, n_t)
+    assert f["flags/dataset_id"].shape == (n_f, n_t)
     assert f["reverse_map/stack"].shape == (n_prod,)
 
     # check the stack against those in the input file

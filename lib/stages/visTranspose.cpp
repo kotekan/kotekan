@@ -5,6 +5,7 @@
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for wait_for_full_frame, mark_frame_empty, register_consumer
 #include "bufferContainer.hpp"   // for bufferContainer
+#include "dataset.hpp"           // for dataset
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager
 #include "datasetState.hpp"      // for metadataState, stackState, acqDatasetIdState, eigenvalu...
 #include "errors.h"              // for exit_kotekan, CLEAN_EXIT, ReturnCode
@@ -26,6 +27,8 @@
 #include <functional>   // for _Bind_helper<>::type, bind, function
 #include <future>       // for async, future
 #include <iterator>     // for make_move_iterator, move_iterator, operator!=
+#include <map>          // for map
+#include <regex>        // for match_results<>::_Base_type
 #include <stdexcept>    // for out_of_range, invalid_argument
 #include <stdint.h>     // for uint32_t, uint64_t
 #include <sys/types.h>  // for uint
@@ -64,6 +67,10 @@ visTranspose::visTranspose(Config& config, const std::string& unique_name,
     // Get file path to write to
     filename = config.get<std::string>(unique_name, "outfile");
 
+    // Get a timeout for communication with broker
+    timeout =
+        std::chrono::duration<float>(config.get_default<float>(unique_name, "comet_timeout", 60.));
+
     // Collect some metadata. The rest is requested from the datasetManager,
     // once we received the first frame.
     metadata["archive_version"] = "3.1.0";
@@ -89,28 +96,54 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     auto evstate_fut = std::async(&datasetManager::dataset_state<eigenvalueState>, &dm, ds_id);
     auto mstate_fut = std::async(&datasetManager::dataset_state<metadataState>, &dm, ds_id);
     auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>, &dm, ds_id);
-    auto idstate_fut = std::async(&datasetManager::dataset_state<acqDatasetIdState>, &dm, ds_id);
 
-    const stackState* sstate = sstate_fut.get();
-    const metadataState* mstate = mstate_fut.get();
-    const eigenvalueState* evstate = evstate_fut.get();
-    const timeState* tstate = tstate_fut.get();
-    const prodState* pstate = pstate_fut.get();
-    const freqState* fstate = fstate_fut.get();
-    const inputState* istate = istate_fut.get();
-    const acqDatasetIdState* idstate = idstate_fut.get();
+    const stackState* sstate;
+    const metadataState* mstate;
+    const eigenvalueState* evstate;
+    const timeState* tstate;
+    const prodState* pstate;
+    const freqState* fstate;
+    const inputState* istate;
+    bool timed_out = sstate_fut.wait_for(timeout) == std::future_status::timeout;
+    if (!timed_out)
+        sstate = sstate_fut.get();
+    timed_out = timed_out || (mstate_fut.wait_for(timeout) == std::future_status::timeout);
+    if (!timed_out)
+        mstate = mstate_fut.get();
+    timed_out = timed_out || (evstate_fut.wait_for(timeout) == std::future_status::timeout);
+    if (!timed_out)
+        evstate = evstate_fut.get();
+    timed_out = timed_out || (tstate_fut.wait_for(timeout) == std::future_status::timeout);
+    if (!timed_out)
+        tstate = tstate_fut.get();
+    timed_out = timed_out || (pstate_fut.wait_for(timeout) == std::future_status::timeout);
+    if (!timed_out)
+        pstate = pstate_fut.get();
+    timed_out = timed_out || (fstate_fut.wait_for(timeout) == std::future_status::timeout);
+    if (!timed_out)
+        fstate = fstate_fut.get();
+    timed_out = timed_out || (istate_fut.wait_for(timeout) == std::future_status::timeout);
+    if (!timed_out)
+        istate = istate_fut.get();
+    if (timed_out) {
+        ERROR("Communication with dataset broker timed out for datatset id {}.", ds_id);
+        dm.stop();
+        exit_kotekan(ReturnCode::DATASET_MANAGER_FAILURE);
+        return false;
+    }
 
 
     if (mstate == nullptr || tstate == nullptr || pstate == nullptr || fstate == nullptr
-        || istate == nullptr || evstate == nullptr || idstate == nullptr)
+        || istate == nullptr || evstate == nullptr) {
+        FATAL_ERROR("One of the dataset states is null.");
         return false;
+    }
 
     // TODO split instrument_name up into the real instrument name,
     // registered by visAccumulate (?) and a data type, registered where
     // data is written to file the first time
     metadata["instrument_name"] = mstate->get_instrument_name();
     metadata["weight_type"] = mstate->get_weight_type();
-    metadata["dataset_id"] = fmt::format("{}", idstate->get_id());
 
     std::string git_commit_hash_dataset = mstate->get_git_version_tag();
 
@@ -167,6 +200,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     gain.resize(chunk_t * chunk_f * num_input);
     frac_lost.resize(chunk_t * chunk_f);
     frac_rfi.resize(chunk_t * chunk_f);
+    dset_id.resize(chunk_t * chunk_f);
     input_flags.resize(chunk_t * num_input);
     std::fill(input_flags.begin(), input_flags.end(), 0.);
 
@@ -183,22 +217,40 @@ void visTranspose::main_thread() {
     // offset for copying into buffer
     uint32_t offset = 0;
 
+    // The dataset ID we read from the frame
+    dset_id_t ds_id;
+    // The dataset ID of the state without the time axis
+    dset_id_t base_ds_id;
+
     uint64_t frame_size = 0;
 
-    // Wait for a frame in the input buffer in order to get the dataset ID
-    if ((wait_for_full_frame(in_buf, unique_name.c_str(), 0)) == nullptr) {
-        return;
+    // wait for a non-empty frame to get dataset ID from
+    uint32_t first_ind = 0;
+    while (true) {
+        // Wait for a frame in the input buffer in order to get the dataset ID
+        if ((wait_for_full_frame(in_buf, unique_name.c_str(), first_ind)) == nullptr) {
+            return;
+        }
+        auto frame = visFrameView(in_buf, first_ind);
+        if (frame.fpga_seq_length == 0) {
+            INFO("Got empty frame ({:d}).", first_ind);
+            first_ind++;
+        } else {
+            ds_id = frame.dataset_id;
+            break;
+        }
     }
-    auto frame = visFrameView(in_buf, 0);
-    dset_id_t ds_id = frame.dataset_id;
-    auto future_ds_state = std::async(&visTranspose::get_dataset_state, this, ds_id);
 
-    if (!future_ds_state.get()) {
-        FATAL_ERROR("Set to not use dataset_broker and couldn't find ancestor of dataset {}. "
+    if (!get_dataset_state(ds_id)) {
+        FATAL_ERROR("Couldn't find ancestor of dataset {}. "
                     "Make sure there is a stage upstream in the config, that adds the dataset "
                     "states.\nExiting...",
                     ds_id);
+        return;
     }
+
+    // Get the original dataset ID (before adding time axis)
+    base_ds_id = base_dset(ds_id);
 
     // Once the async get_dataset_state() is done, we have all the metadata to
     // create a file.
@@ -228,9 +280,17 @@ void visTranspose::main_thread() {
         auto frame = visFrameView(in_buf, frame_id);
 
         if (frame.dataset_id != ds_id) {
-            FATAL_ERROR("Dataset ID of incoming frames changed from {} to {}. Changing  ID "
-                        "not supported, exiting...",
-                        ds_id, frame.dataset_id);
+            if (frame.fpga_seq_length == 0) {
+                INFO("Got an empty frame.");
+            } else {
+                // TODO assuming that dataset ID changes here never change dataset dimensions
+                DEBUG("Dataset ID has changed from {} to {}. Getting base dataset ID from "
+                      "broker...",
+                      ds_id, frame.dataset_id);
+                ds_id = frame.dataset_id;
+                base_ds_id = base_dset(ds_id);
+                DEBUG("Got base dataset ID {}.", base_ds_id);
+            }
         }
 
         // Collect frames until a chunk is filled
@@ -252,6 +312,15 @@ void visTranspose::main_thread() {
             frame.fpga_seq_length == 0 ? 0. : float(frame.rfi_total) / frame.fpga_seq_length;
         strided_copy(frame.gain.data(), gain.data(), offset * num_input + ti, write_t, num_input);
 
+        // Store original dataset ID (before adding time axis)
+        std::string dset_id_str = fmt::format("{}", base_ds_id);
+        if (dset_id_str.length() != DSET_ID_LEN - 1) {
+            FATAL_ERROR("Formatted dataset ID string does not have expected length.");
+            return;
+        }
+        std::copy(dset_id_str.c_str(), dset_id_str.c_str() + DSET_ID_LEN,
+                  dset_id[offset + ti].hash);
+
         // Only copy flags if we haven't already
         if (!found_flags[ti]) {
             // Only update flags if they are non-zero
@@ -271,10 +340,11 @@ void visTranspose::main_thread() {
         }
 
         // Increment within read chunk
-        ti = (ti + 1) % write_t;
-        if (ti == 0)
-            fi++;
-        if (fi == write_f) {
+        // within a chunk, frequency is the fastest varying index
+        fi = (fi + 1) % write_f;
+        if (fi == 0)
+            ti++;
+        if (ti == write_t) {
             // chunk is complete
             write();
             // increment between chunks
@@ -290,8 +360,10 @@ void visTranspose::main_thread() {
 
         frames_so_far++;
         // Exit when all frames have been written
-        if (frames_so_far == num_time * num_freq)
+        if (frames_so_far == num_time * num_freq) {
             exit_kotekan(ReturnCode::CLEAN_EXIT);
+            return;
+        }
 
         // move to next frame
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
@@ -320,10 +392,12 @@ void visTranspose::write() {
     file->write_block("flags/frac_rfi", f_ind, t_ind, write_f, write_t, frac_rfi.data());
 
     file->write_block("flags/inputs", f_ind, t_ind, write_f, write_t, input_flags.data());
+
+    file->write_block("flags/dataset_id", f_ind, t_ind, write_f, write_t, dset_id.data());
 }
 
 // increment between chunks
-// cycle through all times before incrementing the frequency
+// chunks come in (time, freq) order
 // WARNING: This order must be consistent with how visRawReader
 //      implements chunked reads. The mechanism for avoiding
 //      overwriting flags also relies on this ordering.
@@ -348,4 +422,32 @@ void visTranspose::increment_chunk() {
     // Determine size of next chunk
     write_f = f_edge ? num_freq - f_ind : chunk_f;
     write_t = t_edge ? num_time - t_ind : chunk_t;
+}
+
+dset_id_t visTranspose::base_dset(dset_id_t ds_id) {
+
+    datasetManager& dm = datasetManager::instance();
+
+    try {
+        return dm.datasets().at(ds_id).base_dset();
+    } catch (std::out_of_range& e) {
+        DEBUG("Fetching metadata state...");
+        // fetch a metadata state just to ensure we have a copy of that dataset
+        auto mstate_fut = std::async(&datasetManager::dataset_state<metadataState>, &dm, ds_id);
+        auto ready = mstate_fut.wait_for(timeout);
+        if (ready == std::future_status::timeout) {
+            ERROR("Communication with dataset broker timed out for datatset id {}.", ds_id);
+            dm.stop();
+            exit_kotekan(ReturnCode::DATASET_MANAGER_FAILURE);
+            return ds_id;
+        }
+        const metadataState* mstate = mstate_fut.get();
+        (void)mstate;
+        try {
+            return dm.datasets().at(ds_id).base_dset();
+        } catch (std::out_of_range& e) {
+            FATAL_ERROR("Failed to get base dataset of dataset with ID {}. {}", ds_id, e.what());
+            return ds_id;
+        }
+    }
 }
