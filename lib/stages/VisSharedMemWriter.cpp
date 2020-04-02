@@ -313,6 +313,11 @@ void VisSharedMemWriter::main_thread() {
 
     const freqState* freq_state = dm.dataset_state<freqState>(frame.dataset_id);
 
+    if (freq_state == nullptr) {
+        FATAL_ERROR("Could not find ancestor of dataset {}. Make sure there is a stage upstream in the config, with dataset states. freqState is a nullptr", frame.dataset_id);
+        return;
+    }
+
     uint ind = 0;
     for (auto& f : freq_state->get_freqs())
         freq_id_map[f.first] = ind++;
