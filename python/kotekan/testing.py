@@ -1,6 +1,5 @@
 """ Python interface for validating that a VisRaw object contains valid and expected data"""
 
-import copy
 import logging
 import numpy as np
 import time
