@@ -19,12 +19,14 @@ from test_compression import float_allclose
 if not runner.has_hdf5():
     pytest.skip("HDF5 support not available.", allow_module_level=True)
 
+NULL_DSET_ID = b"00000000000000000000000000000000"
+
 writer_params = {
     "num_elements": 4,
     "num_ev": 2,
     "cadence": 5.0,
     "total_frames": 10,  # One extra sample to ensure we actually get 256
-    "freq": [3, 777, 554],
+    "freq": [3, 50, 777, 554],
     "chunk_size": [2, 6, 5],
     "mode": "test_pattern_simple",
     "test_pattern_value": [0, 0],
@@ -37,13 +39,18 @@ stack_params = {
     "num_ev": 2,
     "cadence": 5.0,
     "file_length": 3,
-    "freq": [3, 777, 554],
+    "freq": [3, 50, 777, 554],
     "chunk_size": [2, 64, 3],
     "dataset_manager": {"use_dataset_broker": False},
 }
 
+# frequency to set lost samples
+frac_freq = -2
 frac_lost = 0.8
 frac_rfi = 0.3
+
+# frequency to set empty frames
+empty_freq = -1
 
 
 @pytest.fixture(scope="module")
@@ -61,30 +68,43 @@ def transpose(tmpdir_factory):
         test_pattern_value=writer_params["test_pattern_value"],
     )
 
-    # Remove the last frequency to test handling of empty frames
-    fsel_buf_name = "fake_freqsel"
+    # Remove samples from two frequency to test handling of empty frames
+    fsel_frac_name = "frac_freqsel"
+    fsel_empty_name = "empty_freqsel"
     fsel_buf = {
-        fsel_buf_name: {
+        fsel_frac_name: {
             "kotekan_buffer": "vis",
             "metadata_pool": "vis_pool",
             "num_frames": "buffer_depth",
-        }
+        },
+        fsel_empty_name: {
+            "kotekan_buffer": "vis",
+            "metadata_pool": "vis_pool",
+            "num_frames": "buffer_depth",
+        },
     }
     fakevis_buffer.buffer_block.update(fsel_buf)
     fakevis_buffer.stage_block.update(
         {
-            "fakevis_fsel": {
+            "frac_fsel": {
                 "kotekan_stage": "visDrop",
                 "in_buf": fakevis_buffer.name,
-                "out_buf": fsel_buf_name,
-                "freq": [writer_params["freq"][-1]],
+                "out_buf": fsel_frac_name,
+                "freq": [writer_params["freq"][frac_freq]],
                 "frac_lost": frac_lost,
                 "frac_rfi": frac_rfi,
                 "log_level": "debug",
-            }
+            },
+            "empty_fsel": {
+                "kotekan_stage": "visDrop",
+                "in_buf": fsel_frac_name,
+                "out_buf": fsel_empty_name,
+                "freq": [writer_params["freq"][empty_freq]],
+                "log_level": "debug",
+            },
         }
     )
-    fakevis_buffer.name = fsel_buf_name
+    fakevis_buffer.name = fsel_empty_name
 
     # Write fake data in hdf5 format
     tmpdir_h5 = str(tmpdir_factory.mktemp("dump_h5"))
@@ -179,9 +199,11 @@ def test_transpose(transpose):
     assert f_tr["flags/frac_rfi"].shape == (n_f, n_t)
     assert f_tr["flags/dataset_id"].shape == (n_f, n_t)
 
-    assert (f_tr["flags/frac_lost"][: n_f - 1, :] == 0.0).all()
-    assert np.allclose(f_tr["flags/frac_lost"][-1:, :], frac_lost, rtol=1e-3)
-    assert np.allclose(f_tr["flags/frac_rfi"][-1:, :], frac_rfi, rtol=1e-3)
+    assert (f_tr["flags/frac_lost"][:frac_freq, :] == 0.0).all()
+    assert np.allclose(f_tr["flags/frac_lost"][frac_freq, :], frac_lost, rtol=1e-3)
+    assert np.allclose(f_tr["flags/frac_rfi"][frac_freq, :], frac_rfi, rtol=1e-3)
+    assert (f_tr["flags/dataset_id"][empty_freq, :] == NULL_DSET_ID).all()
+    assert (f_tr["flags/dataset_id"][:empty_freq, :] != NULL_DSET_ID).all()
 
     # transpose with numpy and see if data is the same
     dsets = ["vis", "flags/vis_weight", "eval", "evec", "erms"]
