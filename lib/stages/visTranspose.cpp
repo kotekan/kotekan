@@ -209,7 +209,7 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
 
 void visTranspose::main_thread() {
 
-    uint32_t frame_id = 0;
+    frameID frame_id(in_buf);
     uint32_t frames_so_far = 0;
     // frequency and time indices within chunk
     uint32_t fi = 0;
@@ -371,8 +371,7 @@ void visTranspose::main_thread() {
         }
 
         // move to next frame
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
-        frame_id = (frame_id + 1) % in_buf->num_frames;
+        mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
     }
 }
 
