@@ -133,8 +133,8 @@ def test_shared_mem_buffer(vis_data, comet_broker):
     update_interval = [0.1, 1, 2]
 
     config = copy.copy(params)
-    config.update(params_fakevis)
-    config.update(params_writer_stage)
+    config["fakevis"] = params_fakevis
+    config["writer"] = params_writer_stage
     validation = testing.SharedMemValidationTest(
         params["total_frames"] - ignore_frames,
         config,

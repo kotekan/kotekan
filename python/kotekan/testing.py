@@ -10,6 +10,56 @@ logger = logging.getLogger(__name__)
 
 test_patterns = ["default"]
 
+def get_from_config(name, config):
+    """
+    Get value from any level of config dict.
+
+    Parameters
+    ----------
+    name : str
+        Name (key) of the value.
+    config : dict
+        Config dictionary.
+
+    Returns
+    -------
+    Requested value.
+
+    Raises
+    ------
+    ValueError
+        If there is more than one entry with the requested name.
+        Todo: offer passing in (partial) path as solution.
+    """
+    if not isinstance(config, dict):
+        raise ValueError("Expected 'config' of type 'dict' (got '{}')."
+                         .format(type(config).__name__))
+    result = None
+    try:
+        result = config[name]
+    except KeyError:
+        for key, value in config.items():
+            if isinstance(value, dict):
+                recursive_result = get_from_config(name, value)
+                if recursive_result is not None:
+                    if result is None:
+                        result = recursive_result
+                    else:
+                        raise ValueError("Config contained at least 2 entries named {}: {} and {}."
+                                         .format(name, recursive_result, result))
+            elif isinstance(value, list):
+                for entry in value:
+                    if isinstance(entry, dict):
+                        recursive_result = get_from_config(name, entry)
+                        if recursive_result is not None:
+                            if result is None:
+                                result = recursive_result
+                            else:
+                                raise ValueError(
+                                    "Config contained at least 2 entries named {}: {} and {}."
+                                    .format(name, recursive_result, result))
+    return result
+
 
 def validate(vis_raw, config, pattern_name=""):
     """Validate an input `vis_raw` filled using `pattern_name` with `config`.
@@ -26,25 +76,20 @@ def validate(vis_raw, config, pattern_name=""):
 
     vis_raw: VisRaw; pattern_name: str"""
 
-    # Check that the config contains the required information
-    for param in ["num_elements", "num_ev", "freq_ids", "total_frames"]:
-        assert param in config.keys(), "parameter {} is missing from config".format(
-            param
-        )
-
     # Construct vis array
     vis = vis_raw.data["vis"]
 
     # Extract metadata
     ftime = vis_raw.time["fpga_count"]
     ctime = vis_raw.time["ctime"]
-    freq = 800.0 - 400.0 * np.array(config["freq_ids"]) / 1024
+    freq_ids = get_from_config("freq_ids", config)
 
-    num_elements = config["num_elements"]
-    num_ev = config["num_ev"]
-    num_freq = len(config["freq_ids"])
+    freq = 800.0 - 400.0 * np.array(freq_ids) / 1024
+
+    num_elements = get_from_config("num_elements", config)
+    num_ev = get_from_config("num_ev", config)
+    num_freq = len(freq_ids)
     num_time = vis_raw.num_time
-    total_frames = config["total_frames"]
 
     if pattern_name == "default":
         validate_vis(vis, num_elements, ftime, ctime, freq)
@@ -154,17 +199,12 @@ class SharedMemValidationTest:
         update_interval,
         error_threshold
     ):
+        # search config for everything we need
+        self.cadence = get_from_config("cadence", config)
+        self.shm_size = get_from_config("nsamples", config)
+
         self.error_threshold = error_threshold
-        # TODO: allow these to be on lower level
-        if "cadence" not in config:
-            raise ValueError("Variable 'cadence' not found in config.")
-        self.cadence = config["cadence"]
-        if "nsamples" not in config:
-            raise ValueError("Variable 'nsamples' not found in config.")
-        self.shm_size = config["nsamples"]
-
         self.config = config
-
         self.num_readers = num_readers
         self.len_test = len_test
 
