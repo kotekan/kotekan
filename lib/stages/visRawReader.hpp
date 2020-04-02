@@ -27,24 +27,27 @@
  * @brief Read and stream a raw visibility file.
  *
  * This will divide the file up into time-frequency chunks of set size and
- * stream out the frames with time as the *fastest* index. The dataset ID
- * will be restored from the dataset broker if `use_comet` is set. Otherwise
- * a new dataset will be created and the original ID stored in the frames
- * will be lost.
+ * stream out the frames with time as the *fastest* index. If `chunk_size` is
+ * not specified this will cause the data to be read in on-disk (i.e. frequency
+ * fastest) order. The dataset ID will be restored from the dataset broker if
+ * `use_comet` is set. Otherwise a new dataset will be created and the original
+ * ID stored in the frames will be lost.
  *
  * @par Buffers
  * @buffer out_buf The data read from the raw file.
  *         @buffer_format visBuffer structured
  *         @buffer_metadata visMetadata
  *
+ * @conf    infile              String. Path to the (data-meta-pair of) files to
+ *                              read (e.g. "/path/to/0000_000", without .data or
+ *                              .meta).
+ * @conf    ring                Bool. File is a ring buffer, and so we will need
+ *                              to find the location of the earliest time stamp.
  * @conf    readahead_blocks    Int. Number of blocks to advise OS to read ahead
  *                              of current read.
  * @conf    chunk_size          Array of [int, int, int]. Read chunk size (freq,
  *                              prod, time). If not specified will read file
  *                              contiguously.
- * @conf    infile              String. Path to the (data-meta-pair of) files to
- *                              read (e.g. "/path/to/0000_000", without .data or
- *                              .meta).
  * @conf    max_read_rate       Float. Maximum read rate for the process in MB/s.
  *                              If the value is zero (default), then no rate
  *                              limiting is applied.
@@ -210,6 +213,10 @@ private:
 
     // Sleep time after reading
     double sleep_time;
+
+    // Params for reading ring buffers
+    bool ring;
+    size_t ring_offset;
 };
 
 /**
