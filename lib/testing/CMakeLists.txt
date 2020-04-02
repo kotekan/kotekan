@@ -12,6 +12,7 @@ set ( KOTEKAN_TESTING_SOURCES
       gpuSimulate.cpp
       hexDump.cpp
       networkOutputSim.cpp
+      ReplayFilter.cpp
       simVdifData.cpp
       testDataCheck.cpp
       testDataGen.cpp
