@@ -221,6 +221,8 @@ void visTranspose::main_thread() {
     dset_id_t ds_id;
     // The dataset ID of the state without the time axis
     dset_id_t base_ds_id;
+    // String formatted dataset ID to be written to the file
+    std::string ds_id_str;
 
     uint64_t frame_size = 0;
 
@@ -279,20 +281,6 @@ void visTranspose::main_thread() {
         }
         auto frame = visFrameView(in_buf, frame_id);
 
-        if (frame.dataset_id != ds_id) {
-            if (frame.fpga_seq_length == 0) {
-                INFO("Got an empty frame.");
-            } else {
-                // TODO assuming that dataset ID changes here never change dataset dimensions
-                DEBUG("Dataset ID has changed from {} to {}. Getting base dataset ID from "
-                      "broker...",
-                      ds_id, frame.dataset_id);
-                ds_id = frame.dataset_id;
-                base_ds_id = base_dset(ds_id);
-                DEBUG("Got base dataset ID {}.", base_ds_id);
-            }
-        }
-
         // Collect frames until a chunk is filled
         // Time-transpose as frames come in
         // Fastest varying is time (needs to be consistent with reader!)
@@ -312,13 +300,30 @@ void visTranspose::main_thread() {
             frame.fpga_seq_length == 0 ? 0. : float(frame.rfi_total) / frame.fpga_seq_length;
         strided_copy(frame.gain.data(), gain.data(), offset * num_input + ti, write_t, num_input);
 
-        // Store original dataset ID (before adding time axis)
-        std::string dset_id_str = fmt::format("{}", base_ds_id);
-        if (dset_id_str.length() != DSET_ID_LEN - 1) {
+        // Parse the dataset ID
+        ds_id = frame.dataset_id;
+        if (frame.fpga_seq_length == 0) {
+            INFO("Got an empty frame.");
+            // Empty frames have a null dataset ID
+            ds_id_str = fmt::format("{}", ds_id);
+        } else if (frame.dataset_id != ds_id) {
+            // TODO assuming that dataset ID changes here never change dataset dimensions
+            DEBUG("Dataset ID has changed from {} to {}.",
+                  ds_id, frame.dataset_id);
+            // Update the dataset ID we are writing out
+            ds_id = frame.dataset_id;
+            // Store original dataset ID (before adding time axis)
+            base_ds_id = base_dset(ds_id);
+            ds_id_str = fmt::format("{}", base_ds_id);
+        } else {
+            // Dataset ID hasn't changed
+            ds_id_str = fmt::format("{}", base_ds_id);
+        }
+        if (ds_id_str.length() != DSET_ID_LEN - 1) {
             FATAL_ERROR("Formatted dataset ID string does not have expected length.");
             return;
         }
-        std::copy(dset_id_str.c_str(), dset_id_str.c_str() + DSET_ID_LEN,
+        std::copy(ds_id_str.c_str(), ds_id_str.c_str() + DSET_ID_LEN,
                   dset_id[offset + ti].hash);
 
         // Only copy flags if we haven't already
