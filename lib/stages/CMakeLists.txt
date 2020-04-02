@@ -36,7 +36,6 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       timeDownsample.cpp
       frbPostProcess.cpp
       visWriter.cpp
-      VisSharedMemWriter.cpp
       visRawReader.cpp
       restInspectFrame.cpp
       frbNetworkProcess.cpp
@@ -63,6 +62,11 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       bufferBadInputs.cpp
       RfiFrameDrop.cpp
     )
+
+
+if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    set(KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} VisSharedMemWriter.cpp)
+endif()
 
 if (${USE_AIRSPY})
   include_directories(${LIBAIRSPY_INCLUDE_DIR})
