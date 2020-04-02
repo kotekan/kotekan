@@ -61,6 +61,18 @@ VisSharedMemWriter::VisSharedMemWriter(Config& config, const std::string& unique
     _ntime = config.get_default<size_t>(unique_name, "nsamples", 512);
     _sem_wait_time = config.get_default<size_t>(unique_name, "sem_wait_time", 120);
 
+    // Set the list of critical states
+    critical_state_types = {"frequencies", "inputs",        "products",
+                            "stack",        "eigenvalues", "metadata"};
+    auto t = config.get_default<std::vector<std::string>>(unique_name, "critical_states", {});
+    for (const auto& state : t) {
+        if (!FACTORY(datasetState)::exists(state)) {
+            FATAL_ERROR("Unknown datasetState type '{}' given as `critical_state`", state);
+            return;
+        }
+        critical_state_types.insert(state);
+    }
+
     // Setup the input vector
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -80,7 +92,7 @@ VisSharedMemWriter::~VisSharedMemWriter() {
     wait_for_semaphore();
 
     num_writes = 0;
-    memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
+    *structured_data_addr = num_writes;
 
     release_semaphore();
 }
@@ -241,7 +253,7 @@ void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
     // location to invalid in the access record
     wait_for_semaphore();
 
-    memcpy(access_record_write_pos, &invalid, sizeof(invalid));
+    *access_record_write_pos = invalid;
 
     release_semaphore();
 
@@ -258,11 +270,11 @@ void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
     wait_for_semaphore();
 
     DEBUG("Writing fpga_seq {} to time index {}\n", fpga_seq, time_ind);
-    memcpy(access_record_write_pos, &fpga_seq, sizeof(fpga_seq));
+    *access_record_write_pos = fpga_seq;
 
     // update num_writes
     num_writes++;
-    memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
+    *structured_data_addr = num_writes;
 
     release_semaphore();
     return;
@@ -306,6 +318,10 @@ void VisSharedMemWriter::main_thread() {
     for (auto& f : freq_state->get_freqs())
         freq_id_map[f.first] = ind++;
 
+    // Calculate the fingerprint
+    stream_fingerprint = dm.fingerprint(frame.dataset_id, critical_state_types);
+
+    unique_dataset_ids.insert(frame.dataset_id);
 
     // Figure out the ring buffer structure
     nfreq = freq_state->get_freqs().size();
@@ -332,7 +348,7 @@ void VisSharedMemWriter::main_thread() {
         (structured_data_size * structured_data_num) + (_ntime * nfreq * access_record_size);
 
     // Record structure of data
-    memcpy(structured_data_addr, &num_writes, sizeof(num_writes));
+    *structured_data_addr = num_writes;
     memcpy(structured_data_addr + 1, &_ntime, sizeof(_ntime));
     memcpy(structured_data_addr + 2, &nfreq, sizeof(nfreq));
     memcpy(structured_data_addr + 3, &frame_size, sizeof(frame_size));
@@ -356,6 +372,20 @@ void VisSharedMemWriter::main_thread() {
 
         // Get a view of the current frame
         auto frame = visFrameView(in_buf, frame_id);
+
+        // Check that the dataset ID hasn't chaned
+        if (unique_dataset_ids.count(frame.dataset_id) == 0) {
+            // Check whether the fingerprint has changed
+            auto frame_fingerprint = datasetManager::instance().fingerprint(frame.dataset_id, critical_state_types);
+
+            if (frame_fingerprint == stream_fingerprint) {
+                INFO("Got a new dataset ID={}, with known fingerprint={}", frame.dataset_id, stream_fingerprint);
+                unique_dataset_ids.insert(frame.dataset_id);
+            } else {
+                FATAL_ERROR("Got a new dataset ID={}, but FINGERPRINT HAS CHANGED. Known fingerprint={}; Received fingerprint={}", frame.dataset_id, stream_fingerprint, frame_fingerprint);
+                return;
+            }
+        }
 
         if (frame.data_size != data_size) {
             FATAL_ERROR(

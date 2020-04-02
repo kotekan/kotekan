@@ -62,16 +62,16 @@ def validate_vis(vis, num_elements, ftime, ctime, freq):
     # Check that the diagonals are correct
     pi = 0
     for ii in range(num_elements):
-        assert (vis[:, :, pi].imag == ii).all()
+        assert (vis[:, :, pi].imag == ii).all(), 'expected: {}\n actual: {}'.format(ii, vis[:, :, pi].imag)
         pi += num_elements - ii
 
     # Check that the times are correct
-    assert (vis[:, :, 0].real == ftime[:].astype(np.float32)).all()
-    assert (vis[:, :, 1].real == ctime[:].astype(np.float32)).all()
+    assert (vis[:, :, 0].real == ftime[:].astype(np.float32)).all(), 'expected: {}\n actual: {}'.format(ftime[:].astype(np.float32), vis[:, :, 0].real)
+    assert (vis[:, :, 1].real == ctime[:].astype(np.float32)).all(), 'expected: {}\n actual: {}'.format(ctime[:].astype(np.float32), vis[:, :, 1].real)
 
     # Check that the frequencies are correct
     vfreq = 800.0 - 400.0 * vis[:, :, 2].real / 1024
-    assert (vfreq == freq[np.newaxis, :]).all()
+    assert (vfreq == freq[np.newaxis, :]).all(), 'expected: {}\n actual: {}'.format(freq[np.newaxis, :], vfreq)
 
 
 def validate_eigenvectors(vis_raw, num_time, num_freq, num_ev, num_elements):
@@ -83,9 +83,9 @@ def validate_eigenvectors(vis_raw, num_time, num_freq, num_ev, num_elements):
     erms = vis_raw.data["erms"]
 
     # Check datasets are present
-    assert evals.shape == (num_time, num_freq, num_ev)
-    assert evecs.shape == (num_time, num_freq, num_ev * num_elements)
-    assert erms.shape == (num_time, num_freq)
+    assert evals.shape == (num_time, num_freq, num_ev), 'expected: {}\n actual: {}'.format((num_time, num_freq, num_ev), evals.shape)
+    assert evecs.shape == (num_time, num_freq, num_ev * num_elements), 'expected: {}\n actual: {}'.format((num_time, num_freq, num_ev * num_elements), evecs.shape)
+    assert erms.shape == (num_time, num_freq), 'expected: {}\n actual: {}'.format((num_time, num_freq), erms.shape)
 
     evecs = evecs.reshape(num_time, num_freq, num_ev, num_elements)
 

@@ -15,19 +15,22 @@
 
 #include "json.hpp" // for json
 
+#include <map>      // for map
 #include <stddef.h> // for size_t
 #include <stdint.h> // for uint32_t, uint8_t
 #include <string>   // for string
 #include <utility>  // for pair
 #include <vector>   // for vector
 
-
 /**
  * @class visRawReader
  * @brief Read and stream a raw visibility file.
  *
  * This will divide the file up into time-frequency chunks of set size and
- * stream out the frames with time as the *fastest* index.
+ * stream out the frames with time as the *fastest* index. The dataset ID
+ * will be restored from the dataset broker if `use_comet` is set. Otherwise
+ * a new dataset will be created and the original ID stored in the frames
+ * will be lost.
  *
  * @par Buffers
  * @buffer out_buf The data read from the raw file.
@@ -48,6 +51,8 @@
  * @conf    sleep_time          Float. After the data is read pause this long in
  *                              seconds before sending shutdown. If < 0, never
  *                              send a shutdown signal. Default is -1.
+ * @conf    use_dataset_broker  Bool. Restore dataset ID from dataset broker (i.e. comet).
+ *                              Should be disabled only for testing. Default is true.
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte, Rick Nitsche
  */
@@ -114,15 +119,12 @@ public:
 
 private:
     /**
-     * @brief Tells the datasetManager about all the datasetStates of the data
-     * that is read.
+     * @brief Get dataset states from the broker and add a timeState.
      *
-     * Adds the following states: metadata, time, prod, freq, input, eigenvalue
-     * and, if the data is stacked, stack.
-     * Sets the dataset ID that should be given to the dataset coming from
-     * the file that is read.
+     * If not using the broker, create the following states: metadata, time, prod,
+     * freq, input, eigenvalue and, if the data is stacked, stack.
      */
-    void change_dataset_state(dset_id_t ds_id);
+    void get_dataset_state(dset_id_t ds_id);
 
     /**
      * @brief Read the next frame.
@@ -161,6 +163,9 @@ private:
     // whether to read in chunks
     bool chunked;
 
+    // whether to use comet to track dataset IDs
+    bool use_comet;
+
     // Read chunk size (freq, prod, time)
     std::vector<int> chunk_size;
     // time chunk size
@@ -181,14 +186,82 @@ private:
     // Number of blocks to read ahead while reading from disk
     size_t readahead_blocks;
 
-    // The ID for the data coming from the file that is read.
-    dset_id_t _dataset_id;
+    // Dataset ID to assign to output frames
+    dset_id_t out_dset_id;
+
+    // the dataset state for the time axis
+    state_id_t tstate_id;
+
+    // Map input to output dataset IDs for quick access
+    std::map<dset_id_t, dset_id_t> ds_in_file;
 
     // The read rate
     double max_read_rate;
 
     // Sleep time after reading
     double sleep_time;
+};
+
+/**
+ * @class ensureOrdered
+ * @brief Check frames are coming through in order and reorder them otherwise.
+ *        Not used presently.
+ */
+class ensureOrdered : public kotekan::Stage {
+
+public:
+    ensureOrdered(kotekan::Config& config, const std::string& unique_name,
+                  kotekan::bufferContainer& buffer_container);
+
+    ~ensureOrdered() = default;
+
+    /// Main loop over buffer frames
+    void main_thread() override;
+
+private:
+    Buffer* in_buf;
+    Buffer* out_buf;
+
+    // Map of buffer frames waiting for their turn
+    std::map<size_t, size_t> waiting;
+    size_t max_waiting;
+
+    // time and frequency axes
+    std::map<time_ctype, size_t> time_map;
+    std::map<size_t, size_t> freq_map;
+    size_t ntime;
+    size_t nfreq;
+
+    // HDF5 chunk size
+    std::vector<int> chunk_size;
+    // size of time dimension of chunk
+    size_t chunk_t;
+    // size of frequency dimension of chunk
+    size_t chunk_f;
+    bool chunked;
+
+    bool get_dataset_state(dset_id_t ds_id);
+
+    // map from time and freq index to frame index
+    // visRawReader reads chunks with frequency as fastest varying index
+    // within a chunk, frequency is also the fastest varying index.
+    inline size_t get_frame_ind(size_t ti, size_t fi) {
+        size_t ind = 0;
+        // chunk row and column
+        size_t row = ti / chunk_t;
+        size_t col = fi / chunk_f;
+        // special dimension at array edges
+        size_t this_chunk_t = chunk_t ? row * chunk_t + chunk_t < ntime : ntime - row * chunk_t;
+        size_t this_chunk_f = chunk_f ? col * chunk_f + chunk_f < nfreq : nfreq - col * chunk_f;
+        // number of frames in previous rows
+        ind += nfreq * chunk_t * row;
+        // number of frames in chunks in this row
+        ind += (this_chunk_t * chunk_f) * col;
+        // within a chunk, frequency is fastest varying
+        ind += (ti % chunk_t) * this_chunk_f + (fi % chunk_f);
+
+        return ind;
+    };
 };
 
 #endif
