@@ -79,9 +79,7 @@ class SharedMemoryReader:
         self._time_index_map = {}
 
         self.shared_mem_name = shared_memory_name
-        semaphore_name = shared_memory_name
-
-        self.semaphore = posix_ipc.Semaphore(semaphore_name)
+        self.semaphore = posix_ipc.Semaphore(shared_memory_name)
         shared_mem = posix_ipc.SharedMemory(shared_memory_name)
 
         # 0 means entire file
@@ -177,19 +175,23 @@ class SharedMemoryReader:
         return Structure.from_buffer_copy(self.shared_mem)
 
     def __del__(self):
-        self.semaphore.release()
-        try:
-            self.semaphore.unlink()
-        except posix_ipc.ExistentialError:
-            logger.debug("Semaphore file did not exist when trying to unlink from it.")
+        if hasattr(self, "semaphore"):
+            self.semaphore.release()
+            try:
+                self.semaphore.unlink()
+            except posix_ipc.ExistentialError:
+                logger.debug(
+                    "Semaphore file did not exist when trying to unlink from it."
+                )
 
-        self.shared_mem.close()
-        try:
-            posix_ipc.unlink_shared_memory(self.shared_mem_name)
-        except posix_ipc.ExistentialError:
-            logger.debug(
-                "Shared memory file did not exist when trying to unlink from it."
-            )
+        if hasattr(self, "shared_mem"):
+            self.shared_mem.close()
+            try:
+                posix_ipc.unlink_shared_memory(self.shared_mem_name)
+            except posix_ipc.ExistentialError:
+                logger.debug(
+                    "Shared memory file did not exist when trying to unlink from it."
+                )
 
     def update(self):
         """
