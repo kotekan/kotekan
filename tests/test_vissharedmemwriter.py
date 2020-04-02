@@ -16,8 +16,7 @@ from kotekan import runner, shared_memory_buffer
 
 # use tempfile creation to get exclusive random strings
 useless_file = tempfile.NamedTemporaryFile()
-sem_name = "kotekan_" + os.path.split(useless_file.name)[-1]
-fname_buf = "calBuffer_" + os.path.split(useless_file.name)[-1]
+fname = "calBuffer_" + os.path.split(useless_file.name)[-1]
 
 page_size = 4096
 
@@ -56,8 +55,7 @@ global num_frames
 
 params_writer_stage = {
     "nsamples": global_params["total_frames"],
-    "sem_name": sem_name,
-    "fname_buf": fname_buf,
+    "fname": fname,
 }
 
 size_of_uint64 = 8
@@ -93,13 +91,13 @@ def vis_data(tmpdir_factory, request):
 
 @pytest.fixture(scope="module")
 def semaphore(vis_data):
-    sem = posix_ipc.Semaphore(sem_name)
+    sem = posix_ipc.Semaphore(fname)
     yield sem
 
 
 @pytest.fixture(scope="module")
 def memory_map_buf(vis_data):
-    memory = posix_ipc.SharedMemory(fname_buf)
+    memory = posix_ipc.SharedMemory(fname)
     mapfile = mmap.mmap(memory.fd, memory.size, prot=mmap.PROT_READ)
     os.close(memory.fd)
     yield mapfile
@@ -191,5 +189,5 @@ def test_ring_buffer(vis_data):
     num_elements = global_params["num_elements"]
 
     ring_buffer = shared_memory_buffer.SharedMemoryReader(
-        sem_name, fname_buf, params_writer_stage["nsamples"]
+        fname, params_writer_stage["nsamples"]
     )

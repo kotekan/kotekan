@@ -105,9 +105,8 @@ def test_vis(written_data):
         ctime = vr.time["ctime"]
         freq = np.array([f["centre"] for f in vr.index_map["freq"]])
         num_elements = writer_params["num_elements"]
-        cadence = writer_params["cadence"]
 
-        testing.validate_vis(vis, num_elements, ftime, ctime, freq, cadence)
+        testing.validate_vis(vis, num_elements, ftime, ctime, freq)
 
 
 def test_metadata(written_data):

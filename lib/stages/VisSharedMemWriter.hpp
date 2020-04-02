@@ -98,7 +98,7 @@ protected:
 
     void release_semaphore();
 
-    std::string _root_path, _sem_name, _fname_buf;
+    std::string _root_path, _fname;
 
     // List of critical states, if changed they will trigger an error
     std::set<std::string> critical_state_types;

@@ -56,8 +56,7 @@ VisSharedMemWriter::VisSharedMemWriter(Config& config, const std::string& unique
 
     // Fetch any simple configuration
     _root_path = config.get_default<std::string>(unique_name, "root_path", "/dev/shm/");
-    _sem_name = config.get_default<std::string>(unique_name, "sem_name", "kotekan");
-    _fname_buf = config.get_default<std::string>(unique_name, "fname_buf", "calBuffer");
+    _fname = config.get_default<std::string>(unique_name, "fname", "calBuffer");
     rbs._ntime = config.get_default<uint64_t>(unique_name, "nsamples", 512);
     _sem_wait_time = config.get_default<size_t>(unique_name, "sem_wait_time", 120);
 
@@ -80,8 +79,8 @@ VisSharedMemWriter::VisSharedMemWriter(Config& config, const std::string& unique
     // Check if any of the old buffer files exist
     // Remove them, if they do
     DEBUG("Checking for and removing old buffer files...");
-    check_remove(_root_path + "sem." + _sem_name);
-    check_remove(_root_path + _fname_buf);
+    check_remove(_root_path + "sem." + _fname);
+    check_remove(_root_path + _fname);
 }
 
 VisSharedMemWriter::~VisSharedMemWriter() {
@@ -106,7 +105,7 @@ void VisSharedMemWriter::wait_for_semaphore() {
         WARN("Failed to get system time. {:d} ({:s})\n Not using timed semaphores.\n", errno,
              std::strerror(errno));
         if (sem_wait(sem) == -1) {
-            FATAL_ERROR("Failed to acquire semaphore {}\n", _sem_name);
+            FATAL_ERROR("Failed to acquire semaphore {}\n", _fname);
             return;
         }
         return;
@@ -122,7 +121,7 @@ void VisSharedMemWriter::wait_for_semaphore() {
 
 void VisSharedMemWriter::release_semaphore() {
     if (sem_post(sem) == -1) {
-        FATAL_ERROR("Failed to post semaphore {}", _sem_name);
+        FATAL_ERROR("Failed to post semaphore {}", _fname);
     }
     return;
 }
@@ -290,10 +289,10 @@ void VisSharedMemWriter::main_thread() {
     cur_pos = modulo<int>(rbs._ntime);
 
     // Create the semaphore, and gain first access to it
-    sem = sem_open(_sem_name.c_str(), (O_CREAT | O_EXCL), (S_IRUSR | S_IWUSR), 1);
+    sem = sem_open(_fname.c_str(), (O_CREAT | O_EXCL), (S_IRUSR | S_IWUSR), 1);
 
     if (sem == SEM_FAILED) {
-        FATAL_ERROR("Failed to create semaphore {}", _sem_name);
+        FATAL_ERROR("Failed to create semaphore {}", _fname);
         return;
     }
 
@@ -337,7 +336,7 @@ void VisSharedMemWriter::main_thread() {
     rbs.frame_size = _member_alignment(rbs.data_size + rbs.metadata_size + valid_size, alignment);
 
     // memory_size should be _ntime * nfreq * file_frame_size (data + metadata)
-    buf_addr = assign_memory(_fname_buf, (structured_data_size * structured_data_num)
+    buf_addr = assign_memory(_fname, (structured_data_size * structured_data_num)
                                              + (rbs._ntime * rbs.nfreq * access_record_size)
                                              + (rbs._ntime * rbs.nfreq * rbs.frame_size));
 
