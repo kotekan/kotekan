@@ -58,8 +58,6 @@ class SharedMemoryReader:
 
     Parameters
     ----------
-    semaphore_name : str
-        Full path and file name of semaphore.
     shared_memory_name : int
         Full path and file name of shared memory.
     view_size : int
@@ -74,15 +72,16 @@ class SharedMemoryReader:
     size_valid_field = 1
     invalid_value = -1
 
-    def __init__(self, semaphore_name, shared_memory_name, view_size):
+    def __init__(self, shared_memory_name, view_size):
         self.view_size = view_size
 
         # maps from access record timestamp to index (0..view_size)
         self._time_index_map = {}
 
-        self.semaphore = posix_ipc.Semaphore(semaphore_name)
-
         self.shared_mem_name = shared_memory_name
+        semaphore_name = shared_memory_name
+
+        self.semaphore = posix_ipc.Semaphore(semaphore_name)
         shared_mem = posix_ipc.SharedMemory(shared_memory_name)
 
         # 0 means entire file

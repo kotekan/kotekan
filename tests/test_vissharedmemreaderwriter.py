@@ -24,7 +24,6 @@ from kotekan import runner, shared_memory_buffer
 
 # use tempfile creation to get exclusive random strings
 useless_file = tempfile.NamedTemporaryFile()
-sem_name = "kotekan_" + os.path.split(useless_file.name)[-1]
 fname_buf = "calBuffer_" + os.path.split(useless_file.name)[-1]
 
 logging.basicConfig(level=logging.DEBUG)
@@ -73,7 +72,7 @@ def comet_broker():
 
 @pytest.fixture(scope="module")
 def semaphore():
-    sem = posix_ipc.Semaphore(sem_name)
+    sem = posix_ipc.Semaphore(fname_buf)
     yield sem
     sem.release()
     sem.unlink()
@@ -95,7 +94,7 @@ params_fakevis = {
     "wait": True,
 }
 
-params_writer_stage = {"nsamples": 5, "sem_name": sem_name, "fname_buf": fname_buf}
+params_writer_stage = {"nsamples": 5, "fname": fname_buf}
 
 
 @pytest.fixture()
@@ -130,9 +129,7 @@ def test_shared_mem_buffer(vis_data, comet_broker):
     view_size = [2, 8, 17]
 
     for i in range(len(view_size)):
-        reader.append(
-            shared_memory_buffer.SharedMemoryReader(sem_name, fname_buf, view_size[i])
-        )
+        reader.append(shared_memory_buffer.SharedMemoryReader(fname_buf, view_size[i]))
 
     for i in range(len(reader)):
         assert reader[i].num_time == params_writer_stage["nsamples"]

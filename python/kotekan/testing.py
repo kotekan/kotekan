@@ -169,8 +169,6 @@ class SharedMemValidationTest:
         Kotekan config used.
     num_readers : int
         Number of readers to run.
-    semaphore_name : str
-        Full path and file name of semaphore.
     shared_memory_name : int
         Full path and file name of shared memory.
     view_sizes : int or list(int)
@@ -200,7 +198,6 @@ class SharedMemValidationTest:
         len_test,
         config,
         num_readers,
-        semaphore_name,
         shared_memory_name,
         view_sizes,
         test_pattern,
@@ -254,21 +251,19 @@ class SharedMemValidationTest:
         self._next_check = [0] * self.num_readers
         for i in range(num_readers):
             view_size = self.view_sizes[i]
-            self._readers.append(
-                SharedMemoryReader(semaphore_name, shared_memory_name, view_size)
-            )
+            self._readers.append(SharedMemoryReader(shared_memory_name, view_size))
             # allow the view size to be set/changed by the reader
             self.view_sizes[i] = self._readers[i].view_size
             self.delay.append([])
             self.expected_delay.append([])
             self.update_time.append([])
 
-        self._first_update(semaphore_name, shared_memory_name)
+        self._first_update(shared_memory_name)
         self.validated_fpga_seqs = set()
 
-    def _first_update(self, semaphore_name, shared_memory_name):
+    def _first_update(self, shared_memory_name):
         """Get a minimal first update to get a start time."""
-        visraw = SharedMemoryReader(semaphore_name, shared_memory_name, 1).update()
+        visraw = SharedMemoryReader(shared_memory_name, 1).update()
         assert visraw.time.shape[1] == visraw.num_freq
         times = np.unique(visraw.time)
         assert len(times) == 1

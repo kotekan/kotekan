@@ -23,7 +23,6 @@ from kotekan import runner, testing
 
 # use tempfile creation to get exclusive random strings
 useless_file = tempfile.NamedTemporaryFile()
-sem_name = "kotekan_" + os.path.split(useless_file.name)[-1]
 fname_buf = "calBuffer_" + os.path.split(useless_file.name)[-1]
 
 logging.basicConfig(level=logging.DEBUG)
@@ -70,14 +69,6 @@ def comet_broker():
                 print(line)
 
 
-@pytest.fixture(scope="module")
-def semaphore():
-    sem = posix_ipc.Semaphore(sem_name)
-    yield sem
-    sem.release()
-    sem.unlink()
-
-
 # number of frames to ignore in validation
 ignore_frames = 3
 # maximum timing error to accept (in seconds)
@@ -98,7 +89,7 @@ params_fakevis = {
     "wait": True,
 }
 
-params_writer_stage = {"nsamples": 3, "sem_name": sem_name, "fname_buf": fname_buf}
+params_writer_stage = {"nsamples": 3, "fname": fname_buf}
 
 
 @pytest.fixture()
@@ -139,7 +130,6 @@ def test_shared_mem_buffer(vis_data, comet_broker):
         params["total_frames"] - ignore_frames,
         config,
         3,
-        sem_name,
         fname_buf,
         view_size,
         params["mode"],
