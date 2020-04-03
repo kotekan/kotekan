@@ -98,15 +98,13 @@ def test_vis(written_data):
 
     for vr in written_data:
 
-        vis = vr.data["vis"]
-
         # Extract the metadata
         ftime = vr.time["fpga_count"]
         ctime = vr.time["ctime"]
         freq = np.array([f["centre"] for f in vr.index_map["freq"]])
         num_elements = writer_params["num_elements"]
 
-        testing.validate_vis(vis, num_elements, ftime, ctime, freq)
+        testing.validate_vis(vr, num_elements, ftime, ctime, freq)
 
 
 def test_metadata(written_data):

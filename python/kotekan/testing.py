@@ -83,8 +83,6 @@ def validate(vis_raw, config, pattern_name=""):
 
     vis_raw: VisRaw; pattern_name: str"""
 
-    # Construct vis array
-    vis = vis_raw.data["vis"]
 
     # Extract metadata
     ftime = vis_raw.time["fpga_count"]
@@ -99,56 +97,93 @@ def validate(vis_raw, config, pattern_name=""):
     num_time = vis_raw.num_time
 
     if pattern_name == "default":
-        validate_vis(vis, num_elements, ftime, ctime, freq)
+        validate_vis(vis_raw, num_elements, ftime, ctime, freq)
         validate_eigenvectors(vis_raw, num_time, num_freq, num_ev, num_elements)
 
 
-def validate_vis(vis, num_elements, ftime, ctime, freq):
+def validate_vis(vis_raw, num_elements, ftime, ctime, freq):
     """Tests that visibility array is populated with integers increasing from zero
     on the diagonal (imaginary part)
     and FPGA sequence number, timestamp, frequency, and frame ID in the first
     four elements (real part)
     the remaining elements are zero"""
 
+    # Construct vis array
+    vis = vis_raw.data["vis"]
+    valid = vis_raw.valid_frames.astype(np.bool)
+
+    def compare_valid(clause):
+        return (~valid.T | clause.T)
+
     # Check that the diagonals are correct
     pi = 0
     for ii in range(num_elements):
-        assert (vis[:, :, pi].imag == ii).all(), 'expected: {}\n actual: {}'.format(ii, vis[:, :, pi].imag)
+        assert (
+            compare_valid(vis[:, :, pi].imag == ii)
+        ).all(), "expected: {}\n actual: {}".format(ii, vis[:, :, pi].imag)
         pi += num_elements - ii
 
     # Check that the times are correct
-    assert (vis[:, :, 0].real == ftime[:].astype(np.float32)).all(), 'expected: {}\n actual: {}'.format(ftime[:].astype(np.float32), vis[:, :, 0].real)
-    assert (vis[:, :, 1].real == ctime[:].astype(np.float32)).all(), 'expected: {}\n actual: {}'.format(ctime[:].astype(np.float32), vis[:, :, 1].real)
+    assert (
+        compare_valid(vis[:, :, 0].real == ftime[:].astype(np.float32))
+    ).all(), "expected: {}\n actual: {}".format(
+        ftime[:].astype(np.float32), vis[:, :, 0].real
+    )
+    assert (
+        compare_valid(vis[:, :, 1].real == ctime[:].astype(np.float32))
+    ).all(), "expected: {}\n actual: {}".format(
+        ctime[:].astype(np.float32), vis[:, :, 1].real
+    )
 
     # Check that the frequencies are correct
     vfreq = 800.0 - 400.0 * vis[:, :, 2].real / 1024
-    assert (vfreq == freq[np.newaxis, :]).all(), 'expected: {}\n actual: {}'.format(freq[np.newaxis, :], vfreq)
+    assert (
+        compare_valid(vfreq == freq[np.newaxis, :])
+    ).all(), "expected: {}\n actual: {}".format(freq[np.newaxis, :], vfreq)
 
 
 def validate_eigenvectors(vis_raw, num_time, num_freq, num_ev, num_elements):
     """
     Tests the structure of eigenvalues, eigenvectors, erms.
     """
+
+    valid = vis_raw.valid_frames.astype(np.bool)
+
+    def compare_valid(clause):
+        return (~valid.T | clause.T)
+
     evals = vis_raw.data["eval"]
     evecs = vis_raw.data["evec"]
     erms = vis_raw.data["erms"]
 
     # Check datasets are present
-    assert evals.shape == (num_time, num_freq, num_ev), 'expected: {}\n actual: {}'.format((num_time, num_freq, num_ev), evals.shape)
-    assert evecs.shape == (num_time, num_freq, num_ev * num_elements), 'expected: {}\n actual: {}'.format((num_time, num_freq, num_ev * num_elements), evecs.shape)
-    assert erms.shape == (num_time, num_freq), 'expected: {}\n actual: {}'.format((num_time, num_freq), erms.shape)
+    assert evals.shape == (
+        num_time,
+        num_freq,
+        num_ev,
+    ), "expected: {}\n actual: {}".format((num_time, num_freq, num_ev), evals.shape)
+    assert evecs.shape == (
+        num_time,
+        num_freq,
+        num_ev * num_elements,
+    ), "expected: {}\n actual: {}".format(
+        (num_time, num_freq, num_ev * num_elements), evecs.shape
+    )
+    assert erms.shape == (num_time, num_freq), "expected: {}\n actual: {}".format(
+        (num_time, num_freq), erms.shape
+    )
 
     evecs = evecs.reshape(num_time, num_freq, num_ev, num_elements)
 
     # Check that the datasets have the correct values
-    assert (evals == np.arange(num_ev)[np.newaxis, np.newaxis, :]).all()
+    assert (compare_valid(evals == np.arange(num_ev)[np.newaxis, np.newaxis, :])).all()
     assert (
-        evecs.real == np.arange(num_ev)[np.newaxis, np.newaxis, :, np.newaxis]
+        compare_valid(evecs.real == np.arange(num_ev)[np.newaxis, np.newaxis, :, np.newaxis])
     ).all()
     assert (
-        evecs.imag == np.arange(num_elements)[np.newaxis, np.newaxis, np.newaxis, :]
+        compare_valid(evecs.imag == np.arange(num_elements)[np.newaxis, np.newaxis, np.newaxis, :])
     ).all()
-    assert (erms == 1.0).all()
+    assert (compare_valid(erms == 1.0)).all()
 
 
 class ValidationFailed(Exception):
