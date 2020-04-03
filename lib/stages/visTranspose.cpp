@@ -234,7 +234,7 @@ void visTranspose::main_thread() {
             return;
         }
         auto frame = visFrameView(in_buf, first_ind);
-        if (frame.fpga_seq_length == 0) {
+        if (frame.fpga_seq_total == 0 && frame.dataset_id == dset_id_t::null) {
             INFO("Got empty frame ({:d}).", first_ind);
             first_ind++;
         } else {
@@ -302,14 +302,13 @@ void visTranspose::main_thread() {
 
         // Parse the dataset ID
         ds_id = frame.dataset_id;
-        if (frame.fpga_seq_length == 0) {
+        if (frame.fpga_seq_total == 0 && frame.dataset_id == dset_id_t::null) {
             INFO("Got an empty frame.");
             // Empty frames have a null dataset ID
             ds_id_str = fmt::format("{}", ds_id);
         } else if (frame.dataset_id != ds_id) {
             // TODO assuming that dataset ID changes here never change dataset dimensions
-            DEBUG("Dataset ID has changed from {} to {}.",
-                  ds_id, frame.dataset_id);
+            DEBUG("Dataset ID has changed from {} to {}.", ds_id, frame.dataset_id);
             // Update the dataset ID we are writing out
             ds_id = frame.dataset_id;
             // Store original dataset ID (before adding time axis)
@@ -323,8 +322,7 @@ void visTranspose::main_thread() {
             FATAL_ERROR("Formatted dataset ID string does not have expected length.");
             return;
         }
-        std::copy(ds_id_str.c_str(), ds_id_str.c_str() + DSET_ID_LEN,
-                  dset_id[offset + ti].hash);
+        std::copy(ds_id_str.c_str(), ds_id_str.c_str() + DSET_ID_LEN, dset_id[offset + ti].hash);
 
         // Only copy flags if we haven't already
         if (!found_flags[ti]) {
