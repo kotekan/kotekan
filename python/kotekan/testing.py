@@ -84,7 +84,6 @@ def validate(vis_raw, config, pattern_name=""):
 
     vis_raw: VisRaw; pattern_name: str"""
 
-
     # Extract metadata
     ftime = vis_raw.time["fpga_count"]
     ctime = vis_raw.time["ctime"]
@@ -114,7 +113,7 @@ def validate_vis(vis_raw, num_elements, ftime, ctime, freq):
     valid = vis_raw.valid_frames.astype(np.bool)
 
     def compare_valid(clause):
-        return (~valid.T | clause.T)
+        return ~valid.T | clause.T
 
     # Check that the diagonals are correct
     pi = 0
@@ -151,7 +150,7 @@ def validate_eigenvectors(vis_raw, num_time, num_freq, num_ev, num_elements):
     valid = vis_raw.valid_frames.astype(np.bool)
 
     def compare_valid(clause):
-        return (~valid.T | clause.T)
+        return ~valid.T | clause.T
 
     evals = vis_raw.data["eval"]
     evecs = vis_raw.data["evec"]
@@ -179,10 +178,14 @@ def validate_eigenvectors(vis_raw, num_time, num_freq, num_ev, num_elements):
     # Check that the datasets have the correct values
     assert (compare_valid(evals == np.arange(num_ev)[np.newaxis, np.newaxis, :])).all()
     assert (
-        compare_valid(evecs.real == np.arange(num_ev)[np.newaxis, np.newaxis, :, np.newaxis])
+        compare_valid(
+            evecs.real == np.arange(num_ev)[np.newaxis, np.newaxis, :, np.newaxis]
+        )
     ).all()
     assert (
-        compare_valid(evecs.imag == np.arange(num_elements)[np.newaxis, np.newaxis, np.newaxis, :])
+        compare_valid(
+            evecs.imag == np.arange(num_elements)[np.newaxis, np.newaxis, np.newaxis, :]
+        )
     ).all()
     assert (compare_valid(erms == 1.0)).all()
 

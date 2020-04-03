@@ -24,7 +24,7 @@ from kotekan import runner, testing
 useless_file = tempfile.NamedTemporaryFile()
 fname_buf = "calBuffer_" + os.path.split(useless_file.name)[-1]
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 
 @pytest.fixture()
