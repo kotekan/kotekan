@@ -234,7 +234,7 @@ void visTranspose::main_thread() {
             return;
         }
         auto frame = visFrameView(in_buf, first_ind);
-        if (frame.fpga_seq_length == 0) {
+        if (frame.fpga_seq_total == 0 && frame.dataset_id == dset_id_t::null) {
             INFO("Got empty frame ({:d}).", first_ind);
             first_ind++;
         } else {
@@ -302,7 +302,7 @@ void visTranspose::main_thread() {
 
         // Parse the dataset ID
         ds_id = frame.dataset_id;
-        if (frame.fpga_seq_length == 0) {
+        if (frame.fpga_seq_total == 0 && frame.dataset_id == dset_id_t::null) {
             INFO("Got an empty frame.");
             // Empty frames have a null dataset ID
             ds_id_str = fmt::format("{}", ds_id);
