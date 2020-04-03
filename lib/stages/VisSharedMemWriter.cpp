@@ -61,8 +61,8 @@ VisSharedMemWriter::VisSharedMemWriter(Config& config, const std::string& unique
     _sem_wait_time = config.get_default<size_t>(unique_name, "sem_wait_time", 120);
 
     // Set the list of critical states
-    critical_state_types = {"frequencies", "inputs",        "products",
-                            "stack",        "eigenvalues", "metadata"};
+    critical_state_types = {"frequencies", "inputs",      "products",
+                            "stack",       "eigenvalues", "metadata"};
     auto t = config.get_default<std::vector<std::string>>(unique_name, "critical_states", {});
     for (const auto& state : t) {
         if (!FACTORY(datasetState)::exists(state)) {
@@ -314,7 +314,9 @@ void VisSharedMemWriter::main_thread() {
     const freqState* freq_state = dm.dataset_state<freqState>(frame.dataset_id);
 
     if (freq_state == nullptr) {
-        FATAL_ERROR("Could not find ancestor of dataset {}. Make sure there is a stage upstream in the config, with dataset states. freqState is a nullptr", frame.dataset_id);
+        FATAL_ERROR("Could not find ancestor of dataset {}. Make sure there is a stage upstream in "
+                    "the config, with dataset states. freqState is a nullptr",
+                    frame.dataset_id);
         return;
     }
 
@@ -342,14 +344,14 @@ void VisSharedMemWriter::main_thread() {
 
     // memory_size should be _ntime * nfreq * file_frame_size (data + metadata)
     buf_addr = assign_memory(_fname, (structured_data_size * structured_data_num)
-                                             + (rbs._ntime * rbs.nfreq * access_record_size)
-                                             + (rbs._ntime * rbs.nfreq * rbs.frame_size));
+                                         + (rbs._ntime * rbs.nfreq * access_record_size)
+                                         + (rbs._ntime * rbs.nfreq * rbs.frame_size));
 
     // The elements contained in the structured data and access record are each 64 bytes
     structured_data_addr = (uint64_t*)buf_addr;
     access_record_addr = (int64_t*)(structured_data_addr + structured_data_num);
-    buf_addr +=
-        (structured_data_size * structured_data_num) + (rbs._ntime * rbs.nfreq * access_record_size);
+    buf_addr += (structured_data_size * structured_data_num)
+                + (rbs._ntime * rbs.nfreq * access_record_size);
 
     // Record structure of data
     *structured_data_addr = num_writes;
@@ -376,13 +378,17 @@ void VisSharedMemWriter::main_thread() {
         // Check that the dataset ID hasn't chaned
         if (unique_dataset_ids.count(frame.dataset_id) == 0) {
             // Check whether the fingerprint has changed
-            auto frame_fingerprint = datasetManager::instance().fingerprint(frame.dataset_id, critical_state_types);
+            auto frame_fingerprint =
+                datasetManager::instance().fingerprint(frame.dataset_id, critical_state_types);
 
             if (frame_fingerprint == stream_fingerprint) {
-                INFO("Got a new dataset ID={}, with known fingerprint={}", frame.dataset_id, stream_fingerprint);
+                INFO("Got a new dataset ID={}, with known fingerprint={}", frame.dataset_id,
+                     stream_fingerprint);
                 unique_dataset_ids.insert(frame.dataset_id);
             } else {
-                FATAL_ERROR("Got a new dataset ID={}, but FINGERPRINT HAS CHANGED. Known fingerprint={}; Received fingerprint={}", frame.dataset_id, stream_fingerprint, frame_fingerprint);
+                FATAL_ERROR("Got a new dataset ID={}, but FINGERPRINT HAS CHANGED. Known "
+                            "fingerprint={}; Received fingerprint={}",
+                            frame.dataset_id, stream_fingerprint, frame_fingerprint);
                 return;
             }
         }

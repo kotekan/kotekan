@@ -5,9 +5,9 @@
 #include "Stage.hpp"           // for Stage
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for dset_id_t, fingerprint_t
 #include "visBuffer.hpp"       // for visFrameView
 #include "visUtil.hpp"         // for time_ctype
-#include "datasetManager.hpp"  // for dset_id_t, fingerprint_t
 
 #include <cstdint>     // for uint32_t, uint64_t, uint8_t
 #include <map>         // for map
@@ -40,8 +40,7 @@ protected:
 
     // Parameters that define structure of ring buffer
     //
-    struct RingBufferStructure
-    {
+    struct RingBufferStructure {
         // The number of time samples contained in ring buffer
         uint64_t _ntime;
         // The number of frequencies contained in each time sample
@@ -52,7 +51,6 @@ protected:
         uint64_t metadata_size;
         // The size of each data section
         uint64_t data_size;
-
     };
 
     RingBufferStructure rbs;
