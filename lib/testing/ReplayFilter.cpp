@@ -22,14 +22,26 @@ using kotekan::Config;
 using kotekan::Stage;
 
 
+
 REGISTER_KOTEKAN_STAGE(ReplayFilter);
 
+template<typename T>
+constexpr timespec timepoint_to_timespec(
+    std::chrono::time_point<std::chrono::system_clock, T> tp)
+{
+    auto secs = std::chrono::time_point_cast<std::chrono::seconds>(tp);
+    auto ns = std::chrono::time_point_cast<std::chrono::nanoseconds>(tp) -
+             std::chrono::time_point_cast<std::chrono::nanoseconds>(secs);
+
+    return {secs.time_since_epoch().count(), ns.count()};
+}
 
 ReplayFilter::ReplayFilter(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&ReplayFilter::main_thread, this)),
     _start_time(config.get_default<double>(unique_name, "start_time", -1)),
-    _fpga_length(config.get_default<double>(unique_name, "fpga_length", -1)),
+    _fpga_length(config.get_default<uint64_t>(unique_name, "fpga_length", 0)),
+    _ctime_length(config.get_default<double>(unique_name, "ctime_length", -1)),
     _wait(config.get_default<bool>(unique_name, "num_elements", true)),
     _modify_times(config.get_default<bool>(unique_name, "modify_times", true)),
     _drop_empty(config.get_default<bool>(unique_name, "drop_empty", true))
@@ -60,14 +72,17 @@ void ReplayFilter::main_thread() {
     double start = _start_time < 0 ? _start_time : current_time();
     */
 
-    auto start_tp = std::chrono::steady_clock::now();
-    auto clock_tick = std::chrono::duration<double>(_fpga_length);
+    auto start_tp = std::chrono::system_clock::now();
+    auto frame_duration = std::chrono::duration<double>(_ctime_length);
 
     //INFO("Start time: {}, clock tick {}", start_tp, clock_tick);
-    INFO("clock tick {}", clock_tick);
+    //INFO("clock tick {}", clock_tick);
 
     std::optional<uint64_t> fpga0;
 
+    std::optional<uint64_t> last_fpga;
+
+    uint32_t time_ind = 0;
 
     while (!stop_thread) {
 
@@ -90,16 +105,28 @@ void ReplayFilter::main_thread() {
             continue;
         }
 
-        // Set the first FPGA timesample
-        if (!fpga0) {
-            fpga0 = std::get<0>(input_frame.time);
-        }
-
         uint64_t fpga = std::get<0>(input_frame.time);
-        INFO("{:s}", input_frame.summary());
-        INFO("Diff {}, {}, {}", fpga, fpga0.value(), fpga - fpga0.value());
-        auto frame_tp = start_tp + (fpga - fpga0.value()) * clock_tick;
-        INFO("Frame time: {}", std::chrono::duration_cast<std::chrono::seconds>(frame_tp - start_tp));
+
+        // Set the first FPGA timesample
+        // if (!fpga0) {
+        //     fpga0 = fpga;
+        // }
+
+        if (!last_fpga) {
+            time_ind = 0;
+        }
+        else if (fpga != last_fpga.value()) {
+            time_ind++;
+        }
+        last_fpga = fpga;
+
+
+
+
+        // INFO("{:s}", input_frame.summary());
+        // INFO("Diff {}, {}, {}", fpga, fpga0.value(), fpga - fpga0.value());
+        // auto frame_tp = start_tp + (fpga - fpga0.value()) * clock_tick;
+        // INFO("Frame time: {}", std::chrono::duration_cast<std::chrono::seconds>(frame_tp - start_tp));
 
         // Wait for the output buffer to be empty of data
         if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
@@ -109,6 +136,12 @@ void ReplayFilter::main_thread() {
         allocate_new_metadata_object(out_buf, output_frame_id);
         auto output_frame = visFrameView(out_buf, output_frame_id, input_frame);
         (void)output_frame;
+
+        auto& [frame_fpga, frame_ctime] = output_frame.time;
+        frame_fpga = time_ind * _fpga_length;
+        auto frame_tp = start_tp + time_ind * frame_duration;
+        frame_ctime = timepoint_to_timespec(frame_tp);
+        INFO("{:s}", output_frame.summary());
 
         // Mark the input and output buffers and move on
         mark_frame_empty(in_buf, unique_name.c_str(), input_frame_id++);

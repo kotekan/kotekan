@@ -58,7 +58,8 @@ private:
     Buffer* out_buf;
 
     const double _start_time;
-    const double _fpga_length;
+    const uint64_t _fpga_length;
+    const double _ctime_length;
     const bool _wait;
     const bool _modify_times;
 
