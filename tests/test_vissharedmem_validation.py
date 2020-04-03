@@ -69,13 +69,11 @@ def comet_broker():
 
 
 # number of frames to ignore in validation
-ignore_frames = 3
-# maximum timing error to accept (in seconds)
-error_threshold = 5
+ignore_frames = 6
 params = {
-    "num_elements": 23,
+    "num_elements": 21,
     "num_ev": 1,
-    "total_frames": 19,
+    "total_frames": 21,
     "cadence": 1,
     "dataset_manager": {"use_dataset_broker": True},
     "mode": "default",
@@ -119,28 +117,25 @@ def test_shared_mem_buffer(vis_data, comet_broker):
     # start kotekan writer in a thread, to read before it's done (it will delete the shm on exit)
     threading.Thread(target=vis_data.run).start()
     sleep(2)
-    view_size = [1, 2, 3]
-    update_interval = [0.1, 1, 2]
+    view_size = [1, 2, 3, 3]
+    update_interval = [0.1, 1, 0.5, 5]
+    len_test = params["total_frames"] - ignore_frames
+
+    # allow the last reader to miss a lot of frames, but still exit before kotekan
+    len_test = [len_test] * (len(view_size) - 1) + [9]
 
     config = copy.copy(params)
     config["fakevis"] = params_fakevis
     config["writer"] = params_writer_stage
     validation = testing.SharedMemValidationTest(
-        params["total_frames"] - ignore_frames,
+        len_test,
         config,
-        3,
+        len(view_size),
         fname_buf,
         view_size,
         params["mode"],
         update_interval,
-        # TODO: set to 1 ?
-        error_threshold=-1,
+        threshold_frame_age_error=1,
+        threshold_cadence_error=0,
     )
     validation.run()
-
-    # test validation results
-    for delays, expected in zip(validation.delay, validation.expected_delay):
-        delay = np.array(delays)
-        expected_delay = np.array(expected)
-        error = np.subtract(delay, expected_delay)
-        assert np.all(error < error_threshold)

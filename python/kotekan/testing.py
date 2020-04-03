@@ -1,5 +1,6 @@
 """ Python interface for validating that a VisRaw object contains valid and expected data"""
 
+import copy
 import logging
 import numpy as np
 import time
@@ -169,8 +170,8 @@ class SharedMemValidationTest:
 
     Parameters
     ----------
-    len_test : int
-        Number of time slots to validate before ending the test.
+    len_test : int or list(int)
+        Number of time slots to validate before ending the test. If it should be different per reader, use a list of ints.
     config : dict
         Kotekan config used.
     num_readers : int
@@ -183,9 +184,14 @@ class SharedMemValidationTest:
         Name of the test pattern to expect in the frames.
     update_interval : int or list(int)
         Number of seconds to wait between update() calls. If it should be different per reader, use a list of ints.
-    error_threshold : float
-        Error thresholds in seconds. If a timing error greater than the threshold is detected,
+    threshold_frame_age_error : float
+        Error thresholds in seconds. If the difference between the age of a frame timestamp and
+        an expected age (reading speed, update_interval) is greater than the threshold is detected,
         a `ValidationFailed` is raised. If set to a negative value, no exception is raised.
+    threshold_cadence_error : float
+        When checking difference in frame timestamps, this is the maximum allowed error. If an
+        error greater than this is found, a `ValidationFailed` exception is raised. If set to a
+        negative value, no exception is raised.
 
     Attributes
     ----------
@@ -208,16 +214,17 @@ class SharedMemValidationTest:
         view_sizes,
         test_pattern,
         update_interval,
-        error_threshold,
+        threshold_frame_age_error,
+        threshold_cadence_error,
     ):
         # search config for everything we need
         self.cadence = get_from_config("cadence", config)
         self.shm_size = get_from_config("nsamples", config)
 
-        self.error_threshold = error_threshold
+        self.error_threshold = threshold_frame_age_error
+        self.theshold_cadence_error = threshold_cadence_error
         self.config = config
         self.num_readers = num_readers
-        self.len_test = len_test
 
         if test_pattern not in test_patterns:
             raise ValueError(
@@ -226,6 +233,17 @@ class SharedMemValidationTest:
                 )
             )
         self.test_pattern = test_pattern
+
+        if isinstance(len_test, int):
+            self.len_test = [len_test] * num_readers
+        else:
+            self.len_test = len_test
+        if len(self.len_test) != num_readers:
+            raise ValueError(
+                "Expected {} test lengths (= num_readers), but received {}.".format(
+                    num_readers, len(self.len_test)
+                )
+            )
 
         if isinstance(view_sizes, int):
             self.view_sizes = [view_sizes] * num_readers
@@ -265,7 +283,9 @@ class SharedMemValidationTest:
             self.update_time.append([])
 
         self._first_update(shared_memory_name)
-        self.validated_fpga_seqs = set()
+        self.validated_fpga_seqs = [set()] * self.num_readers
+        self._previous_invalid_timeslots = [0] * self.num_readers
+        self._last_read = [0] * self.num_readers
 
     def _first_update(self, shared_memory_name):
         """Get a minimal first update to get a start time."""
@@ -291,16 +311,20 @@ class SharedMemValidationTest:
         self._last_update_time = [self.start_time] * self.num_readers
 
     def run(self):
-        while self.len_test > len(self.validated_fpga_seqs):
-            next_check = min(self._next_check)
+        active_readers = set(range(self.num_readers))
+        while len(active_readers) > 0:
+            next_check = min([self._next_check[r] for r in active_readers])
             logger.info("Waiting {}s for next update.".format(next_check))
             time.sleep(next_check)
-            for r in range(self.num_readers):
+            for r in copy.copy(active_readers):
                 self._next_check[r] -= next_check
                 if self._next_check[r] <= 0:
-                    self.validated_fpga_seqs = self.validated_fpga_seqs.union(
+                    self.validated_fpga_seqs[r] = self.validated_fpga_seqs[r].union(
                         self._check(r)
                     )
+                    if len(self.validated_fpga_seqs[r]) >= self.len_test[r]:
+                        logger.info("Reader {} done.".format(r))
+                        active_readers.remove(r)
                     self._next_check[r] = self.update_interval[r]
 
     def _check(self, r):
@@ -315,77 +339,124 @@ class SharedMemValidationTest:
 
         return set(np.unique(visraw.time)[:]["fpga_count"])
 
-    def _validate_time(self, visraw, r):
-        age = time.time() - self._last_update_time[r]
-        time_valid = visraw.time[visraw.valid_frames.astype(np.bool)]
+    def _validate_age(self, visraw, r):
+        """Check if the difference between current time and the frame timestamps is acceptable.
 
+        Parameters
+        ----------
+        visraw : VisRaw
+            The data.
+        r : int
+            ID of the reader that gave us visraw.
+        """
+        now = time.time()
+        times_valid = visraw.time[visraw.valid_frames.astype(np.bool)]
         assert_equal(visraw.time.shape[1], visraw.num_freq)
-        times = np.unique(time_valid)
-
-        if len(times) > self.view_sizes[r]:
-            raise ValidationFailed("More time samples in visraw than reader view size ({} > {})."
-                                   .format(len(times), self.view_sizes[r]))
-
         assert_equal(visraw.time.shape[0], self.view_sizes[r])
 
+        times = np.unique(times_valid)
+
         # check first time slot
-        timestamp = times[0]
-
-        seconds = timestamp["ctime"]
-        fpga_seq = timestamp["fpga_count"]
-        ctime = time.ctime(seconds)
-        logger.info(
-            "Validating fpga_seq {} from {} (age {}s).".format(fpga_seq, ctime, age)
-        )
-
-        # determine if this age is acceptable
-        cadence = self.cadence
-
-        # calculate how much data we missed given cadence, limited buffer size and update frequency
-        # TODO: handle case where no new frames since last update expected
-        u_interval = self.update_interval[r]
-        frames_per_update = np.ceil(u_interval // cadence)
-        missed_frames = frames_per_update - self.shm_size
-        if missed_frames < 0:
-            missed_frames = 0
-        missed_time = missed_frames * cadence
-        expected_delay = missed_time + self.update_time[r][-1]
-        error = age - expected_delay
-        if error > cadence:
-            logger.info("Time error: {}".format(error))
-            if 0 < self.error_threshold < error:
-                raise ValidationFailed(
-                    "Time error of {}s in frame {} (age={})".format(
-                        error, fpga_seq, age
-                    )
-                )
-        self.expected_delay[r].append(expected_delay)
-        self.delay[r].append(age)
-
-        # check the rest
-        for t in range(1, len(times)):
-            timestamp = times[t]
-
+        for timestamp in times:
+            # timestamp = times[t]
             seconds = timestamp["ctime"]
             fpga_seq = timestamp["fpga_count"]
+            if fpga_seq in self.validated_fpga_seqs[r]:
+                logger.debug(
+                    "Frames with fpga_seq={} already read before, skipping...".format(
+                        fpga_seq
+                    )
+                )
+                continue
             ctime = time.ctime(seconds)
+            age = now - seconds
             logger.info(
                 "Validating fpga_seq {} from {} (age {}s).".format(fpga_seq, ctime, age)
             )
 
-            # determine if this age is acceptable
-            cadence = self.cadence
-            expected_delay = cadence + self.update_time[r][-1] + self.update_interval[r]
-            error = age - expected_delay
+            error = age - self.update_time[r][-1] - self.update_interval[r]
             if error > 0:
-                logger.warning("Time error: {}".format(error))
-                if 0 < self.error_threshold < error:
-                    raise ValidationFailed(
-                        "Time error of {}s in frame {} (age={})".format(
-                            error, fpga_seq, age
-                        )
-                    )
-            self.delay[r].append(age)
-            self.expected_delay[r].append(expected_delay)
+                msg = "Frames with fpga_seq={} read {:.3}s later than expected (age={:.3}, readerID={}).".format(
+                    fpga_seq, error, age, r
+                )
+                if (
+                    0 <= self.error_threshold < error
+                    and len(self.validated_fpga_seqs[r]) > self.view_sizes[r]
+                ):
+                    raise ValidationFailed(msg)
+                else:
+                    logger.info(msg)
 
-        self._last_update_time[r] = seconds
+    def _validate_time(self, visraw, r):
+        """Validation of all things time."""
+        self._validate_age(visraw, r)
+        self._validate_missing(visraw, r)
+
+    def _validate_missing(self, visraw, r):
+        """Check for missing frames and if this was to be expected."""
+
+        now = time.time()
+        valid = visraw.valid_frames.astype(np.bool)
+        invalid_timeslots = np.sum(~valid) // visraw.num_freq
+        times_valid = np.ma.masked_where(~valid, visraw.time, copy=False)
+        times = np.unique(times_valid)
+
+        # remove time slots we already checked last time from this check:
+        # if the update interval of the reader is higher than the time it takes the writer to fill
+        # the ringbuffer, we can expect big differences between those old, re-read values and
+        # the rest. But that's not interesting...
+        # TODO: this can be done in a nicer way. but I'm too tired...
+        new_ts = []
+        for t in range(len(times)):
+            tt = times[t]
+            if tt[0] and tt[0] not in self.validated_fpga_seqs[r]:
+                new_ts.append(t)
+        times = times[new_ts]
+
+        if len(times) == 0:
+            # nothing new to check
+            return
+
+        times.sort()
+        timestamps = [t[1] for t in times]
+
+        # check if there are missing times in between
+        if len(timestamps) > 1:
+            cadence_error = np.abs(np.diff(timestamps)) - self.cadence
+            for error in cadence_error:
+                msg = "Difference between times in one VisRaw higher than cadence={}: {}".format(
+                    self.cadence, error
+                )
+                if 0 <= self.theshold_cadence_error < error:
+                    raise ValidationFailed(msg)
+                else:
+                    logger.info(msg)
+
+        # check for data missed between reads
+        missed_time = timestamps[0] - self._last_update_time[r]
+        missed_time_measured = now - self._last_read[r]
+        frames_per_update = np.ceil(missed_time_measured / self.cadence)
+        expected = (
+            np.max((0, frames_per_update - self.shm_size))
+            + invalid_timeslots
+            + self._previous_invalid_timeslots[r]
+            + self.cadence
+        )
+        self._previous_invalid_timeslots[r] = invalid_timeslots
+
+        error = missed_time - expected
+        if error > 0:
+            msg = "Between this read and the last one of reader {}, there is a gap in frame timestamps of {}s (we expected not more than {}s).".format(
+                r, missed_time, expected
+            )
+            if (
+                0 <= self.theshold_cadence_error * expected < error
+                and len(self.validated_fpga_seqs[r]) > self.view_sizes[r]
+            ):
+                raise ValidationFailed(msg)
+            else:
+                logger.info(msg)
+
+        # things we want to know next time
+        self._last_read[r] = now
+        self._last_update_time[r] = timestamps[-1]

@@ -393,6 +393,9 @@ class SharedMemoryReader:
                     idxs_shm.append(t * self.num_freq + f_i)
                     idxs_buf[0].append(t_i)
                     idxs_buf[1].append(f_i)
+                    logger.debug(
+                        "Copying value to buffer time={}, freq={}".format(t_i, f_i)
+                    )
 
         # get a view to the data section in the shared memory region
         tmp = np.ndarray(
