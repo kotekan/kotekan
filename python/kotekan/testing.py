@@ -462,13 +462,14 @@ class SharedMemValidationTest:
         if len(timestamps) > 1:
             cadence_error = np.abs(np.diff(timestamps)) - self.cadence
             for error in cadence_error:
-                msg = "Difference between times in one VisRaw higher than cadence={}: {}".format(
-                    self.cadence, error
-                )
-                if 0 <= self.theshold_cadence_error < error:
-                    raise ValidationFailed(msg)
-                else:
-                    logger.info(msg)
+                if error > 0:
+                    msg = "Difference between times in one VisRaw higher than cadence={}: {}".format(
+                        self.cadence, error
+                    )
+                    if 0 <= self.theshold_cadence_error < error:
+                        raise ValidationFailed(msg)
+                    else:
+                        logger.info(msg)
 
         # check for data missed between reads
         missed_time = timestamps[0] - self._last_update_time[r]
@@ -484,8 +485,11 @@ class SharedMemValidationTest:
 
         error = missed_time - expected
         if error > 0:
-            msg = "Between this read and the last one of reader {}, there is a gap in frame timestamps of {}s (we expected not more than {}s).".format(
-                r, missed_time, expected
+            msg = (
+                "Between this read and the last one of reader {}, there is a gap in frame "
+                "timestamps of {}s (we expected not more than {}s).".format(
+                    r, missed_time, expected
+                )
             )
             if (
                 0 <= self.theshold_cadence_error * expected < error
