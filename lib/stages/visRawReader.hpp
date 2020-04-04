@@ -216,6 +216,7 @@ private:
 
     // Params for reading ring buffers
     bool ring;
+    bool loop;
     size_t ring_offset;
 };
 
