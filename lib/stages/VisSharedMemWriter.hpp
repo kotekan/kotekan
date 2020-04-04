@@ -24,7 +24,7 @@
  * @class VisSharedMemWriter
  * @brief Export calibration data out to a shared memory region
  *
- * This stage is an improvement upon visCalWriter. It exports the 
+ * This stage is an improvement upon visCalWriter. It exports the
  * most recent samples of the calibration data stream to a
  * fixed-length ring-buffer-like shared memory region.
  *
@@ -70,7 +70,7 @@
  *          @buffer_format visBuffer structured
  *          @buffer_metadata visMetadata
  *
- * @conf    root_path       String. Location in filesystem containing 
+ * @conf    root_path       String. Location in filesystem containing
  *                          shared memory and semaphore.
  * @conf    fname           Name of shared memory region and semaphore.
  * @conf    nsamples        Number of time samples stored in ring buffer.
