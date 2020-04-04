@@ -406,7 +406,7 @@ class SharedMemoryReader:
             order="C",
         )
         # copy all the values at once
-        self._data[idxs_buf[0], idxs_buf[1]] = tmp[idxs_shm].copy()
+        self._data[idxs_buf[0], idxs_buf[1]] = tmp[idxs_shm]
 
     def _access_record(self):
         with self.semaphore:
