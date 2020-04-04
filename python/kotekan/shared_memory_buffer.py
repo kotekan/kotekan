@@ -355,58 +355,47 @@ class SharedMemoryReader:
 
     def _copy_from_shm(self, times, access_record):
 
-        # indexes of data to copy from shared mem
-        idxs_shm = []
-
-        # indexes for where to put the data in the buffer of this module
-        # -> one list of indexes for time, one for frequency
-        idxs_buf = ([], [])
+        # time indexes of data to copy from and to
+        time_samples_to_copy = []
 
         # gather all indexes
         for t in times:
             for f_i in range(self.num_freq):
-                # check if this value should be copied: only if the access record changed and
-                # is not set to invalid
+                # check if this time sample should be copied: only if the access record changed and
+                # is not set to invalid (for at least one frequency)
                 if access_record[t, f_i] != self.invalid_value and (
                     self._last_access_record is None
                     or access_record[t, f_i] > self._last_access_record[t, f_i]
                 ):
-                    logger.debug("Copying value at time={}, freq={}".format(t, f_i))
-                    # check if this time slot is in local copy of data
-                    try:
-                        # this is a new frequency in a known time slot
-                        t_i = self._time_index_map[access_record[t, f_i]]
-                    except KeyError:
-                        # this is a new time slot for the local buffer
-                        if len(self._time_index_map) == self.view_size:
-                            t_i = self._remove_oldest_time_slot()
-                        else:
-                            t_i = self._find_free_time_slot()
-                        logger.debug(
-                            "Setting time index map [{}] to {}.".format(
-                                access_record[t, f_i], t_i
-                            )
+                    # this is a new time slot for the local buffer
+                    if len(self._time_index_map) == self.view_size:
+                        t_i = self._remove_oldest_time_slot()
+                    else:
+                        t_i = self._find_free_time_slot()
+                    logger.debug(
+                        "Setting time index map [{}] to {}.".format(
+                            access_record[t, f_i], t_i
                         )
-                        self._time_index_map[access_record[t, f_i]] = t_i
+                    )
+                    self._time_index_map[access_record[t, f_i]] = t_i
 
                     # remember index that we want to copy (from and to)
-                    idxs_shm.append(t * self.num_freq + f_i)
-                    idxs_buf[0].append(t_i)
-                    idxs_buf[1].append(f_i)
-                    logger.debug(
-                        "Copying value to buffer time={}, freq={}".format(t_i, f_i)
-                    )
+                    time_samples_to_copy.append((t, t_i))
+                    break
 
         # get a view to the data section in the shared memory region
         tmp = np.ndarray(
-            self.num_time * self.num_freq,
+            (self.num_time, self.num_freq),
             self._frame_struct,
             self.shared_mem,
             self.pos_data,
             order="C",
         )
-        # copy all the values at once
-        self._data[idxs_buf[0], idxs_buf[1]] = tmp[idxs_shm]
+
+        # copy all data
+        for (idx_shm, idx_data) in time_samples_to_copy:
+            logger.debug("Copying from time index {} to {}.".format(idx_data, idx_shm))
+            self._data[idx_data, :] = tmp[idx_shm, :]
 
     def _access_record(self):
         with self.semaphore:
