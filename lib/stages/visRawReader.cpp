@@ -54,6 +54,7 @@ visRawReader::visRawReader(Config& config, const std::string& unique_name,
 
     filename = config.get<std::string>(unique_name, "infile");
     ring = config.get_default<bool>(unique_name, "ring", false);
+    loop = config.get_default<bool>(unique_name, "loop", false);
     readahead_blocks = config.get<size_t>(unique_name, "readahead_blocks");
     max_read_rate = config.get_default<double>(unique_name, "max_read_rate", 0.0);
     sleep_time = config.get_default<float>(unique_name, "sleep_time", -1);
@@ -365,6 +366,9 @@ void visRawReader::main_thread() {
         mark_frame_full(out_buf, unique_name.c_str(), frame_id++);
         read_ind++;
         ind++;
+        if (loop) {
+            ind = ind % nframe;
+        }
 
         // Get the end time for the loop and sleep for long enough to satisfy
         // the max rate
