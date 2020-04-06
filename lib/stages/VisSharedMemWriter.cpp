@@ -55,7 +55,7 @@ VisSharedMemWriter::VisSharedMemWriter(Config& config, const std::string& unique
                                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&VisSharedMemWriter::main_thread, this)),
     dropped_frame_counter(Metrics::instance().add_counter(
-        "kotekan_vissharedmemwriter_dropped_frame_total", unique_name, {"fpga_count"})) {
+        "kotekan_vissharedmemwriter_dropped_frame_total", unique_name, {"freq_id", "reason"})) {
 
     // Fetch any simple configuration
     _root_path = config.get_default<std::string>(unique_name, "root_path", "/dev/shm/");
@@ -195,7 +195,7 @@ bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
         INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (minimum in pool "
              "{:d})\n",
              t.fpga_count, min_time.fpga_count);
-        dropped_frame_counter.labels({std::to_string(t.fpga_count)}).inc();
+        dropped_frame_counter.labels({std::to_string(frame.freq_id), "late"}).inc();
         return false;
     }
 
@@ -215,7 +215,7 @@ bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
         INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (only accepting "
              "new times greater than {:d})\n",
              t.fpga_count, max_time.fpga_count);
-        dropped_frame_counter.labels({std::to_string(t.fpga_count)}).inc();
+        dropped_frame_counter.labels({std::to_string(frame.freq_id), "order"}).inc();
         return false;
     }
 }
