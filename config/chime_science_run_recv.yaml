@@ -16,13 +16,7 @@
 type: config
 log_level: info
 num_elements: 2048
-num_local_freq: 1
-udp_packet_size: 4928
-num_data_sets: 1
-samples_per_data_set: 32768
 buffer_depth: 64
-num_gpu_frames: 128
-block_size: 32
 num_ev: 4
 
 # CPU affinity for most processes
@@ -83,17 +77,14 @@ vis_buffer:
     kotekan_buffer: vis
     buffer_depth: 1024
     num_prod: 4096
+
   visbuf_10s_cal:
     kotekan_buffer: vis
     num_prod: 2048
     buffer_depth: 1024  # Increase as this subset is produced very quickly
   visbuf_10s_timing:
+    num_elements: 11
     num_prod: 66
-    kotekan_buffer: vis
-    buffer_depth: 1024  # Increase as this subset is produced very quickly
-  visbuf_10s_timing_ne:
-    num_prod: 66
-    num_ev: 0
     kotekan_buffer: vis
     buffer_depth: 1024  # Increase as this subset is produced very quickly
 
@@ -199,8 +190,9 @@ apply_gains:
   kotekan_stage: applyGains
   in_buf: visbuf_10s_flags
   out_buf: visbuf_10s_gain
-  gains_dir: "/mnt/recv1/calibration/gain_updates/"
   updatable_config: "/updatable_config/gains"
+  broker_host: cv0r1
+  broker_port: 54328
 
 stacking:
   num_threads: 3
@@ -225,11 +217,10 @@ cal_subset:
   prod_subset_type: autos
 
 timing_subset:
-  kotekan_stage: prodSubset
+  kotekan_stage: InputSubset
   in_buf: visbuf_10s_flags
   out_buf: visbuf_10s_timing
-  prod_subset_type: only_inputs
-  input_list: [46, 142, 688, 944, 960, 1058, 1166, 1314, 1543, 2032, 2034]
+  inputs: [46, 142, 688, 944, 960, 1058, 1166, 1314, 1543, 2032, 2034]
 
 # Generate the monitoring freq full N^2 stream
 mfreq_subset:
@@ -243,25 +234,6 @@ mfreq_subset:
     in_buf: visbuf_10s_stack
     out_buf: visbuf_10s_stack_mfreq
     subset_list: *mapfreq
-
-buffer_writers:
-  file_length: 256
-  root_path: /mnt/recv1/buffer/
-  write_ev: True
-  file_base: buffer
-
-  cal:
-    kotekan_stage: visCalWriter
-    in_buf: visbuf_10s_cal
-    instrument_name: chimecal
-    file_length: 256
-    dir_name: cal
-
-  timing:
-    kotekan_stage: visCalWriter
-    in_buf: visbuf_10s_timing
-    instrument_name: chimetiming
-    dir_name: timing
 
 remove_ev:
   chimestack:
@@ -339,7 +311,18 @@ archive_writers:
 buffer_send:
   server_ip: 10.1.50.11
   log_level: warn
+
   stack_mfreq:
     kotekan_stage: bufferSend
     buf: visbuf_10s_stack_mfreq
     server_port: 14096
+
+  cal:
+    kotekan_stage: bufferSend
+    buf: visbuf_10s_cal
+    server_port: 15001
+
+  timing:
+    kotekan_stage: bufferSend
+    in_buf: visbuf_10s_timing
+    server_port: 15002

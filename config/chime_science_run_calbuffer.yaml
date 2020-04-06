@@ -1,0 +1,81 @@
+##########################################
+#
+# chime_science_run_recv.yaml
+#
+# CHIME receiver node configuration used in the mid-November 2018 run.
+# This configuration turns off saving of the 26m datasets.
+#
+# For the N2 data it includes, 10 second calibration data,
+# full triangles for 10 frequencies at 10 seconds, and stacked
+# data over all frequencies.
+#
+# Author: Richard Shaw
+#
+##########################################
+---
+type: config
+log_level: info
+num_elements: 2048
+num_ev: 4
+
+# CPU affinity for most processes
+cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+
+dataset_manager:
+  use_dataset_broker: True
+  ds_broker_host: "10.1.50.11" # recv1
+
+vis_pool:
+  kotekan_metadata_pool: visMetadata
+  num_metadata_objects: 8192
+
+vis_buffer:
+  metadata_pool: vis_pool
+  num_frames: buffer_depth
+
+  visbuf_10s_cal:
+    kotekan_buffer: vis
+    num_prod: 2048
+    buffer_depth: 1024  # Increase as this subset is produced very quickly
+  visbuf_10s_timing:
+    num_elements: 11
+    num_prod: 66
+    kotekan_buffer: vis
+    buffer_depth: 2048  # Increase as this subset is produced very quickly
+
+
+# Kotekan stages
+buffer_recv:
+  log_level: warn
+  cal:
+    kotekan_stage: bufferRecv
+    buf: visbuf_10s_cal
+    listen_port: 15001
+  timing:
+    kotekan_stage: bufferRecv
+    buf: visbuf_10s_timing
+
+vis_debug:
+  cal:
+    kotekan_stage: visDebug
+    in_buf: visbuf_10s_cal
+  timing:
+    kotekan_stage: visDebug
+    in_buf: visbuf_10s_timing
+
+buffer_status:
+  kotekan_stage: bufferStatus
+  print_status: false
+
+
+vis_shm_buffer:
+  cal:
+    kotekan_stage: VisSharedMemWriter
+    in_buf: visbuf_10s_cal
+    fname: calshm
+    nsamples: 256
+  timing:
+    kotekan_stage: VisSharedMemWriter
+    in_buf: visbuf_10s_timing
+    fname: timingshm
+    nsamples: 64
