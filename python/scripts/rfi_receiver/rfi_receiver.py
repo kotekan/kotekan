@@ -802,7 +802,7 @@ def rfi_zeroing():
         time.sleep(1)
     while True:
         # Wait until the correct UTC time of the solar transit at DRAO (deals with daylight savings time)
-        t_now = datetime.utcnow()
+        t_now = datetime.datetime.utcnow()
         t_transit = ephemeris.solar_transit(t_now)[0]
         t_diff = datetime.utcfromtimestamp(t_transit) - t_now
 
