@@ -6,13 +6,14 @@
 #ifndef VISSHAREDMEMWRITER_HPP
 #define VISSHAREDMEMWRITER_HPP
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "buffer.h"            // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for dset_id_t, fingerprint_t
-#include "visBuffer.hpp"       // for visFrameView
-#include "visUtil.hpp"         // for time_ctype
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, fingerprint_t
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily
+#include "visBuffer.hpp"         // for visFrameView
+#include "visUtil.hpp"           // for time_ctype
 
 #include <cstdint>     // for uint32_t, uint64_t, uint8_t
 #include <map>         // for map
@@ -213,6 +214,9 @@ protected:
 
     // The stream's keyed fingerprint
     fingerprint_t stream_fingerprint;
+
+private:
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& dropped_frame_counter;
 };
 
 #endif // VISSHAREDMEMWRITER_HPP

@@ -5,8 +5,9 @@
 #include "datasetManager.hpp" // for datasetManager
 #include "datasetState.hpp"   // for freqState, eigenvalueState, inputState, prodState, stackState
 #include "kotekanLogging.hpp" // for INFO, DEBUG, ERROR, FATAL_ERROR
-#include "visBuffer.hpp"      // for visFrameView, visMetadata
-#include "visUtil.hpp"        // for time_ctype, frameID, ts_to_double
+#include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily, Gauge
+#include "visBuffer.hpp"         // for visFrameView, visMetadata
+#include "visUtil.hpp"           // for time_ctype, frameID, ts_to_double
 
 #include "fmt.hpp" // for format, fmt
 
@@ -34,6 +35,7 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 
 REGISTER_KOTEKAN_STAGE(VisSharedMemWriter);
@@ -51,8 +53,9 @@ void check_remove(std::string fname) {
 
 VisSharedMemWriter::VisSharedMemWriter(Config& config, const std::string& unique_name,
                                        bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container,
-          std::bind(&VisSharedMemWriter::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&VisSharedMemWriter::main_thread, this)),
+    dropped_frame_counter(Metrics::instance().add_counter(
+        "kotekan_vissharedmemwriter_dropped_frame_total", unique_name, {"fpga_count"})) {
 
     // Fetch any simple configuration
     _root_path = config.get_default<std::string>(unique_name, "root_path", "/dev/shm/");
@@ -192,6 +195,7 @@ bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
         INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (minimum in pool "
              "{:d})\n",
              t.fpga_count, min_time.fpga_count);
+        dropped_frame_counter.labels({std::to_string(t.fpga_count)}).inc();
         return false;
     }
 
@@ -211,6 +215,7 @@ bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
         INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (only accepting "
              "new times greater than {:d})\n",
              t.fpga_count, max_time.fpga_count);
+        dropped_frame_counter.labels({std::to_string(t.fpga_count)}).inc();
         return false;
     }
 }
