@@ -53,10 +53,7 @@ params_fakevis_large = {
 
 global num_frames
 
-params_writer_stage = {
-    "nsamples": global_params["total_frames"],
-    "fname": fname,
-}
+params_writer_stage = {"nsamples": global_params["total_frames"], "fname": fname}
 
 size_of_uint64 = 8
 num_structural_params = 6

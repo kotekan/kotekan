@@ -103,6 +103,12 @@ void VisSharedMemWriter::wait_for_semaphore() {
     // handles timed waits for semaphores
     // does a standard wait if the system clock is not accessible
 
+#ifdef MAC_OSX
+    if (sem_wait(sem) == -1) {
+        FATAL_ERROR("Failed to acquire semaphore {}", _fname);
+        return;
+    }
+#else
     timespec ts;
     if (clock_gettime(CLOCK_REALTIME, &ts) == -1) {
         WARN("Failed to get system time. {:d} ({:s}) Not using timed semaphores.", errno,
@@ -120,6 +126,7 @@ void VisSharedMemWriter::wait_for_semaphore() {
         return;
     }
     return;
+#endif
 }
 
 void VisSharedMemWriter::release_semaphore() {

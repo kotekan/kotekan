@@ -62,12 +62,9 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       compressData.cpp
       bufferBadInputs.cpp
       RfiFrameDrop.cpp
+      VisSharedMemWriter.cpp
     )
 
-
-if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    set(KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} VisSharedMemWriter.cpp)
-endif()
 
 if (${USE_AIRSPY})
   include_directories(${LIBAIRSPY_INCLUDE_DIR})
