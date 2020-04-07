@@ -190,8 +190,7 @@ bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
              t.fpga_count, max_time.fpga_count);
         dropped_frame_counter.labels({std::to_string(frame.freq_id), "order"}).inc();
         return false;
-    }
-    else if (t < min_time) {
+    } else if (t < min_time) {
         // this data is older than anything else in the map, so we should
         // just drop it
         INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (minimum in pool "
