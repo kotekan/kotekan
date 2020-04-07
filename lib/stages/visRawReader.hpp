@@ -51,6 +51,8 @@
  * @conf    sleep_time          Float. After the data is read pause this long in
  *                              seconds before sending shutdown. If < 0, never
  *                              send a shutdown signal. Default is -1.
+ * @conf    update_dataset_id   Bool. Update the dataset ID with information about the
+                                file, for example which time samples does it contain.
  * @conf    use_dataset_broker  Bool. Restore dataset ID from dataset broker (i.e. comet).
  *                              Should be disabled only for testing. Default is true.
  *
@@ -119,12 +121,17 @@ public:
 
 private:
     /**
-     * @brief Get dataset states from the broker and add a timeState.
+     * @brief Get the new dataset ID.
      *
-     * If not using the broker, create the following states: metadata, time, prod,
-     * freq, input, eigenvalue and, if the data is stacked, stack.
+     * If not using change the ID this just returns its input ID. If using the
+     * broker, this will simply append a timeState to the current state.
+     * Otherwise, we just use a static dataset_id constructed from the file
+     * metadata.
+     *
+     * @param  ds_id  The ID of the read frame.
+     * @returns       The replacement ID
      */
-    void get_dataset_state(dset_id_t ds_id);
+    dset_id_t get_dataset_state(dset_id_t ds_id);
 
     /**
      * @brief Read the next frame.
@@ -163,6 +170,9 @@ private:
     // whether to read in chunks
     bool chunked;
 
+    // whether to update the dataset ID with info about the file
+    bool update_dataset_id;
+
     // whether to use comet to track dataset IDs
     bool use_comet;
 
@@ -186,8 +196,8 @@ private:
     // Number of blocks to read ahead while reading from disk
     size_t readahead_blocks;
 
-    // Dataset ID to assign to output frames
-    dset_id_t out_dset_id;
+    // Dataset ID to assign to output frames if not using comet
+    dset_id_t static_out_dset_id;
 
     // the dataset state for the time axis
     state_id_t tstate_id;
