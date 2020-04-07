@@ -176,20 +176,22 @@ bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
         vis_time_ind_map[t] = cur_pos;
         write_to_memory(frame, vis_time_ind_map.at(t), freq_ind);
         return true;
-    } else if (vis_time_ind_map.size() < rbs._ntime) {
-        // if there is still empty space in the shared buffer
-        // add an additional time index
-        cur_pos++;
-        vis_time_ind_map[t] = cur_pos;
-        write_to_memory(frame, vis_time_ind_map.at(t), freq_ind);
-        return true;
     }
 
     // obtain the most recent and oldest time
     time_ctype max_time = vis_time_ind_map.rbegin()->first;
     time_ctype min_time = vis_time_ind_map.begin()->first;
 
-    if (t < min_time) {
+    if ((t > min_time) && (t < max_time)) {
+        // if the time sample is not indexed, and is between the min_time and max_time, we are going
+        // to just drop it
+        INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (only accepting "
+             "new times greater than {:d})\n",
+             t.fpga_count, max_time.fpga_count);
+        dropped_frame_counter.labels({std::to_string(frame.freq_id), "order"}).inc();
+        return false;
+    }
+    else if (t < min_time) {
         // this data is older than anything else in the map, so we should
         // just drop it
         INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (minimum in pool "
@@ -199,7 +201,7 @@ bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
         return false;
     }
 
-    else if (t > max_time) {
+    else {
         // we need to drop the oldest time
         cur_pos++;
         reset_memory(cur_pos);
@@ -209,14 +211,6 @@ bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
         vis_time_ind_map[t] = cur_pos;
         write_to_memory(frame, vis_time_ind_map.at(t), freq_ind);
         return true;
-    } else {
-        // if the time sample is not indexed, and is between the min_time and max_time, we are going
-        // to just drop it
-        INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (only accepting "
-             "new times greater than {:d})\n",
-             t.fpga_count, max_time.fpga_count);
-        dropped_frame_counter.labels({std::to_string(frame.freq_id), "order"}).inc();
-        return false;
     }
 }
 
