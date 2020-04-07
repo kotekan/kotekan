@@ -10,6 +10,7 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 #
 
 import pytest
+import subprocess
 
 
 def pytest_addoption(parser):
@@ -19,6 +20,16 @@ def pytest_addoption(parser):
         metavar="NAME",
         help="only run tests matching the environment NAME.",
     )
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_call(item):
+    df = subprocess.Popen(["df", "-h"], stdout=subprocess.PIPE)
+    output = df.communicate()[0]
+    print(output.decode())
+    yield
+    df = subprocess.Popen(["df", "-h"], stdout=subprocess.PIPE)
+    output = df.communicate()[0]
+    print(output.decode())
 
 
 def pytest_configure(config):
