@@ -1,5 +1,6 @@
 comet @ git+https://github.com/chime-experiment/comet.git
 prometheus_client @ git+https://github.com/prometheus/client_python.git
+ch_util @ ssh+git@github.com:chime-experiment/ch_util.git
 logging
 threading
 socket
