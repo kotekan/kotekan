@@ -37,10 +37,12 @@ import json
 import imp
 from ch_util import ephemeris
 
-_version = imp.load_source("get_versions", "../../_version.py")
-
-__version__ = _version.get_versions()["version"]
-del _version
+try:
+    _version = imp.load_source("get_versions", "../../_version.py")
+    __version__ = _version.get_versions()["version"]
+    del _version
+except FileNotFoundError:
+    __version__ = "default_version"
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -795,7 +797,7 @@ def rfi_zeroing():
     downtime_m = 60
 
     # Endpoint parameters
-    url = "http://csBfs:54323/toggle-rfi-zeroing"
+    url = 'http://csBfs:54323/rfi-zeroing-toggle'
     headers = {"content-type": "application/json", "Accept-Charset": "UTF-8"}
 
     logger.info("Starting rfi_zeroing thread")
