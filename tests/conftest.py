@@ -21,6 +21,7 @@ def pytest_addoption(parser):
         help="only run tests matching the environment NAME.",
     )
 
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_call(item):
     df = subprocess.Popen(["df", "-h"], stdout=subprocess.PIPE)

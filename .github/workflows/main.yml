@@ -80,6 +80,12 @@ jobs:
     steps:
     - uses: actions/checkout@v1
 
+    - name: free disk space
+      run: |
+          sudo apt clean
+          docker rmi $(docker image ls -aq)
+          df -h
+
     - name: Cache ccache files
       uses: actions/cache@v1
       with:
