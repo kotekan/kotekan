@@ -116,6 +116,7 @@ if (${USE_EVENT})
 endif ()
 
 if (${USE_LAPACK})
+  include_directories( ${BLAS_INCLUDE_DIRS} )
   include_directories( ${LAPACKE_INCLUDE_DIRS} )
   target_link_libraries( kotekan_stages ${BLAS_LIBRARIES} )
   target_link_libraries( kotekan_stages ${LAPACK_LIBRARIES} )
