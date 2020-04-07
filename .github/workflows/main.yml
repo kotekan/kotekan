@@ -80,6 +80,10 @@ jobs:
     steps:
     - uses: actions/checkout@v1
 
+    - name: check available disk space
+      run: |
+          df -h
+
     - name: Cache ccache files
       uses: actions/cache@v1
       with:
