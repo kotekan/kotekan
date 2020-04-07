@@ -201,10 +201,12 @@ bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
     }
 
     else {
-        // we need to drop the oldest time
         cur_pos++;
-        reset_memory(cur_pos);
-        vis_time_ind_map.erase(min_time);
+        if (vis_time_ind_map.size() == rbs._ntime) {
+            // we need to drop the oldest time
+            reset_memory(cur_pos);
+            vis_time_ind_map.erase(min_time);
+        }
 
         // and replace it with the new most recent time
         vis_time_ind_map[t] = cur_pos;
