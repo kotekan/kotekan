@@ -35,6 +35,7 @@ import subprocess
 import requests
 import json
 import imp
+from ch_util import ephemeris
 
 _version = imp.load_source("get_versions", "../../_version.py")
 
@@ -804,7 +805,7 @@ def rfi_zeroing():
         # Wait until the correct UTC time of the solar transit at DRAO (deals with daylight savings time)
         t_now = datetime.datetime.utcnow()
         t_transit = ephemeris.solar_transit(t_now)[0]
-        t_diff = datetime.utcfromtimestamp(t_transit) - t_now
+        t_diff = datetime.datetime.utcfromtimestamp(t_transit) - t_now
 
         time_to_transit_s = abs(t_diff.total_seconds())
         downtime_s = downtime_m * 60
