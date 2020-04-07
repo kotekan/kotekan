@@ -367,17 +367,20 @@ class SharedMemoryReader:
                     self._last_access_record is None
                     or access_record[t, f_i] > self._last_access_record[t, f_i]
                 ):
-                    # this is a new time slot for the local buffer
-                    if len(self._time_index_map) == self.view_size:
-                        t_i = self._remove_oldest_time_slot()
-                    else:
-                        t_i = self._find_free_time_slot()
-                    logger.debug(
-                        "Setting time index map [{}] to {}.".format(
-                            access_record[t, f_i], t_i
+                    # find the correct time slot for the local buffer
+                    try:
+                        t_i = self._time_index_map[access_record[t, f_i]]
+                    except KeyError:
+                        if len(self._time_index_map) == self.view_size:
+                            t_i = self._remove_oldest_time_slot()
+                        else:
+                            t_i = self._find_free_time_slot()
+                        logger.debug(
+                            "Setting time index map [{}] to {}.".format(
+                                access_record[t, f_i], t_i
+                            )
                         )
-                    )
-                    self._time_index_map[access_record[t, f_i]] = t_i
+                        self._time_index_map[access_record[t, f_i]] = t_i
 
                     # remember index that we want to copy (from and to)
                     time_samples_to_copy.append((t, t_i))

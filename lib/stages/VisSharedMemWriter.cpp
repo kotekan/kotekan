@@ -103,12 +103,18 @@ void VisSharedMemWriter::wait_for_semaphore() {
     // handles timed waits for semaphores
     // does a standard wait if the system clock is not accessible
 
+#ifdef MAC_OSX
+    if (sem_wait(sem) == -1) {
+        FATAL_ERROR("Failed to acquire semaphore {}", _fname);
+        return;
+    }
+#else
     timespec ts;
     if (clock_gettime(CLOCK_REALTIME, &ts) == -1) {
-        WARN("Failed to get system time. {:d} ({:s})\n Not using timed semaphores.\n", errno,
+        WARN("Failed to get system time. {:d} ({:s}) Not using timed semaphores.", errno,
              std::strerror(errno));
         if (sem_wait(sem) == -1) {
-            FATAL_ERROR("Failed to acquire semaphore {}\n", _fname);
+            FATAL_ERROR("Failed to acquire semaphore {}", _fname);
             return;
         }
         return;
@@ -116,10 +122,11 @@ void VisSharedMemWriter::wait_for_semaphore() {
 
     ts.tv_sec += _sem_wait_time;
     if (sem_timedwait(sem, &ts) == -1) {
-        FATAL_ERROR("sem_timedwait() timed out\n");
+        FATAL_ERROR("sem_timedwait() timed out");
         return;
     }
     return;
+#endif
 }
 
 void VisSharedMemWriter::release_semaphore() {
@@ -145,7 +152,7 @@ uint8_t* VisSharedMemWriter::assign_memory(std::string shm_name, size_t shm_size
     if (ftruncate(fd, shm_size) == -1) {
         FATAL_ERROR("Failed to expand shared memory named {:s}: {:s}", shm_name, strerror(errno));
     }
-    INFO("Resized to {} bytes\n", (long)shm_size);
+    INFO("Resized to {} bytes", (long)shm_size);
 
     addr = (uint8_t*)mmap(nullptr, shm_size, (PROT_READ | PROT_WRITE), MAP_SHARED, fd, 0);
     if (addr == MAP_FAILED) {
@@ -186,7 +193,7 @@ bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
         // if the time sample is not indexed, and is between the min_time and max_time, we are going
         // to just drop it
         INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (only accepting "
-             "new times greater than {:d})\n",
+             "new times greater than {:d})",
              t.fpga_count, max_time.fpga_count);
         dropped_frame_counter.labels({std::to_string(frame.freq_id), "order"}).inc();
         return false;
@@ -194,17 +201,19 @@ bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
         // this data is older than anything else in the map, so we should
         // just drop it
         INFO("Dropping integration as buffer (FPGA count: {:d}) arrived too late (minimum in pool "
-             "{:d})\n",
+             "{:d})",
              t.fpga_count, min_time.fpga_count);
         dropped_frame_counter.labels({std::to_string(frame.freq_id), "late"}).inc();
         return false;
     }
 
     else {
-        // we need to drop the oldest time
         cur_pos++;
-        reset_memory(cur_pos);
-        vis_time_ind_map.erase(min_time);
+        if (vis_time_ind_map.size() == rbs._ntime) {
+            // we need to drop the oldest time
+            reset_memory(cur_pos);
+            vis_time_ind_map.erase(min_time);
+        }
 
         // and replace it with the new most recent time
         vis_time_ind_map[t] = cur_pos;
@@ -220,7 +229,7 @@ void VisSharedMemWriter::reset_memory(uint32_t time_ind) {
     uint8_t* buf_write_pos = buf_addr + (time_ind * rbs.nfreq * rbs.frame_size);
     int64_t* access_record_write_pos = access_record_addr + (time_ind * rbs.nfreq);
 
-    DEBUG("Resetting access_record memory at position time_ind: {}\n", time_ind);
+    DEBUG("Resetting access_record memory at position time_ind: {}", time_ind);
 
     // notify that the entire time_ind is invalid, by setting time_ind in the access record to
     // invalid
@@ -230,11 +239,11 @@ void VisSharedMemWriter::reset_memory(uint32_t time_ind) {
 
     release_semaphore();
 
-    INFO("Resetting ring buffer memory at position time_ind: {}\n", time_ind);
+    DEBUG("Resetting ring buffer memory at position time_ind: {}", time_ind);
     // set the full time_ind to 0 in the ring buffer
     memset(buf_write_pos, 0, rbs.nfreq * rbs.frame_size);
 
-    DEBUG("Memory reset\n");
+    DEBUG("Memory reset");
 }
 
 void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t time_ind,
@@ -244,7 +253,7 @@ void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
     uint8_t* buf_write_pos = buf_addr + ((time_ind * rbs.nfreq + freq_ind) * rbs.frame_size);
     int64_t* access_record_write_pos = access_record_addr + (time_ind * rbs.nfreq + freq_ind);
 
-    DEBUG("Writing ringbuffer to time_ind {} and freq_ind {}\n", time_ind, freq_ind);
+    DEBUG("Writing ringbuffer to time_ind {} and freq_ind {}", time_ind, freq_ind);
 
     // notify that time_ind and freq_ind are being written to, by setting that
     // location to invalid in the access record
@@ -266,7 +275,7 @@ void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
 
     wait_for_semaphore();
 
-    DEBUG("Writing fpga_seq {} to time index {}\n", fpga_seq, time_ind);
+    DEBUG("Writing fpga_seq {} to time index {}", fpga_seq, time_ind);
     *access_record_write_pos = fpga_seq;
 
     // update num_writes
@@ -278,7 +287,7 @@ void VisSharedMemWriter::write_to_memory(const visFrameView& frame, uint32_t tim
 }
 
 void VisSharedMemWriter::main_thread() {
-    DEBUG("Reached main thread\n");
+    DEBUG("Reached main thread");
 
     frameID frame_id(in_buf);
 
@@ -294,7 +303,7 @@ void VisSharedMemWriter::main_thread() {
         return;
     }
 
-    DEBUG("Semaphore created.\n");
+    DEBUG("Semaphore created.");
 
     // Acquire semaphore until shared memory is created
     wait_for_semaphore();
@@ -358,7 +367,7 @@ void VisSharedMemWriter::main_thread() {
     // initially set the address records with -1
     std::fill_n(access_record_addr, rbs._ntime * rbs.nfreq, invalid);
 
-    INFO("Created the shared memory segments\n");
+    INFO("Created the shared memory buffer {}", _fname);
     release_semaphore();
 
     // gets called once when kotekan is running
