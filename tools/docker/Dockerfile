@@ -4,7 +4,8 @@ FROM rocm/dev-ubuntu-18.04
 MAINTAINER Rick Nitsche <rick@phas.ubc.ca>
 
 # Install any needed packages to run cmake with full CHIME build options
-RUN apt-get update && \
+RUN apt-get clean && \
+    apt-get update && \
     apt-get install -y software-properties-common && \
     add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && \

@@ -54,6 +54,7 @@ buffer_recv:
   timing:
     kotekan_stage: bufferRecv
     buf: visbuf_10s_timing
+    listen_port: 15002
 
 vis_debug:
   cal:

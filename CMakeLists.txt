@@ -88,8 +88,13 @@ endif()
 include(CheckIncludeFileCXX)
 if (${USE_LAPACK})
 
+  set(BLA_VENDOR OpenBLAS)
   find_package( BLAS REQUIRED )
+  find_path(BLAS_INCLUDE_DIRS cblas.h
+            PATHS /usr/include /usr/local/include
+            PATH_SUFFIXES openblas)
   MESSAGE("Using BLAS ${BLAS_LIBRARIES}")
+  MESSAGE("Using BLAS includes ${BLAS_INCLUDE_DIRS}")
   find_package( LAPACK REQUIRED )
   MESSAGE("Using LAPACK ${LAPACK_LIBRARIES}")
   find_package( LAPACKE REQUIRED )
