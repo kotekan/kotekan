@@ -168,7 +168,7 @@ uint8_t* VisSharedMemWriter::assign_memory(std::string shm_name, size_t shm_size
     return addr;
 }
 
-bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uint32_t freq_ind) {
+void VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uint32_t freq_ind) {
     // calculate the time index for time sample t, add the frame for time sample t at position
     // frequency index
     //
@@ -177,12 +177,12 @@ bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
     if (vis_time_ind_map.count(t) != 0) {
         // if the time is already indexed, write to memory at that location
         write_to_memory(frame, vis_time_ind_map.at(t), freq_ind);
-        return true;
+        return;
     } else if (vis_time_ind_map.size() == 0) {
         // the first sample added, so we do not increment by 1
         vis_time_ind_map[t] = cur_pos;
         write_to_memory(frame, vis_time_ind_map.at(t), freq_ind);
-        return true;
+        return;
     }
 
     // obtain the most recent and oldest time
@@ -196,7 +196,7 @@ bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
              "new times greater than {:d})",
              t.fpga_count, max_time.fpga_count);
         dropped_frame_counter.labels({std::to_string(frame.freq_id), "order"}).inc();
-        return false;
+        return;
     } else if (t < min_time) {
         // this data is older than anything else in the map, so we should
         // just drop it
@@ -204,7 +204,7 @@ bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
              "{:d})",
              t.fpga_count, min_time.fpga_count);
         dropped_frame_counter.labels({std::to_string(frame.freq_id), "late"}).inc();
-        return false;
+        return;
     }
 
     else {
@@ -218,7 +218,7 @@ bool VisSharedMemWriter::add_sample(const visFrameView& frame, time_ctype t, uin
         // and replace it with the new most recent time
         vis_time_ind_map[t] = cur_pos;
         write_to_memory(frame, vis_time_ind_map.at(t), freq_ind);
-        return true;
+        return;
     }
 }
 
@@ -381,6 +381,9 @@ void VisSharedMemWriter::main_thread() {
 
         // Get a view of the current frame
         auto frame = visFrameView(in_buf, frame_id);
+
+        if (frame.data_size != rbs.data_size)
+            FATAL_ERROR("Size of data changed mid-stream.");
 
         // Check that the dataset ID hasn't chaned
         if (unique_dataset_ids.count(frame.dataset_id) == 0) {
