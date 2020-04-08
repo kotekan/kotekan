@@ -82,7 +82,6 @@ jobs:
 
     - name: free disk space
       run: |
-          docker rmi $(docker image ls -aq)
           df -h
 
     - name: Cache ccache files
