@@ -47,11 +47,11 @@ ringmap_pipe:
   in_buf: visbuf_10s
 
 redundant_stack:
-  kotekan_stage: redundantStack
+  kotekan_stage: RedundantStack
   in_buf: visbuf_10s
   out_buf: visbuf_10s_redun
 
 ringmaps:
-  kotekan_stage: mapMaker
+  kotekan_stage: RingMapMaker
   in_buf: visbuf_10s_redun
 

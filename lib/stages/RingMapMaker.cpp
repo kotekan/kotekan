@@ -1,4 +1,4 @@
-#include "ringmap.hpp"
+#include "RingMapMaker.hpp"
 
 #include "StageFactory.hpp"
 #include "datasetManager.hpp"
@@ -18,18 +18,19 @@ using kotekan::restServer;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
 
-REGISTER_KOTEKAN_STAGE(mapMaker);
-REGISTER_KOTEKAN_STAGE(redundantStack);
+REGISTER_KOTEKAN_STAGE(RingRingMapMaker);
+REGISTER_KOTEKAN_STAGE(RedundantStack);
 
-mapMaker::mapMaker(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&mapMaker::main_thread, this)) {
+RingMapMaker::RingMapMaker(Config& config, const string& unique_name,
+                           bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&RingMapMaker::main_thread, this)) {
 
     // Register REST callbacks
-    restServer::instance().register_post_callback(
-        "ringmap",
-        std::bind(&mapMaker::rest_callback, this, std::placeholders::_1, std::placeholders::_2));
+    restServer::instance().register_post_callback("ringmap", std::bind(&RingMapMaker::rest_callback,
+                                                                       this, std::placeholders::_1,
+                                                                       std::placeholders::_2));
     restServer::instance().register_get_callback(
-        "ringmap", std::bind(&mapMaker::rest_callback_get, this, std::placeholders::_1));
+        "ringmap", std::bind(&RingMapMaker::rest_callback_get, this, std::placeholders::_1));
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -42,7 +43,7 @@ mapMaker::mapMaker(Config& config, const string& unique_name, bufferContainer& b
     exclude_autos = config.get_default<bool>(unique_name, "exclude_autos", true);
 }
 
-void mapMaker::main_thread() {
+void RingMapMaker::main_thread() {
 
     // coefficients of CBLAS multiplication
     float alpha = 1.;
@@ -142,7 +143,7 @@ void mapMaker::main_thread() {
     }
 }
 
-void mapMaker::rest_callback_get(kotekan::connectionInstance& conn) {
+void RingMapMaker::rest_callback_get(kotekan::connectionInstance& conn) {
 
     // Return the available frequencies and polarisations
     nlohmann::json resp;
@@ -158,7 +159,7 @@ void mapMaker::rest_callback_get(kotekan::connectionInstance& conn) {
     return;
 }
 
-void mapMaker::rest_callback(kotekan::connectionInstance& conn, nlohmann::json& json) {
+void RingMapMaker::rest_callback(kotekan::connectionInstance& conn, nlohmann::json& json) {
     // return the map for the specified frequency and polarization in JSON format
     // make sure to lock the map arrays
 
@@ -191,7 +192,7 @@ void mapMaker::rest_callback(kotekan::connectionInstance& conn, nlohmann::json& 
     return;
 }
 
-void mapMaker::change_dataset_state(dset_id_t new_ds_id) {
+void RingMapMaker::change_dataset_state(dset_id_t new_ds_id) {
 
     // Update stored ID
     ds_id = new_ds_id;
@@ -216,7 +217,7 @@ void mapMaker::change_dataset_state(dset_id_t new_ds_id) {
     }
 
     if (sstate == nullptr) {
-        FATAL_ERROR("MapMaker requires visibilities stacked.");
+        FATAL_ERROR("RingMapMaker requires visibilities stacked.");
     }
 
     stacks = sstate->get_stack_map();
@@ -227,7 +228,7 @@ void mapMaker::change_dataset_state(dset_id_t new_ds_id) {
     num_stack = sstate->get_num_stack();
 }
 
-bool mapMaker::setup(size_t frame_id) {
+bool RingMapMaker::setup(size_t frame_id) {
 
     // Wait for the input buffer to be filled with data
     if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
@@ -280,7 +281,7 @@ bool mapMaker::setup(size_t frame_id) {
     return true;
 }
 
-void mapMaker::gen_matrices() {
+void RingMapMaker::gen_matrices() {
 
     // calculate baseline for every stacked product
     ns_baselines.resize(num_bl);
@@ -326,7 +327,7 @@ void mapMaker::gen_matrices() {
     }
 }
 
-int64_t mapMaker::resolve_time(time_ctype t) {
+int64_t RingMapMaker::resolve_time(time_ctype t) {
 
     if (t.ctime < min_ctime) {
         // time is too old, discard
@@ -377,9 +378,9 @@ int64_t mapMaker::resolve_time(time_ctype t) {
     return res->second;
 }
 
-redundantStack::redundantStack(Config& config, const string& unique_name,
+RedundantStack::RedundantStack(Config& config, const string& unique_name,
                                bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&redundantStack::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&RedundantStack::main_thread, this)) {
 
     // Get buffers from config
     in_buf = get_buffer("in_buf");
@@ -388,7 +389,7 @@ redundantStack::redundantStack(Config& config, const string& unique_name,
     register_producer(out_buf, unique_name.c_str());
 }
 
-void redundantStack::change_dataset_state(dset_id_t ds_id) {
+void RedundantStack::change_dataset_state(dset_id_t ds_id) {
     auto& dm = datasetManager::instance();
     state_id_t stack_state_id;
 
@@ -421,7 +422,7 @@ void redundantStack::change_dataset_state(dset_id_t ds_id) {
     output_dset_id = dm.add_dataset(stack_state_id, ds_id);
 }
 
-void redundantStack::main_thread() {
+void RedundantStack::main_thread() {
 
     frameID in_frame_id(in_buf);
     frameID output_frame_id(out_buf);

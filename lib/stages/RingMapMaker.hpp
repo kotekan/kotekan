@@ -28,12 +28,12 @@
  *
  * @author Tristan Pinsonneault-Marotte
  */
-class mapMaker : public kotekan::Stage {
+class RingMapMaker : public kotekan::Stage {
 
 public:
     // Default constructor
-    mapMaker(kotekan::Config& config, const string& unique_name,
-             kotekan::bufferContainer& buffer_container);
+    RingMapMaker(kotekan::Config& config, const string& unique_name,
+                 kotekan::bufferContainer& buffer_container);
 
     // Main loop for the process
     void main_thread() override;
@@ -119,10 +119,10 @@ private:
  *
  * @author Tristan Pinsonneault-Marotte
  */
-class redundantStack : public kotekan::Stage {
+class RedundantStack : public kotekan::Stage {
 
 public:
-    redundantStack(kotekan::Config& config, const string& unique_name,
+    RedundantStack(kotekan::Config& config, const string& unique_name,
                    kotekan::bufferContainer& buffer_container);
 
     void main_thread();
