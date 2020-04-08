@@ -86,7 +86,7 @@ params_fakevis = {
     "wait": True,
 }
 
-params_writer_stage = {"nsamples": 3, "fname": fname_buf}
+params_writer_stage = {"num_samples": 3, "name": fname_buf}
 
 
 @pytest.fixture()

@@ -53,13 +53,13 @@ params_fakevis_large = {
 
 global num_frames
 
-params_writer_stage = {"nsamples": global_params["total_frames"], "fname": fname}
+params_writer_stage = {"num_samples": global_params["total_frames"], "name": fname}
 
 size_of_uint64 = 8
 num_structural_params = 6
 pos_access_record = size_of_uint64 * num_structural_params
 pos_ring_buffer = pos_access_record + size_of_uint64 * params_writer_stage[
-    "nsamples"
+    "num_samples"
 ] * len(global_params["freq"])
 
 
@@ -112,7 +112,7 @@ def test_structured_data(semaphore, memory_map_buf):
     size_frame_data = struct.unpack("<Q", memory_map_buf.read(8))[0]
 
     assert num_writes == 0
-    assert num_time == params_writer_stage["nsamples"]
+    assert num_time == params_writer_stage["num_samples"]
     assert num_freq == len(params_fakevis["freq_ids"])
     assert size_frame == page_size
     print("TODO: test if frame metadata size should be {}".format(size_frame_meta))
@@ -126,7 +126,7 @@ def test_access_record(semaphore, memory_map_buf):
 
     semaphore.acquire()
 
-    num_time = params_writer_stage["nsamples"]
+    num_time = params_writer_stage["num_samples"]
     num_freq = len(global_params["freq"])
 
     memory_map_buf.seek(pos_access_record)

@@ -73,9 +73,9 @@
  *
  * @conf    root_path       String. Location in filesystem containing
  *                          shared memory and semaphore.
- * @conf    fname           Name of shared memory region and semaphore.
- * @conf    nsamples        Number of time samples stored in ring buffer.
- * @conf    sem_wait_time   Maximum time that the writer will wait to
+ * @conf    name           Name of shared memory region and semaphore.
+ * @conf    num_samples        Number of time samples stored in ring buffer.
+ * @conf    wait_time   Maximum time that the writer will wait to
  *                          unlock a semaphore. If it hits the limit
  *                          Kotekan will shut down the stage.
  * @conf    critical_states List of strings. A list of state types to consider
@@ -128,7 +128,7 @@ protected:
     // Set to 0, upon stage shut-down
     uint64_t num_writes = 0;
     // The semaphore wait time before a timeout, in seconds
-    size_t _sem_wait_time;
+    size_t _wait_time;
 
     // Messages
     // Indicates that the written frame is valid
@@ -204,7 +204,7 @@ protected:
      **/
     void release_semaphore();
 
-    std::string _root_path, _fname;
+    std::string _root_path, _name;
 
     // List of critical states, if changed they will trigger an error
     std::set<std::string> critical_state_types;

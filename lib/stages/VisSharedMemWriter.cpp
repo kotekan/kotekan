@@ -40,14 +40,14 @@ using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(VisSharedMemWriter);
 
-void check_remove(std::string fname) {
+void check_remove(std::string name) {
     // Check if we need to remove anything
-    if (access(fname.c_str(), F_OK) != 0)
+    if (access(name.c_str(), F_OK) != 0)
         return;
     // Remove
-    if (remove(fname.c_str()) != 0) {
+    if (remove(name.c_str()) != 0) {
         if (errno != ENOENT)
-            throw std::runtime_error("Could not remove file " + fname);
+            throw std::runtime_error("Could not remove file " + name);
     }
 }
 
@@ -59,9 +59,9 @@ VisSharedMemWriter::VisSharedMemWriter(Config& config, const std::string& unique
 
     // Fetch any simple configuration
     _root_path = config.get_default<std::string>(unique_name, "root_path", "/dev/shm/");
-    _fname = config.get_default<std::string>(unique_name, "fname", "calBuffer");
-    rbs._ntime = config.get_default<uint64_t>(unique_name, "nsamples", 512);
-    _sem_wait_time = config.get_default<size_t>(unique_name, "sem_wait_time", 120);
+    _name = config.get_default<std::string>(unique_name, "name", "calBuffer");
+    rbs._ntime = config.get_default<uint64_t>(unique_name, "num_samples", 512);
+    _wait_time = config.get_default<size_t>(unique_name, "wait_time", 120);
 
     // Set the list of critical states
     critical_state_types = {"frequencies", "inputs",      "products",
@@ -82,8 +82,8 @@ VisSharedMemWriter::VisSharedMemWriter(Config& config, const std::string& unique
     // Check if any of the old buffer files exist
     // Remove them, if they do
     DEBUG("Checking for and removing old buffer files...");
-    check_remove(_root_path + "sem." + _fname);
-    check_remove(_root_path + _fname);
+    check_remove(_root_path + "sem." + _name);
+    check_remove(_root_path + _name);
 }
 
 VisSharedMemWriter::~VisSharedMemWriter() {
@@ -105,7 +105,7 @@ void VisSharedMemWriter::wait_for_semaphore() {
 
 #ifdef MAC_OSX
     if (sem_wait(sem) == -1) {
-        FATAL_ERROR("Failed to acquire semaphore {}", _fname);
+        FATAL_ERROR("Failed to acquire semaphore {}", _name);
         return;
     }
 #else
@@ -114,13 +114,13 @@ void VisSharedMemWriter::wait_for_semaphore() {
         WARN("Failed to get system time. {:d} ({:s}) Not using timed semaphores.", errno,
              std::strerror(errno));
         if (sem_wait(sem) == -1) {
-            FATAL_ERROR("Failed to acquire semaphore {}", _fname);
+            FATAL_ERROR("Failed to acquire semaphore {}", _name);
             return;
         }
         return;
     }
 
-    ts.tv_sec += _sem_wait_time;
+    ts.tv_sec += _wait_time;
     if (sem_timedwait(sem, &ts) == -1) {
         FATAL_ERROR("sem_timedwait() timed out");
         return;
@@ -131,7 +131,7 @@ void VisSharedMemWriter::wait_for_semaphore() {
 
 void VisSharedMemWriter::release_semaphore() {
     if (sem_post(sem) == -1) {
-        FATAL_ERROR("Failed to post semaphore {}", _fname);
+        FATAL_ERROR("Failed to post semaphore {}", _name);
     }
     return;
 }
@@ -296,10 +296,10 @@ void VisSharedMemWriter::main_thread() {
     cur_pos = modulo<int>(rbs._ntime);
 
     // Create the semaphore, and gain first access to it
-    sem = sem_open(_fname.c_str(), (O_CREAT | O_EXCL), (S_IRUSR | S_IWUSR), 1);
+    sem = sem_open(_name.c_str(), (O_CREAT | O_EXCL), (S_IRUSR | S_IWUSR), 1);
 
     if (sem == SEM_FAILED) {
-        FATAL_ERROR("Failed to create semaphore {}", _fname);
+        FATAL_ERROR("Failed to create semaphore {}", _name);
         return;
     }
 
@@ -350,7 +350,7 @@ void VisSharedMemWriter::main_thread() {
     rbs.frame_size = _member_alignment(rbs.data_size + rbs.metadata_size + valid_size, alignment);
 
     // memory_size should be _ntime * nfreq * file_frame_size (data + metadata)
-    buf_addr = assign_memory(_fname, (structured_data_size * structured_data_num)
+    buf_addr = assign_memory(_name, (structured_data_size * structured_data_num)
                                          + (rbs._ntime * rbs.nfreq * access_record_size)
                                          + (rbs._ntime * rbs.nfreq * rbs.frame_size));
 
@@ -367,7 +367,7 @@ void VisSharedMemWriter::main_thread() {
     // initially set the address records with -1
     std::fill_n(access_record_addr, rbs._ntime * rbs.nfreq, invalid);
 
-    INFO("Created the shared memory buffer {}", _fname);
+    INFO("Created the shared memory buffer {}", _name);
     release_semaphore();
 
     // gets called once when kotekan is running

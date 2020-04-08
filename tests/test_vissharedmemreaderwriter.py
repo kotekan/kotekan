@@ -100,7 +100,7 @@ params_fakevis = {
     ],
 }
 
-params_writer_stage = {"nsamples": 5, "fname": fname_buf}
+params_writer_stage = {"num_samples": 5, "name": fname_buf}
 
 
 @pytest.fixture()
@@ -141,7 +141,7 @@ def test_shared_mem_buffer(vis_data, comet_broker):
         )
 
     for i in range(len(reader)):
-        assert reader[i].num_time == params_writer_stage["nsamples"]
+        assert reader[i].num_time == params_writer_stage["num_samples"]
         assert reader[i].num_freq == len(params_fakevis["freq_ids"])
 
     i = 0

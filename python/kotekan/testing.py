@@ -257,7 +257,7 @@ class SharedMemValidationTest:
     ):
         # search config for everything we need
         self.cadence = get_from_config("cadence", config)
-        self.shm_size = get_from_config("nsamples", config)
+        self.shm_size = get_from_config("num_samples", config)
 
         self.error_threshold = threshold_frame_age_error
         self.theshold_cadence_error = threshold_cadence_error
