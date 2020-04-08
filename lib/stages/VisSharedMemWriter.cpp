@@ -351,8 +351,8 @@ void VisSharedMemWriter::main_thread() {
 
     // memory_size should be _ntime * nfreq * file_frame_size (data + metadata)
     buf_addr = assign_memory(_name, (structured_data_size * structured_data_num)
-                                         + (rbs._ntime * rbs.nfreq * access_record_size)
-                                         + (rbs._ntime * rbs.nfreq * rbs.frame_size));
+                                        + (rbs._ntime * rbs.nfreq * access_record_size)
+                                        + (rbs._ntime * rbs.nfreq * rbs.frame_size));
 
     // The elements contained in the structured data and access record are each 64 bytes
     structured_data_addr = (uint64_t*)buf_addr;
