@@ -73,10 +73,10 @@ vis_shm_buffer:
   cal:
     kotekan_stage: VisSharedMemWriter
     in_buf: visbuf_10s_cal
-    fname: calshm
-    nsamples: 256
+    name: calshm
+    num_samples: 256
   timing:
     kotekan_stage: VisSharedMemWriter
     in_buf: visbuf_10s_timing
-    fname: timingshm
-    nsamples: 64
+    name: timingshm
+    num_samples: 64
