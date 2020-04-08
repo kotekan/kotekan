@@ -328,14 +328,15 @@ void ChangeStatePattern::fill(visFrameView& frame) {
 
     // If there are still changes to apply, check that we've exceeded the start
     // time and then update the state
-    if (_dataset_changes.size() > 0) {
+    while (_dataset_changes.size() > 0) {
         auto& [ts, func] = _dataset_changes[0];
 
-        if (frame_time >= ts) {
-            state_id_t id = func();
-            current_dset_id = dm.add_dataset(id, current_dset_id.value());
-            _dataset_changes.pop_front();
-        }
+        if (frame_time < ts)
+            break;
+
+        state_id_t id = func();
+        current_dset_id = dm.add_dataset(id, current_dset_id.value());
+        _dataset_changes.pop_front();
     }
 
     frame.dataset_id = current_dset_id.value();
