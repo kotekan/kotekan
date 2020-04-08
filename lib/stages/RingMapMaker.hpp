@@ -32,7 +32,7 @@ class RingMapMaker : public kotekan::Stage {
 
 public:
     // Default constructor
-    RingMapMaker(kotekan::Config& config, const string& unique_name,
+    RingMapMaker(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
 
     // Main loop for the process
@@ -122,7 +122,7 @@ private:
 class RedundantStack : public kotekan::Stage {
 
 public:
-    RedundantStack(kotekan::Config& config, const string& unique_name,
+    RedundantStack(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
 
     void main_thread();

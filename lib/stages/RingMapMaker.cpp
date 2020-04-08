@@ -18,10 +18,10 @@ using kotekan::restServer;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
 
-REGISTER_KOTEKAN_STAGE(RingRingMapMaker);
+REGISTER_KOTEKAN_STAGE(RingMapMaker);
 REGISTER_KOTEKAN_STAGE(RedundantStack);
 
-RingMapMaker::RingMapMaker(Config& config, const string& unique_name,
+RingMapMaker::RingMapMaker(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&RingMapMaker::main_thread, this)) {
 
@@ -121,9 +121,13 @@ void RingMapMaker::main_thread() {
                 }
                 // transform into map slice
                 std::fill(tmp_vismap.begin(), tmp_vismap.end(), cfloat(0., 0.));
+
+                // NOTE: in here we explicitly cast down to float, to fit the API of old versions of
+                // OpenBLAS which require (float *) for complex arrays. Newer versions just accept
+                // (void *).
                 cblas_cgemv(CblasRowMajor, CblasNoTrans, num_pix, num_bl, &alpha,
-                            vis2map.at(f_id).data(), num_bl, input_vis, 1, &beta, tmp_vismap.data(),
-                            1);
+                            (float*)vis2map.at(f_id).data(), num_bl, (float*)input_vis, 1, &beta,
+                            (float*)tmp_vismap.data(), 1);
 
                 // keep real part only
                 for (size_t i = 0; i < num_pix; i++) {
@@ -378,7 +382,7 @@ int64_t RingMapMaker::resolve_time(time_ctype t) {
     return res->second;
 }
 
-RedundantStack::RedundantStack(Config& config, const string& unique_name,
+RedundantStack::RedundantStack(Config& config, const std::string& unique_name,
                                bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&RedundantStack::main_thread, this)) {
 
