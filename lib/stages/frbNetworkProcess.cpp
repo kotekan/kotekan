@@ -368,9 +368,8 @@ void frbNetworkProcess::initialize_pinging_sockets() {
     for (auto& src : src_sockets) {
         int s = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
         if (s < 0) {
-            ERROR(
-                "Cannot create source socket for FRB host pings (requires root). Stopping the "
-                "pings.");
+            ERROR("Cannot create source socket for FRB host pings (requires root). Stopping the "
+                  "pings.");
             err = true;
         } else if (bind(s, (struct sockaddr*)&src.addr, sizeof(src.addr)) < 0) {
             ERROR("Cannot bind source socket for FRB host pings (requires root). Stopping the "
@@ -411,14 +410,13 @@ void frbNetworkProcess::initialize_pinging_sockets() {
         DEBUG("Check host {} in {:%M:%S}", dst.host, next_check - now);
         dest_by_ip[ipaddr] = {&dst, now, next_check};
     }
-
 }
 
 
 using RefDestIpSocketTime = std::reference_wrapper<DestIpSocketTime>;
 
 void frbNetworkProcess::ping_destinations() {
-    assert(! ping_src_fd.empty());
+    assert(!ping_src_fd.empty());
     // quick destination lookup by next scheduled check time
     std::priority_queue<RefDestIpSocketTime> dest_by_time;
     for (auto& ipaddr_dst : dest_by_ip) {
@@ -438,8 +436,8 @@ void frbNetworkProcess::ping_destinations() {
         DestIpSocketTime& lru_dest = dest_by_time.top();
         auto now = std::chrono::steady_clock::now();
         while (!stop_thread && lru_dest.next_check > now) {
-            DEBUG("Sleep for {:%M:%S} before checking the next host {}",
-                  lru_dest.next_check - now, lru_dest.dst->host);
+            DEBUG("Sleep for {:%M:%S} before checking the next host {}", lru_dest.next_check - now,
+                  lru_dest.dst->host);
 
             // continue sleeping if received a spurious wakeup, i.e., neither the stage was stopped
             // nor timeout occurred
@@ -454,7 +452,7 @@ void frbNetworkProcess::ping_destinations() {
          * The startup phase lasts for the first `_ping_interval`. During this
          * time, we send out pings on a quick_check schedule even though the
          * host is not live yet.
-        */
+         */
         if (startup_phase && (now - startup_time > _ping_interval)) {
             startup_phase = false;
         }
@@ -464,10 +462,10 @@ void frbNetworkProcess::ping_destinations() {
         DEBUG("Checking: {} ({}, last responded {:%M:%S} ago)", lru_dest.dst->host,
               (lru_dest.dst->live ? "LIVE" : "DEAD"), time_since_last_live);
 
-        if (host_startup ||
-            time_since_last_live >= (_ping_interval - _quick_ping_interval)) {
+        if (host_startup || time_since_last_live >= (_ping_interval - _quick_ping_interval)) {
             // time to ping again
-            if (send_ping(ping_src_fd[lru_dest.dst->sending_socket], lru_dest.dst->addr, ping_seq)) {
+            if (send_ping(ping_src_fd[lru_dest.dst->sending_socket], lru_dest.dst->addr,
+                          ping_seq)) {
                 DEBUG("Pinged {}", lru_dest.dst->host);
                 lru_dest.last_checked = now;
                 lru_dest.ping_seq = ping_seq;
@@ -482,8 +480,8 @@ void frbNetworkProcess::ping_destinations() {
         // Schedule the next check for the node
         dest_by_time.pop();
         if (host_startup) {
-            DEBUG("Schedule a follow-up check for starting-up host {} in {}",
-                  lru_dest.dst->host, _quick_ping_interval);
+            DEBUG("Schedule a follow-up check for starting-up host {} in {}", lru_dest.dst->host,
+                  _quick_ping_interval);
             lru_dest.next_check = now + _quick_ping_interval;
         } else if (lru_dest.dst->live) {
             if (time_since_last_live >= _ping_interval + _ping_dead_threshold) {
@@ -496,11 +494,13 @@ void frbNetworkProcess::ping_destinations() {
                       lru_dest.dst->host, _quick_ping_interval);
                 lru_dest.next_check = now + _quick_ping_interval;
             } else {
-                DEBUG("Schedule a regular check for live host {} in {}", lru_dest.dst->host, _ping_interval);
+                DEBUG("Schedule a regular check for live host {} in {}", lru_dest.dst->host,
+                      _ping_interval);
                 lru_dest.next_check = lru_dest.last_checked + _ping_interval;
             }
         } else {
-            DEBUG("Schedule a regular check for dead host {} in {}", lru_dest.dst->host, _ping_interval);
+            DEBUG("Schedule a regular check for dead host {} in {}", lru_dest.dst->host,
+                  _ping_interval);
             lru_dest.next_check = lru_dest.last_checked + _ping_interval;
         }
         // NOTE: could add a small random delay to next_check
@@ -509,7 +509,7 @@ void frbNetworkProcess::ping_destinations() {
 }
 
 void frbNetworkProcess::receive_ping_responses() {
-    assert(! ping_src_fd.empty());
+    assert(!ping_src_fd.empty());
     const int max_ping_src_fd = *std::max_element(ping_src_fd.begin(), ping_src_fd.end());
 
     while (!stop_thread) {
@@ -564,9 +564,9 @@ void frbNetworkProcess::receive_ping_responses() {
                             }
                         } else {
 #ifdef DEBUGGING
-                            char src_addr_str[INET_ADDRSTRLEN
-                                              + 1]; // Used for decoding host IP in logging statements
-#endif                                  // DEBUGGING
+                            char src_addr_str[INET_ADDRSTRLEN + 1]; // Used for decoding host IP in
+                                                                    // logging statements
+#endif                                                              // DEBUGGING
                             DEBUG("Received ping response from unknown host: {}. Ignored.",
                                   inet_ntop(AF_INET, &from.sin_addr, src_addr_str,
                                             INET_ADDRSTRLEN + 1));
