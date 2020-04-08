@@ -521,18 +521,29 @@ class VisRaw(object):
             shape=(num_time, num_freq),
             dtype=[("fpga_count", np.uint64), ("ctime", np.float64),],
         )
+
+        # flatten time index map (we only need one value per time slot, but we have one per
+        # frame/frequency)
         for t in range(num_time):
-            fpga = np.unique(fpga_seq[t, :])
             ts = []
+            fpga = []
             for f in range(num_freq):
-                ts = time_spec.from_buffer_copy(ctime[t, f]).to_float()
+                if valid_frames[t, f].astype(np.bool):
+                    ts.append(time_spec.from_buffer_copy(ctime[t, f]).to_float())
+                    fpga.append(fpga_seq[t, f])
             ts = np.unique(ts)
+            fpga = np.unique(fpga)
             if len(ts) != 1 or len(fpga) != 1:
-                raise ValueError(
-                    "Found {} fpga sequences and {} time specs for time index {} "
-                    "(Expected one each).".format(len(fpga), len(ts), t)
-                )
-            time[t] = (fpga, ts)
+                if len(ts) == 0 and len(fpga) == 0:
+                    # the whole time slot is invalid
+                    time[t] = (0, 0)
+                else:
+                    raise ValueError(
+                        "Found {} fpga sequences and {} time specs for time index {} "
+                        "(Expected one each).".format(len(fpga), len(ts), t)
+                    )
+            else:
+                time[t] = (fpga[0], ts[0])
 
         # generate index maps
         index_map = {"time": time}
