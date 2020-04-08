@@ -176,7 +176,7 @@ protected:
      *
      * @return          True if frame successfully written, False otherwise.
      **/
-    bool add_sample(const visFrameView& frame, time_ctype t, uint32_t freq_ind);
+    void add_sample(const visFrameView& frame, time_ctype t, uint32_t freq_ind);
 
     /**
      * Writes a frame directly to memory; updates access record.
