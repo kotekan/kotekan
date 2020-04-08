@@ -85,8 +85,8 @@ jobs:
           df -h
           docker rmi $(docker image ls -aq)
           df -h
-          apt-get clean
-          apt-get autoclean
+          sudo apt-get clean
+          sudo apt-get autoclean
           df -h
 
     - name: Cache ccache files
