@@ -88,6 +88,13 @@ vis_buffer:
     kotekan_buffer: vis
     buffer_depth: 1024  # Increase as this subset is produced very quickly
 
+  visbuf_10s_timing_ne:
+    num_elements: 11
+    num_prod: 66
+    num_ev: 0
+    kotekan_buffer: vis
+    buffer_depth: 256
+
 # Subset of good frequencies to output whole for monitoring
 mfreq: &mfreq [107, 344, 619, 938]
 # Larger subset to be sent to map maker, spanning entire band
@@ -115,7 +122,7 @@ updatable_config:
   gains:
     kotekan_update_endpoint: "json"
     start_time: 1575950518.4
-    update_id: "gain_20191210T040158.382942Z_casa_ref_cyga"
+    update_id: "zero_gain"
     transition_interval: 300.0
   26m_gated:
     kotekan_update_endpoint: "json"
@@ -324,5 +331,5 @@ buffer_send:
 
   timing:
     kotekan_stage: bufferSend
-    in_buf: visbuf_10s_timing
+    buf: visbuf_10s_timing
     server_port: 15002
