@@ -827,7 +827,7 @@ def rfi_zeroing():
             sleep_time_s = abs(time_to_transit_s - 0.5 * downtime_m * 60)
 
             # Wait until the correct UTC time (deals with daylight savings time)
-            logger.info("RFI Solar Transit Toggle: Time of transit: {}".format(datetime.datetime.utcfromtimestamp(t_transit)))
+            logger.info("RFI Solar Transit Toggle: Time of transit: {} (Local)".format(datetime.datetime.fromtimestamp(t_transit)))
             logger.info("RFI Solar Transit Toggle: Time until transit: {}".format(t_diff))
             logger.info("RFI Solar Transit Toggle: Sleeping for {} seconds".format(sleep_time_s))
 
