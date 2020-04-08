@@ -309,6 +309,9 @@ class VisRaw(object):
         Validity flags for each frame in data.
     file_metadata
         From .meta raw file (optional).
+    comet_manager : comet.Manager
+        (optional) A comet manager instance. If this is provided, dataset states will be
+        requested from the comet broker to provide gain/flaginput update IDs.
 
     Attributes
     ----------
@@ -334,6 +337,7 @@ class VisRaw(object):
         data,
         valid_frames,
         file_metadata=None,
+        comet_manager=None,
     ):
         self.num_time = num_time
         self.num_freq = num_freq
@@ -344,6 +348,58 @@ class VisRaw(object):
         self.data = data
         self.valid_frames = valid_frames
         self.file_metadata = file_metadata
+
+        # get gain/flag update IDs
+        self.gains_update_id = None
+        self.flags_update_id = None
+        if comet_manager is not None:
+            ds = np.array(metadata["dataset_id"][valid_frames.astype(np.bool)]).view(
+                "u8,u8"
+            )
+            unique_ds = np.unique(ds)
+            state = {"gains": set(), "flags": set()}
+            for ds in unique_ds:
+                ds_id = "{:016x}{:016x}".format(ds[1], ds[0])
+                for name in ["gains", "flags"]:
+                    state[name].add(comet_manager.get_state(name, ds_id))
+            for name in ["gains", "flags"]:
+                if len(state[name]) == 0:
+                    state[name] = None
+                elif len(state[name]) == 1:
+                    state[name] = state[name].pop()
+                else:
+                    raise ValueError(
+                        "Found more than one {} states when looking up dataset IDs "
+                        "found in metadata: {}".format(name, state[name])
+                    )
+            if state["gains"] is not None:
+                self.gains_update_id = state["gains"].data["data"]["update_id"]
+            if state["flags"] is not None:
+                self.flags_update_id = state["flags"].data["data"]
+
+        # Convert index_map into numpy arrays
+        if "prod" in index_map:
+            self.index_map["prod"] = np.array(
+                [(pp[0], pp[1]) for pp in index_map["prod"]],
+                dtype=[("input_a", "u2"), ("input_b", "u2")],
+            )
+        if "input" in index_map:
+            self.index_map["input"] = np.array(
+                [(inp[0], inp[1]) for inp in index_map["input"]],
+                dtype=[("chan_id", "u2"), ("correlator_input", "S32")],
+            )
+        if "freq" in index_map:
+            self.index_map["freq"] = np.array(
+                [(ff[1]["centre"], ff[1]["width"]) for ff in index_map["freq"]],
+                dtype=[("centre", np.float32), ("width", np.float32)],
+            )
+        if "ev" in index_map:
+            self.index_map["ev"] = np.array(index_map["ev"])
+        if "stack" in index_map:
+            self.index_map["stack"] = np.array(
+                [(ss[0]["stack"], ss[0]["conjugate"]) for ss in index_map["stack"]],
+                dtype=[("stack", np.uint32), ("conjugate", np.bool)],
+            )
 
     @classmethod
     def frame_struct(cls, size_frame, num_elements, num_stack, num_ev, align_valid):
@@ -400,20 +456,23 @@ class VisRaw(object):
         return frame_struct
 
     @classmethod
-    def from_buffer(cls, buffer, size_frame, num_time, num_freq):
+    def from_buffer(cls, buffer, size_frame, num_time, num_freq, comet_manager=None):
         """
         Create a VisRaw object from a buffer.
 
         Parameters
         ----------
-        buffer
+        buffer : buffer_like
             Input data.
-        size_frame
+        size_frame : int
             Size of a frame in bytes.
-        num_time
+        num_time : int
             Number of time samples in the buffer.
-        num_freq
+        num_freq : int
             Number of frequencies in the buffer.
+        comet_manager : comet.Manager
+            (optional) A comet manager instance. If this is provided, dataset states will be
+            requested from the comet broker to provide index maps and gain/flaginput update IDs.
 
         Returns
         -------
@@ -493,15 +552,49 @@ class VisRaw(object):
                     time_spec.from_buffer_copy(ctime[t, f]).to_float(),
                 )
 
+        # generate index maps
+        index_map = {"time": time}
+        if comet_manager is not None:
+            # add input, prod, stack and freq
+            state_axis_map = [
+                ("products", "prod"),
+                ("inputs", "input"),
+                ("frequencies", "freq"),
+                ("eigenvalues", "ev"),
+                ("stack", "stack"),
+            ]
+            ds = np.array(metadata["dataset_id"][valid_frames.astype(np.bool)]).view(
+                "u8,u8"
+            )
+            unique_ds = np.unique(ds)
+            state = {names[0]: set() for names in state_axis_map}
+            for ds in unique_ds:
+                ds_id = "{:016x}{:016x}".format(ds[1], ds[0])
+                for names in state_axis_map:
+                    state[names[0]].add(comet_manager.get_state(names[0], ds_id))
+            for names in state_axis_map:
+                if len(state[names[0]]) == 0:
+                    state[names[0]] = None
+                elif len(state[names[0]]) == 1:
+                    state[names[0]] = state[names[0]].pop()
+                else:
+                    raise ValueError(
+                        "Found more than one {} states when looking up dataset IDs "
+                        "found in metadata.".format(names[0])
+                    )
+                if state[names[0]] is not None:
+                    index_map[names[1]] = state[names[0]].data["data"]
+
         return cls(
             num_time,
             num_freq,
             num_prod,
             metadata,
             time,
-            index_map=None,
+            index_map=index_map,
             data=data,
             valid_frames=valid_frames,
+            comet_manager=comet_manager,
         )
 
     @classmethod

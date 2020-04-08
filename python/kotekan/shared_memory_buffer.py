@@ -62,6 +62,10 @@ class SharedMemoryReader:
         Full path and file name of shared memory.
     view_size : int
         Number of time slots to give access to. Default 0 (as many as possible).
+    comet_manager : comet.Manager
+            (optional) A comet manager instance. If this is provided, dataset states will be
+            requested from the comet broker to provide index maps and gain/flaginput update IDs
+            in the `VisRaw` objects returned by `SharedMemoryReader.update()`.
     """
 
     # useful constant values
@@ -72,8 +76,9 @@ class SharedMemoryReader:
     size_valid_field = 1
     invalid_value = -1
 
-    def __init__(self, shared_memory_name, view_size):
+    def __init__(self, shared_memory_name, view_size, comet_manager=None):
         self.view_size = view_size
+        self.comet_manager = comet_manager
 
         # maps from access record timestamp to index (0..view_size)
         self._time_index_map = {}
@@ -253,7 +258,11 @@ class SharedMemoryReader:
         #     return None
 
         return VisRaw.from_buffer(
-            self._data, self.size_frame, self.view_size, self.num_freq
+            self._data,
+            self.size_frame,
+            self.view_size,
+            self.num_freq,
+            self.comet_manager,
         )
 
     def _remove_oldest_time_slot(self):

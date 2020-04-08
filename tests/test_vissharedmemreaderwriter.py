@@ -83,15 +83,21 @@ params = {
     "num_ev": 0,
     "total_frames": 8,
     "cadence": 1.0,
-    "mode": "test_pattern_simple",
+    "mode": "change_state",
     "dataset_manager": {"use_dataset_broker": True},
 }
 
+start_time = 1_500_000_000
 params_fakevis = {
     "freq_ids": [1, 2, 3, 4, 7, 10],
     "num_frames": params["total_frames"],
     "mode": params["mode"],
     "wait": True,
+    "start_time": start_time,
+    "state_changes": [
+        {"timestamp": start_time, "type": "flags"},
+        {"timestamp": start_time, "type": "gains"},
+    ],
 }
 
 params_writer_stage = {"nsamples": 5, "fname": fname_buf}
@@ -124,18 +130,19 @@ def vis_data(tmpdir_factory, comet_broker):
 def test_shared_mem_buffer(vis_data, comet_broker):
     # start kotekan writer in a thread, to read before it's done (it will delete the shm on exit)
     threading.Thread(target=vis_data.run).start()
+    ds_manager = Manager("localhost", comet_broker)
     sleep(2)
     reader = []
     view_size = [2, 8, 17]
 
     for i in range(len(view_size)):
-        reader.append(shared_memory_buffer.SharedMemoryReader(fname_buf, view_size[i]))
+        reader.append(
+            shared_memory_buffer.SharedMemoryReader(fname_buf, view_size[i], ds_manager)
+        )
 
     for i in range(len(reader)):
         assert reader[i].num_time == params_writer_stage["nsamples"]
         assert reader[i].num_freq == len(params_fakevis["freq_ids"])
-
-    ds_manager = Manager("localhost", comet_broker)
 
     i = 0
     visraw = [None] * len(view_size)
@@ -147,12 +154,12 @@ def test_shared_mem_buffer(vis_data, comet_broker):
             for j in range(len(reader)):
                 visraw[j] = reader[j].update()
                 assert visraw[j].num_time == reader[j].view_size
-                check_visraw(visraw[j], ds_manager)
+                check_visraw(visraw[j])
             i += 1
     assert i >= params["total_frames"] / 2
 
 
-def check_visraw(visraw, ds_manager):
+def check_visraw(visraw):
     """Test content of valid frames."""
     num_freq = len(params_fakevis["freq_ids"])
     num_ev = params["num_ev"]
@@ -161,7 +168,7 @@ def check_visraw(visraw, ds_manager):
     num_time = visraw.num_time
     assert visraw.num_freq == len(params_fakevis["freq_ids"])
 
-    num_prod = num_elements * (num_elements + 1) / 2
+    num_prod = int(num_elements * (num_elements + 1) / 2)
 
     # check valid frames only
     assert (visraw.num_prod[visraw.valid_frames.astype(np.bool)] == num_prod).all()
@@ -173,18 +180,9 @@ def check_visraw(visraw, ds_manager):
         visraw.metadata["num_ev"][visraw.valid_frames.astype(np.bool)] == num_ev
     ).all()
 
-    ds = np.array(
-        visraw.metadata["dataset_id"][visraw.valid_frames.astype(np.bool)]
-    ).view("u8,u8")
-    unique_ds = np.unique(ds)
-    for ds in unique_ds:
-        ds_id = "{:016x}{:016x}".format(ds[1], ds[0])
-        # assert ds_manager.get_dataset(ds_id) is not None
-        # assert ds_manager.get_state("inputs", ds_id) is not None
-        # assert ds_manager.get_state("products", ds_id) is not None
-        # assert ds_manager.get_state("metadata", ds_id) is not None
-        # assert ds_manager.get_state("frequencies", ds_id) is not None
-        # assert ds_manager.get_state("eigenvalues", ds_id) is not None
+    # check gain/flag update IDs VisRaw got from comet
+    assert visraw.flags_update_id == "flag_update_0"
+    assert visraw.gains_update_id == "gain_update_0"
 
     evals = visraw.data["eval"]
     evecs = visraw.data["evec"]
@@ -207,13 +205,35 @@ def check_visraw(visraw, ds_manager):
     ).all()
     assert (erms[visraw.valid_frames.astype(np.bool)] == 1).all()
 
-    vis = visraw.data["vis"].copy().view(np.complex64)
+    ftime = visraw.time["fpga_count"]
+    ctime = visraw.time["ctime"]
+    freq = visraw.metadata["freq_id"]
+
+    # check "default" test pattern in vis
+    vis = visraw.data["vis"].view(np.complex64)
     assert vis.shape == (num_time, num_freq, num_prod)
+    i = 0
     for time_slot_vis, time_slot_valid in zip(vis, visraw.valid_frames):
+        f = 0
         for frame, valid in zip(time_slot_vis, time_slot_valid):
             if valid:
-                assert (frame.real == 1.0).all()
-                assert (frame.imag == 0.0).all()
+                assert (frame.real[0] == ftime[i].astype(np.float32)).all()
+                assert (frame.real[1] == ctime[i].astype(np.float32)).all()
+                assert frame.real[2] == freq[i][f].astype(np.float32)
+                assert (frame.real[3:] == 0).all()
+                k = num_elements
+                l = 0
+                m = 0
+                for j in range(num_prod):
+                    if j == l:
+                        assert frame.imag[j] == m
+                        l += k
+                        k -= 1
+                        m += 1
+                    else:
+                        assert frame.imag[j] == 0
+            f += 1
+        i += 1
 
     if num_time > 0:
         # find last valid timestamp
