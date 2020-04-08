@@ -6,10 +6,14 @@
 #ifndef REMOVE_EV_HPP
 #define REMOVE_EV_HPP
 
-#include "Stage.hpp"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
 #include "buffer.h"
-#include "datasetManager.hpp"
-#include "visUtil.hpp"
+#include "bufferContainer.hpp"
+#include "datasetManager.hpp" // for dset_id_t, state_id_t
+
+#include <map>    // for map
+#include <string> // for string
 
 /**
  * @class removeEv
@@ -28,19 +32,20 @@
 class removeEv : public kotekan::Stage {
 
 public:
-    removeEv(kotekan::Config& config, const string& unique_name,
+    removeEv(kotekan::Config& config, const std::string& unique_name,
              kotekan::bufferContainer& buffer_container);
 
     void main_thread() override;
 
 private:
-    dset_id_t change_dataset_state(dset_id_t input_dset_id);
+    void change_dataset_state(dset_id_t input_dset_id);
 
     Buffer* in_buf;
     Buffer* out_buf;
 
     state_id_t ev_state_id;
-    dset_id_t input_dset_id = dset_id_t::null;
+
+    std::map<dset_id_t, dset_id_t> dset_id_map;
 };
 
 #endif

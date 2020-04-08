@@ -11,16 +11,26 @@
 #ifndef FAKE_GPU_PATTERN_HPP
 #define FAKE_GPU_PATTERN_HPP
 
-#include "Config.hpp"
-#include "chimeMetadata.h"
-#include "factory.hpp"
-#include "kotekanLogging.hpp"
-#include "pulsarTiming.hpp"
+#include "Config.hpp"         // for Config
+#include "chimeMetadata.h"    // for chimeMetadata
+#include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
+#include "kotekanLogging.hpp" // for kotekanLogging
+#include "pulsarTiming.hpp"   // for Polyco
 
-#include "gsl-lite.hpp"
+#include "gsl-lite.hpp" // for span
 
-#include <stdint.h>
-#include <string>
+#include <random>   // for mt19937, normal_distribution, random_device
+#include <stddef.h> // for size_t
+#include <stdint.h> // for int32_t, uint32_t
+#include <string>   // for string
+
+// Create the abstract factory for generating patterns
+class FakeGpuPattern;
+
+CREATE_FACTORY(FakeGpuPattern, kotekan::Config&, const std::string&);
+#define REGISTER_FAKE_GPU_PATTERN(patternType, name)                                               \
+    REGISTER_NAMED_TYPE_WITH_FACTORY(FakeGpuPattern, patternType, name)
+
 
 /**
  * @class fakeGpuPattern
@@ -70,11 +80,6 @@ protected:
     size_t _samples_per_data_set;
     size_t _num_freq_in_frame;
 };
-
-// Create the abstract factory for generating patterns
-CREATE_FACTORY(FakeGpuPattern, kotekan::Config&, const std::string&);
-#define REGISTER_FAKE_GPU_PATTERN(patternType, name)                                               \
-    REGISTER_NAMED_TYPE_WITH_FACTORY(FakeGpuPattern, patternType, name)
 
 
 /**
@@ -178,6 +183,11 @@ public:
     /// @sa fakeGpuPattern::fill
     void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
               const int freq_id) override;
+
+private:
+    std::random_device rd;
+    std::mt19937 gen;
+    std::normal_distribution<float> gaussian;
 };
 
 

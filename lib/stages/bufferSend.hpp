@@ -6,23 +6,17 @@
 #ifndef BUFFER_SEND_H
 #define BUFFER_SEND_H
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "util.h"
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "prometheusMetrics.hpp" // for Counter
 
-#include <arpa/inet.h>
-#include <atomic>
-#include <condition_variable>
-#include <mutex>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <string.h>
-#include <string>
-#include <sys/socket.h>
-#include <thread>
-#include <unistd.h>
+#include <atomic>             // for atomic
+#include <condition_variable> // for condition_variable
+#include <mutex>              // for mutex
+#include <netinet/in.h>       // for sockaddr_in
+#include <stdint.h>           // for uint32_t
+#include <string>             // for string
 
 /**
  * @struct bufferFrameHeader
@@ -57,6 +51,7 @@ struct bufferFrameHeader {
  *                         before @c send() times out and closes the connection.
  * @conf reconnect_time  Int, default 5.  The number of seconds between
  *                         connection attempts to the remote server.
+ * @conf drop_frames     Bool, default true.  Whether to drop frames when buffer fills.
  *
  * @par Metrics
  * @metric kotekan_buffer_send_dropped_frame_count
@@ -71,7 +66,7 @@ struct bufferFrameHeader {
 class bufferSend : public kotekan::Stage {
 public:
     /// Standard constructor
-    bufferSend(kotekan::Config& config, const string& unique_name,
+    bufferSend(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
     /// Destructor
@@ -95,6 +90,9 @@ private:
 
     /// The number of seconds between connection attempts
     uint32_t reconnect_time;
+
+    /// Whether to drop frames or block if buffer is full
+    bool drop_frames;
 
     /**
      * @brief Number of frame dropped because the send is too slow.

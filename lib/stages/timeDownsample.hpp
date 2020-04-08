@@ -6,8 +6,13 @@
 #ifndef TIME_DOWNSAMP_HPP
 #define TIME_DOWNSAMP_HPP
 
-#include "Stage.hpp"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
 #include "buffer.h"
+#include "bufferContainer.hpp"
+
+#include <stddef.h> // for size_t
+#include <string>   // for string
 
 /**
  * @class timeDownsample
@@ -43,7 +48,7 @@ class timeDownsample : public kotekan::Stage {
 
 public:
     /// Default constructor, loads config params.
-    timeDownsample(kotekan::Config& config, const string& unique_name,
+    timeDownsample(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
 
     /// Main loop for the stage

@@ -8,12 +8,11 @@
 #define PULSARNETWORKPROCESS_HPP
 
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "restServer.hpp"
-#include "tx_utils.hpp"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
 
-#include <string>
+#include <string> // for string
 
 /**
  * @class pulsarNetworkProcess
@@ -50,7 +49,7 @@
 class pulsarNetworkProcess : public kotekan::Stage {
 public:
     /// Constructor, also initializes internal variables from config.
-    pulsarNetworkProcess(kotekan::Config& config, const string& unique_name,
+    pulsarNetworkProcess(kotekan::Config& config, const std::string& unique_name,
                          kotekan::bufferContainer& buffer_container);
 
 
@@ -99,6 +98,9 @@ private:
 
     /// array of socket ids
     int* socket_ids;
+
+    /// Number of tracking (pulsar) beams
+    int _num_beams;
 };
 
 #endif

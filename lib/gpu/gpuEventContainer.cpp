@@ -1,9 +1,5 @@
 #include "gpuEventContainer.hpp"
 
-#include "errors.h"
-
-#include <unistd.h>
-
 
 gpuEventContainer::gpuEventContainer() {
     stopping = false;

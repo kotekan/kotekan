@@ -6,29 +6,25 @@
 #ifndef VIS_COMPRESSION_HPP
 #define VIS_COMPRESSION_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "prometheusMetrics.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, state_id_t, fingerprint_t
+#include "datasetState.hpp"      // for prodState, stackState
+#include "prometheusMetrics.hpp" // for MetricFamily, Gauge, Counter
+#include "visUtil.hpp"           // for input_ctype, rstack_ctype, prod_ctype, frameID
 
-#include <atomic>
-#include <cstdint>
-#include <functional>
-#include <iosfwd>
-#include <map>
-#include <string>
-#include <sys/types.h>
-#include <thread>
-#include <utility>
-#include <vector>
-
-// This type is used a lot so let's use an alias
-using json = nlohmann::json;
-
+#include <cstdint>    // for uint32_t, int8_t, int16_t
+#include <functional> // for function
+#include <iosfwd>     // for ostream
+#include <map>        // for map
+#include <mutex>      // for mutex
+#include <string>     // for string
+#include <thread>     // for thread
+#include <tuple>      // for tuple
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 /**
  * @brief Compress visibility data by stacking together equivalent baselines.
@@ -58,6 +54,8 @@ using json = nlohmann::json;
  *      The variance of the residuals.
  * @metric kotekan_baselinecompression_time_seconds
  *      The time elapsed to process one frame.
+ * @metric kotekan_baselinecompression_frame_total
+ *      Number of frames seen by each thread.
  *
  * @author Richard Shaw
  */
@@ -65,7 +63,7 @@ class baselineCompression : public kotekan::Stage {
 
 public:
     // Default constructor
-    baselineCompression(kotekan::Config& config, const string& unique_name,
+    baselineCompression(kotekan::Config& config, const std::string& unique_name,
                         kotekan::bufferContainer& buffer_container);
 
     // Main loop for the stage: Creates n threads that do the compression.
@@ -77,7 +75,7 @@ private:
     void compress_thread(uint32_t thread_id);
 
     /// Tracks input dataset ID and gets output dataset IDs from manager
-    dset_id_t change_dataset_state(dset_id_t input_ds_id);
+    void change_dataset_state(dset_id_t input_ds_id);
 
     /// Vector to hold the thread handles
     std::vector<std::thread> thread_handles;
@@ -106,19 +104,21 @@ private:
     Buffer* in_buf;
     Buffer* out_buf;
 
-    // dataset states
-    const prodState* prod_state_ptr;
-    const stackState* stack_state_ptr;
-
     // Frame IDs, shared by compress threads and their mutex.
     frameID frame_id_in;
     frameID frame_id_out;
-    uint64_t frame_counter_global;
     std::mutex m_frame_ids;
+    std::mutex m_dset_map;
+
+    // Map the incoming ID to an outgoing one
+    std::map<dset_id_t, std::tuple<dset_id_t, const stackState*, const prodState*>> dset_id_map;
+
+    // Map from the critical incoming states to the correct stackState
+    std::map<fingerprint_t, std::tuple<state_id_t, const stackState*, const prodState*>> state_map;
 
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_residuals_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_time_seconds_metric;
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& compression_frame_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& compression_frame_counter;
 };
 
 

@@ -127,8 +127,8 @@ def check_data(data, missing_frames=[]):
     output_fpga_seq_num = 0
     # output_fpga_seq_num = 625
     output_frame_seconds = (
-        632718848
-    )  # (`0 - ctime(1 Jan 2018 UTC)`, truncated to 30 bits)
+        632718848  # (`0 - ctime(1 Jan 2018 UTC)`, truncated to 30 bits)
+    )
     output_frame_nanoseconds = 0
     # output_frame_nanoseconds = 1600000  # 625 elapsed FPGA samples @ 2.56 us / sample
 

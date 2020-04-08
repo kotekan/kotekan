@@ -7,8 +7,14 @@
 #ifndef HSA_BEAMFORM_UPCHAN_H
 #define HSA_BEAMFORM_UPCHAN_H
 
-#include "hsaCommand.hpp"
+#include "Config.hpp"             // for Config
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaCommand.hpp"         // for hsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
+#include <stdint.h> // for int32_t
+#include <string>   // for string
 /**
  * @class hsaBeamformUpchan
  * @brief hsaCommand to upchannelize and downsample FRB data
@@ -40,8 +46,6 @@
  * @conf   downsample_freq      Int (default 8). Downsample factor in freq
  * @conf   num_frb_total_beams  Int (default 1024). Number of total FRB formed beams
  *
- * @todo   Check that the 16 freq axis has the correct orientation
- *
  * @author Cherry Ng
  *
  */
@@ -49,7 +53,7 @@
 class hsaBeamformUpchan : public hsaCommand {
 public:
     /// Constructor, also initializes internal variables from config
-    hsaBeamformUpchan(kotekan::Config& config, const string& unique_name,
+    hsaBeamformUpchan(kotekan::Config& config, const std::string& unique_name,
                       kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor

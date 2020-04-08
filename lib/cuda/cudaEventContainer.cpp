@@ -14,7 +14,7 @@ void* cudaEventContainer::get() {
 }
 
 void cudaEventContainer::unset() {
-    signal = NULL;
+    signal = nullptr;
 }
 
 void cudaEventContainer::wait() {

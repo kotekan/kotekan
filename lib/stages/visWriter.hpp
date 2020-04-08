@@ -7,25 +7,28 @@
 #ifndef VIS_WRITER_HPP
 #define VIS_WRITER_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "restServer.hpp"
-#include "visFile.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, fingerprint_t
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily
+#include "restServer.hpp"        // for connectionInstance
+#include "visFile.hpp"           // for visFileBundle, visCalFileBundle
+#include "visUtil.hpp"           // for movingAverage
 
-#include <cstdint>
-#include <errno.h>
-#include <future>
-#include <map>
-#include <memory>
-#include <mutex>
-#include <stdexcept>
-#include <stdio.h>
-#include <string>
-#include <utility>
+#include <cstdint>   // for uint32_t
+#include <errno.h>   // for ENOENT, errno
+#include <future>    // for future
+#include <map>       // for map
+#include <memory>    // for shared_ptr, unique_ptr
+#include <mutex>     // for mutex
+#include <set>       // for set
+#include <stdexcept> // for runtime_error
+#include <stdio.h>   // for size_t, remove
+#include <string>    // for string, operator+
+#include <unistd.h>  // for access, F_OK
+#include <utility>   // for pair
 
 
 /**
@@ -44,7 +47,19 @@
  * `ignore_version` a mismatch will either generate a warning, or cause the
  * mismatched data to be dropped.
  *
- * The output is written into the CHIME N^2 HDF5 format version 3.1.0.
+ * The output files will write out the dataset ID of every piece of data
+ * written. This allows the dataset ID to change on the incoming stream without
+ * requiring a new file or acquisition to be started. However, some types of
+ * state change will always cause a new acquisition to be started. By default
+ * these are the structural parameters `input`, `frequencies`, `products`, and
+ * `stack` along with `gating` and `metadata`. This list can be *added* to
+ * using the config variable `critical_states`. Any state change not considered
+ * critical will cause an updated ID to be written into the file, but the
+ * acquisition will continue as normal.
+ *
+ * The output is written a specified format. Either the CHIME N^2 HDF5 format
+ * version 3.1.0, or the raw format which can be processed into that format by
+ * gossec.
  *
  * @par Buffers
  * @buffer in_buf The buffer streaming data to write
@@ -67,19 +82,24 @@
  *                          mistmatch will generate a warning, if false, it
  *                          will cause data to be dropped. This should only be
  *                          set to true when testing.
+ * @conf   critical_states  List of strings. A list of state types to consider
+ *                          critical. That is, if they change in the incoming
+ *                          data stream then a new acquisition will be started.
  *
  * @par Metrics
  * @metric kotekan_viswriter_write_time_seconds
  *         The write time of the HDF5 writer. An exponential moving average over ~10
  *         samples.
- * @metric kotekan_viswriter_dropped_frame_total
- *         The number of frames dropped while attempting to write.
+ * @metric kotekan_viswriter_late_frame_total
+ *         The number of frames dropped while attempting to write as they are too late.
+ * @metric kotekan_viswriter_bad_dataset_frame_total
+ *         The number of frames dropped as they belong to a bad dataset.
  *
  * @author Richard Shaw
  */
 class visWriter : public kotekan::Stage {
 public:
-    visWriter(kotekan::Config& config, const string& unique_name,
+    visWriter(kotekan::Config& config, const std::string& unique_name,
               kotekan::bufferContainer& buffer_container);
 
     void main_thread() override;
@@ -92,6 +112,7 @@ public:
 
 protected:
     /// Setup the acquisition
+    // NOTE: must be called from with a region locked by acqs_mutex
     virtual void init_acq(dset_id_t ds_id);
 
     /// Construct the set of metadata
@@ -113,15 +134,6 @@ protected:
      **/
     bool check_git_version(dset_id_t ds_id);
 
-    /**
-     * Report a dropped frame to prometheus.
-     *
-     * @param  ds_id    Dataset ID of frame.
-     * @param  freq_id  Freq ID of frame.
-     * @param  reason   Reason frame was dropped.
-     **/
-    void report_dropped_frame(dset_id_t ds_id, uint32_t freq_id, droppedType reason);
-
     // Parameters saved from the config files
     std::string root_path;
     std::string instrument_name;
@@ -138,6 +150,9 @@ protected:
     /// Mutex for updating file_bundle (used in for visCalWriter)
     std::mutex write_mutex;
 
+    /// Manage access to the list of acquisitions (again mostly for visCalWriter)
+    std::mutex acqs_mutex;
+
     /// Hold the internal state of an acquisition (one per dataset ID)
     /// Note that we create an acqState even for invalid datasets that we will
     /// reject all data from
@@ -149,9 +164,6 @@ protected:
         /// The current set of files we are writing
         std::unique_ptr<visFileBundle> file_bundle;
 
-        /// Dropped frame counts per freq ID
-        std::map<std::pair<uint32_t, droppedType>, uint64_t> dropped_frame_count;
-
         /// Frequency IDs that we are expecting
         std::map<uint32_t, uint32_t> freq_id_map;
 
@@ -162,11 +174,23 @@ protected:
         double last_update;
     };
 
-    /// The set of open acquisitions
-    std::map<dset_id_t, acqState> acqs;
+    /// The set of open acquisitions, keyed by the dataset_id. Multiple
+    /// dataset_ids may point to the same acquisition, and these acquisitions are
+    /// shared with `acqs_fingerprint`
+    std::map<dset_id_t, std::shared_ptr<acqState>> acqs;
+
+    /// The set of open acquisitions, keyed by fingerprint. These are shared with
+    /// `acqs`.
+    std::map<fingerprint_t, std::shared_ptr<acqState>> acqs_fingerprint;
 
     /// Translate droppedTypes to string description for prometheus
     static std::map<droppedType, std::string> dropped_type_map;
+
+    /// List of states that will cause a new acq
+    std::set<std::string> critical_state_types;
+
+    /// Next sweep
+    double next_sweep = 0.0;
 
 private:
     /// Number of products to write and freqency map
@@ -175,8 +199,8 @@ private:
     /// Keep track of the average write time
     movingAverage write_time;
 
-    /// TODO: document
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& dropped_frame_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& late_frame_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& bad_dataset_frame_counter;
 };
 
 /**
@@ -238,7 +262,7 @@ private:
  **/
 class visCalWriter : public visWriter {
 public:
-    visCalWriter(kotekan::Config& config, const string& unique_name,
+    visCalWriter(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
 
     ~visCalWriter();
@@ -262,6 +286,10 @@ protected:
 
 
 inline void check_remove(std::string fname) {
+    // Check if we need to remove anything
+    if (access(fname.c_str(), F_OK) != 0)
+        return;
+    // Remove
     if (remove(fname.c_str()) != 0) {
         if (errno != ENOENT)
             throw std::runtime_error("Could not remove file " + fname);

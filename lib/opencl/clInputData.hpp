@@ -5,7 +5,7 @@
 
 class clInputData : public clCommand {
 public:
-    clInputData(kotekan::Config& config, const string& unique_name,
+    clInputData(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
     ~clInputData();
     int wait_on_precondition(int gpu_frame_id) override;

@@ -1,9 +1,8 @@
 #ifndef TIME_TRACKING
 #define TIME_TRACKING
 
-#include <sys/types.h>
-#include <stdlib.h>
-#include <stdint.h>
+#include <stdint.h>   // for uint32_t, uint64_t
+#include <sys/time.h> // for timeval
 
 #ifdef __cplusplus
 extern "C" {
@@ -12,7 +11,7 @@ extern "C" {
 /// The functions in this file work like a static class.
 // Time is represented as nanoseconds since the j2000 epoch.
 
-void set_fpga_num_and_time(const struct timeval * time, const uint32_t fpga_seq_num);
+void set_fpga_num_and_time(const struct timeval* time, const uint32_t fpga_seq_num);
 
 uint64_t get_time_from_seq_number(const uint32_t seq_number);
 

@@ -1,11 +1,27 @@
 #include "hsaBeamformKernel.hpp"
 
-#include "configUpdater.hpp"
+#include "Config.hpp"              // for Config
+#include "buffer.h"                // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chimeMetadata.h"         // for get_stream_id_t
+#include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
+#include "gpuCommand.hpp"          // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaBase.h"               // for hsa_host_free, hsa_host_malloc
+#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface, Config
+#include "restServer.hpp"          // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_R...
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <signal.h>
-#include <utils/visUtil.hpp>
+#include <cmath>      // for sin, asin, cos, floor
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, pla...
+#include <regex>      // for match_results<>::_Base_type
+#include <string.h>   // for memcpy, memset
+
+namespace kotekan {
+class configUpdater;
+} // namespace kotekan
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -28,7 +44,7 @@ REGISTER_HSA_COMMAND(hsaBeamformKernel);
 
 // clang-format on
 
-hsaBeamformKernel::hsaBeamformKernel(Config& config, const string& unique_name,
+hsaBeamformKernel::hsaBeamformKernel(Config& config, const std::string& unique_name,
                                      bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "zero_padded_FFT512" KERNEL_EXT,
                "unpack_shift_beamform_flip.hsaco") {
@@ -96,7 +112,8 @@ hsaBeamformKernel::~hsaBeamformKernel() {
     // TODO Free device memory allocations.
 }
 
-void hsaBeamformKernel::update_EW_beam_callback(connectionInstance& conn, json& json_request) {
+void hsaBeamformKernel::update_EW_beam_callback(connectionInstance& conn,
+                                                nlohmann::json& json_request) {
     int ew_id;
     try {
         ew_id = json_request["ew_id"];
@@ -111,7 +128,8 @@ void hsaBeamformKernel::update_EW_beam_callback(connectionInstance& conn, json& 
     conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
-void hsaBeamformKernel::update_NS_beam_callback(connectionInstance& conn, json& json_request) {
+void hsaBeamformKernel::update_NS_beam_callback(connectionInstance& conn,
+                                                nlohmann::json& json_request) {
     try {
         _northmost_beam = json_request["northmost_beam"];
     } catch (...) {
@@ -129,7 +147,7 @@ int hsaBeamformKernel::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
     uint8_t* frame =
         wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
-    if (frame == NULL)
+    if (frame == nullptr)
         return -1;
     metadata_buffer_precondition_id =
         (metadata_buffer_precondition_id + 1) % metadata_buf->num_frames;

@@ -1,15 +1,21 @@
 #include "hsaInputLostSamples.hpp"
 
-#include "utils/util.h"
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for Buffer, mark_frame_empty, wait_for_full_frame
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_IN
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 
-#include <random>
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaInputLostSamples);
 
-hsaInputLostSamples::hsaInputLostSamples(Config& config, const string& unique_name,
+hsaInputLostSamples::hsaInputLostSamples(Config& config, const std::string& unique_name,
                                          bufferContainer& host_buffers,
                                          hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "", "") {
@@ -32,7 +38,7 @@ int hsaInputLostSamples::wait_on_precondition(int gpu_frame_id) {
     // Wait for there to be data in the input buffer.
     uint8_t* frame = wait_for_full_frame(lost_samples_buf, unique_name.c_str(),
                                          lost_samples_buffer_precondition_id);
-    if (frame == NULL)
+    if (frame == nullptr)
         return -1;
     lost_samples_buffer_precondition_id =
         (lost_samples_buffer_precondition_id + 1) % lost_samples_buf->num_frames;

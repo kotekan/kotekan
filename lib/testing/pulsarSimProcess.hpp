@@ -7,11 +7,13 @@
 #ifndef PULSAR_SIM_PROCESS
 #define PULSAR_SIM_PROCESS
 
-#include "Stage.hpp"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
 
-#include <vector>
+#include <stdint.h> // for int32_t, uint16_t, uint64_t
+#include <string>   // for string
 
-using std::vector;
 
 /**
  * @class pulsarSimProcess
@@ -44,7 +46,7 @@ using std::vector;
 class pulsarSimProcess : public kotekan::Stage {
 public:
     /// constructor
-    pulsarSimProcess(kotekan::Config& config_, const string& unique_name,
+    pulsarSimProcess(kotekan::Config& config_, const std::string& unique_name,
                      kotekan::bufferContainer& buffer_container);
 
     /// distructor

@@ -1,26 +1,30 @@
 #ifndef GPU_POST_PROCESS
 #define GPU_POST_PROCESS
 
-#include "Stage.hpp"
-#include "restServer.hpp"
-#include "util.h"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
+#include "restServer.hpp"      // for connectionInstance
 
-#include <mutex>
-#include <vector>
+#include "json.hpp" // for json
 
-using std::vector;
+#include <stdint.h>   // for int32_t, uint32_t, int64_t, uint64_t
+#include <string>     // for string
+#include <sys/time.h> // for timeval
+#include <vector>     // for vector
+
 
 #define MAX_GATE_DESCRIPTION_LEN 127
 #define HDF5_NAME_LEN 65
 
 class gpuPostProcess : public kotekan::Stage {
 public:
-    gpuPostProcess(kotekan::Config& config_, const string& unique_name,
+    gpuPostProcess(kotekan::Config& config_, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
     virtual ~gpuPostProcess();
     void main_thread() override;
 
-    void vis_endpoint(kotekan::connectionInstance& conn, json& json_request);
+    void vis_endpoint(kotekan::connectionInstance& conn, nlohmann::json& json_request);
 
 private:
     struct Buffer** in_buf;
@@ -37,9 +41,9 @@ private:
     int32_t _num_gpu_frames;
     int32_t _num_blocks;
     int32_t _block_size;
-    vector<int32_t> _link_map;
-    vector<int32_t> _product_remap;
-    int32_t* _product_remap_c = NULL;
+    std::vector<int32_t> _link_map;
+    std::vector<int32_t> _product_remap;
+    int32_t* _product_remap_c = nullptr;
     int32_t _num_fpga_links;
     bool _enable_basic_gating;
     int32_t _gate_phase;

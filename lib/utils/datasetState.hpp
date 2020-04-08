@@ -1,36 +1,37 @@
 #ifndef DATASETSTATE_HPP
 #define DATASETSTATE_HPP
 
-#include "Config.hpp"
-#include "Hash.hpp"
-#include "errors.h"
-#include "factory.hpp"
-#include "gateSpec.hpp"
-#include "visUtil.hpp"
+#include "Hash.hpp"     // for Hash
+#include "factory.hpp"  // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, FACTORY, Factory
+#include "gateSpec.hpp" // for gateSpec, _factory_aliasgateSpec
+#include "visUtil.hpp"  // for prod_ctype, rstack_ctype, time_ctype, input_ctype, freq_ctype
 
-#include "fmt.hpp"
-#include "json.hpp"
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for json, basic_json<>::object_t, json_ref, basic_json, basic_json<>...
 
-#include <cstdint>
-#include <exception>
-#include <functional>
-#include <iosfwd>
-#include <map>
-#include <memory>
-#include <set>
-#include <stdexcept>
-#include <string>
-#include <utility>
-#include <vector>
+#include <algorithm> // for copy
+#include <cstdint>   // for uint32_t
+#include <exception> // for exception
+#include <iosfwd>    // for ostream
+#include <memory>    // for allocator, unique_ptr
+#include <numeric>   // for iota
+#include <stddef.h>  // for size_t
+#include <stdexcept> // for runtime_error, out_of_range
+#include <string>    // for string
+#include <utility>   // for pair
+#include <vector>    // for vector, vector<>::iterator
 
-// This type is used a lot so let's use an alias
-using json = nlohmann::json;
-
-// Forward declarations
-class datasetState;
 class datasetManager;
+class datasetState; // IWYU pragma: keep
 
+
+/// Unique pointer to a datasetState
 using state_uptr = std::unique_ptr<datasetState>;
+
+/// DatasetState ID
+using state_id_t = Hash;
+
+/// DatasetID
 using dset_id_t = Hash;
 
 /**
@@ -54,14 +55,14 @@ public:
      * @param j Full JSON serialisation.
      * @returns The created datasetState or a nullptr in a failure case.
      **/
-    static state_uptr from_json(const json& j);
+    static state_uptr from_json(const nlohmann::json& j);
 
     /**
      * @brief Full serialisation of state into JSON.
      *
      * @returns JSON serialisation of state.
      **/
-    json to_json() const;
+    nlohmann::json to_json() const;
 
     /**
      * @brief Save the internal data of this instance into JSON.
@@ -71,7 +72,7 @@ public:
      *
      * @returns JSON representing the internal state.
      **/
-    virtual json data_to_json() const = 0;
+    virtual nlohmann::json data_to_json() const = 0;
 
     /**
      * @brief Compare to another dataset state.
@@ -92,7 +93,7 @@ private:
 };
 
 
-CREATE_FACTORY(datasetState, const json&);
+CREATE_FACTORY(datasetState, const nlohmann::json&);
 
 
 #define REGISTER_DATASET_STATE(T, s) REGISTER_NAMED_TYPE_WITH_FACTORY(datasetState, T, s);
@@ -114,7 +115,7 @@ public:
      * @param data  The frequency information as serialized by
      *              freqState::to_json().
      */
-    freqState(const json& data) {
+    freqState(const nlohmann::json& data) {
         try {
             _freqs = data.get<std::vector<std::pair<uint32_t, freq_ctype>>>();
         } catch (std::exception& e) {
@@ -142,8 +143,8 @@ public:
 
 private:
     /// Serialize the data of this state in a json object
-    json data_to_json() const override {
-        json j(_freqs);
+    nlohmann::json data_to_json() const override {
+        nlohmann::json j(_freqs);
         return j;
     }
 
@@ -164,7 +165,7 @@ public:
      * @param data  The input information as serialized by
      *              inputState::to_json().
      */
-    inputState(const json& data) {
+    inputState(const nlohmann::json& data) {
         try {
             _inputs = data.get<std::vector<input_ctype>>();
         } catch (std::exception& e) {
@@ -191,8 +192,8 @@ public:
 
 private:
     /// Serialize the data of this state in a json object
-    json data_to_json() const override {
-        json j(_inputs);
+    nlohmann::json data_to_json() const override {
+        nlohmann::json j(_inputs);
         return j;
     }
 
@@ -213,7 +214,7 @@ public:
      * @param data  The product information as serialized by
      *              prodState::to_json().
      */
-    prodState(const json& data) {
+    prodState(const nlohmann::json& data) {
         try {
             _prods = data.get<std::vector<prod_ctype>>();
         } catch (std::exception& e) {
@@ -240,8 +241,8 @@ public:
 
 private:
     /// Serialize the data of this state in a json object
-    json data_to_json() const override {
-        json j(_prods);
+    nlohmann::json data_to_json() const override {
+        nlohmann::json j(_prods);
         return j;
     }
 
@@ -262,7 +263,7 @@ public:
      * @param data  The time information as serialized by
      *              timeState::to_json().
      */
-    timeState(const json& data) {
+    timeState(const nlohmann::json& data) {
         try {
             _times = data.get<std::vector<time_ctype>>();
         } catch (std::exception& e) {
@@ -290,8 +291,8 @@ public:
 
 private:
     /// Serialize the data of this state in a json object
-    json data_to_json() const override {
-        json j(_times);
+    nlohmann::json data_to_json() const override {
+        nlohmann::json j(_times);
         return j;
     }
 
@@ -311,7 +312,7 @@ public:
      * @param data  The eigenvalues as serialized by
      *              eigenvalueState::to_json().
      */
-    eigenvalueState(const json& data) {
+    eigenvalueState(const nlohmann::json& data) {
         try {
             _ev = data.get<std::vector<uint32_t>>();
         } catch (std::exception& e) {
@@ -356,8 +357,8 @@ public:
 
 private:
     /// Serialize the data of this state in a json object
-    json data_to_json() const override {
-        json j(_ev);
+    nlohmann::json data_to_json() const override {
+        nlohmann::json j(_ev);
         return j;
     }
 
@@ -390,7 +391,7 @@ public:
      * @param data  The stack information as serialized by
      *              stackState::to_json().
      */
-    stackState(const json& data) {
+    stackState(const nlohmann::json& data) {
         try {
             _rstack_map = data["rstack"].get<std::vector<rstack_ctype>>();
             _num_stack = data["num_stack"].get<uint32_t>();
@@ -442,7 +443,7 @@ public:
     }
 
     /// Serialize the data of this state in a json object
-    json data_to_json() const override {
+    nlohmann::json data_to_json() const override {
         return {{"rstack", _rstack_map}, {"num_stack", _num_stack}};
     }
 
@@ -472,7 +473,7 @@ public:
      * git_version_number: string
      *
      */
-    metadataState(const json& data) {
+    metadataState(const nlohmann::json& data) {
         try {
             _weight_type = data.at("weight_type").get<std::string>();
             _instrument_name = data.at("instrument_name").get<std::string>();
@@ -525,8 +526,8 @@ public:
 
 private:
     /// Serialize the data of this state in a json object
-    json data_to_json() const override {
-        json j;
+    nlohmann::json data_to_json() const override {
+        nlohmann::json j;
         j["weight_type"] = _weight_type;
         j["instrument_name"] = _instrument_name;
         j["git_version_tag"] = _git_version_tag;
@@ -559,7 +560,7 @@ public:
      *
      * @param  data   Full serialised data.
      **/
-    gatingState(const json& data) :
+    gatingState(const nlohmann::json& data) :
         gating_type(data["type"].get<std::string>()),
         gating_data(data["data"]) {}
 
@@ -569,7 +570,7 @@ public:
      *
      * @return  JSON serialisation.
      **/
-    json data_to_json() const override {
+    nlohmann::json data_to_json() const override {
         return {{"type", gating_type}, {"data", gating_data}};
     }
 
@@ -577,57 +578,114 @@ public:
     const std::string gating_type;
 
     /// Type specific data
-    const json gating_data;
+    const nlohmann::json gating_data;
 };
 
 
 /**
- * @brief A dataset state used to communicate the dataset ID of data stored
- *        in a raw file. This is a hack until we figure out how to propagate
- *        dataset ID's to archive files.
+ * @brief A dataset state that describes the gains applied to the data.
  *
- * @author Tristan Pinsonneault-Marotte
+ * @author Richard Shaw
  */
-class acqDatasetIdState : public datasetState {
+class gainState : public datasetState {
 public:
     /**
      * @brief Constructor
-     * @param data  The dataset ID as serialized by
-     *              acqDatasetIdState::to_json().
+     * @param data  The product information as serialized by
+     *              gainState::to_json().
      */
-    acqDatasetIdState(const json& data) {
+    gainState(const nlohmann::json& data) {
         try {
-            _ds_id = data.get<dset_id_t>();
+            _update_id = data["update_id"].get<std::string>();
+            _transition_interval = data["transition_interval"].get<double>();
         } catch (std::exception& e) {
-            throw std::runtime_error(
-                fmt::format(fmt("acqDatasetIdState: Failure parsing json data ({:s}): {:s}"),
-                            data.dump(4), e.what()));
+            throw std::runtime_error(fmt::format(
+                fmt("gainState: Failure parsing json data ({:s}): {:s}"), data.dump(4), e.what()));
         }
     };
 
     /**
      * @brief Constructor
-     * @param ds_id    The dataset ID for the acquisition.
+     * @param  update_id  The string update_id labelling the applied gains.
+     * @param  transition_interval  The length of time to blend updates over.
      */
-    acqDatasetIdState(dset_id_t ds_id) : _ds_id(ds_id){};
+    gainState(std::string update_id, double transition_interval) :
+        _update_id(update_id),
+        _transition_interval(transition_interval){};
 
     /**
-     * @brief Get dataset ID (read only).
-     *
-     * @return Dataset ID as a `dset_id_t`.
-     */
-    dset_id_t get_id() const {
-        return _ds_id;
+     * @brief Get the update_id
+     **/
+    const std::string& get_update_id() const {
+        return _update_id;
+    }
+
+    /**
+     * @brief Get the length of time to blend this new update with the previous one.
+     **/
+    double get_transition_interval() const {
+        return _transition_interval;
     }
 
 private:
-    dset_id_t _ds_id;
-
     /// Serialize the data of this state in a json object
-    json data_to_json() const override {
-        json j(_ds_id);
+    nlohmann::json data_to_json() const override {
+        nlohmann::json j;
+        j["update_id"] = _update_id;
+        j["transition_interval"] = _transition_interval;
         return j;
     }
+
+    // The label for the gains
+    std::string _update_id;
+
+    // The length of time (in seconds) the previous gain update is blended with this one.
+    double _transition_interval;
+};
+
+
+/**
+ * @brief A dataset state that describes the input flags being applied.
+ *
+ * @author Richard Shaw
+ */
+class flagState : public datasetState {
+public:
+    /**
+     * @brief Constructor
+     *
+     * @param data  The product information as serialized by
+     *              flagState::to_json().
+     */
+    flagState(const nlohmann::json& data) {
+        try {
+            _update_id = data.get<std::string>();
+        } catch (std::exception& e) {
+            throw std::runtime_error(fmt::format(
+                fmt("flagState: Failure parsing json data ({:s}): {:s}"), data.dump(4), e.what()));
+        }
+    };
+
+    /**
+     * @brief Constructor
+     *
+     * @param  update_id  The string update_id labelling the applied flags.
+     */
+    flagState(std::string update_id) : _update_id(update_id){};
+
+    const std::string& get_update_id() const {
+        return _update_id;
+    }
+
+private:
+    /// Serialize the data of this state in a json object
+    nlohmann::json data_to_json() const override {
+        nlohmann::json j(_update_id);
+        return j;
+    }
+
+    // The label for the flags
+    std::string _update_id;
 };
 
 #endif // DATASETSTATE_HPP

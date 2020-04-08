@@ -43,4 +43,3 @@ File Organization
 * Python components should be placed in the **python/** directory.
 
 * Configuration (``yaml``) files should go in the **config/** folder.
-

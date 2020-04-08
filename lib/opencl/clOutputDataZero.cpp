@@ -5,7 +5,7 @@ using kotekan::Config;
 
 REGISTER_CL_COMMAND(clOutputDataZero);
 
-clOutputDataZero::clOutputDataZero(Config& config, const string& unique_name,
+clOutputDataZero::clOutputDataZero(Config& config, const std::string& unique_name,
                                    bufferContainer& host_buffers, clDeviceInterface& device) :
     clCommand(config, unique_name, host_buffers, device, "", "") {
     _num_elements = config.get<int>(unique_name, "num_elements");

@@ -6,15 +6,16 @@
 #ifndef RFI_BROADCAST_H
 #define RFI_BROADCAST_H
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "powerStreamUtil.hpp"
-#include "restServer.hpp"
-#include "rfi_functions.h"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
+#include "restServer.hpp"      // for connectionInstance
 
-#include <sys/socket.h>
+#include "json.hpp" // for json
+
+#include <mutex>    // for mutex
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
 
 /*
  * @class rfiBadInputFinder
@@ -62,14 +63,14 @@
 class rfiBadInputFinder : public kotekan::Stage {
 public:
     // Constructor
-    rfiBadInputFinder(kotekan::Config& config, const string& unique_name,
+    rfiBadInputFinder(kotekan::Config& config, const std::string& unique_name,
                       kotekan::bufferContainer& buffer_container);
     // Deconstructor, cleans up / does nothing
     virtual ~rfiBadInputFinder();
     // Primary loop, reads buffer and sends out UDP stream
     void main_thread() override;
     // Callback function called by rest server
-    void rest_callback(kotekan::connectionInstance& conn, json& json_request);
+    void rest_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
 
 private:
     /// Private functions
@@ -106,15 +107,15 @@ private:
     /// The port for UDP stream to be sent to
     uint32_t dest_port;
     /// The address for UDP stream to be sent to
-    string dest_server_ip;
+    std::string dest_server_ip;
     /// The streaming protocol, only UDP is supported
-    string dest_protocol;
+    std::string dest_protocol;
     /// Internal socket error holder
     int socket_fd;
     /// Rest server callback mutex
     std::mutex rest_callback_mutex;
     /// String to hold endpoint
-    string endpoint;
+    std::string endpoint;
 };
 
 #endif

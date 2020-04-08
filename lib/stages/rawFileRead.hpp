@@ -7,13 +7,11 @@
 #ifndef RAW_FILE_READ_H
 #define RAW_FILE_READ_H
 
-#include "Stage.hpp"
-#include "buffer.h"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
 
-#include <cstdio>
-#include <string>
-#include <sys/stat.h>
-#include <unistd.h>
+#include <string> // for string
 
 /**
  * @class rawFileRead
@@ -31,7 +29,7 @@
  */
 class rawFileRead : public kotekan::Stage {
 public:
-    rawFileRead(kotekan::Config& config, const string& unique_name,
+    rawFileRead(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& buffer_container);
     virtual ~rawFileRead();
     void main_thread() override;
@@ -41,6 +39,8 @@ private:
     std::string base_dir;
     std::string file_name;
     std::string file_ext;
+    // Read file with a prefixed hostname or not
+    bool prefix_hostname;
     // Interrupt Kotekan if run out of files to read
     bool end_interrupt;
 };

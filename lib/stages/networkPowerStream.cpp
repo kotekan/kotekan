@@ -1,18 +1,26 @@
 #include "networkPowerStream.hpp"
 
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_empty, wait_for_full_frame, register_consumer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for ERROR, INFO
 
-#include <arpa/inet.h>
-#include <functional>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <string.h>
-#include <string>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <unistd.h>
+#include <arpa/inet.h>  // for inet_addr, inet_aton
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <netinet/in.h> // for sockaddr_in, htons, IPPROTO_TCP, IPPROTO_UDP, in_addr
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for runtime_error
+#include <stdlib.h>     // for free, malloc
+#include <string.h>     // for memcpy, memset
+#include <string>       // for string, allocator, operator==
+#include <sys/socket.h> // for send, socket, AF_INET, connect, sendto, setsockopt, SOCK_...
+#include <sys/time.h>   // for timeval, gettimeofday
+#include <sys/types.h>  // for uint
+#include <unistd.h>     // for close
+#include <vector>       // for vector
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -20,7 +28,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(networkPowerStream);
 
-networkPowerStream::networkPowerStream(Config& config, const string& unique_name,
+networkPowerStream::networkPowerStream(Config& config, const std::string& unique_name,
                                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&networkPowerStream::main_thread, this)) {
@@ -70,7 +78,7 @@ networkPowerStream::~networkPowerStream() {}
 
 void networkPowerStream::main_thread() {
     int frame_id = 0;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
     uint packet_length = freqs * sizeof(float) + sizeof(IntensityPacketHeader);
     void* packet_buffer = malloc(packet_length);
     IntensityPacketHeader* packet_header = (IntensityPacketHeader*)packet_buffer;
@@ -98,7 +106,7 @@ void networkPowerStream::main_thread() {
         while (!stop_thread) {
             // Wait for a full buffer.
             frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-            if (frame == NULL)
+            if (frame == nullptr)
                 break;
 
             for (int t = 0; t < times; t++) {
@@ -127,7 +135,7 @@ void networkPowerStream::main_thread() {
         while (!stop_thread) {
             // Wait for a full buffer.
             frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-            if (frame == NULL)
+            if (frame == nullptr)
                 break;
 
             while (atomic_flag_test_and_set(&socket_lock)) {
@@ -157,7 +165,7 @@ void networkPowerStream::main_thread() {
             } else if (!tcp_connecting) {
                 frame_idx += times;
                 handshake_idx = frame_idx;
-                gettimeofday(&tv, NULL);
+                gettimeofday(&tv, nullptr);
                 handshake_utc = tv.tv_sec + tv.tv_usec / 1e6;
                 tcp_connecting = true;
                 atomic_flag_clear(&socket_lock);

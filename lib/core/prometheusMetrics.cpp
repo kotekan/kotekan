@@ -1,9 +1,17 @@
 #include "prometheusMetrics.hpp"
 
-#include "errors.h"
-#include "metadata.h"
+#include "kotekanLogging.hpp" // for ERROR_NON_OO
+#include "restServer.hpp"     // for restServer, connectionInstance
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt, print
+
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1
+#include <iterator>   // for begin, end
+#include <ostream>    // for operator<<, ostringstream, basic_ostream
+#include <sys/time.h> // for gettimeofday, timeval
+#include <utility>    // for pair
+
+using std::string;
 
 namespace kotekan {
 namespace prometheus {
@@ -54,7 +62,7 @@ std::ostringstream& Gauge::to_string(std::ostringstream& out) {
 /* static */
 uint64_t Gauge::get_time_in_milliseconds() {
     struct timeval tv;
-    gettimeofday(&tv, NULL);
+    gettimeofday(&tv, nullptr);
 
     return (uint64_t)(tv.tv_sec) * 1000 + (uint64_t)(tv.tv_usec) / 1000;
 }
@@ -155,7 +163,7 @@ void Metrics::add(const string name, const string stage_name,
     families[key] = metric;
 }
 
-Gauge& Metrics::add_gauge(const string& name, const string& stage_name) {
+Gauge& Metrics::add_gauge(const std::string& name, const std::string& stage_name) {
     const std::vector<string> empty_labels;
     auto f = std::make_shared<MetricFamily<Gauge>>(name, stage_name, empty_labels,
                                                    MetricFamily<Gauge>::MetricType::Gauge);
@@ -163,15 +171,15 @@ Gauge& Metrics::add_gauge(const string& name, const string& stage_name) {
     return f->labels({});
 }
 
-MetricFamily<Gauge>& Metrics::add_gauge(const string& name, const string& stage_name,
-                                        const std::vector<string>& label_names) {
+MetricFamily<Gauge>& Metrics::add_gauge(const std::string& name, const std::string& stage_name,
+                                        const std::vector<std::string>& label_names) {
     auto f = std::make_shared<MetricFamily<Gauge>>(name, stage_name, label_names,
                                                    MetricFamily<Gauge>::MetricType::Gauge);
     add(name, stage_name, f);
     return *f;
 }
 
-Counter& Metrics::add_counter(const string& name, const string& stage_name) {
+Counter& Metrics::add_counter(const std::string& name, const std::string& stage_name) {
     const std::vector<string> empty_labels;
     auto f = std::shared_ptr<MetricFamily<Counter>>(new MetricFamily<Counter>(
         name, stage_name, empty_labels, MetricFamily<Counter>::MetricType::Counter));
@@ -179,8 +187,8 @@ Counter& Metrics::add_counter(const string& name, const string& stage_name) {
     return f->labels({});
 }
 
-MetricFamily<Counter>& Metrics::add_counter(const string& name, const string& stage_name,
-                                            const std::vector<string>& label_names) {
+MetricFamily<Counter>& Metrics::add_counter(const std::string& name, const std::string& stage_name,
+                                            const std::vector<std::string>& label_names) {
     auto f = std::shared_ptr<MetricFamily<Counter>>(new MetricFamily<Counter>(
         name, stage_name, label_names, MetricFamily<Counter>::MetricType::Counter));
     add(name, stage_name, f);

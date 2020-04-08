@@ -6,7 +6,7 @@
 
 class clPreseedKernel : public clCommand {
 public:
-    clPreseedKernel(kotekan::Config& config, const string& unique_name,
+    clPreseedKernel(kotekan::Config& config, const std::string& unique_name,
                     kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
     ~clPreseedKernel();
     virtual void build() override;

@@ -6,7 +6,7 @@
 
 class clOutputBeamformResult : public clCommand {
 public:
-    clOutputBeamformResult(kotekan::Config& config, const string& unique_name,
+    clOutputBeamformResult(kotekan::Config& config, const std::string& unique_name,
                            kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
     ~clOutputBeamformResult();
     int wait_on_precondition(int gpu_frame_id) override;

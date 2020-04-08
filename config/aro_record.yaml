@@ -27,7 +27,7 @@ buffer_depth: 10
 num_links: 8
 timesamples_per_packet: 2
 num_data_sets: 1
-cpu_affinity: [4,5,10,11]
+cpu_affinity: [1,7,5,11]
 sizeof_float: 4
 sizeof_short: 2
 vdif_header_size: 32
@@ -64,8 +64,8 @@ power_buffer:
 dpdk:
     kotekan_stage: dpdkCore
     # Format is index = lcore, value = cpu core
-    lcore_cpu_map: [0,1,2,3,6,7,8,9]
-    master_lcore_cpu: 2
+    lcore_cpu_map: [0,2,3,4,6,8,9,10]
+    master_lcore_cpu: 4
     fpga_packet_size: 4680
     alignment: samples_per_data_set * 100
     # Format is index = lcore, value = array of port IDs
@@ -103,15 +103,15 @@ raw_capture:
 #################################
 # THIS IS THE PLACE TO EDIT!!!  #
 #################################
-   note: B0329+20 test run
+   note: 10m FRB search
 #Change this if you want to record
-   write_to_disk: False
+   write_to_disk: True
    gain_files:
-   - /home/natasha/ch_acq/gains_slotNone.pkl
-   - /home/natasha/ch_acq/gains_noisy_slotNone.pkl
+   - /home/arofrb/aro_run/gains/gains_FCC0000.pkl
+   - /home/arofrb/aro_run/gains/gains_noisy_FCC0000.pkl
    num_disks: 10
    disk_base: /drives
-   disk_set: E
+   disk_set: L
    in_buf: vdif_buffer
 
 # These next two stages are used for live viewing of the data
@@ -123,7 +123,7 @@ power_integration:
 
 power_stream:
    freq: 600
-   sample_bw: 200
+   sample_bw: 400.0
    destination_protocol: TCP
    stream_1:
       kotekan_stage: networkPowerStream
@@ -138,5 +138,14 @@ power_stream:
    stream_boris:
       kotekan_stage: networkPowerStream
       in_buf: power_buffer
-      destination_port: 2055
-      destination_ip: 10.72.0.2
+      destination_port: 2056
+      destination_ip: 10.70.1.2
+
+# record_power:
+#    kotekan_stage: nDiskFileWrite
+#    write_to_disk: True
+#    num_disks: 1
+#    disk_base: /drives
+#    disk_set: FRB
+#    write_metadata_and_gains: false
+#    in_buf: power_buffer

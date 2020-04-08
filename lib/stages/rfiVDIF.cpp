@@ -1,13 +1,21 @@
 #include "rfiVDIF.hpp"
 
-#include "errors.h"
-#include "utils/util.h"
-#include "vdif_functions.h"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_empty, mark_frame_full, register_consumer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO
+#include "util.h"              // for e_time
+#include "vdif_functions.h"    // for VDIFHeader
 
-#include <random>
-#include <string.h>
-#include <sys/time.h>
-#include <unistd.h>
+#include <atomic>     // for atomic_bool
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <string.h>   // for memset, memcpy
+#include <vector>     // for vector
+
 
 using std::string;
 
@@ -17,7 +25,8 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(rfiVDIF);
 
-rfiVDIF::rfiVDIF(Config& config, const string& unique_name, bufferContainer& buffer_containter) :
+rfiVDIF::rfiVDIF(Config& config, const std::string& unique_name,
+                 bufferContainer& buffer_containter) :
     Stage(config, unique_name, buffer_containter, std::bind(&rfiVDIF::main_thread, this)) {
     // Get relevant buffers
     buf_in = get_buffer("vdif_in");
@@ -41,8 +50,8 @@ void rfiVDIF::main_thread() {
     // Frame parameters
     uint32_t frame_in_id = 0;
     uint32_t frame_out_id = 0;
-    uint8_t* in_frame = NULL;
-    uint8_t* out_frame = NULL;
+    uint8_t* in_frame = nullptr;
+    uint8_t* out_frame = nullptr;
     // Set the VDIF block size
     uint32_t VDIF_BLOCK_SIZE = _num_local_freq + sizeof(VDIFHeader);
     // Counters and indices
@@ -73,7 +82,7 @@ void rfiVDIF::main_thread() {
     while (!stop_thread) {
         // Get a new frame
         in_frame = wait_for_full_frame(buf_in, unique_name.c_str(), frame_in_id);
-        if (in_frame == NULL)
+        if (in_frame == nullptr)
             break;
         // Start timer
         double start_time = e_time();
@@ -158,7 +167,7 @@ void rfiVDIF::main_thread() {
         }
         // Wait for output frame
         out_frame = wait_for_empty_frame(buf_out, unique_name.c_str(), frame_out_id);
-        if (out_frame == NULL)
+        if (out_frame == nullptr)
             break;
         // Copy results to output frame
         memcpy(out_frame, RFI_Buffer, RFI_Buffer_Size * sizeof(float));

@@ -1,10 +1,20 @@
 #include "TestDropFrames.hpp"
 
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for Buffer, get_num_consumers, mark_frame_empty, mark_frame_full
+#include "kotekanLogging.hpp" // for INFO
 
-#include <random>
+#include <algorithm>  // for find
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for uint32_t
+#include <cstring>    // for memcpy
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <random>     // for default_random_engine, bernoulli_distribution, random_device
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -12,7 +22,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(TestDropFrames);
 
-TestDropFrames::TestDropFrames(Config& config, const string& unique_name,
+TestDropFrames::TestDropFrames(Config& config, const std::string& unique_name,
                                bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&TestDropFrames::main_thread, this)),
     _samples_per_data_set(config.get<uint32_t>(unique_name, "samples_per_data_set")),
@@ -37,7 +47,7 @@ void TestDropFrames::main_thread() {
 
     while (!stop_thread) {
         uint8_t* input = wait_for_full_frame(in_buf, unique_name.c_str(), in_buf_id);
-        if (input == NULL)
+        if (input == nullptr)
             break;
 
         // Copy the frame, unless it's in the list of frames to drop or it drew the "DROP" odds
@@ -49,7 +59,7 @@ void TestDropFrames::main_thread() {
             INFO("Drop frame {} because it drew the short straw.", frame_count);
         } else {
             uint8_t* output = wait_for_empty_frame(out_buf, unique_name.c_str(), out_buf_id);
-            if (output == NULL)
+            if (output == nullptr)
                 break;
 
             int num_consumers = get_num_consumers(in_buf);

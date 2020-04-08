@@ -1,22 +1,40 @@
 #include "bufferRecv.hpp"
 
-#include "bufferSend.hpp"
-#include "nt_memcpy.h"
-#include "prometheusMetrics.hpp"
-#include "util.h"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for Buffer, allocate_new_metadata_object, buffer_free, buff...
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "bufferSend.hpp"        // for bufferFrameHeader
+#include "metadata.h"            // for metadataPool
+#include "prometheusMetrics.hpp" // for Gauge, Metrics, Counter, MetricFamily
+#include "util.h"                // for string_tail
+#include "visUtil.hpp"           // for current_time
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <cstring>
-#include <errno.h>
-#include <exception>
-#include <functional>
-#include <memory.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <string>
-#include <sys/mman.h>
+#include <algorithm>       // for copy, max, copy_backward, find, equal
+#include <arpa/inet.h>     // for inet_ntop
+#include <assert.h>        // for assert
+#include <atomic>          // for atomic_bool
+#include <errno.h>         // for errno
+#include <event2/thread.h> // for evthread_use_pthreads
+#include <exception>       // for exception
+#include <functional>      // for _Bind_helper<>::type, bind, ref, function, placeholders
+#include <memory>          // for allocator_traits<>::value_type
+#include <netinet/in.h>    // for sockaddr_in, htons, in_addr, ntohs
+#include <pthread.h>       // for pthread_setaffinity_np, pthread_setname_np
+#include <queue>           // for queue
+#include <regex>           // for match_results<>::_Base_type
+#include <sched.h>         // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept>       // for runtime_error
+#include <stdlib.h>        // for free, malloc
+#include <string>          // for string, allocator, operator+
+#include <sys/select.h>    // for FD_SETSIZE
+#include <sys/socket.h>    // for AF_INET, accept, bind, listen, setsockopt, socket, sock...
+
+namespace kotekan {
+class connectionInstance;
+} // namespace kotekan
 
 using namespace std::placeholders;
 using std::mutex;
@@ -32,7 +50,7 @@ using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(bufferRecv);
 
-bufferRecv::bufferRecv(Config& config, const string& unique_name,
+bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferRecv::main_thread, this)),
     dropped_frame_counter(
@@ -43,6 +61,7 @@ bufferRecv::bufferRecv(Config& config, const string& unique_name,
     listen_port = config.get_default<uint32_t>(unique_name, "listen_port", 11024);
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     connection_timeout = config.get_default<int>(unique_name, "connection_timeout", 60);
+    drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
 
     buf = get_buffer("buf");
     register_producer(buf, unique_name.c_str());
@@ -100,7 +119,7 @@ void bufferRecv::increment_droped_frame_count() {
     dropped_frame_counter.inc();
 }
 
-void bufferRecv::set_transfer_time_seconds(const string& source_label, const double elapsed) {
+void bufferRecv::set_transfer_time_seconds(const std::string& source_label, const double elapsed) {
     std::lock_guard<mutex> lock(transfer_time_seconds_mutex);
     transfer_time_seconds.labels({source_label}).set(elapsed);
 }
@@ -150,8 +169,9 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
     INFO("New connection from client: {:s}:{:d}", ip_str, port);
 
     // New connection instance
-    connInstance* instance = new connInstance(accept_args->unique_name, accept_args->buf,
-                                              accept_args->buffer_recv, ip_str, port, read_timeout);
+    connInstance* instance =
+        new connInstance(accept_args->unique_name, accept_args->buf, accept_args->buffer_recv,
+                         ip_str, port, read_timeout, drop_frames);
 
     // Setup logging for the instance object.
     instance->set_log_prefix(accept_args->unique_name + "/instance");
@@ -184,7 +204,7 @@ void bufferRecv::main_thread() {
     struct sockaddr_in server_addr;
     struct event* listener_event;
 
-    INFO("libevent version: {:s}", event_get_version());
+    DEBUG("libevent version: {:s}", event_get_version());
 
     if (evthread_use_pthreads()) {
         ERROR("Cannot use pthreads with libevent!");
@@ -221,6 +241,17 @@ void bufferRecv::main_thread() {
     listener = socket(AF_INET, SOCK_STREAM, 0);
     evutil_make_socket_nonblocking(listener);
 
+    // This makes is possible to reuse the same socket even if it goes into TIME_WAIT
+    // Used by gossec
+    if (!drop_frames) {
+        int reuse = 1;
+        if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)) < 0) {
+            ERROR("Could not set SO_REUSEADDR on socket");
+            close(listener);
+            return;
+        }
+    }
+
     if (bind(listener, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         FATAL_ERROR("Failed to bind to socket 0.0.0.0:{:d}, error: {:d} ({:s})", listen_port, errno,
                     strerror(errno));
@@ -245,7 +276,7 @@ void bufferRecv::main_thread() {
     // in the base loop thread, but this needs to be tested more.
     listener_event = event_new(base, listener, EV_READ | EV_PERSIST, bufferRecv::accept_connection,
                                (void*)&args);
-    event_add(listener_event, NULL);
+    event_add(listener_event, nullptr);
 
     // Create a timer to check for the exit condition
     struct event* timer_event;
@@ -273,7 +304,7 @@ int bufferRecv::get_next_frame() {
 
     // If the frame is full for some reason (items not being consumed fast enough)
     // Then return -1;
-    if (is_frame_empty(buf, current_frame_id) == 0) {
+    if (drop_frames && is_frame_empty(buf, current_frame_id) == 0) {
         return -1;
     }
 
@@ -283,14 +314,16 @@ int bufferRecv::get_next_frame() {
     return last_frame_id;
 }
 
-connInstance::connInstance(const string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
-                           const string& client_ip, int port, struct timeval read_timeout) :
+connInstance::connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
+                           const std::string& client_ip, int port, struct timeval read_timeout,
+                           bool drop_frames) :
     producer_name(producer_name),
     buf(buf),
     buffer_recv(buffer_recv),
     client_ip(client_ip),
     port(port),
-    read_timeout(read_timeout) {
+    read_timeout(read_timeout),
+    drop_frames(drop_frames) {
 
     frame_space = buffer_malloc(buf->aligned_frame_size, 0);
     CHECK_MEM(frame_space);
@@ -300,7 +333,7 @@ connInstance::connInstance(const string& producer_name, Buffer* buf, bufferRecv*
 }
 
 connInstance::~connInstance() {
-    INFO("Closing FD");
+    DEBUG("Closing FD");
     close(fd);
     event_free(event_read);
     buffer_free(frame_space, buf->aligned_frame_size);
@@ -427,7 +460,7 @@ void connInstance::internal_read_callback() {
             DEBUG2("Finished state");
             int frame_id = buffer_recv->get_next_frame();
             if (frame_id == -1) {
-                WARN("No free buffer frames, dropping data from {:s}", client_ip);
+                DEBUG("No free buffer frames, dropping data from {:s}", client_ip);
 
                 // Update dropped frame count in prometheus
                 buffer_recv->increment_droped_frame_count();
@@ -435,7 +468,7 @@ void connInstance::internal_read_callback() {
                 // This call cannot be blocking because we checked that
                 // the frame is empty in get_next_frame()
                 uint8_t* frame = wait_for_empty_frame(buf, producer_name.c_str(), frame_id);
-                if (frame == NULL)
+                if (frame == nullptr)
                     return;
 
                 allocate_new_metadata_object(buf, frame_id);
@@ -446,7 +479,7 @@ void connInstance::internal_read_callback() {
                 // We could also swap the metadata,
                 // but this is more complex, and mucher lower overhead to just memcpy here.
                 void* metadata = get_metadata(buf, frame_id);
-                if (metadata != NULL)
+                if (metadata != nullptr)
                     memcpy(metadata, metadata_space, buf_frame_header.metadata_size);
 
                 mark_frame_full(buf, producer_name.c_str(), frame_id);

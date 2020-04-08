@@ -7,14 +7,22 @@
 #ifndef FRBNETWORKPROCESS_HPP
 #define FRBNETWORKPROCESS_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "restServer.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
+#include "restServer.hpp"      // for connectionInstance
 
-#include <atomic>
-#include <functional>
-#include <string>
-#include <vector>
+#include "json.hpp" // for json
+
+#include <atomic>             // for atomic_bool
+#include <chrono>             // for seconds
+#include <condition_variable> // for condition_variable
+#include <functional>         // for reference_wrapper
+#include <map>                // for map
+#include <netinet/in.h>       // for sockaddr_in
+#include <stdint.h>           // for uint32_t
+#include <string>             // for string
+#include <vector>             // for vector
 
 /**
  * @class frbNetworkProcess
@@ -52,7 +60,8 @@
  * @conf   quick_ping_interval  Uint32 (default 5 sec) Time in seconds for sending pings when a live
  * node stops responding
  * @conf   ping_dead_threshold  Uint32 (default 30 sec) Duration in seconds of quick-checking state
- * after which a node is declared dead if it still hasn't responded
+ * after which a node is declared dead if it still hasn't responded. If 0, disable the checks
+ * entirely.
  *
  * @todo   Resolve the issue of NTP clock vs Monotonic clock.
  *
@@ -77,7 +86,7 @@ struct DestIpSocket {
     DestIpSocket(DestIpSocket&& other);
 
     //@{
-    /// host address as a string and a `sockaddr` structure
+    /// host address as a std::string and a `sockaddr` structure
     const std::string host;
     const sockaddr_in addr;
     //@}
@@ -95,17 +104,18 @@ struct DestIpSocket {
 class frbNetworkProcess : public kotekan::Stage {
 public:
     /// Constructor, also initializes internal variables from config.
-    frbNetworkProcess(kotekan::Config& config, const string& unique_name,
+    frbNetworkProcess(kotekan::Config& config, const std::string& unique_name,
                       kotekan::bufferContainer& buffer_container);
 
     /// Destructor , cleaning local allocations
     virtual ~frbNetworkProcess();
 
     /// Callback to update the beam offset
-    void update_offset_callback(kotekan::connectionInstance& conn, json& json_request);
+    void update_offset_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
 
     /// Callback to change destination active status
-    void set_destination_active_callback(kotekan::connectionInstance& conn, json& json_request);
+    void set_destination_active_callback(kotekan::connectionInstance& conn,
+                                         nlohmann::json& json_request);
 
     /// main thread
     void main_thread() override;

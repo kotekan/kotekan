@@ -1,9 +1,11 @@
 #define BOOST_TEST_MODULE "test_visTranspose"
 
-#include <boost/test/included/unit_test.hpp>
+#include "visTranspose.hpp" // for strided_copy
 
-// the code to test:
-#include "visTranspose.hpp"
+#include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...
+#include <cstdint>                           // for uint32_t, uint8_t
+#include <cstdlib>                           // for malloc
+
 
 BOOST_AUTO_TEST_CASE(_strided_copy) {
     // void strided_copy(T* in, T* out, size_t offset, size_t stride,

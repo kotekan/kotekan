@@ -7,28 +7,27 @@
 #ifndef VIS_ACCUMULATE_HPP
 #define VIS_ACCUMULATE_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "gateSpec.hpp"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t
+#include "gateSpec.hpp"          // for gateSpec
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily
+#include "visBuffer.hpp"         // for visFrameView
+#include "visUtil.hpp"           // for frameID, freq_ctype, input_ctype, prod_ctype
 
-#include <cstdint>
-#include <deque>
-#include <functional>
-#include <map>
-#include <memory>
-#include <mutex>
-#include <string>
-#include <time.h>
-#include <utility>
-#include <vector>
+#include <cstdint>    // for uint32_t, int32_t
+#include <deque>      // for deque
+#include <functional> // for function
+#include <map>        // for map
+#include <memory>     // for unique_ptr
+#include <mutex>      // for mutex
+#include <string>     // for string
+#include <time.h>     // for size_t, timespec
+#include <utility>    // for pair
+#include <vector>     // for vector
 
-using namespace kotekan::prometheus;
 
 /**
  * @class visAccumulate
@@ -80,7 +79,7 @@ using namespace kotekan::prometheus;
  */
 class visAccumulate : public kotekan::Stage {
 public:
-    visAccumulate(kotekan::Config& config, const string& unique_name,
+    visAccumulate(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& buffer_container);
     ~visAccumulate() = default;
     void main_thread() override;
@@ -229,7 +228,7 @@ private:
 
     // Reference to the prometheus metric that we will use for counting skipped
     // frames
-    MetricFamily<Counter>& skipped_frame_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& skipped_frame_counter;
 };
 
 #endif

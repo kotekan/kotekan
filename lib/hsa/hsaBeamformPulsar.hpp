@@ -7,8 +7,14 @@
 #ifndef HSA_BEAMFORM_PULSAR_H
 #define HSA_BEAMFORM_PULSAR_H
 
-#include "hsaCommand.hpp"
+#include "Config.hpp"             // for Config
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaCommand.hpp"         // for hsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
+#include <stdint.h> // for int32_t
+#include <string>   // for string
 /**
  * @class hsaBeamformPulsar
  * @brief hsaCommand to brute-force beamform for pulsar obs
@@ -56,7 +62,7 @@ class hsaBeamformPulsar : public hsaCommand {
 public:
     /// Constructor, also initializes internal variables from config and initializes the array of
     /// phases.
-    hsaBeamformPulsar(kotekan::Config& config, const string& unique_name,
+    hsaBeamformPulsar(kotekan::Config& config, const std::string& unique_name,
                       kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor, cleans up local allocs.
@@ -74,13 +80,11 @@ private:
 
     /// Length of the array of phases for beamforming, should be 10 psr * 2048 elem * 2 for complex
     int32_t phase_len;
-    /// pointer to the phase array
-    float* host_phase;
 
     /// numbler of elements, should be 2048
     int32_t _num_elements;
     /// number of pulsar beams to be formed, should be 10
-    int32_t _num_pulsar;
+    int32_t _num_beams;
     /// number of polarizations in the data, should be 2
     int32_t _num_pol;
     /// number of samples

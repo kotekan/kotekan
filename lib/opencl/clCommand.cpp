@@ -8,15 +8,16 @@ using kotekan::Config;
 using std::string;
 using std::to_string;
 
-clCommand::clCommand(Config& config_, const string& unique_name_, bufferContainer& host_buffers_,
-                     clDeviceInterface& device_, const string& default_kernel_command,
-                     const string& default_kernel_file_name) :
+clCommand::clCommand(Config& config_, const std::string& unique_name_,
+                     bufferContainer& host_buffers_, clDeviceInterface& device_,
+                     const std::string& default_kernel_command,
+                     const std::string& default_kernel_file_name) :
     gpuCommand(config_, unique_name_, host_buffers_, device_, default_kernel_command,
                default_kernel_file_name),
     device(device_) {
     post_events = (cl_event*)malloc(_gpu_buffer_depth * sizeof(cl_event));
     for (int j = 0; j < _gpu_buffer_depth; ++j)
-        post_events[j] = NULL;
+        post_events[j] = nullptr;
 }
 
 clCommand::~clCommand() {
@@ -27,25 +28,25 @@ clCommand::~clCommand() {
         DEBUG("program Freed");
     }
     free(post_events);
-    DEBUG("post_events Freed: {:s}", unique_name));
+    DEBUG("post_events Freed: {:s}", unique_name);
 }
 
 void clCommand::finalize_frame(int gpu_frame_id) {
     bool profiling = true;
-    if (post_events[gpu_frame_id] != NULL) {
+    if (post_events[gpu_frame_id] != nullptr) {
         if (profiling) {
             cl_ulong start_time, stop_time;
             CHECK_CL_ERROR(clGetEventProfilingInfo(post_events[gpu_frame_id],
                                                    CL_PROFILING_COMMAND_START, sizeof(start_time),
-                                                   &start_time, NULL));
+                                                   &start_time, nullptr));
             CHECK_CL_ERROR(clGetEventProfilingInfo(post_events[gpu_frame_id],
                                                    CL_PROFILING_COMMAND_END, sizeof(stop_time),
-                                                   &stop_time, NULL));
+                                                   &stop_time, nullptr));
             last_gpu_execution_time = ((double)(stop_time - start_time)) * 1e-9;
         }
 
         CHECK_CL_ERROR(clReleaseEvent(post_events[gpu_frame_id]));
-        post_events[gpu_frame_id] = NULL;
+        post_events[gpu_frame_id] = nullptr;
     } else
         ERROR("*** WTF? Null event!");
 }
@@ -61,7 +62,7 @@ void clCommand::build() {
     if (kernel_command != "") {
         DEBUG2("Building! {:s}", kernel_command)
         fp = fopen(kernel_file_name.c_str(), "r");
-        if (fp == NULL) {
+        if (fp == nullptr) {
             FATAL_ERROR("error loading file: {:s}", kernel_file_name);
         }
         fseek(fp, 0, SEEK_END);

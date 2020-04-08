@@ -37,8 +37,7 @@ THE SOFTWARE.
 ===== Formatting library for C++ =====
 
 Files:
-  include/ftm.hpp
-  include/ftm/*
+  external/fmt/*
 
 ===
 Formatting library for C++
@@ -70,7 +69,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ===== gsl-lite =====
 
 Files:
-  include/gsl-light.hpp
+  external/gsl/gsl-light.hpp
 
 ===
 gsl-lite is based on GSL: Guideline Support Library.
@@ -93,7 +92,7 @@ THE SOFTWARE.
 ===== JSON for Modern C++ =====
 
 Files:
-  include/json.hpp
+  external/json/json.hpp
 
 ===
     __ _____ _____ _____
@@ -172,7 +171,7 @@ DEALINGS WITH THE SOFTWARE.
 ===== FindHCC.cmake =====
 
 Files:
-  camke/FindHCC.cmake
+  cmake/FindHCC.cmake
 
 ===
 Copyright (C) 2016 Advanced Micro Devices, Inc. All rights reserved.
@@ -195,3 +194,28 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNE-
 CTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ===
 
+
+===== FindLAPACKE.cmake =====
+
+Files:
+    cmake/FindLAPACKE.cmake
+
+===
+Copyright 2016 Hans J. Johnson <hans-johnson@uiowa.edu>
+
+Distributed under the OSI-approved BSD License (the "License")
+
+This software is distributed WITHOUT ANY WARRANTY; without even the
+implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+===
+
+
+===== MurmurHash3 =====
+
+Files:
+    external/MurmurHash3/*
+
+===
+MurmurHash3 was written by Austin Appleby, and is placed in the public
+domain. The author hereby disclaims copyright to this source code.
+===

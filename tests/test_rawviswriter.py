@@ -53,6 +53,45 @@ def written_data(tmpdir_factory):
     yield [visbuffer.VisRaw(fname) for fname in files]
 
 
+@pytest.fixture(scope="module")
+def critical_state_data(tmpdir_factory):
+
+    tmpdir = str(tmpdir_factory.mktemp("writer"))
+    start_time = 1_500_000_000
+
+    fakevis_buffer = runner.FakeVisBuffer(
+        freq_ids=writer_params["freq"],
+        num_frames=50,
+        cadence=1.0,
+        start_time=start_time,
+        state_changes=[
+            {"timestamp": start_time + 9.5, "type": "inputs"},
+            {"timestamp": start_time + 19.5, "type": "flags"},
+            {"timestamp": start_time + 39.5, "type": "inputs"},
+        ],
+        mode="change_state",
+    )
+
+    params = writer_params.copy()
+    params["root_path"] = tmpdir
+
+    test = runner.KotekanStageTester(
+        "visWriter",
+        {"node_mode": False, "file_type": "raw"},
+        fakevis_buffer,
+        None,
+        params,
+    )
+
+    test.run()
+
+    import glob
+
+    files = sorted(glob.glob(tmpdir + "/20??????T??????Z_*_corr/*.meta"))
+
+    yield [visbuffer.VisRaw(fname) for fname in files]
+
+
 def test_vis(written_data):
 
     for vr in written_data:
@@ -144,3 +183,27 @@ def test_eigenvectors(written_data):
             evecs.imag == np.arange(ni)[np.newaxis, np.newaxis, np.newaxis, :]
         ).all()
         assert (erms == 1.0).all()
+
+
+def test_dataset_changes(critical_state_data):
+    """Test that changing the dataset ID only causes a new acq if there is a
+    critical state change."""
+
+    num_time = [10, 30, 10]
+    num_states = [1, 2, 1]
+
+    # Because we explicity set the start timestamp we know exactly what the
+    # acquisitions should be called
+    acq_name = [
+        "20170714T024000Z_chime_corr",
+        "20170714T024010Z_chime_corr",
+        "20170714T024040Z_chime_corr",
+    ]
+
+    for ii, vr in enumerate(critical_state_data):
+        ds = np.array(vr.metadata["dataset_id"]).copy().view("u8,u8")
+        unique_ds = np.unique(ds)
+
+        assert vr.num_time == num_time[ii]
+        assert len(unique_ds) == num_states[ii]
+        assert vr.file_metadata["attributes"]["acquisition_name"] == acq_name[ii]

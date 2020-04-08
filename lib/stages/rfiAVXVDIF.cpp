@@ -1,37 +1,35 @@
 #include "rfiAVXVDIF.hpp"
 
-#include "Config.hpp"
-#include "buffer.h"
-#include "errors.h"
-#include "nt_memcpy.h"
-#include "time_tracking.h"
-#include "util.h"
-#include "vdif_functions.h"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_empty, mark_frame_full, register_consumer, reg...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for DEBUG
+#include "vdif_functions.h"    // for VDIFHeader
 
-#include <arpa/inet.h>
-#include <assert.h>
-#include <dirent.h>
-#include <errno.h>
-#include <functional>
-#include <immintrin.h>
-#include <inttypes.h>
-#include <math.h>
-#include <memory.h>
-#include <pmmintrin.h>
-#include <pthread.h>
-#include <sched.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <thread>
-#include <time.h>
-#include <unistd.h>
+#ifdef DEBUGGING
+#include "util.h" // for e_time
+#endif
+
+#include <atomic>      // for atomic_bool
+#include <cstdint>     // for uint32_t
+#include <exception>   // for exception
+#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <immintrin.h> // for __m256i, _mm256_loadu_si256, _mm256_add_epi32, _mm256_mul...
+#include <pthread.h>   // for pthread_setaffinity_np
+#include <regex>       // for match_results<>::_Base_type
+#include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept>   // for runtime_error
+#include <stdlib.h>    // for srand
+#include <string.h>    // for memset
+#include <thread>      // for thread
+#include <time.h>      // for time
+#include <vector>      // for vector
+
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
 
-#include <immintrin.h>
+#include <immintrin.h> // for __m256i, _mm256_loadu_si256, _mm256_add_epi32, _mm256_mul...
 #endif
 
 #define PACKET_LEN (_num_local_freq + VDIF_HEADER_LEN)
@@ -43,7 +41,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(rfiAVXVDIF);
 
-rfiAVXVDIF::rfiAVXVDIF(Config& config, const string& unique_name,
+rfiAVXVDIF::rfiAVXVDIF(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&rfiAVXVDIF::main_thread, this)) {
     // Retrieve buffers
@@ -67,7 +65,7 @@ rfiAVXVDIF::~rfiAVXVDIF() {}
 
 void rfiAVXVDIF::main_thread() {
     // Random Seed
-    srand(time(NULL));
+    srand(time(nullptr));
     // Declare frame IDs
     uint32_t frame_in_id = 0;
     uint32_t frame_out_id = 0;
@@ -79,11 +77,11 @@ void rfiAVXVDIF::main_thread() {
     while (!stop_thread) {
         // Get input frame
         in_local = (uint8_t*)wait_for_full_frame(buf_in, unique_name.c_str(), frame_in_id);
-        if (in_local == NULL)
+        if (in_local == nullptr)
             break;
         // Get output frame
         out_local = (uint8_t*)wait_for_empty_frame(buf_out, unique_name.c_str(), frame_out_id);
-        if (out_local == NULL)
+        if (out_local == nullptr)
             break;
 #ifdef DEBUGGING
         // Start timer

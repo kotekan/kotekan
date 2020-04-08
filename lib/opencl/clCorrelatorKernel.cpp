@@ -8,7 +8,7 @@ using kotekan::Config;
 
 REGISTER_CL_COMMAND(clCorrelatorKernel);
 
-clCorrelatorKernel::clCorrelatorKernel(Config& config, const string& unique_name,
+clCorrelatorKernel::clCorrelatorKernel(Config& config, const std::string& unique_name,
                                        bufferContainer& host_buffers, clDeviceInterface& device) :
     clCommand(config, unique_name, host_buffers, device, "corr", "pairwise_correlator.cl") {
     _num_elements = config.get<int>(unique_name, "num_elements");
@@ -41,14 +41,14 @@ void clCorrelatorKernel::build() {
     // Number of compressed accumulations.
     num_accumulations = _samples_per_data_set / 256;
 
-    string cl_options = "";
+    std::string cl_options = "";
     cl_options += " -D NUM_ELEMENTS=" + std::to_string(_num_elements);
     cl_options += " -D NUM_FREQUENCIES=" + std::to_string(_num_local_freq);
     cl_options += " -D NUM_BLOCKS=" + std::to_string(_num_blocks);
 
     cl_device_id dev_id = device.get_id();
 
-    CHECK_CL_ERROR(clBuildProgram(program, 1, &dev_id, cl_options.c_str(), NULL, NULL));
+    CHECK_CL_ERROR(clBuildProgram(program, 1, &dev_id, cl_options.c_str(), nullptr, nullptr));
 
     kernel = clCreateKernel(program, "corr", &err);
     CHECK_CL_ERROR(err);
@@ -91,7 +91,7 @@ cl_event clCorrelatorKernel::execute(int gpu_frame_id, cl_event pre_event) {
     setKernelArg(0, input_memory);
     setKernelArg(1, output_memory_frame);
 
-    CHECK_CL_ERROR(clEnqueueNDRangeKernel(device.getQueue(1), kernel, 3, NULL, gws, lws, 1,
+    CHECK_CL_ERROR(clEnqueueNDRangeKernel(device.getQueue(1), kernel, 3, nullptr, gws, lws, 1,
                                           &pre_event, &post_events[gpu_frame_id]));
 
     return post_events[gpu_frame_id];

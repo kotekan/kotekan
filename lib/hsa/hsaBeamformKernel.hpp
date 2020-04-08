@@ -7,8 +7,19 @@
 #ifndef HSA_BEAMFORM_KERNEL_H
 #define HSA_BEAMFORM_KERNEL_H
 
-#include "hsaCommand.hpp"
-#include "restServer.hpp"
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaCommand.hpp"         // for hsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "restServer.hpp"         // for connectionInstance
+
+#include "json.hpp" // for json
+
+#include <stdint.h> // for int32_t, uint32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 #define LIGHT_SPEED 299792458.
 #define FEED_SEP 0.3048
@@ -87,7 +98,7 @@ class hsaBeamformKernel : public hsaCommand {
 public:
     /// Constructor, also initializes internal variables from config, allocates host_map, host_coeff
     /// and host_gain, get metadata buffer and register endpoint for gain path.
-    hsaBeamformKernel(kotekan::Config& config, const string& unique_name,
+    hsaBeamformKernel(kotekan::Config& config, const std::string& unique_name,
                       kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor, cleans up local allocs.
@@ -101,9 +112,9 @@ public:
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
     /// Endpoint for setting N-S beam extent
-    void update_NS_beam_callback(kotekan::connectionInstance& conn, json& json_request);
+    void update_NS_beam_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
     /// Endpoint for setting E-W beam sky angle
-    void update_EW_beam_callback(kotekan::connectionInstance& conn, json& json_request);
+    void update_EW_beam_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
 
 private:
     /**
@@ -159,7 +170,7 @@ private:
     /// The desired extent (e.g. 90, 60, 45) of the Northmost beam in degree
     float _northmost_beam;
     /// The sky angle of the 4 EW beams in degree
-    vector<float> _ew_spacing;
+    std::vector<float> _ew_spacing;
     float* _ew_spacing_c;
 
     /// The reference freq for calcating beam spacing, a function of the input _northmost_beam
@@ -178,7 +189,7 @@ private:
     std::string endpoint_EW_beam;
 
     /// Config base (@todo this is a huge hack replace with updatable config)
-    string config_base;
+    std::string config_base;
 };
 
 #endif

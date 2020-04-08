@@ -1,8 +1,28 @@
 #include "visTruncate.hpp"
 
-#include "errors.h"
-#include "truncate.hpp"
-#include "visBuffer.hpp"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for wait_for_full_frame, allocate_new_metadata_object, mark_fr...
+#include "kotekanLogging.hpp" // for DEBUG
+#include "truncate.hpp"       // for bit_truncate_float
+#include "visBuffer.hpp"      // for visFrameView
+#include "visUtil.hpp"        // for cfloat
+
+#include "gsl-lite.hpp" // for span
+
+#include <atomic>      // for atomic_bool
+#include <cmath>       // for abs, sqrt
+#include <complex>     // for complex
+#include <cstdint>     // for int32_t
+#include <cstring>     // for memset, size_t
+#include <exception>   // for exception
+#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <immintrin.h> // for _mm256_broadcast_ss, _mm256_div_ps, _mm256_loadu_ps, _mm25...
+#include <mm_malloc.h> // for _mm_free, _mm_malloc
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for invalid_argument
+#include <vector>      // for vector
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -10,7 +30,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(visTruncate);
 
-visTruncate::visTruncate(Config& config, const string& unique_name,
+visTruncate::visTruncate(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&visTruncate::main_thread, this)) {
 
@@ -52,7 +72,8 @@ void visTruncate::main_thread() {
 
     // get the first frame (just to find out about num_prod)
     // (we don't mark it empty, so it's read again in the main loop)
-    wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+    if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr)
+        return;
     auto frame = visFrameView(in_buf, frame_id);
 
     // reserve enough memory for all err_r to be computed per frame
