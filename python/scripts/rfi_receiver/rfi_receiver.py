@@ -37,12 +37,14 @@ import json
 import imp
 from ch_util import ephemeris
 
+# Get version number
 try:
     _version = imp.load_source("get_versions", "../../_version.py")
     __version__ = _version.get_versions()["version"]
     del _version
 except FileNotFoundError:
-    __version__ = "default_version"
+    with open('/usr/local/share/rfi_receiver/version.txt') as f:
+        __version__ = f.readline()
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -825,6 +827,7 @@ def rfi_zeroing():
             sleep_time_s = abs(time_to_transit_s - 0.5 * downtime_m * 60)
 
             # Wait until the correct UTC time (deals with daylight savings time)
+            logger.info("RFI Solar Transit Toggle: Time of transit: {}".format(datetime.datetime.utcfromtimestamp(t_transit)))
             logger.info("RFI Solar Transit Toggle: Time until transit: {}".format(t_diff))
             logger.info("RFI Solar Transit Toggle: Sleeping for {} seconds".format(sleep_time_s))
 
@@ -857,10 +860,10 @@ def rfi_zeroing():
 
             logger.info("RFI Solar Transit Toggle: Sleeping %s seconds for duration of solar transit." % (downtime_s))
             
-	    # Wait until sun has passed
+	        # Wait until sun has passed
             time.sleep(downtime_s)
             
-	    logger.info("RFI Solar Transit Toggle: Solar transit ended. Waking up to turn RFI zeroing back on.")
+            logger.info("RFI Solar Transit Toggle: Solar transit ended. Waking up to turn RFI zeroing back on.")
 
             # Payload
             payload = {"rfi_zeroing": True}
