@@ -382,6 +382,9 @@ void VisSharedMemWriter::main_thread() {
         // Get a view of the current frame
         auto frame = visFrameView(in_buf, frame_id);
 
+        if (frame.data_size != rbs.data_size)
+            FATAL_ERROR("Size of data changed mid-stream.");
+
         // Check that the dataset ID hasn't chaned
         if (unique_dataset_ids.count(frame.dataset_id) == 0) {
             // Check whether the fingerprint has changed
