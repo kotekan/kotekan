@@ -89,6 +89,7 @@ endif()
 
 if (${USE_LAPACK})
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} eigenVis.cpp)
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} RingMapMaker.cpp)
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} EigenVisIter.cpp)
 endif ()
 
@@ -111,6 +112,7 @@ if (${USE_EVENT})
 endif ()
 
 if (${USE_LAPACK})
+  include_directories( ${BLAS_INCLUDE_DIRS} )
   include_directories( ${LAPACKE_INCLUDE_DIRS} )
   target_link_libraries( kotekan_stages ${BLAS_LIBRARIES} )
   target_link_libraries( kotekan_stages ${LAPACK_LIBRARIES} )
