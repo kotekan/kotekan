@@ -82,7 +82,6 @@ jobs:
 
     - name: free disk space
       run: |
-          sudo apt clean
           docker rmi $(docker image ls -aq)
           df -h
 
