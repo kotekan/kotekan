@@ -62,7 +62,7 @@
  * The dataset ID can be changed in the incoming stream. However, structural
  * parameters that could affect the size of the data cannot be adjusted without
  * triggering a FATAL_ERROR. By default these are `input`, `frequencies`, `products`,
- * `stack`, `gating`, and `metadata`. This list can be *added* to using the config
+ * `stack`, `eigenvalues`, and `metadata`. This list can be *added* to using the config
  * variable `critical_states`. Any state change not considered critical
  * will continue as normal.
  *
