@@ -377,30 +377,6 @@ class VisRaw(object):
             if state["flags"] is not None:
                 self.flags_update_id = state["flags"].data["data"]
 
-        # Convert index_map into numpy arrays
-        if "prod" in index_map:
-            self.index_map["prod"] = np.array(
-                [(pp[0], pp[1]) for pp in index_map["prod"]],
-                dtype=[("input_a", "u2"), ("input_b", "u2")],
-            )
-        if "input" in index_map:
-            self.index_map["input"] = np.array(
-                [(inp[0], inp[1]) for inp in index_map["input"]],
-                dtype=[("chan_id", "u2"), ("correlator_input", "S32")],
-            )
-        if "freq" in index_map:
-            self.index_map["freq"] = np.array(
-                [(ff[1]["centre"], ff[1]["width"]) for ff in index_map["freq"]],
-                dtype=[("centre", np.float32), ("width", np.float32)],
-            )
-        if "ev" in index_map:
-            self.index_map["ev"] = np.array(index_map["ev"])
-        if "stack" in index_map:
-            self.index_map["stack"] = np.array(
-                [(ss[0]["stack"], ss[0]["conjugate"]) for ss in index_map["stack"]],
-                dtype=[("stack", np.uint32), ("conjugate", np.bool)],
-            )
-
     @classmethod
     def frame_struct(cls, size_frame, num_elements, num_stack, num_ev, align_valid):
         """
@@ -584,6 +560,30 @@ class VisRaw(object):
                     )
                 if state[names[0]] is not None:
                     index_map[names[1]] = state[names[0]].data["data"]
+
+            # Convert index_map into numpy arrays
+            if "prod" in index_map:
+                index_map["prod"] = np.array(
+                    [(pp[0], pp[1]) for pp in index_map["prod"]],
+                    dtype=[("input_a", "u2"), ("input_b", "u2")],
+                )
+            if "input" in index_map:
+                index_map["input"] = np.array(
+                    [(inp[0], inp[1]) for inp in index_map["input"]],
+                    dtype=[("chan_id", "u2"), ("correlator_input", "S32")],
+                )
+            if "freq" in index_map:
+                index_map["freq"] = np.array(
+                    [(ff[1]["centre"], ff[1]["width"]) for ff in index_map["freq"]],
+                    dtype=[("centre", np.float32), ("width", np.float32)],
+                )
+            if "ev" in index_map:
+                index_map["ev"] = np.array(index_map["ev"])
+            if "stack" in index_map:
+                index_map["stack"] = np.array(
+                    [(ss[0]["stack"], ss[0]["conjugate"]) for ss in index_map["stack"]],
+                    dtype=[("stack", np.uint32), ("conjugate", np.bool)],
+                )
 
         return cls(
             num_time,
