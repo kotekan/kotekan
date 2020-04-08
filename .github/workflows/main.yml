@@ -36,8 +36,8 @@ jobs:
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}" | while read line ; do echo "$SECONDS s | $line";  done;
         docker pull --disable-content-trust ${IMG_CORE} | while read line ; do echo "$SECONDS s | $line";  done;
         docker pull --disable-content-trust ${IMG_IWYU} | while read line ; do echo "$SECONDS s | $line";  done;
-        docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE} -t ${IMG_CORE} - < tools/docker/Dockerfile | while read line ; do echo "$SECONDS s | $line";  done;
-        docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE},${IMG_IWYU} -t ${IMG_IWYU} - < tools/iwyu/docker/Dockerfile | while read line ; do echo "$SECONDS s | $line";  done;
+        docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE} -t ${IMG_CORE} --squash - < tools/docker/Dockerfile | while read line ; do echo "$SECONDS s | $line";  done;
+        docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE},${IMG_IWYU} -t ${IMG_IWYU} --squash - < tools/iwyu/docker/Dockerfile | while read line ; do echo "$SECONDS s | $line";  done;
         docker push ${IMG_CORE} | while read line ; do echo "$SECONDS s| $line";  done;
         docker push ${IMG_IWYU} | while read line ; do echo "$SECONDS s| $line";  done;
 
@@ -83,6 +83,11 @@ jobs:
     - name: free disk space
       run: |
           df -h
+          docker rmi $(docker image ls -aq)
+          df -h
+          apt-get clean
+          apt-get autoclean
+          df -h
 
     - name: Cache ccache files
       uses: actions/cache@v1
@@ -95,6 +100,7 @@ jobs:
 
     - name: Build kotekan
       run: |
+        df -h
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CORE})
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" ccache -s
@@ -108,7 +114,10 @@ jobs:
             -DBOOST_TESTS=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
         docker run "${OPTS[@]}" make -j 2
+        df -h
+        docker run "${OPTS[@]}" rm -r lib
         docker run "${OPTS[@]}" ccache -s
+        df -h
 
     - name: Run parallel python tests
       run: |

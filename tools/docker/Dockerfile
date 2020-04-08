@@ -4,8 +4,7 @@ FROM rocm/dev-ubuntu-18.04
 MAINTAINER Rick Nitsche <rick@phas.ubc.ca>
 
 # Install any needed packages to run cmake with full CHIME build options
-RUN apt-get clean && \
-    apt-get update && \
+RUN apt-get update && \
     apt-get install -y software-properties-common && \
     add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && \
@@ -62,6 +61,10 @@ RUN apt-get install -y redis
 RUN apt-get -y install doxygen graphviz python-sphinx default-jre && \
     python3.7 -m pip install breathe sphinx_rtd_theme sphinxcontrib-plantuml && \
     wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar -P plantuml
+
+
+# Clean any unwanted caches
+RUN apt-get clean && apt-get autoclean
 
 # Set ccache to store things sensibly
 ENV CCACHE_NOHASHDIR 1
