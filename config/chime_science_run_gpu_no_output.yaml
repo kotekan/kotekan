@@ -232,8 +232,6 @@ updatable_config:
       thresholds:
         - threshold: 3.0
           fraction: 0.13
-        - threshold: 1.5
-          fraction: 0.4
 
 
 ###########################
