@@ -522,11 +522,17 @@ class VisRaw(object):
             dtype=[("fpga_count", np.uint64), ("ctime", np.float64),],
         )
         for t in range(num_time):
+            fpga = np.unique(fpga_seq[t, :])
+            ts = []
             for f in range(num_freq):
-                time[t, f] = (
-                    fpga_seq[t, f],
-                    time_spec.from_buffer_copy(ctime[t, f]).to_float(),
+                ts = time_spec.from_buffer_copy(ctime[t, f]).to_float()
+            ts = np.unique(ts)
+            if len(ts) != 1 or len(fpga) != 1:
+                raise ValueError(
+                    "Found {} fpga sequences and {} time specs for time index {} "
+                    "(Expected one each).".format(len(fpga), len(ts), t)
                 )
+            time[t] = (fpga, ts)
 
         # generate index maps
         index_map = {"time": time}
