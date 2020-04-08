@@ -43,7 +43,7 @@ try:
     __version__ = _version.get_versions()["version"]
     del _version
 except FileNotFoundError:
-    with open('/usr/local/share/rfi_receiver/version.txt') as f:
+    with open("/usr/local/share/rfi_receiver/version.txt") as f:
         __version__ = f.readline()
 
 logging.basicConfig(level=logging.DEBUG)
@@ -799,7 +799,7 @@ def rfi_zeroing():
     downtime_m = 60
 
     # Endpoint parameters
-    url = 'http://csBfs:54323/rfi-zeroing-toggle'
+    url = "http://csBfs:54323/rfi-zeroing-toggle"
     headers = {"content-type": "application/json", "Accept-Charset": "UTF-8"}
 
     logger.info("RFI Solar Transit Toggle: Starting thread")
@@ -827,13 +827,23 @@ def rfi_zeroing():
             sleep_time_s = abs(time_to_transit_s - 0.5 * downtime_m * 60)
 
             # Wait until the correct UTC time (deals with daylight savings time)
-            logger.info("RFI Solar Transit Toggle: Time of transit: {}".format(datetime.datetime.utcfromtimestamp(t_transit)))
-            logger.info("RFI Solar Transit Toggle: Time until transit: {}".format(t_diff))
-            logger.info("RFI Solar Transit Toggle: Sleeping for {} seconds".format(sleep_time_s))
+            logger.info(
+                "RFI Solar Transit Toggle: Time of transit: {}".format(
+                    datetime.datetime.utcfromtimestamp(t_transit)
+                )
+            )
+            logger.info(
+                "RFI Solar Transit Toggle: Time until transit: {}".format(t_diff)
+            )
+            logger.info(
+                "RFI Solar Transit Toggle: Sleeping for {} seconds".format(sleep_time_s)
+            )
 
             time.sleep(sleep_time_s)
 
-            logger.info("RFI Solar Transit Toggle: Waking up to disable RFI zeroing during solar transit")
+            logger.info(
+                "RFI Solar Transit Toggle: Waking up to disable RFI zeroing during solar transit"
+            )
 
         # Create payload
         payload = {"rfi_zeroing": False}
@@ -849,7 +859,9 @@ def rfi_zeroing():
                 )
             else:
                 rfi_zeroing_on = False
-                logger.info("RFI Solar Transit Toggle: Successfully turned RFI zeroing off.")
+                logger.info(
+                    "RFI Solar Transit Toggle: Successfully turned RFI zeroing off."
+                )
         except:
             logger.info(
                 "RFI Solar Transit Toggle: Failure to contact Comet, is it running?"
@@ -858,12 +870,17 @@ def rfi_zeroing():
         # If we successfully turned RFI zeroing off
         if not rfi_zeroing_on:
 
-            logger.info("RFI Solar Transit Toggle: Sleeping %s seconds for duration of solar transit." % (downtime_s))
-            
-	        # Wait until sun has passed
+            logger.info(
+                "RFI Solar Transit Toggle: Sleeping %s seconds for duration of solar transit."
+                % (downtime_s)
+            )
+
+            # Wait until sun has passed
             time.sleep(downtime_s)
-            
-            logger.info("RFI Solar Transit Toggle: Solar transit ended. Waking up to turn RFI zeroing back on.")
+
+            logger.info(
+                "RFI Solar Transit Toggle: Solar transit ended. Waking up to turn RFI zeroing back on."
+            )
 
             # Payload
             payload = {"rfi_zeroing": True}
@@ -874,11 +891,13 @@ def rfi_zeroing():
                 r = requests.post(url, data=json.dumps(payload), headers=headers)
                 if not r.ok:
                     logger.info(
-			"RFI Solar Transit Toggle: Failed to turn RFI zeroing back on. Something went wrong in the request."
+                        "RFI Solar Transit Toggle: Failed to turn RFI zeroing back on. Something went wrong in the request."
                     )
                 else:
                     rfi_zeroing_on = True
-                    logger.info("RFI Solar Transit Toggle: Successfully turned RFI zeroing back on.")
+                    logger.info(
+                        "RFI Solar Transit Toggle: Successfully turned RFI zeroing back on."
+                    )
             except:
                 logger.info(
                     "RFI Solar Transit Toggle: Failure to contact Comet, is it running?"
