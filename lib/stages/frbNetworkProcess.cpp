@@ -281,6 +281,8 @@ void frbNetworkProcess::main_thread() {
 
     if (send_ping_thread.joinable()) {
         send_ping_thread.join();
+    }
+    if (receive_ping_thread.joinable()) {
         receive_ping_thread.join();
     }
 }
