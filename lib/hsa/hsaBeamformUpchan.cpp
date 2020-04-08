@@ -1,16 +1,27 @@
 #include "hsaBeamformUpchan.hpp"
 
+#include "Config.hpp"             // for Config
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+
+#include <cstdint>   // for int32_t, uint32_t
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <string.h>  // for memcpy, memset
+#include <vector>    // for vector
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaBeamformUpchan);
 
-hsaBeamformUpchan::hsaBeamformUpchan(Config& config, const string& unique_name,
+hsaBeamformUpchan::hsaBeamformUpchan(Config& config, const std::string& unique_name,
                                      bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "upchannelize" KERNEL_EXT,
                "upchannelize_flip.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
+    // Read parameters from config file.
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     _downsample_time = config.get<int32_t>(unique_name, "downsample_time");
@@ -46,7 +57,7 @@ hsa_signal_t hsaBeamformUpchan::execute(int gpu_frame_id, hsa_signal_t precede_s
     params.workgroup_size_x = 64;
     params.workgroup_size_y = 1;
     params.grid_size_x = _samples_per_data_set / 6;
-    params.grid_size_y = 1024;
+    params.grid_size_y = 1024; // No. of FRB beams
     params.num_dims = 2;
 
     params.private_segment_size = 0;

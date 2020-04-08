@@ -1,68 +1,20 @@
 #include "datasetManager.hpp"
 
-#include "Hash.hpp"
-#include "restClient.hpp"
-#include "restServer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"     // for Config
+#include "Hash.hpp"       // for operator<, hash, operator==
+#include "restClient.hpp" // for restClient::restReply, restClient
+#include "restServer.hpp" // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPONSE::...
 
-#include "fmt/ostream.h"
+#include <algorithm>  // for max
+#include <cstdint>    // for int32_t
+#include <functional> // for function, _Bind_helper<>::type, _Placeholder, bind, _1
+#include <iosfwd>     // for streamsize
+#include <mutex>      // for mutex, lock_guard, lock, adopt_lock, unique_lock
+#include <regex>      // for match_results<>::_Base_type
+#include <stdlib.h>   // for exit
 
-#include <cstdint>
-#include <fmt.hpp>
-#include <functional>
-#include <inttypes.h>
-#include <iostream>
-#include <mutex>
-#include <regex>
-#include <signal.h>
-#include <stdio.h>
-#include <typeinfo>
+using nlohmann::json;
 
-
-dataset::dataset(json& js) {
-    _state = js["state"];
-    _is_root = js["is_root"];
-    if (_is_root)
-        _base_dset = dset_id_t::null;
-    else
-        _base_dset = js["base_dset"].get<dset_id_t>();
-    _type = js["type"].get<std::string>();
-}
-
-bool dataset::is_root() const {
-    return _is_root;
-}
-
-state_id_t dataset::state() const {
-    return _state;
-}
-
-dset_id_t dataset::base_dset() const {
-    return _base_dset;
-}
-
-const std::string& dataset::type() const {
-    return _type;
-}
-
-json dataset::to_json() const {
-    json j;
-    j["is_root"] = _is_root;
-    j["state"] = _state;
-    if (!_is_root)
-        j["base_dset"] = _base_dset;
-    j["type"] = _type;
-    return j;
-}
-
-bool dataset::equals(dataset& ds) const {
-    if (_is_root != ds.is_root())
-        return false;
-    if (_is_root) {
-        return _state == ds.state() && _type == ds.type();
-    }
-    return _state == ds.state() && _base_dset == ds.base_dset() && _type == ds.type();
-}
 
 datasetManager::datasetManager() :
     _conn_error_count(0),
@@ -131,6 +83,11 @@ datasetManager::~datasetManager() {
     _cv_stop_request_threads.wait(lk, [this] { return _n_request_threads == 0; });
 }
 
+
+void datasetManager::stop() {
+    INFO_NON_OO("Stopping request threads...");
+    _stop_request_threads = true;
+}
 
 // TODO: 0 is not a good sentinel value. Move to std::optional typing when we use C++17
 dset_id_t datasetManager::add_dataset(state_id_t state, dset_id_t base_dset) {
@@ -242,7 +199,7 @@ void datasetManager::register_state(state_id_t state) {
 void datasetManager::request_thread(const json&& request, const std::string&& endpoint,
                                     const std::function<bool(std::string&)>&& parse_reply) {
 
-    restReply reply;
+    restClient::restReply reply;
 
     while (true) {
         reply =
@@ -494,11 +451,11 @@ void datasetManager::update_datasets(dset_id_t ds_id) {
     js_rqst["ds_id"] = ds_id;
     js_rqst["roots"] = _known_roots;
 
-    restReply reply = _rest_client.make_request_blocking(
+    restClient::restReply reply = _rest_client.make_request_blocking(
         PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host, _ds_broker_port, _retries_rest_client,
         _timeout_rest_client_s);
 
-    while (!parse_reply_dataset_update(reply)) {
+    while (!_stop_request_threads && !parse_reply_dataset_update(reply)) {
         std::this_thread::sleep_for(std::chrono::milliseconds(_retry_wait_time_ms));
         reply = _rest_client.make_request_blocking(PATH_UPDATE_DATASETS, js_rqst, _ds_broker_host,
                                                    _ds_broker_port, _retries_rest_client,
@@ -506,7 +463,7 @@ void datasetManager::update_datasets(dset_id_t ds_id) {
     }
 }
 
-bool datasetManager::parse_reply_dataset_update(restReply reply) {
+bool datasetManager::parse_reply_dataset_update(restClient::restReply reply) {
 
     if (!reply.first) {
         WARN_NON_OO("datasetManager: Failure requesting update on datasets from broker: {:s}",

@@ -7,13 +7,12 @@
 #ifndef RECV_SINGLE_DISH_VDIF_H
 #define RECV_SINGLE_DISH_VDIF_H
 
-#include "Stage.hpp"
-#include "buffer.h"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
 
-#include <cstdio>
-#include <string>
-#include <sys/stat.h>
-#include <unistd.h>
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
 
 /**
  * @class recvSingleDishVDIF
@@ -39,7 +38,7 @@
 class recvSingleDishVDIF : public kotekan::Stage {
 public:
     /// Constructor
-    recvSingleDishVDIF(kotekan::Config& config, const string& unique_name,
+    recvSingleDishVDIF(kotekan::Config& config, const std::string& unique_name,
                        kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~recvSingleDishVDIF();
@@ -53,7 +52,7 @@ private:
     /// Port of the listening receiver.
     uint32_t orig_port;
     /// IP of the listening receiver.
-    string orig_ip;
+    std::string orig_ip;
 
     /// Number of frequencies in the buffer
     int num_freq;

@@ -1,11 +1,22 @@
 #include "bufferSwitch.hpp"
 
-#include "configUpdater.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "configUpdater.hpp"   // for configUpdater
+#include "kotekanLogging.hpp"  // for WARN
+#include "visUtil.hpp"         // for frameID  // IWYU pragma: keep
 
-#include "json.hpp"
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for json, basic_json<>::iterator, basic_json, iter_impl
 
-#include <exception>
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placeholders
+#include <stdexcept>  // for runtime_error
+#include <tuple>      // for get
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 using nlohmann::json;
 using namespace std::placeholders;
@@ -16,7 +27,7 @@ using kotekan::configUpdater;
 
 REGISTER_KOTEKAN_STAGE(bufferSwitch);
 
-bufferSwitch::bufferSwitch(Config& config, const string& unique_name,
+bufferSwitch::bufferSwitch(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     bufferMerge(config, unique_name, buffer_container) {
 

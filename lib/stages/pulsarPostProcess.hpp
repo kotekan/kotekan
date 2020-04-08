@@ -7,12 +7,17 @@
 #ifndef PULSAR_POST_PROCESS
 #define PULSAR_POST_PROCESS
 
-#include "Stage.hpp"
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "buffer.h"
+#include "bufferContainer.hpp"
 
-#include <optional>
-#include <vector>
+#include <optional>    // for optional
+#include <stdint.h>    // for uint32_t, uint64_t, uint16_t, uint8_t
+#include <string>      // for string
+#include <sys/types.h> // for uint
+#include <time.h>      // for timespec
 
-using std::vector;
 
 /**
  * @class pulsarPostProcess
@@ -65,7 +70,7 @@ using std::vector;
 class pulsarPostProcess : public kotekan::Stage {
 public:
     /// Constructor.
-    pulsarPostProcess(kotekan::Config& config_, const string& unique_name,
+    pulsarPostProcess(kotekan::Config& config_, const std::string& unique_name,
                       kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~pulsarPostProcess();

@@ -11,7 +11,7 @@ using kotekan::HTTP_RESPONSE;
 using kotekan::restServer;
 
 clRfiInputSum::clRfiInputSum(const char* param_gpuKernel, const char* param_name,
-                             Config& param_config, const string& unique_name) :
+                             Config& param_config, const std::string& unique_name) :
     gpu_command(param_gpuKernel, param_name, param_config, unique_name) {}
 
 clRfiInputSum::~clRfiInputSum() {
@@ -57,10 +57,10 @@ void clRfiInputSum::build(device_interface& param_Device) {
     gpu_command::build(param_Device);
     cl_int err;
     cl_device_id valDeviceID;
-    string cl_options = get_cl_options();
+    std::string cl_options = get_cl_options();
     // Build program
     valDeviceID = param_Device.getDeviceID(param_Device.getGpuID());
-    CHECK_CL_ERROR(clBuildProgram(program, 1, &valDeviceID, cl_options.c_str(), NULL, NULL));
+    CHECK_CL_ERROR(clBuildProgram(program, 1, &valDeviceID, cl_options.c_str(), nullptr, nullptr));
     // Create Kernel
     kernel = clCreateKernel(program, "rfi_chime_inputsum", &err);
     CHECK_CL_ERROR(err);
@@ -92,7 +92,7 @@ cl_event clRfiInputSum::execute(int param_bufferID, device_interface& param_Devi
     setKernelArg(0, param_Device.getRfiTimeSumBuffer(param_bufferID));
     setKernelArg(1, param_Device.getRfiOutputBuffer(param_bufferID));
     // Queue kernel for execution
-    CHECK_CL_ERROR(clEnqueueNDRangeKernel(param_Device.getQueue(1), kernel, 3, NULL, gws, lws, 1,
+    CHECK_CL_ERROR(clEnqueueNDRangeKernel(param_Device.getQueue(1), kernel, 3, nullptr, gws, lws, 1,
                                           &param_PrecedeEvent, &postEvent[param_bufferID]));
     // return post event
     return postEvent[param_bufferID];

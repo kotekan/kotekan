@@ -1,6 +1,13 @@
 #include "bufferContainer.hpp"
 
-#include "fmt.hpp"
+#include "buffer.h"
+
+#include "fmt.hpp" // for format, fmt
+
+#include <stdexcept> // for runtime_error
+
+using std::map;
+using std::string;
 
 namespace kotekan {
 

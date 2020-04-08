@@ -6,15 +6,20 @@
 #ifndef VALVE_HPP
 #define VALVE_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "prometheusMetrics.hpp"
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily
 
-#include "json.hpp"
+#include "json.hpp" // for json
 
-#include <string>
+#include <atomic>   // for atomic
+#include <memory>   // for shared_ptr
+#include <stddef.h> // for size_t
+#include <string>   // for string
+#include <tuple>    // for tuple
+#include <vector>   // for vector
 
 
 /**
@@ -86,16 +91,14 @@ private:
     Buffer* _buf_out;
 
     /// Thresholds
-    std::vector<std::tuple<float, size_t, float>> _thresholds;
+    struct ThresholdData {
+        std::vector<std::tuple<float, size_t, float>> thresholds;
+        std::vector<size_t> sk_exceeds;
+    };
+    std::shared_ptr<ThresholdData> _thresholds;
 
     /// Toggle RFI zeroing
-    bool _enable_rfi_zero;
-
-    /// Lock for access to thresholds and enable_rfi_zero
-    std::mutex lock_updatables;
-
-    /// Counter storing information between sub frames. Resized by rest callback.
-    std::vector<size_t> sk_exceeds;
+    std::atomic<bool> _enable_rfi_zero;
 
     /// Prometheus metrics to export
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& failing_frame_counter;

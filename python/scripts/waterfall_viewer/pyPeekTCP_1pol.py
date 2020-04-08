@@ -150,9 +150,11 @@ def data_listener():
                     print("Lost Connection!")
                     connection.close()
                     return
-                data_pkt_frame_idx, data_pkt_elem_idx, data_pkt_samples_summed = struct.unpack(
-                    "III", data[:pkt_header]
-                )
+                (
+                    data_pkt_frame_idx,
+                    data_pkt_elem_idx,
+                    data_pkt_samples_summed,
+                ) = struct.unpack("III", data[:pkt_header])
                 d[:, data_pkt_elem_idx] += (
                     np.fromstring(data[pkt_header:], dtype=np.uint32) * 1.0
                 )
@@ -230,13 +232,13 @@ ax[0][1].yaxis.set_visible(False)
 d = np.nanmean(waterfall[:, :, 0], axis=1)
 ax[0][1].set_xlim(np.amin(d), np.amax(d))
 ax[0][1].set_ylim([tmin, tmax])
-im, = ax[0][1].plot(d, times, ".")
+(im,) = ax[0][1].plot(d, times, ".")
 ax[0][1].set_xlabel("Power (dB, arb)")
 p.append(im)
 
 ax[1][0].set_xlim(freqlist[0, 0], freqlist[-1, -1])
 ax[1][0].set_ylim(colorscale)
-im, = ax[1][0].plot(
+(im,) = ax[1][0].plot(
     freqlist.reshape(plot_freqs, -1).mean(axis=1),
     np.nanmean(waterfall[:, :, 0], axis=0),
     ".",

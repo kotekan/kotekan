@@ -1,19 +1,32 @@
 #define BOOST_TEST_MODULE "test_dataset_broker_producer"
 
-#include "restClient.hpp"
-#include "restServer.hpp"
-#include "visCompression.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"         // for Config
+#include "Hash.hpp"           // for operator<<
+#include "dataset.hpp"        // for dataset
+#include "datasetManager.hpp" // for state_id_t, datasetManager, dset_id_t
+#include "datasetState.hpp"   // for freqState, inputState, prodState, datasetState
+#include "errors.h"           // for __enable_syslog, _global_log_level
+#include "restClient.hpp"     // for restClient, restClient::restReply
+#include "restServer.hpp"     // for restServer
+#include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype
 
-#include "json.hpp"
+#include "json.hpp" // for basic_json<>::object_t, basic_json<>::value...
 
-#include <boost/test/included/unit_test.hpp>
-#include <fstream>
-#include <iostream>
-#include <string>
+#include <algorithm>                         // for max
+#include <boost/test/included/unit_test.hpp> // for master_test_suite, BOOST_PP_IIF_1, BOOST_CHECK
+#include <chrono>                            // for milliseconds
+#include <iostream>                          // for ofstream, operator<<, basic_ostream, ostream
+#include <map>                               // for map
+#include <stdint.h>                          // for uint32_t
+#include <stdlib.h>                          // for atoi
+#include <string>                            // for allocator, string, operator<<, operator==
+#include <thread>                            // for sleep_for
+#include <unistd.h>                          // for usleep
+#include <utility>                           // for pair
+#include <vector>                            // for vector
 
-// the code to test:
-#include "datasetManager.hpp"
+
+#define WAIT_TIME 4000000
 
 using kotekan::Config;
 
@@ -69,7 +82,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     // Force the dM to update while it knows of nothing yet.
-    restReply reply = restClient::instance().make_request_blocking(
+    restClient::restReply reply = restClient::instance().make_request_blocking(
         "/dataset-manager/force-update", {}, "127.0.0.1", kotekan::restServer::instance().port);
     BOOST_CHECK(reply.first == true);
     BOOST_CHECK(reply.second == "");
@@ -101,7 +114,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_general) {
     for (auto s : dm.datasets())
         std::cout << s.second.state() << " - " << s.second.base_dset() << std::endl;
 
-    usleep(1000000);
+    usleep(WAIT_TIME);
 }
 
 
@@ -136,7 +149,7 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_state_known_to_broker) {
     dm.add_dataset(states1);
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(500000);
+    usleep(WAIT_TIME);
 }
 
 BOOST_AUTO_TEST_CASE(_dataset_manager_second_root) {
@@ -173,5 +186,5 @@ BOOST_AUTO_TEST_CASE(_dataset_manager_second_root) {
     o.close();
 
     // wait a bit, to make sure we see errors in any late callbacks
-    usleep(1000000);
+    usleep(WAIT_TIME);
 }

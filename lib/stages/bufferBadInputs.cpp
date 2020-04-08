@@ -1,8 +1,19 @@
 #include "bufferBadInputs.hpp"
 
-#include "chimeMetadata.h"
-#include "configUpdater.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for allocate_new_metadata_object, mark_frame_full, register_pr...
+#include "chimeMetadata.h"    // for set_rfi_num_bad_inputs
+#include "configUpdater.hpp"  // for configUpdater
+#include "kotekanLogging.hpp" // for DEBUG, ERROR
+#include "visUtil.hpp"        // for parse_reorder_default
+
+#include <algorithm>  // for max
+#include <cstdint>    // for uint32_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <regex>      // for match_results<>::_Base_type
+#include <tuple>      // for get
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -11,7 +22,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(bufferBadInputs);
 
-bufferBadInputs::bufferBadInputs(Config& config_, const string& unique_name,
+bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name,
                                  bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&bufferBadInputs::main_thread, this)) {
 
@@ -81,7 +92,7 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
 
 void bufferBadInputs::main_thread() {
     // Listen for bad input list updates
-    string badInputs = config.get<std::string>(unique_name, "updatable_config/bad_inputs");
+    std::string badInputs = config.get<std::string>(unique_name, "updatable_config/bad_inputs");
     configUpdater::instance().subscribe(
         badInputs,
         std::bind(&bufferBadInputs::update_bad_inputs_callback, this, std::placeholders::_1));

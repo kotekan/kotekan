@@ -16,26 +16,26 @@ extern "C" {
 
 /**
  * @brief Get the kotekan version string
- * See python/kotekan/version.py to see how this is generated
+ * The version is generated using versioneer, see python/_version.py
  * This version is updated every time make is called
  *
  * @return The kotekan version string
  */
-char * get_kotekan_version();
+char* get_kotekan_version();
 
 /**
  * @brief Get the git branch string
  *
  * @return char* The git branch string
  */
-char * get_git_branch();
+char* get_git_branch();
 
 /**
  * @brief Get the full git commit hash as a string
  *
  * @return The commit hash string
  */
-char * get_git_commit_hash();
+char* get_git_commit_hash();
 
 /**
  * @brief Get the main kotekan cmake build options as
@@ -43,7 +43,7 @@ char * get_git_commit_hash();
  *
  * @return The cmake options string
  */
-char * get_cmake_build_options();
+char* get_cmake_build_options();
 
 #ifdef __cplusplus
 }

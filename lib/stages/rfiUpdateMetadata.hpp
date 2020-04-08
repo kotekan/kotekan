@@ -8,8 +8,11 @@
 #define RFI_UPDATE_METADATA_H
 
 #include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
+
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
 
 /**
  * @class rfiUpdateMetadata
@@ -36,7 +39,7 @@
 class rfiUpdateMetadata : public kotekan::Stage {
 public:
     /// Constructor.
-    rfiUpdateMetadata(kotekan::Config& config, const string& unique_name,
+    rfiUpdateMetadata(kotekan::Config& config, const std::string& unique_name,
                       kotekan::bufferContainer& buffer_container);
 
     /// Destructor.

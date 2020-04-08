@@ -1,44 +1,37 @@
-#include <arpa/inet.h>
-#include <assert.h>
-#include <chrono>
-#include <cmath>
-#include <cstdlib>
-#include <cstring>
-#include <fstream>
-#include <functional>
-#include <iostream>
-#include <math.h>
-#include <netinet/in.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
-#include <sys/socket.h>
-#include <unistd.h>
+#include "pulsarSimProcess.hpp"
+
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for wait_for_empty_frame, mark_frame_full, register_producer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.h"     // for psrCoord
+#include "kotekanLogging.hpp"  // for INFO, CHECK_MEM
+#include "vdif_functions.h"    // for VDIFHeader
+
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
+#include <fstream>    // for basic_ostream::operator<<, operator<<, stringstream, basi...
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdlib.h>   // for exit
+#include <string.h>   // for memcpy
+#include <string>     // for allocator, string, char_traits
+#include <sys/time.h> // for timeval
+#include <unistd.h>   // for gethostname
+#include <vector>     // for vector
 
 using std::string;
-
-// TODO Where do these live?
-#define likely(x) __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
-
-#define samples_in_frame 3125
-#define num_packet 16
-
-#include "Config.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
-#include "pulsarSimProcess.hpp"
-#include "util.h"
-#include "vdif_functions.h"
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
+#define samples_in_frame 3125
+#define num_packet 16
+
 REGISTER_KOTEKAN_STAGE(pulsarSimProcess);
-pulsarSimProcess::pulsarSimProcess(Config& config_, const string& unique_name,
+pulsarSimProcess::pulsarSimProcess(Config& config_, const std::string& unique_name,
                                    bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&pulsarSimProcess::main_thread, this)) {
 
@@ -240,7 +233,7 @@ void pulsarSimProcess::main_thread() {
     struct psrCoord psr_coord[_num_gpus];
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t* out_frame = wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
-    if (out_frame == NULL)
+    if (out_frame == nullptr)
         return;
 
     for (int i = 0; i < _num_gpus; i++)
@@ -252,7 +245,7 @@ void pulsarSimProcess::main_thread() {
         mark_frame_full(pulsar_buf, unique_name.c_str(), out_buffer_ID);
         out_buffer_ID = (out_buffer_ID + 1) % pulsar_buf->num_frames;
         out_frame = wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
-        if (out_frame == NULL)
+        if (out_frame == nullptr)
             return;
         // Fill the headers of the new buffer
         fpga_seq_num += samples_in_frame * num_packet;

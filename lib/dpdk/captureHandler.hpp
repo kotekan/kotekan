@@ -7,6 +7,9 @@
 #ifndef CAPTURE_HANDLER_HPP
 #define CAPTURE_HANDLER_HPP
 
+#include "Config.hpp"
+#include "buffer.h"
+#include "bufferContainer.hpp"
 #include "dpdkCore.hpp"
 #include "fpga_header_functions.h"
 #include "packet_copy.h"

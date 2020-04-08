@@ -1,23 +1,33 @@
 #include "rfiBadInputFinder.hpp"
 
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.h"     // for get_fpga_seq_num, get_stream_id
+#include "kotekanLogging.hpp"  // for ERROR, INFO, DEBUG
+#include "restServer.hpp"      // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...
+#include "rfi_functions.h"     // for RFIHeader
 
-#include <arpa/inet.h>
-#include <errno.h>
-#include <functional>
-#include <math.h>
-#include <mutex>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <string.h>
-#include <string>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <time.h>
-#include <unistd.h>
+#ifdef DEBUGGING
+#include "util.h" // for e_time
+#endif
+
+#include <arpa/inet.h>  // for inet_aton
+#include <atomic>       // for atomic_bool
+#include <cmath>        // for pow, sqrt
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
+#include <mutex>        // for mutex
+#include <netinet/in.h> // for sockaddr_in, IPPROTO_UDP, htons
+#include <regex>        // for match_results<>::_Base_type
+#include <stdexcept>    // for runtime_error
+#include <stdlib.h>     // for free, malloc
+#include <string.h>     // for memcpy, memset
+#include <string>       // for string, allocator, operator+
+#include <sys/socket.h> // for sendto, socket, AF_INET, SOCK_DGRAM
+#include <vector>       // for vector
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -29,7 +39,7 @@ using kotekan::restServer;
 
 REGISTER_KOTEKAN_STAGE(rfiBadInputFinder);
 
-rfiBadInputFinder::rfiBadInputFinder(Config& config, const string& unique_name,
+rfiBadInputFinder::rfiBadInputFinder(Config& config, const std::string& unique_name,
                                      bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&rfiBadInputFinder::main_thread, this)) {
     // Get buffer from framework
@@ -65,7 +75,7 @@ rfiBadInputFinder::~rfiBadInputFinder() {
     restServer::instance().remove_json_callback(endpoint);
 }
 
-void rfiBadInputFinder::rest_callback(connectionInstance& conn, json& json_request) {
+void rfiBadInputFinder::rest_callback(connectionInstance& conn, nlohmann::json& json_request) {
     // Notify that request was received
     INFO("RFI Callback Received... Changing Parameters")
     // Lock mutex
@@ -117,7 +127,7 @@ void rfiBadInputFinder::main_thread() {
 
     // Intialize frame variables
     uint32_t frame_id = 0;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
     uint32_t frame_counter = 0;
     // Initialize arrays
     float rfi_data[_num_local_freq * _num_elements];
@@ -160,7 +170,7 @@ void rfiBadInputFinder::main_thread() {
     while (!stop_thread) {
         // Get a frame
         frame = wait_for_full_frame(rfi_buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 #ifdef DEBUGGING
         // Reset Timer

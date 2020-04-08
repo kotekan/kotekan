@@ -1,10 +1,30 @@
-// TODO Where do these live?
-#define likely(x) __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
-
 #include "frbPostProcess.hpp"
 
-#include <immintrin.h>
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"                // for Buffer, mark_frame_empty, wait_for_full_frame, regist...
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chimeMetadata.h"         // for get_fpga_seq_num, get_stream_id_t
+#include "fpga_header_functions.h" // for bin_number_chime, stream_id_t
+#include "kotekanLogging.hpp"      // for DEBUG, INFO
+#include "prometheusMetrics.hpp"   // for Metrics, Counter
+
+#include "fmt.hpp" // for format, fmt
+
+#include <algorithm>   // for find, max, min
+#include <atomic>      // for atomic_bool
+#include <cstdint>     // for int32_t
+#include <exception>   // for exception
+#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <immintrin.h> // for _mm256_broadcast_ss, __m256, _mm256_load_ps, _mm256_m...
+#include <mm_malloc.h> // for posix_memalign
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error
+#include <stdlib.h>    // for free, calloc, malloc
+#include <string.h>    // for memcpy, memset
+#include <sys/types.h> // for uint
+#include <xmmintrin.h> // for _mm_max_ps, _mm_min_ps, _mm_store_ss, __m128, _mm_shu...
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -12,7 +32,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(frbPostProcess);
 
-frbPostProcess::frbPostProcess(Config& config_, const string& unique_name,
+frbPostProcess::frbPostProcess(Config& config_, const std::string& unique_name,
                                bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&frbPostProcess::main_thread, this)),
     masked_packets_counter(kotekan::prometheus::Metrics::instance().add_counter(
@@ -26,7 +46,7 @@ frbPostProcess::frbPostProcess(Config& config_, const string& unique_name,
     _nbeams = config.get<int32_t>(unique_name, "num_beams_per_frb_packet");
     _timesamples_per_frb_packet = config.get<int32_t>(unique_name, "timesamples_per_frb_packet");
 
-    vector<int32_t> bd;
+    std::vector<int32_t> bd;
     _incoherent_beams =
         config.get_default<std::vector<int32_t>>(unique_name, "incoherent_beams", bd);
     _incoherent_truncation = config.get_default<float>(unique_name, "incoherent_truncation", 1e10);
@@ -119,19 +139,19 @@ void frbPostProcess::main_thread() {
     while (!stop_thread) {
         // Get the next output buffer, id = 0 to start.
         uint8_t* out_frame = wait_for_empty_frame(frb_buf, unique_name.c_str(), out_buffer_ID);
-        if (out_frame == NULL)
+        if (out_frame == nullptr)
             return;
         // Get an input buffer, This call is blocking!
         for (int i = 0; i < _num_gpus; ++i) {
             in_frame[i] = wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
-            if (in_frame[i] == NULL)
+            if (in_frame[i] == nullptr)
                 return;
         }
 
         // Information on drop packets
         uint8_t* lost_samples_frame =
             wait_for_full_frame(lost_samples_buf, unique_name.c_str(), lost_samples_buf_id);
-        if (lost_samples_frame == NULL)
+        if (lost_samples_frame == nullptr)
             return;
 
         // Get all input buffers in sync by fpga_seq_no: find the one that's the furthest along, and
@@ -167,7 +187,7 @@ void frbPostProcess::main_thread() {
                 lost_samples_buf_id = (lost_samples_buf_id + 1) % lost_samples_buf->num_frames;
                 lost_samples_frame =
                     wait_for_full_frame(lost_samples_buf, unique_name.c_str(), lost_samples_buf_id);
-                if (lost_samples_frame == NULL)
+                if (lost_samples_frame == nullptr)
                     return;
             }
             start_fpga_count = max_fpga_count;
@@ -181,7 +201,7 @@ void frbPostProcess::main_thread() {
                     in_buffer_ID[i] = (in_buffer_ID[i] + 1) % in_buf[i]->num_frames;
                     in_frame[i] =
                         wait_for_full_frame(in_buf[i], unique_name.c_str(), in_buffer_ID[i]);
-                    if (in_frame[i] == NULL)
+                    if (in_frame[i] == nullptr)
                         return;
                 }
                 if (max_fpga_count != get_fpga_seq_num(in_buf[i], in_buffer_ID[i])) {

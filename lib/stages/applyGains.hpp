@@ -1,19 +1,31 @@
 #ifndef APPLY_GAINS_HPP
 #define APPLY_GAINS_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "datasetManager.hpp"
-#include "errors.h"
-#include "fpga_header_functions.h"
-#include "updateQueue.hpp"
-#include "util.h"
-#include "visFile.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp" // for Config
+#include "Hash.hpp"   // for Hash
+#include "Stage.hpp"  // for Stage
+#include "SynchronizedQueue.hpp"
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, state_id_t
+#include "prometheusMetrics.hpp" // for Counter, Gauge
+#include "updateQueue.hpp"       // for updateQueue
+#include "visBuffer.hpp"         // for visFrameView
+#include "visUtil.hpp"           // for cfloat, frameID
 
-#include <shared_mutex>
-#include <unistd.h>
+#include "json.hpp" // for json
 
+#include <atomic>       // for atomic
+#include <ctime>        // for timespec, size_t
+#include <map>          // for map
+#include <mutex>        // for mutex
+#include <optional>     // for optional
+#include <shared_mutex> // for shared_mutex
+#include <stdint.h>     // for uint32_t, uint64_t
+#include <string>       // for string
+#include <thread>       // for thread
+#include <utility>      // for pair
+#include <vector>       // for vector
 
 /**
  * @class applyGains
@@ -44,6 +56,12 @@
  * @conf   updatable_block  String. The full name of the updatable_block that
  *                                  will provide new flagging values (e.g. "/dynamic_block/gains").
  * @conf   gains_dir        String. The path to the directory holding the gains file.
+ * @conf   broker_host      String. Calibration broker host.
+ * @conf   broker_port      Int.    Calibration broker port.
+ * @conf   read_from_file   Bool, default false. Whether to read the gains from file or
+ *                                  fetch them over the network.
+ * @conf   tcombine         Double. Time (in seconds) over which to combine old and new gains to
+ *                                  prevent discontinuities. Default is 5 minutes.
  * @conf   num_kept_updates Int.    The number of gain updates stored in a FIFO.
  * @conf   num_threads      Int.    Number of threads to run. Default is 1.
  *
@@ -58,13 +76,13 @@
  *     seconds between the current frame being processed and the time stamp of
  *     the gains update being applied.
  *
- * @author Mateus Fandino
+ * @author Mateus Fandino, Tristan Pinsonneault-Marotte and Richard Shaw
  */
 class applyGains : public kotekan::Stage {
 
 public:
     /// Default constructor
-    applyGains(kotekan::Config& config, const string& unique_name,
+    applyGains(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
     /// Main loop for the stage
@@ -95,6 +113,13 @@ private:
     /// Number of gains updates to maintain
     uint64_t num_kept_updates;
 
+    /// Host and port of calibration broker
+    std::string broker_host;
+    unsigned int broker_port;
+
+    /// Whether to read gains from file or over network
+    bool read_from_file;
+
     /// The gains and when to start applying them in a FIFO (len set by config)
     updateQueue<GainUpdate> gains_fifo;
 
@@ -114,8 +139,8 @@ private:
     /// different frame_id from the buffer and applies gains.
     void apply_thread();
 
-    /// Vector to hold the thread handles
-    std::vector<std::thread> thread_handles;
+    /// Thread for getting gains from cal broker
+    void fetch_thread();
 
     /// Number of parallel threads accessing the same buffers (default 1)
     uint32_t num_threads;
@@ -137,9 +162,36 @@ private:
     /// Read the gain file from disk
     std::optional<GainData> read_gain_file(std::string update_id) const;
 
+    /// Fetch gains from calibration broker
+    std::optional<GainData> fetch_gains(std::string tag) const;
+
+    /// Used to indicate to other threads when incoming data has arrived and we
+    /// are processing
+    std::atomic<bool> started = false;
+
+    /// Queue used to send updates into the fetch thread
+    using update_t = std::tuple<std::string, double, double>;
+    SynchronizedQueue<update_t> update_fetch_queue;
+
+
+    /// REST client for communication with cal broker
+    restClient& client;
+
+
+    /// Wait until the first frame comes in and read its metadata to determine
+    /// what frequencies and inputs we will get
+    void initialise();
+
+    /// Calculate the gain for this time and frequency
+    /// Returns false if there was no appropriate gain and we need to skip
+    std::tuple<bool, double, state_id_t> calculate_gain(double timestamp, uint32_t freq_id,
+                                                        std::vector<cfloat>& gain,
+                                                        std::vector<cfloat>& gain_conj,
+                                                        std::vector<float>& weight_factor) const;
+
     /// Test that the frame is valid. On failure it will call FATAL_ERROR and
     /// return false
-    bool validate_frame(const visFrameView& frame);
+    bool validate_frame(const visFrameView& frame) const;
 
     /// Test that the gain is valid. On failure it will call FATAL_ERROR and
     /// return false. Gains failing this *should* have already been rejected,

@@ -1,21 +1,35 @@
 
 #define BOOST_TEST_MODULE "test_datasetManager_REST"
 
-#include "Config.hpp"
-#include "Hash.hpp"
-#include "restClient.hpp"
-#include "restServer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"         // for Config
+#include "Hash.hpp"           // for operator<<, hash, operator==, Hash
+#include "dataset.hpp"        // for dataset
+#include "datasetManager.hpp" // for state_id_t, datasetManager, dset_id_t
+#include "datasetState.hpp"   // for freqState, inputState, prodState, state_uptr
+#include "errors.h"           // for __enable_syslog, _global_log_level
+#include "kotekanLogging.hpp" // for DEBUG_NON_OO
+#include "restServer.hpp"     // for restServer, connectionInstance
+#include "visUtil.hpp"        // for input_ctype, prod_ctype, freq_ctype
 
-#include "fmt.hpp"
-#include "json.hpp"
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for basic_json<>::object_t, basic_json<>::value...
 
-#include <boost/test/included/unit_test.hpp>
-#include <iostream>
-#include <string>
+#include <algorithm>                         // for max
+#include <atomic>                            // for atomic, __atomic_base
+#include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_BOOL_2, BOOST_TEST...
+#include <exception>                         // for exception
+#include <functional>                        // for _Bind_helper<>::type, _Placeholder, bind, _1
+#include <iostream>                          // for operator<<, endl, ostream, basic_ostream, cout
+#include <map>                               // for map
+#include <memory>                            // for allocator, make_unique, unique_ptr
+#include <stddef.h>                          // for size_t
+#include <stdint.h>                          // for uint32_t
+#include <string>                            // for string, operator<<, string_literals
+#include <sys/types.h>                       // for u_short, ushort
+#include <unistd.h>                          // for usleep
+#include <utility>                           // for pair
+#include <vector>                            // for vector
 
-// the code to test:
-#include "datasetManager.hpp"
 
 using kotekan::connectionInstance;
 using kotekan::restServer;

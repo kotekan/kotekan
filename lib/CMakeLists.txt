@@ -3,8 +3,6 @@
 # back into a standard CMake library
 project( kotekan_libs )
 
-include_directories (${KOTEKAN_SOURCE_DIR}/include)
-
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/core)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/metadata)
@@ -90,11 +88,12 @@ endif ()
 # HDF5 stuff
 if (${USE_HDF5})
   include_directories (${HDF5_INCLUDE_DIRS})
-  include_directories (/kotekan/HighFive/include/)
+  include_directories (SYSTEM /kotekan/HighFive/include/)
   target_link_libraries ( kotekan_libs INTERFACE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES} )
 endif ()
 
 add_subdirectory(version)
 
 target_link_libraries( kotekan_libs INTERFACE kotekan_version )
+target_link_libraries( kotekan_libs INTERFACE libexternal )
 

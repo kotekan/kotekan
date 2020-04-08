@@ -13,21 +13,22 @@ clDeviceInterface::clDeviceInterface(Config& config_, int32_t gpu_id_, int gpu_b
     gpuDeviceInterface(config_, gpu_id_, gpu_buffer_depth_) {
 
     // Get a platform.
-    CHECK_CL_ERROR(clGetPlatformIDs(1, &platform_id, NULL));
+    CHECK_CL_ERROR(clGetPlatformIDs(1, &platform_id, nullptr));
     INFO("GPU Id {:d}", gpu_id);
 
     // Find out how many GPUs can be probed.
     cl_uint max_num_gpus;
-    CHECK_CL_ERROR(clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 0, NULL, &max_num_gpus));
+    CHECK_CL_ERROR(clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 0, nullptr, &max_num_gpus));
     INFO("Maximum number of GPUs: {:d}", max_num_gpus);
 
     // Find a GPU device..
     cl_device_id device_ids[max_num_gpus];
-    CHECK_CL_ERROR(clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, max_num_gpus, device_ids, NULL));
+    CHECK_CL_ERROR(
+        clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, max_num_gpus, device_ids, nullptr));
     device_id = device_ids[gpu_id];
 
     cl_int err;
-    context = clCreateContext(NULL, 1, &device_id, NULL, NULL, &err);
+    context = clCreateContext(nullptr, 1, &device_id, nullptr, nullptr, &err);
     CHECK_CL_ERROR(err);
 }
 
@@ -41,7 +42,7 @@ clDeviceInterface::~clDeviceInterface() {
 
 void* clDeviceInterface::alloc_gpu_memory(int len) {
     cl_int err;
-    cl_mem ptr = clCreateBuffer(context, CL_MEM_READ_WRITE, len, NULL, &err);
+    cl_mem ptr = clCreateBuffer(context, CL_MEM_READ_WRITE, len, nullptr, &err);
     CHECK_CL_ERROR(err);
     return ptr;
 }
@@ -50,10 +51,10 @@ void clDeviceInterface::free_gpu_memory(void* ptr) {
 }
 
 
-cl_mem clDeviceInterface::get_gpu_memory(const string& name, const uint32_t len) {
+cl_mem clDeviceInterface::get_gpu_memory(const std::string& name, const uint32_t len) {
     return (cl_mem)gpuDeviceInterface::get_gpu_memory(name, len);
 }
-cl_mem clDeviceInterface::get_gpu_memory_array(const string& name, const uint32_t index,
+cl_mem clDeviceInterface::get_gpu_memory_array(const std::string& name, const uint32_t index,
                                                const uint32_t len) {
     return (cl_mem)gpuDeviceInterface::get_gpu_memory_array(name, index, len);
 }

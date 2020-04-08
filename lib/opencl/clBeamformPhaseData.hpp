@@ -156,7 +156,7 @@
 class clBeamformPhaseData : public clCommand {
 public:
     /// Constructor, no logic added.
-    clBeamformPhaseData(kotekan::Config& config, const string& unique_name,
+    clBeamformPhaseData(kotekan::Config& config, const std::string& unique_name,
                         kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
     /// Allocate size for phases arrays and initialize start_beamform_time and last_bankID.
     virtual void build() override;
@@ -198,7 +198,7 @@ protected:
     /// Declination in degrees of source to beamform on.
     double dec;
     /// The x,y positions in meters of the feeds across the telescope.
-    vector<float> feed_positions;
+    std::vector<float> feed_positions;
     /// Set to current time in build() and pass that value to local beamform time if fixed_time is
     /// 0.
     time_t start_beamform_time;
