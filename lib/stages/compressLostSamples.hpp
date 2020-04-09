@@ -37,7 +37,7 @@ using std::vector;
  *                                       a total of @c compression_factor lost samples for the
  *                                       metadata lost_samples value.
  *
- * @author James Willis
+ * @author James Willis, Andre Renard
  *
  */
 

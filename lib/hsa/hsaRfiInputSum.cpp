@@ -98,7 +98,7 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
     args.input_mask = device.get_gpu_memory_array("input_mask", gpu_frame_id, input_mask_len);
     args.output_mask =
         device.get_gpu_memory_array("rfi_mask_output", gpu_frame_id, output_mask_len);
-    args.lost_sample_correction = device.get_gpu_memory_array("compressed_lost_samples",
+    args.lost_sample_correction = device.get_gpu_memory_array("rfi_compressed_lost_samples",
                                                               gpu_frame_id, correction_frame_len);
     args.num_elements = _num_elements;
     args.num_bad_inputs = num_bad_inputs;
