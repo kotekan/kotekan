@@ -960,7 +960,7 @@ frb:
     #column_mode: true
     beam_offset: 0
     time_interval: 125829120
-    ping_dead_threshold: 0
+    ping_dead_threshold: 30
     L1_node_ips:
       # Rack 1
       - 10.6.201.10
