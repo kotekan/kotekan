@@ -846,7 +846,7 @@ hfb_merge:
 buffer_send_hfb:
   server_ip: 10.1.50.10
   reconnect_time: 20
-  log_level: warn
+  log_level: error
   hfb:
     kotekan_stage: bufferSend
     buf: beamform_hfb_output_buffer_merge
@@ -960,7 +960,7 @@ frb:
     #column_mode: true
     beam_offset: 0
     time_interval: 125829120
-    dead_ping_threshold: 0
+    ping_dead_threshold: 0
     L1_node_ips:
       # Rack 1
       - 10.6.201.10

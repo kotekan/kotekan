@@ -10,8 +10,9 @@
 
 #include "fmt.hpp" // for format, fmt
 
-#include <arpa/inet.h>  // for inet_addr
-#include <cerrno>       // for errno
+#include <arpa/inet.h> // for inet_addr
+#include <cerrno>      // for errno
+#include <chrono>
 #include <cstring>      // for strerror, size_t
 #include <exception>    // for exception
 #include <functional>   // for _Bind_helper<>::type, bind, ref, function
@@ -23,7 +24,6 @@
 #include <thread>       // for thread
 #include <unistd.h>     // for close, sleep
 #include <vector>       // for vector
-
 
 // Only Linux supports MSG_NOSIGNAL
 #ifndef __linux__
@@ -52,6 +52,7 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
 
     send_timeout = config.get_default<uint32_t>(unique_name, "send_timeout", 20);
     reconnect_time = config.get_default<uint32_t>(unique_name, "reconnect_time", 5);
+    drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
 
     // Publish current dropped frame count.
 
@@ -79,12 +80,16 @@ void bufferSend::main_thread() {
 
         uint32_t num_full_frames = get_num_full_frames(buf);
 
-        if (num_full_frames > (((uint32_t)buf->num_frames + 1) / 2)) {
+        if (drop_frames && num_full_frames > (((uint32_t)buf->num_frames + 1) / 2)) {
             // If the number of full frames is high, then we drop some frames,
             // because we likely aren't sending fast enough to up with the data rate.
-            WARN("Number of full frames in buffer {:s} is {:d} (total frames: {:d}), dropping "
+            INFO("Number of full frames in buffer {:s} is {:d} (total frames: {:d}), dropping "
                  "frame_id {:d}",
                  buf->buffer_name, num_full_frames, buf->num_frames, frame_id);
+            dropped_frame_counter.inc();
+        } else if (drop_frames && !connected) {
+            INFO("Dropping frame {:s}[{:d}], because connection to {:s}:{:d} is down.",
+                 buf->buffer_name, frame_id, server_ip, server_port);
             dropped_frame_counter.inc();
         } else if (connected) {
             // Send header
@@ -151,8 +156,12 @@ void bufferSend::main_thread() {
                   server_port);
 
         } else {
-            DEBUG("Dropping frame {:s}[{:d}], because connection to {:s}:{:d} is down.",
-                  buf->buffer_name, frame_id, server_ip, server_port);
+            // Wait for connection and block
+            INFO("Waiting for connection to {:s}:{:d}...", server_ip, server_port);
+            std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
+            connection_state_cv.wait_for(connection_lock, std::chrono::seconds(1),
+                                         [&]() { return (stop_thread || connected); });
+            continue;
         }
 
         mark_frame_empty(buf, unique_name.c_str(), frame_id);
@@ -226,6 +235,10 @@ void bufferSend::connect_to_server() {
             connected = true;
         }
 
+        // Notify that connection is established
+        connection_state_cv.notify_one();
+
+        // wait for connection to get closed
         std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
         connection_state_cv.wait(connection_lock, [&]() { return !connected || stop_thread; });
     }

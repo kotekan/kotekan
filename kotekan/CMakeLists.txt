@@ -6,7 +6,6 @@ include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/core)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/version)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/utils)
-include_directories (${KOTEKAN_SOURCE_DIR}/include)
 
 link_directories (${KOTEKAN_BINARY_DIR}/lib)
 
@@ -18,6 +17,7 @@ if (${NUMA_FOUND})
     target_link_libraries( kotekan numa )
 endif()
 
+target_link_libraries( kotekan libexternal )
 target_link_libraries( kotekan m dl pthread )
 target_link_libraries( kotekan kotekan_libs )
 

@@ -9,9 +9,11 @@
 # - Packet capture from the ICE boards including FPGA flag handling and normalization
 # - N^2 kernels and output for various data projects to receiver systems
 # - FRB FFT Fan beam and packet Tx, with Valves protecting input buffers from overflowing
-# - Pulsar 10 coherent beam system and packet Tx, with Valves protecting input buffers from overflowing
+# - Pulsar 10 coherent beam system and packet Tx, with Valves protecting input buffers from
+#   overflowing
 # - RFI detection and summary stats system (only reports on RFI, no normalization yet)
-# - Extracts 21cm absorber data from FRB pipeline. This is referred to as the High Frequency Beam (HFB) below.
+# - Extracts 21cm absorber data from FRB pipeline. This is referred to as the High Frequency Beam
+#   (HFB) below.
 #
 # This component is intended to be run on the GPU nodes.
 #
@@ -171,11 +173,11 @@ updatable_config:
     kotekan_update_endpoint: json
     # These inputs are assumed to be in cylinder order
     bad_inputs: [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
-                  370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
-                  807,  855,  944,  960,  971,  981,  986, 1005, 1010, 1020, 1023,
-                 1058, 1166, 1225, 1280, 1281, 1285, 1314, 1343, 1380, 1381, 1521,
-                 1523, 1543, 1642, 1687, 1738, 1792, 1794, 1910, 1912, 1943, 1945,
-                 1950, 1982, 1984, 1987, 2032, 2034]
+                   370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
+                   807,  855,  944,  960,  971,  981,  986, 1005, 1010, 1020, 1023,
+                   1058, 1166, 1225, 1280, 1281, 1285, 1314, 1343, 1380, 1381, 1521,
+                   1523, 1543, 1642, 1687, 1738, 1792, 1794, 1910, 1912, 1943, 1945,
+                   1950, 1982, 1984, 1987, 2032, 2034]
     start_time: 1535048997.
     update_id: "initial_flags"
   rfi_zeroing_toggle:
@@ -332,19 +334,19 @@ gpu_beamform_hfb_output_buffers:
     kotekan_buffer: standard
 
 cpu_hfb_output_buffers:
-    num_frames: buffer_depth
-    frame_size: num_data_sets * factor_upchan * num_frb_total_beams * sizeof_float
-    metadata_pool: hfb_pool
-    beamform_hfb_output_buffer_0:
-      kotekan_buffer: standard
-    beamform_hfb_output_buffer_1:
-      kotekan_buffer: standard
-    beamform_hfb_output_buffer_2:
-      kotekan_buffer: standard
-    beamform_hfb_output_buffer_3:
-      kotekan_buffer: standard
-    beamform_hfb_output_buffer_merge:
-      kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: num_data_sets * factor_upchan * num_frb_total_beams * sizeof_float
+  metadata_pool: hfb_pool
+  beamform_hfb_output_buffer_0:
+    kotekan_buffer: standard
+  beamform_hfb_output_buffer_1:
+    kotekan_buffer: standard
+  beamform_hfb_output_buffer_2:
+    kotekan_buffer: standard
+  beamform_hfb_output_buffer_3:
+    kotekan_buffer: standard
+  beamform_hfb_output_buffer_merge:
+    kotekan_buffer: standard
 
 gain_frb_buffers:
   num_frames: 5
@@ -628,7 +630,7 @@ compress_lost_samples:
 copy_compress_lost_samples_buffers:
   kotekan_stage: bufferCopy
   in_buf: compressed_lost_samples_buf_0
-  out_bufs: 
+  out_bufs:
     - compressed_lost_samples_buf_1
     - compressed_lost_samples_buf_2
     - compressed_lost_samples_buf_3
@@ -805,7 +807,7 @@ gpu:
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_3
       #rfi_var_output_buf: gpu_rfi_var_output_buffer_3
 
-# Integrate frames of HFB data from each GPU to ~10s cadence 
+# Integrate frames of HFB data from each GPU to ~10s cadence
 hyper_fine_beam:
   num_frames_to_integrate: 80
   good_samples_threshold: 0.95
@@ -830,7 +832,7 @@ hyper_fine_beam:
     hfb_input_buf: gpu_beamform_hfb_output_buffer_3
     hfb_output_buf: beamform_hfb_output_buffer_3
     compressed_lost_samples_buf: compressed_lost_samples_buf_3
- 
+
 # Merge HFB integrated data from each GPU
 hfb_merge:
   kotekan_stage: bufferMerge
@@ -846,7 +848,7 @@ hfb_merge:
 #buffer_send_hfb:
 #  server_ip: 10.1.50.10
 #  reconnect_time: 20
-#  log_level: warn
+#  log_level: error
 #  hfb:
 #    kotekan_stage: bufferSend
 #    buf: beamform_hfb_output_buffer_merge
@@ -960,7 +962,7 @@ frb:
     #column_mode: true
     beam_offset: 0
     time_interval: 125829120
-    dead_ping_threshold: 0
+    ping_dead_threshold: 0
     L1_node_ips:
       # Rack 1
       - 10.6.201.10
@@ -1314,8 +1316,8 @@ valve:
 # Perform a second pass at RFI excision
 rfi_stage2:
   updatable_config:
-   enable: "/updatable_config/rfi_zeroing_second_stage/enable"
-   thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
+    enable: "/updatable_config/rfi_zeroing_second_stage/enable"
+    thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
   rfi0:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_0

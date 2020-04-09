@@ -14,6 +14,8 @@ message("DPDK include dir: ${DPDK_INCLUDE_DIR}")
 include_directories(SYSTEM ${DPDK_INCLUDE_DIR})
 target_link_libraries(kotekan_dpdk ${DPDK_LIBRARIES})
 
+target_link_libraries(kotekan_dpdk libexternal)
+
 add_definitions(-DWITH_DPDK)
 
 if(NOT ${NUMA_FOUND})

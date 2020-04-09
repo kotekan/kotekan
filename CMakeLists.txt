@@ -25,6 +25,7 @@ option(USE_DPDK "Enable DPDK Framework" OFF)
 option(USE_HDF5 "Build HDF5 output stages" OFF)
 option(USE_OMP "Enable OpenMP" OFF)
 option(USE_OLD_ROCM "Build for ROCm versions 2.3 or older" OFF)
+option(NO_MEMLOCK "Do not lock buffer memory (useful when running in Docker)" OFF)
 option(SUPERDEBUG "Enable extra debugging with no optimisation" OFF)
 option(SANITIZE "Enable clang sanitizers for testing" OFF)
 option(COMPILE_DOCS "Use Sphinx to compile documentation" OFF)
@@ -79,16 +80,25 @@ if (${USE_FFTW})
   include_directories(${FFTW_INCLUDES})
 endif()
 
+if (NOT DEFINED ARCH)
+  set(ARCH "native")
+endif()
+
+
 include(CheckIncludeFileCXX)
 if (${USE_LAPACK})
-  # Check OpenBLAS is installed
-  if (DEFINED OPENBLAS_PATH)
-    if (NOT EXISTS ${OPENBLAS_PATH})
-      MESSAGE( "OPENBLAS_PATH: \"${OPENBLAS_PATH}\" does not exist" )
-    endif()
-  endif()
-  find_package( OpenBLAS REQUIRED
-                HINTS ${OPENBLAS_PATH})
+
+  set(BLA_VENDOR OpenBLAS)
+  find_package( BLAS REQUIRED )
+  find_path(BLAS_INCLUDE_DIRS cblas.h
+            PATHS /usr/include /usr/local/include
+            PATH_SUFFIXES openblas)
+  MESSAGE("Using BLAS ${BLAS_LIBRARIES}")
+  MESSAGE("Using BLAS includes ${BLAS_INCLUDE_DIRS}")
+  find_package( LAPACK REQUIRED )
+  MESSAGE("Using LAPACK ${LAPACK_LIBRARIES}")
+  find_package( LAPACKE REQUIRED )
+  MESSAGE("Using LAPACKE ${LAPACKE_LIBRARIES}")
 
   # Check Blaze is installed
   if (DEFINED BLAZE_PATH)
@@ -226,14 +236,12 @@ endif()
 
 find_package(Threads REQUIRED)
 
-include_directories (${KOTEKAN_SOURCE_DIR}/include)
-
 # Note that -lrt here is needed on some versions of CentOS but not Clang
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
        set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrt " )
 endif ()
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -Wextra -Werror -march=native -mtune=native -I/opt/rocm/include")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -Wextra -Werror -march=${ARCH} -mtune=${ARCH} -I/opt/rocm/include")
 
 # OpenMP flag
 if(${USE_OMP})
@@ -250,7 +258,7 @@ if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT ${CMAKE_CXX_COMPILER_ID} M
        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrt " )
 endif ()
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wextra -Werror -Wzero-as-null-pointer-constant -march=native -mtune=native -I/opt/rocm/include")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wextra -Werror -Wzero-as-null-pointer-constant -march=${ARCH} -mtune=${ARCH} -I/opt/rocm/include")
 
 # dpdk uses the register keyword that got removed in C++17 because it wasn't doing anything
 #TODO remove this line when dpdk people fix this: https://mails.dpdk.org/archives/dev/2018-July/107950.html
@@ -300,6 +308,12 @@ if (${COMPILE_DOCS})
     add_subdirectory(docs EXCLUDE_FROM_ALL)
 endif()
 
+# Turn off memlocking of buffers. This is useful when running in restricted
+# environments e.g. Docker containers
+if (${NO_MEMLOCK})
+  MESSAGE("Do not lock buffer memory.")
+  add_definitions(-DWITH_NO_MEMLOCK)
+endif ()
 
 # Improve debugging by turning off all optimisations.
 if (${SUPERDEBUG})
@@ -319,7 +333,7 @@ endif()
 add_subdirectory(lib)
 add_subdirectory(kotekan)
 add_subdirectory(scripts)
-add_subdirectory(include)
+add_subdirectory(external)
 add_subdirectory(config)
 
 # Testing with boost
@@ -368,7 +382,7 @@ if(CLANG_FORMAT_PATH)
     list ( APPEND FILES_TO_FORMAT ${KOTEKAN_ALL_H_FILES} )
 
     # Exclude all code we don't want auto-formatted (external libs).
-    set ( EXCLUDE_DIR "include" )
+    set ( EXCLUDE_DIR "external" )
     exclude_files_containing ( FILES_TO_FORMAT
                                ${EXCLUDE_DIR}
                                ${FILES_TO_FORMAT} )

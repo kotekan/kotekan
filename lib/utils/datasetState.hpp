@@ -583,56 +583,6 @@ public:
 
 
 /**
- * @brief A dataset state used to communicate the dataset ID of data stored
- *        in a raw file. This is a hack until we figure out how to propagate
- *        dataset ID's to archive files.
- *
- * @author Tristan Pinsonneault-Marotte
- */
-class acqDatasetIdState : public datasetState {
-public:
-    /**
-     * @brief Constructor
-     * @param data  The dataset ID as serialized by
-     *              acqDatasetIdState::to_json().
-     */
-    acqDatasetIdState(const nlohmann::json& data) {
-        try {
-            _ds_id = data.get<dset_id_t>();
-        } catch (std::exception& e) {
-            throw std::runtime_error(
-                fmt::format(fmt("acqDatasetIdState: Failure parsing json data ({:s}): {:s}"),
-                            data.dump(4), e.what()));
-        }
-    };
-
-    /**
-     * @brief Constructor
-     * @param ds_id    The dataset ID for the acquisition.
-     */
-    acqDatasetIdState(dset_id_t ds_id) : _ds_id(ds_id){};
-
-    /**
-     * @brief Get dataset ID (read only).
-     *
-     * @return Dataset ID as a `dset_id_t`.
-     */
-    dset_id_t get_id() const {
-        return _ds_id;
-    }
-
-private:
-    dset_id_t _ds_id;
-
-    /// Serialize the data of this state in a json object
-    nlohmann::json data_to_json() const override {
-        nlohmann::json j(_ds_id);
-        return j;
-    }
-};
-
-
-/**
  * @brief A dataset state that describes the gains applied to the data.
  *
  * @author Richard Shaw
