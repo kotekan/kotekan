@@ -82,7 +82,7 @@ jobs:
     steps:
     - uses: actions/checkout@v1
 
-    - name: free disk space
+    - name: Free disk space
       run: |
           df -h
           docker rmi $(docker image ls -aq)
