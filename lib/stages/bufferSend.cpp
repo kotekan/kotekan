@@ -83,12 +83,12 @@ void bufferSend::main_thread() {
         if (drop_frames && num_full_frames > (((uint32_t)buf->num_frames + 1) / 2)) {
             // If the number of full frames is high, then we drop some frames,
             // because we likely aren't sending fast enough to up with the data rate.
-            WARN("Number of full frames in buffer {:s} is {:d} (total frames: {:d}), dropping "
+            INFO("Number of full frames in buffer {:s} is {:d} (total frames: {:d}), dropping "
                  "frame_id {:d}",
                  buf->buffer_name, num_full_frames, buf->num_frames, frame_id);
             dropped_frame_counter.inc();
         } else if (drop_frames && !connected) {
-            WARN("Dropping frame {:s}[{:d}], because connection to {:s}:{:d} is down.",
+            INFO("Dropping frame {:s}[{:d}], because connection to {:s}:{:d} is down.",
                  buf->buffer_name, frame_id, server_ip, server_port);
             dropped_frame_counter.inc();
         } else if (connected) {

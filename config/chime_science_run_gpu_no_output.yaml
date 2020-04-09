@@ -848,7 +848,7 @@ hfb_merge:
 #buffer_send_hfb:
 #  server_ip: 10.1.50.10
 #  reconnect_time: 20
-#  log_level: warn
+#  log_level: error
 #  hfb:
 #    kotekan_stage: bufferSend
 #    buf: beamform_hfb_output_buffer_merge
