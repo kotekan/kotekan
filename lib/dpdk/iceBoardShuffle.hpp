@@ -413,11 +413,6 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     }
 
     if (!first_time) {
-        allocate_new_metadata_object(lost_samples_buf, lost_samples_frame_id);
-        set_fpga_seq_num(lost_samples_buf, lost_samples_frame_id, new_seq);
-        set_first_packet_recv_time(lost_samples_buf, lost_samples_frame_id, now);
-        set_gps_time(lost_samples_buf, lost_samples_frame_id, gps_time);
-
         mark_frame_full(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
         lost_samples_frame_id = (lost_samples_frame_id + 1) % lost_samples_buf->num_frames;
     }
@@ -425,6 +420,20 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         wait_for_empty_frame(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
     if (lost_samples_frame == nullptr)
         return false;
+
+    allocate_new_metadata_object(lost_samples_buf, lost_samples_frame_id);
+    set_fpga_seq_num(lost_samples_buf, lost_samples_frame_id, new_seq);
+    set_first_packet_recv_time(lost_samples_buf, lost_samples_frame_id, now);
+    set_gps_time(lost_samples_buf, lost_samples_frame_id, gps_time);
+
+    // The lost samples buffer is the same for all 4 frequencies,
+    // so the stream ID actually covers all 4 possible `unused` freq values.
+    if (port_stream_id.crate_id / 2 == 0) {
+        stream_id_t tmp_stream_id = port_stream_id;
+        tmp_stream_id.unused = 0;
+        set_stream_id_t(lost_samples_buf, lost_samples_frame_id, tmp_stream_id);
+    }
+
     return true;
 }
 
