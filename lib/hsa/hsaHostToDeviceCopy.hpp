@@ -1,7 +1,7 @@
 /*
  * @file
- * @brief Copy compressed lost sample buffer from host to gpu
- *  - hsaInputCompressLostSamples : public hsaCommand
+ * @brief Copy CPU buffer to GPU staging buffer
+ *  - hsaHostToDeviceCopy : public hsaCommand
  */
 #ifndef HSA_HOST_TO_DEVICE_COPY_H
 #define HSA_HOST_TO_DEVICE_COPY_H
@@ -18,7 +18,7 @@
 #include <string>   // for string
 
 /*
- * @class hsaInputCompressLostSamples
+ * @class hsaHostToDeviceCopy
  * @brief hsaCommand for transferring a CPU buffer to GPU staging buffer
  *
  * @par buffers
@@ -39,13 +39,13 @@ public:
     /// Constructor, applies config, initializes variables
     hsaHostToDeviceCopy(kotekan::Config& config, const std::string& unique_name,
                         kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
-    // Destructor, cleans up local allocs
+
     virtual ~hsaHostToDeviceCopy();
-    /// Wait for full metadata frame and keep track of precondition_id
+    /// Wait for full CPU frame
     int wait_on_precondition(int gpu_frame_id) override;
-    /// Allocates kernel arguments, places kernel in queue
+    /// Performs the async copy enqueue
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
-    /// Marks frame empty for re-fill
+    /// Marks CPU buffer frame empty
     void finalize_frame(int frame_id) override;
 
 private:

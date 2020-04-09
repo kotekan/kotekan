@@ -1595,7 +1595,7 @@ rfi_pkt_loss_record:
   updatable_config: "/updatable_config/rfi_pkt_loss_record"
   gpu_0:
     kotekan_stage: rfiRecord
-    rfi_in: compressed_lost_samples_buf
+    rfi_in: rfi_compressed_lost_samples_buf
 
 #rfi_var_record:
 #  total_links: 1
