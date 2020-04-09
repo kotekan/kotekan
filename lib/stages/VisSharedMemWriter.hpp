@@ -13,7 +13,7 @@
 #include "datasetManager.hpp"    // for dset_id_t, fingerprint_t
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily
 #include "visBuffer.hpp"         // for visFrameView
-#include "visUtil.hpp"           // for time_ctype
+#include "visUtil.hpp"           // for time_ctype, movingAverage
 
 #include <cstdint>     // for uint32_t, uint64_t, uint8_t
 #include <map>         // for map
@@ -228,6 +228,9 @@ private:
 
     // Time spent waiting for semaphore
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& access_record_wait_time_seconds;
+
+    // Keep track of the average semaphore wait time
+    movingAverage wait_time_average;
 };
 
 #endif // VISSHAREDMEMWRITER_HPP

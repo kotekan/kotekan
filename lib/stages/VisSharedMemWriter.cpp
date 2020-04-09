@@ -130,7 +130,8 @@ void VisSharedMemWriter::wait_for_semaphore() {
         return;
     }
 
-    access_record_wait_time_seconds.labels({_name}).set(current_time() - start_time);
+    wait_time_average.add_sample(current_time() - start_time);
+    access_record_wait_time_seconds.labels({_name}).set(wait_time_average.average());
     return;
 #endif
 }
