@@ -12,6 +12,9 @@ from kotekan import runner
 from kotekan import visutil
 from kotekan import visbuffer
 import time
+from pytest_localserver.http import WSGIServer
+from flask import Flask, jsonify, request as flask_req
+import base64
 
 # Skip if HDF5 support not built into kotekan
 if not runner.has_hdf5():
@@ -56,12 +59,12 @@ def gen_gains(filename, mult_factor, num_elements, freq):
     nfreq = len(freq)
     gain = (
         np.arange(nfreq)[:, None] * 1j * np.arange(num_elements)[None, :] * mult_factor
-    )
+    ).astype(np.complex64)
 
     # Make some weights zero to test the behaviour of apply_gains
-    weight = np.ones((nfreq, num_elements), dtype=np.float32)
-    weight[:, 1] = 0.0
-    weight[:, 3] = 0.0
+    weight = np.ones((nfreq, num_elements), dtype=np.bool8)
+    weight[:, 1] = False
+    weight[:, 3] = False
 
     with h5py.File(str(filename), "w") as f:
 
@@ -77,6 +80,23 @@ def gen_gains(filename, mult_factor, num_elements, freq):
         ipt_ds[:] = np.arange(num_elements)
 
     return gain, weight
+
+
+def encode_gains(gain, weight):
+    # encode base64
+    res = {
+        "gain": {
+            "dtype": "complex64",
+            "shape": gain.shape,
+            "data": base64.b64encode(gain.tobytes()).decode(),
+        },
+        "weight": {
+            "dtype": "bool",
+            "shape": weight.shape,
+            "data": base64.b64encode(weight.tobytes()).decode(),
+        },
+    }
+    return res
 
 
 @pytest.fixture(scope="session")
@@ -107,10 +127,39 @@ def new_gains(gain_path):
 
 
 @pytest.fixture(scope="session")
-def apply_data(tmp_path_factory, gain_path, old_gains, new_gains):
+def cal_broker(request, old_gains, new_gains):
+    # Create a basic flask server
+    app = Flask("cal_broker")
+
+    @app.route("/gain", methods=["POST"])
+    def gain_app():
+        content = flask_req.get_json()
+        update_id = content["update_id"]
+        if update_id == new_update_id:
+            gains = encode_gains(*new_gains)
+        elif update_id == old_update_id:
+            gains = encode_gains(*old_gains)
+        else:
+            raise Exception("Did not recognize update_id {}.".format(update_id))
+        print(f"Served gains with {update_id}")
+
+        return jsonify(gains)
+
+    # hand to localserver fixture
+    server = WSGIServer(application=app)
+    server.start()
+
+    yield server
+
+    server.stop()
+
+
+@pytest.fixture(scope="session", params=["file", "network"])
+def apply_data(request, tmp_path_factory, gain_path, old_gains, new_gains, cal_broker):
 
     output_dir = str(tmp_path_factory.mktemp("output"))
     global_params["gains_dir"] = str(gain_path)
+    global_params["read_from_file"] = True if request.param == "file" else False
 
     # REST commands
     cmds = [
@@ -139,6 +188,9 @@ def apply_data(tmp_path_factory, gain_path, old_gains, new_gains):
         "file_ext": "dump",
         "base_dir": output_dir,
     }
+
+    host, port = cal_broker.server_address
+    global_params.update({"broker_host": host, "broker_port": port})
 
     test = runner.KotekanStageTester(
         "applyGains",

@@ -99,7 +99,8 @@ void configUpdater::subscribe(const Stage* subscriber,
                               std::map<std::string, std::function<bool(json&)>> callbacks) {
 
     // If no callbacks are passed, then we don't need to find any updatable_config blocks
-    if (callbacks.size() == 0) return;
+    if (callbacks.size() == 0)
+        return;
 
     // Find the nearest updatable config block
     auto updatable_config_paths = _config->get<std::map<std::string, std::string>>(
@@ -110,7 +111,7 @@ void configUpdater::subscribe(const Stage* subscriber,
         std::string path;
         try {
             path = updatable_config_paths.at(callback.first);
-        } catch (std::out_of_range) {
+        } catch (const std::out_of_range&) {
             throw std::runtime_error(
                 fmt::format(fmt("The config option '{:s}' is required, but was not found in the "
                                 "path: {:s}/updatable_config/"),

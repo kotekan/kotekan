@@ -47,7 +47,6 @@ def subset_data(tmpdir_factory):
     if not has_redis():
         pytest.skip("Redis is not available and so comet will fail")
 
-
     # run the dataset broker
     broker = Popen([broker_path, "--recover", "False"])
     time.sleep(1.5)
