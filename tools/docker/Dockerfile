@@ -12,8 +12,8 @@ RUN apt-get update && \
     apt-get install -y python3.7 python3-setuptools python3-pip python3.7-distutils python3.7-dev \
                        build-essential git coreutils ccache pkg-config \
                        gcc cmake clang-9 clang-format-8 \
-                       rocm-opencl-dev rocm-opencl \
                        dpdk dpdk-dev \
+                       rocm-opencl-dev rocm-opencl \
                        libhdf5-serial-dev libboost-test-dev libevent-dev libssl-dev \
                        wget && \
     apt-get clean && apt-get autoclean
@@ -66,6 +66,10 @@ RUN apt-get -y install doxygen graphviz python-sphinx default-jre && \
     apt-get clean && apt-get autoclean && \
     python3.7 -m pip install --no-cache-dir breathe sphinx_rtd_theme sphinxcontrib-plantuml && \
     wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar -P plantuml
+
+
+# Clean any unwanted caches
+RUN apt-get clean && apt-get autoclean
 
 # Set ccache to store things sensibly
 ENV CCACHE_NOHASHDIR 1
