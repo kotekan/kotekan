@@ -88,6 +88,8 @@ params = {
 }
 
 start_time = 1_500_000_000
+flagging_update_time = start_time + 4
+gain_update_time = start_time + 5
 params_fakevis = {
     "freq_ids": [1, 2, 3, 4, 7, 10],
     "num_frames": params["total_frames"],
@@ -95,8 +97,8 @@ params_fakevis = {
     "wait": True,
     "start_time": start_time,
     "state_changes": [
-        {"timestamp": start_time, "type": "flags"},
-        {"timestamp": start_time, "type": "gains"},
+        {"timestamp": flagging_update_time, "type": "flags"},
+        {"timestamp": gain_update_time, "type": "gains"},
     ],
 }
 
@@ -164,6 +166,7 @@ def check_visraw(visraw):
     num_freq = len(params_fakevis["freq_ids"])
     num_ev = params["num_ev"]
     num_elements = params["num_elements"]
+    valid = visraw.valid_frames.astype(np.bool)
 
     num_time = visraw.num_time
     assert visraw.num_freq == len(params_fakevis["freq_ids"])
@@ -171,18 +174,29 @@ def check_visraw(visraw):
     num_prod = int(num_elements * (num_elements + 1) / 2)
 
     # check valid frames only
-    assert (visraw.num_prod[visraw.valid_frames.astype(np.bool)] == num_prod).all()
-    assert (
-        visraw.metadata["num_elements"][visraw.valid_frames.astype(np.bool)]
-        == num_elements
-    ).all()
-    assert (
-        visraw.metadata["num_ev"][visraw.valid_frames.astype(np.bool)] == num_ev
-    ).all()
+    assert (visraw.num_prod[valid] == num_prod).all()
+    assert (visraw.metadata["num_elements"][valid] == num_elements).all()
+    assert (visraw.metadata["num_ev"][valid] == num_ev).all()
 
     # check gain/flag update IDs VisRaw got from comet
-    assert visraw.flags_update_id == "flag_update_0"
-    assert visraw.gains_update_id == "gain_update_0"
+    assert (
+        visraw.update_id["flags"][valid & (visraw.time["ctime"] < flagging_update_time)]
+        == "None"
+    ).all()
+    assert (
+        visraw.update_id["gains"][valid & (visraw.time["ctime"] < gain_update_time)]
+        == "None"
+    ).all()
+    assert (
+        visraw.update_id["flags"][
+            valid & (visraw.time["ctime"] >= flagging_update_time)
+        ]
+        == "flag_update_0"
+    ).all()
+    assert (
+        visraw.update_id["gains"][valid & (visraw.time["ctime"] >= gain_update_time)]
+        == "gain_update_0"
+    ).all()
 
     evals = visraw.data["eval"]
     evecs = visraw.data["evec"]
@@ -203,7 +217,7 @@ def check_visraw(visraw):
     assert (
         evecs.imag == np.arange(num_elements)[np.newaxis, np.newaxis, np.newaxis, :]
     ).all()
-    assert (erms[visraw.valid_frames.astype(np.bool)] == 1).all()
+    assert (erms[valid] == 1).all()
 
     ftime = visraw.time["fpga_count"]
     ctime = visraw.time["ctime"]
@@ -237,6 +251,6 @@ def check_visraw(visraw):
 
     if num_time > 0:
         # find last valid timestamp
-        valid_times = visraw.time[visraw.valid_frames.astype(np.bool)]
+        valid_times = visraw.time[valid]
         return num_time, valid_times[-1]["fpga_count"]
     return 0, None

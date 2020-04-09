@@ -349,33 +349,38 @@ class VisRaw(object):
         self.valid_frames = valid_frames
         self.file_metadata = file_metadata
 
-        # get gain/flag update IDs
-        self.gains_update_id = None
-        self.flags_update_id = None
+        # set gain/flag update IDs
+        self.update_id = None
         if comet_manager is not None:
-            ds = np.array(metadata["dataset_id"][valid_frames.astype(np.bool)]).view(
-                "u8,u8"
-            )
-            unique_ds = np.unique(ds)
-            state = {"gains": set(), "flags": set()}
-            for ds in unique_ds:
-                ds_id = "{:016x}{:016x}".format(ds[1], ds[0])
-                for name in ["gains", "flags"]:
-                    state[name].add(comet_manager.get_state(name, ds_id))
-            for name in ["gains", "flags"]:
-                if len(state[name]) == 0:
-                    state[name] = None
-                elif len(state[name]) == 1:
-                    state[name] = state[name].pop()
-                else:
-                    raise ValueError(
-                        "Found more than one {} states when looking up dataset IDs "
-                        "found in metadata: {}".format(name, state[name])
-                    )
-            if state["gains"] is not None:
-                self.gains_update_id = state["gains"].data["data"]["update_id"]
-            if state["flags"] is not None:
-                self.flags_update_id = state["flags"].data["data"]
+            update_id_types = ("gains", "flags")
+            self.update_id = {
+                name: np.ndarray((num_time, num_freq), dtype="<U32")
+                for name in update_id_types
+            }
+            ds = np.array(metadata["dataset_id"]).view("u8,u8").reshape(metadata.shape)
+            for t in range(num_time):
+                for f in range(num_freq):
+                    if valid_frames.astype(np.bool)[t, f]:
+                        ds_id = "{:016x}{:016x}".format(ds[t, f][1], ds[t, f][0])
+
+                        # gains
+                        state = comet_manager.get_state("gains", ds_id)
+                        if state is None:
+                            self.update_id["gains"][t, f] = None
+                        else:
+                            self.update_id["gains"][t, f] = state.data["data"][
+                                "update_id"
+                            ]
+
+                        # flags
+                        state = comet_manager.get_state("flags", ds_id)
+                        if state is None:
+                            self.update_id["flags"][t, f] = None
+                        else:
+                            self.update_id["flags"][t, f] = state.data["data"]
+                    else:
+                        self.update_id["flags"][t, f] = None
+                        self.update_id["gains"][t, f] = None
 
     @classmethod
     def frame_struct(cls, size_frame, num_elements, num_stack, num_ev, align_valid):
@@ -572,7 +577,7 @@ class VisRaw(object):
                     state[names[0]] = state[names[0]].pop()
                 else:
                     raise ValueError(
-                        "Found more than one {} states when looking up dataset IDs "
+                        "Found more than one {} state when looking up dataset IDs "
                         "found in metadata.".format(names[0])
                     )
                 if state[names[0]] is not None:
