@@ -18,6 +18,7 @@ set ( KOTEKAN_HSA_SOURCES
       hsaInputData.cpp
       hsaInputLostSamples.cpp
       hsaInputCompressLostSamples.cpp
+      hsaHostToDeviceCopy.cpp
       hsaBarrier.cpp
       hsaAsyncCopyGain.cpp
 
