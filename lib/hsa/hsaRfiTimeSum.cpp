@@ -75,7 +75,7 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, hsa_signal_t precede_signa
     struct __attribute__((aligned(16))) args_t {
         void* input;
         void* output;
-        void* output_var;
+        //void* output_var;
         uint32_t sk_step;
         uint32_t num_elements;
         uint32_t element_index;
@@ -85,8 +85,8 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, hsa_signal_t precede_signa
     // Set argumnets to correct values
     args.input = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
     args.output = device.get_gpu_memory("timesum", output_frame_len);
-    args.output_var =
-        device.get_gpu_memory_array("rfi_output_var", gpu_frame_id, output_var_frame_len);
+    //args.output_var =
+    //    device.get_gpu_memory_array("rfi_output_var", gpu_frame_id, output_var_frame_len);
     args.sk_step = _sk_step;
     args.num_elements = _num_elements;
     args.element_index = _element_index;
@@ -103,7 +103,7 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, hsa_signal_t precede_signa
     params.num_dims = 2;
     // Should this be zero?
     params.private_segment_size = 0;
-    params.group_segment_size = 1024;
+    params.group_segment_size = 0;
 
     // Execute kernel
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
