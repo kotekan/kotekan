@@ -238,6 +238,7 @@ find_package(Threads REQUIRED)
 
 # Note that -lrt here is needed on some versions of CentOS but not Clang
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # adds the option for compiling both C and C++ source
     add_compile_options("-lrt")
     link_libraries("-lrt")
 endif ()
