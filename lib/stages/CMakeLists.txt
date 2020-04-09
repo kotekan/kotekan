@@ -62,7 +62,9 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       compressData.cpp
       bufferBadInputs.cpp
       RfiFrameDrop.cpp
+      VisSharedMemWriter.cpp
     )
+
 
 if (${USE_AIRSPY})
   include_directories(${LIBAIRSPY_INCLUDE_DIR})

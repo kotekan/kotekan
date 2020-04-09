@@ -298,6 +298,7 @@ ChangeStatePattern::ChangeStatePattern(kotekan::Config& config, const std::strin
     std::map<std::string, gen_state> gen_state_map;
     gen_state_map["inputs"] = std::bind(&ChangeStatePattern::gen_state_inputs, this);
     gen_state_map["flags"] = std::bind(&ChangeStatePattern::gen_state_flags, this);
+    gen_state_map["gains"] = std::bind(&ChangeStatePattern::gen_state_gains, this);
 
     auto state_changes = config.get_default<nlohmann::json>(path, "state_changes", {});
 
@@ -328,14 +329,15 @@ void ChangeStatePattern::fill(visFrameView& frame) {
 
     // If there are still changes to apply, check that we've exceeded the start
     // time and then update the state
-    if (_dataset_changes.size() > 0) {
+    while (_dataset_changes.size() > 0) {
         auto& [ts, func] = _dataset_changes[0];
 
-        if (frame_time >= ts) {
-            state_id_t id = func();
-            current_dset_id = dm.add_dataset(id, current_dset_id.value());
-            _dataset_changes.pop_front();
-        }
+        if (frame_time < ts)
+            break;
+
+        state_id_t id = func();
+        current_dset_id = dm.add_dataset(id, current_dset_id.value());
+        _dataset_changes.pop_front();
     }
 
     frame.dataset_id = current_dset_id.value();
@@ -360,4 +362,11 @@ state_id_t ChangeStatePattern::gen_state_flags() {
     std::string update_id = fmt::format("flag_update_{}", _flag_update_ind++);
     auto& dm = datasetManager::instance();
     return dm.create_state<flagState>(update_id).first;
+}
+
+state_id_t ChangeStatePattern::gen_state_gains() {
+
+    std::string update_id = fmt::format("gain_update_{}", _gain_update_ind);
+    auto& dm = datasetManager::instance();
+    return dm.create_state<gainState>(update_id, _gain_update_ind++).first;
 }
