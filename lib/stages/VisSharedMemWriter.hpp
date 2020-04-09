@@ -82,6 +82,13 @@
  *                          critical. That is, if they change in the incoming
  *                          data stream then Kotekan will shut down.
  *
+ * @par Metrics
+ * @metric dropped_frame_counter
+ *          The number of times a frame was dropped because it arrived too late.
+ * @metric  access_record_wait_time_seconds
+ *          The amount of time the writer spent, in seconds waiting to
+ *          access the access record.
+ *
  * @author Anja Boskovic
  */
 class VisSharedMemWriter : public kotekan::Stage {
@@ -216,7 +223,11 @@ protected:
     fingerprint_t stream_fingerprint;
 
 private:
+    // Number of dropped frames
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& dropped_frame_counter;
+
+    // Time spent waiting for semaphore
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& access_record_wait_time_seconds;
 };
 
 #endif // VISSHAREDMEMWRITER_HPP

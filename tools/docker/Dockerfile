@@ -15,15 +15,16 @@ RUN apt-get update && \
                        rocm-opencl-dev rocm-opencl \
                        dpdk dpdk-dev \
                        libhdf5-serial-dev libboost-test-dev libevent-dev libssl-dev \
-                       wget
+                       wget && \
+    apt-get clean && apt-get autoclean
 
 RUN python3.7 -m pip install --upgrade pip && \
     python3.7 -m pip install --upgrade --force-reinstall setuptools && \
     python3.7 -m pip install --upgrade pip setuptools wheel && \
-    python3.7 -m pip install "numpy>=1.16.0" && \
-    python3.7 -m pip install pkgconfig && \
-    python3.7 -m pip install --upgrade cython && \
-    python3.7 -m pip install black
+    python3.7 -m pip install --no-cache-dir "numpy>=1.16.0" && \
+    python3.7 -m pip install --no-cache-dir pkgconfig && \
+    python3.7 -m pip install --no-cache-dir --upgrade cython && \
+    python3.7 -m pip install --no-cache-dir black
 
 RUN mkdir -p /code/build
 WORKDIR /code/build
@@ -45,6 +46,7 @@ RUN git clone https://github.com/kiyo-masui/bitshuffle.git bitshuffle && \
 
 # Install OpenBLAS and clone Blaze for the eigenvalue processes
 RUN apt-get -y install libopenblas-dev liblapack-dev liblapacke-dev && \
+    apt-get clean && apt-get autoclean && \
     git clone https://bitbucket.org/blaze-lib/blaze.git blaze
 
 # Install kotekan python dependencies
@@ -52,14 +54,17 @@ RUN python3.7 -m pip install "msgpack>=0.6.1" click future requests pyyaml tabul
                              pytest==5.3.0 pytest-xdist pytest-cpp pytest-localserver flask \
                              posix_ipc && \
     apt-get install -y mysql-client libmysqlclient-dev && \
+    apt-get clean && apt-get autoclean && \
     python3.7 -m pip install git+https://github.com/chime-experiment/comet.git
 
 # Install redis for comet tests
-RUN apt-get install -y redis
+RUN apt-get install -y redis && \
+    apt-get clean && apt-get autoclean
 
 # Install documentation dependencies
 RUN apt-get -y install doxygen graphviz python-sphinx default-jre && \
-    python3.7 -m pip install breathe sphinx_rtd_theme sphinxcontrib-plantuml && \
+    apt-get clean && apt-get autoclean && \
+    python3.7 -m pip install --no-cache-dir breathe sphinx_rtd_theme sphinxcontrib-plantuml && \
     wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar -P plantuml
 
 
