@@ -230,8 +230,6 @@ updatable_config:
       thresholds:
         - threshold: 3.0
           fraction: 0.13
-        - threshold: 1.5
-          fraction: 0.4
 
 
 ###########################
@@ -332,19 +330,19 @@ gpu_beamform_hfb_output_buffers:
     kotekan_buffer: standard
 
 cpu_hfb_output_buffers:
-    num_frames: buffer_depth
-    frame_size: num_data_sets * factor_upchan * num_frb_total_beams * sizeof_float
-    metadata_pool: hfb_pool
-    beamform_hfb_output_buffer_0:
-      kotekan_buffer: standard
-    beamform_hfb_output_buffer_1:
-      kotekan_buffer: standard
-    beamform_hfb_output_buffer_2:
-      kotekan_buffer: standard
-    beamform_hfb_output_buffer_3:
-      kotekan_buffer: standard
-    beamform_hfb_output_buffer_merge:
-      kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: num_data_sets * factor_upchan * num_frb_total_beams * sizeof_float
+  metadata_pool: hfb_pool
+  beamform_hfb_output_buffer_0:
+    kotekan_buffer: standard
+  beamform_hfb_output_buffer_1:
+    kotekan_buffer: standard
+  beamform_hfb_output_buffer_2:
+    kotekan_buffer: standard
+  beamform_hfb_output_buffer_3:
+    kotekan_buffer: standard
+  beamform_hfb_output_buffer_merge:
+    kotekan_buffer: standard
 
 gain_frb_buffers:
   num_frames: 5
@@ -456,6 +454,19 @@ gpu_rfi_output_buffers:
   gpu_rfi_output_buffer_2:
     kotekan_buffer: standard
   gpu_rfi_output_buffer_3:
+    kotekan_buffer: standard
+
+gpu_rfi_valve_buffers:
+  num_frames: buffer_depth
+  frame_size: sizeof_float * num_local_freq * samples_per_data_set / sk_step
+  metadata_pool: main_pool
+  rfi_valve_buffer_0:
+    kotekan_buffer: standard
+  rfi_valve_buffer_1:
+    kotekan_buffer: standard
+  rfi_valve_buffer_2:
+    kotekan_buffer: standard
+  rfi_valve_buffer_3:
     kotekan_buffer: standard
 
 gpu_rfi_mask_output_buffers:
@@ -628,7 +639,7 @@ compress_lost_samples:
 copy_compress_lost_samples_buffers:
   kotekan_stage: bufferCopy
   in_buf: compressed_lost_samples_buf_0
-  out_bufs: 
+  out_bufs:
     - compressed_lost_samples_buf_1
     - compressed_lost_samples_buf_2
     - compressed_lost_samples_buf_3
@@ -805,7 +816,7 @@ gpu:
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_3
       #rfi_var_output_buf: gpu_rfi_var_output_buffer_3
 
-# Integrate frames of HFB data from each GPU to ~10s cadence 
+# Integrate frames of HFB data from each GPU to ~10s cadence
 hyper_fine_beam:
   num_frames_to_integrate: 80
   good_samples_threshold: 0.95
@@ -830,7 +841,7 @@ hyper_fine_beam:
     hfb_input_buf: gpu_beamform_hfb_output_buffer_3
     hfb_output_buf: beamform_hfb_output_buffer_3
     compressed_lost_samples_buf: compressed_lost_samples_buf_3
- 
+
 # Merge HFB integrated data from each GPU
 hfb_merge:
   kotekan_stage: bufferMerge
@@ -1311,30 +1322,48 @@ valve:
     in_buf: gpu_n2_output_buffer_3
     out_buf: valve_buffer_3
 
+rfi_valve:
+  valve0:
+    kotekan_stage: Valve
+    in_buf: gpu_rfi_output_buffer_0
+    out_buf: rfi_valve_buffer_0
+  valve1:
+    kotekan_stage: Valve
+    in_buf: gpu_rfi_output_buffer_1
+    out_buf: rfi_valve_buffer_1
+  valve2:
+    kotekan_stage: Valve
+    in_buf: gpu_rfi_output_buffer_2
+    out_buf: rfi_valve_buffer_2
+  valve3:
+    kotekan_stage: Valve
+    in_buf: gpu_rfi_output_buffer_3
+    out_buf: rfi_valve_buffer_3
+
 # Perform a second pass at RFI excision
 rfi_stage2:
   updatable_config:
-   enable: "/updatable_config/rfi_zeroing_second_stage/enable"
-   thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
+    enable: "/updatable_config/rfi_zeroing_second_stage/enable"
+    thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
   rfi0:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_0
-    in_buf_sk: gpu_rfi_output_buffer_0
+    in_buf_sk: rfi_valve_buffer_0
     out_buf: rfi_vis_buffer_0
   rfi1:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_1
-    in_buf_sk: gpu_rfi_output_buffer_1
+    in_buf_sk: rfi_valve_buffer_1
     out_buf: rfi_vis_buffer_1
   rfi2:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_2
-    in_buf_sk: gpu_rfi_output_buffer_2
+    in_buf_sk: rfi_valve_buffer_2
     out_buf: rfi_vis_buffer_2
   rfi3:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_3
-    in_buf_sk: gpu_rfi_output_buffer_3
+    in_buf_sk: rfi_valve_buffer_3
     out_buf: rfi_vis_buffer_3
 
 vis_accumulate:
