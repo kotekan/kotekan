@@ -22,17 +22,6 @@ def pytest_addoption(parser):
     )
 
 
-@pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_call(item):
-    df = subprocess.Popen(["df", "-h"], stdout=subprocess.PIPE)
-    output = df.communicate()[0]
-    print(output.decode())
-    yield
-    df = subprocess.Popen(["df", "-h"], stdout=subprocess.PIPE)
-    output = df.communicate()[0]
-    print(output.decode())
-
-
 def pytest_configure(config):
     # register an additional marker
     config.addinivalue_line(
