@@ -127,6 +127,11 @@ public:
     datasetManager(const datasetManager&) = delete;
     void operator=(const datasetManager&) = delete;
 
+    /**
+     * @brief Signal to stop request threads.
+     **/
+    void stop();
+
     // TODO: 0 is not a good sentinel value. Move to std::optional typing when we use C++17
     /**
      * @brief Register a new dataset. Omitting base_dset adds a root dataset.
@@ -483,7 +488,7 @@ inline const T* datasetManager::dataset_state(dset_id_t dset) {
         if (_use_broker) {
             // Request the state from the broker.
             state = request_state<T>(state_id);
-            while (!state) {
+            while (!state && !_stop_request_threads) {
                 WARN_NON_OO("datasetManager: Failure requesting state {} from broker.\nRetrying...",
                             state_id);
                 std::this_thread::sleep_for(std::chrono::milliseconds(_retry_wait_time_ms));

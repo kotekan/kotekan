@@ -1,7 +1,5 @@
 project( libkotekan_hcc )
 
-include_directories (${KOTEKAN_SOURCE_DIR}/include)
-
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/hcc)
 

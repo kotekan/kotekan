@@ -4,6 +4,7 @@
 #include "visUtil.hpp"
 
 #include <deque>
+#include <mutex>
 
 /**
  * @class updateQueue
@@ -38,6 +39,9 @@ public:
      * @param len   The new size.
      */
     void resize(const size_t len) {
+        // Lock the queue
+        std::scoped_lock _lock(update_lock);
+
         _len = len;
 
         while (values.size() > _len)
@@ -52,6 +56,7 @@ public:
      * @returns  size  The current size.
      **/
     size_t size() const {
+        std::scoped_lock _lock(update_lock);
         return values.size();
     }
 
@@ -66,9 +71,13 @@ public:
      * @param update         The value of the inserted update.
      */
     void insert(timespec timestamp, T&& update) {
+
+        // Lock the queue
+        std::scoped_lock _lock(update_lock);
+
         // usually just push update to the back of the queue
         if (!values.size() || timestamp > values.crbegin()->first)
-            values.push_back(std::pair<timespec, T>(timestamp, std::move(update)));
+            values.push_back({timestamp, std::make_shared<const T>(std::move(update))});
         else { // this is more complicated...
             auto u = values.rbegin();
             while (u->first > timestamp) {
@@ -79,10 +88,10 @@ public:
             // check if timestamp is identical -> replace update
 
             if (u != values.crend() && u->first == timestamp)
-                u->second = std::move(update);
+                u->second = std::make_shared<const T>(std::move(update));
             else
                 // insert the new update where it belongs in the queue
-                values.insert(u.base(), std::pair<timespec, T>(timestamp, std::move(update)));
+                values.insert(u.base(), {timestamp, std::make_shared<const T>(std::move(update))});
         }
 
         if (values.size() > _len)
@@ -101,7 +110,11 @@ public:
      *           and the timestamp associated to the update. If the queue is empty, or
      *           all updates are in the future, a nullptr is returned as update.
      */
-    std::pair<timespec, const T*> get_update(timespec timestamp) {
+    std::pair<timespec, std::shared_ptr<const T>> get_update(timespec timestamp) const {
+
+        // Lock the queue
+        std::scoped_lock _lock(update_lock);
+
         auto u = values.crbegin();
 
         while (u != values.crend() && u->first > timestamp) {
@@ -109,10 +122,10 @@ public:
         }
 
         if (u == values.crend()) {
-            return std::pair<timespec, const T*>({0, 0}, nullptr);
+            return {{0, 0}, nullptr};
         }
 
-        return std::pair<timespec, const T*>(u->first, &(u->second));
+        return *u;
     };
 
     /**
@@ -120,17 +133,21 @@ public:
      *
      * @return A const reference to an std::deque holding all updates and their timestamps.
      */
-    const std::deque<std::pair<timespec, T>>& get_all_updates() const {
+    std::deque<std::pair<timespec, std::shared_ptr<const T>>> get_all_updates() const {
+        std::scoped_lock _lock(update_lock);
         return values;
     }
 
 private:
     // The updates with their timestamps ("use this value for frames with
     // timestamps later than this").
-    std::deque<std::pair<timespec, T>> values;
+    std::deque<std::pair<timespec, std::shared_ptr<const T>>> values;
 
     // Length of the queue.
     size_t _len;
+
+    // A mutex to ensure updates and fetches from this FIFO are thread safe
+    mutable std::mutex update_lock;
 };
 
 // Define a custom fmt formatter that prints the timestamps
