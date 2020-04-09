@@ -237,8 +237,6 @@ updatable_config:
       thresholds:
         - threshold: 3.0
           fraction: 0.13
-        - threshold: 1.5
-          fraction: 0.4
 
 
 ###########################
@@ -465,6 +463,19 @@ gpu_rfi_output_buffers:
   gpu_rfi_output_buffer_3:
     kotekan_buffer: standard
 
+gpu_rfi_valve_buffers:
+  num_frames: buffer_depth
+  frame_size: sizeof_float * num_local_freq * samples_per_data_set / sk_step
+  metadata_pool: main_pool
+  rfi_valve_buffer_0:
+    kotekan_buffer: standard
+  rfi_valve_buffer_1:
+    kotekan_buffer: standard
+  rfi_valve_buffer_2:
+    kotekan_buffer: standard
+  rfi_valve_buffer_3:
+    kotekan_buffer: standard
+
 gpu_rfi_mask_output_buffers:
   num_frames: buffer_depth
   frame_size: num_local_freq * samples_per_data_set / sk_step
@@ -663,6 +674,7 @@ rfi_copy_compress_lost_samples_buffers:
     - rfi_compressed_lost_samples_buf_2
     - rfi_compressed_lost_samples_buf_3
 
+
 # GPU processing section
 gpu:
   kernel_path: "/var/lib/kotekan/hsa_kernels/"
@@ -844,7 +856,7 @@ gpu:
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_3
       rfi_var_output_buf: gpu_rfi_var_output_buffer_3
 
-# Integrate frames of HFB data from each GPU to ~10s cadence 
+# Integrate frames of HFB data from each GPU to ~10s cadence
 hyper_fine_beam:
   num_frames_to_integrate: 80
   good_samples_threshold: 0.95
@@ -1350,6 +1362,24 @@ valve:
     in_buf: gpu_n2_output_buffer_3
     out_buf: valve_buffer_3
 
+rfi_valve:
+  valve0:
+    kotekan_stage: Valve
+    in_buf: gpu_rfi_output_buffer_0
+    out_buf: rfi_valve_buffer_0
+  valve1:
+    kotekan_stage: Valve
+    in_buf: gpu_rfi_output_buffer_1
+    out_buf: rfi_valve_buffer_1
+  valve2:
+    kotekan_stage: Valve
+    in_buf: gpu_rfi_output_buffer_2
+    out_buf: rfi_valve_buffer_2
+  valve3:
+    kotekan_stage: Valve
+    in_buf: gpu_rfi_output_buffer_3
+    out_buf: rfi_valve_buffer_3
+
 # Perform a second pass at RFI excision
 rfi_stage2:
   updatable_config:
@@ -1358,22 +1388,22 @@ rfi_stage2:
   rfi0:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_0
-    in_buf_sk: gpu_rfi_output_buffer_0
+    in_buf_sk: rfi_valve_buffer_0
     out_buf: rfi_vis_buffer_0
   rfi1:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_1
-    in_buf_sk: gpu_rfi_output_buffer_1
+    in_buf_sk: rfi_valve_buffer_1
     out_buf: rfi_vis_buffer_1
   rfi2:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_2
-    in_buf_sk: gpu_rfi_output_buffer_2
+    in_buf_sk: rfi_valve_buffer_2
     out_buf: rfi_vis_buffer_2
   rfi3:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_3
-    in_buf_sk: gpu_rfi_output_buffer_3
+    in_buf_sk: rfi_valve_buffer_3
     out_buf: rfi_vis_buffer_3
 
 vis_accumulate:

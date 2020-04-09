@@ -174,11 +174,11 @@ updatable_config:
     kotekan_update_endpoint: json
     # These inputs are assumed to be in cylinder order
     bad_inputs: [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
-                   370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
-                   807,  855,  944,  960,  971,  981,  986, 1005, 1010, 1020, 1023,
-                   1058, 1166, 1225, 1280, 1281, 1285, 1314, 1343, 1380, 1381, 1521,
-                   1523, 1543, 1642, 1687, 1738, 1792, 1794, 1910, 1912, 1943, 1945,
-                   1950, 1982, 1984, 1987, 2032, 2034]
+                  370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
+                  807,  855,  944,  960,  971,  981,  986, 1005, 1010, 1020, 1023,
+                 1058, 1166, 1225, 1280, 1281, 1285, 1314, 1343, 1380, 1381, 1521,
+                 1523, 1543, 1642, 1687, 1738, 1792, 1794, 1910, 1912, 1943, 1945,
+                 1950, 1982, 1984, 1987, 2032, 2034]
     start_time: 1535048997.
     update_id: "initial_flags"
   rfi_zeroing_toggle:
@@ -237,8 +237,6 @@ updatable_config:
       thresholds:
         - threshold: 3.0
           fraction: 0.13
-        - threshold: 1.5
-          fraction: 0.4
 
 
 ###########################
@@ -463,6 +461,19 @@ gpu_rfi_output_buffers:
   gpu_rfi_output_buffer_2:
     kotekan_buffer: standard
   gpu_rfi_output_buffer_3:
+    kotekan_buffer: standard
+
+gpu_rfi_valve_buffers:
+  num_frames: buffer_depth
+  frame_size: sizeof_float * num_local_freq * samples_per_data_set / sk_step
+  metadata_pool: main_pool
+  rfi_valve_buffer_0:
+    kotekan_buffer: standard
+  rfi_valve_buffer_1:
+    kotekan_buffer: standard
+  rfi_valve_buffer_2:
+    kotekan_buffer: standard
+  rfi_valve_buffer_3:
     kotekan_buffer: standard
 
 gpu_rfi_mask_output_buffers:
@@ -887,7 +898,7 @@ buffer_send_hfb:
   reconnect_time: 20
   log_level: error
   hfb:
-    kotekan_stage: bufferSend
+    #kotekan_stage: bufferSend
     buf: beamform_hfb_output_buffer_merge
     server_port: 11027
 
@@ -1350,6 +1361,24 @@ valve:
     in_buf: gpu_n2_output_buffer_3
     out_buf: valve_buffer_3
 
+rfi_valve:
+  valve0:
+    kotekan_stage: Valve
+    in_buf: gpu_rfi_output_buffer_0
+    out_buf: rfi_valve_buffer_0
+  valve1:
+    kotekan_stage: Valve
+    in_buf: gpu_rfi_output_buffer_1
+    out_buf: rfi_valve_buffer_1
+  valve2:
+    kotekan_stage: Valve
+    in_buf: gpu_rfi_output_buffer_2
+    out_buf: rfi_valve_buffer_2
+  valve3:
+    kotekan_stage: Valve
+    in_buf: gpu_rfi_output_buffer_3
+    out_buf: rfi_valve_buffer_3
+
 # Perform a second pass at RFI excision
 rfi_stage2:
   updatable_config:
@@ -1358,22 +1387,22 @@ rfi_stage2:
   rfi0:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_0
-    in_buf_sk: gpu_rfi_output_buffer_0
+    in_buf_sk: rfi_valve_buffer_0
     out_buf: rfi_vis_buffer_0
   rfi1:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_1
-    in_buf_sk: gpu_rfi_output_buffer_1
+    in_buf_sk: rfi_valve_buffer_1
     out_buf: rfi_vis_buffer_1
   rfi2:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_2
-    in_buf_sk: gpu_rfi_output_buffer_2
+    in_buf_sk: rfi_valve_buffer_2
     out_buf: rfi_vis_buffer_2
   rfi3:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_3
-    in_buf_sk: gpu_rfi_output_buffer_3
+    in_buf_sk: rfi_valve_buffer_3
     out_buf: rfi_vis_buffer_3
 
 vis_accumulate:
