@@ -1,13 +1,9 @@
 ##########################################
 #
-# chime_science_run_recv.yaml
+# chime_science_run_calbuffer.yaml
 #
-# CHIME receiver node configuration used in the mid-November 2018 run.
-# This configuration turns off saving of the 26m datasets.
-#
-# For the N2 data it includes, 10 second calibration data,
-# full triangles for 10 frequencies at 10 seconds, and stacked
-# data over all frequencies.
+# CHIME receiver node configuration used to provide data to the calibration and
+# flagging brokers.
 #
 # Author: Richard Shaw
 #
