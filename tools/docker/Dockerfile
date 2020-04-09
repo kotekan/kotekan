@@ -4,15 +4,16 @@ FROM rocm/dev-ubuntu-18.04
 MAINTAINER Rick Nitsche <rick@phas.ubc.ca>
 
 # Install any needed packages to run cmake with full CHIME build options
-RUN apt-get install -y software-properties-common && \
+RUN apt-get update && \
+    apt-get install -y software-properties-common && \
     add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y python3.7 python3-setuptools python3-pip python3.7-distutils python3.7-dev \
                        build-essential git coreutils ccache pkg-config \
                        gcc cmake clang-9 clang-format-8 \
-                       rocm-opencl-dev rocm-opencl \
                        dpdk dpdk-dev \
+                       rocm-opencl-dev rocm-opencl \
                        libhdf5-serial-dev libboost-test-dev libevent-dev libssl-dev \
                        wget && \
     apt-get clean && apt-get autoclean
