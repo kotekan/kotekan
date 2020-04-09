@@ -105,40 +105,38 @@ void VisSharedMemWriter::wait_for_semaphore() {
     // handles timed waits for semaphores
     // does a standard wait if the system clock is not accessible
 
+    double start_time = current_time();
+
 #ifdef MAC_OSX
     if (sem_wait(sem) == -1) {
         FATAL_ERROR("Failed to acquire semaphore {}", _name);
         return;
     }
+
 #else
     timespec ts;
     if (clock_gettime(CLOCK_REALTIME, &ts) == -1) {
         WARN("Failed to get system time. {:d} ({:s}) Not using timed semaphores.", errno,
              std::strerror(errno));
 
-        double start_time = current_time();
         if (sem_wait(sem) == -1) {
             FATAL_ERROR("Failed to acquire semaphore {}", _name);
             return;
         }
 
-        wait_time_average.add_sample(current_time() - start_time);
-        access_record_wait_time_seconds.labels({_name}).set(wait_time_average.average());
-        return;
+    } else {
+        ts.tv_sec += _wait_time;
+
+        if (sem_timedwait(sem, &ts) == -1) {
+            FATAL_ERROR("sem_timedwait() timed out");
+            return;
+        }
     }
 
-    ts.tv_sec += _wait_time;
-    double start_time = current_time();
-
-    if (sem_timedwait(sem, &ts) == -1) {
-        FATAL_ERROR("sem_timedwait() timed out");
-        return;
-    }
-
+#endif
     wait_time_average.add_sample(current_time() - start_time);
     access_record_wait_time_seconds.labels({_name}).set(wait_time_average.average());
     return;
-#endif
 }
 
 void VisSharedMemWriter::release_semaphore() {
