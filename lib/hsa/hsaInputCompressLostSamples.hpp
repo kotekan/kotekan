@@ -57,7 +57,6 @@ private:
     uint32_t compressed_lost_samples_buffer_finalize_id;
     /// Lost samples buffer
     Buffer* compressed_lost_samples_buf;
-
 };
 
 #endif /*HSA_INPUT_COMPRESS_LOST_SAMPLES_H*/

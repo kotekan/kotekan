@@ -3,7 +3,6 @@
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"         // for wait_for_empty_frame, Buffer, allocate_new_metadata_object
 #include "chimeMetadata.h"
-#include <visUtil.hpp>      // for frameID
 
 #include <atomic>      // for atomic_bool
 #include <exception>   // for exception
@@ -11,6 +10,7 @@
 #include <regex>       // for match_results<>::_Base_type
 #include <string>      // for string
 #include <sys/types.h> // for uint
+#include <visUtil.hpp> // for frameID
 
 
 using kotekan::bufferContainer;
@@ -40,7 +40,8 @@ compressLostSamples::compressLostSamples(Config& config_, const std::string& uni
         throw std::runtime_error("compressLostSamples in_frame has the wrong size.");
     }
 
-    if ((_samples_per_data_set/_compression_factor) != (uint32_t)out_buf->frame_size/sizeof(uint32_t)) {
+    if ((_samples_per_data_set / _compression_factor)
+        != (uint32_t)out_buf->frame_size / sizeof(uint32_t)) {
         throw std::runtime_error("compressLostSamples out_frame has the wrong size.");
     }
 }
@@ -68,15 +69,15 @@ void compressLostSamples::main_thread() {
 
         // Compress lost samples buffer by checking each sample for a flag
         for (uint32_t sample = 0; sample < _samples_per_data_set; sample += _compression_factor) {
-            //assert(sample/_compression_factor < (uint32_t)out_buf->frame_size);
-            out_frame[sample/_compression_factor] = 0;
+            // assert(sample/_compression_factor < (uint32_t)out_buf->frame_size);
+            out_frame[sample / _compression_factor] = 0;
             for (uint32_t sub_index = 0; sub_index < _compression_factor; sub_index++) {
-                out_frame[sample/_compression_factor] += in_frame[sample + sub_index];
+                out_frame[sample / _compression_factor] += in_frame[sample + sub_index];
             }
-            if (_zero_all_in_group && out_frame[sample/_compression_factor] > 0) {
+            if (_zero_all_in_group && out_frame[sample / _compression_factor] > 0) {
                 total_lost_samples += _compression_factor;
             } else {
-                total_lost_samples += out_frame[sample/_compression_factor];
+                total_lost_samples += out_frame[sample / _compression_factor];
             }
         }
 

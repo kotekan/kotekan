@@ -11,17 +11,15 @@ using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaHostToDeviceCopy);
 
-hsaHostToDeviceCopy::hsaHostToDeviceCopy(Config& config,
-                                                         const std::string& unique_name,
-                                                         bufferContainer& host_buffers,
-                                                         hsaDeviceInterface& device) :
+hsaHostToDeviceCopy::hsaHostToDeviceCopy(Config& config, const std::string& unique_name,
+                                         bufferContainer& host_buffers,
+                                         hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "hsaHostToDeviceCopy", ""),
     in_buf(host_buffers.get_buffer(config.get<std::string>(unique_name, "in_buf"))),
     in_buf_id(in_buf),
     in_buf_precondition_id(in_buf),
     in_buf_finalize_id(in_buf),
-    _gpu_memory_name(config.get<std::string>(unique_name, "gpu_memory_name"))
-    {
+    _gpu_memory_name(config.get<std::string>(unique_name, "gpu_memory_name")) {
     command_type = gpuCommandType::COPY_IN;
 
     register_consumer(in_buf, unique_name.c_str());
@@ -47,11 +45,11 @@ hsa_signal_t hsaHostToDeviceCopy::execute(int gpu_frame_id, hsa_signal_t precede
         device.get_gpu_memory_array(_gpu_memory_name, gpu_frame_id, in_buf->frame_size);
     void* host_memory_frame = (void*)in_buf->frames[(int)in_buf_id];
 
-    DEBUG2("Copy data to GPU frame name: {} from buffer: {}", _gpu_memory_name, in_buf->buffer_name);
+    DEBUG2("Copy data to GPU frame name: {} from buffer: {}", _gpu_memory_name,
+           in_buf->buffer_name);
 
     // Do the input data copy.
-    device.async_copy_host_to_gpu(gpu_memory_frame, host_memory_frame,
-                                  in_buf->frame_size,
+    device.async_copy_host_to_gpu(gpu_memory_frame, host_memory_frame, in_buf->frame_size,
                                   precede_signal, signals[gpu_frame_id]);
     in_buf_id++;
 

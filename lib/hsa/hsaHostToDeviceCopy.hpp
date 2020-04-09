@@ -12,7 +12,7 @@
 #include "hsa/hsa.h"           // for hsa_signal_t
 #include "hsaCommand.hpp"
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
-#include "visUtil.hpp"         // for FrameID
+#include "visUtil.hpp"            // for FrameID
 
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
@@ -38,7 +38,7 @@ class hsaHostToDeviceCopy : public hsaCommand {
 public:
     /// Constructor, applies config, initializes variables
     hsaHostToDeviceCopy(kotekan::Config& config, const std::string& unique_name,
-                                kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
+                        kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     // Destructor, cleans up local allocs
     virtual ~hsaHostToDeviceCopy();
     /// Wait for full metadata frame and keep track of precondition_id
