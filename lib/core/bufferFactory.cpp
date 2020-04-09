@@ -22,7 +22,8 @@ using std::string;
 namespace kotekan {
 
 bufferFactory::bufferFactory(Config& _config, map<string, struct metadataPool*>& _metadataPools) :
-    config(_config), metadataPools(_metadataPools) {}
+    config(_config),
+    metadataPools(_metadataPools) {}
 
 bufferFactory::~bufferFactory() {}
 

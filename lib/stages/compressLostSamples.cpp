@@ -72,7 +72,7 @@ void compressLostSamples::main_thread() {
             // assert(sample/_compression_factor < (uint32_t)out_buf->frame_size);
             out_frame[sample / _compression_factor] = 0;
             for (uint32_t sub_index = 0; sub_index < _compression_factor; sub_index++) {
-                if(_zero_all_in_group && in_frame[sample + sub_index]) {
+                if (_zero_all_in_group && in_frame[sample + sub_index]) {
                     out_frame[sample / _compression_factor] = 1;
                     total_lost_samples += _compression_factor;
                     break;
