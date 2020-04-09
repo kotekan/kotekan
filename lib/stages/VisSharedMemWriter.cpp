@@ -7,7 +7,7 @@
 #include "kotekanLogging.hpp" // for INFO, DEBUG, ERROR, FATAL_ERROR
 #include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily, Gauge
 #include "visBuffer.hpp"         // for visFrameView, visMetadata
-#include "visUtil.hpp"           // for time_ctype, frameID, ts_to_double
+#include "visUtil.hpp"           // for time_ctype, frameID, ts_to_double, current_time
 
 #include "fmt.hpp" // for format, fmt
 
@@ -55,7 +55,9 @@ VisSharedMemWriter::VisSharedMemWriter(Config& config, const std::string& unique
                                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&VisSharedMemWriter::main_thread, this)),
     dropped_frame_counter(Metrics::instance().add_counter(
-        "kotekan_vissharedmemwriter_dropped_frame_total", unique_name, {"freq_id", "reason"})) {
+        "kotekan_vissharedmemwriter_dropped_frame_total", unique_name, {"freq_id", "reason"})),
+    access_record_wait_time_seconds(Metrics::instance().add_gauge(
+        "kotekan_access_record_wait_time_seconds", unique_name, {"shm_name"})) {
 
     // Fetch any simple configuration
     _root_path = config.get_default<std::string>(unique_name, "root_path", "/dev/shm/");
@@ -121,10 +123,14 @@ void VisSharedMemWriter::wait_for_semaphore() {
     }
 
     ts.tv_sec += _wait_time;
+    double start_time = current_time();
+
     if (sem_timedwait(sem, &ts) == -1) {
         FATAL_ERROR("sem_timedwait() timed out");
         return;
     }
+
+    access_record_wait_time_seconds.labels({_name}).set(current_time() - start_time);
     return;
 #endif
 }
