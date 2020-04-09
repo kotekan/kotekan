@@ -510,18 +510,18 @@ bad_input_buffer:
   bad_inputs_buffer:
     kotekan_buffer: standard
 
-rfi_var_output_buffers:
-  num_frames: buffer_depth * 50
-  frame_size: num_local_freq * samples_per_data_set / sk_step * sizeof_float
-  metadata_pool: main_pool
-  gpu_rfi_var_output_buffer_0:
-    kotekan_buffer: standard
-  gpu_rfi_var_output_buffer_1:
-    kotekan_buffer: standard
-  gpu_rfi_var_output_buffer_2:
-    kotekan_buffer: standard
-  gpu_rfi_var_output_buffer_3:
-    kotekan_buffer: standard
+#rfi_var_output_buffers:
+#  num_frames: buffer_depth * 50
+#  frame_size: num_local_freq * samples_per_data_set / sk_step * sizeof_float
+#  metadata_pool: main_pool
+#  gpu_rfi_var_output_buffer_0:
+#    kotekan_buffer: standard
+#  gpu_rfi_var_output_buffer_1:
+#    kotekan_buffer: standard
+#  gpu_rfi_var_output_buffer_2:
+#    kotekan_buffer: standard
+#  gpu_rfi_var_output_buffer_3:
+#    kotekan_buffer: standard
 
 lost_samples_buffer:
   kotekan_buffer: standard
@@ -784,7 +784,7 @@ gpu:
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_0
       rfi_output_buf: gpu_rfi_output_buffer_0
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_0
-      rfi_var_output_buf: gpu_rfi_var_output_buffer_0
+      #rfi_var_output_buf: gpu_rfi_var_output_buffer_0
   gpu_1:
     kotekan_stage: hsaProcess
     gpu_id: 1
@@ -807,7 +807,7 @@ gpu:
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_1
       rfi_output_buf: gpu_rfi_output_buffer_1
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_1
-      rfi_var_output_buf: gpu_rfi_var_output_buffer_1
+      #rfi_var_output_buf: gpu_rfi_var_output_buffer_1
   gpu_2:
     kotekan_stage: hsaProcess
     gpu_id: 2
@@ -830,7 +830,7 @@ gpu:
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_2
       rfi_output_buf: gpu_rfi_output_buffer_2
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_2
-      rfi_var_output_buf: gpu_rfi_var_output_buffer_2
+      #rfi_var_output_buf: gpu_rfi_var_output_buffer_2
   gpu_3:
     kotekan_stage: hsaProcess
     gpu_id: 3
@@ -853,7 +853,7 @@ gpu:
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_3
       rfi_output_buf: gpu_rfi_output_buffer_3
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_3
-      rfi_var_output_buf: gpu_rfi_var_output_buffer_3
+      #rfi_var_output_buf: gpu_rfi_var_output_buffer_3
 
 # Integrate frames of HFB data from each GPU to ~10s cadence 
 hyper_fine_beam:

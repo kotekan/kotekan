@@ -36,9 +36,7 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config, const std::string& unique_name,
     input_frame_len = sizeof(uint8_t) * _num_elements * _num_local_freq * _samples_per_data_set;
     output_frame_len =
         sizeof(float) * _num_local_freq * _num_elements * _samples_per_data_set / _sk_step;
-    output_var_frame_len = sizeof(float) * _num_local_freq * _samples_per_data_set / _sk_step;
-    lost_samples_frame_len = sizeof(uint8_t) * _samples_per_data_set;
-    lost_samples_correction_len = sizeof(uint32_t) * _samples_per_data_set / _sk_step;
+    // output_var_frame_len = sizeof(float) * _num_local_freq * _samples_per_data_set / _sk_step;
 
     auto input_reorder = parse_reorder_default(config, unique_name);
     input_remap = std::get<0>(input_reorder);
@@ -78,7 +76,7 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, hsa_signal_t precede_signa
         // void* output_var;
         uint32_t sk_step;
         uint32_t num_elements;
-        uint32_t element_index;
+        // uint32_t element_index;
     } args;
     // Initialize arguments
     memset(&args, 0, sizeof(args));
@@ -89,7 +87,7 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, hsa_signal_t precede_signa
     //    device.get_gpu_memory_array("rfi_output_var", gpu_frame_id, output_var_frame_len);
     args.sk_step = _sk_step;
     args.num_elements = _num_elements;
-    args.element_index = _element_index;
+    // args.element_index = _element_index;
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
     // Apply correct kernel parameters

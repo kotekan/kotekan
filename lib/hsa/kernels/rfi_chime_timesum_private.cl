@@ -75,7 +75,7 @@ rfi_chime_timesum(
     //            output_var[gy] = power_across_time.s2;
     //            break;
     //        case 3:
-    //           output_var[gy] = power_across_time.s3;
+    //            output_var[gy] = power_across_time.s3;
     //            break;
     //    }
     //}
