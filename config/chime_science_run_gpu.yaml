@@ -187,15 +187,15 @@ updatable_config:
   rfi_sk_record:
     kotekan_update_endpoint: json
     output_dir: /mnt/gong/RFI/20200409_sk/
-    write_to_disk: true
+    write_to_disk: false
   rfi_var_record:
     kotekan_update_endpoint: json
     output_dir: /mnt/gong/RFI/20200409_var/
-    write_to_disk: true
+    write_to_disk: false
   rfi_pkt_loss_record:
     kotekan_update_endpoint: json
     output_dir: /mnt/gong/RFI/20200409_pkt_loss/
-    write_to_disk: true
+    write_to_disk: false
   rfi_var_element_index:
     kotekan_update_endpoint: json
     # This element should be given in cylinder input order,
@@ -518,23 +518,36 @@ lost_samples_buffer:
   frame_size: samples_per_data_set
   metadata_pool: main_pool
 
-compressed_lost_samples_buf:
+rfi_compressed_lost_samples_buf:
   kotekan_buffer: standard
   num_frames: buffer_depth * 50
   frame_size: sizeof_int * samples_per_data_set / sk_step
   metadata_pool: main_pool
 
-compressed_lost_samples_buffers:
+rfi_compressed_lost_samples_buffers:
   num_frames: buffer_depth * 2
   frame_size: sizeof_int * samples_per_data_set / sk_step
   metadata_pool: main_pool
-  compressed_lost_samples_buf_0:
+  rfi_compressed_lost_samples_buf_0:
     kotekan_buffer: standard
-  compressed_lost_samples_buf_1:
+  rfi_compressed_lost_samples_buf_1:
     kotekan_buffer: standard
-  compressed_lost_samples_buf_2:
+  rfi_compressed_lost_samples_buf_2:
     kotekan_buffer: standard
-  compressed_lost_samples_buf_3:
+  rfi_compressed_lost_samples_buf_3:
+    kotekan_buffer: standard
+
+hfb_compressed_lost_samples_buffers:
+  num_frames: buffer_depth * 2
+  frame_size: sizeof_int * samples_per_data_set / (factor_upchan * downsample_time)
+  metadata_pool: main_pool
+  hfb_compressed_lost_samples_buf_0:
+    kotekan_buffer: standard
+  hfb_compressed_lost_samples_buf_1:
+    kotekan_buffer: standard
+  hfb_compressed_lost_samples_buf_2:
+    kotekan_buffer: standard
+  hfb_compressed_lost_samples_buf_3:
     kotekan_buffer: standard
 
 
@@ -617,23 +630,38 @@ buffer_bad_input_update:
     bad_inputs: /updatable_config/bad_inputs
   out_buf: bad_inputs_buffer
 
-# Compress lost samples buffer for HFB data using only 1 buffer
-# and copy the result into the remaining 3 buffers
-compress_lost_samples:
+# Compress lost samples buffer for HFB
+hfb_compress_lost_samples:
   kotekan_stage: compressLostSamples
-  compression_factor: sk_step
+  compression_factor: factor_upchan * downsample_time
   zero_all_in_group: true
   in_buf: lost_samples_buffer
-  out_buf: compressed_lost_samples_buf
+  out_buf: hfb_compressed_lost_samples_buf_0
 
-copy_compress_lost_samples_buffers:
+hfb_copy_compress_lost_samples_buffers:
   kotekan_stage: bufferCopy
-  in_buf: compressed_lost_samples_buf
+  in_buf: hfb_compressed_lost_samples_buf_0
   out_bufs:
-    - compressed_lost_samples_buf_0
-    - compressed_lost_samples_buf_1
-    - compressed_lost_samples_buf_2
-    - compressed_lost_samples_buf_3
+    - hfb_compressed_lost_samples_buf_1
+    - hfb_compressed_lost_samples_buf_2
+    - hfb_compressed_lost_samples_buf_3
+
+# Compress lost samples buffer for RFI
+rfi_compress_lost_samples:
+  kotekan_stage: compressLostSamples
+  compression_factor: sk_step
+  zero_all_in_group: false
+  in_buf: lost_samples_buffer
+  out_buf: rfi_compressed_lost_samples_buf
+
+rfi_copy_compress_lost_samples_buffers:
+  kotekan_stage: bufferCopy
+  in_buf: rfi_compressed_lost_samples_buf
+  out_bufs:
+    - rfi_compressed_lost_samples_buf_0
+    - rfi_compressed_lost_samples_buf_1
+    - rfi_compressed_lost_samples_buf_2
+    - rfi_compressed_lost_samples_buf_3
 
 # GPU processing section
 gpu:
@@ -641,7 +669,12 @@ gpu:
   commands: &command_list
     # Copy in queue
     - name: hsaInputData
-    - name: hsaInputCompressLostSamples
+    - name: hsaHostToDeviceCopy
+      in_buf: rfi_compressed_lost_samples_buf
+      gpu_memory_name: rfi_compressed_lost_samples
+    - name: hsaHostToDeviceCopy
+      in_buf: hfb_compressed_lost_samples_buf
+      gpu_memory_name: hfb_compressed_lost_samples
     - name: hsaPresumZero
       sub_frame_index: 0
     - name: hsaPresumZero
@@ -667,8 +700,8 @@ gpu:
     - name: hsaBeamformReorder
     - name: hsaBeamformKernel
     - name: hsaBeamformTranspose
-    - name: hsaBeamformUpchan
-    #- name: hsaBeamformHFBSum
+    - name: hsaBeamformUpchanHFB
+    - name: hsaBeamformHFBSum
     - name: hsaBeamformPulsar
     - name: hsaRfiTimeSum
     - name: hsaRfiBadInput
@@ -693,10 +726,10 @@ gpu:
     #Copy out queue
     - name: hsaRfiBadInputOutput
     - name: hsaRfiOutput
-    - name: hsaRfiVarOutput
+    #- name: hsaRfiVarOutput
     - name: hsaBeamformPulsarOutput
     - name: hsaBeamformOutputData
-    #- name: hsaBeamformHFBOutputData
+    - name: hsaBeamformHFBOutputData
     - name: hsaOutputData
       sub_frame_index: 0
     - name: hsaOutputData
@@ -730,7 +763,8 @@ gpu:
       gain_psr_buf: gain_psr_buffer_0
       lost_samples_buf: lost_samples_buffer
       bad_inputs_buf: bad_inputs_buffer
-      compressed_lost_samples_buf: compressed_lost_samples_buf_0
+      rfi_compressed_lost_samples_buf: rfi_compressed_lost_samples_buf_0
+      hfb_compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_0
     out_buffers:
       output_buf: gpu_n2_output_buffer_0
       beamform_output_buf: gpu_beamform_output_buffer_0
@@ -752,7 +786,8 @@ gpu:
       gain_psr_buf: gain_psr_buffer_1
       lost_samples_buf: lost_samples_buffer
       bad_inputs_buf: bad_inputs_buffer
-      compressed_lost_samples_buf: compressed_lost_samples_buf_1
+      rfi_compressed_lost_samples_buf: rfi_compressed_lost_samples_buf_1
+      hfb_compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_1
     out_buffers:
       output_buf: gpu_n2_output_buffer_1
       beamform_output_buf: gpu_beamform_output_buffer_1
@@ -774,7 +809,8 @@ gpu:
       gain_psr_buf: gain_psr_buffer_2
       lost_samples_buf: lost_samples_buffer
       bad_inputs_buf: bad_inputs_buffer
-      compressed_lost_samples_buf: compressed_lost_samples_buf_2
+      rfi_compressed_lost_samples_buf: rfi_compressed_lost_samples_buf_2
+      hfb_compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_2
     out_buffers:
       output_buf: gpu_n2_output_buffer_2
       beamform_output_buf: gpu_beamform_output_buffer_2
@@ -796,7 +832,8 @@ gpu:
       gain_psr_buf: gain_psr_buffer_3
       lost_samples_buf: lost_samples_buffer
       bad_inputs_buf: bad_inputs_buffer
-      compressed_lost_samples_buf: compressed_lost_samples_buf_3
+      rfi_compressed_lost_samples_buf: rfi_compressed_lost_samples_buf_3
+      hfb_compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_3
     out_buffers:
       output_buf: gpu_n2_output_buffer_3
       beamform_output_buf: gpu_beamform_output_buffer_3
@@ -808,51 +845,51 @@ gpu:
       rfi_var_output_buf: gpu_rfi_var_output_buffer_3
 
 # Integrate frames of HFB data from each GPU to ~10s cadence 
-#hyper_fine_beam:
-#  num_frames_to_integrate: 80
-#  good_samples_threshold: 0.95
-#  log_level: info
-#  integrate_hfb_data_0:
-#    kotekan_stage: integrateHFBData
-#    hfb_input_buf: gpu_beamform_hfb_output_buffer_0
-#    hfb_output_buf: beamform_hfb_output_buffer_0
-#    compressed_lost_samples_buf: compressed_lost_samples_buf_0
-#  integrate_hfb_data_1:
-#    kotekan_stage: integrateHFBData
-#    hfb_input_buf: gpu_beamform_hfb_output_buffer_1
-#    hfb_output_buf: beamform_hfb_output_buffer_1
-#    compressed_lost_samples_buf: compressed_lost_samples_buf_1
-#  integrate_hfb_data_2:
-#    kotekan_stage: integrateHFBData
-#    hfb_input_buf: gpu_beamform_hfb_output_buffer_2
-#    hfb_output_buf: beamform_hfb_output_buffer_2
-#    compressed_lost_samples_buf: compressed_lost_samples_buf_2
-#  integrate_hfb_data_3:
-#    kotekan_stage: integrateHFBData
-#    hfb_input_buf: gpu_beamform_hfb_output_buffer_3
-#    hfb_output_buf: beamform_hfb_output_buffer_3
-#    compressed_lost_samples_buf: compressed_lost_samples_buf_3
- 
+hyper_fine_beam:
+  num_frames_to_integrate: 80
+  good_samples_threshold: 0.95
+  log_level: info
+  integrate_hfb_data_0:
+    kotekan_stage: integrateHFBData
+    hfb_input_buf: gpu_beamform_hfb_output_buffer_0
+    hfb_output_buf: beamform_hfb_output_buffer_0
+    compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_0
+  integrate_hfb_data_1:
+    kotekan_stage: integrateHFBData
+    hfb_input_buf: gpu_beamform_hfb_output_buffer_1
+    hfb_output_buf: beamform_hfb_output_buffer_1
+    compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_1
+  integrate_hfb_data_2:
+    kotekan_stage: integrateHFBData
+    hfb_input_buf: gpu_beamform_hfb_output_buffer_2
+    hfb_output_buf: beamform_hfb_output_buffer_2
+    compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_2
+  integrate_hfb_data_3:
+    kotekan_stage: integrateHFBData
+    hfb_input_buf: gpu_beamform_hfb_output_buffer_3
+    hfb_output_buf: beamform_hfb_output_buffer_3
+    compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_3
+
 # Merge HFB integrated data from each GPU
-#hfb_merge:
-#  kotekan_stage: bufferMerge
-#  timeout: 0.1
-#  in_bufs:
-#    - beamform_hfb_output_buffer_0
-#    - beamform_hfb_output_buffer_1
-#    - beamform_hfb_output_buffer_2
-#    - beamform_hfb_output_buffer_3
-#  out_buf: beamform_hfb_output_buffer_merge
+hfb_merge:
+  kotekan_stage: bufferMerge
+  timeout: 0.1
+  in_bufs:
+    - beamform_hfb_output_buffer_0
+    - beamform_hfb_output_buffer_1
+    - beamform_hfb_output_buffer_2
+    - beamform_hfb_output_buffer_3
+  out_buf: beamform_hfb_output_buffer_merge
 
 # Transmit all the HFB data to Moose
-#buffer_send_hfb:
-#  server_ip: 10.1.50.10
-#  reconnect_time: 20
-#  log_level: error
-#  hfb:
-#    kotekan_stage: bufferSend
-#    buf: beamform_hfb_output_buffer_merge
-#    server_port: 11027
+buffer_send_hfb:
+  server_ip: 10.1.50.10
+  reconnect_time: 20
+  log_level: error
+  hfb:
+    kotekan_stage: bufferSend
+    buf: beamform_hfb_output_buffer_merge
+    server_port: 11027
 
 # This set of stages takes information from the packet loss mask
 # and RFI mask and updates the metadata in the output N2 buffers
@@ -1560,21 +1597,21 @@ rfi_pkt_loss_record:
     kotekan_stage: rfiRecord
     rfi_in: compressed_lost_samples_buf
 
-rfi_var_record:
-  total_links: 1
-  updatable_config: "/updatable_config/rfi_var_record"
-  gpu_0:
-    kotekan_stage: rfiRecord
-    rfi_in: gpu_rfi_var_output_buffer_0
-  gpu_1:
-    kotekan_stage: rfiRecord
-    rfi_in: gpu_rfi_var_output_buffer_1
-  gpu_2:
-    kotekan_stage: rfiRecord
-    rfi_in: gpu_rfi_var_output_buffer_2
-  gpu_3:
-    kotekan_stage: rfiRecord
-    rfi_in: gpu_rfi_var_output_buffer_3
+#rfi_var_record:
+#  total_links: 1
+#  updatable_config: "/updatable_config/rfi_var_record"
+#  gpu_0:
+#    kotekan_stage: rfiRecord
+#    rfi_in: gpu_rfi_var_output_buffer_0
+#  gpu_1:
+#    kotekan_stage: rfiRecord
+#    rfi_in: gpu_rfi_var_output_buffer_1
+#  gpu_2:
+#    kotekan_stage: rfiRecord
+#    rfi_in: gpu_rfi_var_output_buffer_2
+#  gpu_3:
+#    kotekan_stage: rfiRecord
+#    rfi_in: gpu_rfi_var_output_buffer_3
 
 #### Monitoring and debug stages ####
 
