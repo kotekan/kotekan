@@ -847,7 +847,6 @@ def rfi_zeroing():
 
         # Create payload
         payload = {"rfi_zeroing": False}
-        payload["rfi_zeroing"] = False
 
         # Turn RFI zeroing off
         rfi_zeroing_on = True
@@ -884,7 +883,6 @@ def rfi_zeroing():
 
             # Payload
             payload = {"rfi_zeroing": True}
-            payload["rfi_zeroing"] = True
 
             # Turn rfi zeroing back on
             try:
