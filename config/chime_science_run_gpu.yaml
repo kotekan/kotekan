@@ -330,19 +330,19 @@ gpu_beamform_hfb_output_buffers:
     kotekan_buffer: standard
 
 cpu_hfb_output_buffers:
-    num_frames: buffer_depth
-    frame_size: num_data_sets * factor_upchan * num_frb_total_beams * sizeof_float
-    metadata_pool: hfb_pool
-    beamform_hfb_output_buffer_0:
-      kotekan_buffer: standard
-    beamform_hfb_output_buffer_1:
-      kotekan_buffer: standard
-    beamform_hfb_output_buffer_2:
-      kotekan_buffer: standard
-    beamform_hfb_output_buffer_3:
-      kotekan_buffer: standard
-    beamform_hfb_output_buffer_merge:
-      kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: num_data_sets * factor_upchan * num_frb_total_beams * sizeof_float
+  metadata_pool: hfb_pool
+  beamform_hfb_output_buffer_0:
+    kotekan_buffer: standard
+  beamform_hfb_output_buffer_1:
+    kotekan_buffer: standard
+  beamform_hfb_output_buffer_2:
+    kotekan_buffer: standard
+  beamform_hfb_output_buffer_3:
+    kotekan_buffer: standard
+  beamform_hfb_output_buffer_merge:
+    kotekan_buffer: standard
 
 gain_frb_buffers:
   num_frames: 5
@@ -1343,8 +1343,8 @@ rfi_valve:
 # Perform a second pass at RFI excision
 rfi_stage2:
   updatable_config:
-   enable: "/updatable_config/rfi_zeroing_second_stage/enable"
-   thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
+    enable: "/updatable_config/rfi_zeroing_second_stage/enable"
+    thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
   rfi0:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_0
