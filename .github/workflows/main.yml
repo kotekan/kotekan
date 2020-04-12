@@ -80,6 +80,15 @@ jobs:
     steps:
     - uses: actions/checkout@v1
 
+    - name: Free disk space
+      run: |
+          df -h
+          docker rmi $(docker image ls -aq)
+          df -h
+          sudo apt-get clean
+          sudo apt-get autoclean
+          df -h
+
     - name: Cache ccache files
       uses: actions/cache@v1
       with:
@@ -104,7 +113,9 @@ jobs:
             -DBOOST_TESTS=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
         docker run "${OPTS[@]}" make -j 2
+        docker run "${OPTS[@]}" rm -r lib
         docker run "${OPTS[@]}" ccache -s
+        df -h
 
     - name: Run parallel python tests
       run: |

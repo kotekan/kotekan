@@ -473,7 +473,7 @@ std::vector<std::vector<U>> unpack_2d(const std::vector<T>& arr1d, uint32_t nr, 
         auto br = b + i * nc;
         arr2d.push_back(std::vector<U>(br, br + nc));
     }
-    return std::move(arr2d);
+    return arr2d;
 }
 
 

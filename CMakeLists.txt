@@ -88,8 +88,13 @@ endif()
 include(CheckIncludeFileCXX)
 if (${USE_LAPACK})
 
+  set(BLA_VENDOR OpenBLAS)
   find_package( BLAS REQUIRED )
+  find_path(BLAS_INCLUDE_DIRS cblas.h
+            PATHS /usr/include /usr/local/include
+            PATH_SUFFIXES openblas)
   MESSAGE("Using BLAS ${BLAS_LIBRARIES}")
+  MESSAGE("Using BLAS includes ${BLAS_INCLUDE_DIRS}")
   find_package( LAPACK REQUIRED )
   MESSAGE("Using LAPACK ${LAPACK_LIBRARIES}")
   find_package( LAPACKE REQUIRED )
@@ -233,7 +238,9 @@ find_package(Threads REQUIRED)
 
 # Note that -lrt here is needed on some versions of CentOS but not Clang
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-       set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lrt " )
+    # adds the option for compiling both C and C++ source
+    add_compile_options("-lrt")
+    link_libraries("-lrt")
 endif ()
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -O3 -D_GNU_SOURCE -Wall -Wextra -Werror -march=${ARCH} -mtune=${ARCH} -I/opt/rocm/include")
@@ -247,11 +254,6 @@ endif()
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
-
-# Note that -lrt here is needed on some versions of CentOS but not Clang
-if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
-       set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lrt " )
-endif ()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wextra -Werror -Wzero-as-null-pointer-constant -march=${ARCH} -mtune=${ARCH} -I/opt/rocm/include")
 

@@ -225,8 +225,8 @@ private:
 /**
  * @brief Send out some data but change the dataset IDs
  *
- * @conf  state_changes  A series of timestamp-state type pairs. Supported state types are `inputs`
- *and `flags`.
+ * @conf  state_changes  A series of timestamp-state type pairs. Supported state types are `inputs`,
+ * `gains` and `flags`.
  *
  **/
 class ChangeStatePattern : public DefaultVisPattern {
@@ -247,6 +247,7 @@ private:
     // parameters.
     state_id_t gen_state_inputs();
     state_id_t gen_state_flags();
+    state_id_t gen_state_gains();
 
     std::optional<dset_id_t> current_dset_id;
 
@@ -254,5 +255,6 @@ private:
 
     size_t _input_update_ind = 0;
     size_t _flag_update_ind = 0;
+    size_t _gain_update_ind = 0;
 };
 #endif // FAKE_VIS_PATTERN

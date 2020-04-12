@@ -265,6 +265,8 @@ public:
     const uint32_t& num_prod;
     /// The number of eigenvectors/values in the data (read only).
     const uint32_t& num_ev;
+    /// The size of the data portion of the frame (read only).
+    const size_t& data_size;
 
     /// A tuple of references to the underlying time parameters
     std::tuple<uint64_t&, timespec&> time;
