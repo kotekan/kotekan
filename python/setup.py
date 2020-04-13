@@ -29,7 +29,7 @@ setup(
     long_description=long_description,
     url="http://github.com/kotekan/kotekan/",
     packages=find_packages(),
-    py_modules=['_version'],
+    py_modules=["_version"],
     install_requires=requirements,
     entry_points="""
         [console_scripts]
