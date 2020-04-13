@@ -6,15 +6,15 @@
 
 #ifndef N_DISK_FILE_WRITE_H
 #define N_DISK_FILE_WRITE_H
+#include "Config.hpp"
+#include "Stage.hpp" // for Stage
+#include "bufferContainer.hpp"
 
-#include "Stage.hpp"
-#include "buffer.h"
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <thread>   // for thread
+#include <vector>   // for vector
 
-#include <string>
-#include <thread>
-#include <vector>
-
-using std::string;
 
 /**
  * @class nDiskFileWrite
@@ -78,7 +78,7 @@ using std::string;
 class nDiskFileWrite : public kotekan::Stage {
 public:
     /// Constructor
-    nDiskFileWrite(kotekan::Config& config, const string& unique_name,
+    nDiskFileWrite(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_containter);
 
     /// Destructor, currently does nothing
@@ -100,11 +100,11 @@ private:
     std::vector<std::thread> file_thread_handles;
 
     /// The subfolder name where the files will be stored
-    string dataset_name;
+    std::string dataset_name;
     /// A holder for the config parameter disk_base, where the drive sets are mounted
-    string disk_base;
+    std::string disk_base;
     /// A holder for the config parameter disk_set, where to write files
-    string disk_set;
+    std::string disk_set;
     /// Boolean config parameter to enable or disable file output
     bool write_to_disk;
 
@@ -118,10 +118,10 @@ private:
     void save_meta_data(char* timestr);
 
     /// Function to back up the FPGA gain file alongside the VDIF data
-    void copy_gains(const string& gain_file_dir, const string& gain_file_name);
+    void copy_gains(const std::string& gain_file_dir, const std::string& gain_file_name);
 
     /// A holder for the config parameter instrument name, used in VDIF header
-    string instrument_name;
+    std::string instrument_name;
 };
 
 #endif

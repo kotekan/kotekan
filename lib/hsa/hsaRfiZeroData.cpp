@@ -1,11 +1,21 @@
 #include "hsaRfiZeroData.hpp"
 
-#include "configUpdater.hpp"
-#include "hsaBase.h"
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chimeMetadata.h"        // for set_rfi_zeroed
+#include "configUpdater.hpp"      // for configUpdater
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+#include "kotekanLogging.hpp"     // for INFO, WARN
 
-#include <math.h>
-#include <mutex>
-#include <unistd.h>
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, _Placeholder, bind, _1, placehol...
+#include <mutex>      // for lock_guard, mutex
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <string.h>   // for memcpy, memset
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -13,7 +23,7 @@ using kotekan::configUpdater;
 
 REGISTER_HSA_COMMAND(hsaRfiZeroData);
 
-hsaRfiZeroData::hsaRfiZeroData(Config& config, const string& unique_name,
+hsaRfiZeroData::hsaRfiZeroData(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_zero" KERNEL_EXT,
                "rfi_chime_zero.hsaco") {

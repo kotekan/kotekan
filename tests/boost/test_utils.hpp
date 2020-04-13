@@ -4,10 +4,10 @@
 #include "visUtil.hpp"
 
 #include <boost/test/included/unit_test.hpp>
-
+#include <vector>
 
 struct CompareCTypes {
-    void check_equal(const vector<input_ctype>& a, const vector<input_ctype>& b) {
+    void check_equal(const std::vector<input_ctype>& a, const std::vector<input_ctype>& b) {
         BOOST_CHECK(!a.empty() && !b.empty());
         BOOST_CHECK(a.size() == b.size());
         auto ita = a.begin();
@@ -23,7 +23,7 @@ struct CompareCTypes {
         }
     }
 
-    void check_equal(const vector<prod_ctype>& a, const vector<prod_ctype>& b) {
+    void check_equal(const std::vector<prod_ctype>& a, const std::vector<prod_ctype>& b) {
         BOOST_CHECK(!a.empty() && !b.empty());
         BOOST_CHECK(a.size() == b.size());
         auto ita = a.begin();

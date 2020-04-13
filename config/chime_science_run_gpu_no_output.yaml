@@ -9,8 +9,11 @@
 # - Packet capture from the ICE boards including FPGA flag handling and normalization
 # - N^2 kernels and output for various data projects to receiver systems
 # - FRB FFT Fan beam and packet Tx, with Valves protecting input buffers from overflowing
-# - Pulsar 10 coherent beam system and packet Tx, with Valves protecting input buffers from overflowing
+# - Pulsar 10 coherent beam system and packet Tx, with Valves protecting input buffers from
+#   overflowing
 # - RFI detection and summary stats system (only reports on RFI, no normalization yet)
+# - Extracts 21cm absorber data from FRB pipeline. This is referred to as the High Frequency Beam
+#   (HFB) below.
 #
 # This component is intended to be run on the GPU nodes.
 #
@@ -42,6 +45,7 @@ link_map: [0,1,2,3]
 
 # Constants
 sizeof_float: 4
+sizeof_int: 4
 sizeof_short: 2
 
 # N2 global options
@@ -103,6 +107,8 @@ updatable_config:
       - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
       - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
       - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+#     - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+#     - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
   pulsar_pointing:
     0:
       kotekan_update_endpoint: json
@@ -154,6 +160,16 @@ updatable_config:
       ra: 53.6197236741
       dec: 54.6433973569
       scaling: 48
+#    10:
+#      kotekan_update_endpoint: json
+#      ra: 53.6197236741
+#      dec: 54.6433973569
+#      scaling: 48
+#    11:
+#      kotekan_update_endpoint: json
+#      ra: 53.6197236741
+#      dec: 54.6433973569
+#      scaling: 48
   bad_inputs:
     kotekan_update_endpoint: json
     # These inputs are assumed to be in cylinder order
@@ -170,11 +186,15 @@ updatable_config:
     rfi_zeroing: True
   rfi_sk_record:
     kotekan_update_endpoint: json
-    output_dir: /mnt/gong/RFI/test_sk/
+    output_dir: /mnt/gong/RFI/20200409_sk/
     write_to_disk: false
   rfi_var_record:
     kotekan_update_endpoint: json
-    output_dir: /mnt/gong/RFI/test_var/
+    output_dir: /mnt/gong/RFI/20200409_var/
+    write_to_disk: false
+  rfi_pkt_loss_record:
+    kotekan_update_endpoint: json
+    output_dir: /mnt/gong/RFI/20200409_pkt_loss/
     write_to_disk: false
   rfi_var_element_index:
     kotekan_update_endpoint: json
@@ -211,14 +231,12 @@ updatable_config:
   rfi_zeroing_second_stage:
     enable:
       kotekan_update_endpoint: json
-      rfi_zeroing: false
+      rfi_zeroing: true
     thresholds:
       kotekan_update_endpoint: json
       thresholds:
         - threshold: 3.0
           fraction: 0.13
-        - threshold: 1.5
-          fraction: 0.4
 
 
 ###########################
@@ -230,6 +248,11 @@ main_pool:
   kotekan_metadata_pool: chimeMetadata
   num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
                         + 100 * 8 * buffer_depth # This part is for the sk/var output.
+
+# HFB Metadata Pool
+hfb_pool:
+  kotekan_metadata_pool: hfbMetadata
+  num_metadata_objects: 30 * buffer_depth
 
 # Input data buffers from the DPDK stage
 network_buffers:
@@ -297,6 +320,35 @@ gpu_beamform_output_buffers:
   gpu_beamform_output_valved_buffer_2:
     kotekan_buffer: standard
   gpu_beamform_output_valved_buffer_3:
+    kotekan_buffer: standard
+
+# HFB Data Buffers
+gpu_beamform_hfb_output_buffers:
+  num_frames: buffer_depth
+  frame_size: num_data_sets * factor_upchan * num_frb_total_beams * sizeof_float
+  metadata_pool: main_pool
+  gpu_beamform_hfb_output_buffer_0:
+    kotekan_buffer: standard
+  gpu_beamform_hfb_output_buffer_1:
+    kotekan_buffer: standard
+  gpu_beamform_hfb_output_buffer_2:
+    kotekan_buffer: standard
+  gpu_beamform_hfb_output_buffer_3:
+    kotekan_buffer: standard
+
+cpu_hfb_output_buffers:
+  num_frames: buffer_depth
+  frame_size: num_data_sets * factor_upchan * num_frb_total_beams * sizeof_float
+  metadata_pool: hfb_pool
+  beamform_hfb_output_buffer_0:
+    kotekan_buffer: standard
+  beamform_hfb_output_buffer_1:
+    kotekan_buffer: standard
+  beamform_hfb_output_buffer_2:
+    kotekan_buffer: standard
+  beamform_hfb_output_buffer_3:
+    kotekan_buffer: standard
+  beamform_hfb_output_buffer_merge:
     kotekan_buffer: standard
 
 gain_frb_buffers:
@@ -399,7 +451,7 @@ vis_buffers:
     num_frames: 10 * buffer_depth
 
 gpu_rfi_output_buffers:
-  num_frames: buffer_depth * 100
+  num_frames: buffer_depth * 50
   frame_size: sizeof_float * num_local_freq * samples_per_data_set / sk_step
   metadata_pool: main_pool
   gpu_rfi_output_buffer_0:
@@ -409,6 +461,19 @@ gpu_rfi_output_buffers:
   gpu_rfi_output_buffer_2:
     kotekan_buffer: standard
   gpu_rfi_output_buffer_3:
+    kotekan_buffer: standard
+
+gpu_rfi_valve_buffers:
+  num_frames: buffer_depth
+  frame_size: sizeof_float * num_local_freq * samples_per_data_set / sk_step
+  metadata_pool: main_pool
+  rfi_valve_buffer_0:
+    kotekan_buffer: standard
+  rfi_valve_buffer_1:
+    kotekan_buffer: standard
+  rfi_valve_buffer_2:
+    kotekan_buffer: standard
+  rfi_valve_buffer_3:
     kotekan_buffer: standard
 
 gpu_rfi_mask_output_buffers:
@@ -437,8 +502,16 @@ gpu_rfi_bad_input_buffers:
   gpu_rfi_bad_input_buffer_3:
     kotekan_buffer: standard
 
+# Bad inputs buffer
+bad_input_buffer:
+  num_frames: buffer_depth
+  frame_size: num_elements
+  metadata_pool: main_pool
+  bad_inputs_buffer:
+    kotekan_buffer: standard
+
 #rfi_var_output_buffers:
-#  num_frames: buffer_depth * 100
+#  num_frames: buffer_depth * 50
 #  frame_size: num_local_freq * samples_per_data_set / sk_step * sizeof_float
 #  metadata_pool: main_pool
 #  gpu_rfi_var_output_buffer_0:
@@ -453,21 +526,40 @@ gpu_rfi_bad_input_buffers:
 lost_samples_buffer:
   kotekan_buffer: standard
   num_frames: 2 * buffer_depth
-  frame_size: samples_per_data_set * num_local_freq * num_data_sets
+  frame_size: samples_per_data_set
   metadata_pool: main_pool
 
-#duplicate_lost_samples_buffers:
-#  num_frames: 2 * buffer_depth
-#  frame_size: samples_per_data_set * num_local_freq * num_data_sets
-#  metadata_pool: main_pool
-#  lost_samples_buffer_0:
-#      kotekan_buffer: standard
-#  lost_samples_buffer_1:
-#      kotekan_buffer: standard
-#  lost_samples_buffer_2:
-#      kotekan_buffer: standard
-#  lost_samples_buffer_3:
-#      kotekan_buffer: standard
+rfi_compressed_lost_samples_buf:
+  kotekan_buffer: standard
+  num_frames: buffer_depth * 50
+  frame_size: sizeof_int * samples_per_data_set / sk_step
+  metadata_pool: main_pool
+
+rfi_compressed_lost_samples_buffers:
+  num_frames: buffer_depth * 2
+  frame_size: sizeof_int * samples_per_data_set / sk_step
+  metadata_pool: main_pool
+  rfi_compressed_lost_samples_buf_0:
+    kotekan_buffer: standard
+  rfi_compressed_lost_samples_buf_1:
+    kotekan_buffer: standard
+  rfi_compressed_lost_samples_buf_2:
+    kotekan_buffer: standard
+  rfi_compressed_lost_samples_buf_3:
+    kotekan_buffer: standard
+
+hfb_compressed_lost_samples_buffers:
+  num_frames: buffer_depth * 2
+  frame_size: sizeof_int * samples_per_data_set / (factor_upchan * downsample_time)
+  metadata_pool: main_pool
+  hfb_compressed_lost_samples_buf_0:
+    kotekan_buffer: standard
+  hfb_compressed_lost_samples_buf_1:
+    kotekan_buffer: standard
+  hfb_compressed_lost_samples_buf_2:
+    kotekan_buffer: standard
+  hfb_compressed_lost_samples_buf_3:
+    kotekan_buffer: standard
 
 
 ##########################
@@ -539,14 +631,6 @@ baseband:
     kotekan_stage: basebandReadout
     in_buf: network_buffer_3
 
-# Bad inputs buffer
-bad_input_buffer:
-  num_frames: buffer_depth
-  frame_size: num_elements
-  metadata_pool: main_pool
-  bad_inputs_buffer:
-    kotekan_buffer: standard
-
 # Buffer bad input updates
 # 1) Reorder list
 # 2) Zero bad inputs mask
@@ -557,12 +641,51 @@ buffer_bad_input_update:
     bad_inputs: /updatable_config/bad_inputs
   out_buf: bad_inputs_buffer
 
+# Compress lost samples buffer for HFB
+hfb_compress_lost_samples:
+  kotekan_stage: compressLostSamples
+  compression_factor: factor_upchan * downsample_time
+  zero_all_in_group: true
+  in_buf: lost_samples_buffer
+  out_buf: hfb_compressed_lost_samples_buf_0
+
+hfb_copy_compress_lost_samples_buffers:
+  kotekan_stage: bufferCopy
+  in_buf: hfb_compressed_lost_samples_buf_0
+  out_bufs:
+    - hfb_compressed_lost_samples_buf_1
+    - hfb_compressed_lost_samples_buf_2
+    - hfb_compressed_lost_samples_buf_3
+
+# Compress lost samples buffer for RFI
+rfi_compress_lost_samples:
+  kotekan_stage: compressLostSamples
+  compression_factor: sk_step
+  zero_all_in_group: false
+  in_buf: lost_samples_buffer
+  out_buf: rfi_compressed_lost_samples_buf
+
+rfi_copy_compress_lost_samples_buffers:
+  kotekan_stage: bufferCopy
+  in_buf: rfi_compressed_lost_samples_buf
+  out_bufs:
+    - rfi_compressed_lost_samples_buf_0
+    - rfi_compressed_lost_samples_buf_1
+    - rfi_compressed_lost_samples_buf_2
+    - rfi_compressed_lost_samples_buf_3
+
 # GPU processing section
 gpu:
   kernel_path: "/var/lib/kotekan/hsa_kernels/"
   commands: &command_list
     # Copy in queue
     - name: hsaInputData
+    - name: hsaHostToDeviceCopy
+      in_buf: rfi_compressed_lost_samples_buf
+      gpu_memory_name: rfi_compressed_lost_samples
+    - name: hsaHostToDeviceCopy
+      in_buf: hfb_compressed_lost_samples_buf
+      gpu_memory_name: hfb_compressed_lost_samples
     - name: hsaPresumZero
       sub_frame_index: 0
     - name: hsaPresumZero
@@ -588,7 +711,8 @@ gpu:
     - name: hsaBeamformReorder
     - name: hsaBeamformKernel
     - name: hsaBeamformTranspose
-    - name: hsaBeamformUpchan
+    - name: hsaBeamformUpchanHFB
+    - name: hsaBeamformHFBSum
     - name: hsaBeamformPulsar
     - name: hsaRfiTimeSum
     - name: hsaRfiBadInput
@@ -616,6 +740,7 @@ gpu:
     #- name: hsaRfiVarOutput
     - name: hsaBeamformPulsarOutput
     - name: hsaBeamformOutputData
+    - name: hsaBeamformHFBOutputData
     - name: hsaOutputData
       sub_frame_index: 0
     - name: hsaOutputData
@@ -633,13 +758,13 @@ gpu:
   # How many sub frames to devide the N2 products into.
   n_intg: 24576 / num_sub_frames
   frame_arrival_period: samples_per_data_set / 390625
+  updatable_config:
+    psr_pt: /updatable_config/pulsar_pointing
+    rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
+    rfi_var_element_index: /updatable_config/rfi_var_element_index
   gpu_0:
     kotekan_stage: hsaProcess
     gpu_id: 0
-    updatable_config:
-      psr_pt: /updatable_config/pulsar_pointing
-      rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
-      rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     commands: *command_list
@@ -649,10 +774,13 @@ gpu:
       gain_psr_buf: gain_psr_buffer_0
       lost_samples_buf: lost_samples_buffer
       bad_inputs_buf: bad_inputs_buffer
+      rfi_compressed_lost_samples_buf: rfi_compressed_lost_samples_buf_0
+      hfb_compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_0
     out_buffers:
       output_buf: gpu_n2_output_buffer_0
       beamform_output_buf: gpu_beamform_output_buffer_0
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_0
+      beamform_hfb_output_buf: gpu_beamform_hfb_output_buffer_0
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_0
       rfi_output_buf: gpu_rfi_output_buffer_0
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_0
@@ -660,10 +788,6 @@ gpu:
   gpu_1:
     kotekan_stage: hsaProcess
     gpu_id: 1
-    updatable_config:
-      psr_pt: /updatable_config/pulsar_pointing
-      rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
-      rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     commands: *command_list
@@ -673,10 +797,13 @@ gpu:
       gain_psr_buf: gain_psr_buffer_1
       lost_samples_buf: lost_samples_buffer
       bad_inputs_buf: bad_inputs_buffer
+      rfi_compressed_lost_samples_buf: rfi_compressed_lost_samples_buf_1
+      hfb_compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_1
     out_buffers:
       output_buf: gpu_n2_output_buffer_1
       beamform_output_buf: gpu_beamform_output_buffer_1
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_1
+      beamform_hfb_output_buf: gpu_beamform_hfb_output_buffer_1
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_1
       rfi_output_buf: gpu_rfi_output_buffer_1
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_1
@@ -684,10 +811,6 @@ gpu:
   gpu_2:
     kotekan_stage: hsaProcess
     gpu_id: 2
-    updatable_config:
-      psr_pt: /updatable_config/pulsar_pointing
-      rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
-      rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     commands: *command_list
@@ -697,10 +820,13 @@ gpu:
       gain_psr_buf: gain_psr_buffer_2
       lost_samples_buf: lost_samples_buffer
       bad_inputs_buf: bad_inputs_buffer
+      rfi_compressed_lost_samples_buf: rfi_compressed_lost_samples_buf_2
+      hfb_compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_2
     out_buffers:
       output_buf: gpu_n2_output_buffer_2
       beamform_output_buf: gpu_beamform_output_buffer_2
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_2
+      beamform_hfb_output_buf: gpu_beamform_hfb_output_buffer_2
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_2
       rfi_output_buf: gpu_rfi_output_buffer_2
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_2
@@ -708,10 +834,6 @@ gpu:
   gpu_3:
     kotekan_stage: hsaProcess
     gpu_id: 3
-    updatable_config:
-      psr_pt: /updatable_config/pulsar_pointing
-      rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
-      rfi_var_element_index: /updatable_config/rfi_var_element_index
     ew_spacing: [-0.4,0,0.4,0.8]
     northmost_beam: 60.0
     commands: *command_list
@@ -721,14 +843,64 @@ gpu:
       gain_psr_buf: gain_psr_buffer_3
       lost_samples_buf: lost_samples_buffer
       bad_inputs_buf: bad_inputs_buffer
+      rfi_compressed_lost_samples_buf: rfi_compressed_lost_samples_buf_3
+      hfb_compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_3
     out_buffers:
       output_buf: gpu_n2_output_buffer_3
       beamform_output_buf: gpu_beamform_output_buffer_3
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_3
+      beamform_hfb_output_buf: gpu_beamform_hfb_output_buffer_3
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_3
       rfi_output_buf: gpu_rfi_output_buffer_3
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_3
       #rfi_var_output_buf: gpu_rfi_var_output_buffer_3
+
+# Integrate frames of HFB data from each GPU to ~10s cadence 
+hyper_fine_beam:
+  num_frames_to_integrate: 80
+  good_samples_threshold: 0.95
+  log_level: info
+  integrate_hfb_data_0:
+    kotekan_stage: integrateHFBData
+    hfb_input_buf: gpu_beamform_hfb_output_buffer_0
+    hfb_output_buf: beamform_hfb_output_buffer_0
+    compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_0
+  integrate_hfb_data_1:
+    kotekan_stage: integrateHFBData
+    hfb_input_buf: gpu_beamform_hfb_output_buffer_1
+    hfb_output_buf: beamform_hfb_output_buffer_1
+    compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_1
+  integrate_hfb_data_2:
+    kotekan_stage: integrateHFBData
+    hfb_input_buf: gpu_beamform_hfb_output_buffer_2
+    hfb_output_buf: beamform_hfb_output_buffer_2
+    compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_2
+  integrate_hfb_data_3:
+    kotekan_stage: integrateHFBData
+    hfb_input_buf: gpu_beamform_hfb_output_buffer_3
+    hfb_output_buf: beamform_hfb_output_buffer_3
+    compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_3
+
+# Merge HFB integrated data from each GPU
+hfb_merge:
+  kotekan_stage: bufferMerge
+  timeout: 0.1
+  in_bufs:
+    - beamform_hfb_output_buffer_0
+    - beamform_hfb_output_buffer_1
+    - beamform_hfb_output_buffer_2
+    - beamform_hfb_output_buffer_3
+  out_buf: beamform_hfb_output_buffer_merge
+
+# Transmit all the HFB data to Moose
+buffer_send_hfb:
+  server_ip: 10.1.50.10
+  reconnect_time: 20
+  log_level: error
+  hfb:
+    #kotekan_stage: bufferSend
+    buf: beamform_hfb_output_buffer_merge
+    server_port: 11027
 
 # This set of stages takes information from the packet loss mask
 # and RFI mask and updates the metadata in the output N2 buffers
@@ -838,7 +1010,7 @@ frb:
     #column_mode: true
     beam_offset: 0
     time_interval: 125829120
-    dead_ping_threshold: 0
+    ping_dead_threshold: 30
     L1_node_ips:
       # Rack 1
       - 10.6.201.10
@@ -1137,7 +1309,7 @@ pulsar:
   timesamples_per_pulsar_packet: 625
   udp_pulsar_packet_size: 5032
   num_packet_per_stream: 80
-  num_stream: 10
+  num_stream: num_beams
   cpu_affinity: [5,11]
   pulsar_output_buffer:
     num_frames: buffer_depth + 4
@@ -1189,46 +1361,57 @@ valve:
     in_buf: gpu_n2_output_buffer_3
     out_buf: valve_buffer_3
 
+rfi_valve:
+  valve0:
+    kotekan_stage: Valve
+    in_buf: gpu_rfi_output_buffer_0
+    out_buf: rfi_valve_buffer_0
+  valve1:
+    kotekan_stage: Valve
+    in_buf: gpu_rfi_output_buffer_1
+    out_buf: rfi_valve_buffer_1
+  valve2:
+    kotekan_stage: Valve
+    in_buf: gpu_rfi_output_buffer_2
+    out_buf: rfi_valve_buffer_2
+  valve3:
+    kotekan_stage: Valve
+    in_buf: gpu_rfi_output_buffer_3
+    out_buf: rfi_valve_buffer_3
+
 # Perform a second pass at RFI excision
 rfi_stage2:
+  updatable_config:
+    enable: "/updatable_config/rfi_zeroing_second_stage/enable"
+    thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
   rfi0:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_0
-    in_buf_sk: gpu_rfi_output_buffer_0
+    in_buf_sk: rfi_valve_buffer_0
     out_buf: rfi_vis_buffer_0
-    updatable_config:
-       enable: "/updatable_config/rfi_zeroing_second_stage/enable"
-       thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
   rfi1:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_1
-    in_buf_sk: gpu_rfi_output_buffer_1
+    in_buf_sk: rfi_valve_buffer_1
     out_buf: rfi_vis_buffer_1
-    updatable_config:
-       enable: "/updatable_config/rfi_zeroing_second_stage/enable"
-       thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
   rfi2:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_2
-    in_buf_sk: gpu_rfi_output_buffer_2
+    in_buf_sk: rfi_valve_buffer_2
     out_buf: rfi_vis_buffer_2
-    updatable_config:
-       enable: "/updatable_config/rfi_zeroing_second_stage/enable"
-       thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
   rfi3:
     kotekan_stage: RfiFrameDrop
     in_buf_vis: valve_buffer_3
-    in_buf_sk: gpu_rfi_output_buffer_3
+    in_buf_sk: rfi_valve_buffer_3
     out_buf: rfi_vis_buffer_3
-    updatable_config:
-       enable: "/updatable_config/rfi_zeroing_second_stage/enable"
-       thresholds: "/updatable_config/rfi_zeroing_second_stage/thresholds"
 
 vis_accumulate:
   integration_time: 5.0  # Integrate to roughly 5s cadence
   # This (12288) is for num_sub_frames = 4, there is currently a config bug that
   # prevents referencing the higher level samples_per_data_set and dividing it
   samples_per_data_set: 12288
+  updatable_config:
+    psr0: "/updatable_config/gating/psr0_config"
   acc0:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_0
@@ -1237,8 +1420,6 @@ vis_accumulate:
       psr0:
         mode: pulsar
         buf: visbuf_psr0_5s_0
-    updatable_config:
-      psr0: "/updatable_config/gating/psr0_config"
   acc1:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_1
@@ -1247,8 +1428,6 @@ vis_accumulate:
       psr0:
         mode: pulsar
         buf: visbuf_psr0_5s_1
-    updatable_config:
-      psr0: "/updatable_config/gating/psr0_config"
   acc2:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_2
@@ -1257,8 +1436,6 @@ vis_accumulate:
       psr0:
         mode: pulsar
         buf: visbuf_psr0_5s_2
-    updatable_config:
-      psr0: "/updatable_config/gating/psr0_config"
   acc3:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_3
@@ -1267,8 +1444,6 @@ vis_accumulate:
       psr0:
         mode: pulsar
         buf: visbuf_psr0_5s_3
-    updatable_config:
-      psr0: "/updatable_config/gating/psr0_config"
 
 #### Perform all extra time integration and calculate eigenvalues ####
 vis_merge_5s:
@@ -1430,41 +1605,42 @@ rfi_bad_input_finder:
 
 rfi_sk_record:
   total_links: 1
+  updatable_config: "/updatable_config/rfi_sk_record"
   gpu_0:
     kotekan_stage: rfiRecord
     rfi_in: gpu_rfi_output_buffer_0
-    updatable_config: "/updatable_config/rfi_sk_record"
   gpu_1:
     kotekan_stage: rfiRecord
     rfi_in: gpu_rfi_output_buffer_1
-    updatable_config: "/updatable_config/rfi_sk_record"
   gpu_2:
     kotekan_stage: rfiRecord
     rfi_in: gpu_rfi_output_buffer_2
-    updatable_config: "/updatable_config/rfi_sk_record"
   gpu_3:
     kotekan_stage: rfiRecord
     rfi_in: gpu_rfi_output_buffer_3
-    updatable_config: "/updatable_config/rfi_sk_record"
+
+rfi_pkt_loss_record:
+  total_links: 1
+  updatable_config: "/updatable_config/rfi_pkt_loss_record"
+  gpu_0:
+    kotekan_stage: rfiRecord
+    rfi_in: rfi_compressed_lost_samples_buf
 
 #rfi_var_record:
 #  total_links: 1
+#  updatable_config: "/updatable_config/rfi_var_record"
 #  gpu_0:
 #    kotekan_stage: rfiRecord
 #    rfi_in: gpu_rfi_var_output_buffer_0
-#    updatable_config: "/updatable_config/rfi_var_record"
 #  gpu_1:
 #    kotekan_stage: rfiRecord
 #    rfi_in: gpu_rfi_var_output_buffer_1
-#    updatable_config: "/updatable_config/rfi_var_record"
 #  gpu_2:
 #    kotekan_stage: rfiRecord
 #    rfi_in: gpu_rfi_var_output_buffer_2
-#    updatable_config: "/updatable_config/rfi_var_record"
 #  gpu_3:
 #    kotekan_stage: rfiRecord
 #    rfi_in: gpu_rfi_var_output_buffer_3
-#    updatable_config: "/updatable_config/rfi_var_record"
 
 #### Monitoring and debug stages ####
 

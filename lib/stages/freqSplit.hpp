@@ -7,17 +7,16 @@
 #define FREQ_SPLIT_HPP
 
 #include "Config.hpp"
-#include "Stage.hpp"
+#include "Stage.hpp" // for Stage
 #include "buffer.h"
 #include "bufferContainer.hpp"
-#include "datasetManager.hpp"
+#include "dataset.hpp" // for dset_id_t
 
-#include <array>
-#include <future>
-#include <stdint.h>
-#include <string>
-#include <utility>
-#include <vector>
+#include <array>   // for array
+#include <future>  // for future
+#include <string>  // for string
+#include <utility> // for pair
+#include <vector>  // for vector
 
 
 /**
@@ -50,7 +49,7 @@ class freqSplit : public kotekan::Stage {
 
 public:
     // Default constructor
-    freqSplit(kotekan::Config& config, const string& unique_name,
+    freqSplit(kotekan::Config& config, const std::string& unique_name,
               kotekan::bufferContainer& buffer_container);
 
     // Main loop for the stage

@@ -1,18 +1,26 @@
 #include "Stage.hpp"
 
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"          // for Config
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "util.h"              // for string_tail
 
-#include <cstdlib>
-#include <future>
-#include <pthread.h>
-#include <sched.h>
-#include <syslog.h>
-#include <thread>
+#include <algorithm>    // for max
+#include <chrono>       // for seconds
+#include <cstdlib>      // for abort
+#include <cxxabi.h>     // for __forced_unwind
+#include <exception>    // for exception
+#include <future>       // for async, future, future_status, future_status::timeout, launch
+#include <pthread.h>    // for pthread_setaffinity_np, pthread_setname_np
+#include <regex>        // for match_results<>::_Base_type
+#include <sched.h>      // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept>    // for runtime_error
+#include <system_error> // for system_error
+#include <thread>       // for thread
 
 namespace kotekan {
 
-Stage::Stage(Config& config, const string& unique_name, bufferContainer& buffer_container_,
+Stage::Stage(Config& config, const std::string& unique_name, bufferContainer& buffer_container_,
              std::function<void(const Stage&)> main_thread_ref) :
     stop_thread(false),
     config(config),
@@ -24,7 +32,7 @@ Stage::Stage(Config& config, const string& unique_name, bufferContainer& buffer_
     set_cpu_affinity(config.get<std::vector<int>>(unique_name, "cpu_affinity"));
 
     // Set the local log level.
-    string s_log_level = config.get<std::string>(unique_name, "log_level");
+    std::string s_log_level = config.get<std::string>(unique_name, "log_level");
     set_log_level(s_log_level);
     set_log_prefix(unique_name);
 
@@ -35,7 +43,7 @@ Stage::Stage(Config& config, const string& unique_name, bufferContainer& buffer_
 struct Buffer* Stage::get_buffer(const std::string& name) {
     // NOTE: Maybe require that the buffer be given in the stage, not
     // just somewhere in the path to the stage.
-    string buf_name = config.get<std::string>(unique_name, name);
+    std::string buf_name = config.get<std::string>(unique_name, name);
     return buffer_container.get_buffer(buf_name);
 }
 

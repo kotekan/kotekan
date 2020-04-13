@@ -1,15 +1,26 @@
 #include "hsaRfiUpdateBadInputs.hpp"
 
-#include "configUpdater.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for mark_frame_empty, register_consumer, Buffer, wait_for_...
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chimeMetadata.h"        // for get_rfi_num_bad_inputs, set_rfi_num_bad_inputs
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_IN
+#include "hsaBase.h"              // for hsa_host_free, hsa_host_malloc
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+#include "kotekanLogging.hpp"     // for DEBUG, CHECK_MEM
+#include "visUtil.hpp"            // for double_to_ts
 
-#include "fmt/ranges.h"
+#include <algorithm> // for max
+#include <exception> // for exception
+#include <iterator>  // for begin
+#include <regex>     // for match_results<>::_Base_type
+#include <string.h>  // for memcpy
 
 using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaRfiUpdateBadInputs);
 
-hsaRfiUpdateBadInputs::hsaRfiUpdateBadInputs(Config& config, const string& unique_name,
+hsaRfiUpdateBadInputs::hsaRfiUpdateBadInputs(Config& config, const std::string& unique_name,
                                              kotekan::bufferContainer& host_buffers,
                                              hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "hsaRfiUpdateBadInputs", "") {
@@ -65,7 +76,7 @@ int hsaRfiUpdateBadInputs::wait_on_precondition(int gpu_frame_id) {
     std::lock_guard<std::mutex> lock(update_mutex);
     if (first_pass) {
         uint8_t* frame = wait_for_full_frame(_in_buf, unique_name.c_str(), _in_buf_precondition_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             return -1;
         first_pass = false;
         copy_frame(gpu_frame_id);

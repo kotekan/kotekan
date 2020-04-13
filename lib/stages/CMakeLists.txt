@@ -41,7 +41,9 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       frbNetworkProcess.cpp
       pulsarNetworkProcess.cpp
       bufferMerge.cpp
+      bufferCopy.cpp
       bufferSwitch.cpp
+      InputSubset.cpp
       #RFI Pipeline Processes
       rfiVDIF.cpp
       rfiAVXVDIF.cpp
@@ -55,9 +57,14 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       visTestPattern.cpp
       visDebug.cpp
       removeEv.cpp
+      integrateHFBData.cpp
+      compressLostSamples.cpp
+      compressData.cpp
       bufferBadInputs.cpp
       RfiFrameDrop.cpp
+      VisSharedMemWriter.cpp
     )
+
 
 if (${USE_AIRSPY})
   include_directories(${LIBAIRSPY_INCLUDE_DIR})
@@ -69,8 +76,6 @@ endif ()
 
 # HDF5 stuff
 if (${USE_HDF5})
-  # Disable for the moment as requires too modern HDF5 not available in most computers
-  #set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} calibration_io.cpp)
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} basebandReadout.cpp applyGains.cpp)
 endif ()
 
@@ -86,6 +91,7 @@ endif()
 
 if (${USE_LAPACK})
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} eigenVis.cpp)
+  set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} RingMapMaker.cpp)
   set (KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} EigenVisIter.cpp)
 endif ()
 
@@ -108,13 +114,18 @@ if (${USE_EVENT})
 endif ()
 
 if (${USE_LAPACK})
-  include_directories (${OpenBLAS_INCLUDE_DIRS} ${LAPACK_INCLUDE_DIRS})
-  target_link_libraries ( kotekan_stages  ${OpenBLAS_LIBRARIES} ${LAPACK_LIBRARIES})
+  include_directories( ${BLAS_INCLUDE_DIRS} )
+  include_directories( ${LAPACKE_INCLUDE_DIRS} )
+  target_link_libraries( kotekan_stages ${BLAS_LIBRARIES} )
+  target_link_libraries( kotekan_stages ${LAPACK_LIBRARIES} )
+  target_link_libraries( kotekan_stages ${LAPACKE_LIBRARIES} )
 endif ()
 
 # Add atomic for building against GCC
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     target_link_libraries ( kotekan_stages -latomic )
 endif()
+
+target_link_libraries( kotekan_stages libexternal )
 
 target_link_libraries( kotekan_stages kotekan_utils kotekan_core )

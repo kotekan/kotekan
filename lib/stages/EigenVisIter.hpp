@@ -6,11 +6,22 @@
 #ifndef EIGENVISITER_HPP
 #define EIGENVISITER_HPP
 
-#include "LinearAlgebra.hpp" // TODO: figure out how to forward declare eig_t
-#include "Stage.hpp"
-#include "buffer.h"
-#include "datasetManager.hpp"
-#include "visUtil.hpp"
+#include <blaze/Blaze.h> // for HermitianMatrix
+#include <map>           // for map
+#include <stdint.h>      // for uint32_t, int32_t
+#include <string>        // for string
+#include <utility>       // for pair
+#include <vector>        // for vector
+
+// TODO: figure out how to forward declare eig_t
+#include "Config.hpp"            // for Config
+#include "LinearAlgebra.hpp"     // for EigConvergenceStats
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, state_id_t
+#include "prometheusMetrics.hpp" // for Gauge, MetricFamily
+#include "visUtil.hpp"           // for movingAverage, cfloat
 
 
 /**
@@ -71,7 +82,7 @@
 class EigenVisIter : public kotekan::Stage {
 
 public:
-    EigenVisIter(kotekan::Config& config, const string& unique_name,
+    EigenVisIter(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
     virtual ~EigenVisIter() = default;
     void main_thread() override;

@@ -1,23 +1,24 @@
 #ifndef VISTRANSPOSE
 #define VISTRANSPOSE
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "visFileArchive.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for dset_id_t
+#include "visFileArchive.hpp"  // for visFileArchive
+#include "visFileH5.hpp"
+#include "visUtil.hpp" // for cfloat, time_ctype, freq_ctype, input_ctype, prod_ctype
 
-#include "json.hpp"
+#include "json.hpp" // for json
 
-#include <memory>
-#include <stddef.h>
-#include <stdint.h>
-#include <string>
-#include <vector>
+#include <chrono>
+#include <memory>   // for shared_ptr
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
-using json = nlohmann::json;
 
 /**
  * @class visTranspose
@@ -45,6 +46,8 @@ using json = nlohmann::json;
  *                              (freq, prod, time).
  * @conf   outfile              String. Path to the (data-meta-pair of) files to
  *                              write to (e.g. "/path/to/0000_000", without .h5).
+ * @conf   comet_timeout        Float, default 60. Timeout for communications with
+ *                              dataset broker.
  *
  * @par Metrics
  * @metric kotekan_vistranspose_data_transposed_bytes
@@ -55,7 +58,7 @@ using json = nlohmann::json;
 class visTranspose : public kotekan::Stage {
 public:
     /// Constructor; loads parameters from config
-    visTranspose(kotekan::Config& config, const string& unique_name,
+    visTranspose(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
     ~visTranspose() = default;
 
@@ -66,6 +69,9 @@ private:
     /// Request dataset states from the datasetManager and prepare all metadata
     /// that is not already set in the constructor.
     bool get_dataset_state(dset_id_t ds_id);
+
+    /// Extract the base dataset ID
+    dset_id_t base_dset(dset_id_t ds_id);
 
     // Buffers
     Buffer* in_buf;
@@ -79,6 +85,7 @@ private:
 
     // Config values
     std::string filename;
+    std::chrono::duration<float> timeout;
 
     // Datasets to be stored until ready to write
     std::vector<time_ctype> time;
@@ -90,6 +97,7 @@ private:
     std::vector<cfloat> gain;
     std::vector<float> frac_lost;
     std::vector<float> frac_rfi;
+    std::vector<dset_id_str> dset_id;
     std::vector<float> input_flags;
     std::vector<rstack_ctype> reverse_stack;
 
@@ -112,7 +120,7 @@ private:
     std::vector<prod_ctype> prods;
     std::vector<uint32_t> ev;
     std::vector<stack_ctype> stack;
-    json metadata;
+    nlohmann::json metadata;
 
     /// Number of products to write
     size_t num_prod;

@@ -1,12 +1,17 @@
 #ifndef BUFFER_SWITCH_HPP
 #define BUFFER_SWITCH_HPP
 
+#include "Config.hpp"
 #include "buffer.h"
-#include "bufferMerge.hpp"
+#include "bufferContainer.hpp"
+#include "bufferMerge.hpp" // for bufferMerge
 
-#include <map>
-#include <string>
-#include <vector>
+#include "json.hpp" // for json
+
+#include <map>      // for map
+#include <mutex>    // for mutex
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
 
 /**
  * @brief Selects buffers based on the values in an updatable config endpoint.
@@ -39,7 +44,7 @@
 class bufferSwitch : public bufferMerge {
 public:
     /// Constructor
-    bufferSwitch(kotekan::Config& config, const string& unique_name,
+    bufferSwitch(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
 
     /// Destructor

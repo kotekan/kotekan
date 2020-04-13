@@ -1,28 +1,30 @@
 #define __STDC_FORMAT_MACROS 1
+
 #include "gpuPostProcess.hpp"
 
-#include "Config.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "output_formating.h"
-#include "util.h"
-#include "version.h"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_full, register_producer, wait_for_empt...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.h"     // for get_first_packet_recv_time, get_fpga_seq_num, get_lost_ti...
+#include "kotekanLogging.hpp"  // for CHECK_MEM, INFO
+#include "output_formating.h"  // for full_16_element_matrix_to_upper_triangle, reorganize_32_t...
+#include "restServer.hpp"      // for HTTP_RESPONSE, connectionInstance, restServer
+#include "util.h"              // for complex_int_t
+#include "version.h"           // for get_git_commit_hash
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <arpa/inet.h>
-#include <assert.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <functional>
-#include <inttypes.h>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include <assert.h>   // for assert
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdio.h>    // for snprintf
+#include <stdlib.h>   // for malloc, free
+#include <string.h>   // for memcpy, strcpy, strcat
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -34,7 +36,7 @@ using kotekan::restServer;
 
 REGISTER_KOTEKAN_STAGE(gpuPostProcess);
 
-gpuPostProcess::gpuPostProcess(Config& config_, const string& unique_name,
+gpuPostProcess::gpuPostProcess(Config& config_, const std::string& unique_name,
                                bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&gpuPostProcess::main_thread, this)) {
 
@@ -78,7 +80,7 @@ void gpuPostProcess::main_thread() {
     _product_remap = config.get<std::vector<int32_t>>(unique_name, "product_remap");
 
     // Create a C style array for backwards compatiably.
-    if (_product_remap_c != NULL)
+    if (_product_remap_c != nullptr)
         delete _product_remap_c;
 
     _product_remap_c = new int32_t[_product_remap.size()];
@@ -175,7 +177,7 @@ void gpuPostProcess::main_thread() {
         // This call is blocking!
         uint8_t* in_frame =
             wait_for_full_frame(in_buf[gpu_id], unique_name.c_str(), in_frame_ids[gpu_id]);
-        if (in_frame == NULL)
+        if (in_frame == nullptr)
             break;
         //        INFO("GPU Post process got full buffer ID {:d} for GPU {:d}",
         //        in_frame_ids[gpu_id], gpu_id);
@@ -343,11 +345,11 @@ void gpuPostProcess::main_thread() {
 
                     uint8_t* out_frame =
                         wait_for_empty_frame(out_buf, unique_name.c_str(), out_buffer_ID);
-                    if (out_frame == NULL)
+                    if (out_frame == nullptr)
                         goto end_loop;
                     uint8_t* gate_frame =
                         wait_for_empty_frame(gate_buf, unique_name.c_str(), out_buffer_ID);
-                    if (gate_frame == NULL)
+                    if (gate_frame == nullptr)
                         goto end_loop;
 
                     if (_enable_basic_gating) {

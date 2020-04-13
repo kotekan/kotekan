@@ -2,9 +2,9 @@
 #ifndef PULSAR_TIMING_HPP
 #define PULSAR_TIMING_HPP
 
-#include "time.h"
-
-#include <vector>
+#include <time.h>  // for timespec
+#include <utility> // for pair
+#include <vector>  // for vector
 
 
 /**

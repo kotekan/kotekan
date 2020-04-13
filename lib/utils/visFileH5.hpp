@@ -7,22 +7,22 @@
 #ifndef VIS_FILE_H5_HPP
 #define VIS_FILE_H5_HPP
 
-#include "Config.hpp"
-#include "datasetManager.hpp"
-#include "visBuffer.hpp"
-#include "visFile.hpp"
-#include "visUtil.hpp"
+#include "datasetManager.hpp" // for dset_id_t
+#include "kotekanLogging.hpp" // for logLevel
+#include "visBuffer.hpp"      // for visFrameView
+#include "visFile.hpp"        // for visFile
+#include "visUtil.hpp"        // for time_ctype, freq_ctype, input_ctype, prod_ctype
 
-#include <cstdint>
-#include <highfive/H5DataSet.hpp>
-#include <highfive/H5File.hpp>
-#include <iostream>
-#include <map>
-#include <memory>
-#include <stddef.h>
-#include <string>
-#include <sys/types.h>
-#include <vector>
+#include <cstdint>                 // for uint32_t
+#include <highfive/H5DataSet.hpp>  // for DataSet
+#include <highfive/H5DataType.hpp> // for DataType
+#include <highfive/H5File.hpp>     // for File
+#include <map>                     // for map
+#include <memory>                  // for unique_ptr
+#include <stddef.h>                // for size_t
+#include <string>                  // for string
+#include <sys/types.h>             // for off_t
+#include <vector>                  // for vector
 
 /** @brief A CHIME correlator file.
  *
@@ -254,6 +254,10 @@ protected:
 
 // These templated functions are needed in order to tell HighFive how the
 // various structs are converted into HDF5 datatypes
+const size_t DSET_ID_LEN = 33; // Length of the string used to represent dataset IDs
+struct dset_id_str {
+    char hash[DSET_ID_LEN];
+};
 namespace HighFive {
 template<>
 DataType create_datatype<freq_ctype>();
@@ -265,6 +269,15 @@ template<>
 DataType create_datatype<prod_ctype>();
 template<>
 DataType create_datatype<cfloat>();
+
+// \cond NO_DOC
+// Fixed length string to store dataset ID
+template<>
+inline AtomicType<dset_id_str>::AtomicType() {
+    _hid = H5Tcopy(H5T_C_S1);
+    H5Tset_size(_hid, DSET_ID_LEN);
+}
+// \endcond
 }; // namespace HighFive
 
 

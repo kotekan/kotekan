@@ -10,6 +10,7 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 #
 
 import pytest
+import subprocess
 
 
 def pytest_addoption(parser):

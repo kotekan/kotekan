@@ -1,20 +1,23 @@
 #include "streamSingleDishVDIF.hpp"
 
-#include "buffer.h"
-#include "errors.h"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for ERROR, INFO
 
-#include <arpa/inet.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <unistd.h>
+#include <arpa/inet.h>  // for inet_aton
+#include <atomic>       // for atomic_bool
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, bind, function
+#include <netinet/in.h> // for sockaddr_in, IPPROTO_UDP, htons
+#include <regex>        // for match_results<>::_Base_type
+#include <stdio.h>      // for size_t
+#include <stdlib.h>     // for exit
+#include <string.h>     // for memset
+#include <sys/socket.h> // for sendto, socket, AF_INET, SOCK_DGRAM
+#include <vector>       // for vector
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -22,7 +25,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(streamSingleDishVDIF);
 
-streamSingleDishVDIF::streamSingleDishVDIF(Config& config, const string& unique_name,
+streamSingleDishVDIF::streamSingleDishVDIF(Config& config, const std::string& unique_name,
                                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&streamSingleDishVDIF::main_thread, this)) {
@@ -39,7 +42,7 @@ streamSingleDishVDIF::~streamSingleDishVDIF() {}
 void streamSingleDishVDIF::main_thread() {
 
     int frame_id = 0;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
 
     // Send files over the loop back address;
     // UDP variables
@@ -73,7 +76,7 @@ void streamSingleDishVDIF::main_thread() {
 
         // Wait for a full buffer.
         frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         // Send data to remote server.

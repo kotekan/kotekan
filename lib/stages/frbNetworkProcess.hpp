@@ -7,14 +7,22 @@
 #ifndef FRBNETWORKPROCESS_HPP
 #define FRBNETWORKPROCESS_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "restServer.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
+#include "restServer.hpp"      // for connectionInstance
 
-#include <atomic>
-#include <functional>
-#include <string>
-#include <vector>
+#include "json.hpp" // for json
+
+#include <atomic>             // for atomic_bool
+#include <chrono>             // for seconds
+#include <condition_variable> // for condition_variable
+#include <functional>         // for reference_wrapper
+#include <map>                // for map
+#include <netinet/in.h>       // for sockaddr_in
+#include <stdint.h>           // for uint32_t
+#include <string>             // for string
+#include <vector>             // for vector
 
 /**
  * @class frbNetworkProcess
@@ -78,7 +86,7 @@ struct DestIpSocket {
     DestIpSocket(DestIpSocket&& other);
 
     //@{
-    /// host address as a string and a `sockaddr` structure
+    /// host address as a std::string and a `sockaddr` structure
     const std::string host;
     const sockaddr_in addr;
     //@}
@@ -93,20 +101,39 @@ struct DestIpSocket {
     std::atomic_bool live;
 };
 
+/**
+ * @brief internal data type for keeping track of host checks and replies
+ */
+struct DestIpSocketTime {
+    DestIpSocket* dst;
+    std::chrono::steady_clock::time_point last_responded;
+    std::chrono::steady_clock::time_point next_check;
+    std::chrono::steady_clock::time_point last_checked = last_responded;
+    uint16_t ping_seq = 0;
+    friend bool operator<(const DestIpSocketTime& l, const DestIpSocketTime& r) {
+        if (l.next_check == r.next_check) {
+            // break check time ties by host address
+            return l.dst->addr.sin_addr.s_addr > r.dst->addr.sin_addr.s_addr;
+        } else
+            return l.next_check > r.next_check;
+    }
+};
+
 class frbNetworkProcess : public kotekan::Stage {
 public:
     /// Constructor, also initializes internal variables from config.
-    frbNetworkProcess(kotekan::Config& config, const string& unique_name,
+    frbNetworkProcess(kotekan::Config& config, const std::string& unique_name,
                       kotekan::bufferContainer& buffer_container);
 
     /// Destructor , cleaning local allocations
     virtual ~frbNetworkProcess();
 
     /// Callback to update the beam offset
-    void update_offset_callback(kotekan::connectionInstance& conn, json& json_request);
+    void update_offset_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
 
     /// Callback to change destination active status
-    void set_destination_active_callback(kotekan::connectionInstance& conn, json& json_request);
+    void set_destination_active_callback(kotekan::connectionInstance& conn,
+                                         nlohmann::json& json_request);
 
     /// main thread
     void main_thread() override;
@@ -162,14 +189,26 @@ private:
     /// for multiple streams)
     std::vector<std::reference_wrapper<DestIpSocket>> stream_dest;
 
+    /// raw sockets used as sources for outgoing pings
+    std::vector<int> ping_src_fd;
+
+    // quick destination lookup by IP address
+    std::map<uint32_t, DestIpSocketTime> dest_by_ip;
+
     /// initialize sockets used to send data to FRB nodes
     int initialize_source_sockets();
 
     /// initialize destination addresses and determine the sending socket to use
     int initialize_destinations();
 
+    /// initialize raw sockets used for pinging
+    void initialize_pinging_sockets();
+
     /// background thread that periodically pings destination hosts and updates their @c live status
     void ping_destinations();
+
+    /// background thread that listens for ping replies from destination hosts
+    void receive_ping_responses();
 
     /// used by @p ping_destinations for periodic sleep interruptible by the @p main_thread on
     /// Kotekan stop

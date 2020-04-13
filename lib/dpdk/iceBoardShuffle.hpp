@@ -8,13 +8,17 @@
 #ifndef ICE_BOARD_SHUFFLE_HPP
 #define ICE_BOARD_SHUFFLE_HPP
 
+#include "Config.hpp"
 #include "buffer.h"
+#include "bufferContainer.hpp"
 #include "chimeMetadata.h"
 #include "gpsTime.h"
 #include "iceBoardHandler.hpp"
+#include "kotekanLogging.hpp"
 #include "packet_copy.h"
 #include "prometheusMetrics.hpp"
 #include "util.h"
+
 
 /**
  * @brief DPDK Packet handler which adds a final stage shuffle for systems larger than 512 elements
@@ -247,9 +251,9 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
     std::string endpoint_name = unique_name + "/port_data";
     kotekan::restServer::instance().register_get_callback(
         endpoint_name, [&](kotekan::connectionInstance& conn) {
-            json info = get_json_port_info();
+            nlohmann::json info = get_json_port_info();
 
-            vector<uint64_t> second_stage_errors;
+            std::vector<uint64_t> second_stage_errors;
             second_stage_errors.assign(fpga_second_stage_shuffle_errors,
                                        fpga_second_stage_shuffle_errors + 16);
             info["fpga_second_stage_shuffle_errors"] = second_stage_errors;
@@ -258,7 +262,7 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
             info["fpga_second_stage_long_errors"] = fpga_second_stage_long_errors;
             info["fpga_second_stage_fifo_overflow_errors"] = fpga_second_stage_fifo_overflow_errors;
 
-            vector<uint64_t> third_stage_errors;
+            std::vector<uint64_t> third_stage_errors;
             third_stage_errors.assign(fpga_third_stage_shuffle_errors,
                                       fpga_third_stage_shuffle_errors + 8);
             info["fpga_thrid_stage_shuffle_errors"] = third_stage_errors;
@@ -368,7 +372,14 @@ inline bool iceBoardShuffle::check_stream_id() {
 
 inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     struct timeval now;
-    gettimeofday(&now, NULL);
+    gettimeofday(&now, nullptr);
+
+    struct timespec gps_time;
+    gps_time.tv_sec = 0;
+    gps_time.tv_nsec = 0;
+    if (is_gps_global_time_set()) {
+        gps_time = compute_gps_time(new_seq);
+    }
 
     for (uint32_t i = 0; i < shuffle_size; ++i) {
         if (!first_time) {
@@ -380,17 +391,13 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
         out_buf_frame[i] =
             wait_for_empty_frame(out_bufs[i], unique_name.c_str(), out_buf_frame_ids[i]);
-        if (out_buf_frame[i] == NULL)
+        if (out_buf_frame[i] == nullptr)
             return false;
 
         allocate_new_metadata_object(out_bufs[i], out_buf_frame_ids[i]);
 
         set_first_packet_recv_time(out_bufs[i], out_buf_frame_ids[i], now);
-
-        if (is_gps_global_time_set() == 1) {
-            struct timespec gps_time = compute_gps_time(new_seq);
-            set_gps_time(out_bufs[i], out_buf_frame_ids[i], gps_time);
-        }
+        set_gps_time(out_bufs[i], out_buf_frame_ids[i], gps_time);
 
         // We take the stream ID only from the first pair of crates,
         // to avoid overwriting it on different ports.
@@ -411,8 +418,22 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     }
     lost_samples_frame =
         wait_for_empty_frame(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
-    if (lost_samples_frame == NULL)
+    if (lost_samples_frame == nullptr)
         return false;
+
+    allocate_new_metadata_object(lost_samples_buf, lost_samples_frame_id);
+    set_fpga_seq_num(lost_samples_buf, lost_samples_frame_id, new_seq);
+    set_first_packet_recv_time(lost_samples_buf, lost_samples_frame_id, now);
+    set_gps_time(lost_samples_buf, lost_samples_frame_id, gps_time);
+
+    // The lost samples buffer is the same for all 4 frequencies,
+    // so the stream ID actually covers all 4 possible `unused` freq values.
+    if (port_stream_id.crate_id / 2 == 0) {
+        stream_id_t tmp_stream_id = port_stream_id;
+        tmp_stream_id.unused = 0;
+        set_stream_id_t(lost_samples_buf, lost_samples_frame_id, tmp_stream_id);
+    }
+
     return true;
 }
 
@@ -505,7 +526,7 @@ inline bool iceBoardShuffle::check_fpga_shuffle_flags(struct rte_mbuf* mbuf) {
     // Go to the last part of the packet
     // Note this assumes that the footer doesn't cross two mbuf
     // segment, but based on the packet design this should never happen.
-    while (mbuf->next != NULL) {
+    while (mbuf->next != nullptr) {
         mbuf = mbuf->next;
     }
 

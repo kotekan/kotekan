@@ -1,31 +1,35 @@
 #include "visWriter.hpp"
 
-#include "StageFactory.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "version.h"
-#include "visBuffer.hpp"
-#include "visCompression.hpp"
-#include "visFile.hpp"
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for Hash, operator<
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, fingerprint_t, datasetManager
+#include "datasetState.hpp"      // for metadataState, freqState, prodState, stackState, _facto...
+#include "factory.hpp"           // for FACTORY
+#include "kotekanLogging.hpp"    // for INFO, ERROR, WARN, FATAL_ERROR, DEBUG, logLevel
+#include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily, Gauge
+#include "restServer.hpp"        // for restServer, connectionInstance, HTTP_RESPONSE
+#include "version.h"             // for get_git_commit_hash
+#include "visBuffer.hpp"         // for visFrameView
+#include "visFile.hpp"           // for visFileBundle, visCalFileBundle, _factory_aliasvisFile
 
-#include "fmt.hpp"
-#include "json.hpp"
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for json_ref, json
 
-#include <atomic>
-#include <cxxabi.h>
-#include <exception>
-#include <functional>
-#include <inttypes.h>
-#include <regex>
-#include <signal.h>
-#include <sstream>
-#include <stdexcept>
-#include <sys/types.h>
-#include <time.h>
-#include <tuple>
-#include <vector>
+#include <algorithm>    // for copy, copy_backward, count_if, equal, max
+#include <atomic>       // for atomic_bool
+#include <cxxabi.h>     // for __forced_unwind
+#include <deque>        // for deque
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <regex>        // for match_results<>::_Base_type, regex_replace, regex
+#include <sstream>      // for basic_stringbuf<>::int_type, basic_stringbuf<>::pos_type
+#include <sys/types.h>  // for uint
+#include <system_error> // for system_error
+#include <tuple>        // for get
+#include <vector>       // for vector
 
 
 using kotekan::bufferContainer;
@@ -41,7 +45,8 @@ REGISTER_KOTEKAN_STAGE(visWriter);
 REGISTER_KOTEKAN_STAGE(visCalWriter);
 
 
-visWriter::visWriter(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+visWriter::visWriter(Config& config, const std::string& unique_name,
+                     bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&visWriter::main_thread, this)),
     late_frame_counter(Metrics::instance().add_counter("kotekan_viswriter_late_frame_total",
                                                        unique_name, {"freq_id"})),
@@ -363,7 +368,7 @@ std::map<std::string, std::string> visWriter::make_metadata(dset_id_t ds_id) {
 }
 
 
-visCalWriter::visCalWriter(Config& config, const string& unique_name,
+visCalWriter::visCalWriter(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     visWriter::visWriter(config, unique_name, buffer_container) {
 
@@ -427,7 +432,8 @@ void visCalWriter::rest_callback(connectionInstance& conn) {
     }
 
     // Respond with frozen file path
-    json reply{"file_path", fmt::format(fmt("{:s}/{:s}/{:s}"), root_path, acq_name, fname_frozen)};
+    nlohmann::json reply{"file_path",
+                         fmt::format(fmt("{:s}/{:s}/{:s}"), root_path, acq_name, fname_frozen)};
     conn.send_json_reply(reply);
     INFO("Done. Resuming write loop.");
 }

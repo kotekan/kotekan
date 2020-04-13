@@ -1,8 +1,20 @@
 #include "hexDump.hpp"
 
-#include "util.h"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for DEBUG
+#include "util.h"              // for hex_dump
 
-#include <utils/visUtil.hpp>
+#include <atomic>            // for atomic_bool
+#include <cstdint>           // for int32_t
+#include <exception>         // for exception
+#include <regex>             // for match_results<>::_Base_type
+#include <stdexcept>         // for runtime_error
+#include <utils/visUtil.hpp> // for frameID, modulo
+#include <vector>            // for vector
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -35,7 +47,7 @@ void hexDump::main_thread() {
     while (!stop_thread) {
 
         uint8_t* frame = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         DEBUG("hexDump: Got buffer {:s}[{:d}]", in_buf->buffer_name, frame_id);

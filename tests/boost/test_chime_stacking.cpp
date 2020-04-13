@@ -1,11 +1,20 @@
 #define BOOST_TEST_MODULE "test_chime_stacking"
 
-#include <boost/test/included/unit_test.hpp>
-#include <stdexcept>
+#include "datasetState.hpp"   // for invert_stack
+#include "visCompression.hpp" // for stack_chime_in_cyl, chimeFeed, CYL_A, CYL_D
+#include "visUtil.hpp"        // for input_ctype, rstack_ctype, prod_ctype, stac...
 
-// the code to test:
-#include "visCompression.hpp"
-#include "visUtil.hpp"
+#include <algorithm>                         // for transform
+#include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...
+#include <cstdint>                           // for uint32_t, uint16_t
+#include <memory>                            // for allocator, allocator_traits<>::value_type
+#include <numeric>                           // for iota
+#include <ostream>                           // for operator<<, ostream, basic_ostream, basic_o...
+#include <stdexcept>                         // for invalid_argument
+#include <string>                            // for string
+#include <utility>                           // for pair
+#include <vector>                            // for vector, vector<>::iterator
+
 
 // Teach boost to understand how to print the stack types...
 std::ostream& operator<<(std::ostream& os, rstack_ctype const& pr) {
