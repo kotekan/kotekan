@@ -36,15 +36,8 @@ import requests
 import json
 import imp
 from ch_util import ephemeris
+from kotekan import __version__
 
-# Get version number
-try:
-    _version = imp.load_source("get_versions", "../../kotekan/_version.py")
-    __version__ = _version.get_versions()["version"]
-    del _version
-except FileNotFoundError:
-    with open("/usr/local/share/rfi_receiver/version.txt") as f:
-        __version__ = f.readline()
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
