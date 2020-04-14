@@ -45,8 +45,8 @@ execute_process(
 )
 
 execute_process(
-  COMMAND python ${SOURCE_DIR}/python/kotekan/print_kotekan_version.py
-  WORKING_DIRECTORY ${SOURCE_DIR}
+  COMMAND python -c "import kotekan; print(kotekan.__version__)"
+  WORKING_DIRECTORY ${SOURCE_DIR}/python/
   OUTPUT_VARIABLE KOTEKAN_VERSION
   OUTPUT_STRIP_TRAILING_WHITESPACE
 )
