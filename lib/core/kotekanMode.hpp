@@ -35,6 +35,9 @@ public:
     // Join blocks until all stages have stopped.
     void join();
 
+protected:
+    
+
 private:
     Config& config;
     bufferContainer buffer_container;

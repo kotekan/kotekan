@@ -94,7 +94,7 @@ void kotekanMode::initalize_stages() {
         nlohmann::json buffer_json = {};
 
         for (auto& buf : buffer_container.get_buffer_map()) {
-            json buf_info = {};
+            nlohmann::json buf_info = {};
             buf_info["consumers"];
             for (int i = 0; i < MAX_CONSUMERS; ++i) {
                 if (buf.second->consumers[i].in_use) {
@@ -119,7 +119,7 @@ void kotekanMode::initalize_stages() {
     });
 
     restServer::instance().register_get_callback("/pipeline_dot", [&](connectionInstance& conn) {
-        string dot = "# This is a DOT formated pipeline graph, use the graphviz package to plot.\n";
+        std::string dot = "# This is a DOT formated pipeline graph, use the graphviz package to plot.\n";
         dot += "digraph pipeline {\n";
 
         // Setup buffer nodes
@@ -136,14 +136,14 @@ void kotekanMode::initalize_stages() {
         for (auto& buf : buffer_container.get_buffer_map()) {
             for (int i = 0; i < MAX_CONSUMERS; ++i) {
                 if (buf.second->consumers[i].in_use) {
-                    dot += "    \"" + buf.first + "\" -> \"" + string(buf.second->consumers[i].name)
-                           + "\";\n";
+                    dot += "    \"" + buf.first + "\" -> \""
+                           + std::string(buf.second->consumers[i].name) + "\";\n";
                 }
             }
             for (int i = 0; i < MAX_PRODUCERS; ++i) {
                 if (buf.second->producers[i].in_use) {
-                    dot += "    \"" + string(buf.second->producers[i].name) + "\" -> \"" + buf.first
-                           + "\";\n";
+                    dot += "    \"" + std::string(buf.second->producers[i].name) + "\" -> \""
+                           + buf.first + "\";\n";
                 }
             }
         }
