@@ -1,36 +1,37 @@
 #include "VisSharedMemWriter.hpp"
 
-#include "Hash.hpp"           // for Hash
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "datasetManager.hpp" // for datasetManager
-#include "datasetState.hpp"   // for freqState, eigenvalueState, inputState, prodState, stackState
-#include "kotekanLogging.hpp" // for INFO, DEBUG, ERROR, FATAL_ERROR
-#include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily, Gauge
+#include "Hash.hpp"              // for operator==, operator<, Hash
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "datasetManager.hpp"    // for dset_id_t, datasetManager, fingerprint_t
+#include "datasetState.hpp"      // for freqState, _factory_aliasdatasetState
+#include "factory.hpp"           // for FACTORY
+#include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, INFO, WARN
+#include "prometheusMetrics.hpp" // for Counter, Gauge, Metrics, MetricFamily
 #include "visBuffer.hpp"         // for visFrameView, visMetadata
-#include "visUtil.hpp"           // for time_ctype, frameID, ts_to_double, current_time
+#include "visUtil.hpp"           // for time_ctype, frameID, operator<, modulo, current_time
 
-#include "fmt.hpp" // for format, fmt
-
-#include <atomic>       // for atomic_bool
-#include <cxxabi.h>     // for _forced_unwind
-#include <errno.h>      // for ENOENT, errno
-#include <exception>    // for exception
-#include <fcntl.h>      // for O_CREAT, O_EXCL, O_RDWR
-#include <functional>   // for _Bind_helper<>::type, bind, function
-#include <future>       // for async, future
-#include <iterator>     // for reverse_iterator
-#include <map>          // for map, _Rb_tree_iterator
-#include <regex>        // for match_results<>::_Base_type
-#include <stdio.h>      // for remove
-#include <string.h>     // for memcpy, strerror
-#include <sys/mman.h>   // for mmap, shm_open, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE
-#include <sys/stat.h>   // for S_IRUSR, S_IWUSR
-#include <sys/types.h>  // for uint
-#include <system_error> // for system_error
-#include <tuple>        // for get
-#include <unistd.h>     // for access, F_OK
-#include <utility>      // for pair
-#include <vector>       // for vector
+#include <algorithm>   // for copy, fill_n, copy_backward, equal, max
+#include <atomic>      // for atomic_bool
+#include <deque>       // for deque
+#include <errno.h>     // for errno, ENOENT
+#include <exception>   // for exception
+#include <fcntl.h>     // for O_CREAT, O_EXCL, O_RDWR
+#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <iterator>    // for reverse_iterator
+#include <map>         // for map, _Rb_tree_iterator
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error, out_of_range
+#include <stdio.h>     // for size_t, remove
+#include <string.h>    // for strerror, memcpy, memset
+#include <sys/mman.h>  // for mmap, shm_open, MAP_FAILED, MAP_SHARED, PROT_READ, PROT...
+#include <sys/stat.h>  // for S_IRUSR, S_IWUSR
+#include <sys/time.h>  // for CLOCK_REALTIME
+#include <sys/types.h> // for uint
+#include <time.h>      // for clock_gettime, timespec
+#include <tuple>       // for get
+#include <unistd.h>    // for access, close, ftruncate, F_OK
+#include <utility>     // for pair
+#include <vector>      // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

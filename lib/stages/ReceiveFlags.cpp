@@ -19,6 +19,7 @@
 #include <atomic>      // for atomic_bool
 #include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <memory>      // for operator==, __shared_ptr_access
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for invalid_argument, runtime_error
 #include <tuple>       // for get

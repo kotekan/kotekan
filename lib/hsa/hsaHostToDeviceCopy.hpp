@@ -6,16 +6,15 @@
 #ifndef HSA_HOST_TO_DEVICE_COPY_H
 #define HSA_HOST_TO_DEVICE_COPY_H
 
-#include "Config.hpp"          // for Config
-#include "buffer.h"            // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "hsa/hsa.h"           // for hsa_signal_t
-#include "hsaCommand.hpp"
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaCommand.hpp"         // for hsaCommand
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
-#include "visUtil.hpp"            // for FrameID
+#include "visUtil.hpp"            // for frameID
 
-#include <stdint.h> // for uint32_t
-#include <string>   // for string
+#include <string> // for string
 
 /*
  * @class hsaHostToDeviceCopy

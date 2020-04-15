@@ -11,15 +11,16 @@
 #include "buffer.h"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, fingerprint_t
-#include "prometheusMetrics.hpp" // for Counter, MetricFamily
+#include "prometheusMetrics.hpp" // for MetricFamily, Counter, Gauge
 #include "visBuffer.hpp"         // for visFrameView
-#include "visUtil.hpp"           // for time_ctype, movingAverage
+#include "visUtil.hpp"           // for time_ctype, modulo, movingAverage
 
-#include <cstdint>     // for uint32_t, uint64_t, uint8_t
+#include <cstdint>     // for uint64_t, uint32_t, uint8_t, int64_t
 #include <map>         // for map
 #include <semaphore.h> // for sem_t
-#include <stdexcept>   // for runtime_error
-#include <string>      // for string, operator+
+#include <set>         // for set
+#include <stddef.h>    // for size_t
+#include <string>      // for string
 
 /**
  * @class VisSharedMemWriter
