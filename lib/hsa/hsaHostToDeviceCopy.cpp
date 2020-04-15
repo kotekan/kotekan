@@ -1,10 +1,10 @@
 #include "hsaHostToDeviceCopy.hpp"
 
-#include "gpuCommand.hpp" // for gpuCommandType, gpuCommandType::COPY_IN
+#include "gpuCommand.hpp"     // for gpuCommandType, gpuCommandType::COPY_IN
+#include "kotekanLogging.hpp" // for DEBUG2
 
 #include <exception> // for exception
-#include <regex>     // for match_results<>::_Base_type
-#include <vector>    // for vector
+#include <stdint.h>  // for uint8_t
 
 using kotekan::bufferContainer;
 using kotekan::Config;

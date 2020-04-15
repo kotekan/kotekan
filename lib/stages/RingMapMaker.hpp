@@ -2,14 +2,28 @@
 #ifndef RINGMAP_HPP
 #define RINGMAP_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "datasetManager.hpp"
-#include "fpga_header_functions.h"
-#include "restServer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for dset_id_t
+#include "datasetState.hpp"    // for stackState, prodState
+#include "restServer.hpp"      // for connectionInstance
+#include "visUtil.hpp"         // for input_ctype, prod_ctype, time_ctype, stack_ctype, cfloat
 
-#include "gsl-lite.hpp"
+#include "fmt.hpp"  // for format
+#include "json.hpp" // for json
+
+#include <algorithm> // for copy, max
+#include <map>       // for map
+#include <math.h>    // for cos
+#include <mutex>     // for mutex
+#include <stddef.h>  // for size_t
+#include <stdexcept> // for runtime_error
+#include <stdint.h>  // for uint32_t, int64_t, uint8_t
+#include <string>    // for string
+#include <utility>   // for pair
+#include <vector>    // for vector
 
 /**
  * @brief Generate a ringmap from a real-time stream of data.
