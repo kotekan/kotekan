@@ -3,7 +3,7 @@
  */
 #define BOOST_TEST_MODULE "test_BipBuffer"
 
-#include "BipBuffer.hpp"         // for BipWriteReservation, BipBufferReader, BipBu...
+#include "BipBuffer.hpp"         // for BipWriteReservation, BipBuffer, BipBufferRe...
 #include "SynchronizedQueue.hpp" // for SynchronizedQueue
 #include "kotekanLogging.hpp"    // for DEBUG_NON_OO, DEBUG2_NON_OO
 
@@ -14,7 +14,8 @@
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_CHECK, BOOST_PP_BOOL_2
 #include <chrono>                            // for milliseconds
 #include <memory>                            // for unique_ptr
-#include <random>                            // for uniform_int_distribution, random_device
+#include <optional>                          // for optional
+#include <random>                            // for mt19937, uniform_int_distribution, random_d...
 #include <stddef.h>                          // for size_t
 #include <stdint.h>                          // for uint8_t
 #include <thread>                            // for sleep_for, thread

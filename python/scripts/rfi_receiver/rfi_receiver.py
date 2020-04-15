@@ -32,9 +32,12 @@ import time
 import argparse
 import yaml
 import subprocess
-
-# TODO: this can be a different python kotekan installation in some cases
+import requests
+import json
+import imp
+from ch_util import ephemeris
 from kotekan import __version__
+
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -162,14 +165,7 @@ class CommandLine(object):
                     argument.config
                 )
             )
-            # TODO: this was disabled because it ignores the structure of the kotekan
-            # config, looks in the whole kotekan config tree for the keys from the
-            # config hardcoded in this file. It ignores that the kotekan config has
-            # variable names reused in different parts of the config and just applies
-            # all of them, resulting in wrong values, i.e. for samples_per_data_set.
-            # To solve this issue, only the hardcoded config is used, but it should
-            # become a config file or fin d a better way to read the kotekan config.
-            # parse_dict(self, yaml.safe_load(open(argument.config)))
+            parse_dict(self, yaml.safe_load(open(argument.config)))
             logger.info(self.config)
             self.register_config(self.config)
             status = True
@@ -787,6 +783,119 @@ def http_server2():
     httpd.serve_forever()
 
 
+# Disables RFI zeroing during a solar transit
+def rfi_zeroing():
+
+    global InitialKotekanConnection
+
+    # Downtime of RFI zeroing in minutes
+    downtime_m = 60
+
+    # Endpoint parameters
+    url = "http://csBfs:54323/rfi-zeroing-toggle"
+    headers = {"content-type": "application/json", "Accept-Charset": "UTF-8"}
+
+    logger.info("RFI Solar Transit Toggle: Starting thread")
+    while not InitialKotekanConnection:
+        time.sleep(1)
+    while True:
+        # Wait until the correct UTC time of the solar transit at DRAO (deals with daylight savings time)
+        t_now = datetime.datetime.utcnow()
+        t_transit = ephemeris.solar_transit(t_now)[0]
+        t_diff = datetime.datetime.utcfromtimestamp(t_transit) - t_now
+
+        time_to_transit_s = abs(t_diff.total_seconds())
+        downtime_s = downtime_m * 60
+
+        # Check if we are in the transit window, if so set downtime accordingly
+        if time_to_transit_s < 0.5 * 3600 or time_to_transit_s > 23.5 * 3600:
+
+            # Calculate time until end of solar transit window
+            downtime_s = time_to_transit_s
+            if time_to_transit_s > 23.5 * 3600:
+                downtime_s = 24 * 3600 - time_to_transit_s
+        else:
+
+            # Time until 30 mins before next solar transit in seconds
+            sleep_time_s = abs(time_to_transit_s - 0.5 * downtime_m * 60)
+
+            # Wait until the correct UTC time (deals with daylight savings time)
+            logger.info(
+                "RFI Solar Transit Toggle: Time of transit: {}".format(
+                    datetime.datetime.fromtimestamp(t_transit)
+                )
+            )
+            logger.info(
+                "RFI Solar Transit Toggle: Time until transit: {}".format(t_diff)
+            )
+            logger.info(
+                "RFI Solar Transit Toggle: Sleeping for {} seconds".format(sleep_time_s)
+            )
+
+            time.sleep(sleep_time_s)
+
+            logger.info(
+                "RFI Solar Transit Toggle: Waking up to disable RFI zeroing during solar transit"
+            )
+
+        # Create payload
+        payload = {"rfi_zeroing": False}
+
+        # Turn RFI zeroing off
+        rfi_zeroing_on = True
+        try:
+            r = requests.post(url, data=json.dumps(payload), headers=headers)
+            if not r.ok:
+                logger.info(
+                    "RFI Solar Transit Toggle: Failed to turn RFI zeroing off. Something went wrong in the request."
+                )
+            else:
+                rfi_zeroing_on = False
+                logger.info(
+                    "RFI Solar Transit Toggle: Successfully turned RFI zeroing off."
+                )
+        except:
+            logger.info(
+                "RFI Solar Transit Toggle: Failure to contact Comet, is it running?"
+            )
+
+        # If we successfully turned RFI zeroing off
+        if not rfi_zeroing_on:
+
+            logger.info(
+                "RFI Solar Transit Toggle: Sleeping %s seconds for duration of solar transit."
+                % (downtime_s)
+            )
+
+            # Wait until sun has passed
+            time.sleep(downtime_s)
+
+            logger.info(
+                "RFI Solar Transit Toggle: Solar transit ended. Waking up to turn RFI zeroing back on."
+            )
+
+            # Payload
+            payload = {"rfi_zeroing": True}
+
+            # Turn rfi zeroing back on
+            try:
+                r = requests.post(url, data=json.dumps(payload), headers=headers)
+                if not r.ok:
+                    logger.info(
+                        "RFI Solar Transit Toggle: Failed to turn RFI zeroing back on. Something went wrong in the request."
+                    )
+                else:
+                    rfi_zeroing_on = True
+                    logger.info(
+                        "RFI Solar Transit Toggle: Successfully turned RFI zeroing back on."
+                    )
+            except:
+                logger.info(
+                    "RFI Solar Transit Toggle: Failure to contact Comet, is it running?"
+                )
+                rfi_zeroing_on = False
+
+
 if __name__ == "__main__":
 
     app = CommandLine()
@@ -839,6 +948,10 @@ if __name__ == "__main__":
     watchdogThread = threading.Thread(target=watchdog_thread)
     watchdogThread.daemon = True
     watchdogThread.start()
+
+    rfi_zeroingThread = threading.Thread(target=rfi_zeroing)
+    rfi_zeroingThread.daemon = True
+    rfi_zeroingThread.start()
 
     while not EXIT:
         time.sleep(1)

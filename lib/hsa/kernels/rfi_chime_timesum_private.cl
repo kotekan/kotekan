@@ -12,9 +12,6 @@ rfi_chime_timesum(
      __global uint *input,
      __global float *output,
      //__global float *output_var,
-//     __constant uchar *InputMask,
-//     __constant uchar *LostSamples,
-//     __global uint *LostSamplesCorrection,
      const uint sk_step,
      const uint num_elements
      //const uint element_index
@@ -25,7 +22,7 @@ rfi_chime_timesum(
     short gy = get_global_id(1);
     short gx_size = get_global_size(0); //_samples_per_data_set/_sk_step
     short gy_size = get_global_size(1); //num_local_freq
-    //Declare Local Memory
+
     uint4 power_across_time;
     uint4 sq_power_across_time;
     //Initialize local memory
@@ -34,11 +31,10 @@ rfi_chime_timesum(
     //Compute current address in data
     uint address = gx + gy*gx_size*sk_step;
     //Compute current element
-    uint current_element = (4*gx)%num_elements;
+    //uint current_element = (4*gx)%num_elements;
     uint data; 
     uint4 temp;
     uint4 power;
-    //uint lost_sample_counter = 0;
     //Sum across time
     for(int i = 0; i < sk_step; i++){
         //Read input data
@@ -52,18 +48,9 @@ rfi_chime_timesum(
         //Integrate
         power_across_time += power;
         sq_power_across_time += power*power;
-        //lost_sample_counter += LostSamples[i + gy*sk_step];
     }
-    //LostSamplesCorrection[gy] = lost_sample_counter;
     //Compute mean of power sum and normalize square power sum
     float4 tmp;
-//    if(lost_sample_counter < sk_step){
-//        float4 mean = convert_float4(power_across_time)/(sk_step-lost_sample_counter) + (float4)0.00000001;
-//        tmp = convert_float4(sq_power_across_time)/(mean*mean);
-//    }
-//    else{
-//        tmp = (float4)(0.0);
-//    }      
     float4 mean = convert_float4(power_across_time)/(sk_step) + (float4)0.00000001;
     tmp = convert_float4(sq_power_across_time)/(mean*mean);
     //Compute address in output data and add sum to output array
