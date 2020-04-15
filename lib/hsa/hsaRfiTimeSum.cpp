@@ -24,7 +24,7 @@ REGISTER_HSA_COMMAND(hsaRfiTimeSum);
 hsaRfiTimeSum::hsaRfiTimeSum(Config& config, const std::string& unique_name,
                              bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_timesum" KERNEL_EXT,
-               "rfi_chime_timesum_private.hsaco") {
+               "rfi_chime_time_sum.hsaco") {
     command_type = gpuCommandType::KERNEL;
     // Retrieve parameters from kotekan config
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
@@ -73,21 +73,21 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, hsa_signal_t precede_signa
     struct __attribute__((aligned(16))) args_t {
         void* input;
         void* output;
-        // void* output_var;
+        void* output_var;
         uint32_t sk_step;
         uint32_t num_elements;
-        // uint32_t element_index;
+        uint32_t element_index;
     } args;
     // Initialize arguments
     memset(&args, 0, sizeof(args));
     // Set argumnets to correct values
     args.input = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
     args.output = device.get_gpu_memory("timesum", output_frame_len);
-    // args.output_var =
-    //    device.get_gpu_memory_array("rfi_output_var", gpu_frame_id, output_var_frame_len);
+     args.output_var =
+        device.get_gpu_memory_array("rfi_output_var", gpu_frame_id, output_var_frame_len);
     args.sk_step = _sk_step;
     args.num_elements = _num_elements;
-    // args.element_index = _element_index;
+    args.element_index = _element_index;
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
     // Apply correct kernel parameters

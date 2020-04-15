@@ -510,18 +510,18 @@ bad_input_buffer:
   bad_inputs_buffer:
     kotekan_buffer: standard
 
-#rfi_var_output_buffers:
-#  num_frames: buffer_depth * 50
-#  frame_size: num_local_freq * samples_per_data_set / sk_step * sizeof_float
-#  metadata_pool: main_pool
-#  gpu_rfi_var_output_buffer_0:
-#    kotekan_buffer: standard
-#  gpu_rfi_var_output_buffer_1:
-#    kotekan_buffer: standard
-#  gpu_rfi_var_output_buffer_2:
-#    kotekan_buffer: standard
-#  gpu_rfi_var_output_buffer_3:
-#    kotekan_buffer: standard
+rfi_var_output_buffers:
+  num_frames: buffer_depth * 50
+  frame_size: num_local_freq * samples_per_data_set / sk_step * sizeof_float
+  metadata_pool: main_pool
+  gpu_rfi_var_output_buffer_0:
+    kotekan_buffer: standard
+  gpu_rfi_var_output_buffer_1:
+    kotekan_buffer: standard
+  gpu_rfi_var_output_buffer_2:
+    kotekan_buffer: standard
+  gpu_rfi_var_output_buffer_3:
+    kotekan_buffer: standard
 
 lost_samples_buffer:
   kotekan_buffer: standard
@@ -737,7 +737,7 @@ gpu:
     #Copy out queue
     - name: hsaRfiBadInputOutput
     - name: hsaRfiOutput
-    #- name: hsaRfiVarOutput
+    - name: hsaRfiVarOutput
     - name: hsaBeamformPulsarOutput
     - name: hsaBeamformOutputData
     - name: hsaBeamformHFBOutputData
@@ -1626,21 +1626,21 @@ rfi_pkt_loss_record:
     kotekan_stage: rfiRecord
     rfi_in: rfi_compressed_lost_samples_buf
 
-#rfi_var_record:
-#  total_links: 1
-#  updatable_config: "/updatable_config/rfi_var_record"
-#  gpu_0:
-#    kotekan_stage: rfiRecord
-#    rfi_in: gpu_rfi_var_output_buffer_0
-#  gpu_1:
-#    kotekan_stage: rfiRecord
-#    rfi_in: gpu_rfi_var_output_buffer_1
-#  gpu_2:
-#    kotekan_stage: rfiRecord
-#    rfi_in: gpu_rfi_var_output_buffer_2
-#  gpu_3:
-#    kotekan_stage: rfiRecord
-#    rfi_in: gpu_rfi_var_output_buffer_3
+rfi_var_record:
+  total_links: 1
+  updatable_config: "/updatable_config/rfi_var_record"
+  gpu_0:
+    kotekan_stage: rfiRecord
+    rfi_in: gpu_rfi_var_output_buffer_0
+  gpu_1:
+    kotekan_stage: rfiRecord
+    rfi_in: gpu_rfi_var_output_buffer_1
+  gpu_2:
+    kotekan_stage: rfiRecord
+    rfi_in: gpu_rfi_var_output_buffer_2
+  gpu_3:
+    kotekan_stage: rfiRecord
+    rfi_in: gpu_rfi_var_output_buffer_3
 
 #### Monitoring and debug stages ####
 
