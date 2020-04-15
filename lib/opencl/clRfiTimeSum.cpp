@@ -61,7 +61,7 @@ void clRfiTimeSum::build(device_interface& param_Device) {
     valDeviceID = param_Device.getDeviceID(param_Device.getGpuID());
     CHECK_CL_ERROR(clBuildProgram(program, 1, &valDeviceID, cl_options.c_str(), nullptr, nullptr));
     // Create the kernel
-    kernel = clCreateKernel(program, "rfi_chime_timesum", &err);
+    kernel = clCreateKernel(program, "rfi_chime_time_sum", &err);
     CHECK_CL_ERROR(err);
     // Set some static arguments
     CHECK_CL_ERROR(clSetKernelArg(kernel, (cl_uint)3, sizeof(int32_t), &_sk_step));

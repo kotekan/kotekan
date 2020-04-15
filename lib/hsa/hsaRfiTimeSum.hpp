@@ -22,11 +22,11 @@
  * @class hsaRfiTimeSum
  * @brief hsaCommand to performs prallel sum of power and square power across time.
  *
- * This is an hsaCommand that launches the kernel (rfi_chime_timesum.hsaco) to perform
+ * This is an hsaCommand that launches the kernel (rfi_chime_time_sum.hsaco) to perform
  * a parallel sum of power and square power estimates across time. The sum is then normalized
  * by the mean power and sent to the hsaRfiIputSum command.
  *
- * @requires_kernel    rfi_chime_timesum_private.hasco
+ * @requires_kernel    rfi_chime_time_sum_private.hasco
  *
  * @par REST Endpoints
  * @endpoint    /rfi_time_sum_callback/<gpu_id> ``POST`` Change kernel parameters
@@ -59,7 +59,7 @@ public:
                   kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiTimeSum();
-    /// Executes rfi_chime_inputsum.hsaco kernel. Allocates kernel variables, initalizes input mask
+    /// Executes rfi_chime_input_sum.hsaco kernel. Allocates kernel variables, initalizes input mask
     /// array.
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 

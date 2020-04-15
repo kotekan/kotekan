@@ -17,11 +17,11 @@
  * @brief ``gpu_command`` which integrates the output of clRfiTimeSum across inputs and computs
  * kurtosis estimates.
  *
- * This gpu command executes the rfi_chime_inputsum.cl or rfi_chime_inputsum_private.cl depending on
+ * This gpu command executes the rfi_chime_input_sum.cl or rfi_chime_input_sum_private.cl depending on
  * which is quickest. The kernel reads the output of clRfiTimeSum and integrates it across inputs.
  * Then a kurtosis estimate is computed and placed in the output buffer.
  *
- * @requires_kernel    rfi_chime_inputsum_private.cl
+ * @requires_kernel    rfi_chime_input_sum_private.cl
  *
  * @par REST Endpoints
  * @endpoint    /rfi_input_sum_callback/<gpu_id> ``POST`` Update kernel parameters

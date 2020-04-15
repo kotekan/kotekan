@@ -26,7 +26,7 @@ REGISTER_HSA_COMMAND(hsaRfiInputSum);
 
 hsaRfiInputSum::hsaRfiInputSum(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    // Note, the rfi_chime_inputsum_private.hsaco kernel may be used in the future.
+    // Note, the rfi_chime_input_sum_private.hsaco kernel may be used in the future.
     hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_input_sum" KERNEL_EXT,
                "rfi_chime_input_sum.hsaco") {
     command_type = gpuCommandType::KERNEL;
@@ -117,7 +117,7 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
     params.num_dims = 3;
     params.private_segment_size = 0;
     params.group_segment_size = 1024;
-    // Parameters for rfi_chime_inputsum_private.hsaco, for easy switching if needed in future
+    // Parameters for rfi_chime_input_sum_private.hsaco, for easy switching if needed in future
     /*    params.workgroup_size_x = _num_local_freq;
         params.workgroup_size_y = 1;
         params.workgroup_size_z = 1;
