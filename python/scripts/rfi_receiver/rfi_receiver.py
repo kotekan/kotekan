@@ -811,9 +811,10 @@ def rfi_zeroing():
         if time_to_transit_s < 0.5 * 3600 or time_to_transit_s > 23.5 * 3600:
 
             # Calculate time until end of solar transit window
-            downtime_s = time_to_transit_s
             if time_to_transit_s > 23.5 * 3600:
                 downtime_s = 24 * 3600 - time_to_transit_s
+            else:
+                downtime_s = time_to_transit_s + 1800
         else:
 
             # Time until 30 mins before next solar transit in seconds
