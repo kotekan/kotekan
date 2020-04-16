@@ -90,6 +90,7 @@ class CommandLine(object):
             "use_dataset_broker": True,
             "ds_broker_host": "10.1.50.11",
             "ds_broker_port": 12050,
+            "solar_transit_downtime_m": 60,
         }
         self.supportedModes = ["vdif", "pathfinder", "chime"]
         parser = argparse.ArgumentParser(description="RFI Receiver Script")
@@ -789,8 +790,10 @@ def rfi_zeroing():
 
     global InitialKotekanConnection
 
-    # Downtime of RFI zeroing in minutes
-    downtime_m = 60
+    # Downtime of RFI zeroing in seconds
+    downtime_s = solar_transit_downtime_m * 60
+    half_downtime_s = 0.5 * downtime_s
+    minutes_in_day = 24 * 60
 
     # Endpoint parameters
     url = "http://csBfs:54323/rfi-zeroing-toggle"
@@ -806,20 +809,17 @@ def rfi_zeroing():
         t_diff = datetime.datetime.utcfromtimestamp(t_transit) - t_now
 
         time_to_transit_s = abs(t_diff.total_seconds())
-        downtime_s = downtime_m * 60
+
 
         # Check if we are in the transit window, if so set downtime accordingly
-        if time_to_transit_s < 0.5 * 3600 or time_to_transit_s > 23.5 * 3600:
-
-            # Calculate time until end of solar transit window
-            if time_to_transit_s > 23.5 * 3600:
-                downtime_s = 24 * 3600 - time_to_transit_s
-            else:
-                downtime_s = time_to_transit_s + 1800
+        if time_to_transit_s < half_downtime_s:
+            downtime_s = time_to_transit_s + half_downtime_s
+        elif time_to_transit_s > (minutes_in_day - (0.5 * solar_transit_downtime_m)) * 60:
+            downtime_s = minutes_in_day * 60 - time_to_transit_s
         else:
 
-            # Time until 30 mins before next solar transit in seconds
-            sleep_time_s = abs(time_to_transit_s - 0.5 * downtime_m * 60)
+            # Time until half_downtime_s before next solar transit in seconds
+            sleep_time_s = abs(time_to_transit_s - half_downtime_s)
 
             # Wait until the correct UTC time (deals with daylight savings time)
             logger.info(
