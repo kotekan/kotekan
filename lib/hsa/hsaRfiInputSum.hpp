@@ -37,7 +37,7 @@
  *              update config             "num_bad_inputs"
  *
  * @par GPU Memory
- * @gpu_mem  timesum            Input data from the hsaRfiTimeSum command  of size input_frame_len
+ * @gpu_mem  time_sum           Input data from the hsaRfiTimeSum command  of size input_frame_len
  *     @gpu_mem_type            static
  *     @gpu_mem_format          Array of @c float
  *     @gpu_mem_metadata        chimeMetadata

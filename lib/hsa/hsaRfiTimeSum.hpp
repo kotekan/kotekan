@@ -38,7 +38,7 @@
  *     @gpu_mem_type            staging
  *     @gpu_mem_format          Array of @c uint8_t
  *     @gpu_mem_metadata        chimeMetadata
- * @gpu_mem  timesum            Output data of size output_frame_len
+ * @gpu_mem  time_sum           Output data of size output_frame_len
  *     @gpu_mem_type            static
  *     @gpu_mem_format          Array of @c float
  *     @gpu_mem_metadata        chimeMetadata
