@@ -11,10 +11,10 @@ __kernel void
 rfi_chime_time_sum(
      __global uint *input,
      __global float *output,
-     //__global float *output_var,
+     __global float *output_var,
      const uint sk_step,
-     const uint num_elements
-     //const uint element_index
+     const uint num_elements,
+     const uint element_index
 )
 {
     //Get work id's

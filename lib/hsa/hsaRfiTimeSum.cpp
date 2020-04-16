@@ -36,7 +36,7 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config, const std::string& unique_name,
     input_frame_len = sizeof(uint8_t) * _num_elements * _num_local_freq * _samples_per_data_set;
     output_frame_len =
         sizeof(float) * _num_local_freq * _num_elements * _samples_per_data_set / _sk_step;
-    // output_var_frame_len = sizeof(float) * _num_local_freq * _samples_per_data_set / _sk_step;
+    output_var_frame_len = sizeof(float) * _num_local_freq * _samples_per_data_set / _sk_step;
 
     auto input_reorder = parse_reorder_default(config, unique_name);
     input_remap = std::get<0>(input_reorder);

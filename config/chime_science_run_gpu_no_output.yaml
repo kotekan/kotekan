@@ -676,7 +676,7 @@ rfi_copy_compress_lost_samples_buffers:
 
 # GPU processing section
 gpu:
-  kernel_path: "/var/lib/kotekan/hsa_kernels/"
+  kernel_path: "../lib/hsa/kernels/"
   commands: &command_list
     # Copy in queue
     - name: hsaInputData
@@ -784,7 +784,7 @@ gpu:
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_0
       rfi_output_buf: gpu_rfi_output_buffer_0
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_0
-      #rfi_var_output_buf: gpu_rfi_var_output_buffer_0
+      rfi_var_output_buf: gpu_rfi_var_output_buffer_0
   gpu_1:
     kotekan_stage: hsaProcess
     gpu_id: 1
@@ -807,7 +807,7 @@ gpu:
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_1
       rfi_output_buf: gpu_rfi_output_buffer_1
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_1
-      #rfi_var_output_buf: gpu_rfi_var_output_buffer_1
+      rfi_var_output_buf: gpu_rfi_var_output_buffer_1
   gpu_2:
     kotekan_stage: hsaProcess
     gpu_id: 2
@@ -830,7 +830,7 @@ gpu:
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_2
       rfi_output_buf: gpu_rfi_output_buffer_2
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_2
-      #rfi_var_output_buf: gpu_rfi_var_output_buffer_2
+      rfi_var_output_buf: gpu_rfi_var_output_buffer_2
   gpu_3:
     kotekan_stage: hsaProcess
     gpu_id: 3
@@ -853,7 +853,7 @@ gpu:
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_3
       rfi_output_buf: gpu_rfi_output_buffer_3
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_3
-      #rfi_var_output_buf: gpu_rfi_var_output_buffer_3
+      rfi_var_output_buf: gpu_rfi_var_output_buffer_3
 
 # Integrate frames of HFB data from each GPU to ~10s cadence 
 hyper_fine_beam:
@@ -1626,21 +1626,21 @@ rfi_pkt_loss_record:
     kotekan_stage: rfiRecord
     rfi_in: rfi_compressed_lost_samples_buf
 
-rfi_var_record:
-  total_links: 1
-  updatable_config: "/updatable_config/rfi_var_record"
-  gpu_0:
-    kotekan_stage: rfiRecord
-    rfi_in: gpu_rfi_var_output_buffer_0
-  gpu_1:
-    kotekan_stage: rfiRecord
-    rfi_in: gpu_rfi_var_output_buffer_1
-  gpu_2:
-    kotekan_stage: rfiRecord
-    rfi_in: gpu_rfi_var_output_buffer_2
-  gpu_3:
-    kotekan_stage: rfiRecord
-    rfi_in: gpu_rfi_var_output_buffer_3
+    #rfi_var_record:
+    #  total_links: 1
+    #  updatable_config: "/updatable_config/rfi_var_record"
+    #  gpu_0:
+    #    kotekan_stage: rfiRecord
+    #    rfi_in: gpu_rfi_var_output_buffer_0
+    #  gpu_1:
+    #    kotekan_stage: rfiRecord
+    #    rfi_in: gpu_rfi_var_output_buffer_1
+    #  gpu_2:
+    #    kotekan_stage: rfiRecord
+    #    rfi_in: gpu_rfi_var_output_buffer_2
+    #  gpu_3:
+    #    kotekan_stage: rfiRecord
+    #    rfi_in: gpu_rfi_var_output_buffer_3
 
 #### Monitoring and debug stages ####
 
