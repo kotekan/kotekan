@@ -512,7 +512,7 @@ bad_input_buffer:
 
 rfi_var_output_buffers:
   num_frames: buffer_depth * 50
-  frame_size: num_local_freq * samples_per_data_set / sk_step * sizeof_float
+  frame_size: num_elements * num_local_freq * samples_per_data_set / sk_step * sizeof_float
   metadata_pool: main_pool
   gpu_rfi_var_output_buffer_0:
     kotekan_buffer: standard

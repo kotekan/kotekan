@@ -60,24 +60,10 @@ rfi_chime_time_sum(
     output[2 + address] = tmp.s2;
     output[3 + address] = tmp.s3;
 
-    //const uint vector_index = element_index % 4;
-
     //Output the variance for the selected feed
-    //if(gx == element_index / 4) {
-    //    switch(vector_index) {
-    //        case 0:
-    //            output_var[gy] = power_across_time.s0;
-    //            break;
-    //        case 1:
-    //            output_var[gy] = power_across_time.s1;
-    //            break;
-    //        case 2:
-    //            output_var[gy] = power_across_time.s2;
-    //            break;
-    //        case 3:
-    //            output_var[gy] = power_across_time.s3;
-    //            break;
-    //    }
-    //}
+    output_var[address + 0] = power_across_time.s0;
+    output_var[address + 1] = power_across_time.s1;
+    output_var[address + 2] = power_across_time.s2;
+    output_var[address + 3] = power_across_time.s3;
 
 }
