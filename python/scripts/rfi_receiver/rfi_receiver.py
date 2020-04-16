@@ -790,8 +790,9 @@ def rfi_zeroing():
 
     global InitialKotekanConnection
 
-    # Downtime of RFI zeroing in seconds
-    downtime_s = solar_transit_downtime_m * 60
+    # Downtime of RFI zeroing
+    downtime_m = app.config["solar_transit_downtime_m"]
+    downtime_s = downtime_m * 60
     half_downtime_s = 0.5 * downtime_s
     minutes_in_day = 24 * 60
 
@@ -814,7 +815,7 @@ def rfi_zeroing():
         # Check if we are in the transit window, if so set downtime accordingly
         if time_to_transit_s < half_downtime_s:
             downtime_s = time_to_transit_s + half_downtime_s
-        elif time_to_transit_s > (minutes_in_day - (0.5 * solar_transit_downtime_m)) * 60:
+        elif time_to_transit_s > (minutes_in_day - (0.5 * downtime_m)) * 60:
             downtime_s = minutes_in_day * 60 - time_to_transit_s
         else:
 
