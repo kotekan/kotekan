@@ -811,7 +811,6 @@ def rfi_zeroing():
 
         time_to_transit_s = abs(t_diff.total_seconds())
 
-
         # Check if we are in the transit window, if so set downtime accordingly
         if time_to_transit_s < half_downtime_s:
             downtime_s = time_to_transit_s + half_downtime_s
