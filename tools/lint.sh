@@ -1,10 +1,10 @@
-#!/bin/sh
+#!/bin/bash
 
 # clang format version
 CLANG_FORMAT=clang-format-8
 
 # kotekan root directory
-KOTEKAN_DIR="."
+KOTEKAN_DIR="./"
 
 # Flag to enable iwyu (default OFF)
 ENABLE_IWYU="OFF"
@@ -25,6 +25,7 @@ usage() {
         - iwyu (optional):    include-what-you-use for C/C++. Make sure to run cmake with
                               -DCMAKE_EXPORT_COMPILE_COMMANDS=ON first
                               (include-what-you-use.org)
+        - cmakelint           lint CMakeList files
 
         -d KOTEKAN_DIR        Path to kotekan root directory
         -i ENABLE_IWYU        \"ON\" or \"OFF\" to enable or disable include-what-you-use (default:
@@ -104,5 +105,9 @@ git diff --exit-code
 echo "Running black..."
 black --exclude "/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|dist|docs)/" $KOTEKAN_DIR
 git diff --exit-code
+
+# cmake-list
+echo "Running cmakelint..."
+source ${KOTEKAN_DIR}/tools/cmakelint.sh ${KOTEKAN_DIR}
 
 exit 0
