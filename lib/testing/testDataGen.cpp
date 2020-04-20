@@ -160,10 +160,7 @@ void testDataGen::main_thread() {
             states.push_back(dm.create_state<eigenvalueState>(_num_eigenvectors).first);
 
             // Create the beam indices
-            std::vector<uint32_t> beams;
-            beams.resize(_num_beams);
-            std::iota(std::begin(beams), std::end(beams), 0);
-            states.push_back(dm.create_state<beamState>(beams).first);
+            states.push_back(dm.create_state<beamState>(_num_beams).first);
 
             // Create the sub-frequencies specification
             std::vector<std::pair<uint32_t, freq_ctype>> sub_freqs;

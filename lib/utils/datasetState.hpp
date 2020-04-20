@@ -768,6 +768,15 @@ public:
     beamState(std::vector<uint32_t> beams) : _beams(beams){};
 
     /**
+     * @brief Constructor
+     * @param num_beams The number of beams. The indices will end up
+     *                  running from 0 to num_beams - 1
+     */
+    beamState(size_t num_beams) : _beams(num_beams) {
+        std::iota(_beams.begin(), _beams.end(), 0);
+    }
+
+    /**
      * @brief Get beam information (read only).
      *
      * @return The beam information as a vector of beam index maps.
