@@ -78,7 +78,7 @@ while getopts ":d:i:j:e:" options; do
   esac
 done
 
-if $EXIT_ON_FAILURE ; then
+if ! [ $EXIT_ON_FAILURE = "OFF" ]; then
     # exit when any command fails
     set -e
 fi
@@ -97,11 +97,12 @@ fi
 
 # clang-format
 echo "Running clang-format..."
-find $KOTEKAN_DIR -type d -name "build" -prune -o -type d -name "include" -prune -o -regex '.*\.\(cpp\|hpp\|c\|h\)' -exec $CLANG_FORMAT -style=file -i {} \;
+find $KOTEKAN_DIR -type d -name "build" -prune -o -type d -name "external" -prune -o -regex '.*\.\(cpp\|hpp\|c\|h\)' -exec $CLANG_FORMAT -style=file -i {} \;
+git diff --exit-code
 
 # black
 echo "Running black..."
-black --exclude docs --exclude build $KOTEKAN_DIR
+black --exclude "/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|dist|docs)/" $KOTEKAN_DIR
 git diff --exit-code
 
 exit 0
