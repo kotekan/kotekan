@@ -349,3 +349,8 @@ jobs:
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${IMG_CORE})
         docker run "${OPTS[@]}" black --exclude docs --check .
+
+    - name: Run cmakelint
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${IMG_CORE})
+        docker run "${OPTS[@]}" tools/cmakelint.sh /code/kotekan

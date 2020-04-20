@@ -24,7 +24,8 @@ RUN python3.7 -m pip install --upgrade pip && \
     python3.7 -m pip install --no-cache-dir "numpy>=1.16.0" && \
     python3.7 -m pip install --no-cache-dir pkgconfig && \
     python3.7 -m pip install --no-cache-dir --upgrade cython && \
-    python3.7 -m pip install --no-cache-dir black
+    python3.7 -m pip install --no-cache-dir black && \
+    python3.7 -m pip install --no-cache-dir cmake_format
 
 RUN mkdir -p /code/build
 WORKDIR /code/build
