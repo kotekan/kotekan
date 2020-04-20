@@ -30,14 +30,23 @@ jobs:
     steps:
     - uses: actions/checkout@v1
 
-    - name: Build docker images
+    - name: Pull docker images
       run: |
         SECONDS=0
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}" | while read line ; do echo "$SECONDS s | $line";  done;
         docker pull --disable-content-trust ${IMG_CORE} | while read line ; do echo "$SECONDS s | $line";  done;
         docker pull --disable-content-trust ${IMG_IWYU} | while read line ; do echo "$SECONDS s | $line";  done;
+    - name: Build core docker image
+      run: |
+        SECONDS=0
         docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE} -t ${IMG_CORE} - < tools/docker/Dockerfile | while read line ; do echo "$SECONDS s | $line";  done;
+    - name: Build iwyu docker image
+      run: |
+        SECONDS=0
         docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE},${IMG_IWYU} -t ${IMG_IWYU} - < tools/iwyu/docker/Dockerfile | while read line ; do echo "$SECONDS s | $line";  done;
+    - name: Push docker images
+      run: |
+        SECONDS=0
         docker push ${IMG_CORE} | while read line ; do echo "$SECONDS s| $line";  done;
         docker push ${IMG_IWYU} | while read line ; do echo "$SECONDS s| $line";  done;
 
