@@ -163,20 +163,7 @@ void testDataGen::main_thread() {
             states.push_back(dm.create_state<beamState>(_num_beams).first);
 
             // Create the sub-frequencies specification
-            std::vector<std::pair<uint32_t, freq_ctype>> sub_freqs;
-            sub_freqs.resize(1024 * _factor_upchan);
-
-            uint32_t index = 0;
-            double freq_width = 400.0 / 1024;
-            double sub_freq_width = freq_width / _factor_upchan;
-            for (auto const& f : fspec) {
-              for (uint32_t sub_freq_index = 0; sub_freq_index < _factor_upchan; sub_freq_index++) {
-                double sub_freq_centre = (f.second.centre - 0.5 * freq_width)
-                  + (sub_freq_index * sub_freq_width) + (0.5 * sub_freq_width);
-                sub_freqs.push_back({index++, {sub_freq_centre, sub_freq_width}});
-              }
-            }
-            states.push_back(dm.create_state<subfreqState>(sub_freqs).first);
+            states.push_back(dm.create_state<subfreqState>(_factor_upchan).first);
 
             // Register a root state
             ds_id = dm.add_dataset(states);

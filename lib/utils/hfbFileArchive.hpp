@@ -41,7 +41,7 @@ public:
      **/
     hfbFileArchive(const std::string& name, const std::map<std::string, std::string>& metadata,
                    const std::vector<time_ctype>& times, const std::vector<freq_ctype>& freqs,
-                   const std::vector<uint32_t>& beams, const std::vector<freq_ctype>& subfreqs,
+                   const std::vector<uint32_t>& beams, const std::vector<uint32_t>& subfreqs,
                    std::vector<int> chunk_size, const kotekan::logLevel log_level);
     /**
      * @brief Creates a hfbFileArchive object.
@@ -59,7 +59,7 @@ public:
      **/
     hfbFileArchive(const std::string& name, const std::map<std::string, std::string>& metadata,
                    const std::vector<time_ctype>& times, const std::vector<freq_ctype>& freqs,
-                   const std::vector<uint32_t>& beams, const std::vector<freq_ctype>& subfreqs,
+                   const std::vector<uint32_t>& beams, const std::vector<uint32_t>& subfreqs,
                    const std::vector<stack_ctype>& stack, std::vector<rstack_ctype>& reverse_stack,
                    std::vector<int> chunk_size, const kotekan::logLevel log_level);
 
@@ -87,7 +87,7 @@ private:
     // Prepare a file
     void setup_file(const std::string& name, const std::map<std::string, std::string>& metadata,
                     const std::vector<time_ctype>& times, const std::vector<freq_ctype>& freqs,
-                    const std::vector<uint32_t>& beams, const std::vector<freq_ctype>& subfreqs,
+                    const std::vector<uint32_t>& beams, const std::vector<uint32_t>& subfreqs,
                     std::vector<int> chunk_size);
 
     // Helper to create datasets
@@ -100,9 +100,9 @@ private:
 
     // Create the index maps from the frequencies and the inputs
     void create_axes(const std::vector<time_ctype>& times, const std::vector<freq_ctype>& freqs,
-                     const std::vector<uint32_t>& beams, const std::vector<freq_ctype>& subfreqs);
+                     const std::vector<uint32_t>& beams, const std::vector<uint32_t>& subfreqs);
     void create_axes(const std::vector<time_ctype>& times, const std::vector<freq_ctype>& freqs,
-                     const std::vector<uint32_t>& beams, const std::vector<freq_ctype>& subfreqs,
+                     const std::vector<uint32_t>& beams, const std::vector<uint32_t>& subfreqs,
                      const std::vector<stack_ctype>& stack);
 
     // Create the main 21cm absorber holding datasets

@@ -100,7 +100,7 @@ private:
     std::vector<time_ctype> times;
     std::vector<freq_ctype> freqs;
     std::vector<uint32_t> beams;
-    std::vector<freq_ctype> sub_freqs;
+    std::vector<uint32_t> sub_freqs;
     std::vector<stack_ctype> stack;
     nlohmann::json metadata;
 

@@ -60,7 +60,8 @@ hfbFileRaw::hfbFileRaw(const std::string& name, const kotekan::logLevel log_leve
     file_metadata["attributes"] = metadata;
     file_metadata["index_map"]["freq"] = unzip(fstate->get_freqs()).second;
     file_metadata["index_map"]["beam"] = bstate->get_beams();
-    file_metadata["index_map"]["subfreq"] = unzip(sfstate->get_subfreqs()).second;
+    file_metadata["index_map"]["subfreq"] = sfstate->get_subfreqs();
+
 
     // Calculate the file structure
     nfreq = fstate->get_freqs().size();

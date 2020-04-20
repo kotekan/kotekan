@@ -126,6 +126,7 @@ bool hfbTranspose::get_dataset_state(dset_id_t ds_id) {
 
     times = tstate->get_times();
     beams = bstate->get_beams();
+    sub_freqs = sfstate->get_subfreqs();
 
     // unzip the vector of pairs in freqState
     auto freq_pairs = fstate->get_freqs();
@@ -133,14 +134,6 @@ bool hfbTranspose::get_dataset_state(dset_id_t ds_id) {
               end = std::make_move_iterator(freq_pairs.end());
          it != end; ++it) {
         freqs.push_back(std::move(it->second));
-    }
-
-    // unzip the vector of pairs in subfreqState
-    auto subfreq_pairs = sfstate->get_subfreqs();
-    for (auto it = std::make_move_iterator(subfreq_pairs.begin()),
-              end = std::make_move_iterator(subfreq_pairs.end());
-         it != end; ++it) {
-        sub_freqs.push_back(std::move(it->second));
     }
 
     // Check if this is baseline-stacked data

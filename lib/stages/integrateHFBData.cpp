@@ -74,27 +74,12 @@ integrateHFBData::integrateHFBData(Config& config_, const std::string& unique_na
                        return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
                    });
 
-    // Create the sub-frequencies specification
-    std::vector<std::pair<uint32_t, freq_ctype>> sub_freqs;
-    sub_freqs.resize(1024 * _factor_upchan);
-
-    uint32_t index = 0;
-    double freq_width = 400.0 / 1024;
-    double sub_freq_width = freq_width / _factor_upchan;
-    for (auto const& f : freqs) {
-        for (uint32_t sub_freq_index = 0; sub_freq_index < _factor_upchan; sub_freq_index++) {
-            double sub_freq_centre = (f.second.centre - 0.5 * freq_width)
-                                     + (sub_freq_index * sub_freq_width) + (0.5 * sub_freq_width);
-            sub_freqs.push_back({index++, {sub_freq_centre, sub_freq_width}});
-        }
-    }
-
     // create all the states
     datasetManager& dm = datasetManager::instance();
     std::vector<state_id_t> base_states;
     base_states.push_back(dm.create_state<freqState>(freqs).first);
-    base_states.push_back(dm.create_state<subfreqState>(sub_freqs).first);
     base_states.push_back(dm.create_state<beamState>(_num_frb_total_beams).first);
+    base_states.push_back(dm.create_state<subfreqState>(_factor_upchan).first);
     base_states.push_back(
         dm.create_state<metadataState>(weight_type, instrument_name, git_tag).first);
 

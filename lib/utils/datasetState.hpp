@@ -810,7 +810,7 @@ public:
      */
     subfreqState(const nlohmann::json& data) {
         try {
-            _subfreqs = data.get<std::vector<std::pair<uint32_t, freq_ctype>>>();
+            _subfreqs = data.get<std::vector<uint32_t>>();
         } catch (std::exception& e) {
             throw std::runtime_error(
                 fmt::format(fmt("subfreqState: Failure parsing json data ({:s}): {:s}"),
@@ -822,16 +822,25 @@ public:
      * @brief Constructor
      * @param subfreqs The sub-frequency information as a vector of
      *              subfreq index maps.
-
      */
-    subfreqState(std::vector<std::pair<uint32_t, freq_ctype>> subfreqs) : _subfreqs(subfreqs){};
+    subfreqState(std::vector<uint32_t> subfreqs) : _subfreqs(subfreqs){};
+
+    /**
+     * @brief Constructor
+     * @param num_subfreqs The number of sub-frequencies. The indices will end up
+     *                  running from 0 to num_subfreqs - 1
+     */
+    subfreqState(size_t num_subfreqs) : _subfreqs(num_subfreqs) {
+        std::iota(_subfreqs.begin(), _subfreqs.end(), 0);
+    }
+
 
     /**
      * @brief Get sub-frequency information (read only).
      *
      * @return The sub-frequency information as a vector of subfreq index maps.
      */
-    const std::vector<std::pair<uint32_t, freq_ctype>>& get_subfreqs() const {
+    const std::vector<uint32_t>& get_subfreqs() const {
         return _subfreqs;
     }
 
@@ -843,7 +852,7 @@ private:
     }
 
     /// Time index map of the dataset state.
-    std::vector<std::pair<uint32_t, freq_ctype>> _subfreqs;
+    std::vector<uint32_t> _subfreqs;
 };
 
 #endif // DATASETSTATE_HPP

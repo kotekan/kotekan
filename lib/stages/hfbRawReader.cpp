@@ -95,7 +95,7 @@ hfbRawReader::hfbRawReader(Config& config, const std::string& unique_name,
     _times = _t["index_map"]["time"].get<std::vector<time_ctype>>();
     auto freqs = _t["index_map"]["freq"].get<std::vector<freq_ctype>>();
     auto beams = _t["index_map"]["beam"].get<std::vector<uint32_t>>();
-    auto subfreqs = _t["index_map"]["subfreq"].get<std::vector<freq_ctype>>();
+    _subfreqs = _t["index_map"]["subfreq"].get<std::vector<uint32_t>>();
     if (_t.at("index_map").find("stack") != _t.at("index_map").end()) {
         _stack = _t.at("index_map").at("stack").get<std::vector<stack_ctype>>();
         _rstack = _t.at("reverse_map").at("stack").get<std::vector<rstack_ctype>>();
@@ -186,14 +186,12 @@ void hfbRawReader::change_dataset_state(dset_id_t ds_id) {
     std::vector<state_id_t> states;
     if (!_stack.empty())
         states.push_back(dm.create_state<stackState>(_num_stack, std::move(_rstack)).first);
-    // states.push_back(dm.create_state<inputState>(_inputs).first);
-    // states.push_back(dm.create_state<eigenvalueState>(_ev).first);
-    // states.push_back(dm.create_state<freqState>(_freqs).first);
-    // states.push_back(dm.create_state<prodState>(_prods).first);
     states.push_back(dm.create_state<timeState>(_times).first);
-    // states.push_back(dm.create_state<metadataState>(_metadata.at("instrument_name"),
-    //                                                _metadata.at("git_version_tag"))
-    //                     .first);
+    states.push_back(dm.create_state<subfreqState>(_subfreqs).first);
+    states.push_back(dm.create_state<metadataState>(_metadata.at("weight_type"),
+                                                    _metadata.at("instrument_name"),
+                                                    _metadata.at("git_version_tag"))
+                         .first);
     states.push_back(dm.create_state<acqDatasetIdState>(ds_id).first);
     // register it as root dataset
     _dataset_id = dm.add_dataset(states);
@@ -283,10 +281,8 @@ void hfbRawReader::main_thread() {
                         data_size);
         } else {
             // Set metadata if file contained an empty frame
-            //((hfbMetadata*)(out_buf->metadata[frame_id]->metadata))->num_prod = _prods.size();
-            //((hfbMetadata*)(out_buf->metadata[frame_id]->metadata))->num_ev = _ev.size();
-            //((hfbMetadata*)(out_buf->metadata[frame_id]->metadata))->num_elements =
-            //_inputs.size();
+            ((hfbMetadata*)(out_buf->metadata[frame_id]->metadata))->num_beams = _beams.size();
+            ((hfbMetadata*)(out_buf->metadata[frame_id]->metadata))->num_subfreq = _subfreqs.size();
             // Fill data with zeros
             // size_t num_vis = _stack.size() > 0 ? _stack.size() : _prods.size();
             // JSW: Do we want num_prod to be _prods.size() or _stack.size()?

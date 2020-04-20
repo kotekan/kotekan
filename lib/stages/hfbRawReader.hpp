@@ -124,7 +124,7 @@ private:
     std::vector<time_ctype> _times;
     std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
     std::vector<uint32_t> _beams;
-    std::vector<std::pair<uint32_t, freq_ctype>> _subfreqs;
+    std::vector<uint32_t> _subfreqs;
     std::vector<stack_ctype> _stack;
     std::vector<rstack_ctype> _rstack;
     uint32_t _num_stack;
