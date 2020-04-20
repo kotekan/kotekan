@@ -94,7 +94,7 @@ hfbRawReader::hfbRawReader(Config& config, const std::string& unique_name,
     _metadata = _t["attributes"];
     _times = _t["index_map"]["time"].get<std::vector<time_ctype>>();
     auto freqs = _t["index_map"]["freq"].get<std::vector<freq_ctype>>();
-    auto beams = _t["index_map"]["beam"].get<std::vector<uint32_t>>();
+    _beams = _t["index_map"]["beam"].get<std::vector<uint32_t>>();
     _subfreqs = _t["index_map"]["subfreq"].get<std::vector<uint32_t>>();
     if (_t.at("index_map").find("stack") != _t.at("index_map").end()) {
         _stack = _t.at("index_map").at("stack").get<std::vector<stack_ctype>>();
@@ -102,14 +102,14 @@ hfbRawReader::hfbRawReader(Config& config, const std::string& unique_name,
         _num_stack = _t.at("structure").at("num_stack").get<uint32_t>();
     }
 
-    // for (auto f : freqs) {
-    //    // TODO: add freq IDs to raw file format instead of restoring them here
-    //    // TODO: CHIME specific.
-    //    uint32_t freq_id = 1024.0 / 400.0 * (800.0 - f.centre);
-    //    DEBUG("restored freq_id for f_centre={:.2f} : {:d}", f.centre, freq_id);
-    //    _freqs.push_back({freq_id, f});
-    //}
-
+    for (auto f : freqs) {
+      // TODO: add freq IDs to raw file format instead of restoring them here
+      // TODO: CHIME specific.
+      uint32_t freq_id = 1024.0 / 400.0 * (800.0 - f.centre);
+      DEBUG("restored freq_id for f_centre={:.2f} : {:d}", f.centre, freq_id);
+      _freqs.push_back({freq_id, f});
+    }
+    
     // check git version tag
     // TODO: enforce that they match if build type == "release"?
     if (_metadata.at("git_version_tag").get<std::string>() != std::string(get_git_commit_hash()))
@@ -186,6 +186,8 @@ void hfbRawReader::change_dataset_state(dset_id_t ds_id) {
     std::vector<state_id_t> states;
     if (!_stack.empty())
         states.push_back(dm.create_state<stackState>(_num_stack, std::move(_rstack)).first);
+    states.push_back(dm.create_state<freqState>(_freqs).first);
+    states.push_back(dm.create_state<beamState>(_beams).first);
     states.push_back(dm.create_state<timeState>(_times).first);
     states.push_back(dm.create_state<subfreqState>(_subfreqs).first);
     states.push_back(dm.create_state<metadataState>(_metadata.at("weight_type"),

@@ -74,8 +74,15 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
 
     _num_elements = config.get_default<size_t>(unique_name, "num_elements", 4);
     _num_eigenvectors = config.get_default<size_t>(unique_name, "num_ev", 0);
-    std::vector<uint32_t> freq_default{0};
-    freq = config.get_default<std::vector<uint32_t>>(unique_name, "freq_ids", freq_default);
+    // Get the frequency IDs that are on this stream, check the config or just
+    // assume all CHIME channels
+    // TODO: CHIME specific
+    if (config.exists(unique_name, "freq_ids")) {
+        freq_ids = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
+    } else {
+        freq_ids.resize(1024);
+        std::iota(std::begin(freq_ids), std::end(freq_ids), 0);
+    }
     _num_beams = config.get_default<uint32_t>(unique_name, "num_frb_total_beams", 1024);
     _factor_upchan = config.get_default<uint32_t>(unique_name, "factor_upchan", 128);
     _init_dataset_manager = config.get_default<bool>(unique_name, "init_dm", false);
@@ -141,7 +148,7 @@ void testDataGen::main_thread() {
 
             std::vector<std::pair<uint32_t, freq_ctype>> fspec;
             // TODO: CHIME specific
-            std::transform(std::begin(freq), std::end(freq), std::back_inserter(fspec),
+            std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(fspec),
                            [](const uint32_t& id) -> std::pair<uint32_t, freq_ctype> {
                                return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
                            });

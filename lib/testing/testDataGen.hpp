@@ -77,7 +77,7 @@ private:
     uint32_t _num_beams;
     uint32_t _factor_upchan;
     /// List of frequencies for this buffer
-    std::vector<uint32_t> freq;
+    std::vector<uint32_t> freq_ids;
     bool _init_dataset_manager;
 };
 
