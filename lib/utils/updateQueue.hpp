@@ -160,12 +160,9 @@ struct fmt::formatter<updateQueue<T>> {
 
     template<typename FormatContext>
     auto format(const updateQueue<T>& q, FormatContext& ctx) {
-        auto it = q.get_all_updates().begin();
         auto pos = ctx.out();
-        while (it != q.get_all_updates().end()) {
-            pos = format_to(pos, "{:f} ", ts_to_double(it->first));
-            *it++;
-        }
+        for (const auto& item : q.get_all_updates())
+            pos = format_to(pos, "{:f} ", ts_to_double(item.first));
         return pos;
     }
 };
