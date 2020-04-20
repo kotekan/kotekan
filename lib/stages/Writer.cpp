@@ -205,7 +205,7 @@ void Writer::write_hfb_data(HfbFrameView frame, kotekan::prometheus::Gauge& writ
     acqs_lock.lock();
     // Check the dataset ID hasn't changed
     if (acqs.count(dataset_id) == 0) {
-        init_acq(dataset_id, make_hfb_metadata());
+        init_acq(dataset_id, make_hfb_metadata(dataset_id));
     }
 
     // Get the acquisition we are writing into
@@ -444,7 +444,11 @@ std::map<std::string, std::string> Writer::make_metadata(dset_id_t ds_id) {
     return metadata;
 }
 
-std::map<std::string, std::string> Writer::make_hfb_metadata() {
+std::map<std::string, std::string> Writer::make_hfb_metadata(dset_id_t ds_id) {
+    
+    // Get the metadata state from the dM
+    auto& dm = datasetManager::instance();
+    const metadataState* mstate = dm.dataset_state<metadataState>(ds_id);
 
     // Get the current user
     std::string user(256, '\0');
@@ -457,7 +461,8 @@ std::map<std::string, std::string> Writer::make_hfb_metadata() {
 
     // Set the metadata that we want to save with the file
     std::map<std::string, std::string> metadata;
-    metadata["instrument_name"] = instrument_name;
+    metadata["weight_type"] = mstate->get_weight_type();
+    metadata["instrument_name"] = mstate->get_instrument_name();
     metadata["notes"] = ""; // TODO: connect up notes
     metadata["git_version_tag"] = get_git_commit_hash();
     metadata["system_user"] = user;

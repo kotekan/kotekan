@@ -120,7 +120,7 @@ protected:
     std::map<std::string, std::string> make_metadata(dset_id_t ds_id);
 
     /// Construct the HFB metadata
-    std::map<std::string, std::string> make_hfb_metadata();
+    std::map<std::string, std::string> make_hfb_metadata(dset_id_t ds_id);
 
     /// Close inactive acquisitions
     virtual void close_old_acqs();
