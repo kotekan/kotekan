@@ -2,6 +2,7 @@
 
 #include "Config.hpp"             // for Config
 #include "configUpdater.hpp"      // for configUpdater
+#include "chimeMetadata.h"        // for get_rfi_num_bad_inputs
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 #include "kotekanLogging.hpp"     // for DEBUG, INFO, WARN
@@ -41,33 +42,26 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config, const std::string& unique_name,
     auto input_reorder = parse_reorder_default(config, unique_name);
     input_remap = std::get<0>(input_reorder);
 
-    kotekan::configUpdater::instance().subscribe(
-        config.get<std::string>(unique_name, "updatable_config/rfi_var_element_index"),
-        std::bind(&hsaRfiTimeSum::update_element_index, this, std::placeholders::_1));
+    // Get buffers (for metadata)
+    _network_buf = host_buffers.get_buffer("network_buf");
+    register_consumer(_network_buf, unique_name.c_str());
+
+    _network_buf_precondition_id = 0;
+    _network_buf_execute_id = 0;
+    _network_buf_finalize_id = 0;
+
 }
 
 hsaRfiTimeSum::~hsaRfiTimeSum() {}
-
-bool hsaRfiTimeSum::update_element_index(nlohmann::json& json) {
-    uint32_t element_index_cylinder_order = 0;
-    DEBUG("Current JSON: {:s}", json.dump());
-    try {
-        element_index_cylinder_order = json["element_index"].get<uint32_t>();
-    } catch (std::exception& e) {
-        WARN("Failed to set element index {:s}, json {:s}", e.what(), json.dump());
-        return false;
-    }
-    _element_index = input_remap[element_index_cylinder_order];
-    INFO("Updating element index for variance extract;"
-         " cylinder_order: {:d}, correlator_order: {:d}",
-         element_index_cylinder_order, _element_index);
-    return true;
-}
 
 hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
     // Unused parameter, suppress warning
     (void)precede_signal;
+
+    // Get the number of bad inputs from the metadata
+    uint32_t num_bad_inputs = get_rfi_num_bad_inputs(_network_buf, _network_buf_execute_id);
+    DEBUG("Number of bad inputs at execute in hsaRfiTimeSum is: {:d}", num_bad_inputs);
 
     // Structure for gpu arguments
     struct __attribute__((aligned(16))) args_t {
@@ -76,7 +70,7 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, hsa_signal_t precede_signa
         void* output_var;
         uint32_t sk_step;
         uint32_t num_elements;
-        uint32_t element_index;
+        uint32_t num_bad_inputs;
     } args;
     // Initialize arguments
     memset(&args, 0, sizeof(args));
@@ -84,10 +78,10 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, hsa_signal_t precede_signa
     args.input = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
     args.output = device.get_gpu_memory("time_sum", output_frame_len);
      args.output_var =
-        device.get_gpu_memory_array("rfi_output_var", gpu_frame_id, output_var_frame_len);
+        device.get_gpu_memory_array("rfi_time_sum_var", gpu_frame_id, output_var_frame_len);
     args.sk_step = _sk_step;
     args.num_elements = _num_elements;
-    args.element_index = _element_index;
+    args.num_bad_inputs = num_bad_inputs;
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
     // Apply correct kernel parameters

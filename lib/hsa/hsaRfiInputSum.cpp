@@ -42,6 +42,9 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config, const std::string& unique_name,
     input_frame_len =
         sizeof(float) * _num_elements * _num_local_freq * _samples_per_data_set / _sk_step;
     output_frame_len = sizeof(float) * _num_local_freq * _samples_per_data_set / _sk_step;
+    input_var_frame_len =
+        sizeof(float) * _num_elements * _num_local_freq * _samples_per_data_set / _sk_step;
+    output_var_frame_len = sizeof(float) * _num_local_freq * _samples_per_data_set / _sk_step;
     input_mask_len = sizeof(uint8_t) * _num_elements;
     output_mask_len = sizeof(uint8_t) * _num_local_freq * _samples_per_data_set / _sk_step;
     correction_frame_len = sizeof(uint32_t) * _samples_per_data_set / _sk_step;
@@ -82,6 +85,8 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
     struct __attribute__((aligned(16))) args_t {
         void* input;
         void* output;
+        void* input_var;
+        void* output_var;
         void* input_mask;
         void* output_mask;
         void* lost_sample_correction;
@@ -95,6 +100,10 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
     // Set arguments
     args.input = device.get_gpu_memory("time_sum", input_frame_len);
     args.output = device.get_gpu_memory_array("rfi_output", gpu_frame_id, output_frame_len);
+
+    args.input_var = device.get_gpu_memory("rfi_time_sum_var", input_var_frame_len);
+    args.output_var = device.get_gpu_memory_array("rfi_var_output", gpu_frame_id, output_var_frame_len);
+    
     args.input_mask = device.get_gpu_memory_array("input_mask", gpu_frame_id, input_mask_len);
     args.output_mask =
         device.get_gpu_memory_array("rfi_mask_output", gpu_frame_id, output_mask_len);
@@ -116,7 +125,7 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
     params.grid_size_z = _samples_per_data_set / _sk_step;
     params.num_dims = 3;
     params.private_segment_size = 0;
-    params.group_segment_size = 1024;
+    params.group_segment_size = 2048;
     // Parameters for rfi_chime_input_sum_private.hsaco, for easy switching if needed in future
     /*    params.workgroup_size_x = _num_local_freq;
         params.workgroup_size_y = 1;

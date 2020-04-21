@@ -90,8 +90,12 @@ private:
 
     /// Length of the input frame, should be sizeof_float x n_elem x n_freq x nsamp / sk_step
     uint32_t input_frame_len;
-    /// Length of the input frame, should be sizeof_float x n_freq x nsamp / sk_step
+    /// Length of the output frame, should be sizeof_float x n_freq x nsamp / sk_step
     uint32_t output_frame_len;
+    /// Length of the input variance frame, should be sizeof_float x n_elem x n_freq x nsamp / sk_step
+    uint32_t input_var_frame_len;
+    /// Length of the output frame, should be sizeof_float x n_freq x nsamp / sk_step
+    uint32_t output_var_frame_len;
     /// Length of the input mask, should be sizeof_uchar x n_elem
     uint32_t input_mask_len;
     /// Length of the output mask, should be sizeof_uchar x n_freq x nsamp / sk_step

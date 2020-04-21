@@ -11,6 +11,8 @@ __kernel void
 rfi_chime_input_sum(
      __global float *input,
      __global float *output,
+     __global float *input_var,
+     __global float *output_var,
      __global uchar *input_mask,
      __global uchar *output_mask,
      __global uint *lost_samples,
@@ -31,18 +33,21 @@ rfi_chime_input_sum(
     short lx_size = get_local_size(0);
     //Declare Local Memory
     __local float sq_power_across_input[256];
+    __local float var_across_input[256];
     // Compute index in input array
     uint base_index = gx + gy * num_elements + gz * num_elements * gy_size;
     sq_power_across_input[lx] = input_mask[lx]*input[base_index];
     // Partial sum if more than 256 inputs
     for(int i = 1; i < num_elements/lx_size; i++) {
         sq_power_across_input[lx] += input_mask[lx + i * lx_size] * input[base_index + i * lx_size];
+        var_across_input[lx] += input_mask[lx + i * lx_size] * input_var[base_index + i * lx_size];
     }
     // Sum Across Input in local memory
     barrier(CLK_LOCAL_MEM_FENCE);
     for(int j = lx_size/2; j>0; j >>= 1) {
         if(lx < j) {
             sq_power_across_input[lx] += sq_power_across_input[lx + j];
+            var_across_input[lx] += var_across_input[lx + j];
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
@@ -55,6 +60,7 @@ rfi_chime_input_sum(
         uint address = gy + gz * gy_size;
         if (n * N == 0){
             output[address] = -1.0;
+            output_var[address] = -1.0;
             output_mask[address] = 1;
         } else {
             float new_sq_power_across_input = sq_power_across_input[0] * cf * cf;
@@ -65,6 +71,8 @@ rfi_chime_input_sum(
                 output_mask[address] = 1;
             else
                 output_mask[address] = 0;
+            
+            output_var[address] = var_across_input[0];
         }
     }
 }
