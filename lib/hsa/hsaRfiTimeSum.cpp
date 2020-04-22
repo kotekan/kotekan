@@ -54,6 +54,18 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config, const std::string& unique_name,
 
 hsaRfiTimeSum::~hsaRfiTimeSum() {}
 
+int hsaRfiTimeSum::wait_on_precondition(int gpu_frame_id) {
+    (void)gpu_frame_id;
+
+    uint8_t* frame =
+        wait_for_full_frame(_network_buf, unique_name.c_str(), _network_buf_precondition_id);
+    if (frame == nullptr)
+        return -1;
+
+    _network_buf_precondition_id = (_network_buf_precondition_id + 1) % _network_buf->num_frames;
+    return 0;
+}
+
 hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 
     // Unused parameter, suppress warning
@@ -99,6 +111,15 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, hsa_signal_t precede_signa
 
     // Execute kernel
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
+    
+    _network_buf_execute_id = (_network_buf_execute_id + 1) % _network_buf->num_frames;
+    
     // return signal
     return signals[gpu_frame_id];
+}
+
+void hsaRfiTimeSum::finalize_frame(int frame_id) {
+    hsaCommand::finalize_frame(frame_id);
+    mark_frame_empty(_network_buf, unique_name.c_str(), _network_buf_finalize_id);
+    _network_buf_finalize_id = (_network_buf_finalize_id + 1) % _network_buf->num_frames;
 }

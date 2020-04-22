@@ -59,9 +59,14 @@ public:
                   kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiTimeSum();
+    
+    int wait_on_precondition(int gpu_frame_id) override;
+    
     /// Executes rfi_chime_input_sum.hsaco kernel. Allocates kernel variables, initalizes input mask
     /// array.
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
+
+    void finalize_frame(int frame_id) override;
 
 private:
     /// Main data input, used for metadata access
