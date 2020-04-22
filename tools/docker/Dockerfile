@@ -45,7 +45,8 @@ RUN git clone https://github.com/kiyo-masui/bitshuffle.git bitshuffle && \
     python3.7 setup.py install --h5plugin --h5plugin-dir=/usr/local/hdf5/lib/plugin
 
 # Install OpenBLAS and clone Blaze for the eigenvalue processes
-RUN apt-get -y install libopenblas-dev liblapack-dev liblapacke-dev && \
+RUN apt-get update && \
+    apt-get -y install libopenblas-dev liblapack-dev liblapacke-dev && \
     apt-get clean && apt-get autoclean && \
     git clone https://bitbucket.org/blaze-lib/blaze.git blaze
 
@@ -53,16 +54,19 @@ RUN apt-get -y install libopenblas-dev liblapack-dev liblapacke-dev && \
 RUN python3.7 -m pip install "msgpack>=0.6.1" click future requests pyyaml tabulate \
                              pytest==5.3.0 pytest-xdist pytest-cpp pytest-localserver flask \
                              posix_ipc && \
+    apt-get update && \
     apt-get install -y mysql-client libmysqlclient-dev && \
     apt-get clean && apt-get autoclean && \
     python3.7 -m pip install git+https://github.com/chime-experiment/comet.git
 
 # Install redis for comet tests
-RUN apt-get install -y redis && \
+RUN apt-get update && \
+    apt-get install -y redis && \
     apt-get clean && apt-get autoclean
 
 # Install documentation dependencies
-RUN apt-get -y install doxygen graphviz python-sphinx default-jre && \
+RUN apt-get update && \
+    apt-get -y install doxygen graphviz python-sphinx default-jre && \
     apt-get clean && apt-get autoclean && \
     python3.7 -m pip install --no-cache-dir breathe sphinx_rtd_theme sphinxcontrib-plantuml && \
     wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar -P plantuml
