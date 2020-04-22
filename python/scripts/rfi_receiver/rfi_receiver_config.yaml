@@ -14,3 +14,4 @@ num_receive_threads: 4
 use_dataset_broker: True
 ds_broker_host: "10.1.50.11"
 ds_broker_port: 12050
+solar_transit_downtime_m: 60
