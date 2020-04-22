@@ -3,6 +3,12 @@ cmake_minimum_required(VERSION 3.0)
 project(KOTEKAN)
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 
+# Require at least c++17 support from the compiler
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# this makes sure we use -std=c++11, not -std=gnu++11
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 # This is required early on for some versions of GCC, do not remove.
 add_definitions(/D__STDC_FORMAT_MACROS)
 
@@ -319,7 +325,6 @@ if(${USE_OPENCL})
     install(DIRECTORY lib/opencl/kernels DESTINATION /var/lib/kotekan/opencl)
 endif()
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 
 if(${COMPILE_DOCS})
     add_subdirectory(docs EXCLUDE_FROM_ALL)
