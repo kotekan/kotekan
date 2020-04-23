@@ -37,6 +37,7 @@ rfi_chime_input_sum(
     // Compute index in input array
     uint base_index = gx + gy * num_elements + gz * num_elements * gy_size;
     sq_power_across_input[lx] = input_mask[lx]*input[base_index];
+    var_across_input[lx] = input_mask[lx]*input_var[base_index];
     // Partial sum if more than 256 inputs
     for(int i = 1; i < num_elements/lx_size; i++) {
         sq_power_across_input[lx] += input_mask[lx + i * lx_size] * input[base_index + i * lx_size];
@@ -72,7 +73,7 @@ rfi_chime_input_sum(
             else
                 output_mask[address] = 0;
             
-            output_var[address] = var_across_input[0];
+            output_var[address] = var_across_input[0] / N;
         }
     }
 }
