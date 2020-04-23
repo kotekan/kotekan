@@ -60,23 +60,11 @@ public:
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiTimeSum();
     
-    int wait_on_precondition(int gpu_frame_id) override;
-    
     /// Executes rfi_chime_input_sum.hsaco kernel. Allocates kernel variables, initalizes input mask
     /// array.
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
-    void finalize_frame(int frame_id) override;
-
 private:
-    /// Main data input, used for metadata access
-    Buffer* _network_buf;
-
-    /// IDs for _network_buf
-    int32_t _network_buf_finalize_id;
-    int32_t _network_buf_execute_id;
-    int32_t _network_buf_precondition_id;
-
     /// Length of the input frame, should be sizeof_uchar x n_elem x n_freq x nsamp
     uint32_t input_frame_len;
     /// Length of the output frame, should be sizeof_float x n_elem x n_freq x nsamp / sk_step
