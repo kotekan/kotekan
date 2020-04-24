@@ -28,7 +28,7 @@ jobs:
   build-docker:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
 
     - name: Pull docker images
       run: |
@@ -53,7 +53,7 @@ jobs:
     needs: build-docker
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
 
     - name: Cache ccache files
       uses: actions/cache@v1
@@ -83,7 +83,7 @@ jobs:
     needs: build-docker
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
 
     - name: Free disk space
       run: |
@@ -144,7 +144,7 @@ jobs:
     needs: build-docker
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
 
     - name: Cache ccache files
       uses: actions/cache@v1
@@ -180,7 +180,7 @@ jobs:
     needs: build-docker
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
 
     - name: Cache ccache files
       uses: actions/cache@v1
@@ -220,7 +220,7 @@ jobs:
     runs-on: macos-latest
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - name: Cache ccache files
       uses: actions/cache@v1
       with:
@@ -285,7 +285,7 @@ jobs:
     needs: build-docker
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
 
     - name: Build kotekan docs
       run: |
@@ -305,7 +305,7 @@ jobs:
     if: github.base_ref == 'master'
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
 
     - name: Configure kotekan
       run: |
@@ -334,7 +334,7 @@ jobs:
     needs: build-docker
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
 
     - name: Run clang-format
       run: |
