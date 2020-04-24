@@ -3,7 +3,7 @@
 #include "SynchronizedQueue.hpp" // for SynchronizedQueue
 
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_CHECK, BOOST_PP_BOOL_2
-#include <memory>                            // for operator==, unique_ptr
+#include <optional>                          // for optional
 #include <thread>                            // for thread
 
 /*

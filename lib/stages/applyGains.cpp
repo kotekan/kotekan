@@ -1,42 +1,46 @@
 #include "applyGains.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for mark_frame_empty, allocate_new_metadata_object
-#include "bufferContainer.hpp" // for bufferContainer
-#include "configUpdater.hpp"   // for configUpdater
-#include "datasetManager.hpp"  // for dset_id_t, datasetManager, state_id_t
-#include "datasetState.hpp"    // for gainState, freqState, inputState
-#include "kotekanLogging.hpp"  // for WARN, FATAL_ERROR, INFO
-#include "modp_b64.hpp"
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for operator<
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for mark_frame_empty, wait_for_full_frame, allocate_new...
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "configUpdater.hpp"     // for configUpdater
+#include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
+#include "datasetState.hpp"      // for gainState, freqState, inputState
+#include "kotekanLogging.hpp"    // for WARN, FATAL_ERROR, DEBUG, INFO, ERROR
+#include "modp_b64.hpp"          // for modp_b64_decode, modp_b64_decode_len
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
-#include "restClient.hpp"
-#include "visBuffer.hpp" // for visFrameView, visField, visField::vis, visField...
-#include "visFileH5.hpp" // IWYU pragma: keep
-#include "visUtil.hpp"   // for cfloat, modulo, double_to_ts, ts_to_double, fra...
+#include "restClient.hpp"        // for restClient::restReply, restClient
+#include "visBuffer.hpp"         // for visFrameView, visField, visField::vis, visField::we...
+#include "visFileH5.hpp"         // IWYU pragma: keep
+#include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double, frameID
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
 
-#include <algorithm>                 // for copy, max, copy_backward
+#include <algorithm>                 // for max, copy, copy_backward
+#include <assert.h>                  // for assert
+#include <chrono>                    // for operator""s, chrono_literals
 #include <cmath>                     // for abs, pow
-#include <complex>                   // for operator*, operator+, complex, operator""if
-#include <cstdint>                   // for uint64_t
+#include <complex>                   // for operator*, operator+, complex, operator""if, operat...
+#include <cstdint>                   // for uint64_t, uint32_t, uint8_t
 #include <exception>                 // for exception
-#include <functional>                // for _Bind_helper<>::type, _Placeholder, bind, _1
-#include <highfive/H5DataSet.hpp>    // for DataSet, DataSet::getSpace
-#include <highfive/H5DataSpace.hpp>  // for DataSpace, DataSpace::getDimensions
-#include <highfive/H5File.hpp>       // for File, NodeTraits::getDataSet, File::File, File:...
+#include <functional>                // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <highfive/H5DataSet.hpp>    // for DataSet
+#include <highfive/H5File.hpp>       // for File, NodeTraits::getDataSet, File::File, File::Rea...
 #include <highfive/H5Object.hpp>     // for HighFive
 #include <highfive/H5Selection.hpp>  // for SliceTraits::read
 #include <highfive/bits/H5Utils.hpp> // for type_of_array<>::type
-#include <memory>                    // for allocator_traits<>::value_type
+#include <memory>                    // for operator==, __shared_ptr_access, allocator_traits<>...
 #include <pthread.h>                 // for pthread_setaffinity_np
 #include <regex>                     // for match_results<>::_Base_type
 #include <sched.h>                   // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdexcept>                 // for invalid_argument, out_of_range, runtime_error
+#include <stdexcept>                 // for runtime_error, invalid_argument, out_of_range
+#include <string.h>                  // for memcpy
 #include <sys/stat.h>                // for stat
-#include <tuple>                     // for get
+#include <thread>                    // for thread, sleep_for
+#include <tuple>                     // for get, tie, tuple
 
 
 using nlohmann::json;

@@ -6,19 +6,16 @@
 #ifndef INPUT_SUBSET_HPP
 #define INPUT_SUBSET_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp" // for Stage
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp" // for dset_id_t, state_id_t, fingerprint_t
-#include "visUtil.hpp"        // for prod_ctype
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for dset_id_t, state_id_t, fingerprint_t
 
 #include <map>      // for map
-#include <set>      // for map
-#include <stddef.h> // for size_t
+#include <set>      // for set
+#include <stdint.h> // for uint32_t
 #include <string>   // for string
-#include <tuple>    // for tuple
-#include <utility>  // for pair
 #include <vector>   // for vector
 
 

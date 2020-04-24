@@ -42,6 +42,8 @@
  * </PRE>
  */
 
+#include <stdint.h>         // for uint8_t, uint32_t
+
 /* public header */
 #include "modp_b64.hpp"
 
@@ -56,7 +58,7 @@
 /* else for Intel, Amd; uncomment this */
 /* #undef WORDS_BIGENDIAN */
 
-#include "modp_b64_data.h"
+#include "modp_b64_data.h"  // for CHARPAD, d0, d1, e1, d2, e0, d3, e2
 
 #define BADCHAR 0x01FFFFFF
 
