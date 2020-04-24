@@ -147,7 +147,6 @@ private:
     // dataset states and IDs
     dset_id_t output_dset_id;
     dset_id_t input_dset_id;
-    const prodState* prod_state_ptr;
     const stackState* old_stack_state_ptr;
     const stackState* new_stack_state_ptr;
 
