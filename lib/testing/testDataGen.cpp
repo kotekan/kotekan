@@ -171,6 +171,13 @@ void testDataGen::main_thread() {
 
             // Create the sub-frequencies specification
             states.push_back(dm.create_state<subfreqState>(_factor_upchan).first);
+    
+            const std::string weight_type = "hfb_weight_type";
+            const std::string git_tag = get_git_commit_hash();
+            const std::string instrument_name =
+              config.get_default<std::string>(unique_name, "instrument_name", "chime");
+            states.push_back(
+                dm.create_state<metadataState>(weight_type, instrument_name, git_tag).first);
 
             // Register a root state
             ds_id = dm.add_dataset(states);
