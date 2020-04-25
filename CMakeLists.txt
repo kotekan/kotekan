@@ -133,8 +133,15 @@ else()
  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
 endif()
 
-IF(CMAKE_BUILD_TYPE MATCHES Debug)
+# Create custom build type for testing: no debug info, but asserts
+string(REGEX REPLACE "( -DNDEBUG$|-DNDEBUG )" "" CMAKE_CXX_FLAGS_TEST "${CMAKE_CXX_FLAGS_RELEASE}" )
+string(REGEX REPLACE "( -DNDEBUG$|-DNDEBUG )" "" CMAKE_C_FLAGS_TEST "${CMAKE_C_FLAGS_RELEASE}" )
+
+# Enable debug logging for Debug and Test builds
+IF(CMAKE_BUILD_TYPE MATCHES Debug OR CMAKE_BUILD_TYPE MATCHES Test)
   add_definitions(-DDEBUGGING)
+  message("DEBUG logging enabled")
+  message("Asserts enabled")
 endif()
 
 # include-what-you-use: this has to be set before any targets are added
