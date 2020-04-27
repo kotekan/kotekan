@@ -51,13 +51,19 @@ hfbTranspose::hfbTranspose(Config& config, const std::string& unique_name,
 
     // get chunk dimensions for write from config file
     chunk = config.get<std::vector<int>>(unique_name, "chunk_size");
-    if (chunk.size() != 3)
-        throw std::invalid_argument("Chunk size needs exactly three elements "
-                                    "(has "
-                                    + std::to_string(chunk.size()) + ").");
-    if (chunk[0] < 1 || chunk[1] < 1 || chunk[2] < 1)
-        throw std::invalid_argument("hfbTranspose: Config: Chunk size needs "
-                                    "to be equal to or greater than one.");
+    if (chunk.size() != 5)
+            throw std::invalid_argument("Chunk size needs exactly five "
+                                        "elements (has "
+                                        + std::to_string(chunk.size()) + ").");
+    if (chunk[0] < 1 || chunk[1] < 1 || chunk[2] < 1 || chunk[3] < 1 || chunk[4] < 1)
+      throw std::invalid_argument("hfbTranspose: config: Chunk size "
+          "needs to be greater or equal to (1,1,1,1,1) (is ("
+          + std::to_string(chunk[0]) + ","
+          + std::to_string(chunk[1]) + ","
+          + std::to_string(chunk[2]) + ","
+          + std::to_string(chunk[3]) + ","
+          + std::to_string(chunk[4]) + ")).");
+
     chunk_t = chunk[2];
     chunk_f = chunk[0];
 

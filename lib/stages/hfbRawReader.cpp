@@ -52,18 +52,20 @@ hfbRawReader::hfbRawReader(Config& config, const std::string& unique_name,
     chunked = config.exists(unique_name, "chunk_size");
     if (chunked) {
         chunk_size = config.get<std::vector<int>>(unique_name, "chunk_size");
-        if (chunk_size.size() != 3)
-            throw std::invalid_argument("Chunk size needs exactly three "
+        if (chunk_size.size() != 5)
+            throw std::invalid_argument("Chunk size needs exactly five "
                                         "elements (has "
                                         + std::to_string(chunk_size.size()) + ").");
         chunk_t = chunk_size[2];
         chunk_f = chunk_size[0];
-        if (chunk_size[0] < 1 || chunk_size[1] < 1 || chunk_size[2] < 1)
+        if (chunk_size[0] < 1 || chunk_size[1] < 1 || chunk_size[2] < 1 || chunk_size[3] < 1 || chunk_size[4] < 1)
             throw std::invalid_argument("hfbRawReader: config: Chunk size "
-                                        "needs to be greater or equal to (1,1,1) (is ("
+                                        "needs to be greater or equal to (1,1,1,1,1) (is ("
                                         + std::to_string(chunk_size[0]) + ","
                                         + std::to_string(chunk_size[1]) + ","
-                                        + std::to_string(chunk_size[2]) + ")).");
+                                        + std::to_string(chunk_size[2]) + ","
+                                        + std::to_string(chunk_size[3]) + ","
+                                        + std::to_string(chunk_size[4]) + ")).");
     }
 
     // Get the list of buffers that this stage should connect to
@@ -97,7 +99,6 @@ hfbRawReader::hfbRawReader(Config& config, const std::string& unique_name,
     _beams = _t["index_map"]["beam"].get<std::vector<uint32_t>>();
     _subfreqs = _t["index_map"]["subfreq"].get<std::vector<uint32_t>>();
     if (_t.at("index_map").find("stack") != _t.at("index_map").end()) {
-        _stack = _t.at("index_map").at("stack").get<std::vector<stack_ctype>>();
         _rstack = _t.at("reverse_map").at("stack").get<std::vector<rstack_ctype>>();
         _num_stack = _t.at("structure").at("num_stack").get<uint32_t>();
     }
