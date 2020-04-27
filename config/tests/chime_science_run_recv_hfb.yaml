@@ -17,13 +17,15 @@ cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
 num_frb_total_beams: 1024
 factor_upchan: 128
 init_dm: True
+num_frames: 5
 
 # Constants
 sizeof_float: 4
 
 dataset_manager:
-  use_dataset_broker: False
+  use_dataset_broker: True
   ds_broker_host: "127.0.0.1"
+  ds_broker_port: 12050
 
 # 21cm Absorber Metadata Pool
 hfb_pool:
