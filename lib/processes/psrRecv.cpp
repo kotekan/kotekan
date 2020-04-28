@@ -13,6 +13,7 @@
 #include "util.h"
 #include "errors.h"
 #include "vdif_functions.h"
+#include "chimeMetadata.h"
 
 REGISTER_KOTEKAN_PROCESS(psrRecv);
 
@@ -165,6 +166,8 @@ void psrRecv::main_thread() {
             }
             DEBUG("Frame %02i closed, bad packets: %i (%2.1f\%)", frame_id[0], bad_packets, 
                     100*float(bad_packets)/packets_per_frame/num_vdif_threads);
+            allocate_new_metadata_object(out_buf, frame_id[0]);
+            atomic_add_lost_timesamples(out_buf, frame_id[0], bad_packets);
             mark_frame_full(out_buf, unique_name.c_str(), frame_id[0]);
             for (int i=1; i < recv_depth; i++){
                 frame[i-1] = frame[i];

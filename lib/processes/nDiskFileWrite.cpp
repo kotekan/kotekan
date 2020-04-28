@@ -202,7 +202,8 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
                 ERROR("Cannot close file %s", file_name);
             }
 
-            INFO("Data file write done for %s, lost_packets %d", file_name, get_lost_timesamples(buf, frame_id));
+            uint64_t lost_samples = get_lost_timesamples(buf, frame_id);
+            INFO("Data file write done for %s, lost_packets %d", file_name, lost_samples);
         } else {
             //usleep(0.070 * 1e6);
             INFO("Disk id %d, Lost Packets %d, buffer id %d", disk_id, get_lost_timesamples(buf, frame_id), frame_id);
