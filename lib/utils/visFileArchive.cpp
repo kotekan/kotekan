@@ -1,23 +1,28 @@
 #include "visFileArchive.hpp"
 
-#include "errors.h"
-#include "visFile.hpp"
+#include "visFile.hpp" // for create_lockfile
 #include "visFileH5.hpp"
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <algorithm>
-#include <cstdint>
-#include <cstdio>
-#include <highfive/H5DataSet.hpp>
-#include <highfive/H5DataSpace.hpp>
-#include <highfive/H5File.hpp>
-#include <iostream>
-#include <numeric>
-#include <stdexcept>
-#include <tuple>
-#include <type_traits>
-#include <utility>
+#include <algorithm>                   // for copy, min
+#include <cstdint>                     // for uint32_t
+#include <cstdio>                      // for remove
+#include <highfive/H5Attribute.hpp>    // for Attribute, Attribute::write
+#include <highfive/H5DataSet.hpp>      // for DataSet, AnnotateTraits::createAttribute, DataSet...
+#include <highfive/H5DataSpace.hpp>    // for DataSpace::From, DataSpace, DataSpace::getDimensions
+#include <highfive/H5DataType.hpp>     // for CompoundType, create_datatype, CompoundType::addM...
+#include <highfive/H5Exception.hpp>    // for DataSpaceException, HDF5ErrMapper
+#include <highfive/H5File.hpp>         // for File, NodeTraits::createGroup, File::flush, NodeT...
+#include <highfive/H5Group.hpp>        // for Group
+#include <highfive/H5Object.hpp>       // for hid_t
+#include <highfive/H5PropertyList.hpp> // for H5Pcreate, H5Pset_chunk, H5Pset_filter, H5P_DATAS...
+#include <highfive/H5Selection.hpp>    // for SliceTraits::select, Selection, SliceTraits::write
+#include <numeric>                     // for iota
+#include <stdexcept>                   // for invalid_argument
+#include <tuple>                       // for make_tuple, get, tuple
+#include <type_traits>                 // for __decay_and_strip<>::__type
+#include <utility>                     // for move, pair
 
 using namespace HighFive;
 
@@ -135,14 +140,19 @@ void visFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, s
                                  size_t chunk_t, const T* data) {
     // DEBUG("writing {:d} freq, {:d} times, at ({:d},{:d}).", chunk_f, chunk_t, f_ind, t_ind);
     if (name == "flags/inputs") {
+        DEBUG2("writing {}...", name);
         dset(name).select({0, t_ind}, {length("input"), chunk_t}).write(data);
     } else if (name == "evec") {
+        DEBUG2("writing {}...", name);
         dset(name)
             .select({f_ind, 0, 0, t_ind}, {chunk_f, length("ev"), length("input"), chunk_t})
             .write(data);
-    } else if (name == "erms" || name == "flags/frac_lost" || name == "flags/frac_rfi") {
+    } else if (name == "erms" || name == "flags/frac_lost" || name == "flags/frac_rfi"
+               || name == "flags/dataset_id") {
+        DEBUG2("writing {}...", name);
         dset(name).select({f_ind, t_ind}, {chunk_f, chunk_t}).write(data);
     } else {
+        DEBUG2("writing {}...", name);
         size_t last_dim = dset(name).getSpace().getDimensions().at(1);
         dset(name).select({f_ind, 0, t_ind}, {chunk_f, last_dim, chunk_t}).write(data);
     }
@@ -157,6 +167,9 @@ template void visFileArchive::write_block<float>(std::string name, size_t f_ind,
                                                  size_t chunk_f, size_t chunk_t, float const*);
 template void visFileArchive::write_block<int>(std::string name, size_t f_ind, size_t t_ind,
                                                size_t chunk_f, size_t chunk_t, int const*);
+template void visFileArchive::write_block<dset_id_str>(std::string name, size_t f_ind, size_t t_ind,
+                                                       size_t chunk_f, size_t chunk_t,
+                                                       dset_id_str const*);
 
 
 //
@@ -222,6 +235,8 @@ void visFileArchive::create_datasets() {
     create_dataset("gain", {"freq", "input", "time"}, create_datatype<cfloat>(), compress);
     create_dataset("flags/frac_lost", {"freq", "time"}, create_datatype<float>(), no_compress);
     create_dataset("flags/frac_rfi", {"freq", "time"}, create_datatype<float>(), no_compress);
+    create_dataset("flags/dataset_id", {"freq", "time"}, create_datatype<dset_id_str>(),
+                   no_compress);
 
     // Only write the eigenvector datasets if there's going to be anything in them
     if (write_ev) {

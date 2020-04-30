@@ -197,7 +197,7 @@ private:
     static std::string typelabel()
     {
         int status;
-        char * name = abi::__cxa_demangle(typeid(T).name(), nullptr, 0, &status);
+        char * name = abi::__cxa_demangle(typeid(T).name(), nullptr, nullptr, &status);
         std::string typelabel;
 
         if(status == 0) {

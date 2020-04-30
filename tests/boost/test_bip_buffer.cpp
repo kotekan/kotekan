@@ -3,15 +3,23 @@
  */
 #define BOOST_TEST_MODULE "test_BipBuffer"
 
-#include "BipBuffer.hpp"
-#include "SynchronizedQueue.hpp"
-#include "kotekanLogging.hpp"
+#include "BipBuffer.hpp"         // for BipWriteReservation, BipBuffer, BipBufferRe...
+#include "SynchronizedQueue.hpp" // for SynchronizedQueue
+#include "kotekanLogging.hpp"    // for DEBUG_NON_OO, DEBUG2_NON_OO
 
-#include <boost/test/included/unit_test.hpp>
-#include <chrono>
-#include <random>
-#include <thread>
-#include <vector>
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm>                         // for min
+#include <atomic>                            // for atomic_size_t
+#include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_CHECK, BOOST_PP_BOOL_2
+#include <chrono>                            // for milliseconds
+#include <memory>                            // for unique_ptr
+#include <optional>                          // for optional
+#include <random>                            // for mt19937, uniform_int_distribution, random_d...
+#include <stddef.h>                          // for size_t
+#include <stdint.h>                          // for uint8_t
+#include <thread>                            // for sleep_for, thread
+#include <vector>                            // for vector, operator==
 
 /*
  * To see log output, assign 0 to `__enable_syslog` so the messages go to
@@ -178,7 +186,7 @@ BOOST_AUTO_TEST_CASE(buffer_write_read_task_threads) {
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(dis(gen) * 5));
         }
-        q.put(TestTask{0, 0, 0});
+        q.put(TestTask{0, nullptr, 0});
     });
     std::thread t2([&q, &buffer, &actual]() {
         std::random_device rd;
@@ -187,7 +195,7 @@ BOOST_AUTO_TEST_CASE(buffer_write_read_task_threads) {
 
         BipBufferReader reader(buffer);
         while (auto t = q.get()) {
-            if (t->start == 0) {
+            if (t->start == nullptr) {
                 return;
             }
             auto reservation = reader.access(t->length);

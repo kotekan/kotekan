@@ -14,13 +14,20 @@
 #ifndef FAKE_VIS_PATTERN_HPP
 #define FAKE_VIS_PATTERN_HPP
 
-#include "Config.hpp"
-#include "factory.hpp"
-#include "kotekanLogging.hpp"
-#include "visBuffer.hpp"
+#include "Config.hpp"         // for Config
+#include "dataset.hpp"        // for state_id_t, dset_id_t
+#include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
+#include "kotekanLogging.hpp" // for kotekanLogging
+#include "visBuffer.hpp"      // for visFrameView
+#include "visUtil.hpp"        // for cfloat
 
-#include <stdint.h>
-#include <string>
+#include <deque>      // for deque
+#include <functional> // for function
+#include <optional>   // for optional
+#include <stddef.h>   // for size_t
+#include <string>     // for string
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 /**
  * @class FakeVisPattern
@@ -218,8 +225,8 @@ private:
 /**
  * @brief Send out some data but change the dataset IDs
  *
- * @conf  state_changes  A series of timestamp-state type pairs. Supported state types are `inputs`
- *and `flags`.
+ * @conf  state_changes  A series of timestamp-state type pairs. Supported state types are `inputs`,
+ * `gains` and `flags`.
  *
  **/
 class ChangeStatePattern : public DefaultVisPattern {
@@ -240,6 +247,7 @@ private:
     // parameters.
     state_id_t gen_state_inputs();
     state_id_t gen_state_flags();
+    state_id_t gen_state_gains();
 
     std::optional<dset_id_t> current_dset_id;
 
@@ -247,5 +255,6 @@ private:
 
     size_t _input_update_ind = 0;
     size_t _flag_update_ind = 0;
+    size_t _gain_update_ind = 0;
 };
 #endif // FAKE_VIS_PATTERN

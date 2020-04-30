@@ -7,9 +7,11 @@
 #ifndef ICE_BOARD_HANDLER_HPP
 #define ICE_BOARD_HANDLER_HPP
 
+#include "Config.hpp"
 #include "dpdkCore.hpp"
 #include "fpga_header_functions.h"
 #include "prometheusMetrics.hpp"
+#include "util.h" // for e_time
 
 #include "json.hpp"
 
@@ -284,7 +286,7 @@ protected:
      *
      * @return The json object containing port info
      */
-    json get_json_port_info();
+    nlohmann::json get_json_port_info();
 
     /// The FPAG seq number of the current packet being processed
     uint64_t cur_seq = 0;
@@ -387,8 +389,8 @@ inline iceBoardHandler::iceBoardHandler(kotekan::Config& config, const std::stri
     status_cadence = config.get_default<uint32_t>(unique_name, "status_cadence", 0);
 }
 
-json iceBoardHandler::get_json_port_info() {
-    json info;
+nlohmann::json iceBoardHandler::get_json_port_info() {
+    nlohmann::json info;
 
     info["fpga_stream_id"] = {{"crate", port_stream_id.crate_id},
                               {"slot", port_stream_id.slot_id},
@@ -409,8 +411,8 @@ json iceBoardHandler::get_json_port_info() {
 
     info["nic_port"] = this->port;
 
-    vector<uint32_t> freq_bins;
-    vector<float> freq_mhz;
+    std::vector<uint32_t> freq_bins;
+    std::vector<float> freq_mhz;
     stream_id_t temp_stream_id = port_stream_id;
     temp_stream_id.crate_id = port_stream_id.crate_id % 2;
     for (int32_t i = 0; i < num_local_freq; ++i) {

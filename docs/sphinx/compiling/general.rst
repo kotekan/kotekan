@@ -121,12 +121,12 @@ Documentation:
 
 * PlantUml::
 
-    sudo wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar
-    sudo mkdir /opt/plantuml; sudo mv plantuml.jar /opt/plantuml
+    sudo wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar -P /opt/plantuml
+    sudo apt-get install default-jre
 
 * Breathe::
 
-    sudo apt-get install -y python-breathe
+    sudo pip install breathe
 
 * Black::
 
@@ -166,7 +166,9 @@ Cmake build options
 -------------------
 
 * ``-DCMAKE_BUILD_TYPE=Debug``
-    Builds the project with debug symbols.
+    Builds the project with asserts, debug logging and debug symbols.
+* ``-DCMAKE_BUILD_TYPE=Test``
+    Builds the project with asserts and debug logging but without debug symbols.
 * ``-DUSE_DPDK=ON``
     Builds with DPDK support, for source installs requires: `-DRTE_SDK=<dir>`
     and `-DRTE_TARGET=x86_64-native-linuxapp-gcc`

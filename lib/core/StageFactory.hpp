@@ -11,16 +11,15 @@
 #define STAGE_FACTORY_HPP
 
 #include "Config.hpp"
+#include "Stage.hpp"
 #include "bufferContainer.hpp"
 
-#include "json.hpp"
+#include "json.hpp" // for json
 
-#include <map>
-#include <string>
+#include <map>    // for map
+#include <string> // for string
 
 namespace kotekan {
-
-class Stage;
 
 class StageMaker {
 public:
@@ -41,7 +40,7 @@ public:
     std::map<std::string, Stage*> build_stages();
 
 private:
-    void build_from_tree(std::map<std::string, Stage*>& stages, nlohmann::json& config_tree,
+    void build_from_tree(std::map<std::string, Stage*>& stages, const nlohmann::json& config_tree,
                          const std::string& path);
 
     Config& config;

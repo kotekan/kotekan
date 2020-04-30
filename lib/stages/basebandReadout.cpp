@@ -1,26 +1,54 @@
 #include "basebandReadout.hpp"
 
-#include "basebandApiManager.hpp"
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "fpga_header_functions.h"
-#include "gpsTime.h"
-#include "nt_memcpy.h"
-#include "nt_memset.h"
-#include "version.h"
-#include "visFileH5.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"              // for Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "basebandApiManager.hpp"  // for basebandApiManager
+#include "buffer.h"                // for Buffer, mark_frame_empty, register_consumer, wait_fo...
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chimeMetadata.h"         // for chimeMetadata
+#include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, freq_from_bin
+#include "gpsTime.h"               // for FPGA_PERIOD_NS, compute_gps_time, is_gps_global_time...
+#include "kotekanLogging.hpp"      // for INFO, DEBUG, ERROR, WARN
+#include "metadata.h"              // for metadataContainer
+#include "nt_memcpy.h"             // for nt_memcpy
+#include "nt_memset.h"             // for nt_memset
+#include "prometheusMetrics.hpp"   // for Counter, Gauge, MetricFamily, Metrics
+#include "version.h"               // for get_git_commit_hash
+#include "visFile.hpp"             // for create_lockfile
+#include "visFileH5.hpp"           // for create_datatype
+#include "visUtil.hpp"             // for input_ctype, ts_to_double, parse_reorder_default
 
-#include <algorithm>
-#include <assert.h>
-#include <chrono>
-#include <cstdint>
-#include <iostream>
-#include <stdio.h>
-#include <sys/stat.h>
-#include <thread>
-#include <unistd.h>
+#include "fmt.hpp"      // for format, fmt
+#include "gsl-lite.hpp" // for span, operator!=
+
+#include <algorithm>                // for max, copy, copy_backward, min
+#include <assert.h>                 // for assert
+#include <atomic>                   // for atomic_bool
+#include <chrono>                   // for system_clock::time_point, system_clock, nanoseconds
+#include <cstdint>                  // for uint64_t, uint8_t
+#include <cstdio>                   // for remove, snprintf
+#include <deque>                    // for deque
+#include <exception>                // for exception
+#include <functional>               // for _Bind_helper<>::type, bind, function
+#include <highfive/H5Attribute.hpp> // for Attribute, Attribute::write
+#include <highfive/H5DataSet.hpp>   // for AnnotateTraits::createAttribute, DataSet, DataSet::r...
+#include <highfive/H5DataSpace.hpp> // for DataSpace::From, DataSpace, DataSpace::DataSpace
+#include <highfive/H5DataType.hpp>  // for create_datatype
+#include <highfive/H5Exception.hpp> // for FileException
+#include <highfive/H5File.hpp>      // for File, NodeTraits::createDataSet, File::Create, File:...
+#include <highfive/H5Group.hpp>     // for Group
+#include <highfive/H5Selection.hpp> // for Selection, SliceTraits::write, SliceTraits::select
+#include <math.h>                   // for fmod
+#include <memory>                   // for unique_ptr, make_shared, shared_ptr, make_unique
+#include <regex>                    // for match_results<>::_Base_type
+#include <stdexcept>                // for runtime_error
+#include <sys/stat.h>               // for stat, S_IFDIR
+#include <sys/time.h>               // for timeval, timeradd
+#include <thread>                   // for thread, sleep_for
+#include <time.h>                   // for timespec
+#include <tuple>                    // for get
+#include <unistd.h>                 // for access, gethostname, getlogin_r, W_OK
+#include <utility>                  // for get
 
 
 using kotekan::basebandApiManager;
@@ -35,7 +63,7 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(basebandReadout);
 
 
-basebandReadout::basebandReadout(Config& config, const string& unique_name,
+basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
                                  bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&basebandReadout::main_thread, this)),
     _base_dir(config.get_default<std::string>(unique_name, "base_dir", "./")),
@@ -76,7 +104,7 @@ basebandReadout::basebandReadout(Config& config, const string& unique_name,
 
     // Ensure input buffer is long enough.
     if (buf->num_frames <= _num_frames_buffer) {
-        // This process of creating an error string is rediculous. Figure out what
+        // This process of creating an error std::string is rediculous. Figure out what
         // the std::string way to do this is.
         const int msg_len = 200;
         char msg[200];

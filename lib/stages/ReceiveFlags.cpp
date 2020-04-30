@@ -1,13 +1,30 @@
 #include "ReceiveFlags.hpp"
 
-#include "configUpdater.hpp"
-#include "datasetManager.hpp"
-#include "errors.h"
-#include "prometheusMetrics.hpp"
-#include "visBuffer.hpp"
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for operator<
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for mark_frame_empty, mark_frame_full, register_consumer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "configUpdater.hpp"     // for configUpdater
+#include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
+#include "datasetState.hpp"      // for flagState
+#include "kotekanLogging.hpp"    // for WARN, INFO
+#include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
+#include "visBuffer.hpp"         // for visFrameView
+#include "visUtil.hpp"           // for frameID, ts_to_double, current_time, double_to_ts, modulo
 
-#include <exception>
-#include <utility>
+#include "gsl-lite.hpp" // for span<>::iterator, span
+
+#include <algorithm>   // for copy, fill, copy_backward, max
+#include <atomic>      // for atomic_bool
+#include <exception>   // for exception
+#include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, _1, function
+#include <memory>      // for operator==, __shared_ptr_access
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for invalid_argument, runtime_error
+#include <tuple>       // for get
+#include <type_traits> // for add_const<>::type
+#include <utility>     // for pair, move, tuple_element<>::type
 
 using namespace std::placeholders;
 
@@ -20,7 +37,7 @@ using kotekan::prometheus::Metrics;
 REGISTER_KOTEKAN_STAGE(ReceiveFlags);
 
 
-ReceiveFlags::ReceiveFlags(Config& config, const string& unique_name,
+ReceiveFlags::ReceiveFlags(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&ReceiveFlags::main_thread, this)),
     receiveflags_late_frame_counter(
@@ -45,7 +62,7 @@ ReceiveFlags::ReceiveFlags(Config& config, const string& unique_name,
     num_kept_updates = config.get_default<uint32_t>(unique_name, "num_kept_updates", 5);
 
     /// FIFO for flags updates
-    flags = updateQueue<std::pair<state_id_t, std::vector<float>>>(num_kept_updates);
+    flags.resize(num_kept_updates);
 
     // we are ready to receive updates with the callback function now!
     // register as a subscriber with configUpdater

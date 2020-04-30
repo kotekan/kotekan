@@ -6,11 +6,17 @@
 #ifndef HSA_RFI_UPDATE_BAD_INPUTS_HPP
 #define HSA_RFI_UPDATE_BAD_INPUTS_HPP
 
-#include "hsaCommand.hpp"
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaCommand.hpp"         // for hsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
-#include "json.hpp"
-
-#include <vector>
+#include <mutex>    // for mutex
+#include <stdint.h> // for int32_t, uint32_t, uint8_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class hsaRfiUpdateBadInputs
@@ -31,7 +37,7 @@ class hsaRfiUpdateBadInputs : public hsaCommand {
 
 public:
     /// Standard constructor
-    hsaRfiUpdateBadInputs(kotekan::Config& config, const string& unique_name,
+    hsaRfiUpdateBadInputs(kotekan::Config& config, const std::string& unique_name,
                           kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     virtual ~hsaRfiUpdateBadInputs();
 

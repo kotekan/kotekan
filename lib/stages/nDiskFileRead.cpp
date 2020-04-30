@@ -1,12 +1,23 @@
 #include "nDiskFileRead.hpp"
 
-#include "errors.h"
-#include "vdif_functions.h"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_full, register_producer, wait_for_empt...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO, ERROR
 
-#include <random>
-#include <string.h>
-#include <sys/time.h>
-#include <unistd.h>
+#include <algorithm>   // for max
+#include <assert.h>    // for assert
+#include <atomic>      // for atomic_bool
+#include <exception>   // for exception
+#include <functional>  // for _Bind_helper<>::type, bind, function
+#include <memory>      // for allocator_traits<>::value_type
+#include <pthread.h>   // for pthread_setaffinity_np
+#include <regex>       // for match_results<>::_Base_type
+#include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdio.h>     // for fclose, fopen, fread, fseek, ftell, rewind, snprintf, FILE
+#include <sys/types.h> // for uint
+
 
 using std::string;
 
@@ -16,7 +27,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(nDiskFileRead);
 
-nDiskFileRead::nDiskFileRead(Config& config, const string& unique_name,
+nDiskFileRead::nDiskFileRead(Config& config, const std::string& unique_name,
                              bufferContainer& buffer_containter) :
     Stage(config, unique_name, buffer_containter, std::bind(&nDiskFileRead::main_thread, this)) {
     // Get variables from config
@@ -68,7 +79,7 @@ void nDiskFileRead::file_read_thread(int disk_id) {
 
         unsigned char* buf_ptr =
             (unsigned char*)wait_for_empty_frame(buf, unique_name.c_str(), buf_id);
-        if (buf_ptr == NULL)
+        if (buf_ptr == nullptr)
             break;
 
         char file_name[100]; // Find current file

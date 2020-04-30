@@ -10,37 +10,18 @@
 
 // DPDK!
 extern "C" {
-#include <rte_atomic.h>
-#include <rte_branch_prediction.h>
-#include <rte_common.h>
-#include <rte_config.h>
-#include <rte_cycles.h>
-#include <rte_debug.h>
-#include <rte_eal.h>
-#include <rte_ethdev.h>
-#include <rte_ether.h>
-#include <rte_interrupts.h>
-#include <rte_launch.h>
-#include <rte_lcore.h>
-#include <rte_log.h>
-#include <rte_mbuf.h>
-#include <rte_memcpy.h>
-#include <rte_memory.h>
-#include <rte_mempool.h>
-#include <rte_memzone.h>
-#include <rte_pci.h>
-#include <rte_per_lcore.h>
-#include <rte_prefetch.h>
-#include <rte_random.h>
-#include <rte_ring.h>
+#include <rte_ethdev.h> // for rte_eth_conf
+#include <stdint.h>     // for uint32_t, int32_t, uint8_t
 }
 
-#include "Stage.hpp"
-#include "kotekanLogging.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for kotekanLogging
 
-#include <emmintrin.h>
-#include <string>
-#include <vector>
+#include <exception> // for exception
+#include <string>    // for string, allocator
+#include <vector>    // for vector
 
 /**
  * @brief Abstract object for processing packets that come from a given NIC port
@@ -164,7 +145,7 @@ protected:
  */
 class dpdkCore : public kotekan::Stage {
 public:
-    dpdkCore(kotekan::Config& config, const string& unique_name,
+    dpdkCore(kotekan::Config& config, const std::string& unique_name,
              kotekan::bufferContainer& buffer_container);
     ~dpdkCore();
 

@@ -26,7 +26,7 @@
 class clRfiOutput : public gpu_command {
 public:
     // Constructor
-    clRfiOutput(const char* param_name, kotekan::Config& config, const string& unique_name);
+    clRfiOutput(const char* param_name, kotekan::Config& config, const std::string& unique_name);
     // Destructor
     ~clRfiOutput();
     // Builds gpu command

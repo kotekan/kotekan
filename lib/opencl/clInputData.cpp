@@ -30,7 +30,7 @@ int clInputData::wait_on_precondition(int gpu_frame_id) {
     // Wait for there to be data in the input (network) buffer.
     uint8_t* frame =
         wait_for_full_frame(network_buf, unique_name.c_str(), network_buffer_precondition_id);
-    if (frame == NULL)
+    if (frame == nullptr)
         return -1;
     // INFO("Got full buffer {:s}[{:d}], gpu[{:d}][{:d}]", network_buf->buffer_name,
     // network_buffer_precondition_id,
@@ -47,11 +47,11 @@ cl_event clInputData::execute(int gpu_frame_id, cl_event pre_event) {
     void* host_memory_frame = (void*)network_buf->frames[network_buffer_id];
 
     // Data transfer to GPU
-    CHECK_CL_ERROR(
-        clEnqueueWriteBuffer(device.getQueue(0), gpu_memory_frame, CL_FALSE,
-                             0, // offset
-                             input_frame_len, host_memory_frame, (pre_event == NULL) ? 0 : 1,
-                             (pre_event == NULL) ? NULL : &pre_event, &post_events[gpu_frame_id]));
+    CHECK_CL_ERROR(clEnqueueWriteBuffer(
+        device.getQueue(0), gpu_memory_frame, CL_FALSE,
+        0, // offset
+        input_frame_len, host_memory_frame, (pre_event == nullptr) ? 0 : 1,
+        (pre_event == nullptr) ? nullptr : &pre_event, &post_events[gpu_frame_id]));
 
     network_buffer_id = (network_buffer_id + 1) % network_buf->num_frames;
     return post_events[gpu_frame_id];

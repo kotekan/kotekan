@@ -1,16 +1,30 @@
-#include "testDataGen.hpp"
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"         // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "chimeMetadata.h"  // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "errors.h"         // for exit_kotekan, CLEAN_EXIT, ReturnCode
 
-#include "chimeMetadata.h"
-#include "errors.h"
-
-#include <csignal>
-#include <mutex>
-#include <random>
-#include <sys/time.h>
-#include <unistd.h>
+#include <assert.h>    // for assert
+#include <atomic>      // for atomic_bool
+#include <cmath>       // for fmod
+#include <exception>   // for exception
+#include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error
+#include <stdint.h>    // for uint8_t, uint64_t
+#include <stdlib.h>    // for rand, srand
+#include <sys/time.h>  // for gettimeofday, timeval
+#include <sys/types.h> // for uint
+#include <unistd.h>    // for usleep
+#include <vector>      // for vector
 // Needed for a bunch of time utilities.
-#include "gpsTime.h"
-#include "visUtil.hpp"
+#include "bufferContainer.hpp" // for bufferContainer
+#include "gpsTime.h"           // for FPGA_PERIOD_NS
+#include "kotekanLogging.hpp"  // for DEBUG, INFO
+#include "restServer.hpp"      // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...
+#include "testDataGen.hpp"
+#include "visUtil.hpp" // for current_time
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -23,7 +37,7 @@ using kotekan::restServer;
 REGISTER_KOTEKAN_STAGE(testDataGen);
 
 
-testDataGen::testDataGen(Config& config, const string& unique_name,
+testDataGen::testDataGen(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&testDataGen::main_thread, this)) {
 
@@ -46,6 +60,7 @@ testDataGen::testDataGen(Config& config, const string& unique_name,
     rest_mode = config.get_default<std::string>(unique_name, "rest_mode", "none");
     assert(rest_mode == "none" || rest_mode == "start" || rest_mode == "step");
     step_to_frame = 0;
+    _first_frame_index = config.get_default<uint32_t>(unique_name, "first_frame_index", 0);
 
     endpoint = unique_name + "/generate_test_data";
     using namespace std::placeholders;
@@ -87,8 +102,8 @@ void testDataGen::main_thread() {
 
     int frame_id = 0;
     int frame_id_abs = 0;
-    uint8_t* frame = NULL;
-    uint64_t seq_num = 0;
+    uint8_t* frame = nullptr;
+    uint64_t seq_num = samples_per_data_set * _first_frame_index;
     bool finished_seeding_consant = false;
     static struct timeval now;
 
@@ -103,14 +118,14 @@ void testDataGen::main_thread() {
         }
 
         frame = (uint8_t*)wait_for_empty_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         allocate_new_metadata_object(buf, frame_id);
         set_fpga_seq_num(buf, frame_id, seq_num);
         set_stream_id(buf, frame_id, stream_id);
 
-        gettimeofday(&now, NULL);
+        gettimeofday(&now, nullptr);
         set_first_packet_recv_time(buf, frame_id, now);
 
         // std::random_device rd;

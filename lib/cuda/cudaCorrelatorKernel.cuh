@@ -21,7 +21,7 @@
  */
 class cudaCorrelatorKernel : public cudaCommand {
 public:
-    cudaCorrelatorKernel(kotekan::Config& config, const string& unique_name,
+    cudaCorrelatorKernel(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
     ~cudaCorrelatorKernel();
     cudaEvent_t execute(int gpu_frame_id, cudaEvent_t pre_event) override;

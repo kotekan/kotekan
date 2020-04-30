@@ -1,0 +1,17 @@
+frames_per_packet: 1
+num_global_freq: 1024
+num_local_freq: 1
+samples_per_data_set: 49152
+num_elements: 2048
+timestep: 2.56e-6
+bytes_per_freq: 16
+waterfallX: 1024
+waterfallY: 1024
+bi_frames_per_packet: 10
+sk_step: 256
+chime_rfi_header_size: 35
+num_receive_threads: 4
+use_dataset_broker: True
+ds_broker_host: "10.1.50.11"
+ds_broker_port: 12050
+solar_transit_downtime_m: 60

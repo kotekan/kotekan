@@ -6,7 +6,7 @@
 
 class clCorrelatorKernel : public clCommand {
 public:
-    clCorrelatorKernel(kotekan::Config& config, const string& unique_name,
+    clCorrelatorKernel(kotekan::Config& config, const std::string& unique_name,
                        kotekan::bufferContainer& host_buffers, clDeviceInterface& device);
     ~clCorrelatorKernel();
     virtual void build() override;

@@ -9,16 +9,20 @@
 #ifndef BASEBAND_READOUT_MANAGER_HPP
 #define BASEBAND_READOUT_MANAGER_HPP
 
-#include "SynchronizedQueue.hpp"
+#include "SynchronizedQueue.hpp" // for SynchronizedQueue
 
-#include "gsl-lite.hpp"
+#include "gsl-lite.hpp" // for span
 
-#include <forward_list>
-#include <functional>
-#include <memory>
-#include <mutex>
-#include <string>
-#include <vector>
+#include <chrono>       // for system_clock, system_clock::time_point
+#include <forward_list> // for forward_list
+#include <functional>   // for reference_wrapper
+#include <memory>       // for unique_ptr, shared_ptr, allocator
+#include <mutex>        // for mutex
+#include <stdint.h>     // for uint64_t, int64_t, uint32_t, uint8_t
+#include <string>       // for string
+#include <time.h>       // for size_t, timespec
+#include <utility>      // for pair
+#include <vector>       // for vector
 
 namespace kotekan {
 
@@ -67,9 +71,9 @@ struct basebandDumpStatus {
     /// Description of the failure, when the state is ERROR
     std::string reason = "";
     /// Time when the processing started (null if ``state`` is still WAITING)
-    std::shared_ptr<std::chrono::system_clock::time_point> started = 0;
+    std::shared_ptr<std::chrono::system_clock::time_point> started = nullptr;
     /// Time when the processing finished (null if ``state`` is not DONE or ERROR)
-    std::shared_ptr<std::chrono::system_clock::time_point> finished = 0;
+    std::shared_ptr<std::chrono::system_clock::time_point> finished = nullptr;
 };
 
 

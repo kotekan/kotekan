@@ -1,5 +1,7 @@
 #include "basebandReadoutManager.hpp"
 
+#include <optional> // for optional
+
 
 namespace kotekan {
 

@@ -1,9 +1,10 @@
 #define BOOST_TEST_MODULE "test_SynchronizedQueue"
 
-#include "SynchronizedQueue.hpp"
+#include "SynchronizedQueue.hpp" // for SynchronizedQueue
 
-#include <boost/test/included/unit_test.hpp>
-#include <thread>
+#include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_CHECK, BOOST_PP_BOOL_2
+#include <optional>                          // for optional
+#include <thread>                            // for thread
 
 /*
  * A basic check that you `get` what you `put` into the queue.
@@ -55,7 +56,7 @@ BOOST_AUTO_TEST_CASE(cancel) {
     SynchronizedQueue<int> q;
     q.put(42);
     q.cancel();
-    BOOST_CHECK(q.get() == nullptr);
+    BOOST_CHECK(!q.get());
 }
 
 /*
@@ -63,8 +64,8 @@ BOOST_AUTO_TEST_CASE(cancel) {
  */
 BOOST_AUTO_TEST_CASE(cancel_with_threads) {
     SynchronizedQueue<int> q;
-    std::thread t1([&q]() { BOOST_CHECK(q.get() == nullptr); });
-    std::thread t2([&q]() { BOOST_CHECK(q.get() == nullptr); });
+    std::thread t1([&q]() { BOOST_CHECK(!q.get()); });
+    std::thread t2([&q]() { BOOST_CHECK(!q.get()); });
     q.cancel();
 
     t1.join();

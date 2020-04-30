@@ -7,16 +7,17 @@
 #ifndef FRB_POST_PROCESS
 #define FRB_POST_PROCESS
 
-#include "Stage.hpp"
-#include "chimeMetadata.h"
-#include "fpga_header_functions.h"
-#include "frb_functions.h"
-#include "prometheusMetrics.hpp"
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "frb_functions.h"       // for FRBHeader
+#include "prometheusMetrics.hpp" // for Counter
 
-#include <emmintrin.h>
-#include <immintrin.h>
+#include <stdint.h> // for int32_t, uint16_t, int16_t, uint32_t, uint8_t
+#include <string>   // for string
+#include <vector>   // for vector
 
-using std::vector;
 
 /**
  * @class frbPostProcess
@@ -80,7 +81,7 @@ using std::vector;
 class frbPostProcess : public kotekan::Stage {
 public:
     /// Constructor.
-    frbPostProcess(kotekan::Config& config_, const string& unique_name,
+    frbPostProcess(kotekan::Config& config_, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
 
     /// Destructor
@@ -117,7 +118,7 @@ private:
     int32_t _factor_upchan_out;
     int32_t _nbeams;
     int32_t _timesamples_per_frb_packet;
-    vector<int32_t> _incoherent_beams;
+    std::vector<int32_t> _incoherent_beams;
     float _incoherent_truncation;
 
     // Derived useful things

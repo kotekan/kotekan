@@ -1,33 +1,35 @@
 #include "FakeVis.hpp"
 
-#include "StageFactory.hpp"
-#include "datasetManager.hpp"
-#include "datasetState.hpp"
-#include "errors.h"
-#include "version.h"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for allocate_new_metadata_object, mark_frame_full, register_p...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager
+#include "datasetState.hpp"    // for eigenvalueState, freqState, inputState, metadataState
+#include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "factory.hpp"         // for FACTORY
+#include "kotekanLogging.hpp"  // for INFO, DEBUG
+#include "version.h"           // for get_git_commit_hash
+#include "visBuffer.hpp"       // for visFrameView
+#include "visUtil.hpp"         // for prod_ctype, input_ctype, double_to_ts, current_time, freq...
 
-#include "gsl-lite.hpp"
+#include "fmt.hpp"      // for format, fmt
+#include "gsl-lite.hpp" // for span<>::iterator, span
 
-#include <algorithm>
-#include <atomic>
-#include <complex>
-#include <csignal>
-#include <cstdint>
-#include <exception>
-#include <fmt.hpp>
-#include <functional>
-#include <iterator>
-#include <math.h>
-#include <memory>
-#include <regex>
-#include <stdexcept>
-#include <sys/time.h>
-#include <time.h>
-#include <tuple>
-#include <type_traits>
-#include <utility>
+#include <algorithm>   // for max, fill, transform
+#include <atomic>      // for atomic_bool
+#include <complex>     // for complex
+#include <cstdint>     // for uint32_t, int32_t
+#include <exception>   // for exception
+#include <functional>  // for _Bind_helper<>::type, bind, function, placeholders
+#include <iterator>    // for back_insert_iterator, back_inserter, begin, end
+#include <memory>      // for allocator, unique_ptr
+#include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error
+#include <time.h>      // for nanosleep, timespec
+#include <tuple>       // for get, make_tuple, tuple
+#include <type_traits> // for __decay_and_strip<>::__type
+#include <utility>     // for pair
 
 
 using namespace std::placeholders;
@@ -41,7 +43,8 @@ REGISTER_KOTEKAN_STAGE(FakeVis);
 REGISTER_KOTEKAN_STAGE(ReplaceVis);
 
 
-FakeVis::FakeVis(Config& config, const string& unique_name, bufferContainer& buffer_container) :
+FakeVis::FakeVis(Config& config, const std::string& unique_name,
+                 bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&FakeVis::main_thread, this)) {
 
     // Fetch any simple configuration
@@ -132,9 +135,9 @@ void FakeVis::main_thread() {
     timespec ts_sleep = double_to_ts(sleep_before);
     nanosleep(&ts_sleep, nullptr);
 
-    while (!stop_thread) {
+    double start = current_time();
 
-        double start = current_time();
+    while (!stop_thread) {
 
         for (auto f : freq) {
 
@@ -203,7 +206,7 @@ void FakeVis::main_thread() {
         // If requested sleep for the extra time required to produce a fake vis
         // at the correct cadence
         if (this->wait) {
-            double diff = cadence - (current_time() - start);
+            double diff = cadence * frame_count - (current_time() - start);
             timespec ts_diff = double_to_ts(diff);
             nanosleep(&ts_diff, nullptr);
         }
@@ -238,7 +241,7 @@ void FakeVis::fill_non_vis(visFrameView& frame) {
 }
 
 
-ReplaceVis::ReplaceVis(Config& config, const string& unique_name,
+ReplaceVis::ReplaceVis(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&ReplaceVis::main_thread, this)) {
 

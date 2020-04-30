@@ -1,9 +1,13 @@
 #include "kotekanLogging.hpp"
 
-#include "fmt.hpp"
+#include "errors.h" // for __enable_syslog, __err_msg, __max_log_msg_len
 
-#include <stdexcept>
-#include <strings.h>
+#include "fmt.hpp" // for basic_string_view, print, vformat, basic_format_context, format_args
+
+#include <stdexcept>   // for runtime_error
+#include <stdio.h>     // for stderr
+#include <strings.h>   // for strcasecmp
+#include <type_traits> // for __underlying_type_impl<>::type, underlying_type
 
 namespace kotekan {
 
@@ -35,11 +39,11 @@ void kotekanLogging::set_log_level(const logLevel& log_level) {
     _member_log_level = static_cast<std::underlying_type<logLevel>::type>(log_level);
 }
 
-void kotekanLogging::set_log_prefix(const string& log_prefix) {
+void kotekanLogging::set_log_prefix(const std::string& log_prefix) {
     __log_prefix = log_prefix;
 }
 
-void kotekanLogging::set_log_level(const string& s_log_level) {
+void kotekanLogging::set_log_level(const std::string& s_log_level) {
 
     logLevel log_level;
 

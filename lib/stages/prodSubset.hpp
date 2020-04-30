@@ -7,18 +7,18 @@
 #define PROD_SUB_HPP
 
 #include "Config.hpp"
-#include "Stage.hpp"
+#include "Stage.hpp" // for Stage
 #include "buffer.h"
 #include "bufferContainer.hpp"
-#include "datasetManager.hpp"
-#include "visUtil.hpp"
+#include "datasetManager.hpp" // for dset_id_t, state_id_t, fingerprint_t
+#include "visUtil.hpp"        // for prod_ctype
 
-#include <future>
-#include <stddef.h>
-#include <stdint.h>
-#include <string>
-#include <tuple>
-#include <vector>
+#include <map>      // for map
+#include <stddef.h> // for size_t
+#include <string>   // for string
+#include <tuple>    // for tuple
+#include <utility>  // for pair
+#include <vector>   // for vector
 
 
 /**
@@ -74,7 +74,7 @@ class prodSubset : public kotekan::Stage {
 
 public:
     /// Constructor. Loads config options. Defines subset of products.
-    prodSubset(kotekan::Config& config, const string& unique_name,
+    prodSubset(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
     /// Primary loop: sorts products and passes them on to output buffer.

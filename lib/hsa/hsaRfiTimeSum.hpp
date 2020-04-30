@@ -6,10 +6,17 @@
 #ifndef HSA_RFI_TIME_SUM_H
 #define HSA_RFI_TIME_SUM_H
 
-#include "hsaCommand.hpp"
-#include "restServer.hpp"
+#include "Config.hpp"             // for Config
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaCommand.hpp"         // for hsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
 
-#include <mutex>
+#include "json.hpp" // for json
+
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /*
  * @class hsaRfiTimeSum
@@ -48,7 +55,7 @@ class hsaRfiTimeSum : public hsaCommand {
 
 public:
     /// Constructor, initializes internal variables.
-    hsaRfiTimeSum(kotekan::Config& config, const string& unique_name,
+    hsaRfiTimeSum(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
     /// Destructor, cleans up local allocs
     virtual ~hsaRfiTimeSum();
@@ -66,10 +73,6 @@ private:
     uint32_t output_frame_len;
     /// Length of the output_var frame, should be sizeof_float x n_freq x nsamp / sk_step
     uint32_t output_var_frame_len;
-    /// Length of the lost sample frame
-    uint32_t lost_samples_frame_len;
-    /// Length of the lost sample correction frame
-    uint32_t lost_samples_correction_len;
     /// Number of elements (2048 for CHIME or 256 for Pathfinder)
     uint32_t _num_elements;
     /// Number of frequencies per GPU (1 for CHIME or 8 for Pathfinder)

@@ -7,12 +7,17 @@
 #ifndef CONST_DATA_CHECK_H
 #define CONST_DATA_CHECK_H
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "StageFactory.hpp"    // IWYU pragma: keep
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include <unistd.h>
+#include <atomic>     // for atomic_bool   // IWYU pragma: keep
+#include <cstdint>    // for int32_t
+#include <functional> // for _Bind_helper<>::type, bind, function   // IWYU pragma: keep
+#include <string>     // for string
+#include <vector>     // for vector
+
 
 /**
  * @class constDataCheck
@@ -35,7 +40,7 @@
 class constDataCheck : public kotekan::Stage {
 public:
     /// Constructor, also initializes internal variables from config.
-    constDataCheck(kotekan::Config& config, const string& unique_name,
+    constDataCheck(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
 
     /// Destructor, cleans up local allocs.
@@ -46,8 +51,8 @@ public:
 
 private:
     struct Buffer* buf;
-    vector<int32_t> ref_real;
-    vector<int32_t> ref_imag;
+    std::vector<int32_t> ref_real;
+    std::vector<int32_t> ref_imag;
     int num_frames_to_test;
 };
 

@@ -1,10 +1,24 @@
 #include "visBuffer.hpp"
 
-#include "gpsTime.h"
+#include "buffer.h"                // for Buffer, allocate_new_metadata_object, swap_frames
+#include "chimeMetadata.h"         // for chimeMetadata
+#include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, stream_id_t
+#include "gpsTime.h"               // for is_gps_global_time_set
+#include "metadata.h"              // for metadataContainer
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <set>
+#include <algorithm>   // for copy
+#include <complex>     // for complex  // IWYU pragma: keep
+#include <cstdint>     // for uint64_t // IWYU pragma: keep
+#include <cstring>     // for memcpy
+#include <ctime>       // for gmtime
+#include <map>         // for map
+#include <set>         // for set
+#include <stdexcept>   // for runtime_error
+#include <sys/time.h>  // for TIMEVAL_TO_TIMESPEC
+#include <type_traits> // for __decay_and_strip<>::__type
+#include <vector>      // for vector
 
 
 template<typename T>
@@ -47,6 +61,7 @@ visFrameView::visFrameView(Buffer* buf, int frame_id, uint32_t n_elements, uint3
     num_elements(_metadata->num_elements),
     num_prod(_metadata->num_prod),
     num_ev(_metadata->num_ev),
+    data_size(buffer_layout.first),
 
     // Set the refs to the general _metadata
     time(std::tie(_metadata->fpga_seq_start, _metadata->ctime)),
@@ -106,7 +121,7 @@ std::string visFrameView::summary() const {
 
     struct tm* tm = std::gmtime(&(std::get<1>(time).tv_sec));
 
-    string s =
+    std::string s =
         fmt::format("visBuffer[name={:s}]: freq={:d} dataset={} fpga_start={:d} time={:%F %T}",
                     buffer->buffer_name, freq_id, dataset_id, std::get<0>(time), *tm);
 

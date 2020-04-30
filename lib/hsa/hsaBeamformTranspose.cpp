@@ -1,11 +1,21 @@
 #include "hsaBeamformTranspose.hpp"
 
+#include "Config.hpp"             // for Config
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+
+#include <cstdint>   // for int32_t
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <string.h>  // for memcpy, memset
+#include <vector>    // for vector
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 
 REGISTER_HSA_COMMAND(hsaBeamformTranspose);
 
-hsaBeamformTranspose::hsaBeamformTranspose(Config& config, const string& unique_name,
+hsaBeamformTranspose::hsaBeamformTranspose(Config& config, const std::string& unique_name,
                                            bufferContainer& host_buffers,
                                            hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "transpose" KERNEL_EXT,

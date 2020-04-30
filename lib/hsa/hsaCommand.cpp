@@ -1,5 +1,20 @@
 #include "hsaCommand.hpp"
 
+#include "Config.hpp"             // for Config
+#include "hsa/hsa_ext_amd.h"      // for hsa_amd_profiling_async_copy_time_t, hsa_amd_profiling...
+#include "hsaBase.h"              // for HSA_CHECK, hsa_host_free, hsa_host_malloc
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+#include "kotekanLogging.hpp"     // for INFO
+
+#include <assert.h>  // for assert
+#include <exception> // for exception
+#include <fstream>   // for ifstream, operator|, basic_istream::seekg, ios, basic_...
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error
+#include <stdlib.h>  // for free, malloc
+#include <string.h>  // for memset, size_t
+#include <vector>    // for vector
+
 using kotekan::bufferContainer;
 using kotekan::Config;
 
@@ -7,16 +22,17 @@ using std::string;
 
 #define MAX_ARGS_LEN 64
 
-hsaCommand::hsaCommand(Config& config_, const string& unique_name_, bufferContainer& host_buffers_,
-                       hsaDeviceInterface& device_, const string& default_kernel_command,
-                       const string& default_kernel_file_name) :
+hsaCommand::hsaCommand(Config& config_, const std::string& unique_name_,
+                       bufferContainer& host_buffers_, hsaDeviceInterface& device_,
+                       const std::string& default_kernel_command,
+                       const std::string& default_kernel_file_name) :
     gpuCommand(config_, unique_name_, host_buffers_, device_, default_kernel_command,
                default_kernel_file_name),
     device(device_) {
     _gpu_buffer_depth = config.get<int>(unique_name, "buffer_depth");
 
     // Set the local log level.
-    string s_log_level = config.get<std::string>(unique_name, "log_level");
+    std::string s_log_level = config.get<std::string>(unique_name, "log_level");
     set_log_level(s_log_level);
     set_log_prefix(unique_name);
 
@@ -26,7 +42,7 @@ hsaCommand::hsaCommand(Config& config_, const string& unique_name_, bufferContai
     memset(signals, 0, _gpu_buffer_depth * sizeof(hsa_signal_t));
 
     for (int i = 0; i < _gpu_buffer_depth; ++i) {
-        hsa_signal_create(0, 0, NULL, &signals[i]);
+        hsa_signal_create(0, 0, nullptr, &signals[i]);
     }
 
     // Not everyone needs this, maybe move out of constructor
@@ -103,7 +119,7 @@ void hsaCommand::finalize_frame(int frame_id) {
     HSA_CHECK(hsa_status);
 }
 
-uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {
+uint64_t hsaCommand::load_hsaco_file(string& file_name, std::string& kernel_name) {
 
     hsa_status_t hsa_status;
 
@@ -129,29 +145,29 @@ uint64_t hsaCommand::load_hsaco_file(string& file_name, string& kernel_name) {
 
     // Deserialize code object.
     hsa_code_object_t code_object = {0};
-    hsa_status =
-        hsa_code_object_deserialize((void*)raw_code_object, code_object_size, NULL, &code_object);
+    hsa_status = hsa_code_object_deserialize((void*)raw_code_object, code_object_size, nullptr,
+                                             &code_object);
     HSA_CHECK(hsa_status);
     assert(0 != code_object.handle);
 
     // Create executable.
     hsa_executable_t hsaExecutable;
-    hsa_status = hsa_executable_create(HSA_PROFILE_FULL, HSA_EXECUTABLE_STATE_UNFROZEN, NULL,
+    hsa_status = hsa_executable_create(HSA_PROFILE_FULL, HSA_EXECUTABLE_STATE_UNFROZEN, nullptr,
                                        &hsaExecutable);
     HSA_CHECK(hsa_status);
 
     // Load code object.
-    hsa_status =
-        hsa_executable_load_code_object(hsaExecutable, device.get_gpu_agent(), code_object, NULL);
+    hsa_status = hsa_executable_load_code_object(hsaExecutable, device.get_gpu_agent(), code_object,
+                                                 nullptr);
     HSA_CHECK(hsa_status);
 
     // Freeze executable.
-    hsa_status = hsa_executable_freeze(hsaExecutable, NULL);
+    hsa_status = hsa_executable_freeze(hsaExecutable, nullptr);
     HSA_CHECK(hsa_status);
 
     // Get symbol handle.
     hsa_executable_symbol_t kernelSymbol;
-    hsa_status = hsa_executable_get_symbol(hsaExecutable, NULL, kernel_name.c_str(),
+    hsa_status = hsa_executable_get_symbol(hsaExecutable, nullptr, kernel_name.c_str(),
                                            device.get_gpu_agent(), 0, &kernelSymbol);
     HSA_CHECK(hsa_status);
 

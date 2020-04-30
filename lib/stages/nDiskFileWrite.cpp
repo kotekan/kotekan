@@ -1,25 +1,37 @@
 #include "nDiskFileWrite.hpp"
 
-#include "buffer.h"
-#include "chimeMetadata.h"
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.h"     // for get_lost_timesamples
+#include "kotekanLogging.hpp"  // for ERROR, INFO
+#include "util.h"              // for cp, make_raw_dirs
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for format, fmt
 
-#include <errno.h>
-#include <fcntl.h>
-#include <functional>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <thread>
-#include <unistd.h>
+#include <algorithm>  // for max
+#include <atomic>     // for atomic_bool
+#include <errno.h>    // for errno
+#include <exception>  // for exception
+#include <fcntl.h>    // for open, O_CREAT, O_WRONLY
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <memory>     // for allocator_traits<>::value_type
+#include <pthread.h>  // for pthread_setaffinity_np
+#include <regex>      // for match_results<>::_Base_type
+#include <sched.h>    // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdexcept>  // for runtime_error
+#include <stdio.h>    // for fprintf, snprintf, fclose, fopen, FILE, size_t
+#include <stdlib.h>   // for exit
+#include <thread>     // for thread
+#include <time.h>     // for gmtime, strftime, time, time_t
+#include <unistd.h>   // for close, write, ssize_t
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using std::string;
 
 REGISTER_KOTEKAN_STAGE(nDiskFileWrite);
 
@@ -157,13 +169,13 @@ void nDiskFileWrite::file_write_thread(int disk_id) {
     int fd;
     size_t file_num = disk_id;
     int frame_id = disk_id;
-    uint8_t* frame = NULL;
+    uint8_t* frame = nullptr;
 
     while (!stop_thread) {
 
         // This call is blocking.
         frame = wait_for_full_frame(buf, unique_name.c_str(), frame_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             break;
 
         // INFO("Got buffer id: {:d}, disk id {:d}", frame_id, disk_id);

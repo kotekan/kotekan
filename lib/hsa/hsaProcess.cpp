@@ -1,21 +1,27 @@
 #include "hsaProcess.hpp"
 
-#include "Stage.hpp"
-#include "fpga_header_functions.h"
-#include "unistd.h"
-#include "util.h"
-#include "vdif_functions.h"
+#include "Config.hpp"             // for Config
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "factory.hpp"            // for FACTORY
+#include "gpuDeviceInterface.hpp" // for gpuDeviceInterface
+#include "gpuEventContainer.hpp"  // for gpuEventContainer
+#include "hsa/hsa.h"              // for hsa_signal_t
+#include "hsaCommand.hpp"         // for hsaCommand, _factory_aliashsaCommand
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+#include "hsaEventContainer.hpp"  // for hsaEventContainer
 
-#include <iostream>
-#include <memory>
-#include <sys/time.h>
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error
+#include <stdint.h>  // for uint32_t
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 
 REGISTER_KOTEKAN_STAGE(hsaProcess);
 
-hsaProcess::hsaProcess(Config& config, const string& unique_name,
+hsaProcess::hsaProcess(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     gpuProcess(config, unique_name, buffer_container) {
     uint32_t numa_node = config.get_default(unique_name, "numa_node", 0);

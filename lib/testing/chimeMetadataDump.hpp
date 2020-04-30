@@ -6,12 +6,12 @@
 #ifndef CHIME_METADATA_DUMP_HPP
 #define CHIME_METADATA_DUMP_HPP
 
-#include "Stage.hpp"
-#include "buffer.h"
-#include "errors.h"
-#include "util.h"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include <unistd.h>
+#include <string> // for string
+
 
 /**
  * @class chimeMetadataDump
@@ -32,7 +32,7 @@
 class chimeMetadataDump : public kotekan::Stage {
 public:
     /// Constructor.
-    chimeMetadataDump(kotekan::Config& config, const string& unique_name,
+    chimeMetadataDump(kotekan::Config& config, const std::string& unique_name,
                       kotekan::bufferContainer& buffer_container);
 
     /// Destructor.

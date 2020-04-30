@@ -1,11 +1,19 @@
 #include "hsaRfiInputSum.hpp"
 
-#include "hsaBase.h"
+#include "Config.hpp"             // for Config
+#include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_for_...
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chimeMetadata.h"        // for get_rfi_num_bad_inputs
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+#include "kotekanLogging.hpp"     // for DEBUG
+#include "restServer.hpp"         // for HTTP_RESPONSE, connectionInstance, restServer
 
-#include "fmt.hpp"
-
-#include <math.h>
-#include <mutex>
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error
+#include <string.h>  // for memcpy, memset
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -16,7 +24,7 @@ using kotekan::restServer;
 
 REGISTER_HSA_COMMAND(hsaRfiInputSum);
 
-hsaRfiInputSum::hsaRfiInputSum(Config& config, const string& unique_name,
+hsaRfiInputSum::hsaRfiInputSum(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, hsaDeviceInterface& device) :
     // Note, the rfi_chime_inputsum_private.hsaco kernel may be used in the future.
     hsaCommand(config, unique_name, host_buffers, device, "rfi_chime_inputsum" KERNEL_EXT,
@@ -76,7 +84,7 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
         void* output;
         void* input_mask;
         void* output_mask;
-        //   void *LostSampleCorrection;
+        void* lost_sample_correction;
         uint32_t num_elements;
         uint32_t num_bad_inputs;
         uint32_t sk_step;
@@ -90,8 +98,8 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
     args.input_mask = device.get_gpu_memory_array("input_mask", gpu_frame_id, input_mask_len);
     args.output_mask =
         device.get_gpu_memory_array("rfi_mask_output", gpu_frame_id, output_mask_len);
-    // args.LostSampleCorrection = device.get_gpu_memory("lost_sample_correction",
-    // correction_frame_len);
+    args.lost_sample_correction = device.get_gpu_memory_array("rfi_compressed_lost_samples",
+                                                              gpu_frame_id, correction_frame_len);
     args.num_elements = _num_elements;
     args.num_bad_inputs = num_bad_inputs;
     args.sk_step = _sk_step;
@@ -108,7 +116,7 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
     params.grid_size_z = _samples_per_data_set / _sk_step;
     params.num_dims = 3;
     params.private_segment_size = 0;
-    params.group_segment_size = 16384;
+    params.group_segment_size = 1024;
     // Parameters for rfi_chime_inputsum_private.hsaco, for easy switching if needed in future
     /*    params.workgroup_size_x = _num_local_freq;
         params.workgroup_size_y = 1;

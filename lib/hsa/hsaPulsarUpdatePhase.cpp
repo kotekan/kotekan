@@ -3,17 +3,27 @@
 
 #include "hsaPulsarUpdatePhase.hpp"
 
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "configUpdater.hpp"
-#include "hsaBase.h"
-#include "restServer.hpp"
-#include "visUtil.hpp"
+#include "Config.hpp"              // for Config
+#include "buffer.h"                // for mark_frame_empty, Buffer, register_consumer, wait_for...
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "configUpdater.hpp"       // for configUpdater
+#include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
+#include "hsaBase.h"               // for hsa_host_free, hsa_host_malloc
+#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
+#include "kotekanLogging.hpp"      // for DEBUG, WARN, ERROR, INFO
+#include "restServer.hpp"          // for restServer, HTTP_RESPONSE, connectionInstance
+#include "visUtil.hpp"             // for double_to_ts
 
-#include <math.h>
-#include <signal.h>
-#include <string>
-#include <time.h>
+#include <algorithm>  // for clamp
+#include <cmath>      // for cos, sin, fmod, acos, asin, sqrt, atan2, pow
+#include <cstdint>    // for int32_t
+#include <exception>  // for exception
+#include <functional> // for placeholders
+#include <regex>      // for match_results<>::_Base_type
+#include <string.h>   // for memcpy
+#include <string>     // for string, allocator, operator+, to_string, char_traits
+#include <time.h>     // for tm, timespec, localtime
+#include <vector>     // for vector
 
 #define PI 3.14159265
 #define light 299792458.
@@ -34,7 +44,7 @@ using kotekan::restServer;
 
 REGISTER_HSA_COMMAND(hsaPulsarUpdatePhase);
 
-hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_name,
+hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const std::string& unique_name,
                                            bufferContainer& host_buffers,
                                            hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "", "") {
@@ -80,11 +90,11 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const string& unique_
 
     // Register function to listen for new pulsar, and update ra and dec
     using namespace std::placeholders;
-    for (uint beam_id = 0; beam_id < 10; beam_id++) {
+    for (int beam_id = 0; beam_id < _num_beams; beam_id++) {
         configUpdater::instance().subscribe(
             config.get<std::string>(unique_name, "updatable_config/psr_pt") + "/"
                 + std::to_string(beam_id),
-            [beam_id, this](json& json_msg) -> bool {
+            [beam_id, this](nlohmann::json& json_msg) -> bool {
                 return pulsar_grab_callback(json_msg, beam_id);
             });
     }
@@ -102,7 +112,7 @@ int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
     uint8_t* frame =
         wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
-    if (frame == NULL)
+    if (frame == nullptr)
         return -1;
     metadata_buffer_precondition_id =
         (metadata_buffer_precondition_id + 1) % metadata_buf->num_frames;
@@ -111,7 +121,7 @@ int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id) {
     // Wait for new gain
     if (first_pass) {
         uint8_t* frame = wait_for_full_frame(gain_buf, unique_name.c_str(), gain_buf_id);
-        if (frame == NULL)
+        if (frame == nullptr)
             return -1;
         DEBUG("Applying inital host gains from {:s}[{:d}]", gain_buf->buffer_name, gain_buf_id);
         std::lock_guard<std::mutex> lock(_pulsar_lock);
@@ -164,13 +174,19 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec t
     }
     LST = fmod(LST, 24);
     for (int b = 0; b < _num_beams; b++) {
+        if (psr_coord.scaling[b] == 1) {
+            for (uint32_t i = 0; i < _num_elements * 2; ++i) {
+                output[b * _num_elements * 2 + i] = gains[b * _num_elements * 2 + i];
+            }
+            continue;
+        }
         double hour_angle = LST * 15. - psr_coord.ra[b];
         double alt = sin(psr_coord.dec[b] * D2R) * sin(inst_lat * D2R)
                      + cos(psr_coord.dec[b] * D2R) * cos(inst_lat * D2R) * cos(hour_angle * D2R);
-        alt = asin(alt);
+        alt = asin(std::clamp(alt, -1.0, 1.0));
         double az = (sin(psr_coord.dec[b] * D2R) - sin(alt) * sin(inst_lat * D2R))
                     / (cos(alt) * cos(inst_lat * D2R));
-        az = acos(az);
+        az = acos(std::clamp(az, -1.0, 1.0));
         if (sin(hour_angle * D2R) >= 0) {
             az = TAU - az;
         }

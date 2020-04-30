@@ -1,10 +1,15 @@
 #include "hsaRfiBadInput.hpp"
 
-#include "hsaBase.h"
+#include "Config.hpp"             // for Config
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+#include "restServer.hpp"         // for HTTP_RESPONSE, connectionInstance, restServer
 
-#include <math.h>
-#include <mutex>
-#include <unistd.h>
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error
+#include <string.h>  // for memcpy, memset
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -15,7 +20,7 @@ using kotekan::restServer;
 
 REGISTER_HSA_COMMAND(hsaRfiBadInput);
 
-hsaRfiBadInput::hsaRfiBadInput(Config& config, const string& unique_name,
+hsaRfiBadInput::hsaRfiBadInput(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "rfi_bad_input" KERNEL_EXT,
                "rfi_bad_input.hsaco") {

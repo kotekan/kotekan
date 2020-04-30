@@ -45,11 +45,25 @@ execute_process(
 )
 
 execute_process(
-  COMMAND python3 ${SOURCE_DIR}/python/kotekan/version.py
-  WORKING_DIRECTORY ${SOURCE_DIR}
+  COMMAND python -c "import kotekan; print(kotekan.__version__)"
+  WORKING_DIRECTORY ${SOURCE_DIR}/python/
   OUTPUT_VARIABLE KOTEKAN_VERSION
   OUTPUT_STRIP_TRAILING_WHITESPACE
 )
+
+execute_process(
+  COMMAND git rev-parse --abbrev-ref HEAD
+  WORKING_DIRECTORY ${SOURCE_DIR}
+  OUTPUT_VARIABLE KOTEKAN_BRANCH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+# Remove branch name if we are on master
+if (${KOTEKAN_BRANCH} MATCHES "master")
+    set(FULL_KOTEKAN_VERSION "${KOTEKAN_VERSION}")
+else()
+    set(FULL_KOTEKAN_VERSION "${KOTEKAN_BRANCH}.${KOTEKAN_VERSION}")
+endif()
 
 configure_file(
     ${CURRENT_SOURCE_DIR}/version.c.in
