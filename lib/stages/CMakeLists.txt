@@ -43,6 +43,7 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       bufferMerge.cpp
       bufferCopy.cpp
       bufferSwitch.cpp
+      bufferDelay.cpp
       InputSubset.cpp
       #RFI Pipeline Processes
       rfiVDIF.cpp
