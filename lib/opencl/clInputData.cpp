@@ -2,6 +2,7 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+using std::string;
 
 REGISTER_CL_COMMAND(clInputData);
 
