@@ -1,5 +1,9 @@
 #include "hipProcess.hpp"
 
+#include "Config.hpp"
+#include "StageFactory.hpp"
+#include "factory.hpp"
+
 //#include "hip/hip_profiler_api.h"
 #include "unistd.h"
 #include "util.h"

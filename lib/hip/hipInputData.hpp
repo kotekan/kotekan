@@ -9,6 +9,8 @@
 
 #include "hipCommand.hpp"
 
+#include <string>
+
 /**
  * @class hipInputData
  * @brief hipCommand for copying data onto the GPU.
@@ -26,13 +28,14 @@
  */
 class hipInputData : public hipCommand {
 public:
-    hipInputData(kotekan::Config& config, const string& unique_name,
+    hipInputData(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& host_buffers, hipDeviceInterface& device);
     ~hipInputData();
     int wait_on_precondition(int gpu_frame_id) override;
     hipEvent_t execute(int gpu_frame_id, hipEvent_t pre_event) override;
     void finalize_frame(int frame_id) override;
 
+    std::string get_performance_metric_string();
 
 protected:
     hipEvent_t* data_staged_event;

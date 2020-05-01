@@ -8,6 +8,7 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+using std::string;
 
 REGISTER_HIP_COMMAND(hipOutputData);
 

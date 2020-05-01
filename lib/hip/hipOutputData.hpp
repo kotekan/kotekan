@@ -3,6 +3,8 @@
 
 #include "hipCommand.hpp"
 
+#include <string>
+
 /**
  * @class hipOutputData
  * @brief hipCommand for copying data onto the GPU.
@@ -23,7 +25,7 @@
  */
 class hipOutputData : public hipCommand {
 public:
-    hipOutputData(kotekan::Config& config, const string& unique_name,
+    hipOutputData(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& host_buffers, hipDeviceInterface& device);
     ~hipOutputData();
     int wait_on_precondition(int gpu_frame_id) override;

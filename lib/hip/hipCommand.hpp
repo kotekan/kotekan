@@ -47,10 +47,10 @@ public:
      * @param default_kernel_command   Name of the kernel for profiling read out.
      * @param default_kernel_file_name Kernel dile name, not really needed with hip kernels.
      */
-    hipCommand(kotekan::Config& config, const string& unique_name,
+    hipCommand(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& host_buffers, hipDeviceInterface& device,
-                const string& default_kernel_command = "",
-                const string& default_kernel_file_name = "");
+                const std::string& default_kernel_command = "",
+                const std::string& default_kernel_file_name = "");
     /// Destructor that frees memory for the kernel and name.
     virtual ~hipCommand();
 
@@ -75,7 +75,7 @@ protected:
 
 // Create a factory for hipCommands
 CREATE_FACTORY(hipCommand, // const string &, const string &,
-               kotekan::Config&, const string&, kotekan::bufferContainer&, hipDeviceInterface&);
+               kotekan::Config&, const std::string&, kotekan::bufferContainer&, hipDeviceInterface&);
 #define REGISTER_HIP_COMMAND(newCommand)                                                          \
     REGISTER_NAMED_TYPE_WITH_FACTORY(hipCommand, newCommand, #newCommand)
 

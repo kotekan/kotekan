@@ -15,9 +15,11 @@
 #include "hipEventContainer.hpp"
 #include "gpuProcess.hpp"
 
+#include <string>
+
 class hipProcess final : public gpuProcess {
 public:
-    hipProcess(kotekan::Config& config, const string& unique_name,
+    hipProcess(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& buffer_container);
     virtual ~hipProcess();
 

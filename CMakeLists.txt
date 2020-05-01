@@ -276,7 +276,7 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -Wall -Wextra -Werror -Wzero-as-null-pointer-constant -march=${ARCH} -mtune=${ARCH} -I/opt/rocm/include")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GNU_SOURCE -O3 -march=${ARCH} -mtune=${ARCH} -I/opt/rocm/include")
 
 # dpdk uses the register keyword that got removed in C++17 because it wasn't doing anything
 #TODO remove this line when dpdk people fix this: https://mails.dpdk.org/archives/dev/2018-July/107950.html

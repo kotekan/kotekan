@@ -2,7 +2,7 @@ project( kotekan_hip )
 
 include_directories(${HIP_INCLUDE_DIR})
 
-include_directories (${KOTEKAN_SOURCE_DIR}/include)
+include_directories (${KOTEKAN_SOURCE_DIR}/external)
 
 include_directories (${KOTEKAN_SOURCE_DIR}/lib)
 include_directories (${KOTEKAN_SOURCE_DIR}/lib/gpu)
@@ -21,6 +21,8 @@ set ( KOTEKAN_HIP_SOURCES
       hipOutputData.cpp
     )
 
-HIP_ADD_LIBRARY ( kotekan_hip ${KOTEKAN_HIP_SOURCES} )
+HIP_ADD_LIBRARY(kotekan_hip ${KOTEKAN_HIP_SOURCES})
 
-add_dependencies( kotekan_hip kotekan_gpu )
+target_link_libraries(kotekan_hip libexternal)
+
+add_dependencies(kotekan_hip kotekan_gpu)

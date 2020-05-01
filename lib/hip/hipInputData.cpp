@@ -2,6 +2,7 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+using std::string;
 
 REGISTER_HIP_COMMAND(hipInputData);
 
@@ -74,4 +75,10 @@ void hipInputData::finalize_frame(int frame_id) {
     hipCommand::finalize_frame(frame_id);
     mark_frame_empty(in_buf, unique_name.c_str(), in_buffer_finalize_id);
     in_buffer_finalize_id = (in_buffer_finalize_id + 1) % in_buf->num_frames;
+}
+
+std::string hipInputData::get_performance_metric_string() {
+    double transfer_speed = (double)in_buf->frame_size
+                            / (double)get_last_gpu_execution_time() / 1000000000;
+    return "Speed: " + std::to_string(transfer_speed) + " GB/s";
 }
