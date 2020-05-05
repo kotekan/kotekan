@@ -1,12 +1,15 @@
-# Set the version of CMake required for *all* CMake files in the project
-cmake_minimum_required(VERSION 3.0)
-project(KOTEKAN)
+# Set the version of CMake required for *all* CMake files in the project. 3.8.2 to match C++17.
+cmake_minimum_required(VERSION 3.8.2)
+project(
+    KOTEKAN
+    DESCRIPTION "A high performance radio data processing pipeline"
+    LANGUAGES C CXX)
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 
 # Require at least c++17 support from the compiler
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-# this makes sure we use -std=c++11, not -std=gnu++11
+# this makes sure we use -std=c++17, not -std=gnu++17
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # This is required early on for some versions of GCC, do not remove.
