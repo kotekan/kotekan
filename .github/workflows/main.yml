@@ -73,7 +73,7 @@ jobs:
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
             -DCMAKE_BUILD_TYPE=Test \
             -DARCH=haswell \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+            -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s
 
@@ -118,7 +118,7 @@ jobs:
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
             -DBOOST_TESTS=ON \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+            -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" rm -r lib
         docker run "${OPTS[@]}" ccache -s
@@ -172,7 +172,7 @@ jobs:
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
             -DBOOST_TESTS=OFF \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+            -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s
 
@@ -212,8 +212,7 @@ jobs:
         -DNO_MEMLOCK=ON \
         -DUSE_OMP=ON \
         -DBOOST_TESTS=ON \
-        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-        -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
+        -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s
 
@@ -278,8 +277,7 @@ jobs:
         -DLAPACKE_DIR=/usr/local/opt/openblas/ \
         -DBLAZE_PATH=$GITHUB_WORKSPACE/blaze \
         -DHIGHFIVE_PATH=$GITHUB_WORKSPACE/HighFive \
-        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-        -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
+        -DCCACHE=ON ..
         make -j 2
 
   # Build kotekan documentation
@@ -327,7 +325,8 @@ jobs:
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
             -DBOOST_TESTS=ON \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCCACHE=ON ..
 
     - name: Run iwyu
       run: |
