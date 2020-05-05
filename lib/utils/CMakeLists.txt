@@ -35,13 +35,13 @@ endif()
 
 add_library(kotekan_utils ${KOTEKAN_UTIL_SOURCES})
 
-target_link_libraries(kotekan_utils libexternal)
+target_link_libraries(kotekan_utils PRIVATE libexternal)
 
 # HDF5 stuff
 if(${USE_HDF5})
     include_directories(${HDF5_INCLUDE_DIRS})
     include_directories(SYSTEM /kotekan/HighFive/include/)
-    target_link_libraries(kotekan_utils ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
+    target_link_libraries(kotekan_utils PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
     add_dependencies(kotekan_utils highfive)
 endif()
 
