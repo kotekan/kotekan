@@ -71,6 +71,7 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON \
             -DCMAKE_BUILD_TYPE=Test \
             -DARCH=haswell \
             -DCCACHE=ON ..
@@ -111,6 +112,7 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON \
             -DCMAKE_BUILD_TYPE=Test \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
@@ -164,6 +166,7 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON \
             -DCMAKE_BUILD_TYPE=Test \
             -DUSE_DPDK=ON \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
@@ -202,6 +205,7 @@ jobs:
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+        -DCMAKE_LINK_WHAT_YOU_USE=ON \
         -DUSE_DPDK=ON \
         -DCMAKE_BUILD_TYPE=Test \
         -DUSE_HDF5=ON \
@@ -267,6 +271,7 @@ jobs:
         # adding this to the above env block breaks and results in sh not finding cmake etc
         export PATH="/usr/local/opt/hdf5@1.10/bin:$PATH"
         cd build
+        # the MacOS linker doesn't support --no-as-needed for -DCMAKE_LINK_WHAT_YOU_USE=ON
         cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
         -DUSE_HDF5=ON \
         -DUSE_OPENCL=ON \
@@ -316,6 +321,7 @@ jobs:
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON \
             -DCMAKE_BUILD_TYPE=Test \
             -DUSE_DPDK=ON \
             -DUSE_HSA=ON \
