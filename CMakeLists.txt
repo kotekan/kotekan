@@ -12,9 +12,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # this makes sure we use -std=c++17, not -std=gnu++17
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# This is required early on for some versions of GCC, do not remove.
-add_definitions(/D__STDC_FORMAT_MACROS)
-
 # This quiets a noisy cmake warning on newer versions, triggered by some of our CMake/FindXYZ.cmake
 # scripts.
 if(NOT ${CMAKE_VERSION} VERSION_LESS "3.12.0")
