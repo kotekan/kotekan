@@ -126,9 +126,12 @@ target_link_libraries(kotekan_stages PRIVATE ${LIBEVENT_LIBRARIES})
 
 # Add atomic for building against GCC
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    target_link_libraries(kotekan_stages -latomic)
+    target_link_libraries(kotekan_stages PRIVATE -latomic)
 endif()
 
-target_link_libraries(kotekan_stages libexternal)
+target_link_libraries(kotekan_stages PRIVATE libexternal)
 
-target_link_libraries(kotekan_stages kotekan_utils kotekan_core)
+target_link_libraries(kotekan_stages PRIVATE kotekan_utils kotekan_core)
+
+# -lrt is needed for shm_open in VisSharedMemWriter
+target_link_libraries(kotekan_stages PRIVATE rt)
