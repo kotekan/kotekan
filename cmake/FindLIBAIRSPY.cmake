@@ -1,4 +1,4 @@
-# Finds airspy include path and libraries Sets the following if libevent is found: LibAirSpy_FOUND,
+# Finds airspy include path and libraries Sets the following if airspy is found: LibAirSpy_FOUND,
 # LIBAIRSPY_INCLUDE_DIR, LIBAIRSPY_LIBRARIES
 
 include(FindPackageHandleStandardArgs)
