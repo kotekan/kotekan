@@ -299,13 +299,6 @@ else()
         "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lm")
 endif()
 
-# Add link to atomic operations library if we are using Clang
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -latomic")
-endif()
-
-# Add fcx-limited-range to speed up complex arithmetic if we are using GCC Add atomic operations
-# library which is sometimes needed for GCC
 # Disable complex math NaN/INFO range checking for performance
 include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag(-fcx-limited-range HAVE_CX_LIMITED_RANGE)
@@ -317,9 +310,6 @@ include(CheckCCompilerFlag)
 check_c_compiler_flag(-fcx-limited-range HAVE_C_LIMITED_RANGE)
 if(HAVE_C_LIMITED_RANGE AND NOT ${IWYU})
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fcx-limited-range")
-endif()
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -latomic")
 endif()
 
 if(${USE_OPENCL})
