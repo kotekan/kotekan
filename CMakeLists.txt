@@ -251,14 +251,6 @@ if(${USE_HDF5})
     add_definitions(-DWITH_HDF5)
 endif()
 
-# Optionally include OpenSSL for hash function support
-find_package(OpenSSL)
-if(OPENSSL_FOUND)
-    add_definitions(-DWITH_SSL)
-    set(USE_OPENSSL ON)
-    include_directories(${OPENSSL_INCLUDE_DIR})
-endif()
-
 find_package(Threads REQUIRED)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99")
