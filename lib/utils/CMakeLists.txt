@@ -45,7 +45,7 @@ if(${USE_HDF5})
     add_dependencies(kotekan_utils highfive)
 endif()
 
-# Libevent is required for the restClient
+# Libevent base&pthreads is required for the restClient
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 find_package(LIBEVENT REQUIRED)
-target_link_libraries(kotekan_utils PRIVATE ${LIBEVENT_LIBRARIES})
+target_link_libraries(kotekan_utils PUBLIC ${LIBEVENT_BASE} ${LIBEVENT_PTHREADS})

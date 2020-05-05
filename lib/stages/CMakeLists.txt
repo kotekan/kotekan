@@ -119,12 +119,10 @@ endif()
 # Libevent is required for bufferRecv
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 find_package(LIBEVENT REQUIRED)
-target_link_libraries(kotekan_stages PRIVATE ${LIBEVENT_LIBRARIES})
-
-# Add atomic for building against GCC
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    target_link_libraries(kotekan_stages PRIVATE -latomic)
-endif()
+target_link_libraries(
+    kotekan_stages
+    PUBLIC ${LIBEVENT_BASE}
+    PRIVATE ${LIBEVENT_PTHREAD})
 
 target_link_libraries(kotekan_stages PRIVATE libexternal)
 

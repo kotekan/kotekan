@@ -33,7 +33,10 @@ if(OPENSSL_FOUND)
     target_compile_definitions(kotekan_core PUBLIC WITH_SSL)
 endif()
 
-# Libevent is required for the restServer
+# Libevent base & pthreads is required for the restServer
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 find_package(LIBEVENT REQUIRED)
-target_link_libraries(kotekan_core PRIVATE ${LIBEVENT_LIBRARIES})
+target_link_libraries(
+    kotekan_core
+    PUBLIC ${LIBEVENT_BASE}
+    PRIVATE ${LIBEVENT_PTHREADS})
