@@ -30,3 +30,8 @@ endif()
 if(OPENSSL_FOUND)
     target_link_libraries(kotekan_core ${OPENSSL_LIBRARIES})
 endif()
+
+# Libevent is required for the restServer
+set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
+find_package(LIBEVENT REQUIRED)
+target_link_libraries(kotekan_core PRIVATE ${LIBEVENT_LIBRARIES})

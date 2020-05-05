@@ -129,11 +129,6 @@ if(${USE_LAPACK})
     add_definitions(-DBLAZE_BLAS_IS_PARALLEL=1)
 endif()
 
-# Libevent is required now
-find_package(LIBEVENT REQUIRED)
-include_directories(${LIBEVENT_INCLUDE_DIR}/../)
-link_libraries(${LIBEVENT_LIBRARIES})
-
 # Libnuma is optional for some setups
 find_package(NUMA)
 if(${NUMA_FOUND})

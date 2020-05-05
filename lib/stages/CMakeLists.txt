@@ -95,7 +95,6 @@ if(${USE_LAPACK})
 endif()
 
 add_library(kotekan_stages ${KOTEKAN_PROCESS_LIB_SOURCES})
-target_link_libraries(kotekan_stages ${EVENT_LIBRARIES})
 
 if(${USE_AIRSPY})
     target_link_libraries(kotekan_stages ${LIBAIRSPY_LIBRARIES})
@@ -119,6 +118,11 @@ if(${USE_LAPACK})
     target_link_libraries(kotekan_stages ${LAPACK_LIBRARIES})
     target_link_libraries(kotekan_stages ${LAPACKE_LIBRARIES})
 endif()
+
+# Libevent is required for bufferRecv
+set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
+find_package(LIBEVENT REQUIRED)
+target_link_libraries(kotekan_stages PRIVATE ${LIBEVENT_LIBRARIES})
 
 # Add atomic for building against GCC
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")

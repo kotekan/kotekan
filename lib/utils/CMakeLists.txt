@@ -44,3 +44,8 @@ if(${USE_HDF5})
     target_link_libraries(kotekan_utils ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
     add_dependencies(kotekan_utils highfive)
 endif()
+
+# Libevent is required for the restClient
+set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
+find_package(LIBEVENT REQUIRED)
+target_link_libraries(kotekan_utils PRIVATE ${LIBEVENT_LIBRARIES})
