@@ -326,6 +326,7 @@ jobs:
             -DUSE_OMP=ON \
             -DBOOST_TESTS=ON \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DIWYU=ON \
             -DCCACHE=ON ..
 
     - name: Run iwyu
