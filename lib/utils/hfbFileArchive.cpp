@@ -78,6 +78,7 @@ void hfbFileArchive::setup_file(const std::string& name,
                                 const std::map<std::string, std::string>& metadata,
                                 const std::vector<time_ctype>& times,
                                 const std::vector<freq_ctype>& freqs,
+                                const std::vector<uint32_t>& subfreqs,
                                 const std::vector<uint32_t>& beams,
                                 std::vector<int> chunk_size) {
 
@@ -95,22 +96,26 @@ void hfbFileArchive::setup_file(const std::string& name,
                                                     "{:d}))."),
                                                 chunk[0], chunk[1], chunk[2]));
     if (chunk[0] > (int)freqs.size()) {
+
+        INFO("hfbFileArchive: Chunk frequency ({}) dimension greater than axes ({}). Will use a smaller "
+             "chunk.", chunk[0], freqs.size())
         chunk[0] = freqs.size();
-        INFO("hfbFileArchive: Chunk frequency dimension greater than axes. Will use a smaller "
-             "chunk.")
     }
     if (chunk[2] > (int)times.size()) {
+
+        INFO("hfbFileArchive: Chunk time ({}) dimension greater than axes({}). Will use a smaller chunk.", chunk[2], times.size())
         chunk[2] = times.size();
-        INFO("hfbFileArchive: Chunk time dimension greater than axes. Will use a smaller chunk.")
     }
     if (chunk[3] > (int)beams.size()) {
+
+        INFO("hfbFileArchive: Chunk beam ({}) dimension greater than axes ({}). Will use a smaller chunk.", chunk[3], beams.size())
         chunk[3] = beams.size();
-        INFO("hfbFileArchive: Chunk beam dimension greater than axes. Will use a smaller chunk.")
     }
     if (chunk[4] > (int)subfreqs.size()) {
+
+        INFO("hfbFileArchive: Chunk sub-frequency ({}) dimension greater than axes ({}). Will use a smaller "
+             "chunk.", chunk[4], subfreqs.size())
         chunk[4] = subfreqs.size();
-        INFO("hfbFileArchive: Chunk sub-frequencies dimension greater than axes. Will use a "
-             "smaller chunk.")
     }
 
     INFO("Creating new archive file {:s}", name);
@@ -132,9 +137,10 @@ void hfbFileArchive::setup_file(const std::string& name,
 template<typename T>
 void hfbFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f,
                                  size_t chunk_t, const T* data) {
-    // DEBUG("writing {:d} freq, {:d} times, at ({:d},{:d}).", chunk_f, chunk_t, f_ind, t_ind);
-    size_t last_dim = dset(name).getSpace().getDimensions().at(1);
-    dset(name).select({f_ind, 0, t_ind}, {chunk_f, last_dim, chunk_t}).write(data);
+    DEBUG("writing {:d} freq, {:d} times, at ({:d},{:d}).", chunk_f, chunk_t, f_ind, t_ind);
+    size_t beam_last_dim = dset(name).getSpace().getDimensions().at(1);
+    size_t subfreq_last_dim = dset(name).getSpace().getDimensions().at(2);
+    dset(name).select({f_ind, 0, 0, t_ind}, {chunk_f, beam_last_dim, subfreq_last_dim, chunk_t}).write(data);
 }
 
 // Instantiate for types that will get used to satisfy linker
@@ -192,13 +198,13 @@ void hfbFileArchive::create_axis(std::string name, const std::vector<T>& axis) {
 
 void hfbFileArchive::create_datasets() {
 
-    Group flags = file->createGroup("flags");
+    //Group flags = file->createGroup("flags");
 
     bool compress = true;
     bool no_compress = false;
 
     // Create transposed dataset shapes
-    create_dataset("hfb", {"freq", "beam", "sub_freq", "time"}, create_datatype<float>(), compress);
+    create_dataset("hfb", {"freq", "beam", "subfreq", "time"}, create_datatype<float>(), compress);
 
     if (stacked) {
         Group rev_map = file->createGroup("reverse_map");
@@ -206,9 +212,9 @@ void hfbFileArchive::create_datasets() {
     }
 
     // Add weight type flag where gossec expects it
-    dset("hfb_weight")
-        .createAttribute<std::string>("type", DataSpace::From(weight_type))
-        .write(weight_type);
+    //dset("hfb_weight")
+    //    .createAttribute<std::string>("type", DataSpace::From(weight_type))
+    //    .write(weight_type);
 
     file->flush();
 }
@@ -219,11 +225,9 @@ void hfbFileArchive::create_dataset(const std::string& name, const std::vector<s
     // Mapping of axis names to sizes (start, chunk)
     std::map<std::string, std::tuple<size_t, size_t>> size_map;
     size_map["freq"] = std::make_tuple(length("freq"), chunk[0]);
-    size_map["input"] =
-        std::make_tuple(length("input"), std::min((size_t)(chunk[1]), length("input")));
-    size_map["prod"] = std::make_tuple(length("prod"), chunk[1]);
-    size_map["ev"] = std::make_tuple(length("ev"), length("ev"));
+    size_map["beam"] = std::make_tuple(length("beam"), chunk[3]);
     size_map["time"] = std::make_tuple(length("time"), chunk[2]);
+    size_map["subfreq"] = std::make_tuple(length("subfreq"), chunk[4]);
     if (stacked)
         size_map["stack"] = std::make_tuple(length("stack"), chunk[1]);
 
