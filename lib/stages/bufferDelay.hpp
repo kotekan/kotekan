@@ -17,11 +17,11 @@
  *
  * @par Buffer
  * @buffer in_buf Buffer to delay frames from
- *        @buffer_format Matches the output buffers
- *        @buffer_metadata Matches the output buffers
+ *        @buffer_format Matches the output buffer
+ *        @buffer_metadata Matches the output buffer
  * @buffer out_buf Buffer to release frames to
- *        @buffer_format Matches the input buffers
- *        @buffer_metadata Matches the input buffers
+ *        @buffer_format Matches the input buffer
+ *        @buffer_metadata Matches the input buffer
  *
  * * @author James Willis
  */
