@@ -23,7 +23,10 @@
  *        @buffer_format Matches the input buffer
  *        @buffer_metadata Matches the input buffer
  *
- * * @author James Willis
+ * @conf   copy_frame Bool. Flag to copy or swap frames
+ * @conf   num_frames_to_hold Int. No. of frames to hold in buffer before releasing one
+ *
+ * @author James Willis
  */
 class bufferDelay : public kotekan::Stage {
 public:
