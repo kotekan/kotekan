@@ -47,10 +47,11 @@ bufferDelay::bufferDelay(Config& config, const std::string& unique_name,
 
 void bufferDelay::main_thread() {
 
-    uint32_t in_frame_id = 0;
+    frameID in_frame_id(in_buf);
+    frameID in_frame_release_id(in_buf);
+    frameID out_frame_id(out_buf);
     uint32_t in_frame_hold_ctr = 0;
-    uint32_t in_frame_release_id = 0;
-    uint32_t out_frame_id = 0;
+
     uint8_t* output_frame = nullptr;
 
     while (!stop_thread) {
@@ -96,17 +97,17 @@ void bufferDelay::main_thread() {
           DEBUG("Reached maximum no. of frames to hold. Releasing oldest frame... in_frame_id: {:d}, in_frame_hold_ctr: {:d}, in_frame_release_id: {:d}", in_frame_id, in_frame_hold_ctr, in_frame_release_id);
 
           mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
-          out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
+          out_frame_id++;
          
           // Release the input buffer frame.
           mark_frame_empty(in_buf, unique_name.c_str(), in_frame_release_id);
-          in_frame_release_id = (in_frame_release_id + 1) % in_buf->num_frames;
+          in_frame_release_id++;
         }
         else
           in_frame_hold_ctr++;
 
         // Increase the in_frame_id for the input buffer
-        in_frame_id = (in_frame_id + 1) % in_buf->num_frames;
+        in_frame_id++;
           
         DEBUG("Holding {:d} frames", in_frame_hold_ctr);
 
