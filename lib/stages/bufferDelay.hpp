@@ -32,7 +32,7 @@ class bufferDelay : public kotekan::Stage {
 public:
     /// Constructor
     bufferDelay(kotekan::Config& config, const std::string& unique_name,
-               kotekan::bufferContainer& buffer_container);
+                kotekan::bufferContainer& buffer_container);
 
     /// Destructor
     ~bufferDelay() = default;
@@ -43,17 +43,16 @@ public:
 protected:
     /// The input buffer to delay frames from
     struct Buffer* in_buf;
-    
+
     /// The output buffer to release frames to
     struct Buffer* out_buf;
 
     /// Config variables
     /// Flag to copy or swap frames
     bool _copy_frame;
-    
+
     /// No. of frames to hold in buffer before releasing one
     uint32_t _num_frames_to_hold;
-
 };
 
 #endif
