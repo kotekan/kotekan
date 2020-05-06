@@ -62,7 +62,7 @@ void bufferDelay::main_thread() {
         DEBUG("Got new input frame {:d}", in_frame_id);
 
         // If the in buffer is holding the right amount of frames, release one
-        if (in_frame_hold_ctr == _num_frames_to_hold) {
+        if (in_frame_hold_ctr >= _num_frames_to_hold) {
 
           // Get a new output frame
           output_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
@@ -101,12 +101,12 @@ void bufferDelay::main_thread() {
           // Release the input buffer frame.
           mark_frame_empty(in_buf, unique_name.c_str(), in_frame_release_id);
           in_frame_release_id = (in_frame_release_id + 1) % in_buf->num_frames;
-          in_frame_hold_ctr--;
         }
+        else
+          in_frame_hold_ctr++;
 
         // Increase the in_frame_id for the input buffer
         in_frame_id = (in_frame_id + 1) % in_buf->num_frames;
-        in_frame_hold_ctr++;
           
         DEBUG("Holding {:d} frames", in_frame_hold_ctr);
 
