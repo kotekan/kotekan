@@ -51,11 +51,7 @@ void bufferDelay::main_thread() {
     uint32_t in_frame_hold_ctr = 0;
     uint32_t in_frame_release_id = 0;
     uint32_t out_frame_id = 0;
-
-    uint8_t* output_frame =
-      wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
-    if (output_frame == nullptr)
-      return; // Shutdown condition
+    uint8_t* output_frame = nullptr;
 
     while (!stop_thread) {
 
@@ -68,6 +64,11 @@ void bufferDelay::main_thread() {
         // If the in buffer is holding the right amount of frames, release one
         if (in_frame_hold_ctr == _num_frames_to_hold) {
 
+          // Get a new output frame
+          output_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
+          if (output_frame == nullptr)
+            return;
+ 
           // Buffer sizes must match exactly
           if (in_buf->frame_size != out_buf->frame_size) {
             throw std::runtime_error(
@@ -95,13 +96,8 @@ void bufferDelay::main_thread() {
           DEBUG("Reached maximum no. of frames to hold. Releasing oldest frame... in_frame_id: {:d}, in_frame_hold_ctr: {:d}, in_frame_release_id: {:d}", in_frame_id, in_frame_hold_ctr, in_frame_release_id);
 
           mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
-                
-          // Get a new output frame
           out_frame_id = (out_frame_id + 1) % out_buf->num_frames;
-          output_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
-          if (output_frame == nullptr)
-            return;
-          
+         
           // Release the input buffer frame.
           mark_frame_empty(in_buf, unique_name.c_str(), in_frame_release_id);
           in_frame_release_id = (in_frame_release_id + 1) % in_buf->num_frames;
