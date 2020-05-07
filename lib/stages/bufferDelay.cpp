@@ -35,6 +35,13 @@ bufferDelay::bufferDelay(Config& config, const std::string& unique_name,
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
 
+    // Buffer sizes must match exactly
+    if (in_buf->frame_size != out_buf->frame_size) {
+        throw std::runtime_error(
+            fmt::format(fmt("Buffer sizes must match for direct copy (src {:d} != dest {:d})."),
+                        in_buf->frame_size, out_buf->frame_size));
+    }
+
     _copy_frame = config.get_default<bool>(unique_name, "copy_frame", false);
     _num_frames_to_hold = config.get<uint32_t>(unique_name, "num_frames_to_hold");
 
@@ -71,13 +78,6 @@ void bufferDelay::main_thread() {
             if (output_frame == nullptr)
                 return;
 
-            // Buffer sizes must match exactly
-            if (in_buf->frame_size != out_buf->frame_size) {
-                throw std::runtime_error(fmt::format(
-                    fmt("Buffer sizes must match for direct copy (src {:d} != dest {:d})."),
-                    in_buf->frame_size, out_buf->frame_size));
-            }
-
             if (_copy_frame) {
                 allocate_new_metadata_object(out_buf, out_frame_id);
                 // Metadata sizes must match exactly
@@ -105,8 +105,9 @@ void bufferDelay::main_thread() {
             // Release the input buffer frame.
             mark_frame_empty(in_buf, unique_name.c_str(), in_frame_release_id);
             in_frame_release_id++;
-        } else
+        } else {
             in_frame_hold_ctr++;
+        }
 
         // Increase the in_frame_id for the input buffer
         in_frame_id++;
