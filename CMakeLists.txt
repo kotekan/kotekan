@@ -140,9 +140,8 @@ else()
 endif()
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    # enable all MacOS specific code
     add_definitions(-DMAC_OSX)
-else()
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
 endif()
 
 # Create custom build type for testing: no debug info, but asserts
