@@ -78,7 +78,7 @@ void bufferDelay::main_thread() {
             if (output_frame == nullptr)
                 return;
 
-            if (_copy_frame) {
+            if (_copy_frame || get_num_consumers(in_buf) > 1) {
                 allocate_new_metadata_object(out_buf, out_frame_id);
                 // Metadata sizes must match exactly
                 if (in_buf->metadata[in_frame_release_id]->metadata_size
