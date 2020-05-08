@@ -71,6 +71,7 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
             -DCMAKE_LINK_WHAT_YOU_USE=ON \
             -DCMAKE_BUILD_TYPE=Test \
             -DARCH=haswell \
@@ -112,6 +113,7 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
             -DCMAKE_LINK_WHAT_YOU_USE=ON \
             -DCMAKE_BUILD_TYPE=Test \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
@@ -166,6 +168,7 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
             -DCMAKE_LINK_WHAT_YOU_USE=ON \
             -DCMAKE_BUILD_TYPE=Test \
             -DUSE_DPDK=ON \
@@ -205,6 +208,7 @@ jobs:
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+        -DWERROR=ON \
         -DCMAKE_LINK_WHAT_YOU_USE=ON \
         -DUSE_DPDK=ON \
         -DCMAKE_BUILD_TYPE=Test \
@@ -273,6 +277,7 @@ jobs:
         cd build
         # the MacOS linker doesn't support --no-as-needed for -DCMAKE_LINK_WHAT_YOU_USE=ON
         cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+        -DWERROR=ON \
         -DUSE_HDF5=ON \
         -DUSE_OPENCL=ON \
         -DUSE_FFTW=ON \
@@ -300,6 +305,7 @@ jobs:
         docker run "${OPTS[@]}" \
           cmake \
             -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
             -DCOMPILE_DOCS=ON \
             -DPLANTUML_PATH=/code/build/plantuml \
             -DBOOST_TESTS=OFF ..
@@ -321,6 +327,7 @@ jobs:
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
             -DCMAKE_LINK_WHAT_YOU_USE=ON \
             -DCMAKE_BUILD_TYPE=Test \
             -DUSE_DPDK=ON \

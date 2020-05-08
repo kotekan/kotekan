@@ -42,6 +42,7 @@ option(BOOST_TESTS "Compile Boost C++ unit tests" OFF)
 option(_GOSSEC "Set buffer status messages to DEBUG log level" OFF)
 option(IWYU "Enable include-what-you-use and print suggestions to stderr" OFF)
 option(CCACHE "Use ccache to speed up the build" OFF)
+option(WERROR "Warnings are errors" OFF)
 
 if(${CCACHE})
     find_program(CCACHE_PROGRAM ccache)
@@ -51,6 +52,11 @@ if(${CCACHE})
     else()
         message("Unable to find ccache")
     endif()
+endif()
+
+if(${WERROR})
+    message("Treating all warnings as errors")
+    add_compile_options(-Werror)
 endif()
 
 if(${_GOSSEC})
@@ -263,7 +269,7 @@ add_compile_options(-D_GNU_SOURCE -march=${ARCH} -mtune=${ARCH} -I/opt/rocm/incl
 add_compile_options(-O3)
 
 # lots of warnings and all warnings as errors
-add_compile_options(-Wall -Wextra -Werror)
+add_compile_options(-Wall -Wextra)
 
 # OpenMP flag
 if(${USE_OMP})
