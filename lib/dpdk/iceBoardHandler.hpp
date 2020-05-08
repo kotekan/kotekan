@@ -68,10 +68,10 @@ public:
                     kotekan::bufferContainer& buffer_container, int port);
 
     /// Same abstract function as in @c dpdkRXhandler
-    virtual int handle_packet(struct rte_mbuf* mbuf) = 0;
+    virtual int handle_packet(struct rte_mbuf* mbuf) override = 0;
 
     /// Update common stats, this should be called by subclasses implementing this function as well
-    virtual void update_stats();
+    virtual void update_stats() override;
 
 protected:
     /**

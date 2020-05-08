@@ -57,10 +57,10 @@ public:
      * @param mbuf The DPDK rte_mbuf containing the packet.
      * @return -1 if there is a serious error requiring shutdown, 0 otherwise.
      */
-    virtual int handle_packet(struct rte_mbuf* mbuf);
+    virtual int handle_packet(struct rte_mbuf* mbuf) override;
 
     /// Updates the prometheus metrics
-    virtual void update_stats();
+    virtual void update_stats() override;
 
 protected:
     /**

@@ -57,7 +57,7 @@ public:
     iceBoardVDIF(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container, int port);
 
-    virtual int handle_packet(struct rte_mbuf* mbuf);
+    virtual int handle_packet(struct rte_mbuf* mbuf) override;
 
 protected:
     bool advance_vdif_frame(uint64_t new_seq, bool first_time = false);

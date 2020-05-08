@@ -281,9 +281,17 @@ set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-register")
 
 # Warning about missing override is called differently in clang and gcc TODO: enable once we are
-# using a release version of HighFive if (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -Winconsistent-missing-override") else()
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -Wsuggest-override") endif()
+# using a release version of HighFive TODO: either remove the above TODO, or if still fails for
+# highfive, add as private target compile option instead
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag(-Winconsistent-missing-override HAVE_INCONSISTANT_MISSING_OVERRIDE)
+if(HAVE_INCONSISTANT_MISSING_OVERRIDE AND NOT ${IWYU})
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Winconsistent-missing-override>)
+endif()
+check_cxx_compiler_flag(-Wsuggest-override HAVE_SUGGEST_OVERRIDE)
+if(HAVE_SUGGEST_OVERRIDE AND NOT ${IWYU})
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wsuggest-override>)
+endif()
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb -O2")
 
@@ -300,7 +308,6 @@ else()
 endif()
 
 # Disable complex math NaN/INFO range checking for performance
-include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag(-fcx-limited-range HAVE_CX_LIMITED_RANGE)
 if(HAVE_CX_LIMITED_RANGE AND NOT ${IWYU})
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcx-limited-range")
