@@ -44,8 +44,10 @@ gpu:
     log_level: INFO
     data_format: "4+4b"
     frame_arrival_period: samples_per_data_set / 390625.0 / 16
-    commands:
+    commands: &command_list
         - name: clInputData
+          in_buf: network_buf
+          gpu_memory_name: "voltage_data"
 #        - name: clPresumZero
 #        - name: clOutputDataZero
 #        - name: clPresumKernel
@@ -55,6 +57,7 @@ gpu:
 #        - name: clOutputData
     gpu_0:
         kotekan_stage: clProcess
+        commands: *command_list
         gpu_id: 0
         gpu_thread_id: 0
         log_profiling: true
