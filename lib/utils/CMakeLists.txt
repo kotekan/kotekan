@@ -23,7 +23,8 @@ set(KOTEKAN_UTIL_SOURCES
     restClient.cpp
     BipBuffer.cpp
     Hash.cpp
-    network_functions.cpp)
+    network_functions.cpp
+    Stack.cpp)
 
 if(${USE_HDF5})
     set(KOTEKAN_UTIL_SOURCES ${KOTEKAN_UTIL_SOURCES} visFileH5.cpp visFileArchive.cpp)
