@@ -1,6 +1,7 @@
 project(kotekan_core)
 
-set(KOTEKAN_CORE_SOURCES
+add_library(
+    kotekan_core
     basebandReadoutManager.cpp
     basebandApiManager.cpp
     buffer.c
@@ -18,8 +19,6 @@ set(KOTEKAN_CORE_SOURCES
     Stage.cpp
     StageFactory.cpp)
 
-add_library(kotekan_core ${KOTEKAN_CORE_SOURCES})
-
 target_link_libraries(kotekan_core PRIVATE ${CMAKE_THREAD_LIBS_INIT} libexternal)
 
 if(${NUMA_FOUND})
@@ -27,6 +26,7 @@ if(${NUMA_FOUND})
 endif()
 
 # Optionally include OpenSSL crypto lib for hash function support (needed by Config and kotekanMode)
+set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 find_package(OpenSSL)
 if(OPENSSL_FOUND)
     target_link_libraries(kotekan_core PRIVATE ${OPENSSL_CRYPTO_LIBRARY})
@@ -34,7 +34,6 @@ if(OPENSSL_FOUND)
 endif()
 
 # Libevent base & pthreads is required for the restServer
-set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 find_package(LIBEVENT REQUIRED)
 target_link_libraries(
     kotekan_core

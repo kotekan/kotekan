@@ -1,8 +1,6 @@
 project(kotekan_libs)
 
-set(KOTEKAN_DPDK_SOURCES dpdkCore.cpp zeroSamples.cpp invalidateVDIFframes.cpp)
-
-add_library(kotekan_dpdk ${KOTEKAN_DPDK_SOURCES})
+add_library(kotekan_dpdk dpdkCore.cpp zeroSamples.cpp invalidateVDIFframes.cpp)
 
 # Link in DPDK
 find_library(dpdk REQUIRED)

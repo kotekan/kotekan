@@ -12,7 +12,8 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     add_definitions(-DCL_SILENCE_DEPRECATION)
 endif()
 
-set(KOTEKAN_OPENCL_SOURCES
+add_library(
+    kotekan_opencl
     clCommand.cpp
     clDeviceInterface.cpp
     clEventContainer.cpp
@@ -34,8 +35,6 @@ set(KOTEKAN_OPENCL_SOURCES
     # TODO: if these are not compiled, should we remove these RFI Kernels: clRfiTimeSum.cpp
     # clRfiInputSum.cpp clRfiOutput.cpp
 )
-
-add_library(kotekan_opencl ${KOTEKAN_OPENCL_SOURCES})
 
 target_link_libraries(kotekan_opencl libexternal)
 

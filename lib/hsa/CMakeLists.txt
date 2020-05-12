@@ -6,7 +6,8 @@ include_directories(${KOTEKAN_SOURCE_DIR}/lib/hsa)
 
 include_directories(/opt/rocm/hsa/include/)
 
-set(KOTEKAN_HSA_SOURCES
+add_library(
+    kotekan_hsa
     hsaEventContainer.cpp
     hsaBase.c
     hsaCommand.cpp
@@ -48,8 +49,6 @@ set(KOTEKAN_HSA_SOURCES
     hsaBeamformPulsar.cpp
     hsaBeamformPulsarOutput.cpp
     hsaPulsarUpdatePhase.cpp)
-
-add_library(kotekan_hsa ${KOTEKAN_HSA_SOURCES})
 
 target_link_libraries(kotekan_hsa libexternal)
 target_link_libraries(kotekan_hsa kotekan_utils)

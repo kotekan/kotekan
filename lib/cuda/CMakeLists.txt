@@ -7,7 +7,8 @@ include_directories(${KOTEKAN_SOURCE_DIR}/lib/gpu)
 include_directories(${KOTEKAN_SOURCE_DIR}/lib/cuda)
 include_directories(${KOTEKAN_SOURCE_DIR}/lib/cuda/kernels)
 
-set(KOTEKAN_CUDA_SOURCES
+add_library(
+    kotekan_cuda
     cudaCommand.cpp
     cudaDeviceInterface.cpp
     cudaEventContainer.cpp
@@ -18,8 +19,6 @@ set(KOTEKAN_CUDA_SOURCES
     cudaOutputDataZero.cpp
     # Simple test
     cudaCorrelatorKernel.cu)
-
-add_library(kotekan_cuda ${KOTEKAN_CUDA_SOURCES})
 
 target_link_libraries(kotekan_cuda libexternal)
 

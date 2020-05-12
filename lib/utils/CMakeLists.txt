@@ -1,6 +1,7 @@
 project(kotekan_utils)
 
-set(KOTEKAN_UTIL_SOURCES
+add_library(
+    kotekan_utils
     fpga_header_functions.c
     gateSpec.cpp
     gpsTime.c
@@ -26,20 +27,11 @@ set(KOTEKAN_UTIL_SOURCES
     network_functions.cpp
     Stack.cpp)
 
-if(${USE_HDF5})
-    set(KOTEKAN_UTIL_SOURCES ${KOTEKAN_UTIL_SOURCES} visFileH5.cpp visFileArchive.cpp)
-endif()
-
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    set(KOTEKAN_UTIL_SOURCES ${KOTEKAN_UTIL_SOURCES} osxBindCPU.cpp)
-endif()
-
-add_library(kotekan_utils ${KOTEKAN_UTIL_SOURCES})
-
-target_link_libraries(kotekan_utils PRIVATE libexternal)
+target_link_libraries(kotekan_utils PRIVATE libexternal kotekan_core)
 
 # HDF5 stuff
 if(${USE_HDF5})
+    target_sources(kotekan_utils PRIVATE visFileH5.cpp visFileArchive.cpp)
     include_directories(${HDF5_INCLUDE_DIRS})
     include_directories(SYSTEM /kotekan/HighFive/include/)
     target_link_libraries(kotekan_utils PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
@@ -50,3 +42,7 @@ endif()
 set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 find_package(LIBEVENT REQUIRED)
 target_link_libraries(kotekan_utils PUBLIC ${LIBEVENT_BASE} ${LIBEVENT_PTHREADS})
+
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_sources(kotekan_utils PRIVATE osxBindCPU.cpp)
+endif()

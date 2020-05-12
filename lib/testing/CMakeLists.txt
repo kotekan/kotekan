@@ -1,6 +1,7 @@
 project(libkotekan_testing)
 
-set(KOTEKAN_TESTING_SOURCES
+add_library(
+    kotekan_testing
     chimeMetadataDump.cpp
     constDataCheck.cpp
     fakeGpu.cpp
@@ -22,7 +23,5 @@ set(KOTEKAN_TESTING_SOURCES
     pulsarSimProcess.cpp
     visNoise.cpp
     visDrop.cpp)
-
-add_library(kotekan_testing ${KOTEKAN_TESTING_SOURCES})
 
 target_link_libraries(kotekan_testing libexternal)
