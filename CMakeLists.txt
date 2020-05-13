@@ -54,9 +54,45 @@ if(${CCACHE})
     endif()
 endif()
 
+# Compiler warnings
 if(${WERROR})
     message("Treating all warnings as errors")
     add_compile_options(-Werror)
+endif()
+# lots of warnings and all warnings as errors
+add_compile_options(-Wall -Wextra)
+add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wzero-as-null-pointer-constant>)
+# Warning about missing override is called differently in clang and gcc
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag(-Winconsistent-missing-override HAVE_INCONSISTANT_MISSING_OVERRIDE)
+if(HAVE_INCONSISTANT_MISSING_OVERRIDE AND NOT ${IWYU})
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Winconsistent-missing-override>)
+endif()
+check_cxx_compiler_flag(-Wsuggest-override HAVE_SUGGEST_OVERRIDE)
+if(HAVE_SUGGEST_OVERRIDE AND NOT ${IWYU})
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wsuggest-override>)
+endif()
+
+# optimization
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb -O2")
+
+# Improve debugging by turning off all optimisations.
+if(${SUPERDEBUG})
+    message("Superdebugging enabled!!")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer")
+endif()
+
+# Turn on sanitizers for finding memory issues.
+if(${SANITIZE})
+    message("Sanitization enabled!!")
+    set(CMAKE_C_FLAGS_DEBUG
+        string ("${CMAKE_C_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer -fno-optimize-sibling-calls "
+                "-fsanitize=address"))
+    set(CMAKE_CXX_FLAGS_DEBUG
+        string ("${CMAKE_CXX_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer -fno-optimize-sibling-calls
+            -fsanitize=address"))
 endif()
 
 if(${_GOSSEC})
@@ -261,45 +297,13 @@ endif()
 
 find_package(Threads REQUIRED)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wzero-as-null-pointer-constant")
-
 add_compile_options(-D_GNU_SOURCE -march=${ARCH} -mtune=${ARCH} -I/opt/rocm/include)
-
-# optimization
-add_compile_options(-O3)
-
-# lots of warnings and all warnings as errors
-add_compile_options(-Wall -Wextra)
 
 # OpenMP flag
 if(${USE_OMP})
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fopenmp")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
 endif()
-
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")
-
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
-
-# dpdk uses the register keyword that got removed in C++17 because it wasn't doing anything TODO
-# remove this line when dpdk people fix this:
-# https://mails.dpdk.org/archives/dev/2018-July/107950.html
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-register")
-
-# Warning about missing override is called differently in clang and gcc TODO: enable once we are
-# using a release version of HighFive TODO: either remove the above TODO, or if still fails for
-# highfive, add as private target compile option instead
-include(CheckCXXCompilerFlag)
-check_cxx_compiler_flag(-Winconsistent-missing-override HAVE_INCONSISTANT_MISSING_OVERRIDE)
-if(HAVE_INCONSISTANT_MISSING_OVERRIDE AND NOT ${IWYU})
-    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Winconsistent-missing-override>)
-endif()
-check_cxx_compiler_flag(-Wsuggest-override HAVE_SUGGEST_OVERRIDE)
-if(HAVE_SUGGEST_OVERRIDE AND NOT ${IWYU})
-    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wsuggest-override>)
-endif()
-
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CMAKE_CXX_FLAGS} -ggdb -O2")
 
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/")
 
@@ -339,24 +343,6 @@ endif()
 if(${NO_MEMLOCK})
     message("Do not lock buffer memory.")
     add_definitions(-DWITH_NO_MEMLOCK)
-endif()
-
-# Improve debugging by turning off all optimisations.
-if(${SUPERDEBUG})
-    message("Superdebugging enabled!!")
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer")
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer")
-endif()
-
-# Turn on sanitizers for finding memory issues.
-if(${SANITIZE})
-    message("Sanitization enabled!!")
-    set(CMAKE_C_FLAGS_DEBUG
-        string ("${CMAKE_C_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer -fno-optimize-sibling-calls "
-                "-fsanitize=address"))
-    set(CMAKE_CXX_FLAGS_DEBUG
-        string ("${CMAKE_CXX_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer -fno-optimize-sibling-calls
-            -fsanitize=address"))
 endif()
 
 add_subdirectory(lib)
