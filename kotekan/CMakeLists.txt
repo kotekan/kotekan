@@ -13,10 +13,6 @@ add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
 
 add_executable(kotekan ${SOURCE_EXE})
 
-if(${NUMA_FOUND})
-    target_link_libraries(kotekan PRIVATE numa)
-endif()
-
 target_link_libraries(kotekan PRIVATE libexternal m pthread kotekan_libs)
 
 install(

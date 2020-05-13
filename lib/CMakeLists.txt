@@ -26,10 +26,6 @@ target_link_libraries(kotekan_libs INTERFACE kotekan_metadata)
 add_subdirectory(utils)
 target_link_libraries(kotekan_libs INTERFACE kotekan_utils)
 
-if(NUMA_FOUND)
-    target_link_libraries(kotekan_libs INTERFACE numa)
-endif()
-
 # SELF-REGISTERING BITS:
 if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     target_link_libraries(kotekan_libs INTERFACE -Wl,--whole-archive)

@@ -174,16 +174,6 @@ if(${USE_LAPACK})
     add_definitions(-DBLAZE_BLAS_IS_PARALLEL=1)
 endif()
 
-# Libnuma is optional for some setups
-find_package(NUMA)
-if(${NUMA_FOUND})
-    add_definitions(-DWITH_NUMA)
-    message("NUMA support enabled")
-    link_libraries(${NUMA_LIBRARY})
-else()
-    message("libnuma not found, NUMA support will be disabled")
-endif()
-
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     # enable all MacOS specific code
     add_definitions(-DMAC_OSX)

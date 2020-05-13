@@ -12,6 +12,6 @@ target_link_libraries(kotekan_dpdk libexternal)
 
 add_definitions(-DWITH_DPDK)
 
-if(NOT ${NUMA_FOUND})
-    message(FATAL_ERROR "ERROR: libnuma is required for DPDK.  Please install libnuma")
-endif()
+set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
+find_package(NUMA REQUIRED)
+link_libraries(${NUMA_LIBRARY})
