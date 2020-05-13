@@ -559,6 +559,7 @@ class FakeFrbBeamformBuffer(InputBuffer):
 
         self.name = "fakefrbbeamform_buf%i" % self._buf_ind
         gpu_input_name = "fakefrbbeamform_in_buf%i" % self._buf_ind
+        hfb_buf_name = "fakefrbbeamform_hfb_buf%i" % self._buf_ind
         gpu_input_stage_name = "fakefrbbeamform_in%i" % self._buf_ind
         stage_name = "fakefrbbeamform%i" % self._buf_ind
         read_gain_stage_name = "fakereadgain%i" % self._buf_ind
@@ -572,6 +573,12 @@ class FakeFrbBeamformBuffer(InputBuffer):
             gpu_input_name: {
                 "num_frames": "buffer_depth",
                 "frame_size": "samples_per_data_set * num_elements * num_local_freq * num_data_sets",
+                "metadata_pool": "main_pool",
+                "kotekan_buffer": "standard",
+            },
+            hfb_buf_name: {
+                "num_frames": "buffer_depth",
+                "frame_size": "num_data_sets * factor_upchan * num_frb_total_beams * sizeof_float",
                 "metadata_pool": "main_pool",
                 "kotekan_buffer": "standard",
             },
@@ -590,6 +597,7 @@ class FakeFrbBeamformBuffer(InputBuffer):
             "kotekan_stage": "gpuBeamformSimulate",
             "network_in_buf": gpu_input_name,
             "beam_out_buf": self.name,
+            "hfb_out_buf": hfb_buf_name,
             "northmost_beam": 90.0,
             "gain_dir": "../../gains/",
             "frb_missing_gains": [1.0, 1.0],
