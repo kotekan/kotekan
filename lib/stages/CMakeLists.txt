@@ -107,5 +107,9 @@ target_link_libraries(
     PUBLIC ${LIBEVENT_BASE}
     PRIVATE ${LIBEVENT_PTHREAD})
 
-# -lrt is needed for shm_open in VisSharedMemWriter
-target_link_libraries(kotekan_stages PRIVATE kotekan_utils kotekan_core libexternal rt)
+target_link_libraries(kotekan_stages PRIVATE kotekan_utils kotekan_core libexternal)
+
+# -lrt is needed for shm_open in VisSharedMemWriter on linux but not Clang
+if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_link_libraries(kotekan_stages PRIVATE rt)
+endif()
