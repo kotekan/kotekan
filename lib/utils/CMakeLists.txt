@@ -39,7 +39,6 @@ if(${USE_HDF5})
 endif()
 
 # Libevent base&pthreads is required for the restClient
-set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 find_package(LIBEVENT REQUIRED)
 target_link_libraries(kotekan_utils PUBLIC ${LIBEVENT_BASE} ${LIBEVENT_PTHREADS})
 

@@ -12,6 +12,5 @@ target_link_libraries(kotekan_dpdk libexternal)
 
 add_definitions(-DWITH_DPDK)
 
-set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 find_package(NUMA REQUIRED)
 link_libraries(${NUMA_LIBRARY})

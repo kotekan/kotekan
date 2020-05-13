@@ -100,7 +100,6 @@ if(${USE_LAPACK})
 endif()
 
 # Libevent is required for bufferRecv
-set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 find_package(LIBEVENT REQUIRED)
 target_link_libraries(
     kotekan_stages

@@ -295,8 +295,6 @@ if(${USE_OMP})
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
 endif()
 
-set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/")
-
 set(CMAKE_INSTALL_PREFIX "/")
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")

@@ -22,7 +22,6 @@ add_library(
 target_link_libraries(kotekan_core PRIVATE ${CMAKE_THREAD_LIBS_INIT} libexternal)
 
 # Libnuma is optionally used by buffer.c
-set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 find_package(NUMA)
 if(${NUMA_FOUND})
     add_definitions(-DWITH_NUMA)
@@ -33,7 +32,6 @@ else()
 endif()
 
 # Optionally include OpenSSL crypto lib for hash function support (needed by Config and kotekanMode)
-set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 find_package(OpenSSL)
 if(OPENSSL_FOUND)
     target_link_libraries(kotekan_core PRIVATE ${OPENSSL_CRYPTO_LIBRARY})

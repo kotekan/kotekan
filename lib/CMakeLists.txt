@@ -2,6 +2,8 @@
 # symbols are ever added it will need to be turned back into a standard CMake library
 project(kotekan_libs)
 
+set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
+
 include_directories(${KOTEKAN_SOURCE_DIR}/lib)
 include_directories(${KOTEKAN_SOURCE_DIR}/lib/core)
 include_directories(${KOTEKAN_SOURCE_DIR}/lib/metadata)
