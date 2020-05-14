@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Code for using the visBuffer formatted data.
+@brief Code for using the VisFrameView formatted data.
 - VisMetadata
 - VisFrameView
 *****************************************/
@@ -24,7 +24,7 @@
 
 
 /**
- * @brief The fields within the visBuffer.
+ * @brief The fields within the VisFrameView.
  *
  * Use this enum to refer to the fields.
  **/

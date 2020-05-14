@@ -6,7 +6,7 @@
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "kotekanLogging.hpp"    // for DEBUG
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
-#include "visBuffer.hpp"         // for VisFrameView
+#include "VisFrameView.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for frameID, modulo, cfloat, operator-, ts_to_double
 
 #include "gsl-lite.hpp" // for span

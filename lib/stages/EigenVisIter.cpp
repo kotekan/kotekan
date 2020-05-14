@@ -8,7 +8,7 @@
 #include "datasetState.hpp"      // for datasetState, eigenvalueState, state_uptr
 #include "kotekanLogging.hpp"    // for DEBUG
 #include "prometheusMetrics.hpp" // for Gauge, Metrics, MetricFamily
-#include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::erms, VisField::eval
+#include "VisFrameView.hpp"         // for VisFrameView, VisField, VisField::erms, VisField::eval
 #include "visUtil.hpp"           // for cfloat, frameID, current_time, modulo, movingAverage
 
 #include "fmt.hpp"      // for format, fmt

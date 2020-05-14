@@ -4,7 +4,7 @@
 #include "Hash.hpp"           // for Hash
 #include "datasetManager.hpp" // for datasetManager, state_id_t, dset_id_t
 #include "datasetState.hpp"   // for flagState, inputState
-#include "visBuffer.hpp"      // for VisFrameView
+#include "VisFrameView.hpp"      // for VisFrameView
 #include "visUtil.hpp"        // for cfloat, input_ctype, ts_to_double, cmap
 
 #include "fmt.hpp"      // for format

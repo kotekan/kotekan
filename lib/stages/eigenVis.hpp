@@ -23,14 +23,14 @@
  *
  * This task performs the factorization of the visibility matrix into
  * ``num_ev`` eigenvectors and eigenvalues and stores them in reserve space
- * in the ``visBuffer``. They are stored in descending order of the eigenvalue.
+ * in the ``VisFrameView``. They are stored in descending order of the eigenvalue.
  *
  * @par Buffers
  * @buffer in_buf The set of buffers coming out the GPU buffers
- *         @buffer_format visBuffer structured
+ *         @buffer_format VisFrameView structured
  *         @buffer_metadata VisMetadata
  * @buffer out_buf The merged and transformed buffer
- *         @buffer_format visBuffer structured
+ *         @buffer_format VisFrameView structured
  *         @buffer_metadata VisMetadata
  *
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in the

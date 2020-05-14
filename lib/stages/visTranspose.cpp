@@ -12,7 +12,7 @@
 #include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, logLevel, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 #include "version.h"             // for get_git_commit_hash
-#include "visBuffer.hpp"         // for VisFrameView
+#include "VisFrameView.hpp"         // for VisFrameView
 #include "visFileArchive.hpp"    // for visFileArchive
 
 #include "fmt.hpp"      // for format

@@ -10,7 +10,7 @@
 #include "factory.hpp"         // for FACTORY
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
 #include "version.h"           // for get_git_commit_hash
-#include "visBuffer.hpp"       // for VisFrameView
+#include "VisFrameView.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for prod_ctype, input_ctype, double_to_ts, current_time, freq...
 
 #include "fmt.hpp"      // for format, fmt
@@ -141,7 +141,7 @@ void FakeVis::main_thread() {
 
         for (auto f : freq) {
 
-            DEBUG("Making fake visBuffer for freq={:d}, fpga_seq={:d}", f, fpga_seq);
+            DEBUG("Making fake VisFrameView for freq={:d}, fpga_seq={:d}", f, fpga_seq);
 
             // Wait for the buffer frame to be free
             if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {

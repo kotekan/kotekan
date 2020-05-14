@@ -7,7 +7,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for dset_id_t, datasetManager, state_id_t
 #include "datasetState.hpp"    // for eigenvalueState
-#include "visBuffer.hpp"       // for VisField, VisFrameView, VisField::erms, VisField::eval
+#include "VisFrameView.hpp"       // for VisField, VisFrameView, VisField::erms, VisField::eval
 #include "visUtil.hpp"         // for frameID, modulo
 
 #include <atomic>     // for atomic_bool

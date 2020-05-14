@@ -5,7 +5,7 @@
 #include "hfbMetadata.h"      // for hfbMetadata
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.h"         // for create_metadata_pool
-#include "visBuffer.hpp"      // for VisMetadata
+#include "VisFrameView.hpp"      // for VisMetadata
 
 #include "fmt.hpp" // for format, fmt
 

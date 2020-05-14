@@ -5,7 +5,7 @@
 #include "buffer.h"            // for mark_frame_empty, Buffer, mark_frame_full, register_consumer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for DEBUG, INFO
-#include "visBuffer.hpp"       // for VisFrameView
+#include "VisFrameView.hpp"       // for VisFrameView
 
 #include <algorithm>  // for find
 #include <atomic>     // for atomic_bool

@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Extract a subset of products from a visBuffer.
+@brief Extract a subset of products from a VisFrameView.
 - prodSubset : public kotekan::Stage
 *****************************************/
 #ifndef PROD_SUB_HPP
@@ -25,8 +25,8 @@
  * @class prodSubset
  * @brief ``kotekan::Stage`` that extracts a subset of the products.
  *
- * This task consumes a full set of visibilities from a ``visBuffer`` and
- * passes on a subset of products to an output ``visBuffer``. The subset
+ * This task consumes a full set of visibilities from a ``VisFrameView`` and
+ * passes on a subset of products to an output ``VisFrameView``. The subset
  * extracted depends on the parameter 'prod_subset_type'. Here is a list of
  * values 'prod_subset_type' can take and the parameters they support:
  * - 'all': no extra arameters needed
@@ -45,10 +45,10 @@
  *
  * @par Buffers
  * @buffer in_buf The kotekan buffer from which the visibilities are read, can be any size.
- *     @buffer_format visBuffer structured
+ *     @buffer_format VisFrameView structured
  *     @buffer_metadata VisMetadata
  * @buffer out_buf The kotekan buffer which will be fed the subset of visibilities.
- *     @buffer_format visBuffer structured
+ *     @buffer_format VisFrameView structured
  *     @buffer_metadata VisMetadata
  *
  * @conf  prod_subset_type      string. Type of product subset to perform.

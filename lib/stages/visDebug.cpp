@@ -7,7 +7,7 @@
 #include "dataset.hpp"           // for dset_id_t
 #include "kotekanLogging.hpp"    // for DEBUG, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Counter, MetricFamily
-#include "visBuffer.hpp"         // for VisFrameView
+#include "VisFrameView.hpp"         // for VisFrameView
 
 #include <atomic>     // for atomic_bool
 #include <cstdint>    // for uint64_t

@@ -8,7 +8,7 @@
 #include "datasetManager.hpp"  // for dset_id_t, state_id_t, datasetManager
 #include "datasetState.hpp"    // for freqState
 #include "kotekanLogging.hpp"  // for FATAL_ERROR
-#include "visBuffer.hpp"       // for VisFrameView
+#include "VisFrameView.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for frameID, freq_ctype, modulo
 
 #include <algorithm>    // for find, max

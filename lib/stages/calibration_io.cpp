@@ -2,7 +2,7 @@
 
 #include "chimeMetadata.h"
 #include "fpga_header_functions.h"
-#include "visBuffer.hpp"
+#include "VisFrameView.hpp"
 #include "visFile.hpp"
 
 #include <algorithm>

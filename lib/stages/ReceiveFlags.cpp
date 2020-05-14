@@ -10,7 +10,7 @@
 #include "datasetState.hpp"      // for flagState
 #include "kotekanLogging.hpp"    // for WARN, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
-#include "visBuffer.hpp"         // for VisFrameView
+#include "VisFrameView.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for frameID, ts_to_double, current_time, double_to_ts, modulo
 
 #include "gsl-lite.hpp" // for span<>::iterator, span

@@ -34,7 +34,7 @@
  *
  * @par Buffers
  * @buffer out_buf The data read from the raw file.
- *         @buffer_format visBuffer structured
+ *         @buffer_format VisFrameView structured
  *         @buffer_metadata VisMetadata
  *
  * @conf    readahead_blocks    Int. Number of blocks to advise OS to read ahead

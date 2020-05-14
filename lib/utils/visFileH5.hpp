@@ -9,7 +9,7 @@
 
 #include "datasetManager.hpp" // for dset_id_t
 #include "kotekanLogging.hpp" // for logLevel
-#include "visBuffer.hpp"      // for VisFrameView
+#include "VisFrameView.hpp"      // for VisFrameView
 #include "visFile.hpp"        // for visFile
 #include "visUtil.hpp"        // for time_ctype, freq_ctype, input_ctype, prod_ctype
 

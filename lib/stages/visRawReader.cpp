@@ -11,7 +11,7 @@
 #include "kotekanLogging.hpp"  // for INFO, DEBUG, FATAL_ERROR, ERROR, WARN
 #include "metadata.h"          // for metadataContainer
 #include "version.h"           // for get_git_commit_hash
-#include "visBuffer.hpp"       // for VisFrameView, VisMetadata
+#include "VisFrameView.hpp"       // for VisFrameView, VisMetadata
 #include "visUtil.hpp"         // for time_ctype, frameID, freq_ctype, prod_ctype, rstack_ctype
 
 #include "fmt.hpp"      // for format, fmt

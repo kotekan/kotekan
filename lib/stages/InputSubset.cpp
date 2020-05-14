@@ -8,7 +8,7 @@
 #include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager, fingerprint_t
 #include "datasetState.hpp"    // for inputState, prodState, stackState
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, WARN
-#include "visBuffer.hpp"       // for VisFrameView, VisField, VisField::evec, VisField::flags
+#include "VisFrameView.hpp"       // for VisFrameView, VisField, VisField::evec, VisField::flags
 #include "visUtil.hpp"         // for prod_ctype, input_ctype, frameID, cfloat, modulo
 
 #include "gsl-lite.hpp" // for span

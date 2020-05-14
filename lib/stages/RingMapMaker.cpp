@@ -5,7 +5,7 @@
 #include "datasetManager.hpp"    // for datasetManager, dset_id_t, state_id_t
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, WARN
 #include "prometheusMetrics.hpp" // for Metrics
-#include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::weight
+#include "VisFrameView.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::weight
 #include "visCompression.hpp"    // for chimeFeed
 
 #include "gsl-lite.hpp" // for span, span<>::iterator

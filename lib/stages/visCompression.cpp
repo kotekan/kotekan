@@ -9,7 +9,7 @@
 #include "datasetState.hpp"      // for stackState, prodState, inputState
 #include "kotekanLogging.hpp"    // for INFO, DEBUG, ERROR, FATAL_ERROR
 #include "prometheusMetrics.hpp" // for Gauge, Counter, Metrics, MetricFamily
-#include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::weight
+#include "VisFrameView.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::weight
 #include "visUtil.hpp"           // for rstack_ctype, prod_ctype, current_time, modulo, input_c...
 
 #include "fmt.hpp"      // for format, fmt

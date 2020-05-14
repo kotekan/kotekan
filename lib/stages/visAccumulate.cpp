@@ -14,7 +14,7 @@
 #include "metadata.h"              // for metadataContainer
 #include "prometheusMetrics.hpp"   // for Counter, MetricFamily, Metrics
 #include "version.h"               // for get_git_commit_hash
-#include "visBuffer.hpp"           // for VisFrameView
+#include "VisFrameView.hpp"           // for VisFrameView
 #include "visUtil.hpp"             // for prod_ctype, frameID, input_ctype, modulo, operator+
 
 #include "fmt.hpp"      // for format, fmt

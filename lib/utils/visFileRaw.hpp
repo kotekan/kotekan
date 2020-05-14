@@ -8,7 +8,7 @@
 
 #include "dataset.hpp"        // for dset_id_t
 #include "kotekanLogging.hpp" // for logLevel
-#include "visBuffer.hpp"      // for VisFrameView
+#include "VisFrameView.hpp"      // for VisFrameView
 #include "visFile.hpp"        // for visFile
 #include "visUtil.hpp"        // for time_ctype
 
@@ -42,7 +42,7 @@
  *
  *  - 1st byte is set to `1` if data is present (or is implicitly zero).
  *  - VisMetadata struct dump
- *  - visBuffer dump
+ *  - VisFrameView dump
  *
  * @author Richard Shaw
  **/

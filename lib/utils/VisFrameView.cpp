@@ -1,4 +1,4 @@
-#include "visBuffer.hpp"
+#include "VisFrameView.hpp"
 
 #include "buffer.h"                // for Buffer, allocate_new_metadata_object, swap_frames
 #include "chimeMetadata.h"         // for chimeMetadata
@@ -120,7 +120,7 @@ std::string VisFrameView::summary() const {
     struct tm* tm = std::gmtime(&(std::get<1>(time).tv_sec));
 
     std::string s =
-        fmt::format("visBuffer[name={:s}]: freq={:d} dataset={} fpga_start={:d} time={:%F %T}",
+        fmt::format("VisFrameView[name={:s}]: freq={:d} dataset={} fpga_start={:d} time={:%F %T}",
                     buffer->buffer_name, freq_id, dataset_id, std::get<0>(time), *tm);
 
     return s;

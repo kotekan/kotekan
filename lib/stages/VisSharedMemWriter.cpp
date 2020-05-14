@@ -7,7 +7,7 @@
 #include "factory.hpp"           // for FACTORY
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, INFO, WARN
 #include "prometheusMetrics.hpp" // for Counter, Gauge, Metrics, MetricFamily
-#include "visBuffer.hpp"         // for VisFrameView, VisMetadata
+#include "VisFrameView.hpp"         // for VisFrameView, VisMetadata
 #include "visUtil.hpp"           // for time_ctype, frameID, operator<, modulo, current_time
 
 #include <algorithm>   // for copy, fill_n, copy_backward, equal, max

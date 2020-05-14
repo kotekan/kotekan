@@ -32,7 +32,7 @@
  *
  * @par buffers
  * @buffer in_buf The buffer to read from.
- *        @buffer_format visBuffer
+ *        @buffer_format VisFrameView
  *        @buffer_metadata VisMetadata
  *
  * @conf feed_sep       Float, default 0.3048. The separation between feeds (in m)
@@ -124,10 +124,10 @@ private:
  *
  * @par buffers
  * @buffer in_buf The buffer to read from.
- *        @buffer_format visBuffer
+ *        @buffer_format VisFrameView
  *        @buffer_metadata VisMetadata
  * @buffer out_buf The buffer to write to.
- *        @buffer_format visBuffer
+ *        @buffer_format VisFrameView
  *        @buffer_metadata VisMetadata
  *
  *

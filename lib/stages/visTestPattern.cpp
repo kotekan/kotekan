@@ -11,7 +11,7 @@
 #include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
 #include "restClient.hpp"        // for restClient, restClient::restReply
 #include "restServer.hpp"        // for connectionInstance, restServer, HTTP_RESPONSE, HTTP_RES...
-#include "visBuffer.hpp"         // for VisFrameView
+#include "VisFrameView.hpp"         // for VisFrameView
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span

@@ -10,7 +10,7 @@
 #include "kotekanLogging.hpp"  // for INFO
 #include "metadata.h"          // for metadataContainer
 #include "version.h"           // for get_git_commit_hash
-#include "visBuffer.hpp"       // for VisFrameView
+#include "VisFrameView.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for prod_ctype, input_ctype, freq_ctype, copy_vis_triangle
 
 #include "gsl-lite.hpp" // for span<>::iterator, span
@@ -115,7 +115,7 @@ void visTransform::main_thread() {
 
         // This is where all the main set of work happens. Iterate over the
         // available buffers, wait for data to appear and transform into
-        // visBuffer style data
+        // VisFrameView style data
         for (auto& buffer_pair : in_bufs) {
             std::tie(buf, frame_id) = buffer_pair;
 
