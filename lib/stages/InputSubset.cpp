@@ -8,7 +8,7 @@
 #include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager, fingerprint_t
 #include "datasetState.hpp"    // for inputState, prodState, stackState
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, WARN
-#include "visBuffer.hpp"       // for VisFrameView, visField, visField::evec, visField::flags
+#include "visBuffer.hpp"       // for VisFrameView, VisField, VisField::evec, VisField::flags
 #include "visUtil.hpp"         // for prod_ctype, input_ctype, frameID, cfloat, modulo
 
 #include "gsl-lite.hpp" // for span
@@ -183,8 +183,8 @@ void InputSubset::main_thread() {
         output_frame.dataset_id = dset_id_map.at(input_frame.dataset_id);
 
         // Copy the non-input and visibility shaped parts of the buffer
-        output_frame.copy_data(input_frame, {visField::vis, visField::weight, visField::gain,
-                                             visField::flags, visField::evec});
+        output_frame.copy_data(input_frame, {VisField::vis, VisField::weight, VisField::gain,
+                                             VisField::flags, VisField::evec});
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
