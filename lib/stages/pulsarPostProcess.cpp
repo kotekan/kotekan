@@ -73,7 +73,7 @@ pulsarPostProcess::~pulsarPostProcess() {
 
 void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* vdif_header,
                                      const uint64_t fpga_seq_num, struct timespec* time_now,
-                                     struct psrCoord* psr_coord, uint16_t* freq_ids) {
+                                     struct psrCoord* psr_coord) {
     uint freqloop = _num_stream / _num_pulsar;
     DEBUG("Filling headers starting at {} ({}.{:09d})", fpga_seq_num, time_now->tv_sec,
           time_now->tv_nsec);
@@ -84,8 +84,6 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* 
             (time_now->tv_nsec / 1.e9) / (_timesamples_per_pulsar_packet * 2.56e-6);
 
         for (uint f = 0; f < freqloop; ++f) {
-            vdif_header->thread_id = freq_ids[f];
-
             for (uint32_t psr = 0; psr < _num_pulsar; ++psr) {
                 vdif_header->eud1 = psr; // beam id
                 vdif_header->eud2 = psr_coord[f].scaling[psr];
@@ -129,8 +127,6 @@ void pulsarPostProcess::main_thread() {
 
     int out_buffer_ID = 0;
     int startup = 1; // related to the likely & unlikely
-    uint16_t freq_ids[_num_gpus];
-
     for (uint32_t i = 0; i < _num_gpus; ++i) {
         in_buffer_ID[i] = 0;
     }
@@ -182,8 +178,6 @@ void pulsarPostProcess::main_thread() {
 
         for (uint32_t i = 0; i < _num_gpus; ++i) {
             psr_coord[i] = get_psr_coord(in_buf[i], in_buffer_ID[i]);
-            stream_id_t stream_id = get_stream_id_t(in_buf[i], in_buffer_ID[i]);
-            freq_ids[i] = bin_number_chime(&stream_id);
         }
 
         bool skipped_frames =
@@ -212,9 +206,13 @@ void pulsarPostProcess::main_thread() {
             }
             skipped_frames = false;
 
+            stream_id_t zero_stream = get_stream_id_t(in_buf[0], in_buffer_ID[0]);
+            // TODO: replace with the new node_id lookup API when it is implemented
+            vdif_header.thread_id = bin_number_chime(&zero_stream) & 0xFF;
+
             // Fill the first output buffer headers
             fill_headers((unsigned char*)out_frame, &vdif_header, fpga_seq_num, &time_now,
-                         psr_coord, (uint16_t*)freq_ids);
+                         psr_coord);
         }
 
         // Take data from the input buffer and format the output
@@ -248,7 +246,7 @@ void pulsarPostProcess::main_thread() {
 
                 // Fill the headers of the new buffer
                 fill_headers((unsigned char*)out_frame, &vdif_header, fpga_seq_num, &time_now,
-                             psr_coord, (uint16_t*)freq_ids);
+                             psr_coord);
             }
 
 
@@ -268,7 +266,7 @@ void pulsarPostProcess::main_thread() {
                         // Fill the headers of the new buffer
                         fpga_seq_num += _timesamples_per_pulsar_packet * _num_packet_per_stream;
                         fill_headers((unsigned char*)out_frame, &vdif_header, fpga_seq_num,
-                                     &time_now, psr_coord, (uint16_t*)freq_ids);
+                                     &time_now, psr_coord);
                     } // end if last frame
                 }     // end if last sample
 
