@@ -41,7 +41,7 @@
  * The `.data` file contains the raw data output. This is packed as:
  *
  *  - 1st byte is set to `1` if data is present (or is implicitly zero).
- *  - visMetadata struct dump
+ *  - VisMetadata struct dump
  *  - visBuffer dump
  *
  * @author Richard Shaw

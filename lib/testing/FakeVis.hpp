@@ -34,7 +34,7 @@
  * @par Buffers
  * @buffer out_buf The kotekan buffer which will be fed, can be any size.
  *     @buffer_format visBuffer structured
- *     @buffer_metadata visMetadata
+ *     @buffer_metadata VisMetadata
  *
  * @conf  num_elements  Int. The number of elements (i.e. inputs) in the
  *                      correlator data,
@@ -136,10 +136,10 @@ private:
  * @par Buffers
  * @buffer in_buf The kotekan buffer which will be read from.
  *     @buffer_format visBuffer structured
- *     @buffer_metadata visMetadata
+ *     @buffer_metadata VisMetadata
  * @buffer out_buf The kotekan buffer to be filled with the replaced data.
  *     @buffer_format visBuffer structured
- *     @buffer_metadata visMetadata
+ *     @buffer_metadata VisMetadata
  *
  * @author Richard Shaw
  *

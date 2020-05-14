@@ -28,10 +28,10 @@
  * @par Buffers
  * @buffer in_buf The original buffer with all frequencies
  *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
+ *         @buffer_metadata VisMetadata
  * @buffer out_buf The buffer containing the subset of frequencies
  *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
+ *         @buffer_metadata VisMetadata
  *
  * @conf  subset_list           Vector of Int. The list of frequencies that go
  *                              in the subset.

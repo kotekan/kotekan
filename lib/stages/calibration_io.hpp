@@ -103,7 +103,7 @@ private:
  * @par Buffers
  * @buffer in_buf The kotekan buffer from which the data is read.
  *     @buffer_format visBuffer structured
- *     @buffer_metadata visMetadata
+ *     @buffer_metadata VisMetadata
  *
  * @conf  num_ev            Int. The number of eigenvectors carried with the visibilitues.
  * @conf  freq_ids          List of int. The frequency IDs to expect.

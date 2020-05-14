@@ -34,7 +34,7 @@
  *         @buffer_metadata chimeMetadata
  * @buffer out_buf The merged and transformed buffer
  *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
+ *         @buffer_metadata VisMetadata
  *
  * @conf  num_elements      Int. The number of elements (i.e. inputs) in the
  *                          correlator data.

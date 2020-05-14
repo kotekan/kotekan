@@ -30,10 +30,10 @@
  * @par Buffers
  * @buffer in_buf The kotekan buffer from which the visibilities are read, can be any size.
  *     @buffer_format visBuffer structured
- *     @buffer_metadata visMetadata
+ *     @buffer_metadata VisMetadata
  * @buffer out_buf The kotekan buffer which will be fed the subset of visibilities.
  *     @buffer_format visBuffer structured
- *     @buffer_metadata visMetadata
+ *     @buffer_metadata VisMetadata
  *
  * @conf  inputs  List of ints. The channel IDs for the inputs to extract.
  *

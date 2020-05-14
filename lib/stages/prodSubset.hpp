@@ -46,10 +46,10 @@
  * @par Buffers
  * @buffer in_buf The kotekan buffer from which the visibilities are read, can be any size.
  *     @buffer_format visBuffer structured
- *     @buffer_metadata visMetadata
+ *     @buffer_metadata VisMetadata
  * @buffer out_buf The kotekan buffer which will be fed the subset of visibilities.
  *     @buffer_format visBuffer structured
- *     @buffer_metadata visMetadata
+ *     @buffer_metadata VisMetadata
  *
  * @conf  prod_subset_type      string. Type of product subset to perform.
  * @conf  num_elements          int. The number of elements (i.e. inputs) in the

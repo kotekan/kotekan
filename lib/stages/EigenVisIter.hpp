@@ -38,10 +38,10 @@
  * @par Buffers
  * @buffer in_buf The stream to eigen decompose.
  *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
+ *         @buffer_metadata VisMetadata
  * @buffer out_buf Output stream with the calculated eigen-pairs.
  *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
+ *         @buffer_metadata VisMetadata
  *
  * @conf  num_elements     Int. The number of elements (i.e. inputs) in the
  *                         correlator data.

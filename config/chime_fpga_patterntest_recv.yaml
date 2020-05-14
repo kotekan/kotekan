@@ -27,7 +27,7 @@ dataset_manager:
   ds_broker_host: "10.1.50.11" # recv1
 
 vis_pool:
-  kotekan_metadata_pool: visMetadata
+  kotekan_metadata_pool: VisMetadata
   num_metadata_objects: 500 * buffer_depth
 
 vis_buffer:

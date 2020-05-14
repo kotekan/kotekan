@@ -70,7 +70,7 @@
  * @par Buffers
  * @buffer in_buf The buffer streaming data to write
  *          @buffer_format visBuffer structured
- *          @buffer_metadata visMetadata
+ *          @buffer_metadata VisMetadata
  *
  * @conf    root_path       String. Location in filesystem containing
  *                          shared memory and semaphore.

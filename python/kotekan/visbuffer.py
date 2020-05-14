@@ -55,7 +55,7 @@ class timeval(ctypes.Structure):
 
 
 class VisMetadata(ctypes.Structure):
-    """Wrap a visMetadata struct.
+    """Wrap a VisMetadata struct.
     """
 
     _fields_ = [

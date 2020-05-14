@@ -28,10 +28,10 @@
  * @par Buffers
  * @buffer in_buf The set of buffers coming out the GPU buffers
  *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
+ *         @buffer_metadata VisMetadata
  * @buffer out_buf The merged and transformed buffer
  *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
+ *         @buffer_metadata VisMetadata
  *
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
  *                              correlator data.

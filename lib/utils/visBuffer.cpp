@@ -39,9 +39,9 @@ T& bind_scalar(uint8_t* start, std::pair<size_t, size_t> range) {
 // elements of the metadata, but I think there's no other way to share the
 // initialisation list
 VisFrameView::VisFrameView(Buffer* buf, int frame_id) :
-    VisFrameView(buf, frame_id, ((visMetadata*)(buf->metadata[frame_id]->metadata))->num_elements,
-                 ((visMetadata*)(buf->metadata[frame_id]->metadata))->num_prod,
-                 ((visMetadata*)(buf->metadata[frame_id]->metadata))->num_ev) {}
+    VisFrameView(buf, frame_id, ((VisMetadata*)(buf->metadata[frame_id]->metadata))->num_elements,
+                 ((VisMetadata*)(buf->metadata[frame_id]->metadata))->num_prod,
+                 ((VisMetadata*)(buf->metadata[frame_id]->metadata))->num_ev) {}
 
 VisFrameView::VisFrameView(Buffer* buf, int frame_id, uint32_t num_elements, uint32_t num_ev) :
     VisFrameView(buf, frame_id, num_elements, num_elements * (num_elements + 1) / 2, num_ev) {}
@@ -50,7 +50,7 @@ VisFrameView::VisFrameView(Buffer* buf, int frame_id, uint32_t n_elements, uint3
                            uint32_t n_eigenvectors) :
     buffer(buf),
     id(frame_id),
-    _metadata((visMetadata*)buf->metadata[id]->metadata),
+    _metadata((VisMetadata*)buf->metadata[id]->metadata),
     _frame(buffer->frames[id]),
 
     // Calculate the internal buffer layout from the given structure params

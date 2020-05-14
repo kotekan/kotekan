@@ -32,10 +32,10 @@
  * @par Buffers
  * @buffer in_buf The buffer to be split
  *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
+ *         @buffer_metadata VisMetadata
  * @buffer out_bufs The two buffers containing the respective upper or lower band frequencies
  *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
+ *         @buffer_metadata VisMetadata
  *
  * @conf split_freq             Double. Frequency to split the incoming buffer
  *                              at. Lower frequencies got to the first output

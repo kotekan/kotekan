@@ -45,7 +45,7 @@
  *         @buffer_metadata chimeMetadata
  * @buffer out_buf The accumulated and tagged data.
  *         @buffer_format visBuffer structured.
- *         @buffer_metadata visMetadata
+ *         @buffer_metadata VisMetadata
  *
  * @conf  samples_per_data_set  Int. The number of samples each GPU buffer has
  *                              been integrated for.

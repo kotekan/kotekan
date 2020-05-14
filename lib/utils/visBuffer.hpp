@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Code for using the visBuffer formatted data.
-- visMetadata
+- VisMetadata
 - VisFrameView
 *****************************************/
 #ifndef VISBUFFER_HPP
@@ -32,12 +32,12 @@ enum class visField { vis, weight, flags, eval, evec, erms, gain };
 
 
 /**
- * @struct visMetadata
+ * @struct VisMetadata
  * @brief Metadata for the visibility style buffers
  *
  * @author Richard Shaw
  **/
-struct visMetadata {
+struct VisMetadata {
 
     /// The FPGA sequence number of the integration frame
     uint64_t fpga_seq_start;
@@ -215,7 +215,7 @@ public:
 
     // TODO: CHIME specific
     /**
-     * @brief Fill the visMetadata from a chimeMetadata struct.
+     * @brief Fill the VisMetadata from a chimeMetadata struct.
      *
      * The time field is filled with the GPS time if it is set (checked via
      * `is_gps_global_time_set`), otherwise the `first_packet_recv_time` is
@@ -231,7 +231,7 @@ public:
      * @brief Read only access to the metadata.
      * @returns The metadata.
      **/
-    const visMetadata* metadata() const {
+    const VisMetadata* metadata() const {
         return _metadata;
     }
 
@@ -247,7 +247,7 @@ private:
     // References to the buffer and metadata we are viewing
     Buffer* const buffer;
     const int id;
-    visMetadata* const _metadata;
+    VisMetadata* const _metadata;
 
     // Pointer to frame data. In theory this is redundant as it can be derived
     // from buffer and id, but it's nice for brevity

@@ -22,10 +22,10 @@
  * @par Buffers
  * @buffer in_buf Input buffer with eigensector.
  *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
+ *         @buffer_metadata VisMetadata
  * @buffer out_buf Output buffer without eigensector.
  *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
+ *         @buffer_metadata VisMetadata
  *
  * @author Richard Shaw
  */
