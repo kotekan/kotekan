@@ -6,7 +6,7 @@
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "kotekanLogging.hpp"    // for DEBUG
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
-#include "visBuffer.hpp"         // for visFrameView
+#include "visBuffer.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for frameID, modulo, cfloat, operator-, ts_to_double
 
 #include "gsl-lite.hpp" // for span
@@ -67,7 +67,7 @@ void timeDownsample::main_thread() {
             break;
         }
 
-        auto frame = visFrameView(in_buf, frame_id);
+        auto frame = VisFrameView(in_buf, frame_id);
         fpga_seq_start = std::get<0>(frame.time);
 
         // The first frame
@@ -111,7 +111,7 @@ void timeDownsample::main_thread() {
 
             // Copy frame into output buffer
             allocate_new_metadata_object(out_buf, output_frame_id);
-            auto output_frame = visFrameView(out_buf, output_frame_id, frame);
+            auto output_frame = VisFrameView(out_buf, output_frame_id, frame);
 
             // Increase the total frame length
             output_frame.fpga_seq_length *= nsamp;
@@ -127,7 +127,7 @@ void timeDownsample::main_thread() {
             continue;
         }
 
-        auto output_frame = visFrameView(out_buf, output_frame_id);
+        auto output_frame = VisFrameView(out_buf, output_frame_id);
 
         // Check we are still in accumulation window
         if (fpga_seq_start < wdw_end) {

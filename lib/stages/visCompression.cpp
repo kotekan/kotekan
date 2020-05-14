@@ -9,7 +9,7 @@
 #include "datasetState.hpp"      // for stackState, prodState, inputState
 #include "kotekanLogging.hpp"    // for INFO, DEBUG, ERROR, FATAL_ERROR
 #include "prometheusMetrics.hpp" // for Gauge, Counter, Metrics, MetricFamily
-#include "visBuffer.hpp"         // for visFrameView, visField, visField::vis, visField::weight
+#include "visBuffer.hpp"         // for VisFrameView, visField, visField::vis, visField::weight
 #include "visUtil.hpp"           // for rstack_ctype, prod_ctype, current_time, modulo, input_c...
 
 #include "fmt.hpp"      // for format, fmt
@@ -166,7 +166,7 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
     if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
         return;
     }
-    auto input_frame = visFrameView(in_buf, input_frame_id);
+    auto input_frame = VisFrameView(in_buf, input_frame_id);
 
     while (!stop_thread) {
 
@@ -178,7 +178,7 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
         double start_time = current_time();
 
         // Get a view of the current frame
-        auto input_frame = visFrameView(in_buf, input_frame_id);
+        auto input_frame = VisFrameView(in_buf, input_frame_id);
 
         dset_id_t new_dset_id;
         const stackState* sstate_ptr = nullptr;
@@ -209,7 +209,7 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
         // Allocate metadata and get output frame
         allocate_new_metadata_object(out_buf, output_frame_id);
         // Create view to output frame
-        auto output_frame = visFrameView(out_buf, output_frame_id, input_frame.num_elements,
+        auto output_frame = VisFrameView(out_buf, output_frame_id, input_frame.num_elements,
                                          num_stack, input_frame.num_ev);
 
         // Copy over the data we won't modify

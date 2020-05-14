@@ -66,7 +66,7 @@ void eigenWriter::main_thread() {
         }
 
         // Get a view of the current frame
-        auto frame = visFrameView(in_buf, frame_id);
+        auto frame = VisFrameView(in_buf, frame_id);
 
         // Find the index of this frequency in the file
         uint16_t freq_ind =

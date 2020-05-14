@@ -14,7 +14,7 @@
 #include "datasetManager.hpp"    // for dset_id_t
 #include "gateSpec.hpp"          // for gateSpec
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily
-#include "visBuffer.hpp"         // for visFrameView
+#include "visBuffer.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for frameID, freq_ctype, input_ctype, prod_ctype
 
 #include <cstdint>    // for uint32_t, int32_t
@@ -106,7 +106,7 @@ private:
         internalState(Buffer* out_buf, std::unique_ptr<gateSpec> gate_spec, size_t nprod);
 
         /// View of the data accessed by their freq_ind
-        std::vector<visFrameView> frames;
+        std::vector<VisFrameView> frames;
 
         /// The buffer we are outputting too
         Buffer* buf;
