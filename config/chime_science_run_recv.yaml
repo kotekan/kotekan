@@ -171,6 +171,7 @@ receive_flags:
   in_buf: visbuf_10s_all
   out_buf: visbuf_10s_flags
   updatable_config: "/updatable_config/flagging"
+  num_kept_updates: 24
 
 vis_debug:
   n2:
@@ -210,6 +211,7 @@ apply_gains:
   updatable_config: "/updatable_config/gains"
   broker_host: cv0r1
   broker_port: 54328
+  num_kept_updates: 24
 
 stacking:
   num_threads: 3
