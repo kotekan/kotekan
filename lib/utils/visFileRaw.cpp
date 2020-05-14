@@ -2,9 +2,9 @@
 #include "visFileRaw.hpp"
 
 #include "Hash.hpp"           // for Hash
+#include "VisFrameView.hpp"   // for VisFrameView, VisMetadata
 #include "datasetManager.hpp" // for datasetManager, dset_id_t
 #include "datasetState.hpp"   // for stackState, eigenvalueState, freqState, gatingState, input...
-#include "VisFrameView.hpp"      // for VisFrameView, VisMetadata
 
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json

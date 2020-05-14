@@ -3,11 +3,11 @@
 #include "Config.hpp"            // for Config
 #include "Hash.hpp"              // for operator!=
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "VisFrameView.hpp"      // for VisFrameView, VisField, VisField::erms, VisField::eval
 #include "buffer.h"              // for mark_frame_empty, allocate_new_metadata_object, mark_fr...
 #include "datasetState.hpp"      // for datasetState, eigenvalueState, state_uptr
 #include "kotekanLogging.hpp"    // for DEBUG, ERROR, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
-#include "VisFrameView.hpp"         // for VisFrameView, VisField, VisField::erms, VisField::eval
 #include "visUtil.hpp"           // for cfloat, frameID, modulo, current_time, cmap, movingAverage
 
 #include "fmt.hpp"      // for format, fmt

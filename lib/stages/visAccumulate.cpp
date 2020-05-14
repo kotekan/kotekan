@@ -2,6 +2,7 @@
 
 #include "Config.hpp"              // for Config
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "VisFrameView.hpp"        // for VisFrameView
 #include "buffer.h"                // for register_producer, Buffer, allocate_new_metadata_object
 #include "bufferContainer.hpp"     // for bufferContainer
 #include "chimeMetadata.h"         // for chimeMetadata, get_fpga_seq_num, get_lost_timesamples
@@ -14,7 +15,6 @@
 #include "metadata.h"              // for metadataContainer
 #include "prometheusMetrics.hpp"   // for Counter, MetricFamily, Metrics
 #include "version.h"               // for get_git_commit_hash
-#include "VisFrameView.hpp"           // for VisFrameView
 #include "visUtil.hpp"             // for prod_ctype, frameID, input_ctype, modulo, operator+
 
 #include "fmt.hpp"      // for format, fmt

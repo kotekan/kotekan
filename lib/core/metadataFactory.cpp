@@ -1,11 +1,11 @@
 #include "metadataFactory.hpp"
 
 #include "Config.hpp"         // for Config
+#include "VisFrameView.hpp"   // for VisMetadata
 #include "chimeMetadata.h"    // for chimeMetadata
 #include "hfbMetadata.h"      // for hfbMetadata
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.h"         // for create_metadata_pool
-#include "VisFrameView.hpp"      // for VisMetadata
 
 #include "fmt.hpp" // for format, fmt
 

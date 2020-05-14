@@ -21,8 +21,8 @@
 
 /**
  * @class freqSplit
- * @brief Separate a VisFrameView stream into two by selecting frequencies in the upper and lower half
- * of the band.
+ * @brief Separate a VisFrameView stream into two by selecting frequencies in the upper and lower
+ * half of the band.
  *
  * This task takes data coming out of a VisFrameView stream and separates it into
  * two streams. It selects which frames to copy to which buffer by assigning

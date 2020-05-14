@@ -4,13 +4,13 @@
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
 #include "SynchronizedQueue.hpp" // for SynchronizedQueue
+#include "VisFrameView.hpp"      // for VisFrameView
 #include "buffer.h"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, state_id_t
 #include "prometheusMetrics.hpp" // for Counter, Gauge
 #include "restClient.hpp"        // for restClient
 #include "updateQueue.hpp"       // for updateQueue
-#include "VisFrameView.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for cfloat, frameID
 
 #include "json.hpp" // for json

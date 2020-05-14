@@ -6,9 +6,9 @@
 #ifndef VIS_FILE_RAW_HPP
 #define VIS_FILE_RAW_HPP
 
+#include "VisFrameView.hpp"   // for VisFrameView
 #include "dataset.hpp"        // for dset_id_t
 #include "kotekanLogging.hpp" // for logLevel
-#include "VisFrameView.hpp"      // for VisFrameView
 #include "visFile.hpp"        // for visFile
 #include "visUtil.hpp"        // for time_ctype
 

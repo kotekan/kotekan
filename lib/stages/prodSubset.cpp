@@ -3,12 +3,12 @@
 #include "Config.hpp"          // for Config
 #include "Hash.hpp"            // for operator<
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "VisFrameView.hpp"    // for VisFrameView, VisField, VisField::vis, VisField::weight
 #include "buffer.h"            // for allocate_new_metadata_object, mark_frame_empty, mark_fram...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for dset_id_t, state_id_t, datasetManager
 #include "datasetState.hpp"    // for prodState
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, WARN
-#include "VisFrameView.hpp"       // for VisFrameView, VisField, VisField::vis, VisField::weight
 #include "visUtil.hpp"         // for prod_ctype, frameID, cmap, icmap, modulo, cfloat
 
 #include "gsl-lite.hpp" // for span

@@ -11,10 +11,10 @@
 #include "Config.hpp"          // for Config
 #include "FakeVisPattern.hpp"  // for FakeVisPattern
 #include "Stage.hpp"           // for Stage
+#include "VisFrameView.hpp"    // for VisFrameView
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "dataset.hpp"         // for dset_id_t
-#include "VisFrameView.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for cfloat
 
 #include <memory>   // for unique_ptr

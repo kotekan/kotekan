@@ -1,10 +1,10 @@
 #include "bufferFactory.hpp"
 
 #include "Config.hpp"         // for Config
+#include "VisFrameView.hpp"   // for VisFrameView
 #include "buffer.h"           // for create_buffer
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.h"         // for metadataPool // IWYU pragma: keep
-#include "VisFrameView.hpp"      // for VisFrameView
 
 #include "fmt.hpp" // for format, fmt
 

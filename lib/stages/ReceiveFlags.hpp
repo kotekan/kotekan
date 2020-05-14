@@ -8,12 +8,12 @@
 
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
+#include "VisFrameView.hpp"      // for VisFrameView
 #include "buffer.h"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "dataset.hpp"           // for dset_id_t, state_id_t
 #include "prometheusMetrics.hpp" // for Counter, Gauge
 #include "updateQueue.hpp"       // for updateQueue
-#include "VisFrameView.hpp"         // for VisFrameView
 
 #include "json.hpp" // for json
 

@@ -2,10 +2,10 @@
 
 #include "Hash.hpp"              // for Hash, operator!=
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "VisFrameView.hpp"      // for VisFrameView, VisField, VisField::vis, VisField::weight
 #include "datasetManager.hpp"    // for datasetManager, dset_id_t, state_id_t
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, WARN
 #include "prometheusMetrics.hpp" // for Metrics
-#include "VisFrameView.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::weight
 #include "visCompression.hpp"    // for chimeFeed
 
 #include "gsl-lite.hpp" // for span, span<>::iterator
