@@ -2,12 +2,12 @@
 
 #include "Hash.hpp"              // for operator==, operator<, Hash
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "VisFrameView.hpp"      // for VisFrameView, VisMetadata
 #include "datasetManager.hpp"    // for dset_id_t, datasetManager, fingerprint_t
 #include "datasetState.hpp"      // for freqState, _factory_aliasdatasetState
 #include "factory.hpp"           // for FACTORY
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, INFO, WARN
 #include "prometheusMetrics.hpp" // for Counter, Gauge, Metrics, MetricFamily
-#include "visBuffer.hpp"         // for VisFrameView, visMetadata
 #include "visUtil.hpp"           // for time_ctype, frameID, operator<, modulo, current_time
 
 #include <algorithm>   // for copy, fill_n, copy_backward, equal, max
@@ -324,7 +324,7 @@ void VisSharedMemWriter::main_thread() {
     wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
 
     auto frame = VisFrameView(in_buf, frame_id);
-    struct visMetadata *metadata = (visMetadata*)in_buf->metadata[frame_id]->metadata;
+    struct VisMetadata *metadata = (VisMetadata*)in_buf->metadata[frame_id]->metadata;
     size_t frame_data_size = VisFrameView::calculate_frame_size(metadata->num_elements, metadata->num_prod, metadata->num_ev);
 
     // Build the frequency index
@@ -358,8 +358,8 @@ void VisSharedMemWriter::main_thread() {
     // Calculate the ring buffer structure
 
     rbs.data_size = frame_data_size;
-    rbs.metadata_size = sizeof(visMetadata);
-    // Alligns the frame along page size
+    rbs.metadata_size = sizeof(VisMetadata);
+    // Aligns the frame along page size
     rbs.frame_size = _member_alignment(rbs.data_size + rbs.metadata_size + valid_size, alignment);
 
     // memory_size should be _ntime * nfreq * file_frame_size (data + metadata)
@@ -394,7 +394,7 @@ void VisSharedMemWriter::main_thread() {
 
         // Get a view of the current frame
         auto frame = VisFrameView(in_buf, frame_id);
-        metadata = (visMetadata*)in_buf->metadata[frame_id]->metadata;
+        metadata = (VisMetadata*)in_buf->metadata[frame_id]->metadata;
         frame_data_size = VisFrameView::calculate_frame_size(metadata->num_elements, metadata->num_prod, metadata->num_ev);
 
         if (frame_data_size != rbs.data_size)

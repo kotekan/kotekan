@@ -39,8 +39,8 @@
  *
  * @par Buffers
  * @buffer in_buf The input stream.
- *         @buffer_format visBuffer.
- *         @buffer_metadata visMetadata
+ *         @buffer_format VisFrameView.
+ *         @buffer_metadata VisMetadata
  *
  * @conf   chunk_size           Array of [int, int, int]. Chunk size of the data
  *                              (freq, prod, time).

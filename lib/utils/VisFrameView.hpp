@@ -1,7 +1,7 @@
 /*****************************************
 @file
-@brief Code for using the visBuffer formatted data.
-- visMetadata
+@brief Code for using the VisFrameView formatted data.
+- VisMetadata
 - VisFrameView
 *****************************************/
 #ifndef VISBUFFER_HPP
@@ -25,20 +25,20 @@
 
 
 /**
- * @brief The fields within the visBuffer.
+ * @brief The fields within the VisFrameView.
  *
  * Use this enum to refer to the fields.
  **/
-enum class visField { vis, weight, flags, eval, evec, erms, gain };
+enum class VisField { vis, weight, flags, eval, evec, erms, gain };
 
 
 /**
- * @struct visMetadata
+ * @struct VisMetadata
  * @brief Metadata for the visibility style buffers
  *
  * @author Richard Shaw
  **/
-struct visMetadata {
+struct VisMetadata {
 
     /// The FPGA sequence number of the integration frame
     uint64_t fpga_seq_start;
@@ -133,7 +133,7 @@ public:
      *          (i.e. 0) and end (i.e. total size) of the buffer is contained in
      *          `_struct`.
      **/
-    static struct_layout<visField> calculate_buffer_layout(uint32_t num_elements, uint32_t num_prod,
+    static struct_layout<VisField> calculate_buffer_layout(uint32_t num_elements, uint32_t num_prod,
                                                            uint32_t num_ev);
     /**
      * @brief Get the size of the frame using the config file.
@@ -187,11 +187,11 @@ public:
      * @param  skip_members   Specify a set of data members to *not* copy.
      *
      **/
-    void copy_data(VisFrameView frame_to_copy, const std::set<visField>& skip_members);
+    void copy_data(VisFrameView frame_to_copy, const std::set<VisField>& skip_members);
 
     // TODO: CHIME specific
     /**
-     * @brief Fill the visMetadata from a chimeMetadata struct.
+     * @brief Fill the VisMetadata from a chimeMetadata struct.
      *
      * The time field is filled with the GPS time if it is set (checked via
      * `is_gps_global_time_set`), otherwise the `first_packet_recv_time` is
@@ -212,23 +212,23 @@ public:
      * @param num_ev       Number of eigenvectors.
      *
      **/
-    static void set_metadata(visMetadata* metadata, const uint32_t num_elements,
+    static void set_metadata(VisMetadata* metadata, const uint32_t num_elements,
                              const uint32_t num_prod, const uint32_t num_ev);
 
     /**
      * @brief Read only access to the metadata.
      * @returns The metadata.
      **/
-    const visMetadata* metadata() const {
+    const VisMetadata* metadata() const {
         return _metadata;
     }
 
 private:
     // References to the metadata we are viewing
-    visMetadata* const _metadata;
+    VisMetadata* const _metadata;
 
     // The calculated layout of the buffer
-    struct_layout<visField> buffer_layout;
+    struct_layout<VisField> buffer_layout;
 
     // NOTE: these need to be defined in a final public block to ensure that they
     // are initialised after the above members.

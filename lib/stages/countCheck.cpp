@@ -2,10 +2,10 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "VisFrameView.hpp"    // for VisFrameView
 #include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR
-#include "visBuffer.hpp"       // for VisFrameView
 
 #include <atomic>     // for atomic_bool
 #include <exception>  // for exception

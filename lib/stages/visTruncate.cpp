@@ -2,10 +2,10 @@
 
 #include "Config.hpp"         // for Config
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "VisFrameView.hpp"   // for VisFrameView
 #include "buffer.h"           // for wait_for_full_frame, allocate_new_metadata_object, mark_fr...
 #include "kotekanLogging.hpp" // for DEBUG
 #include "truncate.hpp"       // for bit_truncate_float
-#include "visBuffer.hpp"      // for VisFrameView
 #include "visUtil.hpp"        // for cfloat
 
 #include "gsl-lite.hpp" // for span
@@ -72,7 +72,8 @@ void visTruncate::main_thread() {
 
     // get the first frame (just to find out about num_prod)
     // (we don't mark it empty, so it's read again in the main loop)
-    wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
+    if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr)
+        return;
     auto frame = VisFrameView(in_buf, frame_id);
 
     // reserve enough memory for all err_r to be computed per frame

@@ -1,11 +1,11 @@
 #include "metadataFactory.hpp"
 
 #include "Config.hpp"         // for Config
+#include "VisFrameView.hpp"   // for VisMetadata
 #include "chimeMetadata.h"    // for chimeMetadata
 #include "hfbMetadata.h"      // for hfbMetadata
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.h"         // for create_metadata_pool
-#include "visBuffer.hpp"      // for visMetadata
 
 #include "fmt.hpp" // for format, fmt
 
@@ -75,8 +75,8 @@ struct metadataPool* metadataFactory::new_pool(const std::string& pool_type,
         return create_metadata_pool(num_metadata_objects, sizeof(struct chimeMetadata));
     }
 
-    if (pool_type == "visMetadata") {
-        return create_metadata_pool(num_metadata_objects, sizeof(struct visMetadata));
+    if (pool_type == "VisMetadata") {
+        return create_metadata_pool(num_metadata_objects, sizeof(struct VisMetadata));
     }
 
     if (pool_type == "hfbMetadata") {

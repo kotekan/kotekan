@@ -1,8 +1,8 @@
 #include "calibration_io.hpp"
 
+#include "VisFrameView.hpp"
 #include "chimeMetadata.h"
 #include "fpga_header_functions.h"
-#include "visBuffer.hpp"
 #include "visFile.hpp"
 
 #include <algorithm>

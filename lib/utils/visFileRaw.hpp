@@ -6,9 +6,9 @@
 #ifndef VIS_FILE_RAW_HPP
 #define VIS_FILE_RAW_HPP
 
+#include "VisFrameView.hpp"   // for VisFrameView
 #include "dataset.hpp"        // for dset_id_t
 #include "kotekanLogging.hpp" // for logLevel
-#include "visBuffer.hpp"      // for VisFrameView
 #include "visFile.hpp"        // for visFile
 #include "visUtil.hpp"        // for time_ctype
 
@@ -41,8 +41,8 @@
  * The `.data` file contains the raw data output. This is packed as:
  *
  *  - 1st byte is set to `1` if data is present (or is implicitly zero).
- *  - visMetadata struct dump
- *  - visBuffer dump
+ *  - VisMetadata struct dump
+ *  - VisFrameView dump
  *
  * @author Richard Shaw
  **/

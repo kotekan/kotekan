@@ -2,6 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "VisFrameView.hpp"    // for VisFrameView
 #include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_empty
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.h"     // for chimeMetadata
@@ -10,7 +11,6 @@
 #include "kotekanLogging.hpp"  // for INFO
 #include "metadata.h"          // for metadataContainer
 #include "version.h"           // for get_git_commit_hash
-#include "visBuffer.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for prod_ctype, input_ctype, freq_ctype, copy_vis_triangle
 
 #include "gsl-lite.hpp" // for span<>::iterator, span
@@ -115,7 +115,7 @@ void visTransform::main_thread() {
 
         // This is where all the main set of work happens. Iterate over the
         // available buffers, wait for data to appear and transform into
-        // visBuffer style data
+        // VisFrameView style data
         for (auto& buffer_pair : in_bufs) {
             std::tie(buf, frame_id) = buffer_pair;
 
@@ -138,7 +138,7 @@ void visTransform::main_thread() {
                 break;
             }
             allocate_new_metadata_object(out_buf, output_frame_id);
-            VisFrameView::set_metadata((visMetadata*)out_buf->metadata[output_frame_id]->metadata,
+            VisFrameView::set_metadata((VisMetadata*)out_buf->metadata[output_frame_id]->metadata,
                                        num_elements, num_elements * (num_elements + 1) / 2,
                                        num_eigenvectors);
 

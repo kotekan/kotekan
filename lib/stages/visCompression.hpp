@@ -37,11 +37,11 @@
  *
  * @par Buffers
  * @buffer in_bufs The input uncompressed data.
- *         @buffer_format visBuffer structured.
- *         @buffer_metadata visMetadata
+ *         @buffer_format VisFrameView structured.
+ *         @buffer_metadata VisMetadata
  * @buffer out_buf The merged and transformed buffer
- *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
+ *         @buffer_format VisFrameView structured
+ *         @buffer_metadata VisMetadata
  *
  * @conf stack_type             String. Type of stacking to apply to the data.
  *                              Look at documentation of stack_X functions for

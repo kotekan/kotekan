@@ -3,6 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "Hash.hpp"              // for operator<
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "VisFrameView.hpp"      // for VisFrameView
 #include "buffer.h"              // for mark_frame_empty, mark_frame_full, register_consumer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "configUpdater.hpp"     // for configUpdater
@@ -10,7 +11,6 @@
 #include "datasetState.hpp"      // for flagState
 #include "kotekanLogging.hpp"    // for WARN, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
-#include "visBuffer.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for frameID, ts_to_double, current_time, double_to_ts, modulo
 
 #include "gsl-lite.hpp" // for span<>::iterator, span

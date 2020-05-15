@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Stage for merging GPU buffers into a visBuffer stream.
+@brief Stage for merging GPU buffers into a VisFrameView stream.
 - visTransform : public kotekan::Stage
 *****************************************/
 #ifndef VISTRANSFORM_H
@@ -22,10 +22,10 @@
 
 /**
  * @class visTransform
- * @brief Merge a set of GPU buffers into a single visBuffer stream.
+ * @brief Merge a set of GPU buffers into a single VisFrameView stream.
  *
  * This task takes data coming out of a collecton of GPU streams and merges and
- * reformats it into a single stream in the new visBuffer format that is used
+ * reformats it into a single stream in the new VisFrameView format that is used
  * for the receiver.
  *
  * @par Buffers
@@ -33,8 +33,8 @@
  *         @buffer_format GPU packed upper triangle
  *         @buffer_metadata chimeMetadata
  * @buffer out_buf The merged and transformed buffer
- *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
+ *         @buffer_format VisFrameView structured
+ *         @buffer_metadata VisMetadata
  *
  * @conf  num_elements      Int. The number of elements (i.e. inputs) in the
  *                          correlator data.

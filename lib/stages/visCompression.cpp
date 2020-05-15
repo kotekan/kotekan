@@ -3,13 +3,13 @@
 #include "Config.hpp"            // for Config
 #include "Hash.hpp"              // for Hash, operator<
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "VisFrameView.hpp"      // for VisFrameView, VisField, VisField::vis, VisField::weight
 #include "buffer.h"              // for wait_for_full_frame, allocate_new_metadata_object, mark...
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, state_id_t, datasetManager
 #include "datasetState.hpp"      // for stackState, prodState, inputState
 #include "kotekanLogging.hpp"    // for INFO, DEBUG, ERROR, FATAL_ERROR
 #include "prometheusMetrics.hpp" // for Gauge, Counter, Metrics, MetricFamily
-#include "visBuffer.hpp"         // for VisFrameView, visField, visField::vis, visField::weight
 #include "visUtil.hpp"           // for rstack_ctype, prod_ctype, current_time, modulo, input_c...
 
 #include "fmt.hpp"      // for format, fmt
@@ -208,7 +208,7 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
 
         // Allocate metadata and get output frame
         allocate_new_metadata_object(out_buf, output_frame_id);
-        VisFrameView::set_metadata((visMetadata*)out_buf->metadata[output_frame_id]->metadata,
+        VisFrameView::set_metadata((VisMetadata*)out_buf->metadata[output_frame_id]->metadata,
                                    input_frame.num_elements, num_stack, input_frame.num_ev);
 
         // Create view to output frame
@@ -216,7 +216,7 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
 
         // Copy over the data we won't modify
         output_frame.copy_metadata(input_frame);
-        output_frame.copy_data(input_frame, {visField::vis, visField::weight});
+        output_frame.copy_data(input_frame, {VisField::vis, VisField::weight});
         output_frame.dataset_id = new_dset_id;
 
         // Zero the output frame

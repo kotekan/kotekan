@@ -93,7 +93,7 @@ private:
 
 /**
  * @class eigenWriter
- * @brief Consumer ``kotekan::Stage`` that extracts eigenvectors etc from a ``visBuffer``
+ * @brief Consumer ``kotekan::Stage`` that extracts eigenvectors etc from a ``VisFrameView``
  *        and writes them to disk in a rolling HDF5 file.
  *
  * This stage reads the eigenvectors, eigenvalues, and RMS values carried in an input
@@ -102,8 +102,8 @@ private:
  *
  * @par Buffers
  * @buffer in_buf The kotekan buffer from which the data is read.
- *     @buffer_format visBuffer structured
- *     @buffer_metadata visMetadata
+ *     @buffer_format VisFrameView structured
+ *     @buffer_metadata VisMetadata
  *
  * @conf  num_ev            Int. The number of eigenvectors carried with the visibilitues.
  * @conf  freq_ids          List of int. The frequency IDs to expect.

@@ -2,9 +2,9 @@
 #include "visFileRaw.hpp"
 
 #include "Hash.hpp"           // for Hash
+#include "VisFrameView.hpp"   // for VisFrameView, VisMetadata
 #include "datasetManager.hpp" // for datasetManager, dset_id_t
 #include "datasetState.hpp"   // for stackState, eigenvalueState, freqState, gatingState, input...
-#include "visBuffer.hpp"      // for VisFrameView, visMetadata
 
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
@@ -99,7 +99,7 @@ visFileRaw::visFileRaw(const std::string& name, const kotekan::logLevel log_leve
     // Calculate the file structure
     auto layout = VisFrameView::calculate_buffer_layout(ninput, nvis, num_ev);
     data_size = layout.first;
-    metadata_size = sizeof(visMetadata);
+    metadata_size = sizeof(VisMetadata);
     frame_size = _member_alignment(data_size + metadata_size + 1, alignment * 1024);
 
     // Write the structure into the file for decoding

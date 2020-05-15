@@ -2,6 +2,7 @@
 
 #include "Config.hpp"              // for Config
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "VisFrameView.hpp"        // for VisFrameView
 #include "buffer.h"                // for register_producer, Buffer, allocate_new_metadata_object
 #include "bufferContainer.hpp"     // for bufferContainer
 #include "chimeMetadata.h"         // for chimeMetadata, get_fpga_seq_num, get_lost_timesamples
@@ -14,7 +15,6 @@
 #include "metadata.h"              // for metadataContainer
 #include "prometheusMetrics.hpp"   // for Counter, MetricFamily, Metrics
 #include "version.h"               // for get_git_commit_hash
-#include "visBuffer.hpp"           // for VisFrameView
 #include "visUtil.hpp"             // for prod_ctype, frameID, input_ctype, modulo, operator+
 
 #include "fmt.hpp"      // for format, fmt
@@ -441,7 +441,7 @@ bool visAccumulate::initialise_output(visAccumulate::internalState& state, int i
 
         allocate_new_metadata_object(state.buf, state.frame_id + freq_ind);
         VisFrameView::set_metadata(
-            (visMetadata*)state.buf->metadata[state.frame_id + freq_ind]->metadata, num_elements,
+            (VisMetadata*)state.buf->metadata[state.frame_id + freq_ind]->metadata, num_elements,
             num_elements * (num_elements + 1) / 2, 0);
 
         state.frames.emplace_back(state.buf, state.frame_id + freq_ind);

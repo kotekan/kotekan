@@ -3,12 +3,12 @@
 #include "Config.hpp"          // for Config
 #include "Hash.hpp"            // for operator!=, operator<, operator==, Hash
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "VisFrameView.hpp"    // for VisFrameView, VisField, VisField::evec, VisField::flags
 #include "buffer.h"            // for allocate_new_metadata_object, mark_frame_empty, mark_fram...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager, fingerprint_t
 #include "datasetState.hpp"    // for inputState, prodState, stackState
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, WARN
-#include "visBuffer.hpp"       // for VisFrameView, visField, visField::evec, visField::flags
 #include "visUtil.hpp"         // for prod_ctype, input_ctype, frameID, cfloat, modulo
 
 #include "gsl-lite.hpp" // for span
@@ -156,7 +156,7 @@ void InputSubset::main_thread() {
         allocate_new_metadata_object(out_buf, output_frame_id);
 
         // Create view to output frame
-        VisFrameView::set_metadata((visMetadata*)out_buf->metadata[output_frame_id]->metadata,
+        VisFrameView::set_metadata((VisMetadata*)out_buf->metadata[output_frame_id]->metadata,
                                    input_ind.size(), prod_ind.size(),
                                    input_frame.num_ev);
 
@@ -186,8 +186,8 @@ void InputSubset::main_thread() {
         output_frame.dataset_id = dset_id_map.at(input_frame.dataset_id);
 
         // Copy the non-input and visibility shaped parts of the buffer
-        output_frame.copy_data(input_frame, {visField::vis, visField::weight, visField::gain,
-                                             visField::flags, visField::evec});
+        output_frame.copy_data(input_frame, {VisField::vis, VisField::weight, VisField::gain,
+                                             VisField::flags, VisField::evec});
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);

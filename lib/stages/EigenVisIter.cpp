@@ -4,11 +4,11 @@
 #include "Hash.hpp"              // for operator!=, operator<
 #include "LinearAlgebra.hpp"     // for EigConvergenceStats, eigen_masked_subspace, to_blaze_herm
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "VisFrameView.hpp"      // for VisFrameView, VisField, VisField::erms, VisField::eval
 #include "buffer.h"              // for allocate_new_metadata_object, mark_frame_empty, mark_fr...
 #include "datasetState.hpp"      // for datasetState, eigenvalueState, state_uptr
 #include "kotekanLogging.hpp"    // for DEBUG
 #include "prometheusMetrics.hpp" // for Gauge, Metrics, MetricFamily
-#include "visBuffer.hpp"         // for VisFrameView, visField, visField::erms, visField::eval
 #include "visUtil.hpp"           // for cfloat, frameID, current_time, modulo, movingAverage
 
 #include "fmt.hpp"      // for format, fmt
@@ -170,7 +170,7 @@ void EigenVisIter::main_thread() {
         // defined
         output_frame.copy_metadata(input_frame);
         output_frame.dataset_id = _output_dset_id;
-        output_frame.copy_data(input_frame, {visField::eval, visField::evec, visField::erms});
+        output_frame.copy_data(input_frame, {VisField::eval, VisField::evec, VisField::erms});
 
         // Copy in eigenvectors and eigenvalues.
         for (uint32_t i = 0; i < _num_eigenvectors; i++) {

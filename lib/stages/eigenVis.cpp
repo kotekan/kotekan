@@ -3,11 +3,11 @@
 #include "Config.hpp"            // for Config
 #include "Hash.hpp"              // for operator!=
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "VisFrameView.hpp"      // for VisFrameView, VisField, VisField::erms, VisField::eval
 #include "buffer.h"              // for mark_frame_empty, allocate_new_metadata_object, mark_fr...
 #include "datasetState.hpp"      // for datasetState, eigenvalueState, state_uptr
 #include "kotekanLogging.hpp"    // for DEBUG, ERROR, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
-#include "visBuffer.hpp"         // for VisFrameView, visField, visField::erms, visField::eval
 #include "visUtil.hpp"           // for cfloat, frameID, modulo, current_time, cmap, movingAverage
 
 #include "fmt.hpp"      // for format, fmt
@@ -265,7 +265,7 @@ void eigenVis::main_thread() {
         // defined
         output_frame.copy_metadata(input_frame);
         output_frame.dataset_id = _output_dset_id;
-        output_frame.copy_data(input_frame, {visField::eval, visField::evec, visField::erms});
+        output_frame.copy_data(input_frame, {VisField::eval, VisField::evec, VisField::erms});
 
         // Copy in eigenvectors and eigenvalues.
         for (uint32_t i = 0; i < num_eigenvectors; i++) {

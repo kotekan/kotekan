@@ -2,6 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "VisFrameView.hpp"    // for VisFrameView
 #include "buffer.h"            // for allocate_new_metadata_object, mark_frame_full, register_p...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager
@@ -10,7 +11,6 @@
 #include "factory.hpp"         // for FACTORY
 #include "kotekanLogging.hpp"  // for INFO, DEBUG
 #include "version.h"           // for get_git_commit_hash
-#include "visBuffer.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for prod_ctype, input_ctype, double_to_ts, current_time, freq...
 
 #include "fmt.hpp"      // for format, fmt
@@ -141,7 +141,7 @@ void FakeVis::main_thread() {
 
         for (auto f : freq) {
 
-            DEBUG("Making fake visBuffer for freq={:d}, fpga_seq={:d}", f, fpga_seq);
+            DEBUG("Making fake VisFrameView for freq={:d}, fpga_seq={:d}", f, fpga_seq);
 
             // Wait for the buffer frame to be free
             if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
@@ -150,7 +150,7 @@ void FakeVis::main_thread() {
 
             // Allocate metadata and get frame
             allocate_new_metadata_object(out_buf, output_frame_id);
-            VisFrameView::set_metadata((visMetadata*)out_buf->metadata[output_frame_id]->metadata,
+            VisFrameView::set_metadata((VisMetadata*)out_buf->metadata[output_frame_id]->metadata,
                                        num_elements, num_elements * (num_elements + 1) / 2,
                                        num_eigenvectors);
 

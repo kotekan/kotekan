@@ -3,6 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "Hash.hpp"              // for Hash, operator<
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "VisFrameView.hpp"      // for VisFrameView
 #include "buffer.h"              // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, fingerprint_t, datasetManager
@@ -12,7 +13,6 @@
 #include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily, Gauge
 #include "restServer.hpp"        // for restServer, connectionInstance, HTTP_RESPONSE
 #include "version.h"             // for get_git_commit_hash
-#include "visBuffer.hpp"         // for VisFrameView
 #include "visFile.hpp"           // for visFileBundle, visCalFileBundle, _factory_aliasvisFile
 
 #include "fmt.hpp"  // for format, fmt

@@ -8,11 +8,11 @@
 
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
+#include "VisFrameView.hpp"      // for VisFrameView
 #include "buffer.h"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, fingerprint_t
 #include "prometheusMetrics.hpp" // for MetricFamily, Counter, Gauge
-#include "visBuffer.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for time_ctype, modulo, movingAverage
 
 #include <cstdint>     // for uint64_t, uint32_t, uint8_t, int64_t
@@ -69,8 +69,8 @@
  *
  * @par Buffers
  * @buffer in_buf The buffer streaming data to write
- *          @buffer_format visBuffer structured
- *          @buffer_metadata visMetadata
+ *          @buffer_format VisFrameView structured
+ *          @buffer_metadata VisMetadata
  *
  * @conf    root_path       String. Location in filesystem containing
  *                          shared memory and semaphore.

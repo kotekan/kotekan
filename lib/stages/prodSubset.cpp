@@ -3,12 +3,12 @@
 #include "Config.hpp"          // for Config
 #include "Hash.hpp"            // for operator<
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "VisFrameView.hpp"    // for VisFrameView, VisField, VisField::vis, VisField::weight
 #include "buffer.h"            // for allocate_new_metadata_object, mark_frame_empty, mark_fram...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for dset_id_t, state_id_t, datasetManager
 #include "datasetState.hpp"    // for prodState
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, WARN
-#include "visBuffer.hpp"       // for VisFrameView, visField, visField::vis, visField::weight
 #include "visUtil.hpp"         // for prod_ctype, frameID, cmap, icmap, modulo, cfloat
 
 #include "gsl-lite.hpp" // for span
@@ -146,7 +146,7 @@ void prodSubset::main_thread() {
 
         size_t subset_num_prod = prod_ind.size();
 
-        VisFrameView::set_metadata((visMetadata*)out_buf->metadata[output_frame_id]->metadata,
+        VisFrameView::set_metadata((VisMetadata*)out_buf->metadata[output_frame_id]->metadata,
                                    input_frame.num_elements, subset_num_prod, input_frame.num_ev);
 
         // Create view to output frame
@@ -163,7 +163,7 @@ void prodSubset::main_thread() {
         output_frame.dataset_id = new_dset_id;
 
         // Copy the non-visibility parts of the buffer
-        output_frame.copy_data(input_frame, {visField::vis, visField::weight});
+        output_frame.copy_data(input_frame, {VisField::vis, VisField::weight});
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);

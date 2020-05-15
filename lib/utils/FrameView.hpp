@@ -1,7 +1,7 @@
 /*****************************************
 @file
 @brief Code for using the visBuffer formatted data.
-- visMetadata
+- VisMetadata
 - FrameView
 *****************************************/
 #ifndef FRAMEVIEW_HPP

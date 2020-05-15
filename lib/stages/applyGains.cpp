@@ -3,6 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "Hash.hpp"              // for operator<
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "VisFrameView.hpp"      // for VisFrameView, VisField, VisField::vis, VisField::we...
 #include "buffer.h"              // for mark_frame_empty, wait_for_full_frame, allocate_new...
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "configUpdater.hpp"     // for configUpdater
@@ -12,7 +13,6 @@
 #include "modp_b64.hpp"          // for modp_b64_decode, modp_b64_decode_len
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
 #include "restClient.hpp"        // for restClient::restReply, restClient
-#include "visBuffer.hpp"         // for VisFrameView, visField, visField::vis, visField::we...
 #include "visFileH5.hpp"         // IWYU pragma: keep
 #include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double, frameID
 
@@ -270,16 +270,15 @@ void applyGains::apply_thread() {
         allocate_new_metadata_object(out_buf, output_frame_id);
 
         // Copy frame and create view
-        VisFrameView::set_metadata((visMetadata*)out_buf->metadata[output_frame_id]->metadata,
+        VisFrameView::set_metadata((VisMetadata*)out_buf->metadata[output_frame_id]->metadata,
                                     input_frame.num_elements, input_frame.num_prod,
                                     input_frame.num_ev);
 
         auto output_frame = VisFrameView(out_buf, output_frame_id);
 
-
         // Copy over the data we won't modify
         output_frame.copy_metadata(input_frame);
-        output_frame.copy_data(input_frame, {visField::vis, visField::weight});
+        output_frame.copy_data(input_frame, {VisField::vis, VisField::weight});
 
         // Check if we have already registered this gain update against this
         // input dataset, do so if we haven't, and then label the output data

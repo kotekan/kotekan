@@ -3,6 +3,7 @@
 #include "Config.hpp"          // for Config
 #include "Hash.hpp"            // for Hash, operator<, operator==
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "VisFrameView.hpp"    // for VisFrameView, VisMetadata
 #include "buffer.h"            // for allocate_new_metadata_object, mark_frame_full, wait_for_e...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager, DS_UNIQUE_NAME
@@ -11,7 +12,6 @@
 #include "kotekanLogging.hpp"  // for INFO, DEBUG, FATAL_ERROR, ERROR, WARN
 #include "metadata.h"          // for metadataContainer
 #include "version.h"           // for get_git_commit_hash
-#include "visBuffer.hpp"       // for VisFrameView, visMetadata
 #include "visUtil.hpp"         // for time_ctype, frameID, freq_ctype, prod_ctype, rstack_ctype
 
 #include "fmt.hpp"      // for format, fmt
@@ -145,10 +145,10 @@ visRawReader::visRawReader(Config& config, const std::string& unique_name,
     }
 
     // Check metadata is the correct size
-    if (sizeof(visMetadata) != metadata_size) {
+    if (sizeof(VisMetadata) != metadata_size) {
         std::string msg = fmt::format(fmt("Metadata in file {:s} is larger ({:d} bytes) than "
-                                          "visMetadata ({:d} bytes)."),
-                                      filename, metadata_size, sizeof(visMetadata));
+                                          "VisMetadata ({:d} bytes)."),
+                                      filename, metadata_size, sizeof(VisMetadata));
         throw std::runtime_error(msg);
     }
 
@@ -323,7 +323,7 @@ void visRawReader::main_thread() {
             // Create frame and set structural metadata
             size_t num_vis = _stack.size() > 0 ? _stack.size() : _prods.size();
             allocate_new_metadata_object(out_buf, frame_id);
-            VisFrameView::set_metadata((visMetadata*)out_buf->metadata[frame_id]->metadata,
+            VisFrameView::set_metadata((VisMetadata*)out_buf->metadata[frame_id]->metadata,
                                        _inputs.size(), num_vis, _ev.size());
 
             auto frame = VisFrameView(out_buf, frame_id);
@@ -350,7 +350,7 @@ void visRawReader::main_thread() {
         }
 
         // Set the dataset ID to the updated value
-        dset_id_t& ds_id = ((visMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id;
+        dset_id_t& ds_id = ((VisMetadata*)(out_buf->metadata[frame_id]->metadata))->dataset_id;
         ds_id = get_dataset_state(ds_id);
 
         // Try and clear out the cached data as we don't need it again
