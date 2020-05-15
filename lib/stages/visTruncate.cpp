@@ -72,8 +72,7 @@ void visTruncate::main_thread() {
 
     // get the first frame (just to find out about num_prod)
     // (we don't mark it empty, so it's read again in the main loop)
-    if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr)
-        return;
+    wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
     auto frame = VisFrameView(in_buf, frame_id);
 
     // reserve enough memory for all err_r to be computed per frame
@@ -94,8 +93,7 @@ void visTruncate::main_thread() {
         }
 
         // Copy frame into output buffer
-        allocate_new_metadata_object(out_buf, output_frame_id);
-        auto output_frame = VisFrameView(out_buf, output_frame_id, frame);
+        auto output_frame = VisFrameView::copy_frame(in_buf, frame_id, out_buf, output_frame_id);
 
         // truncate visibilities and weights (8 at a time)
         for (i_vec = 0; i_vec < int32_t(frame.num_prod) - 7; i_vec += 8) {

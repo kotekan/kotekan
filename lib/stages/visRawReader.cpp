@@ -322,7 +322,11 @@ void visRawReader::main_thread() {
         } else {
             // Create frame and set structural metadata
             size_t num_vis = _stack.size() > 0 ? _stack.size() : _prods.size();
-            auto frame = VisFrameView(out_buf, frame_id, _inputs.size(), num_vis, _ev.size());
+            allocate_new_metadata_object(out_buf, frame_id);
+            VisFrameView::set_metadata((visMetadata*)out_buf->metadata[frame_id]->metadata,
+                                       _inputs.size(), num_vis, _ev.size());
+
+            auto frame = VisFrameView(out_buf, frame_id);
 
             // Fill data with zeros
             std::fill(frame.vis.begin(), frame.vis.end(), 0.0);
@@ -500,8 +504,7 @@ void ensureOrdered::main_thread() {
             if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
                 return;
             }
-            allocate_new_metadata_object(out_buf, output_frame_id);
-            auto output_frame = VisFrameView(out_buf, output_frame_id, frame);
+            auto output_frame = VisFrameView::copy_frame(in_buf, frame_id, out_buf, output_frame_id);
             mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
 
             // release input frame
@@ -532,8 +535,7 @@ void ensureOrdered::main_thread() {
             if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
                 return;
             }
-            allocate_new_metadata_object(out_buf, output_frame_id);
-            auto output_frame = VisFrameView(out_buf, output_frame_id, past_frame);
+            auto output_frame = VisFrameView::copy_frame(in_buf, waiting_id, out_buf, output_frame_id);
             mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
 
             mark_frame_empty(in_buf, unique_name.c_str(), waiting_id);

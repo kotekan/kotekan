@@ -59,9 +59,12 @@ void removeEv::main_thread() {
         if (wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id) == nullptr) {
             break;
         }
+
         allocate_new_metadata_object(out_buf, out_frame_id);
-        auto output_frame =
-            VisFrameView(out_buf, out_frame_id, input_frame.num_elements, input_frame.num_prod, 0);
+        VisFrameView::set_metadata((visMetadata*)out_buf->metadata[out_frame_id]->metadata,
+                                   input_frame.num_elements, input_frame.num_prod, 0);
+
+        auto output_frame = VisFrameView(out_buf, out_frame_id);
 
         // check if the input dataset has changed
         if (dset_id_map.count(input_frame.dataset_id) == 0) {

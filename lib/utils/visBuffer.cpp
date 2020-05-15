@@ -1,5 +1,6 @@
 #include "visBuffer.hpp"
 
+#include "FrameView.hpp"           // for metadataContainer
 #include "buffer.h"                // for Buffer, allocate_new_metadata_object, swap_frames
 #include "chimeMetadata.h"         // for chimeMetadata
 #include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, stream_id_t
@@ -20,47 +21,18 @@
 #include <type_traits> // for __decay_and_strip<>::__type
 #include <vector>      // for vector
 
-template<typename T>
-gsl::span<T> bind_span(uint8_t* start, std::pair<size_t, size_t> range) {
-    T* span_start = (T*)(start + range.first);
-    T* span_end = (T*)(start + range.second);
-
-    return gsl::span<T>(span_start, span_end);
-}
-
-template<typename T>
-T& bind_scalar(uint8_t* start, std::pair<size_t, size_t> range) {
-    T* loc = (T*)(start + range.first);
-
-    return *loc;
-}
-
-// NOTE: this construct somewhat pointlessly reinitialises the structural
-// elements of the metadata, but I think there's no other way to share the
-// initialisation list
 VisFrameView::VisFrameView(Buffer* buf, int frame_id) :
-    VisFrameView(buf, frame_id, ((visMetadata*)(buf->metadata[frame_id]->metadata))->num_elements,
-                 ((visMetadata*)(buf->metadata[frame_id]->metadata))->num_prod,
-                 ((visMetadata*)(buf->metadata[frame_id]->metadata))->num_ev) {}
-
-VisFrameView::VisFrameView(Buffer* buf, int frame_id, uint32_t num_elements, uint32_t num_ev) :
-    VisFrameView(buf, frame_id, num_elements, num_elements * (num_elements + 1) / 2, num_ev) {}
-
-VisFrameView::VisFrameView(Buffer* buf, int frame_id, uint32_t n_elements, uint32_t n_prod,
-                           uint32_t n_eigenvectors) :
-    buffer(buf),
-    id(frame_id),
+    FrameView(buf, frame_id),
     _metadata((visMetadata*)buf->metadata[id]->metadata),
-    _frame(buffer->frames[id]),
 
     // Calculate the internal buffer layout from the given structure params
-    buffer_layout(calculate_buffer_layout(n_elements, n_prod, n_eigenvectors)),
+    buffer_layout(
+        calculate_buffer_layout(_metadata->num_elements, _metadata->num_prod, _metadata->num_ev)),
 
     // Set the const refs to the structural metadata
     num_elements(_metadata->num_elements),
     num_prod(_metadata->num_prod),
     num_ev(_metadata->num_ev),
-    data_size(buffer_layout.first),
 
     // Set the refs to the general _metadata
     time(std::tie(_metadata->fpga_seq_start, _metadata->ctime)),
@@ -80,13 +52,6 @@ VisFrameView::VisFrameView(Buffer* buf, int frame_id, uint32_t n_elements, uint3
     gain(bind_span<cfloat>(_frame, buffer_layout.second[visField::gain]))
 
 {
-    // Initialise the structure if not already done
-    // NOTE: the provided structure params have already been used to calculate
-    // the layout, but here we need to make sure the metadata tracks them too.
-    _metadata->num_elements = n_elements;
-    _metadata->num_prod = n_prod;
-    _metadata->num_ev = n_eigenvectors;
-
     // Check that the actual buffer size is big enough to contain the calculated
     // view
     size_t required_size = buffer_layout.first;
@@ -96,24 +61,11 @@ VisFrameView::VisFrameView(Buffer* buf, int frame_id, uint32_t n_elements, uint3
         std::string s =
             fmt::format(fmt("Visibility buffer [{:s}] too small. Must be a minimum of {:d} bytes "
                             "for elements={:d}, products={:d}, ev={:d}"),
-                        buffer->buffer_name, required_size, n_elements, n_prod, n_eigenvectors);
+                        buffer->buffer_name, required_size, num_elements, num_prod, num_ev);
 
         throw std::runtime_error(s);
     }
 }
-
-VisFrameView::VisFrameView(Buffer* buf, int frame_id, VisFrameView frame_to_copy) :
-    VisFrameView(buf, frame_id, frame_to_copy.num_elements, frame_to_copy.num_prod,
-                 frame_to_copy.num_ev) {
-    // Copy over the metadata values
-    *_metadata = *(frame_to_copy.metadata());
-
-    // Copy the frame data here:
-    // NOTE: this copies the full buffer memory, not only the individual components
-    std::memcpy(buffer->frames[id], frame_to_copy.buffer->frames[frame_to_copy.id],
-                frame_to_copy.buffer->frame_size);
-}
-
 
 std::string VisFrameView::summary() const {
 
@@ -128,49 +80,7 @@ std::string VisFrameView::summary() const {
 
 VisFrameView VisFrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
                                       int frame_id_dest) {
-    allocate_new_metadata_object(buf_dest, frame_id_dest);
-
-    // Buffer sizes must match exactly
-    if (buf_src->frame_size != buf_dest->frame_size) {
-        std::string msg =
-            fmt::format(fmt("Buffer sizes must match for direct copy (src {:d} != dest {:d})."),
-                        buf_src->frame_size, buf_dest->frame_size);
-        throw std::runtime_error(msg);
-    }
-
-    // Metadata sizes must match exactly
-    if (buf_src->metadata[frame_id_src]->metadata_size
-        != buf_dest->metadata[frame_id_dest]->metadata_size) {
-        std::string msg =
-            fmt::format(fmt("Metadata sizes must match for direct copy (src {:d} != dest {:d})."),
-                        buf_src->metadata[frame_id_src]->metadata_size,
-                        buf_dest->metadata[frame_id_dest]->metadata_size);
-        throw std::runtime_error(msg);
-    }
-
-    // Calculate the number of consumers on the source buffer
-    int num_consumers = 0;
-    for (int i = 0; i < MAX_CONSUMERS; ++i) {
-        if (buf_src->consumers[i].in_use == 1) {
-            num_consumers++;
-        }
-    }
-
-    // Copy or transfer the data part.
-    if (num_consumers == 1) {
-        // Transfer frame contents with directly...
-        swap_frames(buf_src, frame_id_src, buf_dest, frame_id_dest);
-    } else if (num_consumers > 1) {
-        // Copy the frame data over, leaving the source intact
-        std::memcpy(buf_dest->frames[frame_id_dest], buf_src->frames[frame_id_src],
-                    buf_src->frame_size);
-    }
-
-    // Copy over the metadata
-    std::memcpy(buf_dest->metadata[frame_id_dest]->metadata,
-                buf_src->metadata[frame_id_src]->metadata,
-                buf_src->metadata[frame_id_src]->metadata_size);
-
+    FrameView::copy_frame(buf_src, frame_id_src, buf_dest, frame_id_dest);
     return VisFrameView(buf_dest, frame_id_dest);
 }
 
@@ -269,6 +179,50 @@ struct_layout<visField> VisFrameView::calculate_buffer_layout(uint32_t num_eleme
     return struct_alignment(buffer_members);
 }
 
+size_t VisFrameView::calculate_frame_size(uint32_t num_elements, uint32_t num_prod,
+                                          uint32_t num_ev) {
+    // TODO: get the types of each element using a template on the member
+    // definition
+    std::vector<std::tuple<visField, size_t, size_t>> buffer_members = {
+        std::make_tuple(visField::vis, sizeof(cfloat), num_prod),
+        std::make_tuple(visField::weight, sizeof(float), num_prod),
+        std::make_tuple(visField::flags, sizeof(float), num_elements),
+        std::make_tuple(visField::eval, sizeof(float), num_ev),
+        std::make_tuple(visField::evec, sizeof(cfloat), num_ev * num_elements),
+        std::make_tuple(visField::erms, sizeof(float), 1),
+        std::make_tuple(visField::gain, sizeof(cfloat), num_elements)};
+
+    struct_layout<visField> buf_layout = struct_alignment(buffer_members);
+
+    return buf_layout.first;
+}
+
+size_t VisFrameView::calculate_frame_size(kotekan::Config& config, const std::string& unique_name) {
+
+    const int num_elements = config.get<int>(unique_name, "num_elements");
+    const int num_ev = config.get<int>(unique_name, "num_ev");
+    int num_prod = config.get_default<int>(unique_name, "num_prod", -1);
+
+    if (num_prod < 0) {
+        num_prod = num_elements * (num_elements + 1) / 2;
+    }
+
+    // TODO: get the types of each element using a template on the member
+    // definition
+    std::vector<std::tuple<visField, size_t, size_t>> buffer_members = {
+        std::make_tuple(visField::vis, sizeof(cfloat), num_prod),
+        std::make_tuple(visField::weight, sizeof(float), num_prod),
+        std::make_tuple(visField::flags, sizeof(float), num_elements),
+        std::make_tuple(visField::eval, sizeof(float), num_ev),
+        std::make_tuple(visField::evec, sizeof(cfloat), num_ev * num_elements),
+        std::make_tuple(visField::erms, sizeof(float), 1),
+        std::make_tuple(visField::gain, sizeof(cfloat), num_elements)};
+
+    struct_layout<visField> buf_layout = struct_alignment(buffer_members);
+
+    return buf_layout.first;
+}
+
 void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata) {
 
     // Set to zero as there's no information in chimeMetadata about it.
@@ -292,4 +246,11 @@ void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata) {
     }
 
     time = std::make_tuple(fpga_seq, ts);
+}
+
+void VisFrameView::set_metadata(visMetadata* metadata, const uint32_t num_elements,
+                                const uint32_t num_prod, const uint32_t num_ev) {
+    metadata->num_elements = num_elements;
+    metadata->num_prod = num_prod;
+    metadata->num_ev = num_ev;
 }
