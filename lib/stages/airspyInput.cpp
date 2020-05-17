@@ -32,7 +32,92 @@ airspyInput::~airspyInput() {
     airspy_exit();
 }
 
+void airspyInput::adcstat_callback(kotekan::connectionInstance& conn) {
+    dump_adcstat = true;
+    while (!adcstat_ready) {usleep(1000);}
+//    conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
+    nlohmann::json reply;
+    reply["rms"] = adcrms;
+    reply["mean"] = adcmean;
+    reply["railfrac"] = adcrailfrac;
+
+    conn.send_json_reply(reply);
+    adcstat_ready = false;
+}
+
+void airspyInput::rest_callback(kotekan::connectionInstance& conn,
+                                   nlohmann::json& json_request) {
+    int err;
+    bool success=false;
+    // need a lock here?
+    try {
+        freq = ((float)json_request["freq"]) * 1000000;
+        INFO("Updating airspy LO to frequency to {:d}", freq);
+
+        err=airspy_set_freq(dev, freq);
+        if (err != AIRSPY_SUCCESS) {
+            ERROR("airspy_set_freq() failed: {:s} ({:d})", airspy_error_name((enum airspy_error)err),
+                  err)
+        }
+        else success=true;
+    } catch (...) {}
+    try {
+        gain_lna = json_request["gain_lna"];
+        INFO("Updating airspy LNA gain to {:d}", gain_lna);
+
+        err = airspy_set_lna_gain(dev, gain_lna);
+        if (err != AIRSPY_SUCCESS) {
+            ERROR("airspy_set_lna_gain() failed: {:s} ({:d})", airspy_error_name((enum airspy_error)err),
+                  err)
+        }
+        else success=true;
+    } catch (...) {}
+    try {
+        gain_mix = json_request["gain_mix"];
+        INFO("Updating airspy mixer gain to {:d}", gain_mix);
+
+        err = airspy_set_mixer_gain(dev, gain_mix);
+        if (err != AIRSPY_SUCCESS) {
+            ERROR("airspy_set_mixer_gain() failed: {:s} ({:d})", airspy_error_name((enum airspy_error)err),
+                  err)
+        }
+        else success=true;
+    } catch (...) {}
+    try {
+        gain_if = json_request["gain_if"];
+        INFO("Updating airspy LNA gain to {:d}", gain_if);
+
+        err = airspy_set_vga_gain(dev, gain_if);
+        if (err != AIRSPY_SUCCESS) {
+            ERROR("airspy_set_vga_gain() failed: {:s} ({:d})", airspy_error_name((enum airspy_error)err),
+                  err)
+        }
+        else success=true;
+    } catch (...) {}
+
+    if (success) {
+        usleep(10000);
+        adcstat_callback(conn);
+//        conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
+//        dump_rms = true;
+    }
+    else {
+        conn.send_error("Couldn't parse airspy rx parameters.\n", kotekan::HTTP_RESPONSE::BAD_REQUEST);
+    }
+}
+
 void airspyInput::main_thread() {
+    std::string endpoint = unique_name+"/freq";
+    using namespace std::placeholders;
+    kotekan::restServer& rest_server = kotekan::restServer::instance();
+    rest_server.register_post_callback(endpoint,
+                                      std::bind(&airspyInput::rest_callback, this, _1, _2));
+
+    endpoint = unique_name+"/adcstat";
+    rest_server.register_get_callback(endpoint,
+                                      std::bind(&airspyInput::adcstat_callback, this, _1));
+
+
     frame_id = 0;
     frame_loc = 0;
     recv_busy = PTHREAD_MUTEX_INITIALIZER;
@@ -74,6 +159,23 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
 
         if (frame_loc == 0) {
             DEBUG("Airspy Buffer {:d} Full", frame_id);
+            if (dump_adcstat){
+                float mean = 0, rms = 0;
+                float rail = 0;
+                short *fr = (short*)frame_ptr;
+                for (int i=0; i<buf->frame_size/2; i++) if (abs(fr[i]) >= (2<<10)) rail++;
+                rail/=buf->frame_size/2;
+                for (int i=0; i<buf->frame_size/2; i++) mean+=(float)fr[i];
+                mean/=buf->frame_size/2;
+                for (int i=0; i<buf->frame_size/2; i++) rms+=((float)fr[i]-mean)*((float)fr[i]-mean);
+                rms=sqrt(rms/(buf->frame_size/2));
+                INFO("Airspy ADC mean: {:f}, RMS: {:f}, rail fraction {:f}",mean,rms,rail);
+                adcrailfrac=rail;
+                adcrms=rms;
+                adcmean=mean;
+                adcstat_ready=true;
+                dump_adcstat=false;
+            }
             mark_frame_full(buf, unique_name.c_str(), frame_id);
             frame_id = (frame_id + 1) % buf->num_frames;
         }
@@ -85,7 +187,6 @@ struct airspy_device* airspyInput::init_device() {
     int result;
     uint8_t board_id = AIRSPY_BOARD_ID_INVALID;
 
-    struct airspy_device* dev;
     result = airspy_open(&dev);
     if (result != AIRSPY_SUCCESS) {
         ERROR("airspy_open() failed: {:s} ({:d})", airspy_error_name((enum airspy_error)result),
