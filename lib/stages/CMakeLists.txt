@@ -26,6 +26,7 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       bufferStatus.cpp
       bufferSend.cpp
       bufferRecv.cpp
+      SampleAutocorr.cpp
       simpleAutocorr.cpp
       freqSplit.cpp
       freqSubset.cpp
