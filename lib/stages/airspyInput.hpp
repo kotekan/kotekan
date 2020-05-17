@@ -111,6 +111,10 @@ public:
     void airspy_producer(airspy_transfer_t* transfer);
 
 
+    void rest_callback(kotekan::connectionInstance& conn,
+                                   nlohmann::json& json_request);
+    void adcstat_callback(kotekan::connectionInstance& conn);
+
 private:
     /// kotekan buffer object which will be fed
     Buffer* buf;
@@ -144,6 +148,13 @@ private:
     /// Whether or not the AirSpy should apply 4.5V DC bias on the RF line.
     /// Binary flag, should be 0 or 1.
     int biast_power;
+
+    struct airspy_device* dev;
+
+    bool dump_adcstat = false;
+    bool adcstat_ready = false;
+    float adcrms, adcrailfrac, adcmean;
+
 };
 
 
