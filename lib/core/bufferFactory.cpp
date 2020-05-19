@@ -103,7 +103,7 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
         auto layout = VisFrameView::calculate_buffer_layout(num_elements, num_prod, num_ev);
         uint32_t frame_size = layout.first;
 
-        INFO_NON_OO("Creating VisFrameView named {:s} with {:d} frames, frame size of {:d} and "
+        INFO_NON_OO("Creating VisBuffer named {:s} with {:d} frames, frame size of {:d} and "
                     "metadata pool {:s}",
                     name, num_frames, frame_size, metadataPool_name);
         return create_buffer(num_frames, frame_size, pool, name.c_str(), numa_node);
