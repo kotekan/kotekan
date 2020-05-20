@@ -45,7 +45,7 @@ struct chimeMetadata {
     uint32_t rfi_num_bad_inputs;
     /// The stream ID from the ICEBoard
     /// Note in the case of CHIME-2048 the normally unused section
-    /// Encodes the port-shuffle freqeuncy information
+    /// Encodes the port-shuffle frequency information
     uint16_t stream_ID;
     /// The corrdinates of the pulsar beam (if applicable)
     struct psrCoord psr_coord;
@@ -53,22 +53,22 @@ struct chimeMetadata {
 
 // Helper functions to save lots of pointer work
 
-inline int64_t get_fpga_seq_num(struct Buffer* buf, int ID) {
+inline int64_t get_fpga_seq_num(const struct Buffer* buf, int ID) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
     return chime_metadata->fpga_seq_num;
 }
 
-inline struct psrCoord get_psr_coord(struct Buffer* buf, int ID) {
+inline struct psrCoord get_psr_coord(const struct Buffer* buf, int ID) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
     return chime_metadata->psr_coord;
 }
 
-inline uint32_t get_rfi_zeroed(struct Buffer* buf, int ID) {
+inline uint32_t get_rfi_zeroed(const struct Buffer* buf, int ID) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
     return chime_metadata->rfi_zeroed;
 }
 
-inline int32_t get_lost_timesamples(struct Buffer* buf, int ID) {
+inline int32_t get_lost_timesamples(const struct Buffer* buf, int ID) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
     return chime_metadata->lost_timesamples;
 }
@@ -80,7 +80,7 @@ inline int32_t get_lost_timesamples(struct Buffer* buf, int ID) {
  * @param ID The frame to get metadata from
  * @return The number of RFI flagged samples
  */
-inline int32_t get_rfi_flagged_samples(struct Buffer* buf, int ID) {
+inline int32_t get_rfi_flagged_samples(const struct Buffer* buf, int ID) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
     return chime_metadata->rfi_flagged_samples;
 }
@@ -92,27 +92,27 @@ inline int32_t get_rfi_flagged_samples(struct Buffer* buf, int ID) {
  * @param ID The frame to get metadata from
  * @return The number of bad inputs in the input mask
  */
-inline uint32_t get_rfi_num_bad_inputs(struct Buffer* buf, int ID) {
+inline uint32_t get_rfi_num_bad_inputs(const struct Buffer* buf, int ID) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
     return chime_metadata->rfi_num_bad_inputs;
 }
 
-inline uint16_t get_stream_id(struct Buffer* buf, int ID) {
+inline uint16_t get_stream_id(const struct Buffer* buf, int ID) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
     return chime_metadata->stream_ID;
 }
 
-inline stream_id_t get_stream_id_t(struct Buffer* buf, int ID) {
+inline stream_id_t get_stream_id_t(const struct Buffer* buf, int ID) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
     return extract_stream_id(chime_metadata->stream_ID);
 }
 
-inline struct timeval get_first_packet_recv_time(struct Buffer* buf, int ID) {
+inline struct timeval get_first_packet_recv_time(const struct Buffer* buf, int ID) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
     return chime_metadata->first_packet_recv_time;
 }
 
-inline struct timespec get_gps_time(struct Buffer* buf, int ID) {
+inline struct timespec get_gps_time(const struct Buffer* buf, int ID) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
     return chime_metadata->gps_time;
 }
