@@ -3,7 +3,6 @@
 
 #include "Stage.hpp"
 #include "buffer.h"
-#include "fpga_header_functions.h"
 
 class hccGPUThread : public kotekan::Stage {
 public:

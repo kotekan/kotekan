@@ -1,15 +1,15 @@
 #include "pulsarPostProcess.hpp"
 
-#include "BranchPrediction.hpp"    // for likely, unlikely
-#include "Config.hpp"              // for Config
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"                // for Buffer, mark_frame_empty, wait_for_empty_frame, wait_...
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chimeMetadata.h"         // for get_fpga_seq_num, psrCoord, get_psr_coord, get_stream...
-#include "fpga_header_functions.h" // for bin_number_chime, stream_id_t
-#include "gpsTime.h"               // for compute_gps_time, is_gps_global_time_set
-#include "kotekanLogging.hpp"      // for DEBUG, ERROR
-#include "vdif_functions.h"        // for VDIFHeader
+#include "BranchPrediction.hpp" // for likely, unlikely
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
+#include "buffer.h"            // for Buffer, mark_frame_empty, wait_for_empty_frame, wait_...
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.h"     // for get_fpga_seq_num, psrCoord, get_psr_coord, get_stream...
+#include "gpsTime.h"           // for compute_gps_time, is_gps_global_time_set
+#include "kotekanLogging.hpp"  // for DEBUG, ERROR
+#include "vdif_functions.h"    // for VDIFHeader
 
 #include <algorithm>  // for max
 #include <assert.h>   // for assert
@@ -127,6 +127,8 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* 
 
 void pulsarPostProcess::main_thread() {
 
+    auto& tel = Telescope::instance();
+
     int out_buffer_ID = 0;
     int startup = 1; // related to the likely & unlikely
     uint16_t freq_ids[_num_gpus];
@@ -182,8 +184,7 @@ void pulsarPostProcess::main_thread() {
 
         for (uint32_t i = 0; i < _num_gpus; ++i) {
             psr_coord[i] = get_psr_coord(in_buf[i], in_buffer_ID[i]);
-            stream_id_t stream_id = get_stream_id_t(in_buf[i], in_buffer_ID[i]);
-            freq_ids[i] = bin_number_chime(&stream_id);
+            freq_ids[i] = tel.to_freq_id(in_buf[i], in_buffer_ID[i]);
         }
 
         bool skipped_frames =
