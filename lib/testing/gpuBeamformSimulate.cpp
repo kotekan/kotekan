@@ -1,12 +1,11 @@
 #include "gpuBeamformSimulate.hpp"
 
-#include "Config.hpp"              // for Config
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"                // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chimeMetadata.h"         // for get_stream_id_t
-#include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
-#include "kotekanLogging.hpp"      // for ERROR, INFO
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
+#include "buffer.h"            // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for ERROR, INFO
 
 #include <algorithm>   // for copy
 #include <assert.h>    // for assert
@@ -311,6 +310,9 @@ void gpuBeamformSimulate::upchannelize(double* data, int nn) {
 }
 
 void gpuBeamformSimulate::main_thread() {
+
+    auto& tel = Telescope::instance();
+
     int input_buf_id = 0;
     int output_buf_id = 0;
 
@@ -360,9 +362,8 @@ void gpuBeamformSimulate::main_thread() {
             "Simulating GPU hyper fine beam processing for {:s}[{:d}] putting result in {:s}[{:d}]",
             input_buf->buffer_name, input_buf_id, hfb_output_buf->buffer_name, output_buf_id);
 
-        stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
-        freq_now = bin_number_chime(&stream_id);
-        freq_MHz = freq_from_bin(freq_now);
+        freq_now = tel.to_freq_id(metadata_buf, metadata_buffer_id);
+        freq_MHz = tel.to_freq(freq_now);
 
         // Work out the EW phase coefficients from freq_MHz
         for (int angle_iter = 0; angle_iter < 4; angle_iter++) {

@@ -1,14 +1,13 @@
 #include "hsaBeamformKernel.hpp"
 
-#include "Config.hpp"              // for Config
-#include "buffer.h"                // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chimeMetadata.h"         // for get_stream_id_t
-#include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
-#include "gpuCommand.hpp"          // for gpuCommandType, gpuCommandType::KERNEL
-#include "hsaBase.h"               // for hsa_host_free, hsa_host_malloc
-#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface, Config
-#include "restServer.hpp"          // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_R...
+#include "Config.hpp" // for Config
+#include "Telescope.hpp"
+#include "buffer.h"               // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaBase.h"              // for hsa_host_free, hsa_host_malloc
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
+#include "restServer.hpp"         // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_R...
 
 #include "fmt.hpp" // for format, fmt
 
@@ -36,7 +35,7 @@ REGISTER_HSA_COMMAND(hsaBeamformKernel);
 // clang-format off
 
 // Request gain file re-parse with e.g.
-// curl localhost:12048/updatable_config/frb_gain -X POST -H 'Content-Type: appication/json' -d '{"frb_gain_dir":"the_new_path"}'
+// curl localhost:12048/updatable_config/frb_gain -X POST -H 'Content-Type: application/json' -d '{"frb_gain_dir":"the_new_path"}'
 // Update NS beam
 // curl localhost:12048/gpu/gpu_<gpu_id>/frb/update_NS_beam/<gpu_id> -X POST -H 'Content-Type: application/json' -d '{"northmost_beam":<value>}'
 // Update EW beam
@@ -202,9 +201,9 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_s
 
     if (first_pass) {
         first_pass = false;
-        stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
-        freq_idx = bin_number_chime(&stream_id);
-        freq_MHz = freq_from_bin(freq_idx);
+        auto& tel = Telescope::instance();
+        freq_idx = tel.to_freq_id(metadata_buf, metadata_buffer_id);
+        freq_MHz = tel.to_freq(freq_idx);
     }
     mark_frame_empty(metadata_buf, unique_name.c_str(), metadata_buffer_id);
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;

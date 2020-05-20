@@ -1,10 +1,10 @@
 #include "visBuffer.hpp"
 
-#include "buffer.h"                // for Buffer, allocate_new_metadata_object, swap_frames
-#include "chimeMetadata.h"         // for chimeMetadata
-#include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, stream_id_t
-#include "gpsTime.h"               // for is_gps_global_time_set
-#include "metadata.h"              // for metadataContainer
+#include "Telescope.hpp"
+#include "buffer.h"        // for Buffer, allocate_new_metadata_object, swap_frames
+#include "chimeMetadata.h" // for chimeMetadata
+#include "gpsTime.h"       // for is_gps_global_time_set
+#include "metadata.h"      // for metadataContainer
 
 #include "fmt.hpp" // for format, fmt
 
@@ -271,15 +271,15 @@ struct_layout<visField> VisFrameView::calculate_buffer_layout(uint32_t num_eleme
 
 void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata) {
 
+    auto& tel = Telescope::instance();
+
     // Set to zero as there's no information in chimeMetadata about it.
     dataset_id = dset_id_t::null;
 
     // Set the frequency index from the stream id of the metadata
-    stream_id_t stream_id = extract_stream_id(chime_metadata->stream_ID);
-    freq_id = bin_number_chime(&stream_id);
+    freq_id = tel.to_freq_id(chime_metadata->stream_ID);
 
     // Set the time
-    // TODO: get the GPS time instead
     uint64_t fpga_seq = chime_metadata->fpga_seq_num;
 
     timespec ts;
