@@ -28,10 +28,10 @@ struct chimeMetadata {
     struct timeval first_packet_recv_time;
     /// The GPS time of @c fpga_seq_num.
     struct timespec gps_time;
-    /// The total lost time samples for lost/currupt packets and RFI zeroing.
+    /// The total lost time samples for lost/corrupt packets and RFI zeroing.
     /// This value only include RFI losses if RFI zeroing was used.
     int32_t lost_timesamples;
-    /// The number of 2.56us samples flaged as containg RFI.
+    /// The number of FPGA frames flagged as containing RFI.
     /// NOTE: This value might contain overlap with lost samples, so it can count
     /// missing samples as samples with RFI.  For renormalization this value
     /// should NOT be used, use @c lost_timesamples instead.
