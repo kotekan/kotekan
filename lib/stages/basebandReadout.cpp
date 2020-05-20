@@ -1,22 +1,22 @@
 #include "basebandReadout.hpp"
 
-#include "Config.hpp"              // for Config
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "basebandApiManager.hpp"  // for basebandApiManager
-#include "buffer.h"                // for Buffer, mark_frame_empty, register_consumer, wait_fo...
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chimeMetadata.h"         // for chimeMetadata
-#include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, freq_from_bin
-#include "gpsTime.h"               // for FPGA_PERIOD_NS, compute_gps_time, is_gps_global_time...
-#include "kotekanLogging.hpp"      // for INFO, DEBUG, ERROR, WARN
-#include "metadata.h"              // for metadataContainer
-#include "nt_memcpy.h"             // for nt_memcpy
-#include "nt_memset.h"             // for nt_memset
-#include "prometheusMetrics.hpp"   // for Counter, Gauge, MetricFamily, Metrics
-#include "version.h"               // for get_git_commit_hash
-#include "visFile.hpp"             // for create_lockfile
-#include "visFileH5.hpp"           // for create_datatype
-#include "visUtil.hpp"             // for input_ctype, ts_to_double, parse_reorder_default
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
+#include "basebandApiManager.hpp" // for basebandApiManager
+#include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_fo...
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chimeMetadata.h"        // for chimeMetadata
+#include "gpsTime.h"              // for FPGA_PERIOD_NS, compute_gps_time, is_gps_global_time...
+#include "kotekanLogging.hpp"     // for INFO, DEBUG, ERROR, WARN
+#include "metadata.h"             // for metadataContainer
+#include "nt_memcpy.h"            // for nt_memcpy
+#include "nt_memset.h"            // for nt_memset
+#include "prometheusMetrics.hpp"  // for Counter, Gauge, MetricFamily, Metrics
+#include "version.h"              // for get_git_commit_hash
+#include "visFile.hpp"            // for create_lockfile
+#include "visFileH5.hpp"          // for create_datatype
+#include "visUtil.hpp"            // for input_ctype, ts_to_double, parse_reorder_default
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span, operator!=
@@ -124,6 +124,7 @@ basebandReadout::~basebandReadout() {}
 
 void basebandReadout::main_thread() {
 
+    auto& tel = Telescope::instance();
     int frame_id = 0;
 
     std::unique_ptr<std::thread> wt;
@@ -140,8 +141,7 @@ void basebandReadout::main_thread() {
             int buf_frame = frame_id % buf->num_frames;
             auto first_meta = (chimeMetadata*)buf->metadata[buf_frame]->metadata;
 
-            stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
-            uint32_t freq_id = bin_number_chime(&stream_id);
+            uint32_t freq_id = tel.to_freq_id(first_meta->stream_ID);
 
             DEBUG("Initialize baseband metrics for freq_id: {:d}", freq_id);
             readout_counter.labels({std::to_string(freq_id), "done"});
@@ -366,6 +366,8 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
     // This assumes that the frame's timestamps are in order, but not that they
     // are necessarily contiguous.
 
+    auto& tel = Telescope::instance();
+
     int dump_start_frame = 0;
     int dump_end_frame = 0;
     int64_t trigger_end_fpga = trigger_start_fpga + trigger_length_fpga;
@@ -407,7 +409,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
         lock_range(dump_start_frame, dump_end_frame);
 
         // Now that the relevant frames are locked, we can unlock the rest of the buffer so
-        // it can continue to opperate.
+        // it can continue to operate.
         manager_lock.unlock();
 
         // Check if the trigger is 'prescient'. That is, if any of the requested data has
@@ -448,8 +450,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
     int buf_frame = dump_start_frame % buf->num_frames;
     auto first_meta = (chimeMetadata*)buf->metadata[buf_frame]->metadata;
 
-    stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
-    uint32_t freq_id = bin_number_chime(&stream_id);
+    uint32_t freq_id = tel.to_freq_id(first_meta->stream_ID);
 
     // Figure out how much data we have.
     int64_t data_start_fpga = std::max(trigger_start_fpga, first_meta->fpga_seq_num);
@@ -559,7 +560,7 @@ void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump
     file.createAttribute<uint32_t>("freq_id", HighFive::DataSpace::From(data.freq_id))
         .write(data.freq_id);
 
-    double freq = freq_from_bin(data.freq_id);
+    double freq = Telescope::instance().to_freq(data.freq_id);
     file.createAttribute<double>("freq", HighFive::DataSpace::From(freq)).write(freq);
 
     file.createAttribute<uint64_t>("time0_fpga_count",
