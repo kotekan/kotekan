@@ -26,6 +26,9 @@ set ( KOTEKAN_UTIL_SOURCES
       BipBuffer.cpp
       Hash.cpp
       network_functions.cpp
+      Telescope.cpp
+      ICETelescope.cpp
+      CHIMETelescope.cpp
     )
 
 if (${USE_HDF5})
