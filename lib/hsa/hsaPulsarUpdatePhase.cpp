@@ -3,16 +3,16 @@
 
 #include "hsaPulsarUpdatePhase.hpp"
 
-#include "Config.hpp"              // for Config
-#include "buffer.h"                // for mark_frame_empty, Buffer, register_consumer, wait_for...
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "configUpdater.hpp"       // for configUpdater
-#include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
-#include "hsaBase.h"               // for hsa_host_free, hsa_host_malloc
-#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
-#include "kotekanLogging.hpp"      // for DEBUG, WARN, ERROR, INFO
-#include "restServer.hpp"          // for restServer, HTTP_RESPONSE, connectionInstance
-#include "visUtil.hpp"             // for double_to_ts
+#include "Config.hpp" // for Config
+#include "Telescope.hpp"
+#include "buffer.h"               // for mark_frame_empty, Buffer, register_consumer, wait_for...
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "configUpdater.hpp"      // for configUpdater
+#include "hsaBase.h"              // for hsa_host_free, hsa_host_malloc
+#include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
+#include "kotekanLogging.hpp"     // for DEBUG, WARN, ERROR, INFO
+#include "restServer.hpp"         // for restServer, HTTP_RESPONSE, connectionInstance
+#include "visUtil.hpp"            // for double_to_ts
 
 #include <algorithm>  // for clamp
 #include <cmath>      // for cos, sin, fmod, acos, asin, sqrt, atan2, pow
@@ -230,9 +230,9 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, hsa_signal_t preced
     if (first_pass) {
         first_pass = false;
         // From the metadata, figure out the frequency
-        stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
-        freq_idx = bin_number_chime(&stream_id);
-        freq_MHz = freq_from_bin(freq_idx);
+        auto& tel = Telescope::instance();
+        freq_idx = tel.to_freq_id(metadata_buf, metadata_buffer_id);
+        freq_MHz = tel.to_freq(freq_idx);
         update_phase = true;
     }
 
