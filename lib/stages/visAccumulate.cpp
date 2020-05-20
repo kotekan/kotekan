@@ -1,21 +1,21 @@
 #include "visAccumulate.hpp"
 
-#include "Config.hpp"              // for Config
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"                // for register_producer, Buffer, allocate_new_metadata_object
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chimeMetadata.h"         // for chimeMetadata, get_fpga_seq_num, get_lost_timesamples
-#include "configUpdater.hpp"       // for configUpdater
-#include "datasetManager.hpp"      // for state_id_t, datasetManager, dset_id_t
-#include "datasetState.hpp"        // for eigenvalueState, freqState, gatingState, inputState
-#include "factory.hpp"             // for FACTORY
-#include "fpga_header_functions.h" // for freq_from_bin
-#include "kotekanLogging.hpp"      // for FATAL_ERROR, INFO, logLevel, DEBUG
-#include "metadata.h"              // for metadataContainer
-#include "prometheusMetrics.hpp"   // for Counter, MetricFamily, Metrics
-#include "version.h"               // for get_git_commit_hash
-#include "visBuffer.hpp"           // for VisFrameView
-#include "visUtil.hpp"             // for prod_ctype, frameID, input_ctype, modulo, operator+
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
+#include "buffer.h"              // for register_producer, Buffer, allocate_new_metadata_object
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "chimeMetadata.h"       // for chimeMetadata, get_fpga_seq_num, get_lost_timesamples
+#include "configUpdater.hpp"     // for configUpdater
+#include "datasetManager.hpp"    // for state_id_t, datasetManager, dset_id_t
+#include "datasetState.hpp"      // for eigenvalueState, freqState, gatingState, inputState
+#include "factory.hpp"           // for FACTORY
+#include "kotekanLogging.hpp"    // for FATAL_ERROR, INFO, logLevel, DEBUG
+#include "metadata.h"            // for metadataContainer
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
+#include "version.h"             // for get_git_commit_hash
+#include "visBuffer.hpp"         // for VisFrameView
+#include "visUtil.hpp"           // for prod_ctype, frameID, input_ctype, modulo, operator+
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span<>::iterator, span
@@ -102,20 +102,19 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
 
     // Get the frequency IDs that are on this stream, check the config or just
     // assume all CHIME channels
-    // TODO: CHIME specific
+    auto& tel = Telescope::instance();
     if (config.exists(unique_name, "freq_ids")) {
         freq_ids = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
     } else {
-        freq_ids.resize(1024);
+        freq_ids.resize(tel.num_freq());
         std::iota(std::begin(freq_ids), std::end(freq_ids), 0);
     }
 
     // Create the frequency specification
-    // TODO: CHIME specific
     std::vector<std::pair<uint32_t, freq_ctype>> freqs;
     std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(freqs),
-                   [](uint32_t id) -> std::pair<uint32_t, freq_ctype> {
-                       return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
+                   [&tel](uint32_t id) -> std::pair<uint32_t, freq_ctype> {
+                       return {id, {tel.to_freq(id), tel.freq_width(id)}};
                    });
 
     // The input specification from the config
@@ -269,6 +268,8 @@ void visAccumulate::main_thread() {
     std::vector<int32_t> vis_even(2 * num_prod_gpu);
     int32_t samples_even = 0;
 
+    auto& tel = Telescope::instance();
+
     // Have we initialised a frame for writing yet
     bool init = false;
 
@@ -365,8 +366,7 @@ void visAccumulate::main_thread() {
             // doesn't really work if there are multiple frequencies in the same buffer..
             for (internalState& dset : enabled_gated_datasets) {
 
-                // TODO: CHIME specific frequency decoding
-                float freq_in_MHz = freq_from_bin(dset.frames[0].freq_id);
+                float freq_in_MHz = tel.to_freq(dset.frames[0].freq_id);
                 float w = dset.calculate_weight(t_s, t_e, freq_in_MHz);
 
                 // Don't bother to accumulate if weight is zero
