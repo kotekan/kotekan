@@ -12,9 +12,7 @@ rfi_chime_time_sum(
      __global uint *input,
      __global float *output,
      __global float *output_var,
-     const uint sk_step,
-     const uint num_elements,
-     const uint num_bad_inputs
+     const uint sk_step
 )
 {
     //Get work id's
@@ -60,10 +58,10 @@ rfi_chime_time_sum(
     output[2 + address] = tmp.s2;
     output[3 + address] = tmp.s3;
 
-    //Output the variance, normalising with the number of good inputs 
-    output_var[address + 0] = power_across_time.s0 / (num_elements - num_bad_inputs);
-    output_var[address + 1] = power_across_time.s1 / (num_elements - num_bad_inputs);
-    output_var[address + 2] = power_across_time.s2 / (num_elements - num_bad_inputs);
-    output_var[address + 3] = power_across_time.s3 / (num_elements - num_bad_inputs);
+    //Output the variance 
+    output_var[address + 0] = power_across_time.s0;
+    output_var[address + 1] = power_across_time.s1;
+    output_var[address + 2] = power_across_time.s2;
+    output_var[address + 3] = power_across_time.s3;
 
 }
