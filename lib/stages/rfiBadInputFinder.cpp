@@ -131,8 +131,10 @@ void rfiBadInputFinder::main_thread() {
     uint32_t frame_counter = 0;
     // Initialize arrays
     float rfi_data[_num_local_freq * _num_elements];
+    uint32_t freq_bins[_num_local_freq];
     uint8_t faulty_counter[_num_local_freq * _num_elements];
     memset(faulty_counter, (uint8_t)0, sizeof(faulty_counter));
+    memset(freq_bins, (uint8_t)0, sizeof(freq_bins));
 
     // Intialize packet header
     struct RFIHeader rfi_header = {.rfi_combined = (uint8_t)_rfi_combined,
@@ -146,7 +148,8 @@ void rfiBadInputFinder::main_thread() {
                                    .streamID = 0};
 
     // Intialize empty packet
-    uint32_t packet_length = sizeof(rfi_header) + sizeof(faulty_counter);
+    uint32_t packet_length =
+        sizeof(rfi_header) + _num_local_freq * sizeof(uint32_t) + sizeof(faulty_counter);
     char* packet_buffer = (char*)malloc(packet_length);
     // UDP Stuff
     uint32_t bytes_sent = 0;
@@ -200,12 +203,23 @@ void rfiBadInputFinder::main_thread() {
         // After 10 frames
         rest_callback_mutex.lock();
         if (frame_counter == _frames_per_packet) {
+
+            // Get current frequency bin
+            stream_id_t current_stream_id = extract_stream_id(rfi_header.streamID);
+            uint32_t current_freq_bin = bin_number_chime(&current_stream_id);
+            // TODO JSW: Handle num_local_freq > 1
+            freq_bins[0] = current_freq_bin;
+
             // Reset counter
             frame_counter = 0;
             // Add Header to packet
             memcpy(packet_buffer, &rfi_header, sizeof(rfi_header));
+            // Add frequency bins to packet
+            memcpy(packet_buffer + sizeof(rfi_header), freq_bins,
+                   _num_local_freq * sizeof(uint32_t));
             // Add Data to packet
-            memcpy(packet_buffer + sizeof(rfi_header), faulty_counter, sizeof(faulty_counter));
+            memcpy(packet_buffer + sizeof(rfi_header) + _num_local_freq * sizeof(uint32_t),
+                   faulty_counter, sizeof(faulty_counter));
             // Send Packet
             bytes_sent = sendto(socket_fd, packet_buffer, packet_length, 0,
                                 (struct sockaddr*)&saddr_remote, sizeof(sockaddr_in));
