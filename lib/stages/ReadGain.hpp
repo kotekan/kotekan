@@ -7,10 +7,11 @@
 #ifndef READ_GAIN
 #define READ_GAIN
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "buffer.h"            // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "prometheusMetrics.hpp" // for Gauge, MetricFamily
 
 #include "json.hpp" // for json
 
@@ -39,6 +40,14 @@ using std::vector;
  * @conf   scaling              Float (default 1.0). Scaling factor on gains
  * @conf   default_gains        Float array (default 1+1j). Default gain value if gain file is
  * missing
+ *
+ * @par Metrics
+ * @metric kotekan_gains_last_update_success
+ *     Flag with value 1 if the last gains update succeeded, 0 if failed.
+ *     Labels: foo (pulsar, frb)
+ * @metric kotekan_gains_last_update_timestamp
+ *     Timestamp of last successful gains update.
+ *     Labels: foo (pulsar, frb)
  *
  * The gain path is registered as a subscriber to an updatable config block.
  * For the FRB, it is one directory path: '{"frb_gain_dir":"the_new_path"}'
@@ -106,6 +115,13 @@ private:
     uint32_t _num_elements;
     /// Number of pulsar beams, should be 10
     int16_t _num_beams;
+
+    /// implements `kotekan_gains_last_update_success`
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& gains_last_update_success_metric;
+
+    /// implements `kotekan_gains_last_update_timestamp`
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
+        gains_last_update_timestamp_metric;
 };
 
 
