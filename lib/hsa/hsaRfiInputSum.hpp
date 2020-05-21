@@ -113,6 +113,8 @@ private:
     uint32_t _sk_step;
     /// The number of standard deviations in SK which constitute RFI
     uint32_t _rfi_sigma_cut;
+    /// Truncation bias switch.
+    float _trunc_bias_switch;
 };
 
 #endif

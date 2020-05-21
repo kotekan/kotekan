@@ -77,6 +77,7 @@ num_pol: 2
 sk_step: 256
 rfi_combined: True
 rfi_sigma_cut: 5
+trunc_bias_switch: 1.0
 
 ##########################
 #### Dataset manager #####

@@ -7,6 +7,9 @@ Details:
         Sums square power across inputs
         Computes Kurtosis value
 **********************************************************************************/
+
+__constant float bias_coeffs[6] = {-1.25007650e-03, 2.68772487e-02, -2.18921382e-01, 7.96882494e-01, -1.31825034e+00, 1.80704823e+00};
+
 __kernel void
 rfi_chime_input_sum(
      __global float *input,
@@ -19,7 +22,8 @@ rfi_chime_input_sum(
      const uint num_elements,
      const uint num_bad_inputs,
      const uint sk_step,
-     const uint rfi_sigma_cut
+     const uint rfi_sigma_cut,
+     const uint trunc_bias_switch
 )
 {
     // Get work ID's
@@ -66,6 +70,22 @@ rfi_chime_input_sum(
         } else {
             float new_sq_power_across_input = sq_power_across_input[0] * cf * cf;
             float SK = ((n + 1) / (n - 1)) * ((new_sq_power_across_input / (n * N)) - 1);
+
+            // Calculate the truncation bias correction for the SK value
+            const float var = var_across_input[0];
+            const float var2 = var * var;
+            const float var_sqrt = sqrt((double)var);
+            const float sk_correction = bias_coeffs[0] * var2 * var_sqrt + 
+                                        bias_coeffs[1] * var2 +
+                                        bias_coeffs[2] * var * var_sqrt +
+                                        bias_coeffs[3] * var +
+                                        bias_coeffs[4] * var_sqrt +
+                                        bias_coeffs[5]; 
+            const float bias = 1.0 - sk_correction;
+
+            // Correct SK for truncation bias
+            SK += bias * trunc_bias_switch;
+
             output[address] = SK;
             float sigma = sqrt((double)((4 * n * n)/(N * (n - 1) * (n + 2) * (n + 3))));
             if (SK > 1 + rfi_sigma_cut * sigma || SK < 1 - rfi_sigma_cut * sigma)
