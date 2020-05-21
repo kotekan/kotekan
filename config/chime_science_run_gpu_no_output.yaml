@@ -451,7 +451,7 @@ vis_buffers:
     num_frames: 10 * buffer_depth
 
 gpu_rfi_output_buffers:
-  num_frames: buffer_depth #* 50
+  num_frames: buffer_depth * 50
   frame_size: sizeof_float * num_local_freq * samples_per_data_set / sk_step
   metadata_pool: main_pool
   gpu_rfi_output_buffer_0:
@@ -511,7 +511,7 @@ bad_input_buffer:
     kotekan_buffer: standard
 
 rfi_var_output_buffers:
-  num_frames: buffer_depth #* 50
+  num_frames: buffer_depth * 50
   frame_size: num_local_freq * samples_per_data_set / sk_step * sizeof_float
   metadata_pool: main_pool
   gpu_rfi_var_output_buffer_0:
@@ -531,7 +531,7 @@ lost_samples_buffer:
 
 rfi_compressed_lost_samples_buf:
   kotekan_buffer: standard
-  num_frames: buffer_depth #* 50
+  num_frames: buffer_depth * 50
   frame_size: sizeof_int * samples_per_data_set / sk_step
   metadata_pool: main_pool
 
@@ -676,7 +676,7 @@ rfi_copy_compress_lost_samples_buffers:
 
 # GPU processing section
 gpu:
-  kernel_path: "../lib/hsa/kernels/"
+  kernel_path: "/var/lib/kotekan/hsa_kernels/"
   commands: &command_list
     # Copy in queue
     - name: hsaInputData
