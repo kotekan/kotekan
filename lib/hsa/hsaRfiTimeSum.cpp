@@ -1,8 +1,8 @@
 #include "hsaRfiTimeSum.hpp"
 
 #include "Config.hpp"             // for Config
-#include "configUpdater.hpp"      // for configUpdater
 #include "chimeMetadata.h"        // for get_rfi_num_bad_inputs
+#include "configUpdater.hpp"      // for configUpdater
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 #include "kotekanLogging.hpp"     // for DEBUG, INFO, WARN
@@ -37,7 +37,8 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config, const std::string& unique_name,
     input_frame_len = sizeof(uint8_t) * _num_elements * _num_local_freq * _samples_per_data_set;
     output_frame_len =
         sizeof(float) * _num_local_freq * _num_elements * _samples_per_data_set / _sk_step;
-    output_var_frame_len = sizeof(float) * _num_elements * _num_local_freq * _samples_per_data_set / _sk_step;
+    output_var_frame_len =
+        sizeof(float) * _num_elements * _num_local_freq * _samples_per_data_set / _sk_step;
 
     auto input_reorder = parse_reorder_default(config, unique_name);
     input_remap = std::get<0>(input_reorder);
@@ -49,7 +50,6 @@ hsaRfiTimeSum::hsaRfiTimeSum(Config& config, const std::string& unique_name,
     _network_buf_precondition_id = 0;
     _network_buf_execute_id = 0;
     _network_buf_finalize_id = 0;
-
 }
 
 hsaRfiTimeSum::~hsaRfiTimeSum() {}
@@ -77,7 +77,7 @@ hsa_signal_t hsaRfiTimeSum::execute(int gpu_frame_id, hsa_signal_t precede_signa
     // Set argumnets to correct values
     args.input = device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len);
     args.output = device.get_gpu_memory("time_sum", output_frame_len);
-     args.output_var =
+    args.output_var =
         device.get_gpu_memory_array("rfi_time_sum_var", gpu_frame_id, output_var_frame_len);
     args.sk_step = _sk_step;
     args.num_elements = _num_elements;

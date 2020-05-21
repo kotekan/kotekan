@@ -102,8 +102,9 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
     args.output = device.get_gpu_memory_array("rfi_output", gpu_frame_id, output_frame_len);
 
     args.input_var = device.get_gpu_memory("rfi_time_sum_var", input_var_frame_len);
-    args.output_var = device.get_gpu_memory_array("rfi_var_output", gpu_frame_id, output_var_frame_len);
-    
+    args.output_var =
+        device.get_gpu_memory_array("rfi_var_output", gpu_frame_id, output_var_frame_len);
+
     args.input_mask = device.get_gpu_memory_array("input_mask", gpu_frame_id, input_mask_len);
     args.output_mask =
         device.get_gpu_memory_array("rfi_mask_output", gpu_frame_id, output_mask_len);
