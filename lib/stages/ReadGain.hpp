@@ -44,10 +44,10 @@ using std::vector;
  * @par Metrics
  * @metric kotekan_gains_last_update_success
  *     Flag with value 1 if the last gains update succeeded, 0 if failed.
- *     Labels: foo (pulsar, frb)
+ *     Labels: `type` (values: "frb", "pulsar")
  * @metric kotekan_gains_last_update_timestamp
- *     Timestamp of last successful gains update.
- *     Labels: foo (pulsar, frb)
+ *     Timestamp of last gains update.
+ *     Labels: `type` (values: "frb", "pulsar")
  *
  * The gain path is registered as a subscriber to an updatable config block.
  * For the FRB, it is one directory path: '{"frb_gain_dir":"the_new_path"}'
