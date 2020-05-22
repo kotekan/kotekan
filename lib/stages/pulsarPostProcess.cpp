@@ -2,6 +2,7 @@
 
 #include "BranchPrediction.hpp" // for likely, unlikely
 #include "Config.hpp"           // for Config
+#include "ICETelescope.hpp"
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"
 #include "buffer.h"            // for Buffer, mark_frame_empty, wait_for_empty_frame, wait_...
@@ -22,7 +23,7 @@
 #include <stdexcept>  // for runtime_error
 #include <string.h>   // for memcpy
 #include <string>     // for allocator, string, operator+, to_string
-#include <vector>     // for vector
+#include <vector> // for vector
 
 using std::string;
 
@@ -73,7 +74,7 @@ pulsarPostProcess::~pulsarPostProcess() {
 
 void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* vdif_header,
                                      const uint64_t fpga_seq_num, struct timespec* time_now,
-                                     struct psrCoord* psr_coord, uint16_t* freq_ids) {
+                                     struct psrCoord* psr_coord, uint16_t* thread_ids) {
     uint freqloop = _num_stream / _num_pulsar;
     DEBUG("Filling headers starting at {} ({}.{:09d})", fpga_seq_num, time_now->tv_sec,
           time_now->tv_nsec);
@@ -84,7 +85,7 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* 
             (time_now->tv_nsec / 1.e9) / (_timesamples_per_pulsar_packet * 2.56e-6);
 
         for (uint f = 0; f < freqloop; ++f) {
-            vdif_header->thread_id = freq_ids[f];
+            vdif_header->thread_id = thread_ids[f];
 
             for (uint32_t psr = 0; psr < _num_pulsar; ++psr) {
                 vdif_header->eud1 = psr; // beam id
@@ -131,7 +132,7 @@ void pulsarPostProcess::main_thread() {
 
     int out_buffer_ID = 0;
     int startup = 1; // related to the likely & unlikely
-    uint16_t freq_ids[_num_gpus];
+    uint16_t thread_ids[_num_gpus];
 
     for (uint32_t i = 0; i < _num_gpus; ++i) {
         in_buffer_ID[i] = 0;
@@ -183,8 +184,16 @@ void pulsarPostProcess::main_thread() {
             return;
 
         for (uint32_t i = 0; i < _num_gpus; ++i) {
-            psr_coord[i] = get_psr_coord(in_buf[i], in_buffer_ID[i]);
-            freq_ids[i] = tel.to_freq_id(in_buf[i], in_buffer_ID[i]);
+            if (_timesamples_per_pulsar_packet == 3125) {
+                psr_coord[i] = get_psr_coord(in_buf[i], in_buffer_ID[i]);
+                thread_ids[i] = tel.to_freq_id(in_buf[i], in_buffer_ID[i]);
+            } else if (_timesamples_per_pulsar_packet == 625) {
+                // In the case of 4 frequencies per packet we convert the stream_id into a
+                // kind of node_id that runs from 0 to 255 for the thread_id.
+                ice_stream_id_t stream_id = ice_get_stream_id_t(in_buf[i], in_buffer_ID[i]);
+                thread_ids[i] = stream_id.crate_id * 16 + stream_id.slot_id
+                                + stream_id.link_id * 32;
+            }
         }
 
         bool skipped_frames =
@@ -215,7 +224,7 @@ void pulsarPostProcess::main_thread() {
 
             // Fill the first output buffer headers
             fill_headers((unsigned char*)out_frame, &vdif_header, fpga_seq_num, &time_now,
-                         psr_coord, (uint16_t*)freq_ids);
+                         psr_coord, thread_ids);
         }
 
         // Take data from the input buffer and format the output
@@ -249,7 +258,7 @@ void pulsarPostProcess::main_thread() {
 
                 // Fill the headers of the new buffer
                 fill_headers((unsigned char*)out_frame, &vdif_header, fpga_seq_num, &time_now,
-                             psr_coord, (uint16_t*)freq_ids);
+                             psr_coord, thread_ids);
             }
 
 
@@ -269,7 +278,7 @@ void pulsarPostProcess::main_thread() {
                         // Fill the headers of the new buffer
                         fpga_seq_num += _timesamples_per_pulsar_packet * _num_packet_per_stream;
                         fill_headers((unsigned char*)out_frame, &vdif_header, fpga_seq_num,
-                                     &time_now, psr_coord, (uint16_t*)freq_ids);
+                                     &time_now, psr_coord, thread_ids);
                     } // end if last frame
                 }     // end if last sample
 
