@@ -1,9 +1,9 @@
 #include "fakeGpuPattern.hpp"
 
-#include "Config.hpp"              // for Config
-#include "chimeMetadata.h"         // for chimeMetadata
-#include "fpga_header_functions.h" // for freq_from_bin
-#include "visUtil.hpp"             // for prod_index
+#include "Config.hpp" // for Config
+#include "Telescope.hpp"
+#include "chimeMetadata.h" // for chimeMetadata
+#include "visUtil.hpp"     // for prod_index
 
 #include "gsl-lite.hpp" // for span, span<>::iterator
 
@@ -202,7 +202,7 @@ void PulsarGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata, i
     DEBUG2("GPS time %ds%dns", metadata->gps_time.tv_sec, metadata->gps_time.tv_nsec);
 
     // Figure out if we are in a pulse
-    double toa = _polyco.next_toa(metadata->gps_time, freq_from_bin(freq_id));
+    double toa = _polyco.next_toa(metadata->gps_time, Telescope::instance().to_freq(freq_id));
     double last_toa = toa - 1. / _rot_freq;
     DEBUG2("TOA: %f, last TOA: %f", toa, last_toa);
 
