@@ -1,7 +1,6 @@
 project( kotekan_utils )
 
 set ( KOTEKAN_UTIL_SOURCES
-      fpga_header_functions.c
       gateSpec.cpp
       gpsTime.c
       nt_memcpy.c

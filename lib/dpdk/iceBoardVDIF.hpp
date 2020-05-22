@@ -8,6 +8,8 @@
 #define ICE_BOARD_VDIF
 
 #include "Config.hpp"
+#include "ICETelescope.hpp"
+#include "Telescope.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "iceBoardHandler.hpp"
@@ -277,6 +279,9 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
         set_vdif_header_options(vdif_frame_location * frame_size, cur_seq);
     }
 
+    auto& tel = Telescope::instance();
+    stream_t encoded_id = ice_encode_stream_id(port_stream_id);
+
     // Create the parts of the VDIF frame that are in this packet.
     int from_idx = header_offset + offset;
     int mbuf_len = mbuf->data_len;
@@ -297,8 +302,8 @@ void iceBoardVDIF::copy_packet_vdif(struct rte_mbuf* mbuf) {
                     vdif_packet_len * num_elements * time_step + // Time step in output frame.
                     vdif_packet_len * elem + // VDIF pack for the correct element (ThreadID).
                     vdif_header_len +        // Offset for the vdif header.
-                    bin_number_16_elem(&port_stream_id,
-                                       freq); // Location in the VDIF packet is just frequency.
+                    tel.to_freq_id(encoded_id,
+                                   freq); // Location in the VDIF packet is just frequency.
 
                 // After all that indexing copy one byte :)
                 out_buf_frame[output_idx] = *(rte_pktmbuf_mtod(mbuf, char*) + from_idx);
