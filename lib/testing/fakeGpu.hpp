@@ -8,6 +8,7 @@
 
 #include "Config.hpp"
 #include "Stage.hpp" // for Stage
+#include "Telescope.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "fakeGpuPattern.hpp"
@@ -54,9 +55,8 @@
  * @note Look at the documentation for the test patterns to see any addtional
  *       configuration they require.
  *
- * @warning The `stream_id_t` in the metadata is likely to be invalid as it is
- *          generated only such that it is decoded back to the input frequency
- *          id.
+ * @warning To work properly you must use the "fake" telescope type.
+ *
  * @author Richard Shaw
  */
 class FakeGpu : public kotekan::Stage {
@@ -85,5 +85,33 @@ private:
     // Pattern to use for filling
     std::unique_ptr<FakeGpuPattern> pattern;
 };
+
+
+/**
+ * @brief A test telescope that just passes stream_id's straight through
+ *
+ * @conf  num_local_freq  The number of frequencies per stream.
+ **/
+class FakeTelescope : public Telescope {
+public:
+    FakeTelescope(const kotekan::Config& config, const std::string& path);
+
+    // Dummy freq map implementations
+    freq_id_t to_freq_id(stream_t stream_id, uint32_t ind) const override;
+    double to_freq(freq_id_t freq_id) const override;
+    double freq_width(freq_id_t freq_id) const override;
+    uint32_t num_freq_per_stream() const override;
+    uint32_t num_freq() const override;
+
+    // Dummy time map implementations
+    timespec to_time(uint64_t seq) const override;
+    uint64_t to_seq(timespec time) const override;
+    timespec seq_length() const override;
+    bool gps_time_enabled() const override;
+
+private:
+    uint32_t _num_local_freq;
+};
+
 
 #endif // FAKE_GPU
