@@ -78,9 +78,22 @@ void ICETelescope::set_gps(const kotekan::Config& config, const std::string& pat
     gps_enabled = true;
 }
 
-freq_id_t ICETelescope::to_freq_id(stream_t stream, uint32_t /* ind */) const {
-    auto stream_id = extract_stream_id(stream);
-    return bin_number_chime(&stream_id);
+freq_id_t ICETelescope::to_freq_id(stream_t stream, uint32_t ind) const {
+    (void)ind;
+
+    auto stream_id = ice_extract_stream_id(stream);
+
+    // CHIME bin number
+    return stream_id.crate_id * 16 + stream_id.slot_id + stream_id.link_id * 32
+           + stream_id.unused * 256;
+
+    /*
+    // 16 element version
+    return stream_id.link_id + index * 8;
+
+    // Pathfinder version
+    return stream_id.slot_id + stream_id.link_id * 16 + ind * 128;
+    */
 }
 
 

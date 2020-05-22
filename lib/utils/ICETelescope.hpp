@@ -90,12 +90,18 @@ struct ice_stream_id_t {
     uint8_t unused;
 };
 
+
 ice_stream_id_t ice_extract_stream_id(const uint16_t encoded_stream_id);
 uint16_t ice_encode_stream_id(const ice_stream_id_t s_stream_id);
 
 inline ice_stream_id_t ice_get_stream_id_t(const struct Buffer* buf, int ID) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
     return ice_extract_stream_id(chime_metadata->stream_ID);
+}
+
+inline void ice_set_stream_id_t(struct Buffer* buf, int ID, ice_stream_id_t stream_id) {
+    struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
+    chime_metadata->stream_ID = ice_encode_stream_id(stream_id);
 }
 
 

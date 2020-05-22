@@ -2,7 +2,6 @@
 #define CHIME_METADATA
 
 #include "buffer.h"
-#include "fpga_header_functions.h"
 #include "metadata.h"
 
 #include <sys/time.h>
@@ -102,11 +101,6 @@ inline uint16_t get_stream_id(const struct Buffer* buf, int ID) {
     return chime_metadata->stream_ID;
 }
 
-inline stream_id_t get_stream_id_t(const struct Buffer* buf, int ID) {
-    struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
-    return extract_stream_id(chime_metadata->stream_ID);
-}
-
 inline struct timeval get_first_packet_recv_time(const struct Buffer* buf, int ID) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
     return chime_metadata->first_packet_recv_time;
@@ -166,11 +160,6 @@ inline void set_rfi_zeroed(struct Buffer* buf, int ID, uint32_t rfi_zeroed) {
 inline void set_stream_id(struct Buffer* buf, int ID, uint16_t stream_id) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
     chime_metadata->stream_ID = stream_id;
-}
-
-inline void set_stream_id_t(struct Buffer* buf, int ID, stream_id_t stream_id) {
-    struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
-    chime_metadata->stream_ID = encode_stream_id(stream_id);
 }
 
 inline void set_first_packet_recv_time(struct Buffer* buf, int ID, struct timeval time) {
