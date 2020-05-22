@@ -376,6 +376,10 @@ def data_listener(thread_id):
                 packet[RFIHeaderSize + 4 * local_freq :], dtype=np.float32
             )
 
+            logger.info(
+                "data_listener: Receiving data from frequency bins: %s"
+                % (np.array_str(freq_bins))
+            )
             # Create a new stream object each time a new stream connects
             if header["encoded_stream_ID"][0] not in known_streams:
                 # Check that the new stream is providing the correct data
