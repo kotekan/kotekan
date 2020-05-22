@@ -490,8 +490,7 @@ def bad_input_listener(thread_id):
     mode = app.mode
     firstPacket = True
     # CHIME packet: RFIHeader + frequency_bins[local_freq] + faulty_counter[local_freq * num_elements]
-    # TODO: fault counter shouldn't be 4* as it is a byte array
-    PacketSize = RFIHeaderSize + 4 * local_freq + 4 * local_freq * num_elements
+    PacketSize = RFIHeaderSize + 4 * local_freq + local_freq * num_elements
     HeaderDataType = np.dtype(
         [
             ("combined_flag", np.uint8, 1),
