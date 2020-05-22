@@ -8,6 +8,7 @@
 #define ICE_BOARD_STANDARD_HPP
 
 #include "Config.hpp"
+#include "ICETelescope.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "chimeMetadata.h"
@@ -27,7 +28,7 @@
  * This means the location in the output frame corresponds to an exact seq number and time.
  *
  * @note It is important that this handler is paired with a zeroSample stage to zero out
- *       memory which this handler did not fill because the packet was lost or invalide.
+ *       memory which this handler did not fill because the packet was lost or invalid.
  *
  * @par REST Endpoints
  * @endpoint /\<unique_name\>/port_data ``[GET]`` Returns stats about the PORT and the packets
@@ -167,10 +168,10 @@ inline bool iceBoardStandard::advance_frame(uint64_t new_seq, bool first_time) {
         set_gps_time(out_buf, out_frame_id, gps_time);
     }
 
-    set_stream_id_t(out_buf, out_frame_id, port_stream_id);
+    ice_set_stream_id_t(out_buf, out_frame_id, port_stream_id);
     set_fpga_seq_num(out_buf, out_frame_id, new_seq);
 
-    // Adcance the lost samples frame
+    // Advance the lost samples frame
     if (!first_time) {
         mark_frame_full(lost_samples_buf, unique_name.c_str(), lost_samples_frame_id);
         lost_samples_frame_id = (lost_samples_frame_id + 1) % lost_samples_buf->num_frames;
