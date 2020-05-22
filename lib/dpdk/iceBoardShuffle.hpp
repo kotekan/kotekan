@@ -9,6 +9,7 @@
 #define ICE_BOARD_SHUFFLE_HPP
 
 #include "Config.hpp"
+#include "Telescope.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "chimeMetadata.h"
@@ -140,7 +141,7 @@ protected:
     /// The stream_ids for all iceBoardShuffle objects.
     /// This might be an issue in the case of multiple indepdent
     /// shuffle operations. In that case this will need to be factored out.
-    static stream_id_t all_stream_ids[shuffle_size];
+    static ice_stream_id_t all_stream_ids[shuffle_size];
 
     // ** FPGA Second stage error counters **
 
@@ -403,10 +404,10 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         // to avoid overwriting it on different ports.
         // This makes the stream ID unique for down stream stages.
         if (port_stream_id.crate_id / 2 == 0) {
-            stream_id_t tmp_stream_id = port_stream_id;
+            ice_stream_id_t tmp_stream_id = port_stream_id;
             // Set the unused flag to store the post shuffle freq bin number.
             tmp_stream_id.unused = i;
-            set_stream_id_t(out_bufs[i], out_buf_frame_ids[i], tmp_stream_id);
+            ice_set_stream_id_t(out_bufs[i], out_buf_frame_ids[i], tmp_stream_id);
         }
 
         set_fpga_seq_num(out_bufs[i], out_buf_frame_ids[i], new_seq);
@@ -429,9 +430,9 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     // The lost samples buffer is the same for all 4 frequencies,
     // so the stream ID actually covers all 4 possible `unused` freq values.
     if (port_stream_id.crate_id / 2 == 0) {
-        stream_id_t tmp_stream_id = port_stream_id;
+        ice_stream_id_t tmp_stream_id = port_stream_id;
         tmp_stream_id.unused = 0;
-        set_stream_id_t(lost_samples_buf, lost_samples_frame_id, tmp_stream_id);
+        ice_set_stream_id_t(lost_samples_buf, lost_samples_frame_id, tmp_stream_id);
     }
 
     return true;
