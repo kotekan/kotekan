@@ -3,7 +3,6 @@
 #include "Config.hpp"          // for Config
 #include "Hash.hpp"            // for Hash, operator<, operator==
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "VisFrameView.hpp"    // for VisFrameView, VisMetadata
 #include "buffer.h"            // for allocate_new_metadata_object, mark_frame_full, wait_for_e...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager, DS_UNIQUE_NAME
@@ -12,6 +11,7 @@
 #include "kotekanLogging.hpp"  // for INFO, DEBUG, FATAL_ERROR, ERROR, WARN
 #include "metadata.h"          // for metadataContainer
 #include "version.h"           // for get_git_commit_hash
+#include "visBuffer.hpp"       // for VisFrameView, VisMetadata
 #include "visUtil.hpp"         // for time_ctype, frameID, freq_ctype, prod_ctype, rstack_ctype
 
 #include "fmt.hpp"      // for format, fmt
