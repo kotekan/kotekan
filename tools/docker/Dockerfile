@@ -32,6 +32,13 @@ WORKDIR /code/build
 # So tzdata package doesn't ask for user interaction
 ARG DEBIAN_FRONTEND=noninteractive
 
+# Set architecture for all builds done below to haswell, currently the oldest architecture used
+# by github workflows
+# (see https://help.github.com/en/actions/reference/virtual-environments-for-github-hosted-runners).
+# This is to prevent the docker image getting build on a newer architecture and then failing when it
+# is loaded on an older one.
+ENV CFLAGS "-march=haswell"
+
 # Install h5py from source for bitshuffle, and clone HighFive for kotekan build
 RUN git clone https://github.com/h5py/h5py.git h5py && \
     cd h5py && \
