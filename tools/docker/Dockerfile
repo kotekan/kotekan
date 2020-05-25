@@ -38,6 +38,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 # This is to prevent the docker image getting build on a newer architecture and then failing when it
 # is loaded on an older one.
 ENV CFLAGS "-march=haswell"
+ENV CXXFLAGS "-march=haswell"
 
 # Install h5py from source for bitshuffle, and clone HighFive for kotekan build
 RUN git clone https://github.com/h5py/h5py.git h5py && \
