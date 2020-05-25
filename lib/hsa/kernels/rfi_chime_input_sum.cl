@@ -7,8 +7,10 @@ Details:
         Sums square power across inputs
         Computes Kurtosis value
 **********************************************************************************/
+#define NUM_COEFFS 6
 
-__constant float bias_coeffs[6] = {-1.25007650e-03, 2.68772487e-02, -2.18921382e-01, 7.96882494e-01, -1.31825034e+00, 1.80704823e+00 - 1.0};
+// Reversed polynomial coefficients, i.e. bias_coeffs[0] + bias_coeffs[1] * x + bias_coeffs[2] * x^2 + ... + bias_coeffs[NUM_COEFF] * x^(NUM_COEFFS - 1)
+__constant float bias_coeffs[NUM_COEFFS] = {1.80704823e+00 - 1.0, -1.31825034e+00, 7.96882494e-01, -2.18921382e-01, 2.68772487e-02, -1.25007650e-03};
 
 __kernel void
 rfi_chime_input_sum(
@@ -73,17 +75,16 @@ rfi_chime_input_sum(
 
             // Calculate the truncation bias correction for the SK value
             const float var = var_across_input[0] / (n * N);
-            const float var2 = var * var;
             const float rms = sqrt((double)var);
-            const float bias = bias_coeffs[0] * var2 * rms + 
-                               bias_coeffs[1] * var2 +
-                               bias_coeffs[2] * var * rms +
-                               bias_coeffs[3] * var +
-                               bias_coeffs[4] * rms +
-                               bias_coeffs[5]; 
+            float sk_correction = 0.f;
+            float rms_pow = 1.f;
+            for(int i=0; i<NUM_COEFFS; i++) {
+                sk_correction += bias_coeffs[i] * rms_pow;
+                rms_pow *= rms;
+            }
 
             // Correct SK for truncation bias
-            SK -= bias * trunc_bias_switch;
+            SK -= sk_correction * trunc_bias_switch;
 
             output[address] = SK;
             float sigma = sqrt((double)((4 * n * n)/(N * (n - 1) * (n + 2) * (n + 3))));
