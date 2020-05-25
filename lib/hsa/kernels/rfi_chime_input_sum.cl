@@ -94,7 +94,7 @@ rfi_chime_input_sum(
             else
                 output_mask[address] = 0;
             
-            output_var[address] = var_across_input[0] / N;
+            output_var[address] = var;
         }
     }
 }
