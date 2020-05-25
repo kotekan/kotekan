@@ -8,8 +8,7 @@ Details:
         Computes Kurtosis value
 **********************************************************************************/
 
-__constant float bias_coeffs[6] = {-1.25007650e-03, 2.68772487e-02, -2.18921382e-01, 7.96882494e-01, -1.31825034e+00, 1.80704823e+00};
-__constant float one_over_256 = 1.0 / 256.0;
+__constant float bias_coeffs[6] = {-1.25007650e-03, 2.68772487e-02, -2.18921382e-01, 7.96882494e-01, -1.31825034e+00, 1.80704823e+00 - 1.0};
 
 __kernel void
 rfi_chime_input_sum(
@@ -76,16 +75,15 @@ rfi_chime_input_sum(
             const float var = var_across_input[0] / (n * N);
             const float var2 = var * var;
             const float var_sqrt = sqrt((double)var);
-            const float sk_correction = bias_coeffs[0] * var2 * var_sqrt + 
-                                        bias_coeffs[1] * var2 +
-                                        bias_coeffs[2] * var * var_sqrt +
-                                        bias_coeffs[3] * var +
-                                        bias_coeffs[4] * var_sqrt +
-                                        bias_coeffs[5]; 
-            const float bias = 1.0 - sk_correction;
+            const float bias = bias_coeffs[0] * var2 * var_sqrt + 
+                               bias_coeffs[1] * var2 +
+                               bias_coeffs[2] * var * var_sqrt +
+                               bias_coeffs[3] * var +
+                               bias_coeffs[4] * var_sqrt +
+                               bias_coeffs[5]; 
 
             // Correct SK for truncation bias
-            SK += bias * trunc_bias_switch;
+            SK -= bias * trunc_bias_switch;
 
             output[address] = SK;
             float sigma = sqrt((double)((4 * n * n)/(N * (n - 1) * (n + 2) * (n + 3))));
