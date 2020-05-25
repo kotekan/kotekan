@@ -1,4 +1,4 @@
-#include "VisFrameView.hpp"
+#include "visBuffer.hpp"
 
 #include "FrameView.hpp"           // for metadataContainer
 #include "buffer.h"                // for Buffer, allocate_new_metadata_object, swap_frames

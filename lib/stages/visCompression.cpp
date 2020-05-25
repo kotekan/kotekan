@@ -3,13 +3,13 @@
 #include "Config.hpp"            // for Config
 #include "Hash.hpp"              // for Hash, operator<
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "VisFrameView.hpp"      // for VisFrameView, VisField, VisField::vis, VisField::weight
 #include "buffer.h"              // for wait_for_full_frame, allocate_new_metadata_object, mark...
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, state_id_t, datasetManager
 #include "datasetState.hpp"      // for stackState, prodState, inputState
 #include "kotekanLogging.hpp"    // for INFO, DEBUG, ERROR, FATAL_ERROR
 #include "prometheusMetrics.hpp" // for Gauge, Counter, Metrics, MetricFamily
+#include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::weight
 #include "visUtil.hpp"           // for rstack_ctype, prod_ctype, current_time, modulo, input_c...
 
 #include "fmt.hpp"      // for format, fmt

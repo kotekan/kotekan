@@ -2,11 +2,11 @@
 
 #include "Config.hpp"            // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "VisFrameView.hpp"      // for VisFrameView
 #include "buffer.h"              // for mark_frame_empty, allocate_new_metadata_object, mark_fr...
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "kotekanLogging.hpp"    // for DEBUG
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
+#include "visBuffer.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for frameID, modulo, cfloat, operator-, ts_to_double
 
 #include "gsl-lite.hpp" // for span

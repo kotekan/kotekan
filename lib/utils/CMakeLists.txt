@@ -11,7 +11,7 @@ set ( KOTEKAN_UTIL_SOURCES
       type.cpp
       util.c
       FrameView.cpp
-      VisFrameView.cpp
+      visBuffer.cpp
       visUtil.cpp
       visFile.cpp
       visFileRaw.cpp

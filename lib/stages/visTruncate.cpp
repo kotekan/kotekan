@@ -2,10 +2,10 @@
 
 #include "Config.hpp"         // for Config
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "VisFrameView.hpp"   // for VisFrameView
 #include "buffer.h"           // for wait_for_full_frame, allocate_new_metadata_object, mark_fr...
 #include "kotekanLogging.hpp" // for DEBUG
 #include "truncate.hpp"       // for bit_truncate_float
+#include "visBuffer.hpp"      // for VisFrameView
 #include "visUtil.hpp"        // for cfloat
 
 #include "gsl-lite.hpp" // for span

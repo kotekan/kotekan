@@ -3,7 +3,6 @@
 #include "Config.hpp"            // for Config
 #include "Hash.hpp"              // for Hash, operator!=
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "VisFrameView.hpp"      // for VisFrameView
 #include "buffer.h"              // for wait_for_full_frame, mark_frame_empty, register_consumer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "dataset.hpp"           // for dataset
@@ -13,6 +12,7 @@
 #include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, logLevel, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 #include "version.h"             // for get_git_commit_hash
+#include "visBuffer.hpp"         // for VisFrameView
 #include "visFileArchive.hpp"    // for visFileArchive
 
 #include "fmt.hpp"      // for format
