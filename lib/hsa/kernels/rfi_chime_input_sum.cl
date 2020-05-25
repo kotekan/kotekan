@@ -74,12 +74,12 @@ rfi_chime_input_sum(
             // Calculate the truncation bias correction for the SK value
             const float var = var_across_input[0] / (n * N);
             const float var2 = var * var;
-            const float var_sqrt = sqrt((double)var);
-            const float bias = bias_coeffs[0] * var2 * var_sqrt + 
+            const float rms = sqrt((double)var);
+            const float bias = bias_coeffs[0] * var2 * rms + 
                                bias_coeffs[1] * var2 +
-                               bias_coeffs[2] * var * var_sqrt +
+                               bias_coeffs[2] * var * rms +
                                bias_coeffs[3] * var +
-                               bias_coeffs[4] * var_sqrt +
+                               bias_coeffs[4] * rms +
                                bias_coeffs[5]; 
 
             // Correct SK for truncation bias
