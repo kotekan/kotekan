@@ -77,6 +77,8 @@ FakeGpu::~FakeGpu() {}
 
 void FakeGpu::main_thread() {
 
+    auto& tel = Telescope::instance();
+
     int frame_count = 0;
     frameID frame_id(out_buf);
     timeval tv;
@@ -92,7 +94,7 @@ void FakeGpu::main_thread() {
     // Calculate the increment in time between samples
     if (pre_accumulate) {
         delta_seq = samples_per_data_set;
-        delta_ns = samples_per_data_set * 2560;
+        delta_ns = samples_per_data_set * tel.seq_length_nsec();
     } else {
         delta_seq = 1;
         delta_ns = (uint64_t)(cadence * 1000000000);
@@ -203,8 +205,8 @@ uint64_t FakeTelescope::to_seq(timespec /*time*/) const {
     return 0;
 }
 
-timespec FakeTelescope::seq_length() const {
-    return {0, 2560};
+uint64_t FakeTelescope::seq_length_nsec() const {
+    return 2560;
 }
 
 bool FakeTelescope::gps_time_enabled() const {

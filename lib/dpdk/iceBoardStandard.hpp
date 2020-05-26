@@ -9,10 +9,10 @@
 
 #include "Config.hpp"
 #include "ICETelescope.hpp"
+#include "Telescope.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "chimeMetadata.h"
-#include "gpsTime.h"
 #include "iceBoardHandler.hpp"
 #include "packet_copy.h"
 #include "prometheusMetrics.hpp"
@@ -143,6 +143,9 @@ inline int iceBoardStandard::handle_packet(struct rte_mbuf* mbuf) {
 }
 
 inline bool iceBoardStandard::advance_frame(uint64_t new_seq, bool first_time) {
+
+    auto& tel = Telescope::instance();
+
     struct timeval now;
     gettimeofday(&now, nullptr);
 
@@ -163,8 +166,8 @@ inline bool iceBoardStandard::advance_frame(uint64_t new_seq, bool first_time) {
 
     set_first_packet_recv_time(out_buf, out_frame_id, now);
 
-    if (is_gps_global_time_set() == 1) {
-        struct timespec gps_time = compute_gps_time(new_seq);
+    if (tel.gps_time_enabled()) {
+        struct timespec gps_time = tel.to_time(new_seq);
         set_gps_time(out_buf, out_frame_id, gps_time);
     }
 

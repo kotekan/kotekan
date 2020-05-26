@@ -196,19 +196,20 @@ void PulsarGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata, i
                             int freq_id) {
     (void)frame_number;
 
+    auto& tel = Telescope::instance();
+
     // Fill frame with zeros
     std::fill(data.begin(), data.end(), 0);
 
     DEBUG2("GPS time %ds%dns", metadata->gps_time.tv_sec, metadata->gps_time.tv_nsec);
 
     // Figure out if we are in a pulse
-    double toa = _polyco.next_toa(metadata->gps_time, Telescope::instance().to_freq(freq_id));
+    double toa = _polyco.next_toa(metadata->gps_time, tel.to_freq(freq_id));
     double last_toa = toa - 1. / _rot_freq;
     DEBUG2("TOA: %f, last TOA: %f", toa, last_toa);
 
-    // TODO: CHIME specific
     // If so, add 10 to real part
-    if (toa < _samples_per_data_set * 2.56e-6 || last_toa + _pulse_width > 0) {
+    if (toa < _samples_per_data_set * tel.seq_length_nsec() * 1e-9 || last_toa + _pulse_width > 0) {
         // DEBUG("Found pulse!");
         for (size_t i = 0; i < _num_elements; i++) {
             for (size_t j = i; j < _num_elements; j++) {

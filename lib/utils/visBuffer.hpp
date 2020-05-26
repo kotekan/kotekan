@@ -47,7 +47,7 @@ struct visMetadata {
     uint64_t fpga_seq_length;
     /// Amount of data that actually went into the frame (in FPGA ticks)
     uint64_t fpga_seq_total;
-    /// The number of 2.56us samples flagged as containing RFI. NOTE: This value
+    /// The number of FPGA frames flagged as containing RFI. NOTE: This value
     /// might contain overlap with lost samples, as that counts missing samples
     /// as well as RFI. For renormalization this value should NOT be used, use
     /// lost samples (= @c fpga_seq_length - @c fpga_seq_total) instead.
@@ -218,7 +218,7 @@ public:
      * @brief Fill the visMetadata from a chimeMetadata struct.
      *
      * The time field is filled with the GPS time if it is set (checked via
-     * `is_gps_global_time_set`), otherwise the `first_packet_recv_time` is
+     * `Telescope.gps_time_enabled`), otherwise the `first_packet_recv_time` is
      * used. Also note, there is no dataset information in chimeMetadata so the
      * `dataset_id` is set to zero.
      *
