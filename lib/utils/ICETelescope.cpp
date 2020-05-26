@@ -43,7 +43,7 @@ void ICETelescope::set_sampling_params(double sample_rate, uint32_t length, uint
 
 void ICETelescope::set_gps(const kotekan::Config& config, const std::string& path) {
 
-    auto require_gps = config.get_default<bool>(path, "require_gps", true);
+    auto require_gps = config.get_default<bool>(path, "require_gps", false);
 
     if (!config.exists("/", "gps_time")) {
         if (require_gps) {

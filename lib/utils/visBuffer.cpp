@@ -3,7 +3,6 @@
 #include "Telescope.hpp"
 #include "buffer.h"        // for Buffer, allocate_new_metadata_object, swap_frames
 #include "chimeMetadata.h" // for chimeMetadata
-#include "gpsTime.h"       // for is_gps_global_time_set
 #include "metadata.h"      // for metadataContainer
 
 #include "fmt.hpp" // for format, fmt
@@ -285,7 +284,7 @@ void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata) {
     timespec ts;
 
     // Use the GPS time if appropriate.
-    if (is_gps_global_time_set()) {
+    if (tel.gps_time_enabled()) {
         ts = chime_metadata->gps_time;
     } else {
         TIMEVAL_TO_TIMESPEC(&(chime_metadata->first_packet_recv_time), &ts);

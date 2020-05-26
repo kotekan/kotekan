@@ -13,7 +13,6 @@
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "chimeMetadata.h"
-#include "gpsTime.h"
 #include "iceBoardHandler.hpp"
 #include "kotekanLogging.hpp"
 #include "packet_copy.h"
@@ -372,14 +371,17 @@ inline bool iceBoardShuffle::check_stream_id() {
 }
 
 inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
+
+    auto& tel = Telescope::instance();
+
     struct timeval now;
     gettimeofday(&now, nullptr);
 
     struct timespec gps_time;
     gps_time.tv_sec = 0;
     gps_time.tv_nsec = 0;
-    if (is_gps_global_time_set()) {
-        gps_time = compute_gps_time(new_seq);
+    if (tel.gps_time_enabled()) {
+        gps_time = tel.to_time(new_seq);
     }
 
     for (uint32_t i = 0; i < shuffle_size; ++i) {

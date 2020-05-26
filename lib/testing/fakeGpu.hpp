@@ -106,7 +106,7 @@ public:
     // Dummy time map implementations
     timespec to_time(uint64_t seq) const override;
     uint64_t to_seq(timespec time) const override;
-    timespec seq_length() const override;
+    uint64_t seq_length_nsec() const override;
     bool gps_time_enabled() const override;
 
 private:

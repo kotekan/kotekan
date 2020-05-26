@@ -8,7 +8,6 @@
 #include "buffer.h"            // for Buffer, mark_frame_empty, wait_for_empty_frame, wait_...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.h"     // for get_fpga_seq_num, psrCoord, get_psr_coord, get_stream...
-#include "gpsTime.h"           // for compute_gps_time, is_gps_global_time_set
 #include "kotekanLogging.hpp"  // for DEBUG, ERROR
 #include "vdif_functions.h"    // for VDIFHeader
 
@@ -75,6 +74,12 @@ pulsarPostProcess::~pulsarPostProcess() {
 void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* vdif_header,
                                      const uint64_t fpga_seq_num, struct timespec* time_now,
                                      struct psrCoord* psr_coord, uint16_t* thread_ids) {
+
+    // Get the Telescope instance and pre-calc the length of an FPGA frame
+    auto& tel = Telescope::instance();
+    const uint64_t fpga_ns = tel.seq_length_nsec();
+    const float fpga_s = 1e-9 * fpga_ns;
+
     uint freqloop = _num_stream / _num_pulsar;
     DEBUG("Filling headers starting at {} ({}.{:09d})", fpga_seq_num, time_now->tv_sec,
           time_now->tv_nsec);
@@ -82,7 +87,7 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* 
         uint64_t fpga_now = (fpga_seq_num + _timesamples_per_pulsar_packet * i);
         vdif_header->seconds = time_now->tv_sec - unix_offset;
         vdif_header->data_frame =
-            (time_now->tv_nsec / 1.e9) / (_timesamples_per_pulsar_packet * 2.56e-6);
+            (time_now->tv_nsec / 1.e9) / (_timesamples_per_pulsar_packet * fpga_s);
 
         for (uint f = 0; f < freqloop; ++f) {
             vdif_header->thread_id = thread_ids[f];
@@ -93,8 +98,7 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* 
                 uint16_t ra_part = (uint16_t)(psr_coord[f].ra[psr] * 100);
                 uint16_t dec_part = (uint16_t)((psr_coord[f].dec[psr] + 90) * 100);
                 vdif_header->eud4 = ((ra_part << 16) & 0xFFFF0000) + (dec_part & 0xFFFF);
-                struct timespec time_now_from_compute;
-                time_now_from_compute = compute_gps_time(fpga_now);
+                timespec time_now_from_compute = tel.to_time(fpga_now);
                 if (time_now->tv_sec != time_now_from_compute.tv_sec) {
                     ERROR("[Time Check] mismatch in fill header packet={:d} beam={:d} "
                           "time_now->tv_sec={:d} time_now_from_compute.tv_sec={:d}",
@@ -118,7 +122,7 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* 
             }
         } // end freq
         // Increment time for the next frame
-        time_now->tv_nsec += _timesamples_per_pulsar_packet * 2560;
+        time_now->tv_nsec += _timesamples_per_pulsar_packet * fpga_ns;
         if (time_now->tv_nsec > 999999999) {
             time_now->tv_sec += (uint)(time_now->tv_nsec / 1000000000.);
             time_now->tv_nsec = time_now->tv_nsec % 1000000000;
@@ -129,6 +133,7 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* 
 void pulsarPostProcess::main_thread() {
 
     auto& tel = Telescope::instance();
+    uint64_t fpga_ns = tel.seq_length_nsec();
 
     int out_buffer_ID = 0;
     int startup = 1; // related to the likely & unlikely
@@ -204,18 +209,18 @@ void pulsarPostProcess::main_thread() {
         if (unlikely(startup == 1)) {
             startup = 0;
 
-            if (is_gps_global_time_set() != 1) {
-                ERROR("[Time Check] gps global time not set ({:d})", is_gps_global_time_set());
+            if (!tel.gps_time_enabled()) {
+                ERROR("[Time Check] gps global time is not set.");
             }
-            time_now = compute_gps_time(frame_fpga_seq_num);
-            uint32_t pkt_length_in_ns = _timesamples_per_pulsar_packet * 2560;
+            time_now = tel.to_time(frame_fpga_seq_num);
+            uint32_t pkt_length_in_ns = _timesamples_per_pulsar_packet * fpga_ns;
             uint32_t ns_offset = pkt_length_in_ns - (time_now.tv_nsec % pkt_length_in_ns);
-            float seq_number_offset_float = ns_offset / 2560.;
+            float seq_number_offset_float = ns_offset / (float)fpga_ns;
             uint seq_number_offset = round(seq_number_offset_float);
 
             current_input_location = seq_number_offset;
             fpga_seq_num = frame_fpga_seq_num + seq_number_offset;
-            time_now.tv_nsec += seq_number_offset * 2560;
+            time_now.tv_nsec += seq_number_offset * fpga_ns;
             while (time_now.tv_nsec >= 1e9) {
                 time_now.tv_sec += 1;
                 time_now.tv_nsec -= 1e9;
@@ -235,18 +240,18 @@ void pulsarPostProcess::main_thread() {
                 fpga_seq_num = frame_fpga_seq_num;
                 DEBUG("Skipped frames to {}; current output packet {} / {}", fpga_seq_num, frame,
                       in_frame_location);
-                time_now = compute_gps_time(fpga_seq_num);
+                time_now = tel.to_time(fpga_seq_num);
                 DEBUG("GPS clock {}.{:09d}, fpga_seq_num: {}", time_now.tv_sec, time_now.tv_nsec,
                       fpga_seq_num);
 
-                uint32_t pkt_length_in_ns = _timesamples_per_pulsar_packet * 2560;
+                uint32_t pkt_length_in_ns = _timesamples_per_pulsar_packet * fpga_ns;
                 uint32_t ns_offset = pkt_length_in_ns - (time_now.tv_nsec % pkt_length_in_ns);
-                float seq_number_offset_float = ns_offset / 2560.;
+                float seq_number_offset_float = ns_offset / (float)fpga_ns;
                 uint seq_number_offset = round(seq_number_offset_float);
 
                 current_input_location = seq_number_offset;
                 fpga_seq_num += seq_number_offset;
-                time_now.tv_nsec += seq_number_offset * 2560;
+                time_now.tv_nsec += seq_number_offset * fpga_ns;
                 while (time_now.tv_nsec >= 1e9) {
                     time_now.tv_sec += 1;
                     time_now.tv_nsec -= 1e9;
