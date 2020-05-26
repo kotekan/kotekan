@@ -101,7 +101,7 @@ void RfiFrameDrop::main_thread() {
         auto* metadata_sk = (chimeMetadata*)get_metadata(_buf_in_sk, frame_id_in_sk);
 
         // Set the frequency index from the stream id of the metadata
-        uint32_t freq_id = tel.to_freq_id(metadata_vis->stream_ID);
+        uint32_t freq_id = tel.to_freq_id(_buf_in_vis, frame_id_in_vis);
 
         // Try and synchronize up the frames. Even though they arrive at
         // different rates, this should eventually sync them up.

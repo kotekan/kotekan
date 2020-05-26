@@ -138,9 +138,7 @@ void basebandReadout::main_thread() {
 
         if (!lt) {
             int buf_frame = frame_id % buf->num_frames;
-            auto first_meta = (chimeMetadata*)buf->metadata[buf_frame]->metadata;
-
-            uint32_t freq_id = tel.to_freq_id(first_meta->stream_ID);
+            uint32_t freq_id = tel.to_freq_id(buf, buf_frame);
 
             DEBUG("Initialize baseband metrics for freq_id: {:d}", freq_id);
             readout_counter.labels({std::to_string(freq_id), "done"});
@@ -450,7 +448,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
     int buf_frame = dump_start_frame % buf->num_frames;
     auto first_meta = (chimeMetadata*)buf->metadata[buf_frame]->metadata;
 
-    uint32_t freq_id = tel.to_freq_id(first_meta->stream_ID);
+    uint32_t freq_id = tel.to_freq_id(buf, buf_frame);
 
     // Figure out how much data we have.
     int64_t data_start_fpga = std::max(trigger_start_fpga, first_meta->fpga_seq_num);

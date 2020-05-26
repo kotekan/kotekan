@@ -101,6 +101,10 @@ inline uint16_t get_stream_id(const struct Buffer* buf, int ID) {
     return chime_metadata->stream_ID;
 }
 
+inline uint16_t get_stream_id_from_metadata(const chimeMetadata* metadata) {
+    return metadata->stream_ID;
+}
+
 inline struct timeval get_first_packet_recv_time(const struct Buffer* buf, int ID) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
     return chime_metadata->first_packet_recv_time;
