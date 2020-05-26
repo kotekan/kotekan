@@ -55,6 +55,8 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
     skipped_frame_counter(Metrics::instance().add_counter(
         "kotekan_visaccumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})) {
 
+    auto& tel = Telescope::instance();
+
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");
     num_freq_in_frame = config.get_default<size_t>(unique_name, "num_freq_in_frame", 1);
@@ -71,9 +73,7 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
     // If the integration time was set then calculate the number of GPU frames
     // we need to integrate for.
     if (int_time >= 0.0) {
-        // TODO: don't hard code the sample time length
-        // TODO: CHIME specific
-        float frame_length = samples_per_data_set * 2.56e-6;
+        float frame_length = samples_per_data_set * tel.seq_length_nsec() * 1e-9;
 
         // Calculate nearest *even* number of frames
         num_gpu_frames = 2 * ((int)(int_time / frame_length) / 2);
@@ -102,7 +102,6 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
 
     // Get the frequency IDs that are on this stream, check the config or just
     // assume all CHIME channels
-    auto& tel = Telescope::instance();
     if (config.exists(unique_name, "freq_ids")) {
         freq_ids = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
     } else {
@@ -286,7 +285,7 @@ void visAccumulate::main_thread() {
         // Start and end times of this frame
         // TODO: CHIME specific
         timespec t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
-        timespec t_e = add_nsec(t_s, samples_per_data_set * 2560L); // Frame length CHIME specific
+        timespec t_e = add_nsec(t_s, samples_per_data_set * tel.seq_length_nsec());
 
         // If we have wrapped around we need to write out any frames that have
         // been filled in previous iterations. In here we need to reorder the

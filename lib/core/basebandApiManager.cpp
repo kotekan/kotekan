@@ -1,9 +1,11 @@
 #include "basebandApiManager.hpp"
 
+#include "Telescope.hpp"
 #include "basebandReadoutManager.hpp" // for basebandDumpStatus, basebandRequest, basebandReado...
 #include "kotekanLogging.hpp"         // for DEBUG_NON_OO, INFO_NON_OO, WARN_NON_OO
 #include "prometheusMetrics.hpp"      // for Metrics, Counter
 #include "restServer.hpp"             // for connectionInstance, HTTP_RESPONSE, restServer, HTT...
+#include "visUtil.hpp"
 
 #include "fmt.hpp" // for format, fmt
 
@@ -177,14 +179,18 @@ basebandApiManager::basebandSlice
 basebandApiManager::translate_trigger(const int64_t fpga_time0, const int64_t fpga_width,
                                       const double dm, const double dm_error,
                                       const uint32_t freq_id, const double ref_freq_hz) {
-    const double freq = ADC_SAMPLE_RATE + FPGA_DELTA_FREQ * freq_id;
+
+    auto& tel = Telescope::instance();
+    const double freq = tel.to_freq(freq_id) * 1e6;
+    const double fpga_frame_rate = 1.0 / ts_to_double(tel.seq_length());
+
     const double freq_inv_sq_diff = (1. / (freq * freq) - 1. / (ref_freq_hz * ref_freq_hz));
     double min_delay = K_DM * (dm - N_DM_ERROR_TOL * dm_error) * freq_inv_sq_diff;
     double max_delay = K_DM * (dm + N_DM_ERROR_TOL * dm_error) * freq_inv_sq_diff;
     DEBUG_NON_OO("min DM delay: {:f}, max DM delay, {:f}", min_delay, max_delay);
 
-    int64_t min_delay_fpga = round(min_delay * FPGA_FRAME_RATE);
-    int64_t max_delay_fpga = round(max_delay * FPGA_FRAME_RATE);
+    int64_t min_delay_fpga = round(min_delay * fpga_frame_rate);
+    int64_t max_delay_fpga = round(max_delay * fpga_frame_rate);
 
     return {fpga_time0 >= 0 ? fpga_time0 + max_delay_fpga : fpga_time0,
             fpga_width + (min_delay_fpga - max_delay_fpga)};
@@ -193,6 +199,7 @@ basebandApiManager::translate_trigger(const int64_t fpga_time0, const int64_t fp
 
 void basebandApiManager::handle_request_callback(connectionInstance& conn, json& request) {
     auto now = std::chrono::system_clock::now();
+    auto& tel = Telescope::instance();
     try {
         uint64_t event_id = request["event_id"];
         int64_t start_unix_seconds = request["start_unix_seconds"];
@@ -201,13 +208,13 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
         if (start_unix_seconds >= 0) {
             int64_t start_unix_nano = request["start_unix_nano"];
             struct timespec ts = {start_unix_seconds, start_unix_nano};
-            start_fpga = compute_fpga_seq(ts);
+            start_fpga = tel.to_seq(ts);
         } else {
             start_fpga = -1;
         }
 
         int64_t duration_nano = request["duration_nano"];
-        int64_t duration_fpga = duration_nano / FPGA_PERIOD_NS;
+        int64_t duration_fpga = duration_nano / tel.seq_length_nsec();
 
         std::string file_path = request["file_path"];
         // Ensure there is no trailing slash

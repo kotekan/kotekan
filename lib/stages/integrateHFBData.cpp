@@ -4,8 +4,7 @@
 #include "Telescope.hpp"
 #include "buffer.h" // for mark_frame_empty, Buffer, register_consumer, wait_for...
 #include "chimeMetadata.h"
-#include "gpsTime.h"
-#include "hfbMetadata.hpp"
+#include "hfbMetadata.h"
 #include "kotekanLogging.hpp" // for DEBUG, DEBUG2
 
 #include <atomic>      // for atomic_bool
@@ -207,11 +206,11 @@ void integrateHFBData::main_thread() {
                 set_fpga_seq_num_hfb(out_buf, out_buffer_ID, fpga_seq);
 
                 // Check if GPS time is set
-                if (!is_gps_global_time_set())
+                if (!tel.gps_time_enabled())
                     set_gps_time_flag(out_buf, out_buffer_ID, 0);
                 else {
                     set_gps_time_flag(out_buf, out_buffer_ID, 1);
-                    set_gps_time_hfb(out_buf, out_buffer_ID, compute_gps_time(fpga_seq));
+                    set_gps_time_hfb(out_buf, out_buffer_ID, tel.to_time(fpga_seq));
                 }
 
                 set_norm_frac(out_buf, out_buffer_ID, norm_frac);

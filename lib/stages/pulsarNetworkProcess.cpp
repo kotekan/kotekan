@@ -1,7 +1,8 @@
 #include "pulsarNetworkProcess.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
 #include "buffer.h"            // for mark_frame_empty, wait_for_full_frame, register_consumer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO, CHECK_MEM
@@ -150,9 +151,9 @@ void pulsarNetworkProcess::main_thread() {
     t0.tv_sec = 0;
     t0.tv_nsec = 0; /*  nanoseconds */
 
-    unsigned long time_interval =
-        num_packet_per_stream * timesamples_per_pulsar_packet * 2560; // time per buffer frame in ns
-    // 2560 is fpga sampling time in ns
+    const uint32_t fpga_ns = Telescope::instance().seq_length_nsec();
+    unsigned long time_interval = num_packet_per_stream * timesamples_per_pulsar_packet
+                                  * fpga_ns; // time per buffer frame in ns
 
     int my_sequence_id =
         (int)(my_node_id / 128) + 2 * ((my_node_id % 128) / 8) + 32 * (my_node_id % 8);
@@ -214,8 +215,8 @@ void pulsarNetworkProcess::main_thread() {
 
                 long wait_per_packet = (long)(153600);
 
-                // 61521.25 is the theoritical seperation of packets in ns
-                // I have used 61440 for convinence and also hope this will take care for
+                // 61521.25 is the theoretical seperation of packets in ns
+                // I have used 61440 for convenience and also hope this will take care for
                 // any clock glitches.
                 add_nsec(t1, wait_per_packet);
             }

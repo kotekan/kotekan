@@ -7,7 +7,6 @@
 #include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_fo...
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "chimeMetadata.h"        // for chimeMetadata
-#include "gpsTime.h"              // for FPGA_PERIOD_NS, compute_gps_time, is_gps_global_time...
 #include "kotekanLogging.hpp"     // for INFO, DEBUG, ERROR, WARN
 #include "metadata.h"             // for metadataContainer
 #include "nt_memcpy.h"            // for nt_memcpy
@@ -367,12 +366,13 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
     // are necessarily contiguous.
 
     auto& tel = Telescope::instance();
+    const double fpga_period_s = ts_to_double(tel.seq_length());
 
     int dump_start_frame = 0;
     int dump_end_frame = 0;
     int64_t trigger_end_fpga = trigger_start_fpga + trigger_length_fpga;
     double max_wait_time = 1.;
-    double min_wait_time = _samples_per_data_set * FPGA_PERIOD_NS * 1e-9;
+    double min_wait_time = _samples_per_data_set * fpga_period_s;
     bool advance_info = false;
 
     if (trigger_length_fpga > _samples_per_data_set * _num_frames_buffer / 2) {
@@ -420,11 +420,11 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
             if (!advance_info) {
                 // We only need to print this the first time
                 INFO("Advance dump trigger for {:d}, waiting for {:d} samples ({:.2f} sec)",
-                     event_id, time_to_wait_seq, time_to_wait_seq * FPGA_PERIOD_NS / 1e9);
+                     event_id, time_to_wait_seq, time_to_wait_seq * fpga_period_s);
                 advance_info = true;
             }
             time_to_wait_seq += _samples_per_data_set;
-            double wait_time = time_to_wait_seq * FPGA_PERIOD_NS;
+            double wait_time = time_to_wait_seq * fpga_period_s * 1e9;
             wait_time = std::min(wait_time, max_wait_time);
             wait_time = std::max(wait_time, min_wait_time);
             std::this_thread::sleep_for(std::chrono::nanoseconds((int)wait_time));
@@ -460,7 +460,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
 
     timeval tmp, delta;
     delta.tv_sec = 0;
-    delta.tv_usec = (trigger_start_fpga - first_meta->fpga_seq_num) * FPGA_PERIOD_NS / 1000;
+    delta.tv_usec = (trigger_start_fpga - first_meta->fpga_seq_num) * fpga_period_s * 1e6;
     timeradd(&(first_meta->first_packet_recv_time), &delta, &tmp);
     timespec packet_time0 = {tmp.tv_sec, tmp.tv_usec * 1000};
 
@@ -526,6 +526,8 @@ void basebandReadout::unlock_range(int start_frame, int end_frame) {
 void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump_status,
                                  std::mutex& request_mtx) {
 
+    auto& tel = Telescope::instance();
+
     // TODO Create parent directories.
     std::string filename =
         fmt::format(fmt("{:s}{:s}/{:s}"), _base_dir, dump_status.request.file_path,
@@ -573,8 +575,8 @@ void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump
 
     timespec time0;
     std::string time0_type;
-    if (is_gps_global_time_set()) {
-        time0 = compute_gps_time(data.data_start_fpga);
+    if (tel.gps_time_enabled()) {
+        time0 = tel.to_time(data.data_start_fpga);
         time0_type = "GPS";
     } else {
         time0 = data.data_start_ctime;
@@ -587,8 +589,8 @@ void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump
         .write(ftime0_offset);
     file.createAttribute<std::string>("type_time0_ctime", HighFive::DataSpace::From(time0_type))
         .write(time0_type);
-    double delta_t = (double)FPGA_PERIOD_NS / 1e9;
-    file.createAttribute<double>("delta_time", HighFive::DataSpace::From(delta_t)).write(delta_t);
+    double fpga_s = ts_to_double(Telescope::instance().seq_length());
+    file.createAttribute<double>("fpga_sime", HighFive::DataSpace::From(fpga_s)).write(fpga_s);
 
     size_t num_elements = data.num_elements;
     size_t ntime_chunk = TARGET_CHUNK_SIZE / num_elements;
@@ -628,7 +630,7 @@ void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump
         if (ii_samp >= data.data_length_fpga)
             break;
         // Add intentional throttling.
-        float stime = _write_throttle * to_write * FPGA_PERIOD_NS;
+        float stime = _write_throttle * to_write * fpga_s * 1e9;
         std::this_thread::sleep_for(std::chrono::nanoseconds((int)stime));
     }
     std::remove(lock_filename.c_str());

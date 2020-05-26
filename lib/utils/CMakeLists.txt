@@ -2,7 +2,6 @@ project( kotekan_utils )
 
 set ( KOTEKAN_UTIL_SOURCES
       gateSpec.cpp
-      gpsTime.c
       nt_memcpy.c
       nt_memset.c
       output_formating.c
