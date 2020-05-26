@@ -5,7 +5,7 @@
 #include "chimeMetadata.h"
 #include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, stream_id_t
 #include "gpsTime.h"
-#include "hfbMetadata.h"
+#include "hfbMetadata.hpp"
 #include "kotekanLogging.hpp" // for DEBUG, DEBUG2
 
 #include <atomic>      // for atomic_bool
