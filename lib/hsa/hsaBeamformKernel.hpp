@@ -188,7 +188,8 @@ private:
     /// Endpoint for updating EW beams
     std::string endpoint_EW_beam;
 
-    /// Config base (@todo this is a huge hack replace with updatable config)
+    /// Config base
+    /// @todo this is a huge hack replace with updatable config
     std::string config_base;
 };
 
