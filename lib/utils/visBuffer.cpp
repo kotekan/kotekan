@@ -276,7 +276,7 @@ void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata) {
     dataset_id = dset_id_t::null;
 
     // Set the frequency index from the stream id of the metadata
-    freq_id = tel.to_freq_id(chime_metadata->stream_ID);
+    freq_id = tel.to_freq_id(get_stream_id_from_metadata(chime_metadata));
 
     // Set the time
     uint64_t fpga_seq = chime_metadata->fpga_seq_num;
