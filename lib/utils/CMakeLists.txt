@@ -10,6 +10,8 @@ set ( KOTEKAN_UTIL_SOURCES
       time_tracking.c
       type.cpp
       util.c
+      FrameView.cpp
+      HfbFrameView.cpp
       visBuffer.cpp
       visUtil.cpp
       visFile.cpp
