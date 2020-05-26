@@ -5,7 +5,6 @@ set ( KOTEKAN_UTIL_SOURCES
       nt_memcpy.c
       nt_memset.c
       output_formating.c
-      time_tracking.c
       type.cpp
       util.c
       FrameView.cpp
