@@ -384,9 +384,12 @@ void applyGains::fetch_thread() {
         else {
             const auto last_update = gains_fifo.get_update(double_to_ts(new_ts)).second;
             if (last_update == nullptr) {
-                FATAL_ERROR("Failed to retrieve the last update, gains queue empty.");
+                WARN("Failed to retrieve the last update, gains queue empty. Creating new gain "
+                     "state.");
+                state_id = dm.create_state<gainState>(update_id, transition_interval).first;
+            } else {
+                state_id = last_update->state_id;
             }
-            state_id = last_update->state_id;
         }
         GainUpdate gain_update{std::move(gain_data.value()), transition_interval, state_id};
 
