@@ -38,7 +38,7 @@ hsaRfiInputSum::hsaRfiInputSum(Config& config, const std::string& unique_name,
     // RFI Config Parameters
     _sk_step = config.get_default<uint32_t>(unique_name, "sk_step", 256);
     _rfi_sigma_cut = config.get_default<uint32_t>(unique_name, "rfi_sigma_cut", 5);
-    _trunc_bias_switch = config.get_default<float>(unique_name, "trunc_bias_switch", 1.0);
+    _trunc_bias_switch = config.get_default<bool>(unique_name, "trunc_bias_switch", false);
     // Compute Buffer lengths
     input_frame_len =
         sizeof(float) * _num_elements * _num_local_freq * _samples_per_data_set / _sk_step;
@@ -95,7 +95,7 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
         uint32_t num_bad_inputs;
         uint32_t sk_step;
         uint32_t rfi_sigma_cut;
-        float trunc_bias_switch;
+        uint32_t trunc_bias_switch;
     } args;
     // Initialize arguments
     memset(&args, 0, sizeof(args));
@@ -116,7 +116,8 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
     args.num_bad_inputs = num_bad_inputs;
     args.sk_step = _sk_step;
     args.rfi_sigma_cut = _rfi_sigma_cut;
-    args.trunc_bias_switch = _trunc_bias_switch;
+    if(_trunc_bias_switch) args.trunc_bias_switch = 1;
+    else args.trunc_bias_switch = 0;
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
     // Set kernel execution parameters

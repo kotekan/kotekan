@@ -70,21 +70,23 @@ rfi_chime_input_sum(
             output_var[address] = -1.0;
             output_mask[address] = 1;
         } else {
-            float new_sq_power_across_input = sq_power_across_input[0] * cf * cf;
+            const float new_sq_power_across_input = sq_power_across_input[0] * cf * cf;
             float SK = ((n + 1) / (n - 1)) * ((new_sq_power_across_input / (n * N)) - 1);
-
-            // Calculate the truncation bias correction for the SK value
             const float var = var_across_input[0] / (n * N);
-            const float rms = sqrt((float)var);
-            float sk_correction = 0.f;
-            float rms_pow = 1.f;
-            for(int i=0; i<NUM_COEFFS; i++) {
-                sk_correction += bias_coeffs[i] * rms_pow;
-                rms_pow *= rms;
-            }
 
-            // Correct SK for truncation bias
-            SK -= sk_correction * trunc_bias_switch;
+            if(trunc_bias_switch) {
+                // Calculate the truncation bias correction for the SK value
+                const float rms = sqrt((double)var);
+                float sk_correction = 0.f;
+                float rms_pow = 1.f;
+                for(int i=0; i<NUM_COEFFS; i++) {
+                    sk_correction += bias_coeffs[i] * rms_pow;
+                    rms_pow *= rms;
+                }
+
+                // Correct SK for truncation bias
+                SK -= sk_correction * trunc_bias_switch;
+            }
 
             output[address] = SK;
             float sigma = sqrt((double)((4 * n * n)/(N * (n - 1) * (n + 2) * (n + 3))));
