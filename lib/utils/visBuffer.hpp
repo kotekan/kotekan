@@ -7,7 +7,8 @@
 #ifndef VISBUFFER_HPP
 #define VISBUFFER_HPP
 
-#include "Hash.hpp"        // for Hash
+#include "Hash.hpp" // for Hash
+#include "Telescope.hpp"
 #include "buffer.h"        // for Buffer
 #include "chimeMetadata.h" // for chimeMetadata
 #include "dataset.hpp"     // for dset_id_t
@@ -54,7 +55,7 @@ struct visMetadata {
     uint64_t rfi_total;
 
     /// ID of the frequency bin
-    uint32_t freq_id;
+    freq_id_t freq_id;
     /// ID of the dataset
     dset_id_t dataset_id;
 

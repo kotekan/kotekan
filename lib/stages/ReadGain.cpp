@@ -61,7 +61,7 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     register_consumer(metadata_buf, unique_name.c_str());
     metadata_buffer_id = 0;
     metadata_buffer_precondition_id = 0;
-    freq_idx = -1;
+    freq_idx = FREQ_ID_NOT_SET;
     freq_MHz = -1;
 
     // Gain for FRB

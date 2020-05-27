@@ -127,7 +127,7 @@ void FakeGpu::main_thread() {
 
             allocate_new_metadata_object(out_buf, frame_id);
             set_fpga_seq_num(out_buf, frame_id, fpga_seq);
-            set_stream_id(out_buf, frame_id, (uint16_t)freq);
+            set_stream_id(out_buf, frame_id, {(uint64_t)freq});
 
             // Set the two times
             TIMESPEC_TO_TIMEVAL(&tv, &ts);
@@ -176,7 +176,7 @@ FakeTelescope::FakeTelescope(const kotekan::Config& config, const std::string& p
 }
 
 freq_id_t FakeTelescope::to_freq_id(stream_t stream_id, uint32_t ind) const {
-    return stream_id + ind;
+    return stream_id.id + ind;
 }
 
 double FakeTelescope::to_freq(freq_id_t freq_id) const {

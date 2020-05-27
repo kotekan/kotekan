@@ -100,7 +100,7 @@ cl_event clBeamformKernel::execute(int gpu_frame_id, cl_event pre_event) {
     int64_t current_seq = get_fpga_seq_num(network_buf, gpu_frame_id);
     int64_t bankID = (current_seq / phase_update_period) % 2;
 
-    int32_t streamID = get_stream_id(network_buf, gpu_frame_id);
+    stream_t streamID = get_stream_id(network_buf, gpu_frame_id);
 
     uint32_t input_frame_len = _num_elements * num_local_freq * _samples_per_data_set;
 
@@ -124,9 +124,10 @@ cl_event clBeamformKernel::execute(int gpu_frame_id, cl_event pre_event) {
 }
 
 
-cl_mem clBeamformKernel::get_freq_map(int32_t encoded_stream_id) {
-    // CONVERT TO USE STANDARD MEM ALLOC!
-    std::map<int32_t, cl_mem>::iterator it = device_freq_map.find(encoded_stream_id);
+cl_mem clBeamformKernel::get_freq_map(stream_t encoded_stream_id) {
+    // TODO: convert to use standard mem alloc!
+    // TODO: stream_t - uses internal structure
+    auto it = device_freq_map.find(encoded_stream_id.id);
 
     if (it == device_freq_map.end()) {
         // Create the freq map for the first time.
@@ -138,10 +139,10 @@ cl_mem clBeamformKernel::get_freq_map(int32_t encoded_stream_id) {
             freq[j] = tel.to_freq(encoded_stream_id, j) / 1000.0;
         }
 
-        device_freq_map[encoded_stream_id] =
+        device_freq_map[encoded_stream_id.id] =
             clCreateBuffer(device.get_context(), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                            num_local_freq * sizeof(float), freq, &err);
         CHECK_CL_ERROR(err);
     }
-    return device_freq_map.at(encoded_stream_id);
+    return device_freq_map.at(encoded_stream_id.id);
 }

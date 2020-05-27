@@ -95,7 +95,7 @@ networkOutputSim::networkOutputSim(Config& config_, const std::string& unique_na
     num_links_in_group = config.get<int>(unique_name, "num_links_in_group");
     link_id = config.get<int>(unique_name, "link_id");
     pattern = config.get<int>(unique_name, "pattern");
-    stream_id = config.get<int>(unique_name, "stream_id");
+    stream_id.id = config.get<uint64_t>(unique_name, "stream_id");
 }
 
 networkOutputSim::~networkOutputSim() {}
