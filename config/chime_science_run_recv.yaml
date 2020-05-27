@@ -197,7 +197,7 @@ count_check:
     in_buf: visbuf_5s_26m_gated
 
 delay_frames:
-  num_frames_to_hold: 3072
+  num_frames_to_hold: 3840
   copy_frame: false
   kotekan_stage: bufferDelay
   in_buf: visbuf_10s_flags
