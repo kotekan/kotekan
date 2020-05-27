@@ -10,7 +10,7 @@
 #include "kotekanLogging.hpp"  // for INFO
 #include "metadata.h"          // for metadataContainer
 #include "version.h"           // for get_git_commit_hash
-#include "visBuffer.hpp"       // for visFrameView
+#include "visBuffer.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for prod_ctype, input_ctype, freq_ctype, copy_vis_triangle
 
 #include "gsl-lite.hpp" // for span<>::iterator, span
@@ -140,7 +140,7 @@ void visTransform::main_thread() {
             allocate_new_metadata_object(out_buf, output_frame_id);
 
             auto output_frame =
-                visFrameView(out_buf, output_frame_id, num_elements, num_eigenvectors);
+                VisFrameView(out_buf, output_frame_id, num_elements, num_eigenvectors);
 
             // Copy over the metadata
             output_frame.fill_chime_metadata(

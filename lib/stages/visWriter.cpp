@@ -12,7 +12,7 @@
 #include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily, Gauge
 #include "restServer.hpp"        // for restServer, connectionInstance, HTTP_RESPONSE
 #include "version.h"             // for get_git_commit_hash
-#include "visBuffer.hpp"         // for visFrameView
+#include "visBuffer.hpp"         // for VisFrameView
 #include "visFile.hpp"           // for visFileBundle, visCalFileBundle, _factory_aliasvisFile
 
 #include "fmt.hpp"  // for format, fmt
@@ -114,7 +114,7 @@ void visWriter::main_thread() {
         }
 
         // Get a view of the current frame
-        auto frame = visFrameView(in_buf, frame_id);
+        auto frame = VisFrameView(in_buf, frame_id);
 
         acqs_lock.lock();
         // Check the dataset ID hasn't changed

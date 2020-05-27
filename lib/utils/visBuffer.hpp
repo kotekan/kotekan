@@ -2,7 +2,7 @@
 @file
 @brief Code for using the visBuffer formatted data.
 - visMetadata
-- visFrameView
+- VisFrameView
 *****************************************/
 #ifndef VISBUFFER_HPP
 #define VISBUFFER_HPP
@@ -68,7 +68,7 @@ struct visMetadata {
 
 
 /**
- * @class visFrameView
+ * @class VisFrameView
  * @brief Provide a structured view of a visibility buffer.
  *
  * This class sets up a view on a visibility buffer with the ability to
@@ -86,7 +86,7 @@ struct visMetadata {
  *
  * @author Richard Shaw
  **/
-class visFrameView {
+class VisFrameView {
 
 public:
     /**
@@ -97,7 +97,7 @@ public:
      * @param buf      The buffer the frame is in.
      * @param frame_id The id of the frame to read.
      */
-    visFrameView(Buffer* buf, int frame_id);
+    VisFrameView(Buffer* buf, int frame_id);
 
     /**
      * @brief Create view and set structure metadata.
@@ -112,7 +112,7 @@ public:
      *
      * @warning The metadata object must already have been allocated.
      **/
-    visFrameView(Buffer* buf, int frame_id, uint32_t num_elements, uint32_t num_ev);
+    VisFrameView(Buffer* buf, int frame_id, uint32_t num_elements, uint32_t num_ev);
 
     /**
      * @brief Create view and set structure metadata.
@@ -128,7 +128,7 @@ public:
      *
      * @warning The metadata object must already have been allocated.
      **/
-    visFrameView(Buffer* buf, int frame_id, uint32_t num_elements, uint32_t num_prod,
+    VisFrameView(Buffer* buf, int frame_id, uint32_t num_elements, uint32_t num_prod,
                  uint32_t num_ev);
 
     /**
@@ -138,11 +138,11 @@ public:
      *
      * @param buf              The buffer the frame is in.
      * @param frame_id         The id of the frame to read.
-     * @param frame_to_copy    An instance of visFrameView corresponding to the frame to be copied.
+     * @param frame_to_copy    An instance of VisFrameView corresponding to the frame to be copied.
      *
      * @warning The metadata object must already have been allocated.
      **/
-    visFrameView(Buffer* buf, int frame_id, visFrameView frame_to_copy);
+    VisFrameView(Buffer* buf, int frame_id, VisFrameView frame_to_copy);
 
     /**
      * @brief Copy a whole frame from a buffer and create a view of it.
@@ -160,10 +160,10 @@ public:
      * @param buf_dest       The buffer to copy into.
      * @param frame_id_dest  The buffer location to copy into.
      *
-     * @returns A visFrameView of the copied frame.
+     * @returns A VisFrameView of the copied frame.
      *
      **/
-    static visFrameView copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
+    static VisFrameView copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
                                    int frame_id_dest);
 
     /**
@@ -195,7 +195,7 @@ public:
      * @param  frame_to_copy  Frame to copy metadata from.
      *
      **/
-    void copy_metadata(visFrameView frame_to_copy);
+    void copy_metadata(VisFrameView frame_to_copy);
 
     /**
      * @brief Copy over the data, skipping specified members.
@@ -211,7 +211,7 @@ public:
      * @param  skip_members   Specify a set of data members to *not* copy.
      *
      **/
-    void copy_data(visFrameView frame_to_copy, const std::set<visField>& skip_members);
+    void copy_data(VisFrameView frame_to_copy, const std::set<visField>& skip_members);
 
     // TODO: CHIME specific
     /**

@@ -12,7 +12,7 @@
 #include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, logLevel, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 #include "version.h"             // for get_git_commit_hash
-#include "visBuffer.hpp"         // for visFrameView
+#include "visBuffer.hpp"         // for VisFrameView
 #include "visFileArchive.hpp"    // for visFileArchive
 
 #include "fmt.hpp"      // for format
@@ -233,7 +233,7 @@ void visTranspose::main_thread() {
         if ((wait_for_full_frame(in_buf, unique_name.c_str(), first_ind)) == nullptr) {
             return;
         }
-        auto frame = visFrameView(in_buf, first_ind);
+        auto frame = VisFrameView(in_buf, first_ind);
         if (frame.fpga_seq_total == 0 && frame.dataset_id == dset_id_t::null) {
             INFO("Got empty frame ({:d}).", first_ind);
             first_ind++;
@@ -279,7 +279,7 @@ void visTranspose::main_thread() {
         if ((wait_for_full_frame(in_buf, unique_name.c_str(), frame_id)) == nullptr) {
             break;
         }
-        auto frame = visFrameView(in_buf, frame_id);
+        auto frame = VisFrameView(in_buf, frame_id);
 
         // Collect frames until a chunk is filled
         // Time-transpose as frames come in
