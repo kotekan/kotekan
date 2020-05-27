@@ -121,8 +121,8 @@ protected:
     /**
      * @brief Gets the FPGA seq number from the given packet
      *
-     * @param cur_mbuf The rte_mbuf containing the packet
-     * @return uint64_t The FPGA seq number
+     * @param  cur_mbuf  The rte_mbuf containing the packet
+     * @return           The FPGA seq number
      */
     inline uint64_t get_mbuf_seq_num(struct rte_mbuf* cur_mbuf) {
         return (uint64_t)(*(uint32_t*)(rte_pktmbuf_mtod(cur_mbuf, char*) + 54))
@@ -133,11 +133,11 @@ protected:
     /**
      * @brief Gets the FPGA stream ID from the given packet
      *
-     * @param cur_mbuf The rte_mbuf containing the packet
-     * @return uint16_t The encoded streamID
+     * @param  cur_mbuf  The rte_mbuf containing the packet
+     * @return           The encoded streamID
      */
-    inline uint16_t get_mbuf_stream_id(struct rte_mbuf* cur_mbuf) {
-        return *(uint16_t*)(rte_pktmbuf_mtod(cur_mbuf, char*) + 44);
+    inline stream_t get_mbuf_stream_id(struct rte_mbuf* cur_mbuf) {
+        return {*(uint16_t*)(rte_pktmbuf_mtod(cur_mbuf, char*) + 44)};
     }
 
     /**

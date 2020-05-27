@@ -101,7 +101,7 @@ gpuBeamformSimulate::gpuBeamformSimulate(Config& config, const std::string& uniq
 
     metadata_buf = get_buffer("network_in_buf");
     metadata_buffer_id = 0;
-    freq_now = -1;
+    freq_now = FREQ_ID_NOT_SET;
     freq_MHz = -1;
 }
 

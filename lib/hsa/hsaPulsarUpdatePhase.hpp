@@ -7,7 +7,8 @@
 #ifndef HSA_PULSAR_UPDATE_PHASE_H
 #define HSA_PULSAR_UPDATE_PHASE_H
 
-#include "Config.hpp"             // for Config
+#include "Config.hpp" // for Config
+#include "Telescope.hpp"
 #include "buffer.h"               // for Buffer
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "chimeMetadata.h"        // for psrCoord
@@ -119,7 +120,7 @@ private:
     struct timespec time_now_gps;
 
     /// Freq bin index, where the 0th is at 800MHz
-    int32_t freq_idx;
+    freq_id_t freq_idx;
     /// Freq in MHz
     float freq_MHz;
     /// N-S feed separation in m

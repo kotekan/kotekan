@@ -81,7 +81,7 @@ gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config, const std::
     metadata_buf = get_buffer("network_in_buf");
     metadata_buffer_id = 0;
     metadata_buffer_precondition_id = 0;
-    freq_now = -1;
+    freq_now = FREQ_ID_NOT_SET;
     freq_MHz = -1;
 
     // Backward compatibility, array in c
