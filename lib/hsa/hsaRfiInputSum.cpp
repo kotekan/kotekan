@@ -116,8 +116,10 @@ hsa_signal_t hsaRfiInputSum::execute(int gpu_frame_id, hsa_signal_t precede_sign
     args.num_bad_inputs = num_bad_inputs;
     args.sk_step = _sk_step;
     args.rfi_sigma_cut = _rfi_sigma_cut;
-    if(_trunc_bias_switch) args.trunc_bias_switch = 1;
-    else args.trunc_bias_switch = 0;
+    if (_trunc_bias_switch)
+        args.trunc_bias_switch = 1;
+    else
+        args.trunc_bias_switch = 0;
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
     // Set kernel execution parameters
