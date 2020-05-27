@@ -124,6 +124,7 @@ updatable_config:
     start_time: 1575950518.4
     update_id: "zero_gain"
     transition_interval: 300.0
+    new_state: true
   26m_gated:
     kotekan_update_endpoint: "json"
     enabled: false
