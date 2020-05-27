@@ -20,6 +20,19 @@ struct psrCoord {
     uint32_t scaling[MAX_NUM_BEAMS];
 };
 
+/**
+ * @brief A type for the stream ID.
+ *
+ * This is the external interface for it and *must* be used instead of directly
+ * accessing the chimeMetadata::stream_ID member.
+ *
+ * @todo Move this into Telescope.hpp when we port chimeMetadata.h to C++.
+ **/
+struct stream_t {
+    uint64_t id;
+};
+
+
 struct chimeMetadata {
     /// The ICEBoard sequence number
     int64_t fpga_seq_num;
@@ -96,13 +109,13 @@ inline uint32_t get_rfi_num_bad_inputs(const struct Buffer* buf, int ID) {
     return chime_metadata->rfi_num_bad_inputs;
 }
 
-inline uint16_t get_stream_id(const struct Buffer* buf, int ID) {
-    struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
-    return chime_metadata->stream_ID;
+inline stream_t get_stream_id_from_metadata(const chimeMetadata* metadata) {
+    return {(uint64_t)metadata->stream_ID};
 }
 
-inline uint16_t get_stream_id_from_metadata(const chimeMetadata* metadata) {
-    return metadata->stream_ID;
+inline stream_t get_stream_id(const struct Buffer* buf, int ID) {
+    struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
+    return get_stream_id_from_metadata(chime_metadata);
 }
 
 inline struct timeval get_first_packet_recv_time(const struct Buffer* buf, int ID) {
@@ -161,9 +174,13 @@ inline void set_rfi_zeroed(struct Buffer* buf, int ID, uint32_t rfi_zeroed) {
     chime_metadata->rfi_zeroed = rfi_zeroed;
 }
 
-inline void set_stream_id(struct Buffer* buf, int ID, uint16_t stream_id) {
+inline void set_stream_id_to_metadata(struct chimeMetadata* metadata, stream_t stream_id) {
+    metadata->stream_ID = (uint16_t)(stream_id.id);
+}
+
+inline void set_stream_id(struct Buffer* buf, int ID, stream_t stream_id) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
-    chime_metadata->stream_ID = stream_id;
+    set_stream_id_to_metadata(chime_metadata, stream_id);
 }
 
 inline void set_first_packet_recv_time(struct Buffer* buf, int ID, struct timeval time) {

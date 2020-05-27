@@ -3,6 +3,7 @@
 
 #include "Config.hpp" // for Config
 #include "buffer.h"
+#include "chimeMetadata.h"
 #include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
 #include "kotekanLogging.hpp" // for kotekanLogging
 
@@ -20,8 +21,8 @@ CREATE_FACTORY(Telescope, const kotekan::Config&, const std::string&);
     REGISTER_NAMED_TYPE_WITH_FACTORY(Telescope, TelescopeType, name)
 
 
-using stream_t = uint64_t;
 using freq_id_t = uint32_t;
+#define FREQ_ID_NOT_SET UINT32_MAX
 
 /**
  * @brief A class to hold telescope specific functionality.
