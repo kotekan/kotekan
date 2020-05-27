@@ -9,7 +9,7 @@
 
 #include "datasetManager.hpp" // for dset_id_t
 #include "kotekanLogging.hpp" // for logLevel
-#include "visBuffer.hpp"      // for visFrameView
+#include "visBuffer.hpp"      // for VisFrameView
 #include "visFile.hpp"        // for visFile
 #include "visUtil.hpp"        // for time_ctype, freq_ctype, input_ctype, prod_ctype
 
@@ -67,7 +67,7 @@ public:
      * @param freq_ind Frequency index to write into.
      * @param frame Frame to write out.
      **/
-    void write_sample(uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame) override;
+    void write_sample(uint32_t time_ind, uint32_t freq_ind, const VisFrameView& frame) override;
 
     /**
      * @brief Return the current number of current time samples.
@@ -172,7 +172,7 @@ public:
      * @param freq_ind Frequency index to write into.
      * @param frame Frame to write out.
      **/
-    void write_sample(uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame) override;
+    void write_sample(uint32_t time_ind, uint32_t freq_ind, const VisFrameView& frame) override;
 
     size_t num_time() override;
 

@@ -131,7 +131,7 @@ public:
  *     W = N (2a - b)^2 / 16.
  *
  * This also sets the RFI flagged count to the number of sample lost to allow
- * the `visFrameView.rfi_total` accumulation to be checked.
+ * the `VisFrameView.rfi_total` accumulation to be checked.
  *
  * @conf  b  Int. Number of samples to "drop" on the 2nd and 3rd frames above.
  *                Default is 1.

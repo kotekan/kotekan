@@ -12,7 +12,7 @@
 #include "modp_b64.hpp"          // for modp_b64_decode, modp_b64_decode_len
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
 #include "restClient.hpp"        // for restClient::restReply, restClient
-#include "visBuffer.hpp"         // for visFrameView, visField, visField::vis, visField::we...
+#include "visBuffer.hpp"         // for VisFrameView, visField, visField::vis, visField::we...
 #include "visFileH5.hpp"         // IWYU pragma: keep
 #include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double, frameID
 
@@ -249,7 +249,7 @@ void applyGains::apply_thread() {
         }
 
         // Create view to input frame
-        auto input_frame = visFrameView(in_buf, input_frame_id);
+        auto input_frame = VisFrameView(in_buf, input_frame_id);
 
         // Check that the input frame has the right sizes
         if (!validate_frame(input_frame))
@@ -283,7 +283,7 @@ void applyGains::apply_thread() {
         allocate_new_metadata_object(out_buf, output_frame_id);
 
         // Copy frame and create view
-        auto output_frame = visFrameView(out_buf, output_frame_id, input_frame.num_elements,
+        auto output_frame = VisFrameView(out_buf, output_frame_id, input_frame.num_elements,
                                          input_frame.num_prod, input_frame.num_ev);
 
         // Copy over the data we won't modify
@@ -569,7 +569,7 @@ void applyGains::initialise() {
     }
 
     // Create view to input frame
-    auto frame = visFrameView(in_buf, 0);
+    auto frame = VisFrameView(in_buf, 0);
 
     auto& dm = datasetManager::instance();
     auto* fstate = dm.dataset_state<freqState>(frame.dataset_id);
@@ -599,7 +599,7 @@ void applyGains::initialise() {
 }
 
 
-bool applyGains::validate_frame(const visFrameView& frame) const {
+bool applyGains::validate_frame(const VisFrameView& frame) const {
 
     // TODO: this should validate that the hashes of the input and frequencies
     // dataset states have not changed whenever the dataset_id changes

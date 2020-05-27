@@ -11,7 +11,7 @@
 #include "kotekanLogging.hpp"  // for INFO, DEBUG, FATAL_ERROR, ERROR, WARN
 #include "metadata.h"          // for metadataContainer
 #include "version.h"           // for get_git_commit_hash
-#include "visBuffer.hpp"       // for visFrameView, visMetadata
+#include "visBuffer.hpp"       // for VisFrameView, visMetadata
 #include "visUtil.hpp"         // for time_ctype, frameID, freq_ctype, prod_ctype, rstack_ctype
 
 #include "fmt.hpp"      // for format, fmt
@@ -322,7 +322,7 @@ void visRawReader::main_thread() {
         } else {
             // Create frame and set structural metadata
             size_t num_vis = _stack.size() > 0 ? _stack.size() : _prods.size();
-            auto frame = visFrameView(out_buf, frame_id, _inputs.size(), num_vis, _ev.size());
+            auto frame = VisFrameView(out_buf, frame_id, _inputs.size(), num_vis, _ev.size());
 
             // Fill data with zeros
             std::fill(frame.vis.begin(), frame.vis.end(), 0.0);
@@ -461,7 +461,7 @@ void ensureOrdered::main_thread() {
         if ((wait_for_full_frame(in_buf, unique_name.c_str(), first_ind)) == nullptr) {
             return;
         }
-        auto frame = visFrameView(in_buf, first_ind);
+        auto frame = VisFrameView(in_buf, first_ind);
         if (frame.fpga_seq_length == 0) {
             INFO("Got empty frame ({:d}).", first_ind);
             first_ind++;
@@ -486,7 +486,7 @@ void ensureOrdered::main_thread() {
         if ((wait_for_full_frame(in_buf, unique_name.c_str(), frame_id)) == nullptr) {
             break;
         }
-        auto frame = visFrameView(in_buf, frame_id);
+        auto frame = VisFrameView(in_buf, frame_id);
 
         // Figure out the ordered index of this frame
         t = {std::get<0>(frame.time), ts_to_double(std::get<1>(frame.time))};
@@ -501,7 +501,7 @@ void ensureOrdered::main_thread() {
                 return;
             }
             allocate_new_metadata_object(out_buf, output_frame_id);
-            auto output_frame = visFrameView(out_buf, output_frame_id, frame);
+            auto output_frame = VisFrameView(out_buf, output_frame_id, frame);
             mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
 
             // release input frame
@@ -528,12 +528,12 @@ void ensureOrdered::main_thread() {
             waiting.erase(ready);
             INFO("Frame {:d} is ready to be sent. Releasing buffer.", output_ind);
             // copy frame into output buffer
-            auto past_frame = visFrameView(in_buf, waiting_id);
+            auto past_frame = VisFrameView(in_buf, waiting_id);
             if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
                 return;
             }
             allocate_new_metadata_object(out_buf, output_frame_id);
-            auto output_frame = visFrameView(out_buf, output_frame_id, past_frame);
+            auto output_frame = VisFrameView(out_buf, output_frame_id, past_frame);
             mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
 
             mark_frame_empty(in_buf, unique_name.c_str(), waiting_id);

@@ -7,7 +7,7 @@
 #include "datasetState.hpp"      // for datasetState, eigenvalueState, state_uptr
 #include "kotekanLogging.hpp"    // for DEBUG, ERROR, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
-#include "visBuffer.hpp"         // for visFrameView, visField, visField::erms, visField::eval
+#include "visBuffer.hpp"         // for VisFrameView, visField, visField::erms, visField::eval
 #include "visUtil.hpp"           // for cfloat, frameID, modulo, current_time, cmap, movingAverage
 
 #include "fmt.hpp"      // for format, fmt
@@ -108,7 +108,7 @@ void eigenVis::main_thread() {
         if (wait_for_full_frame(input_buffer, unique_name.c_str(), input_frame_id) == nullptr) {
             break;
         }
-        auto input_frame = visFrameView(input_buffer, input_frame_id);
+        auto input_frame = VisFrameView(input_buffer, input_frame_id);
 
 
         // check if the input dataset has changed
@@ -258,7 +258,7 @@ void eigenVis::main_thread() {
             break;
         }
         allocate_new_metadata_object(output_buffer, output_frame_id);
-        auto output_frame = visFrameView(output_buffer, output_frame_id, input_frame.num_elements,
+        auto output_frame = VisFrameView(output_buffer, output_frame_id, input_frame.num_elements,
                                          input_frame.num_prod, num_eigenvectors);
 
         // Copy over metadata and data, but skip all ev members which may not be

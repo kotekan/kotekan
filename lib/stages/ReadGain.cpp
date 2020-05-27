@@ -46,7 +46,11 @@ REGISTER_KOTEKAN_STAGE(ReadGain);
 
 ReadGain::ReadGain(Config& config, const std::string& unique_name,
                    bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&ReadGain::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&ReadGain::main_thread, this)),
+    gains_last_update_success_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_gains_last_update_success", unique_name, {"type"})),
+    gains_last_update_timestamp_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_gains_last_update_timestamp", unique_name, {"type"})) {
     // Apply config.
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
     _num_beams = config.get<int32_t>(unique_name, "num_beams");
@@ -150,6 +154,7 @@ void ReadGain::read_gain_frb() {
     ptr_myfile = fopen(filename, "rb");
     if (ptr_myfile == nullptr) {
         WARN("GPU Cannot open gain file {:s}", filename);
+        gains_last_update_success_metric.labels({"frb"}).set(0);
         for (uint i = 0; i < _num_elements; i++) {
             out_frame_frb[i * 2] = default_gains[0] * scaling;
             out_frame_frb[i * 2 + 1] = default_gains[1] * scaling;
@@ -159,10 +164,13 @@ void ReadGain::read_gain_frb() {
             WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
                  "gains",
                  filename);
+            gains_last_update_success_metric.labels({"frb"}).set(0);
             for (uint i = 0; i < _num_elements; i++) {
                 out_frame_frb[i * 2] = default_gains[0] * scaling;
                 out_frame_frb[i * 2 + 1] = default_gains[1] * scaling;
             }
+        } else {
+            gains_last_update_success_metric.labels({"frb"}).set(1);
         }
         fclose(ptr_myfile);
         for (uint i = 0; i < _num_elements; i++) {
@@ -170,6 +178,7 @@ void ReadGain::read_gain_frb() {
             out_frame_frb[i * 2 + 1] = out_frame_frb[i * 2 + 1] * scaling;
         }
     }
+    gains_last_update_timestamp_metric.labels({"frb"}).set(start_time);
     mark_frame_full(gain_frb_buf, unique_name.c_str(), gain_frb_buf_id);
     DEBUG("Maked gain_frb_buf frame {:d} full", gain_frb_buf_id);
     INFO("Time required to load FRB gains: {:f}", current_time() - start_time);
@@ -187,6 +196,7 @@ void ReadGain::read_gain_psr() {
     double start_time = current_time();
     FILE* ptr_myfile;
     char filename[256];
+    bool all_beams_successful_update = true;
     for (int b = 0; b < _num_beams; b++) {
         snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",
                  _gain_dir_psr[b].c_str(), freq_idx);
@@ -194,6 +204,7 @@ void ReadGain::read_gain_psr() {
         ptr_myfile = fopen(filename, "rb");
         if (ptr_myfile == nullptr) {
             WARN("GPU Cannot open gain file {:s}", filename);
+            all_beams_successful_update = false;
             for (uint i = 0; i < _num_elements; i++) {
                 out_frame_psr[(b * _num_elements + i) * 2] = default_gains[0];
                 out_frame_psr[(b * _num_elements + i) * 2 + 1] = default_gains[1];
@@ -205,6 +216,7 @@ void ReadGain::read_gain_psr() {
                 WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
                      "gains",
                      filename);
+                all_beams_successful_update = false;
                 for (uint i = 0; i < _num_elements; i++) {
                     out_frame_psr[(b * _num_elements + i) * 2] = default_gains[0];
                     out_frame_psr[(b * _num_elements + i) * 2 + 1] = default_gains[1];
@@ -213,6 +225,12 @@ void ReadGain::read_gain_psr() {
             fclose(ptr_myfile);
         }
     } // end beam
+    if (all_beams_successful_update) {
+        gains_last_update_success_metric.labels({"pulsar"}).set(1);
+    } else {
+        gains_last_update_success_metric.labels({"pulsar"}).set(0);
+    }
+    gains_last_update_timestamp_metric.labels({"pulsar"}).set(start_time);
     mark_frame_full(gain_psr_buf, unique_name.c_str(), gain_psr_buf_id);
     DEBUG("Maked gain_psr_buf frame {:d} full", gain_psr_buf_id);
     INFO("Time required to load PSR gains: {:f}", current_time() - start_time);
