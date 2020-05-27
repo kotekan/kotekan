@@ -85,7 +85,7 @@ rfi_chime_input_sum(
                 }
 
                 // Correct SK for truncation bias
-                SK -= sk_correction * trunc_bias_switch;
+                SK -= sk_correction;
             }
 
             output[address] = SK;
