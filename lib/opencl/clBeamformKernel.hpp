@@ -1,6 +1,7 @@
 #ifndef CL_BEAMFORM_KERNEL_H
 #define CL_BEAMFORM_KERNEL_H
 
+#include "Telescope.hpp"
 #include "clCommand.hpp"
 #include "clDeviceInterface.hpp"
 
@@ -32,8 +33,8 @@ private:
     int32_t num_local_freq;
 
     // <streamID, freq_map>
-    cl_mem get_freq_map(int32_t encoded_stream_id);
-    std::map<int32_t, cl_mem> device_freq_map;
+    cl_mem get_freq_map(stream_t encoded_stream_id);
+    std::map<uint64_t, cl_mem> device_freq_map;
 };
 
 #endif // CL_BEAMFORM_KERNEL_H

@@ -50,7 +50,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
 
     samples_per_data_set = config.get_default<int>(unique_name, "samples_per_data_set", 32768);
-    stream_id = config.get_default<int>(unique_name, "stream_id", 0);
+    stream_id.id = config.get_default<uint64_t>(unique_name, "stream_id", 0);
     num_frames = config.get_default<int>(unique_name, "num_frames", -1);
     // Try to generate data based on `samples_per_dataset` cadence or else just generate it as
     // fast as possible.

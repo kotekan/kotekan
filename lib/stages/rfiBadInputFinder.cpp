@@ -180,7 +180,8 @@ void rfiBadInputFinder::main_thread() {
         memcpy(rfi_data, frame, rfi_buf->frame_size);
         // Add frame metadata to header
         if (frame_counter == 0) {
-            rfi_header.streamID = get_stream_id(rfi_buf, frame_id);
+            // TODO: stream_id - this uses internal knowledge of the structure
+            rfi_header.streamID = (uint16_t)(get_stream_id(rfi_buf, frame_id).id);
             rfi_header.seq_num = get_fpga_seq_num(rfi_buf, frame_id);
         }
         // Compute statistics

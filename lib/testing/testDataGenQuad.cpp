@@ -62,7 +62,7 @@ void testDataGenQuad::main_thread() {
             allocate_new_metadata_object(buf[b], f);
             set_fpga_seq_num(buf[b], f, seq_num);
             // TODO This should be dynamic/config controlled.
-            set_stream_id(buf[b], f, 0);
+            set_stream_id(buf[b], f, {0});
             set_first_packet_recv_time(buf[b], f, now);
 
             for (int j = 0; j < buf[b]->frame_size; ++j)
@@ -90,7 +90,7 @@ void testDataGenQuad::main_thread() {
             allocate_new_metadata_object(buf[i], frame_id);
             set_fpga_seq_num(buf[i], frame_id, seq_num);
             // TODO This should be dynamic/config controlled.
-            set_stream_id(buf[i], frame_id, 0);
+            set_stream_id(buf[i], frame_id, {0});
             set_first_packet_recv_time(buf[i], frame_id, now);
         }
 

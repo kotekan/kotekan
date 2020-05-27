@@ -60,7 +60,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const std::string& un
     metadata_buffer_id = 0;
     metadata_buffer_precondition_id = 0;
     register_consumer(metadata_buf, unique_name.c_str());
-    freq_idx = -1;
+    freq_idx = FREQ_ID_NOT_SET;
     freq_MHz = -1;
 
     first_pass = true;
