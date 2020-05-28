@@ -1,16 +1,16 @@
 #include "rfiBroadcast.hpp"
 
-#include "Config.hpp"              // for Config
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"                // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chimeMetadata.h"         // for get_fpga_seq_num, get_stream_id
-#include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, stream_id_t
-#include "kotekanLogging.hpp"      // for ERROR, DEBUG, INFO
-#include "prometheusMetrics.hpp"   // for Metrics, Gauge, MetricFamily
-#include "restServer.hpp"          // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_R...
-#include "rfi_functions.h"         // for RFIHeader
-#include "visUtil.hpp"             // for movingAverage
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
+#include "buffer.h"              // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "chimeMetadata.h"       // for get_fpga_seq_num, get_stream_id
+#include "kotekanLogging.hpp"    // for ERROR, DEBUG, INFO
+#include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
+#include "restServer.hpp"        // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_R...
+#include "rfi_functions.h"       // for RFIHeader
+#include "visUtil.hpp"           // for movingAverage
 
 #ifdef DEBUGGING
 #include "util.h" // for e_time
@@ -119,11 +119,12 @@ void rfiBroadcast::main_thread() {
     uint8_t* frame = nullptr;
     uint8_t* frame_mask = nullptr;
     uint32_t link_id = 0;
-    uint16_t StreamIDs[total_links];
+    stream_t StreamIDs[total_links];
     uint32_t freq_bins[_num_local_freq];
     memset(freq_bins, (uint8_t)0, sizeof(freq_bins));
     uint64_t fake_seq = 0;
     Metrics& metrics = Metrics::instance();
+    auto& tel = Telescope::instance();
 
     // Intialize packet header
     struct RFIHeader rfi_header = {.rfi_combined = (uint8_t)_rfi_combined,
@@ -157,7 +158,7 @@ void rfiBroadcast::main_thread() {
             ERROR("Invalid address given for remote server");
             return;
         }
-        // Connection succesful
+        // Connection successful
         INFO("UDP Connection: {:d} {:s}", dest_port, dest_server_ip);
         auto& mask_percent_metric =
             metrics.add_gauge("kotekan_rfi_broadcast_mask_percent", unique_name, {"freq_bin"});
@@ -192,7 +193,8 @@ void rfiBroadcast::main_thread() {
                 }
                 // Adjust Stream ID's
                 if (replay) {
-                    StreamIDs[link_id] = link_id;
+                    // TODO: stream_id - this uses internal knowledge of the structure
+                    StreamIDs[link_id].id = link_id;
                 } else {
                     StreamIDs[link_id] = get_stream_id(rfi_buf, frame_id);
                 }
@@ -222,8 +224,7 @@ void rfiBroadcast::main_thread() {
             perc_zeroed.add_sample(tmp);
 
             // Get current frequency bin and set add the prometheus metric
-            stream_id_t current_stream_id = extract_stream_id(StreamIDs[0]);
-            uint32_t current_freq_bin = bin_number_chime(&current_stream_id);
+            uint32_t current_freq_bin = tel.to_freq_id(StreamIDs[0]);
             mask_percent_metric.labels({std::to_string(current_freq_bin)})
                 .set(perc_zeroed.average());
 
@@ -240,15 +241,17 @@ void rfiBroadcast::main_thread() {
                 for (i = 0; i < _num_local_freq; i++) {
                     rfi_avg[j][i] /= _frames_per_packet * (_samples_per_data_set / _sk_step);
                     if (i == 0) {
+                        // TODO: stream_id - this uses internal knowledge of the structure
                         DEBUG("SK value {:f} for freq {:d}, stream {:d}", rfi_avg[j][i], i,
-                              StreamIDs[j]);
+                              StreamIDs[j].id);
                         DEBUG("Percent Masked {:f} for freq {:d} stream {:d}",
                               100.0 * (float)mask_total / rfi_mask_buf->frame_size, i,
-                              StreamIDs[j]);
+                              StreamIDs[j].id);
                     }
                 }
                 // Add Stream ID to header
-                rfi_header.streamID = StreamIDs[j];
+                // TODO: stream_id - this uses internal knowledge of the structure
+                rfi_header.streamID = (uint16_t)(StreamIDs[j].id);
                 // Add Header to packet
                 memcpy(packet_buffer, &rfi_header, sizeof(rfi_header));
                 // Add frequency bins to packet

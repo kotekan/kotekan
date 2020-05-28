@@ -1,8 +1,9 @@
 #ifndef GPU_BEAMFORM_PULSAR_SIMULATE_HPP
 #define GPU_BEAMFORM_PULSAR_SIMULATE_HPP
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
+#include "Config.hpp" // for Config
+#include "Stage.hpp"  // for Stage
+#include "Telescope.hpp"
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.h"     // for psrCoord
@@ -83,7 +84,7 @@ private:
     /// Metadata buffer precondition ID
     int32_t metadata_buffer_precondition_id;
     /// Freq bin index, where the 0th is at 800MHz
-    int32_t freq_now;
+    freq_id_t freq_now;
     /// Freq in MHz
     float freq_MHz;
 

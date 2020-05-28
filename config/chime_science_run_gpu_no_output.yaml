@@ -78,6 +78,13 @@ sk_step: 256
 rfi_combined: True
 rfi_sigma_cut: 5
 
+####################
+#### Telescope #####
+####################
+telescope:
+  name: chime
+  require_gps: true
+
 ##########################
 #### Dataset manager #####
 ##########################
@@ -855,7 +862,7 @@ gpu:
       rfi_mask_output_buf: gpu_rfi_mask_output_buffer_3
       #rfi_var_output_buf: gpu_rfi_var_output_buffer_3
 
-# Integrate frames of HFB data from each GPU to ~10s cadence 
+# Integrate frames of HFB data from each GPU to ~10s cadence
 hyper_fine_beam:
   num_frames_to_integrate: 80
   good_samples_threshold: 0.95
