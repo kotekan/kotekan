@@ -120,6 +120,8 @@ void rfiBroadcast::main_thread() {
     uint8_t* frame_mask = nullptr;
     uint32_t link_id = 0;
     stream_t StreamIDs[total_links];
+    uint32_t freq_bins[_num_local_freq];
+    memset(freq_bins, (uint8_t)0, sizeof(freq_bins));
     uint64_t fake_seq = 0;
     Metrics& metrics = Metrics::instance();
     auto& tel = Telescope::instance();
@@ -136,7 +138,8 @@ void rfiBroadcast::main_thread() {
                                    .streamID = 0};
 
     // Intialize empty packet
-    uint32_t packet_length = sizeof(rfi_header) + _num_local_freq * sizeof(float);
+    uint32_t packet_length =
+        sizeof(rfi_header) + _num_local_freq * sizeof(uint32_t) + _num_local_freq * sizeof(float);
     char* packet_buffer = (char*)malloc(packet_length);
     // Filter by protocol, currently only UDP supported
     if (dest_protocol == "UDP") {
@@ -225,6 +228,9 @@ void rfiBroadcast::main_thread() {
             mask_percent_metric.labels({std::to_string(current_freq_bin)})
                 .set(perc_zeroed.average());
 
+            // TODO JSW: Handle num_local_freq > 1
+            freq_bins[0] = current_freq_bin;
+
 #ifdef DEBUGGING
             // Reset Timer (can't time previous loop due to wait for frame blocking call)
             double start_time = e_time();
@@ -248,9 +254,12 @@ void rfiBroadcast::main_thread() {
                 rfi_header.streamID = (uint16_t)(StreamIDs[j].id);
                 // Add Header to packet
                 memcpy(packet_buffer, &rfi_header, sizeof(rfi_header));
+                // Add frequency bins to packet
+                memcpy(packet_buffer + sizeof(rfi_header), freq_bins,
+                       _num_local_freq * sizeof(uint32_t));
                 // Add Data to packet
-                memcpy(packet_buffer + sizeof(rfi_header), rfi_avg[j],
-                       _num_local_freq * sizeof(float));
+                memcpy(packet_buffer + sizeof(rfi_header) + _num_local_freq * sizeof(uint32_t),
+                       rfi_avg[j], _num_local_freq * sizeof(float));
                 // Send Packet
                 bytes_sent = sendto(socket_fd, packet_buffer, packet_length, 0,
                                     (struct sockaddr*)&saddr_remote, sizeof(sockaddr_in));
