@@ -15,7 +15,7 @@ CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string&
 
     set_sampling_params(800.0, 2048, 2);
     set_gps(config, path);
-    set_frequency_map(config, "fpga_frequency_map/fmap");
+    set_frequency_map(config, "fpga_frequency_map");
 }
 
 void CHIMETelescope::set_frequency_map(const kotekan::Config& config, const std::string& path) {
@@ -23,7 +23,7 @@ void CHIMETelescope::set_frequency_map(const kotekan::Config& config, const std:
 
 
     if (fpga_freq_map_json.empty()) {
-        // WARN("No frequency map provided, generating default map");
+        WARN("No frequency map provided, generating default map");
 
         // Default FPGA mapping will be incorrect for any dynamic map
         // This function generates the default FPGA table mapping in the CHIME
@@ -74,6 +74,7 @@ void CHIMETelescope::set_frequency_map(const kotekan::Config& config, const std:
                 post_shuffle_id.slot_id = fpga_stream_id.slot_id;
                 post_shuffle_id.link_id = fpga_stream_id.link_id;
                 post_shuffle_id.unused = index++;
+
 
                 frequency_table[ice_encode_stream_id(post_shuffle_id).id] = bin;
             }
