@@ -63,6 +63,7 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
     block_size = config.get<size_t>(unique_name, "block_size");
     samples_per_data_set = config.get<size_t>(unique_name, "samples_per_data_set");
     max_age = config.get_default<float>(unique_name, "max_age", 60.0);
+    fpga_dataset = config.get_default<dset_id_t>("/fpga_dataset", "id", dset_id_t::null);
 
     // Get the indices for reordering
     auto input_reorder = parse_reorder_default(config, unique_name);
@@ -237,8 +238,10 @@ dset_id_t visAccumulate::base_dataset_state(std::string& instrument_name,
     base_states.push_back(
         dm.create_state<metadataState>(weight_type, instrument_name, git_tag).first);
 
-    // register root dataset
-    return dm.add_dataset(base_states);
+    // Register base dataset, if not fpga_dataset was set in the config, the
+    // variable below will be dset_id_t::null and thus cause a root dataset to
+    // be registered.
+    return dm.add_dataset(base_states, fpga_dataset);
 }
 
 
