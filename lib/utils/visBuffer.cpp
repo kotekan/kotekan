@@ -268,7 +268,7 @@ struct_layout<visField> VisFrameView::calculate_buffer_layout(uint32_t num_eleme
     return struct_alignment(buffer_members);
 }
 
-void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata) {
+void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata, uint32_t ind) {
 
     auto& tel = Telescope::instance();
 
@@ -276,7 +276,7 @@ void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata) {
     dataset_id = dset_id_t::null;
 
     // Set the frequency index from the stream id of the metadata
-    freq_id = tel.to_freq_id(get_stream_id_from_metadata(chime_metadata));
+    freq_id = tel.to_freq_id(get_stream_id_from_metadata(chime_metadata), ind);
 
     // Set the time
     uint64_t fpga_seq = chime_metadata->fpga_seq_num;

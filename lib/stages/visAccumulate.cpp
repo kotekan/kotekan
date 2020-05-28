@@ -283,7 +283,6 @@ void visAccumulate::main_thread() {
         uint64_t frame_count = (get_fpga_seq_num(in_buf, in_frame_id) / samples_per_data_set);
 
         // Start and end times of this frame
-        // TODO: CHIME specific
         timespec t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
         timespec t_e = add_nsec(t_s, samples_per_data_set * tel.seq_length_nsec());
 
@@ -428,7 +427,7 @@ void visAccumulate::main_thread() {
 
 
 bool visAccumulate::initialise_output(visAccumulate::internalState& state, int in_frame_id) {
-    // TODO: CHIME
+
     auto metadata = (const chimeMetadata*)in_buf->metadata[in_frame_id]->metadata;
 
     for (size_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
@@ -443,12 +442,7 @@ bool visAccumulate::initialise_output(visAccumulate::internalState& state, int i
         auto& frame = state.frames[freq_ind];
 
         // Copy over the metadata
-        // TODO: CHIME
-        frame.fill_chime_metadata(metadata);
-
-        // TODO: set frequency id in some sensible generic manner. This doesn't
-        // actually work for ICEboard based multifrequency systems
-        frame.freq_id += freq_ind;
+        frame.fill_chime_metadata(metadata, freq_ind);
 
         // Set dataset ID produced by the dM
         // TODO: this should be different for different gated streams
