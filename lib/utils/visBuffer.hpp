@@ -214,7 +214,6 @@ public:
      **/
     void copy_data(VisFrameView frame_to_copy, const std::set<visField>& skip_members);
 
-    // TODO: CHIME specific
     /**
      * @brief Fill the visMetadata from a chimeMetadata struct.
      *
@@ -224,9 +223,11 @@ public:
      * `dataset_id` is set to zero.
      *
      * @param chime_metadata Metadata to fill from.
+     * @param ind            Frequency ind for multifrequency buffers (use zero
+     *                       if not multifrequency)
      *
      **/
-    void fill_chime_metadata(const chimeMetadata* chime_metadata);
+    void fill_chime_metadata(const chimeMetadata* chime_metadata, uint32_t ind);
 
     /**
      * @brief Read only access to the metadata.
