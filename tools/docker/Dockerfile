@@ -32,6 +32,14 @@ WORKDIR /code/build
 # So tzdata package doesn't ask for user interaction
 ARG DEBIAN_FRONTEND=noninteractive
 
+# Set architecture for all builds done below to haswell, currently the oldest architecture used
+# by github workflows
+# (see https://help.github.com/en/actions/reference/virtual-environments-for-github-hosted-runners).
+# This is to prevent the docker image getting build on a newer architecture and then failing when it
+# is loaded on an older one.
+ENV CFLAGS "-march=haswell"
+ENV CXXFLAGS "-march=haswell"
+
 # Install h5py from source for bitshuffle, and clone HighFive for kotekan build
 RUN git clone https://github.com/h5py/h5py.git h5py && \
     cd h5py && \
@@ -45,7 +53,8 @@ RUN git clone https://github.com/kiyo-masui/bitshuffle.git bitshuffle && \
     python3.7 setup.py install --h5plugin --h5plugin-dir=/usr/local/hdf5/lib/plugin
 
 # Install OpenBLAS and clone Blaze for the eigenvalue processes
-RUN apt-get -y install libopenblas-dev liblapack-dev liblapacke-dev && \
+RUN apt-get update && \
+    apt-get -y install libopenblas-dev liblapack-dev liblapacke-dev && \
     apt-get clean && apt-get autoclean && \
     git clone https://bitbucket.org/blaze-lib/blaze.git blaze
 
@@ -53,16 +62,19 @@ RUN apt-get -y install libopenblas-dev liblapack-dev liblapacke-dev && \
 RUN python3.7 -m pip install "msgpack>=0.6.1" click future requests pyyaml tabulate \
                              pytest==5.3.0 pytest-xdist pytest-cpp pytest-localserver flask \
                              posix_ipc && \
+    apt-get update && \
     apt-get install -y mysql-client libmysqlclient-dev && \
     apt-get clean && apt-get autoclean && \
     python3.7 -m pip install git+https://github.com/chime-experiment/comet.git
 
 # Install redis for comet tests
-RUN apt-get install -y redis && \
+RUN apt-get update && \
+    apt-get install -y redis && \
     apt-get clean && apt-get autoclean
 
 # Install documentation dependencies
-RUN apt-get -y install doxygen graphviz python-sphinx default-jre && \
+RUN apt-get update && \
+    apt-get -y install doxygen graphviz python-sphinx default-jre && \
     apt-get clean && apt-get autoclean && \
     python3.7 -m pip install --no-cache-dir breathe sphinx_rtd_theme sphinxcontrib-plantuml && \
     wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar -P plantuml

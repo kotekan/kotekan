@@ -11,7 +11,7 @@
 #include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
 #include "restClient.hpp"        // for restClient, restClient::restReply
 #include "restServer.hpp"        // for connectionInstance, restServer, HTTP_RESPONSE, HTTP_RES...
-#include "visBuffer.hpp"         // for visFrameView
+#include "visBuffer.hpp"         // for VisFrameView
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
@@ -135,7 +135,7 @@ void visTestPattern::main_thread() {
             outfile.close();
         return;
     }
-    dset_id_t ds_id = visFrameView(in_buf, frame_id).dataset_id;
+    dset_id_t ds_id = VisFrameView(in_buf, frame_id).dataset_id;
     get_dataset_state(ds_id);
 
     // Comparisons will be against tolerance^2
@@ -161,7 +161,7 @@ void visTestPattern::main_thread() {
         }
 
         // Check if the dataset ID changed.
-        auto frame = visFrameView(in_buf, frame_id);
+        auto frame = VisFrameView(in_buf, frame_id);
         if (frame.dataset_id != ds_id) {
             std::string error_msg = fmt::format(fmt("Expected dataset id {}, got {}.\nNot "
                                                     "supported. Exiting..."),

@@ -5,7 +5,7 @@
 #include "buffer.h"            // for mark_frame_empty, Buffer, mark_frame_full, register_consumer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for DEBUG, INFO
-#include "visBuffer.hpp"       // for visFrameView
+#include "visBuffer.hpp"       // for VisFrameView
 
 #include <algorithm>  // for find
 #include <atomic>     // for atomic_bool
@@ -54,7 +54,7 @@ void visDrop::main_thread() {
             break;
         }
         // Copy frame into output buffer
-        auto frame = visFrameView::copy_frame(buf_in, frame_id_in, buf_out, frame_id_out);
+        auto frame = VisFrameView::copy_frame(buf_in, frame_id_in, buf_out, frame_id_out);
 
         // Check if this frame should be dropped because of its freq_id.
         if (std::find(drop_freqs.begin(), drop_freqs.end(), frame.freq_id) != drop_freqs.end()) {
