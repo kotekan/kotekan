@@ -223,7 +223,7 @@ class CommandLine(object):
 
 
 class Stream(object):
-    def __init__(self, thread_id, mode, header, known_streams):
+    def __init__(self, thread_id, mode, header, freq_bins, known_streams):
 
         encoded_stream_id = header["encoded_stream_ID"][0]
         if encoded_stream_id not in known_streams:
@@ -238,13 +238,7 @@ class Stream(object):
                     for i in range(header["num_local_freq"][0])
                 ]
             elif mode == "chime":
-                self.bins = [
-                    self.crate * 16
-                    + self.slot_id
-                    + self.link_id * 32
-                    + self.unused * 256
-                    for i in range(header["num_local_freq"][0])
-                ]
+                self.bins = freq_bins
             elif mode == "vdif":
                 self.bins = list(range(header["num_local_freq"][0]))
             self.freqs = [800.0 - float(b) * 400.0 / 1024.0 for b in self.bins]
@@ -311,6 +305,7 @@ def HeaderCheck(header, app):
     return True
 
 
+# Listen for UDP packets from Kotekan
 def data_listener(thread_id):
 
     global waterfall, t_min, app, sk_receive_watchdogs, InitialKotekanConnection
@@ -332,7 +327,10 @@ def data_listener(thread_id):
     mode = app.mode
     firstPacket = True
     vdifPacketSize = global_freq * 4 + RFIHeaderSize
-    chimePacketSize = RFIHeaderSize + 4 * local_freq
+    # CHIME packet: RFIHeader + frequency_bins[local_freq] + rfi_avg[local_freq]
+    chimePacketSize = RFIHeaderSize + 4 * local_freq + 4 * local_freq
+
+    # Packet data type received from Kotekan
     HeaderDataType = np.dtype(
         [
             ("combined_flag", np.uint8, 1),
@@ -371,8 +369,17 @@ def data_listener(thread_id):
             packetCounter += 1
 
             header = np.fromstring(packet[:RFIHeaderSize], dtype=HeaderDataType)
-            data = np.fromstring(packet[RFIHeaderSize:], dtype=np.float32)
+            freq_bins = np.fromstring(
+                packet[RFIHeaderSize : RFIHeaderSize + 4 * local_freq], dtype=np.uint32
+            )
+            data = np.fromstring(
+                packet[RFIHeaderSize + 4 * local_freq :], dtype=np.float32
+            )
 
+            logger.info(
+                "data_listener: Receiving data from frequency bins: %s"
+                % (np.array_str(freq_bins))
+            )
             # Create a new stream object each time a new stream connects
             if header["encoded_stream_ID"][0] not in known_streams:
                 # Check that the new stream is providing the correct data
@@ -380,7 +387,7 @@ def data_listener(thread_id):
                     break
                 # Add to the dictionary of Streams
                 stream_dict[header["encoded_stream_ID"][0]] = Stream(
-                    thread_id, mode, header, known_streams
+                    thread_id, mode, header, freq_bins, known_streams
                 )
 
             # On first packet received by any stream
@@ -486,7 +493,8 @@ def bad_input_listener(thread_id):
     RFIHeaderSize = app.config["chime_rfi_header_size"]
     mode = app.mode
     firstPacket = True
-    PacketSize = RFIHeaderSize + 4 * local_freq * num_elements
+    # CHIME packet: RFIHeader + frequency_bins[local_freq] + faulty_counter[local_freq * num_elements]
+    PacketSize = RFIHeaderSize + 4 * local_freq + local_freq * num_elements
     HeaderDataType = np.dtype(
         [
             ("combined_flag", np.uint8, 1),
@@ -523,8 +531,14 @@ def bad_input_listener(thread_id):
             packetCounter += 1
             # Read the header
             header = np.fromstring(packet[:RFIHeaderSize], dtype=HeaderDataType)
+            # Read the frequency bins
+            freq_bins = np.fromstring(
+                packet[RFIHeaderSize : RFIHeaderSize + 4 * local_freq], dtype=np.uint32
+            )
             # Read the data
-            data = np.fromstring(packet[RFIHeaderSize:], dtype=np.uint8)
+            data = np.fromstring(
+                packet[RFIHeaderSize + 4 * local_freq :], dtype=np.uint8
+            )
             # Create a new stream object each time a new stream connects
             if header["encoded_stream_ID"][0] not in known_streams:
                 # logger.debug("New Stream Detected")
@@ -533,7 +547,7 @@ def bad_input_listener(thread_id):
                     break
                 # Add to the dictionary of Streams
                 stream_dict[header["encoded_stream_ID"][0]] = Stream(
-                    thread_id, mode, header, known_streams
+                    thread_id, mode, header, freq_bins, known_streams
                 )
             # On first packet received by any stream
             if firstPacket:
@@ -920,6 +934,7 @@ if __name__ == "__main__":
     bi_waterfall[:, :, :] = -1  # np.nan
     time.sleep(1)
 
+    # Spawn threads to receive UDP packets from Kotekan
     sk_receive_watchdogs = [datetime.datetime.now()] * app.config["num_receive_threads"]
     receive_threads = []
     for i in range(app.config["num_receive_threads"]):
