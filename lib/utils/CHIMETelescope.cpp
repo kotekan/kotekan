@@ -3,15 +3,13 @@
 #include "ICETelescope.hpp"
 #include "Telescope.hpp"
 
-
 REGISTER_TELESCOPE(CHIMETelescope, "chime");
-
 
 CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string& path) :
     ICETelescope(config.get<std::string>(path, "log_level")) {
 
-    // TODO: rename this parameter to `num_freq_per_stream` in the config
-    _num_freq_per_stream = config.get<uint32_t>(path, "num_local_freq");
+    // This is always 1 for CHIME
+    _num_freq_per_stream = 1;
 
     set_sampling_params(800.0, 2048, 2);
     set_gps(config, path);
@@ -20,7 +18,6 @@ CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string&
 
 void CHIMETelescope::set_frequency_map(const kotekan::Config& config, const std::string& path) {
     nlohmann::json fpga_freq_map_json = config.get_default<nlohmann::json>("/", path, {});
-
 
     if (fpga_freq_map_json.empty()) {
         WARN("No frequency map provided, generating default map");
