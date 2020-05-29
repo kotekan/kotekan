@@ -347,6 +347,7 @@ def data_listener(thread_id):
     stream_dict = dict()
     known_streams = []
     packetCounter = 0
+    freq_bins_set = set()
 
     while True:
 
@@ -361,25 +362,32 @@ def data_listener(thread_id):
 
         if packet != "":
 
+            # Print how many streams every ~30s
             if packetCounter % (50 * len(stream_dict) + 1) == 0:
                 logger.info(
                     "Thread id %d: Receiving Packets from %d Streams"
                     % (thread_id, len(stream_dict))
                 )
+
+            # Print frequency bins received every ~60s
+            if packetCounter % (100 * len(stream_dict) + 1) == 0:
+                logger.info(
+                "data_listener: Receiving data from frequency bins: %s"
+                % (freq_bins_set)
+                freq_bins_set.clear()
+            )
+
             packetCounter += 1
 
             header = np.fromstring(packet[:RFIHeaderSize], dtype=HeaderDataType)
             freq_bins = np.fromstring(
                 packet[RFIHeaderSize : RFIHeaderSize + 4 * local_freq], dtype=np.uint32
             )
+            freq_bins_set.update(freq_bins)
             data = np.fromstring(
                 packet[RFIHeaderSize + 4 * local_freq :], dtype=np.float32
             )
 
-            logger.info(
-                "data_listener: Receiving data from frequency bins: %s"
-                % (np.array_str(freq_bins))
-            )
             # Create a new stream object each time a new stream connects
             if header["encoded_stream_ID"][0] not in known_streams:
                 # Check that the new stream is providing the correct data
