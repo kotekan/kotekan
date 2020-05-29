@@ -374,8 +374,9 @@ def data_listener(thread_id):
                 logger.info(
                 "data_listener: Receiving data from frequency bins: %s"
                 % (freq_bins_set)
+
+                )
                 freq_bins_set.clear()
-            )
 
             packetCounter += 1
 
