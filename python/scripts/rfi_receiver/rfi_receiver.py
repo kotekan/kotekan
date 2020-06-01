@@ -363,18 +363,11 @@ def data_listener(thread_id):
         # A packet is received roughly every ~0.126s
         if packet != "":
 
-            # Print every ~6s
-            if packetCounter % (50 * len(stream_dict) + 1) == 0:
-                logger.info(
-                    "Thread id %d: Receiving Packets from %d Streams"
-                    % (thread_id, len(stream_dict))
-                )
-
             # Print frequency bins received every ~19s
             if packetCounter % (150 * len(stream_dict) + 1) == 0:
                 logger.debug(
-                    "data_listener: Receiving data from frequency bins: %s"
-                    % (freq_bins_set)
+                        "data_listener: Thread id %d, %d Streams: Receiving frequency bins: %s"
+                    % (thread_id, len(stream_dict), freq_bins_set)
                 )
                 freq_bins_set.clear()
 
