@@ -360,18 +360,19 @@ def data_listener(thread_id):
             InitialKotekanConnection = True
             logger.info("Connected to Kotekan")
 
+        # A packet is received roughly every ~0.126s
         if packet != "":
 
-            # Print how many streams every ~30s
+            # Print every ~6s
             if packetCounter % (50 * len(stream_dict) + 1) == 0:
                 logger.info(
                     "Thread id %d: Receiving Packets from %d Streams"
                     % (thread_id, len(stream_dict))
                 )
 
-            # Print frequency bins received every ~60s
-            if packetCounter % (100 * len(stream_dict) + 1) == 0:
-                logger.info(
+            # Print frequency bins received every ~19s
+            if packetCounter % (150 * len(stream_dict) + 1) == 0:
+                logger.debug(
                     "data_listener: Receiving data from frequency bins: %s"
                     % (freq_bins_set)
                 )
