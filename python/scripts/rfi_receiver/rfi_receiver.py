@@ -360,7 +360,7 @@ def data_listener(thread_id):
             InitialKotekanConnection = True
             logger.info("Connected to Kotekan")
 
-        # A packet is received roughly every ~0.126s
+        # A packet is received on each stream roughly every ~0.126s
         if packet != "":
 
             # Print frequency bins received every ~19s
