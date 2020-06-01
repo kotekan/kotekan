@@ -366,7 +366,7 @@ def data_listener(thread_id):
             # Print frequency bins received every ~19s
             if packetCounter % (150 * len(stream_dict) + 1) == 0:
                 logger.debug(
-                        "data_listener: Thread id %d, %d Streams: Receiving frequency bins: %s"
+                    "data_listener: Thread id %d, %d Streams: Receiving frequency bins: %s"
                     % (thread_id, len(stream_dict), freq_bins_set)
                 )
                 freq_bins_set.clear()
@@ -676,6 +676,7 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
     metric_dict["overall_rfi_bad_input"].set(num_bad_inputs)
 
     # RFI metrics
+    # Find which timesteps are not populated yet in the waterfall
     bad_locs = np.where(np.sum(waterfall, axis=0) == -1 * waterfall.shape[0])[0]
     if bad_locs.size > 0:
         max_pos = bad_locs[0]
