@@ -2,12 +2,13 @@
 @file
 @brief Code for using the visBuffer formatted data.
 - visMetadata
-- visFrameView
+- VisFrameView
 *****************************************/
 #ifndef VISBUFFER_HPP
 #define VISBUFFER_HPP
 
-#include "Hash.hpp"        // for Hash
+#include "Hash.hpp" // for Hash
+#include "Telescope.hpp"
 #include "buffer.h"        // for Buffer
 #include "chimeMetadata.h" // for chimeMetadata
 #include "dataset.hpp"     // for dset_id_t
@@ -47,14 +48,14 @@ struct visMetadata {
     uint64_t fpga_seq_length;
     /// Amount of data that actually went into the frame (in FPGA ticks)
     uint64_t fpga_seq_total;
-    /// The number of 2.56us samples flagged as containing RFI. NOTE: This value
+    /// The number of FPGA frames flagged as containing RFI. NOTE: This value
     /// might contain overlap with lost samples, as that counts missing samples
     /// as well as RFI. For renormalization this value should NOT be used, use
     /// lost samples (= @c fpga_seq_length - @c fpga_seq_total) instead.
     uint64_t rfi_total;
 
     /// ID of the frequency bin
-    uint32_t freq_id;
+    freq_id_t freq_id;
     /// ID of the dataset
     dset_id_t dataset_id;
 
@@ -68,7 +69,7 @@ struct visMetadata {
 
 
 /**
- * @class visFrameView
+ * @class VisFrameView
  * @brief Provide a structured view of a visibility buffer.
  *
  * This class sets up a view on a visibility buffer with the ability to
@@ -86,7 +87,7 @@ struct visMetadata {
  *
  * @author Richard Shaw
  **/
-class visFrameView {
+class VisFrameView {
 
 public:
     /**
@@ -97,7 +98,7 @@ public:
      * @param buf      The buffer the frame is in.
      * @param frame_id The id of the frame to read.
      */
-    visFrameView(Buffer* buf, int frame_id);
+    VisFrameView(Buffer* buf, int frame_id);
 
     /**
      * @brief Create view and set structure metadata.
@@ -112,7 +113,7 @@ public:
      *
      * @warning The metadata object must already have been allocated.
      **/
-    visFrameView(Buffer* buf, int frame_id, uint32_t num_elements, uint32_t num_ev);
+    VisFrameView(Buffer* buf, int frame_id, uint32_t num_elements, uint32_t num_ev);
 
     /**
      * @brief Create view and set structure metadata.
@@ -128,7 +129,7 @@ public:
      *
      * @warning The metadata object must already have been allocated.
      **/
-    visFrameView(Buffer* buf, int frame_id, uint32_t num_elements, uint32_t num_prod,
+    VisFrameView(Buffer* buf, int frame_id, uint32_t num_elements, uint32_t num_prod,
                  uint32_t num_ev);
 
     /**
@@ -138,11 +139,11 @@ public:
      *
      * @param buf              The buffer the frame is in.
      * @param frame_id         The id of the frame to read.
-     * @param frame_to_copy    An instance of visFrameView corresponding to the frame to be copied.
+     * @param frame_to_copy    An instance of VisFrameView corresponding to the frame to be copied.
      *
      * @warning The metadata object must already have been allocated.
      **/
-    visFrameView(Buffer* buf, int frame_id, visFrameView frame_to_copy);
+    VisFrameView(Buffer* buf, int frame_id, VisFrameView frame_to_copy);
 
     /**
      * @brief Copy a whole frame from a buffer and create a view of it.
@@ -160,10 +161,10 @@ public:
      * @param buf_dest       The buffer to copy into.
      * @param frame_id_dest  The buffer location to copy into.
      *
-     * @returns A visFrameView of the copied frame.
+     * @returns A VisFrameView of the copied frame.
      *
      **/
-    static visFrameView copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
+    static VisFrameView copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
                                    int frame_id_dest);
 
     /**
@@ -195,7 +196,7 @@ public:
      * @param  frame_to_copy  Frame to copy metadata from.
      *
      **/
-    void copy_metadata(visFrameView frame_to_copy);
+    void copy_metadata(VisFrameView frame_to_copy);
 
     /**
      * @brief Copy over the data, skipping specified members.
@@ -211,21 +212,22 @@ public:
      * @param  skip_members   Specify a set of data members to *not* copy.
      *
      **/
-    void copy_data(visFrameView frame_to_copy, const std::set<visField>& skip_members);
+    void copy_data(VisFrameView frame_to_copy, const std::set<visField>& skip_members);
 
-    // TODO: CHIME specific
     /**
      * @brief Fill the visMetadata from a chimeMetadata struct.
      *
      * The time field is filled with the GPS time if it is set (checked via
-     * `is_gps_global_time_set`), otherwise the `first_packet_recv_time` is
+     * `Telescope.gps_time_enabled`), otherwise the `first_packet_recv_time` is
      * used. Also note, there is no dataset information in chimeMetadata so the
      * `dataset_id` is set to zero.
      *
      * @param chime_metadata Metadata to fill from.
+     * @param ind            Frequency ind for multifrequency buffers (use zero
+     *                       if not multifrequency)
      *
      **/
-    void fill_chime_metadata(const chimeMetadata* chime_metadata);
+    void fill_chime_metadata(const chimeMetadata* chime_metadata, uint32_t ind);
 
     /**
      * @brief Read only access to the metadata.

@@ -27,7 +27,7 @@
  * sending them to a user defined IP address. Each packet is fitted with a header which can be read
  * by the server to ensure that the config parameters of the packet match the server config. This
  * stage simply reads the spectral kurtosis estimates, averages them for a single frame, averages
- * frames_per_packet frames toegther, packages the results into a packet (header + data), and sends
+ * frames_per_packet frames together, packages the results into a packet (header + data), and sends
  * the packets to a user defined IP address via UDP.
  *
  * @par Buffers

@@ -8,6 +8,7 @@
 #include "Config.hpp"
 #include "Stage.hpp" // for Stage
 #include "bufferContainer.hpp"
+#include "chimeMetadata.h"
 
 #include <stdint.h> // for int32_t
 #include <string>   // for string
@@ -24,7 +25,7 @@ private:
     int num_links_in_group;
     int link_id;
     int pattern;
-    int stream_id;
+    stream_t stream_id;
 
     // Config variables.
     int32_t _samples_per_data_set;

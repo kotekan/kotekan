@@ -14,7 +14,7 @@
 #include "datasetManager.hpp"    // for dset_id_t
 #include "gateSpec.hpp"          // for gateSpec
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily
-#include "visBuffer.hpp"         // for visFrameView
+#include "visBuffer.hpp"         // for VisFrameView
 #include "visUtil.hpp"           // for frameID, freq_ctype, input_ctype, prod_ctype
 
 #include <cstdint>    // for uint32_t, int32_t
@@ -60,15 +60,20 @@
  * @conf  num_freq_in_frame     Int. Number of frequencies in each GPU frame.
  * @conf  block_size            Int. The block size of the packed data.
  * @conf  input_reorder         Array of [int, int, string]. The reordering mapping.
- *                              Only the first element of each sub-array is used and it is the the
- * index of the input to move into this new location. The remaining elements of the subarray are for
- * correctly labelling the input in ``visWriter``.
+ *                              Only the first element of each sub-array is used and
+ *                              it is the the index of the input to move into this
+ *                              new location. The remaining elements of the subarray
+ *                              are for correctly labelling the input in
+ *                              ``visWriter``.
  * @conf  low_sample_fraction   If a frames has less than this fraction of the
  *                              data expected, skip it. This is set to 1% by default.
  * @conf  instrument_name       String. Name of the instrument. Default "chime".
  * @conf  freq_ids              Vector of UInt32. Frequency IDs on the stream.
  *                              Default 0..1023.
- * @conf  max_age               Float. Drop frames later than this number of seconds. Default 60.0
+ * @conf  max_age               Float. Drop frames later than this number of seconds.
+ *                              Default is 60.0
+ * @conf  fpga_dataset          String. The dataset ID for the data being received from
+ *                              the F-engine.
  *
  * @par Metrics
  * @metric  kotekan_visaccumulate_skipped_frame_total
@@ -106,7 +111,7 @@ private:
         internalState(Buffer* out_buf, std::unique_ptr<gateSpec> gate_spec, size_t nprod);
 
         /// View of the data accessed by their freq_ind
-        std::vector<visFrameView> frames;
+        std::vector<VisFrameView> frames;
 
         /// The buffer we are outputting too
         Buffer* buf;
@@ -157,6 +162,7 @@ private:
     size_t num_gpu_frames;
     size_t minimum_samples;
     float max_age;
+    dset_id_t fpga_dataset;
 
     // Derived from config
     size_t num_prod_gpu;
