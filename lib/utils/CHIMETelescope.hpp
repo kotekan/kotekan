@@ -12,15 +12,15 @@
 /**
  * @brief A telescope class to represent CHIME.
  *
- * @conf    require_frequency_map   Require a frequency map in the config file, or generate
- *                                  an error and exit if none exists. Default: false
- * @conf    allow_default_map       If @c require_frequency_map is set to false then if true
- *                                  allow queries from the default map.  If set to false,
- *                                  then do not generate a default map, and throw an exception
- *                                  when lookups are done for stream_ids.  This can be useful
- *                                  for systems not expected to lookup stream_ids.
- *                                  This option has no effect if @c require_frequency_map is
- *                                  set to true.  Default: true
+ * @conf    require_frequency_map  Require a frequency map in the config file, or generate
+ *                                 an error and exit if none exists. Default: false
+ * @conf    allow_default_map      If @c require_frequency_map is set to false and
+ *                                 @c allow_default_map is true allow queries from the default map.
+ *                                 If set to false, then do not generate a default map, and throw
+ *                                 an exception when lookups are done for stream_ids.
+ *                                 This can be useful for systems not expected to lookup stream_ids.
+ *                                 This option has no effect if @c require_frequency_map is
+ *                                 set to true.  Default: true
  **/
 class CHIMETelescope : public ICETelescope {
 public:
