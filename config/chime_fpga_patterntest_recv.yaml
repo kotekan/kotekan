@@ -2,8 +2,7 @@
 #
 # chime_fpga_patterntest_recv.yaml
 #
-# CHIME receiver node configuration to run a simple pattern test
-# where all visibility values are expected to be 1+0j.
+# CHIME receiver node configuration for pattern tests
 #
 # Author: Rick Nitsche
 #
@@ -12,15 +11,11 @@
 type: config
 log_level: info
 num_elements: 2048
-num_local_freq: 1
-udp_packet_size: 4928
-num_data_sets: 1
-samples_per_data_set: 32768
 buffer_depth: 64
-num_gpu_frames: 128
-block_size: 32
-cpu_affinity: [4,5,6,7,12,13,14,15]
 num_ev: 4
+
+# CPU affinity for most processes
+cpu_affinity: [7, 11, 14, 15]
 
 dataset_manager:
   use_dataset_broker: True
@@ -43,15 +38,18 @@ pattern_test:
   kotekan_stage: visTestPattern
   in_buf: visbuf_10s_all
   out_buf: vis_test_dump
-  write_dir: '/data/patterntest'
-  mode: 'test_pattern_simple'
+  report_freq: 1000
+  tolerance: 0.000001
+  write_dir: '/mnt/gong/pattern_tests'
+  endpoint_name: 'run_test'
+  log_level: debug2
 
 test_writer:
   kotekan_stage: rawFileWrite
   in_buf: vis_test_dump
   file_name: 'patterntest'
   file_ext: 'dump'
-  base_dir: '/data/patterntest/20181211/simple_test'
+  base_dir: '/mnt/gong/pattern_tests'
 
 # Kotekan stages
 buffer_recv:
