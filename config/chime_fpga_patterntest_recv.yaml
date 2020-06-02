@@ -15,12 +15,6 @@ buffer_depth: 64
 num_ev: 4
 
 # CPU affinity for most processes
-#
-# Only core 7 is unused by the high priority processes. /stacking and
-# /apply_gains each have three threads and three dedicated cores (1, 2, 3 for
-# stacking, 4, 5, 6 for apply_gains), however as each of these needs only about
-# 2.5 cores of conpute power, we have opened up one of the hyperthread pairs to
-# other stages (11 and 14, twinned with 3 and 6 respectively)
 cpu_affinity: [7, 11, 14, 15]
 
 dataset_manager:
