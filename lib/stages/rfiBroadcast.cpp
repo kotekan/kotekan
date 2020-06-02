@@ -50,7 +50,7 @@ rfiBroadcast::rfiBroadcast(Config& config, const std::string& unique_name,
     sample_counter(Metrics::instance().add_counter("kotekan_rfibroadcast_sample_total", unique_name,
                                                    {"freq_id"})),
     flagged_sample_counter(Metrics::instance().add_counter(
-        "kotekan_rfibroadcast_flagged_sample_total", unique_name, {"freq_id"})) {
+        "kotekan_rfibroadcast_dropped_sample_total", unique_name, {"freq_id"})) {
 
     // Get buffer from framework
     rfi_buf = get_buffer("rfi_in");
