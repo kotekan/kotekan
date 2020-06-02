@@ -23,13 +23,13 @@
  * @class hsaRfiInputSum
  * @brief hsaCommand to compute the input sum and spectral kurtosis for RFI detection
  *
- * This is an hsaCommand that launches the kernel (rfi_chime_inputsum.hsaco) to perform
+ * This is an hsaCommand that launches the kernel (rfi_chime_input_sum.hsaco) to perform
  * a sum of normalized, time summed square power estimates (see hsaRfiTimeSum.hpp). The
  * sum is then used to calculate a spectral kurtosis estimate. The spectral kurtosis estimate
  * is a measure of the underlying gaussianity of the sample. Thus it can be used as a tool
  * to detect non-gaussian signals in CHIME's incoherent beam (RFI).
  *
- * @requires_kernel    rfi_chime_inputsum.hasco
+ * @requires_kernel    rfi_chime_input_sum.hasco
  *
  * @par REST Endpoints
  * @endpoint    /rfi_input_sum_callback/<gpu_id> ``POST`` Change kernel parameters
@@ -37,7 +37,7 @@
  *              update config             "num_bad_inputs"
  *
  * @par GPU Memory
- * @gpu_mem  timesum            Input data from the hsaRfiTimeSum command  of size input_frame_len
+ * @gpu_mem  time_sum           Input data from the hsaRfiTimeSum command  of size input_frame_len
  *     @gpu_mem_type            static
  *     @gpu_mem_format          Array of @c float
  *     @gpu_mem_metadata        chimeMetadata
@@ -74,7 +74,7 @@ public:
 
     int wait_on_precondition(int gpu_frame_id) override;
 
-    /// Executes rfi_chime_inputsum.hsaco kernel. Allocates kernel variables.
+    /// Executes rfi_chime_input_sum.hsaco kernel. Allocates kernel variables.
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
 
     void finalize_frame(int frame_id) override;
@@ -90,8 +90,13 @@ private:
 
     /// Length of the input frame, should be sizeof_float x n_elem x n_freq x nsamp / sk_step
     uint32_t input_frame_len;
-    /// Length of the input frame, should be sizeof_float x n_freq x nsamp / sk_step
+    /// Length of the output frame, should be sizeof_float x n_freq x nsamp / sk_step
     uint32_t output_frame_len;
+    /// Length of the input variance frame, should be sizeof_float x n_elem x n_freq x nsamp /
+    /// sk_step
+    uint32_t input_var_frame_len;
+    /// Length of the output frame, should be sizeof_float x n_freq x nsamp / sk_step
+    uint32_t output_var_frame_len;
     /// Length of the input mask, should be sizeof_uchar x n_elem
     uint32_t input_mask_len;
     /// Length of the output mask, should be sizeof_uchar x n_freq x nsamp / sk_step
@@ -108,6 +113,8 @@ private:
     uint32_t _sk_step;
     /// The number of standard deviations in SK which constitute RFI
     uint32_t _rfi_sigma_cut;
+    /// Truncation bias switch.
+    float _trunc_bias_switch;
 };
 
 #endif
