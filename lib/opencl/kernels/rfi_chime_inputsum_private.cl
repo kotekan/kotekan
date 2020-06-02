@@ -8,7 +8,7 @@ Details:
         Computes Kurtosis value
 ******************************************************/
 __kernel void
-rfi_chime_inputsum(
+rfi_chime_input_sum(
      __global float *input,
      __global float *output,
      const uint num_elements,
