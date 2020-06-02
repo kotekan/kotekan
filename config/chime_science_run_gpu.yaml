@@ -85,6 +85,7 @@ trunc_bias_switch: True
 telescope:
   name: chime
   require_gps: true
+  require_frequency_map: true
 
 ##########################
 #### Dataset manager #####
