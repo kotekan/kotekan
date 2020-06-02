@@ -6,11 +6,12 @@
 #ifndef RFI_BROADCAST_H
 #define RFI_BROADCAST_H
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // for bufferContainer
-#include "restServer.hpp"      // for connectionInstance
-#include "visUtil.hpp"         // for movingAverage
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily
+#include "restServer.hpp"        // for connectionInstance
+#include "visUtil.hpp"           // for movingAverage
 
 #include "json.hpp" // for json
 
@@ -116,6 +117,9 @@ private:
     std::string endpoint_zero;
     /// Moving average of frame zeroing percentage to send to prometheus
     movingAverage perc_zeroed;
+    /// Prometheus metrics to export
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& sample_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& flagged_sample_counter;
 };
 
 #endif

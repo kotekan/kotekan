@@ -46,7 +46,12 @@ REGISTER_KOTEKAN_STAGE(rfiBroadcast);
 
 rfiBroadcast::rfiBroadcast(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&rfiBroadcast::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&rfiBroadcast::main_thread, this)),
+    sample_counter(Metrics::instance().add_counter("kotekan_rfibroadcast_sample_total", unique_name,
+                                                   {"freq_id"})),
+    flagged_sample_counter(Metrics::instance().add_counter(
+        "kotekan_rfibroadcast_flagged_sample_total", unique_name, {"freq_id"})) {
+
     // Get buffer from framework
     rfi_buf = get_buffer("rfi_in");
     // Get buffer from framework
@@ -168,7 +173,7 @@ void rfiBroadcast::main_thread() {
             float rfi_data[total_links][_num_local_freq * _samples_per_data_set / _sk_step];
             float rfi_avg[total_links][_num_local_freq];
             // Initialize arrays
-            uint32_t mask_total = 0;
+            uint64_t mask_total = 0;
             // Zero Average array
             memset(rfi_avg, (float)0, sizeof(rfi_avg));
             // Loop through all frames that should be averages together
@@ -227,6 +232,12 @@ void rfiBroadcast::main_thread() {
             uint32_t current_freq_bin = tel.to_freq_id(StreamIDs[0]);
             mask_percent_metric.labels({std::to_string(current_freq_bin)})
                 .set(perc_zeroed.average());
+
+            // Increment the prometheus metrics for the total number of samples and the total number
+            // of flagged samples
+            sample_counter.labels({std::to_string(current_freq_bin)})
+                .inc((double)_samples_per_data_set / _sk_step);
+            flagged_sample_counter.labels({std::to_string(current_freq_bin)}).inc(mask_total);
 
             // TODO JSW: Handle num_local_freq > 1
             freq_bins[0] = current_freq_bin;
