@@ -27,6 +27,12 @@ void Counter::inc() {
     ++value;
 }
 
+void Counter::inc(const uint64_t increment) {
+    std::lock_guard<std::mutex> lock(metric_lock);
+
+    value += increment;
+}
+
 string Counter::to_string() {
     return std::to_string(value);
 }
