@@ -84,6 +84,7 @@ rfi_sigma_cut: 5
 telescope:
   name: chime
   require_gps: true
+  require_frequency_map: true
 
 ##########################
 #### Dataset manager #####
