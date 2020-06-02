@@ -6,7 +6,7 @@
 #include "datasetManager.hpp"    // for datasetManager, dset_id_t, state_id_t
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, WARN
 #include "prometheusMetrics.hpp" // for Metrics
-#include "visBuffer.hpp"         // for VisFrameView, visField, visField::vis, visField::weight
+#include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::weight
 #include "visCompression.hpp"    // for chimeFeed
 
 #include "gsl-lite.hpp" // for span, span<>::iterator
@@ -496,7 +496,7 @@ void RedundantStack::main_thread() {
 
         // Copy over the data we won't modify
         output_frame.copy_metadata(input_frame);
-        output_frame.copy_data(input_frame, {visField::vis, visField::weight});
+        output_frame.copy_data(input_frame, {VisField::vis, VisField::weight});
         output_frame.dataset_id = output_dset_id;
 
         // Zero the output frame

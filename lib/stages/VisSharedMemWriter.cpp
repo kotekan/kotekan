@@ -7,7 +7,7 @@
 #include "factory.hpp"           // for FACTORY
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, INFO, WARN
 #include "prometheusMetrics.hpp" // for Counter, Gauge, Metrics, MetricFamily
-#include "visBuffer.hpp"         // for VisFrameView, visMetadata
+#include "visBuffer.hpp"         // for VisFrameView, VisMetadata
 #include "visUtil.hpp"           // for time_ctype, frameID, operator<, modulo, current_time
 
 #include <algorithm>   // for copy, fill_n, copy_backward, equal, max
@@ -356,7 +356,7 @@ void VisSharedMemWriter::main_thread() {
     // Calculate the ring buffer structure
 
     rbs.data_size = frame.data_size;
-    rbs.metadata_size = sizeof(visMetadata);
+    rbs.metadata_size = sizeof(VisMetadata);
     // Alligns the frame along page size
     rbs.frame_size = _member_alignment(rbs.data_size + rbs.metadata_size + valid_size, alignment);
 

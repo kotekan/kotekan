@@ -141,7 +141,7 @@ void FakeVis::main_thread() {
 
         for (auto f : freq) {
 
-            DEBUG("Making fake visBuffer for freq={:d}, fpga_seq={:d}", f, fpga_seq);
+            DEBUG("Making fake VisBuffer for freq={:d}, fpga_seq={:d}", f, fpga_seq);
 
             // Wait for the buffer frame to be free
             if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {

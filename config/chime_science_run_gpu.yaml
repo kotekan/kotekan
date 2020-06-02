@@ -409,7 +409,7 @@ pulsar_output_buffers:
 
 # The vis buffer metadata pool
 vis_pool:
-  kotekan_metadata_pool: visMetadata
+  kotekan_metadata_pool: VisMetadata
   num_metadata_objects: 200 * buffer_depth
 
 # Buffers

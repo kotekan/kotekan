@@ -22,8 +22,8 @@
  *
  * @par Buffers
  * @buffer in_buf The buffer to debug
- *         @buffer_format visBuffer structured
- *         @buffer_metadata visMetadata
+ *         @buffer_format VisBuffer structured
+ *         @buffer_metadata VisMetadata
  *
  * @conf    output_period    Int. Print output every `output_period` frames.
  *                           Default is every 1000 frames.
