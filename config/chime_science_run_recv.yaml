@@ -30,7 +30,7 @@ cpu_affinity: [7, 11, 14, 15]
 
 telescope:
   name: chime
-  allow_default_map: false
+  allow_default_frequency_map: false
 
 dataset_manager:
   use_dataset_broker: True

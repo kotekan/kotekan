@@ -12,7 +12,8 @@ CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string&
     _num_freq_per_stream = 1;
 
     _require_frequency_map = config.get_default<bool>(path, "require_frequency_map", false);
-    _allow_default_map = config.get_default<bool>(path, "allow_default_map", true);
+    _allow_default_frequency_map = config.get_default<bool>(path, "allow_default_frequency_map",
+                                                            true);
 
     set_sampling_params(800.0, 2048, 2);
     set_gps(config, path);
@@ -29,7 +30,7 @@ void CHIMETelescope::set_frequency_map(const kotekan::Config& config, const std:
             throw std::runtime_error(msg);
         }
 
-        if (!_allow_default_map) {
+        if (!_allow_default_frequency_map) {
             WARN("The generation of a default frequency map is disabled, "
                  "calls to convert stream IDs will generate an exception");
             return;
@@ -43,27 +44,16 @@ void CHIMETelescope::set_frequency_map(const kotekan::Config& config, const std:
         ice_stream_id_t stream_id = {0, 0, 0, 0};
         for (uint32_t i = 0; i < nfreq; ++i) {
 
+            stream_id.slot_id = i % 16;
+            stream_id.link_id = (i / 32) % 8;
+            stream_id.crate_id = (i / 16) % 2;
+            stream_id.unused = (i / 256) % 4;
+
             DEBUG2("Adding table entry: stream_id: {:d} : crate: {:d}, "
                    "slot: {:d}, link: {:d}, unused: {:d} = {:d}",
                    ice_encode_stream_id(stream_id).id, stream_id.crate_id, stream_id.slot_id,
                    stream_id.link_id, stream_id.unused, i);
             frequency_table[ice_encode_stream_id(stream_id).id] = i;
-
-            stream_id.slot_id = (stream_id.slot_id + 1) % 16;
-
-            // Only update slot_id on first pass.
-            if (i == 0)
-                continue;
-
-            if (i % 256 == 0) {
-                stream_id.unused = (stream_id.unused + 1) % 4;
-            }
-            if (i % 32 == 0) {
-                stream_id.link_id = (stream_id.link_id + 1) % 8;
-            }
-            if (i % 16 == 0) {
-                stream_id.crate_id = (stream_id.crate_id + 1) % 2;
-            }
         }
     } else {
         // Extract the frequency map

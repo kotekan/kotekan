@@ -12,15 +12,16 @@
 /**
  * @brief A telescope class to represent CHIME.
  *
- * @conf    require_frequency_map  Require a frequency map in the config file, or generate
- *                                 an error and exit if none exists. Default: false
- * @conf    allow_default_map      If @c require_frequency_map is set to false and
- *                                 @c allow_default_map is true allow queries from the default map.
- *                                 If set to false, then do not generate a default map, and throw
- *                                 an exception when lookups are done for stream_ids.
- *                                 This can be useful for systems not expected to lookup stream_ids.
- *                                 This option has no effect if @c require_frequency_map is
- *                                 set to true.  Default: true
+ * @conf    require_frequency_map        Require a frequency map in the config file, or generate
+ *                                       an error and exit if none exists. Default: false
+ * @conf    allow_default_frequency_map  If @c require_frequency_map is set to false and
+ *                                       @c allow_default_map is true allow queries from
+ *                                       the default map.  If set to false, then do not generate
+ *                                       a default map, and throw an exception when lookups are
+ *                                       done for stream_ids.
+ *                                       This can be useful for systems not expected to
+ *                                       lookup stream_ids. This option has no effect if
+ *                                       @c require_frequency_map is set to true.  Default: true
  **/
 class CHIMETelescope : public ICETelescope {
 public:
@@ -34,7 +35,7 @@ private:
     bool _require_frequency_map;
 
     /// Allow a default map to be generated if one isn't aviable in the config.
-    bool _allow_default_map;
+    bool _allow_default_frequency_map;
 
     /// Maps the post-final shuffle stream_ids to frequency bins
     std::map<uint64_t, freq_id_t> frequency_table;
