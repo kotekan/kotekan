@@ -33,7 +33,7 @@ private:
     /// Require a frequency remapping table in the config, or exit with an error.
     bool _require_frequency_map;
 
-    /// @brief Allow a default map to be generated if one isn't aviable in the config.
+    /// Allow a default map to be generated if one isn't aviable in the config.
     bool _allow_default_map;
 
     /// Maps the post-final shuffle stream_ids to frequency bins
