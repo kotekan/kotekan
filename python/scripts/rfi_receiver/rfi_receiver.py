@@ -347,6 +347,7 @@ def data_listener(thread_id):
     stream_dict = dict()
     known_streams = []
     packetCounter = 0
+    freq_bins_set = set()
 
     while True:
 
@@ -359,27 +360,28 @@ def data_listener(thread_id):
             InitialKotekanConnection = True
             logger.info("Connected to Kotekan")
 
+        # A packet is received on each stream roughly every ~0.126s
         if packet != "":
 
-            if packetCounter % (50 * len(stream_dict) + 1) == 0:
-                logger.info(
-                    "Thread id %d: Receiving Packets from %d Streams"
-                    % (thread_id, len(stream_dict))
+            # Print frequency bins received every ~19s
+            if packetCounter % (150 * len(stream_dict) + 1) == 0:
+                logger.debug(
+                    "data_listener: Thread id: %d, Streams: %d, Receiving frequency bins: %s"
+                    % (thread_id, len(stream_dict), freq_bins_set)
                 )
+                freq_bins_set.clear()
+
             packetCounter += 1
 
             header = np.fromstring(packet[:RFIHeaderSize], dtype=HeaderDataType)
             freq_bins = np.fromstring(
                 packet[RFIHeaderSize : RFIHeaderSize + 4 * local_freq], dtype=np.uint32
             )
+            freq_bins_set.update(freq_bins)
             data = np.fromstring(
                 packet[RFIHeaderSize + 4 * local_freq :], dtype=np.float32
             )
 
-            logger.info(
-                "data_listener: Receiving data from frequency bins: %s"
-                % (np.array_str(freq_bins))
-            )
             # Create a new stream object each time a new stream connects
             if header["encoded_stream_ID"][0] not in known_streams:
                 # Check that the new stream is providing the correct data
@@ -674,6 +676,7 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
     metric_dict["overall_rfi_bad_input"].set(num_bad_inputs)
 
     # RFI metrics
+    # Find which timesteps are not populated yet in the waterfall
     bad_locs = np.where(np.sum(waterfall, axis=0) == -1 * waterfall.shape[0])[0]
     if bad_locs.size > 0:
         max_pos = bad_locs[0]
