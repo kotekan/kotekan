@@ -4,7 +4,6 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for mark_frame_empty, Buffer, register_consumer, wait_for_ful...
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for get_stream_id_t
 #include "restServer.hpp"      // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...
 
 #include "json.hpp" // for json_ref, json
@@ -81,7 +80,7 @@ void pyPlotN2::main_thread() {
             busy = true;
             // make a local copy so the rest of kotekan can carry along happily.
             memcpy(in_local, frame, buf->frame_size);
-            stream_id = get_stream_id_t(buf, frame_id);
+            stream_id = ice_get_stream_id_t(buf, frame_id);
 
             mark_frame_empty(buf, unique_name.c_str(), frame_id);
             frame_id = (frame_id + 1) % buf->num_frames;

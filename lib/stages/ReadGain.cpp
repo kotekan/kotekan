@@ -1,14 +1,13 @@
 #include "ReadGain.hpp"
 
-#include "Config.hpp"              // for Config
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"                // for mark_frame_full, register_producer, wait_for_empty_frame
-#include "chimeMetadata.h"         // for get_stream_id_t
-#include "configUpdater.hpp"       // for configUpdater
-#include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
-#include "kotekanLogging.hpp"      // for WARN, INFO, DEBUG
-#include "restServer.hpp"          // for HTTP_RESPONSE, connectionInstance, restServer
-#include "visUtil.hpp"             // for current_time
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
+#include "buffer.h"           // for mark_frame_full, register_producer, wait_for_empty_frame
+#include "configUpdater.hpp"  // for configUpdater
+#include "kotekanLogging.hpp" // for WARN, INFO, DEBUG
+#include "restServer.hpp"     // for HTTP_RESPONSE, connectionInstance, restServer
+#include "visUtil.hpp"        // for current_time
 
 #include <algorithm>   // for copy
 #include <atomic>      // for atomic_bool
@@ -62,7 +61,7 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     register_consumer(metadata_buf, unique_name.c_str());
     metadata_buffer_id = 0;
     metadata_buffer_precondition_id = 0;
-    freq_idx = -1;
+    freq_idx = FREQ_ID_NOT_SET;
     freq_MHz = -1;
 
     // Gain for FRB
@@ -245,9 +244,10 @@ void ReadGain::main_thread() {
         wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
     if (frame == nullptr)
         return;
-    stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
-    freq_idx = bin_number_chime(&stream_id);
-    freq_MHz = freq_from_bin(freq_idx);
+
+    auto& tel = Telescope::instance();
+    freq_idx = tel.to_freq_id(metadata_buf, metadata_buffer_id);
+    freq_MHz = tel.to_freq(freq_idx);
     metadata_buffer_precondition_id =
         (metadata_buffer_precondition_id + 1) % metadata_buf->num_frames;
 

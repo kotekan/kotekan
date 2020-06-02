@@ -7,7 +7,6 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       chrxUplink.cpp
       computeDualpolPower.cpp
       fullPacketDump.cpp
-      gpuPostProcess.cpp
       pulsarPostProcess.cpp
       ReadGain.cpp
       nDiskFileWrite.cpp

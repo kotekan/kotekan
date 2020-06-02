@@ -151,9 +151,10 @@ void beamformingPostProcess::main_thread() {
                        == (uint32_t)get_fpga_seq_num(in_buf[gpu_id], in_buffer_ID[gpu_id]));
             }
 
-            int stream_id = get_stream_id(in_buf[gpu_id], in_buffer_ID[gpu_id]);
-            int link_id = stream_id & 0x000F;
-            int slot_id = (stream_id & 0x00F0) >> 4;
+            // TODO: port this to use ice_extract_stream_id_t
+            stream_t stream_id = get_stream_id(in_buf[gpu_id], in_buffer_ID[gpu_id]);
+            int link_id = stream_id.id & 0x000F;
+            int slot_id = (stream_id.id & 0x00F0) >> 4;
             thread_ids[i] = link_id + (slot_id << 4);
 
             in_buffer_ID[gpu_id] = (in_buffer_ID[gpu_id] + 1) % in_buf[gpu_id]->num_frames;

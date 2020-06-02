@@ -11,7 +11,8 @@
 #ifndef FAKE_GPU_PATTERN_HPP
 #define FAKE_GPU_PATTERN_HPP
 
-#include "Config.hpp"         // for Config
+#include "Config.hpp" // for Config
+#include "Telescope.hpp"
 #include "chimeMetadata.h"    // for chimeMetadata
 #include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
 #include "kotekanLogging.hpp" // for kotekanLogging
@@ -71,7 +72,7 @@ public:
      * @param  freq_id    Global frequency ID.
      **/
     virtual void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
-                      const int freq_id) = 0;
+                      freq_id_t freq_id) = 0;
 
 protected:
     // Configuration info
@@ -95,7 +96,7 @@ public:
 
     /// @sa fakeGpuPattern::fill
     void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
-              const int freq_id) override;
+              freq_id_t freq_id) override;
 };
 
 
@@ -113,7 +114,7 @@ public:
 
     /// @sa fakeGpuPattern::fill
     void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
-              const int freq_id) override;
+              freq_id_t freq_id) override;
 };
 
 
@@ -143,7 +144,7 @@ public:
 
     /// @sa fakeGpuPattern::fill
     void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
-              const int freq_id) override;
+              freq_id_t freq_id) override;
 
 private:
     uint32_t _b;
@@ -166,7 +167,7 @@ public:
 
     /// @sa fakeGpuPattern::fill
     void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
-              const int freq_id) override;
+              freq_id_t freq_id) override;
 };
 
 
@@ -182,7 +183,7 @@ public:
 
     /// @sa fakeGpuPattern::fill
     void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
-              const int freq_id) override;
+              freq_id_t freq_id) override;
 
 private:
     std::random_device rd;
@@ -214,7 +215,7 @@ public:
 
     /// @sa fakeGpuPattern::fill
     void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
-              const int freq_id) override;
+              freq_id_t freq_id) override;
 
 private:
     float _pulse_width; // in s
@@ -237,6 +238,6 @@ public:
 
     /// @sa fakeGpuPattern::fill
     void fill(gsl::span<int32_t>& data, chimeMetadata* metadata, const int frame_num,
-              const int freq_id) override;
+              freq_id_t freq_id) override;
 };
 #endif // FAKE_GPU_PATTERN

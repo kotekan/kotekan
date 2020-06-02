@@ -1,7 +1,8 @@
 #include "frbNetworkProcess.hpp"
 
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
 #include "buffer.h"              // for wait_for_full_frame, mark_frame_empty, register_consumer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "frb_functions.h"       // for FRBHeader
@@ -156,9 +157,10 @@ void frbNetworkProcess::main_thread() {
     t0.tv_nsec = 0; /*  nanoseconds */
 
     // 384 is integration factor and 2560 fpga sampling time in ns
+    const uint32_t fpga_ns = Telescope::instance().seq_length_nsec();
     const unsigned samples_per_frame =
-        samples_per_packet * packets_per_stream * 384;      // number of FPGA samples in each frame
-    unsigned long time_interval = samples_per_frame * 2560; // time per buffer frame in ns
+        samples_per_packet * packets_per_stream * 384; // number of FPGA samples in each frame
+    unsigned long time_interval = samples_per_frame * fpga_ns; // time per buffer frame in ns
 
     long count = 0;
 
@@ -222,7 +224,7 @@ void frbNetworkProcess::main_thread() {
                 add_nsec(t0, nanos_skipped);
             }
             uint64_t offset = (t0.tv_sec * 1e9 + t0.tv_nsec - initial_nsec)
-                              - (header->fpga_count - initial_fpga_count) * 2560;
+                              - (header->fpga_count - initial_fpga_count) * fpga_ns;
             if (offset != 0)
                 WARN("OFFSET in not zero ");
             add_nsec(t0, -1 * offset);

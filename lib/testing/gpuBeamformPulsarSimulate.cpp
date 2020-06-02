@@ -1,12 +1,12 @@
 #include "gpuBeamformPulsarSimulate.hpp"
 
-#include "Config.hpp"              // for Config
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"                // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chimeMetadata.h"         // for psrCoord, get_fpga_seq_num, get_gps_time, get_stream_...
-#include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
-#include "kotekanLogging.hpp"      // for INFO, ERROR
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
+#include "buffer.h"            // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.h"     // for psrCoord, get_fpga_seq_num, get_gps_time
+#include "kotekanLogging.hpp"  // for INFO, ERROR
 
 #include <algorithm>  // for copy
 #include <assert.h>   // for assert
@@ -81,7 +81,7 @@ gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config, const std::
     metadata_buf = get_buffer("network_in_buf");
     metadata_buffer_id = 0;
     metadata_buffer_precondition_id = 0;
-    freq_now = -1;
+    freq_now = FREQ_ID_NOT_SET;
     freq_MHz = -1;
 
     // Backward compatibility, array in c
@@ -215,6 +215,9 @@ void gpuBeamformPulsarSimulate::cpu_beamform_pulsar(double* input_unpacked, doub
 }
 
 void gpuBeamformPulsarSimulate::main_thread() {
+
+    auto& tel = Telescope::instance();
+
     int input_buf_id = 0;
     int output_buf_id = 0;
 
@@ -241,9 +244,8 @@ void gpuBeamformPulsarSimulate::main_thread() {
              input_buf->buffer_name, input_buf_id, output_buf->buffer_name, output_buf_id);
 
         // Figure out which freq
-        stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
-        freq_now = bin_number_chime(&stream_id);
-        freq_MHz = freq_from_bin(freq_now);
+        freq_now = tel.to_freq_id(metadata_buf, metadata_buffer_id);
+        freq_MHz = tel.to_freq(freq_now);
         INFO("[CPU] freq_now={:d} freq+MHz={:.2f} metadat_buf_id={:d} input_buf_id={:d}", freq_now,
              freq_MHz, metadata_buffer_id, input_buf_id);
 
