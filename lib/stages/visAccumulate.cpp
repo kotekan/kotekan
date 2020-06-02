@@ -1,21 +1,21 @@
 #include "visAccumulate.hpp"
 
-#include "Config.hpp"              // for Config
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"                // for register_producer, Buffer, allocate_new_metadata_object
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chimeMetadata.h"         // for chimeMetadata, get_fpga_seq_num, get_lost_timesamples
-#include "configUpdater.hpp"       // for configUpdater
-#include "datasetManager.hpp"      // for state_id_t, datasetManager, dset_id_t
-#include "datasetState.hpp"        // for eigenvalueState, freqState, gatingState, inputState
-#include "factory.hpp"             // for FACTORY
-#include "fpga_header_functions.h" // for freq_from_bin
-#include "kotekanLogging.hpp"      // for FATAL_ERROR, INFO, logLevel, DEBUG
-#include "metadata.h"              // for metadataContainer
-#include "prometheusMetrics.hpp"   // for Counter, MetricFamily, Metrics
-#include "version.h"               // for get_git_commit_hash
-#include "visBuffer.hpp"           // for VisFrameView
-#include "visUtil.hpp"             // for prod_ctype, frameID, input_ctype, modulo, operator+
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
+#include "buffer.h"              // for register_producer, Buffer, allocate_new_metadata_object
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "chimeMetadata.h"       // for chimeMetadata, get_fpga_seq_num, get_lost_timesamples
+#include "configUpdater.hpp"     // for configUpdater
+#include "datasetManager.hpp"    // for state_id_t, datasetManager, dset_id_t
+#include "datasetState.hpp"      // for eigenvalueState, freqState, gatingState, inputState
+#include "factory.hpp"           // for FACTORY
+#include "kotekanLogging.hpp"    // for FATAL_ERROR, INFO, logLevel, DEBUG
+#include "metadata.h"            // for metadataContainer
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
+#include "version.h"             // for get_git_commit_hash
+#include "visBuffer.hpp"         // for VisFrameView
+#include "visUtil.hpp"           // for prod_ctype, frameID, input_ctype, modulo, operator+
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span<>::iterator, span
@@ -55,12 +55,15 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
     skipped_frame_counter(Metrics::instance().add_counter(
         "kotekan_visaccumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})) {
 
+    auto& tel = Telescope::instance();
+
     // Fetch any simple configuration
     num_elements = config.get<size_t>(unique_name, "num_elements");
     num_freq_in_frame = config.get_default<size_t>(unique_name, "num_freq_in_frame", 1);
     block_size = config.get<size_t>(unique_name, "block_size");
     samples_per_data_set = config.get<size_t>(unique_name, "samples_per_data_set");
     max_age = config.get_default<float>(unique_name, "max_age", 60.0);
+    fpga_dataset = config.get_default<dset_id_t>("/fpga_dataset", "id", dset_id_t::null);
 
     // Get the indices for reordering
     auto input_reorder = parse_reorder_default(config, unique_name);
@@ -71,9 +74,7 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
     // If the integration time was set then calculate the number of GPU frames
     // we need to integrate for.
     if (int_time >= 0.0) {
-        // TODO: don't hard code the sample time length
-        // TODO: CHIME specific
-        float frame_length = samples_per_data_set * 2.56e-6;
+        float frame_length = samples_per_data_set * tel.seq_length_nsec() * 1e-9;
 
         // Calculate nearest *even* number of frames
         num_gpu_frames = 2 * ((int)(int_time / frame_length) / 2);
@@ -102,20 +103,18 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
 
     // Get the frequency IDs that are on this stream, check the config or just
     // assume all CHIME channels
-    // TODO: CHIME specific
     if (config.exists(unique_name, "freq_ids")) {
         freq_ids = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
     } else {
-        freq_ids.resize(1024);
+        freq_ids.resize(tel.num_freq());
         std::iota(std::begin(freq_ids), std::end(freq_ids), 0);
     }
 
     // Create the frequency specification
-    // TODO: CHIME specific
     std::vector<std::pair<uint32_t, freq_ctype>> freqs;
     std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(freqs),
-                   [](uint32_t id) -> std::pair<uint32_t, freq_ctype> {
-                       return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
+                   [&tel](uint32_t id) -> std::pair<uint32_t, freq_ctype> {
+                       return {id, {tel.to_freq(id), tel.freq_width(id)}};
                    });
 
     // The input specification from the config
@@ -239,8 +238,10 @@ dset_id_t visAccumulate::base_dataset_state(std::string& instrument_name,
     base_states.push_back(
         dm.create_state<metadataState>(weight_type, instrument_name, git_tag).first);
 
-    // register root dataset
-    return dm.add_dataset(base_states);
+    // Register base dataset, if not fpga_dataset was set in the config, the
+    // variable below will be dset_id_t::null and thus cause a root dataset to
+    // be registered.
+    return dm.add_dataset(base_states, fpga_dataset);
 }
 
 
@@ -269,6 +270,8 @@ void visAccumulate::main_thread() {
     std::vector<int32_t> vis_even(2 * num_prod_gpu);
     int32_t samples_even = 0;
 
+    auto& tel = Telescope::instance();
+
     // Have we initialised a frame for writing yet
     bool init = false;
 
@@ -283,9 +286,8 @@ void visAccumulate::main_thread() {
         uint64_t frame_count = (get_fpga_seq_num(in_buf, in_frame_id) / samples_per_data_set);
 
         // Start and end times of this frame
-        // TODO: CHIME specific
         timespec t_s = ((chimeMetadata*)in_buf->metadata[in_frame_id]->metadata)->gps_time;
-        timespec t_e = add_nsec(t_s, samples_per_data_set * 2560L); // Frame length CHIME specific
+        timespec t_e = add_nsec(t_s, samples_per_data_set * tel.seq_length_nsec());
 
         // If we have wrapped around we need to write out any frames that have
         // been filled in previous iterations. In here we need to reorder the
@@ -365,8 +367,7 @@ void visAccumulate::main_thread() {
             // doesn't really work if there are multiple frequencies in the same buffer..
             for (internalState& dset : enabled_gated_datasets) {
 
-                // TODO: CHIME specific frequency decoding
-                float freq_in_MHz = freq_from_bin(dset.frames[0].freq_id);
+                float freq_in_MHz = tel.to_freq(dset.frames[0].freq_id);
                 float w = dset.calculate_weight(t_s, t_e, freq_in_MHz);
 
                 // Don't bother to accumulate if weight is zero
@@ -429,7 +430,7 @@ void visAccumulate::main_thread() {
 
 
 bool visAccumulate::initialise_output(visAccumulate::internalState& state, int in_frame_id) {
-    // TODO: CHIME
+
     auto metadata = (const chimeMetadata*)in_buf->metadata[in_frame_id]->metadata;
 
     for (size_t freq_ind = 0; freq_ind < num_freq_in_frame; freq_ind++) {
@@ -444,12 +445,7 @@ bool visAccumulate::initialise_output(visAccumulate::internalState& state, int i
         auto& frame = state.frames[freq_ind];
 
         // Copy over the metadata
-        // TODO: CHIME
-        frame.fill_chime_metadata(metadata);
-
-        // TODO: set frequency id in some sensible generic manner. This doesn't
-        // actually work for ICEboard based multifrequency systems
-        frame.freq_id += freq_ind;
+        frame.fill_chime_metadata(metadata, freq_ind);
 
         // Set dataset ID produced by the dM
         // TODO: this should be different for different gated streams

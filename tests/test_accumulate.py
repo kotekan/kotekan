@@ -80,6 +80,34 @@ def accumulate_data(tmpdir_factory):
 
 
 @pytest.fixture(scope="module")
+def fpga_dataset_data(tmpdir_factory):
+
+    tmpdir = tmpdir_factory.mktemp("accumulate")
+
+    dump_buffer = runner.DumpVisBuffer(str(tmpdir))
+
+    fpga_dataset_params = {"fpga_dataset": {"id": "d3c527df45f258dbd88c6ea7f56eadba"}}
+
+    fpga_dataset_params.update(accumulate_params)
+
+    test = runner.KotekanStageTester(
+        "visAccumulate",
+        {},
+        runner.FakeGPUBuffer(
+            pattern="accumulate",
+            freq=fpga_dataset_params["freq"],
+            num_frames=fpga_dataset_params["total_frames"],
+        ),
+        dump_buffer,
+        fpga_dataset_params,
+    )
+
+    test.run()
+
+    yield dump_buffer.load()
+
+
+@pytest.fixture(scope="module")
 def gaussian_data(tmpdir_factory):
 
     tmpdir = tmpdir_factory.mktemp("gaussian")
@@ -353,9 +381,6 @@ def test_gaussian(gaussian_data):
     assert np.allclose(vis_set.mean(axis=0), exp_vis, atol=7e-4, rtol=0)
     assert np.allclose(vis_set.var(axis=0), frac_var, rtol=7e-2, atol=0)
     assert np.allclose((1.0 / weight_set).mean(axis=0), frac_var, rtol=1e-2, atol=0)
-    vm = (1.0 / weight_set).mean(axis=0)
-    vv = (1.0 / weight_set).std(axis=0)
-    lv = weight_set.shape[0]
 
 
 # Test that we can deal with whole frames being dropped
@@ -374,7 +399,7 @@ def test_missing_frames(drop_frame_data):
     # These tests need a 5 sigma fluctuation to cause failure
     assert np.allclose(vis_set.mean(axis=0), exp_vis, atol=7e-4, rtol=0)
     assert np.allclose(vis_set.var(axis=0), frac_var, rtol=7e-2, atol=0)
-    assert np.allclose((1.0 / weight_set).mean(axis=0), frac_var, rtol=2e-2, atol=0)
+    assert np.allclose((1.0 / weight_set).mean(axis=0), frac_var, rtol=5e-2, atol=0)
 
 
 def test_int_time(time_data):
@@ -451,3 +476,18 @@ def test_pulsar_metadata(pulsar_data):
         1e-3
     )
     assert pulsar_data.file_metadata["gating_data"]["coeff"] == [pulsar_params["coeff"]]
+
+
+def test_fpga_dataset_id_changes(accumulate_data, fpga_dataset_data):
+    def to_hex(x):
+        return bytes(x)[::-1].hex()
+
+    no_root_ids = [to_hex(frame.metadata.dataset_id) for frame in accumulate_data]
+    fpga_root_ids = [to_hex(frame.metadata.dataset_id) for frame in fpga_dataset_data]
+
+    # Check that dataset IDs don't change within in accumulation
+    assert all([no_root_ids[0] == ds_id for ds_id in no_root_ids])
+    assert all([fpga_root_ids[0] == ds_id for ds_id in fpga_root_ids])
+
+    # Check that the dataset ID is not the same
+    assert no_root_ids[0] != fpga_root_ids[0]

@@ -46,6 +46,9 @@ vis_buffer:
     buffer_depth: 384  # Before slow stage
   visbuf_10s_flags:
     kotekan_buffer: vis
+    buffer_depth: 4096 # Before slow stage
+  visbuf_10s_flags_delay:
+    kotekan_buffer: vis
     buffer_depth: 384  # Before slow stage
   visbuf_10s_stack:
     kotekan_buffer: vis
@@ -124,6 +127,7 @@ updatable_config:
     start_time: 1575950518.4
     update_id: "zero_gain"
     transition_interval: 300.0
+    new_state: true
   26m_gated:
     kotekan_update_endpoint: "json"
     enabled: false
@@ -168,6 +172,7 @@ receive_flags:
   in_buf: visbuf_10s_all
   out_buf: visbuf_10s_flags
   updatable_config: "/updatable_config/flagging"
+  num_kept_updates: 24
 
 vis_debug:
   n2:
@@ -191,15 +196,23 @@ count_check:
     kotekan_stage: countCheck
     in_buf: visbuf_5s_26m_gated
 
+delay_frames:
+  num_frames_to_hold: 3840
+  copy_frame: false
+  kotekan_stage: bufferDelay
+  in_buf: visbuf_10s_flags
+  out_buf: visbuf_10s_flags_delay
+
 apply_gains:
   num_threads: 3
   cpu_affinity: [4, 5, 6]
   kotekan_stage: applyGains
-  in_buf: visbuf_10s_flags
+  in_buf: visbuf_10s_flags_delay
   out_buf: visbuf_10s_gain
   updatable_config: "/updatable_config/gains"
   broker_host: cv0r1
   broker_port: 54328
+  num_kept_updates: 24
 
 stacking:
   num_threads: 3

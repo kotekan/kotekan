@@ -524,7 +524,7 @@ class VisRaw(object):
 
         time = np.ndarray(
             shape=(num_time, num_freq),
-            dtype=[("fpga_count", np.uint64), ("ctime", np.float64),],
+            dtype=[("fpga_count", np.uint64), ("ctime", np.float64)],
         )
 
         # flatten time index map (we only need one value per time slot, but we have one per
@@ -655,7 +655,7 @@ class VisRaw(object):
 
         time = np.array(
             [(t["fpga_count"], t["ctime"]) for t in index_map["time"]],
-            dtype=[("fpga_count", np.uint64), ("ctime", np.float64),],
+            dtype=[("fpga_count", np.uint64), ("ctime", np.float64)],
         )
 
         num_freq = metadata["structure"]["nfreq"]
@@ -693,7 +693,7 @@ class VisRaw(object):
 
         # Load data into on-disk numpy array
         raw = np.memmap(
-            data_path, dtype=frame_struct, mode=mode, shape=(num_time, num_freq),
+            data_path, dtype=frame_struct, mode=mode, shape=(num_time, num_freq)
         )
         data = raw["data"]
         metadata = raw["metadata"]

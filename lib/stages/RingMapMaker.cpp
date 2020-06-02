@@ -1,7 +1,8 @@
 #include "RingMapMaker.hpp"
 
-#include "Hash.hpp"              // for Hash, operator!=
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Hash.hpp"         // for Hash, operator!=
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
 #include "datasetManager.hpp"    // for datasetManager, dset_id_t, state_id_t
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, WARN
 #include "prometheusMetrics.hpp" // for Metrics
@@ -261,9 +262,10 @@ bool RingMapMaker::setup(size_t frame_id) {
     change_dataset_state(ds_id);
 
     // TODO: make these config options ?
+    float fpga_s = Telescope::instance().seq_length_nsec() * 1e-9;
     num_pix = 511; // # unique NS baselines
     num_pol = 4;
-    num_time = 24. * 3600. / (in_frame.fpga_seq_length * 2.56e-6);
+    num_time = 24. * 3600. / (in_frame.fpga_seq_length * fpga_s);
     num_bl = (num_stack + 1) / 4;
 
     sinza = std::vector<float>(num_pix, 0.);
