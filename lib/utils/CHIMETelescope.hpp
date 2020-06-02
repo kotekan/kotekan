@@ -13,7 +13,7 @@
  * @brief A telescope class to represent CHIME.
  *
  * @conf    require_frequency_map   Require a frequency map in the config file, or generate
- *                                  and error an exit if none exists. Default: false
+ *                                  an error and exit if none exists. Default: false
  * @conf    allow_default_map       If @c require_frequency_map is set to false then if true
  *                                  allow queries from the default map.  If set to false,
  *                                  then do not generate a default map, and throw an exception
