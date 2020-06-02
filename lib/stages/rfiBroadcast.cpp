@@ -116,7 +116,7 @@ void rfiBroadcast::rest_zero(connectionInstance& conn) {
 }
 
 void rfiBroadcast::main_thread() {
-    // Intialize variables
+    // Initialize variables
     uint32_t frame_id = 0;
     uint32_t frame_mask_id = 0;
     uint32_t i, j, f;
@@ -128,10 +128,10 @@ void rfiBroadcast::main_thread() {
     uint32_t freq_bins[_num_local_freq];
     memset(freq_bins, (uint8_t)0, sizeof(freq_bins));
     uint64_t fake_seq = 0;
-    Metrics& metrics = Metrics::instance();
+    const uint64_t sk_samples_per_frame = _samples_per_data_set / _sk_step;
     auto& tel = Telescope::instance();
 
-    // Intialize packet header
+    // Initialize packet header
     struct RFIHeader rfi_header = {.rfi_combined = (uint8_t)_rfi_combined,
                                    .sk_step = _sk_step,
                                    .num_elements = _num_elements,
@@ -142,7 +142,7 @@ void rfiBroadcast::main_thread() {
                                    .seq_num = 0,
                                    .streamID = 0};
 
-    // Intialize empty packet
+    // Initialize empty packet
     uint32_t packet_length =
         sizeof(rfi_header) + _num_local_freq * sizeof(uint32_t) + _num_local_freq * sizeof(float);
     char* packet_buffer = (char*)malloc(packet_length);
@@ -165,8 +165,6 @@ void rfiBroadcast::main_thread() {
         }
         // Connection successful
         INFO("UDP Connection: {:d} {:s}", dest_port, dest_server_ip);
-        auto& mask_percent_metric =
-            metrics.add_gauge("kotekan_rfi_broadcast_mask_percent", unique_name, {"freq_bin"});
         // Endless loop
         while (!stop_thread) {
             // Initialize arrays
@@ -228,15 +226,10 @@ void rfiBroadcast::main_thread() {
                         / (rfi_mask_buf->frame_size * _frames_per_packet * total_links);
             perc_zeroed.add_sample(tmp);
 
-            // Get current frequency bin and set add the prometheus metric
-            uint32_t current_freq_bin = tel.to_freq_id(StreamIDs[0]);
-            mask_percent_metric.labels({std::to_string(current_freq_bin)})
-                .set(perc_zeroed.average());
-
             // Increment the prometheus metrics for the total number of samples and the total number
             // of flagged samples
-            sample_counter.labels({std::to_string(current_freq_bin)})
-                .inc((double)_samples_per_data_set / _sk_step);
+            uint32_t current_freq_bin = tel.to_freq_id(StreamIDs[0]);
+            sample_counter.labels({std::to_string(current_freq_bin)}).inc(sk_samples_per_frame);
             flagged_sample_counter.labels({std::to_string(current_freq_bin)}).inc(mask_total);
 
             // TODO JSW: Handle num_local_freq > 1
@@ -283,7 +276,7 @@ void rfiBroadcast::main_thread() {
             // Unlock callback mutex
             rest_callback_mutex.unlock();
             rest_zero_callback_mutex.unlock();
-            DEBUG("Frame ID {:d} Succesfully Broadcasted {:d} links of {:d} Bytes in {:f}ms",
+            DEBUG("Frame ID {:d} Successfully Broadcasted {:d} links of {:d} Bytes in {:f}ms",
                   frame_id, total_links, bytes_sent, (e_time() - start_time) * 1000);
         }
     } else {
