@@ -1,17 +1,16 @@
 #include "fakeGpu.hpp"
 
-#include "Config.hpp"              // for Config
-#include "Stage.hpp"               // for Stage
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"                // for Buffer, allocate_new_metadata_object, mark_frame_full
-#include "chimeMetadata.h"         // for set_first_packet_recv_time, set_fpga_seq_num, set_gps...
-#include "errors.h"                // for exit_kotekan, CLEAN_EXIT, ReturnCode
-#include "factory.hpp"             // for FACTORY
-#include "fakeGpuPattern.hpp"      // for FakeGpuPattern, _factory_aliasFakeGpuPattern
-#include "fpga_header_functions.h" // for stream_id_t
-#include "kotekanLogging.hpp"      // for DEBUG, ERROR, INFO
-#include "metadata.h"              // for metadataContainer
-#include "visUtil.hpp"             // for frameID, gpu_N2_size, modulo, operator+
+#include "Config.hpp"         // for Config
+#include "Stage.hpp"          // for Stage
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "chimeMetadata.h"    // for set_first_packet_recv_time, set_fpga_seq_num, set_gps...
+#include "errors.h"           // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "factory.hpp"        // for FACTORY
+#include "fakeGpuPattern.hpp" // for FakeGpuPattern, _factory_aliasFakeGpuPattern
+#include "kotekanLogging.hpp" // for DEBUG, ERROR, INFO
+#include "metadata.h"         // for metadataContainer
+#include "visUtil.hpp"        // for frameID, gpu_N2_size, modulo, operator+
 
 #include "gsl-lite.hpp" // for span
 
@@ -30,6 +29,7 @@
 
 
 REGISTER_KOTEKAN_STAGE(FakeGpu);
+REGISTER_TELESCOPE(FakeTelescope, "fake");
 
 FakeGpu::FakeGpu(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container) :
@@ -77,6 +77,8 @@ FakeGpu::~FakeGpu() {}
 
 void FakeGpu::main_thread() {
 
+    auto& tel = Telescope::instance();
+
     int frame_count = 0;
     frameID frame_id(out_buf);
     timeval tv;
@@ -86,18 +88,13 @@ void FakeGpu::main_thread() {
     uint64_t fpga_seq = 0;
     const auto nprod_gpu = gpu_N2_size(num_elements, block_size);
 
-    // This encoding of the stream id should ensure that bin_number_chime gives
-    // back the original frequency ID when it is called later.
-    // NOTE: all elements must have values < 16 for this encoding to work out.
-    stream_id_t s = {0, (uint8_t)(freq % 16), (uint8_t)(freq / 16), (uint8_t)(freq / 256)};
-
     // Set the start time
     clock_gettime(CLOCK_REALTIME, &ts);
 
     // Calculate the increment in time between samples
     if (pre_accumulate) {
         delta_seq = samples_per_data_set;
-        delta_ns = samples_per_data_set * 2560;
+        delta_ns = samples_per_data_set * tel.seq_length_nsec();
     } else {
         delta_seq = 1;
         delta_ns = (uint64_t)(cadence * 1000000000);
@@ -130,7 +127,7 @@ void FakeGpu::main_thread() {
 
             allocate_new_metadata_object(out_buf, frame_id);
             set_fpga_seq_num(out_buf, frame_id, fpga_seq);
-            set_stream_id_t(out_buf, frame_id, s);
+            set_stream_id(out_buf, frame_id, {(uint64_t)freq});
 
             // Set the two times
             TIMESPEC_TO_TIMEVAL(&tv, &ts);
@@ -170,4 +167,48 @@ void FakeGpu::main_thread() {
         if (this->wait)
             nanosleep(&delta_ts, nullptr);
     }
+}
+
+
+FakeTelescope::FakeTelescope(const kotekan::Config& config, const std::string& path) :
+    Telescope(config.get<std::string>(path, "log_level")) {
+    _num_local_freq = config.get_default<uint32_t>(path, "num_local_freq", 1);
+}
+
+freq_id_t FakeTelescope::to_freq_id(stream_t stream_id, uint32_t ind) const {
+    return stream_id.id + ind;
+}
+
+double FakeTelescope::to_freq(freq_id_t freq_id) const {
+    // Use CHIME frequencies
+    return 800.0 - 400.0 / 1024 * freq_id;
+}
+
+double FakeTelescope::freq_width(freq_id_t /*freq_id*/) const {
+    // Use CHIME frequencies
+    return 400.0 / 1024;
+}
+
+uint32_t FakeTelescope::num_freq_per_stream() const {
+    return _num_local_freq;
+}
+
+uint32_t FakeTelescope::num_freq() const {
+    return 1024;
+}
+
+timespec FakeTelescope::to_time(uint64_t /*seq*/) const {
+    return {0, 0};
+}
+
+uint64_t FakeTelescope::to_seq(timespec /*time*/) const {
+    return 0;
+}
+
+uint64_t FakeTelescope::seq_length_nsec() const {
+    return 2560;
+}
+
+bool FakeTelescope::gps_time_enabled() const {
+    return true;
 }

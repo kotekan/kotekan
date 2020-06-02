@@ -1,14 +1,13 @@
 #include "dpdkCore.hpp"
 
-#include "fpga_header_functions.h" // for stream_id_t
-
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for json, basic_json<>::object_t, basic_json, basic_json<...
 
 #ifdef WITH_NUMA
 #include <numa.h> // for numa_node_of_cpu, numa_num_configured_nodes
 #endif
-#include "Config.hpp"           // for Config
+#include "Config.hpp" // for Config
+#include "ICETelescope.hpp"
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "captureHandler.hpp"   // for captureHandler
 #include "iceBoardShuffle.hpp"  // for iceBoardShuffle, iceBoardShuffle::shuffle_size
@@ -44,7 +43,7 @@ using kotekan::Config;
 using kotekan::Stage;
 
 /// TODO move this to an inline static once we go to C++17
-stream_id_t iceBoardShuffle::all_stream_ids[iceBoardShuffle::shuffle_size];
+ice_stream_id_t iceBoardShuffle::all_stream_ids[iceBoardShuffle::shuffle_size];
 
 REGISTER_KOTEKAN_STAGE(dpdkCore);
 

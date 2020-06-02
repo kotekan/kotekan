@@ -22,7 +22,7 @@
  * computes power and square power values. The kernel integrates those values and outputs a
  * normalized sum of square power values.
  *
- * @requires_kernel    rfi_chime_timesum_private.cl
+ * @requires_kernel    rfi_chime_time_sum_private.cl
  *
  * @par REST Endpoints
  * @endpoint    /rfi_time_sum_callback/<gpu_id> ``POST`` Update kernel parameters
