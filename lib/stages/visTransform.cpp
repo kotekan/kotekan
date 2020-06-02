@@ -115,7 +115,7 @@ void visTransform::main_thread() {
 
         // This is where all the main set of work happens. Iterate over the
         // available buffers, wait for data to appear and transform into
-        // visBuffer style data
+        // VisBuffer style data
         for (auto& buffer_pair : in_bufs) {
             std::tie(buf, frame_id) = buffer_pair;
 

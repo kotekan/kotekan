@@ -7,7 +7,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for dset_id_t, datasetManager, state_id_t
 #include "datasetState.hpp"    // for eigenvalueState
-#include "visBuffer.hpp"       // for visField, VisFrameView, visField::erms, visField::eval
+#include "visBuffer.hpp"       // for VisField, VisFrameView, VisField::erms, VisField::eval
 #include "visUtil.hpp"         // for frameID, modulo
 
 #include <atomic>     // for atomic_bool
@@ -71,7 +71,7 @@ void removeEv::main_thread() {
         // Copy over metadata and data, but skip all ev members which may not be
         // defined
         output_frame.copy_metadata(input_frame);
-        output_frame.copy_data(input_frame, {visField::eval, visField::evec, visField::erms});
+        output_frame.copy_data(input_frame, {VisField::eval, VisField::evec, VisField::erms});
         output_frame.dataset_id = dset_id_map.at(input_frame.dataset_id);
 
         // Finish up iteration.

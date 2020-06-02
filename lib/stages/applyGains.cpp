@@ -12,7 +12,7 @@
 #include "modp_b64.hpp"          // for modp_b64_decode, modp_b64_decode_len
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
 #include "restClient.hpp"        // for restClient::restReply, restClient
-#include "visBuffer.hpp"         // for VisFrameView, visField, visField::vis, visField::we...
+#include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::we...
 #include "visFileH5.hpp"         // IWYU pragma: keep
 #include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double, frameID
 
@@ -288,7 +288,7 @@ void applyGains::apply_thread() {
 
         // Copy over the data we won't modify
         output_frame.copy_metadata(input_frame);
-        output_frame.copy_data(input_frame, {visField::vis, visField::weight});
+        output_frame.copy_data(input_frame, {VisField::vis, VisField::weight});
 
         // Check if we have already registered this gain update against this
         // input dataset, do so if we haven't, and then label the output data
