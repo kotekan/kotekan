@@ -8,7 +8,7 @@ Details:
         Normalizes by the mean power
 ************************************************/
 __kernel void
-rfi_chime_timesum(
+rfi_chime_time_sum(
      __global uint *input,
      __global float *output,
      __constant uchar *InputMask,
