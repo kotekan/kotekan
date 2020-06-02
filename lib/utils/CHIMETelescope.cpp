@@ -12,8 +12,8 @@ CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string&
     _num_freq_per_stream = 1;
 
     _require_frequency_map = config.get_default<bool>(path, "require_frequency_map", false);
-    _allow_default_frequency_map = config.get_default<bool>(path, "allow_default_frequency_map",
-                                                            true);
+    _allow_default_frequency_map =
+        config.get_default<bool>(path, "allow_default_frequency_map", true);
 
     set_sampling_params(800.0, 2048, 2);
     set_gps(config, path);
