@@ -28,10 +28,10 @@
  *
  * @par Buffers
  * @buffer in_buf The kotekan buffer of the incoming single-frequency stream.
- *     @buffer_format VisFrameView structured
+ *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  * @buffer out_buf The kotekan buffer into which low cadence stream is fed.
- *     @buffer_format VisFrameView structured
+ *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  *
  * @conf  num_samples  Int. The number of time frames to average.

@@ -29,7 +29,7 @@
  *
  * @par Buffers
  * @buffer in_buf The buffer whose fpga count will be checked
- *         @buffer_format VisFrameView structured
+ *         @buffer_format VisBuffer structured
  *         @buffer_metadata VisMetadata
  *
  * @conf  start_time_tolerance  int. Tolerance for the start time error in

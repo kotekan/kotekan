@@ -69,7 +69,7 @@
  *
  * @par Buffers
  * @buffer in_buf The buffer streaming data to write
- *          @buffer_format VisFrameView structured
+ *          @buffer_format VisBuffer structured
  *          @buffer_metadata VisMetadata
  *
  * @conf    root_path       String. Location in filesystem containing

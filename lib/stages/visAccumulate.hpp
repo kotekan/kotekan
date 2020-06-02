@@ -31,7 +31,7 @@
 
 /**
  * @class visAccumulate
- * @brief Accumulate the high rate GPU output into integrated VisFrameViews.
+ * @brief Accumulate the high rate GPU output into integrated VisBuffers.
  *
  * This stage will accumulate the GPU output and calculate the within sample
  * variance for weights.
@@ -44,7 +44,7 @@
  *         @buffer_format GPU packed upper triangle
  *         @buffer_metadata chimeMetadata
  * @buffer out_buf The accumulated and tagged data.
- *         @buffer_format VisFrameView structured.
+ *         @buffer_format VisBuffer structured.
  *         @buffer_metadata VisMetadata
  *
  * @conf  samples_per_data_set  Int. The number of samples each GPU buffer has
@@ -182,7 +182,7 @@ private:
     void combine_gated(internalState& gate, internalState& vis);
 
     /**
-     * @brief Allocate the frame and initialise the VisFrameView's for each freq.
+     * @brief Allocate the frame and initialise the VisBuffer's for each freq.
      *
      * This routine will wait on an empty frame to become available on the output buffer.
      *
@@ -195,7 +195,7 @@ private:
     bool initialise_output(internalState& state, int in_frame_id);
 
     /**
-     * @brief Fill in the data sections of VisFrameView and release the frame.
+     * @brief Fill in the data sections of VisBuffer and release the frame.
      *
      * @param  state              Dataset to process.
      * @param  newest_frame_time  Used for deciding how late a frame is. A UNIX

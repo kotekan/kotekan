@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Stage for comparing against an expected test pattern in the VisFrameViews.
+@brief Stage for comparing against an expected test pattern in the VisBuffers.
        CHIME specific.
 - visTestPattern : public kotekan::Stage
 *****************************************/
@@ -70,10 +70,10 @@
  *
  * @par Buffers
  * @buffer in_buf               The buffer to debug
- *         @buffer_format       VisFrameView structured
+ *         @buffer_format       VisBuffer structured
  *         @buffer_metadata     VisMetadata
  * @buffer out_buf              All frames found to contain errors
- *         @buffer_format       VisFrameView structured
+ *         @buffer_format       VisBuffer structured
  *         @buffer_metadata     VisMetadata
  *
  * @conf  write_dir             String. Path to the place to dump all output in.
