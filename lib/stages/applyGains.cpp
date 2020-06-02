@@ -683,6 +683,18 @@ applyGains::calculate_gain(double timestamp, uint32_t freq_ind, std::vector<cflo
 
     if (update_new == nullptr) {
         WARN("No gains update is as old as the currently processed frame.");
+
+        // Look up frequency ID as this method only gets passed the index,
+        // and print more info about late frame
+        for (const auto& [fm_id, fm_ind] : freq_map) {
+            if (fm_ind == freq_ind) {
+                WARN("Frame frequency ID: {}\nFrame timestamp: {}\nUpdate queue: {}", fm_id,
+                     timestamp, gains_fifo);
+                break;
+            }
+        }
+
+
         return {true, -1, state_id_t::null};
     }
 
