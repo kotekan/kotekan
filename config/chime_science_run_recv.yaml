@@ -28,12 +28,16 @@ num_ev: 4
 # other stages (11 and 14, twinned with 3 and 6 respectively)
 cpu_affinity: [7, 11, 14, 15]
 
+telescope:
+  name: chime
+  allow_default_frequency_map: false
+
 dataset_manager:
   use_dataset_broker: True
   ds_broker_host: "10.1.50.11" # recv1
 
 vis_pool:
-  kotekan_metadata_pool: visMetadata
+  kotekan_metadata_pool: VisMetadata
   num_metadata_objects: 500 * buffer_depth
 
 vis_buffer:

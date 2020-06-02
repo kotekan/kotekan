@@ -9,7 +9,7 @@
 #include "datasetState.hpp"      // for stackState, prodState, inputState
 #include "kotekanLogging.hpp"    // for INFO, DEBUG, ERROR, FATAL_ERROR
 #include "prometheusMetrics.hpp" // for Gauge, Counter, Metrics, MetricFamily
-#include "visBuffer.hpp"         // for VisFrameView, visField, visField::vis, visField::weight
+#include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::weight
 #include "visUtil.hpp"           // for rstack_ctype, prod_ctype, current_time, modulo, input_c...
 
 #include "fmt.hpp"      // for format, fmt
@@ -214,7 +214,7 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
 
         // Copy over the data we won't modify
         output_frame.copy_metadata(input_frame);
-        output_frame.copy_data(input_frame, {visField::vis, visField::weight});
+        output_frame.copy_data(input_frame, {VisField::vis, VisField::weight});
         output_frame.dataset_id = new_dset_id;
 
         // Zero the output frame

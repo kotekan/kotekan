@@ -1095,7 +1095,7 @@ main_pool:
     num_metadata_objects: 30 * buffer_depth
 
 vis_pool:
-    kotekan_metadata_pool: visMetadata
+    kotekan_metadata_pool: VisMetadata
     num_metadata_objects: 30 * buffer_depth
     "int_frames": 64,
 """
