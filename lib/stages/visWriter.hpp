@@ -63,7 +63,7 @@
  *
  * @par Buffers
  * @buffer in_buf The buffer streaming data to write
- *         @buffer_format VisFrameView structured
+ *         @buffer_format VisBuffer structured
  *         @buffer_metadata VisMetadata
  *
  * @conf   file_type        String. Type of file to write. One of 'hdf5',
@@ -226,7 +226,7 @@ private:
  *
  * @par Buffers
  * @buffer in_buf The buffer streaming data to write
- *         @buffer_format VisFrameView structured
+ *         @buffer_format VisBuffer structured
  *         @buffer_metadata VisMetadata
  *
  * @conf   root_path        String. Location in filesystem to write to.

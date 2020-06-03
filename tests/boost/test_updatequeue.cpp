@@ -8,6 +8,7 @@
 #include <algorithm>                         // for copy, copy_backward, max
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_CHECK, BOOST_PP_BOOL_2
 #include <ctime>                             // for timespec
+#include <deque>                             // for deque, _Deque_iterator
 #include <iostream>                          // for cout, ostream, std
 #include <memory>
 #include <string>  // for operator<<

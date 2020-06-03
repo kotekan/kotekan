@@ -20,17 +20,17 @@
 
 /**
  * @class freqSubset
- * @brief Outputs a VisFrameView stream with a subset of the input frequencies.
+ * @brief Outputs a VisBuffer stream with a subset of the input frequencies.
  *
- * This task takes data coming out of a VisFrameView stream and selects a subset of
+ * This task takes data coming out of a VisBuffer stream and selects a subset of
  * frequencies to be passed on to the output buffer.
  *
  * @par Buffers
  * @buffer in_buf The original buffer with all frequencies
- *         @buffer_format VisFrameView structured
+ *         @buffer_format VisBuffer structured
  *         @buffer_metadata VisMetadata
  * @buffer out_buf The buffer containing the subset of frequencies
- *         @buffer_format VisFrameView structured
+ *         @buffer_format VisBuffer structured
  *         @buffer_metadata VisMetadata
  *
  * @conf  subset_list           Vector of Int. The list of frequencies that go

@@ -118,6 +118,7 @@ bool applyGains::receive_update(json& json) {
     std::string gains_path;
     std::string update_id;
     double transition_interval;
+    bool new_state;
 
     // receive new gains timestamp ("start_time" might move to "start_time")
     try {
@@ -161,8 +162,20 @@ bool applyGains::receive_update(json& json) {
         return false;
     }
 
+    // Should we register a new dataset?
+    try {
+        if (!json.at("new_state").is_boolean())
+            throw std::invalid_argument(fmt::format(fmt("applyGains: received bad gains "
+                                                        "new_state: {:s}"),
+                                                    json.at("new_state").dump()));
+        new_state = json.at("new_state").get<bool>();
+    } catch (std::exception& e) {
+        WARN("Failure reading 'new_state' from update: {:s}", e.what());
+        return false;
+    }
+
     // Signal to fetch thread to get gains from broker
-    update_fetch_queue.put({update_id, transition_interval, new_ts});
+    update_fetch_queue.put({update_id, transition_interval, new_ts, new_state});
 
     INFO("Received gain update with tag {:s}.", update_id);
 
@@ -350,7 +363,7 @@ void applyGains::fetch_thread() {
         if (!update)
             break;
 
-        auto [update_id, transition_interval, new_ts] = *update;
+        auto [update_id, transition_interval, new_ts, new_state] = *update;
 
         std::optional<applyGains::GainData> gain_data;
         if (read_from_file) {
@@ -366,7 +379,21 @@ void applyGains::fetch_thread() {
         }
 
         // update gains
-        state_id_t state_id = dm.create_state<gainState>(update_id, transition_interval).first;
+        state_id_t state_id;
+        if (new_state) {
+            state_id = dm.create_state<gainState>(update_id, transition_interval).first;
+        }
+        // Use the current dataset ID
+        else {
+            const auto last_update = gains_fifo.get_update(double_to_ts(new_ts)).second;
+            if (last_update == nullptr) {
+                WARN("Failed to retrieve the last update, gains queue empty. Creating new gain "
+                     "state.");
+                state_id = dm.create_state<gainState>(update_id, transition_interval).first;
+            } else {
+                state_id = last_update->state_id;
+            }
+        }
         GainUpdate gain_update{std::move(gain_data.value()), transition_interval, state_id};
 
         {
@@ -659,6 +686,18 @@ applyGains::calculate_gain(double timestamp, uint32_t freq_ind, std::vector<cflo
 
     if (update_new == nullptr) {
         WARN("No gains update is as old as the currently processed frame.");
+
+        // Look up frequency ID as this method only gets passed the index,
+        // and print more info about late frame
+        for (const auto& [fm_id, fm_ind] : freq_map) {
+            if (fm_ind == freq_ind) {
+                WARN("Frame frequency ID: {}\nFrame timestamp: {}\nUpdate queue: {}", fm_id,
+                     timestamp, gains_fifo);
+                break;
+            }
+        }
+
+
         return {true, -1, state_id_t::null};
     }
 

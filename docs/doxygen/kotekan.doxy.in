@@ -887,7 +887,9 @@ RECURSIVE              = YES
 
 EXCLUDE                = @PROJECT_SOURCE_DIR@/external \
                          @PROJECT_SOURCE_DIR@/scripts \
+                         @PROJECT_SOURCE_DIR@/python/scripts \
                          @PROJECT_SOURCE_DIR@/build \
+                         @PROJECT_SOURCE_DIR@/.git \
                          @PROJECT_SOURCE_DIR@/docs
 
 # The EXCLUDE_SYMLINKS tag can be used to select whether or not files or

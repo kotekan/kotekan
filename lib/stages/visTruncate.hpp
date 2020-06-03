@@ -22,10 +22,10 @@
  *
  * @par Buffers
  * @buffer in_buf The input stream.
- *         @buffer_format VisFrameView.
+ *         @buffer_format VisBuffer.
  *         @buffer_metadata VisMetadata
  * @buffer out_buf The output stream with truncated values.
- *         @buffer_format VisFrameView.
+ *         @buffer_format VisBuffer.
  *         @buffer_metadata VisMetadata
  *
  * @conf   err_sq_lim               Limit for the error of visibility truncation.

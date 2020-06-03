@@ -31,7 +31,7 @@
 
 /**
  * @class visAccumulate
- * @brief Accumulate the high rate GPU output into integrated VisFrameViews.
+ * @brief Accumulate the high rate GPU output into integrated VisBuffers.
  *
  * This stage will accumulate the GPU output and calculate the within sample
  * variance for weights.
@@ -44,7 +44,7 @@
  *         @buffer_format GPU packed upper triangle
  *         @buffer_metadata chimeMetadata
  * @buffer out_buf The accumulated and tagged data.
- *         @buffer_format VisFrameView structured.
+ *         @buffer_format VisBuffer structured.
  *         @buffer_metadata VisMetadata
  *
  * @conf  samples_per_data_set  Int. The number of samples each GPU buffer has
@@ -60,15 +60,20 @@
  * @conf  num_freq_in_frame     Int. Number of frequencies in each GPU frame.
  * @conf  block_size            Int. The block size of the packed data.
  * @conf  input_reorder         Array of [int, int, string]. The reordering mapping.
- *                              Only the first element of each sub-array is used and it is the the
- * index of the input to move into this new location. The remaining elements of the subarray are for
- * correctly labelling the input in ``visWriter``.
+ *                              Only the first element of each sub-array is used and
+ *                              it is the the index of the input to move into this
+ *                              new location. The remaining elements of the subarray
+ *                              are for correctly labelling the input in
+ *                              ``visWriter``.
  * @conf  low_sample_fraction   If a frames has less than this fraction of the
  *                              data expected, skip it. This is set to 1% by default.
  * @conf  instrument_name       String. Name of the instrument. Default "chime".
  * @conf  freq_ids              Vector of UInt32. Frequency IDs on the stream.
  *                              Default 0..1023.
- * @conf  max_age               Float. Drop frames later than this number of seconds. Default 60.0
+ * @conf  max_age               Float. Drop frames later than this number of seconds.
+ *                              Default is 60.0
+ * @conf  fpga_dataset          String. The dataset ID for the data being received from
+ *                              the F-engine.
  *
  * @par Metrics
  * @metric  kotekan_visaccumulate_skipped_frame_total
@@ -157,6 +162,7 @@ private:
     size_t num_gpu_frames;
     size_t minimum_samples;
     float max_age;
+    dset_id_t fpga_dataset;
 
     // Derived from config
     size_t num_prod_gpu;
@@ -176,7 +182,7 @@ private:
     void combine_gated(internalState& gate, internalState& vis);
 
     /**
-     * @brief Allocate the frame and initialise the VisFrameView's for each freq.
+     * @brief Allocate the frame and initialise the VisBuffer's for each freq.
      *
      * This routine will wait on an empty frame to become available on the output buffer.
      *
@@ -189,7 +195,7 @@ private:
     bool initialise_output(internalState& state, int in_frame_id);
 
     /**
-     * @brief Fill in the data sections of VisFrameView and release the frame.
+     * @brief Fill in the data sections of VisBuffer and release the frame.
      *
      * @param  state              Dataset to process.
      * @param  newest_frame_time  Used for deciding how late a frame is. A UNIX

@@ -8,6 +8,7 @@
 
 #include "Config.hpp"
 #include "Stage.hpp" // for Stage
+#include "Telescope.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
 
@@ -81,7 +82,7 @@ private:
     /// Metadata buffer ID
     int32_t metadata_buffer_id;
     /// Freq bin index, where the 0th is at 800MHz
-    int32_t freq_now;
+    freq_id_t freq_now;
     /// Freq in MHz
     float freq_MHz;
 

@@ -38,10 +38,10 @@
  *
  * @par Buffers
  * @buffer in_buf The input stream.
- *         @buffer_format VisFrameView.
+ *         @buffer_format VisBuffer.
  *         @buffer_metadata VisMetadata
  * @buffer out_buf The output stream.
- *         @buffer_format VisFrameView.
+ *         @buffer_format VisBuffer.
  *         @buffer_metadata VisMetadata
  *
  * @conf   num_elements     Int.    The number of elements (i.e. inputs) in the

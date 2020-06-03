@@ -6,11 +6,12 @@
 #ifndef RFI_BROADCAST_H
 #define RFI_BROADCAST_H
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // for bufferContainer
-#include "restServer.hpp"      // for connectionInstance
-#include "visUtil.hpp"         // for movingAverage
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily
+#include "restServer.hpp"        // for connectionInstance
+#include "visUtil.hpp"           // for movingAverage
 
 #include "json.hpp" // for json
 
@@ -27,7 +28,7 @@
  * sending them to a user defined IP address. Each packet is fitted with a header which can be read
  * by the server to ensure that the config parameters of the packet match the server config. This
  * stage simply reads the spectral kurtosis estimates, averages them for a single frame, averages
- * frames_per_packet frames toegther, packages the results into a packet (header + data), and sends
+ * frames_per_packet frames together, packages the results into a packet (header + data), and sends
  * the packets to a user defined IP address via UDP.
  *
  * @par Buffers
@@ -116,6 +117,9 @@ private:
     std::string endpoint_zero;
     /// Moving average of frame zeroing percentage to send to prometheus
     movingAverage perc_zeroed;
+    /// Prometheus metrics to export
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& sample_counter;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& flagged_sample_counter;
 };
 
 #endif
