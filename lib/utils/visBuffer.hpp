@@ -7,7 +7,8 @@
 #ifndef VISBUFFER_HPP
 #define VISBUFFER_HPP
 
-#include "Hash.hpp" // for Hash
+#include "FrameView.hpp" // for FrameView
+#include "Hash.hpp"      // for Hash
 #include "Telescope.hpp"
 #include "buffer.h"        // for Buffer
 #include "chimeMetadata.h" // for chimeMetadata

@@ -324,6 +324,9 @@ void VisSharedMemWriter::main_thread() {
     wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
 
     auto frame = VisFrameView(in_buf, frame_id);
+    struct VisMetadata* metadata = (VisMetadata*)in_buf->metadata[frame_id]->metadata;
+    size_t frame_data_size = VisFrameView::calculate_frame_size(
+        metadata->num_elements, metadata->num_prod, metadata->num_ev);
 
     // Build the frequency index
     std::map<uint32_t, uint32_t> freq_id_map;
@@ -392,6 +395,9 @@ void VisSharedMemWriter::main_thread() {
 
         // Get a view of the current frame
         auto frame = VisFrameView(in_buf, frame_id);
+        metadata = (VisMetadata*)in_buf->metadata[frame_id]->metadata;
+        frame_data_size = VisFrameView::calculate_frame_size(metadata->num_elements,
+                                                             metadata->num_prod, metadata->num_ev);
 
         if (frame.data_size != rbs.data_size)
             FATAL_ERROR("Size of data changed mid-stream.");

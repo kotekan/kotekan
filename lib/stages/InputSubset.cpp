@@ -156,8 +156,10 @@ void InputSubset::main_thread() {
         allocate_new_metadata_object(out_buf, output_frame_id);
 
         // Create view to output frame
-        auto output_frame = VisFrameView(out_buf, output_frame_id, input_ind.size(),
-                                         prod_ind.size(), input_frame.num_ev);
+        VisFrameView::set_metadata((VisMetadata*)out_buf->metadata[output_frame_id]->metadata,
+                                   input_ind.size(), prod_ind.size(), input_frame.num_ev);
+
+        auto output_frame = VisFrameView(out_buf, output_frame_id);
 
         // Copy over subset of visibility shaped data
         for (size_t i = 0; i < prod_ind.size(); i++) {
