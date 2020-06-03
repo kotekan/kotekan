@@ -523,7 +523,8 @@ void ensureOrdered::main_thread() {
             if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
                 return;
             }
-            auto output_frame = VisFrameView::copy_frame(in_buf, frame_id, out_buf, output_frame_id);
+            auto output_frame =
+                VisFrameView::copy_frame(in_buf, frame_id, out_buf, output_frame_id);
             mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
 
             // release input frame
@@ -554,7 +555,8 @@ void ensureOrdered::main_thread() {
             if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
                 return;
             }
-            auto output_frame = VisFrameView::copy_frame(in_buf, waiting_id, out_buf, output_frame_id);
+            auto output_frame =
+                VisFrameView::copy_frame(in_buf, waiting_id, out_buf, output_frame_id);
             mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
 
             mark_frame_empty(in_buf, unique_name.c_str(), waiting_id);

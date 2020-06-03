@@ -1,10 +1,10 @@
 #include "visBuffer.hpp"
 
-#include "FrameView.hpp"           // for metadataContainer
+#include "FrameView.hpp" // for metadataContainer
 #include "Telescope.hpp"
-#include "buffer.h"                // for Buffer, allocate_new_metadata_object, swap_frames
-#include "chimeMetadata.h"         // for chimeMetadata
-#include "metadata.h"              // for metadataContainer
+#include "buffer.h"        // for Buffer, allocate_new_metadata_object, swap_frames
+#include "chimeMetadata.h" // for chimeMetadata
+#include "metadata.h"      // for metadataContainer
 
 #include "fmt.hpp" // for format, fmt
 

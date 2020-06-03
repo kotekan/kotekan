@@ -275,7 +275,8 @@ void ReplaceVis::main_thread() {
         }
 
         // Copy input frame to output frame and create view
-        auto output_frame = VisFrameView::copy_frame(in_buf, input_frame_id, out_buf, output_frame_id);
+        auto output_frame =
+            VisFrameView::copy_frame(in_buf, input_frame_id, out_buf, output_frame_id);
 
         for (uint32_t i = 0; i < output_frame.num_prod; i++) {
             float real = (i % 2 == 0 ? output_frame.freq_id : std::get<0>(output_frame.time));
