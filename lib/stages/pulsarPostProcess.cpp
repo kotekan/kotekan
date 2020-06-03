@@ -189,8 +189,8 @@ void pulsarPostProcess::main_thread() {
             return;
 
         for (uint32_t i = 0; i < _num_gpus; ++i) {
+            psr_coord[i] = get_psr_coord(in_buf[i], in_buffer_ID[i]);
             if (_timesamples_per_pulsar_packet == 3125) {
-                psr_coord[i] = get_psr_coord(in_buf[i], in_buffer_ID[i]);
                 thread_ids[i] = tel.to_freq_id(in_buf[i], in_buffer_ID[i]);
             } else if (_timesamples_per_pulsar_packet == 625) {
                 // In the case of 4 frequencies per packet we convert the stream_id into a
