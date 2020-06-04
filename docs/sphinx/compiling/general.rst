@@ -57,7 +57,7 @@ Required for some options
 * `fftw3 <http://www.fftw.org/>`_
 * `libairspy <https://github.com/airspy/airspyone_host/tree/master/libairspy>`_
 * `OpenBLAS <http://www.openblas.net/>`_ (see :ref:`openblas`)
-* `LAPACK <http://www.netlib.org/lapack/>`_ (Should automatically be installed with OpenBLAS if a Fortran compiler is present on your system)
+* `LAPACK <http://www.netlib.org/lapack/>`_ (Install packages via: ``sudo apt install liblapack-dev liblapacke-dev`` on Ubuntu)
 * `Blaze <https://bitbucket.org/blaze-lib/blaze/src/master/>`_
   * Download and unpack into `/opt`
 * OpenSSL (Package is called ``libssl-dev`` on Ubuntu).
@@ -192,11 +192,9 @@ Cmake build options
 * ``-DUSE_FFTW=ON``
     Build an FFTW-based F-engine. Requires FFTW3.
 * ``-DUSE_LAPACK=ON``
-    Build stages depending on LAPACK. Currently only OpenBLAS built from source is supported (see above).
+    Build stages depending on LAPACK.
 * ``-DUSE_OMP=ON``
     Build stages using OpenMP. This requires a compiler supporting OpenMP (>= 3.0, see `OpenMP Compilers and Tools <https://www.openmp.org/resources/openmp-compilers-tools/>`).
-* ``-DOPENBLAS_PATH=<openblas_prefix>``
-    Path to OpenBLAS installation, if not in the ``CMAKE_PREFIX_PATH``
 * ``-DCOMPILE_DOCS=ON``
     Build kotekan documentation. Requires doxygen, sphinx (+ sphinx_rtd_theme), and breathe. Note that docs will only compile if explicitly told to, it is not part of the base compile, even when enabled.
 * ``-DOPENSSL_ROOT_DIR=<openssl_root_dir>``
