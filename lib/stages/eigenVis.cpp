@@ -258,8 +258,11 @@ void eigenVis::main_thread() {
             break;
         }
         allocate_new_metadata_object(output_buffer, output_frame_id);
-        auto output_frame = VisFrameView(output_buffer, output_frame_id, input_frame.num_elements,
-                                         input_frame.num_prod, num_eigenvectors);
+        VisFrameView::set_metadata((VisMetadata*)output_buffer->metadata[output_frame_id]->metadata,
+                                   input_frame.num_elements, input_frame.num_prod,
+                                   num_eigenvectors);
+
+        auto output_frame = VisFrameView(output_buffer, output_frame_id);
 
         // Copy over metadata and data, but skip all ev members which may not be
         // defined
