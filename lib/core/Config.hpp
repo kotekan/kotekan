@@ -315,9 +315,9 @@ Config::configEval<Type>::configEval(const Config& _config, const std::string& b
     }
     const std::string& expression = value.get<std::string>();
 
-    static const std::regex re(R"((-?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?"
-                               "|\+|\*|\-|\/|\)|\(|[a-zA-Z][a-zA-Z0-9_]*))",
-                               std::regex::ECMAScript);
+    static const std::regex re(
+        R"((-?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?|\+|\*|\-|\/|\)|\(|[a-zA-Z][a-zA-Z0-9_]*))",
+        std::regex::ECMAScript);
 
     tokens = {std::sregex_token_iterator(expression.begin(), expression.end(), re, 1),
               std::sregex_token_iterator()};
