@@ -29,6 +29,7 @@ link_map: [0,1,2,3]
 
 # Constants
 sizeof_float: 4
+sizeof_int: 4
 sizeof_short: 2
 
 #FRB global options
@@ -148,13 +149,13 @@ lost_samples_buffer:
 compressed_lost_samples_buffer:
     kotekan_buffer: standard
     num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set / factor_upchan * num_data_sets / 3
+    frame_size: samples_per_data_set * num_data_sets / (factor_upchan * downsample_time) * sizeof_int
     metadata_pool: main_pool
 
 compressed_lost_samples_buffer_cpy:
     kotekan_buffer: standard
     num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set / factor_upchan * num_data_sets / 3
+    frame_size: samples_per_data_set * num_data_sets / (factor_upchan * downsample_time) * sizeof_int
     metadata_pool: main_pool
 
 cpu_affinity: [2,3,8,9]
@@ -191,8 +192,10 @@ cpu_simulate:
 
 compress_lost_samples:
   kotekan_stage: compressLostSamples
-  lost_samples_buf: lost_samples_buffer
-  compressed_lost_samples_buf: compressed_lost_samples_buffer
+  compression_factor: factor_upchan * downsample_time
+  zero_all_in_group: true
+  in_buf: lost_samples_buffer
+  out_buf: compressed_lost_samples_buffer
 
 copy:
   kotekan_stage: bufferCopy
@@ -202,19 +205,21 @@ copy:
 
 gpu:
   kernel_path: "../lib/hsa/kernels/"
-  commands:
-  - name: hsaInputData
-  - name: hsaInputCompressLostSamples
-  - name: hsaOutputDataZero
-  - name: hsaAsyncCopyGain
-  - name: hsaBarrier
-  - name: hsaBeamformReorder
-  - name: hsaBeamformKernel
-  - name: hsaBeamformTranspose
-  - name: hsaBeamformUpchanHFB
-  - name: hsaBeamformHFBSum
-  - name: hsaBeamformOutputData
-  - name: hsaBeamformHFBOutputData
+  commands: &command_list
+    - name: hsaInputData
+    - name: hsaHostToDeviceCopy
+      in_buf: hfb_compressed_lost_samples_buf
+      gpu_memory_name: hfb_compressed_lost_samples
+    - name: hsaOutputDataZero
+    - name: hsaAsyncCopyGain
+    - name: hsaBarrier
+    - name: hsaBeamformReorder
+    - name: hsaBeamformKernel
+    - name: hsaBeamformTranspose
+    - name: hsaBeamformUpchanHFB
+    - name: hsaBeamformHFBSum
+    - name: hsaBeamformOutputData
+    - name: hsaBeamformHFBOutputData
   enable_delay: true
   cpu_affinity: [2, 3, 8, 9]
   delay_max_fraction: 2.0
@@ -227,10 +232,11 @@ gpu:
     gpu_id: 0
     ew_spacing: [0.0, 0.1, 0.2, 0.3]
     northmost_beam: 90.0
+    commands: *command_list
     in_buffers:
       network_buf: network_buffer_0
       gain_frb_buf: gain_frb_buffer
-      compressed_lost_samples_buf: compressed_lost_samples_buffer_cpy
+      hfb_compressed_lost_samples_buf: compressed_lost_samples_buffer_cpy
     out_buffers:
       beamform_output_buf: gpu_beamform_output_buffer_0
       beamform_hfb_output_buf: gpu_beamform_hfb_output_buffer_0
