@@ -1,16 +1,16 @@
 #include "compressLostSamples.hpp"
 
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"         // for wait_for_empty_frame, Buffer, allocate_new_metadata_object
-#include "chimeMetadata.h"
+#include "buffer.h"         // for allocate_new_metadata_object, copy_metadata, mark_frame_empty
+#include "chimeMetadata.h"  // for atomic_add_lost_timesamples, zero_lost_samples
 
 #include <atomic>      // for atomic_bool
 #include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, bind, function
 #include <regex>       // for match_results<>::_Base_type
+#include <stdexcept>   // for runtime_error
 #include <string>      // for string
-#include <sys/types.h> // for uint
-#include <visUtil.hpp> // for frameID
+#include <visUtil.hpp> // for frameID, modulo
 
 
 using kotekan::bufferContainer;

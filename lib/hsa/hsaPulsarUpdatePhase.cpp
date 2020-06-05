@@ -9,11 +9,12 @@
 #include "configUpdater.hpp"       // for configUpdater
 #include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
 #include "hsaBase.h"               // for hsa_host_free, hsa_host_malloc
-#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface, Config
+#include "hsaDeviceInterface.hpp"  // for hsaDeviceInterface
 #include "kotekanLogging.hpp"      // for DEBUG, WARN, ERROR, INFO
 #include "restServer.hpp"          // for restServer, HTTP_RESPONSE, connectionInstance
 #include "visUtil.hpp"             // for double_to_ts
 
+#include <algorithm>  // for clamp
 #include <cmath>      // for cos, sin, fmod, acos, asin, sqrt, atan2, pow
 #include <cstdint>    // for int32_t
 #include <exception>  // for exception

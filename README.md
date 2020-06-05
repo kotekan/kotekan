@@ -20,7 +20,9 @@ To build just the base framework:
 
 Cmake build options:
 
-* `-DCMAKE_BUILD_TYPE=Debug` - Builds the project with debug symbols.
+* `-DCMAKE_BUILD_TYPE=Debug` - Builds the project with asserts, debug logging and debug symbols.
+* `-DCMAKE_BUILD_TYPE=Test` - Builds the project with asserts, debug logging, but without debug
+symbols.
 * `-DUSE_DPDK=ON` - Include DPDK support.  Optional `-DRTE_SDK=<build-location>` and
   `-DRTE_TARGET=x86_64-native-linuxapp-gcc` can be provided for non standard build locations.
 * `-DUSE_HSA=ON` - Build with HSA support if available. On by default.
