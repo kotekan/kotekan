@@ -170,8 +170,8 @@ void basebandReadout::main_thread() {
             }
             mgr = mgrs[_num_local_freq
                        - 1]; //&basebandApiManager::instance().register_readout_stage(freq_id);
-            INFO("freq_id: {:d}", freq_id);
-            INFO("mgr==mgrs[{:d}]? {:d}", _num_local_freq - 1, mgr == mgrs[_num_local_freq - 1]);
+            // INFO("freq_id: {:d}", freq_id);
+            // INFO("mgr==mgrs[{:d}]? {:d}", _num_local_freq - 1, mgr == mgrs[_num_local_freq - 1]);
             // freq_id = bin_number_chime(&stream_id);
             lt = std::make_unique<std::thread>([&] { this->readout_thread(freq_ids, mgrs); });
 
@@ -227,7 +227,7 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
                 next_requests[freqidx] = mgrs[freqidx]->get_next_waiting_request();
 
 
-                INFO("Non-null request for freq_ids[idx]: {:d}", freq_ids[freqidx]);
+                // INFO("Non-null request for freq_ids[idx]: {:d}", freq_ids[freqidx]);
             }
 
             // Do just the last one individually
@@ -374,7 +374,7 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
                 }
                 milliseconds ms_after =
                     duration_cast<milliseconds>(system_clock::now().time_since_epoch());
-                INFO("memcpy() call: {:d} = {:d}-{:d} ms", ms_after.count() - ms_before.count(),
+                // INFO("memcpy() call: {:d} = {:d}-{:d} ms", ms_after.count() - ms_before.count(),
                      ms_after.count(), ms_before.count());
             }
         }
@@ -478,7 +478,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
     // This assumes that the frame's timestamps are in order, but not that they
     // are necessarily contiguous.
 
-    INFO("get_data(): Got freqidx {:d}", freqidx);
+    // INFO("get_data(): Got freqidx {:d}", freqidx);
     // INFO("get_data(): Got freqidx {:d} but replacing it with 0",freqidx);
     // freqidx = 0;
     int dump_start_frame = 0;
@@ -631,23 +631,23 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
                       (frame_ind_end - frame_ind_start) * _num_elements);
             milliseconds ms_after =
                 duration_cast<milliseconds>(system_clock::now().time_since_epoch());
-            INFO("memcpy() call: {:d} = {:d}-{:d} ms", ms_after.count() - ms_before.count(),
-                 ms_after.count(), ms_before.count());
+            // INFO("memcpy() call: {:d} = {:d}-{:d} ms", ms_after.count() - ms_before.count(),
+            //     ms_after.count(), ms_before.count());
 
         } else if (_num_local_freq > 1) {
             using namespace std::chrono;
             milliseconds ms_before =
                 duration_cast<milliseconds>(system_clock::now().time_since_epoch());
-            INFO("Right before memcpy()");
+            // INFO("Right before memcpy()");
             for (int timeidx = 0; timeidx < (frame_ind_end - frame_ind_start); timeidx++) {
                 // XXX: Try to use memcpy instead of nt_memcpy for short stretches of data of length
                 // n_e.
-                if (timeidx % 1024 == 0) {
-                    INFO("memcpy: #{:d}, freqidx: {:d}, buf_data[{:d}]->dump_data[{:d}],len: {:d}",
-                         timeidx, freqidx,
-                         ((frame_ind_start + timeidx) * _num_local_freq + freqidx) * _num_elements,
-                         (data_ind_start + timeidx) * _num_elements, _num_elements);
-                }
+                // if (timeidx % 1024 == 0) {
+                //     INFO("memcpy: #{:d}, freqidx: {:d}, buf_data[{:d}]->dump_data[{:d}],len: {:d}",
+                //          timeidx, freqidx,
+                //          ((frame_ind_start + timeidx) * _num_local_freq + freqidx) * _num_elements,
+                //          (data_ind_start + timeidx) * _num_elements, _num_elements);
+                // }
                 memcpy(&dump.data[(data_ind_start + timeidx) * _num_elements],
                        &buf_data[((frame_ind_start + timeidx) * _num_local_freq + freqidx)
                                  * _num_elements],
@@ -655,8 +655,8 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
             }
             milliseconds ms_after =
                 duration_cast<milliseconds>(system_clock::now().time_since_epoch());
-            INFO("elapsed {:d} = {:d}-{:d} ms", ms_after.count() - ms_before.count(),
-                 ms_after.count(), ms_before.count());
+            // INFO("elapsed {:d} = {:d}-{:d} ms", ms_after.count() - ms_before.count(),
+            //      ms_after.count(), ms_before.count());
         }
         // What data index are we expecting on the next iteration.
         next_data_ind = data_ind_start + frame_ind_end - frame_ind_start;
