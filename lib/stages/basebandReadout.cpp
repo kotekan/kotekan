@@ -133,7 +133,7 @@ void basebandReadout::main_thread() {
     std::unique_ptr<std::thread> lt;
     basebandReadoutManager* mgrs[_num_local_freq] = {};
 
-    basebandReadoutManager* mgr = nullptr;
+    // basebandReadoutManager* mgr = nullptr;
     uint32_t freq_ids[_num_local_freq];
     while (!stop_thread) {
 
@@ -168,11 +168,6 @@ void basebandReadout::main_thread() {
                 readout_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
                 INFO("Starting request-listening thread for freq_id: {:d}", freq_id);
             }
-            mgr = mgrs[_num_local_freq
-                       - 1]; //&basebandApiManager::instance().register_readout_stage(freq_id);
-            // INFO("freq_id: {:d}", freq_id);
-            // INFO("mgr==mgrs[{:d}]? {:d}", _num_local_freq - 1, mgr == mgrs[_num_local_freq - 1]);
-            // freq_id = bin_number_chime(&stream_id);
             lt = std::make_unique<std::thread>([&] { this->readout_thread(freq_ids, mgrs); });
 
             wt = std::make_unique<std::thread>([&] { this->writeout_thread(mgrs); });
@@ -212,8 +207,6 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
         request_no_data_counters[freqidx] =
             &(readout_counter.labels({std::to_string(freq_ids[freqidx]), "no_data"}));
     }
-
-    // TODO: Ask davor about request_no_data_counter()
 
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
@@ -375,7 +368,7 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
                 milliseconds ms_after =
                     duration_cast<milliseconds>(system_clock::now().time_since_epoch());
                 // INFO("memcpy() call: {:d} = {:d}-{:d} ms", ms_after.count() - ms_before.count(),
-                     ms_after.count(), ms_before.count());
+                //       ms_after.count(), ms_before.count());
             }
         }
     }
