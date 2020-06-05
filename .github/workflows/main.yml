@@ -122,6 +122,9 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         df -h
 
+    - name: Setup tmate session
+      uses: mxschmitt/action-tmate@v2
+
     - name: Run parallel python tests
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
