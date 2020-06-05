@@ -12,7 +12,6 @@ Compiling **Kotekan**
    :hidden:
 
    dpdk
-   openblas
 
 
 .. toctree::
@@ -56,7 +55,7 @@ Required for some options
 
 * `fftw3 <http://www.fftw.org/>`_
 * `libairspy <https://github.com/airspy/airspyone_host/tree/master/libairspy>`_
-* `OpenBLAS <http://www.openblas.net/>`_ (see :ref:`openblas`)
+* `OpenBLAS <http://www.openblas.net/>`_ (Install package via ``sudo apt install libopenblas-dev`` on Ubuntu)
 * `LAPACK <http://www.netlib.org/lapack/>`_ (Install packages via: ``sudo apt install liblapack-dev liblapacke-dev`` on Ubuntu)
 * `Blaze <https://bitbucket.org/blaze-lib/blaze/src/master/>`_
   * Download and unpack into `/opt`
