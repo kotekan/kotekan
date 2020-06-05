@@ -1,10 +1,9 @@
 #include "integrateHFBData.hpp"
 
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"         // for mark_frame_empty, Buffer, register_consumer, wait_for...
+#include "Telescope.hpp"
+#include "buffer.h" // for mark_frame_empty, Buffer, register_consumer, wait_for...
 #include "chimeMetadata.h"
-#include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, stream_id_t
-#include "gpsTime.h"
 #include "hfbMetadata.hpp"
 #include "kotekanLogging.hpp" // for DEBUG, DEBUG2
 
@@ -107,6 +106,9 @@ void integrateHFBData::main_thread() {
     uint8_t* compressed_lost_samples_frame;
     int out_buffer_ID = 0, first = 1;
     int64_t fpga_seq_num_end_old;
+
+    auto& tel = Telescope::instance();
+
     total_timesamples = _samples_per_data_set * _num_frames_to_integrate;
     total_lost_timesamples = 0;
     fpga_seq_num = 0;
@@ -204,11 +206,11 @@ void integrateHFBData::main_thread() {
                 set_fpga_seq_num_hfb(out_buf, out_buffer_ID, fpga_seq);
 
                 // Check if GPS time is set
-                if (!is_gps_global_time_set())
+                if (!tel.gps_time_enabled())
                     set_gps_time_flag(out_buf, out_buffer_ID, 0);
                 else {
                     set_gps_time_flag(out_buf, out_buffer_ID, 1);
-                    set_gps_time_hfb(out_buf, out_buffer_ID, compute_gps_time(fpga_seq));
+                    set_gps_time_hfb(out_buf, out_buffer_ID, tel.to_time(fpga_seq));
                 }
 
                 set_norm_frac(out_buf, out_buffer_ID, norm_frac);
@@ -216,9 +218,7 @@ void integrateHFBData::main_thread() {
                                            total_timesamples - total_lost_timesamples);
                 set_num_samples_expected(out_buf, out_buffer_ID, total_timesamples);
 
-                const stream_id_t stream_id =
-                    extract_stream_id(get_stream_id(in_buf, in_buffer_ID));
-                uint32_t freq_bin_num = bin_number_chime(&stream_id);
+                uint32_t freq_bin_num = tel.to_freq_id(in_buf, in_buffer_ID);
                 set_freq_bin_num(out_buf, out_buffer_ID, freq_bin_num);
 
                 mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);

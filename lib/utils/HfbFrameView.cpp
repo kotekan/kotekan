@@ -3,8 +3,6 @@
 #include "FrameView.hpp"           // for metadataContainer
 #include "buffer.h"                // for Buffer, allocate_new_metadata_object, swap_frames
 #include "chimeMetadata.h"         // for chimeMetadata
-#include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, stream_id_t
-#include "gpsTime.h"               // for is_gps_global_time_set
 #include "metadata.h"              // for metadataContainer
 
 #include "fmt.hpp" // for format, fmt

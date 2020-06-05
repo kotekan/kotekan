@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Generate fake VisFrameView data.
+@brief Generate fake VisBuffer data.
 - FakeVis : public Stage
 - ReplaceVis : public Stage
 *****************************************/
@@ -24,16 +24,16 @@
 #include <vector>   // for vector
 
 /**
- * @brief Generate fake visibility data into a ``VisFrameView``.
+ * @brief Generate fake visibility data into a ``VisBuffer``.
  *
  * This stage produces fake visibility data that can be used to feed
  * downstream kotekan stages for testing. It fills its buffer with frames in
- * the ``VisFrameView`` format. Frames are generated for a set of frequencies
+ * the ``VisBuffer`` format. Frames are generated for a set of frequencies
  * and a cadence specified in the config.
  *
  * @par Buffers
  * @buffer out_buf The kotekan buffer which will be fed, can be any size.
- *     @buffer_format VisFrameView structured
+ *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  *
  * @conf  num_elements  Int. The number of elements (i.e. inputs) in the
@@ -135,10 +135,10 @@ private:
  *
  * @par Buffers
  * @buffer in_buf The kotekan buffer which will be read from.
- *     @buffer_format VisFrameView structured
+ *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  * @buffer out_buf The kotekan buffer to be filled with the replaced data.
- *     @buffer_format VisFrameView structured
+ *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  *
  * @author Richard Shaw

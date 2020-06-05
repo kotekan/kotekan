@@ -157,8 +157,7 @@ void InputSubset::main_thread() {
 
         // Create view to output frame
         VisFrameView::set_metadata((VisMetadata*)out_buf->metadata[output_frame_id]->metadata,
-                                   input_ind.size(), prod_ind.size(),
-                                   input_frame.num_ev);
+                                   input_ind.size(), prod_ind.size(), input_frame.num_ev);
 
         auto output_frame = VisFrameView(out_buf, output_frame_id);
 

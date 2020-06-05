@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Extract a subset of inputs from a VisFrameView.
+@brief Extract a subset of inputs from a VisBuffer.
 - inputSubset : public kotekan::Stage
 *****************************************/
 #ifndef INPUT_SUBSET_HPP
@@ -29,10 +29,10 @@
  *
  * @par Buffers
  * @buffer in_buf The kotekan buffer from which the visibilities are read, can be any size.
- *     @buffer_format VisFrameView structured
+ *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  * @buffer out_buf The kotekan buffer which will be fed the subset of visibilities.
- *     @buffer_format VisFrameView structured
+ *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  *
  * @conf  inputs  List of ints. The channel IDs for the inputs to extract.

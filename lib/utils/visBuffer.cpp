@@ -1,11 +1,10 @@
 #include "visBuffer.hpp"
 
-#include "FrameView.hpp"           // for metadataContainer
-#include "buffer.h"                // for Buffer, allocate_new_metadata_object, swap_frames
-#include "chimeMetadata.h"         // for chimeMetadata
-#include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, stream_id_t
-#include "gpsTime.h"               // for is_gps_global_time_set
-#include "metadata.h"              // for metadataContainer
+#include "FrameView.hpp" // for metadataContainer
+#include "Telescope.hpp"
+#include "buffer.h"        // for Buffer, allocate_new_metadata_object, swap_frames
+#include "chimeMetadata.h" // for chimeMetadata
+#include "metadata.h"      // for metadataContainer
 
 #include "fmt.hpp" // for format, fmt
 
@@ -72,7 +71,7 @@ std::string VisFrameView::summary() const {
     struct tm* tm = std::gmtime(&(std::get<1>(time).tv_sec));
 
     std::string s =
-        fmt::format("VisFrameView[name={:s}]: freq={:d} dataset={} fpga_start={:d} time={:%F %T}",
+        fmt::format("VisBuffer[name={:s}]: freq={:d} dataset={} fpga_start={:d} time={:%F %T}",
                     buffer->buffer_name, freq_id, dataset_id, std::get<0>(time), *tm);
 
     return s;
@@ -223,23 +222,23 @@ size_t VisFrameView::calculate_frame_size(kotekan::Config& config, const std::st
     return buf_layout.first;
 }
 
-void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata) {
+void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata, uint32_t ind) {
+
+    auto& tel = Telescope::instance();
 
     // Set to zero as there's no information in chimeMetadata about it.
     dataset_id = dset_id_t::null;
 
     // Set the frequency index from the stream id of the metadata
-    stream_id_t stream_id = extract_stream_id(chime_metadata->stream_ID);
-    freq_id = bin_number_chime(&stream_id);
+    freq_id = tel.to_freq_id(get_stream_id_from_metadata(chime_metadata), ind);
 
     // Set the time
-    // TODO: get the GPS time instead
     uint64_t fpga_seq = chime_metadata->fpga_seq_num;
 
     timespec ts;
 
     // Use the GPS time if appropriate.
-    if (is_gps_global_time_set()) {
+    if (tel.gps_time_enabled()) {
         ts = chime_metadata->gps_time;
     } else {
         TIMEVAL_TO_TIMESPEC(&(chime_metadata->first_packet_recv_time), &ts);

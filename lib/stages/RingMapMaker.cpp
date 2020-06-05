@@ -1,7 +1,8 @@
 #include "RingMapMaker.hpp"
 
-#include "Hash.hpp"              // for Hash, operator!=
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Hash.hpp"         // for Hash, operator!=
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
 #include "datasetManager.hpp"    // for datasetManager, dset_id_t, state_id_t
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, WARN
 #include "prometheusMetrics.hpp" // for Metrics
@@ -261,9 +262,10 @@ bool RingMapMaker::setup(size_t frame_id) {
     change_dataset_state(ds_id);
 
     // TODO: make these config options ?
+    float fpga_s = Telescope::instance().seq_length_nsec() * 1e-9;
     num_pix = 511; // # unique NS baselines
     num_pol = 4;
-    num_time = 24. * 3600. / (in_frame.fpga_seq_length * 2.56e-6);
+    num_time = 24. * 3600. / (in_frame.fpga_seq_length * fpga_s);
     num_bl = (num_stack + 1) / 4;
 
     sinza = std::vector<float>(num_pix, 0.);
@@ -488,9 +490,11 @@ void RedundantStack::main_thread() {
 
         // Allocate metadata and get output frame
         allocate_new_metadata_object(out_buf, output_frame_id);
+        VisFrameView::set_metadata((VisMetadata*)out_buf->metadata[output_frame_id]->metadata,
+                                   input_frame.num_elements, num_stack, input_frame.num_ev);
+
         // Create view to output frame
-        auto output_frame = VisFrameView(out_buf, output_frame_id, input_frame.num_elements,
-                                         num_stack, input_frame.num_ev);
+        auto output_frame = VisFrameView(out_buf, output_frame_id);
 
         // Copy over the data we won't modify
         output_frame.copy_metadata(input_frame);

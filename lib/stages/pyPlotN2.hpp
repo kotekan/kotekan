@@ -7,11 +7,11 @@
 #ifndef PY_PLOT_N2_H
 #define PY_PLOT_N2_H
 
-#include "Config.hpp"              // for Config
-#include "Stage.hpp"               // for Stage
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "fpga_header_functions.h" // for stream_id_t
-#include "restServer.hpp"          // for connectionInstance
+#include "Config.hpp"          // for Config
+#include "ICETelescope.hpp"    // for ice_stream_id_t
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
+#include "restServer.hpp"      // for connectionInstance
 
 #include <string> // for string
 
@@ -77,7 +77,7 @@ private:
     int gpu_id = -1;
     bool dump_plot = false;
     bool busy = false;
-    stream_id_t stream_id;
+    ice_stream_id_t stream_id;
 };
 
 #endif

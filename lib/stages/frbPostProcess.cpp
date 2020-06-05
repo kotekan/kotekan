@@ -1,13 +1,13 @@
 #include "frbPostProcess.hpp"
 
-#include "Config.hpp"              // for Config
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"                // for Buffer, mark_frame_empty, wait_for_full_frame, regist...
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chimeMetadata.h"         // for get_fpga_seq_num, get_stream_id_t
-#include "fpga_header_functions.h" // for bin_number_chime, stream_id_t
-#include "kotekanLogging.hpp"      // for DEBUG, INFO
-#include "prometheusMetrics.hpp"   // for Metrics, Counter
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
+#include "buffer.h"              // for Buffer, mark_frame_empty, wait_for_full_frame, regist...
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "chimeMetadata.h"       // for get_fpga_seq_num, get_stream_id
+#include "kotekanLogging.hpp"    // for DEBUG, INFO
+#include "prometheusMetrics.hpp" // for Metrics, Counter
 
 #include "fmt.hpp" // for format, fmt
 
@@ -118,6 +118,8 @@ void frbPostProcess::write_header(unsigned char* dest) {
 #ifdef __AVX2__
 void frbPostProcess::main_thread() {
 
+    auto& tel = Telescope::instance();
+
     uint in_buffer_ID[_num_gpus]; // 4 of these , cycle through buffer depth
     uint8_t* in_frame[_num_gpus];
     int out_buffer_ID = 0;
@@ -207,8 +209,7 @@ void frbPostProcess::main_thread() {
                 if (max_fpga_count != get_fpga_seq_num(in_buf[i], in_buffer_ID[i])) {
                     fpga_seq_in_sync = false;
                 }
-                stream_id_t stream_id = get_stream_id_t(in_buf[i], in_buffer_ID[i]);
-                frb_header_coarse_freq_ids[i] = bin_number_chime(&stream_id);
+                frb_header_coarse_freq_ids[i] = tel.to_freq_id(in_buf[i], in_buffer_ID[i]);
             }
 
             if (fpga_seq_in_sync) {

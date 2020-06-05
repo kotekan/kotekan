@@ -1,8 +1,9 @@
 #include "visRawReader.hpp"
 
-#include "Config.hpp"          // for Config
-#include "Hash.hpp"            // for Hash, operator<, operator==
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Config.hpp"       // for Config
+#include "Hash.hpp"         // for Hash, operator<, operator==
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
 #include "buffer.h"            // for allocate_new_metadata_object, mark_frame_full, wait_for_e...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager, DS_UNIQUE_NAME
@@ -113,12 +114,30 @@ visRawReader::visRawReader(Config& config, const std::string& unique_name,
         _num_stack = _t.at("structure").at("num_stack").get<uint32_t>();
     }
 
+    // Match frequencies to IDs in the Telescope...
+    auto& tel = Telescope::instance();
+    std::map<double, uint32_t> inv_freq_map;
+
+    // ... first construct a map of central frequencies to IDs known by the
+    // telescope object
+    for (uint32_t id = 0; id < tel.num_freq(); id++) {
+        inv_freq_map[tel.to_freq(id)] = id;
+    }
+
+    // ... then use this to match the central frequencies given in the file
     for (auto f : freqs) {
-        // TODO: add freq IDs to raw file format instead of restoring them here
-        // TODO: CHIME specific.
-        uint32_t freq_id = 1024.0 / 400.0 * (800.0 - f.centre);
-        DEBUG("restored freq_id for f_centre={:.2f} : {:d}", f.centre, freq_id);
-        _freqs.push_back({freq_id, f});
+
+        auto it = inv_freq_map.find(f.centre);
+
+        if (it == inv_freq_map.end()) {
+            FATAL_ERROR("Could not match a frequency ID to channel in file at {} MHz. "
+                        "Check you are specifying the correct telescope.",
+                        f.centre);
+            return;
+        }
+
+        DEBUG("restored freq_id for f_centre={:.2f} : {:d}", f.centre, it->second);
+        _freqs.push_back({it->second, f});
     }
 
     // check git version tag
@@ -504,7 +523,8 @@ void ensureOrdered::main_thread() {
             if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
                 return;
             }
-            auto output_frame = VisFrameView::copy_frame(in_buf, frame_id, out_buf, output_frame_id);
+            auto output_frame =
+                VisFrameView::copy_frame(in_buf, frame_id, out_buf, output_frame_id);
             mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
 
             // release input frame
@@ -535,7 +555,8 @@ void ensureOrdered::main_thread() {
             if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
                 return;
             }
-            auto output_frame = VisFrameView::copy_frame(in_buf, waiting_id, out_buf, output_frame_id);
+            auto output_frame =
+                VisFrameView::copy_frame(in_buf, waiting_id, out_buf, output_frame_id);
             mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);
 
             mark_frame_empty(in_buf, unique_name.c_str(), waiting_id);

@@ -141,7 +141,7 @@ void FakeVis::main_thread() {
 
         for (auto f : freq) {
 
-            DEBUG("Making fake VisFrameView for freq={:d}, fpga_seq={:d}", f, fpga_seq);
+            DEBUG("Making fake VisBuffer for freq={:d}, fpga_seq={:d}", f, fpga_seq);
 
             // Wait for the buffer frame to be free
             if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
@@ -275,7 +275,8 @@ void ReplaceVis::main_thread() {
         }
 
         // Copy input frame to output frame and create view
-        auto output_frame = VisFrameView::copy_frame(in_buf, input_frame_id, out_buf, output_frame_id);
+        auto output_frame =
+            VisFrameView::copy_frame(in_buf, input_frame_id, out_buf, output_frame_id);
 
         for (uint32_t i = 0; i < output_frame.num_prod; i++) {
             float real = (i % 2 == 0 ? output_frame.freq_id : std::get<0>(output_frame.time));
