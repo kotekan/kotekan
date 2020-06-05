@@ -25,7 +25,13 @@ accumulate_params = {
 
 gaussian_params = accumulate_params.copy()
 gaussian_params.update(
-    {"samples_per_data_set": 100, "num_gpu_frames": 100, "total_frames": 500000}
+    {
+        "samples_per_data_set": 100,
+        "num_gpu_frames": 100,
+        "total_frames": 500000,
+        "num_elements": 2,
+        "log_level": "WARN",
+    }
 )
 
 drop_frame_params = gaussian_params.copy()
@@ -39,7 +45,6 @@ pulsar_params.update(
     {
         "pattern": "pulsar",
         "gaussian_bgnd": False,
-        "wait": True,
         "samples_per_data_set": 4000,  # ~10. ms frames
         "num_frames": 200,
         #'integration_time': 0.5,
@@ -369,7 +374,9 @@ def test_rfi_total(lostweights_data):
 # Test that the statistics are being calculated correctly
 def test_gaussian(gaussian_data):
 
-    exp_vis = np.identity(4)[np.triu_indices(4)]
+    ninput = gaussian_params["num_elements"]
+
+    exp_vis = np.identity(ninput)[np.triu_indices(ninput)]
     frac_var = 1.0 / (
         gaussian_params["samples_per_data_set"] * gaussian_params["num_gpu_frames"]
     )
@@ -386,7 +393,9 @@ def test_gaussian(gaussian_data):
 # Test that we can deal with whole frames being dropped
 def test_missing_frames(drop_frame_data):
 
-    exp_vis = np.identity(4)[np.triu_indices(4)]
+    ninput = drop_frame_params["num_elements"]
+
+    exp_vis = np.identity(ninput)[np.triu_indices(ninput)]
     frac_var = 1.0 / (
         drop_frame_params["samples_per_data_set"]
         * drop_frame_params["num_gpu_frames"]

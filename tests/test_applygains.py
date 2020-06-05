@@ -11,7 +11,6 @@ import h5py
 from kotekan import runner
 from kotekan import visutil
 from kotekan import visbuffer
-import time
 from pytest_localserver.http import WSGIServer
 from flask import Flask, jsonify, request as flask_req
 import base64
@@ -48,7 +47,7 @@ global_params = {
         "transition_interval": transition_interval,
         "new_state": new_state,
     },
-    "wait": True,
+    "wait": False,
     "sleep_before": 2.0,
     "num_threads": 4,
     "dataset_manager": {"use_dataset_broker": False},

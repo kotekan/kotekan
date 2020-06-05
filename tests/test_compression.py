@@ -19,6 +19,7 @@ diag_global_params = {
     "mode": "phase_ij",
     "freq_ids": [0, 250],
     "buffer_depth": 5,
+    "wait": False,
     "dataset_manager": {"use_dataset_broker": False},
 }
 
@@ -27,11 +28,10 @@ diag_stage_params = {"stack_type": "diagonal"}
 chime_global_params = {
     "num_elements": 2048,
     "num_ev": 2,
-    "total_frames": 10,
-    "wait": True,
+    "total_frames": 3,
     "cadence": 2.0,
     "mode": "chime",
-    "freq_ids": [0, 250, 500],
+    "freq_ids": [0, 500],
     "buffer_depth": 100,
     "dataset_manager": {"use_dataset_broker": False},
 }
@@ -86,7 +86,6 @@ def chime_data(tmpdir_factory):
     fakevis_buffer = runner.FakeVisBuffer(
         freq_ids=chime_global_params["freq_ids"],
         num_frames=chime_global_params["total_frames"],
-        wait=True,
     )
 
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))

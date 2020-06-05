@@ -22,7 +22,7 @@ params = {
     "num_ev": 0,
     "total_frames": 12,
     "freq_ids": [0, 1, 2],
-    "cadence": 1.0,
+    "cadence": 0.5,
     "mode": "test_pattern_simple",
     "buffer_depth": 5,
     "tolerance": 0.001,

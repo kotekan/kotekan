@@ -18,7 +18,7 @@ from kotekan import runner
 params = {"num_kept_updates": 1}
 
 global_params = {
-    "wait": True,
+    # "wait": True,
     "dataset_manager": {"use_dataset_broker": False},
     "fakevis_mode": "fill_ij",
     "cadence": 1.0,
@@ -43,7 +43,7 @@ global_params = {
 start_time = time.time()
 
 
-def run_flagging(tmpdir_factory, cmds):
+def run_flagging(tmpdir_factory, cmds, wait=False, sleep_before=2):
     """ Receive Flags """
 
     tmpdir = tmpdir_factory.mktemp("receiveflags")
@@ -52,7 +52,8 @@ def run_flagging(tmpdir_factory, cmds):
         num_frames=global_params["total_frames"],
         mode=global_params["fakevis_mode"],
         cadence=global_params["cadence"],
-        wait=global_params["wait"],
+        wait=wait,
+        sleep_before=sleep_before,
     )
 
     out_dump_buffer = runner.DumpVisBuffer(str(tmpdir))
@@ -321,7 +322,7 @@ def test_start_time(tmpdir_factory):
     global_params["total_frames"] = 200
     params["num_kept_updates"] = 5
     global_params["cadence"] = 0.1
-    global_params["wait"] = True
+    # global_params["wait"] = True
     global_params["num_elements"] = 5
     global_params["dynamic_attributes"]["flagging"]["bad_inputs"] = [1, 4]
     flags_set = 0
@@ -446,9 +447,12 @@ def test_start_time_out_of_order(tmpdir_factory):
 
 
 def test_start_time_new_update(tmpdir_factory):
+
+    cadence = 0.03
+
     global_params["total_frames"] = 200
     params["num_kept_updates"] = 5
-    global_params["cadence"] = 0.1
+    global_params["cadence"] = cadence
     global_params["num_elements"] = 5
     flags_set = 0
     global_params["dynamic_attributes"]["flagging"]["bad_inputs"] = []
@@ -461,7 +465,8 @@ def test_start_time_new_update(tmpdir_factory):
         [3],
     ]
     frame_flags = [[1, 1, 1, 1, 1], [1, 0, 1, 1, 1], [1, 1, 0, 1, 1], [1, 1, 1, 0, 1]]
-    ts = [time.time() + 15, time.time() + 15, time.time() + 15]
+    t = time.time()
+    ts = [t + 150 * cadence, t + 150.01 * cadence, t + 150.02 * cadence]
     cmds = [
         [
             "post",
@@ -472,7 +477,7 @@ def test_start_time_new_update(tmpdir_factory):
                 "update_id": "test_flag_update1",
             },
         ],
-        ["wait", 0.1, None],
+        ["wait", cadence, None],
         [
             "post",
             "dynamic_attributes/flagging",
@@ -482,7 +487,7 @@ def test_start_time_new_update(tmpdir_factory):
                 "update_id": "test_flag_update2",
             },
         ],
-        ["wait", 0.1, None],
+        ["wait", cadence, None],
         [
             "post",
             "dynamic_attributes/flagging",
@@ -492,7 +497,7 @@ def test_start_time_new_update(tmpdir_factory):
                 "update_id": "test_flag_update3",
             },
         ],
-        ["wait", 0.1, None],
+        ["wait", cadence, None],
         [
             "post",
             "dynamic_attributes/flagging",
@@ -503,7 +508,7 @@ def test_start_time_new_update(tmpdir_factory):
             },
         ],
     ]
-    flags_dump = run_flagging(tmpdir_factory, cmds)
+    flags_dump = run_flagging(tmpdir_factory, cmds, wait=True, sleep_before=0)
 
     for frame in flags_dump:
         assert global_params["num_elements"] == len(frame.flags)
@@ -557,7 +562,7 @@ def test_dset_id_change(tmpdir_factory):
     global_params["total_frames"] = 200
     params["num_kept_updates"] = 5
     global_params["cadence"] = 0.1
-    global_params["wait"] = True
+    # global_params["wait"] = True
     global_params["num_elements"] = 5
     global_params["dynamic_attributes"]["flagging"]["bad_inputs"] = [1, 4]
     flags_set = 0

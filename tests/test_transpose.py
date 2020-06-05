@@ -25,8 +25,8 @@ writer_params = {
     "num_elements": 4,
     "num_ev": 2,
     "cadence": 5.0,
-    "total_frames": 10,  # One extra sample to ensure we actually get 256
-    "freq": [3, 50, 777, 554],
+    "total_frames": 7,  # One extra sample to ensure we actually get 256
+    "freq": [3, 777, 554],
     "chunk_size": [2, 6, 5],
     "mode": "test_pattern_simple",
     "test_pattern_value": [0, 0],
@@ -39,7 +39,7 @@ stack_params = {
     "num_ev": 2,
     "cadence": 5.0,
     "file_length": 3,
-    "freq": [3, 50, 777, 554],
+    "freq": [3, 777, 554],
     "chunk_size": [2, 64, 3],
     "dataset_manager": {"use_dataset_broker": False},
 }
