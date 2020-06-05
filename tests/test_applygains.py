@@ -232,6 +232,7 @@ def to_triangle(a, b):
     return np.outer(a, b)[np.triu_indices(len(a))]
 
 
+@pytest.mark.serial
 def test_metadata(apply_data):
     """Check that the stable metadata has not changed."""
 
