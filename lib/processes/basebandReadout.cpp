@@ -118,11 +118,13 @@ void basebandReadout::main_thread() {
                 for(int freqidx=0; freqidx < _num_local_freq;freqidx++){
                     // XXX Map stream IDs to freq IDs with bin_number() (for Pathfinder) or bin_number_chime()
                     // XXX Use num_local_freqs to figure out if we're running on CHIME or PF
-                    if (_num_local_freq == 1){
-                        freq_id = bin_number_chime(&stream_id);
-                    } else { // more than one freq per stream
-                        freq_id = bin_number(&stream_id,freqidx);
-                    }
+                    //if (_num_local_freq == 1){
+                    //    freq_id = bin_number_chime(&stream_id);
+                    //} else { // more than one freq per stream
+                    //    freq_id = bin_number(&stream_id,freqidx);
+                    //}
+                    freq_id = bin_number_multifreq(&stream_id,_num_local_freq,freqidx);
+
                     freq_ids[freqidx] = freq_id;
                     mgrs[freqidx] = &(basebandApiManager::instance().register_readout_stage(freq_ids[freqidx]));//TODO: Check register_readout_stage
                     INFO("Starting request-listening thread for freq_id: %" PRIu32, freq_id);
@@ -434,12 +436,12 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
     // XXX Map stream IDs to freq IDs with bin_number() (for Pathfinder) or bin_number_chime()
     // XXX Use num_local_freqs to figure out if we're running on CHIME or PF
 
-    uint32_t freq_id;
-    if (_num_local_freq == 1){
-        freq_id = bin_number_chime(&stream_id);
-    } else { // more than one freq per stream
-        freq_id = bin_number(&stream_id,freqidx);
-    }
+    uint32_t freq_id = bin_number_multifreq(&stream_id,_num_local_freq,freqidx);
+    //if (_num_local_freq == 1){
+    //    freq_id = bin_number_chime(&stream_id);
+    //} else { // more than one freq per stream
+    //    freq_id = bin_number(&stream_id,freqidx);
+    //}
 
     // Figure out how much data we have.
     int64_t data_start_fpga = std::max(trigger_start_fpga, first_meta->fpga_seq_num);
