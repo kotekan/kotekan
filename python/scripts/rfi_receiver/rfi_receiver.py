@@ -802,6 +802,39 @@ def http_server2():
     httpd.serve_forever()
 
 
+# Sends message to coco to turn RFI zeroing on/off
+def toggle_rfi_zeroing(url, headers, zeroing_on):
+    # Create payload
+    payload = {"rfi_zeroing": zeroing_on}
+    try:
+        r = requests.post(url, data=json.dumps(payload), headers=headers)
+        if zeroing_on:
+            if not r.ok:
+                logger.info(
+                    "RFI Solar Transit Toggle: Failed to turn RFI zeroing on. Something went wrong in the request."
+                )
+            else:
+                logger.info(
+                    "RFI Solar Transit Toggle: Successfully turned RFI zeroing on."
+                )
+                return True
+        else:
+            if not r.ok:
+                logger.info(
+                    "RFI Solar Transit Toggle: Failed to turn RFI zeroing off. Something went wrong in the request."
+                )
+            else:
+                logger.info(
+                    "RFI Solar Transit Toggle: Successfully turned RFI zeroing off."
+                )
+                return True
+    except:
+        logger.info(
+            "RFI Solar Transit Toggle: Failure to contact Comet, is it running?"
+        )
+    return False
+
+
 # Disables RFI zeroing during a solar transit
 def rfi_zeroing():
 
@@ -822,18 +855,21 @@ def rfi_zeroing():
         time.sleep(1)
     while True:
         # Wait until the correct UTC time of the solar transit at DRAO (deals with daylight savings time)
-        t_now = datetime.datetime.utcnow()
-        t_transit = ephemeris.solar_transit(t_now)[0]
-        t_diff = datetime.datetime.utcfromtimestamp(t_transit) - t_now
+        today = datetime.datetime.utcnow().date()
+        t_day_start = datetime.datetime(today.year, today.month, today.day)
+        t_transit = ephemeris.solar_transit(t_day_start)[0]
+        t_diff = (
+            datetime.datetime.utcfromtimestamp(t_transit) - datetime.datetime.utcnow()
+        )
 
         time_to_transit_s = abs(t_diff.total_seconds())
 
         # Check if we are in the transit window, if so set downtime accordingly
         if time_to_transit_s < half_downtime_s:
+            toggle_rfi_zeroing(url, headers, False)
             downtime_s = time_to_transit_s + half_downtime_s
-        elif time_to_transit_s > (minutes_in_day - (0.5 * downtime_m)) * 60:
-            downtime_s = minutes_in_day * 60 - time_to_transit_s
         else:
+            toggle_rfi_zeroing(url, headers, True)
 
             # Time until half_downtime_s before next solar transit in seconds
             sleep_time_s = abs(time_to_transit_s - half_downtime_s)
@@ -857,29 +893,11 @@ def rfi_zeroing():
                 "RFI Solar Transit Toggle: Waking up to disable RFI zeroing during solar transit"
             )
 
-        # Create payload
-        payload = {"rfi_zeroing": False}
-
         # Turn RFI zeroing off
-        rfi_zeroing_on = True
-        try:
-            r = requests.post(url, data=json.dumps(payload), headers=headers)
-            if not r.ok:
-                logger.info(
-                    "RFI Solar Transit Toggle: Failed to turn RFI zeroing off. Something went wrong in the request."
-                )
-            else:
-                rfi_zeroing_on = False
-                logger.info(
-                    "RFI Solar Transit Toggle: Successfully turned RFI zeroing off."
-                )
-        except:
-            logger.info(
-                "RFI Solar Transit Toggle: Failure to contact Comet, is it running?"
-            )
+        rfi_zeroing_off = toggle_rfi_zeroing(url, headers, False)
 
         # If we successfully turned RFI zeroing off
-        if not rfi_zeroing_on:
+        if rfi_zeroing_off:
 
             logger.info(
                 "RFI Solar Transit Toggle: Sleeping %s seconds for duration of solar transit."
@@ -893,26 +911,8 @@ def rfi_zeroing():
                 "RFI Solar Transit Toggle: Solar transit ended. Waking up to turn RFI zeroing back on."
             )
 
-            # Payload
-            payload = {"rfi_zeroing": True}
-
             # Turn rfi zeroing back on
-            try:
-                r = requests.post(url, data=json.dumps(payload), headers=headers)
-                if not r.ok:
-                    logger.info(
-                        "RFI Solar Transit Toggle: Failed to turn RFI zeroing back on. Something went wrong in the request."
-                    )
-                else:
-                    rfi_zeroing_on = True
-                    logger.info(
-                        "RFI Solar Transit Toggle: Successfully turned RFI zeroing back on."
-                    )
-            except:
-                logger.info(
-                    "RFI Solar Transit Toggle: Failure to contact Comet, is it running?"
-                )
-                rfi_zeroing_on = False
+            toggle_rfi_zeroing(url, headers, True)
 
 
 if __name__ == "__main__":
