@@ -1,11 +1,16 @@
 #include "ICETelescope.hpp"
 
-#include "Telescope.hpp"
-#include "chimeMetadata.h"
-#include "visUtil.hpp"
+#include "Telescope.hpp"      // for freq_id_t, REGISTER_TELESCOPE, Telescope, _factory_aliasTe...
+#include "chimeMetadata.h"    // for stream_t
+#include "kotekanLogging.hpp" // for FATAL_ERROR, WARN
 
-#include <cmath>
-#include <fmt.hpp>
+#include "fmt.hpp" // for format
+
+#include <cstdint>   // for uint64_t
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for invalid_argument, runtime_error
+#include <vector>    // for vector
 
 
 REGISTER_TELESCOPE(ICETelescope, "ice");
