@@ -1,15 +1,13 @@
 #ifndef BUFFER_DELAY_HPP
 #define BUFFER_DELAY_HPP
 
-#include "Config.hpp" // for Config
-#include "Stage.hpp"
-#include "buffer.h"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // for bufferContainer
-#include "visUtil.hpp"
 
-#include <string> // for string
-#include <tuple>  // for tuple
-#include <vector> // for vector
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
+
 
 /**
  * @brief Delays release of frames until the buffer is sufficiently full.

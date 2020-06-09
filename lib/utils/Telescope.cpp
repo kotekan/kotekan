@@ -1,6 +1,10 @@
 #include "Telescope.hpp"
 
-#include "chimeMetadata.h"
+#include "chimeMetadata.h" // for get_stream_id, stream_t
+
+#include <exception> // for exception
+#include <stdexcept> // for invalid_argument, runtime_error
+
 
 Telescope::Telescope(const std::string& log_level) {
     set_log_level(log_level);
