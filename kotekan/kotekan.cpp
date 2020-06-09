@@ -17,7 +17,6 @@
 #include <array>       // for array
 #include <assert.h>    // for assert
 #include <csignal>     // for signal, SIGINT, sig_atomic_t
-#include <cstdint>     // for uint64_t
 #include <exception>   // for exception
 #include <getopt.h>    // for no_argument, getopt_long, required_argument, option
 #include <iostream>    // for endl, basic_ostream, cout, ostream
@@ -25,7 +24,6 @@
 #include <map>         // for map
 #include <memory>      // for allocator, shared_ptr
 #include <mutex>       // for mutex, lock_guard
-#include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error, out_of_range
 #include <stdio.h>     // for printf, fprintf, feof, fgets, popen, stderr, pclose
 #include <stdlib.h>    // for exit, free
@@ -33,10 +31,11 @@
 #include <string>      // for string, basic_string, operator!=, operator<<, operator==
 #include <strings.h>   // for strcasecmp
 #include <syslog.h>    // for closelog, openlog, LOG_CONS, LOG_LOCAL1, LOG_NDELAY
-#include <type_traits> // for __underlying_type_impl<>::type, underlying_type
+#include <type_traits> // for underlying_type, underlying_type<>::type
 #include <unistd.h>    // for optarg, sleep
 #include <utility>     // for pair
 #include <vector>      // for vector
+
 
 #ifdef WITH_HSA
 #include "hsaBase.h"

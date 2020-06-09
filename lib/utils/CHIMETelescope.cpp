@@ -1,7 +1,19 @@
 #include "CHIMETelescope.hpp"
 
-#include "ICETelescope.hpp"
-#include "Telescope.hpp"
+#include "ICETelescope.hpp"   // for ice_stream_id_t, ice_encode_stream_id, ice_extract_stream_id
+#include "Telescope.hpp"      // for freq_id_t, REGISTER_TELESCOPE, _factory_aliasTelescope
+#include "kotekanLogging.hpp" // for ERROR, DEBUG2, WARN
+
+#include "fmt.hpp"  // for format
+#include "json.hpp" // for json, basic_json<>::object_t, basic_json
+
+#include <cstdint>   // for uint64_t
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error
+#include <utility>   // for tuple_element<>::type
+#include <vector>    // for vector
+
 
 REGISTER_TELESCOPE(CHIMETelescope, "chime");
 
