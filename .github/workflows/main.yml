@@ -314,7 +314,6 @@ jobs:
         docker run "${OPTS[@]}" \
           cmake -DCMAKE_BUILD_TYPE=Test \
             -DUSE_DPDK=ON \
-            -DUSE_HSA=ON \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
             -DARCH=haswell \
