@@ -4,7 +4,7 @@
 #include "Hash.hpp"           // for Hash
 #include "datasetManager.hpp" // for datasetManager, dset_id_t
 #include "datasetState.hpp"   // for stackState, eigenvalueState, freqState, gatingState, input...
-#include "visBuffer.hpp"      // for visFrameView, visMetadata
+#include "visBuffer.hpp"      // for VisFrameView, VisMetadata
 
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
@@ -97,9 +97,9 @@ visFileRaw::visFileRaw(const std::string& name, const kotekan::logLevel log_leve
     alignment = 4; // Align on page boundaries
 
     // Calculate the file structure
-    auto layout = visFrameView::calculate_buffer_layout(ninput, nvis, num_ev);
+    auto layout = VisFrameView::calculate_buffer_layout(ninput, nvis, num_ev);
     data_size = layout.first;
-    metadata_size = sizeof(visMetadata);
+    metadata_size = sizeof(VisMetadata);
     frame_size = _member_alignment(data_size + metadata_size + 1, alignment * 1024);
 
     // Write the structure into the file for decoding
@@ -221,7 +221,7 @@ bool visFileRaw::write_raw(off_t offset, size_t nb, const void* data) {
     return true;
 }
 
-void visFileRaw::write_sample(uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame) {
+void visFileRaw::write_sample(uint32_t time_ind, uint32_t freq_ind, const VisFrameView& frame) {
     // TODO: consider adding checks for all dims
     if (frame.num_ev != num_ev) {
         throw std::runtime_error(fmt::format(fmt("Number of eigenvalues don't match for write (got "

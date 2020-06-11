@@ -1,7 +1,8 @@
 #include "rfiBadInputFinder.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
 #include "buffer.h"            // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.h"     // for get_fpga_seq_num, get_stream_id
@@ -57,6 +58,7 @@ rfiBadInputFinder::rfiBadInputFinder(Config& config, const std::string& unique_n
     _rfi_combined = config.get_default<bool>(unique_name, "rfi_combined", true);
     _frames_per_packet = config.get_default<uint32_t>(unique_name, "bi_frames_per_packet", 10);
     // Stage-specific paramters
+    total_links = config.get_default<uint32_t>(unique_name, "total_links", 1);
     dest_port = config.get<uint32_t>(unique_name, "destination_port");
     dest_server_ip = config.get<std::string>(unique_name, "destination_ip");
     dest_protocol = config.get_default<std::string>(unique_name, "destination_protocol", "UDP");
@@ -131,8 +133,12 @@ void rfiBadInputFinder::main_thread() {
     uint32_t frame_counter = 0;
     // Initialize arrays
     float rfi_data[_num_local_freq * _num_elements];
+    stream_t StreamIDs[total_links];
+    uint32_t freq_bins[_num_local_freq];
     uint8_t faulty_counter[_num_local_freq * _num_elements];
     memset(faulty_counter, (uint8_t)0, sizeof(faulty_counter));
+    memset(freq_bins, (uint8_t)0, sizeof(freq_bins));
+    auto& tel = Telescope::instance();
 
     // Intialize packet header
     struct RFIHeader rfi_header = {.rfi_combined = (uint8_t)_rfi_combined,
@@ -146,7 +152,8 @@ void rfiBadInputFinder::main_thread() {
                                    .streamID = 0};
 
     // Intialize empty packet
-    uint32_t packet_length = sizeof(rfi_header) + sizeof(faulty_counter);
+    uint32_t packet_length =
+        sizeof(rfi_header) + _num_local_freq * sizeof(uint32_t) + sizeof(faulty_counter);
     char* packet_buffer = (char*)malloc(packet_length);
     // UDP Stuff
     uint32_t bytes_sent = 0;
@@ -180,7 +187,9 @@ void rfiBadInputFinder::main_thread() {
         memcpy(rfi_data, frame, rfi_buf->frame_size);
         // Add frame metadata to header
         if (frame_counter == 0) {
-            rfi_header.streamID = get_stream_id(rfi_buf, frame_id);
+            // TODO: stream_id - this uses internal knowledge of the structure
+            StreamIDs[0] = get_stream_id(rfi_buf, frame_id);
+            rfi_header.streamID = (uint16_t)(StreamIDs[0].id);
             rfi_header.seq_num = get_fpga_seq_num(rfi_buf, frame_id);
         }
         // Compute statistics
@@ -200,12 +209,22 @@ void rfiBadInputFinder::main_thread() {
         // After 10 frames
         rest_callback_mutex.lock();
         if (frame_counter == _frames_per_packet) {
+
+            // Get current frequency bin
+            uint32_t current_freq_bin = tel.to_freq_id(StreamIDs[0]);
+            // TODO JSW: Handle num_local_freq > 1
+            freq_bins[0] = current_freq_bin;
+
             // Reset counter
             frame_counter = 0;
             // Add Header to packet
             memcpy(packet_buffer, &rfi_header, sizeof(rfi_header));
+            // Add frequency bins to packet
+            memcpy(packet_buffer + sizeof(rfi_header), freq_bins,
+                   _num_local_freq * sizeof(uint32_t));
             // Add Data to packet
-            memcpy(packet_buffer + sizeof(rfi_header), faulty_counter, sizeof(faulty_counter));
+            memcpy(packet_buffer + sizeof(rfi_header) + _num_local_freq * sizeof(uint32_t),
+                   faulty_counter, sizeof(faulty_counter));
             // Send Packet
             bytes_sent = sendto(socket_fd, packet_buffer, packet_length, 0,
                                 (struct sockaddr*)&saddr_remote, sizeof(sockaddr_in));

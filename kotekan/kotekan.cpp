@@ -2,7 +2,6 @@
 #include "StageFactory.hpp"       // for StageFactoryRegistry, StageMaker
 #include "basebandApiManager.hpp" // for basebandApiManager
 #include "errors.h"               // for get_error_message, get_exit_code, __enable_syslog, exi...
-#include "gpsTime.h"              // for set_global_gps_time
 #include "kotekanLogging.hpp"     // for INFO_NON_OO, logLevel, ERROR_NON_OO, FATAL_ERROR_NON_OO
 #include "kotekanMode.hpp"        // for kotekanMode
 #include "prometheusMetrics.hpp"  // for Metrics, Gauge
@@ -18,7 +17,6 @@
 #include <array>       // for array
 #include <assert.h>    // for assert
 #include <csignal>     // for signal, SIGINT, sig_atomic_t
-#include <cstdint>     // for uint64_t
 #include <exception>   // for exception
 #include <getopt.h>    // for no_argument, getopt_long, required_argument, option
 #include <iostream>    // for endl, basic_ostream, cout, ostream
@@ -26,7 +24,6 @@
 #include <map>         // for map
 #include <memory>      // for allocator, shared_ptr
 #include <mutex>       // for mutex, lock_guard
-#include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error, out_of_range
 #include <stdio.h>     // for printf, fprintf, feof, fgets, popen, stderr, pclose
 #include <stdlib.h>    // for exit, free
@@ -34,10 +31,11 @@
 #include <string>      // for string, basic_string, operator!=, operator<<, operator==
 #include <strings.h>   // for strcasecmp
 #include <syslog.h>    // for closelog, openlog, LOG_CONS, LOG_LOCAL1, LOG_NDELAY
-#include <type_traits> // for __underlying_type_impl<>::type, underlying_type
+#include <type_traits> // for underlying_type, underlying_type<>::type
 #include <unistd.h>    // for optarg, sleep
 #include <utility>     // for pair
 #include <vector>      // for vector
+
 
 #ifdef WITH_HSA
 #include "hsaBase.h"
@@ -272,50 +270,16 @@ void update_log_levels(Config& config) {
 }
 
 /**
- * @brief Sets the global GPS time reference
- *
- * @param config config file containing the GPS time.
- * @return True if the config contained a GPS time, and false if not.
- */
-bool set_gps_time(Config& config) {
-    if (config.exists("/", "gps_time") && !config.exists("/gps_time", "error")
-        && config.exists("/gps_time", "frame0_nano")) {
-
-        uint64_t frame0 = config.get<uint64_t>("/gps_time", "frame0_nano");
-        set_global_gps_time(frame0);
-        INFO_NON_OO("Set FPGA frame 0 time to {:d} nanoseconds since Unix Epoch\n", frame0);
-        return true;
-    }
-
-    if (config.exists("/gps_time", "error")) {
-        string error_message = config.get<std::string>("/gps_time", "error");
-        ERROR_NON_OO("*****\nGPS time lookup failed with reason: \n {:s}\n ******\n",
-                     error_message);
-    } else {
-        WARN_NON_OO("No GPS time set, using system clock.");
-    }
-    return false;
-}
-
-/**
  * @brief Starts a new kotekan mode (config instance)
  *
  * @param config The config to generate the instance from
- * @param requires_gps_time If set to true, then the config must provide a valid time
- *                          otherwise an error is thrown.
  * @param dump_config If set to true, then the config file is printed to stdout.
  */
-void start_new_kotekan_mode(Config& config, bool requires_gps_time, bool dump_config) {
+void start_new_kotekan_mode(Config& config, bool dump_config) {
 
     if (dump_config)
         config.dump_config();
     update_log_levels(config);
-    if (!set_gps_time(config)) {
-        if (requires_gps_time) {
-            ERROR_NON_OO("GPS time was expected to be provided!");
-            throw std::runtime_error("GPS time required but not set.");
-        }
-    }
 
     kotekan_mode = new kotekanMode(config);
 
@@ -454,7 +418,7 @@ int main(int argc, char** argv) {
         json config_json = json::parse(json_string);
         config.update_config(config_json);
         try {
-            start_new_kotekan_mode(config, gps_time, dump_config);
+            start_new_kotekan_mode(config, dump_config);
         } catch (const std::exception& ex) {
             ERROR_NON_OO("Failed to start kotekan with config file {:s}, error message: {:s}",
                          config_file_name, ex.what());
@@ -479,7 +443,7 @@ int main(int argc, char** argv) {
 
         try {
             INFO_NON_OO("Starting new kotekan mode using POSTed config.");
-            start_new_kotekan_mode(config, false, dump_config);
+            start_new_kotekan_mode(config, dump_config);
         } catch (const std::out_of_range& ex) {
             delete kotekan_mode;
             kotekan_mode = nullptr;

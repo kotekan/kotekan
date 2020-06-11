@@ -1,8 +1,9 @@
 #include "kotekanMode.hpp"
 
-#include "Config.hpp"            // for Config
-#include "Stage.hpp"             // for Stage
-#include "StageFactory.hpp"      // for StageFactory
+#include "Config.hpp"       // for Config
+#include "Stage.hpp"        // for Stage
+#include "StageFactory.hpp" // for StageFactory
+#include "Telescope.hpp"
 #include "buffer.h"              // for delete_buffer, send_shutdown_signal
 #include "bufferFactory.hpp"     // for bufferFactory
 #include "configUpdater.hpp"     // for configUpdater
@@ -66,22 +67,25 @@ kotekanMode::~kotekanMode() {
 
 void kotekanMode::initalize_stages() {
 
-    // Create Metadata Pool
-    metadataFactory metadata_factory(config);
-    metadata_pools = metadata_factory.build_pools();
-
     // Create Config Updater
     configUpdater& config_updater = configUpdater::instance();
     config_updater.apply_config(config);
+
+    // Apply config to datasetManager
+    if (config.exists("/", "dataset_manager"))
+        datasetManager::instance(config);
+
+    // Apply config for Telescope class
+    Telescope::instance(config);
+
+    // Create Metadata Pool
+    metadataFactory metadata_factory(config);
+    metadata_pools = metadata_factory.build_pools();
 
     // Create Buffers
     bufferFactory buffer_factory(config, metadata_pools);
     buffers = buffer_factory.build_buffers();
     buffer_container.set_buffer_map(buffers);
-
-    // Apply config to datasetManager
-    if (config.exists("/", "dataset_manager"))
-        datasetManager::instance(config);
 
     // Create Stages
     StageFactory stage_factory(config, buffer_container);

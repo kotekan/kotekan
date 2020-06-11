@@ -1,13 +1,10 @@
 project( kotekan_utils )
 
 set ( KOTEKAN_UTIL_SOURCES
-      fpga_header_functions.c
       gateSpec.cpp
-      gpsTime.c
       nt_memcpy.c
       nt_memset.c
       output_formating.c
-      time_tracking.c
       type.cpp
       util.c
       visBuffer.cpp
@@ -24,6 +21,9 @@ set ( KOTEKAN_UTIL_SOURCES
       BipBuffer.cpp
       Hash.cpp
       network_functions.cpp
+      Telescope.cpp
+      ICETelescope.cpp
+      CHIMETelescope.cpp
     )
 
 if (${USE_HDF5})

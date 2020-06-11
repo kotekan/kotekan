@@ -32,8 +32,8 @@
  *
  * @par buffers
  * @buffer in_buf The buffer to read from.
- *        @buffer_format visBuffer
- *        @buffer_metadata visMetadata
+ *        @buffer_format VisBuffer
+ *        @buffer_metadata VisMetadata
  *
  * @conf feed_sep       Float, default 0.3048. The separation between feeds (in m)
  * @conf apodization    String, default nuttall. The type of window to use for apodization.
@@ -124,11 +124,11 @@ private:
  *
  * @par buffers
  * @buffer in_buf The buffer to read from.
- *        @buffer_format visBuffer
- *        @buffer_metadata visMetadata
+ *        @buffer_format VisBuffer
+ *        @buffer_metadata VisMetadata
  * @buffer out_buf The buffer to write to.
- *        @buffer_format visBuffer
- *        @buffer_metadata visMetadata
+ *        @buffer_format VisBuffer
+ *        @buffer_metadata VisMetadata
  *
  *
  * @author Tristan Pinsonneault-Marotte
@@ -147,7 +147,6 @@ private:
     // dataset states and IDs
     dset_id_t output_dset_id;
     dset_id_t input_dset_id;
-    const prodState* prod_state_ptr;
     const stackState* old_stack_state_ptr;
     const stackState* new_stack_state_ptr;
 

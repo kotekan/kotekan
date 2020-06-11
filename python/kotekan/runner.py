@@ -260,6 +260,7 @@ class FakeLostSamplesBuffer(InputBuffer):
         stage_config.update(kwargs)
 
         self.stage_block = {stage_name: stage_config}
+        self.global_block = {"telescope": {"name": "fake"}}
 
 
 class FakeNetworkBuffer(InputBuffer):
@@ -342,6 +343,7 @@ class FakeGPUBuffer(InputBuffer):
         stage_config.update(kwargs)
 
         self.stage_block = {stage_name: stage_config}
+        self.global_block = {"telescope": {"name": "fake"}}
 
 
 class FakeVisBuffer(InputBuffer):
@@ -1051,6 +1053,8 @@ class KotekanStageTester(KotekanRunner):
         for buf in itertools.chain(buffers_in, buffers_out):
             stage_block.update(buf.stage_block)
             buffer_block.update(buf.buffer_block)
+            if hasattr(buf, "global_block"):
+                global_config.update(buf.global_block)
 
         if parallel_stage_type is not None:
             parallel_config["kotekan_stage"] = parallel_stage_type
@@ -1091,7 +1095,7 @@ main_pool:
     num_metadata_objects: 30 * buffer_depth
 
 vis_pool:
-    kotekan_metadata_pool: visMetadata
+    kotekan_metadata_pool: VisMetadata
     num_metadata_objects: 30 * buffer_depth
     "int_frames": 64,
 """
