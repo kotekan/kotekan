@@ -830,7 +830,7 @@ def toggle_rfi_zeroing(url, headers, zeroing_on):
                 return True
     except:
         logger.info(
-            "RFI Solar Transit Toggle: Failure to contact Comet, is it running?"
+            "RFI Solar Transit Toggle: Failure to contact coco, is it running?"
         )
     return False
 
