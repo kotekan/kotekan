@@ -65,6 +65,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     assert(rest_mode == "none" || rest_mode == "start" || rest_mode == "step");
     step_to_frame = 0;
     _first_frame_index = config.get_default<uint32_t>(unique_name, "first_frame_index", 0);
+    _gen_all_const_data = config.get_default<bool>(unique_name, "gen_all_const_data", false);
 
     if (config.exists(unique_name, "dataset_id")) {
         _dset_id = config.get<dset_id_t>(unique_name, "dataset_id");
@@ -259,7 +260,7 @@ void testDataGen::main_thread() {
         } else {
             seq_num += samples_per_data_set;
         }
-        if (frame_id == 0)
+        if (frame_id == 0 && !_gen_all_const_data)
             finished_seeding_consant = true;
 
         if (wait) {

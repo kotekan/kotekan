@@ -70,6 +70,7 @@ private:
     int num_frames;
     int stream_id;
     uint32_t _first_frame_index;
+    bool _gen_all_const_data;
     bool _fixed_dset_id;
     dset_id_t _dset_id;
     /// Parameters saved from the config files
