@@ -808,26 +808,16 @@ def toggle_rfi_zeroing(url, headers, zeroing_on):
     payload = {"rfi_zeroing": zeroing_on}
     try:
         r = requests.post(url, data=json.dumps(payload), headers=headers)
-        if zeroing_on:
-            if not r.ok:
-                logger.info(
-                    "RFI Solar Transit Toggle: Failed to turn RFI zeroing on. Something went wrong in the request."
-                )
-            else:
-                logger.info(
-                    "RFI Solar Transit Toggle: Successfully turned RFI zeroing on."
-                )
-                return True
+        state = "on" if zeroing_on else "off"
+        if not r.ok:
+            logger.error(
+                f"RFI Solar Transit Toggle: Failed to turn RFI zeroing {state}. Something went wrong in the request."
+            )
         else:
-            if not r.ok:
-                logger.info(
-                    "RFI Solar Transit Toggle: Failed to turn RFI zeroing off. Something went wrong in the request."
-                )
-            else:
-                logger.info(
-                    "RFI Solar Transit Toggle: Successfully turned RFI zeroing off."
-                )
-                return True
+            logger.info(
+                f"RFI Solar Transit Toggle: Successfully turned RFI zeroing {state}."
+            )
+            return True
     except:
         logger.info(
             "RFI Solar Transit Toggle: Failure to contact coco, is it running?"
