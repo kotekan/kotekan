@@ -850,7 +850,7 @@ def rfi_zeroing():
 
         # Get the *nearest* transit which we need to determine if we are still in the window
         time_to_nearest_transit = (
-            ephemeris.solar_transit(time_now - 12 * 3600) - time_now + 12 * 3600
+            ephemeris.solar_transit(time_now - 12 * 3600) - time_now
         )
 
         # Check if we are within the current transit window and wait until the end of it
@@ -884,6 +884,9 @@ def rfi_zeroing():
             logger.info(
                 "RFI Solar Transit Toggle: Waking up to disable RFI zeroing during solar transit"
             )
+
+            # Set downtime_s to duration of transit
+            downtime_s = downtime_m * 60
 
         # Turn RFI zeroing off
         rfi_zeroing_off = set_rfi_zeroing(False)
