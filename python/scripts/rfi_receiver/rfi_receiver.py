@@ -872,7 +872,7 @@ def rfi_zeroing():
             )
             logger.info(
                 "RFI Solar Transit Toggle: Time until transit: {}".format(
-                    time_to_next_transit
+                    time.strftime("%H:%M:%S", time.gmtime(time_to_next_transit))
                 )
             )
             logger.info(
