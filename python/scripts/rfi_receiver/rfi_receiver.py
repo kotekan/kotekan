@@ -853,61 +853,52 @@ def rfi_zeroing():
             ephemeris.solar_transit(time_now - 12 * 3600) - time_now
         )
 
+        logger.info(
+            "RFI Solar Transit Toggle: Time of next transit: {}".format(
+                datetime.datetime.fromtimestamp(time_to_next_transit + time_now)
+            )
+        )
+        logger.info(
+            "RFI Solar Transit Toggle: Time of nearest transit: {}".format(
+                datetime.datetime.fromtimestamp(time_to_nearest_transit + time_now)
+            )
+        )
+
+        new_zeroing_state = True
+
         # Check if we are within the current transit window and wait until the end of it
         if abs(time_to_nearest_transit) < half_window_s:
-            set_rfi_zeroing(False)
+            new_zeroing_state = False
             downtime_s = half_window_s + time_to_nearest_transit
+            logger.info(
+                "RFI Solar Transit Toggle: Within solar transit window, disabling zeroing and sleeping for {} seconds until end of window.".format(
+                    downtime_s
+                )
+            )
         # Otherwise, we wait until the start of the next transit window
         else:
-            set_rfi_zeroing(True)
+            new_zeroing_state = True
             downtime_s = time_to_next_transit - half_window_s
-
-            # Wait until the correct UTC time (deals with daylight savings time)
             logger.info(
-                "RFI Solar Transit Toggle: Time of transit: {}".format(
-                    datetime.datetime.fromtimestamp(
-                        ephemeris.solar_transit(time_now)[0]
-                    )
+                "RFI Solar Transit Toggle: Outside solar transit window, enabling zeroing and sleeping for {} seconds until next window.".format(
+                    downtime_s
                 )
             )
-            logger.info(
-                "RFI Solar Transit Toggle: Time until transit: {}".format(
-                    time.strftime("%H:%M:%S", time.gmtime(time_to_next_transit))
-                )
-            )
-            logger.info(
-                "RFI Solar Transit Toggle: Sleeping for {} seconds".format(downtime_s)
-            )
 
-            time.sleep(downtime_s)
+        # Set new RFI zeroing state
+        success = set_rfi_zeroing(new_zeroing_state)
+
+        # If we failed to set new RFI zeroing state sleep for a few seconds
+        if not success:
 
             logger.info(
-                "RFI Solar Transit Toggle: Waking up to disable RFI zeroing during solar transit"
+                "RFI Solar Transit Toggle: Failed to set new RFI zeroing state. Will wait for a few seconds and try again."
             )
 
-            # Set downtime_s to duration of transit
-            downtime_s = downtime_m * 60
+            time.sleep(5)
 
-        # Turn RFI zeroing off
-        rfi_zeroing_off = set_rfi_zeroing(False)
-
-        # If we successfully turned RFI zeroing off
-        if rfi_zeroing_off:
-
-            logger.info(
-                "RFI Solar Transit Toggle: Sleeping %s seconds for duration of solar transit."
-                % (downtime_s)
-            )
-
-            # Wait until sun has passed
-            time.sleep(downtime_s)
-
-            logger.info(
-                "RFI Solar Transit Toggle: Solar transit ended. Waking up to turn RFI zeroing back on."
-            )
-
-            # Turn rfi zeroing back on
-            set_rfi_zeroing(True)
+        # Sleep until end of transit window or until the next one occurs
+        time.sleep(downtime_s)
 
 
 if __name__ == "__main__":
