@@ -1,18 +1,19 @@
 #include "ReadGain.hpp"
 
-#include "Config.hpp"       // for Config
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"      // for Telescope, FREQ_ID_NOT_SET
 #include "buffer.h"           // for mark_frame_full, register_producer, wait_for_empty_frame
 #include "configUpdater.hpp"  // for configUpdater
 #include "kotekanLogging.hpp" // for WARN, INFO, DEBUG
 #include "restServer.hpp"     // for HTTP_RESPONSE, connectionInstance, restServer
 #include "visUtil.hpp"        // for current_time
 
-#include <algorithm>   // for copy
+#include <algorithm>   // for copy, copy_backward, equal, max
 #include <atomic>      // for atomic_bool
 #include <chrono>      // for seconds
 #include <cstdint>     // for int32_t
+#include <deque>       // for deque
 #include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, bind, _Placeholder, _1, function
 #include <memory>      // for allocator_traits<>::value_type
@@ -20,6 +21,7 @@
 #include <stdexcept>   // for runtime_error
 #include <stdio.h>     // for fclose, fopen, fread, snprintf, FILE
 #include <sys/types.h> // for uint
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
