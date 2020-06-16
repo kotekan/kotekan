@@ -316,7 +316,7 @@ Config::configEval<Type>::configEval(const Config& _config, const std::string& b
     const std::string& expression = value.get<std::string>();
 
     static const std::regex re(
-        R"((-?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?|\+|\*|\-|\/|\)|\(|[a-zA-Z][a-zA-Z0-9_]*))",
+        R"((-?(?:0|[1-9][0-9]*)(?:\.[0-9]*)?(?:[eE][+\-]?[0-9]+)?|\+|\*|\-|\/|\)|\(|[a-zA-Z][a-zA-Z0-9_]*))",
         std::regex::ECMAScript);
 
     tokens = {std::sregex_token_iterator(expression.begin(), expression.end(), re, 1),
@@ -352,7 +352,8 @@ void Config::configEval<Type>::next() {
 
 template<class Type>
 bool Config::configEval<Type>::isNumber() {
-    std::regex re(R"(-?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?)", std::regex::ECMAScript);
+    std::regex re(R"(-?(?:0|[1-9][0-9]*)(?:\.[0-9]*)?(?:[eE][+\-]?[0-9]+)?)",
+                  std::regex::ECMAScript);
     std::cmatch m;
     return std::regex_match(tokens.front().c_str(), m, re);
 }
