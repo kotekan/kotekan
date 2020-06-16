@@ -37,7 +37,7 @@ BOOST_AUTO_TEST_CASE(_get_value_recursive) {
         {"subtract", "25.5 - 0.5"},
         {"divide", "10 / 4"},
         {"scientific", "-0.5e2"},
-        {"scientific2", "-0.5e2 + -0.5e+4 + 1.2e-1 - 5.32e-2"},
+        {"scientific2", "-0.5e2 + -0.5e+4 + 1.2E-1 - 5.32e-2"},
         {"scientific3", "1.22e20"},
         {"scientific4", "1.258e-20"},
         {"broken", "5 + e3"},
@@ -103,7 +103,7 @@ BOOST_AUTO_TEST_CASE(_get_value_recursive) {
     BOOST_CHECK_EQUAL(config.get<double>("/", "subtract"), 25);
     BOOST_CHECK_EQUAL(config.get<double>("/", "divide"), 2.5);
     BOOST_CHECK_EQUAL(config.get<double>("/", "scientific"), -0.5e2);
-    BOOST_CHECK_EQUAL(config.get<double>("/", "scientific2"), -0.5e2 + -0.5e+4 + 1.2e-1 - 5.32e-2);
+    BOOST_CHECK_EQUAL(config.get<double>("/", "scientific2"), -0.5e2 + -0.5e+4 + 1.2E-1 - 5.32e-2);
     BOOST_CHECK_EQUAL(config.get<double>("/", "scientific3"), 1.22e20);
     BOOST_CHECK_EQUAL(config.get<double>("/", "scientific4"), 1.258e-20);
     BOOST_CHECK_THROW(config.get<double>("/", "broken"), std::runtime_error);
