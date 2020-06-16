@@ -896,6 +896,7 @@ def rfi_zeroing():
             )
 
             time.sleep(5)
+            continue
 
         # Sleep until end of transit window or until the next one occurs
         time.sleep(downtime_s)
