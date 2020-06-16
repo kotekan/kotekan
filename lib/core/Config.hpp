@@ -421,7 +421,10 @@ template<class Type>
 Type Config::configEval<Type>::factor() {
     Type ret;
 
-    if (isVar()) {
+    if (current_token == "") {
+        ERROR_NON_OO("Expected another value/symbol in expression but found none");
+        throw std::runtime_error("Expected another value/symbol in expression but found none");
+    } else if (isVar()) {
         ret = config.get<Type>(unique_name, current_token);
         next();
     } else if (isNumber()) {
