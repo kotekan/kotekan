@@ -315,8 +315,9 @@ Config::configEval<Type>::configEval(const Config& _config, const std::string& b
     }
     const std::string& expression = value.get<std::string>();
 
-    static const std::regex re(R"(([0-9]*\.?[0-9]+|\+|\*|\-|\/|\)|\(|[a-zA-Z][a-zA-Z0-9_]+))",
-                               std::regex::ECMAScript);
+    static const std::regex re(
+        R"((-?(?:0|[1-9][0-9]*)(?:\.[0-9]*)?(?:[eE][+\-]?[0-9]+)?|\+|\*|\-|\/|\)|\(|[a-zA-Z][a-zA-Z0-9_]*))",
+        std::regex::ECMAScript);
 
     tokens = {std::sregex_token_iterator(expression.begin(), expression.end(), re, 1),
               std::sregex_token_iterator()};
@@ -330,7 +331,13 @@ Config::configEval<Type>::~configEval() {}
 
 template<class Type>
 Type Config::configEval<Type>::compute_result() {
-    return exp();
+    Type result = exp();
+    if (current_token != "") {
+        std::string error_msg = fmt::format("Unexpected symbol: {:s}", current_token);
+        ERROR_NON_OO("{:s}", error_msg);
+        throw std::runtime_error(error_msg);
+    }
+    return result;
 }
 
 template<class Type>
@@ -345,14 +352,15 @@ void Config::configEval<Type>::next() {
 
 template<class Type>
 bool Config::configEval<Type>::isNumber() {
-    std::regex re(R"([0-9]*\.?[0-9]+)", std::regex::ECMAScript);
+    std::regex re(R"(-?(?:0|[1-9][0-9]*)(?:\.[0-9]*)?(?:[eE][+\-]?[0-9]+)?)",
+                  std::regex::ECMAScript);
     std::cmatch m;
     return std::regex_match(tokens.front().c_str(), m, re);
 }
 
 template<class Type>
 bool Config::configEval<Type>::isVar() {
-    std::regex re(R"([a-zA-Z][a-zA-Z0-9_]+)", std::regex::ECMAScript);
+    std::regex re(R"([a-zA-Z][a-zA-Z0-9_]*)", std::regex::ECMAScript);
     std::cmatch m;
     return std::regex_match(tokens.front().c_str(), m, re);
 }
@@ -414,7 +422,10 @@ template<class Type>
 Type Config::configEval<Type>::factor() {
     Type ret;
 
-    if (isVar()) {
+    if (current_token == "") {
+        ERROR_NON_OO("Expected another value/symbol in expression but found none");
+        throw std::runtime_error("Expected another value/symbol in expression but found none");
+    } else if (isVar()) {
         ret = config.get<Type>(unique_name, current_token);
         next();
     } else if (isNumber()) {
