@@ -95,6 +95,7 @@ dataset_manager:
   use_dataset_broker: True
   ds_broker_host: "10.1.50.11" # recv1
   ds_broker_port: 12050
+  timeout_rest_client_s: 200
 
 ##################################
 #### Updatable Config section ####
