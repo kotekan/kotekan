@@ -126,7 +126,8 @@ protected:
     virtual void close_old_acqs();
 
     /// Gets states from the dataset manager and saves some metadata
-    void get_dataset_state(dset_id_t ds_id);
+    void get_dataset_state_vis(dset_id_t ds_id);
+    void get_dataset_state_hfb(dset_id_t ds_id);
 
     /**
      * Check git version.

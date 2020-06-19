@@ -302,7 +302,7 @@ void Writer::close_old_acqs() {
 }
 
 
-void Writer::get_dataset_state(dset_id_t ds_id) {
+void Writer::get_dataset_state_vis(dset_id_t ds_id) {
 
     auto& dm = datasetManager::instance();
 
@@ -340,10 +340,47 @@ void Writer::get_dataset_state(dset_id_t ds_id) {
             acq->freq_id_map[f.first] = ind++;
 
         acq->num_vis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
-        acq->num_beams = config.get_default<uint32_t>(unique_name, "num_frb_total_beams", 1024);
     }
 }
 
+void Writer::get_dataset_state_hfb(dset_id_t ds_id) {
+
+    auto& dm = datasetManager::instance();
+
+    // Get all states synchronously.
+    auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm, ds_id);
+    auto bstate_fut = std::async(&datasetManager::dataset_state<beamState>, &dm, ds_id);
+    auto mstate_fut = std::async(&datasetManager::dataset_state<metadataState>, &dm, ds_id);
+
+    const freqState* fstate = fstate_fut.get();
+    const beamState* bstate = bstate_fut.get();
+    const metadataState* mstate = mstate_fut.get();
+
+    if ( fstate == nullptr || bstate == nullptr || mstate == nullptr ) {
+        ERROR("Set to not use dataset_broker and couldn't find ancestor of dataset {}. Make "
+              "sure there is a stage upstream in the config, that the dataset states. Unexpected "
+              "nullptr: ",
+              ds_id);
+        if (!fstate)
+            FATAL_ERROR("freqState is a nullptr");
+        if (!bstate)
+            FATAL_ERROR("beamState is a nullptr");
+        if (!mstate)
+            FATAL_ERROR("metadataState is a nullptr");
+    }
+
+    {
+        // std::lock_guard<std::mutex> _lock(acqs_mutex);
+        // Get a reference to the acq state
+        auto acq = acqs.at(ds_id);
+
+        uint ind = 0;
+        for (auto& f : fstate->get_freqs())
+            acq->freq_id_map[f.first] = ind++;
+
+        acq->num_beams = bstate->get_beams().size();
+    }
+}
 
 bool Writer::check_git_version(dset_id_t ds_id) {
     // Get the metadata state from the dM
@@ -393,7 +430,12 @@ void Writer::init_acq(dset_id_t ds_id, std::map<std::string, std::string> metada
     auto& acq = *(acqs.at(ds_id));
 
     // get dataset states
-    get_dataset_state(ds_id);
+    if (!strcmp(in_buf->buffer_type, "vis")) {
+        get_dataset_state_vis(ds_id);
+    }
+    else if (!strcmp(in_buf->buffer_type, "hfb")) {
+        get_dataset_state_hfb(ds_id);
+    }
 
     // Check the git version...
     if (!check_git_version(ds_id)) {
@@ -573,7 +615,7 @@ void visCalWriter::init_acq(dset_id_t ds_id, std::map<std::string, std::string> 
     auto& acq = *(acqs.at(ds_id));
 
     // get dataset states
-    get_dataset_state(ds_id);
+    get_dataset_state_vis(ds_id);
 
     // Check there are no other valid acqs
     if (num_enabled > 0) {
