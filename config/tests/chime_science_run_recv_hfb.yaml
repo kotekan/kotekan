@@ -17,7 +17,11 @@ cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
 num_frb_total_beams: 1024
 factor_upchan: 128
 init_dm: True
-num_frames: 5
+#num_frames: 5
+#samples_per_data_set: 49152
+samples_per_data_set: 1024
+freq_ids: [3, 777, 554]
+cadence: 0.01 
 
 # Constants
 sizeof_float: 4
@@ -39,17 +43,14 @@ hfbbuf_10s:
   metadata_pool: hfb_pool
 
 gen_data:
-  type: const
-  value: 1
-  test_data_gen_0:
-    kotekan_stage: testDataGen
-    out_buf: hfbbuf_10s
+  kotekan_stage: FakeHfb
+  out_buf: hfbbuf_10s
 
 # Write raw HFB data
 write_hfb:
   file_length: 512
   file_type: hfbraw
-  root_path: /home/willis/hfb_data/
+  root_path: /mnt/ramdisk
 
   kotekan_stage: Writer
   in_buf: hfbbuf_10s

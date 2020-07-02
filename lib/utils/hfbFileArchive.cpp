@@ -137,9 +137,9 @@ void hfbFileArchive::setup_file(const std::string& name,
 template<typename T>
 void hfbFileArchive::write_block(std::string name, size_t f_ind, size_t t_ind, size_t chunk_f,
                                  size_t chunk_t, const T* data) {
-    DEBUG("writing {:d} freq, {:d} times, at ({:d},{:d}).", chunk_f, chunk_t, f_ind, t_ind);
     size_t beam_last_dim = dset(name).getSpace().getDimensions().at(1);
     size_t subfreq_last_dim = dset(name).getSpace().getDimensions().at(2);
+    DEBUG("writing {:d} freq, {:d} times, {:d} beams, {:d} sub-freq at ({:d}, 0, 0, {:d}). Data[0]: {}", chunk_f, chunk_t, beam_last_dim, subfreq_last_dim, f_ind, t_ind, data[0]);
     dset(name).select({f_ind, 0, 0, t_ind}, {chunk_f, beam_last_dim, subfreq_last_dim, chunk_t}).write(data);
 }
 

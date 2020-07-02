@@ -2,7 +2,7 @@
 
 # Constants
 cpu_affinity: []
-log_level: debug
+log_level: info
 num_elements: 2048
 num_ev: 4
 num_local_freq: 1
@@ -25,13 +25,12 @@ hfb_pool:
   num_metadata_objects: '655360'
 
 read_raw:
-  log_level: info
+  log_level: debug
 #  chunk_size:
 #  - 64
 #  - 66
 #  - 128
-#  infile:  /home/willis/hfb_data/moose_data/00000000_0000
-  infile:  /home/willis/hfb_data/20200420T200416Z_chimeHFB_corr/00000000_0000
+  infile:  /mnt/ramdisk/20200619T182859Z_chimeHFB_corr/00000000_0000
   kotekan_stage: hfbRawReader
   max_read_rate: 0.0
   out_buf: read_buffer
@@ -39,8 +38,9 @@ read_raw:
   ignore_versions: True
 
 write_hdf5:
+  log_level: debug
   chunk_size:
-  - 64
+  - 8
   - 66
   - 128
   - 128
