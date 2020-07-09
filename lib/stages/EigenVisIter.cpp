@@ -162,12 +162,11 @@ void EigenVisIter::main_thread() {
         if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
             break;
         }
-        allocate_new_metadata_object(out_buf, output_frame_id);
-        VisFrameView::set_metadata((VisMetadata*)out_buf->metadata[output_frame_id]->metadata,
+        
+        // Create view to output frame
+        auto output_frame = VisFrameView::create_frame_view(out_buf, output_frame_id,
                                    input_frame.num_elements, input_frame.num_prod,
                                    _num_eigenvectors);
-
-        auto output_frame = VisFrameView(out_buf, output_frame_id);
 
         // Copy over metadata and data, but skip all ev members which may not be
         // defined

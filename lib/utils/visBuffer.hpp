@@ -231,6 +231,44 @@ public:
     void fill_chime_metadata(const chimeMetadata* chime_metadata, uint32_t ind);
 
     /**
+     * @brief Populate metadata.
+     *
+     * @param metadata     Metadata to populate.
+     * @param num_elements Number of elements.
+     * @param num_prod     Number of products.
+     * @param num_ev       Number of eigenvectors.
+     *
+     **/
+    static void set_metadata(VisMetadata* metadata, const uint32_t num_elements,
+                             const uint32_t num_prod, const uint32_t num_ev);
+
+    /**
+     * @brief Populate metadata.
+     *
+     * @param buf          Buffer.
+     * @param index        Index into buffer.
+     * @param num_elements Number of elements.
+     * @param num_prod     Number of products.
+     * @param num_ev       Number of eigenvectors.
+     *
+     **/
+    static void set_metadata(Buffer* buf, const uint32_t index, const uint32_t num_elements,
+                             const uint32_t num_prod, const uint32_t num_ev);
+
+    /**
+     * @brief Populate metadata and frame view.
+     *
+     * @param buf          Buffer.
+     * @param index        Index into buffer.
+     * @param num_elements Number of elements.
+     * @param num_prod     Number of products.
+     * @param num_ev       Number of eigenvectors.
+     *
+     **/
+    static VisFrameView create_frame_view(Buffer* buf, const uint32_t index, const uint32_t num_elements,
+                                   const uint32_t num_prod, const uint32_t num_ev, bool alloc_metadata = true);
+
+    /**
      * @brief Read only access to the metadata.
      * @returns The metadata.
      **/
