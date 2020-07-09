@@ -82,7 +82,8 @@ public:
      **/
     static void copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, int frame_id_dest);
 
-
+    virtual size_t get_data_size() = 0;
+    
     template<typename T>
     gsl::span<T> bind_span(uint8_t* start, std::pair<size_t, size_t> range);
 
@@ -97,6 +98,7 @@ protected:
     // Pointer to frame data. In theory this is redundant as it can be derived
     // from buffer and id, but it's nice for brevity
     uint8_t* const _frame;
+    size_t data_size;
 };
 
 template<typename T>
