@@ -260,8 +260,8 @@ void eigenVis::main_thread() {
 
         // Create view to output frame
         auto output_frame = VisFrameView::create_frame_view(output_buffer, output_frame_id,
-                                   input_frame.num_elements, input_frame.num_prod,
-                                   num_eigenvectors);
+                                                            input_frame.num_elements,
+                                                            input_frame.num_prod, num_eigenvectors);
 
         // Copy over metadata and data, but skip all ev members which may not be
         // defined
