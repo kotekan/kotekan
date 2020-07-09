@@ -137,11 +137,11 @@ void visTransform::main_thread() {
             if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
                 break;
             }
-            
+
             // Create view to output frame
-            auto output_frame = VisFrameView::create_frame_view(out_buf, output_frame_id,
-                                       num_elements, num_elements * (num_elements + 1) / 2,
-                                       num_eigenvectors);
+            auto output_frame = VisFrameView::create_frame_view(
+                out_buf, output_frame_id, num_elements, num_elements * (num_elements + 1) / 2,
+                num_eigenvectors);
 
             // TODO: multifrequency support
             // Copy over the metadata

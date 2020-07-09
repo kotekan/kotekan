@@ -80,7 +80,7 @@ public:
     static void copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, int frame_id_dest);
 
     virtual size_t get_data_size() = 0;
-    
+
     template<typename T>
     gsl::span<T> bind_span(uint8_t* start, std::pair<size_t, size_t> range);
 

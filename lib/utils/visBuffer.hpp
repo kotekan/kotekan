@@ -73,8 +73,8 @@ struct VisMetadata {
  * @class VisFrameView
  * @brief Provide a structured view of a visibility buffer.
  *
- * This class inherits from the FrameView base class and sets up a view on a visibility buffer with the ability to
- * interact with the data and metadata. Structural parameters can only be set at
+ * This class inherits from the FrameView base class and sets up a view on a visibility buffer with
+ *the ability to interact with the data and metadata. Structural parameters can only be set at
  * creation, everything else is returned as a reference or pointer so can be
  * modified at will.
  *
@@ -156,7 +156,7 @@ public:
      * @returns Size of frame.
      **/
     static size_t calculate_frame_size(uint32_t num_elements, uint32_t num_prod, uint32_t num_ev);
-    
+
     size_t get_data_size();
 
     /**
@@ -242,8 +242,9 @@ public:
      * @param num_ev       Number of eigenvectors.
      *
      **/
-    static VisFrameView create_frame_view(Buffer* buf, const uint32_t index, const uint32_t num_elements,
-                                   const uint32_t num_prod, const uint32_t num_ev, bool alloc_metadata = true);
+    static VisFrameView create_frame_view(Buffer* buf, const uint32_t index,
+                                          const uint32_t num_elements, const uint32_t num_prod,
+                                          const uint32_t num_ev, bool alloc_metadata = true);
 
     /**
      * @brief Read only access to the metadata.

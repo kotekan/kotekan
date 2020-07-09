@@ -54,7 +54,7 @@ VisFrameView::VisFrameView(Buffer* buf, int frame_id) :
     // Check that the actual buffer size is big enough to contain the calculated
     // view
     size_t required_size = buffer_layout.first;
-    
+
     data_size = required_size;
 
     if (required_size > (uint32_t)buffer->frame_size) {
@@ -239,10 +239,12 @@ void VisFrameView::set_metadata(Buffer* buf, const uint32_t index, const uint32_
     metadata->num_ev = num_ev;
 }
 
-VisFrameView VisFrameView::create_frame_view(Buffer* buf, const uint32_t index, const uint32_t num_elements,
-                                const uint32_t num_prod, const uint32_t num_ev, bool alloc_metadata /*= true*/) {
-    
-    if(alloc_metadata) {
+VisFrameView VisFrameView::create_frame_view(Buffer* buf, const uint32_t index,
+                                             const uint32_t num_elements, const uint32_t num_prod,
+                                             const uint32_t num_ev,
+                                             bool alloc_metadata /*= true*/) {
+
+    if (alloc_metadata) {
         allocate_new_metadata_object(buf, index);
     }
 
