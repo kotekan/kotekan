@@ -1,7 +1,6 @@
 /*****************************************
 @file
-@brief Code for using the visBuffer formatted data.
-- VisMetadata
+@brief Base class for creating frame views.
 - FrameView
 *****************************************/
 #ifndef FRAMEVIEW_HPP
@@ -25,22 +24,20 @@
 
 /**
  * @class FrameView
- * @brief Provide a structured view of a visibility buffer.
+ * @brief Provide a structured view of a buffer.
  *
- * This class sets up a view on a visibility buffer with the ability to
- * interact with the data and metadata. Structural parameters can only be set at
- * creation, everything else is returned as a reference or pointer so can be
- * modified at will.
+ * This class sets up a base view on a buffer with the ability to
+ * interact with the data. All classes which inherit from this should provide the following API:
  *
- * @note There are multiple constructors: one for viewing already initialised
- *       buffers; one for initialising a buffer and returning a view of it; and
- *       one for copying an existing buffer into a new location and returning a
- *       view of that. Make sure to pick the right one!
+ * calculate_buffer_layout(...);
+ * copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
+ *            int frame_id_dest);
+ * calculate_frame_size(kotekan::Config& config, const std::string& unique_name);
+ * calculate_frame_size(...);
+ * set_metdata(...);
+ * create_frame_view(Buffer* buf, const uint32_t index, ...);
  *
- * @todo This may want changing to use reference wrappers instead of bare
- *       references.
- *
- * @author Richard Shaw
+ * @author James Willis
  **/
 class FrameView {
 

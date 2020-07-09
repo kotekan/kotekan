@@ -73,7 +73,7 @@ struct VisMetadata {
  * @class VisFrameView
  * @brief Provide a structured view of a visibility buffer.
  *
- * This class sets up a view on a visibility buffer with the ability to
+ * This class inherits from the FrameView base class and sets up a view on a visibility buffer with the ability to
  * interact with the data and metadata. Structural parameters can only be set at
  * creation, everything else is returned as a reference or pointer so can be
  * modified at will.
@@ -86,7 +86,7 @@ struct VisMetadata {
  * @todo This may want changing to use reference wrappers instead of bare
  *       references.
  *
- * @author Richard Shaw
+ * @author Richard Shaw and James Willis
  **/
 class VisFrameView {
 
