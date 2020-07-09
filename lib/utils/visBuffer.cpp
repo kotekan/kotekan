@@ -269,6 +269,25 @@ struct_layout<VisField> VisFrameView::calculate_buffer_layout(uint32_t num_eleme
     return struct_alignment(buffer_members);
 }
 
+size_t VisFrameView::calculate_frame_size(uint32_t num_elements, uint32_t num_prod,
+                                          uint32_t num_ev) {
+
+    return calculate_buffer_layout(num_elements, num_prod, num_ev).first;
+}
+
+size_t VisFrameView::calculate_frame_size(kotekan::Config& config, const std::string& unique_name) {
+
+    const int num_elements = config.get<int>(unique_name, "num_elements");
+    const int num_ev = config.get<int>(unique_name, "num_ev");
+    int num_prod = config.get_default<int>(unique_name, "num_prod", -1);
+
+    if (num_prod < 0) {
+        num_prod = num_elements * (num_elements + 1) / 2;
+    }
+
+    return calculate_buffer_layout(num_elements, num_prod, num_ev).first;
+}
+
 void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata, uint32_t ind) {
 
     auto& tel = Telescope::instance();
