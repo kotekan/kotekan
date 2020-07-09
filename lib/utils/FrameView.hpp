@@ -52,6 +52,8 @@ public:
      */
     FrameView(Buffer* buf, int frame_id);
 
+    virtual ~FrameView();
+
     /**
      * @brief Read only access to the frame data.
      * @returns The data.
