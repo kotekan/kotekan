@@ -81,12 +81,6 @@ public:
 
     virtual size_t get_data_size() = 0;
 
-    template<typename T>
-    gsl::span<T> bind_span(uint8_t* start, std::pair<size_t, size_t> range);
-
-    template<typename T>
-    T& bind_scalar(uint8_t* start, std::pair<size_t, size_t> range);
-
 protected:
     // References to the buffer and metadata we are viewing
     Buffer* const buffer;
@@ -99,7 +93,7 @@ protected:
 };
 
 template<typename T>
-gsl::span<T> FrameView::bind_span(uint8_t* start, std::pair<size_t, size_t> range) {
+gsl::span<T> bind_span(uint8_t* start, std::pair<size_t, size_t> range) {
     T* span_start = (T*)(start + range.first);
     T* span_end = (T*)(start + range.second);
 
@@ -107,7 +101,7 @@ gsl::span<T> FrameView::bind_span(uint8_t* start, std::pair<size_t, size_t> rang
 }
 
 template<typename T>
-T& FrameView::bind_scalar(uint8_t* start, std::pair<size_t, size_t> range) {
+T& bind_scalar(uint8_t* start, std::pair<size_t, size_t> range) {
     T* loc = (T*)(start + range.first);
 
     return *loc;
