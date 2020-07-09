@@ -180,20 +180,8 @@ struct_layout<VisField> VisFrameView::calculate_buffer_layout(uint32_t num_eleme
 
 size_t VisFrameView::calculate_frame_size(uint32_t num_elements, uint32_t num_prod,
                                           uint32_t num_ev) {
-    // TODO: get the types of each element using a template on the member
-    // definition
-    std::vector<std::tuple<VisField, size_t, size_t>> buffer_members = {
-        std::make_tuple(VisField::vis, sizeof(cfloat), num_prod),
-        std::make_tuple(VisField::weight, sizeof(float), num_prod),
-        std::make_tuple(VisField::flags, sizeof(float), num_elements),
-        std::make_tuple(VisField::eval, sizeof(float), num_ev),
-        std::make_tuple(VisField::evec, sizeof(cfloat), num_ev * num_elements),
-        std::make_tuple(VisField::erms, sizeof(float), 1),
-        std::make_tuple(VisField::gain, sizeof(cfloat), num_elements)};
 
-    struct_layout<VisField> buf_layout = struct_alignment(buffer_members);
-
-    return buf_layout.first;
+    return calculate_buffer_layout(num_elements, num_prod, num_ev).first;
 }
 
 size_t VisFrameView::calculate_frame_size(kotekan::Config& config, const std::string& unique_name) {
@@ -206,20 +194,7 @@ size_t VisFrameView::calculate_frame_size(kotekan::Config& config, const std::st
         num_prod = num_elements * (num_elements + 1) / 2;
     }
 
-    // TODO: get the types of each element using a template on the member
-    // definition
-    std::vector<std::tuple<VisField, size_t, size_t>> buffer_members = {
-        std::make_tuple(VisField::vis, sizeof(cfloat), num_prod),
-        std::make_tuple(VisField::weight, sizeof(float), num_prod),
-        std::make_tuple(VisField::flags, sizeof(float), num_elements),
-        std::make_tuple(VisField::eval, sizeof(float), num_ev),
-        std::make_tuple(VisField::evec, sizeof(cfloat), num_ev * num_elements),
-        std::make_tuple(VisField::erms, sizeof(float), 1),
-        std::make_tuple(VisField::gain, sizeof(cfloat), num_elements)};
-
-    struct_layout<VisField> buf_layout = struct_alignment(buffer_members);
-
-    return buf_layout.first;
+    return calculate_buffer_layout(num_elements, num_prod, num_ev).first;
 }
 
 void VisFrameView::fill_chime_metadata(const chimeMetadata* chime_metadata, uint32_t ind) {
