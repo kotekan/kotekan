@@ -280,11 +280,12 @@ public:
     /**
      * @brief Populate metadata and frame view.
      *
-     * @param buf          Buffer.
-     * @param index        Index into buffer.
-     * @param num_elements Number of elements.
-     * @param num_prod     Number of products.
-     * @param num_ev       Number of eigenvectors.
+     * @param buf            Buffer.
+     * @param index          Index into buffer.
+     * @param num_elements   Number of elements.
+     * @param num_prod       Number of products.
+     * @param num_ev         Number of eigenvectors.
+     * @param alloc_metadata Bool to allocate metadata or not.
      *
      **/
     static VisFrameView create_frame_view(Buffer* buf, const uint32_t index,
