@@ -90,6 +90,8 @@ VisFrameView::VisFrameView(Buffer* buf, int frame_id, uint32_t n_elements, uint3
     // Check that the actual buffer size is big enough to contain the calculated
     // view
     size_t required_size = buffer_layout.first;
+    
+    data_size = required_size;
 
     if (required_size > (uint32_t)buffer->frame_size) {
 
@@ -337,4 +339,8 @@ VisFrameView VisFrameView::create_frame_view(Buffer* buf, const uint32_t index, 
 
     set_metadata(buf, index, num_elements, num_prod, num_ev);
     return VisFrameView(buf, index);
+}
+
+size_t VisFrameView::get_data_size() {
+    return data_size;
 }

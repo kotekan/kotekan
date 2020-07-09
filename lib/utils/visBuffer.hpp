@@ -181,6 +181,28 @@ public:
      **/
     static struct_layout<VisField> calculate_buffer_layout(uint32_t num_elements, uint32_t num_prod,
                                                            uint32_t num_ev);
+    /**
+     * @brief Get the size of the frame using the config file.
+     *
+     * @param config      Config file.
+     * @param unique_name Path to stage in config file.
+     *
+     * @returns Size of frame.
+     **/
+    static size_t calculate_frame_size(kotekan::Config& config, const std::string& unique_name);
+
+    /**
+     * @brief Get the size of the frame.
+     *
+     * @param num_elements     Number of elements.
+     * @param num_prod         Number of products.
+     * @param num_ev           Number of eigenvectors.
+     *
+     * @returns Size of frame.
+     **/
+    static size_t calculate_frame_size(uint32_t num_elements, uint32_t num_prod, uint32_t num_ev);
+    
+    size_t get_data_size();
 
     /**
      * @brief Return a summary of the visibility buffer contents.
