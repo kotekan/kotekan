@@ -55,8 +55,6 @@ VisFrameView::VisFrameView(Buffer* buf, int frame_id) :
     // view
     size_t required_size = buffer_layout.first;
 
-    data_size = required_size;
-
     if (required_size > (uint32_t)buffer->frame_size) {
 
         std::string s =
@@ -252,6 +250,6 @@ VisFrameView VisFrameView::create_frame_view(Buffer* buf, const uint32_t index,
     return VisFrameView(buf, index);
 }
 
-size_t VisFrameView::get_data_size() {
-    return data_size;
+size_t VisFrameView::data_size() {
+    return buffer_layout.first;
 }
