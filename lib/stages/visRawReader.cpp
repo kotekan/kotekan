@@ -341,11 +341,9 @@ void visRawReader::main_thread() {
         } else {
             // Create frame and set structural metadata
             size_t num_vis = _stack.size() > 0 ? _stack.size() : _prods.size();
-            allocate_new_metadata_object(out_buf, frame_id);
-            VisFrameView::set_metadata((VisMetadata*)out_buf->metadata[frame_id]->metadata,
-                                       _inputs.size(), num_vis, _ev.size());
 
-            auto frame = VisFrameView(out_buf, frame_id);
+            auto frame = VisFrameView::create_frame_view(out_buf, frame_id, _inputs.size(), num_vis,
+                                                         _ev.size());
 
             // Fill data with zeros
             std::fill(frame.vis.begin(), frame.vis.end(), 0.0);

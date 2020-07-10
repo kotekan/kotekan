@@ -9,6 +9,8 @@ FrameView::FrameView(Buffer* buf, int frame_id) :
     id(frame_id),
     _frame(buffer->frames[id]) {}
 
+FrameView::~FrameView(){};
+
 void FrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, int frame_id_dest) {
     allocate_new_metadata_object(buf_dest, frame_id_dest);
 
