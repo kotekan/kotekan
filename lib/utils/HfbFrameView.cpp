@@ -1,11 +1,9 @@
 #include "HfbFrameView.hpp"
 
-#include "FrameView.hpp"           // for metadataContainer
-#include "buffer.h"                // for Buffer, allocate_new_metadata_object, swap_frames
-#include "chimeMetadata.h"         // for chimeMetadata
-#include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id, stream_id_t
-#include "gpsTime.h"               // for is_gps_global_time_set
-#include "metadata.h"              // for metadataContainer
+#include "FrameView.hpp"   // for metadataContainer
+#include "buffer.h"        // for Buffer, allocate_new_metadata_object, swap_frames
+#include "chimeMetadata.h" // for chimeMetadata
+#include "metadata.h"      // for metadataContainer
 
 #include "fmt.hpp" // for format, fmt
 
@@ -124,21 +122,12 @@ struct_layout<hfbField> HfbFrameView::calculate_buffer_layout(uint32_t num_beams
     std::vector<std::tuple<hfbField, size_t, size_t>> buffer_members = {
         std::make_tuple(hfbField::hfb, sizeof(float), num_beams * num_subfreq)};
 
-    // std::vector<std::tuple<hfbField, size_t, size_t, size_t>> buffer_members = {
-    //    std::make_tuple(hfbField::hfb, sizeof(float), num_beams, num_subfreq)};
-
     return struct_alignment(buffer_members);
 }
 
 size_t HfbFrameView::calculate_frame_size(uint32_t num_beams, uint32_t num_subfreq) {
-    // TODO: get the types of each element using a template on the member
-    // definition
-    std::vector<std::tuple<hfbField, size_t, size_t>> buffer_members = {
-        std::make_tuple(hfbField::hfb, sizeof(float), num_beams * num_subfreq)};
 
-    struct_layout<hfbField> buf_layout = struct_alignment(buffer_members);
-
-    return buf_layout.first;
+    return calculate_buffer_layout(num_beams, num_subfreq).first;
 }
 
 size_t HfbFrameView::calculate_frame_size(kotekan::Config& config, const std::string& unique_name) {
@@ -146,18 +135,34 @@ size_t HfbFrameView::calculate_frame_size(kotekan::Config& config, const std::st
     const uint32_t num_beams = config.get<uint32_t>(unique_name, "num_frb_total_beams");
     const uint32_t num_subfreq = config.get<uint32_t>(unique_name, "factor_upchan");
 
-    // TODO: get the types of each element using a template on the member
-    // definition
-    std::vector<std::tuple<hfbField, size_t, size_t>> buffer_members = {
-        std::make_tuple(hfbField::hfb, sizeof(float), num_beams * num_subfreq)};
-
-    struct_layout<hfbField> buf_layout = struct_alignment(buffer_members);
-
-    return buf_layout.first;
+    return calculate_buffer_layout(num_beams, num_subfreq).first;
 }
 
 void HfbFrameView::set_metadata(hfbMetadata* metadata, const uint32_t num_beams,
                                 const uint32_t num_subfreq) {
     metadata->num_beams = num_beams;
     metadata->num_subfreq = num_subfreq;
+}
+
+void HfbFrameView::set_metadata(Buffer* buf, const uint32_t index, const uint32_t num_beams,
+                                const uint32_t num_subfreq) {
+    hfbMetadata* metadata = (hfbMetadata*)buf->metadata[index]->metadata;
+    metadata->num_beams = num_beams;
+    metadata->num_subfreq = num_subfreq;
+}
+
+HfbFrameView HfbFrameView::create_frame_view(Buffer* buf, const uint32_t index,
+                                             const uint32_t num_beams, const uint32_t num_subfreq,
+                                             bool alloc_metadata /*= true*/) {
+
+    if (alloc_metadata) {
+        allocate_new_metadata_object(buf, index);
+    }
+
+    set_metadata(buf, index, num_beams, num_subfreq);
+    return HfbFrameView(buf, index);
+}
+
+size_t HfbFrameView::data_size() {
+    return buffer_layout.first;
 }
