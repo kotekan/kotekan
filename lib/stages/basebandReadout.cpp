@@ -588,7 +588,7 @@ void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump
     file.createAttribute<std::string>("type_time0_ctime", HighFive::DataSpace::From(time0_type))
         .write(time0_type);
     double fpga_s = ts_to_double(Telescope::instance().seq_length());
-    file.createAttribute<double>("fpga_sime", HighFive::DataSpace::From(fpga_s)).write(fpga_s);
+    file.createAttribute<double>("delta_time", HighFive::DataSpace::From(fpga_s)).write(fpga_s);
 
     size_t num_elements = data.num_elements;
     size_t ntime_chunk = TARGET_CHUNK_SIZE / num_elements;

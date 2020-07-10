@@ -1512,8 +1512,8 @@ eigcalc:
   out_buf: visbuf_eig_10s_merge
 
   # Convergence config
-  tol_eval: 1.0e-5
-  tol_evec: 1.0e-4
+  tol_eval: 0.00001
+  tol_evec: 0.0001
   max_iterations: 19
   num_ev_conv: 2
   krylov: 2

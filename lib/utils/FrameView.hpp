@@ -36,6 +36,7 @@
  * calculate_frame_size(...);
  * set_metdata(...);
  * create_frame_view(Buffer* buf, const uint32_t index, ...);
+ * data_size();
  *
  * @author James Willis
  **/
