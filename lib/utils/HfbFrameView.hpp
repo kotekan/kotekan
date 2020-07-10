@@ -50,7 +50,6 @@ enum class hfbField { hfb };
  *
  * @author James Willis
  **/
-
 class HfbFrameView : public FrameView {
 
 public:
@@ -119,6 +118,8 @@ public:
      **/
     static size_t calculate_frame_size(kotekan::Config& config, const std::string& unique_name);
 
+    size_t data_size();
+
     /**
      * @brief Return a summary of the hyper fine beam buffer contents.
      *
@@ -162,6 +163,32 @@ public:
      **/
     static void set_metadata(hfbMetadata* metadata, const uint32_t num_beams,
                              const uint32_t num_subfreq);
+
+    /**
+     * @brief Populate metadata.
+     *
+     * @param buf         Buffer.
+     * @param index       Index into buffer.
+     * @param num_beams   Number of beams.
+     * @param num_subfreq Number of sub-frequencies.
+     *
+     **/
+    static void set_metadata(Buffer* buf, const uint32_t index, const uint32_t num_beams,
+                             const uint32_t num_subfreq);
+
+    /**
+     * @brief Populate metadata and frame view.
+     *
+     * @param buf            Buffer.
+     * @param index          Index into buffer.
+     * @param num_beams      Number of beams.
+     * @param num_subfreq    Number of sub-frequencies.
+     * @param alloc_metadata Bool to allocate metadata or not.
+     *
+     **/
+    static HfbFrameView create_frame_view(Buffer* buf, const uint32_t index,
+                                          const uint32_t num_beams, const uint32_t num_subfreq,
+                                          bool alloc_metadata = true);
 
     /**
      * @brief Read only access to the metadata.
