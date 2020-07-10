@@ -35,8 +35,8 @@ enum class hfbField { hfb };
  * @class hfbFrameView
  * @brief Provide a structured view of a hyperfine beam buffer.
  *
- * This class inherits from the FrameView base class and sets up a view on a hyperfine beam buffer with the ability to
- * interact with the data and metadata. Structural parameters can only be set at
+ * This class inherits from the FrameView base class and sets up a view on a hyperfine beam buffer
+ *with the ability to interact with the data and metadata. Structural parameters can only be set at
  * creation, everything else is returned as a reference or pointer so can be
  * modified at will.
  *
