@@ -81,7 +81,7 @@ public:
      **/
     static void copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, int frame_id_dest);
 
-    virtual size_t get_data_size() = 0;
+    virtual size_t data_size() = 0;
 
 protected:
     // References to the buffer and metadata we are viewing
@@ -91,7 +91,6 @@ protected:
     // Pointer to frame data. In theory this is redundant as it can be derived
     // from buffer and id, but it's nice for brevity
     uint8_t* const _frame;
-    size_t data_size;
 };
 
 template<typename T>

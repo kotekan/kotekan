@@ -7,8 +7,7 @@
 FrameView::FrameView(Buffer* buf, int frame_id) :
     buffer(buf),
     id(frame_id),
-    _frame(buffer->frames[id]),
-    data_size(0) {}
+    _frame(buffer->frames[id]) {}
 
 FrameView::~FrameView(){};
 
