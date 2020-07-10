@@ -270,8 +270,6 @@ void ReplaceVis::main_thread() {
         if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
             break;
         }
-        // Create view to input frame
-        auto input_frame = VisFrameView(in_buf, input_frame_id);
 
         // Copy input frame to output frame and create view
         auto output_frame =

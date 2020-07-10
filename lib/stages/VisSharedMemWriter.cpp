@@ -357,7 +357,7 @@ void VisSharedMemWriter::main_thread() {
 
     rbs.data_size = frame.data_size();
     rbs.metadata_size = sizeof(VisMetadata);
-    // Alligns the frame along page size
+    // Aligns the frame along page size
     rbs.frame_size = _member_alignment(rbs.data_size + rbs.metadata_size + valid_size, alignment);
 
     // memory_size should be _ntime * nfreq * file_frame_size (data + metadata)

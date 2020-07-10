@@ -88,7 +88,7 @@ struct VisMetadata {
  *
  * @author Richard Shaw and James Willis
  **/
-class VisFrameView {
+class VisFrameView : public FrameView {
 
 public:
     /**
@@ -100,51 +100,6 @@ public:
      * @param frame_id The id of the frame to read.
      */
     VisFrameView(Buffer* buf, int frame_id);
-
-    /**
-     * @brief Create view and set structure metadata.
-     *
-     * This should be used for creating entirely new frames. This overload also
-     * assumes the full visibility triangle is being stored.
-     *
-     * @param buf              The buffer the frame is in.
-     * @param frame_id         The id of the frame to read.
-     * @param num_elements     Number of elements in the data.
-     * @param num_ev           Number of eigenvectors to hold.
-     *
-     * @warning The metadata object must already have been allocated.
-     **/
-    VisFrameView(Buffer* buf, int frame_id, uint32_t num_elements, uint32_t num_ev);
-
-    /**
-     * @brief Create view and set structure metadata.
-     *
-     * This should be used for creating entirely new frames. This overload takes
-     * the number of products as a parameter.
-     *
-     * @param buf              The buffer the frame is in.
-     * @param frame_id         The id of the frame to read.
-     * @param num_elements     Number of elements in the data.
-     * @param num_prod         Number of products in the data.
-     * @param num_ev           Number of eigenvectors to hold.
-     *
-     * @warning The metadata object must already have been allocated.
-     **/
-    VisFrameView(Buffer* buf, int frame_id, uint32_t num_elements, uint32_t num_prod,
-                 uint32_t num_ev);
-
-    /**
-     * @brief Copy frame to a new buffer and create view of copied frame
-     *
-     * This should be used for copying a frame from one buffer to another.
-     *
-     * @param buf              The buffer the frame is in.
-     * @param frame_id         The id of the frame to read.
-     * @param frame_to_copy    An instance of VisFrameView corresponding to the frame to be copied.
-     *
-     * @warning The metadata object must already have been allocated.
-     **/
-    VisFrameView(Buffer* buf, int frame_id, VisFrameView frame_to_copy);
 
     /**
      * @brief Copy a whole frame from a buffer and create a view of it.
@@ -300,23 +255,9 @@ public:
         return _metadata;
     }
 
-    /**
-     * @brief Read only access to the frame data.
-     * @returns The data.
-     **/
-    const uint8_t* data() const {
-        return _frame;
-    }
-
 private:
-    // References to the buffer and metadata we are viewing
-    Buffer* const buffer;
-    const int id;
+    // References to the metadata we are viewing
     VisMetadata* const _metadata;
-
-    // Pointer to frame data. In theory this is redundant as it can be derived
-    // from buffer and id, but it's nice for brevity
-    uint8_t* const _frame;
 
     // The calculated layout of the buffer
     struct_layout<VisField> buffer_layout;
@@ -330,8 +271,6 @@ public:
     const uint32_t& num_prod;
     /// The number of eigenvectors/values in the data (read only).
     const uint32_t& num_ev;
-    /// The size of the data portion of the frame (read only).
-    const size_t& data_size;
 
     /// A tuple of references to the underlying time parameters
     std::tuple<uint64_t&, timespec&> time;
