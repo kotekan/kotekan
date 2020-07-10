@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Code for using the hfbBuffer formatted data.
+@brief Code for using the HfbFrameView formatted data.
 - hfbMetadata
 - HfbFrameView
 *****************************************/
@@ -35,15 +35,10 @@ enum class hfbField { hfb };
  * @class hfbFrameView
  * @brief Provide a structured view of a hyperfine beam buffer.
  *
- * This class sets up a view on a hyperfine beam buffer with the ability to
+ * This class inherits from the FrameView base class and sets up a view on a hyperfine beam buffer with the ability to
  * interact with the data and metadata. Structural parameters can only be set at
  * creation, everything else is returned as a reference or pointer so can be
  * modified at will.
- *
- * @note There are multiple constructors: one for viewing already initialised
- *       buffers; one for initialising a buffer and returning a view of it; and
- *       one for copying an existing buffer into a new location and returning a
- *       view of that. Make sure to pick the right one!
  *
  * @todo This may want changing to use reference wrappers instead of bare
  *       references.
