@@ -104,6 +104,8 @@ private:
     heavily on this value.
     */
     uint32_t stats_sigma;
+    /// The total number of links processed by gpu
+    uint32_t total_links;
     /// The port for UDP stream to be sent to
     uint32_t dest_port;
     /// The address for UDP stream to be sent to

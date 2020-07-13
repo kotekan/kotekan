@@ -1,7 +1,8 @@
 #include "visTransform.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Config.hpp"       // for Config
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
 #include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_empty
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.h"     // for chimeMetadata
@@ -10,7 +11,7 @@
 #include "kotekanLogging.hpp"  // for INFO
 #include "metadata.h"          // for metadataContainer
 #include "version.h"           // for get_git_commit_hash
-#include "visBuffer.hpp"       // for visFrameView
+#include "visBuffer.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for prod_ctype, input_ctype, freq_ctype, copy_vis_triangle
 
 #include "gsl-lite.hpp" // for span<>::iterator, span
@@ -72,19 +73,18 @@ visTransform::visTransform(Config& config, const std::string& unique_name,
 
     // Get the frequency IDs that are on this stream, check the config or just
     // assume all CHIME channels
-    // TODO: CHIME specific
+    auto& tel = Telescope::instance();
     if (config.exists(unique_name, "freq_ids")) {
         freq_ids = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
     } else {
-        freq_ids.resize(1024);
+        freq_ids.resize(tel.num_freq());
         std::iota(std::begin(freq_ids), std::end(freq_ids), 0);
     }
 
     // Create the frequency specification
-    // TODO: CHIME specific
     std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(_freqs),
-                   [](uint32_t id) -> std::pair<uint32_t, freq_ctype> {
-                       return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
+                   [&tel](uint32_t id) -> std::pair<uint32_t, freq_ctype> {
+                       return {id, {tel.to_freq(id), tel.freq_width(id)}};
                    });
 
     // The input specification from the config
@@ -115,7 +115,7 @@ void visTransform::main_thread() {
 
         // This is where all the main set of work happens. Iterate over the
         // available buffers, wait for data to appear and transform into
-        // visBuffer style data
+        // VisBuffer style data
         for (auto& buffer_pair : in_bufs) {
             std::tie(buf, frame_id) = buffer_pair;
 
@@ -137,14 +137,16 @@ void visTransform::main_thread() {
             if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
                 break;
             }
-            allocate_new_metadata_object(out_buf, output_frame_id);
 
-            auto output_frame =
-                visFrameView(out_buf, output_frame_id, num_elements, num_eigenvectors);
+            // Create view to output frame
+            auto output_frame = VisFrameView::create_frame_view(
+                out_buf, output_frame_id, num_elements, num_elements * (num_elements + 1) / 2,
+                num_eigenvectors);
 
+            // TODO: multifrequency support
             // Copy over the metadata
             output_frame.fill_chime_metadata(
-                (const chimeMetadata*)buf->metadata[frame_id]->metadata);
+                (const chimeMetadata*)buf->metadata[frame_id]->metadata, 0);
 
             // Copy the visibility data into a proper triangle and write into
             // the file

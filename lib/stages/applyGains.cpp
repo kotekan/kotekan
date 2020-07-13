@@ -12,7 +12,7 @@
 #include "modp_b64.hpp"          // for modp_b64_decode, modp_b64_decode_len
 #include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
 #include "restClient.hpp"        // for restClient::restReply, restClient
-#include "visBuffer.hpp"         // for visFrameView, visField, visField::vis, visField::we...
+#include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::we...
 #include "visFileH5.hpp"         // IWYU pragma: keep
 #include "visUtil.hpp"           // for cfloat, modulo, double_to_ts, ts_to_double, frameID
 
@@ -118,6 +118,7 @@ bool applyGains::receive_update(json& json) {
     std::string gains_path;
     std::string update_id;
     double transition_interval;
+    bool new_state;
 
     // receive new gains timestamp ("start_time" might move to "start_time")
     try {
@@ -164,8 +165,20 @@ bool applyGains::receive_update(json& json) {
         return false;
     }
 
+    // Should we register a new dataset?
+    try {
+        if (!json.at("new_state").is_boolean())
+            throw std::invalid_argument(fmt::format(fmt("applyGains: received bad gains "
+                                                        "new_state: {:s}"),
+                                                    json.at("new_state").dump()));
+        new_state = json.at("new_state").get<bool>();
+    } catch (std::exception& e) {
+        WARN("Failure reading 'new_state' from update: {:s}", e.what());
+        return false;
+    }
+
     // Signal to fetch thread to get gains from broker
-    update_fetch_queue.put({update_id, transition_interval, new_ts});
+    update_fetch_queue.put({update_id, transition_interval, new_ts, new_state});
 
     INFO("Received gain update with tag {:s}.", update_id);
 
@@ -239,7 +252,7 @@ void applyGains::apply_thread() {
         }
 
         // Create view to input frame
-        auto input_frame = visFrameView(in_buf, input_frame_id);
+        auto input_frame = VisFrameView(in_buf, input_frame_id);
 
         // Check that the input frame has the right sizes
         if (!validate_frame(input_frame))
@@ -275,13 +288,15 @@ void applyGains::apply_thread() {
         }
         allocate_new_metadata_object(out_buf, output_frame_id);
 
-        // Copy frame and create view
-        auto output_frame = visFrameView(out_buf, output_frame_id, input_frame.num_elements,
-                                         input_frame.num_prod, input_frame.num_ev);
+        // Create view to output frame
+        auto output_frame =
+            VisFrameView::create_frame_view(out_buf, output_frame_id, input_frame.num_elements,
+                                            input_frame.num_prod, input_frame.num_ev);
+
 
         // Copy over the data we won't modify
         output_frame.copy_metadata(input_frame);
-        output_frame.copy_data(input_frame, {visField::vis, visField::weight});
+        output_frame.copy_data(input_frame, {VisField::vis, VisField::weight});
 
         // Check if we have already registered this gain update against this
         // input dataset, do so if we haven't, and then label the output data
@@ -353,7 +368,7 @@ void applyGains::fetch_thread() {
         if (!update)
             break;
 
-        auto [update_id, transition_interval, new_ts] = *update;
+        auto [update_id, transition_interval, new_ts, new_state] = *update;
 
         std::optional<applyGains::GainData> gain_data;
         if (read_from_file) {
@@ -369,7 +384,21 @@ void applyGains::fetch_thread() {
         }
 
         // update gains
-        state_id_t state_id = dm.create_state<gainState>(update_id, transition_interval).first;
+        state_id_t state_id;
+        if (new_state) {
+            state_id = dm.create_state<gainState>(update_id, transition_interval).first;
+        }
+        // Use the current dataset ID
+        else {
+            const auto last_update = gains_fifo.get_update(double_to_ts(new_ts)).second;
+            if (last_update == nullptr) {
+                WARN("Failed to retrieve the last update, gains queue empty. Creating new gain "
+                     "state.");
+                state_id = dm.create_state<gainState>(update_id, transition_interval).first;
+            } else {
+                state_id = last_update->state_id;
+            }
+        }
         GainUpdate gain_update{std::move(gain_data.value()), transition_interval, state_id};
 
         {
@@ -548,7 +577,7 @@ void applyGains::initialise() {
     }
 
     // Create view to input frame
-    auto frame = visFrameView(in_buf, 0);
+    auto frame = VisFrameView(in_buf, 0);
 
     auto& dm = datasetManager::instance();
     auto* fstate = dm.dataset_state<freqState>(frame.dataset_id);
@@ -578,7 +607,7 @@ void applyGains::initialise() {
 }
 
 
-bool applyGains::validate_frame(const visFrameView& frame) const {
+bool applyGains::validate_frame(const VisFrameView& frame) const {
 
     // TODO: this should validate that the hashes of the input and frequencies
     // dataset states have not changed whenever the dataset_id changes
@@ -662,6 +691,18 @@ applyGains::calculate_gain(double timestamp, uint32_t freq_ind, std::vector<cflo
 
     if (update_new == nullptr) {
         WARN("No gains update is as old as the currently processed frame.");
+
+        // Look up frequency ID as this method only gets passed the index,
+        // and print more info about late frame
+        for (const auto& [fm_id, fm_ind] : freq_map) {
+            if (fm_ind == freq_ind) {
+                WARN("Frame frequency ID: {}\nFrame timestamp: {}\nUpdate queue: {}", fm_id,
+                     timestamp, gains_fifo);
+                break;
+            }
+        }
+
+
         return {true, -1, state_id_t::null};
     }
 

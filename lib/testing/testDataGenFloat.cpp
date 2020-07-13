@@ -64,7 +64,7 @@ void testDataGenFloat::main_thread() {
         allocate_new_metadata_object(buf, frame_id);
         set_fpga_seq_num(buf, frame_id, seq_num);
         // TODO This should be dynamic/config controlled.
-        set_stream_id(buf, frame_id, 0);
+        set_stream_id(buf, frame_id, {0});
 
         gettimeofday(&now, nullptr);
         set_first_packet_recv_time(buf, frame_id, now);

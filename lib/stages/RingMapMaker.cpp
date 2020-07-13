@@ -3,10 +3,11 @@
 #include "Hash.hpp"              // for Hash, operator!=
 #include "Stack.hpp"             // for chimeFeed
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
 #include "datasetManager.hpp"    // for datasetManager, dset_id_t, state_id_t
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, WARN
 #include "prometheusMetrics.hpp" // for Metrics
-#include "visBuffer.hpp"         // for visFrameView, visField, visField::vis, visField::weight
+#include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::weight
 #include "visCompression.hpp"    // for chimeFeed
 
 #include "gsl-lite.hpp" // for span, span<>::iterator
@@ -90,7 +91,7 @@ void RingMapMaker::main_thread() {
         }
 
         // Get a view of the current frame
-        auto input_frame = visFrameView(in_buf, in_frame_id);
+        auto input_frame = VisFrameView(in_buf, in_frame_id);
         uint32_t f_id = input_frame.freq_id;
 
         // Check dataset id hasn't changed
@@ -257,14 +258,15 @@ bool RingMapMaker::setup(size_t frame_id) {
         return false;
     }
 
-    auto in_frame = visFrameView(in_buf, frame_id);
+    auto in_frame = VisFrameView(in_buf, frame_id);
     ds_id = in_frame.dataset_id;
     change_dataset_state(ds_id);
 
     // TODO: make these config options ?
+    float fpga_s = Telescope::instance().seq_length_nsec() * 1e-9;
     num_pix = 511; // # unique NS baselines
     num_pol = 4;
-    num_time = 24. * 3600. / (in_frame.fpga_seq_length * 2.56e-6);
+    num_time = 24. * 3600. / (in_frame.fpga_seq_length * fpga_s);
     num_bl = (num_stack + 1) / 4;
 
     sinza = std::vector<float>(num_pix, 0.);
@@ -454,7 +456,7 @@ void RedundantStack::main_thread() {
         return;
     }
 
-    auto input_frame = visFrameView(in_buf, in_frame_id);
+    auto input_frame = VisFrameView(in_buf, in_frame_id);
     input_dset_id = input_frame.dataset_id;
     change_dataset_state(input_dset_id);
 
@@ -466,7 +468,7 @@ void RedundantStack::main_thread() {
         }
 
         // Get a view of the current frame
-        auto input_frame = visFrameView(in_buf, in_frame_id);
+        auto input_frame = VisFrameView(in_buf, in_frame_id);
 
         // Check dataset id hasn't changed
         if (input_frame.dataset_id != input_dset_id) {
@@ -487,15 +489,13 @@ void RedundantStack::main_thread() {
             break;
         }
 
-        // Allocate metadata and get output frame
-        allocate_new_metadata_object(out_buf, output_frame_id);
         // Create view to output frame
-        auto output_frame = visFrameView(out_buf, output_frame_id, input_frame.num_elements,
-                                         num_stack, input_frame.num_ev);
+        auto output_frame = VisFrameView::create_frame_view(
+            out_buf, output_frame_id, input_frame.num_elements, num_stack, input_frame.num_ev);
 
         // Copy over the data we won't modify
         output_frame.copy_metadata(input_frame);
-        output_frame.copy_data(input_frame, {visField::vis, visField::weight});
+        output_frame.copy_data(input_frame, {VisField::vis, VisField::weight});
         output_frame.dataset_id = output_dset_id;
 
         // Zero the output frame

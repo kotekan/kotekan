@@ -2,15 +2,13 @@ project(kotekan_utils)
 
 add_library(
     kotekan_utils
-    fpga_header_functions.c
     gateSpec.cpp
-    gpsTime.c
     nt_memcpy.c
     nt_memset.c
     output_formating.c
-    time_tracking.c
     type.cpp
     util.c
+    FrameView.cpp
     visBuffer.cpp
     visUtil.cpp
     visFile.cpp
@@ -25,7 +23,10 @@ add_library(
     BipBuffer.cpp
     Hash.cpp
     network_functions.cpp
-    Stack.cpp)
+    Stack.cpp
+    Telescope.cpp
+    ICETelescope.cpp
+    CHIMETelescope.cpp)
 
 target_link_libraries(kotekan_utils PRIVATE libexternal kotekan_libs)
 target_include_directories(kotekan_utils PUBLIC .)

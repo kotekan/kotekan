@@ -1,29 +1,30 @@
-#include "Config.hpp"       // for Config
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"         // for Buffer, allocate_new_metadata_object, mark_frame_full
-#include "chimeMetadata.h"  // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
-#include "errors.h"         // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "testDataGen.hpp"
+
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.h"     // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "kotekanLogging.hpp"  // for DEBUG, INFO
+#include "restServer.hpp"      // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...
+#include "visUtil.hpp"         // for current_time, ts_to_double
 
 #include <assert.h>    // for assert
 #include <atomic>      // for atomic_bool
 #include <cmath>       // for fmod
+#include <cstdint>     // for uint64_t
 #include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error
-#include <stdint.h>    // for uint8_t, uint64_t
+#include <stdint.h>    // for uint64_t, uint32_t, uint8_t
 #include <stdlib.h>    // for rand, srand
 #include <sys/time.h>  // for gettimeofday, timeval
 #include <sys/types.h> // for uint
 #include <unistd.h>    // for usleep
 #include <vector>      // for vector
-// Needed for a bunch of time utilities.
-#include "bufferContainer.hpp" // for bufferContainer
-#include "gpsTime.h"           // for FPGA_PERIOD_NS
-#include "kotekanLogging.hpp"  // for DEBUG, INFO
-#include "restServer.hpp"      // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...
-#include "testDataGen.hpp"
-#include "visUtil.hpp" // for current_time
 
 
 using kotekan::bufferContainer;
@@ -50,7 +51,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
 
     samples_per_data_set = config.get_default<int>(unique_name, "samples_per_data_set", 32768);
-    stream_id = config.get_default<int>(unique_name, "stream_id", 0);
+    stream_id.id = config.get_default<uint64_t>(unique_name, "stream_id", 0);
     num_frames = config.get_default<int>(unique_name, "num_frames", -1);
     // Try to generate data based on `samples_per_dataset` cadence or else just generate it as
     // fast as possible.
@@ -108,6 +109,8 @@ void testDataGen::main_thread() {
     static struct timeval now;
 
     int link_id = 0;
+
+    double frame_length = samples_per_data_set * ts_to_double(Telescope::instance().seq_length());
 
     while (!stop_thread) {
         double start_time = current_time();
@@ -182,8 +185,7 @@ void testDataGen::main_thread() {
 
         if (wait) {
             double time = current_time();
-            double frame_end_time =
-                (start_time + (float)samples_per_data_set * FPGA_PERIOD_NS * 1e-9);
+            double frame_end_time = start_time + frame_length;
             if (time < frame_end_time)
                 usleep((int)(1e6 * (frame_end_time - time)));
         }

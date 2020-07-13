@@ -1,9 +1,9 @@
 #include "dpdkCore.hpp"
 
 #include "Config.hpp"              // for Config
+#include "ICETelescope.hpp"
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "captureHandler.hpp"      // for captureHandler
-#include "fpga_header_functions.h" // for stream_id_t
 #include "iceBoardShuffle.hpp"     // for iceBoardShuffle, iceBoardShuffle::shuffle_size
 #include "iceBoardStandard.hpp"    // for iceBoardStandard
 #include "iceBoardVDIF.hpp"        // for iceBoardVDIF
@@ -41,7 +41,7 @@ using kotekan::Config;
 using kotekan::Stage;
 
 /// TODO move this to an inline static once we go to C++17
-stream_id_t iceBoardShuffle::all_stream_ids[iceBoardShuffle::shuffle_size];
+ice_stream_id_t iceBoardShuffle::all_stream_ids[iceBoardShuffle::shuffle_size];
 
 REGISTER_KOTEKAN_STAGE(dpdkCore);
 

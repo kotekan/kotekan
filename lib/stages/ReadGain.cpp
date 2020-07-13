@@ -1,19 +1,19 @@
 #include "ReadGain.hpp"
 
-#include "Config.hpp"              // for Config
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"                // for mark_frame_full, register_producer, wait_for_empty_frame
-#include "chimeMetadata.h"         // for get_stream_id_t
-#include "configUpdater.hpp"       // for configUpdater
-#include "fpga_header_functions.h" // for bin_number_chime, freq_from_bin, stream_id_t
-#include "kotekanLogging.hpp"      // for WARN, INFO, DEBUG
-#include "restServer.hpp"          // for HTTP_RESPONSE, connectionInstance, restServer
-#include "visUtil.hpp"             // for current_time
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"      // for Telescope, FREQ_ID_NOT_SET
+#include "buffer.h"           // for mark_frame_full, register_producer, wait_for_empty_frame
+#include "configUpdater.hpp"  // for configUpdater
+#include "kotekanLogging.hpp" // for WARN, INFO, DEBUG
+#include "restServer.hpp"     // for HTTP_RESPONSE, connectionInstance, restServer
+#include "visUtil.hpp"        // for current_time
 
-#include <algorithm>   // for copy
+#include <algorithm>   // for copy, copy_backward, equal, max
 #include <atomic>      // for atomic_bool
 #include <chrono>      // for seconds
 #include <cstdint>     // for int32_t
+#include <deque>       // for deque
 #include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, bind, _Placeholder, _1, function
 #include <memory>      // for allocator_traits<>::value_type
@@ -21,6 +21,7 @@
 #include <stdexcept>   // for runtime_error
 #include <stdio.h>     // for fclose, fopen, fread, snprintf, FILE
 #include <sys/types.h> // for uint
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -46,7 +47,11 @@ REGISTER_KOTEKAN_STAGE(ReadGain);
 
 ReadGain::ReadGain(Config& config, const std::string& unique_name,
                    bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&ReadGain::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&ReadGain::main_thread, this)),
+    gains_last_update_success_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_gains_last_update_success", unique_name, {"type"})),
+    gains_last_update_timestamp_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_gains_last_update_timestamp", unique_name, {"type"})) {
     // Apply config.
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
     _num_beams = config.get<int32_t>(unique_name, "num_beams");
@@ -58,7 +63,7 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     register_consumer(metadata_buf, unique_name.c_str());
     metadata_buffer_id = 0;
     metadata_buffer_precondition_id = 0;
-    freq_idx = -1;
+    freq_idx = FREQ_ID_NOT_SET;
     freq_MHz = -1;
 
     // Gain for FRB
@@ -150,6 +155,7 @@ void ReadGain::read_gain_frb() {
     ptr_myfile = fopen(filename, "rb");
     if (ptr_myfile == nullptr) {
         WARN("GPU Cannot open gain file {:s}", filename);
+        gains_last_update_success_metric.labels({"frb"}).set(0);
         for (uint i = 0; i < _num_elements; i++) {
             out_frame_frb[i * 2] = default_gains[0] * scaling;
             out_frame_frb[i * 2 + 1] = default_gains[1] * scaling;
@@ -159,10 +165,13 @@ void ReadGain::read_gain_frb() {
             WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
                  "gains",
                  filename);
+            gains_last_update_success_metric.labels({"frb"}).set(0);
             for (uint i = 0; i < _num_elements; i++) {
                 out_frame_frb[i * 2] = default_gains[0] * scaling;
                 out_frame_frb[i * 2 + 1] = default_gains[1] * scaling;
             }
+        } else {
+            gains_last_update_success_metric.labels({"frb"}).set(1);
         }
         fclose(ptr_myfile);
         for (uint i = 0; i < _num_elements; i++) {
@@ -170,6 +179,7 @@ void ReadGain::read_gain_frb() {
             out_frame_frb[i * 2 + 1] = out_frame_frb[i * 2 + 1] * scaling;
         }
     }
+    gains_last_update_timestamp_metric.labels({"frb"}).set(start_time);
     mark_frame_full(gain_frb_buf, unique_name.c_str(), gain_frb_buf_id);
     DEBUG("Maked gain_frb_buf frame {:d} full", gain_frb_buf_id);
     INFO("Time required to load FRB gains: {:f}", current_time() - start_time);
@@ -187,6 +197,7 @@ void ReadGain::read_gain_psr() {
     double start_time = current_time();
     FILE* ptr_myfile;
     char filename[256];
+    bool all_beams_successful_update = true;
     for (int b = 0; b < _num_beams; b++) {
         snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",
                  _gain_dir_psr[b].c_str(), freq_idx);
@@ -194,6 +205,7 @@ void ReadGain::read_gain_psr() {
         ptr_myfile = fopen(filename, "rb");
         if (ptr_myfile == nullptr) {
             WARN("GPU Cannot open gain file {:s}", filename);
+            all_beams_successful_update = false;
             for (uint i = 0; i < _num_elements; i++) {
                 out_frame_psr[(b * _num_elements + i) * 2] = default_gains[0];
                 out_frame_psr[(b * _num_elements + i) * 2 + 1] = default_gains[1];
@@ -205,6 +217,7 @@ void ReadGain::read_gain_psr() {
                 WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
                      "gains",
                      filename);
+                all_beams_successful_update = false;
                 for (uint i = 0; i < _num_elements; i++) {
                     out_frame_psr[(b * _num_elements + i) * 2] = default_gains[0];
                     out_frame_psr[(b * _num_elements + i) * 2 + 1] = default_gains[1];
@@ -213,6 +226,12 @@ void ReadGain::read_gain_psr() {
             fclose(ptr_myfile);
         }
     } // end beam
+    if (all_beams_successful_update) {
+        gains_last_update_success_metric.labels({"pulsar"}).set(1);
+    } else {
+        gains_last_update_success_metric.labels({"pulsar"}).set(0);
+    }
+    gains_last_update_timestamp_metric.labels({"pulsar"}).set(start_time);
     mark_frame_full(gain_psr_buf, unique_name.c_str(), gain_psr_buf_id);
     DEBUG("Maked gain_psr_buf frame {:d} full", gain_psr_buf_id);
     INFO("Time required to load PSR gains: {:f}", current_time() - start_time);
@@ -227,9 +246,10 @@ void ReadGain::main_thread() {
         wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
     if (frame == nullptr)
         return;
-    stream_id_t stream_id = get_stream_id_t(metadata_buf, metadata_buffer_id);
-    freq_idx = bin_number_chime(&stream_id);
-    freq_MHz = freq_from_bin(freq_idx);
+
+    auto& tel = Telescope::instance();
+    freq_idx = tel.to_freq_id(metadata_buf, metadata_buffer_id);
+    freq_MHz = tel.to_freq(freq_idx);
     metadata_buffer_precondition_id =
         (metadata_buffer_precondition_id + 1) % metadata_buf->num_frames;
 

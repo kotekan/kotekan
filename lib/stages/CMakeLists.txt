@@ -6,7 +6,6 @@ add_library(
     chrxUplink.cpp
     computeDualpolPower.cpp
     fullPacketDump.cpp
-    gpuPostProcess.cpp
     pulsarPostProcess.cpp
     ReadGain.cpp
     nDiskFileWrite.cpp
@@ -42,6 +41,7 @@ add_library(
     bufferMerge.cpp
     bufferCopy.cpp
     bufferSwitch.cpp
+    bufferDelay.cpp
     InputSubset.cpp
     # RFI Pipeline Processes
     rfiVDIF.cpp

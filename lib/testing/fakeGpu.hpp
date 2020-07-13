@@ -6,15 +6,18 @@
 #ifndef FAKE_GPU_HPP
 #define FAKE_GPU_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp" // for Stage
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "fakeGpuPattern.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "Telescope.hpp"       // for freq_id_t, Telescope
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.h"     // for stream_t
+#include "fakeGpuPattern.hpp"  // for FakeGpuPattern
 
 #include <memory>   // for unique_ptr
-#include <stdint.h> // for int32_t
+#include <stdint.h> // for int32_t, uint32_t, uint64_t
 #include <string>   // for string
+#include <time.h>   // for timespec
 
 
 /**
@@ -54,9 +57,8 @@
  * @note Look at the documentation for the test patterns to see any addtional
  *       configuration they require.
  *
- * @warning The `stream_id_t` in the metadata is likely to be invalid as it is
- *          generated only such that it is decoded back to the input frequency
- *          id.
+ * @warning To work properly you must use the "fake" telescope type.
+ *
  * @author Richard Shaw
  */
 class FakeGpu : public kotekan::Stage {
@@ -85,5 +87,33 @@ private:
     // Pattern to use for filling
     std::unique_ptr<FakeGpuPattern> pattern;
 };
+
+
+/**
+ * @brief A test telescope that just passes stream_id's straight through
+ *
+ * @conf  num_local_freq  The number of frequencies per stream.
+ **/
+class FakeTelescope : public Telescope {
+public:
+    FakeTelescope(const kotekan::Config& config, const std::string& path);
+
+    // Dummy freq map implementations
+    freq_id_t to_freq_id(stream_t stream_id, uint32_t ind) const override;
+    double to_freq(freq_id_t freq_id) const override;
+    double freq_width(freq_id_t freq_id) const override;
+    uint32_t num_freq_per_stream() const override;
+    uint32_t num_freq() const override;
+
+    // Dummy time map implementations
+    timespec to_time(uint64_t seq) const override;
+    uint64_t to_seq(timespec time) const override;
+    uint64_t seq_length_nsec() const override;
+    bool gps_time_enabled() const override;
+
+private:
+    uint32_t _num_local_freq;
+};
+
 
 #endif // FAKE_GPU
