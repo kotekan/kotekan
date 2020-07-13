@@ -24,4 +24,6 @@ add_library(
     visNoise.cpp
     visDrop.cpp)
 
-target_link_libraries(kotekan_testing libexternal)
+target_include_directories(kotekan_testing PUBLIC .)
+
+target_link_libraries(kotekan_testing PRIVATE libexternal kotekan_libs)

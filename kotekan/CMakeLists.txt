@@ -1,17 +1,8 @@
 project(kotekan)
 
-set(SOURCE_EXE kotekan.cpp)
+add_executable(kotekan kotekan.cpp)
 
-include_directories(${KOTEKAN_SOURCE_DIR}/lib)
-include_directories(${KOTEKAN_SOURCE_DIR}/lib/core)
-include_directories(${KOTEKAN_SOURCE_DIR}/lib/version)
-include_directories(${KOTEKAN_SOURCE_DIR}/lib/utils)
-
-link_directories(${KOTEKAN_BINARY_DIR}/lib)
-
-add_definitions(-mssse3 -D__STDC_LIMIT_MACROS)
-
-add_executable(kotekan ${SOURCE_EXE})
+target_compile_definitions(kotekan PRIVATE mssse3 __STDC_LIMIT_MACROS)
 
 target_link_libraries(kotekan PRIVATE libexternal m pthread kotekan_libs)
 

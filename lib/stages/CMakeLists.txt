@@ -1,7 +1,5 @@
 project(kotekan_libs)
 
-include_directories(${KOTEKAN_SOURCE_DIR}/lib)
-
 add_library(
     kotekan_stages
     beamformingPostProcess.cpp
@@ -65,9 +63,12 @@ add_library(
     RfiFrameDrop.cpp
     VisSharedMemWriter.cpp)
 
+target_include_directories(kotekan_stages PRIVATE .)
+
 if(${USE_AIRSPY})
     target_sources(kotekan_stages PRIVATE airspyInput.cpp)
-    include_directories(${LIBAIRSPY_INCLUDE_DIR})
+    target_include_directories(kotekan_stages SYSTEM PRIVATE ${LIBAIRSPY_INCLUDE_DIR})
+    target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(kotekan_stages PRIVATE ${LIBAIRSPY_LIBRARIES})
 endif()
 
@@ -78,7 +79,7 @@ endif()
 
 if(${USE_HDF5})
     target_sources(kotekan_stages PRIVATE basebandReadout.cpp applyGains.cpp)
-    include_directories(${HDF5_INCLUDE_DIRS})
+    target_include_directories(kotekan_stages SYSTEM PRIVATE ${HDF5_INCLUDE_DIRS})
     target_link_libraries(kotekan_stages PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
 endif()
 
@@ -92,8 +93,8 @@ endif()
 
 if(${USE_LAPACK})
     target_sources(kotekan_stages PRIVATE eigenVis.cpp RingMapMaker.cpp EigenVisIter.cpp)
-    include_directories(${BLAS_INCLUDE_DIRS})
-    include_directories(${LAPACKE_INCLUDE_DIRS})
+    target_include_directories(kotekan_stages SYSTEM PRIVATE ${BLAS_INCLUDE_DIRS}
+                                                             ${LAPACKE_INCLUDE_DIRS} ${BLAZE_PATH})
     target_link_libraries(kotekan_stages PRIVATE ${BLAS_LIBRARIES})
     target_link_libraries(kotekan_stages PRIVATE ${LAPACK_LIBRARIES})
     target_link_libraries(kotekan_stages PRIVATE ${LAPACKE_LIBRARIES})
@@ -106,7 +107,7 @@ target_link_libraries(
     PUBLIC ${LIBEVENT_BASE}
     PRIVATE ${LIBEVENT_PTHREAD})
 
-target_link_libraries(kotekan_stages PRIVATE kotekan_utils kotekan_core libexternal)
+target_link_libraries(kotekan_stages PRIVATE kotekan_libs libexternal)
 
 # -lrt is needed for shm_open in VisSharedMemWriter on linux but not Clang
 if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")

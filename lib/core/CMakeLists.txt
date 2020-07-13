@@ -18,8 +18,7 @@ add_library(
     restServer.cpp
     Stage.cpp
     StageFactory.cpp)
-
-target_link_libraries(kotekan_core PRIVATE ${CMAKE_THREAD_LIBS_INIT} libexternal)
+target_include_directories(kotekan_core PUBLIC .)
 
 # Libnuma is optionally used by buffer.c
 find_package(NUMA)
@@ -40,7 +39,6 @@ endif()
 
 # Libevent base & pthreads is required for the restServer
 find_package(LIBEVENT REQUIRED)
-target_link_libraries(
-    kotekan_core
-    PUBLIC ${LIBEVENT_BASE}
-    PRIVATE ${LIBEVENT_PTHREADS})
+
+target_link_libraries(kotekan_core PRIVATE libexternal ${LIBEVENT_PTHREADS}
+                                           ${CMAKE_THREAD_LIBS_INIT} kotekan_libs)

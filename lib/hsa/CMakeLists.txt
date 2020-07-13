@@ -1,11 +1,5 @@
 project(libkotekan_hsa)
 
-include_directories(${KOTEKAN_SOURCE_DIR}/lib)
-include_directories(${KOTEKAN_SOURCE_DIR}/lib/gpu)
-include_directories(${KOTEKAN_SOURCE_DIR}/lib/hsa)
-
-include_directories(/opt/rocm/hsa/include/)
-
 add_library(
     kotekan_hsa
     hsaEventContainer.cpp
@@ -50,8 +44,11 @@ add_library(
     hsaBeamformPulsarOutput.cpp
     hsaPulsarUpdatePhase.cpp)
 
-target_link_libraries(kotekan_hsa libexternal)
-target_link_libraries(kotekan_hsa kotekan_utils)
+target_link_libraries(kotekan_hsa libexternal kotekan_utils)
+target_include_directories(
+    kotekan_hsa
+    PUBLIC . /opt/rocm/hsa/include/
+    INTERFACE hsa-runtime64)
 
 add_subdirectory(kernels)
 add_dependencies(kotekan_hsa makeHSACOKernels)

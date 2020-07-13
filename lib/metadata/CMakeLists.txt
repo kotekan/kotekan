@@ -3,3 +3,4 @@
 project(kotekan_metadata)
 
 add_library(kotekan_metadata INTERFACE)
+target_include_directories(kotekan_metadata INTERFACE .)

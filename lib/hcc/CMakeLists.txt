@@ -1,8 +1,5 @@
 project(libkotekan_hcc)
 
-include_directories(${KOTEKAN_SOURCE_DIR}/lib)
-include_directories(${KOTEKAN_SOURCE_DIR}/lib/hcc)
-
 # /// AMD hcc options need to add -DCMAKE_CXX_COMPILER=/opt/rocm/bin/hcc to cmake command line
 
 if(CMAKE_CXX_COMPILER MATCHES ".*hcc")
@@ -22,3 +19,4 @@ endif()
 # /// end AMD hcc options
 
 add_library(kotekan_hcc hccGPUThread.cpp)
+target_include_directories(kotekan_hcc PUBLIC .)

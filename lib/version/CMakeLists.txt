@@ -24,6 +24,7 @@ add_custom_command(
     COMMENT "Generating file: version.c")
 
 add_library(kotekan_version ${CMAKE_CURRENT_BINARY_DIR}/version.c)
+target_include_directories(kotekan_version PUBLIC .)
 
 add_custom_command(
     TARGET kotekan_version

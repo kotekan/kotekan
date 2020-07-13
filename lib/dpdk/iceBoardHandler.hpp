@@ -16,7 +16,6 @@
 #include "json.hpp"
 
 #include <mutex>
-#include <utils/util.h>
 
 /**
  * @brief Abstract class which contains things which are common to processing
