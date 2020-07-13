@@ -6,14 +6,27 @@ set(CMAKE_MODULE_PATH ${KOTEKAN_SOURCE_DIR}/cmake)
 
 add_library(kotekan_libs INTERFACE)
 
+add_subdirectory(utils)
+target_link_libraries(kotekan_libs INTERFACE kotekan_utils)
+
+add_subdirectory(stages)
+target_link_libraries(kotekan_libs INTERFACE kotekan_stages)
+
+add_subdirectory(version)
+target_link_libraries(kotekan_libs INTERFACE kotekan_version)
+
+target_link_libraries(kotekan_libs INTERFACE libexternal)
+
+if(${WITH_TESTS})
+    add_subdirectory(testing)
+    target_link_libraries(kotekan_libs INTERFACE kotekan_testing)
+endif()
+
 add_subdirectory(core)
 target_link_libraries(kotekan_libs INTERFACE kotekan_core)
 
 add_subdirectory(metadata)
 target_link_libraries(kotekan_libs INTERFACE kotekan_metadata)
-
-add_subdirectory(utils)
-target_link_libraries(kotekan_libs INTERFACE kotekan_utils)
 
 # SELF-REGISTERING BITS:
 if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
@@ -22,9 +35,6 @@ endif()
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     target_link_libraries(kotekan_libs INTERFACE -Wl,-all_load)
 endif()
-
-add_subdirectory(stages)
-target_link_libraries(kotekan_libs INTERFACE kotekan_stages)
 
 if(${USE_HCC})
     add_subdirectory(hcc)
@@ -65,14 +75,4 @@ endif()
 # HDF5 stuff
 if(${USE_HDF5})
     target_link_libraries(kotekan_libs INTERFACE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
-endif()
-
-add_subdirectory(version)
-target_link_libraries(kotekan_libs INTERFACE kotekan_version)
-
-target_link_libraries(kotekan_libs INTERFACE libexternal)
-
-if(${WITH_TESTS})
-    add_subdirectory(testing)
-    target_link_libraries(kotekan_libs INTERFACE kotekan_testing)
 endif()

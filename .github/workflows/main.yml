@@ -75,7 +75,8 @@ jobs:
             -DCMAKE_LINK_WHAT_YOU_USE=ON \
             -DCMAKE_BUILD_TYPE=Test \
             -DARCH=haswell \
-            -DCCACHE=ON ..
+            -DCCACHE=ON \
+            -DWITH_TESTS=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s
 
@@ -121,7 +122,7 @@ jobs:
             -DARCH=haswell \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
-            -DBOOST_TESTS=ON \
+            -DWITH_TESTS=ON \
             -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" rm -r lib
@@ -177,7 +178,7 @@ jobs:
             -DARCH=haswell \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
-            -DBOOST_TESTS=OFF \
+            -DWITH_TESTS=OFF \
             -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s
@@ -219,7 +220,7 @@ jobs:
         -DARCH=haswell \
         -DNO_MEMLOCK=ON \
         -DUSE_OMP=ON \
-        -DBOOST_TESTS=ON \
+        -DWITH_TESTS=ON \
         -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s
@@ -287,7 +288,8 @@ jobs:
         -DLAPACKE_DIR=/usr/local/opt/openblas/ \
         -DBLAZE_PATH=$GITHUB_WORKSPACE/blaze \
         -DHIGHFIVE_PATH=$GITHUB_WORKSPACE/HighFive \
-        -DCCACHE=ON ..
+        -DCCACHE=ON \
+        -DWITH_TESTS=ON ..
         make -j 2
 
   # Build kotekan documentation
@@ -308,7 +310,7 @@ jobs:
             -DWERROR=ON \
             -DCOMPILE_DOCS=ON \
             -DPLANTUML_PATH=/code/build/plantuml \
-            -DBOOST_TESTS=OFF ..
+            -DWITH_TESTS=OFF ..
         docker run "${OPTS[@]}" make doc
         docker run "${OPTS[@]}" make sphinx
 
@@ -336,7 +338,7 @@ jobs:
             -DARCH=haswell \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
-            -DBOOST_TESTS=ON \
+            -DWITH_TESTS=ON \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DIWYU=ON \
             -DCCACHE=ON ..
