@@ -1,12 +1,12 @@
 #include "dpdkCore.hpp"
 
-#include "Config.hpp"              // for Config
+#include "Config.hpp" // for Config
 #include "ICETelescope.hpp"
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "captureHandler.hpp"      // for captureHandler
-#include "iceBoardShuffle.hpp"     // for iceBoardShuffle, iceBoardShuffle::shuffle_size
-#include "iceBoardStandard.hpp"    // for iceBoardStandard
-#include "iceBoardVDIF.hpp"        // for iceBoardVDIF
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "captureHandler.hpp"   // for captureHandler
+#include "iceBoardShuffle.hpp"  // for iceBoardShuffle, iceBoardShuffle::shuffle_size
+#include "iceBoardStandard.hpp" // for iceBoardStandard
+#include "iceBoardVDIF.hpp"     // for iceBoardVDIF
 
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for json, basic_json<>::object_t, basic_json, basic_json<...
