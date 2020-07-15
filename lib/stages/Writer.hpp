@@ -1,13 +1,14 @@
 /*****************************************
 @file
 @brief Stages for writing visibility data.
-- visWriter : public kotekan::Stage
+- Writer : public kotekan::Stage
 - visCalWriter : public kotekan::Stage
 *****************************************/
-#ifndef VIS_WRITER_HPP
-#define VIS_WRITER_HPP
+#ifndef WRITER_HPP
+#define WRITER_HPP
 
 #include "Config.hpp"            // for Config
+#include "HfbFrameView.hpp"      // for HfbFrameView
 #include "Stage.hpp"             // for Stage
 #include "buffer.h"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
@@ -32,7 +33,7 @@
 
 
 /**
- * @class visWriter
+ * @class Writer
  * @brief Write the data out to an HDF5 file .
  *
  * This stage writes out the data it receives with minimal processing.
@@ -63,7 +64,7 @@
  *
  * @par Buffers
  * @buffer in_buf The buffer streaming data to write
- *         @buffer_format VisBuffer structured
+ *         @buffer_format visBuffer structured
  *         @buffer_metadata VisMetadata
  *
  * @conf   file_type        String. Type of file to write. One of 'hdf5',
@@ -97,10 +98,10 @@
  *
  * @author Richard Shaw
  */
-class visWriter : public kotekan::Stage {
+class Writer : public kotekan::Stage {
 public:
-    visWriter(kotekan::Config& config, const std::string& unique_name,
-              kotekan::bufferContainer& buffer_container);
+    Writer(kotekan::Config& config, const std::string& unique_name,
+           kotekan::bufferContainer& buffer_container);
 
     void main_thread() override;
 
@@ -113,16 +114,20 @@ public:
 protected:
     /// Setup the acquisition
     // NOTE: must be called from with a region locked by acqs_mutex
-    virtual void init_acq(dset_id_t ds_id);
+    virtual void init_acq(dset_id_t ds_id, std::map<std::string, std::string> metadata);
 
     /// Construct the set of metadata
     std::map<std::string, std::string> make_metadata(dset_id_t ds_id);
+
+    /// Construct the HFB metadata
+    std::map<std::string, std::string> make_hfb_metadata(dset_id_t ds_id);
 
     /// Close inactive acquisitions
     virtual void close_old_acqs();
 
     /// Gets states from the dataset manager and saves some metadata
-    void get_dataset_state(dset_id_t ds_id);
+    void get_dataset_state_vis(dset_id_t ds_id);
+    void get_dataset_state_hfb(dset_id_t ds_id);
 
     /**
      * Check git version.
@@ -133,6 +138,11 @@ protected:
      *                `ignore_version` is set.
      **/
     bool check_git_version(dset_id_t ds_id);
+
+    void write_vis_data(VisFrameView frame, kotekan::prometheus::Gauge& write_time_metric,
+                        std::unique_lock<std::mutex>& acqs_lock);
+    void write_hfb_data(HfbFrameView frame, kotekan::prometheus::Gauge& write_time_metric,
+                        std::unique_lock<std::mutex>& acqs_lock);
 
     // Parameters saved from the config files
     std::string root_path;
@@ -170,6 +180,9 @@ protected:
         /// Number of products
         size_t num_vis;
 
+        /// Number of beams
+        size_t num_beams;
+
         /// Last update
         double last_update;
     };
@@ -205,9 +218,9 @@ private:
 
 /**
  * @class visCalWriter
- * @brief Extension to visWriter for exporting calibration data.
+ * @brief Extension to Writer for exporting calibration data.
  *
- * This stage is based off visWriter, but is meant for generating a
+ * This stage is based off Writer, but is meant for generating a
  * fixed-length ring-buffer-like file for storing the last samples of
  * the calibration data stream. To ensure consistent reads while the
  * stage is continuously writing to a file, a REST endpoint is provided
@@ -226,7 +239,7 @@ private:
  *
  * @par Buffers
  * @buffer in_buf The buffer streaming data to write
- *         @buffer_format VisBuffer structured
+ *         @buffer_format visBuffer structured
  *         @buffer_metadata VisMetadata
  *
  * @conf   root_path        String. Location in filesystem to write to.
@@ -260,7 +273,7 @@ private:
  *
  * @author Tristan Pinsonneault-Marotte
  **/
-class visCalWriter : public visWriter {
+class visCalWriter : public Writer {
 public:
     visCalWriter(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
@@ -272,7 +285,7 @@ public:
 
 protected:
     // Override function to make visCalFileBundle and set its file name
-    void init_acq(dset_id_t ds_id) override;
+    void init_acq(dset_id_t ds_id, std::map<std::string, std::string> metadata) override;
 
     // Disable closing old acqs
     void close_old_acqs() override{};
