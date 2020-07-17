@@ -1,8 +1,8 @@
 #include "compressData.hpp"
 
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"         // for wait_for_empty_frame, Buffer, allocate_new_metadata_object
-#include "hfbMetadata.h"
+#include "HFBMetadata.h"
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for wait_for_empty_frame, Buffer, allocate_new_metadata_object
 #include "kotekanLogging.hpp" // for INFO
 
 #include <assert.h>   // for assert

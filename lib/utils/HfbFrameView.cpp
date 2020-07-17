@@ -21,7 +21,7 @@
 
 HfbFrameView::HfbFrameView(Buffer* buf, int frame_id) :
     FrameView(buf, frame_id),
-    _metadata((hfbMetadata*)buf->metadata[id]->metadata),
+    _metadata((HFBMetadata*)buf->metadata[id]->metadata),
 
     // Calculate the internal buffer layout from the given structure params
     buffer_layout(calculate_buffer_layout(_metadata->num_beams, _metadata->num_subfreq)),
@@ -138,7 +138,7 @@ size_t HfbFrameView::calculate_frame_size(kotekan::Config& config, const std::st
     return calculate_buffer_layout(num_beams, num_subfreq).first;
 }
 
-void HfbFrameView::set_metadata(hfbMetadata* metadata, const uint32_t num_beams,
+void HfbFrameView::set_metadata(HFBMetadata* metadata, const uint32_t num_beams,
                                 const uint32_t num_subfreq) {
     metadata->num_beams = num_beams;
     metadata->num_subfreq = num_subfreq;
@@ -146,7 +146,7 @@ void HfbFrameView::set_metadata(hfbMetadata* metadata, const uint32_t num_beams,
 
 void HfbFrameView::set_metadata(Buffer* buf, const uint32_t index, const uint32_t num_beams,
                                 const uint32_t num_subfreq) {
-    hfbMetadata* metadata = (hfbMetadata*)buf->metadata[index]->metadata;
+    HFBMetadata* metadata = (HFBMetadata*)buf->metadata[index]->metadata;
     metadata->num_beams = num_beams;
     metadata->num_subfreq = num_subfreq;
 }

@@ -1,17 +1,17 @@
 /*****************************************
 @file
 @brief Code for using the HfbFrameView formatted data.
-- hfbMetadata
+- HFBMetadata
 - HfbFrameView
 *****************************************/
 #ifndef HFBBUFFER_HPP
 #define HFBBUFFER_HPP
 
 #include "FrameView.hpp" // for FrameView
+#include "HFBMetadata.h" // for HFBMetadata
 #include "Hash.hpp"      // for Hash
 #include "buffer.h"      // for Buffer
 #include "dataset.hpp"   // for dset_id_t
-#include "hfbMetadata.h" // for hfbMetadata
 #include "visUtil.hpp"   // for cfloat
 
 #include "gsl-lite.hpp" // for span
@@ -156,7 +156,7 @@ public:
      * @param num_subfreq Number of sub-frequencies.
      *
      **/
-    static void set_metadata(hfbMetadata* metadata, const uint32_t num_beams,
+    static void set_metadata(HFBMetadata* metadata, const uint32_t num_beams,
                              const uint32_t num_subfreq);
 
     /**
@@ -189,13 +189,13 @@ public:
      * @brief Read only access to the metadata.
      * @returns The metadata.
      **/
-    const hfbMetadata* metadata() const {
+    const HFBMetadata* metadata() const {
         return _metadata;
     }
 
 private:
     // References to the metadata we are viewing
-    hfbMetadata* const _metadata;
+    HFBMetadata* const _metadata;
 
     // The calculated layout of the buffer
     struct_layout<hfbField> buffer_layout;

@@ -81,7 +81,7 @@ main_pool:
   num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
 
 hfb_pool:
-  kotekan_metadata_pool: hfbMetadata
+  kotekan_metadata_pool: HFBMetadata
   num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
 
 # Buffers
