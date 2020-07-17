@@ -7,12 +7,12 @@
 #ifndef HFBBUFFER_HPP
 #define HFBBUFFER_HPP
 
-#include "FrameView.hpp" // for FrameView
+#include "FrameView.hpp"   // for FrameView
 #include "HFBMetadata.hpp" // for HFBMetadata
-#include "Hash.hpp"      // for Hash
-#include "buffer.h"      // for Buffer
-#include "dataset.hpp"   // for dset_id_t
-#include "visUtil.hpp"   // for cfloat
+#include "Hash.hpp"        // for Hash
+#include "buffer.h"        // for Buffer
+#include "dataset.hpp"     // for dset_id_t
+#include "visUtil.hpp"     // for cfloat
 
 #include "gsl-lite.hpp" // for span
 
