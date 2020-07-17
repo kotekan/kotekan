@@ -4,7 +4,7 @@
 #include "Telescope.hpp"
 #include "buffer.h" // for mark_frame_empty, Buffer, register_consumer, wait_for...
 #include "chimeMetadata.h"
-#include "hfbMetadata.hpp"
+#include "hfbMetadata.h"
 #include "kotekanLogging.hpp" // for DEBUG, DEBUG2
 
 #include <atomic>      // for atomic_bool
