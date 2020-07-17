@@ -7,12 +7,6 @@
 
 #include <sys/time.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#pragma pack()
-
 struct HFBMetadata {
     /// The ICEBoard sequence number
     int64_t fpga_seq_num;
@@ -151,8 +145,5 @@ inline void set_dataset_id(struct Buffer* buf, int ID, dset_id_t dataset_id) {
     struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
     hfb_metadata->dataset_id = dataset_id;
 }
-#ifdef __cplusplus
-}
-#endif
 
 #endif

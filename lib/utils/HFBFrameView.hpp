@@ -8,7 +8,7 @@
 #define HFBBUFFER_HPP
 
 #include "FrameView.hpp" // for FrameView
-#include "HFBMetadata.h" // for HFBMetadata
+#include "HFBMetadata.hpp" // for HFBMetadata
 #include "Hash.hpp"      // for Hash
 #include "buffer.h"      // for Buffer
 #include "dataset.hpp"   // for dset_id_t
