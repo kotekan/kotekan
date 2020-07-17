@@ -1,8 +1,8 @@
 /*****************************************
 @file
-@brief Code for using the HfbFrameView formatted data.
+@brief Code for using the HFBFrameView formatted data.
 - HFBMetadata
-- HfbFrameView
+- HFBFrameView
 *****************************************/
 #ifndef HFBBUFFER_HPP
 #define HFBBUFFER_HPP
@@ -29,10 +29,10 @@
  *
  * Use this enum to refer to the fields.
  **/
-enum class hfbField { hfb };
+enum class HFBField { hfb };
 
 /**
- * @class hfbFrameView
+ * @class HFBFrameView
  * @brief Provide a structured view of a hyperfine beam buffer.
  *
  * This class inherits from the FrameView base class and sets up a view on a hyperfine beam buffer
@@ -40,12 +40,9 @@ enum class hfbField { hfb };
  * creation, everything else is returned as a reference or pointer so can be
  * modified at will.
  *
- * @todo This may want changing to use reference wrappers instead of bare
- *       references.
- *
  * @author James Willis
  **/
-class HfbFrameView : public FrameView {
+class HFBFrameView : public FrameView {
 
 public:
     /**
@@ -56,7 +53,7 @@ public:
      * @param buf      The buffer the frame is in.
      * @param frame_id The id of the frame to read.
      */
-    HfbFrameView(Buffer* buf, int frame_id);
+    HFBFrameView(Buffer* buf, int frame_id);
 
     /**
      * @brief Copy a whole frame from a buffer and create a view of it.
@@ -74,10 +71,10 @@ public:
      * @param buf_dest      The buffer to copy into.
      * @param frame_id_dest The buffer location to copy into.
      *
-     * @returns A HfbFrameView of the copied frame.
+     * @returns A HFBFrameView of the copied frame.
      *
      **/
-    static HfbFrameView copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
+    static HFBFrameView copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
                                    int frame_id_dest);
 
     /**
@@ -90,7 +87,7 @@ public:
      *          (i.e. 0) and end (i.e. total size) of the buffer is contained in
      *          `_struct`.
      **/
-    static struct_layout<hfbField> calculate_buffer_layout(uint32_t num_beams,
+    static struct_layout<HFBField> calculate_buffer_layout(uint32_t num_beams,
                                                            uint32_t num_subfreq);
 
     /**
@@ -130,7 +127,7 @@ public:
      * @param  frame_to_copy  Frame to copy metadata from.
      *
      **/
-    void copy_metadata(HfbFrameView frame_to_copy);
+    void copy_metadata(HFBFrameView frame_to_copy);
 
     /**
      * @brief Copy over the data, skipping specified members.
@@ -146,7 +143,7 @@ public:
      * @param  skip_members   Specify a set of data members to *not* copy.
      *
      **/
-    void copy_data(HfbFrameView frame_to_copy, const std::set<hfbField>& skip_members);
+    void copy_data(HFBFrameView frame_to_copy, const std::set<HFBField>& skip_members);
 
     /**
      * @brief Populate metadata.
@@ -181,7 +178,7 @@ public:
      * @param alloc_metadata Bool to allocate metadata or not.
      *
      **/
-    static HfbFrameView create_frame_view(Buffer* buf, const uint32_t index,
+    static HFBFrameView create_frame_view(Buffer* buf, const uint32_t index,
                                           const uint32_t num_beams, const uint32_t num_subfreq,
                                           bool alloc_metadata = true);
 
@@ -198,7 +195,7 @@ private:
     HFBMetadata* const _metadata;
 
     // The calculated layout of the buffer
-    struct_layout<hfbField> buffer_layout;
+    struct_layout<HFBField> buffer_layout;
 
     // NOTE: these need to be defined in a final public block to ensure that they
     // are initialised after the above members.

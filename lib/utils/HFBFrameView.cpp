@@ -1,4 +1,4 @@
-#include "HfbFrameView.hpp"
+#include "HFBFrameView.hpp"
 
 #include "FrameView.hpp"   // for metadataContainer
 #include "buffer.h"        // for Buffer, allocate_new_metadata_object, swap_frames
@@ -19,7 +19,7 @@
 #include <type_traits> // for __decay_and_strip<>::__type
 #include <vector>      // for vector
 
-HfbFrameView::HfbFrameView(Buffer* buf, int frame_id) :
+HFBFrameView::HFBFrameView(Buffer* buf, int frame_id) :
     FrameView(buf, frame_id),
     _metadata((HFBMetadata*)buf->metadata[id]->metadata),
 
@@ -40,7 +40,7 @@ HfbFrameView::HfbFrameView(Buffer* buf, int frame_id) :
     dataset_id(_metadata->dataset_id),
 
     // Bind the regions of the buffer to spans and references on the view
-    hfb(bind_span<float>(_frame, buffer_layout.second[hfbField::hfb]))
+    hfb(bind_span<float>(_frame, buffer_layout.second[HFBField::hfb]))
 
 {
     // Check that the actual buffer size is big enough to contain the calculated
@@ -58,7 +58,7 @@ HfbFrameView::HfbFrameView(Buffer* buf, int frame_id) :
     }
 }
 
-std::string HfbFrameView::summary() const {
+std::string HFBFrameView::summary() const {
 
     struct tm* tm = std::gmtime(&(time.tv_sec));
 
@@ -68,15 +68,15 @@ std::string HfbFrameView::summary() const {
     return s;
 }
 
-HfbFrameView HfbFrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
+HFBFrameView HFBFrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
                                       int frame_id_dest) {
     FrameView::copy_frame(buf_src, frame_id_src, buf_dest, frame_id_dest);
-    return HfbFrameView(buf_dest, frame_id_dest);
+    return HFBFrameView(buf_dest, frame_id_dest);
 }
 
 
 // Copy the non-const parts of the metadata
-void HfbFrameView::copy_metadata(HfbFrameView frame_to_copy) {
+void HFBFrameView::copy_metadata(HFBFrameView frame_to_copy) {
     _metadata->gps_time = frame_to_copy.metadata()->gps_time;
     _metadata->fpga_seq_num = frame_to_copy.metadata()->fpga_seq_num;
     _metadata->norm_frac = frame_to_copy.metadata()->norm_frac;
@@ -86,10 +86,10 @@ void HfbFrameView::copy_metadata(HfbFrameView frame_to_copy) {
 }
 
 // Copy the non-hfb parts of the buffer
-void HfbFrameView::copy_data(HfbFrameView frame_to_copy, const std::set<hfbField>& skip_members) {
+void HFBFrameView::copy_data(HFBFrameView frame_to_copy, const std::set<HFBField>& skip_members) {
 
     // Define some helper methods so we don't need to code up the same checks everywhere
-    auto copy_member = [&](hfbField member) { return (skip_members.count(member) == 0); };
+    auto copy_member = [&](HFBField member) { return (skip_members.count(member) == 0); };
 
     auto check_beams = [&]() {
         if (num_beams != frame_to_copy.num_beams) {
@@ -108,29 +108,29 @@ void HfbFrameView::copy_data(HfbFrameView frame_to_copy, const std::set<hfbField
         }
     };
 
-    if (copy_member(hfbField::hfb)) {
+    if (copy_member(HFBField::hfb)) {
         check_beams();
         check_subfreq();
         std::copy(frame_to_copy.hfb.begin(), frame_to_copy.hfb.end(), hfb.begin());
     }
 }
 
-struct_layout<hfbField> HfbFrameView::calculate_buffer_layout(uint32_t num_beams,
+struct_layout<HFBField> HFBFrameView::calculate_buffer_layout(uint32_t num_beams,
                                                               uint32_t num_subfreq) {
     // TODO: get the types of each element using a template on the member
     // definition
-    std::vector<std::tuple<hfbField, size_t, size_t>> buffer_members = {
-        std::make_tuple(hfbField::hfb, sizeof(float), num_beams * num_subfreq)};
+    std::vector<std::tuple<HFBField, size_t, size_t>> buffer_members = {
+        std::make_tuple(HFBField::hfb, sizeof(float), num_beams * num_subfreq)};
 
     return struct_alignment(buffer_members);
 }
 
-size_t HfbFrameView::calculate_frame_size(uint32_t num_beams, uint32_t num_subfreq) {
+size_t HFBFrameView::calculate_frame_size(uint32_t num_beams, uint32_t num_subfreq) {
 
     return calculate_buffer_layout(num_beams, num_subfreq).first;
 }
 
-size_t HfbFrameView::calculate_frame_size(kotekan::Config& config, const std::string& unique_name) {
+size_t HFBFrameView::calculate_frame_size(kotekan::Config& config, const std::string& unique_name) {
 
     const uint32_t num_beams = config.get<uint32_t>(unique_name, "num_frb_total_beams");
     const uint32_t num_subfreq = config.get<uint32_t>(unique_name, "factor_upchan");
@@ -138,20 +138,20 @@ size_t HfbFrameView::calculate_frame_size(kotekan::Config& config, const std::st
     return calculate_buffer_layout(num_beams, num_subfreq).first;
 }
 
-void HfbFrameView::set_metadata(HFBMetadata* metadata, const uint32_t num_beams,
+void HFBFrameView::set_metadata(HFBMetadata* metadata, const uint32_t num_beams,
                                 const uint32_t num_subfreq) {
     metadata->num_beams = num_beams;
     metadata->num_subfreq = num_subfreq;
 }
 
-void HfbFrameView::set_metadata(Buffer* buf, const uint32_t index, const uint32_t num_beams,
+void HFBFrameView::set_metadata(Buffer* buf, const uint32_t index, const uint32_t num_beams,
                                 const uint32_t num_subfreq) {
     HFBMetadata* metadata = (HFBMetadata*)buf->metadata[index]->metadata;
     metadata->num_beams = num_beams;
     metadata->num_subfreq = num_subfreq;
 }
 
-HfbFrameView HfbFrameView::create_frame_view(Buffer* buf, const uint32_t index,
+HFBFrameView HFBFrameView::create_frame_view(Buffer* buf, const uint32_t index,
                                              const uint32_t num_beams, const uint32_t num_subfreq,
                                              bool alloc_metadata /*= true*/) {
 
@@ -160,9 +160,9 @@ HfbFrameView HfbFrameView::create_frame_view(Buffer* buf, const uint32_t index,
     }
 
     set_metadata(buf, index, num_beams, num_subfreq);
-    return HfbFrameView(buf, index);
+    return HFBFrameView(buf, index);
 }
 
-size_t HfbFrameView::data_size() {
+size_t HFBFrameView::data_size() {
     return buffer_layout.first;
 }
