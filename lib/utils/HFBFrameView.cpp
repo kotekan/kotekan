@@ -40,7 +40,8 @@ HFBFrameView::HFBFrameView(Buffer* buf, int frame_id) :
     dataset_id(_metadata->dataset_id),
 
     // Bind the regions of the buffer to spans and references on the view
-    hfb(bind_span<float>(_frame, buffer_layout.second[HFBField::hfb]))
+    hfb(bind_span<float>(_frame, buffer_layout.second[HFBField::hfb])),
+    weight(bind_span<float>(_frame, buffer_layout.second[HFBField::weight]))
 
 {
     // Check that the actual buffer size is big enough to contain the calculated
@@ -113,6 +114,12 @@ void HFBFrameView::copy_data(HFBFrameView frame_to_copy, const std::set<HFBField
         check_subfreq();
         std::copy(frame_to_copy.hfb.begin(), frame_to_copy.hfb.end(), hfb.begin());
     }
+
+    if (copy_member(HFBField::weight)) {
+        check_beams();
+        check_subfreq();
+        std::copy(frame_to_copy.weight.begin(), frame_to_copy.weight.end(), weight.begin());
+    }
 }
 
 struct_layout<HFBField> HFBFrameView::calculate_buffer_layout(uint32_t num_beams,
@@ -120,7 +127,8 @@ struct_layout<HFBField> HFBFrameView::calculate_buffer_layout(uint32_t num_beams
     // TODO: get the types of each element using a template on the member
     // definition
     std::vector<std::tuple<HFBField, size_t, size_t>> buffer_members = {
-        std::make_tuple(HFBField::hfb, sizeof(float), num_beams * num_subfreq)};
+        std::make_tuple(HFBField::hfb, sizeof(float), num_beams * num_subfreq),
+        std::make_tuple(HFBField::weight, sizeof(float), 0 /*num_beams * num_subfreq*/)};
 
     return struct_alignment(buffer_members);
 }

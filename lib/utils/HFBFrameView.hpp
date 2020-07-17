@@ -29,7 +29,7 @@
  *
  * Use this enum to refer to the fields.
  **/
-enum class HFBField { hfb };
+enum class HFBField { hfb, weight };
 
 /**
  * @class HFBFrameView
@@ -222,6 +222,8 @@ public:
 
     /// View of the hyperfine beam data.
     const gsl::span<float> hfb;
+    /// View of the weight data.
+    const gsl::span<float> weight;
 };
 
 #endif
