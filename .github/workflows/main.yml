@@ -127,6 +127,9 @@ jobs:
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
         docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile -x -m 'not serial'
 
+    - name: Setup tmate session
+      uses: mxschmitt/action-tmate@v2
+
     - name: Run serial python tests
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
@@ -348,11 +351,3 @@ jobs:
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${IMG_CORE})
         docker run "${OPTS[@]}" black --exclude docs --check .
-
-  tmate:
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v2
-    - name: Setup tmate session
-      uses: mxschmitt/action-tmate@v2
