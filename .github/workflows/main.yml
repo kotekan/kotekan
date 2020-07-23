@@ -125,10 +125,7 @@ jobs:
     - name: Run parallel python tests
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
-        docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile -x -m 'not serial'
-
-    - name: Debugging with tmate
-      uses: mxschmitt/action-tmate@v2
+        docker run "${OPTS[@]}" pytest -v -x -m 'not serial'
 
     - name: Run serial python tests
       run: |
