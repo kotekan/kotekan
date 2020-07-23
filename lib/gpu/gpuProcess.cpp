@@ -91,6 +91,10 @@ void gpuProcess::init() {
         std::string command_name = cmd["name"];
         commands.push_back(create_command(command_name, unique_path));
     }
+
+    for (auto &buf : local_buffer_container.get_buffer_map()) {
+        register_host_memory(buf.second);
+    }
 }
 
 void gpuProcess::profile_callback(connectionInstance& conn) {

@@ -32,9 +32,6 @@ protected:
     /// GPU memory name
     std::string _gpu_memory_name;
 
-    /// Keep track of the OpenCL registered host memory corresponding
-    /// to the @c in_buf memory frames.
-    std::vector<std::tuple<cl_mem, void*>> opencl_in_buf_frames;
 };
 
 #endif // CL_INPUT_DATA_H

@@ -25,12 +25,12 @@ hipProcess::hipProcess(Config& config_, const string& unique_name,
     device = new hipDeviceInterface(config_, gpu_id, _gpu_buffer_depth);
     dev = device;
     device->prepareStreams();
-    CHECK_HIP_ERROR(hipProfilerStart());
+    //CHECK_HIP_ERROR(hipProfilerStart());
     init();
 }
 
 hipProcess::~hipProcess() {
-    CHECK_HIP_ERROR(hipProfilerStop());
+    //CHECK_HIP_ERROR(hipProfilerStop());
 }
 
 gpuEventContainer* hipProcess::create_signal() {

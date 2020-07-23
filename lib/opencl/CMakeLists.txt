@@ -44,6 +44,7 @@ set ( KOTEKAN_OPENCL_SOURCES
 add_library ( kotekan_opencl ${KOTEKAN_OPENCL_SOURCES} )
 
 target_link_libraries(kotekan_opencl libexternal)
+target_link_libraries(kotekan_opencl ${OPENCL_LIBRARIES})
 
 add_custom_target(kernel_copy
     COMMAND ${CMAKE_COMMAND} -E copy_directory

@@ -555,7 +555,7 @@ macro(HIP_ADD_EXECUTABLE hip_target)
         list(REMOVE_ITEM _sources ${_source_files})
     endif()
     if("x${HCC_HOME}" STREQUAL "x")
-        set(HCC_HOME "/opt/rocm/hcc")
+        set(HCC_HOME "/opt/rocm/llvm/bin")
     endif()
     set(CMAKE_HIP_LINK_EXECUTABLE "${HIP_HIPCC_CMAKE_LINKER_HELPER} ${HCC_HOME} <FLAGS> <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> <LINK_LIBRARIES>")
 

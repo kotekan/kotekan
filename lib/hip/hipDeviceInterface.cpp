@@ -13,8 +13,8 @@ hipDeviceInterface::hipDeviceInterface(Config& config_, int32_t gpu_id_, int gpu
     // Find out how many GPUs can be probed.
     int max_num_gpus;
     CHECK_HIP_ERROR(hipGetDeviceCount(&max_num_gpus));
-    INFO("Number of HIP GPUs: %d", max_num_gpus);
-
+    INFO("Number of HIP GPUs: {:d}", max_num_gpus);
+    INFO("Setting device ID to: {:d}", gpu_id);
     hipSetDevice(gpu_id);
 }
 
