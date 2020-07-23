@@ -1,6 +1,6 @@
 #include "integrateHFBData.hpp"
 
-#include "HFBMetadata.hpp"
+#include "HFBMetadata.h"
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"
 #include "buffer.h" // for mark_frame_empty, Buffer, register_consumer, wait_for...
