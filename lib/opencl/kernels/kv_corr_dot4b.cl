@@ -7,7 +7,7 @@
 
 
 
-//#define SDOT8
+#define SDOT8
 
 
 #if COARSE_BLOCK_SIZE > 8
@@ -108,10 +108,10 @@ void corr ( __global const uint *input,
                 corr_i[y][x] += dot4b(xr[x],yi[y]);
                 corr_i[y][x] -= dot4b(xi[x],yr[y]);
 #else
-                corr_r[y][x] =  __builtin_amdgcn_sdot8(xr[x],yr[y], corr_r[y][x]);
-                corr_r[y][x] =  __builtin_amdgcn_sdot8(xi[x],yi[y], corr_r[y][x]);
-                corr_i[y][x] =  __builtin_amdgcn_sdot8(xr[x],yi[y], corr_i[y][x]);
-                corr_i[y][x] = -__builtin_amdgcn_sdot8(xi[x],yr[y],-corr_i[y][x]);
+                corr_r[y][x] =  __builtin_amdgcn_sdot8(xr[x],yr[y], corr_r[y][x], false);
+                corr_r[y][x] =  __builtin_amdgcn_sdot8(xi[x],yi[y], corr_r[y][x], false);
+                corr_i[y][x] =  __builtin_amdgcn_sdot8(xr[x],yi[y], corr_i[y][x], false);
+                corr_i[y][x] = -__builtin_amdgcn_sdot8(xi[x],yr[y],-corr_i[y][x], false);
 #endif
             }
             //rotate data to the neighbour work items
