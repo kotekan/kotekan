@@ -1,0 +1,67 @@
+##########################################
+#
+# kv_test_fft.yaml
+#
+# Config to test FFT prototypes.
+#
+# Author: Keith Vanderlinde
+#
+##########################################
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
+num_links: 4
+freq_array: [4,7,10,16]
+timesamples_per_packet: 2
+block_size: 16 #32
+samples_per_data_set: 4096 #49152 #16384
+num_beams: 1
+num_data_sets: 1
+num_gpus: 1
+buffer_depth: 4
+num_gpu_frames: 16
+cpu_affinity: [2,3,4,5,8,9,10,11]
+sizeof_float: 4
+num_elements: 2048
+num_dishes: num_elements / 2
+dish_rows: 32
+dish_cols: num_dishes / dish_rows
+frame_arrival_period: 0.00000256 * samples_per_data_set
+num_local_freq: 1 #32
+num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
+sizeof_int: 4
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+# Buffers
+gpu_input_buffers:
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
+    metadata_pool: main_pool
+    gpu_input_buffer:
+        kotekan_buffer: standard
+
+gen_data:
+    type: random
+    value: 153
+    kotekan_stage: testDataGen
+    out_buf: gpu_input_buffer
+
+gpu:
+    kernel_path: "../lib/hsa/kernels/"
+    profiling: true
+    commands:
+    - name: hsaInputData
+    - name: hsaKVFFT
+    gpu_0:
+        kotekan_stage: hsaProcess
+        gpu_id: 0
+        in_buffers:
+            network_buf: gpu_input_buffer
+        out_buffers:

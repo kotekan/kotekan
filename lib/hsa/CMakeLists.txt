@@ -48,6 +48,7 @@ set ( KOTEKAN_HSA_SOURCES
       hsaBeamformOutput.cpp
       hsaBeamformHFBOutput.cpp
       hsaBeamformHFBSum.cpp
+      hsaKVFFT.cpp
 
 # CHIME/Pulsar Kernels & copy-out:
       hsaBeamformPulsar.cpp
