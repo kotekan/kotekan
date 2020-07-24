@@ -134,7 +134,8 @@ jobs:
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
         #docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x -m serial -k 'not metadata and not produce_consume and not subset_broker and not send_receive and not shared_mem_buffer'"
-        docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x -m serial -k 'not produce_consume'"
+        docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x -m serial -k 'not subset_broker'"
+        #docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x -m serial -k 'not produce_consume'"
         #docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x -m serial -k 'not send_receive and not shared_mem_buffer'"
         #docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x -m serial -k 'not metadata'"
 
