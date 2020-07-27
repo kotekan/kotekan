@@ -4,12 +4,14 @@
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.h"     // for stream_t
 #include "restServer.hpp"      // for connectionInstance
 
 #include "json.hpp" // for json
 
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
+
 
 // Type: one of "random", "const"
 // Value: the value of the constant
@@ -67,7 +69,7 @@ private:
     bool wait;
     std::string rest_mode;
     int num_frames;
-    int stream_id;
+    stream_t stream_id;
     uint32_t _first_frame_index;
 };
 

@@ -8,7 +8,7 @@
 #include "datasetManager.hpp"  // for dset_id_t, state_id_t, datasetManager
 #include "datasetState.hpp"    // for freqState
 #include "kotekanLogging.hpp"  // for FATAL_ERROR
-#include "visBuffer.hpp"       // for visFrameView
+#include "visBuffer.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for frameID, freq_ctype, modulo
 
 #include <algorithm>    // for find, max
@@ -102,7 +102,7 @@ void freqSubset::main_thread() {
         }
 
         // Create view to input frame
-        auto input_frame = visFrameView(in_buf, input_frame_id);
+        auto input_frame = VisFrameView(in_buf, input_frame_id);
 
         // check if the input dataset has changed
         if (dset_id_map.count(input_frame.dataset_id) == 0) {
@@ -122,10 +122,9 @@ void freqSubset::main_thread() {
                 break;
             }
 
-            allocate_new_metadata_object(out_buf, output_frame_id);
-
             // Copy frame and create view
-            auto output_frame = visFrameView(out_buf, output_frame_id, input_frame);
+            auto output_frame =
+                VisFrameView::copy_frame(in_buf, input_frame_id, out_buf, output_frame_id);
 
             // Wait for the dataset ID for the outgoing frame
             if (change_dset_fut.valid())

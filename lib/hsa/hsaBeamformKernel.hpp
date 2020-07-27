@@ -7,7 +7,8 @@
 #ifndef HSA_BEAMFORM_KERNEL_H
 #define HSA_BEAMFORM_KERNEL_H
 
-#include "Config.hpp"             // for Config
+#include "Config.hpp" // for Config
+#include "Telescope.hpp"
 #include "buffer.h"               // for Buffer
 #include "bufferContainer.hpp"    // for bufferContainer
 #include "hsa/hsa.h"              // for hsa_signal_t
@@ -151,7 +152,7 @@ private:
     /// Metadata buffer precondition ID
     int32_t metadata_buffer_precondition_id;
     /// Freq bin index, where the 0th is at 800MHz
-    int32_t freq_idx;
+    freq_id_t freq_idx;
     /// Freq in MHz
     float freq_MHz;
 
@@ -188,7 +189,8 @@ private:
     /// Endpoint for updating EW beams
     std::string endpoint_EW_beam;
 
-    /// Config base (@todo this is a huge hack replace with updatable config)
+    /// Config base
+    /// @todo this is a huge hack replace with updatable config
     std::string config_base;
 };
 

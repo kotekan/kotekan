@@ -7,7 +7,6 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       chrxUplink.cpp
       computeDualpolPower.cpp
       fullPacketDump.cpp
-      gpuPostProcess.cpp
       pulsarPostProcess.cpp
       ReadGain.cpp
       nDiskFileWrite.cpp
@@ -42,8 +41,8 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       pulsarNetworkProcess.cpp
       bufferMerge.cpp
       bufferCopy.cpp
+      bufferDelay.cpp
       bufferSwitch.cpp
-      bufferCopy.cpp
       InputSubset.cpp
       #RFI Pipeline Processes
       rfiVDIF.cpp

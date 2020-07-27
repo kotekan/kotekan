@@ -65,7 +65,7 @@ void accumulate::main_thread() {
             uint64_t fpga_seq = get_fpga_seq_num(in_buf, in_frame_id);
             set_fpga_seq_num(out_buf, out_frame_id, fpga_seq);
 
-            uint16_t stream_id = get_stream_id(in_buf, in_frame_id);
+            stream_t stream_id = get_stream_id(in_buf, in_frame_id);
             set_stream_id(out_buf, out_frame_id, stream_id);
 
             timeval time_v = get_first_packet_recv_time(in_buf, in_frame_id);

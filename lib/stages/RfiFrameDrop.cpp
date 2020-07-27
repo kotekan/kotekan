@@ -1,16 +1,16 @@
 #include "RfiFrameDrop.hpp"
 
-#include "Config.hpp"              // for Config
-#include "Stage.hpp"               // for Stage
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"                // for mark_frame_empty, Buffer, wait_for_full_frame, get_me...
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chimeMetadata.h"         // for chimeMetadata, get_fpga_seq_num
-#include "configUpdater.hpp"       // for configUpdater
-#include "fpga_header_functions.h" // for bin_number_chime, extract_stream_id
-#include "kotekanLogging.hpp"      // for WARN, INFO, DEBUG, DEBUG2
-#include "prometheusMetrics.hpp"   // for Counter, Metrics, MetricFamily
-#include "visUtil.hpp"             // for frameID, modulo
+#include "Config.hpp"       // for Config
+#include "Stage.hpp"        // for Stage
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
+#include "buffer.h"              // for mark_frame_empty, Buffer, wait_for_full_frame, get_me...
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "chimeMetadata.h"       // for chimeMetadata, get_fpga_seq_num
+#include "configUpdater.hpp"     // for configUpdater
+#include "kotekanLogging.hpp"    // for WARN, INFO, DEBUG, DEBUG2
+#include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily
+#include "visUtil.hpp"           // for frameID, modulo
 
 #include "fmt.hpp" // for format, fmt
 
@@ -74,6 +74,9 @@ RfiFrameDrop::RfiFrameDrop(Config& config, const std::string& unique_name,
 }
 
 void RfiFrameDrop::main_thread() {
+
+    auto& tel = Telescope::instance();
+
     frameID frame_id_in_vis(_buf_in_vis);
     frameID frame_id_in_sk(_buf_in_sk);
     frameID frame_id_out(_buf_out);
@@ -98,8 +101,7 @@ void RfiFrameDrop::main_thread() {
         auto* metadata_sk = (chimeMetadata*)get_metadata(_buf_in_sk, frame_id_in_sk);
 
         // Set the frequency index from the stream id of the metadata
-        auto stream_id = extract_stream_id(metadata_vis->stream_ID);
-        uint32_t freq_id = bin_number_chime(&stream_id);
+        uint32_t freq_id = tel.to_freq_id(_buf_in_vis, frame_id_in_vis);
 
         // Try and synchronize up the frames. Even though they arrive at
         // different rates, this should eventually sync them up.
@@ -199,7 +201,7 @@ void RfiFrameDrop::main_thread() {
 }
 
 
-// mostly copied from visFrameView
+// mostly copied from VisFrameView
 void RfiFrameDrop::copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest,
                               int frame_id_dest) {
 

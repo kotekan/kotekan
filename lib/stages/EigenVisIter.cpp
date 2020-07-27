@@ -8,7 +8,7 @@
 #include "datasetState.hpp"      // for datasetState, eigenvalueState, state_uptr
 #include "kotekanLogging.hpp"    // for DEBUG
 #include "prometheusMetrics.hpp" // for Gauge, Metrics, MetricFamily
-#include "visBuffer.hpp"         // for visFrameView, visField, visField::erms, visField::eval
+#include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::erms, VisField::eval
 #include "visUtil.hpp"           // for cfloat, frameID, current_time, modulo, movingAverage
 
 #include "fmt.hpp"      // for format, fmt
@@ -106,7 +106,7 @@ void EigenVisIter::main_thread() {
         if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
             break;
         }
-        auto input_frame = visFrameView(in_buf, input_frame_id);
+        auto input_frame = VisFrameView(in_buf, input_frame_id);
 
         // check if the input dataset has changed
         if (input_dset_id != input_frame.dataset_id) {
@@ -162,15 +162,17 @@ void EigenVisIter::main_thread() {
         if (wait_for_empty_frame(out_buf, unique_name.c_str(), output_frame_id) == nullptr) {
             break;
         }
-        allocate_new_metadata_object(out_buf, output_frame_id);
-        auto output_frame = visFrameView(out_buf, output_frame_id, input_frame.num_elements,
-                                         input_frame.num_prod, _num_eigenvectors);
+
+        // Create view to output frame
+        auto output_frame =
+            VisFrameView::create_frame_view(out_buf, output_frame_id, input_frame.num_elements,
+                                            input_frame.num_prod, _num_eigenvectors);
 
         // Copy over metadata and data, but skip all ev members which may not be
         // defined
         output_frame.copy_metadata(input_frame);
         output_frame.dataset_id = _output_dset_id;
-        output_frame.copy_data(input_frame, {visField::eval, visField::evec, visField::erms});
+        output_frame.copy_data(input_frame, {VisField::eval, VisField::evec, VisField::erms});
 
         // Copy in eigenvectors and eigenvalues.
         for (uint32_t i = 0; i < _num_eigenvectors; i++) {

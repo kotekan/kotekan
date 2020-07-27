@@ -7,7 +7,7 @@
 #include "dataset.hpp"           // for dset_id_t
 #include "kotekanLogging.hpp"    // for DEBUG, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Counter, MetricFamily
-#include "visBuffer.hpp"         // for visFrameView
+#include "visBuffer.hpp"         // for VisFrameView
 
 #include <atomic>     // for atomic_bool
 #include <cstdint>    // for uint64_t
@@ -58,7 +58,7 @@ void visDebug::main_thread() {
         // Print out debug information from the buffer
         if ((num_frames % _output_period) == 0)
             INFO("Got frame number {:d}", num_frames);
-        auto frame = visFrameView(in_buf, frame_id);
+        auto frame = VisFrameView(in_buf, frame_id);
         DEBUG("{:s}", frame.summary());
 
         frame_freq_counter.labels({std::to_string(frame.freq_id)}).inc();

@@ -8,7 +8,7 @@
 #include "datasetManager.hpp"  // for dset_id_t, datasetManager, state_id_t
 #include "datasetState.hpp"    // for freqState, datasetState, state_uptr
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO
-#include "visBuffer.hpp"       // for visFrameView
+#include "visBuffer.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for freq_ctype
 
 #include <algorithm>    // for max
@@ -102,7 +102,7 @@ void freqSplit::main_thread() {
     if (wait_for_full_frame(in_buf, unique_name.c_str(), input_frame_id) == nullptr) {
         return;
     }
-    input_dset_id = visFrameView(in_buf, input_frame_id).dataset_id;
+    input_dset_id = VisFrameView(in_buf, input_frame_id).dataset_id;
     _output_dset_id = std::async(&freqSplit::change_dataset_state, this, input_dset_id);
 
     while (!stop_thread) {
@@ -113,7 +113,7 @@ void freqSplit::main_thread() {
         }
 
         // Create view to input frame
-        auto input_frame = visFrameView(in_buf, input_frame_id);
+        auto input_frame = VisFrameView(in_buf, input_frame_id);
 
         // check if the input dataset has changed
         if (input_dset_id != input_frame.dataset_id) {
@@ -141,10 +141,8 @@ void freqSplit::main_thread() {
             break;
         }
 
-        allocate_new_metadata_object(buf, frame_id);
-
         // Copy frame and create view
-        auto frame = visFrameView(buf, frame_id, input_frame);
+        auto frame = VisFrameView::copy_frame(in_buf, input_frame_id, buf, frame_id);
 
         // Are we waiting for a new dataset ID?
         if (_output_dset_id.valid())
