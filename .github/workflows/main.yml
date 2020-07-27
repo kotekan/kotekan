@@ -127,10 +127,10 @@ jobs:
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
         docker run "${OPTS[@]}" pytest -v -x -m 'not serial'
 
-        #    - name: Debugging with tmate
-        #      uses: mxschmitt/action-tmate@v2
+    - name: Debugging with tmate
+      uses: mxschmitt/action-tmate@v2
 
-        #- name: Run serial python tests
+      #    - name: Run serial python tests
       #      run: |
       #        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
       #        #docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x -m serial -k 'not metadata and not produce_consume and not subset_broker and not send_receive and not shared_mem_buffer'"
@@ -138,7 +138,7 @@ jobs:
       #        #docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x -m serial -k 'not produce_consume'"
       #        #docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x -m serial -k 'not send_receive and not shared_mem_buffer'"
       #        #docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x -m serial -k 'not metadata'"
-      #
+
     - name: Run boost tests
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
