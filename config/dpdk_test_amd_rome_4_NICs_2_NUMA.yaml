@@ -7,8 +7,8 @@ log_level: debug
 
 buffer_depth: 12
 samples_per_data_set: 32768 * 4
-num_local_freq: 8
-num_elements: 256
+num_local_freq: 4
+num_elements: 512
 num_blocks: (num_elements / block_size) * (num_elements / block_size + 1) / 2
 sizeof_int: 4
 num_gpus: 2
@@ -587,7 +587,7 @@ gpu:
     kernel_path: "../../lib/opencl/kernels/"
     gain_dir: "/etc/kotekan/"
     #log_level: debug2
-    data_format: "4+4b"
+    data_format: "dot4b"
     frame_arrival_period: samples_per_data_set / 390625.0 / 16
     commands: &command_list
         - name: clInputData
