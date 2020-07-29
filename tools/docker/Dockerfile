@@ -61,7 +61,7 @@ RUN apt-get update && \
 # Install kotekan python dependencies
 RUN python3.7 -m pip install "msgpack>=0.6.1" click future requests pyyaml tabulate \
                              pytest==5.3.0 pytest-xdist pytest-cpp pytest-localserver flask \
-                             posix_ipc && \
+                             pytest-timeout posix_ipc && \
     apt-get update && \
     apt-get install -y mysql-client libmysqlclient-dev && \
     apt-get clean && apt-get autoclean && \
