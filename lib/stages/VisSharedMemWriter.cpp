@@ -355,9 +355,9 @@ void VisSharedMemWriter::main_thread() {
 
     // Calculate the ring buffer structure
 
-    rbs.data_size = frame.data_size;
+    rbs.data_size = frame.data_size();
     rbs.metadata_size = sizeof(VisMetadata);
-    // Alligns the frame along page size
+    // Aligns the frame along page size
     rbs.frame_size = _member_alignment(rbs.data_size + rbs.metadata_size + valid_size, alignment);
 
     // memory_size should be _ntime * nfreq * file_frame_size (data + metadata)
@@ -393,7 +393,7 @@ void VisSharedMemWriter::main_thread() {
         // Get a view of the current frame
         auto frame = VisFrameView(in_buf, frame_id);
 
-        if (frame.data_size != rbs.data_size)
+        if (frame.data_size() != rbs.data_size)
             FATAL_ERROR("Size of data changed mid-stream.");
 
         // Check that the dataset ID hasn't chaned
@@ -414,10 +414,10 @@ void VisSharedMemWriter::main_thread() {
             }
         }
 
-        if (frame.data_size != rbs.data_size) {
+        if (frame.data_size() != rbs.data_size) {
             FATAL_ERROR(
                 "The size of the data has changed. Buffer expects: {}. Current frame's size: {}",
-                rbs.data_size, frame.data_size);
+                rbs.data_size, frame.data_size());
             return;
         }
 

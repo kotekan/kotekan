@@ -206,11 +206,9 @@ void baselineCompression::compress_thread(uint32_t thread_id) {
             break;
         }
 
-        // Allocate metadata and get output frame
-        allocate_new_metadata_object(out_buf, output_frame_id);
         // Create view to output frame
-        auto output_frame = VisFrameView(out_buf, output_frame_id, input_frame.num_elements,
-                                         num_stack, input_frame.num_ev);
+        auto output_frame = VisFrameView::create_frame_view(
+            out_buf, output_frame_id, input_frame.num_elements, num_stack, input_frame.num_ev);
 
         // Copy over the data we won't modify
         output_frame.copy_metadata(input_frame);
