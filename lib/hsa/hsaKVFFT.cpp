@@ -32,7 +32,7 @@ hsaKVFFT::hsaKVFFT(Config& config, const std::string& unique_name,
 
     // pre-allocate GPU memory
     device.get_gpu_memory_array("input", 0, input_frame_len);
-    device.get_gpu_memory_array(fmt::format(fmt("kvfft_{:d}"), _sub_frame_index), 0, 512*2*sizeof(float));//*8*_samples_per_data_set);
+    device.get_gpu_memory_array(fmt::format(fmt("kvfft_{:d}"), _sub_frame_index), 0, _num_elements*2*sizeof(float)*2*_samples_per_data_set);
 }
 
 hsaKVFFT::~hsaKVFFT() {}
@@ -55,7 +55,7 @@ hsa_signal_t hsaKVFFT::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
         (void*)((uint8_t*)device.get_gpu_memory_array("input", gpu_frame_id, input_frame_len)
                 + _num_elements * _num_local_freq * _sub_frame_samples * _sub_frame_index);
     args.output = device.get_gpu_memory_array(
-        fmt::format(fmt("kvfft_{:d}"), _sub_frame_index), gpu_frame_id, 512*2*sizeof(float));//*8*_samples_per_data_set);
+        fmt::format(fmt("kvfft_{:d}"), _sub_frame_index), gpu_frame_id, _num_elements*2*sizeof(float)*2*_samples_per_data_set);
 
     // Copy kernel args into correct location for GPU
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
@@ -67,8 +67,8 @@ hsa_signal_t hsaKVFFT::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
     params.workgroup_size_x = 64;
     params.workgroup_size_y = 1;
     params.workgroup_size_z = 1;
-    params.grid_size_x = 64;//*(_num_elements / 256); //full spatial array
-    params.grid_size_y = 1;//_samples_per_data_set ; //single time steps
+    params.grid_size_x = 64 * 2; //NS, EW
+    params.grid_size_y = _samples_per_data_set;
     params.grid_size_z = 1;
     params.num_dims = 2;
 
@@ -82,12 +82,12 @@ hsa_signal_t hsaKVFFT::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
 }
 
 void hsaKVFFT::finalize_frame(int frame_id) {
-//    static int loop=0;
-//    if (loop++>=5) {
-//        kotekan_hsa_stop();
-//        exit(0);
-//    }
-//    return hsaSubframeCommand::finalize_frame(frame_id);
+    static int loop=0;
+    if (loop++>=5) {
+        kotekan_hsa_stop();
+        exit(0);
+    }
+    return hsaSubframeCommand::finalize_frame(frame_id);
 
     unsigned char *cpu_in = (unsigned char *) hsa_host_malloc(256 * sizeof(char), 0);
     void *gpu_in = (void*)((uint8_t*)device.get_gpu_memory_array("input", frame_id, input_frame_len));
@@ -95,7 +95,7 @@ void hsaKVFFT::finalize_frame(int frame_id) {
 
     float *cpu_out = (float *) hsa_host_malloc(512 * 2 * sizeof(float), 0);
     void *gpu_out = device.get_gpu_memory_array(
-            fmt::format(fmt("kvfft_{:d}"), _sub_frame_index), frame_id, 512*2*sizeof(float));
+            fmt::format(fmt("kvfft_{:d}"), _sub_frame_index), frame_id, 512*2*sizeof(float)*8*_samples_per_data_set);
     device.sync_copy_gpu_to_host((void*)cpu_out,gpu_out, 512 * 2 * sizeof(float));
 
     float stage_res[10][512][2];
@@ -107,38 +107,6 @@ void hsaKVFFT::finalize_frame(int frame_id) {
         float re = ((cpu_in[i % 256] & 0xf0) >> 4) - 8;
         stage_res[0][i][0] = im;
         stage_res[0][i][1] = re;
-
-        float twiddle = 2 * 3.1415926535 / 512 * i;
-        float ia = sin(twiddle);
-        float ra = cos(twiddle);
-        stage_res[0][i + 256][0] = im*ra + re*ia;
-        stage_res[0][i + 256][1] = re*ra - im*ia;
-    }
-
-    int endstage=8;
-    //stages
-    for (int st = 1; st<9; st++) {
-        int s = 9-st-1;
-        for (int pp = 0; pp < 256; pp++) {
-            int addr_i[2] = {pp + ((pp>>s)<<s),
-                             pp + ((pp>>s)<<s) + (1<<s)};
-            int addr_o[2] = {2 * pp, 2 * pp + 1};
-            if (st != endstage) {
-                addr_o[0] = addr_i[0];
-                addr_o[1] = addr_i[1];
-            }
-
-            stage_res[st][addr_o[0]][0] = stage_res[st-1][addr_i[0]][0] + stage_res[st-1][addr_i[1]][0];
-            stage_res[st][addr_o[0]][1] = stage_res[st-1][addr_i[0]][1] + stage_res[st-1][addr_i[1]][1];
-            float twiddle = 2 * 3.1415926535 / 512 * pp * (1<<st);
-            float ia = sin(twiddle);
-            float ra = cos(twiddle);
-            float re,im;
-            im = stage_res[st-1][addr_i[0]][0] - stage_res[st-1][addr_i[1]][0];
-            re = stage_res[st-1][addr_i[0]][1] - stage_res[st-1][addr_i[1]][1];
-            stage_res[st][addr_o[1]][0] = re*ia + im*ra;
-            stage_res[st][addr_o[1]][1] = re*ra - im*ia;
-        }
     }
 
     int length = 512;
@@ -158,9 +126,6 @@ void hsaKVFFT::finalize_frame(int frame_id) {
 
     int wrongct = 0;
     for (int i=0; i<512; i++){
-//        int st=endstage;
-//        if ((stage_res[st][i][0] - cpu_out[i*2])>1e-2 || (stage_res[st][i][1] - cpu_out[i*2+1])>1e-2) {
-//            printf("%3i - %6.2f, %6.2f : %6.2f %6.2f \n",i, stage_res[st][i][0], stage_res[st][i][1], cpu_out[i*2],cpu_out[i*2+1]);
         if (((fdata[i][1] - cpu_out[i*2])>0.01) || ((fdata[i][0] - cpu_out[i*2+1])>0.01)){
             printf("%3i - %6.2f, %6.2f : %6.2f %6.2f \n",i, fdata[i][1], fdata[i][0], cpu_out[i*2],cpu_out[i*2+1]);
             wrongct++;

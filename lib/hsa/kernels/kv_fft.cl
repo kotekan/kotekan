@@ -11,258 +11,208 @@
 #define PI128 -0.02454369260617026f
 #define PI256 -0.01227184630308513f
 
-#define WNang -0.01227184630308513 //2pi/512
-#define CUSTOM_BIT_REVERSE_9_BITS(index) ((( ( (((index) * 0x0802) & 0x22110) | (((index) * 0x8020)&0x88440) ) * 0x10101 ) >> 15) & 0x1FE)
-
 #define L get_local_id(0)
+
+#define flip(sel, mask, ra, rb,t) \
+        __asm__ __volatile__("V_CMP_EQ_U32 %[sel], %[mask] \n" \
+                             "V_CNDMASK_B32 %[bi], %[rbi], %[rai] \n" \
+                             "V_CNDMASK_B32 %[br], %[rbr], %[rar] \n" \
+                             : [bi] "=v" (t.IM), \
+                               [br] "=v" (t.RE) \
+                             : [sel] "v" (sel), \
+                               [mask] "v" (mask), \
+                               [rai] "v" (ra.IM), \
+                               [rar] "v" (ra.RE), \
+                               [rbi] "v" (rb.IM), \
+                               [rbr] "v" (rb.RE) \
+                             : "vcc"); \
+
+#define flop(sel, mask, ra, rb,t) \
+        __asm__ __volatile__("V_CMP_EQ_U32 %[sel], %[mask] \n" \
+                             "V_CNDMASK_B32 %[rai], %[raii], %[bi] \n" \
+                             "V_CNDMASK_B32 %[rar], %[rari], %[br] \n" \
+                             "V_CNDMASK_B32 %[rbi], %[bi], %[rbii] \n" \
+                             "V_CNDMASK_B32 %[rbr], %[br], %[rbri] " \
+                             : [rai] "=&v" (ra.IM), \
+                               [rar] "=&v" (ra.RE), \
+                               [rbi] "=&v" (rb.IM), \
+                               [rbr] "=&v" (rb.RE) \
+                             : [raii] "0" (ra.IM), \
+                               [rari] "1" (ra.RE), \
+                               [rbii] "2" (rb.IM), \
+                               [rbri] "3" (rb.RE), \
+                               [sel] "v" (sel), \
+                               [mask] "v" (mask), \
+                               [bi] "v" (t.IM), \
+                               [br] "v" (t.RE) \
+                             : "vcc");
+
+#define butterfly(ra, rb, sincos, t) \
+        t = ra - rb; \
+        ra = ra + rb; \
+        rb.IM = t.RE * sincos.IM + t.IM * sincos.RE; \
+        rb.RE = t.RE * sincos.RE - t.IM * sincos.IM;
+
+#define twiddle(sincos, W, m,idx) \
+        sincos.IM = native_sin(W * ((L&m)*4+idx)); \
+        sincos.RE = native_cos(W * ((L&m)*4+idx));
+
 
 __kernel void kv_fft (__global uint *inputData,
                       __global float2 *outputData){
-    float2 res[8];
-    float2 sc;
+    float2 res[4][8];
+    float2 sc, b;
     float twiddle_angle;
+    uint mask, sel;
 
-    uint data_temp = inputData[get_local_size(0) * get_group_id(0) + L];
+    uint data_temp[4];
 
-    {
-        res[0].IM = ((int)((data_temp & 0x0000000f) >>   0u)) - 8;
-        res[0].RE = ((int)((data_temp & 0x000000f0) >>   4u)) - 8;
-        twiddle_angle = WNang * (L*4+0);
-        sc.IM = native_sin(twiddle_angle);
-        sc.RE = native_cos(twiddle_angle);
-        res[1].IM = res[0].RE * sc.IM + res[0].IM * sc.RE;
-        res[1].RE = res[0].RE * sc.RE - res[0].IM * sc.IM;
-
-        res[2].IM = ((int)((data_temp & 0x00000f00) >>   8u)) - 8;
-        res[2].RE = ((int)((data_temp & 0x0000f000) >>  12u)) - 8;
-        twiddle_angle = WNang * (L*4+1);
-        sc.IM = native_sin(twiddle_angle);
-        sc.RE = native_cos(twiddle_angle);
-        res[3].IM = res[2].RE * sc.IM + res[2].IM * sc.RE;
-        res[3].RE = res[2].RE * sc.RE - res[2].IM * sc.IM;
-
-        res[4].IM = ((int)((data_temp & 0x000f0000) >>  16u)) - 8;
-        res[4].RE = ((int)((data_temp & 0x00f00000) >>  20u)) - 8;
-        twiddle_angle = WNang * (L*4+2);
-        sc.IM = native_sin(twiddle_angle);
-        sc.RE = native_cos(twiddle_angle);
-        res[5].IM = res[4].RE * sc.IM + res[4].IM * sc.RE;
-        res[5].RE = res[4].RE * sc.RE - res[4].IM * sc.IM;
-
-        res[6].IM = ((int)((data_temp & 0x0f000000) >>  24u)) - 8;
-        res[6].RE = ((int)((data_temp & 0xf0000000) >>  28u)) - 8;
-        twiddle_angle = WNang * (L*4+3);
-        sc.IM = native_sin(twiddle_angle);
-        sc.RE = native_cos(twiddle_angle);
-        res[7].IM = res[6].RE * sc.IM + res[6].IM * sc.RE;
-        res[7].RE = res[6].RE * sc.RE - res[6].IM * sc.IM;
+    #pragma unroll
+    for (int ew=0; ew<4; ew++){
+        data_temp[ew] = inputData[L +                      //offset within 256 NS feeds
+                                  ew * 512/4 +             //cylinder
+                                  get_group_id(0) * 256 +  //EW vs NS pol
+                                  get_group_id(1) * 2048/4 //timesteps
+                                 ];
+    }
+    #pragma unroll
+    for (int i=0; i<4; i++) {
+        #pragma unroll
+        for (int ew=0; ew<4; ew++){
+            res[ew][2*i  ].IM = ((int)amd_bfe(data_temp[ew],i*8+0,4))-8;
+            res[ew][2*i  ].RE = ((int)amd_bfe(data_temp[ew],i*8+4,4))-8;
+            twiddle(sc,PI256,0xffffffff,i);
+            res[ew][2*i+1].IM = res[ew][2*i].RE * sc.IM + res[ew][2*i].IM * sc.RE;
+            res[ew][2*i+1].RE = res[ew][2*i].RE * sc.RE - res[ew][2*i].IM * sc.IM;
+        }
     }
 
+    #pragma unroll
+    for (int ew=0; ew<4; ew++){
+
     //shuffle 1 -> bpermute across all 64
+    mask = 0x20;
+    sel = L & mask;
     #pragma unroll
     for (int i=0; i<4; i++){
-        float2 a,b;
-        a = (L & 0x20) ? res[2*i+1] : res[2*i  ];
-        b = (L & 0x20) ? res[2*i  ] : res[2*i+1];
-
+        flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
         b.IM = as_float(__builtin_amdgcn_ds_bpermute(4*(L+32), as_uint(b.IM)));
         b.RE = as_float(__builtin_amdgcn_ds_bpermute(4*(L+32), as_uint(b.RE)));
-
-        res[2*i  ] = (L & 0x20) ? b : a;
-        res[2*i+1] = (L & 0x20) ? a : b;
-
-        twiddle_angle = WNang * ((L&31)*4+i)*2;
-        sc.IM = native_sin(twiddle_angle);
-        sc.RE = native_cos(twiddle_angle);
-        a = res[2*i] + res[2*i+1];
-        b = res[2*i] - res[2*i+1];
-        res[2*i  ] = a;
-        res[2*i+1].IM = b.RE * sc.IM + b.IM * sc.RE;
-        res[2*i+1].RE = b.RE * sc.RE - b.IM * sc.IM;
+        twiddle(sc, PI128, 0x1f, i);
+        flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
+        butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
     }
 
    //shuffle 2 -> swizzle across 32 WI
+    mask = 0x10;
+    sel = L&mask;
     #pragma unroll
     for (int i=0; i<4; i++){
-        float2 a,b;
-        a = (L & 0x10) ? res[2*i+1] : res[2*i  ];
-        b = (L & 0x10) ? res[2*i  ] : res[2*i+1];
-
-        // pattern = 0b 0 10000 00000 11111
+        flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
         b.IM = as_float(__builtin_amdgcn_ds_swizzle(as_uint(b.IM), 0b0100000000011111));
         b.RE = as_float(__builtin_amdgcn_ds_swizzle(as_uint(b.RE), 0b0100000000011111));
-
-        res[2*i  ] = (L & 0x10) ? b : a;
-        res[2*i+1] = (L & 0x10) ? a : b;
-
-        twiddle_angle = WNang * ((L&15)*4+i)*4;
-        sc.IM = native_sin(twiddle_angle);
-        sc.RE = native_cos(twiddle_angle);
-        a = res[2*i] + res[2*i+1];
-        b = res[2*i] - res[2*i+1];
-        res[2*i  ] = a;
-        res[2*i+1].IM = b.RE * sc.IM + b.IM * sc.RE;
-        res[2*i+1].RE = b.RE * sc.RE - b.IM * sc.IM;
+        twiddle(sc, PI64, 0xf, i);
+        flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
+        butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
     }
 
     //shuffle 3 -> dpp across 16
+    mask = 0x08;
+    sel = L&mask;
     #pragma unroll
     for (int i=0; i<4; i++){
-        float2 a,b;
-        a = (L & 0x08) ? res[2*i+1] : res[2*i  ];
-        b = (L & 0x08) ? res[2*i  ] : res[2*i+1];
-
-        //use DPP to swap a full row (rotate by 8)
+        flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
         b.IM = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.IM), 0x128, 0xf, 0xf, 0));
         b.RE = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.RE), 0x128, 0xf, 0xf, 0));
-        // pattern = 0b 0 01000 00000 11111 (0 5xor 5or 5and)
-        //b.IM = __builtin_amdgcn_ds_swizzle(b.IM, 0b0010000000011111);
-        //b.RE = __builtin_amdgcn_ds_swizzle(b.RE, 0b0010000000011111);
-
-        res[2*i  ] = (L & 0x08) ? b : a;
-        res[2*i+1] = (L & 0x08) ? a : b;
-
-        twiddle_angle = WNang * ((L&7)*4+i)*8;
-        sc.IM = native_sin(twiddle_angle);
-        sc.RE = native_cos(twiddle_angle);
-        a = res[2*i] + res[2*i+1];
-        b = res[2*i] - res[2*i+1];
-        res[2*i  ] = a;
-        res[2*i+1].IM = b.RE * sc.IM + b.IM * sc.RE;
-        res[2*i+1].RE = b.RE * sc.RE - b.IM * sc.IM;
+        twiddle(sc, PI32, 0x7, i);
+        flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
+        butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
     }
 
     //shuffle 4 -> swizzle across 8
+    mask = 0x04;
+    sel = L&mask;
     #pragma unroll
     for (int i=0; i<4; i++){
-        float2 a,b;
-        a = (L & 0x04) ? res[2*i+1] : res[2*i  ];
-        b = (L & 0x04) ? res[2*i  ] : res[2*i+1];
-
-        // pattern = 0b 0 00100 00000 11111 (0 5xor 5or 5and)
+        flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
         b.IM = as_float(__builtin_amdgcn_ds_swizzle(as_uint(b.IM), 0b0001000000011111));
         b.RE = as_float(__builtin_amdgcn_ds_swizzle(as_uint(b.RE), 0b0001000000011111));
-
-        res[2*i  ] = (L & 0x04) ? b : a;
-        res[2*i+1] = (L & 0x04) ? a : b;
-
-        twiddle_angle = WNang * ((L&3)*4+i)*16;
-        sc.IM = native_sin(twiddle_angle);
-        sc.RE = native_cos(twiddle_angle);
-        a = res[2*i] + res[2*i+1];
-        b = res[2*i] - res[2*i+1];
-        res[2*i  ] = a;
-        res[2*i+1].IM = b.RE * sc.IM + b.IM * sc.RE;
-        res[2*i+1].RE = b.RE * sc.RE - b.IM * sc.IM;
+        twiddle(sc, PI16, 0x3, i);
+        flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
+        butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
     }
 
     //shuffle 5 -> dpp across 4
+    mask = 0x02;
+    sel = L&mask;
     #pragma unroll
     for (int i=0; i<4; i++){
-        float2 a,b;
-        a = (L & 0x02) ? res[2*i+1] : res[2*i  ];
-        b = (L & 0x02) ? res[2*i  ] : res[2*i+1];
-
-        //use DPP to swap among 4
-        // 0 <-> 2 ; 1 <-> 3 ==> 0b 01 00 11 10
+        flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
         b.IM = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.IM), 0b01001110, 0xf, 0xf, 0));
         b.RE = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.RE), 0b01001110, 0xf, 0xf, 0));
-        // pattern = 0b 0 00010 00000 11111 (0 5xor 5or 5and)
-        //b.IM = __builtin_amdgcn_ds_swizzle(b.IM, 0b0000100000011111);
-        //b.RE = __builtin_amdgcn_ds_swizzle(b.RE, 0b0000100000011111);
-
-        res[2*i  ] = (L & 0x02) ? b : a;
-        res[2*i+1] = (L & 0x02) ? a : b;
-
-        twiddle_angle = WNang * ((L&1)*4+i)*32;
-        sc.IM = native_sin(twiddle_angle);
-        sc.RE = native_cos(twiddle_angle);
-        a = res[2*i] + res[2*i+1];
-        b = res[2*i] - res[2*i+1];
-        res[2*i  ] = a;
-        res[2*i+1].IM = b.RE * sc.IM + b.IM * sc.RE;
-        res[2*i+1].RE = b.RE * sc.RE - b.IM * sc.IM;
+        twiddle(sc, PI8, 0x1, i);
+        flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
+        butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
     }
 
     //shuffle 6 -> dpp across 2
+    mask = 0x01;
+    sel = L&mask;
     #pragma unroll
     for (int i=0; i<4; i++) {
-        float2 a,b;
-        a = (L & 0x01) ? res[2*i+1] : res[2*i  ];
-        b = (L & 0x01) ? res[2*i  ] : res[2*i+1];
-
-        //use DPP to swap adjacent
-        // 0 <-> 1 ; 2 <-> 3  ==>  0b 10 11 00 01
+        flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
         b.IM = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.IM), 0b10110001, 0xf, 0xf, 0));
         b.RE = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.RE), 0b10110001, 0xf, 0xf, 0));
-        // pattern = 0b 0 00001 00000 11111 (0 5xor 5or 5and)
-        //b.IM = __builtin_amdgcn_ds_swizzle(b.IM, 0b0000010000011111);
-        //b.RE = __builtin_amdgcn_ds_swizzle(b.RE, 0b0000010000011111);
-
-        res[2*i  ] = (L & 0x01) ? b : a;
-        res[2*i+1] = (L & 0x01) ? a : b;
-
-        twiddle_angle = WNang * ((L&0)*4+i)*64;
-        sc.IM = native_sin(twiddle_angle);
-        sc.RE = native_cos(twiddle_angle);
-        a = res[2*i] + res[2*i+1];
-        b = res[2*i] - res[2*i+1];
-        res[2*i  ] = a;
-        res[2*i+1].IM = b.RE * sc.IM + b.IM * sc.RE;
-        res[2*i+1].RE = b.RE * sc.RE - b.IM * sc.IM;
+        twiddle(sc, PI4, 0, i);
+        flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
+        butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
     }
 
     //shuffle 7 -> swap internally across 4 pairs
     {
-        float2 a[2] = {res[1], res[3]};
-        float2 b;
+        float2 a[2] = {res[ew][1], res[ew][3]};
 
-        res[1] = res[0] - res[4];
-        res[0] = res[0] + res[4];
+        res[ew][1] = res[ew][0] - res[ew][4];
+        res[ew][0] = res[ew][0] + res[ew][4];
 
-        twiddle_angle = WNang * (1)*128;
-        sc.IM = native_sin(twiddle_angle);
-        sc.RE = native_cos(twiddle_angle);
-        b = res[2] - res[6];
-        res[2] = res[2] + res[6];
-        res[3].IM = b.RE * sc.IM + b.IM * sc.RE;
-        res[3].RE = b.RE * sc.RE - b.IM * sc.IM;
+        res[ew][3].IM = res[ew][6].RE - res[ew][2].RE;
+        res[ew][3].RE = res[ew][2].IM - res[ew][6].IM;
+        res[ew][2] = res[ew][2] + res[ew][6];
 
-        res[4] = a[0] + res[5];
-        res[5] = a[0] - res[5];
+        res[ew][4] = a[0] + res[ew][5];
+        res[ew][5] = a[0] - res[ew][5];
 
-        twiddle_angle = WNang * (1)*128;
-        sc.IM = native_sin(twiddle_angle);
-        sc.RE = native_cos(twiddle_angle);
-        b = a[1] - res[7];
-        res[6] = a[1] + res[7];
-        res[7].IM = b.RE * sc.IM + b.IM * sc.RE;
-        res[7].RE = b.RE * sc.RE - b.IM * sc.IM;
+        a[0] = a[1] - res[ew][7];
+        res[ew][6] = a[1] + res[ew][7];
+        res[ew][7].IM = -a[0].RE;
+        res[ew][7].RE = a[0].IM;
     }
     //shuffle 8 -> swap internally across 2 pairs
     {
-        float2 a[2] = {res[1], res[5]};
+        float2 a[2] = {res[ew][1], res[ew][5]};
 
-        res[1] = res[0] - res[2];
-        res[0] = res[0] + res[2];
-        res[2] = a[0] + res[3];
-        res[3] = a[0] - res[3];
-        res[5] = res[4] - res[6];
-        res[4] = res[4] + res[6];
-        res[6] = a[1] + res[7];
-        res[7] = a[1] - res[7];
+        res[ew][1] = res[ew][0] - res[ew][2];
+        res[ew][0] = res[ew][0] + res[ew][2];
+        res[ew][2] = a[0] + res[ew][3];
+        res[ew][3] = a[0] - res[ew][3];
+        res[ew][5] = res[ew][4] - res[ew][6];
+        res[ew][4] = res[ew][4] + res[ew][6];
+        res[ew][6] = a[1] + res[ew][7];
+        res[ew][7] = a[1] - res[ew][7];
+    }
     }
 
     //output!
     #pragma unroll
-    for (int i=0; i<8; i++)
-    {
-        outputData[(CUSTOM_BIT_REVERSE_9_BITS(L*8 + i) | ((L&32)/32)) ] = res[i];
-    /*
-        outputData[L*8+i + //local group
-                   get_group_id(0) * 512 + //other groups at same time
-                   get_group_id(1) * 512 * get_num_groups(0) //time offset
-                   ] = res[7-i];
-   */
+    for (int ew=0; ew<4; ew++) {
+        #pragma unroll
+        for (int i=0; i<8; i++) {
+            uint irev = (L*8+i);
+            __asm__ __volatile__("V_BFREV_B32 %0, %1" : "=v"(irev) : "v"(irev)); //32b bit-reverse
+            outputData[get_group_id(0) * 512 +
+                       ew * 1024 +
+                       get_group_id(1) * 1024 * 4 +
+                       (irev>>23)] = res[ew][i];
+        }
     }
 }
