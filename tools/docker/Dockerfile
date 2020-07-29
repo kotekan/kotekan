@@ -65,7 +65,7 @@ RUN python3.7 -m pip install "msgpack>=0.6.1" click future requests pyyaml tabul
     apt-get update && \
     apt-get install -y mysql-client libmysqlclient-dev && \
     apt-get clean && apt-get autoclean && \
-    python3.7 -m pip install git+https://github.com/chime-experiment/comet.git
+    python3.7 -m pip install git+https://github.com/chime-experiment/comet.git@2020.06.0
 
 # Install redis for comet tests
 RUN apt-get update && \
