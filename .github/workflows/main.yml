@@ -21,6 +21,7 @@ on:
 env:
   IMG_CORE: docker.pkg.github.com/kotekan/kotekan/kotekan-core:latest
   IMG_IWYU: docker.pkg.github.com/kotekan/kotekan/kotekan-iwyu:latest
+  PYTEST_TIMEOUT: 60
 
 jobs:
 
@@ -125,17 +126,17 @@ jobs:
     - name: Run parallel python tests
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
-        docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile -x -m 'not serial'
+        docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile --timeout=${PYTEST_TIMEOUT} -x -m 'not serial'
 
     - name: Run serial python tests
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
-        docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x -m serial"
+        docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x --timeout=${PYTEST_TIMEOUT} -m serial"
 
     - name: Run boost tests
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
-        docker run "${OPTS[@]}" pytest -v -x
+        docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
 
 
   # Build a full CHIME version of kotekan
@@ -236,15 +237,15 @@ jobs:
     - name: Build h5py from source
       run: |
         git clone https://github.com/h5py/h5py.git h5py && cd h5py
-        python3.7 setup.py configure --hdf5=/usr/local/opt/hdf5@1.10/
-        python3.7 setup.py build
+        python3 setup.py configure --hdf5=/usr/local/opt/hdf5@1.10/
+        python3 setup.py build
 
     - name: Install bitshuffle
       env:
         HDF5_DIR: /usr/local/opt/hdf5@1.10/
       run: |
         git clone https://github.com/kiyo-masui/bitshuffle.git bitshuffle && cd bitshuffle
-        python3.7 setup.py install --h5plugin --h5plugin-dir=/usr/local/opt/hdf5@1.10/lib/plugin
+        python3 setup.py install --h5plugin --h5plugin-dir=/usr/local/opt/hdf5@1.10/lib/plugin
 
     - name: Clone Blaze and HighFive
       run: |
