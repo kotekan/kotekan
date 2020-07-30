@@ -602,7 +602,7 @@ gpu:
         - name: clOutputData
     gpu_0:
         kotekan_stage: clProcess
-        #cpu_affinity: [16,17,18,19]
+        cpu_affinity: [9, 10, 11, 12]
         gpu_id: 0
         gpu_thread_id: 0
         commands: *command_list
@@ -629,7 +629,7 @@ gpu:
             output_buf: gpu_output_buffer_0
     gpu_1:
         kotekan_stage: clProcess
-        #cpu_affinity: [16,17,18,19]
+        cpu_affinity: [42, 43, 44, 45]
         gpu_id: 1
         gpu_thread_id: 1
         commands: *command_list
