@@ -28,7 +28,9 @@ hsaBeamformUpchanHFB::hsaBeamformUpchanHFB(Config& config, const std::string& un
     _num_frb_total_beams = config.get<int32_t>(unique_name, "num_frb_total_beams");
     _factor_upchan = config.get<int32_t>(unique_name, "factor_upchan");
 
-    input_frame_len = _num_elements * (_samples_per_data_set + 32) * 2 * sizeof(float);
+    // Kernel uses fp16 complex numbers for input which are the same size as sizeof(float)
+    input_frame_len = _num_elements * (_samples_per_data_set + 32) * sizeof(float);
+
     output_frame_len = _num_frb_total_beams
                        * (_samples_per_data_set / _downsample_time / _downsample_freq)
                        * sizeof(float);

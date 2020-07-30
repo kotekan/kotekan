@@ -25,8 +25,9 @@ hsaBeamformTranspose::hsaBeamformTranspose(Config& config, const std::string& un
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
 
-    beamform_frame_len = _num_elements * _samples_per_data_set * 2 * sizeof(float);
-    output_frame_len = _num_elements * (_samples_per_data_set + 32) * 2 * sizeof(float);
+    // Kernel uses fp16 complex numbers which are the same size as sizeof(float)
+    beamform_frame_len = _num_elements * _samples_per_data_set * sizeof(float);
+    output_frame_len = _num_elements * (_samples_per_data_set + 32) * sizeof(float);
 }
 
 hsaBeamformTranspose::~hsaBeamformTranspose() {}

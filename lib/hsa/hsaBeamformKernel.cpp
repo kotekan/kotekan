@@ -63,7 +63,8 @@ hsaBeamformKernel::hsaBeamformKernel(Config& config, const std::string& unique_n
     }
 
     input_frame_len = _num_elements * _num_local_freq * _samples_per_data_set;
-    output_frame_len = _num_elements * _samples_per_data_set * 2 * sizeof(float);
+    // Kernel uses fp16 complex numbers for output which are the same size as sizeof(float)
+    output_frame_len = _num_elements * _samples_per_data_set * sizeof(float);
 
 
     map_len = 256 * sizeof(int);
