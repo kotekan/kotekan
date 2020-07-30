@@ -13,7 +13,7 @@
 
 #define CUSTOM_BIT_REVERSE_9_BITS(index) ((( ( (((index) * 0x0802) & 0x22110) | (((index) * 0x8020)&0x88440) ) * 0x10101 ) >> 15) & 0x1FE)
 
-__kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  __global float2 *Co, __global float2 *results_array,  __global float2 *Gain){
+__kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  __global float2 *Co, __global float *results_array,  __global float2 *Gain){
 
   __local float2 local_data[2048];//4* 512 float2 * 2 float/float2 * 4 B/float = 16kB
     uint local_address = get_local_id(0);  //0 to 255
@@ -192,7 +192,7 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
     barrier(CLK_LOCAL_MEM_FENCE);
 
     //Clamping
-    index_0= mapped[local_address];  
+    index_0= mapped[local_address];
     index_1 = index_0 + 512;
     index_2 = index_0 + 1024;
     index_3 = index_0 + 1536;
@@ -209,6 +209,7 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
     //change to 255-localadd in order to flip cylinder NS
     uint address = get_global_id(2)*2048 + get_global_id(1)*1024 + (255-local_address);
 
+    float out;
     temp_0.REAL = 4;
     temp_0.IMAG = 4;
     //Beam0
@@ -222,7 +223,12 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
       local_data[index_1].REAL * CoArray[1].IMAG - local_data[index_1].IMAG * CoArray[1].REAL + \
       local_data[index_2].REAL * CoArray[2].IMAG - local_data[index_2].IMAG * CoArray[2].REAL + \
       local_data[index_3].REAL * CoArray[3].IMAG - local_data[index_3].IMAG * CoArray[3].REAL ;
-    results_array[address] = Temp/temp_0;
+    Temp = Temp/temp_0;
+    __asm__ ("V_CVT_PKRTZ_F16_F32 %0, %1, %2" : "=v"(out)
+                                              : "v"(Temp.x),
+                                                "v"(Temp.y));
+    results_array[address] = out;
+//    results_array[address] = Temp/temp_0;
 
     //Beam1
     Temp.REAL =\
@@ -235,7 +241,12 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
       local_data[index_1].REAL * CoArray[5].IMAG - local_data[index_1].IMAG * CoArray[5].REAL + \
       local_data[index_2].REAL * CoArray[6].IMAG - local_data[index_2].IMAG * CoArray[6].REAL + \
       local_data[index_3].REAL * CoArray[7].IMAG - local_data[index_3].IMAG * CoArray[7].REAL ;
-    results_array[address+ 256] = Temp/temp_0;
+    Temp = Temp/temp_0;
+    __asm__ ("V_CVT_PKRTZ_F16_F32 %0, %1, %2" : "=v"(out)
+                                              : "v"(Temp.x),
+                                                "v"(Temp.y));
+    results_array[address + 256] = out;
+//    results_array[address+ 256] = Temp/temp_0;
 
     //Beam2
   Temp.REAL = \
@@ -248,7 +259,12 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
     local_data[index_1].REAL * CoArray[9].IMAG - local_data[index_1].IMAG * CoArray[9].REAL + \
     local_data[index_2].REAL * CoArray[10].IMAG - local_data[index_2].IMAG * CoArray[10].REAL +   \
     local_data[index_3].REAL * CoArray[11].IMAG - local_data[index_3].IMAG * CoArray[11].REAL ;
-  results_array[address + 2*256] = Temp/temp_0;
+    Temp = Temp/temp_0;
+    __asm__ ("V_CVT_PKRTZ_F16_F32 %0, %1, %2" : "=v"(out)
+                                              : "v"(Temp.x),
+                                                "v"(Temp.y));
+    results_array[address + 2*256] = out;
+//  results_array[address + 2*256] = Temp/temp_0;
 
   //Beam3
   Temp.REAL = \
@@ -261,7 +277,12 @@ __kernel void zero_padded_FFT512( __global uint *data, __global uint *mapped,  _
     local_data[index_1].REAL * CoArray[13].IMAG - local_data[index_1].IMAG * CoArray[13].REAL + \
     local_data[index_2].REAL * CoArray[14].IMAG - local_data[index_2].IMAG * CoArray[14].REAL +   \
     local_data[index_3].REAL * CoArray[15].IMAG - local_data[index_3].IMAG * CoArray[15].REAL ;
-  results_array[address+ 3*256] = Temp/temp_0;
+    Temp = Temp/temp_0;
+    __asm__ ("V_CVT_PKRTZ_F16_F32 %0, %1, %2" : "=v"(out)
+                                              : "v"(Temp.x),
+                                                "v"(Temp.y));
+    results_array[address + 3*256] = out;
+//  results_array[address+ 3*256] = Temp/temp_0;
 
   //exit
 

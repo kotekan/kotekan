@@ -19,7 +19,8 @@ __constant float HFB_BP[16] = { 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f
 //LWS = {     64 ,  1  } (factor_upchan / 2, 1) 
 //GWS = {nsamp/6*, 1024} (nsamp / 6, num_frb_total_beams)
 
-__kernel void upchannelize(__global float2 *data, __global float *results_array, __global float *hfb_output_array){
+
+__kernel void upchannelize(__global float *data, __global float *results_array, __global float *hfb_output_array){
 
   uint nbeam = get_global_size(1);
   uint nsamp = get_global_size(0)*6+32;
@@ -34,13 +35,24 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array,
   for (int p=0;p<2;p++){
     uint address_in = (p*nbeam*nsamp)+get_global_id(1)*nsamp+get_group_id(0)*384 + local_address;
     //read from global
+
+    for (int j=0; j<384; j+=64){
+        float2 d;
+        uint t = as_uint(data[address_in + j]);
+        d.x = as_float(t & 0xffff);
+        d.y = as_float(t >> 16);
+        __asm__ ("V_CVT_F32_F16 %0, %1" : "=v"(d.x) : "v"(d.x)); //flop back into 32b
+        __asm__ ("V_CVT_F32_F16 %0, %1" : "=v"(d.y) : "v"(d.y)); //flop back into 32b
+        local_data[local_address + j] = d;
+    }
+/*
     local_data[local_address      ] = data[address_in      ];
     local_data[local_address + 64 ] = data[address_in + 64 ];
     local_data[local_address + 128] = data[address_in + 128];
     local_data[local_address + 192] = data[address_in + 192];
     local_data[local_address + 256] = data[address_in + 256];
     local_data[local_address + 320] = data[address_in + 320];
-
+*/
     uint index_0 = local_address * 2;
     uint index_1 = index_0 + 1; //these two indices span 128 entries
     index_0 = BIT_REVERSE_7_BITS(index_0);
