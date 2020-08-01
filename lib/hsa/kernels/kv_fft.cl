@@ -1,20 +1,13 @@
 // llvm-objdump -disassemble -mcpu=fiji ../lib/hsa/kernels/kv_fft.hsaco
 
-#define IM    x
-#define RE    y
-#define PI2 -1.5707963267948966f
-#define PI4 -0.7853981633974483f
-#define PI8 -0.39269908169872414f
-#define PI16 -0.19634954084936207f
-#define PI32 -0.09817477042468103f
-#define PI64 -0.04908738521234052f
-#define PI128 -0.02454369260617026f
-#define PI256 -0.01227184630308513f
+#define RE    x
+#define IM    y
+#define PI256 -0.01227184630308513f //-2*pi/512
 
 #define L get_local_id(0)
 
 #define flip(sel, mask, ra, rb,t) \
-        __asm__ __volatile__("V_CMP_EQ_U32 %[sel], %[mask] \n" \
+        __asm__ ("V_CMP_EQ_U32 %[sel], %[mask] \n" \
                              "V_CNDMASK_B32 %[bi], %[rbi], %[rai] \n" \
                              "V_CNDMASK_B32 %[br], %[rbr], %[rar] \n" \
                              : [bi] "=v" (t.IM), \
@@ -28,20 +21,16 @@
                              : "vcc"); \
 
 #define flop(sel, mask, ra, rb,t) \
-        __asm__ __volatile__("V_CMP_EQ_U32 %[sel], %[mask] \n" \
-                             "V_CNDMASK_B32 %[rai], %[raii], %[bi] \n" \
-                             "V_CNDMASK_B32 %[rar], %[rari], %[br] \n" \
-                             "V_CNDMASK_B32 %[rbi], %[bi], %[rbii] \n" \
-                             "V_CNDMASK_B32 %[rbr], %[br], %[rbri] " \
-                             : [rai] "=&v" (ra.IM), \
-                               [rar] "=&v" (ra.RE), \
-                               [rbi] "=&v" (rb.IM), \
-                               [rbr] "=&v" (rb.RE) \
-                             : [raii] "0" (ra.IM), \
-                               [rari] "1" (ra.RE), \
-                               [rbii] "2" (rb.IM), \
-                               [rbri] "3" (rb.RE), \
-                               [sel] "v" (sel), \
+        __asm__ ("V_CMP_EQ_U32 %[sel], %[mask] \n" \
+                             "V_CNDMASK_B32 %[rai], %[rai], %[bi] \n" \
+                             "V_CNDMASK_B32 %[rar], %[rar], %[br] \n" \
+                             "V_CNDMASK_B32 %[rbi], %[bi], %[rbi] \n" \
+                             "V_CNDMASK_B32 %[rbr], %[br], %[rbr] " \
+                             : [rai] "+&v" (ra.IM), \
+                               [rar] "+&v" (ra.RE), \
+                               [rbi] "+&v" (rb.IM), \
+                               [rbr] "+&v" (rb.RE) \
+                             : [sel] "v" (sel), \
                                [mask] "v" (mask), \
                                [bi] "v" (t.IM), \
                                [br] "v" (t.RE) \
@@ -58,161 +47,199 @@
         sincos.RE = native_cos(W * ((L&m)*4+idx));
 
 
-__kernel void kv_fft (__global uint *inputData,
-                      __global float2 *outputData){
+__kernel void kv_fft (__global uint *inputData, __global uint *map, global float2 *co, __global float *outputData, __global float2 *gains){
     float2 res[4][8];
     float2 sc, b;
     float twiddle_angle;
     uint mask, sel;
 
-    uint data_temp[4];
-
     #pragma unroll
     for (int ew=0; ew<4; ew++){
-        data_temp[ew] = inputData[L +                      //offset within 256 NS feeds
-                                  ew * 512/4 +             //cylinder
-                                  get_group_id(0) * 256 +  //EW vs NS pol
-                                  get_group_id(1) * 2048/4 //timesteps
-                                 ];
-    }
-    #pragma unroll
-    for (int i=0; i<4; i++) {
+        uint data_temp;
+        data_temp = inputData[L +                       //offset within 256 NS feeds
+                              ew * 256 /4 +             //cylinder,pol
+                              get_group_id(1) * 1024/4 + //EW vs NS pol
+                              get_group_id(2) * 2048/4  //timesteps
+                             ];
         #pragma unroll
-        for (int ew=0; ew<4; ew++){
-            res[ew][2*i  ].IM = ((int)amd_bfe(data_temp[ew],i*8+0,4))-8;
-            res[ew][2*i  ].RE = ((int)amd_bfe(data_temp[ew],i*8+4,4))-8;
+        for (int i=0; i<4; i++) {
+            float2 t;
+            float2 gain = gains[get_global_id(1)*1024 + ew*256 + L*4 + i];
+            t.IM = ((float)amd_bfe(data_temp,i*8+0,4))-8;
+            t.RE = ((float)amd_bfe(data_temp,i*8+4,4))-8;
+            //gains are conjugated?
+            res[ew][2*i  ].RE = t.RE * gain.RE + t.IM * gain.IM;
+            res[ew][2*i  ].IM = t.IM * gain.RE - t.RE * gain.IM;
             twiddle(sc,PI256,0xffffffff,i);
             res[ew][2*i+1].IM = res[ew][2*i].RE * sc.IM + res[ew][2*i].IM * sc.RE;
             res[ew][2*i+1].RE = res[ew][2*i].RE * sc.RE - res[ew][2*i].IM * sc.IM;
         }
-    }
 
-    #pragma unroll
-    for (int ew=0; ew<4; ew++){
-
-    //shuffle 1 -> bpermute across all 64
-    mask = 0x20;
-    sel = L & mask;
-    #pragma unroll
-    for (int i=0; i<4; i++){
-        flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
-        b.IM = as_float(__builtin_amdgcn_ds_bpermute(4*(L+32), as_uint(b.IM)));
-        b.RE = as_float(__builtin_amdgcn_ds_bpermute(4*(L+32), as_uint(b.RE)));
-        twiddle(sc, PI128, 0x1f, i);
-        flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
-        butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
-    }
-
-   //shuffle 2 -> swizzle across 32 WI
-    mask = 0x10;
-    sel = L&mask;
-    #pragma unroll
-    for (int i=0; i<4; i++){
-        flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
-        b.IM = as_float(__builtin_amdgcn_ds_swizzle(as_uint(b.IM), 0b0100000000011111));
-        b.RE = as_float(__builtin_amdgcn_ds_swizzle(as_uint(b.RE), 0b0100000000011111));
-        twiddle(sc, PI64, 0xf, i);
-        flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
-        butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
-    }
-
-    //shuffle 3 -> dpp across 16
-    mask = 0x08;
-    sel = L&mask;
-    #pragma unroll
-    for (int i=0; i<4; i++){
-        flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
-        b.IM = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.IM), 0x128, 0xf, 0xf, 0));
-        b.RE = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.RE), 0x128, 0xf, 0xf, 0));
-        twiddle(sc, PI32, 0x7, i);
-        flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
-        butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
-    }
-
-    //shuffle 4 -> swizzle across 8
-    mask = 0x04;
-    sel = L&mask;
-    #pragma unroll
-    for (int i=0; i<4; i++){
-        flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
-        b.IM = as_float(__builtin_amdgcn_ds_swizzle(as_uint(b.IM), 0b0001000000011111));
-        b.RE = as_float(__builtin_amdgcn_ds_swizzle(as_uint(b.RE), 0b0001000000011111));
-        twiddle(sc, PI16, 0x3, i);
-        flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
-        butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
-    }
-
-    //shuffle 5 -> dpp across 4
-    mask = 0x02;
-    sel = L&mask;
-    #pragma unroll
-    for (int i=0; i<4; i++){
-        flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
-        b.IM = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.IM), 0b01001110, 0xf, 0xf, 0));
-        b.RE = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.RE), 0b01001110, 0xf, 0xf, 0));
-        twiddle(sc, PI8, 0x1, i);
-        flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
-        butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
-    }
-
-    //shuffle 6 -> dpp across 2
-    mask = 0x01;
-    sel = L&mask;
-    #pragma unroll
-    for (int i=0; i<4; i++) {
-        flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
-        b.IM = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.IM), 0b10110001, 0xf, 0xf, 0));
-        b.RE = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.RE), 0b10110001, 0xf, 0xf, 0));
-        twiddle(sc, PI4, 0, i);
-        flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
-        butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
-    }
-
-    //shuffle 7 -> swap internally across 4 pairs
-    {
-        float2 a[2] = {res[ew][1], res[ew][3]};
-
-        res[ew][1] = res[ew][0] - res[ew][4];
-        res[ew][0] = res[ew][0] + res[ew][4];
-
-        res[ew][3].IM = res[ew][6].RE - res[ew][2].RE;
-        res[ew][3].RE = res[ew][2].IM - res[ew][6].IM;
-        res[ew][2] = res[ew][2] + res[ew][6];
-
-        res[ew][4] = a[0] + res[ew][5];
-        res[ew][5] = a[0] - res[ew][5];
-
-        a[0] = a[1] - res[ew][7];
-        res[ew][6] = a[1] + res[ew][7];
-        res[ew][7].IM = -a[0].RE;
-        res[ew][7].RE = a[0].IM;
-    }
-    //shuffle 8 -> swap internally across 2 pairs
-    {
-        float2 a[2] = {res[ew][1], res[ew][5]};
-
-        res[ew][1] = res[ew][0] - res[ew][2];
-        res[ew][0] = res[ew][0] + res[ew][2];
-        res[ew][2] = a[0] + res[ew][3];
-        res[ew][3] = a[0] - res[ew][3];
-        res[ew][5] = res[ew][4] - res[ew][6];
-        res[ew][4] = res[ew][4] + res[ew][6];
-        res[ew][6] = a[1] + res[ew][7];
-        res[ew][7] = a[1] - res[ew][7];
-    }
-    }
-
-    //output!
-    #pragma unroll
-    for (int ew=0; ew<4; ew++) {
+        //shuffle 1 -> bpermute across all 64
+        mask = 0x20;
+        sel = L & mask;
         #pragma unroll
-        for (int i=0; i<8; i++) {
-            uint irev = (L*8+i);
-            __asm__ __volatile__("V_BFREV_B32 %0, %1" : "=v"(irev) : "v"(irev)); //32b bit-reverse
-            outputData[get_group_id(0) * 512 +
-                       ew * 1024 +
-                       get_group_id(1) * 1024 * 4 +
-                       (irev>>23)] = res[ew][i];
+        for (int i=0; i<4; i++){
+            flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
+            b.IM = as_float(__builtin_amdgcn_ds_bpermute(4*(L+32), as_uint(b.IM)));
+            b.RE = as_float(__builtin_amdgcn_ds_bpermute(4*(L+32), as_uint(b.RE)));
+            twiddle(sc, PI256*2, 0x1f, i);
+            flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
+            butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
+        }
+
+        //shuffle 2 -> swizzle across 32 WI
+        mask = 0x10;
+        sel = L&mask;
+        #pragma unroll
+        for (int i=0; i<4; i++){
+            flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
+            b.IM = as_float(__builtin_amdgcn_ds_swizzle(as_uint(b.IM), 0b0100000000011111));
+            b.RE = as_float(__builtin_amdgcn_ds_swizzle(as_uint(b.RE), 0b0100000000011111));
+            twiddle(sc, PI256*4, 0xf, i);
+            flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
+            butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
+        }
+
+        //shuffle 3 -> dpp across 16
+        mask = 0x08;
+        sel = L&mask;
+        #pragma unroll
+        for (int i=0; i<4; i++){
+            flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
+            b.IM = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.IM), 0x128, 0xf, 0xf, 0));
+            b.RE = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.RE), 0x128, 0xf, 0xf, 0));
+            twiddle(sc, PI256*8, 0x7, i);
+            flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
+            butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
+        }
+
+        //shuffle 4 -> swizzle across 8
+        mask = 0x04;
+        sel = L&mask;
+        #pragma unroll
+        for (int i=0; i<4; i++){
+            flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
+            b.IM = as_float(__builtin_amdgcn_ds_swizzle(as_uint(b.IM), 0b0001000000011111));
+            b.RE = as_float(__builtin_amdgcn_ds_swizzle(as_uint(b.RE), 0b0001000000011111));
+            twiddle(sc, PI256*16, 0x3, i);
+            flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
+            butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
+        }
+
+        //shuffle 5 -> dpp across 4
+        mask = 0x02;
+        sel = L&mask;
+        #pragma unroll
+        for (int i=0; i<4; i++){
+            flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
+            b.IM = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.IM), 0b01001110, 0xf, 0xf, 0));
+            b.RE = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.RE), 0b01001110, 0xf, 0xf, 0));
+            twiddle(sc, PI256*32, 0x1, i);
+            flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
+            butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
+        }
+
+        //shuffle 6 -> dpp across 2
+        mask = 0x01;
+        sel = L&mask;
+        #pragma unroll
+        for (int i=0; i<4; i++) {
+            flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
+            b.IM = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.IM), 0b10110001, 0xf, 0xf, 0));
+            b.RE = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.RE), 0b10110001, 0xf, 0xf, 0));
+            twiddle(sc, PI256*64, 0, i);
+            flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
+            butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
+        }
+
+        //shuffle 7 -> swap internally across 4 pairs
+        {
+            float2 a[2] = {res[ew][1], res[ew][3]}; //replace sc,b
+
+            res[ew][1] = res[ew][0] - res[ew][4];
+            res[ew][0] = res[ew][0] + res[ew][4];
+
+            res[ew][3].IM = res[ew][6].RE - res[ew][2].RE;
+            res[ew][3].RE = res[ew][2].IM - res[ew][6].IM;
+            res[ew][2] = res[ew][2] + res[ew][6];
+
+            res[ew][4] = a[0] + res[ew][5];
+            res[ew][5] = a[0] - res[ew][5];
+
+            a[0] = a[1] - res[ew][7];
+            res[ew][6] = a[1] + res[ew][7];
+            res[ew][7].IM = -a[0].RE;
+            res[ew][7].RE = a[0].IM;
+        }
+        //shuffle 8 -> swap internally across 2 pairs
+        {
+            float2 a[2] = {res[ew][1], res[ew][5]}; //replace sc,b
+
+            res[ew][1] = res[ew][0] - res[ew][2];
+            res[ew][0] = res[ew][0] + res[ew][2];
+            res[ew][2] = a[0] + res[ew][3];
+            res[ew][3] = a[0] - res[ew][3];
+            res[ew][5] = res[ew][4] - res[ew][6];
+            res[ew][4] = res[ew][4] + res[ew][6];
+            res[ew][6] = a[1] + res[ew][7];
+            res[ew][7] = a[1] - res[ew][7];
         }
     }
+
+
+    //choose the right NS beams via local share, one cyl at a time
+    __local float2 transfer[512];
+    #pragma unroll
+    for (int ew=0; ew<4; ew++) { //cylinder
+        //de-mux cyl into local share
+        #pragma unroll
+        for (int i=0; i<8; i++){
+            uint irev = L*8+i;
+            __asm__ ("V_BFREV_B32 %0, %1" : "=v"(irev) : "v"(irev)); //32b bit-reverse
+            transfer[irev>>23] = res[ew][i];
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+        //fetch the right ns beams for cyl
+        #pragma unroll
+        for (int ns=0; ns<4; ns++){
+            uint addr = map[L*4+ns];
+            res[ew][ns] = transfer[addr];
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    //form beams
+    #pragma unroll
+    for (int ns=0; ns<4; ns++){
+        #pragma unroll
+        for (int bidx=0; bidx<4; bidx++){ //4 beams EW
+            float2 beam = {0,0};
+            #pragma unroll
+            for (int ewc=0; ewc<4; ewc++){ //sum 4 cylinders EW
+                //co is for some reason conjugated?
+                beam.RE += (res[ewc][ns].RE*co[bidx*4+ewc].RE + res[ewc][ns].IM*co[bidx*4+ewc].IM)/4.;
+                beam.IM += (res[ewc][ns].RE*co[bidx*4+ewc].IM - res[ewc][ns].IM*co[bidx*4+ewc].RE)/4.;
+            }
+            float out;
+            __asm__ ("V_CVT_PKRTZ_F16_F32 %0, %1, %2" : "=v"(out): "v"(beam.RE), "v"(beam.IM));
+            uint addr = get_group_id(2) * 2048 + //time
+                        get_group_id(1) * 1024 + //pol
+                        bidx * 256 +             //EW
+                        (255-(L*4+ns));          //position
+            outputData[addr] = out;
+        }
+    }
+
+/*
+    //for testing FFT
+    if ((get_group_id(0) == 0) &&
+        (get_group_id(1) == 0) &&
+        (get_group_id(2) == 0))
+    for (int i=0; i<8; i++){
+        float out;
+        uint irev = (L*8+i);
+        __asm__ ("V_BFREV_B32 %0, %1" : "=v"(irev) : "v"(irev)); //32b bit-reverse
+        outputData[irev>>23] = res[0][i];
+    }
+*/
 }
