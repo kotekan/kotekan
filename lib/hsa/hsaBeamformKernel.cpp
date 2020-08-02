@@ -242,21 +242,21 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_s
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
     kernelParams params;
-//    params.workgroup_size_x = 256;
+    params.workgroup_size_x = 256;
     params.workgroup_size_y = 1;
     params.workgroup_size_z = 1;
-//    params.grid_size_x = 256;
+    params.grid_size_x = 256;
     params.grid_size_y = 2;
     params.grid_size_z = _samples_per_data_set;
     params.num_dims = 3;
 
     params.private_segment_size = 0;
-//    params.group_segment_size = 16384;
+    params.group_segment_size = 16384;
 
     //KV
     params.workgroup_size_x = 64;
     params.grid_size_x = 64;
-    params.group_segment_size = 4096; // 2*512*sizeof(float);
+    params.group_segment_size = 2*512*sizeof(float) + 16 * 2 * sizeof(float);
 
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
 

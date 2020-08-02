@@ -1,8 +1,13 @@
 // llvm-objdump -disassemble -mcpu=fiji ../lib/hsa/kernels/kv_fft.hsaco
 
+// Optimization notes:
+// - beamforming needs to be written out long, not looped [HUGE, 6% Fiji]
+// - map does better as a global load [0.1% Fiji]
+// - co does better with a shared load [0.4%% Fiji]
+
 #define RE    x
 #define IM    y
-#define PI256 -0.01227184630308513f //-2*pi/512
+#define WN -0.01227184630308513f //-2*pi/512
 
 #define L get_local_id(0)
 
@@ -43,34 +48,41 @@
         rb.RE = t.RE * sincos.RE - t.IM * sincos.IM;
 
 #define twiddle(sincos, W, m,idx) \
-        sincos.IM = native_sin(W * ((L&m)*4+idx)); \
-        sincos.RE = native_cos(W * ((L&m)*4+idx));
+        sincos.IM = native_sin(W * (m*4+idx)); \
+        sincos.RE = native_cos(W * (m*4+idx));
 
 
-__kernel void kv_fft (__global uint *inputData, __global uint *map, global float2 *co, __global float *outputData, __global float2 *gains){
+__kernel void kv_fft (__global uint *inputData, __global uint *map, global float *co, __global float *outputData, __global float2 *gains){
     float2 res[4][8];
     float2 sc, b;
     float twiddle_angle;
     uint mask, sel;
 
+//    __constant float WN[7] = {WN, WN*2, WN*4, WN*8, WN*16, WN*32, WN*64};
+
+    //pre-load the bf coeffs into local share
+    __local float lcof[32];
+    if (L<32) lcof[L] = co[L];
+    float2 *lco = (float2*)lcof;
+
+    uint data_temp[4];
     #pragma unroll
     for (int ew=0; ew<4; ew++){
-        uint data_temp;
-        data_temp = inputData[L +                       //offset within 256 NS feeds
-                              ew * 256 /4 +             //cylinder,pol
-                              get_group_id(1) * 1024/4 + //EW vs NS pol
-                              get_group_id(2) * 2048/4  //timesteps
-                             ];
+        data_temp[ew] = inputData[L +                       //offset within 256 NS feeds
+                                  ew * 256 /4 +              //cylinder,pol
+                                  get_group_id(1) * 1024/4 + //EW vs NS pol
+                                  get_group_id(2) * 2048/4   //timesteps
+                                 ];
         #pragma unroll
         for (int i=0; i<4; i++) {
             float2 t;
             float2 gain = gains[get_global_id(1)*1024 + ew*256 + L*4 + i];
-            t.IM = ((float)amd_bfe(data_temp,i*8+0,4))-8;
-            t.RE = ((float)amd_bfe(data_temp,i*8+4,4))-8;
+            t.IM = ((float)amd_bfe(data_temp[ew],i*8+0,4))-8;
+            t.RE = ((float)amd_bfe(data_temp[ew],i*8+4,4))-8;
             //gains are conjugated?
             res[ew][2*i  ].RE = t.RE * gain.RE + t.IM * gain.IM;
             res[ew][2*i  ].IM = t.IM * gain.RE - t.RE * gain.IM;
-            twiddle(sc,PI256,0xffffffff,i);
+            twiddle(sc,WN,amd_bfe((uint)L,0,6),i);
             res[ew][2*i+1].IM = res[ew][2*i].RE * sc.IM + res[ew][2*i].IM * sc.RE;
             res[ew][2*i+1].RE = res[ew][2*i].RE * sc.RE - res[ew][2*i].IM * sc.IM;
         }
@@ -83,7 +95,7 @@ __kernel void kv_fft (__global uint *inputData, __global uint *map, global float
             flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
             b.IM = as_float(__builtin_amdgcn_ds_bpermute(4*(L+32), as_uint(b.IM)));
             b.RE = as_float(__builtin_amdgcn_ds_bpermute(4*(L+32), as_uint(b.RE)));
-            twiddle(sc, PI256*2, 0x1f, i);
+            twiddle(sc, WN*2, amd_bfe((uint)L,0,5), i);
             flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
             butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
         }
@@ -96,7 +108,7 @@ __kernel void kv_fft (__global uint *inputData, __global uint *map, global float
             flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
             b.IM = as_float(__builtin_amdgcn_ds_swizzle(as_uint(b.IM), 0b0100000000011111));
             b.RE = as_float(__builtin_amdgcn_ds_swizzle(as_uint(b.RE), 0b0100000000011111));
-            twiddle(sc, PI256*4, 0xf, i);
+            twiddle(sc, WN*4, amd_bfe((uint)L,0,4), i);
             flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
             butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
         }
@@ -109,7 +121,7 @@ __kernel void kv_fft (__global uint *inputData, __global uint *map, global float
             flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
             b.IM = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.IM), 0x128, 0xf, 0xf, 0));
             b.RE = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.RE), 0x128, 0xf, 0xf, 0));
-            twiddle(sc, PI256*8, 0x7, i);
+            twiddle(sc, WN*8, amd_bfe((uint)L,0,3), i);
             flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
             butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
         }
@@ -122,7 +134,7 @@ __kernel void kv_fft (__global uint *inputData, __global uint *map, global float
             flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
             b.IM = as_float(__builtin_amdgcn_ds_swizzle(as_uint(b.IM), 0b0001000000011111));
             b.RE = as_float(__builtin_amdgcn_ds_swizzle(as_uint(b.RE), 0b0001000000011111));
-            twiddle(sc, PI256*16, 0x3, i);
+            twiddle(sc, WN*16, amd_bfe((uint)L,0,2), i);
             flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
             butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
         }
@@ -135,7 +147,7 @@ __kernel void kv_fft (__global uint *inputData, __global uint *map, global float
             flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
             b.IM = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.IM), 0b01001110, 0xf, 0xf, 0));
             b.RE = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.RE), 0b01001110, 0xf, 0xf, 0));
-            twiddle(sc, PI256*32, 0x1, i);
+            twiddle(sc, WN*32, amd_bfe((uint)L,0,1), i);
             flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
             butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
         }
@@ -148,7 +160,7 @@ __kernel void kv_fft (__global uint *inputData, __global uint *map, global float
             flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
             b.IM = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.IM), 0b10110001, 0xf, 0xf, 0));
             b.RE = as_float(__builtin_amdgcn_mov_dpp(as_uint(b.RE), 0b10110001, 0xf, 0xf, 0));
-            twiddle(sc, PI256*64, 0, i);
+            twiddle(sc, WN*64, 0, i);
             flop(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
             butterfly(res[ew][2*i], res[ew][2*i+1], sc, b);
         }
@@ -187,7 +199,6 @@ __kernel void kv_fft (__global uint *inputData, __global uint *map, global float
         }
     }
 
-
     //choose the right NS beams via local share, one cyl at a time
     __local float2 transfer[512];
     #pragma unroll
@@ -209,19 +220,21 @@ __kernel void kv_fft (__global uint *inputData, __global uint *map, global float
         barrier(CLK_LOCAL_MEM_FENCE);
     }
     //form beams
+    float2 beam[4][4];
     #pragma unroll
     for (int ns=0; ns<4; ns++){
         #pragma unroll
         for (int bidx=0; bidx<4; bidx++){ //4 beams EW
-            float2 beam = {0,0};
-            #pragma unroll
-            for (int ewc=0; ewc<4; ewc++){ //sum 4 cylinders EW
-                //co is for some reason conjugated?
-                beam.RE += (res[ewc][ns].RE*co[bidx*4+ewc].RE + res[ewc][ns].IM*co[bidx*4+ewc].IM)/4.;
-                beam.IM += (res[ewc][ns].RE*co[bidx*4+ewc].IM - res[ewc][ns].IM*co[bidx*4+ewc].RE)/4.;
-            }
+            beam[ns][bidx].RE = (res[0][ns].RE*lco[bidx*4+0].RE + res[0][ns].IM*lco[bidx*4+0].IM +
+                                 res[1][ns].RE*lco[bidx*4+1].RE + res[1][ns].IM*lco[bidx*4+1].IM +
+                                 res[2][ns].RE*lco[bidx*4+2].RE + res[2][ns].IM*lco[bidx*4+2].IM +
+                                 res[3][ns].RE*lco[bidx*4+3].RE + res[3][ns].IM*lco[bidx*4+3].IM)/4.;
+            beam[ns][bidx].IM = (res[0][ns].RE*lco[bidx*4+0].IM - res[0][ns].IM*lco[bidx*4+0].RE +
+                                 res[1][ns].RE*lco[bidx*4+1].IM - res[1][ns].IM*lco[bidx*4+1].RE +
+                                 res[2][ns].RE*lco[bidx*4+2].IM - res[2][ns].IM*lco[bidx*4+2].RE +
+                                 res[3][ns].RE*lco[bidx*4+3].IM - res[3][ns].IM*lco[bidx*4+3].RE)/4.;
             float out;
-            __asm__ ("V_CVT_PKRTZ_F16_F32 %0, %1, %2" : "=v"(out): "v"(beam.RE), "v"(beam.IM));
+            __asm__ ("V_CVT_PKRTZ_F16_F32 %0, %1, %2" : "=v"(out): "v"(beam[ns][bidx].RE), "v"(beam[ns][bidx].IM));
             uint addr = get_group_id(2) * 2048 + //time
                         get_group_id(1) * 1024 + //pol
                         bidx * 256 +             //EW
@@ -229,17 +242,4 @@ __kernel void kv_fft (__global uint *inputData, __global uint *map, global float
             outputData[addr] = out;
         }
     }
-
-/*
-    //for testing FFT
-    if ((get_group_id(0) == 0) &&
-        (get_group_id(1) == 0) &&
-        (get_group_id(2) == 0))
-    for (int i=0; i<8; i++){
-        float out;
-        uint irev = (L*8+i);
-        __asm__ ("V_BFREV_B32 %0, %1" : "=v"(irev) : "v"(irev)); //32b bit-reverse
-        outputData[irev>>23] = res[0][i];
-    }
-*/
 }
