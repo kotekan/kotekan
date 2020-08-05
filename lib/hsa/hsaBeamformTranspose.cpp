@@ -55,7 +55,7 @@ hsa_signal_t hsaBeamformTranspose::execute(int gpu_frame_id, hsa_signal_t preced
     params.num_dims = 2;
 
     params.private_segment_size = 0;
-    params.group_segment_size = 8192;
+    params.group_segment_size = 33*32*4;
 
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
 

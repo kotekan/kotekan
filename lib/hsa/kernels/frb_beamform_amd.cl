@@ -8,7 +8,7 @@
 #define RE    x
 #define IM    y
 #define WN -0.01227184630308513f //-2*pi/512
-
+//#define WN -0.001953125f //-1/512. -> AMD sincos angles normalized to ±1
 #define L get_local_id(0)
 
 #define flip(sel, mask, ra, rb,t) \
@@ -50,15 +50,17 @@
 #define twiddle(sincos, W, m,idx) \
         sincos.IM = native_sin(W * (m*4+idx)); \
         sincos.RE = native_cos(W * (m*4+idx));
+//        twiddle_angle = W*(m*4+idx); \
+//        __asm__ ("V_SIN_F32 %0, %1" : "=v"(sincos.IM) : "v"(twiddle_angle)); \
+//        __asm__ ("V_COS_F32 %0, %1" : "=v"(sincos.RE) : "v"(twiddle_angle));
 
 
-__kernel void kv_fft (__global uint *inputData, __global uint *map, global float *co, __global float *outputData, __global float2 *gains){
+
+__kernel void frb_beamform_amd (__global uint *inputData, __global uint *map, global float *co, __global float *outputData, __constant float2 *gains){
     float2 res[4][8];
     float2 sc, b;
     float twiddle_angle;
     uint mask, sel;
-
-//    __constant float WN[7] = {WN, WN*2, WN*4, WN*8, WN*16, WN*32, WN*64};
 
     //pre-load the bf coeffs into local share
     __local float lcof[32];
@@ -82,7 +84,7 @@ __kernel void kv_fft (__global uint *inputData, __global uint *map, global float
             //gains are conjugated?
             res[ew][2*i  ].RE = t.RE * gain.RE + t.IM * gain.IM;
             res[ew][2*i  ].IM = t.IM * gain.RE - t.RE * gain.IM;
-            twiddle(sc,WN,amd_bfe((uint)L,0,6),i);
+            twiddle(sc,WN, amd_bfe((uint)L,0,6),i);
             res[ew][2*i+1].IM = res[ew][2*i].RE * sc.IM + res[ew][2*i].IM * sc.RE;
             res[ew][2*i+1].RE = res[ew][2*i].RE * sc.RE - res[ew][2*i].IM * sc.IM;
         }
@@ -92,7 +94,7 @@ __kernel void kv_fft (__global uint *inputData, __global uint *map, global float
         sel = L & mask;
         #pragma unroll
         for (int i=0; i<4; i++){
-            flip(sel, mask, res[ew][2*i], res[ew][2*i+1],b);
+            flip(sel, mask, res[ew][2*i], res[ew][2*i+1], b);
             b.IM = as_float(__builtin_amdgcn_ds_bpermute(4*(L+32), as_uint(b.IM)));
             b.RE = as_float(__builtin_amdgcn_ds_bpermute(4*(L+32), as_uint(b.RE)));
             twiddle(sc, WN*2, amd_bfe((uint)L,0,5), i);
@@ -222,9 +224,9 @@ __kernel void kv_fft (__global uint *inputData, __global uint *map, global float
     //form beams
     float2 beam[4][4];
     #pragma unroll
-    for (int ns=0; ns<4; ns++){
+    for (int bidx=0; bidx<4; bidx++){ //4 beams EW
         #pragma unroll
-        for (int bidx=0; bidx<4; bidx++){ //4 beams EW
+        for (int ns=0; ns<4; ns++){
             beam[ns][bidx].RE = (res[0][ns].RE*lco[bidx*4+0].RE + res[0][ns].IM*lco[bidx*4+0].IM +
                                  res[1][ns].RE*lco[bidx*4+1].RE + res[1][ns].IM*lco[bidx*4+1].IM +
                                  res[2][ns].RE*lco[bidx*4+2].RE + res[2][ns].IM*lco[bidx*4+2].IM +

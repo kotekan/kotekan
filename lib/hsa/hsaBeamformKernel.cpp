@@ -46,10 +46,10 @@ REGISTER_HSA_COMMAND(hsaBeamformKernel);
 hsaBeamformKernel::hsaBeamformKernel(Config& config, const std::string& unique_name,
                                      bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device,
-               "kv_fft" KERNEL_EXT,
-               "kv_fft.hsaco") {
-//    "zero_padded_FFT512" KERNEL_EXT,
-  //          "unpack_shift_beamform_flip.hsaco") {
+               "frb_beamform_amd" KERNEL_EXT,
+               "frb_beamform_amd.hsaco") {
+//            "zero_padded_FFT512" KERNEL_EXT,
+//            "unpack_shift_beamform_flip.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");

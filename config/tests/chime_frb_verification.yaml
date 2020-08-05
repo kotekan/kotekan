@@ -16,7 +16,7 @@ log_level: info
 num_elements: 2048
 num_local_freq: 1
 num_data_sets: 1
-samples_per_data_set: 3840
+samples_per_data_set: 3840 #12288
 buffer_depth: 2
 baseband_buffer_depth: 120  # 48Gb, 15s buffer.
 vbuffer_depth: 32
@@ -29,6 +29,7 @@ link_map: [0,1,2,3]
 
 # Constants
 sizeof_float: 4
+sizeof_int: 4
 sizeof_short: 2
 
 #FRB global options
@@ -120,48 +121,48 @@ gpu_beamform_hfb_output_buffers:
     kotekan_buffer: standard
 
 cpu_output_buffers:
-    num_frames: buffer_depth
-    frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
-    metadata_pool: main_pool
-    cpu_output_buffer_0:
-        kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: num_data_sets * (samples_per_data_set/downsample_time/downsample_freq) * num_frb_total_beams * sizeof_float
+  metadata_pool: main_pool
+  cpu_output_buffer_0:
+    kotekan_buffer: standard
 
 cpu_hfb_output_buffers:
-    num_frames: buffer_depth
-    frame_size: num_data_sets * factor_upchan * num_frb_total_beams * sizeof_float
-    metadata_pool: main_pool
-    cpu_hfb_output_buffer_0:
-        kotekan_buffer: standard
-    beamform_hfb_output_buffer_0:
-        metadata_pool: hfb_pool
-        kotekan_buffer: standard
-    beamform_hfb_output_buffer_read:
-        metadata_pool: hfb_pool
-        kotekan_buffer: standard
+  num_frames: buffer_depth
+  frame_size: num_data_sets * factor_upchan * num_frb_total_beams * sizeof_float
+  metadata_pool: main_pool
+  cpu_hfb_output_buffer_0:
+    kotekan_buffer: standard
+  beamform_hfb_output_buffer_0:
+    metadata_pool: hfb_pool
+    kotekan_buffer: standard
+  beamform_hfb_output_buffer_read:
+    metadata_pool: hfb_pool
+    kotekan_buffer: standard
 
 lost_samples_buffer:
-    kotekan_buffer: standard
-    num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set * num_local_freq * num_data_sets
-    metadata_pool: main_pool
+  kotekan_buffer: standard
+  num_frames: 2 * buffer_depth
+  frame_size: samples_per_data_set * num_local_freq * num_data_sets
+  metadata_pool: main_pool
 
 compressed_lost_samples_buffer:
-    kotekan_buffer: standard
-    num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set / factor_upchan * num_data_sets / 3
-    metadata_pool: main_pool
+  kotekan_buffer: standard
+  num_frames: 2 * buffer_depth
+  frame_size: samples_per_data_set * num_data_sets / (factor_upchan * downsample_time) * sizeof_int
+  metadata_pool: main_pool
 
 compressed_lost_samples_buffer_cpy:
-    kotekan_buffer: standard
-    num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set / factor_upchan * num_data_sets / 3
-    metadata_pool: main_pool
+  kotekan_buffer: standard
+  num_frames: 2 * buffer_depth
+  frame_size: samples_per_data_set * num_data_sets / (factor_upchan * downsample_time) * sizeof_int
+  metadata_pool: main_pool
 
 cpu_affinity: [2,3,8,9]
 
 gen_data:
   test_data_gen_network:
-    type: random
+    type: random #const
     value: 153
     kotekan_stage: testDataGen
     out_buf: network_buffer_0
@@ -191,30 +192,35 @@ cpu_simulate:
 
 compress_lost_samples:
   kotekan_stage: compressLostSamples
-  lost_samples_buf: lost_samples_buffer
-  compressed_lost_samples_buf: compressed_lost_samples_buffer
+  compression_factor: factor_upchan * downsample_time
+  zero_all_in_group: true
+  in_buf: lost_samples_buffer
+  out_buf: compressed_lost_samples_buffer
 
 copy:
   kotekan_stage: bufferCopy
   in_buf: compressed_lost_samples_buffer
-  out_bufs: 
+  out_bufs:
     - compressed_lost_samples_buffer_cpy
 
 gpu:
   kernel_path: "../lib/hsa/kernels/"
-  commands:
-  - name: hsaInputData
-  - name: hsaInputCompressLostSamples
-  - name: hsaOutputDataZero
-  - name: hsaAsyncCopyGain
-  - name: hsaBarrier
-  - name: hsaBeamformReorder
-  - name: hsaBeamformKernel
-  - name: hsaBeamformTranspose
-  - name: hsaBeamformUpchanHFB
-  - name: hsaBeamformHFBSum
-  - name: hsaBeamformOutputData
-  - name: hsaBeamformHFBOutputData
+  commands: &command_list
+    - name: hsaInputData
+    - name: hsaHostToDeviceCopy
+      in_buf: hfb_compressed_lost_samples_buf
+      gpu_memory_name: hfb_compressed_lost_samples
+    - name: hsaOutputDataZero
+    - name: hsaAsyncCopyGain
+    - name: hsaBarrier
+    - name: hsaBeamformReorder
+    - name: hsaBeamformKernel
+    - name: hsaBeamformTranspose
+#    - name: hsaKVFFT
+    - name: hsaBeamformUpchanHFB
+    - name: hsaBeamformHFBSum
+    - name: hsaBeamformOutputData
+    - name: hsaBeamformHFBOutputData
   enable_delay: true
   cpu_affinity: [2, 3, 8, 9]
   delay_max_fraction: 2.0
@@ -227,58 +233,61 @@ gpu:
     gpu_id: 0
     ew_spacing: [0.0, 0.1, 0.2, 0.3]
     northmost_beam: 90.0
+    commands: *command_list
     in_buffers:
       network_buf: network_buffer_0
       gain_frb_buf: gain_frb_buffer
-      compressed_lost_samples_buf: compressed_lost_samples_buffer_cpy
+      hfb_compressed_lost_samples_buf: compressed_lost_samples_buffer_cpy
     out_buffers:
       beamform_output_buf: gpu_beamform_output_buffer_0
       beamform_hfb_output_buf: gpu_beamform_hfb_output_buffer_0
 
-hyper_fine_beam:
-  num_frames_to_integrate: 5
-  good_samples_threshold: 0.95
-  integrate_hfb_data:
-    kotekan_stage: integrateHFBData
-    log_level: debug
-    hfb_input_buf: gpu_beamform_hfb_output_buffer_0
-    compressed_lost_samples_buf: compressed_lost_samples_buffer
-    hfb_output_buf: beamform_hfb_output_buffer_0
-  
-hfb:
-    kotekan_stage: rawFileWrite
-    in_buf: beamform_hfb_output_buffer_0
-    file_name: 'hfb_buf'
-    file_ext: 'dump'
-    base_dir: '/home/willis/hfb_data'
-
-hfb_read:
-    kotekan_stage: rawFileRead
-    buf: beamform_hfb_output_buffer_read
-    file_name: 'hfb_buf'
-    prefix_hostname: true 
-    file_ext: 'dump'
-    base_dir: '/home/willis/hfb_data'
+#hyper_fine_beam:
+#  num_frames_to_integrate: 5
+#  good_samples_threshold: 0.95
+#  integrate_hfb_data:
+#    kotekan_stage: integrateHFBData
+#    log_level: debug
+#    hfb_input_buf: gpu_beamform_hfb_output_buffer_0
+#    compressed_lost_samples_buf: compressed_lost_samples_buffer
+#    hfb_output_buf: beamform_hfb_output_buffer_0
+#
+#hfb:
+#  kotekan_stage: rawFileWrite
+#  in_buf: beamform_hfb_output_buffer_0
+#  file_name: 'hfb_buf'
+#  file_ext: 'dump'
+#  base_dir: '/home/willis/hfb_data'
+#
+#hfb_read:
+#  kotekan_stage: rawFileRead
+#  buf: beamform_hfb_output_buffer_read
+#  file_name: 'hfb_buf'
+#  prefix_hostname: true
+#  file_ext: 'dump'
+#  base_dir: '/home/willis/hfb_data'
 
 read_gain:
-    kotekan_stage: ReadGain
-    updatable_config:
-      gain_frb: /updatable_config/frb_gain
-      gain_psr: /updatable_config/pulsar_gain
-    in_buf: network_buffer_0
-    gain_frb_buf: gain_frb_buffer
-    gain_psr_buf: gain_psr_buffer
-      
-check_data:
+  kotekan_stage: ReadGain
+  updatable_config:
+    gain_frb: /updatable_config/frb_gain
+    gain_psr: /updatable_config/pulsar_gain
+  in_buf: network_buffer_0
+  gain_frb_buf: gain_frb_buffer
+  gain_psr_buf: gain_psr_buffer
+
+check_frb_data:
   bf_data_check_0:
-    num_frames_to_test: 5
+    num_frames_to_test: 1
+    epsilon: 0.001
     kotekan_stage: testDataCheckFloat
     first_buf : gpu_beamform_output_buffer_0
     second_buf: cpu_output_buffer_0
 
-check_data:
+check_hfb_data:
   hfb_data_check_0:
-    num_frames_to_test: 5
+    num_frames_to_test: 1
+    epsilon: 0.001
     kotekan_stage: testDataCheckFloat
     first_buf : gpu_beamform_hfb_output_buffer_0
     second_buf: cpu_hfb_output_buffer_0

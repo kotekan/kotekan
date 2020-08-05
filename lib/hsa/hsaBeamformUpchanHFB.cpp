@@ -16,8 +16,11 @@ REGISTER_HSA_COMMAND(hsaBeamformUpchanHFB);
 hsaBeamformUpchanHFB::hsaBeamformUpchanHFB(Config& config, const std::string& unique_name,
                                            bufferContainer& host_buffers,
                                            hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "upchannelize" KERNEL_EXT,
-               "upchannelize_flip_hfb.hsaco") {
+    hsaCommand(config, unique_name, host_buffers, device,
+//               "upchannelize" KERNEL_EXT,
+//               "upchannelize_flip_hfb.hsaco") {
+               "frb_upchan_amd" KERNEL_EXT,
+               "frb_upchan_amd.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
     // Read parameters from config file.
