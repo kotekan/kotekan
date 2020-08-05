@@ -12,9 +12,9 @@
 #define L get_local_id(0)
 
 #define flip(sel, mask, ra, rb,t) \
-        __asm__ ("V_CMP_EQ_U32 %[sel], %[mask] \n" \
-                             "V_CNDMASK_B32 %[bi], %[rbi], %[rai] \n" \
-                             "V_CNDMASK_B32 %[br], %[rbr], %[rar] \n" \
+        __asm__ ("V_CMP_EQ_U32_E32 vcc %[sel], %[mask] \n" \
+                             "V_CNDMASK_B32_E32 %[bi], %[rbi], %[rai] vcc \n" \
+                             "V_CNDMASK_B32_E32 %[br], %[rbr], %[rar] vcc \n" \
                              : [bi] "=v" (t.IM), \
                                [br] "=v" (t.RE) \
                              : [sel] "v" (sel), \
@@ -26,11 +26,11 @@
                              : "vcc"); \
 
 #define flop(sel, mask, ra, rb,t) \
-        __asm__ ("V_CMP_EQ_U32 %[sel], %[mask] \n" \
-                             "V_CNDMASK_B32 %[rai], %[rai], %[bi] \n" \
-                             "V_CNDMASK_B32 %[rar], %[rar], %[br] \n" \
-                             "V_CNDMASK_B32 %[rbi], %[bi], %[rbi] \n" \
-                             "V_CNDMASK_B32 %[rbr], %[br], %[rbr] " \
+        __asm__ ("V_CMP_EQ_U32_E32 vcc %[sel], %[mask] \n" \
+                             "V_CNDMASK_B32_E32 %[rai], %[rai], %[bi] vcc \n" \
+                             "V_CNDMASK_B32_E32 %[rar], %[rar], %[br] vcc \n" \
+                             "V_CNDMASK_B32_E32 %[rbi], %[bi], %[rbi] vcc \n" \
+                             "V_CNDMASK_B32_E32 %[rbr], %[br], %[rbr] vcc " \
                              : [rai] "+&v" (ra.IM), \
                                [rar] "+&v" (ra.RE), \
                                [rbi] "+&v" (rb.IM), \
