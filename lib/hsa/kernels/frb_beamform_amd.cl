@@ -236,11 +236,11 @@ __kernel void frb_beamform_amd (__global uint *inputData, __global uint *map, gl
             beam[ns][bidx].RE = (res[0][ns].RE*lco[bidx*4+0].RE + res[0][ns].IM*lco[bidx*4+0].IM +
                                  res[1][ns].RE*lco[bidx*4+1].RE + res[1][ns].IM*lco[bidx*4+1].IM +
                                  res[2][ns].RE*lco[bidx*4+2].RE + res[2][ns].IM*lco[bidx*4+2].IM +
-                                 res[3][ns].RE*lco[bidx*4+3].RE + res[3][ns].IM*lco[bidx*4+3].IM)/4.;
+                                 res[3][ns].RE*lco[bidx*4+3].RE + res[3][ns].IM*lco[bidx*4+3].IM)/4.f;
             beam[ns][bidx].IM = (res[0][ns].RE*lco[bidx*4+0].IM - res[0][ns].IM*lco[bidx*4+0].RE +
                                  res[1][ns].RE*lco[bidx*4+1].IM - res[1][ns].IM*lco[bidx*4+1].RE +
                                  res[2][ns].RE*lco[bidx*4+2].IM - res[2][ns].IM*lco[bidx*4+2].RE +
-                                 res[3][ns].RE*lco[bidx*4+3].IM - res[3][ns].IM*lco[bidx*4+3].RE)/4.;
+                                 res[3][ns].RE*lco[bidx*4+3].IM - res[3][ns].IM*lco[bidx*4+3].RE)/4.f;
             float out;
             __asm__ ("V_CVT_PKRTZ_F16_F32 %0, %1, %2" : "=v"(out): "v"(beam[ns][bidx].RE), "v"(beam[ns][bidx].IM));
             uint addr = get_group_id(2) * 2048 + //time

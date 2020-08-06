@@ -3,7 +3,7 @@
 //INVERSE FFT??
 #define WN   0.04908738521234052f //-2*pi/128
 //#define WN -0.0078125 //-1/128. -> AMD sincos angles normalized to ±1
-#define L get_local_id(0)
+#define L get_local_id(1)
 #define N_TIMES 3 //number of subsequent 128-sample blocks to sum together
 
 #define flip(sel, mask, ra, rb,t) \
@@ -61,17 +61,17 @@ __kernel void frb_upchan_amd (__global float *data, __global float *results_arra
     __local float BP[16];
     if (L<16) BP[L] = CBP[L];
 
-    uint nbeam = get_global_size(1);
-    uint nsamp = get_global_size(0) * 6 + 32;
-    uint nsamp_out = get_global_size(0) / 64;
+    uint nbeam = get_global_size(0);
+    uint nsamp = get_global_size(1) * 6 + 32;
+    uint nsamp_out = get_global_size(1) / 64;
 
     #pragma unroll
     for (uint p=0; p<2; p++) { //sum over two pols
         #pragma unroll
         for (int i=0; i<N_TIMES; i++) {
             uint addr = p * nbeam * nsamp + //polarization, slowest varying
-                        get_group_id(1) * nsamp + //beam, separated by nsamp
-                        get_group_id(0) * 384 + //output timesteps
+                        get_group_id(0) * nsamp + //beam, separated by nsamp
+                        get_group_id(1) * 384 + //output timesteps
                         i * 128 + // FFT'd timesteps
                         L; //idx within FFT
             //top of butterfly
@@ -180,8 +180,8 @@ __kernel void frb_upchan_amd (__global float *data, __global float *results_arra
 
     //write HFB
     {
-        uint addr = get_group_id(0) * 1024 * 128 + \
-                    get_group_id(1) * 128 + \
+        uint addr = get_group_id(1) * 1024 * 128 + \
+                    get_group_id(0) * 128 + \
                     (l>>25); //7b reverse
         // JSW TODO: Bandpass filter to be applied in the post-processing stage
         hfb_output_array[addr   ] = pow[0] / 6.f;// / HFB_BP[(l+8)%16]; //lower 64 freqs
@@ -200,8 +200,8 @@ __kernel void frb_upchan_amd (__global float *data, __global float *results_arra
 
     if (L<16) {
         l = l>>28; //4b reverse
-        uint addr = get_group_id(1) * nsamp_out * 16 + \
-                    get_group_id(0) * 16 + l;
+        uint addr = get_group_id(0) * nsamp_out * 16 + \
+                    get_group_id(1) * 16 + l;
         //use 16 WIs to output, need to select appropriate pow & offset to write
         uint off = (L&0x8)?8:0; //swap lower & upper 8
         float out = (L&0x8)?pow[0]:pow[1];
