@@ -1,7 +1,7 @@
 #define RE    x
 #define IM    y
 //INVERSE FFT??
-#define WN   0.04908738521234052 //-2*pi/128
+#define WN   0.04908738521234052f //-2*pi/128
 //#define WN -0.0078125 //-1/128. -> AMD sincos angles normalized to ±1
 #define L get_local_id(0)
 #define N_TIMES 3 //number of subsequent 128-sample blocks to sum together
@@ -46,7 +46,8 @@
         sincos.IM = native_sin(W * m); \
         sincos.RE = native_cos(W * m);
 
-__constant float BP[16] = { 0.52225748 , 0.58330915 , 0.6868705 , 0.80121821 , 0.89386546 , 0.95477358 , 0.98662733 , 0.99942558 , 0.99988676 , 0.98905127 , 0.95874124 , 0.90094667 , 0.81113021 , 0.6999944 , 0.59367968 , 0.52614263};
+__constant float CBP[16] = { 0.52225748f, 0.58330915f, 0.6868705f, 0.80121821f, 0.89386546f, 0.95477358f, 0.98662733f, 0.99942558f,
+                            0.99988676f, 0.98905127f, 0.95874124f, 0.90094667f, 0.81113021f, 0.6999944f, 0.59367968f, 0.52614263f};
 __constant float HFB_BP[16] = { 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
 
 
@@ -56,6 +57,9 @@ __kernel void frb_upchan_amd (__global float *data, __global float *results_arra
     float twiddle_angle;
     uint mask, sel;
     float pow[2]={0,0};
+
+    __local float BP[16];
+    if (L<16) BP[L] = CBP[L];
 
     uint nbeam = get_global_size(1);
     uint nsamp = get_global_size(0) * 6 + 32;
@@ -171,10 +175,11 @@ __kernel void frb_upchan_amd (__global float *data, __global float *results_arra
                   res[2][1].RE * res[2][1].RE + res[2][1].IM * res[2][1].IM;
     }
 
+    uint l=L*2;
+    __asm__ ("V_BFREV_B32 %0, %1" : "=v"(l) : "v"(l)); //32b bit-reverse
+
     //write HFB
     {
-        uint l=L*2;
-        __asm__ ("V_BFREV_B32 %0, %1" : "=v"(l) : "v"(l)); //32b bit-reverse
         uint addr = get_group_id(0) * 1024 * 128 + \
                     get_group_id(1) * 128 + \
                     (l>>25); //7b reverse
@@ -185,19 +190,21 @@ __kernel void frb_upchan_amd (__global float *data, __global float *results_arra
 
     //sum 8 adjacent => separated by 16, first indexed as irev(0..15)
     pow[0] += as_float(__builtin_amdgcn_ds_bpermute(4*(L+32), as_uint(pow[0])));
-    pow[0] += as_float(__builtin_amdgcn_ds_bpermute(4*(L+16), as_uint(pow[0])));
-    pow[0] += as_float(__builtin_amdgcn_ds_bpermute(4*(L+ 8), as_uint(pow[0])));
     pow[1] += as_float(__builtin_amdgcn_ds_bpermute(4*(L+32), as_uint(pow[1])));
-    pow[1] += as_float(__builtin_amdgcn_ds_bpermute(4*(L+16), as_uint(pow[1])));
-    pow[1] += as_float(__builtin_amdgcn_ds_bpermute(4*(L+ 8), as_uint(pow[1])));
+    //swap among 32
+    pow[0] += as_float(__builtin_amdgcn_ds_swizzle(as_uint(pow[0]), 0b0100000000011111));
+    pow[1] += as_float(__builtin_amdgcn_ds_swizzle(as_uint(pow[1]), 0b0100000000011111));
+    //swap among 16
+    pow[0] += as_float(__builtin_amdgcn_mov_dpp(as_uint(pow[0]), 0x128, 0xf, 0xf, 0));
+    pow[1] += as_float(__builtin_amdgcn_mov_dpp(as_uint(pow[1]), 0x128, 0xf, 0xf, 0));
 
-    if (L < 8) { //output
-        uint l = L*2;
-        __asm__ ("V_BFREV_B32 %0, %1" : "=v"(l) : "v"(l)); //32b bit-reverse
+    if (L<16) {
         l = l>>28; //4b reverse
         uint addr = get_group_id(1) * nsamp_out * 16 + \
                     get_group_id(0) * 16 + l;
-        results_array[addr  ] = pow[1] / 48. / BP[l  ]; //swap lower & upper 8
-        results_array[addr+8] = pow[0] / 48. / BP[l+8];
+        //use 16 WIs to output, need to select appropriate pow & offset to write
+        uint off = (L&0x8)?8:0; //swap lower & upper 8
+        float out = (L&0x8)?pow[0]:pow[1];
+        results_array[addr+off] = out / 48.f / BP[l+off];
     }
 }
