@@ -206,12 +206,17 @@ __kernel void frb_beamform_amd (__global uint *inputData, __global uint *map, gl
     #pragma unroll
     for (int ew=0; ew<4; ew++) { //cylinder
         //de-mux cyl into local share
-        #pragma unroll
-        for (int i=0; i<8; i++){
-            uint irev = L*8+i;
-            __asm__ ("V_BFREV_B32 %0, %1" : "=v"(irev) : "v"(irev)); //32b bit-reverse
-            transfer[irev>>23] = res[ew][i];
-        }
+        uint irev = L*8;
+        __asm__ ("V_BFREV_B32 %0, %1" : "=v"(irev) : "v"(irev)); //32b bit-reverse
+        irev = irev>>23;
+        transfer[irev    ] = res[ew][0]; //hardcoded offsets to speed up bit flip
+        transfer[irev+256] = res[ew][1];
+        transfer[irev+128] = res[ew][2];
+        transfer[irev+384] = res[ew][3];
+        transfer[irev+ 64] = res[ew][4];
+        transfer[irev+220] = res[ew][5];
+        transfer[irev+192] = res[ew][6];
+        transfer[irev+448] = res[ew][7];
         barrier(CLK_LOCAL_MEM_FENCE);
         //fetch the right ns beams for cyl
         #pragma unroll
