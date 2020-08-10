@@ -236,7 +236,7 @@ jobs:
 
     - name: Build h5py from source
       run: |
-        git clone https://github.com/h5py/h5py.git h5py && cd h5py
+        git clone https://github.com/h5py/h5py.git h5py && cd h5py && git pull
         python3 setup.py configure --hdf5=/usr/local/opt/hdf5@1.10/
         python3 setup.py build
 
@@ -244,13 +244,16 @@ jobs:
       env:
         HDF5_DIR: /usr/local/opt/hdf5@1.10/
       run: |
-        git clone https://github.com/kiyo-masui/bitshuffle.git bitshuffle && cd bitshuffle
+        git clone https://github.com/kiyo-masui/bitshuffle.git bitshuffle
+        cd bitshuffle && git pull
         python3 setup.py install --h5plugin --h5plugin-dir=/usr/local/opt/hdf5@1.10/lib/plugin
 
     - name: Clone Blaze and HighFive
       run: |
         git clone https://bitbucket.org/blaze-lib/blaze.git blaze
+        cd blaze && git pull && cd ..
         git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git
+        cd HighFive && git pull && cd ..
 
     - name: Install OpenBLAS and LAPACK
       run: brew install openblas lapack
