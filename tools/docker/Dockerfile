@@ -45,7 +45,8 @@ RUN git clone https://github.com/h5py/h5py.git h5py && \
     cd h5py && git pull && \
     python3.7 setup.py configure --hdf5=/usr/lib/x86_64-linux-gnu/hdf5/serial/ --hdf5-version=1.10.0 && \
     python3.7 setup.py install
-RUN git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git && cd HighFive && git pull && cd ..  
+RUN git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git && \
+    cd HighFive && git pull && cd ..  
 
 # Install bitshuffle
 RUN git clone https://github.com/kiyo-masui/bitshuffle.git bitshuffle && \
