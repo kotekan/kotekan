@@ -56,8 +56,7 @@ RUN git clone https://github.com/kiyo-masui/bitshuffle.git bitshuffle && \
 RUN apt-get update && \
     apt-get -y install libopenblas-dev liblapack-dev liblapacke-dev && \
     apt-get clean && apt-get autoclean && \
-    git clone https://bitbucket.org/blaze-lib/blaze.git blaze && \
-    git pull
+    git clone https://bitbucket.org/blaze-lib/blaze.git blaze && cd blaze && git pull && cd ..
 
 # Install kotekan python dependencies
 RUN python3.7 -m pip install "msgpack>=0.6.1" click future requests pyyaml tabulate \
