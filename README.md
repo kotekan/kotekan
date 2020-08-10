@@ -27,8 +27,6 @@ symbols.
   `-DRTE_TARGET=x86_64-native-linuxapp-gcc` can be provided for non standard build locations.
 * `-DUSE_HSA=ON` - Build with HSA support if available. On by default.
 * `-DUSE_OLD_ROCM=ON` - Build for ROCm versions 2.3 or older. Off by default.
-* `-DUSE_CLOC=ON` - For HSA, use cloc.sh to compile .hsaco binaries.
-  Direct toolchain calls are used by default.
 * `-DUSE_OPENCL=ON` - Build with OpenCL support.
 * `-DUSE_HCC=ON` - Build with HCC support, must also set `CXX=hcc`,
   i.e. `CXX=hcc cmake -DUSE_HCC=ON ..`  This mode has limited support.
