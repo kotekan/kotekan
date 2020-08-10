@@ -28,8 +28,6 @@ symbols.
 * `-DUSE_HSA=ON` - Build with HSA support if available. On by default.
 * `-DUSE_OLD_ROCM=ON` - Build for ROCm versions 2.3 or older. Off by default.
 * `-DUSE_OPENCL=ON` - Build with OpenCL support.
-* `-DUSE_HCC=ON` - Build with HCC support, must also set `CXX=hcc`,
-  i.e. `CXX=hcc cmake -DUSE_HCC=ON ..`  This mode has limited support.
 * `-DUSE_CUDA=ON` - Build with CUDA support, requires `nvcc`
 * `-DUSE_HDF5=ON` and `-DHIGHFIVE_PATH=<path>` - To enable the HDF5 writer
 * `-DUSE_AIRSPY=ON` - Build the AirSpy producer. Requires libairspy.
