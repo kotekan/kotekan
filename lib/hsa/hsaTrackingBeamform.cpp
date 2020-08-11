@@ -1,4 +1,4 @@
-#include "hsaBeamformPulsar.hpp"
+#include "hsaTrackingBeamform.hpp"
 
 #include "Config.hpp"             // for Config
 #include "chimeMetadata.h"        // for MAX_NUM_BEAMS
@@ -17,9 +17,9 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 
-REGISTER_HSA_COMMAND(hsaBeamformPulsar);
+REGISTER_HSA_COMMAND(hsaTrackingBeamform);
 
-hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const std::string& unique_name,
+hsaTrackingBeamform::hsaTrackingBeamform(Config& config, const std::string& unique_name,
                                      bufferContainer& host_buffers, hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "pulsarbf_float" KERNEL_EXT,
                "pulsar_beamformer_nbeam.hsaco") {
@@ -41,9 +41,9 @@ hsaBeamformPulsar::hsaBeamformPulsar(Config& config, const std::string& unique_n
                         MAX_NUM_BEAMS));
 }
 
-hsaBeamformPulsar::~hsaBeamformPulsar() {}
+hsaTrackingBeamform::~hsaTrackingBeamform() {}
 
-hsa_signal_t hsaBeamformPulsar::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
+hsa_signal_t hsaTrackingBeamform::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
     // Unused parameter, suppress warning
     (void)precede_signal;
 

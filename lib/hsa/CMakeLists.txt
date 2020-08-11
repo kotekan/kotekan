@@ -50,8 +50,8 @@ set ( KOTEKAN_HSA_SOURCES
       hsaBeamformHFBSum.cpp
 
 # CHIME/Pulsar Kernels & copy-out:
-      hsaBeamformPulsar.cpp
-      hsaBeamformPulsarOutput.cpp
+      hsaTrackingBeamform.cpp
+      hsaTrackingBeamformOutput.cpp
       hsaPulsarUpdatePhase.cpp
     )
 

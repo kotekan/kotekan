@@ -1,5 +1,5 @@
 *****************
-hsaBeamformPulsar
+hsaTrackingBeamform
 *****************
 
-.. doxygenclass:: hsaBeamformPulsar
+.. doxygenclass:: hsaTrackingBeamform

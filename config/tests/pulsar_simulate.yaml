@@ -101,8 +101,8 @@ gpu:
   - name: hsaPulsarUpdatePhase
   - name: hsaBarrier
   - name: hsaBeamformReorder
-  - name: hsaBeamformPulsar
-  - name: hsaBeamformPulsarOutput
+  - name: hsaTrackingBeamform
+  - name: hsaTrackingBeamformOutput
   enable_delay: true
   cpu_affinity: [2, 3, 8, 9]
   delay_max_fraction: 2.0

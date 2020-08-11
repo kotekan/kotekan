@@ -1,4 +1,4 @@
-#include "hsaBeamformPulsarOutput.hpp"
+#include "hsaTrackingBeamformOutput.hpp"
 
 #include "buffer.h"               // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
 #include "bufferContainer.hpp"    // for bufferContainer
@@ -9,12 +9,12 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 
-REGISTER_HSA_COMMAND(hsaBeamformPulsarOutput);
+REGISTER_HSA_COMMAND(hsaTrackingBeamformOutput);
 
-hsaBeamformPulsarOutput::hsaBeamformPulsarOutput(Config& config, const std::string& unique_name,
+hsaTrackingBeamformOutput::hsaTrackingBeamformOutput(Config& config, const std::string& unique_name,
                                                  bufferContainer& host_buffers,
                                                  hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "hsaBeamformPulsarOutput", "") {
+    hsaCommand(config, unique_name, host_buffers, device, "hsaTrackingBeamformOutput", "") {
     command_type = gpuCommandType::COPY_OUT;
 
     network_buffer = host_buffers.get_buffer("network_buf");
@@ -29,9 +29,9 @@ hsaBeamformPulsarOutput::hsaBeamformPulsarOutput(Config& config, const std::stri
     output_buffer_precondition_id = 0;
 }
 
-hsaBeamformPulsarOutput::~hsaBeamformPulsarOutput() {}
+hsaTrackingBeamformOutput::~hsaTrackingBeamformOutput() {}
 
-int hsaBeamformPulsarOutput::wait_on_precondition(int gpu_frame_id) {
+int hsaTrackingBeamformOutput::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
     uint8_t* frame =
         wait_for_empty_frame(output_buffer, unique_name.c_str(), output_buffer_precondition_id);
@@ -51,7 +51,7 @@ int hsaBeamformPulsarOutput::wait_on_precondition(int gpu_frame_id) {
     return 0;
 }
 
-hsa_signal_t hsaBeamformPulsarOutput::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
+hsa_signal_t hsaTrackingBeamformOutput::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
     void* gpu_output_ptr =
         device.get_gpu_memory_array("bf_psr_output", gpu_frame_id, output_buffer->frame_size);
 
@@ -65,7 +65,7 @@ hsa_signal_t hsaBeamformPulsarOutput::execute(int gpu_frame_id, hsa_signal_t pre
     return signals[gpu_frame_id];
 }
 
-void hsaBeamformPulsarOutput::finalize_frame(int frame_id) {
+void hsaTrackingBeamformOutput::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
 
     pass_metadata(network_buffer, network_buffer_id, output_buffer, output_buffer_id);

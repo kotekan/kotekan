@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Brute-force beamform for kotekan pulsar obs
- *  - hsaBeamformPulsar : public hsaCommand
+ *  - hsaTrackingBeamform : public hsaCommand
  */
 
 #ifndef HSA_BEAMFORM_PULSAR_H
@@ -16,7 +16,7 @@
 #include <stdint.h> // for int32_t
 #include <string>   // for string
 /**
- * @class hsaBeamformPulsar
+ * @class hsaTrackingBeamform
  * @brief hsaCommand to brute-force beamform for pulsar obs
  *
  *
@@ -58,15 +58,15 @@
  */
 
 
-class hsaBeamformPulsar : public hsaCommand {
+class hsaTrackingBeamform : public hsaCommand {
 public:
     /// Constructor, also initializes internal variables from config and initializes the array of
     /// phases.
-    hsaBeamformPulsar(kotekan::Config& config, const std::string& unique_name,
+    hsaTrackingBeamform(kotekan::Config& config, const std::string& unique_name,
                       kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor, cleans up local allocs.
-    virtual ~hsaBeamformPulsar();
+    virtual ~hsaTrackingBeamform();
 
     /// Allocate kernel argument buffer, set kernel dimensions, enqueue kernel
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;

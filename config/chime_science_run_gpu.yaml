@@ -722,7 +722,7 @@ gpu:
     - name: hsaBeamformTranspose
     - name: hsaBeamformUpchanHFB
     - name: hsaBeamformHFBSum
-    - name: hsaBeamformPulsar
+    - name: hsaTrackingBeamform
     - name: hsaRfiTimeSum
     - name: hsaRfiBadInput
     - name: hsaRfiInputSum
@@ -747,7 +747,7 @@ gpu:
     - name: hsaRfiBadInputOutput
     - name: hsaRfiOutput
     - name: hsaRfiVarOutput
-    - name: hsaBeamformPulsarOutput
+    - name: hsaTrackingBeamformOutput
     - name: hsaBeamformOutputData
     - name: hsaBeamformHFBOutputData
     - name: hsaOutputData

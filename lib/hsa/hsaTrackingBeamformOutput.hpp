@@ -11,12 +11,12 @@
 #include <stdint.h> // for int32_t
 #include <string>   // for string
 
-class hsaBeamformPulsarOutput : public hsaCommand {
+class hsaTrackingBeamformOutput : public hsaCommand {
 public:
-    hsaBeamformPulsarOutput(kotekan::Config& config, const std::string& unique_name,
+    hsaTrackingBeamformOutput(kotekan::Config& config, const std::string& unique_name,
                             kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
-    virtual ~hsaBeamformPulsarOutput();
+    virtual ~hsaTrackingBeamformOutput();
 
     int wait_on_precondition(int gpu_frame_id) override;
 

@@ -34,7 +34,7 @@
  * This script calculates the phase delay of these 10 sources,
  * for each feed position. The gain of each input is multiplied into the same array,
  * to give an array of phase delay of size 2048*10*2 to be provided as input for
- * hsaBeamformPulsar.cpp and the kernel pulsar_beamformer.hsaco.
+ * hsaTrackingBeamform.cpp and the kernel pulsar_beamformer.hsaco.
  * There are two banks of phases to alternate between to avoid read/write conflict.
  * Each of the 10 source position (and an associated scaling factor) can be
  * changed/re-pointed on a per beam basis via endpoint.
