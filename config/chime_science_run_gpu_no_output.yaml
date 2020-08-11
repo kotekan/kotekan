@@ -372,17 +372,17 @@ gain_frb_buffers:
   gain_frb_buffer_3:
     kotekan_buffer: standard
 
-gain_psr_buffers:
+gain_tracking_buffers:
   num_frames: 5
   frame_size: 2048 * 2 * num_beams * sizeof_float
   metadata_pool: main_pool
-  gain_psr_buffer_0:
+  gain_tracking_buffer_0:
     kotekan_buffer: standard
-  gain_psr_buffer_1:
+  gain_tracking_buffer_1:
     kotekan_buffer: standard
-  gain_psr_buffer_2:
+  gain_tracking_buffer_2:
     kotekan_buffer: standard
-  gain_psr_buffer_3:
+  gain_tracking_buffer_3:
     kotekan_buffer: standard
 
 pulsar_output_buffers:
@@ -779,7 +779,7 @@ gpu:
     in_buffers:
       network_buf: network_buffer_0
       gain_frb_buf: gain_frb_buffer_0
-      gain_psr_buf: gain_psr_buffer_0
+      gain_tracking_buf: gain_tracking_buffer_0
       lost_samples_buf: lost_samples_buffer
       bad_inputs_buf: bad_inputs_buffer
       rfi_compressed_lost_samples_buf: rfi_compressed_lost_samples_buf_0
@@ -802,7 +802,7 @@ gpu:
     in_buffers:
       network_buf: network_buffer_1
       gain_frb_buf: gain_frb_buffer_1
-      gain_psr_buf: gain_psr_buffer_1
+      gain_tracking_buf: gain_tracking_buffer_1
       lost_samples_buf: lost_samples_buffer
       bad_inputs_buf: bad_inputs_buffer
       rfi_compressed_lost_samples_buf: rfi_compressed_lost_samples_buf_1
@@ -825,7 +825,7 @@ gpu:
     in_buffers:
       network_buf: network_buffer_2
       gain_frb_buf: gain_frb_buffer_2
-      gain_psr_buf: gain_psr_buffer_2
+      gain_tracking_buf: gain_tracking_buffer_2
       lost_samples_buf: lost_samples_buffer
       bad_inputs_buf: bad_inputs_buffer
       rfi_compressed_lost_samples_buf: rfi_compressed_lost_samples_buf_2
@@ -848,7 +848,7 @@ gpu:
     in_buffers:
       network_buf: network_buffer_3
       gain_frb_buf: gain_frb_buffer_3
-      gain_psr_buf: gain_psr_buffer_3
+      gain_tracking_buf: gain_tracking_buffer_3
       lost_samples_buf: lost_samples_buffer
       bad_inputs_buf: bad_inputs_buffer
       rfi_compressed_lost_samples_buf: rfi_compressed_lost_samples_buf_3
@@ -944,22 +944,22 @@ read_gain:
     kotekan_stage: ReadGain
     in_buf: network_buffer_0
     gain_frb_buf: gain_frb_buffer_0
-    gain_psr_buf: gain_psr_buffer_0
+    gain_tracking_buf: gain_tracking_buffer_0
   read_gain1:
     kotekan_stage: ReadGain
     in_buf: network_buffer_1
     gain_frb_buf: gain_frb_buffer_1
-    gain_psr_buf: gain_psr_buffer_1
+    gain_tracking_buf: gain_tracking_buffer_1
   read_gain2:
     kotekan_stage: ReadGain
     in_buf: network_buffer_2
     gain_frb_buf: gain_frb_buffer_2
-    gain_psr_buf: gain_psr_buffer_2
+    gain_tracking_buf: gain_tracking_buffer_2
   read_gain3:
     kotekan_stage: ReadGain
     in_buf: network_buffer_3
     gain_frb_buf: gain_frb_buffer_3
-    gain_psr_buf: gain_psr_buffer_3
+    gain_tracking_buf: gain_tracking_buffer_3
 
 #### FRB GPU Post processing and Tx ####
 frb_valve:

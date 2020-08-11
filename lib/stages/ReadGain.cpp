@@ -73,9 +73,9 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     update_gains_frb = false;
 
     // Gain for PSR
-    gain_psr_buf = get_buffer("gain_psr_buf");
-    gain_psr_buf_id = 0;
-    register_producer(gain_psr_buf, unique_name.c_str());
+    gain_tracking_buf = get_buffer("gain_tracking_buf");
+    gain_tracking_buf_id = 0;
+    register_producer(gain_tracking_buf, unique_name.c_str());
     update_gains_psr = false;
 
     using namespace std::placeholders;
@@ -190,7 +190,7 @@ void ReadGain::read_gain_frb() {
 
 void ReadGain::read_gain_psr() {
     float* out_frame_psr =
-        (float*)wait_for_empty_frame(gain_psr_buf, unique_name.c_str(), gain_psr_buf_id);
+        (float*)wait_for_empty_frame(gain_tracking_buf, unique_name.c_str(), gain_tracking_buf_id);
     if (out_frame_psr == nullptr) {
         return;
     }
@@ -232,12 +232,12 @@ void ReadGain::read_gain_psr() {
         gains_last_update_success_metric.labels({"pulsar"}).set(0);
     }
     gains_last_update_timestamp_metric.labels({"pulsar"}).set(start_time);
-    mark_frame_full(gain_psr_buf, unique_name.c_str(), gain_psr_buf_id);
-    DEBUG("Maked gain_psr_buf frame {:d} full", gain_psr_buf_id);
+    mark_frame_full(gain_tracking_buf, unique_name.c_str(), gain_tracking_buf_id);
+    DEBUG("Maked gain_tracking_buf frame {:d} full", gain_tracking_buf_id);
     INFO("Time required to load PSR gains: {:f}", current_time() - start_time);
-    DEBUG("Gain_psr_buf: {:.2f} {:.2f} {:.2f} ", out_frame_psr[0], out_frame_psr[1],
+    DEBUG("Gain_tracking_buf: {:.2f} {:.2f} {:.2f} ", out_frame_psr[0], out_frame_psr[1],
           out_frame_psr[2]);
-    gain_psr_buf_id = (gain_psr_buf_id + 1) % gain_psr_buf->num_frames;
+    gain_tracking_buf_id = (gain_tracking_buf_id + 1) % gain_tracking_buf->num_frames;
 }
 
 void ReadGain::main_thread() {

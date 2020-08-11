@@ -32,7 +32,7 @@ using std::vector;
  * @buffer gain_frb_buf Array of gains size 2048*2
  *     @buffer_format Array of @c floats
  *     @buffer_metadata none
- * @buffer gain_psr_buf Array of gains size 2048*2*nbeam
+ * @buffer gain_tracking_buf Array of gains size 2048*2*nbeam
  *     @buffer_format Array of @c floats
  *     @buffer_metadata none
  *
@@ -84,8 +84,8 @@ private:
 
     struct Buffer* gain_frb_buf;
     int32_t gain_frb_buf_id;
-    struct Buffer* gain_psr_buf;
-    int32_t gain_psr_buf_id;
+    struct Buffer* gain_tracking_buf;
+    int32_t gain_tracking_buf_id;
 
     /// Directory path where gain files are
     std::string _gain_dir_frb;

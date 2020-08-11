@@ -68,7 +68,7 @@ hsaTrackingUpdatePhase::hsaTrackingUpdatePhase(Config& config, const std::string
     // Gain stuff here
     gain_len = 2 * 2048 * _num_beams * sizeof(float);
     host_gain = (float*)hsa_host_malloc(gain_len, device.get_gpu_numa_node());
-    gain_buf = host_buffers.get_buffer("gain_psr_buf");
+    gain_buf = host_buffers.get_buffer("gain_tracking_buf");
     register_consumer(gain_buf, unique_name.c_str());
     gain_buf_id = 0;
 

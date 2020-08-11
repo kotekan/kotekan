@@ -187,7 +187,7 @@ gain_frb_buffer:
   metadata_pool: main_pool
   kotekan_buffer: standard
 
-gain_psr_buffer:
+gain_tracking_buffer:
   num_frames: buffer_depth
   frame_size: 2048 * 2 * num_beams * sizeof_float
   metadata_pool: main_pool
@@ -222,7 +222,7 @@ read_gain:
       gain_psr: /updatable_config/pulsar_gain
     in_buf: gpu_input_buffer_0 
     gain_frb_buf: gain_frb_buffer
-    gain_psr_buf: gain_psr_buffer
+    gain_tracking_buf: gain_tracking_buffer
  
 gpu:
   kernel_path: "../../build/lib/hsa/kernels/"
@@ -250,7 +250,7 @@ gpu:
     bad_inputs: []
     in_buffers:
       network_buf: gpu_input_buffer_0
-      gain_psr_buf: gain_psr_buffer
+      gain_tracking_buf: gain_tracking_buffer
     out_buffers:
       beamform_pulsar_output_buf: beamform_pulsar_output_buffer_0
 

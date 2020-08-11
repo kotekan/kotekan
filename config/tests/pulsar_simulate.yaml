@@ -41,11 +41,11 @@ gen_ok:
 
 ### Gains
 
-gain_psr_buffers:
+gain_tracking_buffers:
   num_frames: 5
   frame_size: 2048 * 2 * num_beams * sizeof_float
   metadata_pool: main_pool
-  gain_psr_buffer_0:
+  gain_tracking_buffer_0:
     kotekan_buffer: standard
 
 gain_frb_buffers:
@@ -62,7 +62,7 @@ read_gains:
     gain_psr: /updatable_config/pulsar_gain
   in_buf: gpu_input_buffer_0
   gain_frb_buf: gain_frb_buffer_0
-  gain_psr_buf: gain_psr_buffer_0
+  gain_tracking_buf: gain_tracking_buffer_0
 
 ### Buffers
 
@@ -119,7 +119,7 @@ gpu:
     bad_inputs: []
     in_buffers:
       network_buf: gpu_input_buffer_0
-      gain_psr_buf: gain_psr_buffer_0
+      gain_tracking_buf: gain_tracking_buffer_0
       gain_frb_buf: gain_frb_buffer_0
       lost_samples_buf: lost_samples_buffer
     out_buffers:
