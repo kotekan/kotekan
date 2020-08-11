@@ -6,7 +6,7 @@
 #include "Telescope.hpp"
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for psrCoord
+#include "chimeMetadata.h"     // for beamCoord
 
 #include <stdint.h>    // for int32_t, uint32_t
 #include <string>      // for string
@@ -95,7 +95,7 @@ private:
     struct timespec time_now_gps;
 
     /// 10 pulsar RA, DEC and scaling factor
-    struct psrCoord psr_coord; // active coordinates to be passed to metatdata
+    struct beamCoord beam_coord; // active coordinates to be passed to metatdata
     std::vector<float> _source_ra;
     std::vector<float> _source_dec;
 
@@ -111,7 +111,7 @@ private:
     void reorder(unsigned char* data, int* map);
     /// Figure our LST at this frame and the Alt-Az of the 10 sources, then calculate phase delays
     /// at each input
-    void calculate_phase(struct psrCoord psr_coord, timespec time_now, float freq_now, float* gain,
+    void calculate_phase(struct beamCoord beam_coord, timespec time_now, float freq_now, float* gain,
                          double* output);
 };
 

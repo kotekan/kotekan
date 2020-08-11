@@ -5,7 +5,7 @@
 #include "Telescope.hpp"
 #include "buffer.h"            // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for psrCoord, get_fpga_seq_num, get_gps_time
+#include "chimeMetadata.h"     // for beamCoord, get_fpga_seq_num, get_gps_time
 #include "kotekanLogging.hpp"  // for INFO, ERROR
 
 #include <algorithm>  // for copy
@@ -91,8 +91,8 @@ gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config, const std::
     }
 
     for (int i = 0; i < _num_pulsar; i++) {
-        psr_coord.ra[i] = _source_ra[i];
-        psr_coord.dec[i] = _source_dec[i];
+        beam_coord.ra[i] = _source_ra[i];
+        beam_coord.dec[i] = _source_dec[i];
     }
 }
 
@@ -122,7 +122,7 @@ void gpuBeamformPulsarSimulate::reorder(unsigned char* data, int* map) {
     free(tmp512);
 }
 
-void gpuBeamformPulsarSimulate::calculate_phase(struct psrCoord psr_coord, timespec time_now,
+void gpuBeamformPulsarSimulate::calculate_phase(struct beamCoord beam_coord, timespec time_now,
                                                 float freq_now, float* gains, double* output) {
     float FREQ = freq_now;
     struct tm* timeinfo;
@@ -148,11 +148,11 @@ void gpuBeamformPulsarSimulate::calculate_phase(struct psrCoord psr_coord, times
     }
     LST = fmod(LST, 24);
     for (int b = 0; b < _num_pulsar; b++) {
-        double hour_angle = LST * 15. - psr_coord.ra[b];
-        double alt = sin(psr_coord.dec[b] * D2R) * sin(inst_lat * D2R)
-                     + cos(psr_coord.dec[b] * D2R) * cos(inst_lat * D2R) * cos(hour_angle * D2R);
+        double hour_angle = LST * 15. - beam_coord.ra[b];
+        double alt = sin(beam_coord.dec[b] * D2R) * sin(inst_lat * D2R)
+                     + cos(beam_coord.dec[b] * D2R) * cos(inst_lat * D2R) * cos(hour_angle * D2R);
         alt = asin(alt);
-        double az = (sin(psr_coord.dec[b] * D2R) - sin(alt) * sin(inst_lat * D2R))
+        double az = (sin(beam_coord.dec[b] * D2R) - sin(alt) * sin(inst_lat * D2R))
                     / (cos(alt) * cos(inst_lat * D2R));
         az = acos(az);
         if (sin(hour_angle * D2R) >= 0) {
@@ -290,7 +290,7 @@ void gpuBeamformPulsarSimulate::main_thread() {
             if (time_now_gps.tv_sec == 0) {
                 ERROR("GPS time appears to be zero, bad news for pulsar timing!");
             }
-            calculate_phase(psr_coord, time_now_gps, freq_MHz, cpu_gain, phase);
+            calculate_phase(beam_coord, time_now_gps, freq_MHz, cpu_gain, phase);
             update_phase = false;
         }
 

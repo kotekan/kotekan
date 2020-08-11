@@ -11,7 +11,7 @@
 #include "Telescope.hpp"
 #include "buffer.h"               // for Buffer
 #include "bufferContainer.hpp"    // for bufferContainer
-#include "chimeMetadata.h"        // for psrCoord
+#include "chimeMetadata.h"        // for beamCoord
 #include "hsa/hsa.h"              // for hsa_signal_t
 #include "hsaCommand.hpp"         // for hsaCommand
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface
@@ -76,7 +76,7 @@ public:
 
     /// Figure our LST at this frame and the Alt-Az of the 10 sources, then calculate phase delays
     /// at each input
-    void calculate_phase(struct psrCoord psr_coord, timespec time_now, float freq_now, float* gain,
+    void calculate_phase(struct beamCoord beam_coord, timespec time_now, float freq_now, float* gain,
                          float* output);
 
     /// Load gain, update phases every second by alternating the use of 2 banks.
@@ -114,8 +114,8 @@ private:
     Buffer* metadata_buf;
 
     /// 10 pulsar RA, DEC and scaling factor
-    struct psrCoord psr_coord;               // active coordinates to be passed to metatdata
-    struct psrCoord psr_coord_latest_update; // Last updated coordinates
+    struct beamCoord beam_coord;               // active coordinates to be passed to metatdata
+    struct beamCoord beam_coord_latest_update; // Last updated coordinates
     /// Time now in second
     struct timespec time_now_gps;
 
@@ -141,7 +141,7 @@ private:
     uint second_now;
     uint second_last;
 
-    /// mutex lock prevent psr_coord to be read while it is being updated.
+    /// mutex lock prevent beam_coord to be read while it is being updated.
     std::mutex _pulsar_lock;
 
     /// Flag to avoid re-calculating freq-specific params except at first pass

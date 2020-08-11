@@ -147,7 +147,7 @@ int hsaTrackingUpdatePhase::wait_on_precondition(int gpu_frame_id) {
     return 0;
 }
 
-void hsaTrackingUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec time_now,
+void hsaTrackingUpdatePhase::calculate_phase(struct beamCoord beam_coord, timespec time_now,
                                              float freq_now, float* gains, float* output) {
 
     float FREQ = freq_now;
@@ -174,17 +174,17 @@ void hsaTrackingUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec
     }
     LST = fmod(LST, 24);
     for (int b = 0; b < _num_beams; b++) {
-        if (psr_coord.scaling[b] == 1) {
+        if (beam_coord.scaling[b] == 1) {
             for (uint32_t i = 0; i < _num_elements * 2; ++i) {
                 output[b * _num_elements * 2 + i] = gains[b * _num_elements * 2 + i];
             }
             continue;
         }
-        double hour_angle = LST * 15. - psr_coord.ra[b];
-        double alt = sin(psr_coord.dec[b] * D2R) * sin(inst_lat * D2R)
-                     + cos(psr_coord.dec[b] * D2R) * cos(inst_lat * D2R) * cos(hour_angle * D2R);
+        double hour_angle = LST * 15. - beam_coord.ra[b];
+        double alt = sin(beam_coord.dec[b] * D2R) * sin(inst_lat * D2R)
+                     + cos(beam_coord.dec[b] * D2R) * cos(inst_lat * D2R) * cos(hour_angle * D2R);
         alt = asin(std::clamp(alt, -1.0, 1.0));
-        double az = (sin(psr_coord.dec[b] * D2R) - sin(alt) * sin(inst_lat * D2R))
+        double az = (sin(beam_coord.dec[b] * D2R) - sin(alt) * sin(inst_lat * D2R))
                     / (cos(alt) * cos(inst_lat * D2R));
         az = acos(std::clamp(az, -1.0, 1.0));
         if (sin(hour_angle * D2R) >= 0) {
@@ -246,21 +246,21 @@ hsa_signal_t hsaTrackingUpdatePhase::execute(int gpu_frame_id, hsa_signal_t prec
         // use whichever bank that has no lock
         if (bank_use_0 == 0) { // no more outstanding async copy using bank0
             std::lock_guard<std::mutex> lock(_pulsar_lock);
-            psr_coord = psr_coord_latest_update;
-            calculate_phase(psr_coord, time_now_gps, freq_MHz, host_gain, host_phase_0);
+            beam_coord = beam_coord_latest_update;
+            calculate_phase(beam_coord, time_now_gps, freq_MHz, host_gain, host_phase_0);
             bank_active = 0;
             update_phase = false;
         } else if (bank_use_1 == 0) { // no more outstanding async copy using bank1
             std::lock_guard<std::mutex> lock(_pulsar_lock);
-            psr_coord = psr_coord_latest_update;
-            calculate_phase(psr_coord, time_now_gps, freq_MHz, host_gain, host_phase_1);
+            beam_coord = beam_coord_latest_update;
+            calculate_phase(beam_coord, time_now_gps, freq_MHz, host_gain, host_phase_1);
             bank_active = 1;
             update_phase = false;
         }
     }
 
     bankID[gpu_frame_id] = bank_active; // update or not, read from the latest bank
-    set_psr_coord(metadata_buf, metadata_buffer_id, psr_coord);
+    set_beam_coord(metadata_buf, metadata_buffer_id, beam_coord);
     mark_frame_empty(metadata_buf, unique_name.c_str(), metadata_buffer_id);
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
 
@@ -300,26 +300,26 @@ bool hsaTrackingUpdatePhase::pulsar_grab_callback(nlohmann::json& json, const ui
     {
         std::lock_guard<std::mutex> lock(_pulsar_lock);
         try {
-            psr_coord_latest_update.ra[beam_id] = json.at("ra").get<float>();
+            beam_coord_latest_update.ra[beam_id] = json.at("ra").get<float>();
         } catch (std::exception const& e) {
             WARN("[PSR] Pointing update fail to read RA {:s}", e.what());
             return false;
         }
         try {
-            psr_coord_latest_update.dec[beam_id] = json.at("dec").get<float>();
+            beam_coord_latest_update.dec[beam_id] = json.at("dec").get<float>();
         } catch (std::exception const& e) {
             WARN("[PSR] Pointing update fail to read DEC {:s}", e.what());
             return false;
         }
         try {
-            psr_coord_latest_update.scaling[beam_id] = json.at("scaling").get<int>();
+            beam_coord_latest_update.scaling[beam_id] = json.at("scaling").get<int>();
         } catch (std::exception const& e) {
             WARN("[PSR] Pointing update fail to read scaling factor {:s}", e.what());
             return false;
         }
         INFO("[psr] Updated Beam={:d} RA={:.2f} Dec={:.2f} Scl={:d}", beam_id,
-             psr_coord_latest_update.ra[beam_id], psr_coord_latest_update.dec[beam_id],
-             psr_coord_latest_update.scaling[beam_id]);
+             beam_coord_latest_update.ra[beam_id], beam_coord_latest_update.dec[beam_id],
+             beam_coord_latest_update.scaling[beam_id]);
         update_phase = true;
     }
     return true;

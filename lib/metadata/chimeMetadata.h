@@ -14,7 +14,7 @@ extern "C" {
 
 #pragma pack()
 
-struct psrCoord {
+struct beamCoord {
     float ra[MAX_NUM_BEAMS];
     float dec[MAX_NUM_BEAMS];
     uint32_t scaling[MAX_NUM_BEAMS];
@@ -60,7 +60,7 @@ struct chimeMetadata {
     /// Encodes the port-shuffle frequency information
     uint16_t stream_ID;
     /// The corrdinates of the pulsar beam (if applicable)
-    struct psrCoord psr_coord;
+    struct beamCoord beam_coord;
 };
 
 // Helper functions to save lots of pointer work
@@ -70,9 +70,9 @@ inline int64_t get_fpga_seq_num(const struct Buffer* buf, int ID) {
     return chime_metadata->fpga_seq_num;
 }
 
-inline struct psrCoord get_psr_coord(const struct Buffer* buf, int ID) {
+inline struct beamCoord get_beam_coord(const struct Buffer* buf, int ID) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
-    return chime_metadata->psr_coord;
+    return chime_metadata->beam_coord;
 }
 
 inline uint32_t get_rfi_zeroed(const struct Buffer* buf, int ID) {
@@ -164,9 +164,9 @@ inline void set_fpga_seq_num(struct Buffer* buf, int ID, int64_t seq) {
     chime_metadata->fpga_seq_num = seq;
 }
 
-inline void set_psr_coord(struct Buffer* buf, int ID, struct psrCoord psr_coord) {
+inline void set_beam_coord(struct Buffer* buf, int ID, struct beamCoord beam_coord) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
-    chime_metadata->psr_coord = psr_coord;
+    chime_metadata->beam_coord = beam_coord;
 }
 
 inline void set_rfi_zeroed(struct Buffer* buf, int ID, uint32_t rfi_zeroed) {
