@@ -12,8 +12,8 @@ using kotekan::Config;
 REGISTER_HSA_COMMAND(hsaTrackingBeamformOutput);
 
 hsaTrackingBeamformOutput::hsaTrackingBeamformOutput(Config& config, const std::string& unique_name,
-                                                 bufferContainer& host_buffers,
-                                                 hsaDeviceInterface& device) :
+                                                     bufferContainer& host_buffers,
+                                                     hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "hsaTrackingBeamformOutput", "") {
     command_type = gpuCommandType::COPY_OUT;
 

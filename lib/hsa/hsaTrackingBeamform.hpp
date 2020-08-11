@@ -22,7 +22,7 @@
  *
  * This is an hsaCommand that launches the kernel (pulsar_beamformer) for
  * brute-force coherent beamforming and is most applicable to pulsar observations.
- * An array of phases (shape @c n_psr x @c n_elem x 2) is calculated by hsaPulsarUpdatePhase.cpp.
+ * An array of phases (shape @c n_psr x @c n_elem x 2) is calculated by hsaTrackingUpdatePhase.cpp.
  * The default number of pulsar beams to be formed is 10. The phases are matrix
  * multiplied with the input data (shape @c n_samp x @c n_elem) and the output is of dimension
  * (@c n_samp x @c n_psr x @c n_pol x 2). Output data type is 4-4b int packed as char. Currently
@@ -63,7 +63,7 @@ public:
     /// Constructor, also initializes internal variables from config and initializes the array of
     /// phases.
     hsaTrackingBeamform(kotekan::Config& config, const std::string& unique_name,
-                      kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
+                        kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor, cleans up local allocs.
     virtual ~hsaTrackingBeamform();

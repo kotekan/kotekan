@@ -1,7 +1,7 @@
 // curl localhost:12048/updatable_config/pulsar_pointing/0  -X POST -H 'Content-Type:
 // application/json' -d '{"ra":100.3, "dec":34.23, "scaling":99.0}'
 
-#include "hsaPulsarUpdatePhase.hpp"
+#include "hsaTrackingUpdatePhase.hpp"
 
 #include "Config.hpp" // for Config
 #include "Telescope.hpp"
@@ -42,11 +42,11 @@ using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
 using kotekan::restServer;
 
-REGISTER_HSA_COMMAND(hsaPulsarUpdatePhase);
+REGISTER_HSA_COMMAND(hsaTrackingUpdatePhase);
 
-hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const std::string& unique_name,
-                                           bufferContainer& host_buffers,
-                                           hsaDeviceInterface& device) :
+hsaTrackingUpdatePhase::hsaTrackingUpdatePhase(Config& config, const std::string& unique_name,
+                                               bufferContainer& host_buffers,
+                                               hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "", "") {
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
@@ -100,7 +100,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const std::string& un
     }
 }
 
-hsaPulsarUpdatePhase::~hsaPulsarUpdatePhase() {
+hsaTrackingUpdatePhase::~hsaTrackingUpdatePhase() {
     restServer::instance().remove_json_callback(endpoint_psrcoord);
     hsa_host_free(host_phase_0);
     hsa_host_free(host_phase_1);
@@ -108,7 +108,7 @@ hsaPulsarUpdatePhase::~hsaPulsarUpdatePhase() {
     hsa_host_free(host_gain);
 }
 
-int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id) {
+int hsaTrackingUpdatePhase::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
     uint8_t* frame =
         wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
@@ -147,8 +147,8 @@ int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id) {
     return 0;
 }
 
-void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec time_now,
-                                           float freq_now, float* gains, float* output) {
+void hsaTrackingUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec time_now,
+                                             float freq_now, float* gains, float* output) {
 
     float FREQ = freq_now;
     struct tm* timeinfo;
@@ -217,7 +217,7 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec t
     }
 }
 
-hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
+hsa_signal_t hsaTrackingUpdatePhase::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
     // Update phase every one second
     const uint64_t phase_update_period = 390625;
     uint64_t current_seq = get_fpga_seq_num(metadata_buf, metadata_buffer_id);
@@ -286,7 +286,7 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, hsa_signal_t preced
     return signals[gpu_frame_id];
 }
 
-void hsaPulsarUpdatePhase::finalize_frame(int frame_id) {
+void hsaTrackingUpdatePhase::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
     if (bankID[frame_id] == 1) {
         bank_use_1 = bank_use_1 - 1;
@@ -296,7 +296,7 @@ void hsaPulsarUpdatePhase::finalize_frame(int frame_id) {
     }
 }
 
-bool hsaPulsarUpdatePhase::pulsar_grab_callback(nlohmann::json& json, const uint8_t beam_id) {
+bool hsaTrackingUpdatePhase::pulsar_grab_callback(nlohmann::json& json, const uint8_t beam_id) {
     {
         std::lock_guard<std::mutex> lock(_pulsar_lock);
         try {

@@ -98,7 +98,7 @@ gpu:
   - name: hsaInputData
   - name: hsaOutputDataZero
   - name: hsaAsyncCopyGain
-  - name: hsaPulsarUpdatePhase
+  - name: hsaTrackingUpdatePhase
   - name: hsaBarrier
   - name: hsaBeamformReorder
   - name: hsaTrackingBeamform

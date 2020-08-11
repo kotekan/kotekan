@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Pulsar update phases for brute-force beamform
- *  - hsaPulsarUpdatePhase : public hsaCommand
+ *  - hsaTrackingUpdatePhase : public hsaCommand
  */
 
 #ifndef HSA_PULSAR_UPDATE_PHASE_H
@@ -25,7 +25,7 @@
 #include <time.h>      // for timespec
 
 /**
- * @class hsaPulsarUpdatePhase
+ * @class hsaTrackingUpdatePhase
  * @brief hsaCommand to get phase delay for brute-force beamform
  *
  * This is an hsaCommand that calculateas phase delays for brute-form beamforming.
@@ -61,15 +61,15 @@
  * @author Cherry Ng
  *
  */
-class hsaPulsarUpdatePhase : public hsaCommand {
+class hsaTrackingUpdatePhase : public hsaCommand {
 public:
     /// Constructor, also initializes internal variables from config, allocates
     /// host_phase_0, host_pahse_1, and set up 2 endpoints
-    hsaPulsarUpdatePhase(kotekan::Config& config, const std::string& unique_name,
-                         kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
+    hsaTrackingUpdatePhase(kotekan::Config& config, const std::string& unique_name,
+                           kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     /// Destructor, cleans up local allocs.
-    virtual ~hsaPulsarUpdatePhase();
+    virtual ~hsaTrackingUpdatePhase();
 
     /// Wait for full metadata frame and keep track of precondition_id
     int wait_on_precondition(int gpu_frame_id) override;

@@ -18,7 +18,7 @@
  * @class gpuBeamformPulsarSimulate
  * @brief CPU version of pulsar beamformer for verification
  *
- * Read hsaPulsarUpdatePhase and hsaTrackingBeamform to find out what
+ * Read hsaTrackingUpdatePhase and hsaTrackingBeamform to find out what
  * the pulsar beamformer does. This is basically the same, except
  * without capability to dynamically update gain paths and RA/Dec
  * (no endpoints).

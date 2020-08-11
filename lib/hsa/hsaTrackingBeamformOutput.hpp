@@ -14,7 +14,7 @@
 class hsaTrackingBeamformOutput : public hsaCommand {
 public:
     hsaTrackingBeamformOutput(kotekan::Config& config, const std::string& unique_name,
-                            kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
+                              kotekan::bufferContainer& host_buffers, hsaDeviceInterface& device);
 
     virtual ~hsaTrackingBeamformOutput();
 

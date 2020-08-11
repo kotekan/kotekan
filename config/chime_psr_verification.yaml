@@ -228,7 +228,7 @@ gpu:
   kernel_path: "../../build/lib/hsa/kernels/"
   commands:
   - name: hsaInputData
-  - name: hsaPulsarUpdatePhase
+  - name: hsaTrackingUpdatePhase
   - name: hsaBarrier
   - name: hsaBeamformReorder
   - name: hsaTrackingBeamform

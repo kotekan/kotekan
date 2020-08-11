@@ -52,7 +52,7 @@ set ( KOTEKAN_HSA_SOURCES
 # CHIME/Pulsar Kernels & copy-out:
       hsaTrackingBeamform.cpp
       hsaTrackingBeamformOutput.cpp
-      hsaPulsarUpdatePhase.cpp
+      hsaTrackingUpdatePhase.cpp
     )
 
 add_library ( kotekan_hsa
