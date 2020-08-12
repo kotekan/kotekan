@@ -16,10 +16,10 @@
 
 /**
  * @class gpuTrackingBeamformSimulate
- * @brief CPU version of pulsar beamformer for verification
+ * @brief CPU version of tracking beamformer for verification
  *
  * Read hsaTrackingUpdatePhase and hsaTrackingBeamform to find out what
- * the pulsar beamformer does. This is basically the same, except
+ * the tracking beamformer does. This is basically the same, except
  * without capability to dynamically update gain paths and RA/Dec
  * (no endpoints).
  *
@@ -31,7 +31,7 @@ class gpuTrackingBeamformSimulate : public kotekan::Stage {
 public:
     /// Constructor
     gpuTrackingBeamformSimulate(kotekan::Config& config, const std::string& unique_name,
-                              kotekan::bufferContainer& buffer_container);
+                                kotekan::bufferContainer& buffer_container);
     /// Destructor
     ~gpuTrackingBeamformSimulate();
     /// Main loop, read gains, calculate new phase, brute-force beamform
@@ -56,8 +56,8 @@ private:
     uint32_t _num_elements;
     /// number of samples = 49152
     int32_t _samples_per_data_set;
-    /// number of pulsars = 10
-    int32_t _num_pulsar;
+    /// number of beams = 10
+    int32_t _num_beams;
     /// number of polarizations = 2
     int32_t _num_pol;
     /// Array of reordering index, length 512
@@ -94,7 +94,7 @@ private:
     /// Time now in second
     struct timespec time_now_gps;
 
-    /// 10 pulsar RA, DEC and scaling factor
+    /// 10 beams RA, DEC and scaling factor
     struct beamCoord beam_coord; // active coordinates to be passed to metatdata
     std::vector<float> _source_ra;
     std::vector<float> _source_dec;
@@ -105,8 +105,8 @@ private:
     bool update_phase;
 
     /// Brute-force beamform by multiplying each element with a phase shift
-    void cpu_beamform_pulsar(double* input, double* phase, float* output, int nsamp, int nelem,
-                             int npsr, int npol);
+    void cpu_beamform_tracking(double* input, double* phase, float* output, int nsamp, int nelem,
+                               int nbeams, int npol);
     /// Reorder data from correlator order to cylinder order
     void reorder(unsigned char* data, int* map);
     /// Figure our LST at this frame and the Alt-Az of the 10 sources, then calculate phase delays
