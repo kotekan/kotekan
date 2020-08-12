@@ -111,8 +111,8 @@ private:
     void reorder(unsigned char* data, int* map);
     /// Figure our LST at this frame and the Alt-Az of the 10 sources, then calculate phase delays
     /// at each input
-    void calculate_phase(struct beamCoord beam_coord, timespec time_now, float freq_now, float* gain,
-                         double* output);
+    void calculate_phase(struct beamCoord beam_coord, timespec time_now, float freq_now,
+                         float* gain, double* output);
 };
 
 #endif

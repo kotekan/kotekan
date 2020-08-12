@@ -76,8 +76,8 @@ public:
 
     /// Figure our LST at this frame and the Alt-Az of the 10 sources, then calculate phase delays
     /// at each input
-    void calculate_phase(struct beamCoord beam_coord, timespec time_now, float freq_now, float* gain,
-                         float* output);
+    void calculate_phase(struct beamCoord beam_coord, timespec time_now, float freq_now,
+                         float* gain, float* output);
 
     /// Load gain, update phases every second by alternating the use of 2 banks.
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
