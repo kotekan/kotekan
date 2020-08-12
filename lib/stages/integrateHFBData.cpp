@@ -1,11 +1,14 @@
 #include "integrateHFBData.hpp"
 
-#include "HFBMetadata.hpp"
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"
 #include "buffer.h" // for mark_frame_empty, Buffer, register_consumer, wait_for...
 #include "chimeMetadata.h"
+#include "datasetManager.hpp" // for state_id_t, datasetManager, dset_id_t
+#include "HFBMetadata.hpp"
 #include "kotekanLogging.hpp" // for DEBUG, DEBUG2
+#include "version.h"          // for get_git_commit_hash
+#include "visUtil.hpp"        // for freq_ctype
 
 #include <atomic>      // for atomic_bool
 #include <exception>   // for exception
@@ -43,6 +46,44 @@ integrateHFBData::integrateHFBData(Config& config_, const std::string& unique_na
 
     out_buf = get_buffer("hfb_output_buf");
     register_producer(out_buf, unique_name.c_str());
+
+    // weight calculation is hardcoded, so is the weight type name
+    const std::string weight_type = "hfb_weight_type";
+    const std::string git_tag = get_git_commit_hash();
+    const std::string instrument_name =
+        config.get_default<std::string>(unique_name, "instrument_name", "chime");
+
+    std::vector<uint32_t> freq_ids;
+
+    // Get the frequency IDs that are on this stream, check the config or just
+    // assume all CHIME channels
+    // TODO: CHIME specific
+    if (config.exists(unique_name, "freq_ids")) {
+        freq_ids = config.get<std::vector<uint32_t>>(unique_name, "freq_ids");
+    } else {
+        freq_ids.resize(1024);
+        std::iota(std::begin(freq_ids), std::end(freq_ids), 0);
+    }
+
+    // Create the frequency specification
+    // TODO: CHIME specific
+    std::vector<std::pair<uint32_t, freq_ctype>> freqs;
+    std::transform(std::begin(freq_ids), std::end(freq_ids), std::back_inserter(freqs),
+                   [](uint32_t id) -> std::pair<uint32_t, freq_ctype> {
+                       return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
+                   });
+
+    // create all the states
+    datasetManager& dm = datasetManager::instance();
+    std::vector<state_id_t> base_states;
+    base_states.push_back(dm.create_state<freqState>(freqs).first);
+    base_states.push_back(dm.create_state<beamState>(_num_frb_total_beams).first);
+    base_states.push_back(dm.create_state<subfreqState>(_factor_upchan).first);
+    base_states.push_back(
+        dm.create_state<metadataState>(weight_type, instrument_name, git_tag).first);
+
+    // register root dataset
+    ds_id = dm.add_dataset(base_states);
 }
 
 integrateHFBData::~integrateHFBData() {}
@@ -220,6 +261,12 @@ void integrateHFBData::main_thread() {
 
                 uint32_t freq_bin_num = tel.to_freq_id(in_buf, in_buffer_ID);
                 set_freq_bin_num(out_buf, out_buffer_ID, freq_bin_num);
+
+                set_dataset_id(out_buf, out_buffer_ID, ds_id);
+                set_num_beams(out_buf, out_buffer_ID, _num_frb_total_beams);
+                set_num_subfreq(out_buf, out_buffer_ID, _factor_upchan);
+
+                DEBUG("Dataset ID: {}, freq_bin: {:d}", ds_id, freq_bin_num);
 
                 mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
 
