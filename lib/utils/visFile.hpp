@@ -7,6 +7,7 @@
 #ifndef VIS_FILE_HPP
 #define VIS_FILE_HPP
 
+#include "FrameView.hpp"      // for FrameView
 #include "dataset.hpp"        // for dset_id_t
 #include "factory.hpp"        // for CREATE_FACTORY, FACTORY, Factory, REGISTER_NAMED_TYPE_WITH...
 #include "kotekanLogging.hpp" // for logLevel, kotekanLogging, DEBUG
@@ -78,7 +79,7 @@ public:
      * @param freq_ind Frequency index to write into.
      * @param frame Frame to write out.
      **/
-    virtual void write_sample(uint32_t time_ind, uint32_t freq_ind, const VisFrameView& frame) = 0;
+    virtual void write_sample(uint32_t time_ind, uint32_t freq_ind, const FrameView& frame) = 0;
 
     /**
      * @brief Return the current number of current time samples.
