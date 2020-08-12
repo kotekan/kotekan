@@ -18,8 +18,10 @@ cpu_affinity: [2,3,8,9]
 
 # Constants
 sizeof_float: 4
+sizeof_int: 4
 num_frb_total_beams: 1024
 factor_upchan: 128
+downsample_time: 3
 num_frames_to_integrate: 8
 good_samples_threshold: 0.50
 test_value: 2
@@ -31,7 +33,7 @@ main_pool:
   num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
 
 hfb_pool:
-  kotekan_metadata_pool: hfbMetadata
+  kotekan_metadata_pool: HFBMetadata
   num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
 
 # Buffers
@@ -59,7 +61,7 @@ lost_samples_buffer:
 compressed_lost_samples_buffer:
     kotekan_buffer: standard
     num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set / factor_upchan / 3
+    frame_size: samples_per_data_set / (factor_upchan * downsample_time) * sizeof_int
     metadata_pool: main_pool
 
 # Generate input data for integrateHFBData stage
@@ -94,8 +96,10 @@ gen_missing_frames:
 
 compress_lost_samples:
   kotekan_stage: compressLostSamples
-  lost_samples_buf: lost_samples_buffer
-  compressed_lost_samples_buf: compressed_lost_samples_buffer
+  compression_factor: factor_upchan * downsample_time
+  zero_all_in_group: true
+  in_buf: lost_samples_buffer
+  out_buf: compressed_lost_samples_buffer
 
 # Run stage under test
 hyper_fine_beam:
