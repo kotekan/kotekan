@@ -1,5 +1,5 @@
-#ifndef GPU_BEAMFORM_PULSAR_SIMULATE_HPP
-#define GPU_BEAMFORM_PULSAR_SIMULATE_HPP
+#ifndef GPU_TRACKING_BEAMFORM_SIMULATE_HPP
+#define GPU_TRACKING_BEAMFORM_SIMULATE_HPP
 
 #include "Config.hpp" // for Config
 #include "Stage.hpp"  // for Stage

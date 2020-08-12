@@ -1,11 +1,11 @@
 /**
  * @file
- * @brief Brute-force beamform for kotekan pulsar obs
+ * @brief Brute-force beamform for kotekan tracking obs
  *  - hsaTrackingBeamform : public hsaCommand
  */
 
-#ifndef HSA_BEAMFORM_PULSAR_H
-#define HSA_BEAMFORM_PULSAR_H
+#ifndef HSA_TRACKING_BEAMFORM_H
+#define HSA_TRACKING_BEAMFORM_H
 
 #include "Config.hpp"             // for Config
 #include "bufferContainer.hpp"    // for bufferContainer
@@ -17,18 +17,18 @@
 #include <string>   // for string
 /**
  * @class hsaTrackingBeamform
- * @brief hsaCommand to brute-force beamform for pulsar obs
+ * @brief hsaCommand to brute-force beamform for tracking obs
  *
  *
- * This is an hsaCommand that launches the kernel (pulsar_beamformer) for
- * brute-force coherent beamforming and is most applicable to pulsar observations.
+ * This is an hsaCommand that launches the kernel (tracking_beamformer) for
+ * brute-force coherent beamforming and is most applicable to tracking observations.
  * An array of phases (shape @c n_trk x @c n_elem x 2) is calculated by hsaTrackingUpdatePhase.cpp.
- * The default number of pulsar beams to be formed is 10. The phases are matrix
+ * The default number of tracking beams to be formed is 10. The phases are matrix
  * multiplied with the input data (shape @c n_samp x @c n_elem) and the output is of dimension
  * (@c n_samp x @c n_trk x @c n_pol x 2). Output data type is 4-4b int packed as char. Currently
  * it is float, as we are pending on decision of data truncation scheme.
  *
- * @requires_kernel    pulsar_beamformer.hasco
+ * @requires_kernel    tracking_beamformer.hasco
  *
  * @par GPU Memory
  * @gpu_mem  input_reordered Input data of size input_frame_len
@@ -45,11 +45,11 @@
  *     @gpu_mem_metadata     none
  *
  * @conf   num_elements         Int (default 2048). Number of elements
- * @conf   num_pulsar           Int (default 10). Number of pulsar beams to be formed
+ * @conf   num_beams           Int (default 10). Number of beams to be formed
  * @conf   samples_per_data_set Int (default 49152). Number of time samples in a data set
  * @conf   num_pol              Int (default 2). Number of polarizations
- * @conf   command              String (defualt: "pulsarbf"). Kernel command.
- * @conf   kernel               String (default: "pulsar_beamformer.hsaco"). Kernel filename.
+ * @conf   command              String (defualt: "trackingbf"). Kernel command.
+ * @conf   kernel               String (default: "tracking_beamformer.hsaco"). Kernel filename.
  *
  * @todo   finalize output truncation scheme
  *
@@ -83,7 +83,7 @@ private:
 
     /// numbler of elements, should be 2048
     int32_t _num_elements;
-    /// number of pulsar beams to be formed, should be 10
+    /// number of beams to be formed, should be 10
     int32_t _num_beams;
     /// number of polarizations in the data, should be 2
     int32_t _num_pol;

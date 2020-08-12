@@ -22,8 +22,8 @@ REGISTER_HSA_COMMAND(hsaTrackingBeamform);
 hsaTrackingBeamform::hsaTrackingBeamform(Config& config, const std::string& unique_name,
                                          bufferContainer& host_buffers,
                                          hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device, "pulsarbf_float" KERNEL_EXT,
-               "pulsar_beamformer_nbeam.hsaco") {
+    hsaCommand(config, unique_name, host_buffers, device, "trackingbf_float" KERNEL_EXT,
+               "tracking_beamformer_nbeam.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");

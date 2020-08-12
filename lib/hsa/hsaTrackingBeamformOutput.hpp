@@ -1,5 +1,5 @@
-#ifndef HSA_BEAMFORM_PULSAR_OUTPUT_DATA_H
-#define HSA_BEAMFORM_PULSAR_OUTPUT_DATA_H
+#ifndef HSA_TRACKING_BEAMFORM_OUTPUT_DATA_H
+#define HSA_TRACKING_BEAMFORM_OUTPUT_DATA_H
 
 #include "Config.hpp"             // for Config
 #include "buffer.h"               // for Buffer

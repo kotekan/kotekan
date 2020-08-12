@@ -19,7 +19,7 @@ hsaTrackingBeamformOutput::hsaTrackingBeamformOutput(Config& config, const std::
 
     network_buffer = host_buffers.get_buffer("network_buf");
     register_consumer(network_buffer, unique_name.c_str());
-    output_buffer = host_buffers.get_buffer("beamform_pulsar_output_buf");
+    output_buffer = host_buffers.get_buffer("beamform_tracking_output_buf");
     register_producer(output_buffer, unique_name.c_str());
 
     network_buffer_id = 0;

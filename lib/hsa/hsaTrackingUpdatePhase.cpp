@@ -1,4 +1,4 @@
-// curl localhost:12048/updatable_config/pulsar_pointing/0  -X POST -H 'Content-Type:
+// curl localhost:12048/updatable_config/beam_pointing/0  -X POST -H 'Content-Type:
 // application/json' -d '{"ra":100.3, "dec":34.23, "scaling":99.0}'
 
 #include "hsaTrackingUpdatePhase.hpp"
@@ -88,14 +88,14 @@ hsaTrackingUpdatePhase::hsaTrackingUpdatePhase(Config& config, const std::string
     bank_use_1 = 0;
     second_last = 0;
 
-    // Register function to listen for new pulsar, and update ra and dec
+    // Register function to listen for new beam, and update ra and dec
     using namespace std::placeholders;
     for (int beam_id = 0; beam_id < _num_beams; beam_id++) {
         configUpdater::instance().subscribe(
             config.get<std::string>(unique_name, "updatable_config/trk_pt") + "/"
                 + std::to_string(beam_id),
             [beam_id, this](nlohmann::json& json_msg) -> bool {
-                return pulsar_grab_callback(json_msg, beam_id);
+                return tracking_grab_callback(json_msg, beam_id);
             });
     }
 }
@@ -124,7 +124,7 @@ int hsaTrackingUpdatePhase::wait_on_precondition(int gpu_frame_id) {
         if (frame == nullptr)
             return -1;
         DEBUG("Applying inital host gains from {:s}[{:d}]", gain_buf->buffer_name, gain_buf_id);
-        std::lock_guard<std::mutex> lock(_pulsar_lock);
+        std::lock_guard<std::mutex> lock(_beam_lock);
         memcpy(host_gain, (float*)gain_buf->frames[gain_buf_id], gain_len);
         update_phase = true;
         mark_frame_empty(gain_buf, unique_name.c_str(), gain_buf_id);
@@ -135,7 +135,7 @@ int hsaTrackingUpdatePhase::wait_on_precondition(int gpu_frame_id) {
             wait_for_full_frame_timeout(gain_buf, unique_name.c_str(), gain_buf_id, timeout);
         if (status == 0) {
             DEBUG("Applying new host gains from {:s}[{:d}]", gain_buf->buffer_name, gain_buf_id);
-            std::lock_guard<std::mutex> lock(_pulsar_lock);
+            std::lock_guard<std::mutex> lock(_beam_lock);
             memcpy(host_gain, (float*)gain_buf->frames[gain_buf_id], gain_len);
             update_phase = true;
             mark_frame_empty(gain_buf, unique_name.c_str(), gain_buf_id);
@@ -241,17 +241,17 @@ hsa_signal_t hsaTrackingUpdatePhase::execute(int gpu_frame_id, hsa_signal_t prec
         DEBUG("updating phase gain={:f} {:f}", host_gain[0], host_gain[1]);
         time_now_gps = get_gps_time(metadata_buf, metadata_buffer_id);
         if (time_now_gps.tv_sec == 0) {
-            ERROR("GPS time appears to be zero, bad news for pulsar timing!");
+            ERROR("GPS time appears to be zero, bad news for beam timing!");
         }
         // use whichever bank that has no lock
         if (bank_use_0 == 0) { // no more outstanding async copy using bank0
-            std::lock_guard<std::mutex> lock(_pulsar_lock);
+            std::lock_guard<std::mutex> lock(_beam_lock);
             beam_coord = beam_coord_latest_update;
             calculate_phase(beam_coord, time_now_gps, freq_MHz, host_gain, host_phase_0);
             bank_active = 0;
             update_phase = false;
         } else if (bank_use_1 == 0) { // no more outstanding async copy using bank1
-            std::lock_guard<std::mutex> lock(_pulsar_lock);
+            std::lock_guard<std::mutex> lock(_beam_lock);
             beam_coord = beam_coord_latest_update;
             calculate_phase(beam_coord, time_now_gps, freq_MHz, host_gain, host_phase_1);
             bank_active = 1;
@@ -296,9 +296,9 @@ void hsaTrackingUpdatePhase::finalize_frame(int frame_id) {
     }
 }
 
-bool hsaTrackingUpdatePhase::pulsar_grab_callback(nlohmann::json& json, const uint8_t beam_id) {
+bool hsaTrackingUpdatePhase::tracking_grab_callback(nlohmann::json& json, const uint8_t beam_id) {
     {
-        std::lock_guard<std::mutex> lock(_pulsar_lock);
+        std::lock_guard<std::mutex> lock(_beam_lock);
         try {
             beam_coord_latest_update.ra[beam_id] = json.at("ra").get<float>();
         } catch (std::exception const& e) {
