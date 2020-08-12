@@ -53,7 +53,7 @@ int hsaTrackingBeamformOutput::wait_on_precondition(int gpu_frame_id) {
 
 hsa_signal_t hsaTrackingBeamformOutput::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
     void* gpu_output_ptr =
-        device.get_gpu_memory_array("bf_psr_output", gpu_frame_id, output_buffer->frame_size);
+        device.get_gpu_memory_array("bf_trk_output", gpu_frame_id, output_buffer->frame_size);
 
     void* host_output_ptr = (void*)output_buffer->frames[output_buffer_excute_id];
 

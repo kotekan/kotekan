@@ -70,12 +70,12 @@ public:
     bool update_gains_frb_callback(nlohmann::json& json);
 
     /// Endpoint for providing new directory path for PSR gain updates
-    bool update_gains_psr_callback(nlohmann::json& json);
+    bool update_gains_trk_callback(nlohmann::json& json);
 
     /// Read gain file for frb
     void read_gain_frb();
-    /// Read gain file for psr
-    void read_gain_psr();
+    /// Read gain file for trk
+    void read_gain_trk();
 
 private:
     std::condition_variable cond_var;
@@ -89,7 +89,7 @@ private:
 
     /// Directory path where gain files are
     std::string _gain_dir_frb;
-    vector<std::string> _gain_dir_psr;
+    vector<std::string> _gain_dir_trk;
     /// Default gain values if gain file is missing for this freq, currently set to 1+1j
     vector<float> default_gains;
 
@@ -110,7 +110,7 @@ private:
 
     /// Flag to control gains to be only loaded on request.
     bool update_gains_frb;
-    bool update_gains_psr;
+    bool update_gains_trk;
 
     /// Number of elements, should be 2048
     uint32_t _num_elements;

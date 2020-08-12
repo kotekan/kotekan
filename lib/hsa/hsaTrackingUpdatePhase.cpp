@@ -92,7 +92,7 @@ hsaTrackingUpdatePhase::hsaTrackingUpdatePhase(Config& config, const std::string
     using namespace std::placeholders;
     for (int beam_id = 0; beam_id < _num_beams; beam_id++) {
         configUpdater::instance().subscribe(
-            config.get<std::string>(unique_name, "updatable_config/psr_pt") + "/"
+            config.get<std::string>(unique_name, "updatable_config/trk_pt") + "/"
                 + std::to_string(beam_id),
             [beam_id, this](nlohmann::json& json_msg) -> bool {
                 return pulsar_grab_callback(json_msg, beam_id);
@@ -101,7 +101,7 @@ hsaTrackingUpdatePhase::hsaTrackingUpdatePhase(Config& config, const std::string
 }
 
 hsaTrackingUpdatePhase::~hsaTrackingUpdatePhase() {
-    restServer::instance().remove_json_callback(endpoint_psrcoord);
+    restServer::instance().remove_json_callback(endpoint_trkcoord);
     hsa_host_free(host_phase_0);
     hsa_host_free(host_phase_1);
     hsa_host_free(bankID);
@@ -317,7 +317,7 @@ bool hsaTrackingUpdatePhase::pulsar_grab_callback(nlohmann::json& json, const ui
             WARN("[PSR] Pointing update fail to read scaling factor {:s}", e.what());
             return false;
         }
-        INFO("[psr] Updated Beam={:d} RA={:.2f} Dec={:.2f} Scl={:d}", beam_id,
+        INFO("[trk] Updated Beam={:d} RA={:.2f} Dec={:.2f} Scl={:d}", beam_id,
              beam_coord_latest_update.ra[beam_id], beam_coord_latest_update.dec[beam_id],
              beam_coord_latest_update.scaling[beam_id]);
         update_phase = true;

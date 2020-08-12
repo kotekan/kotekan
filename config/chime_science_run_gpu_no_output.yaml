@@ -210,7 +210,7 @@ updatable_config:
     # not correlator/FPGA input order.
     element_index: 500
   gating:
-    psr0_config:
+    trk0_config:
       kotekan_update_endpoint: "json"
       enabled: false
       # B0329 (2018/11/14)
@@ -438,22 +438,22 @@ vis_buffers:
   visbuf_eig_10s_merge:
     kotekan_buffer: vis
   # Buffers for gated
-  visbuf_psr0_5s_0:
+  visbuf_trk0_5s_0:
     kotekan_buffer: vis
-  visbuf_psr0_5s_1:
+  visbuf_trk0_5s_1:
     kotekan_buffer: vis
-  visbuf_psr0_5s_2:
+  visbuf_trk0_5s_2:
     kotekan_buffer: vis
-  visbuf_psr0_5s_3:
+  visbuf_trk0_5s_3:
     kotekan_buffer: vis
-  visbuf_psr0_5s_merge:
+  visbuf_trk0_5s_merge:
     kotekan_buffer: vis
   # Increase the buffer depth for the pre-send buffers
   visbuf_5s_26m:
     kotekan_buffer: vis
     num_prod: 4096
     num_frames: 10 * buffer_depth
-  visbuf_psr0_5s_26m:
+  visbuf_trk0_5s_26m:
     kotekan_buffer: vis
     num_prod: 4096
     num_frames: 10 * buffer_depth
@@ -767,7 +767,7 @@ gpu:
   n_intg: 24576 / num_sub_frames
   frame_arrival_period: samples_per_data_set / 390625
   updatable_config:
-    psr_pt: /updatable_config/pulsar_pointing
+    trk_pt: /updatable_config/pulsar_pointing
     rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
     rfi_var_element_index: /updatable_config/rfi_var_element_index
   gpu_0:
@@ -939,7 +939,7 @@ rfi_update_metadata:
 read_gain:
   updatable_config:
     gain_frb: /updatable_config/frb_gain
-    gain_psr: /updatable_config/pulsar_gain
+    gain_trk: /updatable_config/pulsar_gain
   read_gain0:
     kotekan_stage: ReadGain
     in_buf: network_buffer_0
@@ -1419,39 +1419,39 @@ vis_accumulate:
   # prevents referencing the higher level samples_per_data_set and dividing it
   samples_per_data_set: 12288
   updatable_config:
-    psr0: "/updatable_config/gating/psr0_config"
+    trk0: "/updatable_config/gating/trk0_config"
   acc0:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_0
     out_buf: visbuf_5s_0
     gating:
-      psr0:
+      trk0:
         mode: pulsar
-        buf: visbuf_psr0_5s_0
+        buf: visbuf_trk0_5s_0
   acc1:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_1
     out_buf: visbuf_5s_1
     gating:
-      psr0:
+      trk0:
         mode: pulsar
-        buf: visbuf_psr0_5s_1
+        buf: visbuf_trk0_5s_1
   acc2:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_2
     out_buf: visbuf_5s_2
     gating:
-      psr0:
+      trk0:
         mode: pulsar
-        buf: visbuf_psr0_5s_2
+        buf: visbuf_trk0_5s_2
   acc3:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_3
     out_buf: visbuf_5s_3
     gating:
-      psr0:
+      trk0:
         mode: pulsar
-        buf: visbuf_psr0_5s_3
+        buf: visbuf_trk0_5s_3
 
 #### Perform all extra time integration and calculate eigenvalues ####
 vis_merge_5s:
@@ -1464,15 +1464,15 @@ vis_merge_5s:
     - visbuf_5s_3
   out_buf: visbuf_5s_merge
 
-vis_merge_gated_psr0:
+vis_merge_gated_trk0:
   kotekan_stage: bufferMerge
   timeout: 0.1
   in_bufs:
-    - visbuf_psr0_5s_0
-    - visbuf_psr0_5s_1
-    - visbuf_psr0_5s_2
-    - visbuf_psr0_5s_3
-  out_buf: visbuf_psr0_5s_merge
+    - visbuf_trk0_5s_0
+    - visbuf_trk0_5s_1
+    - visbuf_trk0_5s_2
+    - visbuf_trk0_5s_3
+  out_buf: visbuf_trk0_5s_merge
 
 vis_int_10s:
   num_samples: 2
@@ -1541,10 +1541,10 @@ vis_debug:
   input_list: [1225, 1521]  # 26m channels
 
 # Generate the 26m gated stream
-26m_psr0_subset:
+26m_trk0_subset:
   kotekan_stage: prodSubset
-  in_buf: visbuf_psr0_5s_merge
-  out_buf: visbuf_psr0_5s_26m
+  in_buf: visbuf_trk0_5s_merge
+  out_buf: visbuf_trk0_5s_26m
   prod_subset_type: have_inputs
   input_list: [1225, 1521]  # 26m channels
 
@@ -1561,9 +1561,9 @@ buffer_send:
     #kotekan_stage: bufferSend
     buf: visbuf_5s_26m
     server_port: 11025
-  26m_psr0:
+  26m_trk0:
     #kotekan_stage: bufferSend
-    buf: visbuf_psr0_5s_26m
+    buf: visbuf_trk0_5s_26m
     server_port: 11026
 
 
