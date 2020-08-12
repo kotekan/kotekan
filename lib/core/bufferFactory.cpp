@@ -1,6 +1,7 @@
 #include "bufferFactory.hpp"
 
 #include "Config.hpp"         // for Config
+#include "HFBFrameView.hpp"   // for HFBFrameView
 #include "buffer.h"           // for create_buffer
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.h"         // for metadataPool // IWYU pragma: keep
@@ -88,25 +89,28 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
                     "and metadata pool {:s} on numa_node {:d}",
                     name, num_frames, frame_size, metadataPool_name, numa_node);
 
-        return create_buffer(num_frames, frame_size, pool, name.c_str(), numa_node);
+        return create_buffer(num_frames, frame_size, pool, name.c_str(), type_name.c_str(),
+                             numa_node);
     }
 
     if (type_name == "vis") {
-        int num_elements = config.get<int>(location, "num_elements");
-        int num_ev = config.get<int>(location, "num_ev");
-        int num_prod = config.get_default<int>(location, "num_prod", -1);
+        size_t frame_size = VisFrameView::calculate_frame_size(config, location);
 
-        if (num_prod < 0) {
-            num_prod = num_elements * (num_elements + 1) / 2;
-        }
-
-        auto layout = VisFrameView::calculate_buffer_layout(num_elements, num_prod, num_ev);
-        uint32_t frame_size = layout.first;
-
-        INFO_NON_OO("Creating VisBuffer named {:s} with {:d} frames, frame size of {:d} and "
+        INFO_NON_OO("Creating visBuffer named {:s} with {:d} frames, frame size of {:d} and "
                     "metadata pool {:s}",
                     name, num_frames, frame_size, metadataPool_name);
-        return create_buffer(num_frames, frame_size, pool, name.c_str(), numa_node);
+        return create_buffer(num_frames, frame_size, pool, name.c_str(), type_name.c_str(),
+                             numa_node);
+    }
+
+    if (type_name == "hfb") {
+        size_t frame_size = HFBFrameView::calculate_frame_size(config, location);
+
+        INFO_NON_OO("Creating hfbBuffer named {:s} with {:d} frames, frame size of {:d} and "
+                    "metadata pool {:s}",
+                    name, num_frames, frame_size, metadataPool_name);
+        return create_buffer(num_frames, frame_size, pool, name.c_str(), type_name.c_str(),
+                             numa_node);
     }
 
     // No metadata found
