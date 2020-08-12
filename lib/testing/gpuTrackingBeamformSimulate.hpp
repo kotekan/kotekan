@@ -15,7 +15,7 @@
 #include <vector>      // for vector
 
 /**
- * @class gpuBeamformPulsarSimulate
+ * @class gpuTrackingBeamformSimulate
  * @brief CPU version of pulsar beamformer for verification
  *
  * Read hsaTrackingUpdatePhase and hsaTrackingBeamform to find out what
@@ -27,13 +27,13 @@
  *
  */
 
-class gpuBeamformPulsarSimulate : public kotekan::Stage {
+class gpuTrackingBeamformSimulate : public kotekan::Stage {
 public:
     /// Constructor
-    gpuBeamformPulsarSimulate(kotekan::Config& config, const std::string& unique_name,
+    gpuTrackingBeamformSimulate(kotekan::Config& config, const std::string& unique_name,
                               kotekan::bufferContainer& buffer_container);
     /// Destructor
-    ~gpuBeamformPulsarSimulate();
+    ~gpuTrackingBeamformSimulate();
     /// Main loop, read gains, calculate new phase, brute-force beamform
     void main_thread() override;
 

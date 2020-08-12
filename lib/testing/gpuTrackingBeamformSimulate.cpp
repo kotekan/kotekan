@@ -1,4 +1,4 @@
-#include "gpuBeamformPulsarSimulate.hpp"
+#include "gpuTrackingBeamformSimulate.hpp"
 
 #include "Config.hpp"       // for Config
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
@@ -40,12 +40,12 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_STAGE(gpuBeamformPulsarSimulate);
+REGISTER_KOTEKAN_STAGE(gpuTrackingBeamformSimulate);
 
-gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config, const std::string& unique_name,
+gpuTrackingBeamformSimulate::gpuTrackingBeamformSimulate(Config& config, const std::string& unique_name,
                                                      bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
-          std::bind(&gpuBeamformPulsarSimulate::main_thread, this)) {
+          std::bind(&gpuTrackingBeamformSimulate::main_thread, this)) {
 
     // Apply config.
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
@@ -96,7 +96,7 @@ gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config, const std::
     }
 }
 
-gpuBeamformPulsarSimulate::~gpuBeamformPulsarSimulate() {
+gpuTrackingBeamformSimulate::~gpuTrackingBeamformSimulate() {
     free(input_unpacked);
     free(cpu_output);
     free(phase);
@@ -104,7 +104,7 @@ gpuBeamformPulsarSimulate::~gpuBeamformPulsarSimulate() {
     free(reorder_map_c);
 }
 
-void gpuBeamformPulsarSimulate::reorder(unsigned char* data, int* map) {
+void gpuTrackingBeamformSimulate::reorder(unsigned char* data, int* map) {
     int* tmp512;
     tmp512 = (int*)malloc(_num_elements * sizeof(int));
     for (int j = 0; j < _samples_per_data_set; j++) {
@@ -122,7 +122,7 @@ void gpuBeamformPulsarSimulate::reorder(unsigned char* data, int* map) {
     free(tmp512);
 }
 
-void gpuBeamformPulsarSimulate::calculate_phase(struct beamCoord beam_coord, timespec time_now,
+void gpuTrackingBeamformSimulate::calculate_phase(struct beamCoord beam_coord, timespec time_now,
                                                 float freq_now, float* gains, double* output) {
     float FREQ = freq_now;
     struct tm* timeinfo;
@@ -185,7 +185,7 @@ void gpuBeamformPulsarSimulate::calculate_phase(struct beamCoord beam_coord, tim
     }
 }
 
-void gpuBeamformPulsarSimulate::cpu_beamform_pulsar(double* input_unpacked, double* phase,
+void gpuTrackingBeamformSimulate::cpu_beamform_pulsar(double* input_unpacked, double* phase,
                                                     float* cpu_output, int _samples_per_data_set,
                                                     int _num_elements, int _num_pulsar,
                                                     int _num_pol) {
@@ -214,7 +214,7 @@ void gpuBeamformPulsarSimulate::cpu_beamform_pulsar(double* input_unpacked, doub
     }
 }
 
-void gpuBeamformPulsarSimulate::main_thread() {
+void gpuTrackingBeamformSimulate::main_thread() {
 
     auto& tel = Telescope::instance();
 
