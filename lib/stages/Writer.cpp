@@ -1,8 +1,8 @@
 #include "Writer.hpp"
 
 #include "Config.hpp"            // for Config
-#include "Hash.hpp"              // for Hash, operator<
 #include "HFBFrameView.hpp"      // for HFBFrameView
+#include "Hash.hpp"              // for Hash, operator<
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "bufferContainer.hpp"   // for bufferContainer

@@ -1,8 +1,8 @@
 
 #include "hfbFileRaw.hpp"
 
-#include "Hash.hpp"           // for Hash
 #include "HFBFrameView.hpp"   // for HFBFrameView, HFBMetadata
+#include "Hash.hpp"           // for Hash
 #include "datasetManager.hpp" // for datasetManager, dset_id_t
 #include "datasetState.hpp"   // for stackState, eigenvalueState, freqState, gatingState, input...
 

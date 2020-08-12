@@ -1,11 +1,11 @@
 #include "integrateHFBData.hpp"
 
+#include "HFBMetadata.hpp"
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"
 #include "buffer.h" // for mark_frame_empty, Buffer, register_consumer, wait_for...
 #include "chimeMetadata.h"
 #include "datasetManager.hpp" // for state_id_t, datasetManager, dset_id_t
-#include "HFBMetadata.hpp"
 #include "kotekanLogging.hpp" // for DEBUG, DEBUG2
 #include "version.h"          // for get_git_commit_hash
 #include "visUtil.hpp"        // for freq_ctype
