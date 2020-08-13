@@ -22,10 +22,12 @@
  *
  * This is an hsaCommand that launches the kernel (tracking_beamformer) for
  * brute-force coherent beamforming and is most applicable to tracking observations.
- * An array of phases (shape @c n_tracking x @c n_elem x 2) is calculated by hsaTrackingUpdatePhase.cpp.
+ * An array of phases (shape @c n_tracking x @c n_elem x 2) is calculated by
+ hsaTrackingUpdatePhase.cpp.
  * The default number of tracking beams to be formed is 10. The phases are matrix
  * multiplied with the input data (shape @c n_samp x @c n_elem) and the output is of dimension
- * (@c n_samp x @c n_tracking x @c n_pol x 2). Output data type is 4-4b int packed as char. Currently
+ * (@c n_samp x @c n_tracking x @c n_pol x 2). Output data type is 4-4b int packed as char.
+ Currently
  * it is float, as we are pending on decision of data truncation scheme.
  *
  * @requires_kernel    tracking_beamformer.hasco
@@ -74,11 +76,12 @@ public:
 private:
     /// Input length, should be nsamp x n_elem x 2 for complex / 2 since we pack two 4-bit in one
     int32_t input_frame_len;
-    /// Output length, should be 10tracking x nsamp x 2 pol x 2 for complex / 2 since we pack two 4-bit
-    /// in one
+    /// Output length, should be 10tracking x nsamp x 2 pol x 2 for complex / 2 since we pack two
+    /// 4-bit in one
     int32_t output_frame_len;
 
-    /// Length of the array of phases for beamforming, should be 10 tracking * 2048 elem * 2 for complex
+    /// Length of the array of phases for beamforming, should be 10 tracking * 2048 elem * 2 for
+    /// complex
     int32_t phase_len;
 
     /// numbler of elements, should be 2048

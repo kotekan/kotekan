@@ -88,7 +88,8 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
             gainfrb, std::bind(&ReadGain::update_gains_frb_callback, this, _1));
 
     // listen for gain updates PSR
-    std::string gaintracking = config.get<std::string>(unique_name, "updatable_config/gain_tracking");
+    std::string gaintracking =
+        config.get<std::string>(unique_name, "updatable_config/gain_tracking");
     if (gaintracking.length() > 0)
         configUpdater::instance().subscribe(
             gaintracking, std::bind(&ReadGain::update_gains_tracking_callback, this, _1));
@@ -212,8 +213,8 @@ void ReadGain::read_gain_tracking() {
             }
         } else {
             if (_num_elements
-                != fread(&out_frame_tracking[b * _num_elements * 2], sizeof(float) * 2, _num_elements,
-                         ptr_myfile)) {
+                != fread(&out_frame_tracking[b * _num_elements * 2], sizeof(float) * 2,
+                         _num_elements, ptr_myfile)) {
                 WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
                      "gains",
                      filename);
