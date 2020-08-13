@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief read in new gain file for FRB/PSR when available
+ * @brief read in new gain file for FRB/TRACKING when available
  *  - ReadGain : public kotekan::Stage
  */
 
@@ -26,7 +26,7 @@ using std::vector;
 
 /**
  * @class ReadGain
- * @brief read in new gain files for FRB/PSR when available
+ * @brief read in new gain files for FRB/TRACKING when available
  *
  * @par Buffers
  * @buffer gain_frb_buf Array of gains size 2048*2
@@ -52,7 +52,7 @@ using std::vector;
  *
  * The gain path is registered as a subscriber to an updatable config block.
  * For the FRB, it is one directory path: '{"frb_gain_dir":"the_new_path"}'
- * For the PSR, it is an array of 10 paths for each of the 10 beams:
+ * For the TRACKING, it is an array of 10 paths for each of the 10 beams:
  * '{"pulsar_gain_dir":["path0","path1","path2","path3","path4","path5","path6","path7","path8","path9"]}'
  *
  * @author Cherry Ng
@@ -69,7 +69,7 @@ public:
     /// Endpoint for providing new directory path for FRB gain updates
     bool update_gains_frb_callback(nlohmann::json& json);
 
-    /// Endpoint for providing new directory path for PSR gain updates
+    /// Endpoint for providing new directory path for TRACKING gain updates
     bool update_gains_tracking_callback(nlohmann::json& json);
 
     /// Read gain file for frb

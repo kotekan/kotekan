@@ -1,8 +1,8 @@
 ##########################################
 #
-# PSR verification
+# TRACKING verification
 #
-# Runs both GPU and CPU PSR beamformer pipelines, include re-ordering, read gains files, calculate phase shift, brute-force beamforming
+# Runs both GPU and CPU TRACKING beamformer pipelines, include re-ordering, read gains files, calculate phase shift, brute-force beamforming
 # Note that this CPU version doesn't have any endpoint, so it won't be able to accept changes in gain paths or source coordinates.
 # Also, testDataCheck might report some errors in the verification. but I think those happen when the output value is very small, 
 # and it occurs only to a small fraction of the output value. Might be something to do with the precision in float vs double.

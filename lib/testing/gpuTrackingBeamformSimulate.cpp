@@ -60,7 +60,7 @@ gpuTrackingBeamformSimulate::gpuTrackingBeamformSimulate(Config& config,
     _reorder_map = config.get<std::vector<int32_t>>(unique_name, "reorder_map");
     _gain_dir =
         config.get<std::vector<std::string>>(unique_name, "tracking_gain/tracking_gain_dir");
-    INFO("[PSR CPU] start with gain {:s} {:s} {:s}", _gain_dir[0], _gain_dir[1], _gain_dir[2]);
+    INFO("[TRACKING CPU] start with gain {:s} {:s} {:s}", _gain_dir[0], _gain_dir[1], _gain_dir[2]);
     std::vector<float> dg = {0.0, 0.0}; // re,im
     default_gains = config.get_default<std::vector<float>>(unique_name, "frb_missing_gains", dg);
 
