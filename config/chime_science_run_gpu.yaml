@@ -260,7 +260,7 @@ main_pool:
 
 # HFB Metadata Pool
 hfb_pool:
-  kotekan_metadata_pool: hfbMetadata
+  kotekan_metadata_pool: HFBMetadata
   num_metadata_objects: 30 * buffer_depth
 
 # Input data buffers from the DPDK stage

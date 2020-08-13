@@ -5,7 +5,7 @@
 # architectures (from Haswell to Skylake-AVX512 as of 2020/03). Because our
 # use of ccache shares compiled objects we must target our build for the
 # lowest architecture available or we will occasionally crash with SIGILL
-# when a newer instruction is called than is available.
+# when a newer instruction is called than is available. 
 
 name: kotekan-ci-test
 on:
