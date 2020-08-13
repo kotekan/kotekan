@@ -149,8 +149,8 @@ private:
     /// Flag to trigger phase update, either because of endpt message or every second
     bool update_phase;
 
-    /// Endpoint for updating trk coordinates
-    std::string endpoint_trkcoord;
+    /// Endpoint for updating tracking coordinates
+    std::string endpoint_trackingcoord;
 
     /// Config base
     /// @todo this is a huge hack replace with updatable config

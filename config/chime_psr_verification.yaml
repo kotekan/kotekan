@@ -219,7 +219,7 @@ read_gain:
     kotekan_stage: ReadGain
     updatable_config:
       gain_frb: /updatable_config/frb_gain
-      gain_trk: /updatable_config/pulsar_gain
+      gain_tracking: /updatable_config/pulsar_gain
     in_buf: gpu_input_buffer_0 
     gain_frb_buf: gain_frb_buffer
     gain_tracking_buf: gain_tracking_buffer
@@ -245,8 +245,8 @@ gpu:
     kotekan_stage: hsaProcess
     gpu_id: 0
     updatable_config:
-      gain_trk: /updatable_config/pulsar_gain
-      trk_pt: /updatable_config/pulsar_pointing
+      gain_tracking: /updatable_config/pulsar_gain
+      tracking_pt: /updatable_config/pulsar_pointing
     bad_inputs: []
     in_buffers:
       network_buf: gpu_input_buffer_0

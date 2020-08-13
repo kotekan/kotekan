@@ -76,7 +76,7 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     gain_tracking_buf = get_buffer("gain_tracking_buf");
     gain_tracking_buf_id = 0;
     register_producer(gain_tracking_buf, unique_name.c_str());
-    update_gains_trk = false;
+    update_gains_tracking = false;
 
     using namespace std::placeholders;
 
@@ -88,10 +88,10 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
             gainfrb, std::bind(&ReadGain::update_gains_frb_callback, this, _1));
 
     // listen for gain updates PSR
-    std::string gaintrk = config.get<std::string>(unique_name, "updatable_config/gain_trk");
-    if (gaintrk.length() > 0)
+    std::string gaintracking = config.get<std::string>(unique_name, "updatable_config/gain_tracking");
+    if (gaintracking.length() > 0)
         configUpdater::instance().subscribe(
-            gaintrk, std::bind(&ReadGain::update_gains_trk_callback, this, _1));
+            gaintracking, std::bind(&ReadGain::update_gains_tracking_callback, this, _1));
 }
 
 bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
@@ -114,16 +114,16 @@ bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
     return true;
 }
 
-bool ReadGain::update_gains_trk_callback(nlohmann::json& json) {
-    if (update_gains_trk) {
+bool ReadGain::update_gains_tracking_callback(nlohmann::json& json) {
+    if (update_gains_tracking) {
         WARN("[PSR] cannot handle two back-to-back gain updates, rejecting the latter");
         return true;
     }
     try {
-        _gain_dir_trk = json.at("pulsar_gain_dir").get<std::vector<std::string>>();
+        _gain_dir_tracking = json.at("pulsar_gain_dir").get<std::vector<std::string>>();
         std::string output_msg = "[PSR] Updating gains from ";
         for (int i = 0; i < _num_beams; i++) {
-            output_msg += _gain_dir_trk[i];
+            output_msg += _gain_dir_tracking[i];
             output_msg += " ";
         }
         INFO("{:s}", output_msg);
@@ -133,7 +133,7 @@ bool ReadGain::update_gains_trk_callback(nlohmann::json& json) {
     }
     {
         std::lock_guard<std::mutex> lock(mux);
-        update_gains_trk = true;
+        update_gains_tracking = true;
     }
     cond_var.notify_all();
 
@@ -188,10 +188,10 @@ void ReadGain::read_gain_frb() {
     gain_frb_buf_id = (gain_frb_buf_id + 1) % gain_frb_buf->num_frames;
 }
 
-void ReadGain::read_gain_trk() {
-    float* out_frame_trk =
+void ReadGain::read_gain_tracking() {
+    float* out_frame_tracking =
         (float*)wait_for_empty_frame(gain_tracking_buf, unique_name.c_str(), gain_tracking_buf_id);
-    if (out_frame_trk == nullptr) {
+    if (out_frame_tracking == nullptr) {
         return;
     }
     double start_time = current_time();
@@ -200,27 +200,27 @@ void ReadGain::read_gain_trk() {
     bool all_beams_successful_update = true;
     for (int b = 0; b < _num_beams; b++) {
         snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",
-                 _gain_dir_trk[b].c_str(), freq_idx);
+                 _gain_dir_tracking[b].c_str(), freq_idx);
         INFO("PSR Loading gains from {:s}", filename);
         ptr_myfile = fopen(filename, "rb");
         if (ptr_myfile == nullptr) {
             WARN("GPU Cannot open gain file {:s}", filename);
             all_beams_successful_update = false;
             for (uint i = 0; i < _num_elements; i++) {
-                out_frame_trk[(b * _num_elements + i) * 2] = default_gains[0];
-                out_frame_trk[(b * _num_elements + i) * 2 + 1] = default_gains[1];
+                out_frame_tracking[(b * _num_elements + i) * 2] = default_gains[0];
+                out_frame_tracking[(b * _num_elements + i) * 2 + 1] = default_gains[1];
             }
         } else {
             if (_num_elements
-                != fread(&out_frame_trk[b * _num_elements * 2], sizeof(float) * 2, _num_elements,
+                != fread(&out_frame_tracking[b * _num_elements * 2], sizeof(float) * 2, _num_elements,
                          ptr_myfile)) {
                 WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
                      "gains",
                      filename);
                 all_beams_successful_update = false;
                 for (uint i = 0; i < _num_elements; i++) {
-                    out_frame_trk[(b * _num_elements + i) * 2] = default_gains[0];
-                    out_frame_trk[(b * _num_elements + i) * 2 + 1] = default_gains[1];
+                    out_frame_tracking[(b * _num_elements + i) * 2] = default_gains[0];
+                    out_frame_tracking[(b * _num_elements + i) * 2 + 1] = default_gains[1];
                 }
             }
             fclose(ptr_myfile);
@@ -235,8 +235,8 @@ void ReadGain::read_gain_trk() {
     mark_frame_full(gain_tracking_buf, unique_name.c_str(), gain_tracking_buf_id);
     DEBUG("Maked gain_tracking_buf frame {:d} full", gain_tracking_buf_id);
     INFO("Time required to load PSR gains: {:f}", current_time() - start_time);
-    DEBUG("Gain_tracking_buf: {:.2f} {:.2f} {:.2f} ", out_frame_trk[0], out_frame_trk[1],
-          out_frame_trk[2]);
+    DEBUG("Gain_tracking_buf: {:.2f} {:.2f} {:.2f} ", out_frame_tracking[0], out_frame_tracking[1],
+          out_frame_tracking[2]);
     gain_tracking_buf_id = (gain_tracking_buf_id + 1) % gain_tracking_buf->num_frames;
 }
 
@@ -260,7 +260,7 @@ void ReadGain::main_thread() {
     while (!stop_thread) {
         {
             std::unique_lock<std::mutex> lock(mux);
-            while (!update_gains_frb && !update_gains_trk && !stop_thread) {
+            while (!update_gains_frb && !update_gains_tracking && !stop_thread) {
                 cond_var.wait_for(lock, std::chrono::seconds(5));
             }
         }
@@ -270,9 +270,9 @@ void ReadGain::main_thread() {
             read_gain_frb();
             update_gains_frb = false;
         }
-        if (update_gains_trk) {
-            read_gain_trk();
-            update_gains_trk = false;
+        if (update_gains_tracking) {
+            read_gain_tracking();
+            update_gains_tracking = false;
         }
     }
 }

@@ -57,7 +57,7 @@ hsa_signal_t hsaTrackingBeamform::execute(int gpu_frame_id, hsa_signal_t precede
     args.input_buffer = device.get_gpu_memory("input_reordered", input_frame_len);
     args.phase_buffer = device.get_gpu_memory_array("beamform_phase", gpu_frame_id, phase_len);
     args.output_buffer =
-        device.get_gpu_memory_array("bf_trk_output", gpu_frame_id, output_frame_len);
+        device.get_gpu_memory_array("bf_tracking_output", gpu_frame_id, output_frame_len);
 
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
