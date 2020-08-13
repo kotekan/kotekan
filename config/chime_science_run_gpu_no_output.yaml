@@ -438,22 +438,22 @@ vis_buffers:
   visbuf_eig_10s_merge:
     kotekan_buffer: vis
   # Buffers for gated
-  visbuf_tracking0_5s_0:
+  visbuf_psr0_5s_0:
     kotekan_buffer: vis
-  visbuf_tracking0_5s_1:
+  visbuf_psr0_5s_1:
     kotekan_buffer: vis
-  visbuf_tracking0_5s_2:
+  visbuf_psr0_5s_2:
     kotekan_buffer: vis
-  visbuf_tracking0_5s_3:
+  visbuf_psr0_5s_3:
     kotekan_buffer: vis
-  visbuf_tracking0_5s_merge:
+  visbuf_psr0_5s_merge:
     kotekan_buffer: vis
   # Increase the buffer depth for the pre-send buffers
   visbuf_5s_26m:
     kotekan_buffer: vis
     num_prod: 4096
     num_frames: 10 * buffer_depth
-  visbuf_tracking0_5s_26m:
+  visbuf_psr0_5s_26m:
     kotekan_buffer: vis
     num_prod: 4096
     num_frames: 10 * buffer_depth
@@ -1427,7 +1427,7 @@ vis_accumulate:
     gating:
       tracking0:
         mode: pulsar
-        buf: visbuf_tracking0_5s_0
+        buf: visbuf_psr0_5s_0
   acc1:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_1
@@ -1435,7 +1435,7 @@ vis_accumulate:
     gating:
       tracking0:
         mode: pulsar
-        buf: visbuf_tracking0_5s_1
+        buf: visbuf_psr0_5s_1
   acc2:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_2
@@ -1443,7 +1443,7 @@ vis_accumulate:
     gating:
       tracking0:
         mode: pulsar
-        buf: visbuf_tracking0_5s_2
+        buf: visbuf_psr0_5s_2
   acc3:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_3
@@ -1451,7 +1451,7 @@ vis_accumulate:
     gating:
       tracking0:
         mode: pulsar
-        buf: visbuf_tracking0_5s_3
+        buf: visbuf_psr0_5s_3
 
 #### Perform all extra time integration and calculate eigenvalues ####
 vis_merge_5s:
@@ -1468,11 +1468,11 @@ vis_merge_gated_tracking0:
   kotekan_stage: bufferMerge
   timeout: 0.1
   in_bufs:
-    - visbuf_tracking0_5s_0
-    - visbuf_tracking0_5s_1
-    - visbuf_tracking0_5s_2
-    - visbuf_tracking0_5s_3
-  out_buf: visbuf_tracking0_5s_merge
+    - visbuf_psr0_5s_0
+    - visbuf_psr0_5s_1
+    - visbuf_psr0_5s_2
+    - visbuf_psr0_5s_3
+  out_buf: visbuf_psr0_5s_merge
 
 vis_int_10s:
   num_samples: 2
@@ -1543,8 +1543,8 @@ vis_debug:
 # Generate the 26m gated stream
 26m_tracking0_subset:
   kotekan_stage: prodSubset
-  in_buf: visbuf_tracking0_5s_merge
-  out_buf: visbuf_tracking0_5s_26m
+  in_buf: visbuf_psr0_5s_merge
+  out_buf: visbuf_psr0_5s_26m
   prod_subset_type: have_inputs
   input_list: [1225, 1521]  # 26m channels
 
@@ -1563,7 +1563,7 @@ buffer_send:
     server_port: 11025
   26m_tracking0:
     #kotekan_stage: bufferSend
-    buf: visbuf_tracking0_5s_26m
+    buf: visbuf_psr0_5s_26m
     server_port: 11026
 
 
