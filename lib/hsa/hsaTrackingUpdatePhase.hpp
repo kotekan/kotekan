@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief Pulsar update phases for brute-force beamform
+ * @brief Tracking beam update phases for brute-force beamform
  *  - hsaTrackingUpdatePhase : public hsaCommand
  */
 

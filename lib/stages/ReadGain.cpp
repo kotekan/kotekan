@@ -40,8 +40,8 @@ REGISTER_KOTEKAN_STAGE(ReadGain);
 // FRB
 // curl localhost:12048/frb_gain -X POST -H 'Content-Type: appication/json' -d '{"frb_gain_dir":"the_new_path"}'
 // PSR
-// curl localhost:12048/updatable_config/pulsar_gain -X POST -H 'Content-Type: application/json' -d
-// '{"pulsar_gain_dir":["path0","path1","path2","path3","path4","path5","path6","path7","path8","path9"]}'
+// curl localhost:12048/updatable_config/tracking_gain -X POST -H 'Content-Type: application/json' -d
+// '{"tracking_gain_dir":["path0","path1","path2","path3","path4","path5","path6","path7","path8","path9"]}'
 //
 // clang-format on
 
@@ -120,7 +120,7 @@ bool ReadGain::update_gains_tracking_callback(nlohmann::json& json) {
         return true;
     }
     try {
-        _gain_dir_tracking = json.at("pulsar_gain_dir").get<std::vector<std::string>>();
+        _gain_dir_tracking = json.at("tracking_gain_dir").get<std::vector<std::string>>();
         std::string output_msg = "[PSR] Updating gains from ";
         for (int i = 0; i < _num_beams; i++) {
             output_msg += _gain_dir_tracking[i];
@@ -227,11 +227,11 @@ void ReadGain::read_gain_tracking() {
         }
     } // end beam
     if (all_beams_successful_update) {
-        gains_last_update_success_metric.labels({"pulsar"}).set(1);
+        gains_last_update_success_metric.labels({"tracking"}).set(1);
     } else {
-        gains_last_update_success_metric.labels({"pulsar"}).set(0);
+        gains_last_update_success_metric.labels({"tracking"}).set(0);
     }
-    gains_last_update_timestamp_metric.labels({"pulsar"}).set(start_time);
+    gains_last_update_timestamp_metric.labels({"tracking"}).set(start_time);
     mark_frame_full(gain_tracking_buf, unique_name.c_str(), gain_tracking_buf_id);
     DEBUG("Maked gain_tracking_buf frame {:d} full", gain_tracking_buf_id);
     INFO("Time required to load PSR gains: {:f}", current_time() - start_time);

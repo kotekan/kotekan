@@ -29,7 +29,7 @@
 #define TS_BUNDLE       TS_RED
 #define BM_BUNDLE       BM_RED
 
- __kernel void pulsarbf(
+ __kernel void trackingbf(
                             __global uint* data,
                             __global float* beam,//Device cache is possibly small enough to hold phase array.
                             __global float* outputSum) {

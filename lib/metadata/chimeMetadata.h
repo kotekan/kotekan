@@ -59,7 +59,7 @@ struct chimeMetadata {
     /// Note in the case of CHIME-2048 the normally unused section
     /// Encodes the port-shuffle frequency information
     uint16_t stream_ID;
-    /// The corrdinates of the pulsar beam (if applicable)
+    /// The coordinates of the tracking beam (if applicable)
     struct beamCoord beam_coord;
 };
 

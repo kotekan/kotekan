@@ -2,7 +2,7 @@
 #define REAL    x
 #define IMAG    y
 
-__kernel void pulsarbf_float( __global uint *data, __global float2 *phase,  __global float2 *output){
+__kernel void trackingbf_float( __global uint *data, __global float2 *phase,  __global float2 *output){
 
   __local float2 sum[256];
   uint nsamp = get_global_size(2)*TS;
