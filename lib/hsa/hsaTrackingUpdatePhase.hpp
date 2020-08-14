@@ -53,7 +53,7 @@
  * @conf   feed_sep_NS          Float (default 0.3048). N-S feed separation in m.
  * @conf   feed_sep_EW          Float (default 22.0). E-W feed separation in m.
  * missing
- * @conf   beams_pointing/i/ra       Float - initial RA (in deg) to form beams on for beam_id=i
+ * @conf   beam_pointing/i/ra       Float - initial RA (in deg) to form beams on for beam_id=i
  * @conf   beam_pointing/i/dec      Float - initial Dec (in deg) to form beams on for beam_id=i
  * @conf   beam_pointing/i/scaling  Int - nominal scaling for beam_id=i
  * beam basis via endpoint)
