@@ -52,7 +52,7 @@ using std::vector;
  *
  * The gain path is registered as a subscriber to an updatable config block.
  * For the FRB, it is one directory path: '{"frb_gain_dir":"the_new_path"}'
- * For the TRACKING, it is an array of 10 paths for each of the 10 beams:
+ * For the tracking beamformer, it is an array of @c num_beams paths for each of the @c num_beams beams:
  * '{"pulsar_gain_dir":["path0","path1","path2","path3","path4","path5","path6","path7","path8","path9"]}'
  *
  * @author Cherry Ng
