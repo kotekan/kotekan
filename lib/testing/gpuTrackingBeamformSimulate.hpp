@@ -106,7 +106,7 @@ private:
 
     /// Brute-force beamform by multiplying each element with a phase shift
     void cpu_tracking_beamformer(double* input, double* phase, float* output, int nsamp, int nelem,
-                               int nbeams, int npol);
+                                 int nbeams, int npol);
     /// Reorder data from correlator order to cylinder order
     void reorder(unsigned char* data, int* map);
     /// Figure our LST at this frame and the Alt-Az of the 10 sources, then calculate phase delays

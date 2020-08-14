@@ -188,10 +188,10 @@ void gpuTrackingBeamformSimulate::calculate_phase(struct beamCoord beam_coord, t
 }
 
 void gpuTrackingBeamformSimulate::cpu_tracking_beamformer(double* input_unpacked, double* phase,
-                                                        float* cpu_output,
-                                                        int _samples_per_data_set,
-                                                        int _num_elements, int _num_beams,
-                                                        int _num_pol) {
+                                                          float* cpu_output,
+                                                          int _samples_per_data_set,
+                                                          int _num_elements, int _num_beams,
+                                                          int _num_pol) {
     float sum_re, sum_im;
     for (int t = 0; t < _samples_per_data_set; t++) {
         for (int b = 0; b < _num_beams; b++) {
@@ -309,7 +309,7 @@ void gpuTrackingBeamformSimulate::main_thread() {
 
         // Beamform 10 trackings.
         cpu_tracking_beamformer(input_unpacked, phase, cpu_output, _samples_per_data_set,
-                              _num_elements, _num_beams, _num_pol);
+                                _num_elements, _num_beams, _num_pol);
         memcpy(output, cpu_output, output_buf->frame_size);
 
         INFO(
