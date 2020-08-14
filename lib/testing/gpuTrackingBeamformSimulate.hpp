@@ -94,7 +94,7 @@ private:
     /// Time now in second
     struct timespec time_now_gps;
 
-    /// 10 beams RA, DEC and scaling factor
+    /// RA, DEC and scaling factor for the tracking beams
     struct beamCoord beam_coord; // active coordinates to be passed to metatdata
     std::vector<float> _source_ra;
     std::vector<float> _source_dec;
