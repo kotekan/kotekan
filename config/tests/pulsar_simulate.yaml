@@ -59,7 +59,7 @@ read_gains:
   kotekan_stage: ReadGain
   updatable_config:
     gain_frb: /updatable_config/frb_gain
-    gain_psr: /updatable_config/pulsar_gain
+    gain_psr: /updatable_config/tracking_gain
   in_buf: gpu_input_buffer_0
   gain_frb_buf: gain_frb_buffer_0
   gain_tracking_buf: gain_tracking_buffer_0
@@ -83,11 +83,11 @@ gen_data:
     out_buf: gpu_input_buffer_0
   num_frames: 10
 
-pulsar_output_buffers:
+tracking_output_buffers:
   num_frames: buffer_depth
   frame_size: samples_per_data_set * num_beams * num_pol * sizeof_float * 2
   metadata_pool: main_pool
-  beamform_pulsar_output_buffer_0:
+  beamform_tracking_output_buffer_0:
     kotekan_buffer: standard
     gpu_id: 0
 
@@ -114,8 +114,8 @@ gpu:
     kotekan_stage: hsaProcess
     gpu_id: 0
     updatable_config:
-      gain_psr: /updatable_config/pulsar_gain
-      psr_pt: /updatable_config/pulsar_pointing
+      gain_tracking: /updatable_config/tracking_gain
+      tracking_pt: /updatable_config/tracking_pointing
     bad_inputs: []
     in_buffers:
       network_buf: gpu_input_buffer_0
@@ -123,7 +123,7 @@ gpu:
       gain_frb_buf: gain_frb_buffer_0
       lost_samples_buf: lost_samples_buffer
     out_buffers:
-      beamform_pulsar_output_buf: beamform_pulsar_output_buffer_0
+      beamform_tracking_output_buf: beamform_tracking_output_buffer_0
 
 pulsar:
   timesamples_per_pulsar_packet: 625
@@ -137,7 +137,7 @@ pulsar:
     kotekan_buffer: standard
   postprocess:
     kotekan_stage: pulsarPostProcess
-    network_input_buffer_0: beamform_pulsar_output_buffer_0
+    network_input_buffer_0: beamform_tracking_output_buffer_0
     pulsar_out_buf: pulsar_output_buffer
 
 dump_pulsar_data:
@@ -145,7 +145,7 @@ dump_pulsar_data:
   file_ext: dump
   dump_pulsar_gpu_beamform_0:
     kotekan_stage: rawFileWrite
-    in_buf: beamform_pulsar_output_buffer_0
+    in_buf: beamform_tracking_output_buffer_0
     file_name: psr_beamform_gpu
   dump_pulsar_post_process:
     kotekan_stage: rawFileWrite
@@ -193,11 +193,11 @@ reorder_map: [32,33,34,35,40,41,42,43,48,49,50,51,56,57,58,59,96,97,98,99,
               485,486,487]
 
 
-### Updatable config (ReadGain wants both `pulsar_gain_dir` and `frb_gain_dir` to exist)
+### Updatable config (ReadGain wants both `tracking_gain_dir` and `frb_gain_dir` to exist)
 updatable_config:
-  pulsar_gain:
+  tracking_gain:
     kotekan_update_endpoint: json
-    pulsar_gain_dir:
+    tracking_gain_dir:
       - /nonexistent
       - /nonexistent
       - /nonexistent
@@ -208,7 +208,7 @@ updatable_config:
       - /nonexistent
       - /nonexistent
       - /nonexistent
-  pulsar_pointing:
+  tracking_pointing:
     0:
       kotekan_update_endpoint: json
       ra: 53.6197236741

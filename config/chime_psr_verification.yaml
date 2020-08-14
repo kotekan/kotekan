@@ -82,9 +82,9 @@ updatable_config:
   frb_gain:
     kotekan_update_endpoint: json
     frb_gain_dir: /mnt/frb-archiver/GainFiles/Latest_FRB
-  pulsar_gain:
+  tracking_gain:
     kotekan_update_endpoint: json
-    pulsar_gain_dir:
+    tracking_gain_dir:
       - /root/FRB-GainFiles/eigen_CygA_7_9/
       - /root/FRB-GainFiles/eigen_CygA_7_25/
       - /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_28_scl/
@@ -97,7 +97,7 @@ updatable_config:
       - /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_28_scl/
       - /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_28_scl/
       - /mnt/gong/cherry/FRB-GainFiles/broker_CygA_10_28_scl/
-  pulsar_pointing:
+  tracking_pointing:
     0:
       kotekan_update_endpoint: json
       ra: 53.6197236741
@@ -173,11 +173,11 @@ gpu_input_buffers:
     kotekan_buffer: standard
     gpu_id: 0
 
-pulsar_output_buffers:
+tracking_output_buffers:
     num_frames: buffer_depth
     frame_size: _samples_per_data_set * _num_beams * _num_pol * sizeof_float *2
     metadata_pool: main_pool
-    beamform_pulsar_output_buffer_0:
+    beamform_tracking_output_buffer_0:
       kotekan_buffer: standard
       gpu_id: 0
 
@@ -219,7 +219,7 @@ read_gain:
     kotekan_stage: ReadGain
     updatable_config:
       gain_frb: /updatable_config/frb_gain
-      gain_tracking: /updatable_config/pulsar_gain
+      gain_tracking: /updatable_config/tracking_gain
     in_buf: gpu_input_buffer_0 
     gain_frb_buf: gain_frb_buffer
     gain_tracking_buf: gain_tracking_buffer
@@ -245,14 +245,14 @@ gpu:
     kotekan_stage: hsaProcess
     gpu_id: 0
     updatable_config:
-      gain_tracking: /updatable_config/pulsar_gain
-      tracking_pt: /updatable_config/pulsar_pointing
+      gain_tracking: /updatable_config/tracking_gain
+      tracking_pt: /updatable_config/tracking_pointing
     bad_inputs: []
     in_buffers:
       network_buf: gpu_input_buffer_0
       gain_tracking_buf: gain_tracking_buffer
     out_buffers:
-      beamform_pulsar_output_buf: beamform_pulsar_output_buffer_0
+      beamform_tracking_output_buf: beamform_tracking_output_buffer_0
 
 cpu_simulate:
   cpu_data_sim_0:
@@ -261,8 +261,8 @@ cpu_simulate:
       source_dec: [40.7839418602, 40.7839418602, 40.7839418602, 41.0339418602, 40.5339418602, 40.5329418602, 41.0349418602, 40.5329418602, 41.0349418602, 40.7839418602, 41.0349418602, 40.7839418602]
       network_in_buf: gpu_input_buffer_0
       beam_out_buf: cpu_output_buffer_0
-      pulsar_gain:
-        pulsar_gain_dir:
+      tracking_gain:
+        tracking_gain_dir:
           - .
           - .
           - .
@@ -282,5 +282,5 @@ check_data:
     num_frames_to_test: 5
     epsilon: 0.2
     kotekan_stage: testDataCheckFloat
-    first_buf : beamform_pulsar_output_buffer_0
+    first_buf : beamform_tracking_output_buffer_0
     second_buf: cpu_output_buffer_0
