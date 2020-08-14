@@ -150,7 +150,7 @@ private:
     bool update_phase;
 
     /// Endpoint for updating tracking coordinates
-    std::string endpoint_trackingcoord;
+    std::string endpoint_beam_coord;
 
     /// Config base
     /// @todo this is a huge hack replace with updatable config
