@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief read in new gain file for FRB/TRACKING when available
+ * @brief read in new gain file for FRB/Tracking beamformer when available
  *  - ReadGain : public kotekan::Stage
  */
 
