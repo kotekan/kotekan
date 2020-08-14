@@ -76,7 +76,7 @@ public:
 private:
     /// Input length, should be nsamp x n_elem x 2 for complex / 2 since we pack two 4-bit in one
     int32_t input_frame_len;
-    /// Output length, should be 10tracking x nsamp x 2 pol x 2 for complex / 2 since we pack two
+    /// Output length, should be num_beams x nsamp x 2 pol x 2 for complex / 2 since we pack two
     /// 4-bit in one
     int32_t output_frame_len;
 
