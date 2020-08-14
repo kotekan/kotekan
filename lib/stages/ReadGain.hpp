@@ -69,7 +69,7 @@ public:
     /// Endpoint for providing new directory path for FRB gain updates
     bool update_gains_frb_callback(nlohmann::json& json);
 
-    /// Endpoint for providing new directory path for TRACKING gain updates
+    /// Endpoint for providing new directory path for <span class="x x-first x-last">tracking beamformer</span> gain updates
     bool update_gains_tracking_callback(nlohmann::json& json);
 
     /// Read gain file for frb
