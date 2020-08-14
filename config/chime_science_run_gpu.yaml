@@ -211,11 +211,11 @@ updatable_config:
     # not correlator/FPGA input order.
     element_index: 500
   gating:
-    tracking0_config:
+    psr0_config:
       kotekan_update_endpoint: "json"
       enabled: false
       # B0329 (2018/11/14)
-      tracking_name: "B0329"
+      pulsar_name: "B0329"
       pulse_width: 0.0314
       dm: 26.7641
       segment: 18000.
@@ -1420,13 +1420,13 @@ vis_accumulate:
   # prevents referencing the higher level samples_per_data_set and dividing it
   samples_per_data_set: 12288
   updatable_config:
-    tracking0: "/updatable_config/gating/tracking0_config"
+    psr0: "/updatable_config/gating/psr0_config"
   acc0:
     kotekan_stage: visAccumulate
     in_buf: rfi_vis_buffer_0
     out_buf: visbuf_5s_0
     gating:
-      tracking0:
+      psr0:
         mode: pulsar
         buf: visbuf_psr0_5s_0
   acc1:
@@ -1434,7 +1434,7 @@ vis_accumulate:
     in_buf: rfi_vis_buffer_1
     out_buf: visbuf_5s_1
     gating:
-      tracking0:
+      psr0:
         mode: pulsar
         buf: visbuf_psr0_5s_1
   acc2:
@@ -1442,7 +1442,7 @@ vis_accumulate:
     in_buf: rfi_vis_buffer_2
     out_buf: visbuf_5s_2
     gating:
-      tracking0:
+      psr0:
         mode: pulsar
         buf: visbuf_psr0_5s_2
   acc3:
@@ -1450,7 +1450,7 @@ vis_accumulate:
     in_buf: rfi_vis_buffer_3
     out_buf: visbuf_5s_3
     gating:
-      tracking0:
+      psr0:
         mode: pulsar
         buf: visbuf_psr0_5s_3
 
@@ -1465,7 +1465,7 @@ vis_merge_5s:
     - visbuf_5s_3
   out_buf: visbuf_5s_merge
 
-vis_merge_gated_tracking0:
+vis_merge_gated_psr0:
   kotekan_stage: bufferMerge
   timeout: 0.1
   in_bufs:
@@ -1542,7 +1542,7 @@ vis_debug:
   input_list: [1225, 1521]  # 26m channels
 
 # Generate the 26m gated stream
-26m_tracking0_subset:
+26m_psr0_subset:
   kotekan_stage: prodSubset
   in_buf: visbuf_psr0_5s_merge
   out_buf: visbuf_psr0_5s_26m
@@ -1562,7 +1562,7 @@ buffer_send:
     kotekan_stage: bufferSend
     buf: visbuf_5s_26m
     server_port: 11025
-  26m_tracking0:
+  26m_psr0:
     kotekan_stage: bufferSend
     buf: visbuf_psr0_5s_26m
     server_port: 11026
