@@ -56,7 +56,7 @@ private:
     uint32_t _num_elements;
     /// number of samples = 49152
     int32_t _samples_per_data_set;
-    /// number of beams = 10
+    /// number of beams
     int32_t _num_beams;
     /// number of polarizations = 2
     int32_t _num_pol;
