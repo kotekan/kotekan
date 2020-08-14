@@ -105,7 +105,7 @@ private:
     bool update_phase;
 
     /// Brute-force beamform by multiplying each element with a phase shift
-    void cpu_beamform_tracking(double* input, double* phase, float* output, int nsamp, int nelem,
+    void cpu_tracking_beamformer(double* input, double* phase, float* output, int nsamp, int nelem,
                                int nbeams, int npol);
     /// Reorder data from correlator order to cylinder order
     void reorder(unsigned char* data, int* map);
