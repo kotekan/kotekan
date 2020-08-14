@@ -1,6 +1,6 @@
 ##########################################
 #
-# TRACKING verification
+# Tracking Beamformer verification
 #
 # Runs both GPU and CPU TRACKING beamformer pipelines, include re-ordering, read gains files, calculate phase shift, brute-force beamforming
 # Note that this CPU version doesn't have any endpoint, so it won't be able to accept changes in gain paths or source coordinates.
@@ -284,4 +284,3 @@ check_data:
     kotekan_stage: testDataCheckFloat
     first_buf : beamform_pulsar_output_buffer_0
     second_buf: cpu_output_buffer_0
-
