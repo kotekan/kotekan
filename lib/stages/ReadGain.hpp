@@ -26,7 +26,7 @@ using std::vector;
 
 /**
  * @class ReadGain
- * @brief read in new gain files for FRB/TRACKING when available
+ * @brief read in new gain files for FRB/Tracking beamformer when available
  *
  * @par Buffers
  * @buffer gain_frb_buf Array of gains size 2048*2
