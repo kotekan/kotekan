@@ -74,7 +74,7 @@ public:
 
     /// Read gain file for frb
     void read_gain_frb();
-    /// Read gain file for tracking
+    /// Read gain file for tracking beamformer
     void read_gain_tracking();
 
 private:
