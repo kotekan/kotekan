@@ -88,7 +88,7 @@ HFBAccumulate::HFBAccumulate(Config& config_, const std::string& unique_name,
 
 HFBAccumulate::~HFBAccumulate() {}
 
-void HFBAccumulate::initFirstFrame(float* input_data, float* sum_data,
+void HFBAccumulate::init_first_frame(float* input_data, float* sum_data,
                                       const uint32_t in_buffer_ID) {
 
     int64_t fpga_seq_num_start =
@@ -103,7 +103,7 @@ void HFBAccumulate::initFirstFrame(float* input_data, float* sum_data,
           get_fpga_seq_num(in_buf, in_buffer_ID), sum_data[0]);
 }
 
-void HFBAccumulate::integrateFrame(float* input_data, float* sum_data,
+void HFBAccumulate::integrate_frame(float* input_data, float* sum_data,
                                       const uint32_t in_buffer_ID) {
     frame++;
     fpga_seq_num += _samples_per_data_set;
@@ -121,7 +121,7 @@ void HFBAccumulate::integrateFrame(float* input_data, float* sum_data,
           total_lost_timesamples, sum_data[0]);
 }
 
-float HFBAccumulate::normaliseFrame(float* sum_data, const uint32_t in_buffer_ID) {
+float HFBAccumulate::normalise_frame(float* sum_data, const uint32_t in_buffer_ID) {
 
     const float normalise_frac =
         (float)total_timesamples / (total_timesamples - total_lost_timesamples);
@@ -233,7 +233,7 @@ void HFBAccumulate::main_thread() {
                 (float)(total_timesamples - total_lost_timesamples) / total_timesamples;
 
             // Normalise data
-            const float norm_frac = normaliseFrame(sum_data, in_buffer_ID);
+            const float norm_frac = normalise_frame(sum_data, in_buffer_ID);
 
             // Only output integration if there are enough good samples
             if (good_samples_frac >= _good_samples_threshold) {
@@ -287,15 +287,15 @@ void HFBAccumulate::main_thread() {
 
             // Already started next integration
             if (fpga_seq_num > fpga_seq_num_end_old)
-                initFirstFrame(input_data, sum_data, in_buffer_ID);
+                init_first_frame(input_data, sum_data, in_buffer_ID);
 
         } else {
             // If we are on the first frame copy it directly into the
             // output buffer frame so that we don't need to zero the frame
             if (frame == 0)
-                initFirstFrame(input_data, sum_data, in_buffer_ID);
+                init_first_frame(input_data, sum_data, in_buffer_ID);
             else
-                integrateFrame(input_data, sum_data, in_buffer_ID);
+                integrate_frame(input_data, sum_data, in_buffer_ID);
         }
 
         fpga_seq_num_end_old = fpga_seq_num_end;

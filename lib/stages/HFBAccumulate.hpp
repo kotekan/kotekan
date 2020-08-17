@@ -1,11 +1,11 @@
 /**
  * @file
- * @brief Integrate 21-cm data over frames.
+ * @brief Integrate 21-cm absorber data over frames.
  *  - HFBAccumulate : public kotekan::Stage
  */
 
-#ifndef INTEGRATE_HFB_DATA_PROCESS
-#define INTEGRATE_HFB_DATA_PROCESS
+#ifndef HFB_ACCUMULATE_STAGE
+#define HFB_ACCUMULATE_STAGE
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
@@ -51,11 +51,11 @@ public:
     /// stuff packets lather, rinse and repeat.
     void main_thread() override;
     /// Copy the first frame of the integration
-    void initFirstFrame(float* input_data, float* sum_data, const uint32_t in_buffer_ID);
+    void init_first_frame(float* input_data, float* sum_data, const uint32_t in_buffer_ID);
     /// Add a frame to the integration
-    void integrateFrame(float* input_data, float* sum_data, const uint32_t in_buffer_ID);
+    void integrate_frame(float* input_data, float* sum_data, const uint32_t in_buffer_ID);
     /// Normalise frame after integration has been completed
-    float normaliseFrame(float* sum_data, const uint32_t in_buffer_ID);
+    float normalise_frame(float* sum_data, const uint32_t in_buffer_ID);
 
 private:
     struct Buffer* in_buf;
