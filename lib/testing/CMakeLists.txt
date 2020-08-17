@@ -6,7 +6,7 @@ set ( KOTEKAN_TESTING_SOURCES
       fakeGpu.cpp
       fakeGpuPattern.cpp
       FakeVis.cpp
-      FakeHfb.cpp
+      FakeHFB.cpp
       FakeVisPattern.cpp
       gpuBeamformSimulate.cpp
       gpuBeamformPulsarSimulate.cpp

@@ -43,7 +43,7 @@ hfbbuf_10s:
   metadata_pool: hfb_pool
 
 gen_data:
-  kotekan_stage: FakeHfb
+  kotekan_stage: FakeHFB
   out_buf: hfbbuf_10s
 
 # Write raw HFB data

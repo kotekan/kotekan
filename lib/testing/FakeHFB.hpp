@@ -1,8 +1,8 @@
 /*****************************************
 @file
 @brief Generate fake visBuffer data.
-- FakeHfb : public Stage
-- ReplaceHfb : public Stage
+- FakeHFB : public Stage
+- ReplaceHFB : public Stage
 *****************************************/
 
 #ifndef FAKE_HFB
@@ -73,11 +73,11 @@
  * @author  Tristan Pinsonneault-Marotte
  *
  */
-class FakeHfb : public kotekan::Stage {
+class FakeHFB : public kotekan::Stage {
 
 public:
     /// Constructor. Loads config options.
-    FakeHfb(kotekan::Config& config, const std::string& unique_name,
+    FakeHFB(kotekan::Config& config, const std::string& unique_name,
             kotekan::bufferContainer& buffer_container);
 
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
@@ -97,7 +97,7 @@ private:
     std::vector<uint32_t> freq;
 
     /// Test pattern
-    // std::unique_ptr<FakeHfbPattern> pattern;
+    // std::unique_ptr<FakeHFBPattern> pattern;
 
     /// Start time of data as a Unix time
     double start_time;
@@ -143,11 +143,11 @@ private:
  * @author Richard Shaw
  *
  */
-class ReplaceHfb : public kotekan::Stage {
+class ReplaceHFB : public kotekan::Stage {
 
 public:
     /// Constructor. Loads config options.
-    ReplaceHfb(kotekan::Config& config, const std::string& unique_name,
+    ReplaceHFB(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
     /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.

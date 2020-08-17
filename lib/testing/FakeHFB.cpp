@@ -1,4 +1,4 @@
-#include "FakeHfb.hpp"
+#include "FakeHFB.hpp"
 
 #include "Config.hpp"          // for Config
 #include "HFBFrameView.hpp"    // for HFBFrameView
@@ -39,13 +39,13 @@ using kotekan::Config;
 using kotekan::Stage;
 
 
-REGISTER_KOTEKAN_STAGE(FakeHfb);
-REGISTER_KOTEKAN_STAGE(ReplaceHfb);
+REGISTER_KOTEKAN_STAGE(FakeHFB);
+REGISTER_KOTEKAN_STAGE(ReplaceHFB);
 
 
-FakeHfb::FakeHfb(Config& config, const std::string& unique_name,
+FakeHFB::FakeHFB(Config& config, const std::string& unique_name,
                  bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&FakeHfb::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&FakeHFB::main_thread, this)) {
 
     // Fetch any simple configuration
     num_beams = config.get<size_t>(unique_name, "num_frb_total_beams");
@@ -72,7 +72,7 @@ FakeHfb::FakeHfb(Config& config, const std::string& unique_name,
 
     mode = config.get_default<std::string>(unique_name, "mode", "default");
     INFO("Using fill type: {:s}", mode);
-    // pattern = FACTORY(FakeHfbPattern)::create_unique(mode, config, unique_name);
+    // pattern = FACTORY(FakeHFBPattern)::create_unique(mode, config, unique_name);
 
     // Get timing and frame params
     start_time = config.get_default<double>(unique_name, "start_time", current_time());
@@ -84,7 +84,7 @@ FakeHfb::FakeHfb(Config& config, const std::string& unique_name,
     zero_weight = config.get_default<bool>(unique_name, "zero_weight", false);
 }
 
-void FakeHfb::main_thread() {
+void FakeHFB::main_thread() {
 
     unsigned int output_frame_id = 0, frame_count = 0;
     uint64_t fpga_seq = 0;
@@ -104,7 +104,7 @@ void FakeHfb::main_thread() {
     } else {
         std::vector<state_id_t> states;
         states.push_back(
-            dm.create_state<metadataState>("not set", "FakeHfb", get_git_commit_hash()).first);
+            dm.create_state<metadataState>("not set", "FakeHFB", get_git_commit_hash()).first);
 
         std::vector<std::pair<uint32_t, freq_ctype>> fspec;
         // TODO: CHIME specific
@@ -202,9 +202,9 @@ void FakeHfb::main_thread() {
     }
 }
 
-ReplaceHfb::ReplaceHfb(Config& config, const std::string& unique_name,
+ReplaceHFB::ReplaceHFB(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&ReplaceHfb::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&ReplaceHFB::main_thread, this)) {
 
     // Setup the input buffer
     in_buf = get_buffer("in_buf");
@@ -215,7 +215,7 @@ ReplaceHfb::ReplaceHfb(Config& config, const std::string& unique_name,
     register_producer(out_buf, unique_name.c_str());
 }
 
-void ReplaceHfb::main_thread() {
+void ReplaceHFB::main_thread() {
 
     unsigned int output_frame_id = 0;
     unsigned int input_frame_id = 0;
