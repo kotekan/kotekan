@@ -50,7 +50,7 @@
  * @conf   num_beams           Int (default 10). Number of beams to be formed
  * @conf   samples_per_data_set Int (default 49152). Number of time samples in a data set
  * @conf   num_pol              Int (default 2). Number of polarizations
- * @conf   command              String (defualt: "trackingbf"). Kernel command.
+ * @conf   command              String (defualt: "trackingbf_float"). Kernel command.
  * @conf   kernel               String (default: "tracking_beamformer_nbeam.hsaco"). Kernel filename.
  *
  * @todo   finalize output truncation scheme
