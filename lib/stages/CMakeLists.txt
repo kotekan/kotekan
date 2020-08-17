@@ -57,7 +57,7 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       visTestPattern.cpp
       visDebug.cpp
       removeEv.cpp
-      integrateHFBData.cpp
+      HFBAccumulate.cpp
       compressLostSamples.cpp
       compressData.cpp
       bufferBadInputs.cpp

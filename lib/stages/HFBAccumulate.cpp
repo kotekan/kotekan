@@ -1,4 +1,4 @@
-#include "integrateHFBData.hpp"
+#include "HFBAccumulate.hpp"
 
 #include "HFBMetadata.hpp"
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
@@ -24,11 +24,11 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_STAGE(integrateHFBData);
+REGISTER_KOTEKAN_STAGE(HFBAccumulate);
 
-integrateHFBData::integrateHFBData(Config& config_, const std::string& unique_name,
+HFBAccumulate::HFBAccumulate(Config& config_, const std::string& unique_name,
                                    bufferContainer& buffer_container) :
-    Stage(config_, unique_name, buffer_container, std::bind(&integrateHFBData::main_thread, this)) {
+    Stage(config_, unique_name, buffer_container, std::bind(&HFBAccumulate::main_thread, this)) {
 
     // Apply config.
     _num_frb_total_beams = config.get<uint32_t>(unique_name, "num_frb_total_beams");
@@ -86,9 +86,9 @@ integrateHFBData::integrateHFBData(Config& config_, const std::string& unique_na
     ds_id = dm.add_dataset(base_states);
 }
 
-integrateHFBData::~integrateHFBData() {}
+HFBAccumulate::~HFBAccumulate() {}
 
-void integrateHFBData::initFirstFrame(float* input_data, float* sum_data,
+void HFBAccumulate::initFirstFrame(float* input_data, float* sum_data,
                                       const uint32_t in_buffer_ID) {
 
     int64_t fpga_seq_num_start =
@@ -103,7 +103,7 @@ void integrateHFBData::initFirstFrame(float* input_data, float* sum_data,
           get_fpga_seq_num(in_buf, in_buffer_ID), sum_data[0]);
 }
 
-void integrateHFBData::integrateFrame(float* input_data, float* sum_data,
+void HFBAccumulate::integrateFrame(float* input_data, float* sum_data,
                                       const uint32_t in_buffer_ID) {
     frame++;
     fpga_seq_num += _samples_per_data_set;
@@ -121,7 +121,7 @@ void integrateHFBData::integrateFrame(float* input_data, float* sum_data,
           total_lost_timesamples, sum_data[0]);
 }
 
-float integrateHFBData::normaliseFrame(float* sum_data, const uint32_t in_buffer_ID) {
+float HFBAccumulate::normaliseFrame(float* sum_data, const uint32_t in_buffer_ID) {
 
     const float normalise_frac =
         (float)total_timesamples / (total_timesamples - total_lost_timesamples);
@@ -139,7 +139,7 @@ float integrateHFBData::normaliseFrame(float* sum_data, const uint32_t in_buffer
     return normalise_frac;
 }
 
-void integrateHFBData::main_thread() {
+void HFBAccumulate::main_thread() {
 
     uint in_buffer_ID = 0,
          compress_buffer_ID = 0; // Process only 1 GPU buffer, cycle through buffer depth

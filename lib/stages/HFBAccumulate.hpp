@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Integrate 21-cm data over frames.
- *  - integrateHFBData : public kotekan::Stage
+ *  - HFBAccumulate : public kotekan::Stage
  */
 
 #ifndef INTEGRATE_HFB_DATA_PROCESS
@@ -16,7 +16,7 @@
 #include <string>   // for string
 
 /**
- * @class integrateHFBData
+ * @class HFBAccumulate
  * @brief Post-processing engine for output of the CHIME/HFB kernel,
  *        integrates data over 80 frames to create 10s worth of data.
  *        num_beams * num_sub_freq = 1024 * 128
@@ -40,13 +40,13 @@
  *
  */
 
-class integrateHFBData : public kotekan::Stage {
+class HFBAccumulate : public kotekan::Stage {
 public:
     /// Constructor.
-    integrateHFBData(kotekan::Config& config_, const std::string& unique_name,
+    HFBAccumulate(kotekan::Config& config_, const std::string& unique_name,
                      kotekan::bufferContainer& buffer_container);
     /// Destructor
-    virtual ~integrateHFBData();
+    virtual ~HFBAccumulate();
     /// Primary loop to wait for buffers, dig through data,
     /// stuff packets lather, rinse and repeat.
     void main_thread() override;
