@@ -27,7 +27,7 @@ cadence: 0.01
 sizeof_float: 4
 
 dataset_manager:
-  use_dataset_broker: True
+  use_dataset_broker: False
   ds_broker_host: "127.0.0.1"
   ds_broker_port: 12050
 
