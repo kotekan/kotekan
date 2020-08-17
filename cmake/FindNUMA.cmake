@@ -11,7 +11,7 @@ find_path(NUMA_INCLUDE_DIR NAMES numa.h
 
 find_library(NUMA_LIBRARY NAMES numa)
 
-find_package_handle_standard_args (numa DEFAULT_MSG
+find_package_handle_standard_args (NUMA DEFAULT_MSG
                                    NUMA_LIBRARY
                                    NUMA_INCLUDE_DIR)
 
