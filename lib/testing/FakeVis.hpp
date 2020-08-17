@@ -58,9 +58,6 @@
  *                      Default is False.
  * @conf  frequencies   Array of UInt32. Definition of frequency IDs for
  *                      mode 'test_pattern_freq'.
- * @conf  dataset_id    Int. Use a fixed dataset ID and don't register
- *                      states. If not set, the dataset manager will create
- *                      the dataset ID.
  * @conf  sleep_before  Float. Sleep for this number of seconds before
  *                      starting. Useful for allowing other processes
  *                      to send REST commands. Default is 0s.

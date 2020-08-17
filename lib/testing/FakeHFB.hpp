@@ -1,6 +1,6 @@
 /*****************************************
 @file
-@brief Generate fake visBuffer data.
+@brief Generate fake hfbBuffer data.
 - FakeHFB : public Stage
 - ReplaceHFB : public Stage
 *****************************************/
@@ -24,21 +24,20 @@
 #include <vector>   // for vector
 
 /**
- * @brief Generate fake visibility data into a ``visBuffer``.
+ * @brief Generate fake absorber data into a ``hfbBuffer``.
  *
- * This stage produces fake visibility data that can be used to feed
+ * This stage produces fake absorber data that can be used to feed
  * downstream kotekan stages for testing. It fills its buffer with frames in
  * the ``HFBFrameView`` format. Frames are generated for a set of frequencies
  * and a cadence specified in the config.
  *
  * @par Buffers
  * @buffer out_buf The kotekan buffer which will be fed, can be any size.
- *     @buffer_format visBuffer structured
- *     @buffer_metadata visMetadata
+ *     @buffer_format hfbBuffer structured
+ *     @buffer_metadata HFBMetadata
  *
- * @conf  num_elements  Int. The number of elements (i.e. inputs) in the
- *                      correlator data,
- * @conf  num_ev        Int. The number of eigenvectors to be stored.
+ * @conf  num_beams     Int. The number of beams in the absorber data.
+ * @conf  num_subfreq   Int. The number of sub-frequencies in the absorber data..
  * @conf  freq_ids      List of int. The frequency IDs to generate frames
  *                      for.
  * @conf  start_time    Double. The start time of the range of data (as a
@@ -47,19 +46,16 @@
  *                      time.
  * @conf  cadence       Float. The interval of time (in seconds) between
  *                      frames.
- * @conf  mode          String. How to fill the visibility array. See
- *                      the set of FakeVisPattern implementations for details.
+ * @conf  mode          String. How to fill the absorber array. See
+ *                      the set of FakeHFBPattern implementations for details.
  * @conf  wait          Bool. Sleep to try and output data at roughly
  *                      the correct cadence.
  * @conf  num_frames    Exit after num_frames have been produced. If
  *                      less than zero, no limit is applied. Default is `-1`.
  * @conf  zero_weight   Bool. Set all weights to zero, if this is True.
  *                      Default is False.
- * @conf  frequencies   Array of UInt32. Definition of frequency IDs for
+ * @conf  freq          Array of UInt32. Definition of frequency IDs for
  *                      mode 'test_pattern_freq'.
- * @conf  dataset_id    Int. Use a fixed dataset ID and don't register
- *                      states. If not set, the dataset manager will create
- *                      the dataset ID.
  * @conf  sleep_before  Float. Sleep for this number of seconds before
  *                      starting. Useful for allowing other processes
  *                      to send REST commands. Default is 0s.
@@ -67,10 +63,7 @@
  *                      and before shutting down. Useful for allowing other
  *                      processes to finish. Default is 1s.
  *
- * @todo  It might be useful eventually to produce realistic looking mock
- *        visibilities.
- *
- * @author  Tristan Pinsonneault-Marotte
+ * @author  James Willis
  *
  */
 class FakeHFB : public kotekan::Stage {
@@ -120,8 +113,8 @@ private:
     // How long to sleep before exiting.
     double sleep_after;
 
-    /// Fill non vis components. A helper for the fill_mode functions.
-    void fill_non_vis(HFBFrameView& frame);
+    /// Fill non hfb components. A helper for the fill_mode functions.
+    void fill_non_hfb(HFBFrameView& frame);
 
     // Use a fixed (configured) dataset ID in the output frames
     bool _fixed_dset_id;
@@ -134,11 +127,11 @@ private:
  *
  * @par Buffers
  * @buffer in_buf The kotekan buffer which will be read from.
- *     @buffer_format visBuffer structured
- *     @buffer_metadata visMetadata
+ *     @buffer_format hfbBuffer structured
+ *     @buffer_metadata HFBMetadata
  * @buffer out_buf The kotekan buffer to be filled with the replaced data.
- *     @buffer_format visBuffer structured
- *     @buffer_metadata visMetadata
+ *     @buffer_format hfbBuffer structured
+ *     @buffer_metadata HFBMetadata
  *
  * @author Richard Shaw
  *
