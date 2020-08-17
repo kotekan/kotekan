@@ -129,7 +129,7 @@ bool ReadGain::update_gains_tracking_callback(nlohmann::json& json) {
         }
         INFO("{:s}", output_msg);
     } catch (std::exception const& e) {
-        WARN("[TRACKING] Fail to read gain_dir {:s}", e.what());
+        WARN("[Tracking Beamformer] Fail to read gain_dir {:s}", e.what());
         return false;
     }
     {
