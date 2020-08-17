@@ -89,9 +89,9 @@ void clKVCorr::build() {
     } else if (_data_format == "dot4b") {
         INFO("Running experimental dot-product data");
         int _wi_size = 4;
-        gws[0] = _block_size / _wi_size * _num_local_freq;
-        gws[1] = _block_size / _wi_size;
-        gws[2] = _num_blocks;
+        gws[0] = _block_size / _wi_size;
+        gws[1] = _block_size / _wi_size * _num_blocks;
+        gws[2] = _num_local_freq;
         lws[0] = _block_size / _wi_size;
         lws[1] = _block_size / _wi_size;
         lws[2] = 1;

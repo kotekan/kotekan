@@ -598,7 +598,7 @@ gpu:
         #- name: clPresumKernel
         #  - name: clPreseedKernel
         #  - name: clCorrelatorKernel
-        #- name: clKVCorr
+        - name: clKVCorr
         - name: clOutputData
     gpu_0:
         kotekan_stage: clProcess

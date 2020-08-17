@@ -26,12 +26,12 @@
 #define ygr get_group_id(1)
 #define zgr get_group_id(2)
 
-#define NUM_FREQS get_num_groups(0)
+#define NUM_FREQS get_num_groups(2)
 //get_num_groups(1)
-#define NUM_BLOCKS get_num_groups(2)
+#define NUM_BLOCKS get_num_groups(1)
 
-#define FREQ_ID xgr
-#define BLOCK_ID zgr
+#define FREQ_ID zgr
+#define BLOCK_ID ygr
 
 //the input is [Freqs, Time/8, Input, 8-times, 2-re-im]
 
