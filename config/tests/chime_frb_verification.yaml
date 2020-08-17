@@ -1,6 +1,6 @@
 ##########################################
 #
-# FRB / TRACKING verification
+# FRB / Tracking beamformer verification
 #
 # Runs both GPU and CPU FRB beamformer pipelines, include re-ordering, hybrid beamformer, transposer, upchannelizer.
 # using 3840 samples for a quick run, change it to 49152 for the standard operation setting
