@@ -23,12 +23,11 @@
  * This is an hsaCommand that launches the kernel (tracking_beamformer) for
  * brute-force coherent beamforming and is most applicable to tracking observations.
  * An array of phases (shape @c n_tracking x @c n_elem x 2) is calculated by
- hsaTrackingUpdatePhase.cpp.
+ * hsaTrackingUpdatePhase.cpp.
  * The default number of tracking beams to be formed is 10. The phases are matrix
  * multiplied with the input data (shape @c n_samp x @c n_elem) and the output is of dimension
  * (@c n_samp x @c n_tracking x @c n_pol x 2). Output data type is 4-4b int packed as char.
- Currently
- * it is float, as we are pending on decision of data truncation scheme.
+ * Currently  it is float, as we are pending on decision of data truncation scheme.
  *
  * @requires_kernel    tracking_beamformer.hasco
  *
@@ -52,7 +51,7 @@
  * @conf   num_pol              Int (default 2). Number of polarizations
  * @conf   command              String (defualt: "trackingbf_float"). Kernel command.
  * @conf   kernel               String (default: "tracking_beamformer_nbeam.hsaco"). Kernel
- filename.
+ *                              filename.
  *
  * @todo   finalize output truncation scheme
  *
