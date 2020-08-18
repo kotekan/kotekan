@@ -7,7 +7,7 @@
 #include "Telescope.hpp"
 #include "buffer.h"            // for Buffer, mark_frame_empty, wait_for_empty_frame, wait_...
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for get_fpga_seq_num, psrCoord, get_psr_coord, get_stream...
+#include "chimeMetadata.h"     // for get_fpga_seq_num, beamCoord, get_beam_coord, get_stream...
 #include "kotekanLogging.hpp"  // for DEBUG, ERROR
 #include "vdif_functions.h"    // for VDIFHeader
 
@@ -73,7 +73,7 @@ pulsarPostProcess::~pulsarPostProcess() {
 
 void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* vdif_header,
                                      const uint64_t fpga_seq_num, struct timespec* time_now,
-                                     struct psrCoord* psr_coord, uint16_t* thread_ids) {
+                                     struct beamCoord* beam_coord, uint16_t* thread_ids) {
 
     // Get the Telescope instance and pre-calc the length of an FPGA frame
     auto& tel = Telescope::instance();
@@ -94,9 +94,9 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* 
 
             for (uint32_t psr = 0; psr < _num_pulsar; ++psr) {
                 vdif_header->eud1 = psr; // beam id
-                vdif_header->eud2 = psr_coord[f].scaling[psr];
-                uint16_t ra_part = (uint16_t)(psr_coord[f].ra[psr] * 100);
-                uint16_t dec_part = (uint16_t)((psr_coord[f].dec[psr] + 90) * 100);
+                vdif_header->eud2 = beam_coord[f].scaling[psr];
+                uint16_t ra_part = (uint16_t)(beam_coord[f].ra[psr] * 100);
+                uint16_t dec_part = (uint16_t)((beam_coord[f].dec[psr] + 90) * 100);
                 vdif_header->eud4 = ((ra_part << 16) & 0xFFFF0000) + (dec_part & 0xFFFF);
                 timespec time_now_from_compute = tel.to_time(fpga_now);
                 if (time_now->tv_sec != time_now_from_compute.tv_sec) {
@@ -176,7 +176,7 @@ void pulsarPostProcess::main_thread() {
     uint in_frame_location = 0; // goes from 0 to 3125 or 625
     uint64_t fpga_seq_num = 0;
 
-    struct psrCoord psr_coord[_num_gpus];
+    struct beamCoord beam_coord[_num_gpus];
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t* out_frame = wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
     if (out_frame == nullptr)
@@ -189,7 +189,7 @@ void pulsarPostProcess::main_thread() {
             return;
 
         for (uint32_t i = 0; i < _num_gpus; ++i) {
-            psr_coord[i] = get_psr_coord(in_buf[i], in_buffer_ID[i]);
+            beam_coord[i] = get_beam_coord(in_buf[i], in_buffer_ID[i]);
             if (_timesamples_per_pulsar_packet == 3125) {
                 thread_ids[i] = tel.to_freq_id(in_buf[i], in_buffer_ID[i]);
             } else if (_timesamples_per_pulsar_packet == 625) {
@@ -229,7 +229,7 @@ void pulsarPostProcess::main_thread() {
 
             // Fill the first output buffer headers
             fill_headers((unsigned char*)out_frame, &vdif_header, fpga_seq_num, &time_now,
-                         psr_coord, thread_ids);
+                         beam_coord, thread_ids);
         }
 
         // Take data from the input buffer and format the output
@@ -263,7 +263,7 @@ void pulsarPostProcess::main_thread() {
 
                 // Fill the headers of the new buffer
                 fill_headers((unsigned char*)out_frame, &vdif_header, fpga_seq_num, &time_now,
-                             psr_coord, thread_ids);
+                             beam_coord, thread_ids);
             }
 
 
@@ -283,7 +283,7 @@ void pulsarPostProcess::main_thread() {
                         // Fill the headers of the new buffer
                         fpga_seq_num += _timesamples_per_pulsar_packet * _num_packet_per_stream;
                         fill_headers((unsigned char*)out_frame, &vdif_header, fpga_seq_num,
-                                     &time_now, psr_coord, thread_ids);
+                                     &time_now, beam_coord, thread_ids);
                     } // end if last frame
                 }     // end if last sample
 
@@ -314,10 +314,10 @@ void pulsarPostProcess::main_thread() {
                             // clang-format off
                             float real_float =
                                 ((in_buf_data[(i * _num_pulsar * _num_pol + psr * _num_pol + p) * 2])
-                                / float(psr_coord[thread_id].scaling[psr]) + 0.5) + 8;
+                                / float(beam_coord[thread_id].scaling[psr]) + 0.5) + 8;
                             float imag_float =
                                 ((in_buf_data[(i * _num_pulsar * _num_pol + psr * _num_pol + p) * 2 + 1])
-                                / float(psr_coord[thread_id].scaling[psr]) + 0.5) + 8;
+                                / float(beam_coord[thread_id].scaling[psr]) + 0.5) + 8;
                             // clang-format on
                             if (real_float > 15)
                                 real_float = 15.;

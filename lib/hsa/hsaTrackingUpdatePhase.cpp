@@ -1,7 +1,7 @@
-// curl localhost:12048/updatable_config/pulsar_pointing/0  -X POST -H 'Content-Type:
+// curl localhost:12048/updatable_config/beam_pointing/0  -X POST -H 'Content-Type:
 // application/json' -d '{"ra":100.3, "dec":34.23, "scaling":99.0}'
 
-#include "hsaPulsarUpdatePhase.hpp"
+#include "hsaTrackingUpdatePhase.hpp"
 
 #include "Config.hpp" // for Config
 #include "Telescope.hpp"
@@ -42,11 +42,11 @@ using kotekan::connectionInstance;
 using kotekan::HTTP_RESPONSE;
 using kotekan::restServer;
 
-REGISTER_HSA_COMMAND(hsaPulsarUpdatePhase);
+REGISTER_HSA_COMMAND(hsaTrackingUpdatePhase);
 
-hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const std::string& unique_name,
-                                           bufferContainer& host_buffers,
-                                           hsaDeviceInterface& device) :
+hsaTrackingUpdatePhase::hsaTrackingUpdatePhase(Config& config, const std::string& unique_name,
+                                               bufferContainer& host_buffers,
+                                               hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device, "", "") {
 
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
@@ -68,7 +68,7 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const std::string& un
     // Gain stuff here
     gain_len = 2 * 2048 * _num_beams * sizeof(float);
     host_gain = (float*)hsa_host_malloc(gain_len, device.get_gpu_numa_node());
-    gain_buf = host_buffers.get_buffer("gain_psr_buf");
+    gain_buf = host_buffers.get_buffer("gain_tracking_buf");
     register_consumer(gain_buf, unique_name.c_str());
     gain_buf_id = 0;
 
@@ -88,27 +88,27 @@ hsaPulsarUpdatePhase::hsaPulsarUpdatePhase(Config& config, const std::string& un
     bank_use_1 = 0;
     second_last = 0;
 
-    // Register function to listen for new pulsar, and update ra and dec
+    // Register function to listen for new beam, and update ra and dec
     using namespace std::placeholders;
     for (int beam_id = 0; beam_id < _num_beams; beam_id++) {
         configUpdater::instance().subscribe(
-            config.get<std::string>(unique_name, "updatable_config/psr_pt") + "/"
+            config.get<std::string>(unique_name, "updatable_config/tracking_pt") + "/"
                 + std::to_string(beam_id),
             [beam_id, this](nlohmann::json& json_msg) -> bool {
-                return pulsar_grab_callback(json_msg, beam_id);
+                return tracking_grab_callback(json_msg, beam_id);
             });
     }
 }
 
-hsaPulsarUpdatePhase::~hsaPulsarUpdatePhase() {
-    restServer::instance().remove_json_callback(endpoint_psrcoord);
+hsaTrackingUpdatePhase::~hsaTrackingUpdatePhase() {
+    restServer::instance().remove_json_callback(endpoint_trackingcoord);
     hsa_host_free(host_phase_0);
     hsa_host_free(host_phase_1);
     hsa_host_free(bankID);
     hsa_host_free(host_gain);
 }
 
-int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id) {
+int hsaTrackingUpdatePhase::wait_on_precondition(int gpu_frame_id) {
     (void)gpu_frame_id;
     uint8_t* frame =
         wait_for_full_frame(metadata_buf, unique_name.c_str(), metadata_buffer_precondition_id);
@@ -124,7 +124,7 @@ int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id) {
         if (frame == nullptr)
             return -1;
         DEBUG("Applying inital host gains from {:s}[{:d}]", gain_buf->buffer_name, gain_buf_id);
-        std::lock_guard<std::mutex> lock(_pulsar_lock);
+        std::lock_guard<std::mutex> lock(_beam_lock);
         memcpy(host_gain, (float*)gain_buf->frames[gain_buf_id], gain_len);
         update_phase = true;
         mark_frame_empty(gain_buf, unique_name.c_str(), gain_buf_id);
@@ -135,7 +135,7 @@ int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id) {
             wait_for_full_frame_timeout(gain_buf, unique_name.c_str(), gain_buf_id, timeout);
         if (status == 0) {
             DEBUG("Applying new host gains from {:s}[{:d}]", gain_buf->buffer_name, gain_buf_id);
-            std::lock_guard<std::mutex> lock(_pulsar_lock);
+            std::lock_guard<std::mutex> lock(_beam_lock);
             memcpy(host_gain, (float*)gain_buf->frames[gain_buf_id], gain_len);
             update_phase = true;
             mark_frame_empty(gain_buf, unique_name.c_str(), gain_buf_id);
@@ -147,8 +147,8 @@ int hsaPulsarUpdatePhase::wait_on_precondition(int gpu_frame_id) {
     return 0;
 }
 
-void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec time_now,
-                                           float freq_now, float* gains, float* output) {
+void hsaTrackingUpdatePhase::calculate_phase(struct beamCoord beam_coord, timespec time_now,
+                                             float freq_now, float* gains, float* output) {
 
     float FREQ = freq_now;
     struct tm* timeinfo;
@@ -174,17 +174,17 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec t
     }
     LST = fmod(LST, 24);
     for (int b = 0; b < _num_beams; b++) {
-        if (psr_coord.scaling[b] == 1) {
+        if (beam_coord.scaling[b] == 1) {
             for (uint32_t i = 0; i < _num_elements * 2; ++i) {
                 output[b * _num_elements * 2 + i] = gains[b * _num_elements * 2 + i];
             }
             continue;
         }
-        double hour_angle = LST * 15. - psr_coord.ra[b];
-        double alt = sin(psr_coord.dec[b] * D2R) * sin(inst_lat * D2R)
-                     + cos(psr_coord.dec[b] * D2R) * cos(inst_lat * D2R) * cos(hour_angle * D2R);
+        double hour_angle = LST * 15. - beam_coord.ra[b];
+        double alt = sin(beam_coord.dec[b] * D2R) * sin(inst_lat * D2R)
+                     + cos(beam_coord.dec[b] * D2R) * cos(inst_lat * D2R) * cos(hour_angle * D2R);
         alt = asin(std::clamp(alt, -1.0, 1.0));
-        double az = (sin(psr_coord.dec[b] * D2R) - sin(alt) * sin(inst_lat * D2R))
+        double az = (sin(beam_coord.dec[b] * D2R) - sin(alt) * sin(inst_lat * D2R))
                     / (cos(alt) * cos(inst_lat * D2R));
         az = acos(std::clamp(az, -1.0, 1.0));
         if (sin(hour_angle * D2R) >= 0) {
@@ -217,7 +217,7 @@ void hsaPulsarUpdatePhase::calculate_phase(struct psrCoord psr_coord, timespec t
     }
 }
 
-hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
+hsa_signal_t hsaTrackingUpdatePhase::execute(int gpu_frame_id, hsa_signal_t precede_signal) {
     // Update phase every one second
     const uint64_t phase_update_period = 390625;
     uint64_t current_seq = get_fpga_seq_num(metadata_buf, metadata_buffer_id);
@@ -241,26 +241,26 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, hsa_signal_t preced
         DEBUG("updating phase gain={:f} {:f}", host_gain[0], host_gain[1]);
         time_now_gps = get_gps_time(metadata_buf, metadata_buffer_id);
         if (time_now_gps.tv_sec == 0) {
-            ERROR("GPS time appears to be zero, bad news for pulsar timing!");
+            ERROR("GPS time appears to be zero, bad news for beam timing!");
         }
         // use whichever bank that has no lock
         if (bank_use_0 == 0) { // no more outstanding async copy using bank0
-            std::lock_guard<std::mutex> lock(_pulsar_lock);
-            psr_coord = psr_coord_latest_update;
-            calculate_phase(psr_coord, time_now_gps, freq_MHz, host_gain, host_phase_0);
+            std::lock_guard<std::mutex> lock(_beam_lock);
+            beam_coord = beam_coord_latest_update;
+            calculate_phase(beam_coord, time_now_gps, freq_MHz, host_gain, host_phase_0);
             bank_active = 0;
             update_phase = false;
         } else if (bank_use_1 == 0) { // no more outstanding async copy using bank1
-            std::lock_guard<std::mutex> lock(_pulsar_lock);
-            psr_coord = psr_coord_latest_update;
-            calculate_phase(psr_coord, time_now_gps, freq_MHz, host_gain, host_phase_1);
+            std::lock_guard<std::mutex> lock(_beam_lock);
+            beam_coord = beam_coord_latest_update;
+            calculate_phase(beam_coord, time_now_gps, freq_MHz, host_gain, host_phase_1);
             bank_active = 1;
             update_phase = false;
         }
     }
 
     bankID[gpu_frame_id] = bank_active; // update or not, read from the latest bank
-    set_psr_coord(metadata_buf, metadata_buffer_id, psr_coord);
+    set_beam_coord(metadata_buf, metadata_buffer_id, beam_coord);
     mark_frame_empty(metadata_buf, unique_name.c_str(), metadata_buffer_id);
     metadata_buffer_id = (metadata_buffer_id + 1) % metadata_buf->num_frames;
 
@@ -286,7 +286,7 @@ hsa_signal_t hsaPulsarUpdatePhase::execute(int gpu_frame_id, hsa_signal_t preced
     return signals[gpu_frame_id];
 }
 
-void hsaPulsarUpdatePhase::finalize_frame(int frame_id) {
+void hsaTrackingUpdatePhase::finalize_frame(int frame_id) {
     hsaCommand::finalize_frame(frame_id);
     if (bankID[frame_id] == 1) {
         bank_use_1 = bank_use_1 - 1;
@@ -296,30 +296,30 @@ void hsaPulsarUpdatePhase::finalize_frame(int frame_id) {
     }
 }
 
-bool hsaPulsarUpdatePhase::pulsar_grab_callback(nlohmann::json& json, const uint8_t beam_id) {
+bool hsaTrackingUpdatePhase::tracking_grab_callback(nlohmann::json& json, const uint8_t beam_id) {
     {
-        std::lock_guard<std::mutex> lock(_pulsar_lock);
+        std::lock_guard<std::mutex> lock(_beam_lock);
         try {
-            psr_coord_latest_update.ra[beam_id] = json.at("ra").get<float>();
+            beam_coord_latest_update.ra[beam_id] = json.at("ra").get<float>();
         } catch (std::exception const& e) {
-            WARN("[PSR] Pointing update fail to read RA {:s}", e.what());
+            WARN("[TRACKING] Pointing update fail to read RA {:s}", e.what());
             return false;
         }
         try {
-            psr_coord_latest_update.dec[beam_id] = json.at("dec").get<float>();
+            beam_coord_latest_update.dec[beam_id] = json.at("dec").get<float>();
         } catch (std::exception const& e) {
-            WARN("[PSR] Pointing update fail to read DEC {:s}", e.what());
+            WARN("[TRACKING] Pointing update fail to read DEC {:s}", e.what());
             return false;
         }
         try {
-            psr_coord_latest_update.scaling[beam_id] = json.at("scaling").get<int>();
+            beam_coord_latest_update.scaling[beam_id] = json.at("scaling").get<int>();
         } catch (std::exception const& e) {
-            WARN("[PSR] Pointing update fail to read scaling factor {:s}", e.what());
+            WARN("[TRACKING] Pointing update fail to read scaling factor {:s}", e.what());
             return false;
         }
-        INFO("[psr] Updated Beam={:d} RA={:.2f} Dec={:.2f} Scl={:d}", beam_id,
-             psr_coord_latest_update.ra[beam_id], psr_coord_latest_update.dec[beam_id],
-             psr_coord_latest_update.scaling[beam_id]);
+        INFO("[tracking] Updated Beam={:d} RA={:.2f} Dec={:.2f} Scl={:d}", beam_id,
+             beam_coord_latest_update.ra[beam_id], beam_coord_latest_update.dec[beam_id],
+             beam_coord_latest_update.scaling[beam_id]);
         update_phase = true;
     }
     return true;
