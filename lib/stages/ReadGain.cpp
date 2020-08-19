@@ -88,11 +88,23 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
             gainfrb, std::bind(&ReadGain::update_gains_frb_callback, this, _1));
 
     // listen for gain updates TRACKING
-    std::string gaintracking =
-        config.get<std::string>(unique_name, "updatable_config/gain_tracking");
-    if (gaintracking.length() > 0)
+    // std::string gaintracking =
+    //    config.get<std::string>(unique_name, "updatable_config/gain_tracking");
+    // if (gaintracking.length() > 0)
+    //    configUpdater::instance().subscribe(
+    //        gaintracking, std::bind(&ReadGain::update_gains_tracking_callback, this, _1));
+
+    // Listen for gain updates TRACKING
+    using namespace std::placeholders;
+    _gain_dir_tracking.resize(_num_beams);
+    for (int beam_id = 0; beam_id < _num_beams; beam_id++) {
         configUpdater::instance().subscribe(
-            gaintracking, std::bind(&ReadGain::update_gains_tracking_callback, this, _1));
+            config.get<std::string>(unique_name, "updatable_config/tracking_pt") + "/"
+                + std::to_string(beam_id),
+            [beam_id, this](nlohmann::json& json_msg) -> bool {
+                return update_gains_tracking_callback(json_msg, beam_id);
+            });
+    }
 }
 
 bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
@@ -115,19 +127,14 @@ bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
     return true;
 }
 
-bool ReadGain::update_gains_tracking_callback(nlohmann::json& json) {
+bool ReadGain::update_gains_tracking_callback(nlohmann::json& json, const uint8_t beam_id) {
     if (update_gains_tracking) {
         WARN("[TRACKING] cannot handle two back-to-back gain updates, rejecting the latter");
         return true;
     }
     try {
-        _gain_dir_tracking = json.at("tracking_gain_dir").get<std::vector<std::string>>();
-        std::string output_msg = "[TRACKING] Updating gains from ";
-        for (int i = 0; i < _num_beams; i++) {
-            output_msg += _gain_dir_tracking[i];
-            output_msg += " ";
-        }
-        INFO("{:s}", output_msg);
+        _gain_dir_tracking[beam_id] = json.at("gain_dir").get<std::string>();
+        INFO("[TRACKING] Updating gains from {:s}", _gain_dir_tracking[beam_id]);
     } catch (std::exception const& e) {
         WARN("[Tracking Beamformer] Fail to read gain_dir {:s}", e.what());
         return false;
