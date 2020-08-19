@@ -101,7 +101,7 @@ hsaTrackingUpdatePhase::hsaTrackingUpdatePhase(Config& config, const std::string
 }
 
 hsaTrackingUpdatePhase::~hsaTrackingUpdatePhase() {
-    restServer::instance().remove_json_callback(endpoint_trackingcoord);
+    restServer::instance().remove_json_callback(endpoint_beam_coord);
     hsa_host_free(host_phase_0);
     hsa_host_free(host_phase_1);
     hsa_host_free(bankID);
