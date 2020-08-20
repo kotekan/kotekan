@@ -8,7 +8,7 @@ set ( KOTEKAN_TESTING_SOURCES
       FakeVis.cpp
       FakeVisPattern.cpp
       gpuBeamformSimulate.cpp
-      gpuBeamformPulsarSimulate.cpp
+      gpuTrackingBeamformSimulate.cpp
       gpuSimulate.cpp
       hexDump.cpp
       networkOutputSim.cpp
