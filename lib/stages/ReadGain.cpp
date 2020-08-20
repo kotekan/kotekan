@@ -39,7 +39,7 @@ REGISTER_KOTEKAN_STAGE(ReadGain);
 // Request gain file re-parse with e.g.
 // FRB
 // curl localhost:12048/frb_gain -X POST -H 'Content-Type: appication/json' -d '{"frb_gain_dir":"the_new_path"}'
-// TRACKING
+// Tracking Beamformer
 // curl localhost:12048/updatable_config/tracking_gain -X POST -H 'Content-Type: application/json' -d
 // '{"tracking_gain_dir":["path0","path1","path2","path3","path4","path5","path6","path7","path8","path9"]}'
 //
@@ -72,7 +72,7 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     register_producer(gain_frb_buf, unique_name.c_str());
     update_gains_frb = false;
 
-    // Gain for TRACKING
+    // Gain for Tracking Beamformer
     gain_tracking_buf = get_buffer("gain_tracking_buf");
     gain_tracking_buf_id = 0;
     register_producer(gain_tracking_buf, unique_name.c_str());
@@ -87,14 +87,7 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
         configUpdater::instance().subscribe(
             gainfrb, std::bind(&ReadGain::update_gains_frb_callback, this, _1));
 
-    // listen for gain updates TRACKING
-    // std::string gaintracking =
-    //    config.get<std::string>(unique_name, "updatable_config/gain_tracking");
-    // if (gaintracking.length() > 0)
-    //    configUpdater::instance().subscribe(
-    //        gaintracking, std::bind(&ReadGain::update_gains_tracking_callback, this, _1));
-
-    // Listen for gain updates TRACKING
+    // Listen for gain updates Tracking Beamformer
     using namespace std::placeholders;
     _gain_dir_tracking.resize(_num_beams);
     for (int beam_id = 0; beam_id < _num_beams; beam_id++) {
@@ -128,22 +121,17 @@ bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
 }
 
 bool ReadGain::update_gains_tracking_callback(nlohmann::json& json, const uint8_t beam_id) {
-    if (update_gains_tracking) {
-        WARN("[TRACKING] cannot handle two back-to-back gain updates, rejecting the latter");
-        return true;
-    }
-    try {
-        _gain_dir_tracking.at(beam_id) = json.at("gain_dir").get<std::string>();
-        INFO("[TRACKING] Updating gains from {:s}", _gain_dir_tracking.at(beam_id));
-    } catch (std::exception const& e) {
-        WARN("[Tracking Beamformer] Fail to read gain_dir {:s}", e.what());
-        return false;
-    }
     {
         std::lock_guard<std::mutex> lock(mux);
+        try {
+            _gain_dir_tracking.at(beam_id) = json.at("gain_dir").get<std::string>();
+            INFO("[Tracking Beamformer] Updating gains from {:s}", _gain_dir_tracking.at(beam_id));
+        } catch (std::exception const& e) {
+            WARN("[Tracking Beamformer] Fail to read gain_dir {:s}", e.what());
+            return false;
+        }
         update_gains_tracking = true;
     }
-    cond_var.notify_all();
 
     return true;
 }
@@ -209,7 +197,7 @@ void ReadGain::read_gain_tracking() {
     for (int b = 0; b < _num_beams; b++) {
         snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",
                  _gain_dir_tracking.at(b).c_str(), freq_idx);
-        INFO("TRACKING Loading gains from {:s}", filename);
+        INFO("Tracking Beamformer Loading gains from {:s}", filename);
         ptr_myfile = fopen(filename, "rb");
         if (ptr_myfile == nullptr) {
             WARN("GPU Cannot open gain file {:s}", filename);
