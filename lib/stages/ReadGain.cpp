@@ -99,7 +99,7 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     _gain_dir_tracking.resize(_num_beams);
     for (int beam_id = 0; beam_id < _num_beams; beam_id++) {
         configUpdater::instance().subscribe(
-            config.get<std::string>(unique_name, "updatable_config/tracking_pt") + "/"
+            config.get<std::string>(unique_name, "updatable_config/tracking_gain") + "/"
                 + std::to_string(beam_id),
             [beam_id, this](nlohmann::json& json_msg) -> bool {
                 return update_gains_tracking_callback(json_msg, beam_id);
@@ -133,7 +133,7 @@ bool ReadGain::update_gains_tracking_callback(nlohmann::json& json, const uint8_
         return true;
     }
     try {
-        _gain_dir_tracking[beam_id] = json.at("gain_dir").get<std::string>();
+        _gain_dir_tracking.at(beam_id) = json.at("gain_dir").get<std::string>();
         INFO("[TRACKING] Updating gains from {:s}", _gain_dir_tracking[beam_id]);
     } catch (std::exception const& e) {
         WARN("[Tracking Beamformer] Fail to read gain_dir {:s}", e.what());
