@@ -89,7 +89,6 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
 
     // Listen for gain updates Tracking Beamformer
     using namespace std::placeholders;
-    _gain_dir_tracking.resize(_num_beams);
     for (int beam_id = 0; beam_id < _num_beams; beam_id++) {
         configUpdater::instance().subscribe(
             config.get<std::string>(unique_name, "updatable_config/gain_tracking") + "/"
@@ -124,8 +123,10 @@ bool ReadGain::update_gains_tracking_callback(nlohmann::json& json, const uint8_
     {
         std::lock_guard<std::mutex> lock(mux);
         try {
-            _gain_dir_tracking.at(beam_id) = json.at("gain_dir").get<std::string>();
-            INFO("[Tracking Beamformer] Updating gains from {:s}", _gain_dir_tracking.at(beam_id));
+            _gain_dir_tracking.push(
+                std::make_pair(beam_id, json.at("gain_dir").get<std::string>()));
+            INFO("[Tracking Beamformer] Updating gains from {:s}",
+                 _gain_dir_tracking.back().second);
         } catch (std::exception const& e) {
             WARN("[Tracking Beamformer] Fail to read gain_dir {:s}", e.what());
             return false;
@@ -194,34 +195,41 @@ void ReadGain::read_gain_tracking() {
     FILE* ptr_myfile;
     char filename[256];
     bool all_beams_successful_update = true;
-    for (int b = 0; b < _num_beams; b++) {
-        snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",
-                 _gain_dir_tracking.at(b).c_str(), freq_idx);
-        INFO("Tracking Beamformer Loading gains from {:s}", filename);
-        ptr_myfile = fopen(filename, "rb");
-        if (ptr_myfile == nullptr) {
-            WARN("GPU Cannot open gain file {:s}", filename);
-            all_beams_successful_update = false;
-            for (uint i = 0; i < _num_elements; i++) {
-                out_frame_tracking[(b * _num_elements + i) * 2] = default_gains[0];
-                out_frame_tracking[(b * _num_elements + i) * 2 + 1] = default_gains[1];
-            }
-        } else {
-            if (_num_elements
-                != fread(&out_frame_tracking[b * _num_elements * 2], sizeof(float) * 2,
-                         _num_elements, ptr_myfile)) {
-                WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
-                     "gains",
-                     filename);
+    {
+        std::lock_guard<std::mutex> lock(mux);
+        while (_gain_dir_tracking.size() > 0) {
+            std::pair<uint8_t, std::string> beam = _gain_dir_tracking.front();
+            _gain_dir_tracking.pop();
+            uint8_t beam_id = beam.first;
+            snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",
+                     beam.second.c_str(), freq_idx);
+            INFO("Tracking Beamformer Loading gains from {:s}", filename);
+            ptr_myfile = fopen(filename, "rb");
+            if (ptr_myfile == nullptr) {
+                WARN("GPU Cannot open gain file {:s}", filename);
                 all_beams_successful_update = false;
                 for (uint i = 0; i < _num_elements; i++) {
-                    out_frame_tracking[(b * _num_elements + i) * 2] = default_gains[0];
-                    out_frame_tracking[(b * _num_elements + i) * 2 + 1] = default_gains[1];
+                    out_frame_tracking[(beam_id * _num_elements + i) * 2] = default_gains[0];
+                    out_frame_tracking[(beam_id * _num_elements + i) * 2 + 1] = default_gains[1];
                 }
+            } else {
+                if (_num_elements
+                    != fread(&out_frame_tracking[beam_id * _num_elements * 2], sizeof(float) * 2,
+                             _num_elements, ptr_myfile)) {
+                    WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
+                         "gains",
+                         filename);
+                    all_beams_successful_update = false;
+                    for (uint i = 0; i < _num_elements; i++) {
+                        out_frame_tracking[(beam_id * _num_elements + i) * 2] = default_gains[0];
+                        out_frame_tracking[(beam_id * _num_elements + i) * 2 + 1] =
+                            default_gains[1];
+                    }
+                }
+                fclose(ptr_myfile);
             }
-            fclose(ptr_myfile);
-        }
-    } // end beam
+        } // end beam
+    }
     if (all_beams_successful_update) {
         gains_last_update_success_metric.labels({"tracking"}).set(1);
     } else {

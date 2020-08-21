@@ -18,10 +18,12 @@
 
 #include <condition_variable> // for condition_variable
 #include <mutex>              // for mutex
+#include <queue>              // for queue
 #include <stdint.h>           // for int32_t, int16_t, uint32_t
 #include <string>             // for string
 #include <vector>             // for vector
 
+using std::queue;
 using std::vector;
 
 /**
@@ -91,7 +93,7 @@ private:
 
     /// Directory path where gain files are
     std::string _gain_dir_frb;
-    vector<std::string> _gain_dir_tracking;
+    queue<std::pair<uint8_t, std::string>> _gain_dir_tracking;
     /// Default gain values if gain file is missing for this freq, currently set to 1+1j
     vector<float> default_gains;
 
