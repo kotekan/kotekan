@@ -45,7 +45,7 @@
  *                          it is the the index of the input to move into this
  *                          new location. The remaining elements of the subarray
  *                          are for correctly labelling the input in
- *                          ``Writer``.
+ *                          ``VisWriter``.
  *
  * @author Richard Shaw
  */

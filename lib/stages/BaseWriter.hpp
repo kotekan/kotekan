@@ -156,10 +156,10 @@ protected:
     /// Input buffer to read from
     Buffer* in_buf;
 
-    /// Mutex for updating file_bundle (used in for visCalWriter)
+    /// Mutex for updating file_bundle (used in for VisCalWriter)
     std::mutex write_mutex;
 
-    /// Manage access to the list of acquisitions (again mostly for visCalWriter)
+    /// Manage access to the list of acquisitions (again mostly for VisCalWriter)
     std::mutex acqs_mutex;
 
     /// Hold the internal state of an acquisition (one per dataset ID)

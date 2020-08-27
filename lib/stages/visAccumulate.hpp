@@ -64,7 +64,7 @@
  *                              it is the the index of the input to move into this
  *                              new location. The remaining elements of the subarray
  *                              are for correctly labelling the input in
- *                              ``Writer``.
+ *                              ``VisWriter``.
  * @conf  low_sample_fraction   If a frames has less than this fraction of the
  *                              data expected, skip it. This is set to 1% by default.
  * @conf  instrument_name       String. Name of the instrument. Default "chime".

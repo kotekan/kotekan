@@ -195,7 +195,7 @@ protected:
  * This version is intended to write to a single file, with a
  * static user defined file name. The file mapping can be cleared
  * so that a new file is written to and the previous one is available
- * for reading. Swapping these files is managed by visCalWriter.
+ * for reading. Swapping these files is managed by VisCalWriter.
  *
  * @author Tristan Pinsonneault-Marotee
  **/
