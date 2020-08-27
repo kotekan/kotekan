@@ -70,6 +70,7 @@ void VisWriter::main_thread() {
         close_old_acqs();
     }
 }
+
 /// Construct the set of metadata
 std::map<std::string, std::string> VisWriter::make_metadata(dset_id_t ds_id) {
 
