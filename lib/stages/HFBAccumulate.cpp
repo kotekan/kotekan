@@ -27,7 +27,7 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(HFBAccumulate);
 
 HFBAccumulate::HFBAccumulate(Config& config_, const std::string& unique_name,
-                                   bufferContainer& buffer_container) :
+                             bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&HFBAccumulate::main_thread, this)) {
 
     // Apply config.
@@ -89,7 +89,7 @@ HFBAccumulate::HFBAccumulate(Config& config_, const std::string& unique_name,
 HFBAccumulate::~HFBAccumulate() {}
 
 void HFBAccumulate::init_first_frame(float* input_data, float* sum_data,
-                                      const uint32_t in_buffer_ID) {
+                                     const uint32_t in_buffer_ID) {
 
     int64_t fpga_seq_num_start =
         fpga_seq_num_end - (_num_frames_to_integrate - 1) * _samples_per_data_set;
@@ -104,7 +104,7 @@ void HFBAccumulate::init_first_frame(float* input_data, float* sum_data,
 }
 
 void HFBAccumulate::integrate_frame(float* input_data, float* sum_data,
-                                      const uint32_t in_buffer_ID) {
+                                    const uint32_t in_buffer_ID) {
     frame++;
     fpga_seq_num += _samples_per_data_set;
     total_lost_timesamples += get_fpga_seq_num(in_buf, in_buffer_ID) - fpga_seq_num;

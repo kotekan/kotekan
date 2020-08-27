@@ -44,7 +44,7 @@ class HFBAccumulate : public kotekan::Stage {
 public:
     /// Constructor.
     HFBAccumulate(kotekan::Config& config_, const std::string& unique_name,
-                     kotekan::bufferContainer& buffer_container);
+                  kotekan::bufferContainer& buffer_container);
     /// Destructor
     virtual ~HFBAccumulate();
     /// Primary loop to wait for buffers, dig through data,

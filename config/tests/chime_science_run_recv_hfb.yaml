@@ -52,7 +52,7 @@ write_hfb:
   file_type: hfbraw
   root_path: /mnt/ramdisk
 
-  kotekan_stage: Writer
+  kotekan_stage: HFBWriter
   in_buf: hfbbuf_10s
   instrument_name: chimeHFB
 
