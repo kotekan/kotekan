@@ -38,7 +38,7 @@ public:
 
     void main_thread() override;
 
-public:
+protected:
     /// Setup the acquisition
     // NOTE: must be called from with a region locked by acqs_mutex
     void init_acq(dset_id_t ds_id, std::map<std::string, std::string> metadata);

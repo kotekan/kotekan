@@ -1,13 +1,13 @@
 /*****************************************
 @file
-@brief Base class for VisWriter stage.
+@brief Base class for writer stage.
 - BaseWriter : public
 *****************************************/
 #ifndef BASE_WRITER_HPP
 #define BASE_WRITER_HPP
 
 #include "Config.hpp"            // for Config
-#include "HFBFrameView.hpp"      // for HFBFrameView
+#include "FrameView.hpp"         // for FrameView
 #include "Stage.hpp"             // for Stage
 #include "buffer.h"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
