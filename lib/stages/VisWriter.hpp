@@ -31,6 +31,13 @@
 #include <unistd.h>  // for access, F_OK
 #include <utility>   // for pair
 
+/**
+ * @class VisWriter
+ * @brief Stage to write raw visibility data.
+ *
+ * This class inherits from the BaseWriter base class and writes raw visibility data
+ * @author Richard Shaw and James Willis
+ **/
 class VisWriter : public BaseWriter {
 public:
     VisWriter(kotekan::Config& config, const std::string& unique_name,
@@ -49,6 +56,7 @@ protected:
     /// Gets states from the dataset manager and saves some metadata
     void get_dataset_state(dset_id_t ds_id) override;
 
+    /// Write data using FrameView
     void write_data(const FrameView& frame, kotekan::prometheus::Gauge& write_time_metric,
                     std::unique_lock<std::mutex>& acqs_lock) override;
 };

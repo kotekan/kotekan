@@ -31,6 +31,13 @@
 #include <unistd.h>  // for access, F_OK
 #include <utility>   // for pair
 
+/**
+ * @class HFBWriter
+ * @brief Stage to write raw absorber data.
+ *
+ * This class inherits from the BaseWriter base class and writes raw absorber data
+ * @author James Willis
+ **/
 class HFBWriter : public BaseWriter {
 public:
     HFBWriter(kotekan::Config& config, const std::string& unique_name,
@@ -49,6 +56,7 @@ protected:
     /// Gets states from the dataset manager and saves some metadata
     void get_dataset_state(dset_id_t ds_id) override;
 
+    /// Write data using FrameView
     void write_data(const FrameView& frame, kotekan::prometheus::Gauge& write_time_metric,
                     std::unique_lock<std::mutex>& acqs_lock) override;
 };
