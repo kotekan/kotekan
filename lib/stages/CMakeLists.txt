@@ -34,7 +34,6 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       visCompression.cpp
       timeDownsample.cpp
       frbPostProcess.cpp
-      Writer.cpp
       BaseWriter.cpp
       VisWriter.cpp
       HFBWriter.cpp
