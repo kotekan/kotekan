@@ -6,5 +6,7 @@
 *.c~
 *.h~
 *.swp
+/.idea/
 /.vscode/
 /nbproject/
+/cmake-build*/
