@@ -12,8 +12,6 @@ from test_dataset_broker import has_redis
 params = {
     "num_elements": 5,
     "num_ev": 0,
-    "num_frb_total_beams": 12,
-    "factor_upchan": 6,
     "total_frames": 4,
     "cadence": 10.0,
     "mode": "default",
@@ -119,7 +117,7 @@ def subset_data(tmpdir_factory):
         data_split_lower = dump_buffer_split_lower.load()
         data_split_higher = dump_buffer_split_higher.load()
 
-        ### 2 Writer processes ###
+        ### 2 VisWriter processes ###
 
         tmpdir = tmpdir_factory.mktemp("freqsub_write_lower")
 
@@ -228,7 +226,7 @@ def test_subset_broker(subset_data):
     assert counts == [params["total_frames"]] * len(subset_higher)
 
     # this is what it's really about:
-    # check the data the Writer wrote
+    # check the data the VisWriter wrote
     assert len(data_write_lower.valid_frames) == params["total_frames"]
     assert len(data_write_higher.valid_frames) == params["total_frames"]
 

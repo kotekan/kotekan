@@ -421,7 +421,7 @@ class VisWriterBuffer(OutputBuffer):
             self.buffer_block = {}
 
         stage_config = {
-            "kotekan_stage": "Writer",
+            "kotekan_stage": "VisWriter",
             "in_buf": buf_name,
             "file_name": self.name,
             "file_type": file_type,
