@@ -84,9 +84,10 @@ trunc_bias_switch: True
 ####################
 telescope:
   name: CHIMETelescope
-  require_gps: true
+  require_gps: false # Still run the config if fpga_master is down.
   query_gps: true
   query_frequency_map: true
+  require_frequency_map: false
   allow_default_frequency_map: true
 
 ##########################
