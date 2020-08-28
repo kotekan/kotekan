@@ -87,8 +87,7 @@ telescope:
   require_gps: true
   query_gps: true
   query_frequency_map: true
-  allow_default_frequency_map: false
-
+  allow_default_frequency_map: true
 
 ##########################
 #### Dataset manager #####
