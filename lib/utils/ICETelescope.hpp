@@ -14,7 +14,10 @@
  * @brief Implementation for an ICEboard like telescope with a Casper PFB.
  *
  * @conf  sample_rate     int.     The sampling rate in MHz.
- * @conf  frame_length    int.     The FPGA frame length in samples.
+ * @conf  fft_length      int.     The FFT frame length in samples. Note this is the length of a
+ *                                 basic FFT, the ICEBoard uses a PFB with a 8096 sample window,
+ *                                 but the effective length is 2048 for computing the number
+ *                                 of frequency bins.
  * @conf  nyquist_zone    int.     The Nyquist zone we are sampling in (zone=1 is standard
  *                                 sampling, zone>=2 is alias sampling).
  * @conf  query_gps       bool.    Should the telescope object get the GPS from a remote source
