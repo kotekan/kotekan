@@ -9,7 +9,11 @@ RUN apt-get update && \
     add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y python3.7 python3-setuptools python3-pip python3.7-distutils python3.7-dev \
+    wget https://www.python.org/ftp/python/3.7.7/Python-3.7.7.tgz && \
+    tar xzvf Python-3.7.7.tgz && cd Python-3.5.0 && \
+    ./configure && make && make install && \
+    python3.7 --version && \
+    apt-get install -y python3-setuptools python3-pip python3.7-distutils python3.7-dev \
                        build-essential git coreutils ccache pkg-config \
                        gcc cmake clang-9 clang-format-8 \
                        dpdk dpdk-dev \
