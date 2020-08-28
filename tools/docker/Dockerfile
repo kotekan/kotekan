@@ -9,6 +9,7 @@ RUN apt-get update && \
     add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && \
     apt-get upgrade -y && \
+    apt-get install -y wget && \
     wget https://www.python.org/ftp/python/3.7.7/Python-3.7.7.tgz && \
     tar xzvf Python-3.7.7.tgz && cd Python-3.5.0 && \
     ./configure && make && make install && \
