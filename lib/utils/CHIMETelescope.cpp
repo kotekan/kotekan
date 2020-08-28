@@ -45,13 +45,13 @@ CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string&
     _query_frequency_map = config.get_default<bool>(path, "query_frequency_map", false);
     _frequency_map_host = config.get_default<std::string>(path, "frequency_map_host", "10.1.13.1");
     _frequency_map_port = config.get_default<uint32_t>(path, "frequency_map_port", 54321);
-    _frequency_map_endpoint = config.get_default<std::string>(path, "frequency_map_endpoint",
-                                                              "/get-frequency-map");
+    _frequency_map_endpoint =
+        config.get_default<std::string>(path, "frequency_map_endpoint", "/get-frequency-map");
 
     nlohmann::json fpga_freq_map_json;
     if (_query_frequency_map)
-        fpga_freq_map_json = get_frequency_map(_frequency_map_host, _frequency_map_port,
-                                               _frequency_map_endpoint);
+        fpga_freq_map_json =
+            get_frequency_map(_frequency_map_host, _frequency_map_port, _frequency_map_endpoint);
     else
         fpga_freq_map_json = config.get_default<nlohmann::json>("/", "fpga_frequency_map", {});
 
@@ -64,10 +64,10 @@ CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string&
 
 nlohmann::json CHIMETelescope::get_frequency_map(const std::string& host, const uint32_t port,
                                                  const std::string& path) {
-    INFO("Requesting frequency map from server: {:s}:{:d}{:s} This might take some time...",
-         host, port, path);
-    auto reply = restClient::instance().make_request_blocking(path, {{"format", "s:b"}},
-                                                              host, port, 0, 30);
+    INFO("Requesting frequency map from server: {:s}:{:d}{:s} This might take some time...", host,
+         port, path);
+    auto reply =
+        restClient::instance().make_request_blocking(path, {{"format", "s:b"}}, host, port, 0, 30);
 
     if (!reply.first) {
         WARN("Failed to get frequency map from {:s}:{:d}{:s}");
@@ -78,7 +78,7 @@ nlohmann::json CHIMETelescope::get_frequency_map(const std::string& host, const 
     return json_reply;
 }
 
-void CHIMETelescope::set_frequency_map(nlohmann::json &fpga_freq_map_json) {
+void CHIMETelescope::set_frequency_map(nlohmann::json& fpga_freq_map_json) {
     if (fpga_freq_map_json.empty()) {
         if (_require_frequency_map) {
             std::string msg = fmt::format("Frequency map required but not found");
@@ -118,8 +118,7 @@ void CHIMETelescope::set_frequency_map(nlohmann::json &fpga_freq_map_json) {
             fpga_freq_map =
                 fpga_freq_map_json.at("fmap").get<std::map<std::string, std::vector<int>>>();
         } catch (std::exception const& e) {
-            std::string msg =
-                fmt::format("Could not read the fmap table: {:s}", e.what());
+            std::string msg = fmt::format("Could not read the fmap table: {:s}", e.what());
             ERROR("{:s}", msg);
             throw std::runtime_error(msg);
         }

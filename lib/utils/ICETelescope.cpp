@@ -81,11 +81,10 @@ void ICETelescope::set_gps(const kotekan::Config& config) {
     gps_enabled = true;
 }
 
-void ICETelescope::set_gps(const std::string& host, const uint32_t port,
-                           const std::string& path) {
+void ICETelescope::set_gps(const std::string& host, const uint32_t port, const std::string& path) {
 
-    INFO("Requesting GPS time from server: {:s}:{:d}{:s} This might take some time...",
-         host, port, path);
+    INFO("Requesting GPS time from server: {:s}:{:d}{:s} This might take some time...", host, port,
+         path);
     auto reply = restClient::instance().make_request_blocking(path, {}, host, port, 0, 30);
 
     if (!reply.first) {
@@ -124,8 +123,7 @@ freq_id_t ICETelescope::to_freq_id(stream_t stream, uint32_t ind) const {
             return stream_id.crate_id * 16 + stream_id.slot_id + stream_id.link_id * 32
                    + stream_id.unused * 256;
         case 4: // 32 ICEBoards (512 elements) e.g. HIRAX-256
-            return stream_id.slot_id + stream_id.crate_id * 16
-                   + stream_id.link_id * 32 + ind * 256;
+            return stream_id.slot_id + stream_id.crate_id * 16 + stream_id.link_id * 32 + ind * 256;
         case 8: // 16 ICEBoards (256 elements) e.g. Pathfinder/HIRAX-128
             return stream_id.slot_id + stream_id.link_id * 16 + ind * 128;
         case 16: // 8 ICEBoards (128 elements) e.g. Allenby

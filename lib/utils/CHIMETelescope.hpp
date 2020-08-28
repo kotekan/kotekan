@@ -5,6 +5,7 @@
 #include "ICETelescope.hpp" // for ICETelescope
 #include "Telescope.hpp"    // for freq_id_t
 #include "chimeMetadata.h"  // for stream_t
+
 #include "json.hpp"
 
 #include <map>      // for map
@@ -77,7 +78,7 @@ private:
      *        otherwise it generates the FPGA default mapping table.
      * @param fpga_freq_map_json  JSON The frequency map from the FPGAs
      */
-    void set_frequency_map(nlohmann::json &fpga_freq_map_json);
+    void set_frequency_map(nlohmann::json& fpga_freq_map_json);
 };
 
 

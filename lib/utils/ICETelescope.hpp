@@ -75,8 +75,7 @@ protected:
      * @param port   The port of the server with the GPS time information
      * @param path   The endpoint resource name (e.g. /get-frame0-time)
      */
-    void set_gps(const std::string& host, const uint32_t port,
-                 const std::string& path);
+    void set_gps(const std::string& host, const uint32_t port, const std::string& path);
 
     // The number of frequencies per stream
     uint32_t _num_freq_per_stream;
