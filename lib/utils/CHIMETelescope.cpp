@@ -51,7 +51,7 @@ CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string&
     nlohmann::json fpga_freq_map_json;
     if (_query_frequency_map)
         fpga_freq_map_json =
-            get_frequency_map(_frequency_map_host, _frequency_map_port, _frequency_map_endpoint);
+            fetch_frequency_map(_frequency_map_host, _frequency_map_port, _frequency_map_endpoint);
     else
         fpga_freq_map_json = config.get_default<nlohmann::json>("/", "fpga_frequency_map", {});
 
@@ -62,8 +62,8 @@ CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string&
     }
 }
 
-nlohmann::json CHIMETelescope::get_frequency_map(const std::string& host, const uint32_t port,
-                                                 const std::string& path) {
+nlohmann::json CHIMETelescope::fetch_frequency_map(const std::string& host, const uint32_t port,
+                                                   const std::string& path) {
     INFO("Requesting frequency map from server: {:s}:{:d}{:s} This might take some time...", host,
          port, path);
     auto reply =

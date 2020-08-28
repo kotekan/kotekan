@@ -61,7 +61,7 @@ private:
     std::map<uint64_t, freq_id_t> frequency_table;
 
     /**
-     * @brief Get the frequency map from an endpoint
+     * @brief Fetch the frequency map from an endpoint
      *
      * @param host    String.  The IP address of the server with the map
      * @param port    Int.     The port of the server
@@ -69,8 +69,8 @@ private:
      *
      * @return json object with frequency map.
      */
-    nlohmann::json get_frequency_map(const std::string& host, const uint32_t port,
-                                     const std::string& path);
+    nlohmann::json fetch_frequency_map(const std::string& host, const uint32_t port,
+                                       const std::string& path);
 
     /**
      * @brief Sets the CHIME specific post 4-way CPU shuffle stream ID to
