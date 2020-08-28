@@ -133,6 +133,7 @@ bool ReadGain::update_gains_tracking_callback(nlohmann::json& json, const uint8_
         }
         update_gains_tracking = true;
     }
+    cond_var.notify_all();
 
     return true;
 }
@@ -195,41 +196,43 @@ void ReadGain::read_gain_tracking() {
     FILE* ptr_myfile;
     char filename[256];
     bool all_beams_successful_update = true;
-    {
-        std::lock_guard<std::mutex> lock(mux);
-        while (_gain_dir_tracking.size() > 0) {
-            std::pair<uint8_t, std::string> beam = _gain_dir_tracking.front();
-            _gain_dir_tracking.pop();
-            uint8_t beam_id = beam.first;
-            snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",
-                     beam.second.c_str(), freq_idx);
-            INFO("Tracking Beamformer Loading gains from {:s}", filename);
-            ptr_myfile = fopen(filename, "rb");
-            if (ptr_myfile == nullptr) {
-                WARN("GPU Cannot open gain file {:s}", filename);
+    std::pair<uint8_t, std::string> beam;
+
+    while (_gain_dir_tracking.size() > 0) {
+        {  
+          std::lock_guard<std::mutex> lock(mux);
+          beam = _gain_dir_tracking.front();
+          _gain_dir_tracking.pop();
+        }
+        uint8_t beam_id = beam.first;
+        snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",
+                 beam.second.c_str(), freq_idx);
+        INFO("Tracking Beamformer Loading gains from {:s}", filename);
+        ptr_myfile = fopen(filename, "rb");
+        if (ptr_myfile == nullptr) {
+            WARN("GPU Cannot open gain file {:s}", filename);
+            all_beams_successful_update = false;
+            for (uint i = 0; i < _num_elements; i++) {
+                out_frame_tracking[(beam_id * _num_elements + i) * 2] = default_gains[0];
+                out_frame_tracking[(beam_id * _num_elements + i) * 2 + 1] = default_gains[1];
+            }
+        } else {
+            if (_num_elements
+                != fread(&out_frame_tracking[beam_id * _num_elements * 2], sizeof(float) * 2,
+                         _num_elements, ptr_myfile)) {
+                WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
+                     "gains",
+                     filename);
                 all_beams_successful_update = false;
                 for (uint i = 0; i < _num_elements; i++) {
                     out_frame_tracking[(beam_id * _num_elements + i) * 2] = default_gains[0];
-                    out_frame_tracking[(beam_id * _num_elements + i) * 2 + 1] = default_gains[1];
+                    out_frame_tracking[(beam_id * _num_elements + i) * 2 + 1] =
+                        default_gains[1];
                 }
-            } else {
-                if (_num_elements
-                    != fread(&out_frame_tracking[beam_id * _num_elements * 2], sizeof(float) * 2,
-                             _num_elements, ptr_myfile)) {
-                    WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
-                         "gains",
-                         filename);
-                    all_beams_successful_update = false;
-                    for (uint i = 0; i < _num_elements; i++) {
-                        out_frame_tracking[(beam_id * _num_elements + i) * 2] = default_gains[0];
-                        out_frame_tracking[(beam_id * _num_elements + i) * 2 + 1] =
-                            default_gains[1];
-                    }
-                }
-                fclose(ptr_myfile);
             }
-        } // end beam
-    }
+            fclose(ptr_myfile);
+        }
+    } // end beam
     if (all_beams_successful_update) {
         gains_last_update_success_metric.labels({"tracking"}).set(1);
     } else {
