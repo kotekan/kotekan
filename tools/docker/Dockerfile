@@ -11,7 +11,7 @@ RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y wget && \
     wget https://www.python.org/ftp/python/3.7.7/Python-3.7.7.tgz && \
-    tar xzvf Python-3.7.7.tgz && cd Python-3.5.0 && \
+    tar xzvf Python-3.7.7.tgz && cd Python-3.7.7 && \
     ./configure && make && make install && \
     python3.7 --version && \
     apt-get install -y python3-setuptools python3-pip python3.7-distutils python3.7-dev \
