@@ -14,13 +14,14 @@ RUN apt-get update && \
     tar xzf Python-3.7.7.tgz && cd Python-3.7.7 && \
     ./configure && make && make install && cd .. && \
     python3.7 --version && \
-    apt-get install -y python3-setuptools python3-pip python3.7-distutils python3.7-dev \
+    apt-get install -y python3.7 python3-setuptools python3-pip python3.7-distutils python3.7-dev \
                        build-essential git coreutils ccache pkg-config \
                        gcc cmake clang-9 clang-format-8 \
                        dpdk dpdk-dev \
                        rocm-opencl-dev rocm-opencl \
                        libhdf5-serial-dev libboost-test-dev libevent-dev libssl-dev \
                        wget && \
+    python3.7 --version && \
     apt-get clean && apt-get autoclean
 
 RUN python3.7 -m pip install --upgrade pip && \
