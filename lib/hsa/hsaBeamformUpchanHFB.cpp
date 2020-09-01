@@ -31,7 +31,7 @@ hsaBeamformUpchanHFB::hsaBeamformUpchanHFB(Config& config, const std::string& un
     _num_frb_total_beams = config.get<int32_t>(unique_name, "num_frb_total_beams");
     _factor_upchan = config.get<int32_t>(unique_name, "factor_upchan");
 
-    input_frame_len = _num_elements * (_samples_per_data_set + 32) * 2 * sizeof(float);
+    input_frame_len = _num_elements * (_samples_per_data_set + 64) * 2 * sizeof(float);
     output_frame_len = _num_frb_total_beams
                        * (_samples_per_data_set / _downsample_time / _downsample_freq)
                        * sizeof(float);
@@ -56,6 +56,7 @@ hsa_signal_t hsaBeamformUpchanHFB::execute(int gpu_frame_id, hsa_signal_t preced
     memset(&args, 0, sizeof(args));
 
     args.input_buffer = device.get_gpu_memory("transposed_output", input_frame_len);
+//    args.input_buffer = device.get_gpu_memory("beamform_output", _num_elements * _samples_per_data_set * 2 * sizeof(float) * 3);
     args.output_buffer = device.get_gpu_memory_array("bf_output", gpu_frame_id, output_frame_len);
     args.output_hyperfine_beam_buffer = device.get_gpu_memory("hfb_output", output_hfb_frame_len);
 

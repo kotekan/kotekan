@@ -79,6 +79,7 @@ FOREACH(clfile ${inCLFiles})
     STRING(REGEX REPLACE ".cl\$" ".final.bc"  finalbcfile "${clfile}")
     STRING(REGEX REPLACE ".cl\$" ".gcn"       gcnfile     "${clfile}")
     STRING(REGEX REPLACE ".cl\$" ".hsaco"     hsacofile   "${clfile}")
+    STRING(REGEX REPLACE ".cl\$" ".isa"       isafile     "${clfile}")
 
     SET(clfile      "${CMAKE_CURRENT_SOURCE_DIR}/${clfile}")
     SET(bcfile      "${CMAKE_CURRENT_BINARY_DIR}/${bcfile}")
@@ -86,6 +87,7 @@ FOREACH(clfile ${inCLFiles})
     SET(finalbcfile "${CMAKE_CURRENT_BINARY_DIR}/${finalbcfile}")
     SET(gcnfile     "${CMAKE_CURRENT_BINARY_DIR}/${gcnfile}")
     SET(hsacofile   "${CMAKE_CURRENT_BINARY_DIR}/${hsacofile}")
+    SET(isafile   "${CMAKE_CURRENT_BINARY_DIR}/${isafile}")
 
     SET(outfile "${CMAKE_CURRENT_BINARY_DIR}/${outfileName}")
     ADD_CUSTOM_COMMAND(OUTPUT "${hsacofile}"
@@ -126,6 +128,11 @@ FOREACH(clfile ${inCLFiles})
                 "--no-undefined"
                 "-shared"
                 "-o" ${hsacofile}
+        COMMAND "/opt/rocm/opencl/bin/x86_64/llvm-objdump"
+                "-disassemble"
+                "-mcpu=fiji"
+                ${hsacofile}
+                ">" ${isafile}
         DEPENDS ${clfile}
         COMMENT "Compiling hsaco file from ${clfile}: ${hsacofile}"
       )

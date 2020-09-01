@@ -55,6 +55,7 @@ public:
 
     /// Allocate kernel argument buffer, set kernel dimensions, enqueue kernel
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;
+    void finalize_frame(int frame_id) override;
 
 private:
     /// Input length, should be size of num_elem x nsamp x 2
