@@ -6,6 +6,7 @@
 *.c~
 *.h~
 *.swp
+*.pyc
 /.idea/
 /.vscode/
 /nbproject/

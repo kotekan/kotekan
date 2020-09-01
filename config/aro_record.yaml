@@ -112,9 +112,8 @@ raw_capture:
    note: 10m FRB search
 #Change this if you want to record
    write_to_disk: True
-   gain_files:
-   - /home/arofrb/aro_run/gains/gains_FCC0000.pkl
-   - /home/arofrb/aro_run/gains/gains_noisy_FCC0000.pkl
+   write_metadata_and_gains: False
+   gain_files: Null
    num_disks: 10
    disk_base: /drives
    disk_set: L
