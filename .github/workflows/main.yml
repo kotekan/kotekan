@@ -123,10 +123,10 @@ jobs:
         docker run "${OPTS[@]}" ccache -s
         df -h
 
-    - name: Run parallel python tests
-      run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
-        docker run "${OPTS[@]}" pytest -v -n 1 --dist=loadfile --timeout=${PYTEST_TIMEOUT} -x -m 'not serial'
+    #- name: Run parallel python tests
+    #  run: |
+    #    OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
+    #    docker run "${OPTS[@]}" pytest -v -n 1 --dist=loadfile --timeout=${PYTEST_TIMEOUT} -x -m 'not serial'
 
     - name: Run serial python tests
       run: |
