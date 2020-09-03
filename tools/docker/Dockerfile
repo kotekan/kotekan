@@ -20,6 +20,7 @@ RUN apt-get update && \
                        ccache=3.4.1-1 \
                        pkg-config=0.29.1-0ubuntu2 \
                        gcc=4:7.4.0-1ubuntu2.3 \
+                       gdb=8.1-0ubuntu3.2 \
                        cmake=3.10.2-1ubuntu2.18.04.1 \
                        clang-9=1:9-2~ubuntu18.04.2 \
                        clang-format-8=1:8-3~ubuntu18.04.2 \
