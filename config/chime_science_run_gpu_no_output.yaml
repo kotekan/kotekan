@@ -9,7 +9,7 @@
 # - Packet capture from the ICE boards including FPGA flag handling and normalization
 # - N^2 kernels and output for various data projects to receiver systems
 # - FRB FFT Fan beam and packet Tx, with Valves protecting input buffers from overflowing
-# - Pulsar 10 coherent beam system and packet Tx, with Valves protecting input buffers from
+# - Tracking 10 coherent beam system and packet Tx, with Valves protecting input buffers from
 #   overflowing
 # - RFI detection and summary stats system (only reports on RFI, no normalization yet)
 # - Extracts 21cm absorber data from FRB pipeline. This is referred to as the High Frequency Beam
@@ -67,7 +67,7 @@ num_frb_total_beams: 1024
 frb_missing_gains: [1.0,1.0]
 frb_scaling: 0.05 #1.0
 
-# Pulsar global options
+# Tracking beams global options
 feed_sep_NS: 0.3048
 feed_sep_EW: 22.0
 num_beams: 10
@@ -83,8 +83,12 @@ trunc_bias_switch: True
 #### Telescope #####
 ####################
 telescope:
-  name: chime
-  require_gps: true
+  name: CHIMETelescope
+  require_gps: false # Still run the config if fpga_master is down.
+  query_gps: true
+  query_frequency_map: true
+  require_frequency_map: false
+  allow_default_frequency_map: true
 
 ##########################
 #### Dataset manager #####
@@ -102,9 +106,9 @@ updatable_config:
   frb_gain:
     kotekan_update_endpoint: json
     frb_gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_FRB
-  pulsar_gain:
+  tracking_gain:
     kotekan_update_endpoint: json
-    pulsar_gain_dir:
+    tracking_gain_dir:
       - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
       - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
       - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
@@ -117,7 +121,7 @@ updatable_config:
       - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
 #     - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
 #     - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
-  pulsar_pointing:
+  tracking_pointing:
     0:
       kotekan_update_endpoint: json
       ra: 53.6197236741
@@ -259,7 +263,7 @@ main_pool:
 
 # HFB Metadata Pool
 hfb_pool:
-  kotekan_metadata_pool: hfbMetadata
+  kotekan_metadata_pool: HFBMetadata
   num_metadata_objects: 30 * buffer_depth
 
 # Input data buffers from the DPDK stage
@@ -372,38 +376,38 @@ gain_frb_buffers:
   gain_frb_buffer_3:
     kotekan_buffer: standard
 
-gain_psr_buffers:
+gain_tracking_buffers:
   num_frames: 5
   frame_size: 2048 * 2 * num_beams * sizeof_float
   metadata_pool: main_pool
-  gain_psr_buffer_0:
+  gain_tracking_buffer_0:
     kotekan_buffer: standard
-  gain_psr_buffer_1:
+  gain_tracking_buffer_1:
     kotekan_buffer: standard
-  gain_psr_buffer_2:
+  gain_tracking_buffer_2:
     kotekan_buffer: standard
-  gain_psr_buffer_3:
+  gain_tracking_buffer_3:
     kotekan_buffer: standard
 
-pulsar_output_buffers:
+tracking_output_buffers:
   num_frames: buffer_depth
   frame_size: samples_per_data_set * num_beams * num_pol * sizeof_float *2
   metadata_pool: main_pool
-  beamform_pulsar_output_buffer_0:
+  beamform_tracking_output_buffer_0:
     kotekan_buffer: standard
-  beamform_pulsar_output_buffer_1:
+  beamform_tracking_output_buffer_1:
     kotekan_buffer: standard
-  beamform_pulsar_output_buffer_2:
+  beamform_tracking_output_buffer_2:
     kotekan_buffer: standard
-  beamform_pulsar_output_buffer_3:
+  beamform_tracking_output_buffer_3:
     kotekan_buffer: standard
-  beamform_pulsar_output_valved_buffer_0:
+  beamform_tracking_output_valved_buffer_0:
     kotekan_buffer: standard
-  beamform_pulsar_output_valved_buffer_1:
+  beamform_tracking_output_valved_buffer_1:
     kotekan_buffer: standard
-  beamform_pulsar_output_valved_buffer_2:
+  beamform_tracking_output_valved_buffer_2:
     kotekan_buffer: standard
-  beamform_pulsar_output_valved_buffer_3:
+  beamform_tracking_output_valved_buffer_3:
     kotekan_buffer: standard
 
 # The vis buffer metadata pool
@@ -711,7 +715,7 @@ gpu:
     - name: hsaOutputDataZero
       sub_frame_index: 3
     - name: hsaAsyncCopyGain
-    - name: hsaPulsarUpdatePhase
+    - name: hsaTrackingUpdatePhase
     - name: hsaRfiUpdateBadInputs #Updates the bad input list
     # Barrier between copy in and kernels
     - name: hsaBarrier
@@ -721,7 +725,7 @@ gpu:
     - name: hsaBeamformTranspose
     - name: hsaBeamformUpchanHFB
     - name: hsaBeamformHFBSum
-    - name: hsaBeamformPulsar
+    - name: hsaTrackingBeamform
     - name: hsaRfiTimeSum
     - name: hsaRfiBadInput
     - name: hsaRfiInputSum
@@ -746,7 +750,7 @@ gpu:
     - name: hsaRfiBadInputOutput
     - name: hsaRfiOutput
     - name: hsaRfiVarOutput
-    - name: hsaBeamformPulsarOutput
+    - name: hsaTrackingBeamformOutput
     - name: hsaBeamformOutputData
     - name: hsaBeamformHFBOutputData
     - name: hsaOutputData
@@ -767,7 +771,7 @@ gpu:
   n_intg: 24576 / num_sub_frames
   frame_arrival_period: samples_per_data_set / 390625
   updatable_config:
-    psr_pt: /updatable_config/pulsar_pointing
+    tracking_pt: /updatable_config/tracking_pointing
     rfi_zeroing_toggle: /updatable_config/rfi_zeroing_toggle
     rfi_var_element_index: /updatable_config/rfi_var_element_index
   gpu_0:
@@ -779,7 +783,7 @@ gpu:
     in_buffers:
       network_buf: network_buffer_0
       gain_frb_buf: gain_frb_buffer_0
-      gain_psr_buf: gain_psr_buffer_0
+      gain_tracking_buf: gain_tracking_buffer_0
       lost_samples_buf: lost_samples_buffer
       bad_inputs_buf: bad_inputs_buffer
       rfi_compressed_lost_samples_buf: rfi_compressed_lost_samples_buf_0
@@ -787,7 +791,7 @@ gpu:
     out_buffers:
       output_buf: gpu_n2_output_buffer_0
       beamform_output_buf: gpu_beamform_output_buffer_0
-      beamform_pulsar_output_buf: beamform_pulsar_output_buffer_0
+      beamform_tracking_output_buf: beamform_tracking_output_buffer_0
       beamform_hfb_output_buf: gpu_beamform_hfb_output_buffer_0
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_0
       rfi_output_buf: gpu_rfi_output_buffer_0
@@ -802,7 +806,7 @@ gpu:
     in_buffers:
       network_buf: network_buffer_1
       gain_frb_buf: gain_frb_buffer_1
-      gain_psr_buf: gain_psr_buffer_1
+      gain_tracking_buf: gain_tracking_buffer_1
       lost_samples_buf: lost_samples_buffer
       bad_inputs_buf: bad_inputs_buffer
       rfi_compressed_lost_samples_buf: rfi_compressed_lost_samples_buf_1
@@ -810,7 +814,7 @@ gpu:
     out_buffers:
       output_buf: gpu_n2_output_buffer_1
       beamform_output_buf: gpu_beamform_output_buffer_1
-      beamform_pulsar_output_buf: beamform_pulsar_output_buffer_1
+      beamform_tracking_output_buf: beamform_tracking_output_buffer_1
       beamform_hfb_output_buf: gpu_beamform_hfb_output_buffer_1
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_1
       rfi_output_buf: gpu_rfi_output_buffer_1
@@ -825,7 +829,7 @@ gpu:
     in_buffers:
       network_buf: network_buffer_2
       gain_frb_buf: gain_frb_buffer_2
-      gain_psr_buf: gain_psr_buffer_2
+      gain_tracking_buf: gain_tracking_buffer_2
       lost_samples_buf: lost_samples_buffer
       bad_inputs_buf: bad_inputs_buffer
       rfi_compressed_lost_samples_buf: rfi_compressed_lost_samples_buf_2
@@ -833,7 +837,7 @@ gpu:
     out_buffers:
       output_buf: gpu_n2_output_buffer_2
       beamform_output_buf: gpu_beamform_output_buffer_2
-      beamform_pulsar_output_buf: beamform_pulsar_output_buffer_2
+      beamform_tracking_output_buf: beamform_tracking_output_buffer_2
       beamform_hfb_output_buf: gpu_beamform_hfb_output_buffer_2
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_2
       rfi_output_buf: gpu_rfi_output_buffer_2
@@ -848,7 +852,7 @@ gpu:
     in_buffers:
       network_buf: network_buffer_3
       gain_frb_buf: gain_frb_buffer_3
-      gain_psr_buf: gain_psr_buffer_3
+      gain_tracking_buf: gain_tracking_buffer_3
       lost_samples_buf: lost_samples_buffer
       bad_inputs_buf: bad_inputs_buffer
       rfi_compressed_lost_samples_buf: rfi_compressed_lost_samples_buf_3
@@ -856,7 +860,7 @@ gpu:
     out_buffers:
       output_buf: gpu_n2_output_buffer_3
       beamform_output_buf: gpu_beamform_output_buffer_3
-      beamform_pulsar_output_buf: beamform_pulsar_output_buffer_3
+      beamform_tracking_output_buf: beamform_tracking_output_buffer_3
       beamform_hfb_output_buf: gpu_beamform_hfb_output_buffer_3
       rfi_bad_input_buf: gpu_rfi_bad_input_buffer_3
       rfi_output_buf: gpu_rfi_output_buffer_3
@@ -935,31 +939,31 @@ rfi_update_metadata:
     lost_samples_buf: lost_samples_buffer
     gpu_correlation_buf: gpu_n2_output_buffer_3
 
-####  Gain update system for FRB and Pulsar ####
+####  Gain update system for FRB and Tracking ####
 read_gain:
   updatable_config:
     gain_frb: /updatable_config/frb_gain
-    gain_psr: /updatable_config/pulsar_gain
+    gain_tracking: /updatable_config/tracking_gain
   read_gain0:
     kotekan_stage: ReadGain
     in_buf: network_buffer_0
     gain_frb_buf: gain_frb_buffer_0
-    gain_psr_buf: gain_psr_buffer_0
+    gain_tracking_buf: gain_tracking_buffer_0
   read_gain1:
     kotekan_stage: ReadGain
     in_buf: network_buffer_1
     gain_frb_buf: gain_frb_buffer_1
-    gain_psr_buf: gain_psr_buffer_1
+    gain_tracking_buf: gain_tracking_buffer_1
   read_gain2:
     kotekan_stage: ReadGain
     in_buf: network_buffer_2
     gain_frb_buf: gain_frb_buffer_2
-    gain_psr_buf: gain_psr_buffer_2
+    gain_tracking_buf: gain_tracking_buffer_2
   read_gain3:
     kotekan_stage: ReadGain
     in_buf: network_buffer_3
     gain_frb_buf: gain_frb_buffer_3
-    gain_psr_buf: gain_psr_buffer_3
+    gain_tracking_buf: gain_tracking_buffer_3
 
 #### FRB GPU Post processing and Tx ####
 frb_valve:
@@ -1292,26 +1296,26 @@ frb:
       # cfDn8
       # cfDn9
 
-#### Pulsar GPU Post processing and Tx ####
-pulsar_valve:
+#### Tracking beams GPU Post processing and Tx ####
+tracking_valve:
   # To introduce random drops, replace Valve with TestDropFrames
   # Specify probability with `drop_frame_change`
-  pulsar_valve_0:
+  tracking_valve_0:
     kotekan_stage: Valve
-    in_buf: beamform_pulsar_output_buffer_0
-    out_buf: beamform_pulsar_output_valved_buffer_0
-  pulsar_valve_1:
+    in_buf: beamform_tracking_output_buffer_0
+    out_buf: beamform_tracking_output_valved_buffer_0
+  tracking_valve_1:
     kotekan_stage: Valve
-    in_buf: beamform_pulsar_output_buffer_1
-    out_buf: beamform_pulsar_output_valved_buffer_1
-  pulsar_valve_2:
+    in_buf: beamform_tracking_output_buffer_1
+    out_buf: beamform_tracking_output_valved_buffer_1
+  tracking_valve_2:
     kotekan_stage: Valve
-    in_buf: beamform_pulsar_output_buffer_2
-    out_buf: beamform_pulsar_output_valved_buffer_2
-  pulsar_valve_3:
+    in_buf: beamform_tracking_output_buffer_2
+    out_buf: beamform_tracking_output_valved_buffer_2
+  tracking_valve_3:
     kotekan_stage: Valve
-    in_buf: beamform_pulsar_output_buffer_3
-    out_buf: beamform_pulsar_output_valved_buffer_3
+    in_buf: beamform_tracking_output_buffer_3
+    out_buf: beamform_tracking_output_valved_buffer_3
 
 pulsar:
   timesamples_per_pulsar_packet: 625
@@ -1326,10 +1330,10 @@ pulsar:
     kotekan_buffer: standard
   postprocess:
     kotekan_stage: pulsarPostProcess
-    network_input_buffer_0: beamform_pulsar_output_valved_buffer_0
-    network_input_buffer_1: beamform_pulsar_output_valved_buffer_1
-    network_input_buffer_2: beamform_pulsar_output_valved_buffer_2
-    network_input_buffer_3: beamform_pulsar_output_valved_buffer_3
+    network_input_buffer_0: beamform_tracking_output_valved_buffer_0
+    network_input_buffer_1: beamform_tracking_output_valved_buffer_1
+    network_input_buffer_2: beamform_tracking_output_valved_buffer_2
+    network_input_buffer_3: beamform_tracking_output_valved_buffer_3
     pulsar_out_buf: pulsar_output_buffer
   network_send:
     #kotekan_stage: pulsarNetworkProcess
@@ -1671,10 +1675,10 @@ monitor:
 monitor_2:
   kotekan_stage: monitorBuffer
   bufs:
-    - beamform_pulsar_output_buffer_0
-    - beamform_pulsar_output_buffer_1
-    - beamform_pulsar_output_buffer_2
-    - beamform_pulsar_output_buffer_3
+    - beamform_tracking_output_buffer_0
+    - beamform_tracking_output_buffer_1
+    - beamform_tracking_output_buffer_2
+    - beamform_tracking_output_buffer_3
     - lost_samples_buffer
   timeout: 10
   fill_threshold: 0.80

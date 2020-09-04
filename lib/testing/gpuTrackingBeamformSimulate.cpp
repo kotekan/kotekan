@@ -1,11 +1,11 @@
-#include "gpuBeamformPulsarSimulate.hpp"
+#include "gpuTrackingBeamformSimulate.hpp"
 
 #include "Config.hpp"       // for Config
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"
 #include "buffer.h"            // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for psrCoord, get_fpga_seq_num, get_gps_time
+#include "chimeMetadata.h"     // for beamCoord, get_fpga_seq_num, get_gps_time
 #include "kotekanLogging.hpp"  // for INFO, ERROR
 
 #include <algorithm>  // for copy
@@ -40,25 +40,27 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_STAGE(gpuBeamformPulsarSimulate);
+REGISTER_KOTEKAN_STAGE(gpuTrackingBeamformSimulate);
 
-gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config, const std::string& unique_name,
-                                                     bufferContainer& buffer_container) :
+gpuTrackingBeamformSimulate::gpuTrackingBeamformSimulate(Config& config,
+                                                         const std::string& unique_name,
+                                                         bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
-          std::bind(&gpuBeamformPulsarSimulate::main_thread, this)) {
+          std::bind(&gpuTrackingBeamformSimulate::main_thread, this)) {
 
     // Apply config.
     _num_elements = config.get<int32_t>(unique_name, "num_elements");
     _samples_per_data_set = config.get<int32_t>(unique_name, "samples_per_data_set");
     _num_pol = config.get<int32_t>(unique_name, "num_pol");
-    _num_pulsar = config.get<int32_t>(unique_name, "num_beams");
+    _num_beams = config.get<int32_t>(unique_name, "num_beams");
     _feed_sep_NS = config.get<float>(unique_name, "feed_sep_NS");
     _feed_sep_EW = config.get<int32_t>(unique_name, "feed_sep_EW");
     _source_ra = config.get<std::vector<float>>(unique_name, "source_ra");
     _source_dec = config.get<std::vector<float>>(unique_name, "source_dec");
     _reorder_map = config.get<std::vector<int32_t>>(unique_name, "reorder_map");
-    _gain_dir = config.get<std::vector<std::string>>(unique_name, "pulsar_gain/pulsar_gain_dir");
-    INFO("[PSR CPU] start with gain {:s} {:s} {:s}", _gain_dir[0], _gain_dir[1], _gain_dir[2]);
+    _gain_dir =
+        config.get<std::vector<std::string>>(unique_name, "tracking_gain/tracking_gain_dir");
+    INFO("[TRACKING CPU] start with gain {:s} {:s} {:s}", _gain_dir[0], _gain_dir[1], _gain_dir[2]);
     std::vector<float> dg = {0.0, 0.0}; // re,im
     default_gains = config.get_default<std::vector<float>>(unique_name, "frb_missing_gains", dg);
 
@@ -69,14 +71,14 @@ gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config, const std::
     register_producer(output_buf, unique_name.c_str());
 
     input_len = _samples_per_data_set * _num_elements * 2;
-    output_len = _samples_per_data_set * _num_pulsar * _num_pol * 2;
+    output_len = _samples_per_data_set * _num_beams * _num_pol * 2;
 
     input_unpacked = (double*)malloc(input_len * sizeof(double));
-    phase = (double*)malloc(_num_elements * _num_pulsar * 2 * sizeof(double));
+    phase = (double*)malloc(_num_elements * _num_beams * 2 * sizeof(double));
     cpu_output = (float*)malloc(output_len * sizeof(float));
     assert(phase != nullptr);
 
-    cpu_gain = (float*)malloc(2 * _num_elements * _num_pulsar * sizeof(float));
+    cpu_gain = (float*)malloc(2 * _num_elements * _num_beams * sizeof(float));
     second_last = 0;
     metadata_buf = get_buffer("network_in_buf");
     metadata_buffer_id = 0;
@@ -90,13 +92,13 @@ gpuBeamformPulsarSimulate::gpuBeamformPulsarSimulate(Config& config, const std::
         reorder_map_c[i] = _reorder_map[i];
     }
 
-    for (int i = 0; i < _num_pulsar; i++) {
-        psr_coord.ra[i] = _source_ra[i];
-        psr_coord.dec[i] = _source_dec[i];
+    for (int i = 0; i < _num_beams; i++) {
+        beam_coord.ra[i] = _source_ra[i];
+        beam_coord.dec[i] = _source_dec[i];
     }
 }
 
-gpuBeamformPulsarSimulate::~gpuBeamformPulsarSimulate() {
+gpuTrackingBeamformSimulate::~gpuTrackingBeamformSimulate() {
     free(input_unpacked);
     free(cpu_output);
     free(phase);
@@ -104,7 +106,7 @@ gpuBeamformPulsarSimulate::~gpuBeamformPulsarSimulate() {
     free(reorder_map_c);
 }
 
-void gpuBeamformPulsarSimulate::reorder(unsigned char* data, int* map) {
+void gpuTrackingBeamformSimulate::reorder(unsigned char* data, int* map) {
     int* tmp512;
     tmp512 = (int*)malloc(_num_elements * sizeof(int));
     for (int j = 0; j < _samples_per_data_set; j++) {
@@ -122,8 +124,8 @@ void gpuBeamformPulsarSimulate::reorder(unsigned char* data, int* map) {
     free(tmp512);
 }
 
-void gpuBeamformPulsarSimulate::calculate_phase(struct psrCoord psr_coord, timespec time_now,
-                                                float freq_now, float* gains, double* output) {
+void gpuTrackingBeamformSimulate::calculate_phase(struct beamCoord beam_coord, timespec time_now,
+                                                  float freq_now, float* gains, double* output) {
     float FREQ = freq_now;
     struct tm* timeinfo;
     timeinfo = localtime(&time_now.tv_sec);
@@ -147,12 +149,12 @@ void gpuBeamformPulsarSimulate::calculate_phase(struct psrCoord psr_coord, times
         LST = LST + 24;
     }
     LST = fmod(LST, 24);
-    for (int b = 0; b < _num_pulsar; b++) {
-        double hour_angle = LST * 15. - psr_coord.ra[b];
-        double alt = sin(psr_coord.dec[b] * D2R) * sin(inst_lat * D2R)
-                     + cos(psr_coord.dec[b] * D2R) * cos(inst_lat * D2R) * cos(hour_angle * D2R);
+    for (int b = 0; b < _num_beams; b++) {
+        double hour_angle = LST * 15. - beam_coord.ra[b];
+        double alt = sin(beam_coord.dec[b] * D2R) * sin(inst_lat * D2R)
+                     + cos(beam_coord.dec[b] * D2R) * cos(inst_lat * D2R) * cos(hour_angle * D2R);
         alt = asin(alt);
-        double az = (sin(psr_coord.dec[b] * D2R) - sin(alt) * sin(inst_lat * D2R))
+        double az = (sin(beam_coord.dec[b] * D2R) - sin(alt) * sin(inst_lat * D2R))
                     / (cos(alt) * cos(inst_lat * D2R));
         az = acos(az);
         if (sin(hour_angle * D2R) >= 0) {
@@ -185,13 +187,14 @@ void gpuBeamformPulsarSimulate::calculate_phase(struct psrCoord psr_coord, times
     }
 }
 
-void gpuBeamformPulsarSimulate::cpu_beamform_pulsar(double* input_unpacked, double* phase,
-                                                    float* cpu_output, int _samples_per_data_set,
-                                                    int _num_elements, int _num_pulsar,
-                                                    int _num_pol) {
+void gpuTrackingBeamformSimulate::cpu_tracking_beamformer(double* input_unpacked, double* phase,
+                                                          float* cpu_output,
+                                                          int _samples_per_data_set,
+                                                          int _num_elements, int _num_beams,
+                                                          int _num_pol) {
     float sum_re, sum_im;
     for (int t = 0; t < _samples_per_data_set; t++) {
-        for (int b = 0; b < _num_pulsar; b++) {
+        for (int b = 0; b < _num_beams; b++) {
             for (int p = 0; p < _num_pol; p++) {
                 sum_re = 0.0;
                 sum_im = 0.0;
@@ -206,15 +209,15 @@ void gpuBeamformPulsarSimulate::cpu_beamform_pulsar(double* input_unpacked, doub
                                - input_unpacked[(t * _num_elements + p * 1024 + n) * 2]
                                      * phase[((b * _num_pol + p) * 1024 + n) * 2 + 1]);
                 }
-                cpu_output[(t * _num_pulsar * _num_pol + b * _num_pol + p) * 2] = sum_re;
-                cpu_output[(t * _num_pulsar * _num_pol + b * _num_pol + p) * 2 + 1] = sum_im;
+                cpu_output[(t * _num_beams * _num_pol + b * _num_pol + p) * 2] = sum_re;
+                cpu_output[(t * _num_beams * _num_pol + b * _num_pol + p) * 2 + 1] = sum_im;
                 // Output has polarization as fastest varying
             }
         }
     }
 }
 
-void gpuBeamformPulsarSimulate::main_thread() {
+void gpuTrackingBeamformSimulate::main_thread() {
 
     auto& tel = Telescope::instance();
 
@@ -239,7 +242,7 @@ void gpuBeamformPulsarSimulate::main_thread() {
             cpu_output[i] = 0;
         }
 
-        INFO("Simulating GPU pulsar beamform processing for {:s}[{:d}] putting result in "
+        INFO("Simulating GPU tracking beamform processing for {:s}[{:d}] putting result in "
              "{:s}[{:d}]",
              input_buf->buffer_name, input_buf_id, output_buf->buffer_name, output_buf_id);
 
@@ -253,7 +256,7 @@ void gpuBeamformPulsarSimulate::main_thread() {
         // beginning)
         FILE* ptr_myfile = nullptr;
         char filename[512];
-        for (int b = 0; b < _num_pulsar; b++) {
+        for (int b = 0; b < _num_beams; b++) {
             snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",
                      _gain_dir[b].c_str(), freq_now);
             ptr_myfile = fopen(filename, "rb");
@@ -288,9 +291,9 @@ void gpuBeamformPulsarSimulate::main_thread() {
             // GPS time, need ch_master
             time_now_gps = get_gps_time(metadata_buf, metadata_buffer_id);
             if (time_now_gps.tv_sec == 0) {
-                ERROR("GPS time appears to be zero, bad news for pulsar timing!");
+                ERROR("GPS time appears to be zero, bad news for tracking timing!");
             }
-            calculate_phase(psr_coord, time_now_gps, freq_MHz, cpu_gain, phase);
+            calculate_phase(beam_coord, time_now_gps, freq_MHz, cpu_gain, phase);
             update_phase = false;
         }
 
@@ -304,14 +307,15 @@ void gpuBeamformPulsarSimulate::main_thread() {
             input_unpacked[dest_idx++] = LO_NIBBLE(input[i]) - 8;
         }
 
-        // Beamform 10 pulsars.
-        cpu_beamform_pulsar(input_unpacked, phase, cpu_output, _samples_per_data_set, _num_elements,
-                            _num_pulsar, _num_pol);
+        // Beamform 10 trackings.
+        cpu_tracking_beamformer(input_unpacked, phase, cpu_output, _samples_per_data_set,
+                                _num_elements, _num_beams, _num_pol);
         memcpy(output, cpu_output, output_buf->frame_size);
 
-        INFO("Simulating GPU pulsar beamform processing done for {:s}[{:d}] result is in {:s}[{:d}"
-             "]",
-             input_buf->buffer_name, input_buf_id, output_buf->buffer_name, output_buf_id);
+        INFO(
+            "Simulating GPU tracking beamform processing done for {:s}[{:d}] result is in {:s}[{:d}"
+            "]",
+            input_buf->buffer_name, input_buf_id, output_buf->buffer_name, output_buf_id);
 
         pass_metadata(input_buf, input_buf_id, output_buf, output_buf_id);
         mark_frame_empty(input_buf, unique_name.c_str(), input_buf_id);

@@ -9,7 +9,7 @@ add_library(
     FakeVis.cpp
     FakeVisPattern.cpp
     gpuBeamformSimulate.cpp
-    gpuBeamformPulsarSimulate.cpp
+    gpuTrackingBeamformSimulate.cpp
     gpuSimulate.cpp
     hexDump.cpp
     networkOutputSim.cpp
