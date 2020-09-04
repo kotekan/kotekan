@@ -151,7 +151,7 @@ if(LAPACKE_FOUND)
         if("${CMAKE_C_COMPILER_ID}" MATCHES ".*Clang.*" AND "${CMAKE_Fortran_COMPILER_ID}" MATCHES
                                                             "GNU")
             include(FortranCInterface)
-            fortrancinterface_verify()
+            FortranCInterface_VERIFY()
             if(NOT FortranCInterface_VERIFIED_C)
                 message(FATAL_ERROR string ("C and fortran compilers are not compatible:\n"
                                             "${CMAKE_Fortran_COMPILER}:${CMAKE_C_COMPILER}"))
