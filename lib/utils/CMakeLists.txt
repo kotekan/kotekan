@@ -7,6 +7,8 @@ set ( KOTEKAN_UTIL_SOURCES
       output_formating.c
       type.cpp
       util.c
+      FrameView.cpp
+      HFBFrameView.cpp
       visBuffer.cpp
       visUtil.cpp
       visFile.cpp

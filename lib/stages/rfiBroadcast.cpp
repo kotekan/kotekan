@@ -1,14 +1,14 @@
 #include "rfiBroadcast.hpp"
 
-#include "Config.hpp"       // for Config
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"         // for Telescope
 #include "buffer.h"              // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "chimeMetadata.h"       // for get_fpga_seq_num, get_stream_id
+#include "chimeMetadata.h"       // for stream_t, get_fpga_seq_num, get_stream_id
 #include "kotekanLogging.hpp"    // for ERROR, DEBUG, INFO
-#include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
-#include "restServer.hpp"        // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_R...
+#include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily
+#include "restServer.hpp"        // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RES...
 #include "rfi_functions.h"       // for RFIHeader
 #include "visUtil.hpp"           // for movingAverage
 
@@ -18,10 +18,12 @@
 
 #include "fmt.hpp" // for format, fmt
 
+#include <algorithm>    // for copy, copy_backward, equal, max
 #include <arpa/inet.h>  // for inet_aton
 #include <atomic>       // for atomic_bool
+#include <deque>        // for deque
 #include <exception>    // for exception
-#include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, fun...
+#include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, _2, function
 #include <mutex>        // for mutex, lock_guard
 #include <netinet/in.h> // for sockaddr_in, IPPROTO_UDP, htons
 #include <regex>        // for match_results<>::_Base_type

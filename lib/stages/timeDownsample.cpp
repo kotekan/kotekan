@@ -110,9 +110,8 @@ void timeDownsample::main_thread() {
             }
 
             // Copy frame into output buffer
-            allocate_new_metadata_object(out_buf, output_frame_id);
-            auto output_frame = VisFrameView(out_buf, output_frame_id, frame);
-
+            auto output_frame =
+                VisFrameView::copy_frame(in_buf, frame_id, out_buf, output_frame_id);
             // Increase the total frame length
             output_frame.fpga_seq_length *= nsamp;
 

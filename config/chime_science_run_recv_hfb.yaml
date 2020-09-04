@@ -22,7 +22,7 @@ sizeof_float: 4
 
 # 21cm Absorber Metadata Pool
 hfb_pool:
-  kotekan_metadata_pool: hfbMetadata
+  kotekan_metadata_pool: HFBMetadata
   num_metadata_objects: 30 * buffer_depth
 
 beamform_hfb_output_buffer_merge:

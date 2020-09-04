@@ -1,12 +1,12 @@
-#ifndef GPU_BEAMFORM_PULSAR_SIMULATE_HPP
-#define GPU_BEAMFORM_PULSAR_SIMULATE_HPP
+#ifndef GPU_TRACKING_BEAMFORM_SIMULATE_HPP
+#define GPU_TRACKING_BEAMFORM_SIMULATE_HPP
 
 #include "Config.hpp" // for Config
 #include "Stage.hpp"  // for Stage
 #include "Telescope.hpp"
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for psrCoord
+#include "chimeMetadata.h"     // for beamCoord
 
 #include <stdint.h>    // for int32_t, uint32_t
 #include <string>      // for string
@@ -15,11 +15,11 @@
 #include <vector>      // for vector
 
 /**
- * @class gpuBeamformPulsarSimulate
- * @brief CPU version of pulsar beamformer for verification
+ * @class gpuTrackingBeamformSimulate
+ * @brief CPU version of tracking beamformer for verification
  *
- * Read hsaPulsarUpdatePhase and hsaBeamformPulsar to find out what
- * the pulsar beamformer does. This is basically the same, except
+ * Read hsaTrackingUpdatePhase and hsaTrackingBeamform to find out what
+ * the tracking beamformer does. This is basically the same, except
  * without capability to dynamically update gain paths and RA/Dec
  * (no endpoints).
  *
@@ -27,13 +27,13 @@
  *
  */
 
-class gpuBeamformPulsarSimulate : public kotekan::Stage {
+class gpuTrackingBeamformSimulate : public kotekan::Stage {
 public:
     /// Constructor
-    gpuBeamformPulsarSimulate(kotekan::Config& config, const std::string& unique_name,
-                              kotekan::bufferContainer& buffer_container);
+    gpuTrackingBeamformSimulate(kotekan::Config& config, const std::string& unique_name,
+                                kotekan::bufferContainer& buffer_container);
     /// Destructor
-    ~gpuBeamformPulsarSimulate();
+    ~gpuTrackingBeamformSimulate();
     /// Main loop, read gains, calculate new phase, brute-force beamform
     void main_thread() override;
 
@@ -56,8 +56,8 @@ private:
     uint32_t _num_elements;
     /// number of samples = 49152
     int32_t _samples_per_data_set;
-    /// number of pulsars = 10
-    int32_t _num_pulsar;
+    /// number of beams
+    int32_t _num_beams;
     /// number of polarizations = 2
     int32_t _num_pol;
     /// Array of reordering index, length 512
@@ -94,8 +94,8 @@ private:
     /// Time now in second
     struct timespec time_now_gps;
 
-    /// 10 pulsar RA, DEC and scaling factor
-    struct psrCoord psr_coord; // active coordinates to be passed to metatdata
+    /// RA, DEC and scaling factor for the tracking beams
+    struct beamCoord beam_coord; // active coordinates to be passed to metatdata
     std::vector<float> _source_ra;
     std::vector<float> _source_dec;
 
@@ -105,14 +105,14 @@ private:
     bool update_phase;
 
     /// Brute-force beamform by multiplying each element with a phase shift
-    void cpu_beamform_pulsar(double* input, double* phase, float* output, int nsamp, int nelem,
-                             int npsr, int npol);
+    void cpu_tracking_beamformer(double* input, double* phase, float* output, int nsamp, int nelem,
+                                 int nbeams, int npol);
     /// Reorder data from correlator order to cylinder order
     void reorder(unsigned char* data, int* map);
     /// Figure our LST at this frame and the Alt-Az of the 10 sources, then calculate phase delays
     /// at each input
-    void calculate_phase(struct psrCoord psr_coord, timespec time_now, float freq_now, float* gain,
-                         double* output);
+    void calculate_phase(struct beamCoord beam_coord, timespec time_now, float freq_now,
+                         float* gain, double* output);
 };
 
 #endif
