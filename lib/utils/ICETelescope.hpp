@@ -13,10 +13,18 @@
 /**
  * @brief Implementation for an ICEboard like telescope with a Casper PFB.
  *
- * @conf  sample_rate   The sampling rate in MHz.
- * @conf  frame_length  The FPGA frame length in samples.
- * @conf  nyquist_zone  The Nyquist zone we are sampling in (zone=1 is standard
- *                      sampling, zone>=2 is alias sampling).
+ * @conf  sample_rate     int.     The sampling rate in MHz.
+ * @conf  fft_length      int.     The FFT frame length in samples. Note this is the length of a
+ *                                 basic FFT, the ICEBoard uses a PFB with a 8096 sample window,
+ *                                 but the effective length is 2048 for computing the number
+ *                                 of frequency bins.
+ * @conf  nyquist_zone    int.     The Nyquist zone we are sampling in (zone=1 is standard
+ *                                 sampling, zone>=2 is alias sampling).
+ * @conf  query_gps       bool.    Should the telescope object get the GPS from a remote source
+ *                                 if not available, or false, will try to retrieve from config.
+ * @conf  gps_host        string.  The GPS server IP address
+ * @conf  gps_port        uint.    The port number on the GPS server
+ * @conf  gps_endpoint    string.  The endpoint with the GPS time
  **/
 class ICETelescope : public Telescope {
 public:
@@ -39,12 +47,14 @@ protected:
     /**
      * @brief Set the sampling parameters for the telescope.
      *
-     * @param  sample_rate  The sampling rate in MHz.
-     * @param  length       The length of each frame.
+     * @param  sample_rate  The ADC sampling rate in MHz.
+     * @param  fft_length   The FFT length used in the FPGA.  Note this is the length of a
+     *                      basic FFT, the ICEBoard uses a PFB with a 8096 sample window, but the
+     *                      effective length is 2048 for computing the number of frequency bins.
      * @param  zone         Which Nyquist zone are we sampling in? zone=1 is
      *                      standard sampling, zone>=2 are alias sampling.
      **/
-    void set_sampling_params(double sample_rate, uint32_t length, uint8_t zone);
+    void set_sampling_params(double sample_rate, uint32_t fft_length, uint8_t zone);
 
     /**
      * @brief Set the sampling parameters for the telescope from the config.
@@ -58,9 +68,17 @@ protected:
      * @brief Set the GPS time parameters from the config.
      *
      * @param  config  Kotekan config.
-     * @param  path    Kotekan config path.
      **/
-    void set_gps(const kotekan::Config& config, const std::string& path);
+    void set_gps(const kotekan::Config& config);
+
+    /**
+     * @brief Set the GPS time from a remote server (pychfpga/fpga_master)
+     *
+     * @param host   The host name of the server with the GPS time information
+     * @param port   The port of the server with the GPS time information
+     * @param path   The endpoint resource name (e.g. /get-frame0-time)
+     */
+    void set_gps(const std::string& host, const uint32_t port, const std::string& path);
 
     // The number of frequencies per stream
     uint32_t _num_freq_per_stream;
@@ -69,6 +87,18 @@ protected:
     double freq0_MHz;
     double df_MHz;
     uint32_t nfreq;
+
+    /// Should we try to get the GPS time from remote server
+    bool _query_gps;
+
+    /// The GPS server IP address
+    std::string _gps_host;
+
+    /// The port number on the GPS server
+    uint32_t _gps_port;
+
+    /// The endpoint with the GPS time
+    std::string _gps_endpoint;
 
     // The time of FPGA frame=0, and the time length of each frame (in ns)
     bool gps_enabled = false;

@@ -83,9 +83,12 @@ trunc_bias_switch: True
 #### Telescope #####
 ####################
 telescope:
-  name: chime
+  name: CHIMETelescope
   require_gps: true
-  require_frequency_map: true
+  query_gps: false # GPS time is provided via coco
+  query_frequency_map: false # Frequency map is provided via coco
+  require_frequency_map: true # Make sure we have the full frequency map
+  allow_default_frequency_map: false # Don't fall back on default map
 
 ##########################
 #### Dataset manager #####
