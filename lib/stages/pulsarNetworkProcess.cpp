@@ -7,7 +7,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO, CHECK_MEM
 #include "tx_utils.hpp"        // for add_nsec, get_vlan_from_ip, parse_chime_host_name, CLOCK_...
-#include "vdif_functions.h"    // for VDIFHeader
+#include "pulsar_functions.h"  // for PSRHeader
 
 #include <arpa/inet.h>  // for inet_pton
 #include <atomic>       // for atomic_bool
@@ -179,26 +179,26 @@ void pulsarNetworkProcess::main_thread() {
     clock_gettime(CLOCK_MONOTONIC, &t0);
 
     // added to take care of the missed frames
-    VDIFHeader* header = reinterpret_cast<VDIFHeader*>(packet_buffer);
-    int64_t vdif_last_seconds = header->seconds;
-    int64_t vdif_last_frame = header->data_frame;
+    PSRHeader* header = reinterpret_cast<PSRHeader*>(packet_buffer);
+    int64_t psrheader_last_seconds = header->seconds;
+    int64_t psrheader_last_frame = header->data_frame;
 
     while (!stop_thread) {
         packet_buffer = wait_for_full_frame(in_buf, unique_name.c_str(), frame_id);
         if (packet_buffer == nullptr)
             break;
 
-        header = reinterpret_cast<VDIFHeader*>(packet_buffer);
+        header = reinterpret_cast<PSRHeader*>(packet_buffer);
         time_interval = 2560
-                        * (390625 * (header->seconds - vdif_last_seconds)
-                           + 625 * (header->data_frame - vdif_last_frame));
+                        * (390625 * (header->seconds - psrheader_last_seconds)
+                           + 625 * (header->data_frame - psrheader_last_frame));
 
         add_nsec(t0, time_interval);
         t1.tv_sec = t0.tv_sec;
         t1.tv_nsec = t0.tv_nsec;
 
-        vdif_last_seconds = header->seconds;
-        vdif_last_frame = header->data_frame;
+        psrheader_last_seconds = header->seconds;
+        psrheader_last_frame = header->data_frame;
 
         for (int frame = 0; frame < 80; frame++) {
             for (int beam = 0; beam < _num_beams; beam++) {
