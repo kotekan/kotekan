@@ -9,7 +9,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.h"     // for get_fpga_seq_num, beamCoord, get_beam_coord, get_stream...
 #include "kotekanLogging.hpp"  // for DEBUG, ERROR
-#include "vdif_functions.h"    // for VDIFHeader
+#include "pulsar_functions.h"    // for PSRHeader
 
 #include <algorithm>  // for max
 #include <assert.h>   // for assert
@@ -71,7 +71,7 @@ pulsarPostProcess::~pulsarPostProcess() {
     delete[] in_frame;
 }
 
-void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* vdif_header,
+void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct PSRHeader* psr_header,
                                      const uint64_t fpga_seq_num, struct timespec* time_now,
                                      struct beamCoord* beam_coord, uint16_t* thread_ids) {
 
@@ -85,19 +85,28 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* 
           time_now->tv_nsec);
     for (uint i = 0; i < _num_packet_per_stream; ++i) { // 16 or 80 frames in a stream
         uint64_t fpga_now = (fpga_seq_num + _timesamples_per_pulsar_packet * i);
-        vdif_header->seconds = time_now->tv_sec - unix_offset;
-        vdif_header->data_frame =
+        psr_header->seconds = time_now->tv_sec - unix_offset;
+        psr_header->data_frame =
             (time_now->tv_nsec / 1.e9) / (_timesamples_per_pulsar_packet * fpga_s);
 
         for (uint f = 0; f < freqloop; ++f) {
-            vdif_header->thread_id = thread_ids[f];
+            // Before looping over pulsar beams, load freq labels into header.
+            // As of 7 September 2020, load one of four labels into thread_id, 
+            // and pack the other three into the 32-b EUD3 attribute.
+            // TODO: redefine pulsar packet structure to not use VDIF def, instead use 
+            // structures with dimensions defined by telescope-config variables.
+            if (f == 0) {
+                psr_header->thread_id = thread_ids[f];
+            else {
+                psr_header->eud3 += (thread_ids[f] << (f - 1) * 10);
+            }
 
             for (uint32_t psr = 0; psr < _num_pulsar; ++psr) {
-                vdif_header->eud1 = psr; // beam id
-                vdif_header->eud2 = beam_coord[f].scaling[psr];
+                psr_header->eud1 = psr; // beam id
+                psr_header->eud2 = beam_coord[f].scaling[psr];
                 uint16_t ra_part = (uint16_t)(beam_coord[f].ra[psr] * 100);
                 uint16_t dec_part = (uint16_t)((beam_coord[f].dec[psr] + 90) * 100);
-                vdif_header->eud4 = ((ra_part << 16) & 0xFFFF0000) + (dec_part & 0xFFFF);
+                psr_header->eud4 = ((ra_part << 16) & 0xFFFF0000) + (dec_part & 0xFFFF);
                 timespec time_now_from_compute = tel.to_time(fpga_now);
                 if (time_now->tv_sec != time_now_from_compute.tv_sec) {
                     ERROR("[Time Check] mismatch in fill header packet={:d} beam={:d} "
@@ -113,11 +122,11 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct VDIFHeader* 
                     memcpy(&out_buf[(f * _num_pulsar + psr) * _num_packet_per_stream
                                         * _udp_pulsar_packet_size
                                     + i * _udp_pulsar_packet_size],
-                           vdif_header, sizeof(struct VDIFHeader));
+                           psr_header, sizeof(struct PSRHeader));
                 } else if (_timesamples_per_pulsar_packet == 625) {
                     memcpy(&out_buf[psr * _num_packet_per_stream * _udp_pulsar_packet_size
                                     + i * _udp_pulsar_packet_size],
-                           vdif_header, sizeof(struct VDIFHeader));
+                           psr_header, sizeof(struct PSRHeader));
                 }
             }
         } // end freq
@@ -145,32 +154,32 @@ void pulsarPostProcess::main_thread() {
     uint64_t frame_fpga_seq_num = 0;     // sample starting the current input frame
     uint32_t current_input_location = 0; // goes from 0 to _samples_per_data_set
 
-    struct VDIFHeader vdif_header;
-    vdif_header.seconds = 0; // UD
-    vdif_header.legacy = 0;
-    vdif_header.invalid = 0;
-    vdif_header.data_frame = 0; // UD
-    vdif_header.ref_epoch = 36; // First half of 2018.
+    struct PSRHeader psr_header;
+    psr_header.seconds = 0; // UD
+    psr_header.legacy = 0;
+    psr_header.invalid = 0;
+    psr_header.data_frame = 0; // UD
+    psr_header.ref_epoch = 36; // First half of 2018.
     unix_offset = 1514764800;   // corresponds to 2018.01.01.0:0:0 in UTC
-    vdif_header.unused = 0;
+    psr_header.unused = 0;
     if (_timesamples_per_pulsar_packet == 3125) {
-        vdif_header.frame_len = 768;  //(6250-B data + 6-B pad + 32-B header)
-        vdif_header.log_num_chan = 1; // 2pol so ln2=1
+        psr_header.frame_len = 768;  //(6250-B data + 6-B pad + 32-B header)
+        psr_header.log_num_chan = 1; // 2pol so ln2=1
     } else if (_timesamples_per_pulsar_packet == 625) {
-        vdif_header.frame_len = 629;  // 5032-B
-        vdif_header.log_num_chan = 3; // ln8
+        psr_header.frame_len = 629;  // 5032-B
+        psr_header.log_num_chan = 3; // ln8
     }
-    vdif_header.vdif_version = 1;
+    psr_header.vdif_version = 1;
     char si[2] = {'C', 'X'};
-    vdif_header.station_id = (si[0] << 8) + si[1]; // Need to fomrally ask the Vdif community
-    vdif_header.thread_id = 0;                     // UD   freq
-    vdif_header.bits_depth = 3;                    // 4+4 bit so 4-1=3
-    vdif_header.data_type = 1;                     // Complex
-    vdif_header.edv = 0;
-    vdif_header.eud1 = 0; // UD: beam number [0 to 9]
-    vdif_header.eud2 = 0; //_psr_scaling from metadata
-    vdif_header.eud3 = 0; // Not used for now
-    vdif_header.eud4 = 0; // 16-b RA + 16-b Dec
+    psr_header.station_id = (si[0] << 8) + si[1]; // Need to fomrally ask the Vdif community
+    psr_header.thread_id = 0;                     // UD   freq
+    psr_header.bits_depth = 3;                    // 4+4 bit so 4-1=3
+    psr_header.data_type = 1;                     // Complex
+    psr_header.edv = 0;
+    psr_header.eud1 = 0; // UD: beam number [0 to 9]
+    psr_header.eud2 = 0; //_psr_scaling from metadata
+    psr_header.eud3 = 0; // Not used for now
+    psr_header.eud4 = 0; // 16-b RA + 16-b Dec
 
     uint frame = 0;
     uint in_frame_location = 0; // goes from 0 to 3125 or 625
@@ -188,17 +197,22 @@ void pulsarPostProcess::main_thread() {
         if (!new_frame_fpga_seq_num.has_value())
             return;
 
+        // Initialize data for header info, namely position and frequency labels.
+        // See fill_headers() for bit-packing of freq labels into PSRHeader.eud3.
         for (uint32_t i = 0; i < _num_gpus; ++i) {
             beam_coord[i] = get_beam_coord(in_buf[i], in_buffer_ID[i]);
-            if (_timesamples_per_pulsar_packet == 3125) {
-                thread_ids[i] = tel.to_freq_id(in_buf[i], in_buffer_ID[i]);
-            } else if (_timesamples_per_pulsar_packet == 625) {
-                // In the case of 4 frequencies per packet we convert the stream_id into a
-                // kind of node_id that runs from 0 to 255 for the thread_id.
-                ice_stream_id_t stream_id = ice_get_stream_id_t(in_buf[i], in_buffer_ID[i]);
-                thread_ids[i] =
-                    stream_id.crate_id * 16 + stream_id.slot_id + stream_id.link_id * 32;
-            }
+            thread_ids[i] = tel.to_freq_id(in_buf[i], in_buffer_ID[i]);
+            
+            // the following was commented out by E. Fonseca on 7 September 2020.
+            //if (_timesamples_per_pulsar_packet == 3125) {
+            //    thread_ids[i] = tel.to_freq_id(in_buf[i], in_buffer_ID[i]);
+            //} else if (_timesamples_per_pulsar_packet == 625) {
+            //    // In the case of 4 frequencies per packet we convert the stream_id into a
+            //    // kind of node_id that runs from 0 to 255 for the thread_id.
+            //    ice_stream_id_t stream_id = ice_get_stream_id_t(in_buf[i], in_buffer_ID[i]);
+            //    thread_ids[i] =
+            //        stream_id.crate_id * 16 + stream_id.slot_id + stream_id.link_id * 32;
+            //}
         }
 
         bool skipped_frames =
@@ -228,7 +242,7 @@ void pulsarPostProcess::main_thread() {
             skipped_frames = false;
 
             // Fill the first output buffer headers
-            fill_headers((unsigned char*)out_frame, &vdif_header, fpga_seq_num, &time_now,
+            fill_headers((unsigned char*)out_frame, &psr_header, fpga_seq_num, &time_now,
                          beam_coord, thread_ids);
         }
 
@@ -262,7 +276,7 @@ void pulsarPostProcess::main_thread() {
                 in_frame_location = 0;
 
                 // Fill the headers of the new buffer
-                fill_headers((unsigned char*)out_frame, &vdif_header, fpga_seq_num, &time_now,
+                fill_headers((unsigned char*)out_frame, &psr_header, fpga_seq_num, &time_now,
                              beam_coord, thread_ids);
             }
 
@@ -282,7 +296,7 @@ void pulsarPostProcess::main_thread() {
                             goto end_loop;
                         // Fill the headers of the new buffer
                         fpga_seq_num += _timesamples_per_pulsar_packet * _num_packet_per_stream;
-                        fill_headers((unsigned char*)out_frame, &vdif_header, fpga_seq_num,
+                        fill_headers((unsigned char*)out_frame, &psr_header, fpga_seq_num,
                                      &time_now, beam_coord, thread_ids);
                     } // end if last frame
                 }     // end if last sample
