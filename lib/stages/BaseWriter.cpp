@@ -14,7 +14,7 @@
 #include "restServer.hpp"        // for restServer, connectionInstance, HTTP_RESPONSE
 #include "version.h"             // for get_git_commit_hash
 #include "visBuffer.hpp"         // for VisFrameView
-#include "visFile.hpp"           // for visFileBundle, visCalFileBundle, _factory_aliasvisFile
+#include "visFile.hpp"           // for visFileBundle, _factory_aliasvisFile
 
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for json_ref, json

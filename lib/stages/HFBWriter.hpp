@@ -15,7 +15,7 @@
 #include "datasetManager.hpp"    // for dset_id_t, fingerprint_t
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily
 #include "restServer.hpp"        // for connectionInstance
-#include "visFile.hpp"           // for visFileBundle, visCalFileBundle
+#include "visFile.hpp"           // for visFileBundle
 #include "visUtil.hpp"           // for movingAverage
 
 #include <cstdint>   // for uint32_t

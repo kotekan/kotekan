@@ -11,7 +11,7 @@
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily
 #include "restServer.hpp"        // for connectionInstance
 #include "version.h"             // for get_git_commit_hash
-#include "visFile.hpp"           // for visFileBundle, visCalFileBundle
+#include "visFile.hpp"           // for visFileBundle
 #include "visUtil.hpp"           // for movingAverage
 
 #include <cstdint>   // for uint32_t

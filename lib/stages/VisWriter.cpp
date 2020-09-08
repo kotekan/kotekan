@@ -11,7 +11,7 @@
 #include "restServer.hpp"        // for connectionInstance
 #include "version.h"             // for get_git_commit_hash
 #include "visBuffer.hpp"         // for VisFrameView
-#include "visFile.hpp"           // for visFileBundle, visCalFileBundle
+#include "visFile.hpp"           // for visFileBundle
 #include "visUtil.hpp"           // for movingAverage
 
 #include <cstdint>   // for uint32_t
@@ -37,7 +37,6 @@ using kotekan::HTTP_RESPONSE;
 using kotekan::restServer;
 
 REGISTER_KOTEKAN_STAGE(VisWriter);
-REGISTER_KOTEKAN_STAGE(VisCalWriter);
 
 VisWriter::VisWriter(kotekan::Config& config, const std::string& unique_name,
                      kotekan::bufferContainer& buffer_container) :
@@ -130,7 +129,6 @@ void VisWriter::get_dataset_state(dset_id_t ds_id) {
     }
 
     {
-        // std::lock_guard<std::mutex> _lock(acqs_mutex);
         // Get a reference to the acq state
         auto acq = acqs.at(ds_id);
 
@@ -249,131 +247,4 @@ void VisWriter::init_acq(dset_id_t ds_id, std::map<std::string, std::string> met
     } catch (std::exception& e) {
         FATAL_ERROR("Failed creating file bundle for new acquisition: {:s}", e.what());
     }
-}
-
-VisCalWriter::VisCalWriter(Config& config, const std::string& unique_name,
-                           bufferContainer& buffer_container) :
-    VisWriter::VisWriter(config, unique_name, buffer_container) {
-
-    // Get file name to write to
-    // TODO: strip file extensions?
-    std::string fname_base = config.get_default<std::string>(unique_name, "file_base", "cal");
-    acq_name = config.get_default<std::string>(unique_name, "dir_name", "cal");
-    // Initially start with this buffer configuration
-    fname_live = fname_base + "_A";
-    fname_frozen = fname_base + "_B";
-
-    // Use a very short window by default
-    window = config.get_default<size_t>(unique_name, "window", 10);
-
-    // Force use of VisFileRing
-    file_type = "ring";
-
-    // Check if any of these files exist
-    DEBUG("Checking for and removing old buffer files...");
-    std::string full_path = root_path + "/" + acq_name + "/";
-    check_remove(full_path + fname_base + "_A.data");
-    check_remove(full_path + "." + fname_base + "_A.lock");
-    check_remove(full_path + fname_base + "_A.meta");
-    check_remove(full_path + fname_base + "_B.data");
-    check_remove(full_path + "." + fname_base + "_B.lock");
-    check_remove(full_path + fname_base + "_B.meta");
-
-    file_cal_bundle = nullptr;
-
-    // Register REST callback (needs to be done at the end such that the names have been set)
-    using namespace std::placeholders;
-    endpoint = "/release_live_file/" + std::regex_replace(unique_name, std::regex("^/+"), "");
-    restServer::instance().register_get_callback(endpoint,
-                                                 std::bind(&VisCalWriter::rest_callback, this, _1));
-}
-
-VisCalWriter::~VisCalWriter() {
-    restServer::instance().remove_get_callback(endpoint);
-}
-
-void VisCalWriter::rest_callback(connectionInstance& conn) {
-
-    INFO("Received request to release calibration live file...");
-
-    // Need to deal with the case that we could release the data before any acq has been started
-    if (acqs_fingerprint.size() == 0 || file_cal_bundle == nullptr) {
-        WARN("Asked to release calibration, but not active data.");
-        return;
-    }
-
-    // Swap files
-    std::string fname_tmp = fname_live;
-    fname_live = fname_frozen;
-    fname_frozen = fname_tmp;
-
-    // Tell visCalFileBundle to write to new file starting with next sample
-    {
-        // Ensure no write is ongoing
-        std::lock_guard<std::mutex> write_guard(write_mutex);
-        file_cal_bundle->swap_file(fname_live, acq_name);
-    }
-
-    // Respond with frozen file path
-    nlohmann::json reply{"file_path",
-                         fmt::format(fmt("{:s}/{:s}/{:s}"), root_path, acq_name, fname_frozen)};
-    conn.send_json_reply(reply);
-    INFO("Done. Resuming write loop.");
-}
-
-
-void VisCalWriter::init_acq(dset_id_t ds_id, std::map<std::string, std::string> metadata) {
-
-    // Create the new acqState
-    auto fp = datasetManager::instance().fingerprint(ds_id, critical_state_types);
-
-    // If the fingerprint is already known, we don't need to start a new
-    // acquisition, just add a map from the dataset_id to the acquisition we
-    // should use.
-    if (acqs_fingerprint.count(fp) > 0) {
-        INFO("Got new dataset ID={} with known fingerprint={}.", ds_id, fp);
-        acqs[ds_id] = acqs_fingerprint.at(fp);
-        return;
-    }
-
-    INFO("Got new dataset ID={} with new fingerprint={}.", ds_id, fp);
-
-    // Count the number of enabled acqusitions, for the VisCalWriter this can't
-    // be more than one
-    int num_enabled = std::count_if(acqs_fingerprint.begin(), acqs_fingerprint.end(),
-                                    [](auto& item) -> bool { return !(item.second->bad_dataset); });
-
-    // If it is not known we need to initialise everything
-    acqs_fingerprint[fp] = std::make_shared<acqState>();
-    acqs[ds_id] = acqs_fingerprint.at(fp);
-    auto& acq = *(acqs.at(ds_id));
-
-    // get dataset states
-    get_dataset_state(ds_id);
-
-    // Check there are no other valid acqs
-    if (num_enabled > 0) {
-        WARN("VisCalWriter can only have one acquistion. Dropping all frames of dataset_id {}",
-             ds_id);
-        acq.bad_dataset = true;
-        return;
-    }
-
-    // Check the git version...
-    if (!check_git_version(ds_id)) {
-        acq.bad_dataset = true;
-        return;
-    }
-
-    // TODO: chunk ID is not really supported now. Just set it to zero.
-    uint32_t chunk_id = 0;
-
-    // Create the derived class visCalFileBundle, and save to the instance, then
-    // return as a unique_ptr
-    file_cal_bundle =
-        new visCalFileBundle(file_type, root_path, instrument_name, metadata, chunk_id, file_length,
-                             window, kotekan::logLevel(_member_log_level), ds_id, file_length);
-    file_cal_bundle->set_file_name(fname_live, acq_name);
-
-    acq.file_bundle = std::unique_ptr<visFileBundle>(file_cal_bundle);
 }

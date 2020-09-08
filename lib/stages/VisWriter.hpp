@@ -15,7 +15,7 @@
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily
 #include "restServer.hpp"        // for connectionInstance
 #include "visBuffer.hpp"         // for VisFrameView
-#include "visFile.hpp"           // for visFileBundle, visCalFileBundle
+#include "visFile.hpp"           // for visFileBundle
 #include "visUtil.hpp"           // for movingAverage
 
 #include <cstdint>   // for uint32_t
@@ -60,98 +60,5 @@ protected:
     void write_data(const FrameView& frame, kotekan::prometheus::Gauge& write_time_metric,
                     std::unique_lock<std::mutex>& acqs_lock) override;
 };
-
-/**
- * @class VisCalWriter
- * @brief Extension to Writer for exporting calibration data.
- *
- * This stage is based off Writer, but is meant for generating a
- * fixed-length ring-buffer-like file for storing the last samples of
- * the calibration data stream. To ensure consistent reads while the
- * stage is continuously writing to a file, a REST endpoint is provided
- * that causes the stage to stop writing and release the file for
- * reading. It will proceed with writing to a second file, until the
- * endpoint is called again and it moves back to the first file, and so on.
- *
- * @warning Since the writer starts from scratch when it switches files,
- *          if requests that are sent more frequently than the length of
- *          a file, the released file will be partially empty.
- *
- * @par REST Endpoints
- * @endpoint /release_live_file/stage name>    ``GET`` Stop writing
- *           and make a file available for reading. Responds with a path to
- *           the file.
- *
- * @par Buffers
- * @buffer in_buf The buffer streaming data to write
- *         @buffer_format visBuffer structured
- *         @buffer_metadata VisMetadata
- *
- * @conf   root_path        String. Location in filesystem to write to.
- * @conf   file_base        String. Base filename to buffer data in (omit ext).
- * @conf   dir_name         String. Name of directory to hold the above files.
- * @conf   node_mode        Bool (default: false). Run in ``node_mode`` or not.
- * @conf   instrument_name  String (default: chime). Name of the instrument
- *                          acquiring data (if ``node_mode`` the hostname is
- *                          used instead)
- * @conf   freq_ids         Array of ints. The ids of the frequencies to write
- *                          out (only needed when not in @c node_mode).
- * @conf   input_reorder    Array of [int, int, string]. A description of the
- *                          inputs. Only the last two elements of each sub-array
- *                          are used and are expected to be @c channel_id and
- *                          @c channel_serial (the first contains the @c adc_id
- *                          used for reordering om ``visTransform``)
- * @conf   weights_type     Indicate what the visibility weights represent, e.g,
- *                          'inverse_var'. Will saved as an attribute in the saved
- *                          file. (default 'unknown')
- * @conf   file_length      Int (default 1024). Fixed length of the ring file
- *                          in number of time samples.
- * @conf   window           Int (default 10). Number of samples to keep active
- *                          for writing at any time.
- *
- * @par Metrics
- * @metric kotekan_viswriter_write_time_seconds
- *         The write time of the HDF5 writer. An exponential moving average over ~10
- *         samples.
- * @metric kotekan_viswriter_dropped_frame_total
- *         The number of frames dropped while attempting to write.
- *
- * @author Tristan Pinsonneault-Marotte
- **/
-class VisCalWriter : public VisWriter {
-public:
-    VisCalWriter(kotekan::Config& config, const std::string& unique_name,
-                 kotekan::bufferContainer& buffer_container);
-
-    ~VisCalWriter();
-
-    /// REST endpoint to request swapping buffer files
-    void rest_callback(kotekan::connectionInstance& conn);
-
-protected:
-    // Override function to make visCalFileBundle and set its file name
-    void init_acq(dset_id_t ds_id, std::map<std::string, std::string> metadata) override;
-
-    // Disable closing old acqs
-    void close_old_acqs() override{};
-
-    visCalFileBundle* file_cal_bundle;
-
-    std::string acq_name, fname_live, fname_frozen;
-
-    std::string endpoint;
-};
-
-
-inline void check_remove(std::string fname) {
-    // Check if we need to remove anything
-    if (access(fname.c_str(), F_OK) != 0)
-        return;
-    // Remove
-    if (remove(fname.c_str()) != 0) {
-        if (errno != ENOENT)
-            throw std::runtime_error("Could not remove file " + fname);
-    }
-}
 
 #endif

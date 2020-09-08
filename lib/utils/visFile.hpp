@@ -188,59 +188,6 @@ protected:
     bool change_file = false;
 };
 
-/**
- * @brief Extension to visFileBundle to manage buffer files for the
- *        calibration broker.
- *
- * This version is intended to write to a single file, with a
- * static user defined file name. The file mapping can be cleared
- * so that a new file is written to and the previous one is available
- * for reading. Swapping these files is managed by VisCalWriter.
- *
- * @author Tristan Pinsonneault-Marotee
- **/
-class visCalFileBundle : public visFileBundle {
-
-public:
-    /**
-     * Initialise the file bundle
-     *
-     * @cond Doxygen_Suppress
-     * @param root_path Directory to write into.
-     * @param inst_name Instrument name (e.g. chime)
-     * @param freq_chunk ID of the frequency chunk being written
-     * @param rollover Maximum time length of file.
-     * @param window_size Number of "active" timesamples to keep.
-     * @endcond
-     * @param args Arguments passed through to `visFile::visFile`.
-     *
-     * @warning The directory will not be created if it doesn't exist.
-     **/
-    template<typename... Args>
-    visCalFileBundle(Args&&... args) : visFileBundle(std::forward<Args>(args)...) {
-        // Override the rollover setting for the calibration bundles
-        rollover = 0;
-    }
-
-    /**
-     * Set the file name to write to.
-     **/
-    void set_file_name(std::string file_name, std::string acq_name);
-
-    /**
-     * Add a new file to the map of open files and let the
-     * previous one be flushed out as samples come in.
-     **/
-    void swap_file(std::string new_fname, std::string new_aname);
-
-protected:
-    // Override parent method to use a set file name
-    void add_file(time_ctype first_time) override;
-
-    std::string acq_name, file_name;
-};
-
-
 // NOTE: in this we need to pass the variadic arguments by value and not attempt
 // to forward them. This is because in C++17 we can't capture a variadic
 // parameter pack into the lambda perfectly.

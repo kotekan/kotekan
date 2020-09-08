@@ -14,7 +14,7 @@
 #include "datasetManager.hpp"    // for dset_id_t, fingerprint_t
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily
 #include "restServer.hpp"        // for connectionInstance
-#include "visFile.hpp"           // for visFileBundle, visCalFileBundle
+#include "visFile.hpp"           // for visFileBundle
 #include "visUtil.hpp"           // for movingAverage
 
 #include <cstdint>   // for uint32_t
@@ -156,10 +156,10 @@ protected:
     /// Input buffer to read from
     Buffer* in_buf;
 
-    /// Mutex for updating file_bundle (used in for VisCalWriter)
+    /// Mutex for updating file_bundle
     std::mutex write_mutex;
 
-    /// Manage access to the list of acquisitions (again mostly for VisCalWriter)
+    /// Manage access to the list of acquisitions
     std::mutex acqs_mutex;
 
     /// Hold the internal state of an acquisition (one per dataset ID)
