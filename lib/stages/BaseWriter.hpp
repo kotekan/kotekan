@@ -109,6 +109,8 @@ public:
     BaseWriter(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
+    void main_thread() override;
+
     /// Why was a frame dropped?
     enum class droppedType {
         late,       // Data arrived too late
@@ -127,7 +129,8 @@ protected:
     virtual void get_dataset_state(dset_id_t ds_id) = 0;
 
     /// Write data using FrameView
-    virtual void write_data(const FrameView& frame, kotekan::prometheus::Gauge& write_time_metric,
+    virtual void write_data(Buffer* in_buf, int frame_id,
+                            kotekan::prometheus::Gauge& write_time_metric,
                             std::unique_lock<std::mutex>& acqs_lock) = 0;
 
     /// Close inactive acquisitions

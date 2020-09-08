@@ -42,34 +42,6 @@ VisWriter::VisWriter(kotekan::Config& config, const std::string& unique_name,
                      kotekan::bufferContainer& buffer_container) :
     BaseWriter(config, unique_name, buffer_container){};
 
-void VisWriter::main_thread() {
-
-    frameID frame_id(in_buf);
-
-    kotekan::prometheus::Gauge& write_time_metric =
-        Metrics::instance().add_gauge("kotekan_writer_write_time_seconds", unique_name);
-
-    std::unique_lock<std::mutex> acqs_lock(acqs_mutex, std::defer_lock);
-
-    while (!stop_thread) {
-
-        // Wait for the buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
-            break;
-        }
-
-        // Get a view of the current frame
-        auto frame = VisFrameView(in_buf, frame_id);
-        write_data(frame, write_time_metric, acqs_lock);
-
-        // Mark the buffer and move on
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
-
-        // Clean out any acquisitions that have been inactive long
-        close_old_acqs();
-    }
-}
-
 /// Construct the set of metadata
 std::map<std::string, std::string> VisWriter::make_metadata(dset_id_t ds_id) {
 
@@ -140,11 +112,11 @@ void VisWriter::get_dataset_state(dset_id_t ds_id) {
     }
 }
 
-void VisWriter::write_data(const FrameView& frame_view,
+void VisWriter::write_data(Buffer* in_buf, int frame_id,
                            kotekan::prometheus::Gauge& write_time_metric,
                            std::unique_lock<std::mutex>& acqs_lock) {
 
-    const VisFrameView& frame = static_cast<const VisFrameView&>(frame_view);
+    const VisFrameView& frame = VisFrameView(in_buf, frame_id);
 
     dset_id_t dataset_id = frame.dataset_id;
     uint32_t freq_id = frame.freq_id;

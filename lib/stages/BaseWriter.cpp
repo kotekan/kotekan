@@ -95,6 +95,33 @@ BaseWriter::BaseWriter(Config& config, const std::string& unique_name,
     register_consumer(in_buf, unique_name.c_str());
 }
 
+void BaseWriter::main_thread() {
+
+    frameID frame_id(in_buf);
+
+    kotekan::prometheus::Gauge& write_time_metric =
+        Metrics::instance().add_gauge("kotekan_writer_write_time_seconds", unique_name);
+
+    std::unique_lock<std::mutex> acqs_lock(acqs_mutex, std::defer_lock);
+
+    while (!stop_thread) {
+
+        // Wait for the buffer to be filled with data
+        if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
+            break;
+        }
+
+        // Write frame
+        write_data(in_buf, frame_id, write_time_metric, acqs_lock);
+
+        // Mark the buffer and move on
+        mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
+
+        // Clean out any acquisitions that have been inactive long
+        close_old_acqs();
+    }
+}
+
 void BaseWriter::close_old_acqs() {
 
     // Sweep over all both acq storing maps and delete any entries for expired

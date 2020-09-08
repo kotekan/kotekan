@@ -73,34 +73,6 @@ std::map<std::string, std::string> HFBWriter::make_metadata(dset_id_t ds_id) {
     return metadata;
 }
 
-void HFBWriter::main_thread() {
-
-    frameID frame_id(in_buf);
-
-    kotekan::prometheus::Gauge& write_time_metric =
-        Metrics::instance().add_gauge("kotekan_writer_write_time_seconds", unique_name);
-
-    std::unique_lock<std::mutex> acqs_lock(acqs_mutex, std::defer_lock);
-
-    while (!stop_thread) {
-
-        // Wait for the buffer to be filled with data
-        if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
-            break;
-        }
-
-        // Get a view of the current frame
-        auto frame = HFBFrameView(in_buf, frame_id);
-        write_data(frame, write_time_metric, acqs_lock);
-
-        // Mark the buffer and move on
-        mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
-
-        // Clean out any acquisitions that have been inactive long
-        close_old_acqs();
-    }
-}
-
 /// Gets states from the dataset manager and saves some metadata
 void HFBWriter::get_dataset_state(dset_id_t ds_id) {
 
@@ -141,11 +113,11 @@ void HFBWriter::get_dataset_state(dset_id_t ds_id) {
     }
 }
 
-void HFBWriter::write_data(const FrameView& frame_view,
+void HFBWriter::write_data(Buffer* in_buf, int frame_id,
                            kotekan::prometheus::Gauge& write_time_metric,
                            std::unique_lock<std::mutex>& acqs_lock) {
 
-    const HFBFrameView& frame = static_cast<const HFBFrameView&>(frame_view);
+    const HFBFrameView& frame = HFBFrameView(in_buf, frame_id);
 
     dset_id_t dataset_id = frame.dataset_id;
     uint32_t freq_id = frame.freq_id;

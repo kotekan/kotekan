@@ -43,8 +43,6 @@ public:
     VisWriter(kotekan::Config& config, const std::string& unique_name,
               kotekan::bufferContainer& buffer_container);
 
-    void main_thread() override;
-
 protected:
     /// Setup the acquisition
     // NOTE: must be called from with a region locked by acqs_mutex
@@ -56,8 +54,8 @@ protected:
     /// Gets states from the dataset manager and saves some metadata
     void get_dataset_state(dset_id_t ds_id) override;
 
-    /// Write data using FrameView
-    void write_data(const FrameView& frame, kotekan::prometheus::Gauge& write_time_metric,
+    /// Write data using VisFrameView
+    void write_data(Buffer* in_buf, int frame_id, kotekan::prometheus::Gauge& write_time_metric,
                     std::unique_lock<std::mutex>& acqs_lock) override;
 };
 
