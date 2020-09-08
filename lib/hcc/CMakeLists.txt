@@ -11,8 +11,10 @@ if(CMAKE_CXX_COMPILER MATCHES ".*hcc")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${HCC_COMPILE_FLAGS} ")
 
     # set the link options for hcc
-    execute_process(COMMAND hcc-config --ldflags OUTPUT_VARIABLE HCC_LINKER_FLAGS
-                                                                 OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(
+        COMMAND hcc-config --ldflags
+        OUTPUT_VARIABLE HCC_LINKER_FLAGS
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${HCC_LINKER_FLAGS} ")
 endif()
 

@@ -40,9 +40,9 @@ add_library(
     hsaBeamformHFBOutput.cpp
     hsaBeamformHFBSum.cpp
     # CHIME/Pulsar Kernels & copy-out:
-    hsaBeamformPulsar.cpp
-    hsaBeamformPulsarOutput.cpp
-    hsaPulsarUpdatePhase.cpp)
+    hsaTrackingBeamform.cpp
+    hsaTrackingBeamformOutput.cpp
+    hsaTrackingUpdatePhase.cpp)
 
 target_link_libraries(kotekan_hsa libexternal kotekan_utils)
 target_include_directories(

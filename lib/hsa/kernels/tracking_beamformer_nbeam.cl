@@ -3,7 +3,7 @@
 #define IM y
 #define NBEAM 1
 
-__kernel void pulsarbf_float( __global uint *data, __global float2 *phase,  __global float2 *output){
+__kernel void trackingbf_float( __global uint *data, __global float2 *phase,  __global float2 *output){
     float2 sum;
     uint nsamp = get_global_size(2)*TS;
 
