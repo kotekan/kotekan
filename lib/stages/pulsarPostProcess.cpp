@@ -90,14 +90,15 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct PSRHeader* p
             (time_now->tv_nsec / 1.e9) / (_timesamples_per_pulsar_packet * fpga_s);
 
         for (uint f = 0; f < freqloop; ++f) {
-            // Before looping over pulsar beams, load freq labels into header.
-            // As of 7 September 2020, load one of four labels into thread_id, 
+            // load one of four labels into thread_id, 
             // and pack the other three into the 32-b EUD3 attribute.
             // TODO: redefine pulsar packet structure to not use VDIF def, instead use 
             // structures with dimensions defined by telescope-config variables.
             if (f == 0) {
                 psr_header->thread_id = thread_ids[f];
-            else {
+                psr_header->eud3 = 0;
+
+            } else {
                 psr_header->eud3 += (thread_ids[f] << (f - 1) * 10);
             }
 
@@ -171,14 +172,14 @@ void pulsarPostProcess::main_thread() {
     }
     psr_header.vdif_version = 1;
     char si[2] = {'C', 'X'};
-    psr_header.station_id = (si[0] << 8) + si[1]; // Need to fomrally ask the Vdif community
-    psr_header.thread_id = 0;                     // UD   freq
+    psr_header.station_id = (si[0] << 8) + si[1]; 
+    psr_header.thread_id = 0;                     // index of first packed frequency.
     psr_header.bits_depth = 3;                    // 4+4 bit so 4-1=3
     psr_header.data_type = 1;                     // Complex
     psr_header.edv = 0;
     psr_header.eud1 = 0; // UD: beam number [0 to 9]
     psr_header.eud2 = 0; //_psr_scaling from metadata
-    psr_header.eud3 = 0; // Not used for now
+    psr_header.eud3 = 0; // number computed using bitwise-shifted frequency indeces.
     psr_header.eud4 = 0; // 16-b RA + 16-b Dec
 
     uint frame = 0;
@@ -202,17 +203,6 @@ void pulsarPostProcess::main_thread() {
         for (uint32_t i = 0; i < _num_gpus; ++i) {
             beam_coord[i] = get_beam_coord(in_buf[i], in_buffer_ID[i]);
             thread_ids[i] = tel.to_freq_id(in_buf[i], in_buffer_ID[i]);
-            
-            // the following was commented out by E. Fonseca on 7 September 2020.
-            //if (_timesamples_per_pulsar_packet == 3125) {
-            //    thread_ids[i] = tel.to_freq_id(in_buf[i], in_buffer_ID[i]);
-            //} else if (_timesamples_per_pulsar_packet == 625) {
-            //    // In the case of 4 frequencies per packet we convert the stream_id into a
-            //    // kind of node_id that runs from 0 to 255 for the thread_id.
-            //    ice_stream_id_t stream_id = ice_get_stream_id_t(in_buf[i], in_buffer_ID[i]);
-            //    thread_ids[i] =
-            //        stream_id.crate_id * 16 + stream_id.slot_id + stream_id.link_id * 32;
-            //}
         }
 
         bool skipped_frames =
