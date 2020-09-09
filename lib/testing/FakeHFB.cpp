@@ -89,6 +89,8 @@ void FakeHFB::main_thread() {
     unsigned int output_frame_id = 0, frame_count = 0;
     uint64_t fpga_seq = 0;
 
+    auto& tel = Telescope::instance();
+
     timespec ts = double_to_ts(start_time);
 
     // Calculate the time increments in seq and ctime
@@ -107,11 +109,11 @@ void FakeHFB::main_thread() {
             dm.create_state<metadataState>("not set", "FakeHFB", get_git_commit_hash()).first);
 
         std::vector<std::pair<uint32_t, freq_ctype>> fspec;
-        // TODO: CHIME specific
         std::transform(std::begin(freq), std::end(freq), std::back_inserter(fspec),
-                       [](const uint32_t& id) -> std::pair<uint32_t, freq_ctype> {
-                           return {id, {800.0 - 400.0 / 1024 * id, 400.0 / 1024}};
+                       [&tel](uint32_t id) -> std::pair<uint32_t, freq_ctype> {
+                           return {id, {tel.to_freq(id), tel.freq_width(id)}};
                        });
+
         states.push_back(dm.create_state<freqState>(fspec).first);
         states.push_back(dm.create_state<beamState>(num_beams).first);
         states.push_back(dm.create_state<subfreqState>(num_subfreq).first);
