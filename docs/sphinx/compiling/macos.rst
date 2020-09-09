@@ -42,13 +42,13 @@ To include **OpenSSL** support (for optional support of HASH functions, md5, etc
     brew install openssl
     cmake -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl ..
 
-To enable **HDF5** writing and linear algebra tools, see :ref:`openblas`  and install:
+To enable **HDF5** writing and linear algebra tools install:
 
 .. code:: bash
 
-    brew install hdf5 lapack
+    brew install hdf5 lapack openblas
     git clone --single-branch -b extensible-datasets https://github.com/jrs65/HighFive.git <LOCAL_HIGHFIVE_DIR>
-    cmake -DUSE_HDF5=ON -DHIGHFIVE_PATH=<LOCAL_HDF5_DIR> -DUSE_LAPACK=ON -DOPENBLAS_PATH=<LOCAL_BLAS_DIR>
+    cmake -DUSE_HDF5=ON -DHIGHFIVE_PATH=<LOCAL_HDF5_DIR> -DUSE_LAPACK=ON
 
 For a comprehensive build, you'll want
 

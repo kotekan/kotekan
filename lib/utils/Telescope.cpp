@@ -21,7 +21,7 @@ const Telescope& Telescope::instance() {
 
 const Telescope& Telescope::instance(const kotekan::Config& config) {
 
-    auto telescope_name = config.get_default<std::string>("/telescope", "name", "chime");
+    auto telescope_name = config.get_default<std::string>("/telescope", "name", "ICETelescope");
     if (!FACTORY(Telescope)::exists(telescope_name)) {
         FATAL_ERROR_NON_OO("Requested telescope type {} is not registered", telescope_name);
     }
