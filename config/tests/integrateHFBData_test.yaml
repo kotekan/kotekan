@@ -20,12 +20,18 @@ cpu_affinity: [2,3,8,9]
 sizeof_float: 4
 sizeof_int: 4
 num_frb_total_beams: 1024
+num_local_freq: 1
 factor_upchan: 128
 downsample_time: 3
 num_frames_to_integrate: 8
 good_samples_threshold: 0.50
 test_value: 2
 samples_per_data_set: 49152
+
+dataset_manager:
+  use_dataset_broker: False
+  ds_broker_host: "127.0.0.1"
+  ds_broker_port: 12050
 
 # Pool
 main_pool:
