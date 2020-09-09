@@ -72,7 +72,6 @@ def accumulate_data(tmpdir_factory):
         ),
         dump_buffer,
         accumulate_params,
-        gdb=True,
     )
 
     test.run()
