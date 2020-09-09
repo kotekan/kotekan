@@ -29,7 +29,7 @@ num_ev: 4
 cpu_affinity: [7, 11, 14, 15]
 
 telescope:
-  name: chime
+  name: CHIMETelescope
   allow_default_frequency_map: false
 
 dataset_manager:

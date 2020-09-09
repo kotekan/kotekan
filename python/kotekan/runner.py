@@ -8,12 +8,13 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 # === End Python 2/3 compatibility
 
 
-import os
 import itertools
+import json
+import os
 import subprocess
 import tempfile
 import time
-import json
+import warnings
 
 from . import visbuffer
 from . import frbbuffer
@@ -39,6 +40,8 @@ class KotekanRunner(object):
     rest_port: int
         Port to use for kotekan REST server. Set it to 0 to get a random free port.
         Default: 0.
+    gdb: bool
+        Run in gdb and in a failure case produce a backtrace. Doesn't work if rest commands are supplied.
     """
 
     @classmethod
@@ -73,6 +76,7 @@ class KotekanRunner(object):
         debug=False,
         expect_failure=False,
         rest_port=0,
+        gdb=False,
     ):
 
         self._buffers = buffers if buffers is not None else {}
@@ -82,6 +86,7 @@ class KotekanRunner(object):
         self.debug = debug
         self.expect_failure = expect_failure
         self.rest_port = rest_port
+        self._gdb = gdb
         self.return_code = 0
 
     def run(self):
@@ -112,12 +117,26 @@ class KotekanRunner(object):
             print(yaml.safe_dump(config_dict))
             fh.flush()
 
-            cmd = "%s -b %s -c %s" % (self.kotekan_binary(), rest_addr, fh.name)
-            print(cmd)
-            p = subprocess.Popen(cmd.split(), stdout=f_out, stderr=f_out)
+            if self._gdb and not self._rest_commands:
+                if self._rest_commands:
+                    warnings.warn(
+                        "Sending REST commands is not supported when gdb=True."
+                    )
+
+                cmd = 'gdb %s -batch -ex "run -b %s -c %s" -ex "bt"' % (
+                    self.kotekan_binary(),
+                    rest_addr,
+                    fh.name,
+                )
+                print(cmd)
+                p = subprocess.run(cmd, stdout=f_out, stderr=f_out, shell=True)
+            else:
+                cmd = "%s -b %s -c %s" % (self.kotekan_binary(), rest_addr, fh.name)
+                print(cmd)
+                p = subprocess.Popen(cmd.split(), stdout=f_out, stderr=f_out)
 
             # Run any requested REST commands
-            if self._rest_commands:
+            if self._rest_commands and not self._gdb:
                 import requests
                 import json
 
@@ -208,7 +227,8 @@ class KotekanRunner(object):
                 print(open(f_out.name, "r").read())
 
             # Wait for kotekan to finish and capture the output
-            p.wait()
+            if not self._gdb:
+                p.wait()
             self.output = open(f_out.name, "r").read()
 
             # Print out the output from Kotekan for debugging
@@ -986,6 +1006,8 @@ class KotekanStageTester(KotekanRunner):
         If it is not None, gaussian noise with SD=1 is added to the input,
         if it is "random" the random number generator will be initialized with
         a random seed.
+    gdb: bool
+        Run in gdb and in a failure case produce a backtrace. Doesn't work if rest commands are supplied.
     """
 
     def __init__(
@@ -1000,6 +1022,7 @@ class KotekanStageTester(KotekanRunner):
         rest_commands=None,
         noise=False,
         expect_failure=False,
+        gdb=False,
     ):
 
         config = stage_config.copy()
@@ -1072,6 +1095,7 @@ class KotekanStageTester(KotekanRunner):
             global_config,
             rest_commands,
             expect_failure=expect_failure,
+            gdb=gdb,
         )
 
 

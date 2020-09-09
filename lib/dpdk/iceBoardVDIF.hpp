@@ -205,12 +205,14 @@ bool iceBoardVDIF::advance_vdif_frame(uint64_t new_seq, bool first_time) {
         if (tel.gps_time_enabled()) {
             timespec gps_time = tel.to_time(new_seq);
             // Compute the time at fpga_seq_num == 0 in nano seconds
-            // relative to the year 2000 epoch
+            // relative to the 2018 epoch (see above)
             vdif_base_time = gps_time.tv_sec * 1000000000 + gps_time.tv_nsec
                              - new_seq * tel.seq_length_nsec() - ref_epoch_offset * 1000000000;
+            DEBUG("Using GPS based vdif_base_time: {:d}", vdif_base_time);
         } else {
             vdif_base_time = now.tv_sec * 1000000000 + now.tv_usec * 1000
                              - new_seq * tel.seq_length_nsec() - ref_epoch_offset * 1000000000;
+            DEBUG("Using system clock based vdif_base_time: {:d}", vdif_base_time);
         }
     }
 
