@@ -125,7 +125,7 @@ void VisWriter::write_data(Buffer* in_buf, int frame_id,
     acqs_lock.lock();
     // Check the dataset ID hasn't changed
     if (acqs.count(dataset_id) == 0) {
-        init_acq(dataset_id, make_metadata(dataset_id));
+        init_acq(dataset_id);
     }
 
     // Get the acquisition we are writing into
@@ -179,7 +179,7 @@ void VisWriter::write_data(Buffer* in_buf, int frame_id,
     }
 }
 
-void VisWriter::init_acq(dset_id_t ds_id, std::map<std::string, std::string> metadata) {
+void VisWriter::init_acq(dset_id_t ds_id) {
 
     // Create the new acqState
     auto fp = datasetManager::instance().fingerprint(ds_id, critical_state_types);
@@ -211,6 +211,9 @@ void VisWriter::init_acq(dset_id_t ds_id, std::map<std::string, std::string> met
 
     // TODO: chunk ID is not really supported now. Just set it to zero.
     uint32_t chunk_id = 0;
+
+    // Construct metadata
+    auto metadata = make_metadata(ds_id);
 
     try {
         acq.file_bundle = std::make_unique<visFileBundle>(

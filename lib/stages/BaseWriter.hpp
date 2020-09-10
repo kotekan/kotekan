@@ -36,7 +36,7 @@
  *
  * All classes which inherit from this should provide the following API:
  *
- * init_acq(dset_id_t ds_id, std::map<std::string, std::string> metadata);
+ * init_acq(dset_id_t ds_id);
  * make_metadata(dset_id_t ds_id);
  * get_dataset_state(dset_id_t ds_id);
  * write_data(const FrameView& frame, kotekan::prometheus::Gauge& write_time_metric,
@@ -120,7 +120,7 @@ public:
 protected:
     /// Setup the acquisition
     // NOTE: must be called from with a region locked by acqs_mutex
-    virtual void init_acq(dset_id_t ds_id, std::map<std::string, std::string> metadata) = 0;
+    virtual void init_acq(dset_id_t ds_id) = 0;
 
     /// Construct the set of metadata
     virtual std::map<std::string, std::string> make_metadata(dset_id_t ds_id) = 0;
