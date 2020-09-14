@@ -8,8 +8,7 @@ set(LIBEVENT_SEARCH_PATHS /usr/include /usr/local/include)
 find_path(
     LIBEVENT_INCLUDE_DIR
     NAMES event.h
-    PATHS ${LIBEVENT_SEARCH_PATHS}
-    PATH_SUFFIXES event2)
+    PATHS ${LIBEVENT_SEARCH_PATHS})
 
 # We need event core (timers, buffers), pthreads (thread safe call backs), and extra (http)
 find_library(LIBEVENT_BASE NAMES event)
