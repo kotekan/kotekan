@@ -6,6 +6,8 @@ find_package(
     COMPONENTS unit_test_framework
     REQUIRED)
 
+include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
+
 add_executable(test_truncate test_truncate.cpp)
 target_link_libraries(test_truncate PRIVATE kotekan_utils)
 
