@@ -20,7 +20,6 @@
 #include <future>    // for future
 #include <map>       // for map
 #include <memory>    // for shared_ptr, unique_ptr
-#include <mutex>     // for mutex
 #include <set>       // for set
 #include <stdexcept> // for runtime_error
 #include <stdio.h>   // for size_t, remove
@@ -92,22 +91,18 @@ void HFBWriter::get_dataset_state(dset_id_t ds_id) {
             FATAL_ERROR("metadataState is a nullptr");
     }
 
-    {
-        // std::lock_guard<std::mutex> _lock(acqs_mutex);
-        // Get a reference to the acq state
-        auto acq = acqs.at(ds_id);
+    // Get a reference to the acq state
+    auto acq = acqs.at(ds_id);
 
-        uint ind = 0;
-        for (auto& f : fstate->get_freqs())
-            acq->freq_id_map[f.first] = ind++;
+    uint ind = 0;
+    for (auto& f : fstate->get_freqs())
+        acq->freq_id_map[f.first] = ind++;
 
-        acq->num_beams = bstate->get_beams().size();
-    }
+    acq->num_beams = bstate->get_beams().size();
 }
 
 void HFBWriter::write_data(Buffer* in_buf, int frame_id,
-                           kotekan::prometheus::Gauge& write_time_metric,
-                           std::unique_lock<std::mutex>& acqs_lock) {
+                           kotekan::prometheus::Gauge& write_time_metric) {
 
     const HFBFrameView& frame = HFBFrameView(in_buf, frame_id);
 
@@ -116,7 +111,6 @@ void HFBWriter::write_data(Buffer* in_buf, int frame_id,
     auto time = frame.time;
     uint64_t fpga_seq_num = frame.fpga_seq_num;
 
-    acqs_lock.lock();
     // Check the dataset ID hasn't changed
     if (acqs.count(dataset_id) == 0) {
         init_acq(dataset_id);
@@ -124,7 +118,6 @@ void HFBWriter::write_data(Buffer* in_buf, int frame_id,
 
     // Get the acquisition we are writing into
     auto& acq = *(acqs.at(dataset_id));
-    acqs_lock.unlock();
 
     // If the dataset is bad, skip the frame and move onto the next
     if (acq.bad_dataset) {
@@ -153,11 +146,9 @@ void HFBWriter::write_data(Buffer* in_buf, int frame_id,
         bool late;
         double start = current_time();
 
-        // Lock and write data
-        {
-            std::lock_guard<std::mutex> lock(write_mutex);
-            late = acq.file_bundle->add_sample(t, freq_ind, frame);
-        }
+        // Write data
+        late = acq.file_bundle->add_sample(t, freq_ind, frame);
+
         acq.last_update = current_time();
         double elapsed = acq.last_update - start;
 

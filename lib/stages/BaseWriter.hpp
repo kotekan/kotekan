@@ -22,7 +22,6 @@
 #include <future>    // for future
 #include <map>       // for map
 #include <memory>    // for shared_ptr, unique_ptr
-#include <mutex>     // for mutex
 #include <set>       // for set
 #include <stdexcept> // for runtime_error
 #include <stdio.h>   // for size_t, remove
@@ -38,8 +37,7 @@
  *
  * make_metadata(dset_id_t ds_id);
  * get_dataset_state(dset_id_t ds_id);
- * write_data(const FrameView& frame, kotekan::prometheus::Gauge& write_time_metric,
- *            std::unique_lock<std::mutex>& acqs_lock);
+ * write_data(const FrameView& frame, kotekan::prometheus::Gauge& write_time_metric);
  *
  * This stage writes out the data it receives with minimal processing.
  * Removing certain fields from the output must be done in a prior
@@ -125,11 +123,9 @@ protected:
 
     /// Write data using FrameView
     virtual void write_data(Buffer* in_buf, int frame_id,
-                            kotekan::prometheus::Gauge& write_time_metric,
-                            std::unique_lock<std::mutex>& acqs_lock) = 0;
+                            kotekan::prometheus::Gauge& write_time_metric) = 0;
 
     /// Setup the acquisition
-    // NOTE: must be called from with a region locked by acqs_mutex
     void init_acq(dset_id_t ds_id);
 
     /// Close inactive acquisitions
@@ -157,12 +153,6 @@ protected:
 
     /// Input buffer to read from
     Buffer* in_buf;
-
-    /// Mutex for updating file_bundle
-    std::mutex write_mutex;
-
-    /// Manage access to the list of acquisitions
-    std::mutex acqs_mutex;
 
     /// Hold the internal state of an acquisition (one per dataset ID)
     /// Note that we create an acqState even for invalid datasets that we will

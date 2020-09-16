@@ -23,7 +23,6 @@
 #include <future>    // for future
 #include <map>       // for map
 #include <memory>    // for shared_ptr, unique_ptr
-#include <mutex>     // for mutex
 #include <set>       // for set
 #include <stdexcept> // for runtime_error
 #include <stdio.h>   // for size_t, remove
@@ -51,8 +50,8 @@ protected:
     void get_dataset_state(dset_id_t ds_id) override;
 
     /// Write data using VisFrameView
-    void write_data(Buffer* in_buf, int frame_id, kotekan::prometheus::Gauge& write_time_metric,
-                    std::unique_lock<std::mutex>& acqs_lock) override;
+    void write_data(Buffer* in_buf, int frame_id,
+                    kotekan::prometheus::Gauge& write_time_metric) override;
 };
 
 #endif

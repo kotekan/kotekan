@@ -102,8 +102,6 @@ void BaseWriter::main_thread() {
     kotekan::prometheus::Gauge& write_time_metric =
         Metrics::instance().add_gauge("kotekan_writer_write_time_seconds", unique_name);
 
-    std::unique_lock<std::mutex> acqs_lock(acqs_mutex, std::defer_lock);
-
     while (!stop_thread) {
 
         // Wait for the buffer to be filled with data
@@ -112,7 +110,7 @@ void BaseWriter::main_thread() {
         }
 
         // Write frame
-        write_data(in_buf, frame_id, write_time_metric, acqs_lock);
+        write_data(in_buf, frame_id, write_time_metric);
 
         // Mark the buffer and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
@@ -180,30 +178,27 @@ void BaseWriter::close_old_acqs() {
         next_sweep = now + acq_timeout / 3.0;
     }
 
-    {
-        std::lock_guard<std::mutex> _lock(acqs_mutex);
-        // Scan over the dataset keyed list
-        auto it1 = acqs.begin();
-        while (it1 != acqs.end()) {
-            double age = now - it1->second->last_update;
+    // Scan over the dataset keyed list
+    auto it1 = acqs.begin();
+    while (it1 != acqs.end()) {
+        double age = now - it1->second->last_update;
 
-            if (!it1->second->bad_dataset && age > acq_timeout) {
-                it1 = acqs.erase(it1);
-            } else {
-                it1++;
-            }
+        if (!it1->second->bad_dataset && age > acq_timeout) {
+            it1 = acqs.erase(it1);
+        } else {
+            it1++;
         }
+    }
 
-        // Scan over the fingerprint keyed list
-        auto it2 = acqs_fingerprint.begin();
-        while (it2 != acqs_fingerprint.end()) {
-            double age = now - it2->second->last_update;
+    // Scan over the fingerprint keyed list
+    auto it2 = acqs_fingerprint.begin();
+    while (it2 != acqs_fingerprint.end()) {
+        double age = now - it2->second->last_update;
 
-            if (!it2->second->bad_dataset && age > acq_timeout) {
-                it2 = acqs_fingerprint.erase(it2);
-            } else {
-                it2++;
-            }
+        if (!it2->second->bad_dataset && age > acq_timeout) {
+            it2 = acqs_fingerprint.erase(it2);
+        } else {
+            it2++;
         }
     }
 }
