@@ -26,15 +26,24 @@
  * Note: _num_frames_to_integrate cannot go below 16 frames as _num_frames_to_integrate cannot be
  * lower than the max_frames_missing
  *
+ * The output of this stage is written to a raw file where each chunk is
+ * the metadata followed by the frame and indexed by frequency ID.
+ * This raw file is then transposed and compressed into a structured
+ * HDF5 format by gossec.
+ *
  * @par Buffers
  * @buffer hfb_input_buffer Kotekan buffer feeding data from any GPU.
  *     @buffer_format Array of @c floats
  * @buffer hfb_out_buf Kotekan buffer that will be populated with integrated data.
  *     @buffer_format Array of @c floats
  *
- * @conf   num_frames_to_integrate Int. No. of frames to integrate over.
- * @conf   num_frb_total_beams  Int. No. of total FRB beams (should be 1024).
- * @conf   factor_upchan  Int. Upchannelise factor (should be 128).
+ * @conf   num_frames_to_integrate  Int. No. of frames to integrate over.
+ * @conf   num_frb_total_beams      Int. No. of total FRB beams (should be 1024).
+ * @conf   factor_upchan            Int. Upchannelise factor (should be 128).
+ * @conf   samples_per_data_set     Int. The number of samples each GPU buffer has
+ *                                  been integrated for.
+ * @conf   good_samples_threshold   Float. Required fraction of good samples in
+ *                                  integration before it is recorded.
  *
  * @author James Willis
  *
@@ -58,9 +67,9 @@ public:
     float normalise_frame(float* sum_data, const uint32_t in_buffer_ID);
 
 private:
-    struct Buffer* in_buf;
-    struct Buffer* compressed_lost_samples_buf;
-    struct Buffer* out_buf;
+    Buffer* in_buf;
+    Buffer* compressed_lost_samples_buf;
+    Buffer* out_buf;
 
     /// Config variables
     uint32_t _num_frames_to_integrate;
