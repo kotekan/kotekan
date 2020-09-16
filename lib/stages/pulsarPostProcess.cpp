@@ -90,7 +90,7 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct PSRHeader* p
             (time_now->tv_nsec / 1.e9) / (_timesamples_per_pulsar_packet * fpga_s);
 
         for (uint f = 0; f < freqloop; ++f) {
-            // load frequency indeces into thread_id and EUD3. 
+            // load frequency indeces into thread_id and EUD3.
             if (f == 0) {
                 psr_header->thread_id = thread_ids[f];
                 psr_header->eud3 = 0;
@@ -169,7 +169,7 @@ void pulsarPostProcess::main_thread() {
     }
     psr_header.vdif_version = 1;
     char si[2] = {'C', 'X'};
-    psr_header.station_id = (si[0] << 8) + si[1]; 
+    psr_header.station_id = (si[0] << 8) + si[1];
     psr_header.thread_id = 0;  // index of first packed frequency.
     psr_header.bits_depth = 3; // 4+4 bit so 4-1=3
     psr_header.data_type = 1;  // Complex
