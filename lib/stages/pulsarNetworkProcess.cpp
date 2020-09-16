@@ -6,8 +6,8 @@
 #include "buffer.h"             // for mark_frame_empty, wait_for_full_frame, register_consumer
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "kotekanLogging.hpp"   // for FATAL_ERROR, INFO, CHECK_MEM
-#include "tx_utils.hpp"         // for add_nsec, get_vlan_from_ip, parse_chime_host_name, CLOCK_...
 #include "pulsar_functions.hpp" // for PSRHeader
+#include "tx_utils.hpp"         // for add_nsec, get_vlan_from_ip, parse_chime_host_name, CLOCK_...
 
 #include <arpa/inet.h>  // for inet_pton
 #include <atomic>       // for atomic_bool
