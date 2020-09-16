@@ -44,10 +44,6 @@ public:
               kotekan::bufferContainer& buffer_container);
 
 protected:
-    /// Setup the acquisition
-    // NOTE: must be called from with a region locked by acqs_mutex
-    void init_acq(dset_id_t ds_id) override;
-
     /// Construct the set of metadata
     std::map<std::string, std::string> make_metadata(dset_id_t ds_id) override;
 
