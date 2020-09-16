@@ -5,6 +5,7 @@
 #include "HFBFrameView.hpp"      // for HFBFrameView
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "SystemInterface.hpp"   // for get_user_name, get_host_name
 #include "buffer.h"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, fingerprint_t
@@ -49,23 +50,14 @@ std::map<std::string, std::string> HFBWriter::make_metadata(dset_id_t ds_id) {
     auto& dm = datasetManager::instance();
     const metadataState* mstate = dm.dataset_state<metadataState>(ds_id);
 
-    // Get the current user
-    std::string user(256, '\0');
-    user = (getlogin_r(&user[0], 256) == 0) ? user.c_str() : "unknown";
-
-    // Get the current hostname of the system for the metadata
-    std::string hostname(256, '\0');
-    gethostname(&hostname[0], 256);
-    hostname = hostname.c_str();
-
     // Set the metadata that we want to save with the file
     std::map<std::string, std::string> metadata;
     metadata["weight_type"] = mstate->get_weight_type();
     metadata["instrument_name"] = mstate->get_instrument_name();
     metadata["notes"] = ""; // TODO: connect up notes
     metadata["git_version_tag"] = get_git_commit_hash();
-    metadata["system_user"] = user;
-    metadata["collection_server"] = hostname;
+    metadata["system_user"] = get_user_name();
+    metadata["collection_server"] = get_host_name();
     metadata["num_beams"] =
         std::to_string(config.get<uint32_t>(unique_name, "num_frb_total_beams"));
     metadata["num_sub_freqs"] = std::to_string(config.get<uint32_t>(unique_name, "factor_upchan"));

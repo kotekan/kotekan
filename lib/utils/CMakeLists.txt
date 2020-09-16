@@ -27,6 +27,7 @@ set ( KOTEKAN_UTIL_SOURCES
       Telescope.cpp
       ICETelescope.cpp
       CHIMETelescope.cpp
+      SystemInterface.cpp
     )
 
 if (${USE_HDF5})
