@@ -9,7 +9,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.h"     // for get_fpga_seq_num, beamCoord, get_beam_coord, get_stream...
 #include "kotekanLogging.hpp"  // for DEBUG, ERROR
-#include "pulsar_functions.h"    // for PSRHeader
+#include "pulsar_functions.hpp"  // for PSRHeader
 
 #include <algorithm>  // for max
 #include <assert.h>   // for assert

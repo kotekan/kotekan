@@ -7,7 +7,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO, CHECK_MEM
 #include "tx_utils.hpp"        // for add_nsec, get_vlan_from_ip, parse_chime_host_name, CLOCK_...
-#include "pulsar_functions.h"  // for PSRHeader
+#include "pulsar_functions.hpp" // for PSRHeader
 
 #include <arpa/inet.h>  // for inet_pton
 #include <atomic>       // for atomic_bool
