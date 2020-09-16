@@ -5,11 +5,11 @@
 #include "ICETelescope.hpp"
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"
-#include "buffer.h"            // for Buffer, mark_frame_empty, wait_for_empty_frame, wait_...
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for get_fpga_seq_num, beamCoord, get_beam_coord, get_stream...
-#include "kotekanLogging.hpp"  // for DEBUG, ERROR
-#include "pulsar_functions.hpp"  // for PSRHeader
+#include "buffer.h"             // for Buffer, mark_frame_empty, wait_for_empty_frame, wait_...
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chimeMetadata.h"      // for get_fpga_seq_num, beamCoord, get_beam_coord, get_stream...
+#include "kotekanLogging.hpp"   // for DEBUG, ERROR
+#include "pulsar_functions.hpp" // for PSRHeader
 
 #include <algorithm>  // for max
 #include <assert.h>   // for assert
@@ -90,10 +90,7 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct PSRHeader* p
             (time_now->tv_nsec / 1.e9) / (_timesamples_per_pulsar_packet * fpga_s);
 
         for (uint f = 0; f < freqloop; ++f) {
-            // load one of four labels into thread_id, 
-            // and pack the other three into the 32-b EUD3 attribute.
-            // TODO: redefine pulsar packet structure to not use VDIF def, instead use 
-            // structures with dimensions defined by telescope-config variables.
+            // load frequency indeces into thread_id and EUD3. 
             if (f == 0) {
                 psr_header->thread_id = thread_ids[f];
                 psr_header->eud3 = 0;
@@ -161,7 +158,7 @@ void pulsarPostProcess::main_thread() {
     psr_header.invalid = 0;
     psr_header.data_frame = 0; // UD
     psr_header.ref_epoch = 36; // First half of 2018.
-    unix_offset = 1514764800;   // corresponds to 2018.01.01.0:0:0 in UTC
+    unix_offset = 1514764800;  // corresponds to 2018.01.01.0:0:0 in UTC
     psr_header.unused = 0;
     if (_timesamples_per_pulsar_packet == 3125) {
         psr_header.frame_len = 768;  //(6250-B data + 6-B pad + 32-B header)
@@ -173,9 +170,9 @@ void pulsarPostProcess::main_thread() {
     psr_header.vdif_version = 1;
     char si[2] = {'C', 'X'};
     psr_header.station_id = (si[0] << 8) + si[1]; 
-    psr_header.thread_id = 0;                     // index of first packed frequency.
-    psr_header.bits_depth = 3;                    // 4+4 bit so 4-1=3
-    psr_header.data_type = 1;                     // Complex
+    psr_header.thread_id = 0;  // index of first packed frequency.
+    psr_header.bits_depth = 3; // 4+4 bit so 4-1=3
+    psr_header.data_type = 1;  // Complex
     psr_header.edv = 0;
     psr_header.eud1 = 0; // UD: beam number [0 to 9]
     psr_header.eud2 = 0; //_psr_scaling from metadata
