@@ -1,11 +1,7 @@
-#ifndef PULSAR_FUNCTIONS_H
-#define PULSAR_FUNCTIONS_H
+#ifndef PULSAR_FUNCTIONS_HPP
+#define PULSAR_FUNCTIONS_HPP
 
 #include <inttypes.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 // the following structure is equivalent to the VDIF header definition 
 // contained in "vdif_functions.h", but the pulsar team is gradually 
@@ -33,9 +29,4 @@ struct PSRHeader {
     uint32_t eud4 : 32;         // 32-b number encoding 16-b RA + 16-b Dec
 };
 
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* PULSAR_FUNCTIONS_H */
+#endif /* PULSAR_FUNCTIONS_HPP */
