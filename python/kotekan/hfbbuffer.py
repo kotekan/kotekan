@@ -326,7 +326,7 @@ class HFBRaw(object):
         self.valid_frames = valid_frames
         self.file_metadata = file_metadata
 
-     @classmethod
+    @classmethod
     def frame_struct(cls, size_frame, num_beams, num_subfreq, align_valid):
         """
         Construct frame struct.
