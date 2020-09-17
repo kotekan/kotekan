@@ -133,7 +133,7 @@ class HFBBuffer(object):
 
         structure = [
             ("hfb", np.float32, num_beams * num_subfreq),
-            ("weight", np.float32, 0), # will be num_beams * num_subfreq
+            ("weight", np.float32, 0),  # will be num_beams * num_subfreq
         ]
 
         end = 0
@@ -326,40 +326,7 @@ class HFBRaw(object):
         self.valid_frames = valid_frames
         self.file_metadata = file_metadata
 
-        # set gain/flag update IDs
-        #self.update_id = None
-        #if comet_manager is not None:
-        #    update_id_types = ("gains", "flags")
-        #    self.update_id = {
-        #        name: np.ndarray((num_time, num_freq), dtype="<U32")
-        #        for name in update_id_types
-        #    }
-        #    ds = np.array(metadata["dataset_id"]).view("u8,u8").reshape(metadata.shape)
-        #    for t in range(num_time):
-        #        for f in range(num_freq):
-        #            if valid_frames.astype(np.bool)[t, f]:
-        #                ds_id = "{:016x}{:016x}".format(ds[t, f][1], ds[t, f][0])
-
-        #                # gains
-        #                state = comet_manager.get_state("gains", ds_id)
-        #                if state is None:
-        #                    self.update_id["gains"][t, f] = None
-        #                else:
-        #                    self.update_id["gains"][t, f] = state.data["data"][
-        #                        "update_id"
-        #                    ]
-
-        #                # flags
-        #                state = comet_manager.get_state("flags", ds_id)
-        #                if state is None:
-        #                    self.update_id["flags"][t, f] = None
-        #                else:
-        #                    self.update_id["flags"][t, f] = state.data["data"]
-        #            else:
-        #                self.update_id["flags"][t, f] = None
-        #                self.update_id["gains"][t, f] = None
-
-    @classmethod
+     @classmethod
     def frame_struct(cls, size_frame, num_beams, num_subfreq, align_valid):
         """
         Construct frame struct.
@@ -465,7 +432,9 @@ class HFBRaw(object):
                 )
             )
         num_beams = num_beams[0]
-        num_subfreq = np.unique(raw["metadata"][raw["valid"].astype(np.bool)]["num_subfreq"])
+        num_subfreq = np.unique(
+            raw["metadata"][raw["valid"].astype(np.bool)]["num_subfreq"]
+        )
         if len(num_subfreq) > 1:
             raise ValueError(
                 "Found more than 1 value for `num_subfreq` in numpy ndarray: {}.".format(
@@ -559,7 +528,7 @@ class HFBRaw(object):
                     [(ff[1]["centre"], ff[1]["width"]) for ff in index_map["freq"]],
                     dtype=[("centre", np.float32), ("width", np.float32)],
                 )
-            
+
         return cls(
             num_time,
             num_freq,
@@ -699,12 +668,7 @@ class HFBRaw(object):
         if not isinstance(subfreq, list):
             raise ValueError("Incorrect format for subfreq axis")
 
-        index_map = {
-            "time": time,
-            "freq": freq,
-            "beam": beam,
-            "subfreq": subfreq,
-        }
+        index_map = {"time": time, "freq": freq, "beam": beam, "subfreq": subfreq}
 
         # Calculate the structural metadata
         nbeam = len(beam)
