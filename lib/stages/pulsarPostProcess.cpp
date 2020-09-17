@@ -71,9 +71,9 @@ pulsarPostProcess::~pulsarPostProcess() {
     delete[] in_frame;
 }
 
-void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct PSRHeader* psr_header,
-                                     const uint64_t fpga_seq_num, struct timespec* time_now,
-                                     struct beamCoord* beam_coord, uint16_t* thread_ids) {
+void pulsarPostProcess::fill_headers(unsigned char* out_buf, PSRHeader* psr_header,
+                                     const uint64_t fpga_seq_num, timespec* time_now,
+                                     beamCoord* beam_coord, uint16_t* thread_ids) {
 
     // Get the Telescope instance and pre-calc the length of an FPGA frame
     auto& tel = Telescope::instance();
@@ -90,7 +90,7 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct PSRHeader* p
             (time_now->tv_nsec / 1.e9) / (_timesamples_per_pulsar_packet * fpga_s);
 
         for (uint f = 0; f < freqloop; ++f) {
-            // load frequency indeces into thread_id and EUD3.
+            // load frequency indices into thread_id and EUD3.
             if (f == 0) {
                 psr_header->thread_id = thread_ids[f];
                 psr_header->eud3 = 0;
@@ -99,32 +99,32 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, struct PSRHeader* p
                 psr_header->eud3 += (thread_ids[f] << (f - 1) * 10);
             }
 
-            for (uint32_t psr = 0; psr < _num_pulsar; ++psr) {
-                psr_header->eud1 = psr; // beam id
-                psr_header->eud2 = beam_coord[f].scaling[psr];
-                uint16_t ra_part = (uint16_t)(beam_coord[f].ra[psr] * 100);
-                uint16_t dec_part = (uint16_t)((beam_coord[f].dec[psr] + 90) * 100);
-                psr_header->eud4 = ((ra_part << 16) & 0xFFFF0000) + (dec_part & 0xFFFF);
+            for (uint32_t beam_id = 0; beam_id < _num_pulsar; ++beam_id) {
+                psr_header->eud1 = beam_id; // beam id
+                psr_header->eud2 = beam_coord[f].scaling[beam_id];
+                uint16_t ra_part = (uint16_t)(beam_coord[f].ra[beam_id] * 100);
+                uint16_t dec_part = (uint16_t)((beam_coord[f].dec[beam_id] + 90) * 100);
+                psr_header->eud4 = (ra_part << 16) + (dec_part & 0xFFFF);
                 timespec time_now_from_compute = tel.to_time(fpga_now);
                 if (time_now->tv_sec != time_now_from_compute.tv_sec) {
                     ERROR("[Time Check] mismatch in fill header packet={:d} beam={:d} "
                           "time_now->tv_sec={:d} time_now_from_compute.tv_sec={:d}",
-                          i, psr, time_now->tv_sec, time_now_from_compute.tv_sec);
+                          i, beam_id, time_now->tv_sec, time_now_from_compute.tv_sec);
                 }
                 if (time_now->tv_nsec != time_now_from_compute.tv_nsec) {
                     ERROR("[Time Check] mismatch in fill header packet={:d} beam={:d} "
                           "time_now->tv_nsec={:d} time_now_from_compute.tv_nsec={:d}",
-                          i, psr, time_now->tv_nsec, time_now_from_compute.tv_nsec);
+                          i, beam_id, time_now->tv_nsec, time_now_from_compute.tv_nsec);
                 }
                 if (_timesamples_per_pulsar_packet == 3125) {
-                    memcpy(&out_buf[(f * _num_pulsar + psr) * _num_packet_per_stream
+                    memcpy(&out_buf[(f * _num_pulsar + beam_id) * _num_packet_per_stream
                                         * _udp_pulsar_packet_size
                                     + i * _udp_pulsar_packet_size],
-                           psr_header, sizeof(struct PSRHeader));
+                           psr_header, sizeof(PSRHeader));
                 } else if (_timesamples_per_pulsar_packet == 625) {
-                    memcpy(&out_buf[psr * _num_packet_per_stream * _udp_pulsar_packet_size
+                    memcpy(&out_buf[beam_id * _num_packet_per_stream * _udp_pulsar_packet_size
                                     + i * _udp_pulsar_packet_size],
-                           psr_header, sizeof(struct PSRHeader));
+                           psr_header, sizeof(PSRHeader));
                 }
             }
         } // end freq
@@ -152,7 +152,7 @@ void pulsarPostProcess::main_thread() {
     uint64_t frame_fpga_seq_num = 0;     // sample starting the current input frame
     uint32_t current_input_location = 0; // goes from 0 to _samples_per_data_set
 
-    struct PSRHeader psr_header;
+    PSRHeader psr_header;
     psr_header.seconds = 0; // UD
     psr_header.legacy = 0;
     psr_header.invalid = 0;
@@ -183,7 +183,7 @@ void pulsarPostProcess::main_thread() {
     uint in_frame_location = 0; // goes from 0 to 3125 or 625
     uint64_t fpga_seq_num = 0;
 
-    struct beamCoord beam_coord[_num_gpus];
+    beamCoord beam_coord[_num_gpus];
     // Get the first output buffer which will always be id = 0 to start.
     uint8_t* out_frame = wait_for_empty_frame(pulsar_buf, unique_name.c_str(), out_buffer_ID);
     if (out_frame == nullptr)
@@ -196,7 +196,6 @@ void pulsarPostProcess::main_thread() {
             return;
 
         // Initialize data for header info, namely position and frequency labels.
-        // See fill_headers() for bit-packing of freq labels into PSRHeader.eud3.
         for (uint32_t i = 0; i < _num_gpus; ++i) {
             beam_coord[i] = get_beam_coord(in_buf[i], in_buffer_ID[i]);
             thread_ids[i] = tel.to_freq_id(in_buf[i], in_buffer_ID[i]);
