@@ -20,7 +20,7 @@ struct PSRHeader {
     uint32_t eud1 : 24; // UD: beam number [0 to 9]
     uint32_t edv : 8;
     uint32_t eud2 : 32; // _psr_scaling from metadata
-    uint32_t eud3 : 32; // 32-b number encoding other three frequency indeces.
+    uint32_t eud3 : 32; // 32-b number encoding three 10-b frequency indices: thread_id[3]<<20 + thread_id[2]<<10 + thread_id[1].
     uint32_t eud4 : 32; // 32-b number encoding 16-b RA + 16-b Dec
 };
 
