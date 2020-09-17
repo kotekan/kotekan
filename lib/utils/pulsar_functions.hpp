@@ -16,7 +16,7 @@
  * PSRHeader.eud4 = (RA << 16) + (DEC)
  *
  * @author Cherry Ng
-**/
+ **/
 
 struct PSRHeader {
     uint32_t seconds : 30;
