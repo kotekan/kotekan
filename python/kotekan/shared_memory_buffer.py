@@ -84,8 +84,16 @@ class SharedMemoryReader:
         self._time_index_map = {}
 
         self.shared_mem_name = shared_memory_name
-        self.semaphore = posix_ipc.Semaphore(shared_memory_name)
-        self.shared_mem_file = posix_ipc.SharedMemory(shared_memory_name)
+
+        try:
+            self.semaphore = posix_ipc.Semaphore(shared_memory_name)
+            self.shared_mem_file = posix_ipc.SharedMemory(shared_memory_name)
+        except posix_ipc.ExistentialError:
+            raise SharedMemoryError(
+                "The shared memory resources referenced by '{}' were not created yet by the writer.".format(
+                    self.shared_mem_name
+                )
+            )
 
         # 0 means entire file
         self.shared_mem = mmap.mmap(self.shared_mem_file.fd, 0, prot=mmap.PROT_READ)
