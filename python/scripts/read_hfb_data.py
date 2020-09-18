@@ -3,21 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
 
-# Metadata format
-metadata_t = np.dtype(
-    [
-        ("metadata_size", np.uint32),
-        ("fpga_seq_num", np.int64),
-        ("gps_time", [("s", np.int64), ("ns", np.int64)]),
-        ("gps_time_flag", np.uint32),
-        ("freq_bin_num", np.uint32),
-        ("norm_frac", np.float32),
-        ("num_samples_integrated", np.uint32),
-        ("num_samples_expected", np.uint32),
-        ("compressed_data_size", np.uint32),
-    ]
-)
-
+import hfbbuffer
 
 def main():
 
@@ -25,35 +11,33 @@ def main():
 
     print("Reading file: {}".format(in_file))
 
-    freq_bin_num = int(sys.argv[2])
-    beam_num = int(sys.argv[3])
-    freq_start = 800.0 - float(freq_bin_num) * 400.0 / 1024.0
+    freq_id = int(sys.argv[2])
+    beam_id = int(sys.argv[3])
+    freq_start = 800.0 - float(freq_id) * 400.0 / 1024.0
+    nframes = 128
 
-    dt = np.dtype([("metadata", metadata_t), ("data", np.float32, (1024 * 128,))])
+    f = hfbbuffer.HFBRaw.from_file(in_file) 
 
-    data = np.fromfile(in_file, dtype=dt)
+    metadata = f.metadata
+    data = f.data['hfb']
 
-    print("No. of frames in the file: %d" % len(data["metadata"]))
+    print("No. of valid frames in the file: %d" % np.sum(f.valid_frames))
 
     print("Metadata")
     print("--------")
-    print(metadata_t.names)
-    print(data["metadata"][0:5])
+    print(metadata.dtype)
+    print(metadata[0][freq_id])
 
-    vis_square = np.zeros((128, 128), dtype=np.float32)
+    vis_square = np.zeros((nframes, 128), dtype=np.float32)
 
     # Get the time in UTC
-    ts = int(data["metadata"]["gps_time"][0]["s"])
+    ts = int(metadata["ctime"][0][freq_id][0])
     date = datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d")
-
-    # Find specific frequency bin in data and filter
-    index = data["metadata"]["freq_bin_num"] == freq_bin_num
-    freq = data["data"][index]
 
     # Filter specific beam from data
     ctr = 0
-    for i in range(0, len(freq)):
-        vis_square[ctr] = freq[i][beam_num * 128 : (beam_num + 1) * 128]
+    for d in data[:nframes]:
+        vis_square[ctr] = d[freq_id][beam_id * 128 : (beam_id + 1) * 128]
         ctr = ctr + 1
 
     # Plot data
@@ -72,15 +56,15 @@ def main():
     plt.yticks(tick_loc, new_yticks)
     plt.ylabel("Time (UTC)")
     plt.title(
-        "Freq bin: %d, Freq range: %.3f - %.3fMHz, \nBeam: %d, Date: %s"
-        % (freq_bin_num, freq_start, freq_start + 0.39, beam_num, date)
+        "Freq ID: %d, Freq range: %.3f - %.3fMHz, \nBeam: %d, Date: %s"
+        % (freq_id, freq_start, freq_start + 0.39, beam_id, date)
     )
 
     cbar = plt.colorbar()
     cbar.set_label("log(Power)")
     plt.gcf().subplots_adjust(bottom=0.20)
-    # plt.show()
-    file_name = "hfb_data_freq_" + str(freq_bin_num) + "_beam_" + str(beam_num) + ".pdf"
+    #plt.show()
+    file_name = "hfb_data_freq_" + str(freq_id) + "_beam_" + str(beam_id) + ".pdf"
     plt.savefig(file_name)
 
 
