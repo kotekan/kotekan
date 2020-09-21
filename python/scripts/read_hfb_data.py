@@ -5,6 +5,7 @@ from datetime import datetime
 
 from kotekan import hfbbuffer
 
+
 def main():
 
     in_file = sys.argv[1]
@@ -16,10 +17,10 @@ def main():
     freq_start = 800.0 - float(freq_id) * 400.0 / 1024.0
     nframes = 128
 
-    f = hfbbuffer.HFBRaw.from_file(in_file) 
+    f = hfbbuffer.HFBRaw.from_file(in_file)
 
     metadata = f.metadata
-    data = f.data['hfb']
+    data = f.data["hfb"]
 
     print("No. of valid frames in the file: %d" % np.sum(f.valid_frames))
 
@@ -63,7 +64,7 @@ def main():
     cbar = plt.colorbar()
     cbar.set_label("log(Power)")
     plt.gcf().subplots_adjust(bottom=0.20)
-    #plt.show()
+    # plt.show()
     file_name = "hfb_data_freq_" + str(freq_id) + "_beam_" + str(beam_id) + ".pdf"
     plt.savefig(file_name)
 
