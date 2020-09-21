@@ -56,7 +56,8 @@ def plot_sky_map(metadata, data, nsubfreq, freq_id):
             beam_sum[beam_id] += np.sum(d[freq_id][beam_id * nsubfreq : (beam_id + 1) * nsubfreq])
                     
         for beam_id in range(0, ns_beams):
-            beam_ns_sum[beam_id] += beam_sum[beam_id * 4]
+            beam_ns_sum[beam_id] += (beam_sum[beam_id] + beam_sum[beam_id + ns_beams]
+                                     + beam_sum[beam_id + 2 * ns_beams] + beam_sum[beam_id + 3 * ns_beams])
 
         hfb_square[ctr] = beam_ns_sum
         ctr = ctr + 1
