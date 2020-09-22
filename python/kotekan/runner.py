@@ -139,7 +139,6 @@ class KotekanRunner(object):
             # Run any requested REST commands
             if self._rest_commands and not self._gdb:
                 import requests
-                import json
 
                 attempt = 0
                 wait = 0.2
