@@ -8,7 +8,6 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 from future import standard_library
 
 standard_library.install_aliases()
-import time
 import threading
 import socket
 import numpy as np

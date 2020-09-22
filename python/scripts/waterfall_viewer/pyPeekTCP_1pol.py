@@ -11,14 +11,12 @@ standard_library.install_aliases()
 import time
 import threading
 import socket
-import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import matplotlib.dates as md
 import datetime
 import struct
-import json
 
 np.seterr(divide="ignore", invalid="ignore")
 
@@ -256,7 +254,7 @@ f.show()
 
 
 # UI
-from matplotlib.widgets import Slider, Button
+from matplotlib.widgets import Button
 
 import pickle
 
