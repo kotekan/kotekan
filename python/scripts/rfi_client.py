@@ -22,11 +22,9 @@ import threading
 import socket
 import numpy as np
 import matplotlib.animation as animation
-import matplotlib.dates as md
 from matplotlib.widgets import Button
 import datetime
 import matplotlib.pyplot as plt
-import random
 import time
 import matplotlib.dates as mdates
 import os
