@@ -821,7 +821,7 @@ def set_rfi_zeroing(zeroing_on):
                 f"RFI Solar Transit Toggle: Successfully turned RFI zeroing {state}."
             )
             return True
-    except:
+    except Exception:
         logger.info("RFI Solar Transit Toggle: Failure to contact coco, is it running?")
     return False
 
