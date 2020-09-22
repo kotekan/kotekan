@@ -7,9 +7,7 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 
 import requests
 from tabulate import tabulate
-import json
 import os
-import sys
 import argparse
 
 parser = argparse.ArgumentParser(
