@@ -49,7 +49,7 @@ def data_listener():
     debuf = False
     while True:
         idx = (idx + 1) % times
-        for i in np.arange(integration):
+        for _ in np.arange(integration):
             data, addr = sock.recvfrom(length)
             d = np.fromstring(data, dtype=np.int8)
             waterfall[:, idx] += d.reshape(-1, 4).mean(axis=1)

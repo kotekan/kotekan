@@ -123,7 +123,7 @@ def data_listener():
     while True:
         d = np.zeros([pkt_freqs, pkt_elems])
         t = np.zeros(plot_times)
-        for i in np.arange(plot_integration * pkt_elems):
+        for _ in np.arange(plot_integration * pkt_elems):
             data = receive(connection, pkt_length + pkt_header)
             if len(data) != pkt_length + pkt_header:
                 print("Lost Connection!")

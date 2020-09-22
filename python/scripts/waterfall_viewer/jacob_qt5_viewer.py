@@ -970,7 +970,7 @@ def data_listener():  # Listens to Data and updates
             t = np.zeros(main.plot_times)
             main.waterfold *= 0.999  # Reduce Old Folded Data
             main.countfold *= 0.999
-            for i in np.arange(int(main.local_integration * main.pkt_elems)):
+            for _ in np.arange(int(main.local_integration * main.pkt_elems)):
                 data = main.receive(
                     main.connection, main.pkt_length + main.pkt_header
                 )  # Receive Data from Port

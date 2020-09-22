@@ -142,7 +142,7 @@ def data_listener():
             t = np.zeros(plot_times)
             waterfold *= 0.999
             countfold *= 0.999
-            for i in np.arange(local_integration * pkt_elems):
+            for _ in np.arange(local_integration * pkt_elems):
                 data = receive(connection, pkt_length + pkt_header)
                 if len(data) != pkt_length + pkt_header:
                     print("Lost Connection!")
