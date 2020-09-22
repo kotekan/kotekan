@@ -202,8 +202,6 @@ class VisBuffer(object):
     def from_file(cls, filename):
         """Load a visBuffer from a kotekan dump file.
         """
-        import os
-
         filesize = os.path.getsize(filename)
 
         buf = bytearray(filesize)
