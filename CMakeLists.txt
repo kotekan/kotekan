@@ -21,6 +21,12 @@ if(NOT ${CMAKE_VERSION} VERSION_LESS "3.12.0")
     cmake_policy(SET CMP0075 NEW)
 endif()
 
+# Fix a problem with homebrew linking on MacOS >= 10.14
+# See https://stackoverflow.com/questions/54068035
+if(APPLE)
+    link_directories(/usr/local/lib)
+endif()
+
 # optional modules for GPUs and the like
 option(USE_AIRSPY "Build Airspy Producer" OFF)
 option(USE_FFTW "Build with FFTW F-engine" OFF)

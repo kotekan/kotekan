@@ -28,14 +28,6 @@ target_link_libraries(kotekan_libs INTERFACE kotekan_core)
 add_subdirectory(metadata)
 target_link_libraries(kotekan_libs INTERFACE kotekan_metadata)
 
-# SELF-REGISTERING BITS:
-if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    target_link_libraries(kotekan_libs INTERFACE -Wl,--whole-archive)
-endif()
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(kotekan_libs INTERFACE -Wl,-all_load)
-endif()
-
 if(${USE_HCC})
     add_subdirectory(hcc)
     target_link_libraries(kotekan_libs INTERFACE kotekan_hcc)
@@ -66,11 +58,6 @@ if(${USE_DPDK})
     add_subdirectory(dpdk)
     target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk)
 endif()
-
-if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    target_link_libraries(kotekan_libs INTERFACE -Wl,--no-whole-archive)
-endif()
-# END SELF-REGISTERING BITS
 
 # HDF5 stuff
 if(${USE_HDF5})
