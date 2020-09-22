@@ -390,7 +390,7 @@ if __name__ == "__main__":
         try:
             sock_tcp.connect(addr)
             Connected = True
-        except:
+        except Exception:
             print(
                 "Could not connect to %s:%s Trying again in 5 seconds"
                 % (addr[0], addr[1])
