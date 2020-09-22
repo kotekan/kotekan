@@ -207,7 +207,7 @@ def data_listener():
         sock_tcp.send(WATERFALLMESSAGE.encode())
         print("Trying to receive waterfall of size: %d" % (waterfallsize))
         data = recvall(sock_tcp, waterfallsize)
-        if data == None:
+        if data is None:
             print("Connection to %s:%s Broken... Exiting" % (addr[0], str(addr[1])))
             break
 
@@ -235,7 +235,7 @@ def data_listener():
 
         data = recvall(sock_tcp, timesize).decode()
 
-        if data == None:
+        if data is None:
             print("Connection to %s:%s Broken... Exiting" % (addr[0], str(addr[1])))
             break
 
