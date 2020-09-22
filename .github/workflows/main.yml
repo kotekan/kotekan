@@ -13,12 +13,10 @@ on:
     branches:
     - develop
     - master
-    - ar/fix_whole_archive_linking
   push:
     branches:
     - develop
     - master
-    - ar/fix_whole_archive_linking
 
 env:
   IMG_CORE: docker.pkg.github.com/kotekan/kotekan/kotekan-core:latest
