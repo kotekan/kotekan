@@ -53,11 +53,17 @@ def plot_sky_map(metadata, data, nsubfreq, freq_id):
         beam_ns_sum = np.zeros(ns_beams, dtype=np.float32)
 
         for beam_id in range(0, nbeams):
-            beam_sum[beam_id] += np.sum(d[freq_id][beam_id * nsubfreq : (beam_id + 1) * nsubfreq])
-                    
+            beam_sum[beam_id] += np.sum(
+                d[freq_id][beam_id * nsubfreq : (beam_id + 1) * nsubfreq]
+            )
+
         for beam_id in range(0, ns_beams):
-            beam_ns_sum[beam_id] += (beam_sum[beam_id] + beam_sum[beam_id + ns_beams]
-                                     + beam_sum[beam_id + 2 * ns_beams] + beam_sum[beam_id + 3 * ns_beams])
+            beam_ns_sum[beam_id] += (
+                beam_sum[beam_id]
+                + beam_sum[beam_id + ns_beams]
+                + beam_sum[beam_id + 2 * ns_beams]
+                + beam_sum[beam_id + 3 * ns_beams]
+            )
 
         hfb_square[ctr] = beam_ns_sum
         ctr = ctr + 1
@@ -68,23 +74,20 @@ def plot_sky_map(metadata, data, nsubfreq, freq_id):
     plt.yticks(np.arange(0, ns_beams, 50))
 
     tick_loc = np.arange(0, nframes, 120)
-    #plt.xticks(tick_loc, xticks, rotation=45)
+    # plt.xticks(tick_loc, xticks, rotation=45)
     xticks = np.arange(ts, ts + nframes * 10, 1200)
     new_xticks = [datetime.utcfromtimestamp(num).strftime("%H:%M:%S") for num in xticks]
-    
+
     plt.xticks(tick_loc, new_xticks)
     plt.xlabel("Time (UTC)")
-    plt.title(
-        "Freq ID: %d, Freq: %.3fMHz, \nDate: %s"
-        % (freq_id, freq_start, date)
-    )
+    plt.title("Freq ID: %d, Freq: %.3fMHz, \nDate: %s" % (freq_id, freq_start, date))
 
     cbar = plt.colorbar()
     cbar.set_label("log(Power)")
     plt.gcf().subplots_adjust(bottom=0.20)
     plt.show()
-    #file_name = "hfb_data_sky_map_ns_beams_freq_" + str(freq_id) + ".pdf"
-    #plt.savefig(file_name)
+    # file_name = "hfb_data_sky_map_ns_beams_freq_" + str(freq_id) + ".pdf"
+    # plt.savefig(file_name)
 
 
 def plot_one_beam_freq_over_time(metadata, data, nframes, nsubfreq, freq_id, beam_id):
@@ -127,8 +130,8 @@ def plot_one_beam_freq_over_time(metadata, data, nframes, nsubfreq, freq_id, bea
     cbar.set_label("log(Power)")
     plt.gcf().subplots_adjust(bottom=0.20)
     plt.show()
-    #file_name = "hfb_data_freq_" + str(freq_id) + "_beam_" + str(beam_id) + ".pdf"
-    #plt.savefig(file_name)
+    # file_name = "hfb_data_freq_" + str(freq_id) + "_beam_" + str(beam_id) + ".pdf"
+    # plt.savefig(file_name)
 
 
 if __name__ == "__main__":
