@@ -32,10 +32,8 @@ import os
 import time
 import argparse
 import yaml
-import subprocess
 import requests
 import json
-import imp
 from ch_util import ephemeris
 from kotekan import __version__
 
