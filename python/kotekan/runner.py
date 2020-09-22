@@ -200,7 +200,7 @@ class KotekanRunner(object):
                             headers=rest_header,
                             data=json.dumps(data),
                         )
-                    except:
+                    except requests.RequestException:
                         # print kotekan output if sending REST command fails
                         # (kotekan might have crashed and we want to know)
                         p.wait()
