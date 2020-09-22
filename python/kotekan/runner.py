@@ -1017,7 +1017,7 @@ class KotekanStageTester(KotekanRunner):
         stage_config,
         buffers_in,
         buffers_out,
-        global_config={},
+        global_config=None,
         parallel_stage_type=None,
         parallel_stage_config={},
         rest_commands=None,
@@ -1029,6 +1029,8 @@ class KotekanStageTester(KotekanRunner):
         config = stage_config.copy()
         parallel_config = parallel_stage_config.copy()
         noise_config = {}
+        if global_config is None:
+            global_config = {}
 
         if noise:
             if buffers_in is None:
