@@ -61,7 +61,6 @@ class CommandLine(object):
             "colorscale": 1.0,
             "num_global_freq": 1024,
             "sk_step": 256,
-            "num_elements": 2048,
             "bi_frames_per_packet": 10,
         }
         self.mode = "pathfinder"
