@@ -5,14 +5,12 @@ add_executable(kotekan kotekan.cpp)
 target_compile_definitions(kotekan PRIVATE mssse3 __STDC_LIMIT_MACROS)
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    target_link_libraries(kotekan PRIVATE
-                          -Wl,--whole-archive
-                          $<TARGET_PROPERTY:kotekan_libs,INTERFACE_LINK_LIBRARIES>
-                          -Wl,--no-whole-archive)
+    target_link_libraries(
+        kotekan
+        PRIVATE -Wl,--whole-archive $<TARGET_PROPERTY:kotekan_libs,INTERFACE_LINK_LIBRARIES>
+                -Wl,--no-whole-archive)
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(kotekan PRIVATE
-                          -Wl,-all_load
-                          kotekan_libs)
+    target_link_libraries(kotekan PRIVATE -Wl,-all_load kotekan_libs)
 else()
     message(FATAL_ERROR "System type ${CMAKE_SYSTEM_NAME} not supported")
 endif()
