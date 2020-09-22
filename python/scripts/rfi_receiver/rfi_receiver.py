@@ -690,8 +690,8 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
     confidence = np.abs(waterfall[:, :max_pos] - med) / std
     rfi_mask = np.zeros_like(confidence)
     rfi_mask[confidence > 3.0] = 1.0
-    rfi_mask[waterfall[:, :max_pos] == -1] = -1.0
-    band_perc = 100.0 * np.sum(rfi_mask, axis=1) / float(rfi_mask.shape[1])
+    rfi_mask[waterfall[:, :max_pos] == -1] = np.nan
+    band_perc = 100.0 * np.nanmean(rfi_mask, axis=1)
     fbins_mhz = np.round(
         np.array([800.0 - float(b) * 400.0 / 1024.0 for b in np.arange(band.size)]),
         decimals=2,
@@ -699,13 +699,12 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
     fbins = np.arange(band_perc.size)
     for i in range(band_perc.size):
         if np.isnan(band[i]) or band[i] < 0:
-            metric_dict["rfi_band"].labels(fbins_mhz[i], fbins[i]).set(-1)
+            metric_dict["rfi_band"].labels(fbins_mhz[i], fbins[i]).set(np.nan)
         else:
             metric_dict["rfi_band"].labels(fbins_mhz[i], fbins[i]).set(band_perc[i])
     overall_rfi = (
         100.0
-        * np.sum(rfi_mask[waterfall[:, :max_pos] != -1])
-        / float(rfi_mask[waterfall[:, :max_pos] != -1].size)
+        * np.nanmean(rfi_mask[waterfall[:, :max_pos]])
     )
     if np.isnan(overall_rfi):
         overall_rfi = -1
