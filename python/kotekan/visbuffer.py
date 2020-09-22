@@ -867,7 +867,7 @@ def simple_visraw_data(filename, ntime, nfreq, ninput):
 
     # Return read only view
     del raw
-    return VisRaw(filename, mode="r")
+    return VisRaw.from_file(filename, mode="r")
 
 
 def freq_id_to_stream_id(f_id):
