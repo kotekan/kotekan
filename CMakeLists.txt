@@ -12,7 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # this makes sure we use -std=c++17, not -std=gnu++17
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# set C standart to gnu99
+# set C standard to gnu99
 set(CMAKE_C_STANDARD 99)
 
 # This quiets a noisy cmake warning on newer versions, triggered by some of our CMake/FindXYZ.cmake
