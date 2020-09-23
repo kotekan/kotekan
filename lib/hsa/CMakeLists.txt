@@ -44,7 +44,7 @@ add_library(
     hsaTrackingBeamformOutput.cpp
     hsaTrackingUpdatePhase.cpp)
 
-target_link_libraries(kotekan_hsa libexternal kotekan_utils)
+target_link_libraries(kotekan_hsa PRIVATE libexternal kotekan_libs)
 target_include_directories(
     kotekan_hsa
     PUBLIC . /opt/rocm/hsa/include/
