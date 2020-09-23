@@ -113,3 +113,9 @@ target_link_libraries(kotekan_stages PRIVATE kotekan_libs libexternal)
 if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_link_libraries(kotekan_stages PRIVATE rt)
 endif()
+
+# -latomic is needed for atomic operations in applyGains, but it doesn't need
+# to be included separately for clang on macOS
+if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_link_libraries(kotekan_stages PRIVATE atomic)
+endif()

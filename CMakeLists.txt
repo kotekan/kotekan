@@ -298,11 +298,6 @@ else()
         "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -L/opt/rocm/lib -lm")
 endif()
 
-# Add link to atomic operations library if we are not on macOS and using clang
-if ((NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin") OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -latomic")
-endif()
-
 # Disable complex math NaN/INFO range checking for performance
 check_cxx_compiler_flag(-fcx-limited-range HAVE_CX_LIMITED_RANGE)
 if(HAVE_CX_LIMITED_RANGE AND NOT ${IWYU})
