@@ -135,14 +135,11 @@ bool applyGains::receive_update(json& json) {
         WARN("Failure reading 'start_time' from update: {:s}", e.what());
         return false;
     }
-    {
-        std::lock_guard<std::mutex> lock_ts_frame(m_ts_frame);
-        if (ts_frame > double_to_ts(new_ts)) {
-            WARN("applyGains: Received update with a timestamp that is older "
-                 "than the current frame (The difference is {:f} s).",
-                 ts_to_double(ts_frame) - new_ts);
-            late_update_counter.inc();
-        }
+    if (ts_frame.load() > double_to_ts(new_ts)) {
+        WARN("applyGains: Received update with a timestamp that is older "
+             "than the current frame (The difference is {:f} s).",
+             ts_to_double(ts_frame.load()) - new_ts);
+        late_update_counter.inc();
     }
 
     // receive new gains update
@@ -259,10 +256,7 @@ void applyGains::apply_thread() {
             return;
 
         // get the frames timestamp
-        {
-            std::lock_guard<std::mutex> lock_ts_frame(m_ts_frame);
-            ts_frame = std::get<1>(input_frame.time);
-        }
+        ts_frame.store(std::get<1>(input_frame.time));
 
         // Get the frequency index of this ID. The map will have been set by initialise
         // Also get the UNIX timestamp

@@ -133,13 +133,7 @@ private:
     std::shared_mutex freqmap_mtx;
 
     /// Timestamp of the current frame
-    // This could be atomic, but that's slower with a non-primitive typethan using a mutex and it
-    // gives us awkward linker error issues between platforms (see
-    // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=65756#c1 and
-    timespec ts_frame{0, 0};
-
-    /// Access protection for ts_frame
-    std::mutex m_ts_frame;
+    std::atomic<timespec> ts_frame{{0, 0}};
 
     /// Entrancepoint for n threads. Each thread takes frames with a
     /// different frame_id from the buffer and applies gains.
