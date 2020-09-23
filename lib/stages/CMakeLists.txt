@@ -73,7 +73,7 @@ if(${USE_AIRSPY})
 endif()
 
 if(${USE_FFTW})
-    set(KOTEKAN_PROCESS_LIB_SOURCES ${KOTEKAN_PROCESS_LIB_SOURCES} fftwEngine.cpp)
+    target_sources(kotekan_stages PRIVATE fftwEngine.cpp)
     target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
 endif()
 
