@@ -48,7 +48,7 @@ class ChimeMetadata(ctypes.Structure):
 
     _fields_ = [
         ("fpga_seq_num", ctypes.c_uint64),
-        ("first_packet_recv_time", timeval),
+        ("first_packet_recv_time", timespec.timeval),
         ("gps_time", timespec.time_spec),
         ("lost_timesamples", ctypes.c_int32),
         ("stream_ID", ctypes.c_uint16),
