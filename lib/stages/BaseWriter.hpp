@@ -67,7 +67,7 @@
  *
  * @par Buffers
  * @buffer in_buf The buffer streaming data to write
- *         @buffer_format visBuffer structured
+ *         @buffer_format VisBuffer structured
  *         @buffer_metadata VisMetadata
  *
  * @conf   file_type        String. Type of file to write. One of 'hdf5',
@@ -168,11 +168,8 @@ protected:
         /// Frequency IDs that we are expecting
         std::map<uint32_t, uint32_t> freq_id_map;
 
-        /// Number of products
-        size_t num_vis;
-
-        /// Number of beams
-        size_t num_beams;
+        // Frame size
+        size_t frame_size;
 
         /// Last update
         double last_update;

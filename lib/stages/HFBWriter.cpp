@@ -98,13 +98,13 @@ void HFBWriter::get_dataset_state(dset_id_t ds_id) {
     for (auto& f : fstate->get_freqs())
         acq->freq_id_map[f.first] = ind++;
 
-    acq->num_beams = bstate->get_beams().size();
+    acq->frame_size = HFBFrameView::calculate_frame_size(config, unique_name);
 }
 
 void HFBWriter::write_data(Buffer* in_buf, int frame_id,
                            kotekan::prometheus::Gauge& write_time_metric) {
 
-    const HFBFrameView& frame = HFBFrameView(in_buf, frame_id);
+    auto frame = HFBFrameView(in_buf, frame_id);
 
     dset_id_t dataset_id = frame.dataset_id;
     uint32_t freq_id = frame.freq_id;
@@ -129,10 +129,10 @@ void HFBWriter::write_data(Buffer* in_buf, int frame_id,
     } else if (acq.freq_id_map.count(freq_id) == 0) {
         WARN("Frequency id={:d} not enabled for Writer, discarding frame", freq_id);
 
-        // Check that the number of visibilities matches what we expect
-    } else if (frame.num_beams != acq.num_beams) {
-        FATAL_ERROR("Number of beams in frame doesn't match state or file ({:d} != {:d}).",
-                    frame.num_beams, acq.num_beams);
+        // Check that the frame size matches what we expect
+    } else if (frame.data_size() != acq.frame_size) {
+        FATAL_ERROR("Size of frame doesn't match file ({:d} != {:d}).", frame.data_size(),
+                    acq.frame_size);
         return;
 
     } else {

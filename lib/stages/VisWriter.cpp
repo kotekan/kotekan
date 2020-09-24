@@ -70,11 +70,9 @@ void VisWriter::get_dataset_state(dset_id_t ds_id) {
     // Get all states synchronously.
     auto fstate_fut = std::async(&datasetManager::dataset_state<freqState>, &dm, ds_id);
     auto pstate_fut = std::async(&datasetManager::dataset_state<prodState>, &dm, ds_id);
-    auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>, &dm, ds_id);
     auto mstate_fut = std::async(&datasetManager::dataset_state<metadataState>, &dm, ds_id);
 
     const metadataState* mstate = mstate_fut.get();
-    const stackState* sstate = sstate_fut.get();
     const freqState* fstate = fstate_fut.get();
     const prodState* pstate = pstate_fut.get();
 
@@ -91,22 +89,20 @@ void VisWriter::get_dataset_state(dset_id_t ds_id) {
             FATAL_ERROR("freqState is a nullptr");
     }
 
-    {
-        // Get a reference to the acq state
-        auto acq = acqs.at(ds_id);
+    // Get a reference to the acq state
+    auto acq = acqs.at(ds_id);
 
-        uint ind = 0;
-        for (auto& f : fstate->get_freqs())
-            acq->freq_id_map[f.first] = ind++;
+    uint ind = 0;
+    for (auto& f : fstate->get_freqs())
+        acq->freq_id_map[f.first] = ind++;
 
-        acq->num_vis = sstate ? sstate->get_num_stack() : pstate->get_prods().size();
-    }
+    acq->frame_size = VisFrameView::calculate_frame_size(config, unique_name);
 }
 
 void VisWriter::write_data(Buffer* in_buf, int frame_id,
                            kotekan::prometheus::Gauge& write_time_metric) {
 
-    const VisFrameView& frame = VisFrameView(in_buf, frame_id);
+    auto frame = VisFrameView(in_buf, frame_id);
 
     dset_id_t dataset_id = frame.dataset_id;
     uint32_t freq_id = frame.freq_id;
@@ -130,10 +126,10 @@ void VisWriter::write_data(Buffer* in_buf, int frame_id,
     } else if (acq.freq_id_map.count(freq_id) == 0) {
         WARN("Frequency id={:d} not enabled for VisWriter, discarding frame", freq_id);
 
-        // Check that the number of visibilities matches what we expect
-    } else if (frame.num_prod != acq.num_vis) {
-        FATAL_ERROR("Number of products in frame doesn't match state or file ({:d} != {:d}).",
-                    frame.num_prod, acq.num_vis);
+        // Check that the frame size matches what we expect
+    } else if (frame.data_size() != acq.frame_size) {
+        FATAL_ERROR("Size of frame doesn't match file ({:d} != {:d}).", frame.data_size(),
+                    acq.frame_size);
         return;
 
     } else {
