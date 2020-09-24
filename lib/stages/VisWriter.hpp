@@ -50,8 +50,7 @@ protected:
     void get_dataset_state(dset_id_t ds_id) override;
 
     /// Write data using VisFrameView
-    void write_data(Buffer* in_buf, int frame_id,
-                    kotekan::prometheus::Gauge& write_time_metric) override;
+    void write_data(Buffer* in_buf, int frame_id) override;
 };
 
 #endif

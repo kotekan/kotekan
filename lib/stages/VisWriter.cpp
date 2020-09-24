@@ -99,64 +99,13 @@ void VisWriter::get_dataset_state(dset_id_t ds_id) {
     acq->frame_size = VisFrameView::calculate_frame_size(config, unique_name);
 }
 
-void VisWriter::write_data(Buffer* in_buf, int frame_id,
-                           kotekan::prometheus::Gauge& write_time_metric) {
+void VisWriter::write_data(Buffer* in_buf, int frame_id) {
 
     auto frame = VisFrameView(in_buf, frame_id);
 
-    dset_id_t dataset_id = frame.dataset_id;
-    uint32_t freq_id = frame.freq_id;
+    // Get time of the frame
     auto ftime = frame.time;
+    time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
 
-    // Check the dataset ID hasn't changed
-    if (acqs.count(dataset_id) == 0) {
-        init_acq(dataset_id);
-    }
-
-    // Get the acquisition we are writing into
-    auto& acq = *(acqs.at(dataset_id));
-
-    // If the dataset is bad, skip the frame and move onto the next
-    if (acq.bad_dataset) {
-        bad_dataset_frame_counter.labels({dataset_id.to_string()}).inc();
-
-        // Check if the frequency we are receiving is on the list of frequencies
-        // we are processing
-        // TODO: this should probably be reported to prometheus
-    } else if (acq.freq_id_map.count(freq_id) == 0) {
-        WARN("Frequency id={:d} not enabled for VisWriter, discarding frame", freq_id);
-
-        // Check that the frame size matches what we expect
-    } else if (frame.data_size() != acq.frame_size) {
-        FATAL_ERROR("Size of frame doesn't match file ({:d} != {:d}).", frame.data_size(),
-                    acq.frame_size);
-        return;
-
-    } else {
-
-        // Get the time and frequency of the frame
-        time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
-        uint32_t freq_ind = acq.freq_id_map.at(freq_id);
-
-        // Add all the new information to the file.
-        bool late;
-        double start = current_time();
-
-        // Write data
-        late = acq.file_bundle->add_sample(t, freq_ind, frame);
-
-        acq.last_update = current_time();
-        double elapsed = acq.last_update - start;
-
-        DEBUG("Written frequency {:d} in {:.5f} s", freq_id, elapsed);
-
-        // Increase metric count if we dropped a frame at write time
-        if (late) {
-            late_frame_counter.labels({std::to_string(freq_id)}).inc();
-        }
-
-        // Update average write time in prometheus
-        write_time.add_sample(elapsed);
-        write_time_metric.set(write_time.average());
-    }
+    write_frame(frame, frame.dataset_id, frame.freq_id, t, frame.data_size());
 }

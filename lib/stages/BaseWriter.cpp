@@ -49,7 +49,9 @@ BaseWriter::BaseWriter(Config& config, const std::string& unique_name,
     late_frame_counter(Metrics::instance().add_counter("kotekan_writer_late_frame_total",
                                                        unique_name, {"freq_id"})),
     bad_dataset_frame_counter(Metrics::instance().add_counter(
-        "kotekan_writer_bad_dataset_frame_total", unique_name, {"dataset_id"})) {
+        "kotekan_writer_bad_dataset_frame_total", unique_name, {"dataset_id"})),
+    write_time_metric(
+        Metrics::instance().add_gauge("kotekan_writer_write_time_seconds", unique_name)) {
 
     // Fetch any simple configuration
     root_path = config.get_default<std::string>(unique_name, "root_path", ".");
@@ -99,9 +101,6 @@ void BaseWriter::main_thread() {
 
     frameID frame_id(in_buf);
 
-    kotekan::prometheus::Gauge& write_time_metric =
-        Metrics::instance().add_gauge("kotekan_writer_write_time_seconds", unique_name);
-
     while (!stop_thread) {
 
         // Wait for the buffer to be filled with data
@@ -110,7 +109,7 @@ void BaseWriter::main_thread() {
         }
 
         // Write frame
-        write_data(in_buf, frame_id, write_time_metric);
+        write_data(in_buf, frame_id);
 
         // Mark the buffer and move on
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
@@ -162,6 +161,60 @@ void BaseWriter::init_acq(dset_id_t ds_id) {
             kotekan::logLevel(_member_log_level), ds_id, file_length);
     } catch (std::exception& e) {
         FATAL_ERROR("Failed creating file bundle for new acquisition: {:s}", e.what());
+    }
+}
+
+void BaseWriter::write_frame(const FrameView& frame, dset_id_t dataset_id, uint32_t freq_id,
+                             time_ctype time, size_t frame_size) {
+
+    // Check the dataset ID hasn't changed
+    if (acqs.count(dataset_id) == 0) {
+        init_acq(dataset_id);
+    }
+
+    // Get the acquisition we are writing into
+    auto& acq = *(acqs.at(dataset_id));
+
+    // If the dataset is bad, skip the frame and move onto the next
+    if (acq.bad_dataset) {
+        bad_dataset_frame_counter.labels({dataset_id.to_string()}).inc();
+
+        // Check if the frequency we are receiving is on the list of frequencies
+        // we are processing
+        // TODO: this should probably be reported to prometheus
+    } else if (acq.freq_id_map.count(freq_id) == 0) {
+        WARN("Frequency id={:d} not enabled for Writer, discarding frame", freq_id);
+
+        // Check that the frame size matches what we expect
+    } else if (frame_size != acq.frame_size) {
+        FATAL_ERROR("Size of frame doesn't match file ({:d} != {:d}).", frame_size, acq.frame_size);
+        return;
+
+    } else {
+
+        // Get frequency of the frame
+        uint32_t freq_ind = acq.freq_id_map.at(freq_id);
+
+        // Add all the new information to the file.
+        bool late;
+        double start = current_time();
+
+        // Write data
+        late = acq.file_bundle->add_sample(time, freq_ind, frame);
+
+        acq.last_update = current_time();
+        double elapsed = acq.last_update - start;
+
+        DEBUG("Written frequency {:d} in {:.5f} s", freq_id, elapsed);
+
+        // Increase metric count if we dropped a frame at write time
+        if (late) {
+            late_frame_counter.labels({std::to_string(freq_id)}).inc();
+        }
+
+        // Update average write time in prometheus
+        write_time.add_sample(elapsed);
+        write_time_metric.set(write_time.average());
     }
 }
 

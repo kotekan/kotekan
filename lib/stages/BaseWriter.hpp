@@ -122,11 +122,14 @@ protected:
     virtual void get_dataset_state(dset_id_t ds_id) = 0;
 
     /// Write data using FrameView
-    virtual void write_data(Buffer* in_buf, int frame_id,
-                            kotekan::prometheus::Gauge& write_time_metric) = 0;
+    virtual void write_data(Buffer* in_buf, int frame_id) = 0;
 
     /// Setup the acquisition
     void init_acq(dset_id_t ds_id);
+
+    /// Write frame
+    void write_frame(const FrameView& frame, dset_id_t dataset_id, uint32_t freq_id,
+                     time_ctype time, size_t frame_size);
 
     /// Close inactive acquisitions
     void close_old_acqs();
@@ -202,6 +205,7 @@ protected:
 
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& late_frame_counter;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& bad_dataset_frame_counter;
+    kotekan::prometheus::Gauge& write_time_metric;
 };
 
 #endif
