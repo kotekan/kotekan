@@ -239,6 +239,11 @@ stacking:
     1792, 1793, 1794, 1795, 1796, 1797, 1798, 1799, 2040, 2041, 2042, 2043, 2044, 2045, 2046, 2047
   ]
 
+# Export a data quality metric to prometheus
+export_data_quality:
+  kotekan_stage: DataQuality
+  in_buf: visbuf_10s_stack
+
 buffer_status:
   kotekan_stage: bufferStatus
   print_status: false
