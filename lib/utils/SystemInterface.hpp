@@ -10,17 +10,17 @@
  **/
 
 /**
- * @brief Get the user name from the system.
+ * @brief Get the username from the system.
  *
  * @returns Username as a string.
  **/
-const std::string get_user_name();
+const std::string get_username();
 
 /**
- * @brief Get the host name of the system.
+ * @brief Get the hostname of the system.
  *
  * @returns Host name as a string.
  **/
-const std::string get_host_name();
+const std::string get_hostname();
 
 #endif // SYSTEM_INTERFACE_HPP

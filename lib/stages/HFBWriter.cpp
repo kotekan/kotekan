@@ -5,7 +5,7 @@
 #include "HFBFrameView.hpp"      // for HFBFrameView
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "SystemInterface.hpp"   // for get_user_name, get_host_name
+#include "SystemInterface.hpp"   // for get_username, get_hostname
 #include "buffer.h"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, fingerprint_t
@@ -55,8 +55,8 @@ std::map<std::string, std::string> HFBWriter::make_metadata(dset_id_t ds_id) {
     metadata["instrument_name"] = mstate->get_instrument_name();
     metadata["notes"] = ""; // TODO: connect up notes
     metadata["git_version_tag"] = get_git_commit_hash();
-    metadata["system_user"] = get_user_name();
-    metadata["collection_server"] = get_host_name();
+    metadata["system_user"] = get_username();
+    metadata["collection_server"] = get_hostname();
     metadata["num_beams"] =
         std::to_string(config.get<uint32_t>(unique_name, "num_frb_total_beams"));
     metadata["num_sub_freqs"] = std::to_string(config.get<uint32_t>(unique_name, "factor_upchan"));

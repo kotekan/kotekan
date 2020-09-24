@@ -4,7 +4,7 @@
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "SystemInterface.hpp"   // for get_user_name, get_host_name
+#include "SystemInterface.hpp"   // for get_username, get_hostname
 #include "buffer.h"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, fingerprint_t
@@ -56,8 +56,8 @@ std::map<std::string, std::string> VisWriter::make_metadata(dset_id_t ds_id) {
     metadata["instrument_name"] = instrument_name;
     metadata["notes"] = ""; // TODO: connect up notes
     metadata["git_version_tag"] = get_git_commit_hash();
-    metadata["system_user"] = get_user_name();
-    metadata["collection_server"] = get_host_name();
+    metadata["system_user"] = get_username();
+    metadata["collection_server"] = get_hostname();
 
     return metadata;
 }
