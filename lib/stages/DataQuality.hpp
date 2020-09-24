@@ -46,12 +46,16 @@ public:
     void main_thread() override;
 
 private:
+    /// Calculate a set of alpha coefficients for a given dataset
+    void calc_alpha_coeffs(dset_id_t ds_id);
+
     Buffer* in_buf;
 
     /// Config variables
     uint32_t _num_elements;
 
-    /// Stage variables
+    // Map the incoming ID to a set of alpha coefficientse
+    std::map<dset_id_t, std::vector<double>> dset_id_map;
 
     /// Prometheus metrics to export
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& data_quality_metric;
