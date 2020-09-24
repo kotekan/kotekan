@@ -30,7 +30,7 @@ def main():
     print(metadata[0][freq_id])
 
     plot_sky_map(metadata, data, nsubfreq, freq_id)
-    #plot_one_beam_freq_over_time(metadata, data, nframes, nsubfreq, freq_id, beam_id)
+    # plot_one_beam_freq_over_time(metadata, data, nframes, nsubfreq, freq_id, beam_id)
 
 
 def plot_sky_map(metadata, data, nsubfreq, freq_id):

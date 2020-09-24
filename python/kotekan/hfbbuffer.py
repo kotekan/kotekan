@@ -1,4 +1,4 @@
-"""Read a visBuffer dump into python.
+"""Read a HFBBuffer dump into python.
 """
 # === Start Python 2/3 compatibility
 from __future__ import absolute_import, division, print_function, unicode_literals
@@ -12,46 +12,7 @@ import os
 import io
 
 import numpy as np
-
-
-class time_spec(ctypes.Structure):
-    """Struct repr of a timespec type."""
-
-    _fields_ = [("tv", ctypes.c_int64), ("tv_nsec", ctypes.c_uint64)]
-
-    @classmethod
-    def from_float(cls, v):
-        """Create a time_spec from a float.
-
-        Parameters
-        ----------------
-        v : float
-            The interval in seconds.
-
-        Returns
-        -------
-        ts : time_spec
-        """
-        ts = cls()
-        ts.tv = np.floor(v).astype(np.int64)
-        ts.tv_nsec = ((v % 1.0) * 1e9).astype(np.int64)
-        return ts
-
-    def to_float(self):
-        """
-        Create a float from a time_spec.
-
-        Returns
-        -------
-        float
-        """
-        return self.tv + self.tv_nsec / 1e9
-
-
-class timeval(ctypes.Structure):
-    """Struct repr of a timeval type."""
-
-    _fields_ = [("tv_sec", ctypes.c_long), ("tv_usec", ctypes.c_long)]
+from kotekan import timespec
 
 
 class HFBMetadata(ctypes.Structure):
@@ -60,7 +21,7 @@ class HFBMetadata(ctypes.Structure):
 
     _fields_ = [
         ("fpga_seq_num", ctypes.c_uint64),
-        ("ctime", time_spec),
+        ("ctime", timespec.time_spec),
         ("gps_time_flag", ctypes.c_uint32),
         ("freq_id", ctypes.c_uint32),
         ("norm_frac", ctypes.c_float),
@@ -471,7 +432,9 @@ class HFBRaw(object):
             fpga = []
             for f in range(num_freq):
                 if valid_frames[t, f].astype(np.bool):
-                    ts.append(time_spec.from_buffer_copy(ctime[t, f]).to_float())
+                    ts.append(
+                        timespec.time_spec.from_buffer_copy(ctime[t, f]).to_float()
+                    )
                     fpga.append(fpga_seq[t, f])
             ts = np.unique(ts)
             fpga = np.unique(fpga)
@@ -585,22 +548,6 @@ class HFBRaw(object):
         num_time = metadata["structure"]["ntime"]
         num_beams = len(index_map["beam"])
         num_subfreqs = len(index_map["subfreq"])
-
-        # TODO: this doesn't work at the moment because kotekan and numpy
-        # disagree on how the struct should be aligned. It turns out (as of
-        # v1.16) that numpy is correct, so we should switch back, but in the
-        # near term we need to force numpy to use the same alignment.
-
-        # data_struct = [
-        #     ("vis", np.complex64, self.num_stack),
-        #     ("weight", np.float32, self.num_stack),
-        #     ("flags", np.float32, self.num_elements),
-        #     ("eval", np.float32,  self.num_ev),
-        #     ("evec", np.complex64, self.num_ev * self.num_elements),
-        #     ("erms", np.float32,  1),
-        #     ("gain", np.complex64, self.num_elements),
-        # ]
-        # data_struct = np.dtype([(d[0],) + d[1:] for d in data_struct], align=True)
 
         frame_struct = cls.frame_struct(
             metadata["structure"]["frame_size"],
