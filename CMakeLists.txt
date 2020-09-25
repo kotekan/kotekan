@@ -93,12 +93,11 @@ endif()
 # Turn on sanitizers for finding memory issues.
 if(${SANITIZE})
     message("Sanitization enabled!!")
-    set(CMAKE_C_FLAGS_DEBUG
-        string ("${CMAKE_C_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer -fno-optimize-sibling-calls "
-                "-fsanitize=address"))
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fno-optimize-sibling-calls -fsanitize=address")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer")
     set(CMAKE_CXX_FLAGS_DEBUG
-        string ("${CMAKE_CXX_FLAGS_DEBUG} -O0 -fno-omit-frame-pointer -fno-optimize-sibling-calls
-            -fsanitize=address"))
+        "${CMAKE_CXX_FLAGS_DEBUG} -fno-optimize-sibling-calls -fsanitize=address")
 endif()
 
 if(${_GOSSEC})
