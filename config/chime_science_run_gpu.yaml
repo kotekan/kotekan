@@ -910,7 +910,7 @@ buffer_send_hfb:
     buf: beamform_hfb_output_buffer_2
   hfb_3:
     kotekan_stage: bufferSend
-    buf: beamform_hfb_output_buffer_2
+    buf: beamform_hfb_output_buffer_3
 
 # This set of stages takes information from the packet loss mask
 # and RFI mask and updates the metadata in the output N2 buffers
