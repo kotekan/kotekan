@@ -202,8 +202,6 @@ class VisBuffer(object):
     def from_file(cls, filename):
         """Load a visBuffer from a kotekan dump file.
         """
-        import os
-
         filesize = os.path.getsize(filename)
 
         buf = bytearray(filesize)
@@ -867,7 +865,7 @@ def simple_visraw_data(filename, ntime, nfreq, ninput):
 
     # Return read only view
     del raw
-    return VisRaw(filename, mode="r")
+    return VisRaw.from_file(filename, mode="r")
 
 
 def freq_id_to_stream_id(f_id):

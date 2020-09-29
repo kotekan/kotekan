@@ -1,4 +1,4 @@
-FROM rocm/dev-ubuntu-18.04
+FROM rocm/dev-ubuntu-18.04:3.7
 
 ## The maintainer name and email
 MAINTAINER Rick Nitsche <rick@phas.ubc.ca>
@@ -67,8 +67,10 @@ RUN git clone --single-branch --branch extensible-datasets https://github.com/jr
     cd HighFive && git pull && cd ..  
 
 # Install bitshuffle
-RUN git clone https://github.com/kiyo-masui/bitshuffle.git bitshuffle && \
-    cd bitshuffle && git pull && \
+RUN git clone https://github.com/kiyo-masui/bitshuffle.git bitshuffle &&\
+    cd bitshuffle &&\
+    git pull &&\
+    python3.7 setup.py build_ext --march=haswell &&\
     python3.7 setup.py install --h5plugin --h5plugin-dir=/usr/local/hdf5/lib/plugin
 
 # Install OpenBLAS and clone Blaze for the eigenvalue processes
