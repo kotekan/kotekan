@@ -1,5 +1,6 @@
 #include "DataQuality.hpp"
 
+#include "Hash.hpp"         // for operator<, hash, operator==
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"         // for mark_frame_empty, Buffer, register_consumer, wait_for...
 #include "chimeMetadata.h"
@@ -46,37 +47,43 @@ DataQuality::~DataQuality() {}
 void DataQuality::calc_alpha_coeffs(dset_id_t ds_id) {
 
     auto& dm = datasetManager::instance();
+    auto fprint = dm.fingerprint(ds_id, {"stack"});
 
-    auto sstate_fut = std::async(&datasetManager::dataset_state<stackState>, &dm, ds_id);
-    const stackState* ss = sstate_fut.get();
+    if (state_map.count(fprint) == 0) {
 
-    if (ss == nullptr) {
-        FATAL_ERROR("Couldn't find stackState ancestor of dataset "
-                    "{}. Make sure there is a stage upstream in the config, that adds a "
-                    "freqState.\nExiting...",
-                    ds_id);
+        const stackState* ss = dm.dataset_state<stackState>(ds_id);
+
+        if (ss == nullptr) {
+            FATAL_ERROR("Couldn't find stackState ancestor of dataset "
+                        "{}. Make sure there is a stage upstream in the config, that adds a "
+                        "freqState.\nExiting...",
+                        ds_id);
+        }
+
+        auto ns = ss->get_num_stack();
+        std::vector<size_t> counts(ns, 0);
+
+        // Calculate the no. of visibilities averaged into each stack
+        for (auto [ind, conj] : ss->get_rstack_map()) {
+            (void)conj;
+            if (ind >= ns)
+                continue;
+
+            counts[ind]++;
+        }
+
+        // Compute alpha coefficients
+        std::vector<double> alpha(ns, 0);
+
+        for (uint32_t i = 0; i < ns; i++) {
+            alpha[i] = pow(counts[i] / _num_elements, 2);
+        }
+
+        // Insert state into map
+        state_map[fprint] = {hash(ss->to_json().dump()), ss};
+
+        dset_id_map[ds_id] = alpha;
     }
-
-    auto ns = ss->get_num_stack();
-    std::vector<size_t> counts(ns, 0);
-
-    // Calculate the no. of visibilities averaged into each stack
-    for (auto [ind, conj] : ss->get_rstack_map()) {
-        (void)conj;
-        if (ind >= ns)
-            continue;
-
-        counts[ind]++;
-    }
-
-    // Compute alpha coefficients
-    std::vector<double> alpha(ns, 0);
-
-    for (uint32_t i = 0; i < ns; i++) {
-        alpha[i] = pow(counts[i] / _num_elements, 2);
-    }
-
-    dset_id_map[ds_id] = alpha;
 }
 
 void DataQuality::main_thread() {
@@ -105,7 +112,7 @@ void DataQuality::main_thread() {
         double sensitivity = 0;
 
         for (uint32_t i = 0; i < frame.num_prod; i++) {
-            auto var = (frame.weight[i] == 0 ? 0.0 : frame.weight[i]);
+            auto var = (frame.weight[i] == 0 ? 0.0 : 1.0 / frame.weight[i]);
             sensitivity += alpha.at(i) * var;
         }
 

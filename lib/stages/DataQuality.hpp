@@ -11,6 +11,7 @@
 #include "Stage.hpp"             // for Stage
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "dataset.hpp"           // for dset_id_t
+#include "datasetManager.hpp"    // for dset_id_t, state_id_t, fingerprint_t
 #include "prometheusMetrics.hpp" // for Gauge, MetricFamily
 
 #include <stdint.h> // for uint32_t, int64_t
@@ -21,7 +22,6 @@
  * @brief Compute data quality metric for the visbility data, which is effectively
  *        the total amount of "data weight" per time and frequency."
  *
- *
  * @par Buffers
  * @buffer in_buf Visibility data.
  *     @buffer_format VisBuffer structured
@@ -30,10 +30,13 @@
  * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
  *                              correlator data.
  *
+ * @par Metrics
+ * @metric kotekan_dataquality_dataquality
+ *      The data quality of the visibility data.
+ *
  * @author James Willis
  *
  */
-
 class DataQuality : public kotekan::Stage {
 public:
     /// Constructor.
@@ -56,6 +59,9 @@ private:
 
     // Map the incoming ID to a set of alpha coefficientse
     std::map<dset_id_t, std::vector<double>> dset_id_map;
+
+    // Map from the critical incoming states to the correct stackState
+    std::map<fingerprint_t, std::tuple<state_id_t, const stackState*>> state_map;
 
     /// Prometheus metrics to export
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& data_quality_metric;
