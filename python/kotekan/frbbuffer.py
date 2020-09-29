@@ -42,8 +42,6 @@ class FrbPacket(ctypes.Structure):
         buffer.
 
         """
-        import os
-
         filesize = os.path.getsize(filename)
 
         buf = bytearray(filesize)

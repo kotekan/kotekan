@@ -59,8 +59,6 @@ class PsrPacket(Structure):
         dumped buffer.
 
         """
-        import os
-
         filesize = os.path.getsize(filename)
 
         buf = bytearray(filesize)
