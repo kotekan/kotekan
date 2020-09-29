@@ -107,8 +107,8 @@ void HFBWriter::write_data(Buffer* in_buf, int frame_id) {
 
     // Get time of the frame
     auto time = frame.time;
-    uint64_t fpga_seq_num = frame.fpga_seq_num;
-    time_ctype t = {fpga_seq_num, ts_to_double(time)};
+    uint64_t fpga_seq_start = frame.fpga_seq_start;
+    time_ctype t = {fpga_seq_start, ts_to_double(time)};
 
     write_frame(frame, frame.dataset_id, frame.freq_id, t, frame.data_size());
 }

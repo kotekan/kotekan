@@ -153,17 +153,17 @@ void FakeHFB::main_thread() {
 
             // Set the time
             output_frame.time = ts;
-            output_frame.fpga_seq_num = fpga_seq;
+            output_frame.fpga_seq_start = fpga_seq;
 
             // Set the length and total data
-            output_frame.num_samples_expected = delta_seq;
-            output_frame.num_samples_integrated = delta_seq;
+            output_frame.fpga_seq_length = delta_seq;
+            output_frame.fpga_seq_total = delta_seq;
 
             // Fill out the frame with the selected pattern
             // pattern->fill(output_frame);
 
             for (uint32_t i = 0; i < output_frame.num_beams * output_frame.num_subfreq; i++) {
-                float data = (i % 2 == 0 ? output_frame.freq_id : output_frame.fpga_seq_num);
+                float data = (i % 2 == 0 ? output_frame.freq_id : output_frame.fpga_seq_start);
 
                 output_frame.hfb[i] = data;
             }
@@ -241,7 +241,7 @@ void ReplaceHFB::main_thread() {
             HFBFrameView::copy_frame(in_buf, input_frame_id, out_buf, output_frame_id);
 
         for (uint32_t i = 0; i < output_frame.num_beams * output_frame.num_subfreq; i++) {
-            float data = (i % 2 == 0 ? output_frame.freq_id : output_frame.fpga_seq_num);
+            float data = (i % 2 == 0 ? output_frame.freq_id : output_frame.fpga_seq_start);
 
             output_frame.hfb[i] = data;
         }

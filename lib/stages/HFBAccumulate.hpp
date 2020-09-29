@@ -64,7 +64,7 @@ public:
     /// Add a frame to the integration
     void integrate_frame(float* input_data, float* sum_data, const uint32_t in_buffer_ID);
     /// Normalise frame after integration has been completed
-    float normalise_frame(float* sum_data, const uint32_t in_buffer_ID);
+    void normalise_frame(float* sum_data, const uint32_t in_buffer_ID);
 
 private:
     Buffer* in_buf;

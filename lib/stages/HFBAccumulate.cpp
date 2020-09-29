@@ -94,21 +94,21 @@ void HFBAccumulate::init_first_frame(float* input_data, float* sum_data,
     int64_t fpga_seq_num_start =
         fpga_seq_num_end - (_num_frames_to_integrate - 1) * _samples_per_data_set;
     memcpy(sum_data, input_data, _num_frb_total_beams * _factor_upchan * sizeof(float));
-    total_lost_timesamples += get_fpga_seq_num(in_buf, in_buffer_ID) - fpga_seq_num_start;
+    total_lost_timesamples += get_fpga_seq_start_hfb(in_buf, in_buffer_ID) - fpga_seq_num_start;
     // Get the first FPGA sequence no. to check for missing frames
-    fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
+    fpga_seq_num = get_fpga_seq_start_hfb(in_buf, in_buffer_ID);
     frame++;
 
-    DEBUG("\nInit frame. fpga_seq_num: {:d}. sum_data[0]: {:f}",
-          get_fpga_seq_num(in_buf, in_buffer_ID), sum_data[0]);
+    DEBUG("\nInit frame. fpga_seq_start: {:d}. sum_data[0]: {:f}",
+          get_fpga_seq_start_hfb(in_buf, in_buffer_ID), sum_data[0]);
 }
 
 void HFBAccumulate::integrate_frame(float* input_data, float* sum_data,
                                     const uint32_t in_buffer_ID) {
     frame++;
     fpga_seq_num += _samples_per_data_set;
-    total_lost_timesamples += get_fpga_seq_num(in_buf, in_buffer_ID) - fpga_seq_num;
-    fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
+    total_lost_timesamples += get_fpga_seq_start_hfb(in_buf, in_buffer_ID) - fpga_seq_num;
+    fpga_seq_num = get_fpga_seq_start_hfb(in_buf, in_buffer_ID);
 
     // Integrates data from the input buffer to the output buffer.
     for (uint beam = 0; beam < _num_frb_total_beams; beam++) {
@@ -121,7 +121,7 @@ void HFBAccumulate::integrate_frame(float* input_data, float* sum_data,
           total_lost_timesamples, sum_data[0]);
 }
 
-float HFBAccumulate::normalise_frame(float* sum_data, const uint32_t in_buffer_ID) {
+void HFBAccumulate::normalise_frame(float* sum_data, const uint32_t in_buffer_ID) {
 
     const float normalise_frac =
         (float)total_timesamples / (total_timesamples - total_lost_timesamples);
@@ -134,9 +134,7 @@ float HFBAccumulate::normalise_frame(float* sum_data, const uint32_t in_buffer_I
 
     DEBUG("Integration completed with {:d} lost samples", total_lost_timesamples);
 
-    fpga_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
-
-    return normalise_frac;
+    fpga_seq_num = get_fpga_seq_start_hfb(in_buf, in_buffer_ID);
 }
 
 void HFBAccumulate::main_thread() {
@@ -173,8 +171,8 @@ void HFBAccumulate::main_thread() {
 
         // Try and synchronize up the frames. Even though they arrive at
         // different rates, this should eventually sync them up.
-        auto hfb_seq_num = get_fpga_seq_num(in_buf, in_buffer_ID);
-        auto cls_seq_num = get_fpga_seq_num(compressed_lost_samples_buf, compress_buffer_ID);
+        auto hfb_seq_num = get_fpga_seq_start_hfb(in_buf, in_buffer_ID);
+        auto cls_seq_num = get_fpga_seq_start_hfb(compressed_lost_samples_buf, compress_buffer_ID);
 
         if (hfb_seq_num < cls_seq_num) {
             DEBUG("Dropping incoming HFB frame to sync up. HFB frame: {}; Compressed Lost Samples "
@@ -199,9 +197,9 @@ void HFBAccumulate::main_thread() {
         float* input_data = (float*)in_buf->frames[in_buffer_ID];
 
         // Find where the end of the integration is
-        fpga_seq_num_end = get_fpga_seq_num(in_buf, in_buffer_ID)
+        fpga_seq_num_end = get_fpga_seq_start_hfb(in_buf, in_buffer_ID)
                            + ((_num_frames_to_integrate * _samples_per_data_set
-                               - (get_fpga_seq_num(in_buf, in_buffer_ID)
+                               - (get_fpga_seq_start_hfb(in_buf, in_buffer_ID)
                                   % (_num_frames_to_integrate * _samples_per_data_set)))
                               - _samples_per_data_set);
         if (first) {
@@ -209,22 +207,23 @@ void HFBAccumulate::main_thread() {
             first = 0;
         }
 
-        DEBUG("fpga_seq_num: {:d}, fpga_seq_num_end: {:d}, num_frames * num_samples: {:d}, fpga % "
-              "(align): {:d}",
-              get_fpga_seq_num(in_buf, in_buffer_ID), fpga_seq_num_end,
-              _num_frames_to_integrate * _samples_per_data_set,
-              get_fpga_seq_num(in_buf, in_buffer_ID)
-                  % (_num_frames_to_integrate * _samples_per_data_set));
+        DEBUG(
+            "fpga_seq_start: {:d}, fpga_seq_num_end: {:d}, num_frames * num_samples: {:d}, fpga % "
+            "(align): {:d}",
+            get_fpga_seq_start_hfb(in_buf, in_buffer_ID), fpga_seq_num_end,
+            _num_frames_to_integrate * _samples_per_data_set,
+            get_fpga_seq_start_hfb(in_buf, in_buffer_ID)
+                % (_num_frames_to_integrate * _samples_per_data_set));
 
         // Get the no. of lost samples in this frame
         total_lost_timesamples +=
             get_lost_timesamples(compressed_lost_samples_buf, compress_buffer_ID);
 
         // When all frames have been integrated output the result
-        if (get_fpga_seq_num(in_buf, in_buffer_ID)
+        if (get_fpga_seq_start_hfb(in_buf, in_buffer_ID)
             >= fpga_seq_num_end_old + _samples_per_data_set) {
 
-            DEBUG("fpga_seq_num_end_old: {:d}, fpga_seq_num: {:d}", fpga_seq_num_end_old,
+            DEBUG("fpga_seq_num_end_old: {:d}, fpga_seq_start: {:d}", fpga_seq_num_end_old,
                   fpga_seq_num);
             // Increment the no. of lost frames if there are missing frames
             total_lost_timesamples += fpga_seq_num_end_old - fpga_seq_num;
@@ -233,7 +232,7 @@ void HFBAccumulate::main_thread() {
                 (float)(total_timesamples - total_lost_timesamples) / total_timesamples;
 
             // Normalise data
-            const float norm_frac = normalise_frame(sum_data, in_buffer_ID);
+            normalise_frame(sum_data, in_buffer_ID);
 
             // Only output integration if there are enough good samples
             if (good_samples_frac >= _good_samples_threshold) {
@@ -244,29 +243,23 @@ void HFBAccumulate::main_thread() {
                 // Populate metadata
                 int64_t fpga_seq =
                     fpga_seq_num_end_old - ((_num_frames_to_integrate - 1) * _samples_per_data_set);
-                set_fpga_seq_num_hfb(out_buf, out_buffer_ID, fpga_seq);
+                set_fpga_seq_start_hfb(out_buf, out_buffer_ID, fpga_seq);
 
-                // Check if GPS time is set
-                if (!tel.gps_time_enabled())
-                    set_gps_time_flag(out_buf, out_buffer_ID, 0);
-                else {
-                    set_gps_time_flag(out_buf, out_buffer_ID, 1);
-                    set_gps_time_hfb(out_buf, out_buffer_ID, tel.to_time(fpga_seq));
-                }
+                // Set GPS time
+                set_ctime_hfb(out_buf, out_buffer_ID, tel.to_time(fpga_seq));
 
-                set_norm_frac(out_buf, out_buffer_ID, norm_frac);
-                set_num_samples_integrated(out_buf, out_buffer_ID,
-                                           total_timesamples - total_lost_timesamples);
-                set_num_samples_expected(out_buf, out_buffer_ID, total_timesamples);
+                set_fpga_seq_total(out_buf, out_buffer_ID,
+                                   total_timesamples - total_lost_timesamples);
+                set_fpga_seq_length(out_buf, out_buffer_ID, total_timesamples);
 
-                uint32_t freq_bin_num = tel.to_freq_id(in_buf, in_buffer_ID);
-                set_freq_bin_num(out_buf, out_buffer_ID, freq_bin_num);
+                uint32_t freq_id = tel.to_freq_id(in_buf, in_buffer_ID);
+                set_freq_id(out_buf, out_buffer_ID, freq_id);
 
                 set_dataset_id(out_buf, out_buffer_ID, ds_id);
                 set_num_beams(out_buf, out_buffer_ID, _num_frb_total_beams);
                 set_num_subfreq(out_buf, out_buffer_ID, _factor_upchan);
 
-                DEBUG("Dataset ID: {}, freq_bin: {:d}", ds_id, freq_bin_num);
+                DEBUG("Dataset ID: {}, freq ID: {:d}", ds_id, freq_id);
 
                 mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
 

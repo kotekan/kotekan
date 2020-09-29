@@ -208,15 +208,13 @@ public:
     /// GPS time
     timespec& time;
     /// The ICEBoard sequence number
-    int64_t& fpga_seq_num;
-    /// Normalisation fraction
-    float& norm_frac;
+    int64_t& fpga_seq_start;
     /// Number of samples integrated
-    uint32_t& num_samples_integrated;
+    uint64_t& fpga_seq_total;
     /// Number of samples expected
-    uint32_t& num_samples_expected;
+    uint64_t& fpga_seq_length;
     /// A reference to the frequency ID.
-    uint32_t& freq_id;
+    freq_id_t& freq_id;
     /// A reference to the dataset ID.
     dset_id_t& dataset_id;
 
