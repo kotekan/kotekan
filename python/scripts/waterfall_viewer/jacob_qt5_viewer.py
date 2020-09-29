@@ -32,14 +32,10 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 import matplotlib.pyplot as plt
-import random
 import time
-import cmath
-import math
 import subprocess
-from astropy.coordinates import SkyCoord, EarthLocation, Angle, AltAz
+from astropy.coordinates import SkyCoord, EarthLocation, Angle
 from astropy import units as u
 from astropy.time import Time
 
@@ -970,7 +966,7 @@ def data_listener():  # Listens to Data and updates
             t = np.zeros(main.plot_times)
             main.waterfold *= 0.999  # Reduce Old Folded Data
             main.countfold *= 0.999
-            for i in np.arange(int(main.local_integration * main.pkt_elems)):
+            for _ in np.arange(int(main.local_integration * main.pkt_elems)):
                 data = main.receive(
                     main.connection, main.pkt_length + main.pkt_header
                 )  # Receive Data from Port
