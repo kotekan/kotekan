@@ -20,14 +20,11 @@ class HFBMetadata(ctypes.Structure):
     """
 
     _fields_ = [
-        ("fpga_seq_num", ctypes.c_uint64),
+        ("fpga_seq", ctypes.c_uint64),
         ("ctime", timespec.time_spec),
-        ("gps_time_flag", ctypes.c_uint32),
         ("freq_id", ctypes.c_uint32),
-        ("norm_frac", ctypes.c_float),
-        ("num_samples_integrated", ctypes.c_uint32),
-        ("num_samples_expected", ctypes.c_uint32),
-        ("compressed_data_size", ctypes.c_uint32),
+        ("fpga_total", ctypes.c_uint64),
+        ("fpga_length", ctypes.c_uint64),
         ("num_beams", ctypes.c_uint32),
         ("num_subfreq", ctypes.c_uint32),
         ("dataset_id", ctypes.c_uint64 * 2),
@@ -415,7 +412,7 @@ class HFBRaw(object):
         valid_frames = raw["valid"]
 
         ctime = metadata["ctime"]
-        fpga_seq = metadata["fpga_seq_num"]
+        fpga_seq = metadata["fpga_seq"]
 
         num_beams = metadata["num_beams"]
         num_subfreq = metadata["num_subfreq"]
