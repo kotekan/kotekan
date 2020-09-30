@@ -191,7 +191,7 @@ void BaseWriter::write_frame(const FrameView& frame, dset_id_t dataset_id, uint3
         WARN("Frequency id={:d} not enabled for Writer, discarding frame", freq_id);
 
         // Check that the frame size matches what we expect
-    } else if ((int32_t)frame.data_size() != acq.frame_size) {
+    } else if ((int64_t)frame.data_size() != acq.frame_size) {
         FATAL_ERROR("Size of frame doesn't match first frame ({:d} != {:d}).", frame.data_size(),
                     acq.frame_size);
         return;
