@@ -167,6 +167,8 @@ void BaseWriter::init_acq(dset_id_t ds_id) {
 void BaseWriter::write_frame(const FrameView& frame, dset_id_t dataset_id, uint32_t freq_id,
                              time_ctype time, size_t frame_size) {
 
+    static bool first = true;
+
     // Check the dataset ID hasn't changed
     if (acqs.count(dataset_id) == 0) {
         init_acq(dataset_id);
@@ -174,6 +176,12 @@ void BaseWriter::write_frame(const FrameView& frame, dset_id_t dataset_id, uint3
 
     // Get the acquisition we are writing into
     auto& acq = *(acqs.at(dataset_id));
+
+    // Store the initial frame size to check future frame sizes against
+    if (first) {
+        init_frame_size = frame_size;
+        first = false;
+    }
 
     // If the dataset is bad, skip the frame and move onto the next
     if (acq.bad_dataset) {
@@ -186,8 +194,9 @@ void BaseWriter::write_frame(const FrameView& frame, dset_id_t dataset_id, uint3
         WARN("Frequency id={:d} not enabled for Writer, discarding frame", freq_id);
 
         // Check that the frame size matches what we expect
-    } else if (frame_size != acq.frame_size) {
-        FATAL_ERROR("Size of frame doesn't match file ({:d} != {:d}).", frame_size, acq.frame_size);
+    } else if (frame_size != init_frame_size) {
+        FATAL_ERROR("Size of frame doesn't match first frame ({:d} != {:d}).", frame_size,
+                    init_frame_size);
         return;
 
     } else {

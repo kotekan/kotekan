@@ -97,8 +97,6 @@ void HFBWriter::get_dataset_state(dset_id_t ds_id) {
     uint ind = 0;
     for (auto& f : fstate->get_freqs())
         acq->freq_id_map[f.first] = ind++;
-
-    acq->frame_size = HFBFrameView::calculate_frame_size(config, unique_name);
 }
 
 void HFBWriter::write_data(Buffer* in_buf, int frame_id) {

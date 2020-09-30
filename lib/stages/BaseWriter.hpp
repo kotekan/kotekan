@@ -37,7 +37,7 @@
  *
  * make_metadata(dset_id_t ds_id);
  * get_dataset_state(dset_id_t ds_id);
- * write_data(const FrameView& frame, kotekan::prometheus::Gauge& write_time_metric);
+ * write_data(const FrameView& frame);
  *
  * This stage writes out the data it receives with minimal processing.
  * Removing certain fields from the output must be done in a prior
@@ -115,47 +115,9 @@ public:
     };
 
 protected:
-    /// Construct the set of metadata
-    virtual std::map<std::string, std::string> make_metadata(dset_id_t ds_id) = 0;
-
-    /// Gets states from the dataset manager and saves some metadata
-    virtual void get_dataset_state(dset_id_t ds_id) = 0;
-
-    /// Write data using FrameView
-    virtual void write_data(Buffer* in_buf, int frame_id) = 0;
-
-    /// Setup the acquisition
-    void init_acq(dset_id_t ds_id);
-
     /// Write frame
     void write_frame(const FrameView& frame, dset_id_t dataset_id, uint32_t freq_id,
                      time_ctype time, size_t frame_size);
-
-    /// Close inactive acquisitions
-    void close_old_acqs();
-
-    /**
-     * Check git version.
-     *
-     * @param  ds_id  Dataset ID.
-     *
-     * @return        False if there's a mismatch. Always returns true if
-     *                `ignore_version` is set.
-     **/
-    bool check_git_version(dset_id_t ds_id);
-
-    // Parameters saved from the config files
-    std::string root_path;
-    std::string instrument_name;
-    std::string file_type; // Type of the file we are writing
-    size_t file_length;
-    size_t window;
-    size_t rollover;
-    bool ignore_version;
-    double acq_timeout;
-
-    /// Input buffer to read from
-    Buffer* in_buf;
 
     /// Hold the internal state of an acquisition (one per dataset ID)
     /// Note that we create an acqState even for invalid datasets that we will
@@ -171,9 +133,6 @@ protected:
         /// Frequency IDs that we are expecting
         std::map<uint32_t, uint32_t> freq_id_map;
 
-        // Frame size
-        size_t frame_size;
-
         /// Last update
         double last_update;
     };
@@ -182,6 +141,35 @@ protected:
     /// dataset_ids may point to the same acquisition, and these acquisitions are
     /// shared with `acqs_fingerprint`
     std::map<dset_id_t, std::shared_ptr<acqState>> acqs;
+
+    // Parameters saved from the config files
+    std::string instrument_name;
+
+private:
+    /// Construct the set of metadata
+    virtual std::map<std::string, std::string> make_metadata(dset_id_t ds_id) = 0;
+
+    /// Gets states from the dataset manager and saves some metadata
+    virtual void get_dataset_state(dset_id_t ds_id) = 0;
+
+    /// Write data using FrameView
+    virtual void write_data(Buffer* in_buf, int frame_id) = 0;
+
+    /// Setup the acquisition
+    void init_acq(dset_id_t ds_id);
+
+    /// Close inactive acquisitions
+    void close_old_acqs();
+
+    /**
+     * Check git version.
+     *
+     * @param  ds_id  Dataset ID.
+     *
+     * @return        False if there's a mismatch. Always returns true if
+     *                `ignore_version` is set.
+     **/
+    bool check_git_version(dset_id_t ds_id);
 
     /// The set of open acquisitions, keyed by fingerprint. These are shared with
     /// `acqs`.
@@ -193,12 +181,24 @@ protected:
     /// List of states that will cause a new acq
     std::set<std::string> critical_state_types;
 
+private:
+    // Parameters saved from the config files
+    std::string root_path;
+    std::string file_type; // Type of the file we are writing
+    size_t file_length;
+    size_t window;
+    size_t rollover;
+    bool ignore_version;
+    double acq_timeout;
+
+    /// Input buffer to read from
+    Buffer* in_buf;
+
     /// Next sweep
     double next_sweep = 0.0;
 
-protected:
-    /// Number of products to write and freqency map
-    std::future<std::pair<size_t, std::map<uint32_t, uint32_t>>> future_metadata;
+    /// First written frame size
+    size_t init_frame_size = 0;
 
     /// Keep track of the average write time
     movingAverage write_time;
