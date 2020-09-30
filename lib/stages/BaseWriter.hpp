@@ -199,9 +199,6 @@ private:
     /// Next sweep
     double next_sweep = 0.0;
 
-    /// First written frame size
-    size_t init_frame_size = 0;
-
     /// Keep track of the average write time
     movingAverage write_time;
 
