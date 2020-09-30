@@ -117,7 +117,7 @@ public:
 protected:
     /// Write frame
     void write_frame(const FrameView& frame, dset_id_t dataset_id, uint32_t freq_id,
-                     time_ctype time, size_t frame_size);
+                     time_ctype time);
 
     /// Hold the internal state of an acquisition (one per dataset ID)
     /// Note that we create an acqState even for invalid datasets that we will

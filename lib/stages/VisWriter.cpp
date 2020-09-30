@@ -105,5 +105,5 @@ void VisWriter::write_data(Buffer* in_buf, int frame_id) {
     auto ftime = frame.time;
     time_ctype t = {std::get<0>(ftime), ts_to_double(std::get<1>(ftime))};
 
-    write_frame(frame, frame.dataset_id, frame.freq_id, t, frame.data_size());
+    write_frame(frame, frame.dataset_id, frame.freq_id, t);
 }

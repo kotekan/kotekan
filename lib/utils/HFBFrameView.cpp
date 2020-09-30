@@ -169,6 +169,6 @@ HFBFrameView HFBFrameView::create_frame_view(Buffer* buf, const uint32_t index,
     return HFBFrameView(buf, index);
 }
 
-size_t HFBFrameView::data_size() {
+size_t HFBFrameView::data_size() const {
     return buffer_layout.first;
 }

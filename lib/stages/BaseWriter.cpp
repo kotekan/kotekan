@@ -165,7 +165,7 @@ void BaseWriter::init_acq(dset_id_t ds_id) {
 }
 
 void BaseWriter::write_frame(const FrameView& frame, dset_id_t dataset_id, uint32_t freq_id,
-                             time_ctype time, size_t frame_size) {
+                             time_ctype time) {
 
     static bool first = true;
 
@@ -179,7 +179,7 @@ void BaseWriter::write_frame(const FrameView& frame, dset_id_t dataset_id, uint3
 
     // Store the initial frame size to check future frame sizes against
     if (first) {
-        init_frame_size = frame_size;
+        init_frame_size = frame.data_size();
         first = false;
     }
 
@@ -194,8 +194,8 @@ void BaseWriter::write_frame(const FrameView& frame, dset_id_t dataset_id, uint3
         WARN("Frequency id={:d} not enabled for Writer, discarding frame", freq_id);
 
         // Check that the frame size matches what we expect
-    } else if (frame_size != init_frame_size) {
-        FATAL_ERROR("Size of frame doesn't match first frame ({:d} != {:d}).", frame_size,
+    } else if (frame.data_size() != init_frame_size) {
+        FATAL_ERROR("Size of frame doesn't match first frame ({:d} != {:d}).", frame.data_size(),
                     init_frame_size);
         return;
 

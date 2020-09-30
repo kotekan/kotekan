@@ -110,7 +110,7 @@ public:
      **/
     static size_t calculate_frame_size(kotekan::Config& config, const std::string& unique_name);
 
-    size_t data_size();
+    size_t data_size() const;
 
     /**
      * @brief Return a summary of the hyper fine beam buffer contents.
