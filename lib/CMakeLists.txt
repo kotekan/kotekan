@@ -56,7 +56,7 @@ endif()
 
 if(${USE_DPDK})
     add_subdirectory(dpdk)
-    target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk)
+    target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
 endif()
 
 # HDF5 stuff

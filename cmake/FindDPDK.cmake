@@ -112,7 +112,7 @@ endif()
 find_package_handle_standard_args(DPDK DEFAULT_MSG DPDK_LIST_LIBRARIES DPDK_INCLUDE_DIR)
 
 if(DPDK_FOUND)
-    set(DPDK_LIBRARIES -Wl,--start-group ${DPDK_LIST_LIBRARIES} -Wl,--end-group -ldl)
+    set(DPDK_LIBRARIES ${DPDK_LIST_LIBRARIES})
 endif(DPDK_FOUND)
 
 mark_as_advanced(
