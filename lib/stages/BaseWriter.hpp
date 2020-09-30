@@ -187,7 +187,6 @@ private:
     std::string file_type; // Type of the file we are writing
     size_t file_length;
     size_t window;
-    size_t rollover;
     bool ignore_version;
     double acq_timeout;
 
