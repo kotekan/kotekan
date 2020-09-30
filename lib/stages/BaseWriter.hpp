@@ -133,6 +133,9 @@ protected:
         /// Frequency IDs that we are expecting
         std::map<uint32_t, uint32_t> freq_id_map;
 
+        // Data size
+        int32_t frame_size = -1;
+
         /// Last update
         double last_update;
     };
