@@ -44,51 +44,45 @@ DataQuality::DataQuality(Config& config_, const std::string& unique_name,
 
 DataQuality::~DataQuality() {}
 
-void DataQuality::calc_alpha_coeffs(dset_id_t ds_id) {
+void DataQuality::calc_alpha_coeffs(fingerprint_t fprint, dset_id_t ds_id) {
 
     auto& dm = datasetManager::instance();
-    auto fprint = dm.fingerprint(ds_id, {"stack"});
+    const stackState* ss = dm.dataset_state<stackState>(ds_id);
 
-    if (state_map.count(fprint) == 0) {
-
-        const stackState* ss = dm.dataset_state<stackState>(ds_id);
-
-        if (ss == nullptr) {
-            FATAL_ERROR("Couldn't find stackState ancestor of dataset "
-                        "{}. Make sure there is a stage upstream in the config, that adds a "
-                        "freqState.\nExiting...",
-                        ds_id);
-        }
-
-        auto ns = ss->get_num_stack();
-        std::vector<size_t> counts(ns, 0);
-
-        // Calculate the no. of visibilities averaged into each stack
-        for (auto [ind, conj] : ss->get_rstack_map()) {
-            (void)conj;
-            if (ind >= ns)
-                continue;
-
-            counts[ind]++;
-        }
-
-        // Compute alpha coefficients
-        std::vector<double> alpha(ns, 0);
-
-        for (uint32_t i = 0; i < ns; i++) {
-            alpha[i] = pow(counts[i] / _num_elements, 2);
-        }
-
-        // Insert state into map
-        state_map[fprint] = {hash(ss->to_json().dump()), ss};
-
-        dset_id_map[ds_id] = alpha;
+    if (ss == nullptr) {
+        FATAL_ERROR("Couldn't find stackState ancestor of dataset "
+                    "{}. Make sure there is a stage upstream in the config, that adds a "
+                    "freqState.\nExiting...",
+                    ds_id);
     }
+
+    auto ns = ss->get_num_stack();
+    std::vector<size_t> counts(ns, 0);
+
+    // Calculate the no. of visibilities averaged into each stack
+    for (auto [ind, conj] : ss->get_rstack_map()) {
+        (void)conj;
+        if (ind >= ns)
+            continue;
+
+        counts[ind]++;
+    }
+
+    // Compute alpha coefficients
+    std::vector<double> alpha(ns, 0);
+
+    for (uint32_t i = 0; i < ns; i++) {
+        alpha[i] = pow(counts[i] / _num_elements, 2);
+    }
+
+    // Insert alpha coefficients into map
+    fprint_map[fprint] = alpha;
 }
 
 void DataQuality::main_thread() {
 
     frameID input_frame_id(in_buf);
+    auto& dm = datasetManager::instance();
 
     while (!stop_thread) {
 
@@ -99,14 +93,15 @@ void DataQuality::main_thread() {
 
         auto frame = VisFrameView(in_buf, input_frame_id);
         dset_id_t ds_id = frame.dataset_id;
+        auto fprint = dm.fingerprint(ds_id, {"stack"});
 
         // If the dataset has changed construct a new vector of alpha coefficients
-        if (dset_id_map.count(ds_id) == 0) {
-            calc_alpha_coeffs(ds_id);
+        if (fprint_map.count(fprint) == 0) {
+            calc_alpha_coeffs(fprint, ds_id);
         }
 
         // Get correct set of alpha coefficients
-        const std::vector<double>& alpha = dset_id_map.at(ds_id);
+        const std::vector<double>& alpha = fprint_map.at(fprint);
 
         // Compute sensitivity
         double sensitivity = 0;
