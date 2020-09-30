@@ -11,14 +11,12 @@ standard_library.install_aliases()
 import time
 import threading
 import socket
-import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import matplotlib.dates as md
 import datetime
 import struct
-import json
 
 np.seterr(divide="ignore", invalid="ignore")
 
@@ -144,7 +142,7 @@ def data_listener():
             d = np.zeros([pkt_freqs, pkt_elems])
             n = np.zeros([pkt_freqs, pkt_elems])
             t = np.zeros(plot_times)
-            for i in np.arange(local_integration * pkt_elems):
+            for _ in np.arange(local_integration * pkt_elems):
                 data = receive(connection, pkt_length + pkt_header)
                 if len(data) != pkt_length + pkt_header:
                     print("Lost Connection!")
@@ -256,7 +254,7 @@ f.show()
 
 
 # UI
-from matplotlib.widgets import Slider, Button
+from matplotlib.widgets import Button
 
 import pickle
 

@@ -3,8 +3,8 @@
  * @brief Clssifies broken inputs using statistics of SK values from individual inputs.
  *  - rfiBadInputFinder : public kotekan::Stage
  */
-#ifndef RFI_BROADCAST_H
-#define RFI_BROADCAST_H
+#ifndef RFI_BAD_INPUT_FINDER_H
+#define RFI_BAD_INPUT_FINDER_H
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
