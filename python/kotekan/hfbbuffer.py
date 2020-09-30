@@ -91,7 +91,7 @@ class HFBBuffer(object):
 
         structure = [
             ("hfb", np.float32, num_beams * num_subfreq),
-            ("weight", np.float32, 0),  # will be num_beams * num_subfreq
+            ("weight", np.float32, num_beams * num_subfreq),
         ]
 
         end = 0
@@ -635,7 +635,7 @@ class HFBRaw(object):
 
         attributes = {
             "git_version_tag": "hello",
-            "weight_type": "none",
+            "weight_type": "inverse_variance",
             "instrument_name": "chime",
         }
 
@@ -704,7 +704,7 @@ def simple_hfbraw_data(filename, ntime, nfreq, nbeam, nsubfreq):
     raw.data["hfb"] = np.arange(nbeam * nsubfreq)[np.newaxis, np.newaxis, :]
 
     # Set weight data
-    raw.data["weight"] = np.arange(nfreq)[np.newaxis, :, np.newaxis]
+    raw.data["weight"] = np.arange(nbeam * nsubfreq)[np.newaxis, :, np.newaxis]
 
     # Return read only view
     del raw

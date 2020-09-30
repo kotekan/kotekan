@@ -1,5 +1,6 @@
 #include "HFBAccumulate.hpp"
 
+#include "HFBFrameView.hpp" // for HFBFrameView
 #include "HFBMetadata.hpp"
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"
@@ -50,7 +51,7 @@ HFBAccumulate::HFBAccumulate(Config& config_, const std::string& unique_name,
     register_producer(out_buf, unique_name.c_str());
 
     // weight calculation is hardcoded, so is the weight type name
-    const std::string weight_type = "hfb_weight_type";
+    const std::string weight_type = "inverse_var";
     const std::string git_tag = get_git_commit_hash();
     const std::string instrument_name =
         config.get_default<std::string>(unique_name, "instrument_name", "chime");
@@ -126,8 +127,8 @@ void HFBAccumulate::normalise_frame(float* sum_data, const uint32_t in_buffer_ID
     const float normalise_frac =
         (float)total_timesamples / (total_timesamples - total_lost_timesamples);
 
-    for (uint beam = 0; beam < _num_frb_total_beams; beam++) {
-        for (uint freq = 0; freq < _factor_upchan; freq++) {
+    for (uint32_t beam = 0; beam < _num_frb_total_beams; beam++) {
+        for (uint32_t freq = 0; freq < _factor_upchan; freq++) {
             sum_data[beam * _factor_upchan + freq] *= normalise_frac;
         }
     }
@@ -260,6 +261,12 @@ void HFBAccumulate::main_thread() {
                 set_num_subfreq(out_buf, out_buffer_ID, _factor_upchan);
 
                 DEBUG("Dataset ID: {}, freq ID: {:d}", ds_id, freq_id);
+
+                // Set weights to zero for now
+                auto frame = HFBFrameView(out_buf, out_buffer_ID);
+                for (uint32_t i = 0; i < _num_frb_total_beams * _factor_upchan; i++) {
+                    frame.weight[i] = 0.0;
+                }
 
                 mark_frame_full(out_buf, unique_name.c_str(), out_buffer_ID);
 

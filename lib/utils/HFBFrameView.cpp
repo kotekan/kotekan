@@ -126,7 +126,7 @@ struct_layout<HFBField> HFBFrameView::calculate_buffer_layout(uint32_t num_beams
     // definition
     std::vector<std::tuple<HFBField, size_t, size_t>> buffer_members = {
         std::make_tuple(HFBField::hfb, sizeof(float), num_beams * num_subfreq),
-        std::make_tuple(HFBField::weight, sizeof(float), 0 /*num_beams * num_subfreq*/)};
+        std::make_tuple(HFBField::weight, sizeof(float), num_beams * num_subfreq)};
 
     return struct_alignment(buffer_members);
 }
