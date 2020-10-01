@@ -250,6 +250,6 @@ VisFrameView VisFrameView::create_frame_view(Buffer* buf, const uint32_t index,
     return VisFrameView(buf, index);
 }
 
-size_t VisFrameView::data_size() {
+size_t VisFrameView::data_size() const {
     return buffer_layout.first;
 }

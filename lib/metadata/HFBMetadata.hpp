@@ -1,6 +1,7 @@
 #ifndef HFB_METADATA
 #define HFB_METADATA
 
+#include "Telescope.hpp"
 #include "buffer.h"
 #include "dataset.hpp" // for dset_id_t
 #include "metadata.h"
@@ -9,21 +10,15 @@
 
 struct HFBMetadata {
     /// The ICEBoard sequence number
-    int64_t fpga_seq_num;
-    /// The GPS time of @c fpga_seq_num.
-    struct timespec gps_time;
-    /// Is GPS time accurate?
-    uint32_t gps_time_flag;
+    int64_t fpga_seq_start;
+    /// The GPS time of @c fpga_seq_start.
+    struct timespec ctime;
     /// Frequency bin
-    uint32_t freq_bin_num;
-    /// Normalisation fraction
-    float norm_frac;
+    freq_id_t freq_id;
     /// Number of samples integrated
-    uint32_t num_samples_integrated;
+    uint64_t fpga_seq_total;
     /// Number of samples expected
-    uint32_t num_samples_expected;
-    /// Data size of frame after compression
-    uint32_t compressed_data_size;
+    uint64_t fpga_seq_length;
     /// The number of beams in the data.
     uint32_t num_beams;
     /// The number of sub-frequencies in the data.
@@ -34,44 +29,29 @@ struct HFBMetadata {
 
 // Helper functions to save lots of pointer work
 
-inline int64_t get_fpga_seq_num_hfb(struct Buffer* buf, int ID) {
+inline int64_t get_fpga_seq_start_hfb(struct Buffer* buf, int ID) {
     struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
-    return hfb_metadata->fpga_seq_num;
+    return hfb_metadata->fpga_seq_start;
 }
 
-inline uint32_t get_gps_time_flag(struct Buffer* buf, int ID) {
+inline struct timespec get_ctime_hfb(struct Buffer* buf, int ID) {
     struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
-    return hfb_metadata->gps_time_flag;
+    return hfb_metadata->ctime;
 }
 
-inline struct timespec get_gps_time_hfb(struct Buffer* buf, int ID) {
+inline freq_id_t get_freq_id(struct Buffer* buf, int ID) {
     struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
-    return hfb_metadata->gps_time;
+    return hfb_metadata->freq_id;
 }
 
-inline uint32_t get_freq_bin_num(struct Buffer* buf, int ID) {
+inline uint64_t get_fpga_seq_total(struct Buffer* buf, int ID) {
     struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
-    return hfb_metadata->freq_bin_num;
+    return hfb_metadata->fpga_seq_total;
 }
 
-inline float get_norm_frac(struct Buffer* buf, int ID) {
+inline uint64_t get_fpga_seq_length(struct Buffer* buf, int ID) {
     struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
-    return hfb_metadata->norm_frac;
-}
-
-inline uint32_t get_num_samples_integrated(struct Buffer* buf, int ID) {
-    struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
-    return hfb_metadata->num_samples_integrated;
-}
-
-inline uint32_t get_num_samples_expected(struct Buffer* buf, int ID) {
-    struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
-    return hfb_metadata->num_samples_expected;
-}
-
-inline int64_t get_compressed_data_size_hfb(struct Buffer* buf, int ID) {
-    struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
-    return hfb_metadata->compressed_data_size;
+    return hfb_metadata->fpga_seq_length;
 }
 
 inline uint32_t get_num_beams(struct Buffer* buf, int ID) {
@@ -91,44 +71,29 @@ inline dset_id_t get_dataset_id(struct Buffer* buf, int ID) {
 
 // Setting functions
 
-inline void set_fpga_seq_num_hfb(struct Buffer* buf, int ID, int64_t seq) {
+inline void set_fpga_seq_start_hfb(struct Buffer* buf, int ID, int64_t seq) {
     struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
-    hfb_metadata->fpga_seq_num = seq;
+    hfb_metadata->fpga_seq_start = seq;
 }
 
-inline void set_gps_time_flag(struct Buffer* buf, int ID, uint32_t flag) {
+inline void set_ctime_hfb(struct Buffer* buf, int ID, struct timespec time) {
     struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
-    hfb_metadata->gps_time_flag = flag;
+    hfb_metadata->ctime = time;
 }
 
-inline void set_gps_time_hfb(struct Buffer* buf, int ID, struct timespec time) {
+inline void set_freq_id(struct Buffer* buf, int ID, freq_id_t freq_id) {
     struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
-    hfb_metadata->gps_time = time;
+    hfb_metadata->freq_id = freq_id;
 }
 
-inline void set_freq_bin_num(struct Buffer* buf, int ID, uint32_t bin_num) {
+inline void set_fpga_seq_total(struct Buffer* buf, int ID, uint64_t num_samples) {
     struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
-    hfb_metadata->freq_bin_num = bin_num;
+    hfb_metadata->fpga_seq_total = num_samples;
 }
 
-inline void set_norm_frac(struct Buffer* buf, int ID, float frac) {
+inline void set_fpga_seq_length(struct Buffer* buf, int ID, uint64_t num_samples) {
     struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
-    hfb_metadata->norm_frac = frac;
-}
-
-inline void set_num_samples_integrated(struct Buffer* buf, int ID, uint32_t num_samples) {
-    struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
-    hfb_metadata->num_samples_integrated = num_samples;
-}
-
-inline void set_num_samples_expected(struct Buffer* buf, int ID, uint32_t num_samples) {
-    struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
-    hfb_metadata->num_samples_expected = num_samples;
-}
-
-inline void set_compressed_data_size_hfb(struct Buffer* buf, int ID, uint32_t compressed_size) {
-    struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
-    hfb_metadata->compressed_data_size = compressed_size;
+    hfb_metadata->fpga_seq_length = num_samples;
 }
 
 inline void set_num_beams(struct Buffer* buf, int ID, uint32_t num_beams) {

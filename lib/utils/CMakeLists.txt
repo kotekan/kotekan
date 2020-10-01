@@ -13,6 +13,7 @@ set ( KOTEKAN_UTIL_SOURCES
       visUtil.cpp
       visFile.cpp
       visFileRaw.cpp
+      hfbFileRaw.cpp
       visFileRing.cpp
       tx_utils.cpp
       datasetManager.cpp
@@ -26,6 +27,7 @@ set ( KOTEKAN_UTIL_SOURCES
       Telescope.cpp
       ICETelescope.cpp
       CHIMETelescope.cpp
+      SystemInterface.cpp
     )
 
 if (${USE_HDF5})
