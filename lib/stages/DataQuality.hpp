@@ -54,6 +54,9 @@ private:
     // Map the incoming fingerprint to a set of alpha coefficientse
     std::map<fingerprint_t, std::vector<double>> fprint_map;
 
+    // Map the incoming datasets to fingerprints
+    std::map<dset_id_t, fingerprint_t> dset_id_map;
+
     /// Prometheus metrics to export
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& data_quality_metric;
 };

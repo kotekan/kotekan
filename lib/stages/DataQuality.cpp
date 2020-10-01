@@ -94,7 +94,13 @@ void DataQuality::main_thread() {
 
         auto frame = VisFrameView(in_buf, input_frame_id);
         dset_id_t ds_id = frame.dataset_id;
-        auto fprint = dm.fingerprint(ds_id, {"stack"});
+
+        // Store datasets and fingerprints in a map
+        if (dset_id_map.count(ds_id) == 0) {
+            dset_id_map[ds_id] = dm.fingerprint(ds_id, {"stack"});
+        }
+
+        auto fprint = dset_id_map[ds_id];
 
         // If the dataset has changed construct a new vector of alpha coefficients
         if (fprint_map.count(fprint) == 0) {
