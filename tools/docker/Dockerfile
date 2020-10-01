@@ -1,4 +1,4 @@
-FROM rocm/dev-ubuntu-18.04
+FROM rocm/dev-ubuntu-18.04:3.7
 
 ## The maintainer name and email 
 MAINTAINER Rick Nitsche <rick@phas.ubc.ca>

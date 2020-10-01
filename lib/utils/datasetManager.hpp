@@ -349,7 +349,7 @@ private:
     void register_state(state_id_t state);
 
     /// register the given dataset with the dataset broker
-    void register_dataset(const dset_id_t hash, const dataset ds);
+    void register_dataset(const dset_id_t hash, const dataset& ds);
 
     /// parser function for register_state()
     bool register_state_parser(std::string& reply);

@@ -11,7 +11,6 @@ standard_library.install_aliases()
 import time
 import threading
 import socket
-import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -123,7 +122,7 @@ def data_listener():
     while True:
         d = np.zeros([pkt_freqs, pkt_elems])
         t = np.zeros(plot_times)
-        for i in np.arange(plot_integration * pkt_elems):
+        for _ in np.arange(plot_integration * pkt_elems):
             data = receive(connection, pkt_length + pkt_header)
             if len(data) != pkt_length + pkt_header:
                 print("Lost Connection!")
@@ -204,7 +203,7 @@ cbar_ax = f.add_axes([0.85, 0.15, 0.05, 0.7])
 c = f.colorbar(p[0], cax=cbar_ax)
 c.set_label("Power (dB, arbitrary)")
 
-from matplotlib.widgets import Slider, Button
+from matplotlib.widgets import Button
 
 rax = plt.axes([0.82, 0.03, 0.15, 0.04])
 check = Button(rax, "Med Subtract")

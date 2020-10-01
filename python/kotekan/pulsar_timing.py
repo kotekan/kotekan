@@ -11,8 +11,6 @@ import tempfile
 from subprocess import run, CalledProcessError
 import os
 from shutil import rmtree
-import time
-import json
 
 
 class Timespec(object):

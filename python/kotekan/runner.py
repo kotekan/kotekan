@@ -11,6 +11,7 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 import itertools
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import time
@@ -138,7 +139,6 @@ class KotekanRunner(object):
             # Run any requested REST commands
             if self._rest_commands and not self._gdb:
                 import requests
-                import json
 
                 attempt = 0
                 wait = 0.2
@@ -200,7 +200,7 @@ class KotekanRunner(object):
                             headers=rest_header,
                             data=json.dumps(data),
                         )
-                    except:
+                    except requests.RequestException:
                         # print kotekan output if sending REST command fails
                         # (kotekan might have crashed and we want to know)
                         p.wait()
@@ -1016,7 +1016,7 @@ class KotekanStageTester(KotekanRunner):
         stage_config,
         buffers_in,
         buffers_out,
-        global_config={},
+        global_config=None,
         parallel_stage_type=None,
         parallel_stage_config={},
         rest_commands=None,
@@ -1028,6 +1028,8 @@ class KotekanStageTester(KotekanRunner):
         config = stage_config.copy()
         parallel_config = parallel_stage_config.copy()
         noise_config = {}
+        if global_config is None:
+            global_config = {}
 
         if noise:
             if buffers_in is None:
