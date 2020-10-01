@@ -27,9 +27,6 @@
  *     @buffer_format VisBuffer structured
  *     @buffer_metadata VisMetadata
  *
- * @conf  num_elements          Int. The number of elements (i.e. inputs) in the
- *                              correlator data.
- *
  * @par Metrics
  * @metric kotekan_dataquality_dataquality
  *      The data quality of the visibility data.
@@ -53,9 +50,6 @@ private:
     void calc_alpha_coeffs(fingerprint_t fprint, dset_id_t ds_id);
 
     Buffer* in_buf;
-
-    /// Config variables
-    uint32_t _num_elements;
 
     // Map the incoming fingerprint to a set of alpha coefficientse
     std::map<fingerprint_t, std::vector<double>> fprint_map;

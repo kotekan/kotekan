@@ -35,9 +35,6 @@ DataQuality::DataQuality(Config& config_, const std::string& unique_name,
     data_quality_metric(Metrics::instance().add_gauge("kotekan_dataquality_dataquality",
                                                       unique_name, {"freq_id"})) {
 
-    // Apply config.
-    _num_elements = config.get<uint32_t>(unique_name, "num_elements");
-
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
 }
@@ -68,11 +65,15 @@ void DataQuality::calc_alpha_coeffs(fingerprint_t fprint, dset_id_t ds_id) {
         counts[ind]++;
     }
 
+    double total = 0.0;
+    for (auto count : counts)
+        total += count;
+
     // Compute alpha coefficients
     std::vector<double> alpha(ns, 0);
 
     for (uint32_t i = 0; i < ns; i++) {
-        alpha[i] = pow(counts[i] / _num_elements, 2);
+        alpha[i] = pow(counts[i] / total, 2);
     }
 
     // Insert alpha coefficients into map
