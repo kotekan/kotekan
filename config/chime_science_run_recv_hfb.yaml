@@ -31,11 +31,9 @@ hfb_pool:
   kotekan_metadata_pool: HFBMetadata
   num_metadata_objects: 30 * buffer_depth
 
-# Factor of 2 in the frame_size comes from the weights
 hfbbuf_10s:
   kotekan_buffer: hfb
   num_frames: buffer_depth * 6
-  frame_size: factor_upchan * num_frb_total_beams * 2 * sizeof_float
   metadata_pool: hfb_pool
 
 # Kotekan stages

@@ -348,21 +348,17 @@ gpu_beamform_hfb_output_buffers:
   gpu_beamform_hfb_output_buffer_3:
     kotekan_buffer: standard
 
-# Factor of 2 in the frame_size comes from the weights
 cpu_hfb_output_buffers:
   num_frames: buffer_depth
-  frame_size: num_data_sets * factor_upchan * num_frb_total_beams * 2 * sizeof_float
   metadata_pool: hfb_pool
   beamform_hfb_output_buffer_0:
-    kotekan_buffer: standard
+    kotekan_buffer: hfb
   beamform_hfb_output_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: hfb
   beamform_hfb_output_buffer_2:
-    kotekan_buffer: standard
+    kotekan_buffer: hfb
   beamform_hfb_output_buffer_3:
-    kotekan_buffer: standard
-  beamform_hfb_output_buffer_merge:
-    kotekan_buffer: standard
+    kotekan_buffer: hfb
 
 gain_frb_buffers:
   num_frames: 5
