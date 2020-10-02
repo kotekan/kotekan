@@ -71,9 +71,13 @@ jobs:
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
-          cmake -DCMAKE_BUILD_TYPE=Test \
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON \
+            -DCMAKE_BUILD_TYPE=Test \
             -DARCH=haswell \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+            -DCCACHE=ON \
+            -DWITH_TESTS=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s
 
@@ -110,14 +114,17 @@ jobs:
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
-          cmake -DCMAKE_BUILD_TYPE=Test \
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON \
+            -DCMAKE_BUILD_TYPE=Test \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
             -DARCH=haswell \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
-            -DBOOST_TESTS=ON \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+            -DWITH_TESTS=ON \
+            -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" rm -r lib
         docker run "${OPTS[@]}" ccache -s
@@ -162,15 +169,18 @@ jobs:
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
-          cmake -DCMAKE_BUILD_TYPE=Test \
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON \
+            -DCMAKE_BUILD_TYPE=Test \
             -DUSE_DPDK=ON \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
             -DARCH=haswell \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
-            -DBOOST_TESTS=OFF \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+            -DWITH_TESTS=OFF \
+            -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s
 
@@ -199,7 +209,9 @@ jobs:
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CORE})
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" ccache -s
-        docker run "${OPTS[@]}" cmake \
+        docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+        -DWERROR=ON \
+        -DCMAKE_LINK_WHAT_YOU_USE=ON \
         -DUSE_DPDK=ON \
         -DCMAKE_BUILD_TYPE=Test \
         -DUSE_HDF5=ON \
@@ -209,9 +221,8 @@ jobs:
         -DARCH=haswell \
         -DNO_MEMLOCK=ON \
         -DUSE_OMP=ON \
-        -DBOOST_TESTS=ON \
-        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-        -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
+        -DWITH_TESTS=ON \
+        -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s
 
@@ -269,7 +280,9 @@ jobs:
         # adding this to the above env block breaks and results in sh not finding cmake etc
         export PATH="/usr/local/opt/hdf5@1.10/bin:$PATH"
         cd build
-        cmake \
+        # the MacOS linker doesn't support --no-as-needed for -DCMAKE_LINK_WHAT_YOU_USE=ON
+        cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+        -DWERROR=ON \
         -DUSE_HDF5=ON \
         -DUSE_OPENCL=ON \
         -DUSE_FFTW=ON \
@@ -279,8 +292,8 @@ jobs:
         -DLAPACKE_DIR=/usr/local/opt/openblas/ \
         -DBLAZE_PATH=$GITHUB_WORKSPACE/blaze \
         -DHIGHFIVE_PATH=$GITHUB_WORKSPACE/HighFive \
-        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-        -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
+        -DCCACHE=ON \
+        -DWITH_TESTS=ON ..
         make -j 2
 
   # Build kotekan documentation
@@ -296,9 +309,12 @@ jobs:
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CORE})
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" \
-          cmake -DCOMPILE_DOCS=ON \
+          cmake \
+            -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
+            -DCOMPILE_DOCS=ON \
             -DPLANTUML_PATH=/code/build/plantuml \
-            -DBOOST_TESTS=OFF ..
+            -DWITH_TESTS=OFF ..
         docker run "${OPTS[@]}" make doc
         docker run "${OPTS[@]}" make sphinx
 
@@ -316,15 +332,20 @@ jobs:
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_IWYU})
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" \
-          cmake -DCMAKE_BUILD_TYPE=Test \
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON \
+            -DCMAKE_BUILD_TYPE=Test \
             -DUSE_DPDK=ON \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
             -DARCH=haswell \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
-            -DBOOST_TESTS=ON \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
+            -DWITH_TESTS=ON \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DIWYU=ON \
+            -DCCACHE=ON ..
 
     - name: Run iwyu
       run: |
@@ -344,7 +365,7 @@ jobs:
         mkdir -p build-check-format
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-check-format/ ${IMG_CORE})
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
-        docker run "${OPTS[@]}" cmake ..
+        docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ..
         docker run "${OPTS[@]}" make clang-format
         git diff --exit-code
 
@@ -352,3 +373,8 @@ jobs:
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${IMG_CORE})
         docker run "${OPTS[@]}" black --exclude docs --check .
+
+    - name: Run cmakelint
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${IMG_CORE})
+        docker run "${OPTS[@]}" tools/cmakelint.sh /code/kotekan

@@ -139,7 +139,7 @@ public:
     RedundantStack(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
 
-    void main_thread();
+    void main_thread() override;
 
 private:
     void change_dataset_state(dset_id_t ds_id);
