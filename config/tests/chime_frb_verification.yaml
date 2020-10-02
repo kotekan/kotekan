@@ -138,11 +138,6 @@ cpu_hfb_output_buffers:
     metadata_pool: main_pool
     cpu_hfb_output_buffer_0:
         kotekan_buffer: standard
-
-beamform_hfb_output_buffers:
-    num_frames: buffer_depth
-    frame_size: num_data_sets * factor_upchan * num_frb_total_beams * 2 * sizeof_float
-    metadata_pool: main_pool
     beamform_hfb_output_buffer_0:
         metadata_pool: hfb_pool
         kotekan_buffer: standard
