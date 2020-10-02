@@ -1,4 +1,4 @@
-project(libkotekan_hcc)
+project(kotekan_hcc)
 
 # /// AMD hcc options need to add -DCMAKE_CXX_COMPILER=/opt/rocm/bin/hcc to cmake command line
 

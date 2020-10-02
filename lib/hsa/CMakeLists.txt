@@ -1,4 +1,4 @@
-project(libkotekan_hsa)
+project(kotekan_hsa)
 
 add_library(
     kotekan_hsa

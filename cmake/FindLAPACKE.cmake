@@ -14,10 +14,13 @@
 #
 # ::
 #
-# LAPACKE_FOUND - set to true if the library is found LAPACKE_INCLUDE_DIRS - list of required
-# include directories LAPACKE_LIBRARIES - list of libraries to be linked LAPACKE_VERSION_MAJOR -
-# major version number LAPACKE_VERSION_MINOR - minor version number LAPACKE_VERSION_PATCH - patch
-# version number LAPACKE_VERSION_STRING - version number as a string (ex: "0.2.18")
+# * LAPACKE_FOUND - set to true if the library is found
+# * LAPACKE_INCLUDE_DIRS - list of required include directories
+# * LAPACKE_LIBRARIES - list of libraries to be linked
+# * LAPACKE_VERSION_MAJOR - major version number
+# * LAPACKE_VERSION_MINOR - minor version number
+# * LAPACKE_VERSION_PATCH - patch version number
+# * LAPACKE_VERSION_STRING - version number as a string (ex: "0.2.18")
 
 # =============================================================================
 # Copyright 2016 Hans J. Johnson <hans-johnson@uiowa.edu>

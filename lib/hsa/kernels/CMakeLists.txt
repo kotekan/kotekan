@@ -1,8 +1,11 @@
 # NOTE THAT THESE ARE HARDCODED FOR FIJI ARCHITECTURE! SHOULD ADD A FLAG OR SOMETHING TO ALLOW
 # OTHERS.
 
-# Find the HSACO compilers Find the AMD clang This should really test something about the clang to
-# see if it is the AMD varient, and not just check a known path.
+# * Find the HSACO compilers
+# * Find the AMD clang
+#
+# This should really test something about the clang to see if it is the AMD varient, and not just
+# check a known path.
 find_program(
     AMD_CLANG
     clang
