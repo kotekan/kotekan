@@ -1,6 +1,7 @@
 #include "RingMapMaker.hpp"
 
 #include "Hash.hpp"         // for Hash, operator!=
+#include "Stack.hpp"        // for chimeFeed
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"
 #include "datasetManager.hpp"    // for datasetManager, dset_id_t, state_id_t
