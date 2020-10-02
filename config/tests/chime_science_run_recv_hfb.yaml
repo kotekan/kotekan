@@ -17,13 +17,19 @@ cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
 num_frb_total_beams: 1024
 num_local_freq: 1
 factor_upchan: 128
+init_dm: True
+#num_frames: 5
+#samples_per_data_set: 49152
+samples_per_data_set: 1024
+freq_ids: [3, 777, 554]
+cadence: 0.01 
 
 # Constants
 sizeof_float: 4
 
 dataset_manager:
-  use_dataset_broker: True
-  ds_broker_host: "10.1.50.11" # recv1
+  use_dataset_broker: False
+  ds_broker_host: "127.0.0.1"
   ds_broker_port: 12050
 
 # 21cm Absorber Metadata Pool
@@ -37,17 +43,15 @@ hfbbuf_10s:
   frame_size: factor_upchan * num_frb_total_beams * sizeof_float
   metadata_pool: hfb_pool
 
-# Kotekan stages
-hfb_recv:
-  kotekan_stage: bufferRecv
-  buf: hfbbuf_10s 
-  listen_port: 11027
+gen_data:
+  kotekan_stage: FakeHFB
+  out_buf: hfbbuf_10s
 
 # Write raw HFB data
 write_hfb:
   file_length: 512
   file_type: hfbraw
-  root_path: /mnt/data/untransposed/
+  root_path: /mnt/ramdisk
 
   kotekan_stage: HFBWriter
   in_buf: hfbbuf_10s

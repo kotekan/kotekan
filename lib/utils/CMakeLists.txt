@@ -14,6 +14,7 @@ add_library(
     visUtil.cpp
     visFile.cpp
     visFileRaw.cpp
+    hfbFileRaw.cpp
     visFileRing.cpp
     tx_utils.cpp
     datasetManager.cpp
@@ -27,7 +28,8 @@ add_library(
     Stack.cpp
     Telescope.cpp
     ICETelescope.cpp
-    CHIMETelescope.cpp)
+    CHIMETelescope.cpp
+    SystemInterface.cpp)
 
 target_link_libraries(kotekan_utils PRIVATE libexternal kotekan_libs)
 target_include_directories(kotekan_utils PUBLIC .)

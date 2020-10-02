@@ -33,7 +33,9 @@ add_library(
     visCompression.cpp
     timeDownsample.cpp
     frbPostProcess.cpp
-    visWriter.cpp
+    BaseWriter.cpp
+    VisWriter.cpp
+    HFBWriter.cpp
     visRawReader.cpp
     restInspectFrame.cpp
     frbNetworkProcess.cpp
@@ -56,12 +58,12 @@ add_library(
     visTestPattern.cpp
     visDebug.cpp
     removeEv.cpp
-    integrateHFBData.cpp
+    HFBAccumulate.cpp
     compressLostSamples.cpp
-    compressData.cpp
     bufferBadInputs.cpp
     RfiFrameDrop.cpp
-    VisSharedMemWriter.cpp)
+    VisSharedMemWriter.cpp
+    DataQuality.cpp)
 
 target_include_directories(kotekan_stages PRIVATE .)
 

@@ -7,6 +7,7 @@ add_library(
     fakeGpu.cpp
     fakeGpuPattern.cpp
     FakeVis.cpp
+    FakeHFB.cpp
     FakeVisPattern.cpp
     gpuBeamformSimulate.cpp
     gpuTrackingBeamformSimulate.cpp

@@ -157,7 +157,7 @@ public:
      **/
     static size_t calculate_frame_size(uint32_t num_elements, uint32_t num_prod, uint32_t num_ev);
 
-    size_t data_size() override;
+    size_t data_size() const override;
 
     /**
      * @brief Return a summary of the visibility buffer contents.

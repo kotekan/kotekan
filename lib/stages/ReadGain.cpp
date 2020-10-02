@@ -39,7 +39,7 @@ REGISTER_KOTEKAN_STAGE(ReadGain);
 // Request gain file re-parse with e.g.
 // FRB
 // curl localhost:12048/frb_gain -X POST -H 'Content-Type: appication/json' -d '{"frb_gain_dir":"the_new_path"}'
-// TRACKING
+// Tracking Beamformer
 // curl localhost:12048/updatable_config/tracking_gain -X POST -H 'Content-Type: application/json' -d
 // '{"tracking_gain_dir":["path0","path1","path2","path3","path4","path5","path6","path7","path8","path9"]}'
 //
@@ -72,7 +72,7 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     register_producer(gain_frb_buf, unique_name.c_str());
     update_gains_frb = false;
 
-    // Gain for TRACKING
+    // Gain for Tracking Beamformer
     gain_tracking_buf = get_buffer("gain_tracking_buf");
     gain_tracking_buf_id = 0;
     register_producer(gain_tracking_buf, unique_name.c_str());
@@ -87,12 +87,16 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
         configUpdater::instance().subscribe(
             gainfrb, std::bind(&ReadGain::update_gains_frb_callback, this, _1));
 
-    // listen for gain updates TRACKING
-    std::string gaintracking =
-        config.get<std::string>(unique_name, "updatable_config/gain_tracking");
-    if (gaintracking.length() > 0)
+    // Listen for gain updates Tracking Beamformer
+    using namespace std::placeholders;
+    for (int beam_id = 0; beam_id < _num_beams; beam_id++) {
         configUpdater::instance().subscribe(
-            gaintracking, std::bind(&ReadGain::update_gains_tracking_callback, this, _1));
+            config.get<std::string>(unique_name, "updatable_config/gain_tracking") + "/"
+                + std::to_string(beam_id),
+            [beam_id, this](nlohmann::json& json_msg) -> bool {
+                return update_gains_tracking_callback(json_msg, beam_id);
+            });
+    }
 }
 
 bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
@@ -115,25 +119,18 @@ bool ReadGain::update_gains_frb_callback(nlohmann::json& json) {
     return true;
 }
 
-bool ReadGain::update_gains_tracking_callback(nlohmann::json& json) {
-    if (update_gains_tracking) {
-        WARN("[TRACKING] cannot handle two back-to-back gain updates, rejecting the latter");
-        return true;
-    }
-    try {
-        _gain_dir_tracking = json.at("tracking_gain_dir").get<std::vector<std::string>>();
-        std::string output_msg = "[TRACKING] Updating gains from ";
-        for (int i = 0; i < _num_beams; i++) {
-            output_msg += _gain_dir_tracking[i];
-            output_msg += " ";
-        }
-        INFO("{:s}", output_msg);
-    } catch (std::exception const& e) {
-        WARN("[Tracking Beamformer] Fail to read gain_dir {:s}", e.what());
-        return false;
-    }
+bool ReadGain::update_gains_tracking_callback(nlohmann::json& json, const uint8_t beam_id) {
     {
         std::lock_guard<std::mutex> lock(mux);
+        try {
+            _gain_dir_tracking.push(
+                std::make_pair(beam_id, json.at("gain_dir").get<std::string>()));
+            INFO("[Tracking Beamformer] Updating gains from {:s}",
+                 _gain_dir_tracking.back().second);
+        } catch (std::exception const& e) {
+            WARN("[Tracking Beamformer] Fail to read gain_dir {:s}", e.what());
+            return false;
+        }
         update_gains_tracking = true;
     }
     cond_var.notify_all();
@@ -198,40 +195,44 @@ void ReadGain::read_gain_tracking() {
     double start_time = current_time();
     FILE* ptr_myfile;
     char filename[256];
-    bool all_beams_successful_update = true;
-    for (int b = 0; b < _num_beams; b++) {
+    std::pair<uint8_t, std::string> beam;
+
+    while (_gain_dir_tracking.size() > 0) {
+        {
+            std::lock_guard<std::mutex> lock(mux);
+            beam = _gain_dir_tracking.front();
+            _gain_dir_tracking.pop();
+        }
+        uint8_t beam_id = beam.first;
         snprintf(filename, sizeof(filename), "%s/quick_gains_%04d_reordered.bin",
-                 _gain_dir_tracking[b].c_str(), freq_idx);
-        INFO("TRACKING Loading gains from {:s}", filename);
+                 beam.second.c_str(), freq_idx);
+        INFO("Tracking Beamformer Loading gains from {:s}", filename);
         ptr_myfile = fopen(filename, "rb");
+        std::string beam_label = "tracking_beam_" + std::to_string(beam_id);
+        gains_last_update_success_metric.labels({beam_label}).set(1);
         if (ptr_myfile == nullptr) {
             WARN("GPU Cannot open gain file {:s}", filename);
-            all_beams_successful_update = false;
+            gains_last_update_success_metric.labels({beam_label}).set(0);
             for (uint i = 0; i < _num_elements; i++) {
-                out_frame_tracking[(b * _num_elements + i) * 2] = default_gains[0];
-                out_frame_tracking[(b * _num_elements + i) * 2 + 1] = default_gains[1];
+                out_frame_tracking[(beam_id * _num_elements + i) * 2] = default_gains[0];
+                out_frame_tracking[(beam_id * _num_elements + i) * 2 + 1] = default_gains[1];
             }
         } else {
             if (_num_elements
-                != fread(&out_frame_tracking[b * _num_elements * 2], sizeof(float) * 2,
+                != fread(&out_frame_tracking[beam_id * _num_elements * 2], sizeof(float) * 2,
                          _num_elements, ptr_myfile)) {
                 WARN("Gain file ({:s}) wasn't long enough! Something went wrong, using default "
                      "gains",
                      filename);
-                all_beams_successful_update = false;
+                gains_last_update_success_metric.labels({beam_label}).set(0);
                 for (uint i = 0; i < _num_elements; i++) {
-                    out_frame_tracking[(b * _num_elements + i) * 2] = default_gains[0];
-                    out_frame_tracking[(b * _num_elements + i) * 2 + 1] = default_gains[1];
+                    out_frame_tracking[(beam_id * _num_elements + i) * 2] = default_gains[0];
+                    out_frame_tracking[(beam_id * _num_elements + i) * 2 + 1] = default_gains[1];
                 }
             }
             fclose(ptr_myfile);
         }
     } // end beam
-    if (all_beams_successful_update) {
-        gains_last_update_success_metric.labels({"tracking"}).set(1);
-    } else {
-        gains_last_update_success_metric.labels({"tracking"}).set(0);
-    }
     gains_last_update_timestamp_metric.labels({"tracking"}).set(start_time);
     mark_frame_full(gain_tracking_buf, unique_name.c_str(), gain_tracking_buf_id);
     DEBUG("Maked gain_tracking_buf frame {:d} full", gain_tracking_buf_id);
