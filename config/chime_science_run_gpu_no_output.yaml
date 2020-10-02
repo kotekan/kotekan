@@ -33,7 +33,7 @@ num_elements: 2048
 num_local_freq: 1
 num_data_sets: 1
 samples_per_data_set: 49152
-buffer_depth: 12
+buffer_depth: 10
 baseband_buffer_depth: 282 # 282 = ~34 seconds after accounting for active frames
 vbuffer_depth: 32
 num_links: 4
@@ -348,9 +348,10 @@ gpu_beamform_hfb_output_buffers:
   gpu_beamform_hfb_output_buffer_3:
     kotekan_buffer: standard
 
+# Factor of 2 in the frame_size comes from the weights
 cpu_hfb_output_buffers:
   num_frames: buffer_depth
-  frame_size: num_data_sets * factor_upchan * num_frb_total_beams * sizeof_float
+  frame_size: num_data_sets * factor_upchan * num_frb_total_beams * 2 * sizeof_float
   metadata_pool: hfb_pool
   beamform_hfb_output_buffer_0:
     kotekan_buffer: standard
