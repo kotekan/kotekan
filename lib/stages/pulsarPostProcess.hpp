@@ -79,7 +79,7 @@ public:
     void main_thread() override;
 
 private:
-    void fill_headers(unsigned char* out_buf, struct VDIFHeader* vdif_header,
+    void fill_headers(unsigned char* out_buf, struct PSRHeader* psr_header,
                       const uint64_t fpga_seq_num, struct timespec* time_now,
                       struct beamCoord* beam_coord, uint16_t* freq_ids);
 

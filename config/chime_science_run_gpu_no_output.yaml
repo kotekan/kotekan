@@ -889,46 +889,44 @@ hyper_fine_beam:
   good_samples_threshold: 0.95
   log_level: info
   integrate_hfb_data_0:
-    kotekan_stage: integrateHFBData
+    kotekan_stage: HFBAccumulate
     hfb_input_buf: gpu_beamform_hfb_output_buffer_0
     hfb_output_buf: beamform_hfb_output_buffer_0
     compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_0
   integrate_hfb_data_1:
-    kotekan_stage: integrateHFBData
+    kotekan_stage: HFBAccumulate
     hfb_input_buf: gpu_beamform_hfb_output_buffer_1
     hfb_output_buf: beamform_hfb_output_buffer_1
     compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_1
   integrate_hfb_data_2:
-    kotekan_stage: integrateHFBData
+    kotekan_stage: HFBAccumulate
     hfb_input_buf: gpu_beamform_hfb_output_buffer_2
     hfb_output_buf: beamform_hfb_output_buffer_2
     compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_2
   integrate_hfb_data_3:
-    kotekan_stage: integrateHFBData
+    kotekan_stage: HFBAccumulate
     hfb_input_buf: gpu_beamform_hfb_output_buffer_3
     hfb_output_buf: beamform_hfb_output_buffer_3
     compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_3
 
-# Merge HFB integrated data from each GPU
-hfb_merge:
-  kotekan_stage: bufferMerge
-  timeout: 0.1
-  in_bufs:
-    - beamform_hfb_output_buffer_0
-    - beamform_hfb_output_buffer_1
-    - beamform_hfb_output_buffer_2
-    - beamform_hfb_output_buffer_3
-  out_buf: beamform_hfb_output_buffer_merge
-
-# Transmit all the HFB data to Moose
+# Transmit HFB data to Bongo
 buffer_send_hfb:
-  server_ip: 10.1.50.10
+  server_ip: 10.1.50.13
+  server_port: 11027
   reconnect_time: 20
   log_level: error
-  hfb:
+  hfb_0:
     #kotekan_stage: bufferSend
-    buf: beamform_hfb_output_buffer_merge
-    server_port: 11027
+    buf: beamform_hfb_output_buffer_0
+  hfb_1:
+    #kotekan_stage: bufferSend
+    buf: beamform_hfb_output_buffer_1
+  hfb_2:
+    #kotekan_stage: bufferSend
+    buf: beamform_hfb_output_buffer_2
+  hfb_3:
+    #kotekan_stage: bufferSend
+    buf: beamform_hfb_output_buffer_3
 
 # This set of stages takes information from the packet loss mask
 # and RFI mask and updates the metadata in the output N2 buffers

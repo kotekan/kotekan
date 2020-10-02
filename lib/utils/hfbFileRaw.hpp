@@ -1,14 +1,14 @@
 /*****************************************
 @file
 @brief Raw dump based visibility output files
-- visFileRaw
+- hfbFileRaw
 *****************************************/
-#ifndef VIS_FILE_RAW_HPP
-#define VIS_FILE_RAW_HPP
+#ifndef HFB_FILE_RAW_HPP
+#define HFB_FILE_RAW_HPP
 
+#include "HFBFrameView.hpp"   // for HFBFrameView
 #include "dataset.hpp"        // for dset_id_t
 #include "kotekanLogging.hpp" // for logLevel
-#include "visBuffer.hpp"      // for VisFrameView
 #include "visFile.hpp"        // for visFile
 #include "visUtil.hpp"        // for time_ctype
 
@@ -41,12 +41,12 @@
  * The `.data` file contains the raw data output. This is packed as:
  *
  *  - 1st byte is set to `1` if data is present (or is implicitly zero).
- *  - VisMetadata struct dump
- *  - VisFrameView dump
+ *  - visMetadata struct dump
+ *  - visBuffer dump
  *
  * @author Richard Shaw
  **/
-class visFileRaw : public visFile {
+class hfbFileRaw : public visFile {
 
 public:
     /**
@@ -62,11 +62,11 @@ public:
      * @param  max_time   Maximum number of times to write into the file.
      * @param  oflags     Flag to open the file with.
      **/
-    visFileRaw(const std::string& name, const kotekan::logLevel log_level,
+    hfbFileRaw(const std::string& name, const kotekan::logLevel log_level,
                const std::map<std::string, std::string>& metadata, dset_id_t dataset,
                size_t max_time, int oflags = O_CREAT | O_EXCL | O_WRONLY);
 
-    ~visFileRaw();
+    ~hfbFileRaw();
 
     /**
      * @brief Extend the file to a new time sample.
@@ -130,7 +130,7 @@ protected:
     nlohmann::json file_metadata;
 
     // Save the sizes
-    size_t nfreq, data_size, metadata_size, frame_size;
+    size_t nfreq, num_beams, num_subfreq, data_size, metadata_size, frame_size;
 
     // File descriptors and related
     int fd;

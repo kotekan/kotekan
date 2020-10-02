@@ -7,9 +7,7 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 
 import requests
 from tabulate import tabulate
-import json
 import os
-import sys
 import argparse
 
 parser = argparse.ArgumentParser(
@@ -61,7 +59,7 @@ for gpu_id in range(0, len(gpu_ids)):
                     "%.4f" % (kernel["utilization"] * 100) + "%",
                 ]
             )
-    except:
+    except Exception:
         print("No kernel profiling data returned for GPU " + str(gpu_ids[gpu_id]))
         print("You may need to set `-i` to not include some of the GPUs")
         exit(-1)

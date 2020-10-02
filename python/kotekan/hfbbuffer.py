@@ -1,4 +1,4 @@
-"""Read a visBuffer dump into python.
+"""Read a HFBBuffer dump into python.
 """
 # === Start Python 2/3 compatibility
 from __future__ import absolute_import, division, print_function, unicode_literals
@@ -15,52 +15,26 @@ import numpy as np
 from kotekan import timespec
 
 
-class VisMetadata(ctypes.Structure):
-    """Wrap a VisMetadata struct.
+class HFBMetadata(ctypes.Structure):
+    """Wrap a HFBMetadata struct.
     """
 
     _fields_ = [
         ("fpga_seq", ctypes.c_uint64),
         ("ctime", timespec.time_spec),
-        ("fpga_length", ctypes.c_uint64),
-        ("fpga_total", ctypes.c_uint64),
-        ("rfi_total", ctypes.c_uint64),
         ("freq_id", ctypes.c_uint32),
+        ("fpga_total", ctypes.c_uint64),
+        ("fpga_length", ctypes.c_uint64),
+        ("num_beams", ctypes.c_uint32),
+        ("num_subfreq", ctypes.c_uint32),
         ("dataset_id", ctypes.c_uint64 * 2),
-        ("num_elements", ctypes.c_uint32),
-        ("num_prod", ctypes.c_uint32),
-        ("num_ev", ctypes.c_uint32),
     ]
 
 
-class psrCoord(ctypes.Structure):
-    """ Struct repr of psrCoord field in ChimeMetadata."""
+class HFBBuffer(object):
+    """Python representation of a HFBBuffer dump.
 
-    _fields_ = [
-        ("ra", ctypes.ARRAY(ctypes.c_float, 10)),
-        ("dec", ctypes.ARRAY(ctypes.c_float, 10)),
-        ("scaling", ctypes.ARRAY(ctypes.c_uint32, 10)),
-    ]
-
-
-class ChimeMetadata(ctypes.Structure):
-    """Wrap a ChimeMetadata struct."""
-
-    _fields_ = [
-        ("fpga_seq_num", ctypes.c_uint64),
-        ("first_packet_recv_time", timespec.timeval),
-        ("gps_time", timespec.time_spec),
-        ("lost_timesamples", ctypes.c_int32),
-        ("stream_ID", ctypes.c_uint16),
-        ("psrCoord", psrCoord),
-        ("rfi_zeroed", ctypes.c_uint32),
-    ]
-
-
-class VisBuffer(object):
-    """Python representation of a visBuffer dump.
-
-    Access the data through the `vis`, `weight`, `eval`, `evec` and `erms`
+    Access the data through the `hfb` and `weight`
     attributes which are all numpy arrays.
 
     Parameters
@@ -76,18 +50,18 @@ class VisBuffer(object):
 
         self._buffer = buffer[skip:]
 
-        meta_size = ctypes.sizeof(VisMetadata)
+        meta_size = ctypes.sizeof(HFBMetadata)
 
         if len(self._buffer) < meta_size:
             raise ValueError("Buffer too small to contain metadata.")
 
-        self.metadata = VisMetadata.from_buffer(self._buffer[:meta_size])
+        self.metadata = HFBMetadata.from_buffer(self._buffer[:meta_size])
 
         self._set_data_arrays()
 
     def _set_data_arrays(self):
 
-        _data = self._buffer[ctypes.sizeof(VisMetadata) :]
+        _data = self._buffer[ctypes.sizeof(HFBMetadata) :]
 
         layout = self.__class__.calculate_layout(
             self.metadata.num_elements, self.metadata.num_prod, self.metadata.num_ev
@@ -101,12 +75,12 @@ class VisBuffer(object):
             setattr(self, member["name"], arr)
 
     @classmethod
-    def calculate_layout(cls, num_elements, num_prod, num_ev):
+    def calculate_layout(cls, num_beams, num_subfreq):
         """Calculate the buffer layout.
 
         Parameters
         ----------
-        num_elements, num_prod, num_ev : int
+        num_beams, num_subfreq : int
             Length of each dimension.
 
         Returns
@@ -116,13 +90,8 @@ class VisBuffer(object):
         """
 
         structure = [
-            ("vis", np.complex64, num_prod),
-            ("weight", np.float32, num_prod),
-            ("flags", np.float32, num_elements),
-            ("eval", np.float32, num_ev),
-            ("evec", np.complex64, num_ev * num_elements),
-            ("erms", np.float32, 1),
-            ("gain", np.complex64, num_elements),
+            ("hfb", np.float32, num_beams * num_subfreq),
+            ("weight", np.float32, num_beams * num_subfreq),
         ]
 
         end = 0
@@ -161,8 +130,10 @@ class VisBuffer(object):
 
     @classmethod
     def from_file(cls, filename):
-        """Load a visBuffer from a kotekan dump file.
+        """Load a HFBBuffer from a kotekan dump file.
         """
+        import os
+
         filesize = os.path.getsize(filename)
 
         buf = bytearray(filesize)
@@ -174,7 +145,7 @@ class VisBuffer(object):
 
     @classmethod
     def load_files(cls, pattern):
-        """Read a set of dump files as visBuffers.
+        """Read a set of dump files as HFBBuffers.
 
         Parameters
         ----------
@@ -183,7 +154,7 @@ class VisBuffer(object):
 
         Returns
         -------
-        buffers : list of VisBuffers
+        buffers : list of HFBBuffers
         """
         import glob
 
@@ -195,14 +166,14 @@ class VisBuffer(object):
 
         Parameters
         ----------
-        buffers : list of VisBuffers
+        buffers : list of HFBBuffers
             Buffers to write.
         basename : str
             Basename for filenames.
         """
         pat = basename + "_%07d.dump"
 
-        msize_c = ctypes.c_int(ctypes.sizeof(VisMetadata))
+        msize_c = ctypes.c_int(ctypes.sizeof(HFBMetadata))
 
         for ii, buf in enumerate(buffers):
 
@@ -211,29 +182,28 @@ class VisBuffer(object):
                 fh.write(bytearray(buf._buffer))
 
     @classmethod
-    def new_from_params(cls, num_elements, num_prod, num_ev, insert_size=True):
-        """Create a new VisBuffer owning its own memory.
+    def new_from_params(cls, num_beams, num_subfreq, insert_size=True):
+        """Create a new HFBBuffer owning its own memory.
 
         Parameters
         ----------
-        num_elements, num_prod, num_ev
+        num_beams, num_subfreq
             Structural parameters.
 
         Returns
         -------
-        buffer : VisBuffer
+        buffer : HFBBuffer
         """
 
-        layout = cls.calculate_layout(num_elements, num_prod, num_ev)
-        meta_size = ctypes.sizeof(VisMetadata)
+        layout = cls.calculate_layout(num_beams, num_subfreq)
+        meta_size = ctypes.sizeof(HFBMetadata)
 
         buf = np.zeros(meta_size + layout["size"], dtype=np.uint8)
 
         # Set the structure in the metadata
-        metadata = VisMetadata.from_buffer(buf[:meta_size])
-        metadata.num_elements = num_elements
-        metadata.num_prod = num_prod
-        metadata.num_ev = num_ev
+        metadata = HFBMetadata.from_buffer(buf[:meta_size])
+        metadata.num_beams = num_beams
+        metadata.num_subfreq = num_subfreq
 
         return cls(buf, skip=0)
 
@@ -244,8 +214,8 @@ def _offset(offset, size):
     return ((size - (offset % size)) % size) + offset
 
 
-class VisRaw(object):
-    """Reader for correlator files in the raw format.
+class HFBRaw(object):
+    """Reader for absorber files in the raw format.
 
     Parses the structure of the binary files and loads them
     into an memmap-ed numpy array.
@@ -256,7 +226,11 @@ class VisRaw(object):
         Number of time samples.
     num_freq : int
         Number of frequencies.
-    metadata : VisMetadata
+    num_beams : int
+        Number of beams.
+    num_subfreq : int
+        Number of sub-frequencies.
+    metadata : HFBMetadata
         Metadata
     time : np.ndarray
         Is the array of times, in the usual correlator file format.
@@ -276,7 +250,7 @@ class VisRaw(object):
     ----------
     data : np.ndarray
         Contains the datasets. Accessed as a numpy record array.
-    metadata : VisMetadata
+    metadata : HFBMetadata
         Holds associated metadata, including the index_map.
     valid_frames : np.ndarray
         Indicates whether each frame is populated with valid (1) or not (0)
@@ -289,7 +263,8 @@ class VisRaw(object):
         self,
         num_time,
         num_freq,
-        num_prod,
+        num_beams,
+        num_subfreq,
         metadata,
         time,
         index_map,
@@ -300,7 +275,8 @@ class VisRaw(object):
     ):
         self.num_time = num_time
         self.num_freq = num_freq
-        self.num_prod = num_prod
+        self.num_beams = num_beams
+        self.num_subfreq = num_subfreq
         self.metadata = metadata
         self.time = time
         self.index_map = index_map
@@ -308,41 +284,8 @@ class VisRaw(object):
         self.valid_frames = valid_frames
         self.file_metadata = file_metadata
 
-        # set gain/flag update IDs
-        self.update_id = None
-        if comet_manager is not None:
-            update_id_types = ("gains", "flags")
-            self.update_id = {
-                name: np.ndarray((num_time, num_freq), dtype="<U32")
-                for name in update_id_types
-            }
-            ds = np.array(metadata["dataset_id"]).view("u8,u8").reshape(metadata.shape)
-            for t in range(num_time):
-                for f in range(num_freq):
-                    if valid_frames.astype(np.bool)[t, f]:
-                        ds_id = "{:016x}{:016x}".format(ds[t, f][1], ds[t, f][0])
-
-                        # gains
-                        state = comet_manager.get_state("gains", ds_id)
-                        if state is None:
-                            self.update_id["gains"][t, f] = None
-                        else:
-                            self.update_id["gains"][t, f] = state.data["data"][
-                                "update_id"
-                            ]
-
-                        # flags
-                        state = comet_manager.get_state("flags", ds_id)
-                        if state is None:
-                            self.update_id["flags"][t, f] = None
-                        else:
-                            self.update_id["flags"][t, f] = state.data["data"]
-                    else:
-                        self.update_id["flags"][t, f] = None
-                        self.update_id["gains"][t, f] = None
-
     @classmethod
-    def frame_struct(cls, size_frame, num_elements, num_stack, num_ev, align_valid):
+    def frame_struct(cls, size_frame, num_beams, num_subfreq, align_valid):
         """
         Construct frame struct.
 
@@ -350,12 +293,10 @@ class VisRaw(object):
         ----------
         size_frame : int
             Total size of a frame in bytes.
-        num_elements : int
-            Number of elements in a frame.
-        num_stack : int
-            Number of stacks / products in a frame.
-        num_ev : int
-            Number of eigenvalues in a frame.
+        num_beams : int
+            Number of beams in a frame.
+        num_subfreq : int
+            Number of sub-frequencies in a frame.
         align_valid : int
             If `True`, the valid field of the frame will be padded with 3 bytes to be aligned to 4
             bytes.
@@ -365,7 +306,7 @@ class VisRaw(object):
         numpy.dtype
             Frame structure.
         """
-        layout = VisBuffer.calculate_layout(num_elements, num_stack, num_ev)
+        layout = HFBBuffer.calculate_layout(num_beams, num_subfreq)
 
         # TODO: remove this when we have fixed the alignment issue in kotekan (see self.from_file)
         dtype_layout = {"names": [], "formats": [], "offsets": []}
@@ -388,8 +329,8 @@ class VisRaw(object):
         frame_struct = np.dtype(
             {
                 "names": ["valid", "metadata", "data"],
-                "formats": [np.uint8, VisMetadata, data_struct],
-                "offsets": [0, align_valid, align_valid + ctypes.sizeof(VisMetadata)],
+                "formats": [np.uint8, HFBMetadata, data_struct],
+                "offsets": [0, align_valid, align_valid + ctypes.sizeof(HFBMetadata)],
                 "itemsize": size_frame,
             }
         )
@@ -398,7 +339,7 @@ class VisRaw(object):
     @classmethod
     def from_buffer(cls, buffer, size_frame, num_time, num_freq, comet_manager=None):
         """
-        Create a VisRaw object from a buffer.
+        Create a HFBRaw object from a buffer.
 
         Parameters
         ----------
@@ -416,13 +357,13 @@ class VisRaw(object):
 
         Returns
         -------
-        VisRaw
-            VisRaw viewing the data in the buffer.
+        HFBRaw
+            HFBRaw viewing the data in the buffer.
 
         Raises
         ------
         ValueError
-            If there was a problem parsing the buffer into the VisRaw structure.
+            If there was a problem parsing the buffer into the HFBRaw structure.
         """
         # Create a simple struct to access the metadata (num_elements, num_prod, num_ev)
         align_valid = 4  # valid field is 4 byte aligned
@@ -431,44 +372,38 @@ class VisRaw(object):
                 "names": ["valid", "metadata", "data"],
                 "formats": [
                     np.uint8,
-                    VisMetadata,
-                    (np.void, size_frame - align_valid - ctypes.sizeof(VisMetadata)),
+                    HFBMetadata,
+                    (np.void, size_frame - align_valid - ctypes.sizeof(HFBMetadata)),
                 ],
-                "offsets": [0, align_valid, align_valid + ctypes.sizeof(VisMetadata)],
+                "offsets": [0, align_valid, align_valid + ctypes.sizeof(HFBMetadata)],
                 "itemsize": size_frame,
             }
         )
         raw = buffer.view(dtype=frame_struct_simple)
-        num_elements = np.unique(
-            raw["metadata"][raw["valid"].astype(np.bool)]["num_elements"]
+        num_beams = np.unique(
+            raw["metadata"][raw["valid"].astype(np.bool)]["num_beams"]
         )
-        if len(num_elements) > 1:
+        if len(num_beams) > 1:
             raise ValueError(
-                "Found more than 1 value for `num_elements` in numpy ndarray: {}.".format(
-                    num_elements
+                "Found more than 1 value for `num_beams` in numpy ndarray: {}.".format(
+                    num_beams
                 )
             )
-        num_elements = num_elements[0]
-        num_prod = np.unique(raw["metadata"][raw["valid"].astype(np.bool)]["num_prod"])
-        if len(num_prod) > 1:
+        num_beams = num_beams[0]
+        num_subfreq = np.unique(
+            raw["metadata"][raw["valid"].astype(np.bool)]["num_subfreq"]
+        )
+        if len(num_subfreq) > 1:
             raise ValueError(
-                "Found more than 1 value for `num_prod` in numpy ndarray: {}.".format(
-                    num_prod
+                "Found more than 1 value for `num_subfreq` in numpy ndarray: {}.".format(
+                    num_subfreq
                 )
             )
-        num_prod = num_prod[0]
-        num_ev = np.unique(raw["metadata"][raw["valid"].astype(np.bool)]["num_ev"])
-        if len(num_ev) > 1:
-            raise ValueError(
-                "Found more than 1 value for `num_ev` in numpy ndarray: {}.".format(
-                    num_ev
-                )
-            )
-        num_ev = num_ev[0]
+        num_subfreq = num_subfreq[0]
 
         # Now that we have some metadata, we can really parse the data...
         frame_struct = cls.frame_struct(
-            size_frame, num_elements, num_prod, num_ev, align_valid=True
+            size_frame, num_beams, num_subfreq, align_valid=True
         )
 
         raw = buffer.view(dtype=frame_struct)
@@ -479,7 +414,8 @@ class VisRaw(object):
         ctime = metadata["ctime"]
         fpga_seq = metadata["fpga_seq"]
 
-        num_prod = metadata["num_prod"]
+        num_beams = metadata["num_beams"]
+        num_subfreq = metadata["num_subfreq"]
 
         time = np.ndarray(
             shape=(num_time, num_freq),
@@ -514,13 +450,11 @@ class VisRaw(object):
         # generate index maps
         index_map = {"time": time}
         if comet_manager is not None:
-            # add input, prod, stack and freq
+            # add beam, subfreq and freq
             state_axis_map = [
-                ("products", "prod"),
-                ("inputs", "input"),
+                ("beams", "beam"),
+                ("sub-frequencies", "subfreq"),
                 ("frequencies", "freq"),
-                ("eigenvalues", "ev"),
-                ("stack", "stack"),
             ]
             ds = np.array(metadata["dataset_id"][valid_frames.astype(np.bool)]).view(
                 "u8,u8"
@@ -545,33 +479,21 @@ class VisRaw(object):
                     index_map[names[1]] = state[names[0]].data["data"]
 
             # Convert index_map into numpy arrays
-            if "prod" in index_map:
-                index_map["prod"] = np.array(
-                    [(pp[0], pp[1]) for pp in index_map["prod"]],
-                    dtype=[("input_a", "u2"), ("input_b", "u2")],
-                )
-            if "input" in index_map:
-                index_map["input"] = np.array(
-                    [(inp[0], inp[1]) for inp in index_map["input"]],
-                    dtype=[("chan_id", "u2"), ("correlator_input", "S32")],
-                )
+            if "beam" in index_map:
+                index_map["beam"] = np.array(index_map["beam"])
+            if "subfreq" in index_map:
+                index_map["subfreq"] = np.array(index_map["subfreq"])
             if "freq" in index_map:
                 index_map["freq"] = np.array(
                     [(ff[1]["centre"], ff[1]["width"]) for ff in index_map["freq"]],
                     dtype=[("centre", np.float32), ("width", np.float32)],
                 )
-            if "ev" in index_map:
-                index_map["ev"] = np.array(index_map["ev"])
-            if "stack" in index_map:
-                index_map["stack"] = np.array(
-                    [(ss[0]["stack"], ss[0]["conjugate"]) for ss in index_map["stack"]],
-                    dtype=[("stack", np.uint32), ("conjugate", np.bool)],
-                )
 
         return cls(
             num_time,
             num_freq,
-            num_prod,
+            num_beams,
+            num_subfreq,
             metadata,
             time,
             index_map=index_map,
@@ -582,7 +504,7 @@ class VisRaw(object):
 
     @classmethod
     def from_file(cls, filename, mode="r", mmap=False):
-        """Read correlator files in the raw format.
+        """Read absorber files in the raw format.
 
         Parses the structure of the binary files and loads them
         into an memmap-ed numpy array.
@@ -598,13 +520,13 @@ class VisRaw(object):
 
         Returns
         -------
-        VisRaw
-            A VisRaw object giving access to the given file.
+        HFBRaw
+            A HFBRaw object giving access to the given file.
         """
         import msgpack
 
         # Get filenames
-        filename = VisRaw._parse_filename(filename)
+        filename = HFBRaw._parse_filename(filename)
         meta_path = filename + ".meta"
         data_path = filename + ".data"
 
@@ -621,32 +543,13 @@ class VisRaw(object):
 
         num_freq = metadata["structure"]["nfreq"]
         num_time = metadata["structure"]["ntime"]
-        num_prod = len(index_map["prod"])
-        num_stack = len(index_map["stack"]) if "stack" in index_map else num_prod
-        num_elements = len(index_map["input"])
-        num_ev = len(index_map["ev"])
-
-        # TODO: this doesn't work at the moment because kotekan and numpy
-        # disagree on how the struct should be aligned. It turns out (as of
-        # v1.16) that numpy is correct, so we should switch back, but in the
-        # near term we need to force numpy to use the same alignment.
-
-        # data_struct = [
-        #     ("vis", np.complex64, self.num_stack),
-        #     ("weight", np.float32, self.num_stack),
-        #     ("flags", np.float32, self.num_elements),
-        #     ("eval", np.float32,  self.num_ev),
-        #     ("evec", np.complex64, self.num_ev * self.num_elements),
-        #     ("erms", np.float32,  1),
-        #     ("gain", np.complex64, self.num_elements),
-        # ]
-        # data_struct = np.dtype([(d[0],) + d[1:] for d in data_struct], align=True)
+        num_beams = len(index_map["beam"])
+        num_subfreqs = len(index_map["subfreq"])
 
         frame_struct = cls.frame_struct(
             metadata["structure"]["frame_size"],
-            num_elements,
-            num_stack,
-            num_ev,
+            num_beams,
+            num_subfreqs,
             align_valid=False,
         )
 
@@ -663,7 +566,8 @@ class VisRaw(object):
         return cls(
             num_time,
             num_freq,
-            num_prod,
+            num_beams,
+            num_subfreqs,
             metadata,
             time,
             index_map,
@@ -677,8 +581,8 @@ class VisRaw(object):
         return os.path.splitext(fname)[0]
 
     @classmethod
-    def create(cls, name, time, freq, input_, prod, nev, stack=None):
-        """Create a VisRaw file that can be written into.
+    def create(cls, name, time, freq, beam, subfreq, stack=None):
+        """Create a HFBRaw file that can be written into.
 
         Parameters
         ----------
@@ -686,12 +590,8 @@ class VisRaw(object):
             Base name of files to write.
         time : list
             Must be a list of dicts with `fpga_count` and `ctime` keys.
-        freq, input_, prod : list
+        freq, beam, subfreq : list
             Definitions of other axes. Must be lists, but exact subtypes are not checked.
-        nev : int
-            Number of eigenvalues/vectors saved.
-        stack : list, optional
-            Optional definition of a stack axis.
         """
         import msgpack
 
@@ -706,33 +606,22 @@ class VisRaw(object):
         if not isinstance(freq, list):
             raise ValueError("Incorrect format for freq axis")
 
-        if not isinstance(input_, list):
-            raise ValueError("Incorrect format for input axis")
+        if not isinstance(beam, list):
+            raise ValueError("Incorrect format for beam axis")
 
-        if not isinstance(prod, list):
-            raise ValueError("Incorrect format for prod axis")
+        if not isinstance(subfreq, list):
+            raise ValueError("Incorrect format for subfreq axis")
 
-        index_map = {
-            "time": time,
-            "freq": freq,
-            "input": input_,
-            "prod": prod,
-            "ev": list(range(nev)),
-        }
-
-        if stack is not None:
-            if not isinstance(stack, list):
-                raise ValueError("Incorrect format for stack axis")
-            index_map["stack"] = stack
+        index_map = {"time": time, "freq": freq, "beam": beam, "subfreq": subfreq}
 
         # Calculate the structural metadata
-        ninput = len(input_)
-        nstack = len(stack) if stack is not None else len(prod)
+        nbeam = len(beam)
+        nsubfreq = len(subfreq)
         nfreq = len(freq)
         ntime = len(time)
 
-        msize = ctypes.sizeof(VisMetadata)
-        dsize = VisBuffer.calculate_layout(ninput, nstack, nev)["size"]
+        msize = ctypes.sizeof(HFBMetadata)
+        dsize = HFBBuffer.calculate_layout(nbeam, nsubfreq)["size"]
 
         structure = {
             "nfreq": nfreq,
@@ -765,9 +654,8 @@ class VisRaw(object):
 
         # Set the metadata on the frames that we already have
         rawfile.valid_frames[:] = 1
-        rawfile.metadata["num_elements"][:] = ninput
-        rawfile.metadata["num_prod"][:] = nstack
-        rawfile.metadata["num_ev"][:] = nev
+        rawfile.metadata["num_beams"][:] = nbeam
+        rawfile.metadata["num_subfreqs"][:] = nsubfreq
         rawfile.metadata["freq_id"][:] = np.arange(nfreq)[np.newaxis, :]
 
         fpga = np.array([t["fpga_count"] for t in time])
@@ -785,50 +673,42 @@ class VisRaw(object):
         self.raw.flush()
 
 
-def simple_visraw_data(filename, ntime, nfreq, ninput):
-    """Create a simple VisRaw test file that kotekan can read.
+def simple_hfbraw_data(filename, ntime, nfreq, nbeam, nsubfreq):
+    """Create a simple HFBRaw test file that kotekan can read.
 
     Parameters
     ----------
     filename : str
         Base name of files that will be written.
-    ninput, nfreq, ntime : int
-        Number of inputs, frequencies and times to use. These axes are given
+    nbeam, nsubfreq, nfreq, ntime : int
+        Number of beams, frequencies and times to use. These axes are given
         dummy values.
 
     Returns
     -------
-    raw : VisRaw
-        A readonly view of the VisRaw file.
+    raw : HFBRaw
+        A readonly view of the HFBRaw file.
     """
-
-    nprod = ninput * (ninput + 1) // 2
-    nev = 4
 
     time = [{"ctime": (10.0 * i), "fpga_count": i} for i in range(ntime)]
 
     freq = [{"centre": (800 - i * 10.0), "width": 10.0} for i in range(nfreq)]
 
-    input_ = [(i, "test%04i" % i) for i in range(ninput)]
+    beam = [b for i in range(nbeam)]
 
-    prod = [(i, j) for i in range(ninput) for j in range(i, ninput)]
+    subfreq = [sf for i in range(nsubfreq)]
 
-    raw = VisRaw.create(filename, time, freq, input_, prod, nev)
+    raw = HFBRaw.create(filename, time, freq, beam, subfreq)
 
     # Set vis data
-    raw.data["vis"].real = np.arange(nprod)[np.newaxis, np.newaxis, :]
-    raw.data["vis"].imag = np.arange(ntime)[:, np.newaxis, np.newaxis]
+    raw.data["hfb"] = np.arange(nbeam * nsubfreq)[np.newaxis, np.newaxis, :]
 
     # Set weight data
-    raw.data["weight"] = np.arange(nfreq)[np.newaxis, :, np.newaxis]
-
-    # Set eigendata
-    raw.data["eval"] = np.arange(nev)[np.newaxis, np.newaxis, :]
-    raw.data["evec"] = np.arange(ninput * nev)[np.newaxis, np.newaxis, :]
+    raw.data["weight"] = np.arange(nbeam * nsubfreq)[np.newaxis, :, np.newaxis]
 
     # Return read only view
     del raw
-    return VisRaw.from_file(filename, mode="r")
+    return HFBRaw(filename, mode="r")
 
 
 def freq_id_to_stream_id(f_id):
@@ -841,76 +721,3 @@ def freq_id_to_stream_id(f_id):
         + ((pre_encode[3] & 0xF) << 12)
     )
     return stream_id
-
-
-class GpuBuffer(object):
-    """Python representation of a GPU buffer dump.
-
-    Parameters
-    ----------
-    buffer : np.ndarray(dtype=np.uint32)
-        Visibility buffer as integers in blocked format.
-    metadata: ChimeMetadata
-        Associated metadata.
-    """
-
-    def __init__(self, buffer, metadata):
-
-        self.data = buffer
-        self.metadata = metadata
-
-    @classmethod
-    def from_file(cls, filename):
-        """Load a GpuBuffer from a kotekan dump file.
-        """
-
-        with io.FileIO(filename, "rb") as fh:
-            # first 4 bytes are metadata size
-            fh.seek(4)
-            cm = ChimeMetadata()
-            fh.readinto(cm)
-            buf = np.frombuffer(fh.read(), dtype=np.uint32)
-
-        return cls(buf, cm)
-
-    @classmethod
-    def load_files(cls, pattern):
-        """Read a set of dump files as GpuBuffers.
-
-        Parameters
-        ----------
-        pattern : str
-            A globable pattern to read.
-
-        Returns
-        -------
-        buffers : list of GpuBuffers
-        """
-        import glob
-
-        return [cls.from_file(fname) for fname in sorted(glob.glob(pattern))]
-
-    @classmethod
-    def to_files(cls, buffers, basename):
-        """Write a list of buffers to disk.
-
-        Parameters
-        ----------
-        buffers : list of GpuBuffers
-            Buffers to write.
-        basename : str
-            Basename for filenames.
-        """
-        pat = basename + "_%07d.dump"
-
-        msize_c = np.uint32(ctypes.sizeof(ChimeMetadata))
-
-        for ii, buf in enumerate(buffers):
-
-            with open(pat % ii, "wb+") as fh:
-                # first write metadata size
-                fh.write(msize_c)
-                # then metadata itself
-                fh.write(buf.metadata)
-                # finally visibility data
-                fh.write(buf.data.astype(dtype=np.uint32).tobytes())

@@ -11,6 +11,7 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 import itertools
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import time
@@ -138,7 +139,6 @@ class KotekanRunner(object):
             # Run any requested REST commands
             if self._rest_commands and not self._gdb:
                 import requests
-                import json
 
                 attempt = 0
                 wait = 0.2
@@ -200,7 +200,7 @@ class KotekanRunner(object):
                             headers=rest_header,
                             data=json.dumps(data),
                         )
-                    except:
+                    except requests.RequestException:
                         # print kotekan output if sending REST command fails
                         # (kotekan might have crashed and we want to know)
                         p.wait()
@@ -410,7 +410,7 @@ class VisWriterBuffer(OutputBuffer):
     output_dir : string
         Temporary directory to output to. The dumped files are not removed.
     file_type : string
-        File type to write into (see visWriter documentation)
+        File type to write into (see VisWriter documentation)
     in_buf : string
         Optionally specify the name of an input buffer instead of creating one.
     """
@@ -441,7 +441,7 @@ class VisWriterBuffer(OutputBuffer):
             self.buffer_block = {}
 
         stage_config = {
-            "kotekan_stage": "visWriter",
+            "kotekan_stage": "VisWriter",
             "in_buf": buf_name,
             "file_name": self.name,
             "file_type": file_type,
@@ -465,7 +465,7 @@ class VisWriterBuffer(OutputBuffer):
 
         # For now assume only one file is found
         # TODO: Might be nice to be able to check the file is the right one.
-        # But visWriter creates the acquisition and file names on the flight
+        # But VisWriter creates the acquisition and file names on the flight
         flnm = glob.glob(self.output_dir + "/*/*.data")[0]
         return visbuffer.VisRaw.from_file(os.path.splitext(flnm)[0])
 
@@ -1016,7 +1016,7 @@ class KotekanStageTester(KotekanRunner):
         stage_config,
         buffers_in,
         buffers_out,
-        global_config={},
+        global_config=None,
         parallel_stage_type=None,
         parallel_stage_config={},
         rest_commands=None,
@@ -1028,6 +1028,8 @@ class KotekanStageTester(KotekanRunner):
         config = stage_config.copy()
         parallel_config = parallel_stage_config.copy()
         noise_config = {}
+        if global_config is None:
+            global_config = {}
 
         if noise:
             if buffers_in is None:
