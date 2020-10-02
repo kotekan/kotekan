@@ -64,6 +64,7 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       bufferBadInputs.cpp
       RfiFrameDrop.cpp
       VisSharedMemWriter.cpp
+      DataQuality.cpp
     )
 
 
