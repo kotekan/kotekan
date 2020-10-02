@@ -197,6 +197,9 @@ struct Buffer {
 
     /// The name of the buffer for use in debug messages.
     char* buffer_name;
+
+    /// The type of the buffer for use in writing data.
+    char* buffer_type;
 };
 
 /**
@@ -210,11 +213,12 @@ struct Buffer {
  * @param[in] frame_size The length of each frame in bytes.
  * @param[in] pool The metadataPool, which may be shared between more than one buffer.
  * @param[in] buffer_name The unique name of this buffer.
+ * @param[in] buffer_type The type of data this buffer contains.
  * @param[in] numa_node The CPU NUMA memory region to allocate memory in.
  * @returns A buffer object.
  */
 struct Buffer* create_buffer(int num_frames, int frame_size, struct metadataPool* pool,
-                             const char* buffer_name, int numa_node);
+                             const char* buffer_name, const char* buffer_type, int numa_node);
 
 /**
  * @brief Deletes a buffer object and frees all frame memory

@@ -34,7 +34,9 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       visCompression.cpp
       timeDownsample.cpp
       frbPostProcess.cpp
-      visWriter.cpp
+      BaseWriter.cpp
+      VisWriter.cpp
+      HFBWriter.cpp
       visRawReader.cpp
       restInspectFrame.cpp
       frbNetworkProcess.cpp
@@ -57,9 +59,8 @@ set ( KOTEKAN_PROCESS_LIB_SOURCES
       visTestPattern.cpp
       visDebug.cpp
       removeEv.cpp
-      integrateHFBData.cpp
+      HFBAccumulate.cpp
       compressLostSamples.cpp
-      compressData.cpp
       bufferBadInputs.cpp
       RfiFrameDrop.cpp
       VisSharedMemWriter.cpp

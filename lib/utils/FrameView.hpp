@@ -82,7 +82,7 @@ public:
      **/
     static void copy_frame(Buffer* buf_src, int frame_id_src, Buffer* buf_dest, int frame_id_dest);
 
-    virtual size_t data_size() = 0;
+    virtual size_t data_size() const = 0;
 
 protected:
     // References to the buffer and metadata we are viewing

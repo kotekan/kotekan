@@ -307,7 +307,7 @@ bool datasetManager::send_state_parser(std::string& reply) {
     }
 }
 
-void datasetManager::register_dataset(dset_id_t hash, dataset dset) {
+void datasetManager::register_dataset(dset_id_t hash, const dataset& dset) {
     json js_post;
     js_post["ds"] = dset.to_json();
     js_post["hash"] = hash;

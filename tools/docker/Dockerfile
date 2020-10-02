@@ -1,6 +1,6 @@
-FROM rocm/dev-ubuntu-18.04
+FROM rocm/dev-ubuntu-18.04:3.7
 
-## The maintainer name and email
+## The maintainer name and email 
 MAINTAINER Rick Nitsche <rick@phas.ubc.ca>
 
 # Install any needed packages to run cmake with full CHIME build options

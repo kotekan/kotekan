@@ -117,12 +117,12 @@ def transpose(tmpdir_factory):
     params["root_path"] = tmpdir
 
     writer = runner.KotekanStageTester(
-        "visWriter",
+        "VisWriter",
         {"node_mode": False, "write_ev": True, "file_type": "raw"},
         fakevis_buffer,
         None,
         params,
-        parallel_stage_type="visWriter",
+        parallel_stage_type="VisWriter",
         parallel_stage_config=dumph5_conf,
         noise="random",
     )
@@ -251,7 +251,7 @@ def transpose_stack(tmpdir_factory):
     params["root_path"] = tmpdir
 
     writer = runner.KotekanStageTester(
-        "visWriter",
+        "VisWriter",
         {"node_mode": False, "write_ev": True, "file_type": "raw"},
         fakevis_buffer,
         None,
