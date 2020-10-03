@@ -42,7 +42,11 @@ RUN python3.7 -m pip install --upgrade pip==20.2.2 && \
     python3.7 -m pip install --no-cache-dir numpy==1.19.1 && \
     python3.7 -m pip install --no-cache-dir pkgconfig==1.5.1 && \
     python3.7 -m pip install --no-cache-dir --upgrade cython==0.29.21 && \
-    python3.7 -m pip install --no-cache-dir black==19.10b0
+    python3.7 -m pip install --no-cache-dir black==19.10b0 &&\
+    python3.7 -m pip install --no-cache-dir cmake_format==0.6.13
+
+# Use this to check what version got installed
+# RUN python3.7 -m pip show <package>
 
 RUN mkdir -p /code/build
 WORKDIR /code/build
