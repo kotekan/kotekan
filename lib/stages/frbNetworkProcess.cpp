@@ -71,7 +71,7 @@ frbNetworkProcess::frbNetworkProcess(Config& config_, const std::string& unique_
     register_consumer(in_buf, unique_name.c_str());
 
     // Apply config.
-    udp_frb_packet_size = config.get_default<int>(unique_name, "udp_frb_packet_size", 4264);
+    udp_frb_packet_size = config.get_default<int>(unique_name, "udp_frb_packet_size", 4272);
     udp_frb_port_number = config.get_default<int>(unique_name, "udp_frb_port_number", 1313);
     number_of_nodes = config.get_default<int>(unique_name, "number_of_nodes", 256);
     number_of_subnets = config.get_default<int>(unique_name, "number_of_subnets", 4);
