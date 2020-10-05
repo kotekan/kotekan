@@ -1005,11 +1005,12 @@ frb:
   num_beams_per_frb_packet: 4
   timesamples_per_frb_packet: 16
   cpu_affinity: [5,11]
+  frb_packet_header_size: 32
   frb_output_buffer:
     num_frames: buffer_depth + 4
     frame_size: 8 * 256 * (num_beams_per_frb_packet * num_gpus
       * factor_upchan_out * timesamples_per_frb_packet
-      + 24 + sizeof_short * num_beams_per_frb_packet + sizeof_short * num_gpus
+      + frb_packet_header_size + sizeof_short * num_beams_per_frb_packet + sizeof_short * num_gpus
       + sizeof_float * num_beams_per_frb_packet * num_gpus
       + sizeof_float * num_beams_per_frb_packet * num_gpus)
     metadata_pool: main_pool
@@ -1029,6 +1030,13 @@ frb:
   network_send:
     #kotekan_stage: frbNetworkProcess
     in_buf: frb_output_buffer
+    udp_frb_packet_size: (frb_packet_header_size
+      + sizeof_short * num_beams_per_frb_packet
+      + sizeof_short * num_gpus
+      + sizeof_float * num_beams_per_frb_packet * num_gpus
+      + sizeof_float * num_beams_per_frb_packet * num_gpus)
+      + (num_beams_per_frb_packet * num_gpus
+         * factor_upchan_out * timesamples_per_frb_packet)
     udp_frb_port_number: 1313
     number_of_nodes: 256
     packets_per_stream: 8

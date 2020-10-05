@@ -12,6 +12,7 @@ struct FRBHeader {
     uint32_t protocol_version;
     int16_t data_nbytes;
     uint16_t fpga_counts_per_sample;
+    uint64_t fpga0_ns;
     uint64_t fpga_count;
     uint16_t nbeams;
     uint16_t nfreq_coarse;
