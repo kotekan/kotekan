@@ -33,7 +33,7 @@ num_elements: 2048
 num_local_freq: 1
 num_data_sets: 1
 samples_per_data_set: 49152
-buffer_depth: 10
+buffer_depth: 12
 baseband_buffer_depth: 282 # 282 = ~34 seconds after accounting for active frames
 vbuffer_depth: 32
 num_links: 4
@@ -349,7 +349,7 @@ gpu_beamform_hfb_output_buffers:
     kotekan_buffer: standard
 
 cpu_hfb_output_buffers:
-  num_frames: buffer_depth
+  num_frames: 8
   metadata_pool: hfb_pool
   beamform_hfb_output_buffer_0:
     kotekan_buffer: hfb
@@ -413,9 +413,9 @@ vis_pool:
   num_metadata_objects: 200 * buffer_depth
 
 # Buffers
-vis_buffers:
+vis_int_buffers:
   metadata_pool: vis_pool
-  num_frames: buffer_depth
+  num_frames: 11
   visbuf_5s_0:
     kotekan_buffer: vis
   visbuf_5s_1:
@@ -434,6 +434,10 @@ vis_buffers:
     kotekan_buffer: vis
   visbuf_10s_3:
     kotekan_buffer: vis
+
+vis_buffers:
+  metadata_pool: vis_pool
+  num_frames: buffer_depth
   visbuf_10s_merge:
     kotekan_buffer: vis
   visbuf_eig_10s_merge:
