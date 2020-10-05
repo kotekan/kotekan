@@ -297,8 +297,8 @@ __kernel void upchannelize(__global float2 *data, __global float *results_array,
   
   // Write data to global
   // JSW TODO: Bandpass filter to be applied in the post-processing stage
-  hfb_output_array[(get_group_id(0) * 1024 * 128) + get_group_id(1) * 128 + work_offset] = time_sum_1 / 6.f / HFB_BP[((get_local_id(0)+8)%16)];
-  hfb_output_array[(get_group_id(0) * 1024 * 128) + get_group_id(1) * 128 + work_offset + 1] = time_sum_2 / 6.f / HFB_BP[((get_local_id(0)+8)%16)];
+  hfb_output_array[(get_group_id(0) * 1024 * 128) + get_group_id(1) * 128 + ((work_offset + 64) % 128)] = time_sum_1 / 6.f / HFB_BP[((get_local_id(0)+8)%16)];
+  hfb_output_array[(get_group_id(0) * 1024 * 128) + get_group_id(1) * 128 + ((work_offset + 64) % 128) + 1] = time_sum_2 / 6.f / HFB_BP[((get_local_id(0)+8)%16)];
   
   if (get_local_id(0) < 16){ //currently only 16 out of 64 has work to do. not ideal
       outtmp = outtmp/48.; // Divide by 48 as we want the average of 48 summed elements

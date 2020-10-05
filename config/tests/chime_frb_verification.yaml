@@ -32,6 +32,11 @@ sizeof_float: 4
 sizeof_int: 4
 sizeof_short: 2
 
+dataset_manager:
+  use_dataset_broker: False
+  ds_broker_host: "127.0.0.1"
+  ds_broker_port: 12050
+
 #FRB global options
 downsample_time: 3
 downsample_freq: 8
@@ -245,7 +250,7 @@ hyper_fine_beam:
   num_frames_to_integrate: 5
   good_samples_threshold: 0.95
   integrate_hfb_data:
-    kotekan_stage: integrateHFBData
+    kotekan_stage: HFBAccumulate
     log_level: debug
     hfb_input_buf: gpu_beamform_hfb_output_buffer_0
     compressed_lost_samples_buf: compressed_lost_samples_buffer

@@ -3,8 +3,8 @@
 @brief Drops GPU frames when they are contaminated with RFI
 - RfiFrameDrop : public kotekan::Stage
 *****************************************/
-#ifndef VALVE_HPP
-#define VALVE_HPP
+#ifndef RFI_FRAME_DROP_HPP
+#define RFI_FRAME_DROP_HPP
 
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
@@ -113,4 +113,4 @@ private:
 };
 
 
-#endif // VALVE_HPP
+#endif // RFI_FRAME_DROP_HPP

@@ -43,10 +43,10 @@ public:
                    kotekan::bufferContainer& buffer_container, int port);
 
     /// Processes the incoming packets
-    int handle_packet(struct rte_mbuf* mbuf);
+    int handle_packet(struct rte_mbuf* mbuf) override;
 
     /// Update stats, not used by this handler yet.
-    virtual void update_stats(){};
+    virtual void update_stats() override{};
 
 protected:
     /// The output buffer
