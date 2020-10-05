@@ -50,7 +50,7 @@ public:
     iceBoardStandard(kotekan::Config& config, const std::string& unique_name,
                      kotekan::bufferContainer& buffer_container, int port);
 
-    virtual int handle_packet(rte_mbuf* mbuf);
+    virtual int handle_packet(rte_mbuf* mbuf) override;
 
 protected:
     bool advance_frame(uint64_t new_seq, bool first_time = false);

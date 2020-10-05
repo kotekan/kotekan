@@ -56,7 +56,7 @@ public:
     // Should clean any signals used by the command.
     // Note that as a byproduct of this, one shouldn't use the signal after this
     // function has been cased.
-    virtual void finalize_frame(int frame_id);
+    virtual void finalize_frame(int frame_id) override;
 
     gpuCommandType get_command_type();
 

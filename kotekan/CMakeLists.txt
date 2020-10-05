@@ -1,24 +1,21 @@
-PROJECT (kotekan)
+project(kotekan)
 
-SET(SOURCE_EXE kotekan.cpp)
+add_executable(kotekan kotekan.cpp)
 
-include_directories (${KOTEKAN_SOURCE_DIR}/lib)
-include_directories (${KOTEKAN_SOURCE_DIR}/lib/core)
-include_directories (${KOTEKAN_SOURCE_DIR}/lib/version)
-include_directories (${KOTEKAN_SOURCE_DIR}/lib/utils)
+target_compile_definitions(kotekan PRIVATE mssse3 __STDC_LIMIT_MACROS)
 
-link_directories (${KOTEKAN_BINARY_DIR}/lib)
-
-ADD_DEFINITIONS(-mssse3 -D__STDC_LIMIT_MACROS)
-
-add_executable(kotekan ${SOURCE_EXE})
-
-if (${NUMA_FOUND})
-    target_link_libraries( kotekan numa )
+if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+    target_link_libraries(
+        kotekan
+        PRIVATE -Wl,--whole-archive $<TARGET_PROPERTY:kotekan_libs,INTERFACE_LINK_LIBRARIES>
+                -Wl,--no-whole-archive)
+elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(kotekan PRIVATE -Wl,-all_load kotekan_libs)
+else()
+    message(FATAL_ERROR "System type ${CMAKE_SYSTEM_NAME} not supported")
 endif()
 
-target_link_libraries( kotekan libexternal )
-target_link_libraries( kotekan m dl pthread )
-target_link_libraries( kotekan kotekan_libs )
-
-install(TARGETS kotekan DESTINATION /usr/local/bin COMPONENT binaries)
+install(
+    TARGETS kotekan
+    DESTINATION /usr/local/bin
+    COMPONENT binaries)
