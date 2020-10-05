@@ -34,7 +34,6 @@ hfb_pool:
 hfbbuf_10s:
   kotekan_buffer: hfb
   num_frames: buffer_depth * 6
-  frame_size: factor_upchan * num_frb_total_beams * sizeof_float
   metadata_pool: hfb_pool
 
 # Kotekan stages

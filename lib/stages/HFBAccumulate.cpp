@@ -253,7 +253,7 @@ void HFBAccumulate::main_thread() {
                                    total_timesamples - total_lost_timesamples);
                 set_fpga_seq_length(out_buf, out_buffer_ID, total_timesamples);
 
-                uint32_t freq_id = tel.to_freq_id(in_buf, in_buffer_ID);
+                freq_id_t freq_id = tel.to_freq_id(in_buf, in_buffer_ID);
                 set_freq_id(out_buf, out_buffer_ID, freq_id);
 
                 set_dataset_id(out_buf, out_buffer_ID, ds_id);

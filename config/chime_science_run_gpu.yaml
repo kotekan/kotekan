@@ -365,19 +365,16 @@ gpu_beamform_hfb_output_buffers:
     kotekan_buffer: standard
 
 cpu_hfb_output_buffers:
-  num_frames: buffer_depth
-  frame_size: num_data_sets * factor_upchan * num_frb_total_beams * sizeof_float
+  num_frames: 8
   metadata_pool: hfb_pool
   beamform_hfb_output_buffer_0:
-    kotekan_buffer: standard
+    kotekan_buffer: hfb
   beamform_hfb_output_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: hfb
   beamform_hfb_output_buffer_2:
-    kotekan_buffer: standard
+    kotekan_buffer: hfb
   beamform_hfb_output_buffer_3:
-    kotekan_buffer: standard
-  beamform_hfb_output_buffer_merge:
-    kotekan_buffer: standard
+    kotekan_buffer: hfb
 
 gain_frb_buffers:
   num_frames: 5
@@ -432,9 +429,9 @@ vis_pool:
   num_metadata_objects: 200 * buffer_depth
 
 # Buffers
-vis_buffers:
+vis_int_buffers:
   metadata_pool: vis_pool
-  num_frames: buffer_depth
+  num_frames: 11
   visbuf_5s_0:
     kotekan_buffer: vis
   visbuf_5s_1:
@@ -453,6 +450,10 @@ vis_buffers:
     kotekan_buffer: vis
   visbuf_10s_3:
     kotekan_buffer: vis
+
+vis_buffers:
+  metadata_pool: vis_pool
+  num_frames: buffer_depth
   visbuf_10s_merge:
     kotekan_buffer: vis
   visbuf_eig_10s_merge:
