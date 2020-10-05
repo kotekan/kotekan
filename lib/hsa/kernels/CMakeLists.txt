@@ -77,7 +77,7 @@ file(
     GLOB inCL_FILEs
     RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cl")
-foreach(clfile ${inCLFiles})
+foreach(clfile ${inCL_FILEs})
     if(${USE_CLOC})
         string(REGEX REPLACE ".cl\$" ".hsaco" HSACO_FILE "${clfile}")
         set(CL_FILE "${CMAKE_CURRENT_SOURCE_DIR}/${clfile}")
