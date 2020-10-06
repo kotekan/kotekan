@@ -282,6 +282,7 @@ jobs:
         cd build
         # the MacOS linker doesn't support --no-as-needed for -DCMAKE_LINK_WHAT_YOU_USE=ON
         cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+        -DCMAKE_BUILD_TYPE=Test \
         -DWERROR=ON \
         -DUSE_HDF5=ON \
         -DUSE_OPENCL=ON \
