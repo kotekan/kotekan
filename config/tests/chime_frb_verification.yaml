@@ -301,15 +301,33 @@ updatable_config:
     kotekan_update_endpoint: json
     frb_gain_dir: /mnt/frb-archiver/GainFiles/Latest_FRB
   tracking_gain:
-    kotekan_update_endpoint: json
-    tracking_gain_dir:
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
+    0:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    1:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    2:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    3:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    4:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    5:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    6:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    7:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    8:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    9:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
