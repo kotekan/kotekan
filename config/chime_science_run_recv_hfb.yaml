@@ -26,6 +26,10 @@ dataset_manager:
   ds_broker_host: "10.1.50.11" # recv1
   ds_broker_port: 12050
 
+telescope:
+  name: CHIMETelescope
+  require_gps: false
+
 # 21cm Absorber Metadata Pool
 hfb_pool:
   kotekan_metadata_pool: HFBMetadata
