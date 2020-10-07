@@ -90,13 +90,11 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, PSRHeader* psr_head
             (time_now->tv_nsec / 1.e9) / (_timesamples_per_pulsar_packet * fpga_s);
 
         for (uint f = 0; f < freqloop; ++f) {
-            // load frequency indices into thread_id and EUD3.
-            if (f == 0) {
-                psr_header->thread_id = thread_ids[f];
-                psr_header->eud3 = 0;
-
-            } else {
-                psr_header->eud3 += (thread_ids[f] << (f - 1) * 10);
+            // Load frequency indices into thread_id and EUD3 if frequency packing.
+            psr_header->thread_id = thread_ids[f];
+            if (_timesamples_per_pulsar_packet == 625) {
+                psr_header->eud3 = (uint32_t)thread_ids[1] + ((uint32_t)thread_ids[2] << 10)
+                                   + ((uint32_t)thread_ids[3] << 20);
             }
 
             for (uint32_t beam_id = 0; beam_id < _num_pulsar; ++beam_id) {
