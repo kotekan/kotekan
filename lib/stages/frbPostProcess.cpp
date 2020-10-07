@@ -131,7 +131,7 @@ void frbPostProcess::main_thread() {
     frb_header.data_nbytes = udp_packet_size - udp_header_size;
     frb_header.fpga_counts_per_sample = fpga_counts_per_sample;
     const auto fpga0_ns = tel.to_time(0);
-    frb_header.fpga0_ns = fpga0_ns.tv_sec * 1e9 + fpga0_ns.tv_nsec;
+    frb_header.fpga0_ns = fpga0_ns.tv_sec * 1'000'000'000 + fpga0_ns.tv_nsec;
     frb_header.fpga_count = 0;           // to be updated in fill_header
     frb_header.nbeams = _nbeams;         // 4
     frb_header.nfreq_coarse = _num_gpus; // 4
