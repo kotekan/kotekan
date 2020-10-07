@@ -643,7 +643,7 @@ zero_samples:
 
 # Baseband capture and dump system
 baseband:
-  max_dump_samples: 200000
+  max_dump_samples: 400000
   num_frames_buffer: baseband_buffer_depth - 10
   base_dir: /mnt/frb-baseband/
   write_throttle: 0
