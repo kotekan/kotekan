@@ -12,7 +12,8 @@
  * of frequency channels, each 10-b numbers, are encoded in two places:
  * PSRHeader.thread_id and PSRHeader.eud3, with the latter defined as
  * PSRHeader.eud3 = freq_index[3]<<20 + freq_index[2]<<10 + freq_index[1]
- * Also, position info is encoded into PSRHeader.eud4 as:
+ * Also: a unique node-ID number is stored in PSRHeader.station_id, and
+ * position info is encoded into PSRHeader.eud4 as:
  * PSRHeader.eud4 = (RA << 16) + (DEC)
  *
  * @author Cherry Ng
