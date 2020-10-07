@@ -80,6 +80,10 @@ check_cxx_compiler_flag(-Wsuggest-override HAVE_SUGGEST_OVERRIDE)
 if(HAVE_SUGGEST_OVERRIDE AND NOT ${IWYU})
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wsuggest-override>)
 endif()
+check_cxx_compiler_flag(-Wfloat-conversion HAVE_FLOAT_CONVERSION)
+if(HAVE_FLOAT_CONVERSION AND NOT ${IWYU})
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wfloat-conversion>)
+endif()
 
 # optimization
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS} -ggdb -O2")
