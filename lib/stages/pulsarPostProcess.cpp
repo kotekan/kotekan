@@ -93,8 +93,7 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, PSRHeader* psr_head
             // Load frequency indices into thread_id and EUD3 if frequency packing.
             psr_header->thread_id = thread_ids[f];
             if (_timesamples_per_pulsar_packet == 625) {
-                psr_header->eud3 = (uint32_t)thread_ids[1]
-                                   + ((uint32_t)thread_ids[2] << 10)
+                psr_header->eud3 = (uint32_t)thread_ids[1] + ((uint32_t)thread_ids[2] << 10)
                                    + ((uint32_t)thread_ids[3] << 20);
             }
 
