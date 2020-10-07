@@ -193,9 +193,6 @@ private:
     /// Reference frequency in the L1 subsystem. (TODO verify. May be off by 1 bin.)
     static constexpr double L1_REFERERENCE_FREQ = 400e6;
 
-    /// TODO verify. I'm assuming dm_error is 1-sigma.
-    static constexpr double N_DM_ERROR_TOL = 3;
-
     /// convenience wrapper for a pair of starting FPGA frame and length of the dump in FPGA frames
     struct basebandSlice {
         int64_t start_fpga;
