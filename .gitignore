@@ -11,3 +11,10 @@
 /.vscode/
 /nbproject/
 /cmake-build*/
+kotekan.cflags
+kotekan.config
+kotekan.creator
+kotekan.creator.user
+kotekan.cxxflags
+kotekan.files
+kotekan.includes
