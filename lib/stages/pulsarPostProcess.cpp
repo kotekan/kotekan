@@ -167,11 +167,12 @@ void pulsarPostProcess::main_thread() {
         psr_header.log_num_chan = 3; // ln8
     }
     psr_header.vdif_version = 1;
-    psr_header.station_id = (uint16_t)(stream_id.crate_id * 16
-        + stream_id.slot_id + stream_id.link_id * 32); // effectively a GPU-node identifier.
-    psr_header.thread_id = 0;  // index of first packed frequency.
-    psr_header.bits_depth = 3; // 4+4 bit so 4-1=3
-    psr_header.data_type = 1;  // Complex
+    psr_header.station_id =
+        (uint16_t)(stream_id.crate_id * 16 + stream_id.slot_id
+                   + stream_id.link_id * 32); // effectively a GPU-node identifier.
+    psr_header.thread_id = 0;                 // index of first packed frequency.
+    psr_header.bits_depth = 3;                // 4+4 bit so 4-1=3
+    psr_header.data_type = 1;                 // Complex
     psr_header.edv = 0;
     psr_header.eud1 = 0; // UD: beam number [0 to 9]
     psr_header.eud2 = 0; //_psr_scaling from metadata
