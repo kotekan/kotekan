@@ -91,12 +91,12 @@
  *                          data stream then a new acquisition will be started.
  *
  * @par Metrics
- * @metric kotekan_viswriter_write_time_seconds
- *         The write time of the HDF5 writer. An exponential moving average over ~10
+ * @metric kotekan_writer_write_time_seconds
+ *         The write time of the raw writer. An exponential moving average over ~10
  *         samples.
- * @metric kotekan_viswriter_late_frame_total
+ * @metric kotekan_writer_late_frame_total
  *         The number of frames dropped while attempting to write as they are too late.
- * @metric kotekan_viswriter_bad_dataset_frame_total
+ * @metric kotekan_writer_bad_dataset_frame_total
  *         The number of frames dropped as they belong to a bad dataset.
  *
  * @author Richard Shaw and James Willis
