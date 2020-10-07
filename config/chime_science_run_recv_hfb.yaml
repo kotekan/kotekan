@@ -33,7 +33,7 @@ telescope:
 # 21cm Absorber Metadata Pool
 hfb_pool:
   kotekan_metadata_pool: HFBMetadata
-  num_metadata_objects: 30 * buffer_depth
+  num_metadata_objects: 4096
 
 hfbbuf_10s:
   kotekan_buffer: hfb
