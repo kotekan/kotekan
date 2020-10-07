@@ -31,6 +31,7 @@ cpu_affinity: [7, 11, 14, 15]
 telescope:
   name: CHIMETelescope
   allow_default_frequency_map: false
+  require_gps: false
 
 dataset_manager:
   use_dataset_broker: True
@@ -239,6 +240,11 @@ stacking:
     1792, 1793, 1794, 1795, 1796, 1797, 1798, 1799, 2040, 2041, 2042, 2043, 2044, 2045, 2046, 2047
   ]
 
+# Export a data quality metric to prometheus
+export_data_quality:
+  kotekan_stage: DataQuality
+  in_buf: visbuf_10s_stack
+
 buffer_status:
   kotekan_stage: bufferStatus
   print_status: false
@@ -310,33 +316,33 @@ archive_writers:
   root_path: /data/untransposed/
 
   n2_mf:
-    kotekan_stage: visWriter
+    kotekan_stage: VisWriter
     in_buf: visbuf_10s_mfreq
     instrument_name: chimeN2
 
   chimestack:
-    kotekan_stage: visWriter
+    kotekan_stage: VisWriter
     in_buf: visbuf_10s_stack_ne
     instrument_name: chimestack
 
   26m:
-    kotekan_stage: visWriter
+    kotekan_stage: VisWriter
     in_buf: visbuf_5s_26m_ungated_post
     instrument_name: chime26m
 
   26mgated:
-    kotekan_stage: visWriter
+    kotekan_stage: VisWriter
     in_buf: visbuf_5s_26m_gated_post
     instrument_name: chime26mgated
 
   cal:
-    kotekan_stage: visWriter
+    kotekan_stage: VisWriter
     in_buf: visbuf_10s_cal
     instrument_name: chimecal
     file_length: 256
 
   timing:
-    kotekan_stage: visWriter
+    kotekan_stage: VisWriter
     in_buf: visbuf_10s_timing_ne
     instrument_name: chimetiming
 

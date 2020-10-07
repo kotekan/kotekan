@@ -77,7 +77,9 @@ BOOST_AUTO_TEST_CASE(buffer_max_write_read_independent_threads) {
     BipBuffer buffer(100);
     constexpr int count = 300;
     std::thread t1([&buffer, count]() {
-        // std::cout << "writer\n";
+#ifndef DEBUGGING
+        (void)count;
+#endif
         std::random_device rd;
         std::mt19937 gen(rd());
         std::uniform_int_distribution<> dis(3, 40);

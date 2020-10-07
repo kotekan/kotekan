@@ -1,11 +1,5 @@
 #include "dpdkCore.hpp"
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for json, basic_json<>::object_t, basic_json, basic_json<...
-
-#ifdef WITH_NUMA
-#include <numa.h> // for numa_node_of_cpu, numa_num_configured_nodes
-#endif
 #include "Config.hpp" // for Config
 #include "ICETelescope.hpp"
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
@@ -14,9 +8,13 @@
 #include "iceBoardStandard.hpp" // for iceBoardStandard
 #include "iceBoardVDIF.hpp"     // for iceBoardVDIF
 
+#include "fmt.hpp"  // for format, fmt
+#include "json.hpp" // for json, basic_json<>::object_t, basic_json, basic_json<...
+
 #include <algorithm>               // for max
 #include <atomic>                  // for atomic_bool
 #include <functional>              // for _Bind_helper<>::type, bind, function
+#include <numa.h>                  // for numa_node_of_cpu, numa_num_configured_nodes
 #include <regex>                   // for match_results<>::_Base_type
 #include <rte_branch_prediction.h> // for unlikely
 #include <rte_config.h>            // for RTE_PKTMBUF_HEADROOM

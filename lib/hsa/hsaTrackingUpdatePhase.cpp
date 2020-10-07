@@ -302,19 +302,22 @@ bool hsaTrackingUpdatePhase::tracking_grab_callback(nlohmann::json& json, const 
         try {
             beam_coord_latest_update.ra[beam_id] = json.at("ra").get<float>();
         } catch (std::exception const& e) {
-            WARN("[TRACKING] Pointing update fail to read RA {:s}", e.what());
+            WARN("[TRACKING] Pointing update failed to read RA from beam: {:d}. {:s}", beam_id,
+                 e.what());
             return false;
         }
         try {
             beam_coord_latest_update.dec[beam_id] = json.at("dec").get<float>();
         } catch (std::exception const& e) {
-            WARN("[TRACKING] Pointing update fail to read DEC {:s}", e.what());
+            WARN("[TRACKING] Pointing update failed to read DEC from beam: {:d}. {:s}", beam_id,
+                 e.what());
             return false;
         }
         try {
             beam_coord_latest_update.scaling[beam_id] = json.at("scaling").get<int>();
         } catch (std::exception const& e) {
-            WARN("[TRACKING] Pointing update fail to read scaling factor {:s}", e.what());
+            WARN("[TRACKING] Pointing update failed to read scaling factor from beam: {:d}. {:s}",
+                 beam_id, e.what());
             return false;
         }
         INFO("[tracking] Updated Beam={:d} RA={:.2f} Dec={:.2f} Scl={:d}", beam_id,

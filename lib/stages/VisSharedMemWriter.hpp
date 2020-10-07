@@ -26,7 +26,7 @@
  * @class VisSharedMemWriter
  * @brief Export calibration data out to a shared memory region
  *
- * This stage is an improvement upon visCalWriter. It exports the
+ * This stage is an improvement upon VisCalWriter. It exports the
  * most recent samples of the calibration data stream to a
  * fixed-length ring-buffer-like shared memory region.
  *

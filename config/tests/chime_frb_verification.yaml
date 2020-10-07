@@ -32,6 +32,11 @@ sizeof_float: 4
 sizeof_int: 4
 sizeof_short: 2
 
+dataset_manager:
+  use_dataset_broker: False
+  ds_broker_host: "127.0.0.1"
+  ds_broker_port: 12050
+
 #FRB global options
 downsample_time: 3
 downsample_freq: 8
@@ -117,8 +122,6 @@ gpu_beamform_hfb_output_buffers:
   metadata_pool: main_pool
   gpu_beamform_hfb_output_buffer_0:
     kotekan_buffer: standard
-  beamform_hfb_integrate_buffer_0:
-    kotekan_buffer: standard
 
 cpu_output_buffers:
     num_frames: buffer_depth
@@ -133,12 +136,16 @@ cpu_hfb_output_buffers:
     metadata_pool: main_pool
     cpu_hfb_output_buffer_0:
         kotekan_buffer: standard
+
+beamform_hfb_output_buffers:
+    num_frames: buffer_depth
+    metadata_pool: main_pool
     beamform_hfb_output_buffer_0:
         metadata_pool: hfb_pool
-        kotekan_buffer: standard
+        kotekan_buffer: hfb 
     beamform_hfb_output_buffer_read:
         metadata_pool: hfb_pool
-        kotekan_buffer: standard
+        kotekan_buffer: hfb
 
 lost_samples_buffer:
     kotekan_buffer: standard
@@ -245,7 +252,7 @@ hyper_fine_beam:
   num_frames_to_integrate: 5
   good_samples_threshold: 0.95
   integrate_hfb_data:
-    kotekan_stage: integrateHFBData
+    kotekan_stage: HFBAccumulate
     log_level: debug
     hfb_input_buf: gpu_beamform_hfb_output_buffer_0
     compressed_lost_samples_buf: compressed_lost_samples_buffer
@@ -294,15 +301,33 @@ updatable_config:
     kotekan_update_endpoint: json
     frb_gain_dir: /mnt/frb-archiver/GainFiles/Latest_FRB
   tracking_gain:
-    kotekan_update_endpoint: json
-    tracking_gain_dir:
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
+    0:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    1:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    2:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    3:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    4:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    5:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    6:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    7:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    8:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    9:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR

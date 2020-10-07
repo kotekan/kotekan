@@ -31,12 +31,11 @@ HFBFrameView::HFBFrameView(Buffer* buf, int frame_id) :
     num_subfreq(_metadata->num_subfreq),
 
     // Set the refs to the general _metadata
-    time(_metadata->gps_time),
-    fpga_seq_num(_metadata->fpga_seq_num),
-    norm_frac(_metadata->norm_frac),
-    num_samples_integrated(_metadata->num_samples_integrated),
-    num_samples_expected(_metadata->num_samples_expected),
-    freq_id(_metadata->freq_bin_num),
+    time(_metadata->ctime),
+    fpga_seq_start(_metadata->fpga_seq_start),
+    fpga_seq_total(_metadata->fpga_seq_total),
+    fpga_seq_length(_metadata->fpga_seq_length),
+    freq_id(_metadata->freq_id),
     dataset_id(_metadata->dataset_id),
 
     // Bind the regions of the buffer to spans and references on the view
@@ -64,7 +63,7 @@ std::string HFBFrameView::summary() const {
     struct tm* tm = std::gmtime(&(time.tv_sec));
 
     std::string s = fmt::format("hfbBuffer[name={:s}]: freq={:d} fpga_start={:d} time={:%F %T}",
-                                buffer->buffer_name, freq_id, fpga_seq_num, *tm);
+                                buffer->buffer_name, freq_id, fpga_seq_start, *tm);
 
     return s;
 }
@@ -78,12 +77,11 @@ HFBFrameView HFBFrameView::copy_frame(Buffer* buf_src, int frame_id_src, Buffer*
 
 // Copy the non-const parts of the metadata
 void HFBFrameView::copy_metadata(HFBFrameView frame_to_copy) {
-    _metadata->gps_time = frame_to_copy.metadata()->gps_time;
-    _metadata->fpga_seq_num = frame_to_copy.metadata()->fpga_seq_num;
-    _metadata->norm_frac = frame_to_copy.metadata()->norm_frac;
-    _metadata->num_samples_integrated = frame_to_copy.metadata()->num_samples_integrated;
-    _metadata->num_samples_expected = frame_to_copy.metadata()->num_samples_expected;
-    _metadata->freq_bin_num = frame_to_copy.metadata()->freq_bin_num;
+    _metadata->ctime = frame_to_copy.metadata()->ctime;
+    _metadata->fpga_seq_start = frame_to_copy.metadata()->fpga_seq_start;
+    _metadata->fpga_seq_total = frame_to_copy.metadata()->fpga_seq_total;
+    _metadata->fpga_seq_length = frame_to_copy.metadata()->fpga_seq_length;
+    _metadata->freq_id = frame_to_copy.metadata()->freq_id;
 }
 
 // Copy the non-hfb parts of the buffer
@@ -128,7 +126,7 @@ struct_layout<HFBField> HFBFrameView::calculate_buffer_layout(uint32_t num_beams
     // definition
     std::vector<std::tuple<HFBField, size_t, size_t>> buffer_members = {
         std::make_tuple(HFBField::hfb, sizeof(float), num_beams * num_subfreq),
-        std::make_tuple(HFBField::weight, sizeof(float), 0 /*num_beams * num_subfreq*/)};
+        std::make_tuple(HFBField::weight, sizeof(float), num_beams * num_subfreq)};
 
     return struct_alignment(buffer_members);
 }
@@ -171,6 +169,6 @@ HFBFrameView HFBFrameView::create_frame_view(Buffer* buf, const uint32_t index,
     return HFBFrameView(buf, index);
 }
 
-size_t HFBFrameView::data_size() {
+size_t HFBFrameView::data_size() const {
     return buffer_layout.first;
 }

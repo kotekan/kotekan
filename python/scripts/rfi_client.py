@@ -22,11 +22,9 @@ import threading
 import socket
 import numpy as np
 import matplotlib.animation as animation
-import matplotlib.dates as md
 from matplotlib.widgets import Button
 import datetime
 import matplotlib.pyplot as plt
-import random
 import time
 import matplotlib.dates as mdates
 import os
@@ -61,7 +59,6 @@ class CommandLine(object):
             "colorscale": 1.0,
             "num_global_freq": 1024,
             "sk_step": 256,
-            "num_elements": 2048,
             "bi_frames_per_packet": 10,
         }
         self.mode = "pathfinder"
@@ -210,7 +207,7 @@ def data_listener():
         sock_tcp.send(WATERFALLMESSAGE.encode())
         print("Trying to receive waterfall of size: %d" % (waterfallsize))
         data = recvall(sock_tcp, waterfallsize)
-        if data == None:
+        if data is None:
             print("Connection to %s:%s Broken... Exiting" % (addr[0], str(addr[1])))
             break
 
@@ -238,7 +235,7 @@ def data_listener():
 
         data = recvall(sock_tcp, timesize).decode()
 
-        if data == None:
+        if data is None:
             print("Connection to %s:%s Broken... Exiting" % (addr[0], str(addr[1])))
             break
 
@@ -393,7 +390,7 @@ if __name__ == "__main__":
         try:
             sock_tcp.connect(addr)
             Connected = True
-        except:
+        except Exception:
             print(
                 "Could not connect to %s:%s Trying again in 5 seconds"
                 % (addr[0], addr[1])

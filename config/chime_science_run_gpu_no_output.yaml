@@ -107,20 +107,36 @@ updatable_config:
     kotekan_update_endpoint: json
     frb_gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_FRB
   tracking_gain:
-    kotekan_update_endpoint: json
-    tracking_gain_dir:
-      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
-      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
-      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
-      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
-      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
-      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
-      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
-      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
-      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
-      - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
-#     - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
-#     - /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    0:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    1:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    2:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    3:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    4:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    5:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    6:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    7:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    8:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    9:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
   tracking_pointing:
     0:
       kotekan_update_endpoint: json
@@ -349,19 +365,16 @@ gpu_beamform_hfb_output_buffers:
     kotekan_buffer: standard
 
 cpu_hfb_output_buffers:
-  num_frames: buffer_depth
-  frame_size: num_data_sets * factor_upchan * num_frb_total_beams * sizeof_float
+  num_frames: 8
   metadata_pool: hfb_pool
   beamform_hfb_output_buffer_0:
-    kotekan_buffer: standard
+    kotekan_buffer: hfb
   beamform_hfb_output_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: hfb
   beamform_hfb_output_buffer_2:
-    kotekan_buffer: standard
+    kotekan_buffer: hfb
   beamform_hfb_output_buffer_3:
-    kotekan_buffer: standard
-  beamform_hfb_output_buffer_merge:
-    kotekan_buffer: standard
+    kotekan_buffer: hfb
 
 gain_frb_buffers:
   num_frames: 5
@@ -416,9 +429,9 @@ vis_pool:
   num_metadata_objects: 200 * buffer_depth
 
 # Buffers
-vis_buffers:
+vis_int_buffers:
   metadata_pool: vis_pool
-  num_frames: buffer_depth
+  num_frames: 11
   visbuf_5s_0:
     kotekan_buffer: vis
   visbuf_5s_1:
@@ -437,6 +450,10 @@ vis_buffers:
     kotekan_buffer: vis
   visbuf_10s_3:
     kotekan_buffer: vis
+
+vis_buffers:
+  metadata_pool: vis_pool
+  num_frames: buffer_depth
   visbuf_10s_merge:
     kotekan_buffer: vis
   visbuf_eig_10s_merge:
@@ -873,46 +890,44 @@ hyper_fine_beam:
   good_samples_threshold: 0.95
   log_level: info
   integrate_hfb_data_0:
-    kotekan_stage: integrateHFBData
+    kotekan_stage: HFBAccumulate
     hfb_input_buf: gpu_beamform_hfb_output_buffer_0
     hfb_output_buf: beamform_hfb_output_buffer_0
     compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_0
   integrate_hfb_data_1:
-    kotekan_stage: integrateHFBData
+    kotekan_stage: HFBAccumulate
     hfb_input_buf: gpu_beamform_hfb_output_buffer_1
     hfb_output_buf: beamform_hfb_output_buffer_1
     compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_1
   integrate_hfb_data_2:
-    kotekan_stage: integrateHFBData
+    kotekan_stage: HFBAccumulate
     hfb_input_buf: gpu_beamform_hfb_output_buffer_2
     hfb_output_buf: beamform_hfb_output_buffer_2
     compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_2
   integrate_hfb_data_3:
-    kotekan_stage: integrateHFBData
+    kotekan_stage: HFBAccumulate
     hfb_input_buf: gpu_beamform_hfb_output_buffer_3
     hfb_output_buf: beamform_hfb_output_buffer_3
     compressed_lost_samples_buf: hfb_compressed_lost_samples_buf_3
 
-# Merge HFB integrated data from each GPU
-hfb_merge:
-  kotekan_stage: bufferMerge
-  timeout: 0.1
-  in_bufs:
-    - beamform_hfb_output_buffer_0
-    - beamform_hfb_output_buffer_1
-    - beamform_hfb_output_buffer_2
-    - beamform_hfb_output_buffer_3
-  out_buf: beamform_hfb_output_buffer_merge
-
-# Transmit all the HFB data to Moose
+# Transmit HFB data to Bongo
 buffer_send_hfb:
-  server_ip: 10.1.50.10
+  server_ip: 10.1.50.13
+  server_port: 11027
   reconnect_time: 20
   log_level: error
-  hfb:
+  hfb_0:
     #kotekan_stage: bufferSend
-    buf: beamform_hfb_output_buffer_merge
-    server_port: 11027
+    buf: beamform_hfb_output_buffer_0
+  hfb_1:
+    #kotekan_stage: bufferSend
+    buf: beamform_hfb_output_buffer_1
+  hfb_2:
+    #kotekan_stage: bufferSend
+    buf: beamform_hfb_output_buffer_2
+  hfb_3:
+    #kotekan_stage: bufferSend
+    buf: beamform_hfb_output_buffer_3
 
 # This set of stages takes information from the packet loss mask
 # and RFI mask and updates the metadata in the output N2 buffers
@@ -991,11 +1006,12 @@ frb:
   num_beams_per_frb_packet: 4
   timesamples_per_frb_packet: 16
   cpu_affinity: [5,11]
+  frb_packet_header_size: 32
   frb_output_buffer:
     num_frames: buffer_depth + 4
     frame_size: 8 * 256 * (num_beams_per_frb_packet * num_gpus
       * factor_upchan_out * timesamples_per_frb_packet
-      + 24 + sizeof_short * num_beams_per_frb_packet + sizeof_short * num_gpus
+      + frb_packet_header_size + sizeof_short * num_beams_per_frb_packet + sizeof_short * num_gpus
       + sizeof_float * num_beams_per_frb_packet * num_gpus
       + sizeof_float * num_beams_per_frb_packet * num_gpus)
     metadata_pool: main_pool
@@ -1015,6 +1031,13 @@ frb:
   network_send:
     #kotekan_stage: frbNetworkProcess
     in_buf: frb_output_buffer
+    udp_frb_packet_size: (frb_packet_header_size
+      + sizeof_short * num_beams_per_frb_packet
+      + sizeof_short * num_gpus
+      + sizeof_float * num_beams_per_frb_packet * num_gpus
+      + sizeof_float * num_beams_per_frb_packet * num_gpus)
+      + (num_beams_per_frb_packet * num_gpus
+         * factor_upchan_out * timesamples_per_frb_packet)
     udp_frb_port_number: 1313
     number_of_nodes: 256
     packets_per_stream: 8
