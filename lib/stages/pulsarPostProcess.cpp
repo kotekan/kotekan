@@ -201,8 +201,7 @@ void pulsarPostProcess::main_thread() {
         // Define station_id as a node identifer in terms of F-engine slot/crate/link data.
         ice_stream_id_t stream_id = ice_get_stream_id_t(in_buf[0], in_buffer_ID[0]);
         psr_header.station_id =
-            (uint16_t)(stream_id.crate_id * 16 + stream_id.slot_id
-                       + stream_id.link_id * 32);
+            (uint16_t)(stream_id.crate_id * 16 + stream_id.slot_id + stream_id.link_id * 32);
 
         bool skipped_frames =
             (new_frame_fpga_seq_num.value() - frame_fpga_seq_num) > _samples_per_data_set;
