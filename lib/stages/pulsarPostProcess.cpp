@@ -166,8 +166,7 @@ void pulsarPostProcess::main_thread() {
         psr_header.log_num_chan = 3; // ln8
     }
     psr_header.vdif_version = 1;
-    char si[2] = {'C', 'X'};
-    psr_header.station_id = (si[0] << 8) + si[1];
+    psr_header.station_id = 0; // to be set as a node ID after buffer sync, see below.
     psr_header.thread_id = 0;  // index of first packed frequency.
     psr_header.bits_depth = 3; // 4+4 bit so 4-1=3
     psr_header.data_type = 1;  // Complex
@@ -198,6 +197,11 @@ void pulsarPostProcess::main_thread() {
             beam_coord[i] = get_beam_coord(in_buf[i], in_buffer_ID[i]);
             thread_ids[i] = tel.to_freq_id(in_buf[i], in_buffer_ID[i]);
         }
+
+        // Define station_id as a node identifer in terms of F-engine slot/crate/link data.
+        ice_stream_id_t stream_id = ice_get_stream_id_t(in_buf[0], in_buffer_ID[0]);
+        psr_header.station_id =
+            (uint16_t)(stream_id.crate_id * 16 + stream_id.slot_id + stream_id.link_id * 32);
 
         bool skipped_frames =
             (new_frame_fpga_seq_num.value() - frame_fpga_seq_num) > _samples_per_data_set;
