@@ -66,9 +66,12 @@ if(${WERROR})
 endif()
 # lots of warnings and all warnings as errors
 add_compile_options(-Wall -Wextra)
-add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wzero-as-null-pointer-constant>)
 # Warning about missing override is called differently in clang and gcc
 include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag(-Wzero-as-null-pointer-constant HAVE_ZERO_AS_NULL)
+if(HAVE_ZERO_AS_NULL AND NOT ${IWYU})
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wzero-as-null-pointer-constant>)
+endif()
 check_cxx_compiler_flag(-Winconsistent-missing-override HAVE_INCONSISTANT_MISSING_OVERRIDE)
 if(HAVE_INCONSISTANT_MISSING_OVERRIDE AND NOT ${IWYU})
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Winconsistent-missing-override>)
