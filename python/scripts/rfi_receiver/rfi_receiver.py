@@ -688,7 +688,7 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
             metric_dict["rfi_band"].labels(fbins_mhz[i], fbins[i]).set(np.nan)
         else:
             metric_dict["rfi_band"].labels(fbins_mhz[i], fbins[i]).set(band_perc[i])
-    overall_rfi = 100.0 * np.nanmean(rfi_mask[waterfall[:, :max_pos]])
+    overall_rfi = 100.0 * np.nanmean(rfi_mask[waterfall[:, :max_pos] != np.nan])
     if np.isnan(overall_rfi):
         overall_rfi = -1
     metric_dict["overall_rfi_sk"].set(overall_rfi)
