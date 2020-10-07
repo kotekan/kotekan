@@ -149,6 +149,7 @@ void pulsarPostProcess::main_thread() {
     }
     uint64_t frame_fpga_seq_num = 0;     // sample starting the current input frame
     uint32_t current_input_location = 0; // goes from 0 to _samples_per_data_set
+    ice_stream_id_t stream_id = ice_get_stream_id_t(in_buf[0], in_buffer_ID[0]);
 
     PSRHeader psr_header;
     psr_header.seconds = 0; // UD
@@ -166,8 +167,8 @@ void pulsarPostProcess::main_thread() {
         psr_header.log_num_chan = 3; // ln8
     }
     psr_header.vdif_version = 1;
-    char si[2] = {'C', 'X'};
-    psr_header.station_id = (si[0] << 8) + si[1];
+    psr_header.station_id = (uint16_t)(stream_id.crate_id * 16
+        + stream_id.slot_id + stream_id.link_id * 32); // effectively a GPU-node identifier.
     psr_header.thread_id = 0;  // index of first packed frequency.
     psr_header.bits_depth = 3; // 4+4 bit so 4-1=3
     psr_header.data_type = 1;  // Complex
