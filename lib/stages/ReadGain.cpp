@@ -51,7 +51,7 @@ ReadGain::ReadGain(Config& config, const std::string& unique_name,
     gains_last_update_success_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_gains_last_update_success", unique_name, {"type"})),
     gains_last_update_timestamp_metric(kotekan::prometheus::Metrics::instance().add_gauge(
-        "kotekan_gains_last_update_timestamp", unique_name, {"type"})) {
+        "kotekan_gains_last_update_timestamp", unique_name, {"type", "beam_id"})) {
     // Apply config.
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
     _num_beams = config.get<int32_t>(unique_name, "num_beams");
@@ -177,7 +177,7 @@ void ReadGain::read_gain_frb() {
             out_frame_frb[i * 2 + 1] = out_frame_frb[i * 2 + 1] * scaling;
         }
     }
-    gains_last_update_timestamp_metric.labels({"frb"}).set(start_time);
+    gains_last_update_timestamp_metric.labels({"frb", ""}).set(start_time);
     mark_frame_full(gain_frb_buf, unique_name.c_str(), gain_frb_buf_id);
     DEBUG("Maked gain_frb_buf frame {:d} full", gain_frb_buf_id);
     INFO("Time required to load FRB gains: {:f}", current_time() - start_time);
