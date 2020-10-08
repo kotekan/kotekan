@@ -16,8 +16,7 @@ REGISTER_HSA_COMMAND(hsaBeamformUpchanHFB);
 hsaBeamformUpchanHFB::hsaBeamformUpchanHFB(Config& config, const std::string& unique_name,
                                            bufferContainer& host_buffers,
                                            hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device,
-               "frb_upchan_amd" KERNEL_EXT,
+    hsaCommand(config, unique_name, host_buffers, device, "frb_upchan_amd" KERNEL_EXT,
                "frb_upchan_amd.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
@@ -56,7 +55,6 @@ hsa_signal_t hsaBeamformUpchanHFB::execute(int gpu_frame_id, hsa_signal_t preced
     memset(&args, 0, sizeof(args));
 
     args.input_buffer = device.get_gpu_memory("transposed_output", input_frame_len);
-//    args.input_buffer = device.get_gpu_memory("beamform_output", _num_elements * _samples_per_data_set * 2 * sizeof(float) * 3);
     args.output_buffer = device.get_gpu_memory_array("bf_output", gpu_frame_id, output_frame_len);
     args.output_hyperfine_beam_buffer = device.get_gpu_memory("hfb_output", output_hfb_frame_len);
 
@@ -71,7 +69,7 @@ hsa_signal_t hsaBeamformUpchanHFB::execute(int gpu_frame_id, hsa_signal_t preced
     params.num_dims = 2;
 
     params.private_segment_size = 0;
-    params.group_segment_size = 16*sizeof(float);
+    params.group_segment_size = 16 * sizeof(float);
 
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
 

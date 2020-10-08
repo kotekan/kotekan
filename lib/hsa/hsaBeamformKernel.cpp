@@ -45,8 +45,7 @@ REGISTER_HSA_COMMAND(hsaBeamformKernel);
 
 hsaBeamformKernel::hsaBeamformKernel(Config& config, const std::string& unique_name,
                                      bufferContainer& host_buffers, hsaDeviceInterface& device) :
-    hsaCommand(config, unique_name, host_buffers, device,
-               "frb_beamform_amd" KERNEL_EXT,
+    hsaCommand(config, unique_name, host_buffers, device, "frb_beamform_amd" KERNEL_EXT,
                "frb_beamform_amd.hsaco") {
     command_type = gpuCommandType::KERNEL;
 
@@ -250,7 +249,7 @@ hsa_signal_t hsaBeamformKernel::execute(int gpu_frame_id, hsa_signal_t precede_s
     params.num_dims = 3;
 
     params.private_segment_size = 0;
-    params.group_segment_size = 2*512*sizeof(float) + 16 * 2 * sizeof(float);
+    params.group_segment_size = 2 * 512 * sizeof(float) + 16 * 2 * sizeof(float);
 
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
 

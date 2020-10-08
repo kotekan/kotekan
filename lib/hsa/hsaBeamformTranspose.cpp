@@ -1,7 +1,8 @@
 #include "hsaBeamformTranspose.hpp"
 
-#include "Config.hpp"             // for Config
-#include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
+#include "Config.hpp"     // for Config
+#include "gpuCommand.hpp" // for gpuCommandType, gpuCommandType::KERNEL
+#include "hsaBase.h"
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 
 #include <cstdint>   // for int32_t
@@ -9,7 +10,6 @@
 #include <regex>     // for match_results<>::_Base_type
 #include <string.h>  // for memcpy, memset
 #include <vector>    // for vector
-#include "hsaBase.h"
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -58,9 +58,8 @@ hsa_signal_t hsaBeamformTranspose::execute(int gpu_frame_id, hsa_signal_t preced
     params.num_dims = 2;
 
     params.private_segment_size = 0;
-    params.group_segment_size = 33*32*4;
+    params.group_segment_size = 33 * 32 * 4;
 
-    //KV
     params.workgroup_size_x = 32;
     params.workgroup_size_y = 2;
     params.grid_size_x = _num_elements;
