@@ -232,8 +232,9 @@ void ReadGain::read_gain_tracking() {
             }
             fclose(ptr_myfile);
         }
+        gains_last_update_timestamp_metric.labels({"tracking", beam_label}).set(start_time);
     } // end beam
-    gains_last_update_timestamp_metric.labels({"tracking"}).set(start_time);
+
     mark_frame_full(gain_tracking_buf, unique_name.c_str(), gain_tracking_buf_id);
     DEBUG("Maked gain_tracking_buf frame {:d} full", gain_tracking_buf_id);
     INFO("Time required to load tracking beamformer gains: {:f}", current_time() - start_time);
