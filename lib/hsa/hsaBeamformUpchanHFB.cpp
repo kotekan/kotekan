@@ -17,8 +17,6 @@ hsaBeamformUpchanHFB::hsaBeamformUpchanHFB(Config& config, const std::string& un
                                            bufferContainer& host_buffers,
                                            hsaDeviceInterface& device) :
     hsaCommand(config, unique_name, host_buffers, device,
-//               "upchannelize" KERNEL_EXT,
-//               "upchannelize_flip_hfb.hsaco") {
                "frb_upchan_amd" KERNEL_EXT,
                "frb_upchan_amd.hsaco") {
     command_type = gpuCommandType::KERNEL;
@@ -31,7 +29,9 @@ hsaBeamformUpchanHFB::hsaBeamformUpchanHFB(Config& config, const std::string& un
     _num_frb_total_beams = config.get<int32_t>(unique_name, "num_frb_total_beams");
     _factor_upchan = config.get<int32_t>(unique_name, "factor_upchan");
 
-    input_frame_len = _num_elements * (_samples_per_data_set + 64) * 2 * sizeof(float);
+    // Kernel uses fp16 complex numbers for input which are the same size as sizeof(float).
+    // The + 64 is to avoid bank conflicts in the transpose output.
+    input_frame_len = _num_elements * (_samples_per_data_set + 64) * sizeof(float);
     output_frame_len = _num_frb_total_beams
                        * (_samples_per_data_set / _downsample_time / _downsample_freq)
                        * sizeof(float);

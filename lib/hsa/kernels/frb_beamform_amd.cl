@@ -239,21 +239,7 @@ void frb_beamform_amd (__global uint *inputData, __global uint *map, global floa
                         P * 1024 + //pol
                         bidx * 256 +             //EW
                         (255-(L*4+ns));          //position
-//            vstore_half2_rtz(beam[ns][bidx],0,(half*)&outputData[addr]);    //Slooower (substantially)
-            outputData[addr] = (half2){beam[ns][bidx].RE,beam[ns][bidx].IM};  //Slower (by a hair)
-//            float out; //FAST [only on newer rocms...?]
-//            __asm__ ("V_CVT_PKRTZ_F16_F32 %0, %1, %2" : "=v"(out): "v"(beam[ns][bidx].RE), "v"(beam[ns][bidx].IM));
-//            outputData[addr] = out;
+            outputData[addr] = (half2){beam[ns][bidx].RE,beam[ns][bidx].IM};
         }
     }
 }
-
-
-
-/// tooling around
-/*            addr = (T/6144) * 1024 * (6144+256) +     // 0..8 T    ZZZ
-                   (L*4 + ns) * 6144 +                // 0..256 NS WG
-                   bidx * 256 * 6144 +                // 0..4 EW   WG
-                   P * 1024 * (6144+256) +                  // 0..1 Pol  YYY
-                   (T%6144);                          // 0..6144 t ZZZ
-            */
