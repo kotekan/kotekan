@@ -258,7 +258,9 @@ uint32_t visFileH5::extend_time(time_ctype new_time) {
 }
 
 
-void visFileH5::write_sample(uint32_t time_ind, uint32_t freq_ind, const VisFrameView& frame) {
+void visFileH5::write_sample(uint32_t time_ind, uint32_t freq_ind, const FrameView& frame_view) {
+
+    const VisFrameView& frame = static_cast<const VisFrameView&>(frame_view);
 
     // TODO: consider adding checks for all dims
     if (frame.num_ev != num_ev) {
@@ -488,7 +490,10 @@ void visFileH5Fast::deactivate_time(uint32_t time_ind) {
     }
 }
 
-void visFileH5Fast::write_sample(uint32_t time_ind, uint32_t freq_ind, const VisFrameView& frame) {
+void visFileH5Fast::write_sample(uint32_t time_ind, uint32_t freq_ind,
+                                 const FrameView& frame_view) {
+
+    const VisFrameView& frame = static_cast<const VisFrameView&>(frame_view);
 
     // TODO: consider adding checks for all dims
     if (frame.num_ev != num_ev) {

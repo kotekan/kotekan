@@ -12,46 +12,7 @@ import os
 import io
 
 import numpy as np
-
-
-class time_spec(ctypes.Structure):
-    """Struct repr of a timespec type."""
-
-    _fields_ = [("tv", ctypes.c_int64), ("tv_nsec", ctypes.c_uint64)]
-
-    @classmethod
-    def from_float(cls, v):
-        """Create a time_spec from a float.
-
-        Parameters
-        ----------------
-        v : float
-            The interval in seconds.
-
-        Returns
-        -------
-        ts : time_spec
-        """
-        ts = cls()
-        ts.tv = np.floor(v).astype(np.int64)
-        ts.tv_nsec = ((v % 1.0) * 1e9).astype(np.int64)
-        return ts
-
-    def to_float(self):
-        """
-        Create a float from a time_spec.
-
-        Returns
-        -------
-        float
-        """
-        return self.tv + self.tv_nsec / 1e9
-
-
-class timeval(ctypes.Structure):
-    """Struct repr of a timeval type."""
-
-    _fields_ = [("tv_sec", ctypes.c_long), ("tv_usec", ctypes.c_long)]
+from kotekan import timespec
 
 
 class VisMetadata(ctypes.Structure):
@@ -60,7 +21,7 @@ class VisMetadata(ctypes.Structure):
 
     _fields_ = [
         ("fpga_seq", ctypes.c_uint64),
-        ("ctime", time_spec),
+        ("ctime", timespec.time_spec),
         ("fpga_length", ctypes.c_uint64),
         ("fpga_total", ctypes.c_uint64),
         ("rfi_total", ctypes.c_uint64),
@@ -87,8 +48,8 @@ class ChimeMetadata(ctypes.Structure):
 
     _fields_ = [
         ("fpga_seq_num", ctypes.c_uint64),
-        ("first_packet_recv_time", timeval),
-        ("gps_time", time_spec),
+        ("first_packet_recv_time", timespec.timeval),
+        ("gps_time", timespec.time_spec),
         ("lost_timesamples", ctypes.c_int32),
         ("stream_ID", ctypes.c_uint16),
         ("psrCoord", psrCoord),
@@ -202,8 +163,6 @@ class VisBuffer(object):
     def from_file(cls, filename):
         """Load a visBuffer from a kotekan dump file.
         """
-        import os
-
         filesize = os.path.getsize(filename)
 
         buf = bytearray(filesize)
@@ -534,7 +493,9 @@ class VisRaw(object):
             fpga = []
             for f in range(num_freq):
                 if valid_frames[t, f].astype(np.bool):
-                    ts.append(time_spec.from_buffer_copy(ctime[t, f]).to_float())
+                    ts.append(
+                        timespec.time_spec.from_buffer_copy(ctime[t, f]).to_float()
+                    )
                     fpga.append(fpga_seq[t, f])
             ts = np.unique(ts)
             fpga = np.unique(fpga)
@@ -867,7 +828,7 @@ def simple_visraw_data(filename, ntime, nfreq, ninput):
 
     # Return read only view
     del raw
-    return VisRaw(filename, mode="r")
+    return VisRaw.from_file(filename, mode="r")
 
 
 def freq_id_to_stream_id(f_id):

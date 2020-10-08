@@ -1,5 +1,5 @@
 *****************
-visWriter
+VisWriter
 *****************
 
-.. doxygenclass:: visWriter
+.. doxygenclass:: VisWriter

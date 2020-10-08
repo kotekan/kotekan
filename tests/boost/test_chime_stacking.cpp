@@ -1,5 +1,6 @@
 #define BOOST_TEST_MODULE "test_chime_stacking"
 
+#include "Stack.hpp"
 #include "datasetState.hpp"   // for invert_stack
 #include "visCompression.hpp" // for stack_chime_in_cyl, chimeFeed, CYL_A, CYL_D
 #include "visUtil.hpp"        // for input_ctype, rstack_ctype, prod_ctype, stac...
