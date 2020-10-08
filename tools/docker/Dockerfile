@@ -84,7 +84,8 @@ RUN apt-get update && \
                        liblapacke-dev=3.7.1-4ubuntu1 \
                        && \
     apt-get clean && apt-get autoclean && \
-    git clone https://bitbucket.org/blaze-lib/blaze.git blaze && cd blaze && git pull && cd ..
+    git clone https://bitbucket.org/blaze-lib/blaze.git blaze && \
+    cd blaze && git checkout v3.4 && cd ..
 
 # Install kotekan python dependencies
 RUN python3.7 -m pip install msgpack==1.0.0 \

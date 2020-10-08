@@ -262,7 +262,7 @@ jobs:
     - name: Clone Blaze and HighFive
       run: |
         git clone https://bitbucket.org/blaze-lib/blaze.git blaze
-        cd blaze && git pull && cd ..
+        cd blaze && git checkout v3.4 && cd ..
         git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git
         cd HighFive && git pull && cd ..
 
