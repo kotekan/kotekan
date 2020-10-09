@@ -12,6 +12,7 @@
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "dataset.hpp"         // for dset_id_t
+#include "HFBFrameView.hpp" // for HFBFrameView
 
 #include <stdint.h> // for uint32_t, int64_t
 #include <string>   // for string
@@ -61,15 +62,15 @@ public:
     /// stuff packets lather, rinse and repeat.
     void main_thread() override;
     /// Copy the first frame of the integration
-    void init_first_frame(float* input_data, float* sum_data, const uint32_t in_buffer_ID);
+    void init_first_frame(HFBFrameView& in_frame, float* sum_data);
     /// Add a frame to the integration
-    void integrate_frame(float* input_data, float* sum_data, const uint32_t in_buffer_ID);
+    void integrate_frame(HFBFrameView& in_frame, float* sum_data);
     /// Normalise frame after integration has been completed
-    void normalise_frame(float* sum_data, const uint32_t in_buffer_ID);
+    void normalise_frame(HFBFrameView& in_frame, float* sum_data);
 
 private:
     Buffer* in_buf;
-    Buffer* compressed_lost_samples_buf;
+    Buffer* cls_buf;
     Buffer* out_buf;
 
     /// Config variables
