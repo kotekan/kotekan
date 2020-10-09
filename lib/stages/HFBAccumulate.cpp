@@ -99,8 +99,8 @@ void HFBAccumulate::init_first_frame(HFBFrameView& in_frame, float* sum_data) {
     fpga_seq_num = in_frame.fpga_seq_start;
     frame++;
 
-    DEBUG("\nInit frame. fpga_seq_start: {:d}. sum_data[0]: {:f}",
-          in_frame.fpga_seq_start, sum_data[0]);
+    DEBUG("\nInit frame. fpga_seq_start: {:d}. sum_data[0]: {:f}", in_frame.fpga_seq_start,
+          sum_data[0]);
 }
 
 void HFBAccumulate::integrate_frame(HFBFrameView& in_frame, float* sum_data) {
@@ -146,9 +146,9 @@ void HFBAccumulate::main_thread() {
     fpga_seq_num_end = (_num_frames_to_integrate - 1) * _samples_per_data_set;
     frame = 0;
 
-    if(wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id) == nullptr)
+    if (wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id) == nullptr)
         return;
-    
+
     while (!stop_thread) {
         // Get an input buffer. This call is blocking!
         if (wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id) == nullptr)
@@ -182,11 +182,11 @@ void HFBAccumulate::main_thread() {
         float* sum_data = (float*)out_buf->frames[out_frame_id];
 
         // Find where the end of the integration is
-        fpga_seq_num_end = in_frame.fpga_seq_start
-                           + ((_num_frames_to_integrate * _samples_per_data_set
-                               - (in_frame.fpga_seq_start
-                                  % (_num_frames_to_integrate * _samples_per_data_set)))
-                              - _samples_per_data_set);
+        fpga_seq_num_end =
+            in_frame.fpga_seq_start
+            + ((_num_frames_to_integrate * _samples_per_data_set
+                - (in_frame.fpga_seq_start % (_num_frames_to_integrate * _samples_per_data_set)))
+               - _samples_per_data_set);
         if (first) {
             fpga_seq_num_end_old = fpga_seq_num_end;
             first = 0;
@@ -197,16 +197,13 @@ void HFBAccumulate::main_thread() {
             "(align): {:d}",
             in_frame.fpga_seq_start, fpga_seq_num_end,
             _num_frames_to_integrate * _samples_per_data_set,
-            in_frame.fpga_seq_start
-                % (_num_frames_to_integrate * _samples_per_data_set));
+            in_frame.fpga_seq_start % (_num_frames_to_integrate * _samples_per_data_set));
 
         // Get the no. of lost samples in this frame
-        total_lost_timesamples +=
-            get_lost_timesamples(cls_buf, cls_frame_id);
+        total_lost_timesamples += get_lost_timesamples(cls_buf, cls_frame_id);
 
         // When all frames have been integrated output the result
-        if (in_frame.fpga_seq_start
-            >= fpga_seq_num_end_old + _samples_per_data_set) {
+        if (in_frame.fpga_seq_start >= fpga_seq_num_end_old + _samples_per_data_set) {
 
             DEBUG("fpga_seq_num_end_old: {:d}, fpga_seq_start: {:d}", fpga_seq_num_end_old,
                   fpga_seq_num);
@@ -241,7 +238,8 @@ void HFBAccumulate::main_thread() {
                 frame.freq_id = tel.to_freq_id(in_buf, in_frame_id);
 
                 frame.dataset_id = ds_id;
-                HFBFrameView::set_metadata(out_buf, out_frame_id, _num_frb_total_beams, _factor_upchan);
+                HFBFrameView::set_metadata(out_buf, out_frame_id, _num_frb_total_beams,
+                                           _factor_upchan);
 
                 DEBUG("Dataset ID: {}, freq ID: {:d}", ds_id, frame.freq_id);
 
@@ -253,9 +251,9 @@ void HFBAccumulate::main_thread() {
                 mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
 
                 // Get a new output buffer
-                if(wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id) == nullptr)
-                  return;
-    
+                if (wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id) == nullptr)
+                    return;
+
                 sum_data = (float*)out_buf->frames[out_frame_id];
             } else {
                 DEBUG("Integration discarded. Too many lost samples.");
