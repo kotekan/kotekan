@@ -1,29 +1,31 @@
-#include <cblas.h>                // for cblas_cgemv, CblasNoTrans, CblasRowMajor
-#include <cxxabi.h>               // for __forced_unwind
-#include <sys/types.h>            // for uint
-#include <atomic>                 // for atomic_bool
-#include <complex>                // for operator*, complex, operator/, norm, operator-, operato...
-#include <cstdint>                // for uint64_t, uint32_t
-#include <exception>              // for exception
-#include <functional>             // for _Bind_helper<>::type, _Placeholder, bind, _1, function, _2
-#include <future>                 // for async, future
-#include <iterator>               // for begin, end, back_insert_iterator, back_inserter
-#include <memory>                 // for allocator_traits<>::value_type, make_unique
-#include <numeric>                // for iota
-#include <regex>                  // for match_results<>::_Base_type
-#include <system_error>           // for system_error
-#include <tuple>                  // for get, tuple, make_tuple, operator!=, operator<, tie
-
 #include "RingMapMaker.hpp"
-#include "Hash.hpp"               // for Hash, operator!=
-#include "Stack.hpp"              // for chimeFeed
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"          // for Telescope
-#include "datasetManager.hpp"     // for datasetManager, dset_id_t, state_id_t
-#include "kotekanLogging.hpp"     // for FATAL_ERROR, WARN
-#include "prometheusMetrics.hpp"  // for Metrics
-#include "visBuffer.hpp"          // for VisFrameView, VisField, VisField::vis, VisField::weight
-#include "gsl-lite.hpp"           // for span, span<>::iterator
+
+#include "Hash.hpp"              // for Hash, operator!=
+#include "Stack.hpp"             // for chimeFeed
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"         // for Telescope
+#include "datasetManager.hpp"    // for datasetManager, dset_id_t, state_id_t
+#include "kotekanLogging.hpp"    // for FATAL_ERROR, WARN
+#include "prometheusMetrics.hpp" // for Metrics
+#include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::vis, VisField::weight
+
+#include "gsl-lite.hpp" // for span, span<>::iterator
+
+#include <atomic>       // for atomic_bool
+#include <cblas.h>      // for cblas_cgemv, CblasNoTrans, CblasRowMajor
+#include <complex>      // for operator*, complex, operator/, norm, operator-, operato...
+#include <cstdint>      // for uint64_t, uint32_t
+#include <cxxabi.h>     // for __forced_unwind
+#include <exception>    // for exception
+#include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, function, _2
+#include <future>       // for async, future
+#include <iterator>     // for begin, end, back_insert_iterator, back_inserter
+#include <memory>       // for allocator_traits<>::value_type, make_unique
+#include <numeric>      // for iota
+#include <regex>        // for match_results<>::_Base_type
+#include <sys/types.h>  // for uint
+#include <system_error> // for system_error
+#include <tuple>        // for get, tuple, make_tuple, operator!=, operator<, tie
 
 using namespace std::complex_literals;
 using namespace std::placeholders;

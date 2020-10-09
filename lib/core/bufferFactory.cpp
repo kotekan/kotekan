@@ -1,18 +1,20 @@
-#include <stddef.h>            // for size_t
-#include <cstdint>             // for int32_t, uint32_t
-#include <exception>           // for exception
-#include <regex>               // for match_results<>::_Base_type
-#include <stdexcept>           // for runtime_error
-#include <vector>              // for vector
-
 #include "bufferFactory.hpp"
-#include "Config.hpp"          // for Config
-#include "HFBFrameView.hpp"    // for HFBFrameView
-#include "buffer.h"            // for create_buffer
-#include "kotekanLogging.hpp"  // for INFO_NON_OO
-#include "metadata.h"          // for metadataPool // IWYU pragma: keep
-#include "visBuffer.hpp"       // for VisFrameView
-#include "fmt.hpp"             // for format, fmt
+
+#include "Config.hpp"         // for Config
+#include "HFBFrameView.hpp"   // for HFBFrameView
+#include "buffer.h"           // for create_buffer
+#include "kotekanLogging.hpp" // for INFO_NON_OO
+#include "metadata.h"         // for metadataPool // IWYU pragma: keep
+#include "visBuffer.hpp"      // for VisFrameView
+
+#include "fmt.hpp" // for format, fmt
+
+#include <cstdint>   // for int32_t, uint32_t
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <stddef.h>  // for size_t
+#include <stdexcept> // for runtime_error
+#include <vector>    // for vector
 
 using json = nlohmann::json;
 using std::map;

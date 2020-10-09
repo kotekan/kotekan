@@ -1,12 +1,12 @@
 #ifndef STACK_HPP
 #define STACK_HPP
 
-#include <cstdint>      // for int8_t, uint32_t, int16_t
-#include <utility>      // for pair
-#include <vector>       // for vector
-#include <iosfwd>       // for ostream
+#include "visUtil.hpp" // for input_ctype, prod_ctype, rstack_ctype
 
-#include "visUtil.hpp"  // for input_ctype, prod_ctype, rstack_ctype
+#include <cstdint> // for int8_t, uint32_t, int16_t
+#include <iosfwd>  // for ostream
+#include <utility> // for pair
+#include <vector>  // for vector
 
 
 /**

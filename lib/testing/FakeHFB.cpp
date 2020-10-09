@@ -1,30 +1,32 @@
-#include <time.h>               // for nanosleep, timespec
-#include <algorithm>            // for max, transform
-#include <atomic>               // for atomic_bool
-#include <cstdint>              // for uint32_t, int32_t
-#include <exception>            // for exception
-#include <functional>           // for _Bind_helper<>::type, bind, function, placeholders
-#include <iterator>             // for back_insert_iterator, back_inserter, begin, end
-#include <regex>                // for match_results<>::_Base_type
-#include <stdexcept>            // for runtime_error
-#include <utility>              // for pair
-
 #include "FakeHFB.hpp"
-#include "Config.hpp"           // for Config
-#include "HFBFrameView.hpp"     // for HFBFrameView
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"             // for mark_frame_full, register_producer, wait_for_empty_frame
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "datasetManager.hpp"   // for state_id_t, dset_id_t, datasetManager
-#include "datasetState.hpp"     // for beamState, freqState, metadataState, subfreqState
-#include "errors.h"             // for exit_kotekan, CLEAN_EXIT, ReturnCode
-#include "kotekanLogging.hpp"   // for INFO, DEBUG
-#include "version.h"            // for get_git_commit_hash
-#include "visUtil.hpp"          // for double_to_ts, current_time, freq_ctype, cfloat
-#include "gsl-lite.hpp"         // for span
-#include "HFBMetadata.hpp"      // for HFBMetadata
-#include "Telescope.hpp"        // for Telescope
-#include "metadata.h"           // for metadataContainer
+
+#include "Config.hpp"          // for Config
+#include "HFBFrameView.hpp"    // for HFBFrameView
+#include "HFBMetadata.hpp"     // for HFBMetadata
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.h"            // for mark_frame_full, register_producer, wait_for_empty_frame
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager
+#include "datasetState.hpp"    // for beamState, freqState, metadataState, subfreqState
+#include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
+#include "kotekanLogging.hpp"  // for INFO, DEBUG
+#include "metadata.h"          // for metadataContainer
+#include "version.h"           // for get_git_commit_hash
+#include "visUtil.hpp"         // for double_to_ts, current_time, freq_ctype, cfloat
+
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm>  // for max, transform
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for uint32_t, int32_t
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function, placeholders
+#include <iterator>   // for back_insert_iterator, back_inserter, begin, end
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <time.h>     // for nanosleep, timespec
+#include <utility>    // for pair
 
 
 using namespace std::placeholders;

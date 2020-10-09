@@ -1,16 +1,18 @@
-#include <cstdint>             // for uint64_t
-#include <exception>           // for exception
-#include <regex>               // for match_results<>::_Base_type
-#include <stdexcept>           // for runtime_error, invalid_argument
-#include <vector>              // for vector
-
 #include "ICETelescope.hpp"
-#include "Telescope.hpp"       // for freq_id_t, REGISTER_TELESCOPE, Telescope, _factory_aliasTe...
-#include "chimeMetadata.h"     // for stream_t
-#include "kotekanLogging.hpp"  // for WARN, INFO, FATAL_ERROR
-#include "restClient.hpp"      // for restClient
-#include "fmt.hpp"             // for format
-#include "json.hpp"            // for basic_json, basic_json<>::object_t, basic_json<>::value_type
+
+#include "Telescope.hpp"      // for freq_id_t, REGISTER_TELESCOPE, Telescope, _factory_aliasTe...
+#include "chimeMetadata.h"    // for stream_t
+#include "kotekanLogging.hpp" // for WARN, INFO, FATAL_ERROR
+#include "restClient.hpp"     // for restClient
+
+#include "fmt.hpp"  // for format
+#include "json.hpp" // for basic_json, basic_json<>::object_t, basic_json<>::value_type
+
+#include <cstdint>   // for uint64_t
+#include <exception> // for exception
+#include <regex>     // for match_results<>::_Base_type
+#include <stdexcept> // for runtime_error, invalid_argument
+#include <vector>    // for vector
 
 
 REGISTER_TELESCOPE(ICETelescope, "ICETelescope");

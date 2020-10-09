@@ -6,24 +6,24 @@
 #ifndef VIS_COMPRESSION_HPP
 #define VIS_COMPRESSION_HPP
 
-#include <cstdint>                // for uint32_t
-#include <functional>             // for function
-#include <map>                    // for map
-#include <mutex>                  // for mutex
-#include <string>                 // for string
-#include <thread>                 // for thread
-#include <tuple>                  // for tuple
-#include <utility>                // for pair
-#include <vector>                 // for vector
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, state_id_t, fingerprint_t
+#include "datasetState.hpp"      // for prodState, stackState
+#include "prometheusMetrics.hpp" // for MetricFamily, Gauge, Counter
+#include "visUtil.hpp"           // for frameID, rstack_ctype, input_ctype, prod_ctype
 
-#include "Config.hpp"             // for Config
-#include "Stage.hpp"              // for Stage
-#include "buffer.h"               // for Buffer
-#include "bufferContainer.hpp"    // for bufferContainer
-#include "datasetManager.hpp"     // for dset_id_t, state_id_t, fingerprint_t
-#include "datasetState.hpp"       // for prodState, stackState
-#include "prometheusMetrics.hpp"  // for MetricFamily, Gauge, Counter
-#include "visUtil.hpp"            // for frameID, rstack_ctype, input_ctype, prod_ctype
+#include <cstdint>    // for uint32_t
+#include <functional> // for function
+#include <map>        // for map
+#include <mutex>      // for mutex
+#include <string>     // for string
+#include <thread>     // for thread
+#include <tuple>      // for tuple
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 /**
  * @brief Compress visibility data by stacking together equivalent baselines.

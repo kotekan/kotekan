@@ -6,22 +6,22 @@
 #ifndef BASE_WRITER_HPP
 #define BASE_WRITER_HPP
 
-#include <stdio.h>                // for size_t
-#include <cstdint>                // for uint32_t, int64_t
-#include <map>                    // for map
-#include <memory>                 // for shared_ptr, unique_ptr
-#include <set>                    // for set
-#include <string>                 // for string
+#include "Config.hpp"            // for Config
+#include "FrameView.hpp"         // for FrameView
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for dset_id_t, fingerprint_t
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily, Gauge
+#include "visFile.hpp"           // for visFileBundle
+#include "visUtil.hpp"           // for movingAverage, time_ctype
 
-#include "Config.hpp"             // for Config
-#include "FrameView.hpp"          // for FrameView
-#include "Stage.hpp"              // for Stage
-#include "buffer.h"               // for Buffer
-#include "bufferContainer.hpp"    // for bufferContainer
-#include "datasetManager.hpp"     // for dset_id_t, fingerprint_t
-#include "prometheusMetrics.hpp"  // for Counter, MetricFamily, Gauge
-#include "visFile.hpp"            // for visFileBundle
-#include "visUtil.hpp"            // for movingAverage, time_ctype
+#include <cstdint> // for uint32_t, int64_t
+#include <map>     // for map
+#include <memory>  // for shared_ptr, unique_ptr
+#include <set>     // for set
+#include <stdio.h> // for size_t
+#include <string>  // for string
 
 /**
  * @class BaseWriter

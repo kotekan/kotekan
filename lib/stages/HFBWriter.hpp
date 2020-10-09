@@ -6,14 +6,14 @@
 #ifndef HFB_WRITER_HPP
 #define HFB_WRITER_HPP
 
-#include <map>                  // for map
-#include <string>               // for string
+#include "BaseWriter.hpp"      // for BaseWriter
+#include "Config.hpp"          // for Config
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for dset_id_t
 
-#include "BaseWriter.hpp"       // for BaseWriter
-#include "Config.hpp"           // for Config
-#include "buffer.h"             // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "datasetManager.hpp"   // for dset_id_t
+#include <map>    // for map
+#include <string> // for string
 
 /**
  * @class HFBWriter

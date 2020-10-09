@@ -7,16 +7,16 @@
 #ifndef DATA_QUALITY_STAGE
 #define DATA_QUALITY_STAGE
 
-#include <string>                 // for string
-#include <map>                    // for map
-#include <vector>                 // for vector
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.h"              // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "datasetManager.hpp"    // for fingerprint_t, dset_id_t
+#include "prometheusMetrics.hpp" // for Gauge, MetricFamily
 
-#include "Config.hpp"             // for Config
-#include "Stage.hpp"              // for Stage
-#include "bufferContainer.hpp"    // for bufferContainer
-#include "datasetManager.hpp"     // for fingerprint_t, dset_id_t
-#include "prometheusMetrics.hpp"  // for Gauge, MetricFamily
-#include "buffer.h"               // for Buffer
+#include <map>    // for map
+#include <string> // for string
+#include <vector> // for vector
 
 /**
  * @class DataQuality
