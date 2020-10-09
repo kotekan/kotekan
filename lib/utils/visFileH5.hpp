@@ -13,7 +13,7 @@
 #include "visFile.hpp"        // for visFile
 #include "visUtil.hpp"        // for time_ctype, freq_ctype, input_ctype, prod_ctype, cfloat
 
-#include <H5Ppublic.h>             // for H5Tcopy, H5Tset_size, H5T_C_S1
+#include <H5Tpublic.h>             // for H5Tcopy, H5Tset_size, H5T_C_S1
 #include <cstdint>                 // for uint32_t
 #include <highfive/H5DataSet.hpp>  // for DataSet
 #include <highfive/H5DataType.hpp> // for DataType, AtomicType, DataType::DataType
