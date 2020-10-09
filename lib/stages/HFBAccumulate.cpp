@@ -1,25 +1,31 @@
+#include <string.h>            // for memcpy
+#include <sys/types.h>         // for uint
+#include <atomic>              // for atomic_bool
+#include <exception>           // for exception
+#include <functional>          // for _Bind_helper<>::type, bind, function
+#include <regex>               // for match_results<>::_Base_type
+#include <stdexcept>           // for runtime_error
+#include <string>              // for string
+#include <vector>              // for vector
+#include <algorithm>           // for max, transform, copy
+#include <cstdint>             // for uint32_t
+#include <iterator>            // for back_insert_iterator, begin, end, back_inserter
+#include <numeric>             // for iota
+#include <utility>             // for pair
+
 #include "HFBAccumulate.hpp"
-
-#include "HFBFrameView.hpp" // for HFBFrameView
-#include "HFBMetadata.hpp"
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"
-#include "buffer.h" // for mark_frame_empty, Buffer, register_consumer, wait_for...
-#include "chimeMetadata.h"
-#include "datasetManager.hpp" // for state_id_t, datasetManager, dset_id_t
-#include "kotekanLogging.hpp" // for DEBUG, DEBUG2
-#include "version.h"          // for get_git_commit_hash
-#include "visUtil.hpp"        // for freq_ctype
-
-#include <atomic>      // for atomic_bool
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, bind, function
-#include <regex>       // for match_results<>::_Base_type
-#include <stdexcept>   // for runtime_error
-#include <string.h>    // for memcpy
-#include <string>      // for string
-#include <sys/types.h> // for uint
-#include <vector>      // for vector
+#include "HFBFrameView.hpp"    // for HFBFrameView
+#include "HFBMetadata.hpp"     // for get_fpga_seq_start_hfb, set_ctime_hfb, set_dataset_id, set...
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"       // for Telescope, freq_id_t
+#include "buffer.h"            // for mark_frame_empty, Buffer, register_consumer, wait_for_empt...
+#include "chimeMetadata.h"     // for get_lost_timesamples
+#include "datasetManager.hpp"  // for state_id_t, datasetManager
+#include "kotekanLogging.hpp"  // for DEBUG, DEBUG2
+#include "version.h"           // for get_git_commit_hash
+#include "visUtil.hpp"         // for freq_ctype
+#include "datasetState.hpp"    // for beamState, freqState, metadataState, subfreqState
+#include "gsl-lite.hpp"        // for span
 
 using kotekan::bufferContainer;
 using kotekan::Config;

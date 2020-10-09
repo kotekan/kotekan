@@ -1,8 +1,10 @@
+#include <string.h>    // for memcpy
+#include <stdexcept>   // for runtime_error
+#include <string>      // for string
+
 #include "FrameView.hpp"
-
-#include "fmt.hpp"
-
-#include <set>
+#include "fmt.hpp"     // for format, fmt
+#include "metadata.h"  // for metadataContainer
 
 FrameView::FrameView(Buffer* buf, int frame_id) :
     buffer(buf),

@@ -1,13 +1,16 @@
 #define BOOST_TEST_MODULE "test_config"
 
-#include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...
-#include <memory>                            // for allocator, allocator_traits<>::value_type
-#include <vector>                            // for vector
+#include <boost/test/included/unit_test.hpp>  // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...
+#include <memory>                             // for allocator_traits<>::value_type
+#include <vector>                             // for vector
+#include <cstdint>                            // for int32_t
+#include <exception>                          // for exception
+#include <regex>                              // for match_results<>::_Base_type
+#include <stdexcept>                          // for runtime_error
 
 // the code to test:
-#include "Config.hpp" // for Config
-
-#include "json.hpp" // for json_ref, json
+#include "Config.hpp"                         // for Config
+#include "json.hpp"                           // for json_ref, basic_json<>::object_t, json
 
 using kotekan::Config;
 

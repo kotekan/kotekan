@@ -7,21 +7,19 @@
 #ifndef HFBBUFFER_HPP
 #define HFBBUFFER_HPP
 
-#include "FrameView.hpp"   // for FrameView
-#include "HFBMetadata.hpp" // for HFBMetadata
-#include "Hash.hpp"        // for Hash
-#include "buffer.h"        // for Buffer
-#include "dataset.hpp"     // for dset_id_t
-#include "visUtil.hpp"     // for cfloat
+#include <stdint.h>         // for uint32_t, uint64_t, int64_t
+#include <time.h>           // for size_t, timespec
+#include <set>              // for set
+#include <string>           // for string
+#include <utility>          // for pair
 
-#include "gsl-lite.hpp" // for span
-
-#include <set>      // for set
-#include <stdint.h> // for uint32_t, uint64_t, uint8_t
-#include <string>   // for string
-#include <time.h>   // for timespec
-#include <tuple>    // for tuple
-#include <utility>  // for pair
+#include "FrameView.hpp"    // for FrameView
+#include "HFBMetadata.hpp"  // for HFBMetadata
+#include "buffer.h"         // for Buffer
+#include "dataset.hpp"      // for dset_id_t
+#include "gsl-lite.hpp"     // for span
+#include "Config.hpp"       // for Config
+#include "Telescope.hpp"    // for freq_id_t
 
 
 /**

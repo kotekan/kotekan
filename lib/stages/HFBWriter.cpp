@@ -1,31 +1,34 @@
 
+#include <cxxabi.h>               // for __forced_unwind
+#include <sys/types.h>            // for uint
+#include <cstdint>                // for uint32_t, uint64_t
+#include <future>                 // for async, future
+#include <map>                    // for map, map<>::mapped_type
+#include <memory>                 // for __shared_ptr_access, shared_ptr
+#include <stdexcept>              // for out_of_range
+#include <string>                 // for string, to_string
+#include <utility>                // for pair
+#include <exception>              // for exception
+#include <regex>                  // for match_results<>::_Base_type
+#include <system_error>           // for system_error
+#include <vector>                 // for vector
+
 #include "HFBWriter.hpp"
-
-#include "Config.hpp"            // for Config
-#include "HFBFrameView.hpp"      // for HFBFrameView
-#include "Stage.hpp"             // for Stage
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "SystemInterface.hpp"   // for get_username, get_hostname
-#include "buffer.h"              // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "datasetManager.hpp"    // for dset_id_t, fingerprint_t
-#include "prometheusMetrics.hpp" // for Counter, MetricFamily
-#include "restServer.hpp"        // for connectionInstance
-#include "version.h"             // for get_git_commit_hash
-#include "visFile.hpp"           // for visFileBundle
-#include "visUtil.hpp"           // for movingAverage
-
-#include <cstdint>   // for uint32_t
-#include <errno.h>   // for ENOENT, errno
-#include <future>    // for future
-#include <map>       // for map
-#include <memory>    // for shared_ptr, unique_ptr
-#include <set>       // for set
-#include <stdexcept> // for runtime_error
-#include <stdio.h>   // for size_t, remove
-#include <string>    // for string, operator+
-#include <unistd.h>  // for access, F_OK
-#include <utility>   // for pair
+#include "Config.hpp"             // for Config
+#include "HFBFrameView.hpp"       // for HFBFrameView
+#include "Stage.hpp"              // for Stage
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "SystemInterface.hpp"    // for get_hostname, get_username
+#include "buffer.h"               // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "datasetManager.hpp"     // for datasetManager, dset_id_t
+#include "prometheusMetrics.hpp"  // for Metrics
+#include "restServer.hpp"         // for HTTP_RESPONSE, connectionInstance, restServer
+#include "version.h"              // for get_git_commit_hash
+#include "visUtil.hpp"            // for ts_to_double, time_ctype
+#include "Hash.hpp"               // for Hash, operator<
+#include "datasetState.hpp"       // for metadataState, freqState, beamState
+#include "kotekanLogging.hpp"     // for FATAL_ERROR, ERROR
 
 using kotekan::bufferContainer;
 using kotekan::Config;

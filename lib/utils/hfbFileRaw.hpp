@@ -6,22 +6,21 @@
 #ifndef HFB_FILE_RAW_HPP
 #define HFB_FILE_RAW_HPP
 
-#include "HFBFrameView.hpp"   // for HFBFrameView
-#include "dataset.hpp"        // for dset_id_t
-#include "kotekanLogging.hpp" // for logLevel
-#include "visFile.hpp"        // for visFile
-#include "visUtil.hpp"        // for time_ctype
+#include <fcntl.h>             // for O_CREAT, O_EXCL, O_WRONLY
+#include <stddef.h>            // for size_t
+#include <sys/types.h>         // for off_t
+#include <cstdint>             // for uint32_t
+#include <fstream>             // for ofstream
+#include <map>                 // for map
+#include <string>              // for string
+#include <vector>              // for vector
 
-#include "json.hpp" // for json
-
-#include <cstdint>     // for uint32_t
-#include <fcntl.h>     // for O_CREAT, O_EXCL, O_WRONLY
-#include <fstream>     // for ofstream
-#include <map>         // for map
-#include <stddef.h>    // for size_t
-#include <string>      // for string
-#include <sys/types.h> // for off_t
-#include <vector>      // for vector
+#include "dataset.hpp"         // for dset_id_t
+#include "kotekanLogging.hpp"  // for logLevel
+#include "visFile.hpp"         // for visFile
+#include "visUtil.hpp"         // for time_ctype
+#include "json.hpp"            // for json
+#include "FrameView.hpp"       // for FrameView
 
 
 /** @brief A CHIME correlator file in raw format.
