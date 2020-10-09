@@ -90,13 +90,11 @@ void pulsarPostProcess::fill_headers(unsigned char* out_buf, PSRHeader* psr_head
             (time_now->tv_nsec / 1.e9) / (_timesamples_per_pulsar_packet * fpga_s);
 
         for (uint f = 0; f < freqloop; ++f) {
-            // load frequency indices into thread_id and EUD3.
-            if (f == 0) {
-                psr_header->thread_id = thread_ids[f];
-                psr_header->eud3 = 0;
-
-            } else {
-                psr_header->eud3 += (thread_ids[f] << (f - 1) * 10);
+            // Load frequency indices into thread_id and EUD3 if frequency packing.
+            psr_header->thread_id = thread_ids[f];
+            if (_timesamples_per_pulsar_packet == 625) {
+                psr_header->eud3 = (uint32_t)thread_ids[1] + ((uint32_t)thread_ids[2] << 10)
+                                   + ((uint32_t)thread_ids[3] << 20);
             }
 
             for (uint32_t beam_id = 0; beam_id < _num_pulsar; ++beam_id) {
@@ -168,8 +166,7 @@ void pulsarPostProcess::main_thread() {
         psr_header.log_num_chan = 3; // ln8
     }
     psr_header.vdif_version = 1;
-    char si[2] = {'C', 'X'};
-    psr_header.station_id = (si[0] << 8) + si[1];
+    psr_header.station_id = 0; // to be set as a node ID after buffer sync, see below.
     psr_header.thread_id = 0;  // index of first packed frequency.
     psr_header.bits_depth = 3; // 4+4 bit so 4-1=3
     psr_header.data_type = 1;  // Complex
@@ -200,6 +197,11 @@ void pulsarPostProcess::main_thread() {
             beam_coord[i] = get_beam_coord(in_buf[i], in_buffer_ID[i]);
             thread_ids[i] = tel.to_freq_id(in_buf[i], in_buffer_ID[i]);
         }
+
+        // Define station_id as a node identifer in terms of F-engine slot/crate/link data.
+        ice_stream_id_t stream_id = ice_get_stream_id_t(in_buf[0], in_buffer_ID[0]);
+        psr_header.station_id =
+            (uint16_t)(stream_id.crate_id * 16 + stream_id.slot_id + stream_id.link_id * 32);
 
         bool skipped_frames =
             (new_frame_fpga_seq_num.value() - frame_fpga_seq_num) > _samples_per_data_set;
