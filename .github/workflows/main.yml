@@ -323,7 +323,6 @@ jobs:
   iwyu:
     runs-on: ubuntu-latest
     needs: build-docker
-    if: github.base_ref == 'master'
 
     steps:
     - uses: actions/checkout@v2
