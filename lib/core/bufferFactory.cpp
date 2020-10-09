@@ -10,7 +10,7 @@
 #include "HFBFrameView.hpp"    // for HFBFrameView
 #include "buffer.h"            // for create_buffer
 #include "kotekanLogging.hpp"  // for INFO_NON_OO
-#include "metadata.h"         // for metadataPool // IWYU pragma: keep
+#include "metadata.h"          // for metadataPool // IWYU pragma: keep
 #include "visBuffer.hpp"       // for VisFrameView
 #include "fmt.hpp"             // for format, fmt
 

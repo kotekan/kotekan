@@ -20,6 +20,7 @@
 #include "gsl-lite.hpp"     // for span
 #include "Config.hpp"       // for Config
 #include "Telescope.hpp"    // for freq_id_t
+#include "visUtil.hpp"      // IWYU pragma: keep
 
 
 /**
