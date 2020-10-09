@@ -5,7 +5,7 @@ find_package(NUMA REQUIRED)
 add_library(kotekan_dpdk dpdkCore.cpp zeroSamples.cpp invalidateVDIFframes.cpp)
 
 # Link in DPDK
-find_package(dpdk REQUIRED)
+find_package(DPDK REQUIRED)
 message("DPDK include dir: ${DPDK_INCLUDE_DIR}")
 target_include_directories(kotekan_dpdk SYSTEM PRIVATE ${DPDK_INCLUDE_DIR})
 target_link_libraries(kotekan_dpdk PRIVATE ${DPDK_LIBRARIES} ${NUMA_LIBRARY} libexternal
