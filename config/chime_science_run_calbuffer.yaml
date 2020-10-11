@@ -38,11 +38,9 @@ vis_buffer:
     num_prod: 2048
     buffer_depth: 1024  # Increase as this subset is produced very quickly
   visbuf_10s_timing:
-    num_elements: 11
-    num_prod: 66
+    num_elements: 16
     kotekan_buffer: vis
     buffer_depth: 2048  # Increase as this subset is produced very quickly
-
 
 # Kotekan stages
 buffer_recv:
@@ -55,6 +53,14 @@ buffer_recv:
     kotekan_stage: bufferRecv
     buf: visbuf_10s_timing
     listen_port: 15002
+
+count_check:
+  cal:
+    kotekan_stage: countCheck
+    in_buf: visbuf_10s_cal
+  timing:
+    kotekan_stage: countCheck
+    in_buf: visbuf_10s_timing
 
 vis_debug:
   cal:
