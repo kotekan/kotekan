@@ -27,27 +27,58 @@ env:
 
 jobs:
 
+  check-dockerfile-changes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses:
+          - actions/checkout@v2
+          - technote-space/get-diff-action@v3
+        id: git-diff-docker
+        with:
+          FILES: tools/docker/Dockerfile
+
+  check-iwyu-dockerfile-changes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses:
+        - actions/checkout@v2
+        - technote-space/get-diff-action@v3
+        id: git-diff-docker-iwyu
+        with:
+          FILES: tools/iwyu/docker/Dockerfile
+
   # Build the docker images
   build-docker:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
 
-    - name: Pull docker images
+    - name: Pull docker image
       run: |
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker pull --disable-content-trust ${IMG_CORE}
+      if: steps.git-diff-docker.outputs.diff
+    - name: Pull IWYU docker image
+      run: |
+        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker pull --disable-content-trust ${IMG_IWYU}
+      if: steps.git-diff-docker-iwyu.outputs.diff
     - name: Build core docker image
       run: |
         docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE} -t ${IMG_CORE} - < tools/docker/Dockerfile
+      if: steps.git-diff-docker.outputs.diff
     - name: Build iwyu docker image
       run: |
         docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE},${IMG_IWYU} -t ${IMG_IWYU} - < tools/iwyu/docker/Dockerfile
-    - name: Push docker images
+      if: steps.git-diff-docker-iwyu.outputs.diff
+    - name: Push docker image
       run: |
         docker push ${IMG_CORE}
+      if: steps.git-diff-docker.outputs.diff
+    - name: Push docker image
+      run: |
         docker push ${IMG_IWYU}
+      if: steps.git-diff-docker-iwyu.outputs.diff
 
 
   # Build a basic version of kotekan
