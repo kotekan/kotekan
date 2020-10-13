@@ -49,6 +49,7 @@
     { include: [ "\"H5Tpublic.h\"", public, "<highfive/H5DataType.hpp>", public ] },
     { include: [ "\"H5Fpublic.h>\"", public, "<highfive/H5File.hpp>", public ] },
     { include: [ "<H5Ppublic.h>", public, "<highfive/H5PropertyList.hpp>", public ] },
+    { include: [ "<H5Tpublic>", public, "<highfive/H5DataType.hpp>", public ] },
 
 
     # Boost unit tests
