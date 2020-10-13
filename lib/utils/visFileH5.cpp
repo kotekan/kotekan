@@ -24,6 +24,7 @@
 #include <highfive/H5File.hpp>      // for File, NodeTraits::createDataSet, File::flush, NodeTr...
 #include <highfive/H5Group.hpp>     // for Group
 #include <highfive/H5Object.hpp>    // for Object::getId, HighFive
+#include <highfive/H5PropertyList.hpp>
 #include <highfive/H5Selection.hpp> // for Selection, SliceTraits::write, SliceTraits::select
 #include <numeric>                  // for iota
 #include <stdexcept>                // for runtime_error, out_of_range
