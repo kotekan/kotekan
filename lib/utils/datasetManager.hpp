@@ -2,7 +2,7 @@
 #define DATASET_MANAGER_HPP
 
 #include "Config.hpp"            // for Config
-#include "Hash.hpp"              // for operator<, Hash
+#include "Hash.hpp"              // for Hash, operator<
 #include "dataset.hpp"           // for dataset
 #include "datasetState.hpp"      // for datasetState, state_uptr, _factory_aliasdatasetState
 #include "factory.hpp"           // for FACTORY
@@ -19,8 +19,8 @@
 #include <condition_variable> // for condition_variable
 #include <exception>          // for exception
 #include <functional>         // for function
-#include <map>                // for map, _Rb_tree_iterator, operator!=, map<>::iterator
-#include <memory>             // for unique_ptr, allocator, operator==, make_unique
+#include <map>                // for map, _Rb_tree_iterator
+#include <memory>             // for unique_ptr, operator==, make_unique
 #include <mutex>              // for mutex, unique_lock, lock_guard
 #include <optional>           // for optional
 #include <set>                // for set

@@ -20,7 +20,7 @@
 #include <stdexcept>                         // for out_of_range
 #include <stdint.h>                          // for uint32_t
 #include <stdlib.h>                          // for atoi
-#include <string>                            // for allocator, string, operator<<, getline, str...
+#include <string>                            // for string, operator<<, getline, string_literals
 #include <unistd.h>                          // for usleep
 #include <utility>                           // for pair
 #include <vector>                            // for vector

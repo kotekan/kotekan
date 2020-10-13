@@ -1,11 +1,11 @@
 #include "gpuBeamformSimulate.hpp"
 
-#include "Config.hpp"       // for Config
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"
-#include "buffer.h"            // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"       // for Telescope, FREQ_ID_NOT_SET
+#include "buffer.h"            // for Buffer, mark_frame_full, register_producer, wait_for_empt...
 #include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for ERROR, INFO
+#include "kotekanLogging.hpp"  // for INFO, ERROR
 
 #include <algorithm>   // for copy
 #include <assert.h>    // for assert

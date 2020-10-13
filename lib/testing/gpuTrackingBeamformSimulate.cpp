@@ -1,8 +1,8 @@
 #include "gpuTrackingBeamformSimulate.hpp"
 
-#include "Config.hpp"       // for Config
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"       // for Telescope, FREQ_ID_NOT_SET
 #include "buffer.h"            // for Buffer, mark_frame_empty, mark_frame_full, pass_metadata
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.h"     // for beamCoord, get_fpga_seq_num, get_gps_time

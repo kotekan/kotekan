@@ -13,7 +13,7 @@
 #include <cstdint>   // for uint32_t
 #include <exception> // for exception
 #include <iosfwd>    // for ostream
-#include <memory>    // for allocator, unique_ptr
+#include <memory>    // for unique_ptr
 #include <numeric>   // for iota
 #include <stddef.h>  // for size_t
 #include <stdexcept> // for runtime_error, out_of_range
