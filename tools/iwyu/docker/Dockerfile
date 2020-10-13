@@ -1,3 +1,4 @@
+# TODO: change "latest" to "develop"
 FROM docker.pkg.github.com/kotekan/kotekan/kotekan-core:latest
 
 ## The maintainer name and email
