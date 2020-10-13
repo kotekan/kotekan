@@ -13,10 +13,12 @@ on:
     branches:
     - develop
     - master
+    - ar/iwyu_202010
   push:
     branches:
     - develop
     - master
+    - ar/iwyu_202010
 
 env:
   IMG_CORE: docker.pkg.github.com/kotekan/kotekan/kotekan-core:latest
