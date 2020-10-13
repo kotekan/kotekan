@@ -5,9 +5,6 @@
 
 #include "fmt.hpp" // for format, fmt
 
-#include <H5Ipublic.h>                 // for hid_t
-#include <H5Zpublic.h>                 // for H5Z_FLAG_MANDATORY, H5Z_filter_t
-#include <H5public.h>                  // for hsize_t
 #include <algorithm>                   // for copy, max, min
 #include <cstdint>                     // for uint32_t
 #include <cstdio>                      // for remove

@@ -51,6 +51,10 @@
     { include: [ "<H5Ppublic.h>", public, "<highfive/H5PropertyList.hpp>", public ] },
     { include: [ "<H5Tpublic.h>", public, "<highfive/H5DataType.hpp>", public ] },
     { include: [ "<H5Fpublic.h>", public, "<highfive/H5File.hpp>", public ] },
+    { include: [ "<H5public.h>", public, "<highfive/H5Object.hpp>", public ] },
+    { include: [ "<H5Dpublic.h>", public, "<highfive/H5DataSet.hpp>", public ] },
+    { include: [ "<H5Ipublic.h>", public, "<highfive/H5DataType.hpp>", public ] },
+    { include: [ "<H5Zpublic.h>", public, "<highfive/H5Object.hpp>", public ] },
 
 
     # Boost unit tests

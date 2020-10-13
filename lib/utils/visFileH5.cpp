@@ -10,9 +10,6 @@
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span
 
-#include <H5Dpublic.h>              // for H5Dget_offset, H5D_ALLOC_TIME_EARLY, H5D_CONTIGUOUS
-#include <H5Ipublic.h>              // for hid_t
-#include <H5Ppublic.h>              // for H5Pcreate, H5Pset_alloc_time, H5Pset_fill_time, H5Ps...
 #include <complex>                  // for complex
 #include <cstdio>                   // for remove
 #include <cxxabi.h>                 // for __forced_unwind
