@@ -1,19 +1,20 @@
 #include "visBuffer.hpp"
 
-#include "FrameView.hpp" // for metadataContainer
-#include "Telescope.hpp"
-#include "buffer.h"        // for Buffer, allocate_new_metadata_object, swap_frames
-#include "chimeMetadata.h" // for chimeMetadata
+#include "FrameView.hpp"   // for bind_span, bind_scalar, FrameView
+#include "Telescope.hpp"   // for Telescope
+#include "buffer.h"        // for Buffer, allocate_new_metadata_object
+#include "chimeMetadata.h" // for chimeMetadata, get_stream_id_from_metadata
 #include "metadata.h"      // for metadataContainer
 
 #include "fmt.hpp" // for format, fmt
 
 #include <algorithm>   // for copy
-#include <complex>     // for complex  // IWYU pragma: keep
+#include <complex>     // for complex
 #include <cstdint>     // for uint64_t // IWYU pragma: keep
-#include <cstring>     // for memcpy
 #include <ctime>       // for gmtime
+#include <exception>   // for exception
 #include <map>         // for map
+#include <regex>       // for match_results<>::_Base_type
 #include <set>         // for set
 #include <stdexcept>   // for runtime_error
 #include <sys/time.h>  // for TIMEVAL_TO_TIMESPEC

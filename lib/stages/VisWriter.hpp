@@ -6,29 +6,14 @@
 #ifndef VIS_WRITER_HPP
 #define VIS_WRITER_HPP
 
-#include "BaseWriter.hpp"        // for BaseWriter
-#include "Config.hpp"            // for Config
-#include "Stage.hpp"             // for Stage
-#include "buffer.h"              // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "datasetManager.hpp"    // for dset_id_t, fingerprint_t
-#include "prometheusMetrics.hpp" // for Counter, MetricFamily
-#include "restServer.hpp"        // for connectionInstance
-#include "visBuffer.hpp"         // for VisFrameView
-#include "visFile.hpp"           // for visFileBundle
-#include "visUtil.hpp"           // for movingAverage
+#include "BaseWriter.hpp"      // for BaseWriter
+#include "Config.hpp"          // for Config
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for dset_id_t
 
-#include <cstdint>   // for uint32_t
-#include <errno.h>   // for ENOENT, errno
-#include <future>    // for future
-#include <map>       // for map
-#include <memory>    // for shared_ptr, unique_ptr
-#include <set>       // for set
-#include <stdexcept> // for runtime_error
-#include <stdio.h>   // for size_t, remove
-#include <string>    // for string, operator+
-#include <unistd.h>  // for access, F_OK
-#include <utility>   // for pair
+#include <map>    // for map
+#include <string> // for string
 
 /**
  * @class VisWriter

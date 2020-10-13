@@ -7,20 +7,20 @@
 #ifndef HFBBUFFER_HPP
 #define HFBBUFFER_HPP
 
+#include "Config.hpp"      // for Config
 #include "FrameView.hpp"   // for FrameView
 #include "HFBMetadata.hpp" // for HFBMetadata
-#include "Hash.hpp"        // for Hash
+#include "Telescope.hpp"   // for freq_id_t
 #include "buffer.h"        // for Buffer
 #include "dataset.hpp"     // for dset_id_t
-#include "visUtil.hpp"     // for cfloat
+#include "visUtil.hpp"     // IWYU pragma: keep
 
 #include "gsl-lite.hpp" // for span
 
 #include <set>      // for set
-#include <stdint.h> // for uint32_t, uint64_t, uint8_t
+#include <stdint.h> // for uint32_t, uint64_t, int64_t
 #include <string>   // for string
-#include <time.h>   // for timespec
-#include <tuple>    // for tuple
+#include <time.h>   // for size_t, timespec
 #include <utility>  // for pair
 
 
