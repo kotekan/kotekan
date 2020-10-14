@@ -1,11 +1,11 @@
 #include "frbPostProcess.hpp"
 
-#include "Config.hpp"       // for Config
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"
-#include "buffer.h"              // for Buffer, mark_frame_empty, wait_for_full_frame, regist...
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"         // for Telescope
+#include "buffer.h"              // for Buffer, mark_frame_empty, wait_for_full_frame, register...
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "chimeMetadata.h"       // for get_fpga_seq_num, get_stream_id
+#include "chimeMetadata.h"       // for get_fpga_seq_num
 #include "kotekanLogging.hpp"    // for DEBUG, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Counter
 
@@ -16,14 +16,15 @@
 #include <cstdint>     // for int32_t
 #include <exception>   // for exception
 #include <functional>  // for _Bind_helper<>::type, bind, function
-#include <immintrin.h> // for _mm256_broadcast_ss, __m256, _mm256_load_ps, _mm256_m...
+#include <immintrin.h> // for _mm256_broadcast_ss, __m256, _mm256_load_ps, _mm256_min_ps
 #include <mm_malloc.h> // for posix_memalign
 #include <regex>       // for match_results<>::_Base_type
 #include <stdexcept>   // for runtime_error
 #include <stdlib.h>    // for free, calloc, malloc
 #include <string.h>    // for memcpy, memset
 #include <sys/types.h> // for uint
-#include <xmmintrin.h> // for _mm_max_ps, _mm_min_ps, _mm_store_ss, __m128, _mm_shu...
+#include <time.h>      // for timespec
+#include <xmmintrin.h> // for _mm_max_ps, _mm_min_ps, _mm_store_ss, __m128, _mm_shuff...
 
 
 using kotekan::bufferContainer;
@@ -127,9 +128,11 @@ void frbPostProcess::main_thread() {
     for (int i = 0; i < _num_gpus; ++i)
         in_buffer_ID[i] = 0;
 
-    frb_header.protocol_version = 1;
+    frb_header.protocol_version = 2;
     frb_header.data_nbytes = udp_packet_size - udp_header_size;
     frb_header.fpga_counts_per_sample = fpga_counts_per_sample;
+    const auto fpga0_ns = tel.to_time(0);
+    frb_header.fpga0_ns = fpga0_ns.tv_sec * 1'000'000'000 + fpga0_ns.tv_nsec;
     frb_header.fpga_count = 0;           // to be updated in fill_header
     frb_header.nbeams = _nbeams;         // 4
     frb_header.nfreq_coarse = _num_gpus; // 4

@@ -9,7 +9,6 @@
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
 
-#include <algorithm>    // for max
 #include <cstdio>       // for remove
 #include <cxxabi.h>     // for __forced_unwind
 #include <errno.h>      // for errno
@@ -97,8 +96,8 @@ visFileRaw::visFileRaw(const std::string& name, const kotekan::logLevel log_leve
     alignment = 4; // Align on page boundaries
 
     // Calculate the file structure
-    auto layout = VisFrameView::calculate_buffer_layout(ninput, nvis, num_ev);
-    data_size = layout.first;
+    data_size = VisFrameView::calculate_frame_size(ninput, nvis, num_ev);
+
     metadata_size = sizeof(VisMetadata);
     frame_size = _member_alignment(data_size + metadata_size + 1, alignment * 1024);
 
@@ -221,7 +220,10 @@ bool visFileRaw::write_raw(off_t offset, size_t nb, const void* data) {
     return true;
 }
 
-void visFileRaw::write_sample(uint32_t time_ind, uint32_t freq_ind, const VisFrameView& frame) {
+void visFileRaw::write_sample(uint32_t time_ind, uint32_t freq_ind, const FrameView& frame_view) {
+
+    const VisFrameView& frame = static_cast<const VisFrameView&>(frame_view);
+
     // TODO: consider adding checks for all dims
     if (frame.num_ev != num_ev) {
         throw std::runtime_error(fmt::format(fmt("Number of eigenvalues don't match for write (got "

@@ -5,7 +5,7 @@
 # architectures (from Haswell to Skylake-AVX512 as of 2020/03). Because our
 # use of ccache shares compiled objects we must target our build for the
 # lowest architecture available or we will occasionally crash with SIGILL
-# when a newer instruction is called than is available.
+# when a newer instruction is called than is available.  
 
 name: kotekan-ci-test
 on:
@@ -21,6 +21,7 @@ on:
 env:
   IMG_CORE: docker.pkg.github.com/kotekan/kotekan/kotekan-core:latest
   IMG_IWYU: docker.pkg.github.com/kotekan/kotekan/kotekan-iwyu:latest
+  PYTEST_TIMEOUT: 60
 
 jobs:
 
@@ -70,9 +71,13 @@ jobs:
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
-          cmake -DCMAKE_BUILD_TYPE=Test \
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON \
+            -DCMAKE_BUILD_TYPE=Test \
             -DARCH=haswell \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+            -DCCACHE=ON \
+            -DWITH_TESTS=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s
 
@@ -109,14 +114,17 @@ jobs:
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
-          cmake -DCMAKE_BUILD_TYPE=Test \
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON \
+            -DCMAKE_BUILD_TYPE=Test \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
             -DARCH=haswell \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
-            -DBOOST_TESTS=ON \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+            -DWITH_TESTS=ON \
+            -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" rm -r lib
         docker run "${OPTS[@]}" ccache -s
@@ -125,17 +133,17 @@ jobs:
     - name: Run parallel python tests
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
-        docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile -x -m 'not serial'
+        docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile --timeout=${PYTEST_TIMEOUT} -x -m 'not serial'
 
     - name: Run serial python tests
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
-        docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x -m serial"
+        docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x --timeout=${PYTEST_TIMEOUT} -m serial"
 
     - name: Run boost tests
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
-        docker run "${OPTS[@]}" pytest -v -x
+        docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
 
 
   # Build a full CHIME version of kotekan
@@ -161,15 +169,18 @@ jobs:
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
-          cmake -DCMAKE_BUILD_TYPE=Test \
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON \
+            -DCMAKE_BUILD_TYPE=Test \
             -DUSE_DPDK=ON \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
             -DARCH=haswell \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
-            -DBOOST_TESTS=OFF \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+            -DWITH_TESTS=OFF \
+            -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s
 
@@ -198,7 +209,9 @@ jobs:
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CORE})
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" ccache -s
-        docker run "${OPTS[@]}" cmake \
+        docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+        -DWERROR=ON \
+        -DCMAKE_LINK_WHAT_YOU_USE=ON \
         -DUSE_DPDK=ON \
         -DCMAKE_BUILD_TYPE=Test \
         -DUSE_HDF5=ON \
@@ -208,9 +221,8 @@ jobs:
         -DARCH=haswell \
         -DNO_MEMLOCK=ON \
         -DUSE_OMP=ON \
-        -DBOOST_TESTS=ON \
-        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-        -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
+        -DWITH_TESTS=ON \
+        -DCCACHE=ON ..
         docker run "${OPTS[@]}" make -j 2
         docker run "${OPTS[@]}" ccache -s
 
@@ -235,21 +247,24 @@ jobs:
 
     - name: Build h5py from source
       run: |
-        git clone https://github.com/h5py/h5py.git h5py && cd h5py
-        python3.7 setup.py configure --hdf5=/usr/local/opt/hdf5@1.10/
-        python3.7 setup.py build
+        git clone https://github.com/h5py/h5py.git h5py && cd h5py && git checkout 2.9.0
+        python3 setup.py configure --hdf5=/usr/local/opt/hdf5@1.10/
+        python3 setup.py build
 
     - name: Install bitshuffle
       env:
         HDF5_DIR: /usr/local/opt/hdf5@1.10/
       run: |
-        git clone https://github.com/kiyo-masui/bitshuffle.git bitshuffle && cd bitshuffle
-        python3.7 setup.py install --h5plugin --h5plugin-dir=/usr/local/opt/hdf5@1.10/lib/plugin
+        git clone https://github.com/kiyo-masui/bitshuffle.git bitshuffle
+        cd bitshuffle && git pull
+        python3 setup.py install --h5plugin --h5plugin-dir=/usr/local/opt/hdf5@1.10/lib/plugin
 
     - name: Clone Blaze and HighFive
       run: |
         git clone https://bitbucket.org/blaze-lib/blaze.git blaze
+        cd blaze && git checkout v3.4 && cd ..
         git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git
+        cd HighFive && git pull && cd ..
 
     - name: Install OpenBLAS and LAPACK
       run: brew install openblas lapack
@@ -265,7 +280,10 @@ jobs:
         # adding this to the above env block breaks and results in sh not finding cmake etc
         export PATH="/usr/local/opt/hdf5@1.10/bin:$PATH"
         cd build
-        cmake \
+        # the MacOS linker doesn't support --no-as-needed for -DCMAKE_LINK_WHAT_YOU_USE=ON
+        cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+        -DCMAKE_BUILD_TYPE=Test \
+        -DWERROR=ON \
         -DUSE_HDF5=ON \
         -DUSE_OPENCL=ON \
         -DUSE_FFTW=ON \
@@ -275,8 +293,8 @@ jobs:
         -DLAPACKE_DIR=/usr/local/opt/openblas/ \
         -DBLAZE_PATH=$GITHUB_WORKSPACE/blaze \
         -DHIGHFIVE_PATH=$GITHUB_WORKSPACE/HighFive \
-        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-        -DCMAKE_C_COMPILER_LAUNCHER=ccache ..
+        -DCCACHE=ON \
+        -DWITH_TESTS=ON ..
         make -j 2
 
   # Build kotekan documentation
@@ -292,9 +310,12 @@ jobs:
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CORE})
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" \
-          cmake -DCOMPILE_DOCS=ON \
+          cmake \
+            -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
+            -DCOMPILE_DOCS=ON \
             -DPLANTUML_PATH=/code/build/plantuml \
-            -DBOOST_TESTS=OFF ..
+            -DWITH_TESTS=OFF ..
         docker run "${OPTS[@]}" make doc
         docker run "${OPTS[@]}" make sphinx
 
@@ -302,7 +323,6 @@ jobs:
   iwyu:
     runs-on: ubuntu-latest
     needs: build-docker
-    if: github.base_ref == 'master'
 
     steps:
     - uses: actions/checkout@v2
@@ -312,15 +332,20 @@ jobs:
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_IWYU})
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" \
-          cmake -DCMAKE_BUILD_TYPE=Test \
+          cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+            -DWERROR=ON \
+            -DCMAKE_LINK_WHAT_YOU_USE=ON \
+            -DCMAKE_BUILD_TYPE=Test \
             -DUSE_DPDK=ON \
             -DUSE_HDF5=ON -DHIGHFIVE_PATH=/code/build/HighFive \
             -DUSE_LAPACK=ON -DBLAZE_PATH=/code/build/blaze \
             -DARCH=haswell \
             -DNO_MEMLOCK=ON \
             -DUSE_OMP=ON \
-            -DBOOST_TESTS=ON \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
+            -DWITH_TESTS=ON \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DIWYU=ON \
+            -DCCACHE=ON ..
 
     - name: Run iwyu
       run: |
@@ -340,7 +365,7 @@ jobs:
         mkdir -p build-check-format
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-check-format/ ${IMG_CORE})
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
-        docker run "${OPTS[@]}" cmake ..
+        docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ..
         docker run "${OPTS[@]}" make clang-format
         git diff --exit-code
 
@@ -348,3 +373,8 @@ jobs:
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${IMG_CORE})
         docker run "${OPTS[@]}" black --exclude docs --check .
+
+    - name: Run cmakelint
+      run: |
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${IMG_CORE})
+        docker run "${OPTS[@]}" tools/cmakelint.sh /code/kotekan

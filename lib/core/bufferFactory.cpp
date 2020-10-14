@@ -1,6 +1,7 @@
 #include "bufferFactory.hpp"
 
 #include "Config.hpp"         // for Config
+#include "HFBFrameView.hpp"   // for HFBFrameView
 #include "buffer.h"           // for create_buffer
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.h"         // for metadataPool // IWYU pragma: keep
@@ -11,8 +12,8 @@
 #include <cstdint>   // for int32_t, uint32_t
 #include <exception> // for exception
 #include <regex>     // for match_results<>::_Base_type
+#include <stddef.h>  // for size_t
 #include <stdexcept> // for runtime_error
-#include <utility>   // for pair
 #include <vector>    // for vector
 
 using json = nlohmann::json;
@@ -82,32 +83,23 @@ struct Buffer* bufferFactory::new_buffer(const string& type_name, const string& 
         pool = metadataPools[metadataPool_name];
     }
 
+    size_t frame_size = 0;
     if (type_name == "standard") {
-        uint32_t frame_size = config.get<uint32_t>(location, "frame_size");
-        INFO_NON_OO("Creating standard buffer named {:s}, with {:d} frames, frame_size of {:d}, "
-                    "and metadata pool {:s} on numa_node {:d}",
-                    name, num_frames, frame_size, metadataPool_name, numa_node);
-
-        return create_buffer(num_frames, frame_size, pool, name.c_str(), numa_node);
+        frame_size = config.get<uint32_t>(location, "frame_size");
     }
 
     if (type_name == "vis") {
-        int num_elements = config.get<int>(location, "num_elements");
-        int num_ev = config.get<int>(location, "num_ev");
-        int num_prod = config.get_default<int>(location, "num_prod", -1);
-
-        if (num_prod < 0) {
-            num_prod = num_elements * (num_elements + 1) / 2;
-        }
-
-        auto layout = VisFrameView::calculate_buffer_layout(num_elements, num_prod, num_ev);
-        uint32_t frame_size = layout.first;
-
-        INFO_NON_OO("Creating VisBuffer named {:s} with {:d} frames, frame size of {:d} and "
-                    "metadata pool {:s}",
-                    name, num_frames, frame_size, metadataPool_name);
-        return create_buffer(num_frames, frame_size, pool, name.c_str(), numa_node);
+        frame_size = VisFrameView::calculate_frame_size(config, location);
     }
+
+    if (type_name == "hfb") {
+        frame_size = HFBFrameView::calculate_frame_size(config, location);
+    }
+
+    INFO_NON_OO("Creating {:s}Buffer named {:s} with {:d} frames, frame size of {:d} and "
+                "metadata pool {:s} on numa_node {:d}",
+                type_name, name, num_frames, frame_size, metadataPool_name, numa_node);
+    return create_buffer(num_frames, frame_size, pool, name.c_str(), type_name.c_str(), numa_node);
 
     // No metadata found
     throw std::runtime_error(fmt::format(fmt("No buffer type named: {:s}"), name));

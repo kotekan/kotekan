@@ -32,10 +32,8 @@ import os
 import time
 import argparse
 import yaml
-import subprocess
 import requests
 import json
-import imp
 from ch_util import ephemeris
 from kotekan import __version__
 
@@ -420,7 +418,7 @@ def data_listener(thread_id):
                     if -1 * roll_amount > waterfall.shape[1]:
                         # Reset Waterfall
                         t_min = datetime.datetime.utcnow()
-                        waterfall[:, :] = -1  # np.nan
+                        waterfall[:, :] = np.nan
                         app.min_seq = header["fpga_seq_num"][0]
                         app.max_seq = (
                             app.min_seq
@@ -431,7 +429,7 @@ def data_listener(thread_id):
                     else:
                         # DO THE ROLL, Note: Roll Amount is negative
                         waterfall = np.roll(waterfall, roll_amount, axis=1)
-                        waterfall[:, roll_amount:] = -1  # np.nan
+                        waterfall[:, roll_amount:] = np.nan
                         app.min_seq -= (
                             roll_amount * timesteps_per_frame * frames_per_packet
                         )
@@ -608,21 +606,15 @@ def TCP_stream():
                 )
                 conn.send(t_min.strftime("%d-%m-%YT%H:%M:%S:%f").encode())
             elif MESSAGE == "w":
-                temp_bi_waterfall = (
-                    np.sum(bi_waterfall[:, :, :max_t_pos], axis=2)
-                    + np.count_nonzero(bi_waterfall[:, :, :max_t_pos] == -1, axis=2)
-                ).astype(float)
-                temp_bi_waterfall /= max_t_pos - np.count_nonzero(
-                    bi_waterfall[:, :, :max_t_pos] == -1, axis=2
-                )
+                temp_bi_waterfall = np.nanmean(bi_waterfall[:, :, :max_t_pos], axis=2)
                 # logger.debug(np.count_nonzero(bi_waterfall[:,:,:max_t_pos]==-1, axis = 2).shape, np.min(np.count_nonzero(bi_waterfall[:,:,:max_t_pos]==-1, axis = 2)), np.max(np.count_nonzero(bi_waterfall[:,:,:max_t_pos]==-1, axis = 2)))
                 # logger.debug(np.nanmin(temp_bi_waterfall), np.nanmax(temp_bi_waterfall), np.nanmean(temp_bi_waterfall))
                 # logger.debug(np.where(temp_bi_waterfall[223,:] > 2)[0].size, temp_bi_waterfall[223,143], np.nanmax(temp_bi_waterfall[223,:]), np.nanmin(temp_bi_waterfall[223,:]))
                 logger.debug(
-                    "Sending Bad Input Watefall Data %d ..."
+                    "Sending Bad Input Waterfall Data %d ..."
                     % (len(temp_bi_waterfall.tostring()))
                 )
-                conn.send(temp_bi_waterfall.tostring())  # Send Watefall
+                conn.send(temp_bi_waterfall.tostring())  # Send Waterfall
             elif MESSAGE == "t":
                 logger.debug(
                     "Sending Bad Input Time Data ...",
@@ -644,15 +636,7 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
         )
 
     # Bad Input Metrics
-    mean_bi_waterfall = (
-        np.sum(bi_waterfall[:, :, :max_t_pos], axis=2)
-        + np.count_nonzero(bi_waterfall[:, :, :max_t_pos] == -1, axis=2)
-    ).astype(float)
-    mean_bi_waterfall /= max_t_pos - np.count_nonzero(
-        bi_waterfall[:, :, :max_t_pos] == -1, axis=2
-    )
-    # mean_bi_waterfall = np.mean(bi_waterfall[:,:,:max_t_pos], axis = 2)
-    mean_bi_waterfall[mean_bi_waterfall < 0] = np.nan
+    mean_bi_waterfall = np.nanmean(bi_waterfall[:, :, :max_t_pos], axis=2)
     bad_input_band = (
         100.0
         * np.nanmedian(mean_bi_waterfall, axis=0)
@@ -677,7 +661,7 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
 
     # RFI metrics
     # Find which timesteps are not populated yet in the waterfall
-    bad_locs = np.where(np.sum(waterfall, axis=0) == -1 * waterfall.shape[0])[0]
+    bad_locs = np.where(np.sum(waterfall, axis=0) == np.nan * waterfall.shape[0])[0]
     if bad_locs.size > 0:
         max_pos = bad_locs[0]
     else:
@@ -690,8 +674,8 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
     confidence = np.abs(waterfall[:, :max_pos] - med) / std
     rfi_mask = np.zeros_like(confidence)
     rfi_mask[confidence > 3.0] = 1.0
-    rfi_mask[waterfall[:, :max_pos] == -1] = -1.0
-    band_perc = 100.0 * np.sum(rfi_mask, axis=1) / float(rfi_mask.shape[1])
+    rfi_mask[waterfall[:, :max_pos] == np.nan] = np.nan
+    band_perc = 100.0 * np.nanmean(rfi_mask, axis=1)
     fbins_mhz = np.round(
         np.array([800.0 - float(b) * 400.0 / 1024.0 for b in np.arange(band.size)]),
         decimals=2,
@@ -699,14 +683,10 @@ def compute_metrics(bi_waterfall, waterfall, metric_dict, max_t_pos, app):
     fbins = np.arange(band_perc.size)
     for i in range(band_perc.size):
         if np.isnan(band[i]) or band[i] < 0:
-            metric_dict["rfi_band"].labels(fbins_mhz[i], fbins[i]).set(-1)
+            metric_dict["rfi_band"].labels(fbins_mhz[i], fbins[i]).set(np.nan)
         else:
             metric_dict["rfi_band"].labels(fbins_mhz[i], fbins[i]).set(band_perc[i])
-    overall_rfi = (
-        100.0
-        * np.sum(rfi_mask[waterfall[:, :max_pos] != -1])
-        / float(rfi_mask[waterfall[:, :max_pos] != -1].size)
-    )
+    overall_rfi = 100.0 * np.nanmean(rfi_mask[waterfall[:, :max_pos] != np.nan])
     if np.isnan(overall_rfi):
         overall_rfi = -1
     metric_dict["overall_rfi_sk"].set(overall_rfi)
@@ -823,7 +803,7 @@ def set_rfi_zeroing(zeroing_on):
                 f"RFI Solar Transit Toggle: Successfully turned RFI zeroing {state}."
             )
             return True
-    except:
+    except Exception:
         logger.info("RFI Solar Transit Toggle: Failure to contact coco, is it running?")
     return False
 
@@ -917,11 +897,11 @@ if __name__ == "__main__":
     # Initialize Plot
     nx, ny = app.config["waterfallY"], app.config["waterfallX"]
     waterfall = np.empty([nx, ny], dtype=float)
-    waterfall[:, :] = -1  # np.nan
+    waterfall[:, :] = np.nan
     bi_waterfall = np.empty(
         [app.config["num_global_freq"], app.config["num_elements"], 64], dtype=np.int8
     )
-    bi_waterfall[:, :, :] = -1  # np.nan
+    bi_waterfall[:, :, :] = np.nan
     time.sleep(1)
 
     # Spawn threads to receive UDP packets from Kotekan

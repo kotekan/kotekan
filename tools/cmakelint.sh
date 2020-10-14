@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# Exit immediately if a command exits with a non-zero status.
+set -e
+
+path="."
+
+# get path argument
+if [ "$#" = 1 ]; then
+    path="$1"
+fi
+
+echo "Checking all cmake files in '$path' and its subdirectories."
+
+# Run cmakelint on all CMakeList.txt recursively.
+shopt -s globstar
+for file in "$path"/{,**/}CMakeLists.txt; do
+    cmake-format -c "$path"/tools/cmake_format_config.py -i -- "$file"
+    git diff --exit-code
+    cmake-lint --suppress-decorations -c "$path"/tools/cmake_format_config.py -- "$file"
+done
+
+# Run cmakelint on all .cmake files recursively.
+shopt -s nullglob
+for file in "$path"/cmake/*.cmake; do
+    cmake-format -c "$path"/tools/cmake_format_config.py -i -- "$file"
+    git diff --exit-code
+    cmake-lint --suppress-decorations -c "$path"/tools/cmake_format_config.py -- "$file"
+done

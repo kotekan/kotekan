@@ -6,6 +6,8 @@
 #include "Telescope.hpp"    // for freq_id_t
 #include "chimeMetadata.h"  // for stream_t
 
+#include "json.hpp"
+
 #include <map>      // for map
 #include <stdint.h> // for uint64_t, uint32_t
 #include <string>   // for string
@@ -24,6 +26,10 @@
  *                                       This can be useful for systems not expected to
  *                                       lookup stream_ids. This option has no effect if
  *                                       @c require_frequency_map is set to true.  Default: true
+ * @conf    query_frequency_map  bool.   Should we get the frequency map from a remote source.
+ * @conf    frequency_map_host   string. The frequency map server IP address.
+ * @conf    frequency_map_port   uint.   The port number on the frequency map server.
+ * @conf    frequency_map_endpoint string. The endpoint with the frequency map.
  **/
 class CHIMETelescope : public ICETelescope {
 public:
@@ -39,17 +45,40 @@ private:
     /// Allow a default map to be generated if one isn't aviable in the config.
     bool _allow_default_frequency_map;
 
+    /// Query the frequency map directly from fpga_master (only used for testing)
+    bool _query_frequency_map;
+
+    /// The frequency map server IP address
+    std::string _frequency_map_host;
+
+    /// The port number on the frequency map server.
+    uint32_t _frequency_map_port;
+
+    /// The endpoint with the frequency map.
+    std::string _frequency_map_endpoint;
+
     /// Maps the post-final shuffle stream_ids to frequency bins
     std::map<uint64_t, freq_id_t> frequency_table;
+
+    /**
+     * @brief Fetch the frequency map from an endpoint
+     *
+     * @param host    String.  The IP address of the server with the map
+     * @param port    Int.     The port of the server
+     * @param path    String   The endpoint name. e.g. (e.g. /get-frequency-map)
+     *
+     * @return json object with frequency map.
+     */
+    nlohmann::json fetch_frequency_map(const std::string& host, const uint32_t port,
+                                       const std::string& path);
 
     /**
      * @brief Sets the CHIME specific post 4-way CPU shuffle stream ID to
      *        frequency bin mapping table.  Uses the table in the config if one exists
      *        otherwise it generates the FPGA default mapping table.
-     * @param config The current config
-     * @param path The location in the config of the @c fmap table from the FPGAs
+     * @param fpga_freq_map_json  JSON The frequency map from the FPGAs
      */
-    void set_frequency_map(const kotekan::Config& config, const std::string& path);
+    void set_frequency_map(nlohmann::json& fpga_freq_map_json);
 };
 
 
