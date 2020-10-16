@@ -204,9 +204,9 @@ updatable_config:
     bad_inputs: [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
                   370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
                   807,  855,  944,  960,  971,  981,  986, 1005, 1010, 1020, 1023,
-                 1058, 1166, 1225, 1280, 1281, 1285, 1314, 1343, 1380, 1381, 1521,
-                 1523, 1543, 1642, 1687, 1738, 1792, 1794, 1910, 1912, 1943, 1945,
-                 1950, 1982, 1984, 1987, 2032, 2034]
+                 1058, 1141, 1166, 1225, 1280, 1281, 1285, 1314, 1343, 1380, 1381,
+                 1521, 1523, 1543, 1642, 1687, 1738, 1792, 1794, 1910, 1912, 1943,
+                 1945, 1950, 1982, 1984, 1987, 2032, 2034]
     start_time: 1535048997.
     update_id: "initial_flags"
   rfi_zeroing_toggle:
@@ -365,7 +365,7 @@ gpu_beamform_hfb_output_buffers:
     kotekan_buffer: standard
 
 cpu_hfb_output_buffers:
-  num_frames: buffer_depth
+  num_frames: 8
   metadata_pool: hfb_pool
   beamform_hfb_output_buffer_0:
     kotekan_buffer: hfb
@@ -429,9 +429,9 @@ vis_pool:
   num_metadata_objects: 200 * buffer_depth
 
 # Buffers
-vis_buffers:
+vis_int_buffers:
   metadata_pool: vis_pool
-  num_frames: buffer_depth
+  num_frames: 11
   visbuf_5s_0:
     kotekan_buffer: vis
   visbuf_5s_1:
@@ -450,6 +450,10 @@ vis_buffers:
     kotekan_buffer: vis
   visbuf_10s_3:
     kotekan_buffer: vis
+
+vis_buffers:
+  metadata_pool: vis_pool
+  num_frames: buffer_depth
   visbuf_10s_merge:
     kotekan_buffer: vis
   visbuf_eig_10s_merge:
@@ -1002,11 +1006,12 @@ frb:
   num_beams_per_frb_packet: 4
   timesamples_per_frb_packet: 16
   cpu_affinity: [5,11]
+  frb_packet_header_size: 32
   frb_output_buffer:
     num_frames: buffer_depth + 4
     frame_size: 8 * 256 * (num_beams_per_frb_packet * num_gpus
       * factor_upchan_out * timesamples_per_frb_packet
-      + 24 + sizeof_short * num_beams_per_frb_packet + sizeof_short * num_gpus
+      + frb_packet_header_size + sizeof_short * num_beams_per_frb_packet + sizeof_short * num_gpus
       + sizeof_float * num_beams_per_frb_packet * num_gpus
       + sizeof_float * num_beams_per_frb_packet * num_gpus)
     metadata_pool: main_pool
@@ -1026,6 +1031,13 @@ frb:
   network_send:
     #kotekan_stage: frbNetworkProcess
     in_buf: frb_output_buffer
+    udp_frb_packet_size: (frb_packet_header_size
+      + sizeof_short * num_beams_per_frb_packet
+      + sizeof_short * num_gpus
+      + sizeof_float * num_beams_per_frb_packet * num_gpus
+      + sizeof_float * num_beams_per_frb_packet * num_gpus)
+      + (num_beams_per_frb_packet * num_gpus
+         * factor_upchan_out * timesamples_per_frb_packet)
     udp_frb_port_number: 1313
     number_of_nodes: 256
     packets_per_stream: 8
@@ -1536,12 +1548,12 @@ eigcalc:
 
   # Masking config
   bands_filled: [ [0, 30], [251, 262] ]
-  exclude_inputs: [
-    46,   84,  107,  136,  142,  256,  257,  319,  348,  370,  550,
-    551,  579,  638,  688,  742,  768,  784,  807,  855,  944,  960,
-    971, 1005, 1010, 1020, 1023, 1058, 1166, 1225, 1280, 1281, 1285,
-    1314, 1380, 1521, 1523, 1543, 1642, 1687, 1738, 1792, 1794, 1910,
-    1912, 1943, 1945, 1982, 1984, 1987, 2032, 2034 ]
+  exclude_inputs: [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
+                    370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
+                    807,  855,  944,  960,  971,  981,  986, 1005, 1010, 1020, 1023,
+                   1058, 1141, 1166, 1225, 1280, 1281, 1285, 1314, 1343, 1380, 1381,
+                   1521, 1523, 1543, 1642, 1687, 1738, 1792, 1794, 1910, 1912, 1943,
+                   1945, 1950, 1982, 1984, 1987, 2032, 2034]
 
 vis_debug:
   kotekan_stage: visDebug

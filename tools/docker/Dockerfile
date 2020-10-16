@@ -11,7 +11,7 @@ RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y python3.7=3.7.9-1+bionic1 \
                        python3-setuptools=39.0.1-2 \
-                       python3-pip=9.0.1-2.3~ubuntu1.18.04.2 \
+                       python3-pip=9.0.1-2.3~ubuntu1.18.04.3 \
                        python3.7-distutils \
                        python3.7-dev=3.7.9-1+bionic1 \
                        build-essential=12.4ubuntu1 \
@@ -26,8 +26,8 @@ RUN apt-get update && \
                        clang-format-8=1:8-3~ubuntu18.04.2 \
                        dpdk=17.11.10-0ubuntu0.1 \
                        dpdk-dev=17.11.10-0ubuntu0.1 \
-                       rocm-opencl-dev=2.0.0.293-rocm-rel-3.7-20-3f18143 \
-                       rocm-opencl=2.0.0.293-rocm-rel-3.7-20-3f18143 \
+                       rocm-opencl-dev=2.0.0.293-rocm-rel-3.8-30-c3b7a21 \
+                       rocm-opencl=2.0.0.293-rocm-rel-3.8-30-c3b7a21 \
                        libhdf5-serial-dev=1.10.0-patch1+docs-4 \
                        libboost-test-dev=1.65.1.0ubuntu1 \
                        libevent-dev=2.1.8-stable-4build1 \
@@ -64,7 +64,7 @@ ENV CXXFLAGS "-march=haswell"
 
 # Install h5py from source for bitshuffle, and clone HighFive for kotekan build
 RUN git clone https://github.com/h5py/h5py.git h5py && \
-    cd h5py && git pull && \
+    cd h5py && git checkout 2.9.0 && \
     python3.7 setup.py configure --hdf5=/usr/lib/x86_64-linux-gnu/hdf5/serial/ --hdf5-version=1.10.0 && \
     python3.7 setup.py install
 RUN git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git && \
@@ -84,7 +84,8 @@ RUN apt-get update && \
                        liblapacke-dev=3.7.1-4ubuntu1 \
                        && \
     apt-get clean && apt-get autoclean && \
-    git clone https://bitbucket.org/blaze-lib/blaze.git blaze && cd blaze && git pull && cd ..
+    git clone https://bitbucket.org/blaze-lib/blaze.git blaze && \
+    cd blaze && git checkout v3.4 && cd ..
 
 # Install kotekan python dependencies
 RUN python3.7 -m pip install msgpack==1.0.0 \

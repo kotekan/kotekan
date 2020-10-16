@@ -6,7 +6,7 @@
 #ifndef HFB_FILE_RAW_HPP
 #define HFB_FILE_RAW_HPP
 
-#include "HFBFrameView.hpp"   // for HFBFrameView
+#include "FrameView.hpp"      // for FrameView
 #include "dataset.hpp"        // for dset_id_t
 #include "kotekanLogging.hpp" // for logLevel
 #include "visFile.hpp"        // for visFile

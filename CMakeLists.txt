@@ -185,6 +185,15 @@ endif()
 string(REGEX REPLACE "( -DNDEBUG$|-DNDEBUG )" "" CMAKE_CXX_FLAGS_TEST "${CMAKE_CXX_FLAGS_RELEASE}")
 string(REGEX REPLACE "( -DNDEBUG$|-DNDEBUG )" "" CMAKE_C_FLAGS_TEST "${CMAKE_C_FLAGS_RELEASE}")
 
+# Set a default build type if none was specified
+set(DEFAULT_BUILD_TYPE "Debug")
+# Set the possible values of build type for cmake-gui
+set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "Test")
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    message(STATUS "Setting build type to '${DEFAULT_BUILD_TYPE}' as none was specified.")
+    set(CMAKE_BUILD_TYPE "${DEFAULT_BUILD_TYPE}")
+endif()
+
 # Enable debug logging for Debug and Test builds
 if(CMAKE_BUILD_TYPE MATCHES Debug OR CMAKE_BUILD_TYPE MATCHES Test)
     add_definitions(-DDEBUGGING)

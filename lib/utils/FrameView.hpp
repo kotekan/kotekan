@@ -6,19 +6,12 @@
 #ifndef FRAMEVIEW_HPP
 #define FRAMEVIEW_HPP
 
-#include "Hash.hpp"        // for Hash
-#include "buffer.h"        // for Buffer
-#include "chimeMetadata.h" // for chimeMetadata
-#include "dataset.hpp"     // for dset_id_t
-#include "visUtil.hpp"     // for cfloat
+#include "buffer.h" // for Buffer
 
 #include "gsl-lite.hpp" // for span
 
-#include <set>      // for set
-#include <stdint.h> // for uint32_t, uint64_t, uint8_t
-#include <string>   // for string
-#include <time.h>   // for timespec
-#include <tuple>    // for tuple
+#include <stdint.h> // for uint8_t
+#include <time.h>   // for size_t
 #include <utility>  // for pair
 
 

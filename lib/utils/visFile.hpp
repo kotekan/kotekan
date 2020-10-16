@@ -11,7 +11,7 @@
 #include "dataset.hpp"        // for dset_id_t
 #include "factory.hpp"        // for CREATE_FACTORY, FACTORY, Factory, REGISTER_NAMED_TYPE_WITH...
 #include "kotekanLogging.hpp" // for logLevel, kotekanLogging, DEBUG
-#include "visUtil.hpp"        // for time_ctype
+#include "visUtil.hpp"        // for time_ctype, operator<
 
 #include <cstdint>    // for uint32_t
 #include <functional> // for function
@@ -20,9 +20,7 @@
 #include <stddef.h>   // for size_t
 #include <string>     // for string, operator+, char_traits
 #include <tuple>      // for tie, tuple
-#include <utility>    // for forward, pair
-
-class VisFrameView;
+#include <utility>    // for pair, forward
 
 /** @brief A base class for files holding correlator data.
  *

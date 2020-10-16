@@ -1,26 +1,28 @@
 #include "DataQuality.hpp"
 
-#include "Hash.hpp"         // for operator<, hash, operator==
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"         // for mark_frame_empty, Buffer, register_consumer, wait_for...
-#include "chimeMetadata.h"
-#include "datasetManager.hpp"    // for state_id_t, datasetManager, dset_id_t
-#include "kotekanLogging.hpp"    // for DEBUG, DEBUG2
+#include "Hash.hpp"              // for operator<
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"              // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "datasetManager.hpp"    // for fingerprint_t, datasetManager, dset_id_t
+#include "datasetState.hpp"      // for stackState
+#include "kotekanLogging.hpp"    // for FATAL_ERROR
 #include "prometheusMetrics.hpp" // for Gauge, Metrics, MetricFamily
-#include "version.h"             // for get_git_commit_hash
 #include "visBuffer.hpp"         // for VisFrameView
-#include "visUtil.hpp"           // for freq_ctype
+#include "visUtil.hpp"           // for frameID, modulo
 
-#include <atomic>      // for atomic_bool
-#include <exception>   // for exception
-#include <functional>  // for _Bind_helper<>::type, bind, function
-#include <future>      // for vector
-#include <regex>       // for match_results<>::_Base_type
-#include <stdexcept>   // for runtime_error
-#include <string.h>    // for memcpy
-#include <string>      // for string
-#include <sys/types.h> // for uint
-#include <vector>      // for vector
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm>  // for copy, copy_backward, equal, max
+#include <atomic>     // for atomic_bool
+#include <deque>      // for deque
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <math.h>     // for pow
+#include <stdexcept>  // for out_of_range
+#include <stdint.h>   // for uint32_t
+#include <string.h>   // for size_t
+#include <string>     // for string, to_string
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

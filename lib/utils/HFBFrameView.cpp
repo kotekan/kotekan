@@ -1,23 +1,23 @@
 #include "HFBFrameView.hpp"
 
-#include "FrameView.hpp"   // for metadataContainer
-#include "buffer.h"        // for Buffer, allocate_new_metadata_object, swap_frames
-#include "chimeMetadata.h" // for chimeMetadata
-#include "metadata.h"      // for metadataContainer
+#include "FrameView.hpp" // for bind_span, FrameView
+#include "buffer.h"      // for Buffer, allocate_new_metadata_object
+#include "metadata.h"    // for metadataContainer
+#include "visUtil.hpp"   // for struct_alignment
 
 #include "fmt.hpp" // for format, fmt
 
-#include <algorithm>   // for copy
-#include <complex>     // for complex  // IWYU pragma: keep
-#include <cstdint>     // for uint64_t // IWYU pragma: keep
-#include <cstring>     // for memcpy
-#include <ctime>       // for gmtime
-#include <map>         // for map
-#include <set>         // for set
-#include <stdexcept>   // for runtime_error
-#include <sys/time.h>  // for TIMEVAL_TO_TIMESPEC
-#include <type_traits> // for __decay_and_strip<>::__type
-#include <vector>      // for vector
+#include <algorithm> // for copy
+#include <complex>   // for complex  // IWYU pragma: keep
+#include <cstdint>   // for uint64_t // IWYU pragma: keep
+#include <ctime>     // for gmtime
+#include <exception> // for exception
+#include <map>       // for map
+#include <regex>     // for match_results<>::_Base_type
+#include <set>       // for set
+#include <stdexcept> // for runtime_error
+#include <tuple>     // for tuple, make_tuple
+#include <vector>    // for vector
 
 HFBFrameView::HFBFrameView(Buffer* buf, int frame_id) :
     FrameView(buf, frame_id),

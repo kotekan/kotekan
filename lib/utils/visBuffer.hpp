@@ -7,9 +7,9 @@
 #ifndef VISBUFFER_HPP
 #define VISBUFFER_HPP
 
-#include "FrameView.hpp" // for FrameView
-#include "Hash.hpp"      // for Hash
-#include "Telescope.hpp"
+#include "Config.hpp"      // for Config
+#include "FrameView.hpp"   // for FrameView
+#include "Telescope.hpp"   // for freq_id_t
 #include "buffer.h"        // for Buffer
 #include "chimeMetadata.h" // for chimeMetadata
 #include "dataset.hpp"     // for dset_id_t
@@ -18,9 +18,9 @@
 #include "gsl-lite.hpp" // for span
 
 #include <set>      // for set
-#include <stdint.h> // for uint32_t, uint64_t, uint8_t
+#include <stdint.h> // for uint32_t, uint64_t
 #include <string>   // for string
-#include <time.h>   // for timespec
+#include <time.h>   // for size_t, timespec
 #include <tuple>    // for tuple
 #include <utility>  // for pair
 

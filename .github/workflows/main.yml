@@ -247,7 +247,7 @@ jobs:
 
     - name: Build h5py from source
       run: |
-        git clone https://github.com/h5py/h5py.git h5py && cd h5py && git pull
+        git clone https://github.com/h5py/h5py.git h5py && cd h5py && git checkout 2.9.0
         python3 setup.py configure --hdf5=/usr/local/opt/hdf5@1.10/
         python3 setup.py build
 
@@ -262,7 +262,7 @@ jobs:
     - name: Clone Blaze and HighFive
       run: |
         git clone https://bitbucket.org/blaze-lib/blaze.git blaze
-        cd blaze && git pull && cd ..
+        cd blaze && git checkout v3.4 && cd ..
         git clone --single-branch --branch extensible-datasets https://github.com/jrs65/HighFive.git
         cd HighFive && git pull && cd ..
 
@@ -282,6 +282,7 @@ jobs:
         cd build
         # the MacOS linker doesn't support --no-as-needed for -DCMAKE_LINK_WHAT_YOU_USE=ON
         cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
+        -DCMAKE_BUILD_TYPE=Test \
         -DWERROR=ON \
         -DUSE_HDF5=ON \
         -DUSE_OPENCL=ON \
@@ -322,7 +323,6 @@ jobs:
   iwyu:
     runs-on: ubuntu-latest
     needs: build-docker
-    if: github.base_ref == 'master'
 
     steps:
     - uses: actions/checkout@v2

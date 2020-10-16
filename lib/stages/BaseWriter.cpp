@@ -2,35 +2,27 @@
 
 #include "Config.hpp"            // for Config
 #include "FrameView.hpp"         // for FrameView
-#include "Hash.hpp"              // for Hash, operator<
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Hash.hpp"              // for operator<
 #include "buffer.h"              // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "datasetManager.hpp"    // for dset_id_t, fingerprint_t, datasetManager
-#include "datasetState.hpp"      // for metadataState, freqState, prodState, stackState, _facto...
+#include "datasetState.hpp"      // for metadataState, _factory_aliasdatasetState
 #include "factory.hpp"           // for FACTORY
-#include "kotekanLogging.hpp"    // for INFO, ERROR, WARN, FATAL_ERROR, DEBUG, logLevel
+#include "kotekanLogging.hpp"    // for FATAL_ERROR, INFO, WARN, DEBUG, logLevel
 #include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily, Gauge
-#include "restServer.hpp"        // for restServer, connectionInstance, HTTP_RESPONSE
+#include "restServer.hpp"        // for HTTP_RESPONSE, connectionInstance, restServer
 #include "version.h"             // for get_git_commit_hash
-#include "visBuffer.hpp"         // for VisFrameView
 #include "visFile.hpp"           // for visFileBundle, _factory_aliasvisFile
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for json_ref, json
-
-#include <algorithm>    // for copy, copy_backward, count_if, equal, max
-#include <atomic>       // for atomic_bool
-#include <cxxabi.h>     // for __forced_unwind
-#include <deque>        // for deque
-#include <exception>    // for exception
-#include <functional>   // for _Bind_helper<>::type, _Placeholder, bind, _1, function
-#include <regex>        // for match_results<>::_Base_type, regex_replace, regex
-#include <sstream>      // for basic_stringbuf<>::int_type, basic_stringbuf<>::pos_type
-#include <sys/types.h>  // for uint
-#include <system_error> // for system_error
-#include <tuple>        // for get
-#include <vector>       // for vector
+#include <algorithm>  // for copy, copy_backward, equal, max
+#include <atomic>     // for atomic_bool
+#include <deque>      // for deque
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error, out_of_range
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;
