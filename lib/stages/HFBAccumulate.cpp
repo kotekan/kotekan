@@ -231,31 +231,31 @@ void HFBAccumulate::main_thread() {
             if (good_samples_frac >= _good_samples_threshold) {
 
                 // Create new metadata
-                allocate_new_metadata_object(out_buf, out_buffer_ID);
+                allocate_new_metadata_object(out_buf, out_frame_id);
 
                 // Populate metadata
                 int64_t fpga_seq =
                     fpga_seq_num_end_old - ((_num_frames_to_integrate - 1) * _samples_per_data_set);
-                set_fpga_seq_start_hfb(out_buf, out_buffer_ID, fpga_seq);
+                set_fpga_seq_start_hfb(out_buf, out_frame_id, fpga_seq);
 
                 // Set GPS time
-                set_ctime_hfb(out_buf, out_buffer_ID, tel.to_time(fpga_seq));
+                set_ctime_hfb(out_buf, out_frame_id, tel.to_time(fpga_seq));
 
-                set_fpga_seq_total(out_buf, out_buffer_ID,
+                set_fpga_seq_total(out_buf, out_frame_id,
                                    total_timesamples - total_lost_timesamples);
-                set_fpga_seq_length(out_buf, out_buffer_ID, total_timesamples);
+                set_fpga_seq_length(out_buf, out_frame_id, total_timesamples);
 
-                freq_id_t freq_id = tel.to_freq_id(in_buf, in_buffer_ID);
-                set_freq_id(out_buf, out_buffer_ID, freq_id);
+                freq_id_t freq_id = tel.to_freq_id(in_buf, in_frame_id);
+                set_freq_id(out_buf, out_frame_id, freq_id);
 
-                set_dataset_id(out_buf, out_buffer_ID, ds_id);
-                set_num_beams(out_buf, out_buffer_ID, _num_frb_total_beams);
-                set_num_subfreq(out_buf, out_buffer_ID, _factor_upchan);
+                set_dataset_id(out_buf, out_frame_id, ds_id);
+                set_num_beams(out_buf, out_frame_id, _num_frb_total_beams);
+                set_num_subfreq(out_buf, out_frame_id, _factor_upchan);
 
                 DEBUG("Dataset ID: {}, freq ID: {:d}", ds_id, freq_id);
 
                 // Set weights to zero for now
-                auto frame = HFBFrameView(out_buf, out_buffer_ID);
+                auto frame = HFBFrameView(out_buf, out_frame_id);
                 for (uint32_t i = 0; i < _num_frb_total_beams * _factor_upchan; i++) {
                     frame.weight[i] = 0.0;
                 }
