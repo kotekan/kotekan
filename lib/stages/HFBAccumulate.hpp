@@ -61,6 +61,8 @@ public:
     /// Primary loop to wait for buffers, dig through data,
     /// stuff packets lather, rinse and repeat.
     void main_thread() override;
+
+private:
     /// Copy the first frame of the integration
     void init_first_frame(HFBFrameView& in_frame, float* sum_data);
     /// Add a frame to the integration
@@ -68,7 +70,75 @@ public:
     /// Normalise frame after integration has been completed
     void normalise_frame(HFBFrameView& in_frame, float* sum_data);
 
-private:
+    // NOTE: Annoyingly this can't be forward declared, and defined fully externally
+    // as the std::deque needs the complete type
+    /**
+     * @class internalState
+     * @brief Hold the internal state of a gated accumulation.
+     **/
+    struct internalState {
+
+        /**
+         * @brief Initialise the required fields.
+         *
+         * Everything else will be set by the reset_state call during
+         * initialisation.
+         *
+         * @param  out_buf    Buffer we will output into.
+         * @param  gate_spec  Specification of how any gating is done.
+         * @param  nprod      Number of products.
+         **/
+        internalState(size_t num_beams, size_t num_sub_freqs);
+
+        ///// View of the data accessed by their freq_ind
+        //std::vector<HFBFrameView> frames;
+
+        ///// The buffer we are outputting too
+        //Buffer* buf;
+
+        // Current frame ID of the buffer we are using
+        //frameID frame_id;
+
+        /// Specification of how we are gating
+        //std::unique_ptr<gateSpec> spec;
+
+        /// The weighted number of total samples accumulated. Must be reset every
+        /// integration period.
+        float sample_weight_total;
+
+        /// The sum of the squared weight difference. This is needed for
+        /// de-biasing the weight calculation
+        float weight_diff_sum;
+
+        /// Function for applying the weighting. While this can essentially be
+        /// derived from the gateSpec we need to cache it so the gating can be
+        /// updated externally within an accumulation.
+        std::function<float(timespec, timespec, float)> calculate_weight;
+
+        /// Mutex to control update of gateSpec
+        /// ... and bool to signal changes (should only be changed when locked)
+        std::mutex state_mtx;
+        bool changed;
+
+        /// Accumulation vectors
+        std::vector<int32_t> hfb1;
+        std::vector<float> hfb2;
+
+        /// Dataset ID for output
+        dset_id_t output_dataset_id;
+
+        friend HFBAccumulate;
+    };
+
+    /**
+     * @brief Reset the state when we restart an integration.
+     *
+     * @param    state  State to reset.
+     * @param    t      Current time.
+     * @returns         True if this accumulation was enabled.
+     **/
+    bool reset_state(internalState& state, timespec t);
+
     Buffer* in_buf;
     Buffer* cls_buf;
     Buffer* out_buf;
