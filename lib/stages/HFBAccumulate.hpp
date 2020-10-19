@@ -64,11 +64,11 @@ public:
 
 private:
     /// Copy the first frame of the integration
-    void init_first_frame(HFBFrameView& in_frame, float* sum_data);
+    void init_first_frame(float* input_data, float* sum_data, const uint32_t in_frame_id);
     /// Add a frame to the integration
-    void integrate_frame(HFBFrameView& in_frame, float* sum_data);
+    void integrate_frame(float* input_data, float* sum_data, const uint32_t in_frame_id);
     /// Normalise frame after integration has been completed
-    void normalise_frame(HFBFrameView& in_frame, float* sum_data);
+    void normalise_frame(float* sum_data, const uint32_t in_frame_id);
 
     // NOTE: Annoyingly this can't be forward declared, and defined fully externally
     // as the std::deque needs the complete type
