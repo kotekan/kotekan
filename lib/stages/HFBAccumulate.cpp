@@ -232,7 +232,7 @@ void HFBAccumulate::main_thread() {
         // We are calculating the weights by differencing even and odd samples.
         // Every even sample we save the set of visibilities...
         if (frame_count % 2 == 0) {
-            std::memcpy(hfb_even.data(), input, _num_frb_total_beams * _factor_upchan);
+            std::memcpy(hfb_even.data(), input, _num_frb_total_beams * _factor_upchan * sizeof(float));
             samples_even = samples_in_frame;
         }
         // ... every odd sample we accumulate the squared differences into the weight dataset
