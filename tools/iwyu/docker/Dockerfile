@@ -1,5 +1,4 @@
-# TODO: change "latest" to "develop"
-FROM docker.pkg.github.com/kotekan/kotekan/kotekan-core:latest
+FROM docker.pkg.github.com/kotekan/kotekan/kotekan-core:develop
 
 ## The maintainer name and email
 MAINTAINER Rick Nitsche <rick@phas.ubc.ca>
