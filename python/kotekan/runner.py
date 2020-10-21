@@ -9,6 +9,7 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 
 
 import os
+import shutil
 import itertools
 import subprocess
 import tempfile
