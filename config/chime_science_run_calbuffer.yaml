@@ -38,7 +38,7 @@ vis_buffer:
     num_prod: 2048
     buffer_depth: 1024  # Increase as this subset is produced very quickly
   visbuf_10s_timing:
-    num_elements: 16
+    num_elements: 15
     kotekan_buffer: vis
     buffer_depth: 2048  # Increase as this subset is produced very quickly
 
