@@ -124,7 +124,7 @@ RUN apt-get update && \
                                             && \
     wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar -P plantuml
 
-# Use this to check what version got installed
+# Uncomment this to check what version got installed
 # RUN python3.7 -m pip show <package>
 # RUN apt-cache policy <package>
 
