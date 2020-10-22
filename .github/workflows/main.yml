@@ -39,7 +39,7 @@ jobs:
       shell: bash
       # Get either branch name of a push or source branch of PR, replace all '/' with '.':
       run: >
-        if [ "${GITHUB_EVENT}" = "push" ]; then
+        if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
           echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
         else
           echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
@@ -84,7 +84,7 @@ jobs:
       shell: bash
       # Get either branch name of a push or source branch of PR, replace all '/' with '.':
       run: >
-        if [ "${GITHUB_EVENT}" = "push" ]; then
+        if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
           echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
         else
           echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
@@ -143,7 +143,7 @@ jobs:
       # If Dockerfile didn't change, use 'latest'. TODO: change to 'develop'.
       run: >
         if [ -n "${{ steps.git-diff-docker.outputs.diff }}" ]; then
-          if [ "${GITHUB_EVENT}" = "push" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
             echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
           else
             echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
@@ -208,7 +208,7 @@ jobs:
       # If Dockerfile didn't change, use 'latest'. TODO: change to 'develop'.
       run: >
         if [ -n "${{ steps.git-diff-docker.outputs.diff }}" ]; then
-          if [ "${GITHUB_EVENT}" = "push" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
             echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
           else
             echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
@@ -285,7 +285,7 @@ jobs:
       # If Dockerfile didn't change, use 'latest'. TODO: change to 'develop'.
       run: >
         if [ -n "${{ steps.git-diff-docker.outputs.diff }}" ]; then
-          if [ "${GITHUB_EVENT}" = "push" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
             echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
           else
             echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
@@ -345,7 +345,7 @@ jobs:
       # If Dockerfile didn't change, use 'latest'. TODO: change to 'develop'.
       run: >
         if [ -n "${{ steps.git-diff-docker.outputs.diff }}" ]; then
-          if [ "${GITHUB_EVENT}" = "push" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
             echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
           else
             echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
@@ -471,7 +471,7 @@ jobs:
       # If Dockerfile didn't change, use 'latest'. TODO: change to 'develop'.
       run: >
         if [ -n "${{ steps.git-diff-docker.outputs.diff }}" ]; then
-          if [ "${GITHUB_EVENT}" = "push" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
             echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
           else
             echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
@@ -515,7 +515,7 @@ jobs:
       # If Dockerfile didn't change, use 'latest'. TODO: change to 'develop'.
       run: >
         if [ -n "${{ steps.git-diff-docker-iwyu.outputs.diff }}" ]; then
-          if [ "${GITHUB_EVENT}" = "push" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
             echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
           else
             echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
@@ -570,7 +570,7 @@ jobs:
       # If Dockerfile didn't change, use 'latest'. TODO: change to 'develop'.
       run: >
         if [ -n "${{ steps.git-diff-docker.outputs.diff }}" ]; then
-          if [ "${GITHUB_EVENT}" = "push" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
             echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
           else
             echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
