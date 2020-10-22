@@ -57,8 +57,7 @@ jobs:
     - name: Pull docker image for develop branch
       run: |
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
-        # TODO: rename to develop
-        docker pull --disable-content-trust ${IMG_CORE}:latest
+        docker pull --disable-content-trust ${IMG_CORE}:develop
       if: steps.git-diff-docker.outputs.diff != '' && steps.pull-docker.outputs.status != 'success'
     - name: Build core docker image
       run: |
@@ -102,8 +101,7 @@ jobs:
     - name: Pull docker image for develop branch
       run: |
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
-        # TODO: rename to develop
-        docker pull --disable-content-trust ${IMG_IWYU}:latest
+        docker pull --disable-content-trust ${IMG_IWYU}:develop
       if: steps.git-diff-docker-iwyu.outputs.diff != '' && steps.pull-docker-iwyu.outputs.status != 'success'
     - name: Build iwyu docker image
       run: >
@@ -140,7 +138,7 @@ jobs:
     - name: Extract branch name for docker container
       shell: bash
       # Get either branch name of a push or source branch of PR, replace all '/' with '.'.
-      # If Dockerfile didn't change, use 'latest'. TODO: change to 'develop'.
+      # If Dockerfile didn't change, use 'develop'.
       run: >
         if [ -n "${{ steps.git-diff-docker.outputs.diff }}" ]; then
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
@@ -149,7 +147,7 @@ jobs:
             echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
           fi
         else
-          echo "::set-output name=branch::latest"
+          echo "::set-output name=branch::develop"
         fi
       id: extract_branch
 
@@ -205,7 +203,7 @@ jobs:
     - name: Extract branch name for docker container
       shell: bash
       # Get either branch name of a push or source branch of PR, replace all '/' with '.'.
-      # If Dockerfile didn't change, use 'latest'. TODO: change to 'develop'.
+      # If Dockerfile didn't change, use 'develop'.
       run: >
         if [ -n "${{ steps.git-diff-docker.outputs.diff }}" ]; then
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
@@ -214,7 +212,7 @@ jobs:
             echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
           fi
         else
-          echo "::set-output name=branch::latest"
+          echo "::set-output name=branch::develop"
         fi
       id: extract_branch
 
@@ -282,7 +280,7 @@ jobs:
     - name: Extract branch name for docker container
       shell: bash
       # Get either branch name of a push or source branch of PR, replace all '/' with '.'.
-      # If Dockerfile didn't change, use 'latest'. TODO: change to 'develop'.
+      # If Dockerfile didn't change, use 'develop'.
       run: >
         if [ -n "${{ steps.git-diff-docker.outputs.diff }}" ]; then
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
@@ -291,7 +289,7 @@ jobs:
             echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
           fi
         else
-          echo "::set-output name=branch::latest"
+          echo "::set-output name=branch::develop"
         fi
       id: extract_branch
 
@@ -342,7 +340,7 @@ jobs:
     - name: Extract branch name for docker container
       shell: bash
       # Get either branch name of a push or source branch of PR, replace all '/' with '.'.
-      # If Dockerfile didn't change, use 'latest'. TODO: change to 'develop'.
+      # If Dockerfile didn't change, use 'develop'.
       run: >
         if [ -n "${{ steps.git-diff-docker.outputs.diff }}" ]; then
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
@@ -351,7 +349,7 @@ jobs:
             echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
           fi
         else
-          echo "::set-output name=branch::latest"
+          echo "::set-output name=branch::develop"
         fi
       id: extract_branch
 
@@ -468,7 +466,7 @@ jobs:
     - name: Extract branch name for docker container
       shell: bash
       # Get either branch name of a push or source branch of PR, replace all '/' with '.'.
-      # If Dockerfile didn't change, use 'latest'. TODO: change to 'develop'.
+      # If Dockerfile didn't change, use 'develop'.
       run: >
         if [ -n "${{ steps.git-diff-docker.outputs.diff }}" ]; then
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
@@ -477,7 +475,7 @@ jobs:
             echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
           fi
         else
-          echo "::set-output name=branch::latest"
+          echo "::set-output name=branch::develop"
         fi
       id: extract_branch
 
@@ -512,7 +510,7 @@ jobs:
     - name: Extract branch name for iwyu docker container
       shell: bash
       # Get either branch name of a push or source branch of PR, replace all '/' with '.'.
-      # If Dockerfile didn't change, use 'latest'. TODO: change to 'develop'.
+      # If Dockerfile didn't change, use 'develop'.
       run: >
         if [ -n "${{ steps.git-diff-docker-iwyu.outputs.diff }}" ]; then
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
@@ -521,7 +519,7 @@ jobs:
             echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
           fi
         else
-          echo "::set-output name=branch::latest"
+          echo "::set-output name=branch::develop"
         fi
       id: extract_branch
 
@@ -567,7 +565,7 @@ jobs:
     - name: Extract branch name for docker container
       shell: bash
       # Get either branch name of a push or source branch of PR, replace all '/' with '.'.
-      # If Dockerfile didn't change, use 'latest'. TODO: change to 'develop'.
+      # If Dockerfile didn't change, use 'develop'.
       run: >
         if [ -n "${{ steps.git-diff-docker.outputs.diff }}" ]; then
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
@@ -576,7 +574,7 @@ jobs:
             echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
           fi
         else
-          echo "::set-output name=branch::latest"
+          echo "::set-output name=branch::develop"
         fi
       id: extract_branch
 
