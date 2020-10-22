@@ -5,34 +5,34 @@ MAINTAINER Rick Nitsche <rick@phas.ubc.ca>
 
 # Install any needed packages to run cmake with full CHIME build options
 RUN apt-get update && \
-    apt-get install -y software-properties-common=0.96.24.32.14 && \
+    apt-get install -y software-properties-common=0.96.* && \
     add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y python3.7=3.7.9-1+bionic1 \
-                       python3-setuptools=39.0.1-2 \
-                       python3-pip=9.0.1-2.3~ubuntu1.18.04.3 \
+    apt-get install -y python3.7=3.7.* \
+                       python3-setuptools=39.0.* \
+                       python3-pip=9.0.* \
                        python3.7-distutils \
-                       python3.7-dev=3.7.9-1+bionic1 \
-                       build-essential=12.4ubuntu1 \
-                       git=1:2.17.1-1ubuntu0.7 \
-                       coreutils=8.28-1ubuntu1 \
-                       ccache=3.4.1-1 \
-                       pkg-config=0.29.1-0ubuntu2 \
-                       gcc=4:7.4.0-1ubuntu2.3 \
-                       gdb=8.1-0ubuntu3.2 \
-                       cmake=3.10.2-1ubuntu2.18.04.1 \
-                       clang-9=1:9-2~ubuntu18.04.2 \
-                       clang-format-8=1:8-3~ubuntu18.04.2 \
-                       dpdk=17.11.10-0ubuntu0.1 \
-                       dpdk-dev=17.11.10-0ubuntu0.1 \
-                       rocm-opencl-dev=2.0.0.293-rocm-rel-3.8-30-c3b7a21 \
-                       rocm-opencl=2.0.0.293-rocm-rel-3.8-30-c3b7a21 \
-                       libhdf5-serial-dev=1.10.0-patch1+docs-4 \
-                       libboost-test-dev=1.65.1.0ubuntu1 \
-                       libevent-dev=2.1.8-stable-4build1 \
-                       libssl-dev=1.1.1-1ubuntu2.1~18.04.6 \
-                       wget=1.19.4-1ubuntu2.2 \
+                       python3.7-dev=3.7.* \
+                       build-essential=12.* \
+                       git=1:2.17.* \
+                       coreutils=8.* \
+                       ccache=3.4.* \
+                       pkg-config=0.29.* \
+                       gcc=4:7.4.* \
+                       gdb=8.* \
+                       cmake=3.10.* \
+                       clang-9=1:9-* \
+                       clang-format-8=1:8-* \
+                       dpdk=17.11.* \
+                       dpdk-dev=17.11.* \
+                       rocm-opencl-dev=2.0.* \
+                       rocm-opencl=2.0.* \
+                       libhdf5-serial-dev=1.10.* \
+                       libboost-test-dev=1.65.* \
+                       libevent-dev=2.1.* \
+                       libssl-dev=1.1.* \
+                       wget=1.19.* \
                        && \
     apt-get clean && apt-get autoclean
 
@@ -76,9 +76,9 @@ RUN git clone https://github.com/kiyo-masui/bitshuffle.git bitshuffle &&\
 
 # Install OpenBLAS and clone Blaze for the eigenvalue processes
 RUN apt-get update && \
-    apt-get -y install libopenblas-dev=0.2.20+ds-4 \
-                       liblapack-dev=3.7.1-4ubuntu1 \
-                       liblapacke-dev=3.7.1-4ubuntu1 \
+    apt-get -y install libopenblas-dev=0.2.* \
+                       liblapack-dev=3.7.* \
+                       liblapacke-dev=3.7.* \
                        && \
     apt-get clean && apt-get autoclean && \
     git clone https://bitbucket.org/blaze-lib/blaze.git blaze && \
@@ -100,27 +100,27 @@ RUN python3.7 -m pip install msgpack==1.0.0 \
                              posix_ipc==1.0.4 \
                              && \
     apt-get update && \
-    apt-get install -y mysql-client=5.7.31-0ubuntu0.18.04.1 \
-        libmysqlclient-dev=5.7.31-0ubuntu0.18.04.1 && \
+    apt-get install -y mysql-client=5.7.* \
+        libmysqlclient-dev=5.7.* && \
     apt-get clean && apt-get autoclean && \
     python3.7 -m pip install git+https://github.com/chime-experiment/comet.git
 
 # Install redis for comet tests
 RUN apt-get update && \
-    apt-get install -y redis=5:4.0.9-1ubuntu0.2 && \
+    apt-get install -y redis=5:4.0.* && \
     apt-get clean && apt-get autoclean
 
 # Install documentation dependencies
 RUN apt-get update && \
-    apt-get -y install doxygen=1.8.13-10 \
-                       graphviz=2.40.1-2 \
-                       python-sphinx=1.6.7-1ubuntu1 \
-                       default-jre=2:1.11-68ubuntu1~18.04.1 \
+    apt-get -y install doxygen=1.8.* \
+                       graphviz=2.40.* \
+                       python-sphinx=1.6.* \
+                       default-jre=2:1.* \
                        && \
     apt-get clean && apt-get autoclean && \
-    python3.7 -m pip install --no-cache-dir breathe==4.20.0 \
-                                            sphinx_rtd_theme==0.5.0 \
-                                            sphinxcontrib-plantuml==0.18 \
+    python3.7 -m pip install --no-cache-dir breathe==4.20.* \
+                                            sphinx_rtd_theme==0.5.* \
+                                            sphinxcontrib-plantuml==0.* \
                                             && \
     wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar -P plantuml
 
