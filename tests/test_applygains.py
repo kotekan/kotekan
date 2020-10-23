@@ -29,6 +29,7 @@ old_update_id = f"gains{old_timestamp}"
 new_update_id = f"gains{new_timestamp}"
 
 transition_interval = 10.0
+new_state = True
 
 global_params = {
     "num_elements": 16,
@@ -45,6 +46,7 @@ global_params = {
         "start_time": old_timestamp,
         "update_id": old_update_id,
         "transition_interval": transition_interval,
+        "new_state": new_state,
     },
     "wait": True,
     "sleep_before": 2.0,
@@ -170,6 +172,7 @@ def apply_data(request, tmp_path_factory, gain_path, old_gains, new_gains, cal_b
                 "update_id": new_update_id,
                 "start_time": new_timestamp,
                 "transition_interval": transition_interval,
+                "new_state": new_state,
             },
         ]
     ]

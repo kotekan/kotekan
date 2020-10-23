@@ -1,9 +1,9 @@
 #include "Config.hpp"       // for Config
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"         // for Buffer, allocate_new_metadata_object, mark_frame_full
-#include "chimeMetadata.h"  // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
-#include "errors.h"         // for exit_kotekan, CLEAN_EXIT, ReturnCode
-#include "fpga_header_functions.h" // for bin_number_multifreq, extract_stream_id
+#include "Telescope.hpp"
+#include "buffer.h"        // for Buffer, allocate_new_metadata_object, mark_frame_full
+#include "chimeMetadata.h" // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "errors.h"        // for exit_kotekan, CLEAN_EXIT, ReturnCode
 
 #include <assert.h>    // for assert
 #include <atomic>      // for atomic_bool
@@ -20,7 +20,6 @@
 #include <vector>      // for vector
 // Needed for a bunch of time utilities.
 #include "bufferContainer.hpp" // for bufferContainer
-#include "gpsTime.h"           // for FPGA_PERIOD_NS
 #include "kotekanLogging.hpp"  // for DEBUG, INFO
 #include "restServer.hpp"      // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...
 #include "testDataGen.hpp"
@@ -52,7 +51,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
 
     samples_per_data_set = config.get_default<int>(unique_name, "samples_per_data_set", 32768);
-    stream_id = config.get_default<int>(unique_name, "stream_id", 0);
+    stream_id.id = config.get_default<uint64_t>(unique_name, "stream_id", 0);
     num_local_freq = config.get_default<int>(unique_name, "num_local_freq", 1);
     num_frames = config.get_default<int>(unique_name, "num_frames", -1);
     // Try to generate data based on `samples_per_dataset` cadence or else just generate it as
@@ -113,6 +112,8 @@ void testDataGen::main_thread() {
 
     int link_id = 0;
 
+    double frame_length = samples_per_data_set * ts_to_double(Telescope::instance().seq_length());
+
     while (!stop_thread) {
         double start_time = current_time();
 
@@ -138,10 +139,13 @@ void testDataGen::main_thread() {
         if (type == "random")
             srand(value);
         unsigned char temp_output;
-        stream_id_t real_stream_id =
-            extract_stream_id(stream_id); // get the stream_id object from the encoded stream_id
+        // stream_id_t real_stream_id =
+        //    extract_stream_id(stream_id); // get the stream_id object from the encoded stream_id
         int num_elements =
             buf->frame_size / samples_per_data_set / num_local_freq / sizeof(uint8_t);
+        int freqidx = 0;
+        int elemidx = 0;
+        int timeidx= 0;
         for (uint j = 0; j < buf->frame_size / sizeof(uint8_t); ++j) {
             if (type == "const") {
                 if (finished_seeding_consant)
@@ -158,20 +162,28 @@ void testDataGen::main_thread() {
                 temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
                 frame[j] = temp_output;
             } else if (type == "tpluse") {
-                frame[j] = seq_num + j / num_elements + j % num_elements;
+                timeidx = j / num_elements;
+                elemidx = j % num_elements;
+                frame[j] = seq_num + timeidx + elemidx;
             } else if (type == "tpluseplusf") {
+                //frame[j] =
+                //    seq_num + j / (num_local_freq * num_elements)
+                //    + bin_number_multifreq(&real_stream_id, num_local_freq,
+                //                           (j % (num_local_freq * num_elements)) / num_elements)
+                //    + j % num_elements;
+                //    OLD ABOVE
+                //    NEW BELOW
+                timeidx = j / (num_local_freq * num_elements);
+                freqidx = Telescope::instance().to_freq_id(stream_id, j % (num_local_freq * num_elements) / num_elements); // translate local freq_idx (0...num_local_freq - 1) to global frequency index (0...1023)
+                elemidx = j % num_elements;
                 frame[j] =
-                    seq_num + j / (num_local_freq * num_elements)
-                    + bin_number_multifreq(&real_stream_id, num_local_freq,
-                                           (j % (num_local_freq * num_elements)) / num_elements)
-                    + j % num_elements;
+                    seq_num + timeidx + freqidx + elemidx;
             } else if (type == "tpluseplusfprime") {
-                frame[j] = 2 * (seq_num + j / (num_local_freq * num_elements))
-                           + 3
-                                 * (bin_number_multifreq(&real_stream_id, num_local_freq,
-                                                         (j % (num_local_freq * num_elements))
-                                                             / num_elements))
-                           + 5 * (j % num_elements);
+                timeidx = j / (num_local_freq * num_elements);
+                freqidx = Telescope::instance().to_freq_id(stream_id, j % (num_local_freq * num_elements) / num_elements); // translate local freq_idx (0...num_local_freq - 1) to global frequency index (0...1023)
+                elemidx = j % num_elements;
+                frame[j] =
+                    2 * (seq_num + timeidx) + 3 * freqidx + 5 * elemidx;
             }
         }
         DEBUG("Generated a {:s} test data set in {:s}[{:d}]", type, buf->buffer_name, frame_id);
@@ -202,8 +214,7 @@ void testDataGen::main_thread() {
 
         if (wait) {
             double time = current_time();
-            double frame_end_time =
-                (start_time + (float)samples_per_data_set * FPGA_PERIOD_NS * 1e-9);
+            double frame_end_time = start_time + frame_length;
             if (time < frame_end_time)
                 usleep((int)(1e6 * (frame_end_time - time)));
         }

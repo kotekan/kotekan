@@ -8,7 +8,7 @@
 #include "datasetManager.hpp"  // for dset_id_t, state_id_t, datasetManager
 #include "datasetState.hpp"    // for prodState
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, WARN
-#include "visBuffer.hpp"       // for visFrameView, visField, visField::vis, visField::weight
+#include "visBuffer.hpp"       // for VisFrameView, VisField, VisField::vis, VisField::weight
 #include "visUtil.hpp"         // for prod_ctype, frameID, cmap, icmap, modulo, cfloat
 
 #include "gsl-lite.hpp" // for span
@@ -123,7 +123,7 @@ void prodSubset::main_thread() {
         }
 
         // Get a view of the current frame
-        auto input_frame = visFrameView(in_buf, input_frame_id);
+        auto input_frame = VisFrameView(in_buf, input_frame_id);
 
         // check if the input dataset has changed
         if (dset_id_map.count(input_frame.dataset_id) == 0) {
@@ -147,7 +147,7 @@ void prodSubset::main_thread() {
         size_t subset_num_prod = prod_ind.size();
 
         // Create view to output frame
-        auto output_frame = visFrameView(out_buf, output_frame_id, input_frame.num_elements,
+        auto output_frame = VisFrameView(out_buf, output_frame_id, input_frame.num_elements,
                                          subset_num_prod, input_frame.num_ev);
 
         // Copy over subset of visibilities
@@ -161,7 +161,7 @@ void prodSubset::main_thread() {
         output_frame.dataset_id = new_dset_id;
 
         // Copy the non-visibility parts of the buffer
-        output_frame.copy_data(input_frame, {visField::vis, visField::weight});
+        output_frame.copy_data(input_frame, {VisField::vis, VisField::weight});
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);

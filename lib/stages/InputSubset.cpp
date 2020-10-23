@@ -8,7 +8,7 @@
 #include "datasetManager.hpp"  // for state_id_t, dset_id_t, datasetManager, fingerprint_t
 #include "datasetState.hpp"    // for inputState, prodState, stackState
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, WARN
-#include "visBuffer.hpp"       // for visFrameView, visField, visField::evec, visField::flags
+#include "visBuffer.hpp"       // for VisFrameView, VisField, VisField::evec, VisField::flags
 #include "visUtil.hpp"         // for prod_ctype, input_ctype, frameID, cfloat, modulo
 
 #include "gsl-lite.hpp" // for span
@@ -140,7 +140,7 @@ void InputSubset::main_thread() {
         }
 
         // Get a view of the current frame
-        auto input_frame = visFrameView(in_buf, input_frame_id);
+        auto input_frame = VisFrameView(in_buf, input_frame_id);
 
         // check if the input dataset has changed
         if (dset_id_map.count(input_frame.dataset_id) == 0) {
@@ -156,7 +156,7 @@ void InputSubset::main_thread() {
         allocate_new_metadata_object(out_buf, output_frame_id);
 
         // Create view to output frame
-        auto output_frame = visFrameView(out_buf, output_frame_id, input_ind.size(),
+        auto output_frame = VisFrameView(out_buf, output_frame_id, input_ind.size(),
                                          prod_ind.size(), input_frame.num_ev);
 
         // Copy over subset of visibility shaped data
@@ -183,8 +183,8 @@ void InputSubset::main_thread() {
         output_frame.dataset_id = dset_id_map.at(input_frame.dataset_id);
 
         // Copy the non-input and visibility shaped parts of the buffer
-        output_frame.copy_data(input_frame, {visField::vis, visField::weight, visField::gain,
-                                             visField::flags, visField::evec});
+        output_frame.copy_data(input_frame, {VisField::vis, VisField::weight, VisField::gain,
+                                             VisField::flags, VisField::evec});
 
         // Mark the buffers and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);

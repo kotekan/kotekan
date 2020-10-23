@@ -8,7 +8,7 @@
 
 #include "dataset.hpp"        // for dset_id_t
 #include "kotekanLogging.hpp" // for logLevel
-#include "visBuffer.hpp"      // for visFrameView
+#include "visBuffer.hpp"      // for VisFrameView
 #include "visFile.hpp"        // for visFile
 #include "visUtil.hpp"        // for time_ctype
 
@@ -41,8 +41,8 @@
  * The `.data` file contains the raw data output. This is packed as:
  *
  *  - 1st byte is set to `1` if data is present (or is implicitly zero).
- *  - visMetadata struct dump
- *  - visBuffer dump
+ *  - VisMetadata struct dump
+ *  - VisFrameView dump
  *
  * @author Richard Shaw
  **/
@@ -83,7 +83,7 @@ public:
      * @param freq_ind Frequency index to write into.
      * @param frame Frame to write out.
      **/
-    void write_sample(uint32_t time_ind, uint32_t freq_ind, const visFrameView& frame) override;
+    void write_sample(uint32_t time_ind, uint32_t freq_ind, const VisFrameView& frame) override;
 
     /**
      * @brief Return the current number of current time samples.

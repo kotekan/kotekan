@@ -2,12 +2,12 @@
 
 #include "Config.hpp"              // for Config
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
+#include "ICETelescope.hpp"
 #include "basebandApiManager.hpp"  // for basebandApiManager
 #include "buffer.h"                // for Buffer, mark_frame_empty, register_consumer, wait_fo...
 #include "bufferContainer.hpp"     // for bufferContainer
 #include "chimeMetadata.h"         // for chimeMetadata
-#include "fpga_header_functions.h" // for bin_number_multifreq, extract_stream_id, freq_from_bin
-#include "gpsTime.h"               // for FPGA_PERIOD_NS, compute_gps_time, is_gps_global_time...
 #include "kotekanLogging.hpp"      // for INFO, DEBUG, ERROR, WARN
 #include "metadata.h"              // for metadataContainer
 #include "nt_memcpy.h"             // for nt_memcpy
@@ -17,10 +17,8 @@
 #include "visFile.hpp"             // for create_lockfile
 #include "visFileH5.hpp"           // for create_datatype
 #include "visUtil.hpp"             // for input_ctype, ts_to_double, parse_reorder_default
-
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span, operator!=
-
 #include <algorithm>                // for max, copy, copy_backward, min
 #include <assert.h>                 // for assert
 #include <atomic>                   // for atomic_bool
@@ -127,6 +125,8 @@ basebandReadout::~basebandReadout() {}
 
 void basebandReadout::main_thread() {
 
+    auto& tel = Telescope::instance();
+    _num_local_freq = tel.num_freq_per_stream()
     int frame_id = 0;
 
     std::unique_ptr<std::thread> wt;
@@ -135,6 +135,7 @@ void basebandReadout::main_thread() {
 
     // basebandReadoutManager* mgr = nullptr;
     uint32_t freq_ids[_num_local_freq];
+    uint32_t freq_id = 0;
     while (!stop_thread) {
 
         if (wait_for_full_frame(buf, unique_name.c_str(), frame_id % buf->num_frames) == nullptr) {
@@ -143,17 +144,17 @@ void basebandReadout::main_thread() {
 
         if (!lt) {
             int buf_frame = frame_id % buf->num_frames;
-            auto first_meta = (chimeMetadata*)buf->metadata[buf_frame]->metadata;
-
-            stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
-            INFO("slot_id:{:d}", stream_id.slot_id);
-            INFO("link_id:{:d}", stream_id.link_id);
-            uint32_t freq_id = 0;
+            // Some old debug statements
+            // auto first_meta = (chimeMetadata*)buf->metadata[buf_frame]->metadata;
+            // stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
+            // INFO("slot_id:{:d}", stream_id.slot_id);
+            // INFO("link_id:{:d}", stream_id.link_id);
             for (int freqidx = 0; freqidx < _num_local_freq; freqidx++) {
                 // XXX Map stream IDs to freq IDs with bin_number() (for Pathfinder) or
                 // bin_number_chime()
                 // XXX Use num_local_freqs to figure out if we're running on CHIME or PF
-                freq_id = bin_number_multifreq(&stream_id, _num_local_freq, freqidx);
+                freq_id = tel.to_freq_id(buf, buf_frame,freqidx);
+                INFO("freqidx is {:d}",freqidx);
                 freq_ids[freqidx] = freq_id;
                 mgrs[freqidx] = &(basebandApiManager::instance().register_readout_stage(
                     _board_id * 1048576
@@ -169,7 +170,6 @@ void basebandReadout::main_thread() {
                 INFO("Starting request-listening thread for freq_id: {:d}", freq_id);
             }
             lt = std::make_unique<std::thread>([&] { this->readout_thread(freq_ids, mgrs); });
-
             wt = std::make_unique<std::thread>([&] { this->writeout_thread(mgrs); });
         }
 
@@ -198,8 +198,6 @@ void basebandReadout::main_thread() {
 }
 
 void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutManager* mgrs[]) {
-    // uint32_t freq_id = freq_ids[_num_local_freq - 1];
-    // basebandReadoutManager& mgr = *(mgrs[_num_local_freq - 1]);
     std::unique_ptr<basebandReadoutManager::requestStatusMutex> next_requests[_num_local_freq] = {};
     std::shared_ptr<basebandReadoutManager::requestStatusMutex> next_request;
     kotekan::prometheus::Counter* request_no_data_counters[_num_local_freq] = {};
@@ -470,15 +468,13 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
                                            int64_t trigger_length_fpga, int freqidx) {
     // This assumes that the frame's timestamps are in order, but not that they
     // are necessarily contiguous.
-
-    // INFO("get_data(): Got freqidx {:d}", freqidx);
-    // INFO("get_data(): Got freqidx {:d} but replacing it with 0",freqidx);
-    // freqidx = 0;
+    auto& tel = Telescope::instance();
+    const double fpga_period_s = ts_to_double(tel.seq_length());
     int dump_start_frame = 0;
     int dump_end_frame = 0;
     int64_t trigger_end_fpga = trigger_start_fpga + trigger_length_fpga;
     double max_wait_time = 1.;
-    double min_wait_time = _samples_per_data_set * FPGA_PERIOD_NS * 1e-9;
+    double min_wait_time = _samples_per_data_set * fpga_period_s;
     bool advance_info = false;
 
     if (trigger_length_fpga > _samples_per_data_set * _num_frames_buffer / 2) {
@@ -515,7 +511,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
         lock_range(dump_start_frame, dump_end_frame);
 
         // Now that the relevant frames are locked, we can unlock the rest of the buffer so
-        // it can continue to opperate.
+        // it can continue to operate.
         manager_lock.unlock();
 
         // Check if the trigger is 'prescient'. That is, if any of the requested data has
@@ -526,11 +522,11 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
             if (!advance_info) {
                 // We only need to print this the first time
                 INFO("Advance dump trigger for {:d}, waiting for {:d} samples ({:.2f} sec)",
-                     event_id, time_to_wait_seq, time_to_wait_seq * FPGA_PERIOD_NS / 1e9);
+                     event_id, time_to_wait_seq, time_to_wait_seq * fpga_period_s);
                 advance_info = true;
             }
             time_to_wait_seq += _samples_per_data_set;
-            double wait_time = time_to_wait_seq * FPGA_PERIOD_NS;
+            double wait_time = time_to_wait_seq * fpga_period_s * 1e9;
             wait_time = std::min(wait_time, max_wait_time);
             wait_time = std::max(wait_time, min_wait_time);
             std::this_thread::sleep_for(std::chrono::nanoseconds((int)wait_time));
@@ -555,17 +551,8 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
 
     int buf_frame = dump_start_frame % buf->num_frames;
     auto first_meta = (chimeMetadata*)buf->metadata[buf_frame]->metadata;
-
-    stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
-    // XXX Map stream IDs to freq IDs with bin_number() (for Pathfinder) or bin_number_chime()
-    // XXX Use num_local_freqs to figure out if we're running on CHIME or PF
-
-    uint32_t freq_id = bin_number_multifreq(&stream_id, _num_local_freq, freqidx);
-    // if (_num_local_freq == 1){
-    //    freq_id = bin_number_chime(&stream_id);
-    //} else { // more than one freq per stream
-    //    freq_id = bin_number(&stream_id,freqidx);
-    //}
+    
+    uint32_t freq_id = tel.to_freq_id(buf, buf_frame, freqidx);
 
     // Figure out how much data we have.
     int64_t data_start_fpga = std::max(trigger_start_fpga, first_meta->fpga_seq_num);
@@ -575,7 +562,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
 
     timeval tmp, delta;
     delta.tv_sec = 0;
-    delta.tv_usec = (trigger_start_fpga - first_meta->fpga_seq_num) * FPGA_PERIOD_NS / 1000;
+    delta.tv_usec = (trigger_start_fpga - first_meta->fpga_seq_num) * fpga_period_s * 1e6;
     timeradd(&(first_meta->first_packet_recv_time), &delta, &tmp);
     timespec packet_time0 = {tmp.tv_sec, tmp.tv_usec * 1000};
 
@@ -594,7 +581,6 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
 
     basebandDumpData dump(event_id, freq_id, _num_elements, data_start_fpga,
                           data_end_fpga - data_start_fpga, packet_time0, wr->data);
-    // TODO: Does the alignment value change for a subspan?
     DEBUG("Write data starts alignment at: {}, length {}",
           dump.data.data() - data_buffer.data.get(), dump.data.size());
 
@@ -680,6 +666,8 @@ void basebandReadout::unlock_range(int start_frame, int end_frame) {
 void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump_status,
                                  std::mutex& request_mtx) {
 
+    auto& tel = Telescope::instance();
+
     // TODO Create parent directories.
     std::string filename =
         fmt::format(fmt("{:s}{:s}/{:s}"), _base_dir, dump_status.request.file_path,
@@ -714,7 +702,7 @@ void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump
     file.createAttribute<uint32_t>("freq_id", HighFive::DataSpace::From(data.freq_id))
         .write(data.freq_id);
 
-    double freq = freq_from_bin(data.freq_id);
+    double freq = Telescope::instance().to_freq(data.freq_id);
     file.createAttribute<double>("freq", HighFive::DataSpace::From(freq)).write(freq);
 
     file.createAttribute<uint64_t>("time0_fpga_count",
@@ -727,8 +715,8 @@ void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump
 
     timespec time0;
     std::string time0_type;
-    if (is_gps_global_time_set()) {
-        time0 = compute_gps_time(data.data_start_fpga);
+    if (tel.gps_time_enabled()) {
+        time0 = tel.to_time(data.data_start_fpga);
         time0_type = "GPS";
     } else {
         time0 = data.data_start_ctime;
@@ -741,8 +729,8 @@ void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump
         .write(ftime0_offset);
     file.createAttribute<std::string>("type_time0_ctime", HighFive::DataSpace::From(time0_type))
         .write(time0_type);
-    double delta_t = (double)FPGA_PERIOD_NS / 1e9;
-    file.createAttribute<double>("delta_time", HighFive::DataSpace::From(delta_t)).write(delta_t);
+    double fpga_s = ts_to_double(Telescope::instance().seq_length());
+    file.createAttribute<double>("fpga_sime", HighFive::DataSpace::From(fpga_s)).write(fpga_s);
 
     size_t num_elements = data.num_elements;
     size_t ntime_chunk = TARGET_CHUNK_SIZE / num_elements;
@@ -782,7 +770,7 @@ void basebandReadout::write_dump(basebandDumpData data, basebandDumpStatus& dump
         if (ii_samp >= data.data_length_fpga)
             break;
         // Add intentional throttling.
-        float stime = _write_throttle * to_write * FPGA_PERIOD_NS;
+        float stime = _write_throttle * to_write * fpga_s * 1e9;
         std::this_thread::sleep_for(std::chrono::nanoseconds((int)stime));
     }
     std::remove(lock_filename.c_str());

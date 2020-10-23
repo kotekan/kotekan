@@ -33,6 +33,7 @@ if is_docker():
     pytest.skip("Does not work in Github Actions docker run.", allow_module_level=True)
 
 default_params = {
+    "telescope" : "ICETelescope",
     "max_dump_samples": 3500,
     "num_elements": 256,
     "total_frames": 60,
@@ -316,7 +317,7 @@ def test_8_multifreq(tmpdir_factory):
         wait(0.1),
         command_rest_frames(60),
     ]
-    params = {"num_local_freq": 8, "type": "tpluseplusfprime", "stream_id": 3}
+    params = {"num_local_freq": 8, "type": "tpluseplusfprime", "stream_id": 2}
     dump_files = run_baseband(tmpdir_factory, params, rest_commands)
     assert len(dump_files) == (
         3 * params["num_local_freq"]
