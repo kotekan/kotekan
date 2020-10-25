@@ -111,4 +111,4 @@ git diff --exit-code
 echo "Running cmakelint..."
 source ${KOTEKAN_DIR}/tools/cmakelint.sh ${KOTEKAN_DIR}
 
-exit 0
+ # exit 0
