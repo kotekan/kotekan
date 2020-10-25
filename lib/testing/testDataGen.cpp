@@ -146,7 +146,7 @@ void testDataGen::main_thread() {
             buf->frame_size / samples_per_data_set / num_local_freq / sizeof(uint8_t);
         int freqidx = 0;
         int elemidx = 0;
-        int timeidx= 0;
+        int timeidx = 0;
         for (uint j = 0; j < buf->frame_size / sizeof(uint8_t); ++j) {
             if (type == "const") {
                 if (finished_seeding_consant)
@@ -167,7 +167,7 @@ void testDataGen::main_thread() {
                 elemidx = j % num_elements;
                 frame[j] = seq_num + timeidx + elemidx;
             } else if (type == "tpluseplusf") {
-                //frame[j] =
+                // frame[j] =
                 //    seq_num + j / (num_local_freq * num_elements)
                 //    + bin_number_multifreq(&real_stream_id, num_local_freq,
                 //                           (j % (num_local_freq * num_elements)) / num_elements)
@@ -175,16 +175,20 @@ void testDataGen::main_thread() {
                 //    OLD ABOVE
                 //    NEW BELOW
                 timeidx = j / (num_local_freq * num_elements);
-                freqidx = Telescope::instance().to_freq_id(stream_id, j % (num_local_freq * num_elements) / num_elements); // translate local freq_idx (0...num_local_freq - 1) to global frequency index (0...1023)
+                freqidx = Telescope::instance().to_freq_id(
+                    stream_id, j % (num_local_freq * num_elements)
+                                   / num_elements); // translate local freq_idx (0...num_local_freq
+                                                    // - 1) to global frequency index (0...1023)
                 elemidx = j % num_elements;
-                frame[j] =
-                    seq_num + timeidx + freqidx + elemidx;
+                frame[j] = seq_num + timeidx + freqidx + elemidx;
             } else if (type == "tpluseplusfprime") {
                 timeidx = j / (num_local_freq * num_elements);
-                freqidx = Telescope::instance().to_freq_id(stream_id, j % (num_local_freq * num_elements) / num_elements); // translate local freq_idx (0...num_local_freq - 1) to global frequency index (0...1023)
+                freqidx = Telescope::instance().to_freq_id(
+                    stream_id, j % (num_local_freq * num_elements)
+                                   / num_elements); // translate local freq_idx (0...num_local_freq
+                                                    // - 1) to global frequency index (0...1023)
                 elemidx = j % num_elements;
-                frame[j] =
-                    2 * (seq_num + timeidx) + 3 * freqidx + 5 * elemidx;
+                frame[j] = 2 * (seq_num + timeidx) + 3 * freqidx + 5 * elemidx;
             }
         }
         DEBUG("Generated a {:s} test data set in {:s}[{:d}]", type, buf->buffer_name, frame_id);
