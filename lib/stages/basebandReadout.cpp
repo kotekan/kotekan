@@ -126,7 +126,7 @@ basebandReadout::~basebandReadout() {}
 void basebandReadout::main_thread() {
 
     auto& tel = Telescope::instance();
-    _num_local_freq = tel.num_freq_per_stream()
+    _num_local_freq = tel.num_freq_per_stream();
     int frame_id = 0;
 
     std::unique_ptr<std::thread> wt;
