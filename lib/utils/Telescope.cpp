@@ -1,6 +1,10 @@
 #include "Telescope.hpp"
 
-#include "chimeMetadata.h"
+#include "chimeMetadata.h" // for get_stream_id, stream_t
+
+#include <exception> // for exception
+#include <stdexcept> // for invalid_argument, runtime_error
+
 
 Telescope::Telescope(const std::string& log_level) {
     set_log_level(log_level);
@@ -17,7 +21,7 @@ const Telescope& Telescope::instance() {
 
 const Telescope& Telescope::instance(const kotekan::Config& config) {
 
-    auto telescope_name = config.get_default<std::string>("/telescope", "name", "chime");
+    auto telescope_name = config.get_default<std::string>("/telescope", "name", "ICETelescope");
     if (!FACTORY(Telescope)::exists(telescope_name)) {
         FATAL_ERROR_NON_OO("Requested telescope type {} is not registered", telescope_name);
     }

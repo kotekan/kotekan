@@ -185,8 +185,8 @@ basebandApiManager::translate_trigger(const int64_t fpga_time0, const int64_t fp
     const double fpga_frame_rate = 1.0 / ts_to_double(tel.seq_length());
 
     const double freq_inv_sq_diff = (1. / (freq * freq) - 1. / (ref_freq_hz * ref_freq_hz));
-    double min_delay = K_DM * (dm - N_DM_ERROR_TOL * dm_error) * freq_inv_sq_diff;
-    double max_delay = K_DM * (dm + N_DM_ERROR_TOL * dm_error) * freq_inv_sq_diff;
+    double min_delay = K_DM * (dm - dm_error) * freq_inv_sq_diff;
+    double max_delay = K_DM * (dm + dm_error) * freq_inv_sq_diff;
     DEBUG_NON_OO("min DM delay: {:f}, max DM delay, {:f}", min_delay, max_delay);
 
     int64_t min_delay_fpga = round(min_delay * fpga_frame_rate);

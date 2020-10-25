@@ -86,7 +86,7 @@ public:
     DefaultVisPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa FakeVisPattern::fill
-    void fill(VisFrameView& frame);
+    void fill(VisFrameView& frame) override;
 };
 
 
@@ -102,7 +102,7 @@ public:
     FillIJVisPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa FakeVisPattern::fill
-    void fill(VisFrameView& frame);
+    void fill(VisFrameView& frame) override;
 };
 
 
@@ -121,7 +121,7 @@ public:
     FillIJMissingVisPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa FakeVisPattern::fill
-    void fill(VisFrameView& frame);
+    void fill(VisFrameView& frame) override;
 };
 
 
@@ -137,7 +137,7 @@ public:
     PhaseIJVisPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa FakeVisPattern::fill
-    void fill(VisFrameView& frame);
+    void fill(VisFrameView& frame) override;
 };
 
 
@@ -155,7 +155,7 @@ public:
     ChimeVisPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa FakeVisPattern::fill
-    void fill(VisFrameView& frame);
+    void fill(VisFrameView& frame) override;
 };
 
 /**
@@ -170,7 +170,7 @@ public:
     TestPatternSimpleVisPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa FakeVisPattern::fill
-    void fill(VisFrameView& frame);
+    void fill(VisFrameView& frame) override;
 
 private:
     cfloat test_pattern_value;
@@ -194,7 +194,7 @@ public:
     TestPatternFreqVisPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa FakeVisPattern::fill
-    void fill(VisFrameView& frame);
+    void fill(VisFrameView& frame) override;
 
 private:
     std::vector<cfloat> test_pattern_value;
@@ -215,7 +215,7 @@ public:
     TestPatternInputVisPattern(kotekan::Config& config, const std::string& path);
 
     /// @sa FakeVisPattern::fill
-    void fill(VisFrameView& frame);
+    void fill(VisFrameView& frame) override;
 
 private:
     std::vector<cfloat> test_pattern_value;
@@ -235,7 +235,7 @@ public:
     ChangeStatePattern(kotekan::Config& config, const std::string& path);
 
     /// @sa FakeVisPattern::fill
-    void fill(VisFrameView& frame);
+    void fill(VisFrameView& frame) override;
 
 private:
     // Alias for the type of a function that will generate the state

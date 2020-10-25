@@ -4,12 +4,14 @@
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // for bufferContainer
+#include "chimeMetadata.h"     // for stream_t
 #include "restServer.hpp"      // for connectionInstance
 
 #include "json.hpp" // for json
 
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
+
 
 // Type: one of "random", "const"
 // Value: the value of the constant

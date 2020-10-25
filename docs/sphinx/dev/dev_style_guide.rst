@@ -25,7 +25,7 @@ Detailed Rules
     dev_style_guide_doc
     dev_style_guide_config
     dev_style_guide_code
-
+    dev_style_guide_cmake
 
 
 File Organization

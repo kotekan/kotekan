@@ -1,27 +1,27 @@
 #include "visFileArchive.hpp"
 
-#include "visFile.hpp" // for create_lockfile
-#include "visFileH5.hpp"
+#include "visFile.hpp"   // for create_lockfile
+#include "visFileH5.hpp" // for create_datatype, AtomicType<>::AtomicType, dset_i...
 
 #include "fmt.hpp" // for format, fmt
 
-#include <algorithm>                   // for copy, min
+#include <algorithm>                   // for copy, max, min
 #include <cstdint>                     // for uint32_t
 #include <cstdio>                      // for remove
 #include <highfive/H5Attribute.hpp>    // for Attribute, Attribute::write
 #include <highfive/H5DataSet.hpp>      // for DataSet, AnnotateTraits::createAttribute, DataSet...
-#include <highfive/H5DataSpace.hpp>    // for DataSpace::From, DataSpace, DataSpace::getDimensions
+#include <highfive/H5DataSpace.hpp>    // for DataSpace::From, DataSpace, DataSpace::DataSpace
 #include <highfive/H5DataType.hpp>     // for CompoundType, create_datatype, CompoundType::addM...
 #include <highfive/H5Exception.hpp>    // for DataSpaceException, HDF5ErrMapper
-#include <highfive/H5File.hpp>         // for File, NodeTraits::createGroup, File::flush, NodeT...
+#include <highfive/H5File.hpp>         // for File, NodeTraits::createDataSet, NodeTraits::crea...
 #include <highfive/H5Group.hpp>        // for Group
-#include <highfive/H5Object.hpp>       // for hid_t
-#include <highfive/H5PropertyList.hpp> // for H5Pcreate, H5Pset_chunk, H5Pset_filter, H5P_DATAS...
-#include <highfive/H5Selection.hpp>    // for SliceTraits::select, Selection, SliceTraits::write
+#include <highfive/H5Object.hpp>       // for HighFive
+#include <highfive/H5PropertyList.hpp> // for H5Pcreate, H5Pset_chunk, H5Pset_filter, H5T_IEEE_...
+#include <highfive/H5Selection.hpp>    // for SliceTraits::write, SliceTraits::select, Selection
 #include <numeric>                     // for iota
 #include <stdexcept>                   // for invalid_argument
-#include <tuple>                       // for make_tuple, get, tuple
-#include <type_traits>                 // for __decay_and_strip<>::__type
+#include <tuple>                       // for make_tuple, tuple, get
+#include <type_traits>                 // for __decay_and_strip<>::__type, remove_reference<>::...
 #include <utility>                     // for move, pair
 
 using namespace HighFive;

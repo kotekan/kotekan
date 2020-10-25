@@ -1,6 +1,6 @@
 ##########################################
 #
-# FRB / PSR verification
+# FRB / Tracking beamformer verification
 #
 # Runs both GPU and CPU FRB beamformer pipelines, include re-ordering, hybrid beamformer, transposer, upchannelizer.
 # using 3840 samples for a quick run, change it to 49152 for the standard operation setting
@@ -29,7 +29,13 @@ link_map: [0,1,2,3]
 
 # Constants
 sizeof_float: 4
+sizeof_int: 4
 sizeof_short: 2
+
+dataset_manager:
+  use_dataset_broker: False
+  ds_broker_host: "127.0.0.1"
+  ds_broker_port: 12050
 
 #FRB global options
 downsample_time: 3
@@ -80,7 +86,7 @@ main_pool:
   num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
 
 hfb_pool:
-  kotekan_metadata_pool: hfbMetadata
+  kotekan_metadata_pool: HFBMetadata
   num_metadata_objects: 30 * buffer_depth + 5 * baseband_buffer_depth
 
 # Buffers
@@ -104,7 +110,7 @@ gain_frb_buffer:
   metadata_pool: main_pool
   kotekan_buffer: standard
 
-gain_psr_buffer:
+gain_tracking_buffer:
   num_frames: buffer_depth
   frame_size: 2048 * 2 * num_beams * sizeof_float
   metadata_pool: main_pool
@@ -115,8 +121,6 @@ gpu_beamform_hfb_output_buffers:
   frame_size: num_data_sets * factor_upchan * num_frb_total_beams * sizeof_float
   metadata_pool: main_pool
   gpu_beamform_hfb_output_buffer_0:
-    kotekan_buffer: standard
-  beamform_hfb_integrate_buffer_0:
     kotekan_buffer: standard
 
 cpu_output_buffers:
@@ -132,12 +136,16 @@ cpu_hfb_output_buffers:
     metadata_pool: main_pool
     cpu_hfb_output_buffer_0:
         kotekan_buffer: standard
+
+beamform_hfb_output_buffers:
+    num_frames: buffer_depth
+    metadata_pool: main_pool
     beamform_hfb_output_buffer_0:
         metadata_pool: hfb_pool
-        kotekan_buffer: standard
+        kotekan_buffer: hfb 
     beamform_hfb_output_buffer_read:
         metadata_pool: hfb_pool
-        kotekan_buffer: standard
+        kotekan_buffer: hfb
 
 lost_samples_buffer:
     kotekan_buffer: standard
@@ -148,13 +156,13 @@ lost_samples_buffer:
 compressed_lost_samples_buffer:
     kotekan_buffer: standard
     num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set / factor_upchan * num_data_sets / 3
+    frame_size: samples_per_data_set * num_data_sets / (factor_upchan * downsample_time) * sizeof_int
     metadata_pool: main_pool
 
 compressed_lost_samples_buffer_cpy:
     kotekan_buffer: standard
     num_frames: 2 * buffer_depth
-    frame_size: samples_per_data_set / factor_upchan * num_data_sets / 3
+    frame_size: samples_per_data_set * num_data_sets / (factor_upchan * downsample_time) * sizeof_int
     metadata_pool: main_pool
 
 cpu_affinity: [2,3,8,9]
@@ -191,8 +199,10 @@ cpu_simulate:
 
 compress_lost_samples:
   kotekan_stage: compressLostSamples
-  lost_samples_buf: lost_samples_buffer
-  compressed_lost_samples_buf: compressed_lost_samples_buffer
+  compression_factor: factor_upchan * downsample_time
+  zero_all_in_group: true
+  in_buf: lost_samples_buffer
+  out_buf: compressed_lost_samples_buffer
 
 copy:
   kotekan_stage: bufferCopy
@@ -202,19 +212,21 @@ copy:
 
 gpu:
   kernel_path: "../lib/hsa/kernels/"
-  commands:
-  - name: hsaInputData
-  - name: hsaInputCompressLostSamples
-  - name: hsaOutputDataZero
-  - name: hsaAsyncCopyGain
-  - name: hsaBarrier
-  - name: hsaBeamformReorder
-  - name: hsaBeamformKernel
-  - name: hsaBeamformTranspose
-  - name: hsaBeamformUpchanHFB
-  - name: hsaBeamformHFBSum
-  - name: hsaBeamformOutputData
-  - name: hsaBeamformHFBOutputData
+  commands: &command_list
+    - name: hsaInputData
+    - name: hsaHostToDeviceCopy
+      in_buf: hfb_compressed_lost_samples_buf
+      gpu_memory_name: hfb_compressed_lost_samples
+    - name: hsaOutputDataZero
+    - name: hsaAsyncCopyGain
+    - name: hsaBarrier
+    - name: hsaBeamformReorder
+    - name: hsaBeamformKernel
+    - name: hsaBeamformTranspose
+    - name: hsaBeamformUpchanHFB
+    - name: hsaBeamformHFBSum
+    - name: hsaBeamformOutputData
+    - name: hsaBeamformHFBOutputData
   enable_delay: true
   cpu_affinity: [2, 3, 8, 9]
   delay_max_fraction: 2.0
@@ -227,10 +239,11 @@ gpu:
     gpu_id: 0
     ew_spacing: [0.0, 0.1, 0.2, 0.3]
     northmost_beam: 90.0
+    commands: *command_list
     in_buffers:
       network_buf: network_buffer_0
       gain_frb_buf: gain_frb_buffer
-      compressed_lost_samples_buf: compressed_lost_samples_buffer_cpy
+      hfb_compressed_lost_samples_buf: compressed_lost_samples_buffer_cpy
     out_buffers:
       beamform_output_buf: gpu_beamform_output_buffer_0
       beamform_hfb_output_buf: gpu_beamform_hfb_output_buffer_0
@@ -239,7 +252,7 @@ hyper_fine_beam:
   num_frames_to_integrate: 5
   good_samples_threshold: 0.95
   integrate_hfb_data:
-    kotekan_stage: integrateHFBData
+    kotekan_stage: HFBAccumulate
     log_level: debug
     hfb_input_buf: gpu_beamform_hfb_output_buffer_0
     compressed_lost_samples_buf: compressed_lost_samples_buffer
@@ -264,10 +277,10 @@ read_gain:
     kotekan_stage: ReadGain
     updatable_config:
       gain_frb: /updatable_config/frb_gain
-      gain_psr: /updatable_config/pulsar_gain
+      gain_tracking: /updatable_config/tracking_gain
     in_buf: network_buffer_0
     gain_frb_buf: gain_frb_buffer
-    gain_psr_buf: gain_psr_buffer
+    gain_tracking_buf: gain_tracking_buffer
       
 check_data:
   bf_data_check_0:
@@ -287,16 +300,34 @@ updatable_config:
   frb_gain:
     kotekan_update_endpoint: json
     frb_gain_dir: /mnt/frb-archiver/GainFiles/Latest_FRB
-  pulsar_gain:
-    kotekan_update_endpoint: json
-    pulsar_gain_dir:
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
-      - /mnt/frb-archiver/GainFiles/Latest_PSR
+  tracking_gain:
+    0:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    1:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    2:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    3:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    4:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    5:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    6:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    7:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    8:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    9:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR

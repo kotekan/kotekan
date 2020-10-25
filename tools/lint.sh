@@ -1,10 +1,11 @@
-#!/bin/sh
+#!/bin/bash
 
 # clang format version
 CLANG_FORMAT=clang-format-8
 
 # kotekan root directory
-KOTEKAN_DIR="/home/masuilab/kotekan-new/kotekan"
+# KOTEKAN_DIR="/home/masuilab/kotekan-new/kotekan"
+KOTEKAN_DIR="./"
 
 # Flag to enable iwyu (default OFF)
 ENABLE_IWYU="OFF"
@@ -25,6 +26,7 @@ usage() {
         - iwyu (optional):    include-what-you-use for C/C++. Make sure to run cmake with
                               -DCMAKE_EXPORT_COMPILE_COMMANDS=ON first
                               (include-what-you-use.org)
+        - cmakelint           lint CMakeList files
 
         -d KOTEKAN_DIR        Path to kotekan root directory
         -i ENABLE_IWYU        \"ON\" or \"OFF\" to enable or disable include-what-you-use (default:
@@ -78,7 +80,7 @@ while getopts ":d:i:j:e:" options; do
   esac
 done
 
-if $EXIT_ON_FAILURE ; then
+if ! [ $EXIT_ON_FAILURE = "OFF" ]; then
     # exit when any command fails
     set -e
 fi
@@ -97,11 +99,16 @@ fi
 
 # clang-format
 echo "Running clang-format..."
-find $KOTEKAN_DIR -type d -name "build" -prune -o -type d -name "include" -prune -o -regex '.*\.\(cpp\|hpp\|c\|h\)' -exec $CLANG_FORMAT -style=file -i {} \;
+find $KOTEKAN_DIR -type d -name "build" -prune -o -type d -name "external" -prune -o -regex '.*\.\(cpp\|hpp\|c\|h\)' -exec $CLANG_FORMAT -style=file -i {} \;
+git diff --exit-code
 
 # black
 echo "Running black..."
-black --exclude docs --exclude build $KOTEKAN_DIR
+black --exclude "/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|dist|docs)/" $KOTEKAN_DIR
 git diff --exit-code
+
+# cmake-list
+echo "Running cmakelint..."
+source ${KOTEKAN_DIR}/tools/cmakelint.sh ${KOTEKAN_DIR}
 
 exit 0

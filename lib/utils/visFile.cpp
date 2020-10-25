@@ -114,27 +114,6 @@ void visFileBundle::add_file(time_ctype first_time) {
     vis_file_map[first_time] = std::make_pair(file, ind);
 }
 
-void visCalFileBundle::set_file_name(std::string fname, std::string aname) {
-    file_name = fname;
-    acq_name = aname;
-}
-
-void visCalFileBundle::add_file(time_ctype first_time) {
-    // Create directory
-    mkdir((root_path + "/" + acq_name).c_str(), 0755);
-    // Create the file, create room for the first sample and add into the file map
-    auto file = mk_file(file_name, acq_name, root_path);
-    auto ind = file->extend_time(first_time);
-    vis_file_map[first_time] = std::make_pair(file, ind);
-}
-
-
-void visCalFileBundle::swap_file(std::string new_fname, std::string new_aname) {
-    // Change the file and and request writing to a new file
-    set_file_name(new_fname, new_aname);
-    change_file = true;
-}
-
 
 std::string create_lockfile(std::string filename) {
 

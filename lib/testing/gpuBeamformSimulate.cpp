@@ -521,7 +521,7 @@ void gpuBeamformSimulate::main_thread() {
                 } // end for nsamp
 
                 // JSW TODO: apply bandpass filter
-                const int output_offset = b * nfreq_out + f;
+                const int output_offset = b * nfreq_out + ((f + 64) % 128);
                 cpu_hfb_final_output[output_offset] = total_sum;
             } // end for freq
         }     // end for beam
