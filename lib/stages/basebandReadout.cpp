@@ -133,7 +133,7 @@ void basebandReadout::main_thread() {
 
     std::unique_ptr<std::thread> wt;
     std::unique_ptr<std::thread> lt;
-    basebandReadoutManager* mgrs[_num_local_freq] = {};
+    basebandReadoutManager* mgrs[_num_local_freq] = {NULL};
 
     // basebandReadoutManager* mgr = nullptr;
     uint32_t freq_ids[_num_local_freq];
