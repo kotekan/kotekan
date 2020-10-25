@@ -1,24 +1,26 @@
 #include "basebandReadout.hpp"
 
-#include "Config.hpp"              // for Config
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"
+#include "Config.hpp" // for Config
 #include "ICETelescope.hpp"
-#include "basebandApiManager.hpp"  // for basebandApiManager
-#include "buffer.h"                // for Buffer, mark_frame_empty, register_consumer, wait_fo...
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chimeMetadata.h"         // for chimeMetadata
-#include "kotekanLogging.hpp"      // for INFO, DEBUG, ERROR, WARN
-#include "metadata.h"              // for metadataContainer
-#include "nt_memcpy.h"             // for nt_memcpy
-#include "nt_memset.h"             // for nt_memset
-#include "prometheusMetrics.hpp"   // for Counter, Gauge, MetricFamily, Metrics
-#include "version.h"               // for get_git_commit_hash
-#include "visFile.hpp"             // for create_lockfile
-#include "visFileH5.hpp"           // for create_datatype
-#include "visUtil.hpp"             // for input_ctype, ts_to_double, parse_reorder_default
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"
+#include "basebandApiManager.hpp" // for basebandApiManager
+#include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_fo...
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chimeMetadata.h"        // for chimeMetadata
+#include "kotekanLogging.hpp"     // for INFO, DEBUG, ERROR, WARN
+#include "metadata.h"             // for metadataContainer
+#include "nt_memcpy.h"            // for nt_memcpy
+#include "nt_memset.h"            // for nt_memset
+#include "prometheusMetrics.hpp"  // for Counter, Gauge, MetricFamily, Metrics
+#include "version.h"              // for get_git_commit_hash
+#include "visFile.hpp"            // for create_lockfile
+#include "visFileH5.hpp"          // for create_datatype
+#include "visUtil.hpp"            // for input_ctype, ts_to_double, parse_reorder_default
+
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span, operator!=
+
 #include <algorithm>                // for max, copy, copy_backward, min
 #include <assert.h>                 // for assert
 #include <atomic>                   // for atomic_bool
@@ -144,17 +146,8 @@ void basebandReadout::main_thread() {
 
         if (!lt) {
             int buf_frame = frame_id % buf->num_frames;
-            // Some old debug statements
-            // auto first_meta = (chimeMetadata*)buf->metadata[buf_frame]->metadata;
-            // stream_id_t stream_id = extract_stream_id(first_meta->stream_ID);
-            // INFO("slot_id:{:d}", stream_id.slot_id);
-            // INFO("link_id:{:d}", stream_id.link_id);
             for (int freqidx = 0; freqidx < _num_local_freq; freqidx++) {
-                // XXX Map stream IDs to freq IDs with bin_number() (for Pathfinder) or
-                // bin_number_chime()
-                // XXX Use num_local_freqs to figure out if we're running on CHIME or PF
-                freq_id = tel.to_freq_id(buf, buf_frame,freqidx);
-                INFO("freqidx is {:d}",freqidx);
+                freq_id = tel.to_freq_id(buf, buf_frame, freqidx);
                 freq_ids[freqidx] = freq_id;
                 mgrs[freqidx] = &(basebandApiManager::instance().register_readout_stage(
                     _board_id * 1048576
@@ -221,25 +214,6 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
                 // INFO("Non-null request for freq_ids[idx]: {:d}", freq_ids[freqidx]);
             }
 
-            // Do just the last one individually
-            // basebandDumpStatus& dump_status = std::get<0>(*next_requests[_num_local_freq - 1]);
-            // std::mutex& request_mtx = std::get<1>(*next_requests[_num_local_freq - 1]);
-            // basebandRequest request = dump_status.request;
-            // INFO("Received baseband dump request for event {:d} and freq_id {:d}: {:d} samples
-            // starting at count "
-            //     "{:d}. (next_frame: {:d})",
-            //     request.event_id,
-            //     freq_ids[_num_local_freq - 1],
-            //     request.length_fpga,
-            //     request.start_fpga, next_frame);
-            // End scratchwork
-
-            // std::time_t tt = std::chrono::system_clock::to_time_t(request.received);
-            // basebandDumpStatus& dump_status = std::get<0>(*next_request);
-            // std::mutex& request_mtx = std::get<1>(*next_request);
-            //
-            // Do all dumpStatus, requests, mutexs
-            //
             basebandDumpStatus* dump_statuses[_num_local_freq];
             std::mutex* request_mtxs[_num_local_freq];
             const basebandRequest* basebandRequests[_num_local_freq];
@@ -286,8 +260,6 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
             // TODO: once API manager is a Stage, this would naturally belong in REST request
             // callback
             DEBUG("Ready to copy samples into the baseband readout buffer");
-            // INFO("dump_statuses[{:d}]==&dump_status? {:d}", _num_local_freq - 1,
-            // dump_statuses[_num_local_freq - 1] == &dump_status);
             std::vector<basebandDumpData> dumps_to_write_vec;
             using namespace std::chrono;
             milliseconds ms_before =
@@ -372,15 +344,10 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
     }
 }
 
-// void basebandReadout::writeout_thread(basebandReadoutManager& mgr) {
 void basebandReadout::writeout_thread(basebandReadoutManager* mgrs[]) {
-    // basebandReadoutManager& mgr = *(mgrs[_num_local_freq - 1]);
 
     while (!stop_thread) {
-        // auto last_request = mgrs[_num_local_freq - 1]->get_next_ready_request(); // generically,
-        // requests with higher freqidxs arrive later. if (!last_request)
-        //    continue;
-        for (int freqidx = 0; freqidx < _num_local_freq; freqidx++) { // a massive for loop
+        for (int freqidx = 0; freqidx < _num_local_freq; freqidx++) {
             auto next_request =
                 mgrs[freqidx]
                     ->get_next_ready_request(); // don't think this allocation has to be outside...
@@ -551,7 +518,7 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
 
     int buf_frame = dump_start_frame % buf->num_frames;
     auto first_meta = (chimeMetadata*)buf->metadata[buf_frame]->metadata;
-    
+
     uint32_t freq_id = tel.to_freq_id(buf, buf_frame, freqidx);
 
     // Figure out how much data we have.
@@ -595,12 +562,8 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
         int64_t frame_ind_end =
             std::min(data_end_fpga - frame_fpga_seq, (int64_t)_samples_per_data_set);
         int64_t data_ind_start = frame_fpga_seq - data_start_fpga + frame_ind_start;
-        // The following copy has 0 length unless there is a missing frame.
-        // INFO("Before nt_memset() call");
         nt_memset(&dump.data[next_data_ind * _num_elements], 0,
                   (data_ind_start - next_data_ind) * _num_elements);
-        // INFO("After nt_memset() call");
-        // Now copy in the frame data.
         if (_num_local_freq == 1) {
             using namespace std::chrono;
             milliseconds ms_before =
@@ -610,8 +573,6 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
                       (frame_ind_end - frame_ind_start) * _num_elements);
             milliseconds ms_after =
                 duration_cast<milliseconds>(system_clock::now().time_since_epoch());
-            // INFO("memcpy() call: {:d} = {:d}-{:d} ms", ms_after.count() - ms_before.count(),
-            //     ms_after.count(), ms_before.count());
 
         } else if (_num_local_freq > 1) {
             using namespace std::chrono;
@@ -619,14 +580,6 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
                 duration_cast<milliseconds>(system_clock::now().time_since_epoch());
             // INFO("Right before memcpy()");
             for (int timeidx = 0; timeidx < (frame_ind_end - frame_ind_start); timeidx++) {
-                // XXX: Try to use memcpy instead of nt_memcpy for short stretches of data of length
-                // n_e.
-                // if (timeidx % 1024 == 0) {
-                //     INFO("memcpy: #{:d}, freqidx: {:d}, buf_data[{:d}]->dump_data[{:d}],len: {:d}",
-                //          timeidx, freqidx,
-                //          ((frame_ind_start + timeidx) * _num_local_freq + freqidx) * _num_elements,
-                //          (data_ind_start + timeidx) * _num_elements, _num_elements);
-                // }
                 memcpy(&dump.data[(data_ind_start + timeidx) * _num_elements],
                        &buf_data[((frame_ind_start + timeidx) * _num_local_freq + freqidx)
                                  * _num_elements],
@@ -634,8 +587,6 @@ basebandDumpData basebandReadout::get_data(uint64_t event_id, int64_t trigger_st
             }
             milliseconds ms_after =
                 duration_cast<milliseconds>(system_clock::now().time_since_epoch());
-            // INFO("elapsed {:d} = {:d}-{:d} ms", ms_after.count() - ms_before.count(),
-            //      ms_after.count(), ms_before.count());
         }
         // What data index are we expecting on the next iteration.
         next_data_ind = data_ind_start + frame_ind_end - frame_ind_start;
