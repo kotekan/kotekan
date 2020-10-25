@@ -33,7 +33,7 @@ if is_docker():
     pytest.skip("Does not work in Github Actions docker run.", allow_module_level=True)
 
 default_params = {
-    "telescope" : "ICETelescope",
+    "telescope": "ICETelescope",
     "max_dump_samples": 3500,
     "num_elements": 256,
     "total_frames": 60,
@@ -276,7 +276,7 @@ def scrape_freq_id(string):
     # returns freq_id from a filename
     # e.g.: str = 'baseband_17_640.h5'
     # e.g.: str = 'baseband_1234567890_1024_board_13.h5' in 16-element mode
-    _,tail = os.path.split(string)
+    _, tail = os.path.split(string)
     chunks = tail.split("_")
     if len(chunks) == 3:
         return int(chunks[2][0:-3])
@@ -291,7 +291,7 @@ def scrape_board_id(string):
     # returns board_id from a filename
     # e.g.: str = 'baseband_17_640.h5'
     # e.g.: str = 'baseband_1234567890_1024_board_13.h5' in 16-element mode
-    _,tail = os.path.split(string)
+    _, tail = os.path.split(string)
     chunks = tail.split("_")
     if len(chunks) == 3:
         return 0  # board_id = 0 by default!

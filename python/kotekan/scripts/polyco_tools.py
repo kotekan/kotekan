@@ -37,8 +37,8 @@ def cli():
 @click.command()
 @click.argument("unixtime", required=False, default=None, type=float)
 def mjd(unixtime):
-    """ Convert unix time to MJD.
-        Will print MJD now if no time is provided. """
+    """Convert unix time to MJD.
+    Will print MJD now if no time is provided."""
     if unixtime is None:
         ts = Timespec(time.time())
     else:
