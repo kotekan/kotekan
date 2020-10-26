@@ -867,13 +867,12 @@ class Window(QDialog):
                 )  # Update Folded Waterfall
                 self.p[self.pkt_elems + i].set_data(tmpdata)
             self.MedSubbed += (
-                self.dedispersed[:, :, i] / self.dedispersed_count[:, :, i]
-            ) - np.median(
-                (self.dedispersed[:, :, i] / self.dedispersed_count[:, :, i]),
-                axis=0,
-            )[
-                np.newaxis, :
-            ]
+                (self.dedispersed[:, :, i] / self.dedispersed_count[:, :, i])
+                - np.median(
+                    (self.dedispersed[:, :, i] / self.dedispersed_count[:, :, i]),
+                    axis=0,
+                )[np.newaxis, :]
+            )
             self.p[i].set_extent(
                 [self.freqlist[0, 0], self.freqlist[-1, -1], self.tmin, self.tmax]
             )  # Update Graph Scale
