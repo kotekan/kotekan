@@ -172,7 +172,7 @@ void basebandReadout::main_thread() {
 
         frame_id++;
     }
-    if (mgrs[0] != NULL) {
+    if (mgrs[0] != nullptr) {
         // mgr->stop();
         // for (int freqidx = 0; freqidx < _num_local_freq; freqidx++) {
         //     if (mgrs[freqidx]) {
