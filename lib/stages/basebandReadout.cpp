@@ -128,12 +128,11 @@ basebandReadout::~basebandReadout() {}
 void basebandReadout::main_thread() {
 
     auto& tel = Telescope::instance();
-    // const int _num_local_freq = tel.num_freq_per_stream();
     int frame_id = 0;
 
     std::unique_ptr<std::thread> wt;
     std::unique_ptr<std::thread> lt;
-    basebandReadoutManager* mgrs[_num_local_freq] = {};
+    std::vector<basebandReadoutManager*> mgrs;
 
     // basebandReadoutManager* mgr = nullptr;
     uint32_t freq_ids[_num_local_freq];
@@ -149,12 +148,12 @@ void basebandReadout::main_thread() {
             for (int freqidx = 0; freqidx < _num_local_freq; freqidx++) {
                 freq_id = tel.to_freq_id(buf, buf_frame, freqidx);
                 freq_ids[freqidx] = freq_id;
-                mgrs[freqidx] = &(basebandApiManager::instance().register_readout_stage(
+                mgrs.push_back(&(basebandApiManager::instance().register_readout_stage(
                     _board_id * 1048576
-                    + freq_ids[freqidx])); // _board_id is used in 16 element mode to distinguish
-                                           // between identical boards running without a backplane.
-                                           // We will identify data managers by their board_id as
-                                           // well as their freq_id =< 1024.
+                    + freq_ids[freqidx]))); // _board_id is used in 16 element mode to distinguish
+                                            // between identical boards running without a backplane.
+                                            // We will identify data managers by their board_id as
+                                            // well as their freq_id =< 1024.
                 DEBUG("Initialize baseband metrics for freq_id: {:d}", freq_id);
                 readout_counter.labels({std::to_string(freq_id), "done"});
                 readout_counter.labels({std::to_string(freq_id), "error"});
@@ -173,11 +172,16 @@ void basebandReadout::main_thread() {
 
         frame_id++;
     }
-    if (mgrs[0]) {
+    if (mgrs[0] != NULL) {
         // mgr->stop();
-        for (int freqidx = 0; freqidx < _num_local_freq; freqidx++) {
-            if (mgrs[freqidx]) {
-                mgrs[freqidx]->stop(); // stop all the managers that were started
+        // for (int freqidx = 0; freqidx < _num_local_freq; freqidx++) {
+        //     if (mgrs[freqidx]) {
+        //         mgrs[freqidx]->stop(); // stop all the managers that were started
+        //     }
+        // }
+        for (auto it = begin(mgrs); it != end(mgrs); ++it) {
+            if (*it) {
+                (*it)->stop();
             }
         }
     }
@@ -190,7 +194,8 @@ void basebandReadout::main_thread() {
     }
 }
 
-void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutManager* mgrs[]) {
+void basebandReadout::readout_thread(const uint32_t freq_ids[],
+                                     std::vector<basebandReadoutManager*> mgrs) {
     std::unique_ptr<basebandReadoutManager::requestStatusMutex> next_requests[_num_local_freq] = {};
     std::shared_ptr<basebandReadoutManager::requestStatusMutex> next_request;
     kotekan::prometheus::Counter* request_no_data_counters[_num_local_freq] = {};
@@ -344,7 +349,7 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[], basebandReadoutM
     }
 }
 
-void basebandReadout::writeout_thread(basebandReadoutManager* mgrs[]) {
+void basebandReadout::writeout_thread(std::vector<basebandReadoutManager*> mgrs) {
 
     while (!stop_thread) {
         for (int freqidx = 0; freqidx < _num_local_freq; freqidx++) {

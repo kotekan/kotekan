@@ -89,11 +89,11 @@ private:
      * @brief Process incoming requests by copying the baseband data from the ring buffer
      */
     void readout_thread(const uint32_t freq_ids[],
-                        kotekan::basebandReadoutManager* readout_managers[]);
+                        std::vector<kotekan::basebandReadoutManager*> readout_managers);
     /**
      * @brief Loops over requests whose data has been read out and writes it to a file
      */
-    void writeout_thread(kotekan::basebandReadoutManager* readout_managers[]);
+    void writeout_thread(std::vector<kotekan::basebandReadoutManager*> readout_managers);
     void write_dump(kotekan::basebandDumpData data, kotekan::basebandDumpStatus& dump_status,
                     std::mutex& request_mtx);
     int add_replace_frame(int frame_id);
