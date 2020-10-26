@@ -596,3 +596,6 @@ jobs:
       run: |
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }})
         docker run "${OPTS[@]}" tools/cmakelint.sh /code/kotekan
+
+    - name: Debugging with tmate
+        uses: mxschmitt/action-tmate@v3
