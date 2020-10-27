@@ -19,7 +19,10 @@
 #include <stdint.h> // for uint32_t, int64_t, uint64_t
 
 
-const int BOARD_SPACING = 1048576; // Allow multiple boards with different IDs running without a backplane to share a basebandReadoutRegistry by hashing the freqidx + BOARD_SPACING * board_id. Can be any integer > 128, the number of unique freqidxs when running Shuffle 16.
+const int BOARD_SPACING =
+    1048576; // Allow multiple boards with different IDs running without a backplane to share a
+             // basebandReadoutRegistry by hashing the freqidx + BOARD_SPACING * board_id. Can be
+             // any integer > 128, the number of unique freqidxs when running Shuffle 16.
 
 namespace kotekan {
 
