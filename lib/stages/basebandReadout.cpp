@@ -98,13 +98,13 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
     }
 
     // Memcopy byte alignments assume the following.
-    if (_num_local_freq != 128 and _num_elements % 128) {
+    if (_num_local_freq != 128 && _num_elements % 128) {
         throw std::runtime_error("num_elements must be multiple of 128");
     }
 
     register_consumer(buf, unique_name.c_str());
 
-    INFO("Registered consumer baseband!!");
+    INFO("Registered consumer baseband.");
     // Ensure input buffer is long enough.
     if (buf->num_frames <= _num_frames_buffer) {
         // This process of creating an error std::string is rediculous. Figure out what
@@ -149,7 +149,7 @@ void basebandReadout::main_thread() {
                 freq_id = tel.to_freq_id(buf, buf_frame, freqidx);
                 freq_ids[freqidx] = freq_id;
                 mgrs.push_back(&(basebandApiManager::instance().register_readout_stage(
-                    _board_id * 1048576
+                    _board_id * BOARD_SPACING
                     + freq_ids[freqidx]))); // _board_id is used in 16 element mode to distinguish
                                             // between identical boards running without a backplane.
                                             // We will identify data managers by their board_id as
@@ -172,17 +172,9 @@ void basebandReadout::main_thread() {
 
         frame_id++;
     }
-    if (mgrs[0] != nullptr) {
-        // mgr->stop();
-        // for (int freqidx = 0; freqidx < _num_local_freq; freqidx++) {
-        //     if (mgrs[freqidx]) {
-        //         mgrs[freqidx]->stop(); // stop all the managers that were started
-        //     }
-        // }
-        for (auto it = begin(mgrs); it != end(mgrs); ++it) {
-            if (*it) {
-                (*it)->stop();
-            }
+    if (!mgrs.empty()) {
+        for (auto mgr : mgrs) {
+            mgr->stop();
         }
     }
 
@@ -195,7 +187,7 @@ void basebandReadout::main_thread() {
 }
 
 void basebandReadout::readout_thread(const uint32_t freq_ids[],
-                                     std::vector<basebandReadoutManager*> mgrs) {
+                                     std::vector<basebandReadoutManager*>& mgrs) {
     std::unique_ptr<basebandReadoutManager::requestStatusMutex> next_requests[_num_local_freq] = {};
     std::shared_ptr<basebandReadoutManager::requestStatusMutex> next_request;
     kotekan::prometheus::Counter* request_no_data_counters[_num_local_freq] = {};
@@ -349,7 +341,7 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[],
     }
 }
 
-void basebandReadout::writeout_thread(std::vector<basebandReadoutManager*> mgrs) {
+void basebandReadout::writeout_thread(std::vector<basebandReadoutManager*>& mgrs) {
 
     while (!stop_thread) {
         for (int freqidx = 0; freqidx < _num_local_freq; freqidx++) {
