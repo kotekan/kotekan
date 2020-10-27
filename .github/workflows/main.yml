@@ -449,6 +449,10 @@ jobs:
         -DWITH_TESTS=ON ..
         make -j 2
 
+    - uses: actions/checkout@v2
+    - name: Setup tmate session
+      uses: mxschmitt/action-tmate@v3
+      if: ${{ always() }}
   # Build kotekan documentation
   build-docs:
     runs-on: ubuntu-latest
@@ -597,6 +601,3 @@ jobs:
         OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }})
         docker run "${OPTS[@]}" tools/cmakelint.sh /code/kotekan
 
-    - uses: actions/checkout@v2
-    - name: Setup tmate session
-      uses: mxschmitt/action-tmate@v3
