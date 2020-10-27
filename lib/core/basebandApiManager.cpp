@@ -227,8 +227,8 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
         json response = json::object({});
         for (auto& element : readout_registry) {
             // Break readout_id into a freq_id and a board_id
-            const uint32_t freq_id = element.first % 1048576;
-            const uint32_t board_id = element.first / 1048576;
+            const uint32_t freq_id = element.first % BOARD_SPACING;
+            const uint32_t board_id = element.first / BOARD_SPACING;
             auto& readout_entry = element.second;
 
             std::string readout_file_name =
