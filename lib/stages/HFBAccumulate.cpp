@@ -131,7 +131,7 @@ void HFBAccumulate::integrate_frame(float* input_data, float* sum_data,
 void HFBAccumulate::normalise_frame(float* sum_data, const uint32_t in_frame_id) {
 
     const float normalise_frac =
-        (float)total_timesamples / (total_timesamples - total_lost_timesamples);
+        (float)1.f / (total_timesamples - total_lost_timesamples);
 
     for (uint32_t i = 0; i < _num_frb_total_beams * _factor_upchan; i++) {
         sum_data[i] *= normalise_frac;
