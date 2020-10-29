@@ -1,0 +1,103 @@
+#include "GenHFBFrames.hpp"
+
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"           // for Buffer, get_num_consumers, mark_frame_empty, mark_frame_full
+#include "kotekanLogging.hpp" // for INFO
+#include "HFBMetadata.hpp"    // for get_fpga_seq_start_hfb, set_ctime_hfb, set_dataset_id, set...
+#include "visUtil.hpp"        // for frameID
+
+#include <algorithm>  // for find
+#include <atomic>     // for atomic_bool
+#include <cstdint>    // for uint32_t
+#include <cstring>    // for memcpy
+#include <exception>  // for exception
+#include <functional> // for _Bind_helper<>::type, bind, function
+#include <random>     // for default_random_engine, bernoulli_distribution, random_device
+#include <regex>      // for match_results<>::_Base_type
+#include <stdexcept>  // for runtime_error
+#include <stdlib.h>   // for rand, srand
+
+
+using kotekan::bufferContainer;
+using kotekan::Config;
+using kotekan::Stage;
+
+REGISTER_KOTEKAN_STAGE(GenHFBFrames);
+
+GenHFBFrames::GenHFBFrames(Config& config, const std::string& unique_name,
+                               bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&GenHFBFrames::main_thread, this)),
+    _samples_per_data_set(config.get<uint32_t>(unique_name, "samples_per_data_set")),
+    _first_frame_index(config.get_default<uint32_t>(unique_name, "first_frame_index", 0)),
+    _rng_mean(config.get<float>(unique_name, "rng_mean")),
+    _rng_stddev(config.get<float>(unique_name, "rng_stddev")),
+    _pattern(config.get<std::string>(unique_name, "type")) {
+
+    uint32_t _downsample_time = config.get<uint32_t>(unique_name, "downsample_time");
+    uint32_t _factor_upchan = config.get<uint32_t>(unique_name, "factor_upchan");
+    _num_samples = _samples_per_data_set / _factor_upchan / _downsample_time;
+
+    out_buf = get_buffer("out_buf");
+    register_producer(out_buf, unique_name.c_str());
+    
+    cls_out_buf = get_buffer("cls_out_buf");
+    register_producer(cls_out_buf, unique_name.c_str());
+}
+
+void GenHFBFrames::main_thread() {
+    frameID out_frame_id(out_buf), cls_frame_id(cls_out_buf);    
+    uint64_t seq_num = _samples_per_data_set * _first_frame_index;
+
+    std::default_random_engine gen;
+    std::normal_distribution<float> gaussian(_rng_mean, _rng_stddev);
+    std::uniform_int_distribution<uint32_t> rng(1, _num_samples - 1);
+
+    while (!stop_thread) {
+        uint8_t* frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
+        if (frame == nullptr)
+          break;
+ 
+        uint8_t* cls_frame = wait_for_empty_frame(cls_out_buf, unique_name.c_str(), cls_frame_id);
+        if (cls_frame == nullptr)
+          break;
+       
+        float* data = (float*)frame;
+        uint32_t* cls_data = (uint32_t*)cls_frame;
+        uint32_t total_lost_samples = 0;
+
+        for(uint32_t i = 0; i < cls_out_buf->frame_size / sizeof(uint32_t); i++) {
+          cls_data[i] = 0;
+        }  
+
+        // Only drop samples on odd frames if test pattern set
+        if (out_frame_id % 2 != 0 && _pattern == "drop") {
+          for(uint32_t i = 0; i < out_buf->frame_size / sizeof(float); i++) {
+                uint32_t num_lost_samples = rng(gen);
+                data[i] = gaussian(gen) * (float)(_num_samples - num_lost_samples) / (float)_num_samples;
+                total_lost_samples += num_lost_samples;
+          }
+        }
+        else {
+          for(uint32_t i = 0; i < out_buf->frame_size / sizeof(float); i++) {
+            data[i] = gaussian(gen);
+          }
+        }
+
+        DEBUG("data: [{:f} ... {:f} ... {:f}]", data[0], data[131072 / 2], data[131072 - 1]);
+        
+        // Create metadata
+        allocate_new_metadata_object(out_buf, out_frame_id);
+        set_fpga_seq_start_hfb(out_buf, out_frame_id, seq_num);
+
+        allocate_new_metadata_object(cls_out_buf, cls_frame_id);
+        set_fpga_seq_num(cls_out_buf, cls_frame_id, seq_num);
+        zero_lost_samples(cls_out_buf, cls_frame_id);
+        atomic_add_lost_timesamples(cls_out_buf, cls_frame_id, total_lost_samples);
+
+        seq_num += _samples_per_data_set;
+        mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
+        mark_frame_full(cls_out_buf, unique_name.c_str(), cls_frame_id++);
+
+    } // end stop thread
+}
