@@ -178,7 +178,7 @@ void HFBAccumulate::main_thread() {
         // Try and synchronize up the frames. Even though they arrive at
         // different rates, this should eventually sync them up.
         auto hfb_seq_num = get_fpga_seq_start_hfb(in_buf, in_frame_id);
-        auto cls_seq_num = get_fpga_seq_start_hfb(cls_buf, cls_frame_id);
+        auto cls_seq_num = get_fpga_seq_num(cls_buf, cls_frame_id);
 
         if (hfb_seq_num < cls_seq_num) {
             DEBUG("Dropping incoming HFB frame to sync up. HFB frame: {}; Compressed Lost Samples "
@@ -295,8 +295,6 @@ void HFBAccumulate::main_thread() {
                 set_num_beams(out_buf, out_frame_id, _num_frb_total_beams);
                 set_num_subfreq(out_buf, out_frame_id, _factor_upchan);
 
-                DEBUG("Dataset ID: {}, freq ID: {:d}", ds_id, freq_id);
-
                 // Set weights
                 auto frame = HFBFrameView(out_buf, out_frame_id);
                 
@@ -311,6 +309,8 @@ void HFBAccumulate::main_thread() {
                     float t = dset.hfb2[i];
                     frame.weight[i] = w * w / t;
                 }
+                
+                DEBUG("Dataset ID: {}, freq ID: {:d}, data: [{:f} ... {:f} ... {:f}], weight: [{:f} ... {:f} ... {:f}]", ds_id, freq_id, frame.hfb[0], frame.hfb[_num_frb_total_beams * _factor_upchan / 2], frame.hfb[_num_frb_total_beams * _factor_upchan - 1], frame.weight[0], frame.weight[_num_frb_total_beams * _factor_upchan / 2], frame.weight[_num_frb_total_beams * _factor_upchan - 1]);
 
                 mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
 
