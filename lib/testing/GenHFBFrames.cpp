@@ -31,13 +31,13 @@ GenHFBFrames::GenHFBFrames(Config& config, const std::string& unique_name,
     _samples_per_data_set(config.get<uint32_t>(unique_name, "samples_per_data_set")),
     _first_frame_index(config.get_default<uint32_t>(unique_name, "first_frame_index", 0)),
     _rng_mean(config.get<float>(unique_name, "rng_mean")),
-    _rng_stddev(config.get<float>(unique_name, "rng_stddev")),
-    _pattern(config.get<std::string>(unique_name, "type")) {
+    _rng_stddev(config.get_default<float>(unique_name, "rng_stddev", sqrt(_rng_mean))),
+    _pattern(config.get<std::string>(unique_name, "pattern")) {
 
     uint32_t _downsample_time = config.get<uint32_t>(unique_name, "downsample_time");
     uint32_t _factor_upchan = config.get<uint32_t>(unique_name, "factor_upchan");
     _num_samples = _samples_per_data_set / _factor_upchan / _downsample_time;
-
+          
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
     
@@ -51,7 +51,10 @@ void GenHFBFrames::main_thread() {
 
     std::default_random_engine gen;
     std::normal_distribution<float> gaussian(_rng_mean, _rng_stddev);
-    std::uniform_int_distribution<uint32_t> rng(1, _num_samples - 1);
+
+    uint32_t num_lost_samples = 0.01 * _num_samples;
+    float lost_frac = (float)(_num_samples - num_lost_samples) / (float)_num_samples;
+    INFO("num_lost_samples: {}, lost_frac: {:e}", num_lost_samples, lost_frac);
 
     while (!stop_thread) {
         uint8_t* frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
@@ -72,11 +75,12 @@ void GenHFBFrames::main_thread() {
 
         // Only drop samples on odd frames if test pattern set
         if (out_frame_id % 2 != 0 && _pattern == "drop") {
+          
           for(uint32_t i = 0; i < out_buf->frame_size / sizeof(float); i++) {
-                uint32_t num_lost_samples = rng(gen);
-                data[i] = gaussian(gen) * (float)(_num_samples - num_lost_samples) / (float)_num_samples;
-                total_lost_samples += num_lost_samples;
+
+                data[i] = gaussian(gen) * lost_frac;
           }
+          total_lost_samples += (int)((float)_samples_per_data_set * (1.f - lost_frac));
         }
         else {
           for(uint32_t i = 0; i < out_buf->frame_size / sizeof(float); i++) {
@@ -84,7 +88,7 @@ void GenHFBFrames::main_thread() {
           }
         }
 
-        DEBUG("data: [{:f} ... {:f} ... {:f}]", data[0], data[131072 / 2], data[131072 - 1]);
+        DEBUG("data: [{:f} ... {:f} ... {:f}], lost_samples: {}", data[0], data[131072 / 2], data[131072 - 1], total_lost_samples);
         
         // Create metadata
         allocate_new_metadata_object(out_buf, out_frame_id);

@@ -23,9 +23,8 @@ num_frb_total_beams: 1024
 num_local_freq: 1
 factor_upchan: 128
 downsample_time: 3
-num_frames_to_integrate: 10
+num_frames_to_integrate: 10000
 good_samples_threshold: 0.50
-test_value: 2
 samples_per_data_set: 49152
 
 dataset_manager:
@@ -70,9 +69,10 @@ compressed_lost_samples_buffer:
 
 # Generate input data for HFBAccumulate stage
 gen_hfb_data:
+  log_level: info
   first_frame_index: 0
-  rng_mean: 5.0
-  rng_stddev: 2.0
+  pattern: "drop"
+  rng_mean: samples_per_data_set
   kotekan_stage: GenHFBFrames
   out_buf: beamform_hfb_integrate_buffer_0 
   cls_out_buf: compressed_lost_samples_buffer
@@ -85,11 +85,13 @@ hyper_fine_beam:
     hfb_input_buf: beamform_hfb_integrate_buffer_0
     compressed_lost_samples_buf: compressed_lost_samples_buffer
     hfb_output_buf: beamform_hfb_output_buffer_0
-      
-# Check output of stage is correct
-check_data:
-  hfb_data_check_0:
-    num_frames_to_test: 10
-    kotekan_stage: testDataCheckFloat
-    first_buf : beamform_hfb_sum_test_buffer_0
-    second_buf: beamform_hfb_output_buffer_0
+ 
+write_hfb:
+  file_length: 64
+  file_type: hfbraw
+  root_path: .
+  log_level: debug
+
+  kotekan_stage: HFBWriter
+  in_buf: beamform_hfb_output_buffer_0
+  instrument_name: chimeHFB
