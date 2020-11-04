@@ -137,7 +137,7 @@ void HFBAccumulate::normalise_frame(float* sum_data, const uint32_t in_frame_id)
         sum_data[i] *= normalise_frac;
     }
 
-    DEBUG("Integration completed with {:d} lost samples", total_lost_timesamples);
+    DEBUG("Integration completed with {:d} lost samples (~{}%). normalise_frac: {}", total_lost_timesamples, 100.f * (((float) total_lost_timesamples) / total_timesamples), normalise_frac);
 
     fpga_seq_num = get_fpga_seq_start_hfb(in_buf, in_frame_id);
 }
@@ -220,14 +220,10 @@ void HFBAccumulate::main_thread() {
                 % (_num_frames_to_integrate * _samples_per_data_set));
 
         // Get the no. of lost samples in this frame
-        total_lost_timesamples +=
-            get_lost_timesamples(cls_buf, cls_frame_id);
-
         int32_t lost_in_frame = get_lost_timesamples(cls_buf, cls_frame_id);
-        
-        total_lost_timesamples += lost_in_frame;
-
         int32_t samples_in_frame = _samples_per_data_set - lost_in_frame;
+
+        total_lost_timesamples += lost_in_frame;
 
         // We are calculating the weights by differencing even and odd samples.
         // Every even sample we save the set of visibilities...
@@ -247,7 +243,7 @@ void HFBAccumulate::main_thread() {
                 float d = input[i] - hfb_even[i];
                 dset.hfb2[i] += d * d;
             }
-            INFO("hfb2[{}]: {}, input[0]: {}, hfb_even[0]: {}", 0, dset.hfb2[0], input[0], hfb_even[0]);
+            DEBUG("hfb2[{}]: {}, input[0]: {}, hfb_even[0]: {}", 0, dset.hfb2[0], input[0], hfb_even[0]);
 
             // Accumulate the squared samples difference which we need for
             // debiasing the variance estimate
