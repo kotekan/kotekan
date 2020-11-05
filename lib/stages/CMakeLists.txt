@@ -37,6 +37,7 @@ add_library(
     VisWriter.cpp
     HFBWriter.cpp
     visRawReader.cpp
+    HFBRawReader.cpp
     restInspectFrame.cpp
     frbNetworkProcess.cpp
     pulsarNetworkProcess.cpp
