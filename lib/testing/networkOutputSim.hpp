@@ -8,7 +8,7 @@
 #include "Config.hpp"
 #include "Stage.hpp" // for Stage
 #include "bufferContainer.hpp"
-#include "chimeMetadata.h"
+#include "chimeMetadata.hpp"
 
 #include <stdint.h> // for int32_t
 #include <string>   // for string

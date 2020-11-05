@@ -3,7 +3,7 @@
 
 #include "Config.hpp"         // for Config
 #include "buffer.h"           // for Buffer
-#include "chimeMetadata.h"    // for stream_t
+#include "chimeMetadata.hpp"  // for stream_t
 #include "factory.hpp"        // for CREATE_FACTORY, Factory, REGISTER_NAMED_TYPE_WITH_FACTORY
 #include "kotekanLogging.hpp" // for kotekanLogging
 

@@ -1,10 +1,10 @@
 #ifndef CHIME_TELESCOPE_HPP
 #define CHIME_TELESCOPE_HPP
 
-#include "Config.hpp"       // for Config
-#include "ICETelescope.hpp" // for ICETelescope
-#include "Telescope.hpp"    // for freq_id_t
-#include "chimeMetadata.h"  // for stream_t
+#include "Config.hpp"        // for Config
+#include "ICETelescope.hpp"  // for ICETelescope
+#include "Telescope.hpp"     // for freq_id_t
+#include "chimeMetadata.hpp" // for stream_t
 
 #include "json.hpp"
 

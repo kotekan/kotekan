@@ -13,7 +13,7 @@
 
 #include "Config.hpp" // for Config
 #include "Telescope.hpp"
-#include "chimeMetadata.h"    // for chimeMetadata
+#include "chimeMetadata.hpp"  // for chimeMetadata
 #include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
 #include "kotekanLogging.hpp" // for kotekanLogging
 #include "pulsarTiming.hpp"   // for Polyco

@@ -5,7 +5,7 @@
 #include "Telescope.hpp"
 #include "buffer.h"              // for register_producer, Buffer, allocate_new_metadata_object
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "chimeMetadata.h"       // for chimeMetadata, get_fpga_seq_num, get_lost_timesamples
+#include "chimeMetadata.hpp"     // for chimeMetadata, get_fpga_seq_num, get_lost_timesamples
 #include "configUpdater.hpp"     // for configUpdater
 #include "datasetManager.hpp"    // for state_id_t, datasetManager, dset_id_t
 #include "datasetState.hpp"      // for eigenvalueState, freqState, gatingState, inputState

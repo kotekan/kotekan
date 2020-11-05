@@ -4,7 +4,7 @@
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for stream_t
+#include "chimeMetadata.hpp"   // for stream_t
 #include "restServer.hpp"      // for connectionInstance
 
 #include "json.hpp" // for json

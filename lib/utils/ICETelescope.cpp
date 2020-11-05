@@ -1,7 +1,7 @@
 #include "ICETelescope.hpp"
 
 #include "Telescope.hpp"      // for freq_id_t, REGISTER_TELESCOPE, Telescope, _factory_aliasTe...
-#include "chimeMetadata.h"    // for stream_t
+#include "chimeMetadata.hpp"  // for stream_t
 #include "kotekanLogging.hpp" // for WARN, INFO, FATAL_ERROR
 #include "restClient.hpp"     // for restClient
 

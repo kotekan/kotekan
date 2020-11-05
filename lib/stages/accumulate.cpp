@@ -4,7 +4,7 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_empty
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for atomic_add_lost_timesamples, get_lost_timesamples, get_fi...
+#include "chimeMetadata.hpp"   // for atomic_add_lost_timesamples, get_lost_timesamples, get_fi...
 
 #include <atomic>     // for atomic_bool
 #include <cstdint>    // for int32_t
