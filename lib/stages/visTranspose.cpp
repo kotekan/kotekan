@@ -325,11 +325,10 @@ void visTranspose::main_thread() {
                          num_input);
 
             // Parse the dataset ID
-            ds_id = frame.dataset_id;
             if (frame.fpga_seq_total == 0 && frame.dataset_id == dset_id_t::null) {
                 DEBUG("Got an empty frame.");
                 // Empty frames have a null dataset ID
-                ds_id_str = fmt::format("{}", ds_id);
+                ds_id_str = fmt::format("{}", dset_id_t::null);
             } else if (frame.dataset_id != ds_id) {
                 // TODO assuming that dataset ID changes here never change dataset dimensions
                 DEBUG("Dataset ID has changed from {} to {}.", ds_id, frame.dataset_id);
