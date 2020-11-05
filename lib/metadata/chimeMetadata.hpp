@@ -1,6 +1,7 @@
 #ifndef CHIME_METADATA
 #define CHIME_METADATA
 
+#include "Telescope.hpp"
 #include "buffer.h"
 #include "metadata.h"
 
@@ -14,18 +15,6 @@ struct beamCoord {
     float ra[MAX_NUM_BEAMS];
     float dec[MAX_NUM_BEAMS];
     uint32_t scaling[MAX_NUM_BEAMS];
-};
-
-/**
- * @brief A type for the stream ID.
- *
- * This is the external interface for it and *must* be used instead of directly
- * accessing the chimeMetadata::stream_ID member.
- *
- * @todo Move this into Telescope.hpp when we port chimeMetadata.h to C++.
- **/
-struct stream_t {
-    uint64_t id;
 };
 
 
