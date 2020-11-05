@@ -26,8 +26,8 @@ RUN apt-get update && \
                        clang-format-8=1:8-* \
                        dpdk=17.11.* \
                        dpdk-dev=17.11.* \
-                       rocm-opencl-dev=2.* \
-                       rocm-opencl=2.* \
+                       rocm-opencl-dev \
+                       rocm-opencl \
                        libhdf5-serial-dev=1.10.* \
                        libboost-test-dev=1.65.* \
                        libevent-dev=2.1.* \
@@ -127,6 +127,8 @@ RUN apt-get update && \
 # Uncomment this to check what version got installed
 # RUN python3.7 -m pip show <package>
 # RUN apt-cache policy <package>
+RUN apt-cache policy rocm-opencl
+RUN apt-cache policy rocm-opencl-dev
 
 # Clean any unwanted caches
 RUN apt-get clean && apt-get autoclean
