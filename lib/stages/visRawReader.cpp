@@ -59,6 +59,9 @@ visRawReader::visRawReader(Config& config, const std::string& unique_name,
     sleep_time = config.get_default<float>(unique_name, "sleep_time", -1);
     update_dataset_id = config.get_default<bool>(unique_name, "update_dataset_id", true);
     use_comet = config.get_default<bool>(DS_UNIQUE_NAME, "use_dataset_broker", true);
+    local_dm = config.get_default<bool>(unique_name, "use_local_dataset_man", false);
+    if (local_dm && use_comet)
+        FATAL_ERROR("Cannot use local dataset manager and dataset broker together.")
 
     chunked = config.exists(unique_name, "chunk_size");
     if (chunked) {
@@ -190,7 +193,6 @@ visRawReader::visRawReader(Config& config, const std::string& unique_name,
         if (!use_comet) {
             // Add the states: metadata, time, prod, freq, input,
             // eigenvalue and stack.
-            std::vector<state_id_t> states;
             if (!_stack.empty())
                 states.push_back(dm.create_state<stackState>(_num_stack, std::move(_rstack)).first);
             states.push_back(dm.create_state<inputState>(_inputs).first);
@@ -245,6 +247,10 @@ dset_id_t visRawReader::get_dataset_state(dset_id_t ds_id) {
 
     if (!update_dataset_id || ds_id == dset_id_t::null) {
         new_id = ds_id;
+    } else if (local_dm) {
+        INFO("Registering new dataset with local DM based on {}.", ds_id);
+        datasetManager& dm = datasetManager::instance();
+        new_id = dm.add_dataset(states, ds_id);
     } else if (use_comet) {
         INFO("Registering new dataset with broker based on {}.", ds_id);
         datasetManager& dm = datasetManager::instance();
