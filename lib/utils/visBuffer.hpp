@@ -7,13 +7,13 @@
 #ifndef VISBUFFER_HPP
 #define VISBUFFER_HPP
 
-#include "Config.hpp"      // for Config
-#include "FrameView.hpp"   // for FrameView
-#include "Telescope.hpp"   // for freq_id_t
-#include "buffer.h"        // for Buffer
-#include "chimeMetadata.h" // for chimeMetadata
-#include "dataset.hpp"     // for dset_id_t
-#include "visUtil.hpp"     // for cfloat
+#include "Config.hpp"        // for Config
+#include "FrameView.hpp"     // for FrameView
+#include "Telescope.hpp"     // for freq_id_t
+#include "buffer.h"          // for Buffer
+#include "chimeMetadata.hpp" // for chimeMetadata
+#include "dataset.hpp"       // for dset_id_t
+#include "visUtil.hpp"       // for cfloat
 
 #include "gsl-lite.hpp" // for span
 

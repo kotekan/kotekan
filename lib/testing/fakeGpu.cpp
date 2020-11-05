@@ -4,7 +4,7 @@
 #include "Stage.hpp"          // for Stage
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"           // for Buffer, allocate_new_metadata_object, mark_frame_full
-#include "chimeMetadata.h"    // for set_first_packet_recv_time, set_fpga_seq_num, set_gps...
+#include "chimeMetadata.hpp"  // for set_first_packet_recv_time, set_fpga_seq_num, set_gps...
 #include "errors.h"           // for exit_kotekan, CLEAN_EXIT, ReturnCode
 #include "factory.hpp"        // for FACTORY
 #include "fakeGpuPattern.hpp" // for FakeGpuPattern, _factory_aliasFakeGpuPattern

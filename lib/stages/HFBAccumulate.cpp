@@ -5,7 +5,7 @@
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"      // for Telescope, freq_id_t
 #include "buffer.h"           // for mark_frame_empty, Buffer, register_consumer, wait_for_empt...
-#include "chimeMetadata.h"    // for get_lost_timesamples
+#include "chimeMetadata.hpp"  // for get_lost_timesamples
 #include "datasetManager.hpp" // for state_id_t, datasetManager
 #include "datasetState.hpp"   // for beamState, freqState, metadataState, subfreqState
 #include "kotekanLogging.hpp" // for DEBUG, DEBUG2

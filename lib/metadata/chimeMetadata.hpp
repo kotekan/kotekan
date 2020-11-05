@@ -8,10 +8,6 @@
 
 #define MAX_NUM_BEAMS 20
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #pragma pack()
 
 struct beamCoord {
@@ -203,9 +199,5 @@ inline void zero_lost_samples(struct Buffer* buf, int ID) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
     chime_metadata->lost_timesamples = 0;
 }
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

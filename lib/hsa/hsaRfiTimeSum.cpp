@@ -1,7 +1,7 @@
 #include "hsaRfiTimeSum.hpp"
 
 #include "Config.hpp"             // for Config
-#include "chimeMetadata.h"        // for get_rfi_num_bad_inputs
+#include "chimeMetadata.hpp"      // for get_rfi_num_bad_inputs
 #include "configUpdater.hpp"      // for configUpdater
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config

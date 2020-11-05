@@ -12,7 +12,7 @@
 #include "Telescope.hpp"
 #include "buffer.h"
 #include "bufferContainer.hpp"
-#include "chimeMetadata.h"
+#include "chimeMetadata.hpp"
 #include "iceBoardHandler.hpp"
 #include "kotekanLogging.hpp"
 #include "packet_copy.h"
