@@ -2,6 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"       // for stream_t
 #include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_empty
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chimeMetadata.hpp"   // for atomic_add_lost_timesamples, get_lost_timesamples, get_fi...

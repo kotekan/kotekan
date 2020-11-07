@@ -1,13 +1,14 @@
 #include "visAccumulate.hpp"
 
-#include "Config.hpp"       // for Config
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for operator!=
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"         // for Telescope
 #include "buffer.h"              // for register_producer, Buffer, allocate_new_metadata_object
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "chimeMetadata.hpp"     // for chimeMetadata, get_fpga_seq_num, get_lost_timesamples
+#include "chimeMetadata.hpp"     // for chimeMetadata, get_dataset_id, get_fpga_seq_num, get_lo...
 #include "configUpdater.hpp"     // for configUpdater
-#include "datasetManager.hpp"    // for state_id_t, datasetManager, dset_id_t
+#include "datasetManager.hpp"    // for state_id_t, dset_id_t, datasetManager
 #include "datasetState.hpp"      // for eigenvalueState, freqState, gatingState, inputState
 #include "factory.hpp"           // for FACTORY
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, INFO, logLevel, DEBUG
@@ -15,13 +16,13 @@
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
 #include "version.h"             // for get_git_commit_hash
 #include "visBuffer.hpp"         // for VisFrameView
-#include "visUtil.hpp"           // for prod_ctype, frameID, input_ctype, modulo, operator+
+#include "visUtil.hpp"           // for prod_ctype, frameID, modulo, input_ctype, operator+
 
 #include "fmt.hpp"      // for format, fmt
 #include "gsl-lite.hpp" // for span<>::iterator, span
-#include "json.hpp"     // for json, basic_json, iteration_proxy_value, basic_json<>...
+#include "json.hpp"     // for json, basic_json, iteration_proxy_value, basic_json<>::...
 
-#include <algorithm> // for max, fill, copy, copy_backward, equal, transform
+#include <algorithm> // for copy, max, fill, copy_backward, equal, transform
 #include <assert.h>  // for assert
 #include <atomic>    // for atomic_bool
 #include <cmath>     // for pow

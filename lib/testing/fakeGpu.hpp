@@ -11,7 +11,7 @@
 #include "Telescope.hpp"       // for freq_id_t, Telescope, stream_t
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "dataset.hpp"         // for dset_id_t
+#include "datasetManager.hpp"  // for dset_id_t
 #include "fakeGpuPattern.hpp"  // for FakeGpuPattern
 
 #include <memory>   // for unique_ptr
