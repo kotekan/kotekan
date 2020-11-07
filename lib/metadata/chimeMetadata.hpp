@@ -3,6 +3,7 @@
 
 #include "Telescope.hpp"
 #include "buffer.h"
+#include "datasetManager.hpp"
 #include "metadata.h"
 
 #include <sys/time.h>
@@ -44,6 +45,8 @@ struct chimeMetadata {
     /// Note in the case of CHIME-2048 the normally unused section
     /// Encodes the port-shuffle frequency information
     uint16_t stream_ID;
+    /// ID of the dataset
+    dset_id_t dataset_id;
     /// The coordinates of the tracking beam (if applicable)
     struct beamCoord beam_coord;
 };
@@ -113,6 +116,11 @@ inline struct timespec get_gps_time(const struct Buffer* buf, int ID) {
     return chime_metadata->gps_time;
 }
 
+inline dset_id_t get_dataset_id(const struct Buffer* buf, int ID) {
+    struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
+    return chime_metadata->dataset_id;
+}
+
 inline void atomic_add_lost_timesamples(struct Buffer* buf, int ID, int64_t num_lost_samples) {
     struct metadataContainer* mc = buf->metadata[ID];
     lock_metadata(mc);
@@ -176,6 +184,11 @@ inline void set_first_packet_recv_time(struct Buffer* buf, int ID, struct timeva
 inline void set_gps_time(struct Buffer* buf, int ID, struct timespec time) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
     chime_metadata->gps_time = time;
+}
+
+inline void set_dataset_id(struct Buffer* buf, int ID, dset_id_t dataset_id) {
+    struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
+    chime_metadata->dataset_id = dataset_id;
 }
 
 /**
