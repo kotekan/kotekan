@@ -3,8 +3,8 @@
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
+#include "Telescope.hpp"       // for stream_t
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"   // for stream_t
 #include "restServer.hpp"      // for connectionInstance
 
 #include "json.hpp" // for json

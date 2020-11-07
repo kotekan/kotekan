@@ -1,34 +1,35 @@
 #include "RfiFrameDrop.hpp"
 
-#include "Config.hpp"       // for Config
-#include "Stage.hpp"        // for Stage
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "Telescope.hpp"
-#include "buffer.h"              // for mark_frame_empty, Buffer, wait_for_full_frame, get_me...
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for Hash, operator!=
+#include "Stage.hpp"             // for Stage
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"         // for Telescope
+#include "buffer.h"              // for mark_frame_empty, Buffer, wait_for_full_frame, get_meta...
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "chimeMetadata.hpp"     // for chimeMetadata, get_fpga_seq_num
+#include "chimeMetadata.hpp"     // for chimeMetadata, get_dataset_id, get_fpga_seq_num, set_da...
 #include "configUpdater.hpp"     // for configUpdater
-#include "datasetManager.hpp"    // for dset_id_t
+#include "datasetManager.hpp"    // for dset_id_t, state_id_t, datasetManager
 #include "kotekanLogging.hpp"    // for WARN, INFO, DEBUG, DEBUG2
 #include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily
 #include "visUtil.hpp"           // for frameID, modulo
 
 #include "fmt.hpp" // for format, fmt
 
-#include <algorithm>  // for max, copy, copy_backward, equal, fill
+#include <algorithm>  // for copy, max, copy_backward, equal, fill
 #include <assert.h>   // for assert
-#include <atomic>     // for atomic, atomic_bool
+#include <atomic>     // for atomic_bool
 #include <cmath>      // for sqrt, fabs
 #include <cstring>    // for memcpy
 #include <deque>      // for deque
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, function, bind, _Placeholder, _1
 #include <map>        // for map, map<>::mapped_type
-#include <memory>     // for allocator, shared_ptr, __shared_ptr_access, atomic_load
 #include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error
 #include <stdint.h>   // for uint8_t, int64_t, uint32_t
 #include <string>     // for string, to_string
+#include <tuple>      // for tie, tuple
 
 
 using kotekan::bufferContainer;
