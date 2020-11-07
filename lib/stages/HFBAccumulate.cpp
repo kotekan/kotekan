@@ -264,7 +264,7 @@ void HFBAccumulate::main_thread() {
                 freq_id_t freq_id = tel.to_freq_id(in_buf, in_buffer_ID);
                 set_freq_id(out_buf, out_buffer_ID, freq_id);
 
-                set_dataset_id(out_buf, out_buffer_ID, ds_id);
+                set_dataset_id_hfb(out_buf, out_buffer_ID, ds_id);
                 set_num_beams(out_buf, out_buffer_ID, _num_frb_total_beams);
                 set_num_subfreq(out_buf, out_buffer_ID, _factor_upchan);
 

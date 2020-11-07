@@ -50,6 +50,8 @@ FakeGpu::FakeGpu(kotekan::Config& config, const std::string& unique_name,
     num_freq_in_frame = config.get_default<int32_t>(unique_name, "num_freq_in_frame", 1);
     wait = config.get_default<bool>(unique_name, "wait", true);
     drop_probability = config.get_default<float>(unique_name, "drop_probability", 0.0);
+    dataset_id = config.get_default<dset_id_t>(
+        unique_name, "dataset_id", dset_id_t::from_string("f65bec4949ca616fbeea62660351edcb"));
 
     // Fetch the correct fill function
     std::string pattern_name = config.get<std::string>(unique_name, "pattern");
@@ -133,6 +135,7 @@ void FakeGpu::main_thread() {
             TIMESPEC_TO_TIMEVAL(&tv, &ts);
             set_first_packet_recv_time(out_buf, frame_id, tv);
             set_gps_time(out_buf, frame_id, ts);
+            set_dataset_id(out_buf, frame_id, dataset_id);
 
             // Fill the buffer with the specified mode
             chimeMetadata* metadata = (chimeMetadata*)out_buf->metadata[frame_id]->metadata;

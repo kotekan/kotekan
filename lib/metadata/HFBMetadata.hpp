@@ -64,7 +64,7 @@ inline uint32_t get_num_subfreq(struct Buffer* buf, int ID) {
     return hfb_metadata->num_subfreq;
 }
 
-inline dset_id_t get_dataset_id(struct Buffer* buf, int ID) {
+inline dset_id_t get_dataset_id_hfb(struct Buffer* buf, int ID) {
     struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
     return hfb_metadata->dataset_id;
 }
@@ -106,7 +106,7 @@ inline void set_num_subfreq(struct Buffer* buf, int ID, uint32_t num_subfreq) {
     hfb_metadata->num_subfreq = num_subfreq;
 }
 
-inline void set_dataset_id(struct Buffer* buf, int ID, dset_id_t dataset_id) {
+inline void set_dataset_id_hfb(struct Buffer* buf, int ID, dset_id_t dataset_id) {
     struct HFBMetadata* hfb_metadata = (struct HFBMetadata*)buf->metadata[ID]->metadata;
     hfb_metadata->dataset_id = dataset_id;
 }

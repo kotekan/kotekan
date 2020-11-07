@@ -72,8 +72,6 @@
  *                              Default 0..1023.
  * @conf  max_age               Float. Drop frames later than this number of seconds.
  *                              Default is 60.0
- * @conf  fpga_dataset          String. The dataset ID for the data being received from
- *                              the F-engine.
  *
  * @par Metrics
  * @metric  kotekan_visaccumulate_skipped_frame_total
@@ -162,7 +160,6 @@ private:
     size_t num_gpu_frames;
     size_t minimum_samples;
     float max_age;
-    dset_id_t fpga_dataset;
 
     // Derived from config
     size_t num_prod_gpu;
@@ -218,19 +215,24 @@ private:
     // Hold the state for any gated data
     std::deque<internalState> gated_datasets;
 
-    // dataset ID for the base (input, prod, freq, meta)
+    // dataset ID for the base states
     dset_id_t base_dataset_id;
 
+    // the base states (input, prod, freq, meta)
+    std::vector<state_id_t> base_dataset_states;
+
+    datasetManager& dm = datasetManager::instance();
 
     /// Sets the metadataState with a hardcoded weight type ("inverse_var"),
     /// prodState, inputState and freqState according to config and an empty
     /// stackState
-    dset_id_t base_dataset_state(std::string& instrument_name,
-                                 std::vector<std::pair<uint32_t, freq_ctype>>& freqs,
-                                 std::vector<input_ctype>& inputs, std::vector<prod_ctype>& prods);
+    void register_base_dataset_states(std::string& instrument_name,
+                                      std::vector<std::pair<uint32_t, freq_ctype>>& freqs,
+                                      std::vector<input_ctype>& inputs,
+                                      std::vector<prod_ctype>& prods);
 
     /// Register a new state with the gating params
-    dset_id_t gate_dataset_state(const gateSpec& spec);
+    dset_id_t register_gate_dataset(const gateSpec& spec);
 
     // Reference to the prometheus metric that we will use for counting skipped
     // frames

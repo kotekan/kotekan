@@ -63,7 +63,6 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
     block_size = config.get<size_t>(unique_name, "block_size");
     samples_per_data_set = config.get<size_t>(unique_name, "samples_per_data_set");
     max_age = config.get_default<float>(unique_name, "max_age", 60.0);
-    fpga_dataset = config.get_default<dset_id_t>("/fpga_dataset", "id", dset_id_t::null);
 
     // Get the indices for reordering
     auto input_reorder = parse_reorder_default(config, unique_name);
@@ -131,8 +130,8 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
         }
     }
 
-    // get dataset ID for out frames
-    base_dataset_id = base_dataset_state(instrument_name, freqs, inputs, prods);
+    // register base dataset states to prepare for getting dataset IDs for out frames
+    register_base_dataset_states(instrument_name, freqs, inputs, prods);
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -144,8 +143,6 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
     gated_datasets.emplace_back(
         out_buf, gateSpec::create("uniform", "vis", kotekan::logLevel(_member_log_level)),
         num_prod_gpu);
-    gated_datasets.at(0).output_dataset_id = base_dataset_id;
-
 
     // Get and validate any gating config
     nlohmann::json gating_conf = config.get_default<nlohmann::json>(unique_name, "gating", {});
@@ -201,7 +198,7 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
         auto buf = buffer_container.get_buffer(buffer_name);
         register_producer(buf, unique_name.c_str());
 
-        // Create the gated dataset and register the update callback
+        // Create the gated datasets and register the update callback
         gated_datasets.emplace_back(
             buf, gateSpec::create(mode, name, kotekan::logLevel(_member_log_level)), num_prod_gpu);
 
@@ -220,35 +217,26 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
 }
 
 
-dset_id_t visAccumulate::base_dataset_state(std::string& instrument_name,
-                                            std::vector<std::pair<uint32_t, freq_ctype>>& freqs,
-                                            std::vector<input_ctype>& inputs,
-                                            std::vector<prod_ctype>& prods) {
+void visAccumulate::register_base_dataset_states(
+    std::string& instrument_name, std::vector<std::pair<uint32_t, freq_ctype>>& freqs,
+    std::vector<input_ctype>& inputs, std::vector<prod_ctype>& prods) {
     // weight calculation is hardcoded, so is the weight type name
     const std::string weight_type = "inverse_var";
     const std::string git_tag = get_git_commit_hash();
 
     // create all the states
-    datasetManager& dm = datasetManager::instance();
-    std::vector<state_id_t> base_states;
-    base_states.push_back(dm.create_state<freqState>(freqs).first);
-    base_states.push_back(dm.create_state<inputState>(inputs).first);
-    base_states.push_back(dm.create_state<prodState>(prods).first);
-    base_states.push_back(dm.create_state<eigenvalueState>(0).first);
-    base_states.push_back(
+    base_dataset_states.push_back(dm.create_state<freqState>(freqs).first);
+    base_dataset_states.push_back(dm.create_state<inputState>(inputs).first);
+    base_dataset_states.push_back(dm.create_state<prodState>(prods).first);
+    base_dataset_states.push_back(dm.create_state<eigenvalueState>(0).first);
+    base_dataset_states.push_back(
         dm.create_state<metadataState>(weight_type, instrument_name, git_tag).first);
-
-    // Register base dataset, if not fpga_dataset was set in the config, the
-    // variable below will be dset_id_t::null and thus cause a root dataset to
-    // be registered.
-    return dm.add_dataset(base_states, fpga_dataset);
 }
 
 
-dset_id_t visAccumulate::gate_dataset_state(const gateSpec& spec) {
+dset_id_t visAccumulate::register_gate_dataset(const gateSpec& spec) {
 
     // register with the datasetManager
-    datasetManager& dm = datasetManager::instance();
     state_id_t gstate_id = dm.create_state<gatingState>(spec).first;
 
     // register gated dataset
@@ -259,6 +247,8 @@ dset_id_t visAccumulate::gate_dataset_state(const gateSpec& spec) {
 void visAccumulate::main_thread() {
 
     frameID in_frame_id(in_buf);
+
+    dset_id_t ds_id_in = dset_id_t::null;
 
     // Hold the gated datasets that are enabled;
     std::vector<std::reference_wrapper<internalState>> enabled_gated_datasets;
@@ -281,6 +271,21 @@ void visAccumulate::main_thread() {
         uint8_t* in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
         if (in_frame == nullptr)
             break;
+
+        // Check if dataset ID changed
+        dset_id_t ds_id_in_new = get_dataset_id(in_buf, in_frame_id);
+        if (ds_id_in_new != ds_id_in) {
+            ds_id_in = ds_id_in_new;
+
+            // Register base dataset. If no dataset ID was was set in the incoming frame,
+            // ds_id_in will be dset_id_t::null and thus cause a root dataset to
+            // be registered.
+            base_dataset_id = dm.add_dataset(base_dataset_states, ds_id_in);
+            DEBUG("Registered base dataset: {}", base_dataset_id)
+
+            // Set the output dataset ID for the main visibility accumulation
+            gated_datasets.at(0).output_dataset_id = base_dataset_id;
+        }
 
         int32_t* input = (int32_t*)in_frame;
         uint64_t frame_count = (get_fpga_seq_num(in_buf, in_frame_id) / samples_per_data_set);
@@ -451,7 +456,6 @@ bool visAccumulate::initialise_output(visAccumulate::internalState& state, int i
         frame.fill_chime_metadata(metadata, freq_ind);
 
         // Set dataset ID produced by the dM
-        // TODO: this should be different for different gated streams
         frame.dataset_id = state.output_dataset_id;
 
         // Set the length of time this frame will cover
@@ -576,7 +580,7 @@ bool visAccumulate::reset_state(visAccumulate::internalState& state, timespec t)
 
         // Update dataset ID if an external change occurred
         if (state.changed) {
-            state.output_dataset_id = gate_dataset_state(*state.spec.get());
+            state.output_dataset_id = register_gate_dataset(*state.spec.get());
             state.changed = false;
         }
     }
