@@ -805,4 +805,82 @@ private:
     std::vector<uint32_t> _subfreqs;
 };
 
+/**
+ * @brief A dataset state that keeps the RFI frame-dropping information of a datatset.
+ *
+ * @author Rick Nitsche
+ */
+class RFIFrameDropState : public datasetState {
+public:
+    /**
+     * @brief Constructor
+     * @param data  The RFI frame-dropping information as serialized by
+     *              RFIFrameDropState::to_json().
+     */
+    RFIFrameDropState(const nlohmann::json& data) {
+        try {
+            enabled = data["enabled"].get<bool>();
+            thresholds = data["thresholds"].get<std::vector<float>>();
+        } catch (std::exception& e) {
+            throw std::runtime_error(
+                fmt::format(fmt("RFIFrameDropState: Failure parsing json data ({:s}): {:s}"),
+                            data.dump(4), e.what()));
+        }
+    }
+
+    /**
+     * @brief Constructor
+     * @param enabled       True, if RFI frame-dropping enabled
+     * @param thresholds    Vector of thresholds
+     * @param fractions     Vector of fractions
+     */
+    RFIFrameDropState(bool enabled, std::vector<float> thresholds, std::vector<float> fractions) :
+        enabled(enabled),
+        thresholds(thresholds),
+        fractions(fractions) {}
+
+    /**
+     * @brief Get RFI frame-dropping enabled information.
+     *
+     * @return True if RFI frame-dropping enabled.
+     */
+    bool get_enabled() const {
+        return enabled;
+    }
+
+    /**
+     * @brief Get RFI frame-dropping thresholds (read only).
+     *
+     * @return Thresholds.
+     */
+    const std::vector<float>& get_thresholds() const {
+        return thresholds;
+    }
+
+    /**
+     * @brief Get RFI frame-dropping fractions (read only).
+     *
+     * @return Fractions.
+     */
+    const std::vector<float>& get_fractions() const {
+        return fractions;
+    }
+
+private:
+    /// Serialize the data of this state in a json object
+    nlohmann::json data_to_json() const override {
+        nlohmann::json j;
+        j["enabled"] = enabled;
+        j["thresholds"] = thresholds;
+        j["fractions"] = fractions;
+        return j;
+    }
+
+    /// Tells if frame dropping is enabled in the RFIFrameDrop stage.
+    bool enabled;
+
+    std::vector<float> thresholds;
+    std::vector<float> fractions;
+};
+
 #endif // DATASETSTATE_HPP
