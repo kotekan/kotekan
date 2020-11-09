@@ -87,7 +87,7 @@ if(${USE_HDF5})
 endif()
 
 if(${USE_HDF5} AND ${USE_OMP})
-    target_sources(kotekan_stages PRIVATE visTranspose.cpp)
+    target_sources(kotekan_stages PRIVATE visTranspose.cpp HFBTranspose.cpp)
 endif()
 
 if(${USE_OMP})
