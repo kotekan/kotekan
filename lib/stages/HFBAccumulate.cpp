@@ -124,7 +124,7 @@ void HFBAccumulate::integrate_frame(float* input_data, float* sum_data,
         sum_data[i] += input_data[i];
     }
 
-    DEBUG("\nIntegrate frame {:d}, total_lost_timesamples: {:d}, sum_data[0]: {:f}\n", frame,
+    DEBUG2("\nIntegrate frame {:d}, total_lost_timesamples: {:d}, sum_data[0]: {:f}\n", frame,
           total_lost_timesamples, sum_data[0]);
 }
 
@@ -211,7 +211,7 @@ void HFBAccumulate::main_thread() {
             first = 0;
         }
 
-        DEBUG(
+        DEBUG2(
             "fpga_seq_start: {:d}, fpga_seq_num_end: {:d}, num_frames * num_samples: {:d}, fpga % "
             "(align): {:d}",
             get_fpga_seq_start_hfb(in_buf, in_frame_id), fpga_seq_num_end,
@@ -224,6 +224,14 @@ void HFBAccumulate::main_thread() {
         int32_t samples_in_frame = _samples_per_data_set - lost_in_frame;
 
         total_lost_timesamples += lost_in_frame;
+
+        // TODO: implement generalised non uniform weighting, I'm primarily
+        // not doing this because I don't want to burn cycles doing the
+        // multiplications
+        // Perform primary accumulation (assume that the weight is one)
+        for (size_t i = 0; i < _num_frb_total_beams * _factor_upchan; i++) {
+            dset.hfb1[i] += input[i];
+        }
 
         // We are calculating the weights by differencing even and odd samples.
         // Every even sample we save the set of visibilities...
@@ -243,7 +251,7 @@ void HFBAccumulate::main_thread() {
                 float d = input[i] - hfb_even[i];
                 dset.hfb2[i] += d * d;
             }
-            DEBUG("hfb2[{}]: {}, input[0]: {}, hfb_even[0]: {}", 0, dset.hfb2[0], input[0], hfb_even[0]);
+            DEBUG2("hfb2[{}]: {}, input[0]: {}, hfb_even[0]: {}", 0, dset.hfb2[0], input[0], hfb_even[0]);
 
             // Accumulate the squared samples difference which we need for
             // debiasing the variance estimate
@@ -293,9 +301,16 @@ void HFBAccumulate::main_thread() {
 
                 // Set weights
                 auto frame = HFBFrameView(out_buf, out_frame_id);
-                
+
                 dset.sample_weight_total = total_timesamples - total_lost_timesamples;
-            
+
+                // Debias the weights estimate, by subtracting out the bias estimation
+                float w_debias = dset.weight_diff_sum / pow(dset.sample_weight_total, 2);
+                for (size_t i = 0; i < _num_frb_total_beams * _factor_upchan; i++) {
+                  float d = dset.hfb1[i];
+                  dset.hfb2[i] -= w_debias * (d * d);
+                }
+
                 // Determine the weighting factors (if weight is zero we should just
                 // multiply the HFB data by zero so as not to generate Infs)
                 float w = dset.sample_weight_total;
