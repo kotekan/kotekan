@@ -202,20 +202,22 @@ void HFBFileArchive::create_axis(std::string name, const std::vector<T>& axis) {
 
 void HFBFileArchive::create_datasets() {
 
-    //Group flags = file->createGroup("flags");
+    Group flags = file->createGroup("flags");
 
     bool compress = true;
     bool no_compress = false;
 
     // Create transposed dataset shapes
     create_dataset("hfb", {"freq", "beam", "subfreq", "time"}, create_datatype<float>(), compress);
+    create_dataset("flags/hfb_weight", {"freq", "beam", "subfreq", "time"}, create_datatype<float>(),
+                   compress);
 
     if (stacked) {
         Group rev_map = file->createGroup("reverse_map");
         create_dataset("reverse_map/stack", {"prod"}, create_datatype<rstack_ctype>(), no_compress);
     }
-    create_dataset("flags/dataset_id", {"freq", "time"}, create_datatype<dset_id_str>(),
-                   no_compress);
+//    create_dataset("flags/dataset_id", {"freq", "time"}, create_datatype<dset_id_str>(),
+//                   no_compress);
 
     // Add weight type flag where gossec expects it
     dset("hfb_weight")

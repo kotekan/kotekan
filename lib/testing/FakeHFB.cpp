@@ -163,9 +163,7 @@ void FakeHFB::main_thread() {
                 float data = (i % 2 == 0 ? output_frame.freq_id : output_frame.fpga_seq_start);
 
                 output_frame.hfb[i] = data;
-
-                // Set weights to zero for now
-                output_frame.weight[i] = 0.0;
+                output_frame.weight[i] = 1.0;
             }
 
 
@@ -244,8 +242,8 @@ void ReplaceHFB::main_thread() {
             float data = (i % 2 == 0 ? output_frame.freq_id : output_frame.fpga_seq_start);
 
             output_frame.hfb[i] = data;
+            output_frame.weight[i] = 1.f;
         }
-
 
         // Mark the output buffer and move on
         mark_frame_full(out_buf, unique_name.c_str(), output_frame_id);

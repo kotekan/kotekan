@@ -293,7 +293,7 @@ void HFBRawReader::main_thread() {
 
     double start_time, end_time;
     frameID frame_id(out_buf);
-    uint8_t* frame;
+    uint8_t* frame_ptr;
 
     size_t ind = 0, read_ind = 0, file_ind;
 
@@ -317,7 +317,7 @@ void HFBRawReader::main_thread() {
         start_time = current_time();
 
         // Wait for an empty frame in the output buffer
-        if ((frame = wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id)) == nullptr) {
+        if ((frame_ptr = wait_for_empty_frame(out_buf, unique_name.c_str(), frame_id)) == nullptr) {
             break;
         }
 
@@ -332,7 +332,7 @@ void HFBRawReader::main_thread() {
         // Allocate the metadata space
         allocate_new_metadata_object(out_buf, frame_id);
 
-        INFO("file_ind: {}, file_frame_size: {}", file_ind, file_frame_size);
+        DEBUG("file_ind: {}, file_frame_size: {}", file_ind, file_frame_size);
 
         // Check first byte indicating empty frame
         if (*(mapped_file + file_ind * file_frame_size) != 0) {
@@ -341,7 +341,7 @@ void HFBRawReader::main_thread() {
                         mapped_file + file_ind * file_frame_size + 1, metadata_size);
 
             // Copy the data from the file
-            std::memcpy(frame, mapped_file + file_ind * file_frame_size + metadata_size + 1,
+            std::memcpy(frame_ptr, mapped_file + file_ind * file_frame_size + metadata_size + 1,
                         data_size);
             //DEBUG("hfbRawReader: Reading full frame: {:d}, data: {}", frame_id, frame[0]);
         } else {
