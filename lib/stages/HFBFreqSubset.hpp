@@ -11,6 +11,7 @@
 #include "buffer.h"
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp" // for dset_id_t, state_id_t, fingerprint_t
+#include "FreqSubset.hpp" // for FreqSubset
 
 #include <map>      // for map
 #include <stdint.h> // for uint32_t
@@ -38,31 +39,19 @@
  *
  * @author Mateus Fandino
  */
-class HFBFreqSubset : public kotekan::Stage {
+class HFBFreqSubset : public FreqSubset {
 
 public:
     /// Default constructor
     HFBFreqSubset(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
 
-    /// Main loop for the stage
-    void main_thread() override;
+protected:
+    // Copy dataset ID from input to output frame
+    void copy_dataset_id(dset_id_t dataset_id, frameID input_frame_id, frameID output_frame_id) override;
 
-private:
-    /// adds state and dataset and gets a new output dataset ID from manager
-    void change_dataset_state(dset_id_t input_dset_id);
-
-    // List of frequencies for the subset
-    std::vector<uint32_t> _subset_list;
-
-    /// Output buffer with subset of frequencies
-    Buffer* out_buf;
-    /// Input buffer with all frequencies
-    Buffer* in_buf;
-
-    // Maps for determining the dataset ID to use
-    std::map<dset_id_t, dset_id_t> dset_id_map;
-    std::map<fingerprint_t, state_id_t> states_map;
+    // Get dataset ID and frequency ID from frame
+    std::pair<dset_id_t, uint32_t> get_frame_data(frameID input_frame_id) override;
 };
 
 

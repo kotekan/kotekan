@@ -42,7 +42,7 @@ def vis_data(tmpdir_factory):
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
     test = runner.KotekanStageTester(
-        "freqSubset", {}, fakevis_buffer, dump_buffer, params
+        "VisFreqSubset", {}, fakevis_buffer, dump_buffer, params
     )
 
     test.run()
@@ -65,7 +65,7 @@ def write_data(tmpdir_factory):
     write_buffer = runner.VisWriterBuffer(str(tmpdir), "raw")
 
     test = runner.KotekanStageTester(
-        "freqSubset", {}, fakevis_buffer, write_buffer, params
+        "VisFreqSubset", {}, fakevis_buffer, write_buffer, params
     )
 
     test.run()
