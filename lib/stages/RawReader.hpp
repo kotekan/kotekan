@@ -1,10 +1,10 @@
 /*****************************************
 @file
-@brief Read HFBFileRaw data.
-- HFBRawReader : public kotekan::Stage
+@brief Base class for reading raw files.
+- RawReader : public kotekan::Stage
 *****************************************/
-#ifndef _HFB_RAW_READER_HPP
-#define _HFB_RAW_READER_HPP
+#ifndef _RAW_READER_HPP
+#define _RAW_READER_HPP
 
 #include "Config.hpp"
 #include "Stage.hpp" // for Stage
@@ -22,9 +22,16 @@
 #include <utility>  // for pair
 #include <vector>   // for vector
 
+using nlohmann::json;
+
 /**
- * @class HFBRawReader
- * @brief Read and stream a raw 21cm absorber file.
+ * @class RawReader
+ * @brief Generic class to read and stream a raw file.
+ *
+ * All classes which inherit from this should provide the following API:
+ *
+ * create_empty_frame(frameID frame_id);
+ * get_dataset_id(frameID frame_id);
  *
  * This will divide the file up into time-frequency chunks of set size and
  * stream out the frames with time as the *fastest* index. The dataset ID
@@ -34,8 +41,8 @@
  *
  * @par Buffers
  * @buffer out_buf The data read from the raw file.
- *         @buffer_format VisBuffer structured
- *         @buffer_metadata VisMetadata
+ *         @buffer_format Buffer structured
+ *         @buffer_metadata Metadata
  *
  * @conf    readahead_blocks       Int. Number of blocks to advise OS to read ahead
  *                                 of current read.
@@ -62,14 +69,14 @@
  *
  * @author Richard Shaw, Tristan Pinsonneault-Marotte, Rick Nitsche
  */
-class HFBRawReader : public kotekan::Stage {
+class RawReader : public kotekan::Stage {
 
 public:
     /// default constructor
-    HFBRawReader(kotekan::Config& config, const std::string& unique_name,
+    RawReader(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
 
-    ~HFBRawReader();
+    ~RawReader();
 
     /// Main loop over buffer frames
     void main_thread() override;
@@ -95,7 +102,37 @@ public:
         return _metadata;
     }
 
+protected:
+    // Dataset states constructed from metadata
+    std::vector<state_id_t> states;
+    
+    // The input file
+    std::string filename;
+
+    // Metadata size
+    size_t metadata_size;
+    
+    // whether to update the dataset ID with info about the file
+    bool update_dataset_id;
+
+    // whether to use comet to track dataset IDs
+    bool use_comet;
+    
+    // Dataset ID to assign to output frames if not using comet
+    dset_id_t static_out_dset_id;
+
+    // Metadata file in json format
+    json metadata_json;
+    
+    Buffer* out_buf;
+
 private:
+    // Create an empty frame
+    virtual void create_empty_frame(frameID frame_id) = 0;
+
+    // Get dataset ID
+    virtual dset_id_t& get_dataset_id(frameID frame_id) = 0;
+    
     /**
      * @brief Get the new dataset ID.
      *
@@ -130,23 +167,13 @@ private:
      **/
     int position_map(int ind);
 
-    Buffer* out_buf;
-
     // The metadata
     nlohmann::json _metadata;
     std::vector<time_ctype> _times;
     std::vector<std::pair<uint32_t, freq_ctype>> _freqs;
-    std::vector<uint32_t> _beams;
-    std::vector<uint32_t> _subfreqs;
 
     // whether to read in chunks
     bool chunked;
-
-    // whether to update the dataset ID with info about the file
-    bool update_dataset_id;
-
-    // whether to use comet to track dataset IDs
-    bool use_comet;
 
     // whether to use the local dataset manager
     bool local_dm;
@@ -162,20 +189,13 @@ private:
     size_t row_size;
 
     // the input file
-    std::string filename;
     int fd;
     uint8_t* mapped_file;
 
-    size_t file_frame_size, metadata_size, data_size, nfreq, ntime, nbeam, nsubfreq;
+    size_t file_frame_size, data_size, nfreq, ntime;
 
     // Number of blocks to read ahead while reading from disk
     size_t readahead_blocks;
-
-    // Dataset states constructed from metadata
-    std::vector<state_id_t> states;
-
-    // Dataset ID to assign to output frames if not using comet
-    dset_id_t static_out_dset_id;
 
     // the dataset state for the time axis
     state_id_t tstate_id;
@@ -188,6 +208,68 @@ private:
 
     // Sleep time after reading
     double sleep_time;
+};
+
+/**
+ * @class ensureOrdered
+ * @brief Check frames are coming through in order and reorder them otherwise.
+ *        Not used presently.
+ */
+class ensureOrdered : public kotekan::Stage {
+
+public:
+    ensureOrdered(kotekan::Config& config, const std::string& unique_name,
+                  kotekan::bufferContainer& buffer_container);
+
+    ~ensureOrdered() = default;
+
+    /// Main loop over buffer frames
+    void main_thread() override;
+
+private:
+    Buffer* in_buf;
+    Buffer* out_buf;
+
+    // Map of buffer frames waiting for their turn
+    std::map<size_t, size_t> waiting;
+    size_t max_waiting;
+
+    // time and frequency axes
+    std::map<time_ctype, size_t> time_map;
+    std::map<size_t, size_t> freq_map;
+    size_t ntime;
+    size_t nfreq;
+
+    // HDF5 chunk size
+    std::vector<int> chunk_size;
+    // size of time dimension of chunk
+    size_t chunk_t;
+    // size of frequency dimension of chunk
+    size_t chunk_f;
+    bool chunked;
+
+    bool get_dataset_state(dset_id_t ds_id);
+
+    // map from time and freq index to frame index
+    // RawReader reads chunks with frequency as fastest varying index
+    // within a chunk, frequency is also the fastest varying index.
+    inline size_t get_frame_ind(size_t ti, size_t fi) {
+        size_t ind = 0;
+        // chunk row and column
+        size_t row = ti / chunk_t;
+        size_t col = fi / chunk_f;
+        // special dimension at array edges
+        size_t this_chunk_t = chunk_t ? row * chunk_t + chunk_t < ntime : ntime - row * chunk_t;
+        size_t this_chunk_f = chunk_f ? col * chunk_f + chunk_f < nfreq : nfreq - col * chunk_f;
+        // number of frames in previous rows
+        ind += nfreq * chunk_t * row;
+        // number of frames in chunks in this row
+        ind += (this_chunk_t * chunk_f) * col;
+        // within a chunk, frequency is fastest varying
+        ind += (ti % chunk_t) * this_chunk_f + (fi % chunk_f);
+
+        return ind;
+    };
 };
 
 #endif
