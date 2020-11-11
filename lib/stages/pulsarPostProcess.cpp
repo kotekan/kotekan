@@ -149,7 +149,6 @@ void pulsarPostProcess::main_thread() {
     }
     uint64_t frame_fpga_seq_num = 0;     // sample starting the current input frame
     uint32_t current_input_location = 0; // goes from 0 to _samples_per_data_set
-    ice_stream_id_t stream_id = ice_get_stream_id_t(in_buf[0], in_buffer_ID[0]);
 
     PSRHeader psr_header;
     psr_header.seconds = 0; // UD
