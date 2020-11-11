@@ -148,6 +148,9 @@ RawReader::RawReader(Config& config, const std::string& unique_name,
     nfreq = metadata_json["structure"]["nfreq"].get<size_t>();
     ntime = metadata_json["structure"]["ntime"].get<size_t>();
 
+    DEBUG("Metadata fields. frame_size: {}, metadata_size: {}, data_size: {}, nfreq: {}, ntime: {}",
+        file_frame_size, metadata_size, data_size, nfreq, ntime);
+
     if (chunked) {
         // Special case if dimensions less than chunk size
         chunk_f = std::min(chunk_f, nfreq);
@@ -315,7 +318,6 @@ void RawReader::main_thread() {
             // Copy the data from the file
             std::memcpy(frame, mapped_file + file_ind * file_frame_size + metadata_size + 1,
                         data_size);
-
         } else {
             // Create empty frame and set structural metadata
             create_empty_frame(frame_id);

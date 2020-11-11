@@ -57,6 +57,6 @@ write_hfb:
   in_buf: hfbbuf_10s
   instrument_name: chimeHFB
 
-buffer_status:
-  kotekan_stage: bufferStatus
-  print_status: false
+#buffer_status:
+#  kotekan_stage: bufferStatus
+#  print_status: false
