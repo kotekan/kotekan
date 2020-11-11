@@ -103,8 +103,7 @@ void FreqSubset::main_thread() {
 
         // check if the input dataset has changed
         if (dset_id_map.count(input_dataset_id) == 0) {
-            change_dset_fut =
-                std::async(&FreqSubset::change_dataset_state, this, input_dataset_id);
+            change_dset_fut = std::async(&FreqSubset::change_dataset_state, this, input_dataset_id);
         }
 
         // If this frame is part of subset

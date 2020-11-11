@@ -12,16 +12,21 @@
 #include "bufferContainer.hpp"
 #include "datasetManager.hpp" // for dset_id_t, state_id_t, fingerprint_t
 
+#include <future>   // for future, async
 #include <map>      // for map
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
 #include <vector>   // for vector
-#include <future>   // for future, async
 
 
 /**
  * @class FreqSubset
- * @brief Outputs a buffer stream with a subset of the input frequencies.
+ * @brief Base class to output a buffer stream with a subset of the input frequencies.
+ *
+ * All classes which inherit from this should provide the following API:
+ *
+ * copy_dataset_id(dset_id_t dataset_id, frameID input_frame_id, frameID output_frame_id);
+ # get_frame_data(frameID input_frame_id);
  *
  * This task takes data coming out of a buffer stream and selects a subset of
  * frequencies to be passed on to the output buffer.
@@ -54,7 +59,7 @@ protected:
     Buffer* out_buf;
     /// Input buffer with all frequencies
     Buffer* in_buf;
-    
+
     std::future<void> change_dset_fut;
 
     // Map for determining the dataset ID to use
@@ -62,7 +67,8 @@ protected:
 
 private:
     // Copy dataset ID from input to output frame
-    virtual void copy_dataset_id(dset_id_t dataset_id, frameID input_frame_id, frameID output_frame_id) = 0;
+    virtual void copy_dataset_id(dset_id_t dataset_id, frameID input_frame_id,
+                                 frameID output_frame_id) = 0;
 
     // Get dataset ID and frequency ID from frame
     virtual std::pair<dset_id_t, uint32_t> get_frame_data(frameID input_frame_id) = 0;
@@ -76,6 +82,4 @@ private:
     // Map for determining the dataset ID to use
     std::map<fingerprint_t, state_id_t> states_map;
 };
-
-
 #endif
