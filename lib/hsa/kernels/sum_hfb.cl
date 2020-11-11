@@ -21,10 +21,10 @@ __kernel void sum_hfb(__global float *data, __constant uint *compressed_lost_sam
   for(int sample=0; sample<num_samples; sample+=4) {
 
      // Mask data from lost samples.
-     const float mask_0 = 1.f - compressed_lost_samples_buf[sample];
-     const float mask_1 = 1.f - compressed_lost_samples_buf[sample + 1];
-     const float mask_2 = 1.f - compressed_lost_samples_buf[sample + 2];
-     const float mask_3 = 1.f - compressed_lost_samples_buf[sample + 3];
+     const int mask_0 = 1 - compressed_lost_samples_buf[sample];
+     const int mask_1 = 1 - compressed_lost_samples_buf[sample + 1];
+     const int mask_2 = 1 - compressed_lost_samples_buf[sample + 2];
+     const int mask_3 = 1 - compressed_lost_samples_buf[sample + 3];
 
      // Load data into vectors
      data_1.s0 = mask_0 * data[1024*NUM_SUB_FREQS*sample + beam*NUM_SUB_FREQS + freq];
