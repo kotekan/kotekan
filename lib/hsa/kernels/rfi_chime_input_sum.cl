@@ -7,11 +7,15 @@ Details:
         Sums square power across inputs
         Computes Kurtosis value
 **********************************************************************************/
-#define NUM_COEFFS 6
+#define NUM_COEFFS 10
 
 // Reversed polynomial coefficients, i.e. bias_coeffs[0] + bias_coeffs[1] * x + bias_coeffs[2] * x^2 + ... + bias_coeffs[NUM_COEFF] * x^(NUM_COEFFS - 1)
-__constant float bias_coeffs[NUM_COEFFS] = {1.80704823e+00 - 1.0, -1.31825034e+00, 7.96882494e-01, -2.18921382e-01, 2.68772487e-02, -1.25007650e-03};
-
+// 8th Order polynomial
+//__constant float bias_coeffs[NUM_COEFFS] = {-1.19856420e-05 - 1.0, 4.69198554e-04, -7.69054167e-03, 6.80810240e-02, 
+//                                            -3.49803627e-01, 1.04590963e+00, -1.76716014e+00, 1.54674965e+00, -5.40313636e-01};
+// 9th Order polynomial
+__constant float bias_coeffs[NUM_COEFFS] = {4.00089169e-06 - 1.0, -1.87073471e-04, 3.78868082e-03, -4.33959965e-02, 3.07645810e-01,
+                                            -1.38702812e+00, 3.93682451e+00, -6.75761413e+00, 6.37923339e+00, -2.53769469e+00};
 __kernel void
 rfi_chime_input_sum(
      __global float *input,
