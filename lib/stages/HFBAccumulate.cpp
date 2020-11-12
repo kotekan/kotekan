@@ -147,7 +147,7 @@ void HFBAccumulate::main_thread() {
 
     frameID in_frame_id(in_buf), out_frame_id(out_buf), cls_frame_id(cls_buf);
     int first = 1;
-    int64_t fpga_seq_num_end_old;
+    int64_t fpga_seq_num_end_old = 0;
 
     // Temporary arrays for storing intermediates
     std::vector<float> hfb_even(_num_frb_total_beams * _factor_upchan);
