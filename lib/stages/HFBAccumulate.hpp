@@ -86,9 +86,8 @@ private:
          * Everything else will be set by the reset_state call during
          * initialisation.
          *
-         * @param  out_buf    Buffer we will output into.
-         * @param  gate_spec  Specification of how any gating is done.
-         * @param  nprod      Number of products.
+         * @param  num_beams      No. of FRB beams.
+         * @param  num_sub_freqs  No. of sub-frequencies.
          **/
         internalState(size_t num_beams, size_t num_sub_freqs);
 
