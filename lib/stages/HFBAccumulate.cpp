@@ -125,19 +125,20 @@ void HFBAccumulate::integrate_frame(float* input_data, float* sum_data,
     }
 
     DEBUG2("\nIntegrate frame {:d}, total_lost_timesamples: {:d}, sum_data[0]: {:f}\n", frame,
-          total_lost_timesamples, sum_data[0]);
+           total_lost_timesamples, sum_data[0]);
 }
 
 void HFBAccumulate::normalise_frame(float* sum_data, const uint32_t in_frame_id) {
 
-    const float normalise_frac =
-        (float)1.f / (total_timesamples - total_lost_timesamples);
+    const float normalise_frac = (float)1.f / (total_timesamples - total_lost_timesamples);
 
     for (uint32_t i = 0; i < _num_frb_total_beams * _factor_upchan; i++) {
         sum_data[i] *= normalise_frac;
     }
 
-    DEBUG("Integration completed with {:d} lost samples (~{}%). normalise_frac: {}", total_lost_timesamples, 100.f * (((float) total_lost_timesamples) / total_timesamples), normalise_frac);
+    DEBUG("Integration completed with {:d} lost samples (~{}%). normalise_frac: {}",
+          total_lost_timesamples, 100.f * (((float)total_lost_timesamples) / total_timesamples),
+          normalise_frac);
 
     fpga_seq_num = get_fpga_seq_start_hfb(in_buf, in_frame_id);
 }
@@ -161,9 +162,9 @@ void HFBAccumulate::main_thread() {
     fpga_seq_num_end = (_num_frames_to_integrate - 1) * _samples_per_data_set;
     frame = 0;
 
-    if(wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id) == nullptr)
+    if (wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id) == nullptr)
         return;
-    
+
     while (!stop_thread) {
         // Get an input buffer. This call is blocking!
         uint8_t* in_frame_ptr = wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
@@ -236,7 +237,8 @@ void HFBAccumulate::main_thread() {
         // We are calculating the weights by differencing even and odd samples.
         // Every even sample we save the set of visibilities...
         if (frame_count % 2 == 0) {
-            std::memcpy(hfb_even.data(), input, _num_frb_total_beams * _factor_upchan * sizeof(float));
+            std::memcpy(hfb_even.data(), input,
+                        _num_frb_total_beams * _factor_upchan * sizeof(float));
             samples_even = samples_in_frame;
         }
         // ... every odd sample we accumulate the squared differences into the weight dataset
@@ -247,11 +249,12 @@ void HFBAccumulate::main_thread() {
         else {
             for (size_t i = 0; i < _num_frb_total_beams * _factor_upchan; i++) {
                 // NOTE: avoid using the slow std::complex routines in here
-                //INFO("hfb_even[{}]: {}", i, hfb_even[i]);
+                // INFO("hfb_even[{}]: {}", i, hfb_even[i]);
                 float d = input[i] - hfb_even[i];
                 dset.hfb2[i] += d * d;
             }
-            DEBUG2("hfb2[{}]: {}, input[0]: {}, hfb_even[0]: {}", 0, dset.hfb2[0], input[0], hfb_even[0]);
+            DEBUG2("hfb2[{}]: {}, input[0]: {}, hfb_even[0]: {}", 0, dset.hfb2[0], input[0],
+                   hfb_even[0]);
 
             // Accumulate the squared samples difference which we need for
             // debiasing the variance estimate
@@ -302,33 +305,39 @@ void HFBAccumulate::main_thread() {
                 // Set weights
                 auto frame = HFBFrameView(out_buf, out_frame_id);
 
-                dset.sample_weight_total = total_timesamples - total_lost_timesamples;
+                float sample_weight_total = total_timesamples - total_lost_timesamples;
 
                 // Debias the weights estimate, by subtracting out the bias estimation
-                float w_debias = dset.weight_diff_sum / pow(dset.sample_weight_total, 2);
+                float w_debias = dset.weight_diff_sum / pow(sample_weight_total, 2);
                 for (size_t i = 0; i < _num_frb_total_beams * _factor_upchan; i++) {
-                  float d = dset.hfb1[i];
-                  dset.hfb2[i] -= w_debias * (d * d);
+                    float d = dset.hfb1[i];
+                    dset.hfb2[i] -= w_debias * (d * d);
                 }
 
                 // Determine the weighting factors (if weight is zero we should just
                 // multiply the HFB data by zero so as not to generate Infs)
-                float w = dset.sample_weight_total;
+                float w = sample_weight_total;
 
                 // Unpack and invert the weights
                 for (uint32_t i = 0; i < _num_frb_total_beams * _factor_upchan; i++) {
                     float t = dset.hfb2[i];
                     frame.weight[i] = w * w / t;
                 }
-                
-                DEBUG("Dataset ID: {}, freq ID: {:d}, data: [{:f} ... {:f} ... {:f}], weight: [{:f} ... {:f} ... {:f}]", ds_id, freq_id, frame.hfb[0], frame.hfb[_num_frb_total_beams * _factor_upchan / 2], frame.hfb[_num_frb_total_beams * _factor_upchan - 1], frame.weight[0], frame.weight[_num_frb_total_beams * _factor_upchan / 2], frame.weight[_num_frb_total_beams * _factor_upchan - 1]);
+
+                DEBUG("Dataset ID: {}, freq ID: {:d}, data: [{:f} ... {:f} ... {:f}], weight: "
+                      "[{:f} ... {:f} ... {:f}]",
+                      ds_id, freq_id, frame.hfb[0],
+                      frame.hfb[_num_frb_total_beams * _factor_upchan / 2],
+                      frame.hfb[_num_frb_total_beams * _factor_upchan - 1], frame.weight[0],
+                      frame.weight[_num_frb_total_beams * _factor_upchan / 2],
+                      frame.weight[_num_frb_total_beams * _factor_upchan - 1]);
 
                 mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
 
                 // Get a new output buffer
-                if(wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id) == nullptr)
-                  return;
-    
+                if (wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id) == nullptr)
+                    return;
+
                 sum_data = (float*)out_buf->frames[out_frame_id];
             } else {
                 DEBUG("Integration discarded. Too many lost samples.");
@@ -341,16 +350,15 @@ void HFBAccumulate::main_thread() {
             // Already started next integration
             if (fpga_seq_num > fpga_seq_num_end_old) {
                 init_first_frame(input_data, sum_data, in_frame_id);
-                reset_state(dset, tel.to_time(hfb_seq_num));
+                reset_state(dset);
             }
         } else {
             // If we are on the first frame copy it directly into the
             // output buffer frame so that we don't need to zero the frame
             if (frame == 0) {
                 init_first_frame(input_data, sum_data, in_frame_id);
-                reset_state(dset, tel.to_time(hfb_seq_num));
-            }
-            else
+                reset_state(dset);
+            } else
                 integrate_frame(input_data, sum_data, in_frame_id);
         }
 
@@ -363,39 +371,13 @@ void HFBAccumulate::main_thread() {
     } // end stop thread
 }
 
-bool HFBAccumulate::reset_state(HFBAccumulate::internalState& state, timespec t) {
-    (void)t;
+bool HFBAccumulate::reset_state(HFBAccumulate::internalState& state) {
     // Reset the internal counters
-    state.sample_weight_total = 0;
     state.weight_diff_sum = 0;
-
-    // Acquire the lock so we don't get confused by any changes made via the
-    // REST callback
-    //{
-    //    std::lock_guard<std::mutex> lock(state.state_mtx);
-
-    //    // Update the weight function in case an update arrives mid integration
-    //    // This is done every cycle to allow the calculation to change with time
-    //    // (without any external update), e.g. in SegmentedPolyco's.
-    //    if (!state.spec->enabled()) {
-    //        state.calculate_weight = nullptr;
-    //        return false;
-    //    }
-    //    state.calculate_weight = state.spec->weight_function(t);
-
-    //    // Update dataset ID if an external change occurred
-    //    if (state.changed) {
-    //        state.output_dataset_id = gate_dataset_state(*state.spec.get());
-    //        state.changed = false;
-    //    }
-    //}
 
     // Zero out accumulation arrays
     std::fill(state.hfb1.begin(), state.hfb1.end(), 0.0);
     std::fill(state.hfb2.begin(), state.hfb2.end(), 0.0);
-
-    // Remove all the old frame views
-    //state.frames.clear();
 
     return true;
 }
