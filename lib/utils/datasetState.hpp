@@ -820,7 +820,7 @@ public:
     RFIFrameDropState(const nlohmann::json& data) {
         try {
             enabled = data["enabled"].get<bool>();
-            thresholds = data["thresholds"].get<std::vector<float>>();
+            thresholds = data["thresholds"].get<std::vector<std::pair<float, float>>>();
         } catch (std::exception& e) {
             throw std::runtime_error(
                 fmt::format(fmt("RFIFrameDropState: Failure parsing json data ({:s}): {:s}"),
@@ -831,13 +831,11 @@ public:
     /**
      * @brief Constructor
      * @param enabled       True, if RFI frame-dropping enabled
-     * @param thresholds    Vector of thresholds
-     * @param fractions     Vector of fractions
+     * @param thresholds    Vector of pairs: thresholds and fractions
      */
-    RFIFrameDropState(bool enabled, std::vector<float> thresholds, std::vector<float> fractions) :
+    RFIFrameDropState(bool enabled, std::vector<std::pair<float, float>> thresholds) :
         enabled(enabled),
-        thresholds(thresholds),
-        fractions(fractions) {}
+        thresholds(thresholds) {}
 
     /**
      * @brief Get RFI frame-dropping enabled information.
@@ -851,19 +849,10 @@ public:
     /**
      * @brief Get RFI frame-dropping thresholds (read only).
      *
-     * @return Thresholds.
+     * @return Vector of pairs containing <threshold, fraction>, each, in this order.
      */
-    const std::vector<float>& get_thresholds() const {
+    const std::vector<std::pair<float, float>>& get_thresholds() const {
         return thresholds;
-    }
-
-    /**
-     * @brief Get RFI frame-dropping fractions (read only).
-     *
-     * @return Fractions.
-     */
-    const std::vector<float>& get_fractions() const {
-        return fractions;
     }
 
 private:
@@ -872,15 +861,13 @@ private:
         nlohmann::json j;
         j["enabled"] = enabled;
         j["thresholds"] = thresholds;
-        j["fractions"] = fractions;
         return j;
     }
 
     /// Tells if frame dropping is enabled in the RFIFrameDrop stage.
     bool enabled;
 
-    std::vector<float> thresholds;
-    std::vector<float> fractions;
+    std::vector<std::pair<float, float>> thresholds;
 };
 
 #endif // DATASETSTATE_HPP
