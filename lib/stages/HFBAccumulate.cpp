@@ -235,21 +235,19 @@ void HFBAccumulate::main_thread() {
         }
 
         // We are calculating the weights by differencing even and odd samples.
-        // Every even sample we save the set of visibilities...
+        // Every even sample we save the HFB data...
         if (frame_count % 2 == 0) {
             std::memcpy(hfb_even.data(), input,
                         _num_frb_total_beams * _factor_upchan * sizeof(float));
             samples_even = samples_in_frame;
         }
-        // ... every odd sample we accumulate the squared differences into the weight dataset
+        // ... every odd sample we accumulate the squared difference into the weight dataset
         // NOTE: this incrementally calculates the variance, but eventually
         // output_frame.weight will hold the *inverse* variance
         // TODO: we might need to account for packet loss in here too, but it
         // would require some awkward rescalings
         else {
             for (size_t i = 0; i < _num_frb_total_beams * _factor_upchan; i++) {
-                // NOTE: avoid using the slow std::complex routines in here
-                // INFO("hfb_even[{}]: {}", i, hfb_even[i]);
                 float d = input[i] - hfb_even[i];
                 dset.hfb2[i] += d * d;
             }
@@ -280,31 +278,26 @@ void HFBAccumulate::main_thread() {
             // Only output integration if there are enough good samples
             if (good_samples_frac >= _good_samples_threshold) {
 
+                auto frame = HFBFrameView(out_buf, out_frame_id);
+
                 // Create new metadata
                 allocate_new_metadata_object(out_buf, out_frame_id);
 
-                // Populate metadata
+                // Populate metadata using HFBFrameView
                 int64_t fpga_seq =
                     fpga_seq_num_end_old - ((_num_frames_to_integrate - 1) * _samples_per_data_set);
-                set_fpga_seq_start_hfb(out_buf, out_frame_id, fpga_seq);
 
-                // Set GPS time
-                set_ctime_hfb(out_buf, out_frame_id, tel.to_time(fpga_seq));
+                frame.fpga_seq_start = fpga_seq;
+                frame.time = tel.to_time(fpga_seq);
+                frame.fpga_seq_total = total_timesamples - total_lost_timesamples;
+                frame.fpga_seq_length = total_timesamples;
+                frame.freq_id = tel.to_freq_id(in_buf, in_frame_id);
+                frame.dataset_id = ds_id;
 
-                set_fpga_seq_total(out_buf, out_frame_id,
-                                   total_timesamples - total_lost_timesamples);
-                set_fpga_seq_length(out_buf, out_frame_id, total_timesamples);
+                HFBFrameView::set_metadata(out_buf, out_frame_id, _num_frb_total_beams,
+                                           _factor_upchan);
 
-                freq_id_t freq_id = tel.to_freq_id(in_buf, in_frame_id);
-                set_freq_id(out_buf, out_frame_id, freq_id);
-
-                set_dataset_id(out_buf, out_frame_id, ds_id);
-                set_num_beams(out_buf, out_frame_id, _num_frb_total_beams);
-                set_num_subfreq(out_buf, out_frame_id, _factor_upchan);
-
-                // Set weights
-                auto frame = HFBFrameView(out_buf, out_frame_id);
-
+                // Set the weights
                 float sample_weight_total = total_timesamples - total_lost_timesamples;
 
                 // Debias the weights estimate, by subtracting out the bias estimation
@@ -326,7 +319,7 @@ void HFBAccumulate::main_thread() {
 
                 DEBUG("Dataset ID: {}, freq ID: {:d}, data: [{:f} ... {:f} ... {:f}], weight: "
                       "[{:f} ... {:f} ... {:f}]",
-                      ds_id, freq_id, frame.hfb[0],
+                      frame.dataset_id, frame.freq_id, frame.hfb[0],
                       frame.hfb[_num_frb_total_beams * _factor_upchan / 2],
                       frame.hfb[_num_frb_total_beams * _factor_upchan - 1], frame.weight[0],
                       frame.weight[_num_frb_total_beams * _factor_upchan / 2],
