@@ -25,11 +25,13 @@
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, function, bind, _Placeholder, _1
 #include <map>        // for map, map<>::mapped_type
+#include <memory>     // for allocator_traits<>::value_type
 #include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error
 #include <stdint.h>   // for uint8_t, int64_t, uint32_t
 #include <string>     // for string, to_string
 #include <tuple>      // for tie, tuple
+#include <utility>    // for pair
 
 
 using kotekan::bufferContainer;
@@ -133,86 +135,90 @@ void RfiFrameDrop::main_thread() {
         float sigma_scale = sqrt((num_inputs * (sk_step - 1) * (sk_step + 2) * (sk_step + 3))
                                  / (4.0 * sk_step * sk_step));
 
-        {
-            // Lock update mutex to not allow updates being processed during this critical section
-            std::lock_guard<std::mutex> lock(update_mutex);
+        // Lock update mutex to not allow updates being processed during this critical section
+        std::unique_lock<std::mutex> lock(update_mutex);
+        lock.lock();
 
-            // Check if we need to register a new dataset
-            dset_id_t dset_id_in_new = get_dataset_id(_buf_in_vis, frame_id_in_vis);
-            if (dset_id_in_new != dset_id_in || state_id != last_state_id) {
-                dset_id_out = dm.add_dataset(state_id, dset_id_in_new);
-                dset_id_in = dset_id_in_new;
-                last_state_id = state_id;
+        // Check if we need to register a new dataset
+        dset_id_t dset_id_in_new = get_dataset_id(_buf_in_vis, frame_id_in_vis);
+        if (dset_id_in_new != dset_id_in || state_id != last_state_id) {
+            dset_id_out = dm.add_dataset(state_id, dset_id_in_new);
+            dset_id_in = dset_id_in_new;
+            last_state_id = state_id;
+        }
+
+        // pair<float, float> of thresholds and fractions
+        const auto thresholds = state_ptr->get_thresholds();
+
+        // copy data while lock held
+        bool enabled_copy = state_ptr->get_enabled();
+        std::vector<size_t> sk_exceeds_copy(sk_exceeds.size());
+        std::copy(sk_exceeds.begin(), sk_exceeds.end(), sk_exceeds_copy.begin());
+
+        // Release the update lock
+        lock.release();
+
+
+        for (size_t ii = 0; ii < num_sub_frames; ii++) {
+
+            if (wait_for_full_frame(_buf_in_vis, unique_name.c_str(), frame_id_in_vis) == nullptr) {
+                break;
             }
 
-            for (size_t ii = 0; ii < num_sub_frames; ii++) {
+            auto sf_seq = get_fpga_seq_num(_buf_in_vis, frame_id_in_vis);
 
-                if (wait_for_full_frame(_buf_in_vis, unique_name.c_str(), frame_id_in_vis)
-                    == nullptr) {
-                    break;
-                }
-
-                auto sf_seq = get_fpga_seq_num(_buf_in_vis, frame_id_in_vis);
-
-                // Check that we are still synchronized with the frame we are
-                // expecting. If not (and this may happen if the Valve process is
-                // active), we will just skip the set of sub frames and hopefully we
-                // will resync
-                if (sf_seq != (int64_t)(sk_seq + ii * samples_per_sub_frame)) {
-                    DEBUG("Lost synchronization. Dropping data and resetting.");
-                    mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
-                    break;
-                }
-
-                bool skip = false;
-
-                // pair<float, float> of thresholds and fractions
-                const auto thresholds = state_ptr->get_thresholds();
-
-                // Process all the SK values to their deltas and for each threshold
-                // we need to count how many samples exceed that threshold
-                for (size_t jj = 0; jj < sk_samples_per_frame; jj++) {
-                    float sk_sig =
-                        fabs(sigma_scale * (frame_in_sk[ii * sk_samples_per_frame + jj] - 1.0f));
-
-                    for (size_t kk = 0; kk < thresholds.size(); kk++)
-                        sk_exceeds.at(kk) += (sk_sig > thresholds.at(kk).first);
-                }
-
-                for (size_t kk = 0; kk < thresholds.size(); kk++) {
-                    if (sk_exceeds.at(kk) > num_sk.at(kk)) {
-                        skip = true;
-                        failing_frame_counter
-                            .labels({std::to_string(freq_id),
-                                     std::to_string(thresholds.at(kk).first),
-                                     std::to_string(thresholds.at(kk).second)})
-                            .inc();
-                    }
-                    // Reset counters for the next sub_frame
-                    sk_exceeds.at(kk) = 0;
-                }
-
-                // If no frame exceeded it's threshold then we should transfer the
-                // frame over to the output and release it. If we want to drop the
-                // incoming frame then we leave the output as is.
-                if (!skip || !(state_ptr->get_enabled())) {
-
-                    if (wait_for_empty_frame(_buf_out, unique_name.c_str(), frame_id_out)
-                        == nullptr) {
-                        break;
-                    }
-                    copy_frame(_buf_in_vis, frame_id_in_vis, _buf_out, frame_id_out);
-                    set_dataset_id(_buf_out, frame_id_out, dset_id_out);
-                    mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
-                } else {
-                    dropped_frame_counter.labels({std::to_string(freq_id)}).inc();
-                }
-
+            // Check that we are still synchronized with the frame we are
+            // expecting. If not (and this may happen if the Valve process is
+            // active), we will just skip the set of sub frames and hopefully we
+            // will resync
+            if (sf_seq != (int64_t)(sk_seq + ii * samples_per_sub_frame)) {
+                DEBUG("Lost synchronization. Dropping data and resetting.");
                 mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
-                frame_counter.labels({std::to_string(freq_id)}).inc();
+                break;
             }
 
-            // Release the update lock
+            bool skip = false;
+
+
+            // Process all the SK values to their deltas and for each threshold
+            // we need to count how many samples exceed that threshold
+            for (size_t jj = 0; jj < sk_samples_per_frame; jj++) {
+                float sk_sig =
+                    fabs(sigma_scale * (frame_in_sk[ii * sk_samples_per_frame + jj] - 1.0f));
+
+                for (size_t kk = 0; kk < thresholds.size(); kk++)
+                    sk_exceeds_copy.at(kk) += (sk_sig > thresholds.at(kk).first);
+            }
+
+            for (size_t kk = 0; kk < thresholds.size(); kk++) {
+                if (sk_exceeds_copy.at(kk) > num_sk.at(kk)) {
+                    skip = true;
+                    failing_frame_counter
+                        .labels({std::to_string(freq_id), std::to_string(thresholds.at(kk).first),
+                                 std::to_string(thresholds.at(kk).second)})
+                        .inc();
+                }
+                // Reset counters for the next sub_frame
+                sk_exceeds_copy.at(kk) = 0;
+            }
+
+            // If no frame exceeded it's threshold then we should transfer the
+            // frame over to the output and release it. If we want to drop the
+            // incoming frame then we leave the output as is.
+            if (!skip || !enabled_copy) {
+
+                if (wait_for_empty_frame(_buf_out, unique_name.c_str(), frame_id_out) == nullptr) {
+                    break;
+                }
+                copy_frame(_buf_in_vis, frame_id_in_vis, _buf_out, frame_id_out);
+                set_dataset_id(_buf_out, frame_id_out, dset_id_out);
+                mark_frame_full(_buf_out, unique_name.c_str(), frame_id_out++);
+            } else {
+                dropped_frame_counter.labels({std::to_string(freq_id)}).inc();
+            }
+
+            mark_frame_empty(_buf_in_vis, unique_name.c_str(), frame_id_in_vis++);
+            frame_counter.labels({std::to_string(freq_id)}).inc();
         }
         mark_frame_empty(_buf_in_sk, unique_name.c_str(), frame_id_in_sk++);
     }
@@ -319,9 +325,8 @@ bool RfiFrameDrop::rest_thresholds_callback(nlohmann::json& update) {
     sk_exceeds.resize(thresholds_new.size(), 0);
 
     INFO("Setting new RFI excision cuts:");
-    for (size_t i = 0; i < thresholds_new.size(); i++)
-        INFO("  added cut with threshold={}, fraction={}", thresholds_new[i].first,
-             thresholds_new[i].second);
+    for (const auto& [threshold, fraction] : thresholds_new)
+        INFO("  added cut with threshold={}, fraction={}", threshold, fraction);
 
     // build a new dataset state, copy enable-value
     std::tie(state_id, state_ptr) =
