@@ -80,8 +80,8 @@ void GenHFBFrames::main_thread() {
 
                 data[i] = gaussian(gen) * lost_frac;
             }
-           
-            // Populate dropped sample mask 
+
+            // Populate dropped sample mask
             for (uint32_t i = 0; i < num_lost_samples; i++) {
                 cls_data[i] = 1;
             }
