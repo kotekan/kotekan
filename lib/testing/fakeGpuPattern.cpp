@@ -159,8 +159,8 @@ void GaussianGpuPattern::fill(gsl::span<int32_t>& data, chimeMetadata* metadata,
     (void)frame_number;
     (void)freq_id;
 
-    float f_auto = pow(_samples_per_data_set, 0.5);
-    float f_cross = pow(_samples_per_data_set / 2, 0.5);
+    float f_auto = (float)pow(_samples_per_data_set, 0.5);
+    float f_cross = (float)pow(_samples_per_data_set / 2, 0.5);
 
     for (size_t i = 0; i < _num_elements; i++) {
         for (size_t j = i; j < _num_elements; j++) {

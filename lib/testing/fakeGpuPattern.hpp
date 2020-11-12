@@ -219,7 +219,7 @@ public:
 
 private:
     float _pulse_width; // in s
-    float _rot_freq;    // in Hz
+    double _rot_freq;   // in Hz
     Polyco _polyco;
 };
 

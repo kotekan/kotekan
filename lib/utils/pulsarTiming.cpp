@@ -34,7 +34,7 @@ double Polyco::unix2phase(timespec t) const {
     return mjd2phase(ts2mjd(t));
 }
 
-double Polyco::next_toa(timespec t, float freq) const {
+double Polyco::next_toa(timespec t, double freq) const {
 
     // Adjust time for dispersion delay
     double dm_delay = -4140. * dm * pow(freq, -2);
