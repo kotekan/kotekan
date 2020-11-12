@@ -10,13 +10,13 @@
 #include "Stage.hpp" // for Stage
 #include "bufferContainer.hpp"
 
+#include <random>   // for default_random_engine, bernoulli_distribution, random_device
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
 #include <vector>   // for vector
-#include <random>   // for default_random_engine, bernoulli_distribution, random_device
 
 /**
- * @class GenHFBFrames 
+ * @class GenHFBFrames
  * @brief Config-driven dropping of frames
  *
  * This stage can be interposed between two buffers to drop frames specified in the configuration.
@@ -40,12 +40,14 @@ class GenHFBFrames : public kotekan::Stage {
 public:
     /// Constructor
     GenHFBFrames(kotekan::Config& config, const std::string& unique_name,
-                   kotekan::bufferContainer& buffer_container);
+                 kotekan::bufferContainer& buffer_container);
     ~GenHFBFrames() = default;
     void main_thread() override;
 
 private:
-    void gen_data(float* data, uint32_t* cls_data, std::default_random_engine* gen, std::normal_distribution<float>* gaussian, std::uniform_int_distribution<uint32_t>* rng);
+    void gen_data(float* data, uint32_t* cls_data, std::default_random_engine* gen,
+                  std::normal_distribution<float>* gaussian,
+                  std::uniform_int_distribution<uint32_t>* rng);
 
     /// Initializes internal variables from config, allocates metadata
     Buffer* out_buf;

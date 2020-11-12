@@ -1,10 +1,10 @@
 #include "GenHFBFrames.hpp"
 
 #include "Config.hpp"         // for Config
+#include "HFBMetadata.hpp"    // for get_fpga_seq_start_hfb, set_ctime_hfb, set_dataset_id, set...
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"           // for Buffer, get_num_consumers, mark_frame_empty, mark_frame_full
 #include "kotekanLogging.hpp" // for INFO
-#include "HFBMetadata.hpp"    // for get_fpga_seq_start_hfb, set_ctime_hfb, set_dataset_id, set...
 #include "visUtil.hpp"        // for frameID
 
 #include <algorithm>  // for find
@@ -26,7 +26,7 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(GenHFBFrames);
 
 GenHFBFrames::GenHFBFrames(Config& config, const std::string& unique_name,
-                               bufferContainer& buffer_container) :
+                           bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&GenHFBFrames::main_thread, this)),
     _samples_per_data_set(config.get<uint32_t>(unique_name, "samples_per_data_set")),
     _first_frame_index(config.get_default<uint32_t>(unique_name, "first_frame_index", 0)),
@@ -37,16 +37,16 @@ GenHFBFrames::GenHFBFrames(Config& config, const std::string& unique_name,
     uint32_t _downsample_time = config.get<uint32_t>(unique_name, "downsample_time");
     uint32_t _factor_upchan = config.get<uint32_t>(unique_name, "factor_upchan");
     _num_samples = _samples_per_data_set / _factor_upchan / _downsample_time;
-          
+
     out_buf = get_buffer("out_buf");
     register_producer(out_buf, unique_name.c_str());
-    
+
     cls_out_buf = get_buffer("cls_out_buf");
     register_producer(cls_out_buf, unique_name.c_str());
 }
 
 void GenHFBFrames::main_thread() {
-    frameID out_frame_id(out_buf), cls_frame_id(cls_out_buf);    
+    frameID out_frame_id(out_buf), cls_frame_id(cls_out_buf);
     uint64_t seq_num = _samples_per_data_set * _first_frame_index;
 
     std::default_random_engine gen;
@@ -59,37 +59,43 @@ void GenHFBFrames::main_thread() {
     while (!stop_thread) {
         uint8_t* frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
         if (frame == nullptr)
-          break;
- 
+            break;
+
         uint8_t* cls_frame = wait_for_empty_frame(cls_out_buf, unique_name.c_str(), cls_frame_id);
         if (cls_frame == nullptr)
-          break;
-       
+            break;
+
         float* data = (float*)frame;
         uint32_t* cls_data = (uint32_t*)cls_frame;
         uint32_t total_lost_samples = 0;
 
-        for(uint32_t i = 0; i < cls_out_buf->frame_size / sizeof(uint32_t); i++) {
-          cls_data[i] = 0;
-        }  
+        for (uint32_t i = 0; i < cls_out_buf->frame_size / sizeof(uint32_t); i++) {
+            cls_data[i] = 0;
+        }
 
         // Only drop samples on odd frames if test pattern set
         if (out_frame_id % 2 != 0 && _pattern == "drop") {
-          
-          for(uint32_t i = 0; i < out_buf->frame_size / sizeof(float); i++) {
+
+            for (uint32_t i = 0; i < out_buf->frame_size / sizeof(float); i++) {
 
                 data[i] = gaussian(gen) * lost_frac;
-          }
-          total_lost_samples += (int)((float)_samples_per_data_set * (1.f - lost_frac));
-        }
-        else {
-          for(uint32_t i = 0; i < out_buf->frame_size / sizeof(float); i++) {
-            data[i] = gaussian(gen);
-          }
+            }
+           
+            // Populate dropped sample mask 
+            for (uint32_t i = 0; i < num_lost_samples; i++) {
+                cls_data[i] = 1;
+            }
+
+            total_lost_samples += (int)((float)_samples_per_data_set * (1.f - lost_frac));
+        } else {
+            for (uint32_t i = 0; i < out_buf->frame_size / sizeof(float); i++) {
+                data[i] = gaussian(gen);
+            }
         }
 
-        DEBUG("data: [{:f} ... {:f} ... {:f}], lost_samples: {}", data[0], data[131072 / 2], data[131072 - 1], total_lost_samples);
-        
+        DEBUG("data: [{:f} ... {:f} ... {:f}], lost_samples: {}", data[0], data[131072 / 2],
+              data[131072 - 1], total_lost_samples);
+
         // Create metadata
         allocate_new_metadata_object(out_buf, out_frame_id);
         set_fpga_seq_start_hfb(out_buf, out_frame_id, seq_num);
