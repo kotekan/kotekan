@@ -166,8 +166,8 @@ void RfiFrameDrop::main_thread() {
 
                 bool skip = false;
 
+                // pair<float, float> of thresholds and fractions
                 const auto thresholds = state_ptr->get_thresholds();
-                const auto fractions = state_ptr->get_fractions();
 
                 // Process all the SK values to their deltas and for each threshold
                 // we need to count how many samples exceed that threshold
@@ -176,15 +176,16 @@ void RfiFrameDrop::main_thread() {
                         fabs(sigma_scale * (frame_in_sk[ii * sk_samples_per_frame + jj] - 1.0f));
 
                     for (size_t kk = 0; kk < thresholds.size(); kk++)
-                        sk_exceeds.at(kk) += (sk_sig > thresholds.at(kk));
+                        sk_exceeds.at(kk) += (sk_sig > thresholds.at(kk).first);
                 }
 
                 for (size_t kk = 0; kk < thresholds.size(); kk++) {
                     if (sk_exceeds.at(kk) > num_sk.at(kk)) {
                         skip = true;
                         failing_frame_counter
-                            .labels({std::to_string(freq_id), std::to_string(thresholds.at(kk)),
-                                     std::to_string(fractions.at(kk))})
+                            .labels({std::to_string(freq_id),
+                                     std::to_string(thresholds.at(kk).first),
+                                     std::to_string(thresholds.at(kk).second)})
                             .inc();
                     }
                     // Reset counters for the next sub_frame
@@ -263,8 +264,8 @@ bool RfiFrameDrop::rest_enable_callback(nlohmann::json& update) {
     std::lock_guard<std::mutex> lock(update_mutex);
 
     // set enabled and state ID, but copy the rest from the last state
-    std::tie(state_id, state_ptr) = dm.create_state<RFIFrameDropState>(
-        enable_rfi_zero_new, state_ptr->get_thresholds(), state_ptr->get_fractions());
+    std::tie(state_id, state_ptr) =
+        dm.create_state<RFIFrameDropState>(enable_rfi_zero_new, state_ptr->get_thresholds());
 
     return true;
 }
@@ -282,8 +283,7 @@ bool RfiFrameDrop::rest_thresholds_callback(nlohmann::json& update) {
         return false;
     }
 
-    auto thresholds_new = std::vector<float>();
-    auto fractions_new = std::vector<float>();
+    auto thresholds_new = std::vector<std::pair<float, float>>();
     num_sk.clear();
 
     // Lock all update data, since num_sk is changed in this loop
@@ -310,9 +310,8 @@ bool RfiFrameDrop::rest_thresholds_callback(nlohmann::json& update) {
             return false;
         }
 
-        thresholds_new.push_back(threshold);
+        thresholds_new.push_back({threshold, fraction});
         num_sk.push_back((size_t)(fraction * sk_samples_per_frame));
-        fractions_new.push_back(fraction);
     }
 
 
@@ -321,11 +320,12 @@ bool RfiFrameDrop::rest_thresholds_callback(nlohmann::json& update) {
 
     INFO("Setting new RFI excision cuts:");
     for (size_t i = 0; i < thresholds_new.size(); i++)
-        INFO("  added cut with threshold={}, fraction={}", thresholds_new[i], fractions_new[i]);
+        INFO("  added cut with threshold={}, fraction={}", thresholds_new[i].first,
+             thresholds_new[i].second);
 
     // build a new dataset state, copy enable-value
     std::tie(state_id, state_ptr) =
-        dm.create_state<RFIFrameDropState>(state_ptr->get_enabled(), thresholds_new, fractions_new);
+        dm.create_state<RFIFrameDropState>(state_ptr->get_enabled(), thresholds_new);
 
     return true;
 }
