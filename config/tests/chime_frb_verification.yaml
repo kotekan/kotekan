@@ -16,7 +16,7 @@ log_level: info
 num_elements: 2048
 num_local_freq: 1
 num_data_sets: 1
-samples_per_data_set: 3840
+samples_per_data_set: 49152
 buffer_depth: 2
 baseband_buffer_depth: 120  # 48Gb, 15s buffer.
 vbuffer_depth: 32
