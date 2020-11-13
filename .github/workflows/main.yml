@@ -381,7 +381,7 @@ jobs:
 
   # Build MacOS kotekan
   build-macos:
-    runs-on: macos-latest
+    runs-on: macos-10.15
 
     steps:
     - uses: actions/checkout@v2
@@ -395,7 +395,7 @@ jobs:
 
     - name: Install ccache and libraries
       run: |
-        brew install hdf5@1.10 boost libevent ccache airspy fftw
+        brew install hdf5@1.10 boost libevent ccache airspy fftw llvm@9
 
     - name: Build h5py from source
       run: |
@@ -406,6 +406,9 @@ jobs:
     - name: Install bitshuffle
       env:
         HDF5_DIR: /usr/local/opt/hdf5@1.10/
+        LDFLAGS: -L/usr/local/opt/llvm@9/lib
+        CPPFLAGS: -I/usr/local/opt/llvm@9/include
+        CC: /usr/local/opt/llvm@9/bin/clang
       run: |
         git clone https://github.com/kiyo-masui/bitshuffle.git bitshuffle
         cd bitshuffle && git pull
