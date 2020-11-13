@@ -8,14 +8,15 @@
 #define HFB_ACCUMULATE_STAGE
 
 #include "Config.hpp"          // for Config
-#include "HFBFrameView.hpp"    // for HFBFrameView
 #include "Stage.hpp"           // for Stage
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "dataset.hpp"         // for dset_id_t
 
-#include <stdint.h> // for uint32_t, int64_t
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint32_t, int32_t, int64_t
 #include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class HFBAccumulate

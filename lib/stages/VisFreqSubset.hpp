@@ -6,18 +6,15 @@
 #ifndef VIS_FREQ_SUBSET_HPP
 #define VIS_FREQ_SUBSET_HPP
 
-#include "Config.hpp"
-#include "FreqSubset.hpp" // for FreqSubset
-#include "Stage.hpp"      // for Stage
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp" // for dset_id_t, state_id_t, fingerprint_t
+#include "Config.hpp"          // for Config
+#include "FreqSubset.hpp"      // for FreqSubset
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for dset_id_t
+#include "visUtil.hpp"         // for frameID
 
-#include <map>      // for map
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
-#include <vector>   // for vector
-
+#include <utility>  // for pair
 
 /**
  * @class VisFreqSubset

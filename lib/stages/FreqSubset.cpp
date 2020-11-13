@@ -2,14 +2,12 @@
 
 #include "Config.hpp"          // for Config
 #include "Hash.hpp"            // for operator<
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for allocate_new_metadata_object, mark_frame_empty, mark_fram...
+#include "buffer.h"            // for mark_frame_empty, mark_frame_full, register_consumer, reg...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for dset_id_t, state_id_t, datasetManager
 #include "datasetState.hpp"    // for freqState
 #include "kotekanLogging.hpp"  // for FATAL_ERROR
-#include "visBuffer.hpp"       // for VisFrameView
-#include "visUtil.hpp"         // for frameID, freq_ctype, modulo
+#include "visUtil.hpp"         // for freq_ctype, frameID, modulo
 
 #include <algorithm>    // for find, max
 #include <atomic>       // for atomic_bool
@@ -17,12 +15,11 @@
 #include <cxxabi.h>     // for __forced_unwind
 #include <exception>    // for exception
 #include <functional>   // for _Bind_helper<>::type, bind, function
-#include <future>       // for future, async
-#include <map>          // for map, operator!=, map<>::mapped_type, map<>::iterator
+#include <future>       // for async, future
+#include <map>          // for map, map<>::mapped_type, _Rb_tree_iterator
 #include <stdexcept>    // for out_of_range
 #include <system_error> // for system_error
 #include <utility>      // for pair
-
 
 using kotekan::bufferContainer;
 using kotekan::Config;

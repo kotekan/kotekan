@@ -6,14 +6,14 @@
 #ifndef GEN_HFB_FRAMES_HPP
 #define GEN_HFB_FRAMES_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp" // for Stage
-#include "bufferContainer.hpp"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include <random>   // for default_random_engine, bernoulli_distribution, random_device
+#include <random>   // for default_random_engine, normal_distribution, uniform_int_d...
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
-#include <vector>   // for vector
 
 /**
  * @class GenHFBFrames

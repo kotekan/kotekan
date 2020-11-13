@@ -1,23 +1,21 @@
 #include "GenHFBFrames.hpp"
 
 #include "Config.hpp"         // for Config
-#include "HFBMetadata.hpp"    // for get_fpga_seq_start_hfb, set_ctime_hfb, set_dataset_id, set...
+#include "HFBMetadata.hpp"    // for set_fpga_seq_start_hfb
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for Buffer, get_num_consumers, mark_frame_empty, mark_frame_full
-#include "kotekanLogging.hpp" // for INFO
-#include "visUtil.hpp"        // for frameID
+#include "buffer.h"           // for allocate_new_metadata_object, mark_frame_full, register_pr...
+#include "chimeMetadata.h"    // for atomic_add_lost_timesamples, set_fpga_seq_num, zero_lost_s...
+#include "kotekanLogging.hpp" // for DEBUG, INFO
+#include "visUtil.hpp"        // for frameID, modulo
 
-#include <algorithm>  // for find
 #include <atomic>     // for atomic_bool
-#include <cstdint>    // for uint32_t
-#include <cstring>    // for memcpy
 #include <exception>  // for exception
 #include <functional> // for _Bind_helper<>::type, bind, function
-#include <random>     // for default_random_engine, bernoulli_distribution, random_device
+#include <math.h>     // for sqrt
+#include <random>     // for default_random_engine, normal_distribution
 #include <regex>      // for match_results<>::_Base_type
 #include <stdexcept>  // for runtime_error
-#include <stdlib.h>   // for rand, srand
-
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

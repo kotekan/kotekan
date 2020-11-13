@@ -6,18 +6,19 @@
 #ifndef FREQ_SUBSET_HPP
 #define FREQ_SUBSET_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp" // for Stage
-#include "buffer.h"
-#include "bufferContainer.hpp"
-#include "datasetManager.hpp" // for dset_id_t, state_id_t, fingerprint_t
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for dset_id_t, state_id_t, fingerprint_t
+#include "visUtil.hpp"         // for frameID
 
-#include <future>   // for future, async
+#include <future>   // for future
 #include <map>      // for map
 #include <stdint.h> // for uint32_t
 #include <string>   // for string
+#include <utility>  // for pair
 #include <vector>   // for vector
-
 
 /**
  * @class FreqSubset
