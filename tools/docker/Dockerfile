@@ -26,8 +26,8 @@ RUN apt-get update && \
                        clang-format-8=1:8-* \
                        dpdk=17.11.* \
                        dpdk-dev=17.11.* \
-                       rocm-opencl-dev \
-                       rocm-opencl \
+                       rocm-opencl-dev=3.* \
+                       rocm-opencl=3.* \
                        libhdf5-serial-dev=1.10.* \
                        libboost-test-dev=1.65.* \
                        libevent-dev=2.1.* \
