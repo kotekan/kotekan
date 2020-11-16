@@ -5,7 +5,7 @@
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"      // for Telescope, freq_id_t
 #include "buffer.h"           // for mark_frame_empty, Buffer, register_consumer, wait_for_empt...
-#include "chimeMetadata.h"    // for get_lost_timesamples
+#include "chimeMetadata.hpp"  // for get_lost_timesamples
 #include "datasetManager.hpp" // for state_id_t, datasetManager
 #include "datasetState.hpp"   // for beamState, freqState, metadataState, subfreqState
 #include "kotekanLogging.hpp" // for DEBUG, DEBUG2
@@ -264,7 +264,7 @@ void HFBAccumulate::main_thread() {
                 freq_id_t freq_id = tel.to_freq_id(in_buf, in_buffer_ID);
                 set_freq_id(out_buf, out_buffer_ID, freq_id);
 
-                set_dataset_id(out_buf, out_buffer_ID, ds_id);
+                set_dataset_id_hfb(out_buf, out_buffer_ID, ds_id);
                 set_num_beams(out_buf, out_buffer_ID, _num_frb_total_beams);
                 set_num_subfreq(out_buf, out_buffer_ID, _factor_upchan);
 

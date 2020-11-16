@@ -3,9 +3,10 @@
 #include "BranchPrediction.hpp" // for unlikely, likely
 #include "Config.hpp"           // for Config
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "Telescope.hpp"        // for stream_t
 #include "buffer.h"             // for Buffer, wait_for_empty_frame, mark_frame_empty, mark_fra...
 #include "bufferContainer.hpp"  // for bufferContainer
-#include "chimeMetadata.h"      // for get_fpga_seq_num, get_first_packet_recv_time, get_stream_id
+#include "chimeMetadata.hpp"    // for get_fpga_seq_num, get_first_packet_recv_time, get_stream_id
 #include "vdif_functions.h"     // for VDIFHeader
 
 #include "fmt.hpp" // for format, fmt
@@ -19,7 +20,7 @@
 #include <regex>      // for match_results<>::_Base_type
 #include <stdlib.h>   // for free, malloc
 #include <string.h>   // for memcpy
-#include <string>     // for allocator, string
+#include <string>     // for string
 #include <sys/time.h> // for timeval
 
 using kotekan::bufferContainer;

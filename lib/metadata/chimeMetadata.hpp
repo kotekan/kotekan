@@ -1,16 +1,14 @@
 #ifndef CHIME_METADATA
 #define CHIME_METADATA
 
+#include "Telescope.hpp"
 #include "buffer.h"
+#include "datasetManager.hpp"
 #include "metadata.h"
 
 #include <sys/time.h>
 
 #define MAX_NUM_BEAMS 20
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 #pragma pack()
 
@@ -18,18 +16,6 @@ struct beamCoord {
     float ra[MAX_NUM_BEAMS];
     float dec[MAX_NUM_BEAMS];
     uint32_t scaling[MAX_NUM_BEAMS];
-};
-
-/**
- * @brief A type for the stream ID.
- *
- * This is the external interface for it and *must* be used instead of directly
- * accessing the chimeMetadata::stream_ID member.
- *
- * @todo Move this into Telescope.hpp when we port chimeMetadata.h to C++.
- **/
-struct stream_t {
-    uint64_t id;
 };
 
 
@@ -59,6 +45,8 @@ struct chimeMetadata {
     /// Note in the case of CHIME-2048 the normally unused section
     /// Encodes the port-shuffle frequency information
     uint16_t stream_ID;
+    /// ID of the dataset
+    dset_id_t dataset_id;
     /// The coordinates of the tracking beam (if applicable)
     struct beamCoord beam_coord;
 };
@@ -128,6 +116,11 @@ inline struct timespec get_gps_time(const struct Buffer* buf, int ID) {
     return chime_metadata->gps_time;
 }
 
+inline dset_id_t get_dataset_id(const struct Buffer* buf, int ID) {
+    struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
+    return chime_metadata->dataset_id;
+}
+
 inline void atomic_add_lost_timesamples(struct Buffer* buf, int ID, int64_t num_lost_samples) {
     struct metadataContainer* mc = buf->metadata[ID];
     lock_metadata(mc);
@@ -193,6 +186,11 @@ inline void set_gps_time(struct Buffer* buf, int ID, struct timespec time) {
     chime_metadata->gps_time = time;
 }
 
+inline void set_dataset_id(struct Buffer* buf, int ID, dset_id_t dataset_id) {
+    struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
+    chime_metadata->dataset_id = dataset_id;
+}
+
 /**
  * @brief Zeros the number of lost samples for the given frame metadata
  *
@@ -203,9 +201,5 @@ inline void zero_lost_samples(struct Buffer* buf, int ID) {
     struct chimeMetadata* chime_metadata = (struct chimeMetadata*)buf->metadata[ID]->metadata;
     chime_metadata->lost_timesamples = 0;
 }
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

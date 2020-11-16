@@ -175,7 +175,8 @@ public:
      *
      * @param  args  Arguments forwarded through to the constructor of the sub-type.
      * @returns      The id assigned to the state and a read-only pointer to the
-     *               state.
+     *               state. The target of this pointer is not free'd during the
+     *               lifetime of the datasetManager.
      **/
 // Sphinx can't correctly parse the template definition here, so we need to make sure Doxygen passes
 // on a sanitized version
@@ -199,7 +200,8 @@ public:
      *
      * @param state The state to be added.
      * @returns The id assigned to the state and a read-only pointer to the
-     * state.
+     *          state. The target of this pointer is not free'd during the
+     *          lifetime of the datasetManager.
      **/
     template<typename T>
     inline std::pair<state_id_t, const T*>
@@ -216,7 +218,8 @@ public:
     /**
      * @brief Get a read-only vector of the states.
      *
-     * @returns The set of states.
+     * @returns The set of states. The targets of these state pointers are not free'd
+     *          during the lifetime of the datasetManager.
      **/
     const std::map<state_id_t, const datasetState*> states();
 
@@ -258,7 +261,8 @@ public:
      *
      * @returns      A read-only pointer to the ancestor state.
      *               Returns a `nullptr` if not found in ancestors or in a
-     *               failure case.
+     *               failure case. The target of this pointer is not free'd during the
+     *               lifetime of the datasetManager.
      **/
     template<typename T>
     inline const T* dataset_state(dset_id_t dset);
