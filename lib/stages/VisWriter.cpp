@@ -81,7 +81,7 @@ void VisWriter::get_dataset_state(dset_id_t ds_id) {
 
     if (pstate == nullptr || mstate == nullptr || fstate == nullptr) {
         ERROR("Set to not use dataset_broker and couldn't find ancestor of dataset {}. Make "
-              "sure there is a stage upstream in the config, that the dataset states. Unexpected "
+              "sure there is a stage upstream in the config, that adds dataset states. Unexpected "
               "nullptr: ",
               ds_id);
         if (!pstate)

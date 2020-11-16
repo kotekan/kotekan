@@ -3,7 +3,7 @@
 #include "Telescope.hpp"
 #include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_for_...
 #include "bufferContainer.hpp"    // for bufferContainer
-#include "chimeMetadata.h"        // for atomic_add_lost_timesamples, get_first_packet_recv_time
+#include "chimeMetadata.hpp"      // for atomic_add_lost_timesamples, get_first_packet_recv_time
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::COPY_OUT
 #include "hsaCommand.hpp"         // for REGISTER_HSA_COMMAND, _factory_aliashsaCommand, hsaCom...
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface

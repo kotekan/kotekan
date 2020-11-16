@@ -4,7 +4,7 @@
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"              // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "dataset.hpp"           // for dset_id_t
+#include "datasetManager.hpp"    // for dset_id_t
 #include "kotekanLogging.hpp"    // for DEBUG, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Counter, MetricFamily
 #include "visBuffer.hpp"         // for VisFrameView

@@ -11,7 +11,7 @@
 #include "Telescope.hpp"
 #include "buffer.h"               // for Buffer
 #include "bufferContainer.hpp"    // for bufferContainer
-#include "chimeMetadata.h"        // for beamCoord
+#include "chimeMetadata.hpp"      // for beamCoord
 #include "hsa/hsa.h"              // for hsa_signal_t
 #include "hsaCommand.hpp"         // for hsaCommand
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface

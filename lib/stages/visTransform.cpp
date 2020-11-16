@@ -5,7 +5,7 @@
 #include "Telescope.hpp"
 #include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_empty
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for chimeMetadata
+#include "chimeMetadata.hpp"   // for chimeMetadata
 #include "datasetManager.hpp"  // for state_id_t, datasetManager, dset_id_t
 #include "datasetState.hpp"    // for freqState, inputState, metadataState, prodState
 #include "kotekanLogging.hpp"  // for INFO
