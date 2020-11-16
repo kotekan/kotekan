@@ -18,7 +18,7 @@
  *     @buffer_metadata any
  *
  * @conf    len     Default 128.  The number of bytes to print.
- * @conf    offset  Ddfault 0.    The offset into the frame.
+ * @conf    offset  Default 0.    The offset into the frame.
  */
 class hexDump : public kotekan::Stage {
 public:

@@ -32,7 +32,7 @@ hsaTrackingBeamform::hsaTrackingBeamform(Config& config, const std::string& uniq
     _num_pol = config.get<int32_t>(unique_name, "num_pol");
 
     input_frame_len = _num_elements * _samples_per_data_set;
-    output_frame_len = _samples_per_data_set * _num_beams * _num_pol * 2 * sizeof(float);
+    output_frame_len = _samples_per_data_set * _num_beams * _num_pol;
 
     phase_len = _num_elements * _num_beams * 2 * sizeof(float);
 
@@ -52,12 +52,18 @@ hsa_signal_t hsaTrackingBeamform::execute(int gpu_frame_id, hsa_signal_t precede
         void* input_buffer;
         void* phase_buffer;
         void* output_buffer;
+        void* scaling_buffer;
     } args;
     memset(&args, 0, sizeof(args));
     args.input_buffer = device.get_gpu_memory("input_reordered", input_frame_len);
-    args.phase_buffer = device.get_gpu_memory_array("beamform_phase", gpu_frame_id, phase_len);
+    args.phase_buffer = device.get_gpu_memory_array("beamform_phase", gpu_frame_id,
+                                                    phase_len + _num_beams * sizeof(float));
+    // The scaling buffer is stored at the end of the phase array.
+    args.scaling_buffer = (void*)((uint8_t*)args.phase_buffer + phase_len);
     args.output_buffer =
         device.get_gpu_memory_array("bf_tracking_output", gpu_frame_id, output_frame_len);
+
+
 
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
