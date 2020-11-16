@@ -5,7 +5,7 @@
 #include "Telescope.hpp"
 #include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for...
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for get_fpga_seq_num, get_gps_time
+#include "chimeMetadata.hpp"   // for get_fpga_seq_num, get_gps_time
 #include "configUpdater.hpp"   // for configUpdater
 #include "kotekanLogging.hpp"  // for ERROR, INFO
 

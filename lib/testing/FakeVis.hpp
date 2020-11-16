@@ -13,7 +13,7 @@
 #include "Stage.hpp"           // for Stage
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "dataset.hpp"         // for dset_id_t
+#include "datasetManager.hpp"  // for dset_id_t
 #include "visBuffer.hpp"       // for VisFrameView
 #include "visUtil.hpp"         // for cfloat
 

@@ -1,7 +1,7 @@
 #include "hsaTrackingBeamform.hpp"
 
 #include "Config.hpp"             // for Config
-#include "chimeMetadata.h"        // for MAX_NUM_BEAMS
+#include "chimeMetadata.hpp"      // for MAX_NUM_BEAMS
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config
 

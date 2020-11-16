@@ -4,7 +4,7 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for Buffer, mark_frame_empty, register_consumer, wait_for_ful...
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for get_lost_timesamples
+#include "chimeMetadata.hpp"   // for get_lost_timesamples
 #include "kotekanLogging.hpp"  // for ERROR, INFO
 #include "util.h"              // for cp, make_raw_dirs
 

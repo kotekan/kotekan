@@ -5,10 +5,10 @@
 #define SIM_FULL_RANGE 1
 #define SIM_SINE 2
 
-#include "Config.hpp"
-#include "Stage.hpp" // for Stage
-#include "bufferContainer.hpp"
-#include "chimeMetadata.h"
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "Telescope.hpp"       // for stream_t
+#include "bufferContainer.hpp" // for bufferContainer
 
 #include <stdint.h> // for int32_t
 #include <string>   // for string
