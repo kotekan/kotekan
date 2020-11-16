@@ -137,7 +137,6 @@ void RfiFrameDrop::main_thread() {
 
         // Lock update mutex to not allow updates being processed during this critical section
         std::unique_lock<std::mutex> lock(update_mutex);
-        lock.lock();
 
         // Check if we need to register a new dataset
         dset_id_t dset_id_in_new = get_dataset_id(_buf_in_vis, frame_id_in_vis);
