@@ -93,6 +93,10 @@ void RfiFrameDrop::main_thread() {
     // keep track of the dataset state
     state_id_t last_state_id = state_id_t::null;
 
+    // Lock to protect dataset state and all update data (they are all changed together in either of
+    // the endpoint callbacks)
+    std::unique_lock<std::mutex> lock(update_mutex, std::defer_lock);
+
     while (!stop_thread) {
         // Fetch the input buffers
         uint8_t* frame_in_vis =
@@ -136,7 +140,7 @@ void RfiFrameDrop::main_thread() {
                                  / (4.0 * sk_step * sk_step));
 
         // Lock update mutex to not allow updates being processed during this critical section
-        std::unique_lock<std::mutex> lock(update_mutex);
+        lock.lock();
 
         // Check if we need to register a new dataset
         dset_id_t dset_id_in_new = get_dataset_id(_buf_in_vis, frame_id_in_vis);
@@ -155,7 +159,7 @@ void RfiFrameDrop::main_thread() {
         std::copy(sk_exceeds.begin(), sk_exceeds.end(), sk_exceeds_copy.begin());
 
         // Release the update lock
-        lock.release();
+        lock.unlock();
 
 
         for (size_t ii = 0; ii < num_sub_frames; ii++) {
