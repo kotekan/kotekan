@@ -127,8 +127,6 @@ RUN apt-get update && \
 # Uncomment this to check what version got installed
 # RUN python3.7 -m pip show <package>
 # RUN apt-cache policy <package>
-RUN apt-cache policy rocm-opencl
-RUN apt-cache policy rocm-opencl-dev
 
 # Clean any unwanted caches
 RUN apt-get clean && apt-get autoclean
