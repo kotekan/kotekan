@@ -27,7 +27,7 @@
  * All classes which inherit from this should provide the following API:
  *
  * copy_dataset_id(dset_id_t dataset_id, frameID input_frame_id, frameID output_frame_id);
- # get_frame_data(frameID input_frame_id);
+ * get_frame_data(frameID input_frame_id);
  *
  * This task takes data coming out of a buffer stream and selects a subset of
  * frequencies to be passed on to the output buffer.
