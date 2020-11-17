@@ -41,11 +41,16 @@ GenHFBFrames::GenHFBFrames(Config& config, const std::string& unique_name,
 
     cls_out_buf = get_buffer("cls_out_buf");
     register_producer(cls_out_buf, unique_name.c_str());
+
+    dataset_id = config.get_default<dset_id_t>(
+        unique_name, "dataset_id", dset_id_t::from_string("f65bec4949ca616fbeea62660351edcb"));
 }
 
 void GenHFBFrames::main_thread() {
     frameID out_frame_id(out_buf), cls_frame_id(cls_out_buf);
     uint64_t seq_num = _samples_per_data_set * _first_frame_index;
+    stream_t stream_id;
+    stream_id.id = 0;
 
     std::default_random_engine gen;
     std::normal_distribution<float> gaussian(_rng_mean, _rng_stddev);
@@ -97,6 +102,8 @@ void GenHFBFrames::main_thread() {
         // Create metadata
         allocate_new_metadata_object(out_buf, out_frame_id);
         set_fpga_seq_start_hfb(out_buf, out_frame_id, seq_num);
+        set_dataset_id_hfb(out_buf, out_frame_id, dataset_id);
+        set_stream_id(out_buf, out_frame_id, stream_id);
 
         allocate_new_metadata_object(cls_out_buf, cls_frame_id);
         set_fpga_seq_num(cls_out_buf, cls_frame_id, seq_num);

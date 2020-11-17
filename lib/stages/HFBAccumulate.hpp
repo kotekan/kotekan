@@ -12,6 +12,7 @@
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "dataset.hpp"         // for dset_id_t
+#include "datasetManager.hpp"  // for dset_id_t
 
 #include <stddef.h> // for size_t
 #include <stdint.h> // for uint32_t, int32_t, int64_t
@@ -129,7 +130,14 @@ private:
     uint32_t frame;
     int64_t fpga_seq_num;
     int64_t fpga_seq_num_end;
-    dset_id_t ds_id;
+
+    // dataset ID for the base states
+    dset_id_t base_dataset_id;
+    
+    // The base states (freq, beam, sub-freq, meta)
+    std::vector<state_id_t> base_dataset_states;
+
+    datasetManager& dm = datasetManager::instance(); 
 };
 
 #endif

@@ -83,17 +83,12 @@ HFBAccumulate::HFBAccumulate(Config& config_, const std::string& unique_name,
                        return {id, {tel.to_freq(id), tel.freq_width(id)}};
                    });
 
-    // create all the states
-    datasetManager& dm = datasetManager::instance();
-    std::vector<state_id_t> base_states;
-    base_states.push_back(dm.create_state<freqState>(freqs).first);
-    base_states.push_back(dm.create_state<beamState>(_num_frb_total_beams).first);
-    base_states.push_back(dm.create_state<subfreqState>(_factor_upchan).first);
-    base_states.push_back(
+    // Create all the states
+    base_dataset_states.push_back(dm.create_state<freqState>(freqs).first);
+    base_dataset_states.push_back(dm.create_state<beamState>(_num_frb_total_beams).first);
+    base_dataset_states.push_back(dm.create_state<subfreqState>(_factor_upchan).first);
+    base_dataset_states.push_back(
         dm.create_state<metadataState>(weight_type, instrument_name, git_tag).first);
-
-    // register root dataset
-    ds_id = dm.add_dataset(base_states);
 }
 
 HFBAccumulate::~HFBAccumulate() {}
@@ -147,6 +142,7 @@ void HFBAccumulate::normalise_frame(float* sum_data, const uint32_t in_frame_id)
 void HFBAccumulate::main_thread() {
 
     frameID in_frame_id(in_buf), out_frame_id(out_buf), cls_frame_id(cls_buf);
+    dset_id_t ds_id_in = dset_id_t::null;
     int first = 1;
     int64_t fpga_seq_num_end_old = 0;
 
@@ -173,6 +169,18 @@ void HFBAccumulate::main_thread() {
             return;
         if (wait_for_full_frame(cls_buf, unique_name.c_str(), cls_frame_id) == nullptr)
             return;
+
+        // Check if dataset ID changed
+        dset_id_t ds_id_in_new = get_dataset_id_hfb(in_buf, in_frame_id);
+        if (ds_id_in_new != ds_id_in) {
+            ds_id_in = ds_id_in_new;
+
+            // Register base dataset. If no dataset ID was was set in the incoming frame,
+            // ds_id_in will be dset_id_t::null and thus cause a root dataset to
+            // be registered.
+            base_dataset_id = dm.add_dataset(base_dataset_states, ds_id_in);
+            DEBUG("Registered base dataset: {}", base_dataset_id)
+        }
 
         float* input = (float*)in_frame_ptr;
         uint64_t frame_count = (get_fpga_seq_num(in_buf, in_frame_id) / _samples_per_data_set);
@@ -295,7 +303,7 @@ void HFBAccumulate::main_thread() {
                 out_frame.fpga_seq_total = total_timesamples - total_lost_timesamples;
                 out_frame.fpga_seq_length = total_timesamples;
                 out_frame.freq_id = tel.to_freq_id(in_buf, in_frame_id);
-                out_frame.dataset_id = ds_id;
+                out_frame.dataset_id = base_dataset_id;
 
                 // Set the weights
                 float sample_weight_total = total_timesamples - total_lost_timesamples;

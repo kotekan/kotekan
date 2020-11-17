@@ -67,6 +67,14 @@ compressed_lost_samples_buffer:
   frame_size: samples_per_data_set / (factor_upchan * downsample_time) * sizeof_int
   metadata_pool: main_pool
 
+telescope:
+  name: CHIMETelescope
+  require_gps: false # Still run the config if fpga_master is down.
+  query_gps: false
+  query_frequency_map: false
+  require_frequency_map: false
+  allow_default_frequency_map: true
+
 # Generate input data for HFBAccumulate stage
 gen_hfb_data:
   log_level: info

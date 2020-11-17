@@ -10,6 +10,7 @@
 #include "Stage.hpp"           // for Stage
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+#include "dataset.hpp"         // for dset_id_t
 
 #include <random>   // for default_random_engine, normal_distribution, uniform_int_d...
 #include <stdint.h> // for uint32_t
@@ -67,6 +68,8 @@ private:
     float _rng_stddev;
     /// Test pattern
     std::string _pattern;
+    /// Default dataset_id
+    dset_id_t dataset_id;
 };
 
 #endif
