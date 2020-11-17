@@ -595,6 +595,7 @@ hfb_compressed_lost_samples_buffers:
 #### Pipeline Stages #####
 ##########################
 gen_data:
+  log_level: debug
   type: random
   value: 153
   test_data_gen_network_0:
@@ -616,21 +617,21 @@ gen_data:
     out_buf: lost_samples_buffer
 
 # Zero out lost samples recorded at the DPDK stage
-zero_samples:
-  duplicate_ls_buffer: False
-  lost_samples_buf: lost_samples_buffer
-  zero_0:
-    kotekan_stage: zeroSamples
-    out_buf: network_buffer_0
-  zero_1:
-    kotekan_stage: zeroSamples
-    out_buf: network_buffer_1
-  zero_2:
-    kotekan_stage: zeroSamples
-    out_buf: network_buffer_2
-  zero_3:
-    kotekan_stage: zeroSamples
-    out_buf: network_buffer_3
+#zero_samples:
+#  duplicate_ls_buffer: False
+#  lost_samples_buf: lost_samples_buffer
+#  zero_0:
+#    kotekan_stage: zeroSamples
+#    out_buf: network_buffer_0
+#  zero_1:
+#    kotekan_stage: zeroSamples
+#    out_buf: network_buffer_1
+#  zero_2:
+#    kotekan_stage: zeroSamples
+#    out_buf: network_buffer_2
+#  zero_3:
+#    kotekan_stage: zeroSamples
+#    out_buf: network_buffer_3
 
 # Baseband capture and dump system
 baseband:
