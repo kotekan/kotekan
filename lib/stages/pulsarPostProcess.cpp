@@ -344,9 +344,9 @@ void pulsarPostProcess::main_thread() {
                             out_buf[out_index] = ((real_part << 4) & 0xF0) + (imag_part & 0x0F);
                         } // end loop pol
                     }     // end loop psr
-                }         // end loop time
+                }         // end loop freq
                 in_frame_location++;
-            } // end loop freq
+            } // end loop time
             current_input_location = 0;
         } // end if not start up
 
