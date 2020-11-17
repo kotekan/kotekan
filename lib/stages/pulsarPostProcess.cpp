@@ -306,7 +306,7 @@ void pulsarPostProcess::main_thread() {
                                             + udp_pulsar_header_size;
                             } else if (_timesamples_per_pulsar_packet == 625) {
                                 // beam->packets->[freq-time-pol]
-                                out_index = 
+                                out_index =
                                     // beam
                                     psr * _udp_pulsar_packet_size * _num_packet_per_stream
                                     // packet
