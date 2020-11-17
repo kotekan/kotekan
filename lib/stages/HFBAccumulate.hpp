@@ -7,17 +7,16 @@
 #ifndef HFB_ACCUMULATE_STAGE
 #define HFB_ACCUMULATE_STAGE
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "buffer.h"            // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "dataset.hpp"         // for dset_id_t
-#include "datasetManager.hpp"  // for dset_id_t
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "buffer.h"             // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "datasetManager.hpp"   // for datasetManager, state_id_t, dset_id_t
 
-#include <stddef.h> // for size_t
-#include <stdint.h> // for uint32_t, int32_t, int64_t
-#include <string>   // for string
-#include <vector>   // for vector
+#include <stddef.h>             // for size_t
+#include <stdint.h>             // for uint32_t, int32_t, int64_t
+#include <string>               // for string
+#include <vector>               // for vector
 
 /**
  * @class HFBAccumulate

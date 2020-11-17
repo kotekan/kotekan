@@ -1,21 +1,23 @@
 #include "GenHFBFrames.hpp"
 
-#include "Config.hpp"         // for Config
-#include "HFBMetadata.hpp"    // for set_fpga_seq_start_hfb
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"           // for allocate_new_metadata_object, mark_frame_full, register_pr...
-#include "chimeMetadata.hpp"  // for atomic_add_lost_timesamples, set_fpga_seq_num, zero_lost_s...
-#include "kotekanLogging.hpp" // for DEBUG, INFO
-#include "visUtil.hpp"        // for frameID, modulo
+#include "Config.hpp"          // for Config
+#include "HFBMetadata.hpp"     // for set_dataset_id_hfb, set_fpga_seq_start_hfb
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"            // for allocate_new_metadata_object, mark_frame_full, register_pr...
+#include "chimeMetadata.hpp"   // for atomic_add_lost_timesamples, set_fpga_seq_num, set_stream_id
+#include "kotekanLogging.hpp"  // for DEBUG, INFO
+#include "visUtil.hpp"         // for frameID, modulo
+#include "Telescope.hpp"       // for stream_t
+#include "datasetManager.hpp"  // for dset_id_t
 
-#include <atomic>     // for atomic_bool
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <math.h>     // for sqrt
-#include <random>     // for default_random_engine, normal_distribution
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <vector>     // for vector
+#include <math.h>              // for sqrt
+#include <atomic>              // for atomic_bool
+#include <exception>           // for exception
+#include <functional>          // for _Bind_helper<>::type, bind, function
+#include <random>              // for default_random_engine, normal_distribution
+#include <regex>               // for match_results<>::_Base_type
+#include <stdexcept>           // for runtime_error
+#include <vector>              // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
