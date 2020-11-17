@@ -3,7 +3,7 @@
 #include "Config.hpp"             // for Config
 #include "buffer.h"               // for Buffer
 #include "bufferContainer.hpp"    // for bufferContainer
-#include "chimeMetadata.h"        // for set_rfi_zeroed
+#include "chimeMetadata.hpp"      // for set_rfi_zeroed
 #include "configUpdater.hpp"      // for configUpdater
 #include "gpuCommand.hpp"         // for gpuCommandType, gpuCommandType::KERNEL
 #include "hsaDeviceInterface.hpp" // for hsaDeviceInterface, Config

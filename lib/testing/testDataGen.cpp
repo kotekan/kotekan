@@ -5,7 +5,7 @@
 #include "Telescope.hpp"       // for Telescope
 #include "buffer.h"            // for Buffer, allocate_new_metadata_object, mark_frame_full
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
 #include "errors.h"            // for exit_kotekan, CLEAN_EXIT, ReturnCode
 #include "kotekanLogging.hpp"  // for DEBUG, INFO
 #include "restServer.hpp"      // for restServer, connectionInstance, HTTP_RESPONSE, HTTP_RESPO...

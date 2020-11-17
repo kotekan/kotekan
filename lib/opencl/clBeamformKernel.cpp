@@ -1,7 +1,7 @@
 #include "clBeamformKernel.hpp"
 
 #include "Telescope.hpp"
-#include "chimeMetadata.h"
+#include "chimeMetadata.hpp"
 
 #include <string>
 

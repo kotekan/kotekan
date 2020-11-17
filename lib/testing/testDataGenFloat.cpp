@@ -4,7 +4,7 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.h"            // for allocate_new_metadata_object, mark_frame_full, register_p...
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
+#include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_stream_id
 #include "kotekanLogging.hpp"  // for DEBUG
 
 #include <assert.h>    // for assert

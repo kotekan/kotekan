@@ -6,7 +6,7 @@
 #include "Telescope.hpp"
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for beamCoord
+#include "chimeMetadata.hpp"   // for beamCoord
 
 #include <stdint.h>    // for int32_t, uint32_t
 #include <string>      // for string

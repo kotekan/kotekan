@@ -7,7 +7,7 @@
 #include "basebandApiManager.hpp" // for basebandApiManager
 #include "buffer.h"               // for Buffer, mark_frame_empty, register_consumer, wait_fo...
 #include "bufferContainer.hpp"    // for bufferContainer
-#include "chimeMetadata.h"        // for chimeMetadata
+#include "chimeMetadata.hpp"      // for chimeMetadata
 #include "kotekanLogging.hpp"     // for INFO, DEBUG, ERROR, WARN
 #include "metadata.h"             // for metadataContainer
 #include "nt_memcpy.h"            // for nt_memcpy
