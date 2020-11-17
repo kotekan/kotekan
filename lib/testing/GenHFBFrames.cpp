@@ -1,7 +1,6 @@
 #include "GenHFBFrames.hpp"
 
 #include "Config.hpp"         // for Config
-#include "HFBMetadata.hpp"    // for set_dataset_id_hfb, set_fpga_seq_start_hfb
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "Telescope.hpp"      // for stream_t
 #include "buffer.h"           // for allocate_new_metadata_object, mark_frame_full, register_pr...
@@ -103,8 +102,8 @@ void GenHFBFrames::main_thread() {
 
         // Create metadata
         allocate_new_metadata_object(out_buf, out_frame_id);
-        set_fpga_seq_start_hfb(out_buf, out_frame_id, seq_num);
-        set_dataset_id_hfb(out_buf, out_frame_id, dataset_id);
+        set_fpga_seq_num(out_buf, out_frame_id, seq_num);
+        set_dataset_id(out_buf, out_frame_id, dataset_id);
         set_stream_id(out_buf, out_frame_id, stream_id);
 
         allocate_new_metadata_object(cls_out_buf, cls_frame_id);
