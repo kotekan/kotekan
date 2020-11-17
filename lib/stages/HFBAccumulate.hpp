@@ -75,6 +75,7 @@ private:
 
     // NOTE: Annoyingly this can't be forward declared, and defined fully externally
     // as the std::deque needs the complete type
+    // TODO: Place all of internalState's members directly on main class
     /**
      * @class internalState
      * @brief Hold the internal state of a gated accumulation.

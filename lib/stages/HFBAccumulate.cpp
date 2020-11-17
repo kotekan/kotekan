@@ -199,7 +199,14 @@ void HFBAccumulate::main_thread() {
         DEBUG2("Frames are synced. HFB frame: {}; Compressed Lost Samples frame: {}, diff {}",
                hfb_seq_num, cls_seq_num, hfb_seq_num - cls_seq_num);
 
-        float* sum_data = (float*)out_buf->frames[out_frame_id];
+        // Create new metadata for output frame
+        allocate_new_metadata_object(out_buf, out_frame_id);
+        HFBFrameView::set_metadata(out_buf, out_frame_id, _num_frb_total_beams,
+                                   _factor_upchan);
+
+        auto out_frame = HFBFrameView(out_buf, out_frame_id);
+
+        float* sum_data = (float*)out_frame.hfb.data();
         float* input_data = (float*)in_buf->frames[in_frame_id];
 
         // Find where the end of the integration is
@@ -279,24 +286,16 @@ void HFBAccumulate::main_thread() {
             // Only output integration if there are enough good samples
             if (good_samples_frac >= _good_samples_threshold) {
 
-                auto frame = HFBFrameView(out_buf, out_frame_id);
-
-                // Create new metadata
-                allocate_new_metadata_object(out_buf, out_frame_id);
-
                 // Populate metadata using HFBFrameView
                 int64_t fpga_seq =
                     fpga_seq_num_end_old - ((_num_frames_to_integrate - 1) * _samples_per_data_set);
 
-                frame.fpga_seq_start = fpga_seq;
-                frame.time = tel.to_time(fpga_seq);
-                frame.fpga_seq_total = total_timesamples - total_lost_timesamples;
-                frame.fpga_seq_length = total_timesamples;
-                frame.freq_id = tel.to_freq_id(in_buf, in_frame_id);
-                frame.dataset_id = ds_id;
-
-                HFBFrameView::set_metadata(out_buf, out_frame_id, _num_frb_total_beams,
-                                           _factor_upchan);
+                out_frame.fpga_seq_start = fpga_seq;
+                out_frame.time = tel.to_time(fpga_seq);
+                out_frame.fpga_seq_total = total_timesamples - total_lost_timesamples;
+                out_frame.fpga_seq_length = total_timesamples;
+                out_frame.freq_id = tel.to_freq_id(in_buf, in_frame_id);
+                out_frame.dataset_id = ds_id;
 
                 // Set the weights
                 float sample_weight_total = total_timesamples - total_lost_timesamples;
@@ -315,16 +314,16 @@ void HFBAccumulate::main_thread() {
                 // Unpack and invert the weights
                 for (uint32_t i = 0; i < _num_frb_total_beams * _factor_upchan; i++) {
                     float t = dset.hfb2[i];
-                    frame.weight[i] = w * w / t;
+                    out_frame.weight[i] = w * w / t;
                 }
 
                 DEBUG("Dataset ID: {}, freq ID: {:d}, data: [{:f} ... {:f} ... {:f}], weight: "
                       "[{:f} ... {:f} ... {:f}]",
-                      frame.dataset_id, frame.freq_id, frame.hfb[0],
-                      frame.hfb[_num_frb_total_beams * _factor_upchan / 2],
-                      frame.hfb[_num_frb_total_beams * _factor_upchan - 1], frame.weight[0],
-                      frame.weight[_num_frb_total_beams * _factor_upchan / 2],
-                      frame.weight[_num_frb_total_beams * _factor_upchan - 1]);
+                      out_frame.dataset_id, out_frame.freq_id, out_frame.hfb[0],
+                      out_frame.hfb[_num_frb_total_beams * _factor_upchan / 2],
+                      out_frame.hfb[_num_frb_total_beams * _factor_upchan - 1], out_frame.weight[0],
+                      out_frame.weight[_num_frb_total_beams * _factor_upchan / 2],
+                      out_frame.weight[_num_frb_total_beams * _factor_upchan - 1]);
 
                 mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
 
