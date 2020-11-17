@@ -305,12 +305,18 @@ void pulsarPostProcess::main_thread() {
                                             + (in_frame_location * _num_pol + p)
                                             + udp_pulsar_header_size;
                             } else if (_timesamples_per_pulsar_packet == 625) {
-                                // beam->packets->[time-freq-pol]
-                                out_index = psr * _udp_pulsar_packet_size * _num_packet_per_stream
-                                            + frame * _udp_pulsar_packet_size
-                                            + (in_frame_location * _num_gpus * _num_pol
-                                               + thread_id * _num_pol + p)
-                                            + udp_pulsar_header_size;
+                                // beam->packets->[freq-time-pol]
+                                out_index =
+                                    // Beam
+                                    psr * _udp_pulsar_packet_size * _num_packet_per_stream
+                                    // Packet
+                                    + frame * _udp_pulsar_packet_size
+                                    // Frequency
+                                    + thread_id * _timesamples_per_pulsar_packet * _num_pol
+                                    // Time
+                                    + in_frame_location * _num_pol + p
+                                    // Header offset
+                                    + udp_pulsar_header_size;
                             } else
                                 throw std::runtime_error("Unknown timesamples per VDIF packet.");
 

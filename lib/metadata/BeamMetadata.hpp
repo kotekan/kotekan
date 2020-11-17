@@ -12,8 +12,8 @@ struct BeamMetadata {
     int64_t fpga_seq_start;
     /// The GPS time of @c fpga_seq_start.
     timespec ctime;
-    /// Frequency bin
-    freq_id_t freq_id;
+    /// Stream identifier
+    stream_t stream_id;
     /// ID of the dataset
     dset_id_t dataset_id;
     /// Right ascension of the beam

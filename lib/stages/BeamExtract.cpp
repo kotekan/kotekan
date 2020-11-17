@@ -1,5 +1,6 @@
 #include "BeamExtract.hpp"
 #include "BeamMetadata.hpp"
+#include "chimeMetadata.hpp"
 #include "buffer.h"
 #include "visUtil.hpp"
 
@@ -71,7 +72,7 @@ void BeamExtract::main_thread() {
 
         out_metadata->ctime = in_metadata->gps_time;
         out_metadata->fpga_seq_start = in_metadata->fpga_seq_num;
-        out_metadata->freq_id = Telescope::instance().to_freq_id(in_buf, in_frame_id);
+        out_metadata->stream_id = get_stream_id(in_buf, in_frame_id);
         out_metadata->ra = in_metadata->beam_coord.ra[_extract_beam];
         out_metadata->dec = in_metadata->beam_coord.dec[_extract_beam];
         out_metadata->scaling = in_metadata->beam_coord.scaling[_extract_beam];
