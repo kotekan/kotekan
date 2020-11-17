@@ -32,6 +32,10 @@ hsaBeamformHFBSum::hsaBeamformHFBSum(Config& config, const std::string& unique_n
     output_frame_len = _num_frb_total_beams * _factor_upchan * sizeof(float);
     compressed_lost_samples_frame_len =
         sizeof(uint32_t) * _samples_per_data_set / _factor_upchan / 3;
+
+    // Make sure the no. of samples is a multiple of 4 as the kernel relies on vectors with a width
+    // of 4.
+    assert(_num_samples % 4 == 0);
 }
 
 hsaBeamformHFBSum::~hsaBeamformHFBSum() {}
@@ -60,9 +64,9 @@ hsa_signal_t hsaBeamformHFBSum::execute(int gpu_frame_id, hsa_signal_t precede_s
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 
     kernelParams params;
-    params.workgroup_size_x = 64;
+    params.workgroup_size_x = 64; // No. of sub-frequencies / 2
     params.workgroup_size_y = 1;
-    params.grid_size_x = 64;
+    params.grid_size_x = 64;   // No. of sub-frequencies / 2
     params.grid_size_y = 1024; // No. of FRB beams
     params.num_dims = 2;
 
