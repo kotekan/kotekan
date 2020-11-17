@@ -9,7 +9,7 @@
 
 #include "Config.hpp"            // for Config
 #include "Stage.hpp"             // for Stage
-#include "Telescope.hpp"         // for Stage
+#include "Telescope.hpp"         // for freq_id_t
 #include "buffer.h"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "prometheusMetrics.hpp" // for Gauge, MetricFamily
@@ -19,8 +19,9 @@
 #include <condition_variable> // for condition_variable
 #include <mutex>              // for mutex
 #include <queue>              // for queue
-#include <stdint.h>           // for int32_t, int16_t, uint32_t
+#include <stdint.h>           // for int32_t, uint8_t, int16_t, uint32_t
 #include <string>             // for string
+#include <utility>            // for pair
 #include <vector>             // for vector
 
 using std::queue;

@@ -9,7 +9,6 @@
 #include "fmt.hpp"  // for format, fmt
 #include "json.hpp" // for basic_json<>::object_t, basic_json<>::value_type, json
 
-#include <algorithm>    // for max
 #include <cstdio>       // for remove
 #include <cxxabi.h>     // for __forced_unwind
 #include <errno.h>      // for errno

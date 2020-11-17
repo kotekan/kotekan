@@ -6,7 +6,7 @@
 #include "Telescope.hpp"
 #include "buffer.h"            // for mark_frame_full, register_producer, wait_for_empty_frame
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for set_first_packet_recv_time, set_fpga_seq_num, set_str...
+#include "chimeMetadata.hpp"   // for set_first_packet_recv_time, set_fpga_seq_num, set_str...
 #include "kotekanLogging.hpp"  // for ERROR
 
 #include <atomic>     // for atomic_bool

@@ -2,7 +2,7 @@
 
 #include "Config.hpp"         // for Config
 #include "HFBMetadata.hpp"    // for HFBMetadata
-#include "chimeMetadata.h"    // for chimeMetadata
+#include "chimeMetadata.hpp"  // for chimeMetadata
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.h"         // for create_metadata_pool
 #include "visBuffer.hpp"      // for VisMetadata

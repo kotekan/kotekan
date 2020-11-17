@@ -1,8 +1,8 @@
 #include "fakeGpuPattern.hpp"
 
-#include "Config.hpp"      // for Config
-#include "chimeMetadata.h" // for chimeMetadata
-#include "visUtil.hpp"     // for prod_index
+#include "Config.hpp"        // for Config
+#include "chimeMetadata.hpp" // for chimeMetadata
+#include "visUtil.hpp"       // for prod_index
 
 #include "gsl-lite.hpp" // for span, span<>::iterator
 

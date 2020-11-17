@@ -1,6 +1,6 @@
 #include "Telescope.hpp"
 
-#include "chimeMetadata.h" // for get_stream_id, stream_t
+#include "chimeMetadata.hpp" // for get_stream_id, stream_t
 
 #include <exception> // for exception
 #include <stdexcept> // for invalid_argument, runtime_error

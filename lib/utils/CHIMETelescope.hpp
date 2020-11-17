@@ -3,13 +3,12 @@
 
 #include "Config.hpp"       // for Config
 #include "ICETelescope.hpp" // for ICETelescope
-#include "Telescope.hpp"    // for freq_id_t
-#include "chimeMetadata.h"  // for stream_t
+#include "Telescope.hpp"    // for freq_id_t, stream_t
 
-#include "json.hpp"
+#include "json.hpp" // for json
 
 #include <map>      // for map
-#include <stdint.h> // for uint64_t, uint32_t
+#include <stdint.h> // for uint32_t, uint64_t
 #include <string>   // for string
 
 

@@ -19,34 +19,98 @@ on:
     - master
 
 env:
-  IMG_CORE: docker.pkg.github.com/kotekan/kotekan/kotekan-core:latest
-  IMG_IWYU: docker.pkg.github.com/kotekan/kotekan/kotekan-iwyu:latest
+  IMG_CORE: docker.pkg.github.com/kotekan/kotekan/kotekan-core
+  IMG_IWYU: docker.pkg.github.com/kotekan/kotekan/kotekan-iwyu
   PYTEST_TIMEOUT: 60
 
 jobs:
-
-  # Build the docker images
+  # Build the docker image
   build-docker:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+    - name: Check if Dockerfile changed
+      uses: technote-space/get-diff-action@v4
+      id: git-diff-docker
+      with:
+        PATTERNS: tools/docker/Dockerfile
 
-    - name: Pull docker images
+    - name: Extract branch name
+      shell: bash
+      # Get either branch name of a push or source branch of PR, replace all '/' with '.':
+      run: >
+        if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+          echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
+        else
+          echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
+        fi
+      id: extract_branch
+
+    - name: Pull docker image
       run: |
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
-        docker pull --disable-content-trust ${IMG_CORE}
-        docker pull --disable-content-trust ${IMG_IWYU}
+        docker pull --disable-content-trust ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }}
+        echo ::set-output name=status::success
+      if: steps.git-diff-docker.outputs.diff
+      continue-on-error: true
+      id: pull-docker
+    - name: Pull docker image for develop branch
+      run: |
+        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+        docker pull --disable-content-trust ${IMG_CORE}:develop
+      if: steps.git-diff-docker.outputs.diff != '' && steps.pull-docker.outputs.status != 'success'
     - name: Build core docker image
       run: |
-        docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE} -t ${IMG_CORE} - < tools/docker/Dockerfile
-    - name: Build iwyu docker image
+        docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE} -t ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }} - < tools/docker/Dockerfile
+      if: steps.git-diff-docker.outputs.diff
+    - name: Push docker image
       run: |
-        docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE},${IMG_IWYU} -t ${IMG_IWYU} - < tools/iwyu/docker/Dockerfile
-    - name: Push docker images
-      run: |
-        docker push ${IMG_CORE}
-        docker push ${IMG_IWYU}
+        docker push ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }}
+      if: steps.git-diff-docker.outputs.diff
 
+  # Build the iwyu docker image
+  build-docker-iwyu:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Check if iwyu Dockerfile changed
+      uses: technote-space/get-diff-action@v4
+      id: git-diff-docker-iwyu
+      with:
+        PATTERNS: tools/iwyu/docker/Dockerfile
+
+    - name: Extract branch name
+      shell: bash
+      # Get either branch name of a push or source branch of PR, replace all '/' with '.':
+      run: >
+        if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+          echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
+        else
+          echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
+        fi
+      id: extract_branch
+
+    - name: Pull IWYU docker image
+      run: |
+        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+        docker pull --disable-content-trust ${IMG_IWYU}:${{ steps.extract_branch.outputs.branch }}
+        echo ::set-output name=status::success
+      if: steps.git-diff-docker-iwyu.outputs.diff
+      continue-on-error: true
+      id: pull-docker-iwyu
+    - name: Pull docker image for develop branch
+      run: |
+        docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
+        docker pull --disable-content-trust ${IMG_IWYU}:develop
+      if: steps.git-diff-docker-iwyu.outputs.diff != '' && steps.pull-docker-iwyu.outputs.status != 'success'
+    - name: Build iwyu docker image
+      run: >
+        docker build --cache-from=rocm/dev-ubuntu-18.04,${IMG_CORE},${IMG_IWYU} -t ${IMG_IWYU}:${{ steps.extract_branch.outputs.branch }} - < tools/iwyu/docker/Dockerfile
+      if: steps.git-diff-docker-iwyu.outputs.diff
+    - name: Push docker image
+      run: |
+        docker push ${IMG_IWYU}:${{ steps.extract_branch.outputs.branch }}
+      if: steps.git-diff-docker-iwyu.outputs.diff
 
   # Build a basic version of kotekan
   build-base:
@@ -65,9 +129,31 @@ jobs:
           ccache-base-build
           ccache-full-build
 
+    - name: Check if Dockerfile changed
+      uses: technote-space/get-diff-action@v4
+      id: git-diff-docker
+      with:
+        PATTERNS: tools/docker/Dockerfile
+
+    - name: Extract branch name for docker container
+      shell: bash
+      # Get either branch name of a push or source branch of PR, replace all '/' with '.'.
+      # If Dockerfile didn't change, use 'develop'.
+      run: >
+        if [ -n "${{ steps.git-diff-docker.outputs.diff }}" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
+          else
+            echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
+          fi
+        else
+          echo "::set-output name=branch::develop"
+        fi
+      id: extract_branch
+
     - name: Build kotekan
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CORE})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }})
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
@@ -108,9 +194,31 @@ jobs:
           ccache-full-build
           ccache-base-build
 
+    - name: Check if Dockerfile changed
+      uses: technote-space/get-diff-action@v4
+      id: git-diff-docker
+      with:
+        PATTERNS: tools/docker/Dockerfile
+
+    - name: Extract branch name for docker container
+      shell: bash
+      # Get either branch name of a push or source branch of PR, replace all '/' with '.'.
+      # If Dockerfile didn't change, use 'develop'.
+      run: >
+        if [ -n "${{ steps.git-diff-docker.outputs.diff }}" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
+          else
+            echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
+          fi
+        else
+          echo "::set-output name=branch::develop"
+        fi
+      id: extract_branch
+
     - name: Build kotekan
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CORE})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }})
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
@@ -132,17 +240,17 @@ jobs:
 
     - name: Run parallel python tests
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }})
         docker run "${OPTS[@]}" pytest -v -n auto --dist=loadfile --timeout=${PYTEST_TIMEOUT} -x -m 'not serial'
 
     - name: Run serial python tests
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }})
         docker run "${OPTS[@]}" bash -c "redis-server --daemonize yes; pytest -v -x --timeout=${PYTEST_TIMEOUT} -m serial"
 
     - name: Run boost tests
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/tests/ -e PYTHONPATH=/code/kotekan/python/ ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }})
         docker run "${OPTS[@]}" pytest -v -x --timeout=${PYTEST_TIMEOUT}
 
 
@@ -163,9 +271,31 @@ jobs:
           ccache-chime-build
           ccache-full-build
 
+    - name: Check if Dockerfile changed
+      uses: technote-space/get-diff-action@v4
+      id: git-diff-docker
+      with:
+        PATTERNS: tools/docker/Dockerfile
+
+    - name: Extract branch name for docker container
+      shell: bash
+      # Get either branch name of a push or source branch of PR, replace all '/' with '.'.
+      # If Dockerfile didn't change, use 'develop'.
+      run: >
+        if [ -n "${{ steps.git-diff-docker.outputs.diff }}" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
+          else
+            echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
+          fi
+        else
+          echo "::set-output name=branch::develop"
+        fi
+      id: extract_branch
+
     - name: Build kotekan
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CORE})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }})
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" \
@@ -201,12 +331,34 @@ jobs:
         restore-keys: |
           ccache-clang-build
 
+    - name: Check if Dockerfile changed
+      uses: technote-space/get-diff-action@v4
+      id: git-diff-docker
+      with:
+        PATTERNS: tools/docker/Dockerfile
+
+    - name: Extract branch name for docker container
+      shell: bash
+      # Get either branch name of a push or source branch of PR, replace all '/' with '.'.
+      # If Dockerfile didn't change, use 'develop'.
+      run: >
+        if [ -n "${{ steps.git-diff-docker.outputs.diff }}" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
+          else
+            echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
+          fi
+        else
+          echo "::set-output name=branch::develop"
+        fi
+      id: extract_branch
+
     - name: Build kotekan
       env:
         CC: clang
         CXX: clang++
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CORE})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }})
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" ccache -s
         docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
@@ -229,7 +381,7 @@ jobs:
 
   # Build MacOS kotekan
   build-macos:
-    runs-on: macos-latest
+    runs-on: macos-10.15
 
     steps:
     - uses: actions/checkout@v2
@@ -243,7 +395,7 @@ jobs:
 
     - name: Install ccache and libraries
       run: |
-        brew install hdf5@1.10 boost libevent ccache airspy fftw
+        brew install hdf5@1.10 boost libevent ccache airspy fftw llvm@9
 
     - name: Build h5py from source
       run: |
@@ -254,6 +406,9 @@ jobs:
     - name: Install bitshuffle
       env:
         HDF5_DIR: /usr/local/opt/hdf5@1.10/
+        LDFLAGS: -L/usr/local/opt/llvm@9/lib
+        CPPFLAGS: -I/usr/local/opt/llvm@9/include
+        CC: /usr/local/opt/llvm@9/bin/clang
       run: |
         git clone https://github.com/kiyo-masui/bitshuffle.git bitshuffle
         cd bitshuffle && git pull
@@ -305,9 +460,31 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
+    - name: Check if Dockerfile changed
+      uses: technote-space/get-diff-action@v4
+      id: git-diff-docker
+      with:
+        PATTERNS: tools/docker/Dockerfile
+
+    - name: Extract branch name for docker container
+      shell: bash
+      # Get either branch name of a push or source branch of PR, replace all '/' with '.'.
+      # If Dockerfile didn't change, use 'develop'.
+      run: >
+        if [ -n "${{ steps.git-diff-docker.outputs.diff }}" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
+          else
+            echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
+          fi
+        else
+          echo "::set-output name=branch::develop"
+        fi
+      id: extract_branch
+
     - name: Build kotekan docs
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CORE})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }})
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" \
           cmake \
@@ -322,15 +499,36 @@ jobs:
 
   iwyu:
     runs-on: ubuntu-latest
-    needs: build-docker
-    if: github.base_ref == 'master'
+    needs: build-docker-iwyu
 
     steps:
     - uses: actions/checkout@v2
 
+    - name: Check if IWYU Dockerfile changed
+      uses: technote-space/get-diff-action@v4
+      id: git-diff-docker-iwyu
+      with:
+        PATTERNS: tools/iwyu/docker/Dockerfile
+
+    - name: Extract branch name for iwyu docker container
+      shell: bash
+      # Get either branch name of a push or source branch of PR, replace all '/' with '.'.
+      # If Dockerfile didn't change, use 'develop'.
+      run: >
+        if [ -n "${{ steps.git-diff-docker-iwyu.outputs.diff }}" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
+          else
+            echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
+          fi
+        else
+          echo "::set-output name=branch::develop"
+        fi
+      id: extract_branch
+
     - name: Configure kotekan
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_IWYU})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_IWYU}:${{ steps.extract_branch.outputs.branch }})
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" \
           cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated \
@@ -350,7 +548,7 @@ jobs:
 
     - name: Run iwyu
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_IWYU})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build/ ${IMG_IWYU}:${{ steps.extract_branch.outputs.branch }})
         docker run "${OPTS[@]}" /code/kotekan/tools/iwyu/docker/iwyu.sh
 
 
@@ -361,10 +559,32 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
+    - name: Check if Dockerfile changed
+      uses: technote-space/get-diff-action@v4
+      id: git-diff-docker
+      with:
+        PATTERNS: tools/docker/Dockerfile
+
+    - name: Extract branch name for docker container
+      shell: bash
+      # Get either branch name of a push or source branch of PR, replace all '/' with '.'.
+      # If Dockerfile didn't change, use 'develop'.
+      run: >
+        if [ -n "${{ steps.git-diff-docker.outputs.diff }}" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/} | tr / .)";
+          else
+            echo "##[set-output name=branch;]$(echo ${GITHUB_HEAD_REF#refs/heads/} | tr / .)";
+          fi
+        else
+          echo "::set-output name=branch::develop"
+        fi
+      id: extract_branch
+
     - name: Run clang-format
       run: |
         mkdir -p build-check-format
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-check-format/ ${IMG_CORE})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/build-check-format/ ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }})
         docker login docker.pkg.github.com -u ${GITHUB_REPOSITORY} -p "${{ secrets.GITHUB_TOKEN }}"
         docker run "${OPTS[@]}" cmake -Wdev -Werror=dev -Wdeprecated -Werror=deprecated ..
         docker run "${OPTS[@]}" make clang-format
@@ -372,10 +592,10 @@ jobs:
 
     - name: Run black
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${IMG_CORE})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }})
         docker run "${OPTS[@]}" black --exclude docs --check .
 
     - name: Run cmakelint
       run: |
-        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${IMG_CORE})
+        OPTS=(--rm --mount type=bind,src=$(pwd),target=/code/kotekan -w /code/kotekan/ ${IMG_CORE}:${{ steps.extract_branch.outputs.branch }})
         docker run "${OPTS[@]}" tools/cmakelint.sh /code/kotekan

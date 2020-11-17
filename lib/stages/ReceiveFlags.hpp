@@ -10,7 +10,7 @@
 #include "Stage.hpp"             // for Stage
 #include "buffer.h"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "dataset.hpp"           // for dset_id_t, state_id_t
+#include "datasetManager.hpp"    // for dset_id_t, state_id_t
 #include "prometheusMetrics.hpp" // for Counter, Gauge
 #include "updateQueue.hpp"       // for updateQueue
 #include "visBuffer.hpp"         // for VisFrameView

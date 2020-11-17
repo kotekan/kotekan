@@ -13,11 +13,10 @@
 #include "datasetManager.hpp"    // for dset_id_t, state_id_t, fingerprint_t
 #include "datasetState.hpp"      // for prodState, stackState
 #include "prometheusMetrics.hpp" // for MetricFamily, Gauge, Counter
-#include "visUtil.hpp"           // for input_ctype, rstack_ctype, prod_ctype, frameID
+#include "visUtil.hpp"           // for frameID, rstack_ctype, input_ctype, prod_ctype
 
-#include <cstdint>    // for uint32_t, int8_t, int16_t
+#include <cstdint>    // for uint32_t
 #include <functional> // for function
-#include <iosfwd>     // for ostream
 #include <map>        // for map
 #include <mutex>      // for mutex
 #include <string>     // for string

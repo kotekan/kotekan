@@ -15,7 +15,7 @@
 #define FAKE_VIS_PATTERN_HPP
 
 #include "Config.hpp"         // for Config
-#include "dataset.hpp"        // for state_id_t, dset_id_t
+#include "datasetManager.hpp" // for state_id_t, dset_id_t
 #include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
 #include "kotekanLogging.hpp" // for kotekanLogging
 #include "visBuffer.hpp"      // for VisFrameView

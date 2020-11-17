@@ -2,30 +2,33 @@
 #include "VisWriter.hpp"
 
 #include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for Hash, operator<
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "SystemInterface.hpp"   // for get_username, get_hostname
+#include "SystemInterface.hpp"   // for get_hostname, get_username
 #include "buffer.h"              // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "datasetManager.hpp"    // for dset_id_t, fingerprint_t
-#include "prometheusMetrics.hpp" // for Counter, MetricFamily
-#include "restServer.hpp"        // for connectionInstance
+#include "datasetManager.hpp"    // for datasetManager, dset_id_t
+#include "datasetState.hpp"      // for metadataState, freqState, prodState
+#include "kotekanLogging.hpp"    // for FATAL_ERROR, ERROR
+#include "prometheusMetrics.hpp" // for Metrics
+#include "restServer.hpp"        // for HTTP_RESPONSE, connectionInstance, restServer
 #include "version.h"             // for get_git_commit_hash
 #include "visBuffer.hpp"         // for VisFrameView
-#include "visFile.hpp"           // for visFileBundle
-#include "visUtil.hpp"           // for movingAverage
+#include "visUtil.hpp"           // for ts_to_double, time_ctype
 
-#include <cstdint>   // for uint32_t
-#include <errno.h>   // for ENOENT, errno
-#include <future>    // for future
-#include <map>       // for map
-#include <memory>    // for shared_ptr, unique_ptr
-#include <set>       // for set
-#include <stdexcept> // for runtime_error
-#include <stdio.h>   // for size_t, remove
-#include <string>    // for string, operator+
-#include <unistd.h>  // for access, F_OK
-#include <utility>   // for pair
+#include <cxxabi.h>     // for __forced_unwind
+#include <exception>    // for exception
+#include <future>       // for async, future
+#include <map>          // for map, map<>::mapped_type
+#include <memory>       // for __shared_ptr_access, shared_ptr
+#include <stdexcept>    // for out_of_range
+#include <string>       // for string
+#include <sys/types.h>  // for uint
+#include <system_error> // for system_error
+#include <tuple>        // for get
+#include <utility>      // for pair
+#include <vector>       // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -78,7 +81,7 @@ void VisWriter::get_dataset_state(dset_id_t ds_id) {
 
     if (pstate == nullptr || mstate == nullptr || fstate == nullptr) {
         ERROR("Set to not use dataset_broker and couldn't find ancestor of dataset {}. Make "
-              "sure there is a stage upstream in the config, that the dataset states. Unexpected "
+              "sure there is a stage upstream in the config, that adds dataset states. Unexpected "
               "nullptr: ",
               ds_id);
         if (!pstate)
