@@ -1,10 +1,10 @@
 #include "visBuffer.hpp"
 
-#include "FrameView.hpp"   // for bind_span, bind_scalar, FrameView
-#include "Telescope.hpp"   // for Telescope
-#include "buffer.h"        // for Buffer, allocate_new_metadata_object
-#include "chimeMetadata.h" // for chimeMetadata, get_stream_id_from_metadata
-#include "metadata.h"      // for metadataContainer
+#include "FrameView.hpp"     // for bind_span, bind_scalar, FrameView
+#include "Telescope.hpp"     // for Telescope
+#include "buffer.h"          // for Buffer, allocate_new_metadata_object
+#include "chimeMetadata.hpp" // for chimeMetadata, get_stream_id_from_metadata
+#include "metadata.h"        // for metadataContainer
 
 #include "fmt.hpp" // for format, fmt
 

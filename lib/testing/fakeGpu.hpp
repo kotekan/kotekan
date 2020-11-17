@@ -8,10 +8,10 @@
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
-#include "Telescope.hpp"       // for freq_id_t, Telescope
+#include "Telescope.hpp"       // for freq_id_t, Telescope, stream_t
 #include "buffer.h"            // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.h"     // for stream_t
+#include "datasetManager.hpp"  // for dset_id_t
 #include "fakeGpuPattern.hpp"  // for FakeGpuPattern
 
 #include <memory>   // for unique_ptr
@@ -53,6 +53,8 @@
  *                              fakeGpuPattern.
  * @conf  drop_probability      Float. Probability that any individual frame gets
  *                              dropped. Default is zero, i.e. no frames are dropped.
+ * @conf  dataset_id            Int. Use a fixed dataset ID. Otherwise, a meaningless
+ *                              default value will be set.
  *
  * @note Look at the documentation for the test patterns to see any addtional
  *       configuration they require.
@@ -83,6 +85,7 @@ private:
     bool wait;
     int32_t num_frames;
     float drop_probability;
+    dset_id_t dataset_id;
 
     // Pattern to use for filling
     std::unique_ptr<FakeGpuPattern> pattern;

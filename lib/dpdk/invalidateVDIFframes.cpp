@@ -1,8 +1,8 @@
 #include "invalidateVDIFframes.hpp"
 
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"         // for Buffer, mark_frame_empty, mark_frame_full, register_consumer
-#include "chimeMetadata.h"  // for atomic_add_lost_timesamples
+#include "StageFactory.hpp"  // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
+#include "buffer.h"          // for Buffer, mark_frame_empty, mark_frame_full, register_consumer
+#include "chimeMetadata.hpp" // for atomic_add_lost_timesamples
 #include "prometheusMetrics.hpp"
 #include "vdif_functions.h" // for VDIFHeader
 
