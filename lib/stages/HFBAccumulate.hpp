@@ -133,11 +133,11 @@ private:
 
     // dataset ID for the base states
     dset_id_t base_dataset_id;
-    
+
     // The base states (freq, beam, sub-freq, meta)
     std::vector<state_id_t> base_dataset_states;
 
-    datasetManager& dm = datasetManager::instance(); 
+    datasetManager& dm = datasetManager::instance();
 };
 
 #endif

@@ -209,8 +209,7 @@ void HFBAccumulate::main_thread() {
 
         // Create new metadata for output frame
         allocate_new_metadata_object(out_buf, out_frame_id);
-        HFBFrameView::set_metadata(out_buf, out_frame_id, _num_frb_total_beams,
-                                   _factor_upchan);
+        HFBFrameView::set_metadata(out_buf, out_frame_id, _num_frb_total_beams, _factor_upchan);
 
         auto out_frame = HFBFrameView(out_buf, out_frame_id);
 
