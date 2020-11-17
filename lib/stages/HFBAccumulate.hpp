@@ -7,16 +7,16 @@
 #ifndef HFB_ACCUMULATE_STAGE
 #define HFB_ACCUMULATE_STAGE
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "buffer.h"             // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "datasetManager.hpp"   // for datasetManager, state_id_t, dset_id_t
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.h"            // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for datasetManager, state_id_t, dset_id_t
 
-#include <stddef.h>             // for size_t
-#include <stdint.h>             // for uint32_t, int32_t, int64_t
-#include <string>               // for string
-#include <vector>               // for vector
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint32_t, int32_t, int64_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class HFBAccumulate
@@ -39,6 +39,8 @@
  * @par Buffers
  * @buffer hfb_input_buffer Kotekan buffer feeding data from any GPU.
  *     @buffer_format Array of @c floats
+ * @buffer cls_buffer Kotekan buffer that contains the compressed lost samples.
+ *     @buffer_format Array of @c uint32_t
  * @buffer hfb_out_buf Kotekan buffer that will be populated with integrated data.
  *     @buffer_format Array of @c floats
  *
