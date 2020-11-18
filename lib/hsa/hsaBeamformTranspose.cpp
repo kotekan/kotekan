@@ -58,13 +58,8 @@ hsa_signal_t hsaBeamformTranspose::execute(int gpu_frame_id, hsa_signal_t preced
     params.num_dims = 2;
 
     params.private_segment_size = 0;
+    // TILE_DIM * (TILE_DIM + 1) * 2 * sizeof(fp16), the +1 is to avoid LDS bank conflicts
     params.group_segment_size = 33 * 32 * 4;
-
-    params.workgroup_size_x = 32;
-    params.workgroup_size_y = 2;
-    params.grid_size_x = _num_elements;
-    params.grid_size_y = _samples_per_data_set / 16;
-    params.group_segment_size = 0;
 
     signals[gpu_frame_id] = enqueue_kernel(params, gpu_frame_id);
 
