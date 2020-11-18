@@ -180,6 +180,7 @@ void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutMana
         // Latency is *key* here. We want to call get_data within 100ms
         // of L4 sending the trigger.
 
+        INFO("Get next waiting request");
         auto next_request = mgr.get_next_waiting_request();
 
         if (next_request) {
@@ -225,7 +226,8 @@ void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutMana
                 // is available in the current buffers.
             }
 
-            DEBUG("Ready to copy samples into the baseband readout buffer");
+            INFO("Ready to copy samples for event {:d} and freq {:d} into the readout buffer",
+                 event_id, freq_id);
 
             // Copying the data from the ring buffer is done in *this* thread. Writing the data
             // out is done by another thread. This keeps the number of threads that can lock out
@@ -264,12 +266,15 @@ void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutMana
                             throw std::runtime_error(
                                 "Unhandled basebandDumpData::Status case in a switch statement.");
                     }
+                    INFO("  {}", dump_status.reason);
                 } else {
                     INFO("Captured {:d} samples for event {:d} and freq {:d}.",
                          data.data_length_fpga, data.event_id, data.freq_id);
 
                     // we are done copying the samples into the readout buffer
                     mgr.ready({dump_status, data});
+
+                    INFO("Readout done for event {:d} and freq {:d}.", data.event_id, data.freq_id);
                 }
             }
         }
@@ -279,12 +284,14 @@ void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutMana
 void basebandReadout::writeout_thread(basebandReadoutManager& mgr) {
 
     while (!stop_thread) {
+        INFO("Get next ready request");
         auto next_request = mgr.get_next_ready_request();
         if (!next_request)
             continue;
 
         basebandDumpStatus& dump_status = std::get<0>(std::get<0>(*next_request));
         basebandDumpData dump_data = std::get<1>(std::get<0>(*next_request));
+        INFO("Received ready request {:d} and freq {:d}.", dump_data.event_id, dump_data.freq_id);
         // Sanity check
         if (dump_status.request.event_id != dump_data.event_id) {
             ERROR("Mismatched event ids: {:d} - {:d}", dump_status.request.event_id,
@@ -321,7 +328,11 @@ void basebandReadout::writeout_thread(basebandReadoutManager& mgr) {
 
         // write out the data
         try {
+            INFO("Ready to write the samples for event {:d} and freq {:d} to disk.",
+                 dump_data.event_id, dump_data.freq_id);
             write_dump(dump_data, dump_status, request_mtx);
+            INFO("Writeout done for event {:d} and freq {:d}.", dump_data.event_id,
+                 dump_data.freq_id);
         } catch (HighFive::FileException& e) {
             INFO("Writing Baseband dump file failed with hdf5 error.");
             std::lock_guard<std::mutex> lock(request_mtx);
