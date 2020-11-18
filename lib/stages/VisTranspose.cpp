@@ -1,4 +1,4 @@
-#include "visTranspose.hpp"
+#include "VisTranspose.hpp"
 
 #include "Config.hpp"            // for Config
 #include "Hash.hpp"              // for Hash, operator!=
@@ -42,9 +42,9 @@ using kotekan::Config;
 using kotekan::Stage;
 using kotekan::prometheus::Metrics;
 
-REGISTER_KOTEKAN_STAGE(visTranspose);
+REGISTER_KOTEKAN_STAGE(VisTranspose);
 
-visTranspose::visTranspose(Config& config, const std::string& unique_name,
+VisTranspose::VisTranspose(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Transpose(config, unique_name, buffer_container) {
 
@@ -55,14 +55,14 @@ visTranspose::visTranspose(Config& config, const std::string& unique_name,
                                     "(has "
                                     + std::to_string(chunk.size()) + ").");
     if (chunk[0] < 1 || chunk[1] < 1 || chunk[2] < 1)
-        throw std::invalid_argument("visTranspose: Config: Chunk size needs "
+        throw std::invalid_argument("VisTranspose: Config: Chunk size needs "
                                     "to be equal to or greater than one.");
     chunk_t = chunk[2];
     chunk_f = chunk[0];
 
 }
 
-bool visTranspose::get_dataset_state(dset_id_t ds_id) {
+bool VisTranspose::get_dataset_state(dset_id_t ds_id) {
 
     datasetManager& dm = datasetManager::instance();
 
@@ -191,14 +191,14 @@ bool visTranspose::get_dataset_state(dset_id_t ds_id) {
     return true;
 }
 
-std::tuple<size_t, uint64_t, dset_id_t> visTranspose::get_frame_data() {
+std::tuple<size_t, uint64_t, dset_id_t> VisTranspose::get_frame_data() {
 
   auto frame = VisFrameView(in_buf, frame_id);
   return std::make_tuple(frame.calculate_frame_size(num_input, num_prod, num_ev),
                          frame.fpga_seq_total, frame.dataset_id);
 }
 
-void visTranspose::write_chunk() {
+void VisTranspose::write_chunk() {
     DEBUG("Writing at freq {:d} and time {:d}", f_ind, t_ind);
     DEBUG("Writing block of {:d} freqs and {:d} times", write_f, write_t);
 
@@ -228,7 +228,7 @@ void visTranspose::write_chunk() {
 // WARNING: This order must be consistent with how VisRawReader
 //      implements chunked reads. The mechanism for avoiding
 //      overwriting flags also relies on this ordering.
-void visTranspose::increment_chunk() {
+void VisTranspose::increment_chunk() {
     // Figure out where the next chunk starts
     f_ind = f_edge ? 0 : (f_ind + chunk_f) % num_freq;
     if (f_ind == 0) {
@@ -251,7 +251,7 @@ void visTranspose::increment_chunk() {
     write_t = t_edge ? num_time - t_ind : chunk_t;
 }
 
-void visTranspose::create_hdf5_file() {
+void VisTranspose::create_hdf5_file() {
   // Create HDF5 file
   if (stack.size() > 0) {
     file = std::unique_ptr<visFileArchive>(
@@ -264,7 +264,7 @@ void visTranspose::create_hdf5_file() {
   }
 }
 
-void visTranspose::copy_frame_data(uint32_t freq_index, uint32_t time_index) {
+void VisTranspose::copy_frame_data(uint32_t freq_index, uint32_t time_index) {
 
   auto frame = VisFrameView(in_buf, frame_id);
 
@@ -293,7 +293,7 @@ void visTranspose::copy_frame_data(uint32_t freq_index, uint32_t time_index) {
                num_input);
 }
 
-void visTranspose::copy_flags(uint32_t time_index) {
+void VisTranspose::copy_flags(uint32_t time_index) {
 
   auto frame = VisFrameView(in_buf, frame_id);
 

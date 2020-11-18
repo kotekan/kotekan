@@ -33,12 +33,12 @@
  * This class inherits from the RawReader base class and reads raw visibility data
  * @author Tristan Pinsonneault-Marotte, Rick Nitsche
  */
-class visTranspose : public Transpose {
+class VisTranspose : public Transpose {
 public:
     /// Constructor; loads parameters from config
-    visTranspose(kotekan::Config& config, const std::string& unique_name,
+    VisTranspose(kotekan::Config& config, const std::string& unique_name,
                  kotekan::bufferContainer& buffer_container);
-    ~visTranspose() = default;
+    ~VisTranspose() = default;
 
 protected:
     /// Request dataset states from the datasetManager and prepare all metadata
