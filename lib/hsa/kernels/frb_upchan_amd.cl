@@ -157,8 +157,8 @@ __kernel void frb_upchan_amd (__global half2 *data, __global float *results_arra
                     B * 128 + \
                     (l>>25); //7b reverse
         // JSW TODO: Bandpass filter to be applied in the post-processing stage
-        hfb_output_array[addr   ] = pow[0] / 6.f;// / HFB_BP[(l+8)%16]; //lower 64 freqs
-        hfb_output_array[addr+64] = pow[1] / 6.f;// / HFB_BP[(l+8)%16]; //upper 64 freqs
+        hfb_output_array[addr+64] = pow[0] / 6.f;// / HFB_BP[(l+8)%16]; //lower 64 freqs
+        hfb_output_array[addr   ] = pow[1] / 6.f;// / HFB_BP[(l+8)%16]; //upper 64 freqs
     }
 
     //sum 8 adjacent => separated by 16, first indexed as irev(0..15)

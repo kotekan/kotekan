@@ -20,5 +20,5 @@ __kernel void transpose(__global float *input, __global float *output) {
 
     #pragma unroll
     for (int j = 0; j < TILE_DIM; j+= BLOCK_ROWS)
-        output[(y+j)*(ntimes+32) + x] = tile[get_local_id(0)][get_local_id(1)+j];
+        output[(y+j)*(ntimes+64) + x] = tile[get_local_id(0)][get_local_id(1)+j];
 }
