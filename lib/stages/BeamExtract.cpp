@@ -80,7 +80,8 @@ void BeamExtract::main_thread() {
         out_metadata->dec = in_metadata->beam_coord.dec[_extract_beam];
         out_metadata->scaling = in_metadata->beam_coord.scaling[_extract_beam];
 
-        INFO("Extracted beam: {:d}, fpga_number: {:d}", _extract_beam, out_metadata->fpga_seq_start);
+        DEBUG2("Extracted beam: {:d}, fpga_number: {:d}", _extract_beam, out_metadata->fpga_seq_start);
+        DEBUG2("Some data values: {:d},{:d}", out_frame[0] & 0x0F,  (out_frame[0] & 0xF0) >> 4);
 
         mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id);
         in_frame_id++;

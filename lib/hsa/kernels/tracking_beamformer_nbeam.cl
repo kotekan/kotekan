@@ -83,8 +83,8 @@ __kernel void trackingbf_float( __global uint *data,
                 sum.RE = (sum.RE > 15) ? 15 : sum.RE;
                 sum.RE = (sum.RE < 0) ? 0 : sum.RE;
 
-                sum.RE = (sum.IM > 15) ? 15 : sum.IM;
-                sum.RE = (sum.IM < 0) ? 0 : sum.IM;
+                sum.IM = (sum.IM > 15) ? 15 : sum.IM;
+                sum.IM = (sum.IM < 0) ? 0 : sum.IM;
 
                 output[(t * nsamp / TS + get_group_id(2)) * get_global_size(1) * 2 + b * 2
                        + get_group_id(0)] = (((int)sum.RE << 4) & 0xF0)

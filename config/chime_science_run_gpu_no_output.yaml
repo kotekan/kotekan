@@ -1383,9 +1383,13 @@ pulsar:
       - 10.15.50.18
       - 10.16.50.19
 
+##############################
+#### Extra tracking beams ####
+##############################
+
 beam_metadata_pool:
   kotekan_metadata_pool: BeamMetadata
-  num_metadata_objects: (6 * 4 + 16) * 2
+  num_metadata_objects: (6 * 4 + 16) * 4
 
 extra_tracking_buffers:
   metadata_pool: beam_metadata_pool
@@ -1413,7 +1417,6 @@ extra_tracking_buffers:
   beam_buffer_11_merged:
     kotekan_buffer: standard
     num_frames: 16
-
 
 extra_tracking_beams:
   cpu_affinity: [5,11]
@@ -1450,7 +1453,7 @@ extra_tracking_beams:
       # Moose: 10.1.50.10
       server_ip: 10.1.50.13
       server_port: 11030
-      log_level: warn
+      log_level: error
       reconnect_time: 20
   beam_extract_11:
     extract_beam: 11
@@ -1485,7 +1488,7 @@ extra_tracking_beams:
       # recv1: 10.1.50.11
       server_ip: 10.1.50.13
       server_port: 11031
-      log_level: warn
+      log_level: error
       reconnect_time: 20
 
 #### N2 GPU Post processing ####
