@@ -2,6 +2,7 @@
 #include "BeamMetadata.hpp"
 #include "chimeMetadata.hpp"
 #include "buffer.h"
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "visUtil.hpp"
 
 using kotekan::bufferContainer;
@@ -34,6 +35,8 @@ BeamExtract::BeamExtract(Config& config_, const std::string& unique_name,
         throw std::runtime_error("BeamExtract: Number of polarizations must be 2");
 }
 
+BeamExtract::~BeamExtract() {}
+
 void BeamExtract::main_thread() {
 
     frameID in_frame_id(in_buf);
@@ -54,10 +57,10 @@ void BeamExtract::main_thread() {
             break;
 
         // Copy the single beam we want to the output buffer
-        for (int time = 0; time < _samples_per_data_set; ++time) {
+        for (uint32_t time_step = 0; time_step < _samples_per_data_set; ++time_step) {
 
-            uint32_t out_index = time * num_pol;
-            uint32_t in_index = time * _num_beams * num_pol + _extract_beam * 2;
+            uint32_t out_index = time_step * num_pol;
+            uint32_t in_index = time_step * _num_beams * num_pol + _extract_beam * num_pol;
 
             // Copy both polarizations as 4+4-bit complex numbers.
             out_frame[out_index] = in_frame[in_index];
@@ -67,8 +70,8 @@ void BeamExtract::main_thread() {
         // Copy over the relevant metadata
         allocate_new_metadata_object(out_buf, out_frame_id);
 
-        chimeMetadata * in_metadata = (chimeMetadata *)get_metadata(in_frame, in_frame_id);
-        BeamMetadata * out_metadata = (BeamMetadata *)get_metadata(out_frame_id, out_frame_id);
+        chimeMetadata * in_metadata = (chimeMetadata *)get_metadata(in_buf, in_frame_id);
+        BeamMetadata * out_metadata = (BeamMetadata *)get_metadata(out_buf, out_frame_id);
 
         out_metadata->ctime = in_metadata->gps_time;
         out_metadata->fpga_seq_start = in_metadata->fpga_seq_num;
@@ -76,6 +79,8 @@ void BeamExtract::main_thread() {
         out_metadata->ra = in_metadata->beam_coord.ra[_extract_beam];
         out_metadata->dec = in_metadata->beam_coord.dec[_extract_beam];
         out_metadata->scaling = in_metadata->beam_coord.scaling[_extract_beam];
+
+        INFO("Extracted beam: {:d}, fpga_number: {:d}", _extract_beam, out_metadata->fpga_seq_start);
 
         mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id);
         in_frame_id++;
