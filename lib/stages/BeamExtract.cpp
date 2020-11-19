@@ -76,6 +76,12 @@ void BeamExtract::main_thread() {
         out_metadata->ctime = in_metadata->gps_time;
         out_metadata->fpga_seq_start = in_metadata->fpga_seq_num;
         out_metadata->stream_id = get_stream_id(in_buf, in_frame_id);
+        // Copy the base dataset ID from the GPU data.
+        // @TODO we will likely want to add a unique dataset ID state
+        // for each beam for systems that like to track things with the dataset ID
+        // however at the moment all that data should be contained in this metadata
+        // plus the root dataset ID.
+        out_metadata->dataset_id = in_metadata->dataset_id;
         out_metadata->ra = in_metadata->beam_coord.ra[_extract_beam];
         out_metadata->dec = in_metadata->beam_coord.dec[_extract_beam];
         out_metadata->scaling = in_metadata->beam_coord.scaling[_extract_beam];
