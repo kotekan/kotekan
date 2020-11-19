@@ -82,14 +82,14 @@ hsaTrackingUpdatePhase::hsaTrackingUpdatePhase(Config& config, const std::string
     phase_frame_len = _num_elements * _num_beams * 2 * sizeof(float);
     scaling_frame_len = _num_beams * sizeof(float);
     // Two alternating banks
-    host_phase_0 = (float*)hsa_host_malloc(phase_frame_len + scaling_frame_len,
-                                           device.get_gpu_numa_node());
+    host_phase_0 =
+        (float*)hsa_host_malloc(phase_frame_len + scaling_frame_len, device.get_gpu_numa_node());
     if (host_phase_0 == nullptr)
         throw std::runtime_error("Could not allocate memory in hsaTrackingUpdatePhase");
     host_scaling_0 = host_phase_0 + _num_elements * _num_beams * 2;
 
-    host_phase_1 = (float*)hsa_host_malloc(phase_frame_len + scaling_frame_len,
-                                           device.get_gpu_numa_node());
+    host_phase_1 =
+        (float*)hsa_host_malloc(phase_frame_len + scaling_frame_len, device.get_gpu_numa_node());
     if (host_phase_1 == nullptr)
         throw std::runtime_error("Could not allocate memory in hsaTrackingUpdatePhase");
     host_scaling_1 = host_phase_0 + _num_elements * _num_beams * 2;
@@ -166,7 +166,7 @@ int hsaTrackingUpdatePhase::wait_on_precondition(int gpu_frame_id) {
     return 0;
 }
 
-void hsaTrackingUpdatePhase::calculate_phase(const beamCoord &beam_coord, timespec time_now,
+void hsaTrackingUpdatePhase::calculate_phase(const beamCoord& beam_coord, timespec time_now,
                                              float freq_now, float* gains, float* output) {
 
     float FREQ = freq_now;
@@ -236,7 +236,7 @@ void hsaTrackingUpdatePhase::calculate_phase(const beamCoord &beam_coord, timesp
     }
 }
 
-void hsaTrackingUpdatePhase::copy_scaling(const beamCoord &beam_coord, float* scaling) {
+void hsaTrackingUpdatePhase::copy_scaling(const beamCoord& beam_coord, float* scaling) {
     for (int i = 0; i < _num_beams; ++i) {
         // In the case that we set scaling to one, we don't want to add the extra factor of
         // 0.5 to the scaling factor, since in the case of scaling == 1, we want no scaling at all.
@@ -306,20 +306,19 @@ hsa_signal_t hsaTrackingUpdatePhase::execute(int gpu_frame_id, hsa_signal_t prec
 
     // Get the gpu memory pointer. i will need multiple frame through the use of get_gpu_mem_array,
     // because while it has been sent away for async copy, the next update might be happening.
-    void* gpu_memory_frame =
-        device.get_gpu_memory_array("beamform_phase", gpu_frame_id,
-                                    phase_frame_len + scaling_frame_len);
+    void* gpu_memory_frame = device.get_gpu_memory_array("beamform_phase", gpu_frame_id,
+                                                         phase_frame_len + scaling_frame_len);
 
     if (bankID[gpu_frame_id] == 0) {
         device.async_copy_host_to_gpu(gpu_memory_frame, (void*)host_phase_0,
-                                      phase_frame_len + scaling_frame_len,
-                                      precede_signal, signals[gpu_frame_id]);
+                                      phase_frame_len + scaling_frame_len, precede_signal,
+                                      signals[gpu_frame_id]);
         bank_use_0 = bank_use_0 + 1;
     }
     if (bankID[gpu_frame_id] == 1) {
         device.async_copy_host_to_gpu(gpu_memory_frame, (void*)host_phase_1,
-                                      phase_frame_len + scaling_frame_len,
-                                      precede_signal, signals[gpu_frame_id]);
+                                      phase_frame_len + scaling_frame_len, precede_signal,
+                                      signals[gpu_frame_id]);
         bank_use_1 = bank_use_1 + 1;
     }
     return signals[gpu_frame_id];

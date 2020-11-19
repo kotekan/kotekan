@@ -76,11 +76,11 @@ public:
 
     /// Figure our LST at this frame and the Alt-Az of the 10 sources, then calculate phase delays
     /// at each input
-    void calculate_phase(const beamCoord &beam_coord, timespec time_now, float freq_now,
+    void calculate_phase(const beamCoord& beam_coord, timespec time_now, float freq_now,
                          float* gain, float* output);
 
     /// Save the beam scaling values to one of the scaling arrays
-    void copy_scaling(const beamCoord &beam_coord, float* scaling);
+    void copy_scaling(const beamCoord& beam_coord, float* scaling);
 
     /// Load gain, update phases every second by alternating the use of 2 banks.
     hsa_signal_t execute(int gpu_frame_id, hsa_signal_t precede_signal) override;

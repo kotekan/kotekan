@@ -1,9 +1,9 @@
 #include "metadataFactory.hpp"
 
+#include "BeamMetadata.hpp"   // for BeamMetadata
 #include "Config.hpp"         // for Config
 #include "HFBMetadata.hpp"    // for HFBMetadata
 #include "chimeMetadata.hpp"  // for chimeMetadata
-#include "BeamMetadata.hpp"   // for BeamMetadata
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.h"         // for create_metadata_pool
 #include "visBuffer.hpp"      // for VisMetadata

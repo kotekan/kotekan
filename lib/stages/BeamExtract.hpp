@@ -34,7 +34,7 @@
 class BeamExtract : public kotekan::Stage {
 public:
     BeamExtract(kotekan::Config& config, const std::string& unique_name,
-            kotekan::bufferContainer& buffer_container);
+                kotekan::bufferContainer& buffer_container);
     ~BeamExtract();
     void main_thread() override;
 

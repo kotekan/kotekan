@@ -64,7 +64,6 @@ hsa_signal_t hsaTrackingBeamform::execute(int gpu_frame_id, hsa_signal_t precede
         device.get_gpu_memory_array("bf_tracking_output", gpu_frame_id, output_frame_len);
 
 
-
     // Allocate the kernel argument buffer from the correct region.
     memcpy(kernel_args[gpu_frame_id], &args, sizeof(args));
 

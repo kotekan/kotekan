@@ -1351,7 +1351,8 @@ pulsar:
   timesamples_per_pulsar_packet: 625
   udp_pulsar_packet_size: 5032
   num_packet_per_stream: 80
-  num_stream: num_beams
+  num_pulsar_beams: 10
+  num_stream: 10
   cpu_affinity: [5,11]
   pulsar_output_buffer:
     num_frames: buffer_depth + 4

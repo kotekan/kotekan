@@ -3,9 +3,9 @@
 
 #include "Telescope.hpp"
 #include "buffer.h"
+#include "chimeMetadata.hpp"
 #include "dataset.hpp" // for dset_id_t
 #include "metadata.h"
-#include "chimeMetadata.hpp"
 
 struct BeamMetadata {
     /// The ICEBoard sequence number

@@ -1,8 +1,9 @@
 #include "BeamExtract.hpp"
+
 #include "BeamMetadata.hpp"
-#include "chimeMetadata.hpp"
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
 #include "buffer.h"
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "chimeMetadata.hpp"
 #include "visUtil.hpp"
 
 using kotekan::bufferContainer;
@@ -12,9 +13,8 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(BeamExtract);
 
 BeamExtract::BeamExtract(Config& config_, const std::string& unique_name,
-                                     bufferContainer& buffer_container) :
-    Stage(config_, unique_name, buffer_container,
-          std::bind(&BeamExtract::main_thread, this)) {
+                         bufferContainer& buffer_container) :
+    Stage(config_, unique_name, buffer_container, std::bind(&BeamExtract::main_thread, this)) {
 
     in_buf = get_buffer("in_buf");
     register_consumer(in_buf, unique_name.c_str());
@@ -46,7 +46,7 @@ void BeamExtract::main_thread() {
 
     const uint32_t num_pol = 2;
 
-    while(!stop_thread) {
+    while (!stop_thread) {
 
         in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
         if (in_frame == nullptr)
@@ -70,8 +70,8 @@ void BeamExtract::main_thread() {
         // Copy over the relevant metadata
         allocate_new_metadata_object(out_buf, out_frame_id);
 
-        chimeMetadata * in_metadata = (chimeMetadata *)get_metadata(in_buf, in_frame_id);
-        BeamMetadata * out_metadata = (BeamMetadata *)get_metadata(out_buf, out_frame_id);
+        chimeMetadata* in_metadata = (chimeMetadata*)get_metadata(in_buf, in_frame_id);
+        BeamMetadata* out_metadata = (BeamMetadata*)get_metadata(out_buf, out_frame_id);
 
         out_metadata->ctime = in_metadata->gps_time;
         out_metadata->fpga_seq_start = in_metadata->fpga_seq_num;
@@ -80,8 +80,9 @@ void BeamExtract::main_thread() {
         out_metadata->dec = in_metadata->beam_coord.dec[_extract_beam];
         out_metadata->scaling = in_metadata->beam_coord.scaling[_extract_beam];
 
-        DEBUG2("Extracted beam: {:d}, fpga_number: {:d}", _extract_beam, out_metadata->fpga_seq_start);
-        DEBUG2("Some data values: {:d},{:d}", out_frame[0] & 0x0F,  (out_frame[0] & 0xF0) >> 4);
+        DEBUG2("Extracted beam: {:d}, fpga_number: {:d}", _extract_beam,
+               out_metadata->fpga_seq_start);
+        DEBUG2("Some data values: {:d},{:d}", out_frame[0] & 0x0F, (out_frame[0] & 0xF0) >> 4);
 
         mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id);
         in_frame_id++;
