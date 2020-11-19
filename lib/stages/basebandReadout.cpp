@@ -242,13 +242,15 @@ void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutMana
                             throw std::runtime_error(
                                 "Unhandled basebandDumpData::Status case in a switch statement.");
                     }
-                } else {
-                    INFO("Captured {:d} samples for event {:d} and freq {:d}.",
-                         data.data_length_fpga, data.event_id, data.freq_id);
-
-                    // we are done copying the samples into the readout buffer
-                    mgr.ready({dump_status, data});
                 }
+            }
+
+            if (data.status == basebandDumpData::Status::Ok) {
+                INFO("Captured {:d} samples for event {:d} and freq {:d}.", data.data_length_fpga,
+                     data.event_id, data.freq_id);
+
+                // we are done copying the samples into the readout buffer
+                mgr.ready({dump_status, data});
             }
         }
     }
