@@ -41,8 +41,6 @@
 #include <memory>                   // for unique_ptr, make_shared, shared_ptr, make_unique
 #include <regex>                    // for match_results<>::_Base_type
 #include <stdexcept>                // for runtime_error
-#include <sys/stat.h>               // for stat, S_IFDIR
-#include <sys/time.h>               // for timeval, timeradd
 #include <thread>                   // for thread, sleep_for
 #include <time.h>                   // for timespec
 #include <tuple>                    // for get
@@ -186,34 +184,14 @@ void basebandReadout::readout_thread(const uint32_t freq_id, basebandReadoutMana
             basebandDumpStatus& dump_status = std::get<0>(*next_request);
             std::mutex& request_mtx = std::get<1>(*next_request);
 
-            // This should be safe even without a lock, as there is nothing else
-            // yet that can change the dump_status object
+            // Reading the request parameters should be safe even without a
+            // lock, as they are read-only once received.
             const basebandRequest request = dump_status.request;
             // std::time_t tt = std::chrono::system_clock::to_time_t(request.received);
             const uint64_t event_id = request.event_id;
             INFO("Received baseband dump request for event {:d}: {:d} samples starting at count "
                  "{:d}. (next_frame: {:d})",
                  event_id, request.length_fpga, request.start_fpga, next_frame);
-
-            // Checks if the destination directory exists, and if it doesn't, stop processing the
-            // request with an error before trying to read out the samples.
-            //
-            // TODO: once API manager is a Stage, this would naturally belong in REST request
-            // callback
-            struct stat path_status;
-            int stat_rc = stat((_base_dir + request.file_path).c_str(), &path_status);
-            if (!(stat_rc == 0 && path_status.st_mode & S_IFDIR)) {
-                WARN("Baseband destination path {} for request {:d} is not valid",
-                     request.file_path, event_id);
-                std::lock_guard<std::mutex> lock(request_mtx);
-                dump_status.finished = dump_status.started =
-                    std::make_shared<std::chrono::system_clock::time_point>(
-                        std::chrono::system_clock::now());
-                dump_status.state = basebandDumpStatus::State::ERROR;
-                dump_status.reason = "Destination does not exist or is not a directory: "
-                                     + _base_dir + request.file_path;
-                continue;
-            }
 
             {
                 std::lock_guard<std::mutex> lock(request_mtx);
