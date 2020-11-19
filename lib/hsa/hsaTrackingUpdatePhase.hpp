@@ -91,7 +91,7 @@ public:
     bool tracking_grab_callback(nlohmann::json& json, const uint8_t beamID);
 
 private:
-    /// Length of array of phases in bytes, should be 2048 x 10 x 2 for complex
+    /// Length of array of phases in bytes, should be 2048 x _num_beams x 2 for complex
     int32_t phase_frame_len;
     /// Length of the array of scaling values in bytes.
     int32_t scaling_frame_len;
@@ -107,12 +107,12 @@ private:
     struct Buffer* gain_buf;
     int32_t gain_len;
     int32_t gain_buf_id;
-    /// Array of gains, float size of 2048*2*10
+    /// Array of gains, float size of 2048 * 2 * _num_beams
     float* host_gain;
 
     /// Number of elements, should be 2048
     uint32_t _num_elements;
-    /// Number of beams, should be 10
+    /// Number of beams
     int16_t _num_beams;
 
     /// Metadata buffer ID

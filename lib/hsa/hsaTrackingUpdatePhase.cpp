@@ -92,7 +92,7 @@ hsaTrackingUpdatePhase::hsaTrackingUpdatePhase(Config& config, const std::string
         (float*)hsa_host_malloc(phase_frame_len + scaling_frame_len, device.get_gpu_numa_node());
     if (host_phase_1 == nullptr)
         throw std::runtime_error("Could not allocate memory in hsaTrackingUpdatePhase");
-    host_scaling_1 = host_phase_0 + _num_elements * _num_beams * 2;
+    host_scaling_1 = host_phase_1 + _num_elements * _num_beams * 2;
 
     int index = 0;
     for (uint b = 0; b < _num_beams * _num_elements; b++) {

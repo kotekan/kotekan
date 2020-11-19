@@ -90,9 +90,7 @@ void BeamExtract::main_thread() {
                out_metadata->fpga_seq_start);
         DEBUG2("Some data values: {:d},{:d}", out_frame[0] & 0x0F, (out_frame[0] & 0xF0) >> 4);
 
-        mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id);
-        in_frame_id++;
-        mark_frame_full(out_buf, unique_name.c_str(), out_frame_id);
-        out_frame_id++;
+        mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id++);
+        mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
     }
 }
