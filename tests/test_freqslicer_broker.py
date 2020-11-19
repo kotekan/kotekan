@@ -64,7 +64,7 @@ def subset_data(tmpdir_factory):
 
         data_gen = dump_buffer_gen.load()
 
-        ### freqSubset ###
+        ### VisFreqSubset ###
         tmpdir = tmpdir_factory.mktemp("freqsub_broker")
 
         ds_id = data_gen[0].metadata.dataset_id
@@ -80,7 +80,7 @@ def subset_data(tmpdir_factory):
         dump_buffer_subset = runner.DumpVisBuffer(str(tmpdir))
 
         test = runner.KotekanStageTester(
-            "freqSubset", {}, fakevis_buffer_subset, dump_buffer_subset, params
+            "VisFreqSubset", {}, fakevis_buffer_subset, dump_buffer_subset, params
         )
 
         test.run()
@@ -183,7 +183,7 @@ def test_subset_broker(subset_data):
     data_write_lower = subset_data[4]
     data_write_higher = subset_data[5]
 
-    # basic checks on the data dumped from fakeVis and freqSubset
+    # basic checks on the data dumped from fakeVis and VisFreqSubset
     subset_lower = [x for x in params["subset_list"] if x < 512]
     subset_higher = [x for x in params["subset_list"] if x >= 512]
 

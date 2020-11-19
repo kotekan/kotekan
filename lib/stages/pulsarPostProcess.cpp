@@ -269,7 +269,7 @@ void pulsarPostProcess::main_thread() {
                              beam_coord, thread_ids);
             }
 
-
+            // now store samples into output buffer.
             for (uint i = current_input_location; i < _samples_per_data_set; ++i) {
                 if (in_frame_location == _timesamples_per_pulsar_packet) { // last sample
                     in_frame_location = 0;
@@ -291,9 +291,9 @@ void pulsarPostProcess::main_thread() {
                 }     // end if last sample
 
                 unsigned char* out_buf = (unsigned char*)out_frame;
-                for (uint32_t thread_id = 0; thread_id < _num_gpus;
-                     ++thread_id) { // loop the 4 GPUs (input)
+                for (uint32_t thread_id = 0; thread_id < _num_gpus; ++thread_id) {
                     uint8_t* in_buf_data = in_frame[thread_id];
+
                     for (uint32_t psr = 0; psr < _num_pulsar_beams; ++psr) { // loop psr
                         for (uint32_t p = 0; p < _num_pol; ++p) {
                             uint32_t out_index = 0;
@@ -307,15 +307,17 @@ void pulsarPostProcess::main_thread() {
                             } else if (_timesamples_per_pulsar_packet == 625) {
                                 // beam->packets->[freq-time-pol]
                                 out_index =
-                                    // Beam
+                                    // beam
                                     psr * _udp_pulsar_packet_size * _num_packet_per_stream
-                                    // Packet
+                                    // packet
                                     + frame * _udp_pulsar_packet_size
-                                    // Frequency
+                                    // freq
                                     + thread_id * _timesamples_per_pulsar_packet * _num_pol
-                                    // Time
-                                    + in_frame_location * _num_pol + p
-                                    // Header offset
+                                    // time
+                                    + in_frame_location * _num_pol
+                                    // pol
+                                    + p
+                                    // offset for packet header
                                     + udp_pulsar_header_size;
                             } else
                                 throw std::runtime_error("Unknown timesamples per VDIF packet.");
@@ -324,9 +326,9 @@ void pulsarPostProcess::main_thread() {
                                 in_buf_data[i * _num_beams * _num_pol + psr * _num_pol + p];
                         } // end loop pol
                     }     // end loop psr
-                }         // end loop 4 GPUs
+                }         // end loop freq
                 in_frame_location++;
-            } // end looping i
+            } // end loop time
             current_input_location = 0;
         } // end if not start up
 

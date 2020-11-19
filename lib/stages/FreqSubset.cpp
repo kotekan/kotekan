@@ -1,15 +1,13 @@
-#include "freqSubset.hpp"
+#include "FreqSubset.hpp"
 
 #include "Config.hpp"          // for Config
 #include "Hash.hpp"            // for operator<
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"            // for allocate_new_metadata_object, mark_frame_empty, mark_fram...
+#include "buffer.h"            // for mark_frame_empty, mark_frame_full, register_consumer, reg...
 #include "bufferContainer.hpp" // for bufferContainer
 #include "datasetManager.hpp"  // for dset_id_t, state_id_t, datasetManager
 #include "datasetState.hpp"    // for freqState
 #include "kotekanLogging.hpp"  // for FATAL_ERROR
-#include "visBuffer.hpp"       // for VisFrameView
-#include "visUtil.hpp"         // for frameID, freq_ctype, modulo
+#include "visUtil.hpp"         // for freq_ctype, frameID, modulo
 
 #include <algorithm>    // for find, max
 #include <atomic>       // for atomic_bool
@@ -17,23 +15,20 @@
 #include <cxxabi.h>     // for __forced_unwind
 #include <exception>    // for exception
 #include <functional>   // for _Bind_helper<>::type, bind, function
-#include <future>       // for future, async
-#include <map>          // for map, operator!=, map<>::mapped_type, map<>::iterator
+#include <future>       // for async, future
+#include <map>          // for map, map<>::mapped_type, _Rb_tree_iterator
 #include <stdexcept>    // for out_of_range
 #include <system_error> // for system_error
 #include <utility>      // for pair
-
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
 
-REGISTER_KOTEKAN_STAGE(freqSubset);
 
-
-freqSubset::freqSubset(Config& config, const std::string& unique_name,
+FreqSubset::FreqSubset(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&freqSubset::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&FreqSubset::main_thread, this)) {
 
     // Get list of frequencies to subset from config
     _subset_list = config.get<std::vector<uint32_t>>(unique_name, "subset_list");
@@ -47,7 +42,7 @@ freqSubset::freqSubset(Config& config, const std::string& unique_name,
     register_producer(out_buf, unique_name.c_str());
 }
 
-void freqSubset::change_dataset_state(dset_id_t input_dset_id) {
+void FreqSubset::change_dataset_state(dset_id_t input_dset_id) {
     auto& dm = datasetManager::instance();
 
     auto fprint = dm.fingerprint(input_dset_id, {"frequencies"});
@@ -86,13 +81,10 @@ void freqSubset::change_dataset_state(dset_id_t input_dset_id) {
     dset_id_map[input_dset_id] = dm.add_dataset(states_map.at(fprint), input_dset_id);
 }
 
-void freqSubset::main_thread() {
+void FreqSubset::main_thread() {
 
     frameID input_frame_id(in_buf);
     frameID output_frame_id(out_buf);
-    unsigned int freq;
-
-    std::future<void> change_dset_fut;
 
     while (!stop_thread) {
 
@@ -101,17 +93,15 @@ void freqSubset::main_thread() {
             break;
         }
 
-        // Create view to input frame
-        auto input_frame = VisFrameView(in_buf, input_frame_id);
+        // Get dataset ID and freq ID from input frame
+        std::pair<dset_id_t, uint32_t> frame_data = get_frame_data(input_frame_id);
+        dset_id_t input_dataset_id = frame_data.first;
+        uint32_t freq = frame_data.second;
 
         // check if the input dataset has changed
-        if (dset_id_map.count(input_frame.dataset_id) == 0) {
-            change_dset_fut =
-                std::async(&freqSubset::change_dataset_state, this, input_frame.dataset_id);
+        if (dset_id_map.count(input_dataset_id) == 0) {
+            change_dset_fut = std::async(&FreqSubset::change_dataset_state, this, input_dataset_id);
         }
-
-        // frequency index of this frame
-        freq = input_frame.freq_id;
 
         // If this frame is part of subset
         // TODO: Apparently std::set can be used to speed up this search
@@ -122,15 +112,8 @@ void freqSubset::main_thread() {
                 break;
             }
 
-            // Copy frame and create view
-            auto output_frame =
-                VisFrameView::copy_frame(in_buf, input_frame_id, out_buf, output_frame_id);
-
-            // Wait for the dataset ID for the outgoing frame
-            if (change_dset_fut.valid())
-                change_dset_fut.wait();
-
-            output_frame.dataset_id = dset_id_map.at(input_frame.dataset_id);
+            // Copy dataset ID to output frame
+            copy_dataset_id(input_dataset_id, input_frame_id, output_frame_id);
 
             // Mark the output buffer and move on
             mark_frame_full(out_buf, unique_name.c_str(), output_frame_id++);

@@ -20,6 +20,7 @@ add_library(
     testDataGenQuad.cpp
     testDataGenFloat.cpp
     TestDropFrames.cpp
+    GenHFBFrames.cpp
     pulsarSimProcess.cpp
     visNoise.cpp
     visDrop.cpp)
