@@ -16,6 +16,8 @@ struct BeamMetadata {
     stream_t stream_id;
     /// ID of the dataset
     dset_id_t dataset_id;
+    /// Beam number (e.g. which of the tracking beams is in this stream)
+    uint32_t beam_number;
     /// Right ascension of the beam
     float ra;
     /// Declination of the beam

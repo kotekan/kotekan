@@ -82,6 +82,7 @@ void BeamExtract::main_thread() {
         // however at the moment all that data should be contained in this metadata
         // plus the root dataset ID.
         out_metadata->dataset_id = in_metadata->dataset_id;
+        out_metadata->beam_number = _extract_beam;
         out_metadata->ra = in_metadata->beam_coord.ra[_extract_beam];
         out_metadata->dec = in_metadata->beam_coord.dec[_extract_beam];
         out_metadata->scaling = in_metadata->beam_coord.scaling[_extract_beam];
